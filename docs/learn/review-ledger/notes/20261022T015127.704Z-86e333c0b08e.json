@@ -1,0 +1,9 @@
+{
+  "revision": "cc7dd25fab974a26d55a67ab9b0d68ef8abd0c9b",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Edited in #4003 review round 4: the Learning dismiss route now says the 409 task_learning_promoted applies only while the claimed promotion's store is still one of the Project's, and that the candidate list reads such a version as review.state 'pending' with storeAvailable. Checked against dismissTaskLearning (promotionStoreGone from the Project's stores), dismissLearningCandidate and readTaskLearning's pending review.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Re-read for #4003 review round 4: api.md changed only in the Learning dismiss route's 409 condition and the new 'pending' review state. This guide links the API reference as a whole and describes no Task Learning route, so it still holds.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]}
+  ]
+}

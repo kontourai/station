@@ -102,6 +102,31 @@ describe('ProjectTaskSharingControl', () => {
     expect(screen.queryByRole('button', { name: /Share|Revoke/ })).toBeNull();
   });
 
+  test('the room Share control stays disabled with a reason when sharing is off', async () => {
+    getPublication.mockRejectedValue(new Error('not found'));
+    render(
+      <ProjectTaskSharingControl
+        slug="example"
+        projectId="project-1"
+        task={task}
+        compact
+      />,
+      { wrapper: wrapper() },
+    );
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole('button', { name: 'Share' })
+          .getAttribute('aria-description'),
+      ).toBe('Sharing is off for this Station'),
+    );
+    const control = screen.getByRole('button', { name: 'Share' });
+    expect(control.hasAttribute('disabled')).toBe(true);
+    fireEvent.click(control);
+    expect(screen.queryByText('Not shared with Project viewers')).toBeNull();
+    expect(share).not.toHaveBeenCalled();
+  });
+
   test('missing request authority cannot read or mutate through an ambient target', () => {
     authorityState.current = undefined;
     render(

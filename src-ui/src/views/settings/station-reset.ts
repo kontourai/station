@@ -60,14 +60,12 @@ const SEPARATELY_WRITTEN_KEYS: ReadonlySet<keyof AppConfig> = new Set([
  * Settings whose factory default is MORE permissive than an opt-out, so
  * "restore the default" and "undo the person's choice" are the same act.
  *
- * `telemetryEnabled` defaults to `true`. A stored `false` is the only
- * artifact of someone turning telemetry off, and clearing it would turn it
- * back on — a reset silently widening what leaves this Station. The toggle
- * stays where it is (the Telemetry section, beside the disclosure);
- * the dialog says a reset does not touch it.
+ * Telemetry tiers default to Lite. Clearing an Off choice would widen what
+ * leaves this Station, so reset preserves the map and the legacy alias.
  */
 const PRIVACY_PRESERVED_KEYS: ReadonlySet<keyof AppConfig> = new Set([
   'telemetryEnabled',
+  'telemetryTier',
 ]);
 
 const REGISTRY_BY_KEY: ReadonlyMap<keyof AppConfig, SettingDefinition> =
@@ -228,9 +226,11 @@ function sameDeviceValue(a: unknown, b: unknown): boolean {
 
 export function buildDeviceResetPlan(
   settings: Partial<DeviceSettings> | undefined,
+  excludedKeys: readonly (keyof DeviceSettings)[] = [],
 ): DeviceResetPlan {
   const keys = (PREFERENCE_DEVICE_KEYS as readonly (keyof DeviceSettings)[])
     .filter((key) => DEVICE_REGISTRY_BY_KEY.has(key))
+    .filter((key) => !excludedKeys.includes(key))
     .filter((key) => {
       const value = settings?.[key];
       if (value === undefined) return false;

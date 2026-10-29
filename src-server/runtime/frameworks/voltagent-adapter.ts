@@ -518,13 +518,65 @@ function bindDefaultTopP(agent: Agent, topP: number | undefined): void {
   }
 }
 
+/** Live chat registers the raw Agent; model-only composition must survive that boundary. */
+function bindModelInputComposition(agent: Agent): void {
+  const streamText = agent.streamText;
+  Object.defineProperty(agent, 'streamText', {
+    configurable: true,
+    writable: true,
+    value(
+      input: string | ModelInputMessage[],
+      options?: {
+        composeModelInput?: ModelInputComposer;
+        hooks?: AgentHooks;
+        [key: string]: unknown;
+      },
+    ) {
+      const { composeModelInput, ...invokeOptions } = options ?? {};
+      // The tail is matched by id, so an authored message gets one
+      // before VoltAgent sees (and stores) it.
+      const authored: string | ModelInputMessage[] =
+        composeModelInput && Array.isArray(input)
+          ? input.map((message) =>
+              message.id ? message : { ...message, id: randomUUID() },
+            )
+          : input;
+      return Reflect.apply(streamText, agent, [
+        authored,
+        {
+          ...invokeOptions,
+          // #3112: VoltAgent persists (and titles from) the input it is handed,
+          // so it is handed the authored turn and the context joins only the
+          // messages prepared for the model.
+          ...(composeModelInput
+            ? {
+                hooks: {
+                  ...invokeOptions.hooks,
+                  onPrepareMessages: chainAfterComposition(
+                    composeInputAtModelSeam(authored, composeModelInput),
+                    // VoltAgent's own precedence: the caller's hook, else the
+                    // agent's.
+                    invokeOptions.hooks?.onPrepareMessages ??
+                      agent.hooks?.onPrepareMessages,
+                  ),
+                },
+              }
+            : {}),
+        },
+      ]);
+    },
+  });
+}
+
 class VoltAgentWrapper implements IAgent {
   constructor(
     private inner: Agent,
     private purposeEnabledToolNames: ReadonlySet<string> = new Set(),
     readonly instructions?: string | (() => string),
     private readonly toolView?: (tools: ITool[]) => IAgent,
-  ) {}
+  ) {
+    bindModelInputComposition(inner);
+  }
 
   withAdditionalTools(tools: ITool[]): IAgent {
     if (!this.toolView) throw new Error('Agent tool views are unavailable.');
@@ -569,39 +621,10 @@ class VoltAgentWrapper implements IAgent {
     // (which are per-AGENT and shared by concurrent turns) only through
     // this call's own operation context.
     const observedDenials: ObservedToolDenial[] = [];
-    const { composeModelInput, ...invokeOptions } = options ?? {};
-    // #3112: the tail is matched by id, so an authored message gets one
-    // before VoltAgent sees (and stores) it.
-    const authored: string | ModelInputMessage[] =
-      composeModelInput && Array.isArray(input)
-        ? (input as ModelInputMessage[]).map((message) =>
-            message.id ? message : { ...message, id: randomUUID() },
-          )
-        : input;
-    const result = await this.inner.streamText(authored as string, {
-      ...invokeOptions,
-      // #3112: VoltAgent persists (and titles from) the input it is handed,
-      // so it is handed the authored turn and the context joins only the
-      // messages prepared for the model.
-      ...(composeModelInput
-        ? {
-            hooks: {
-              ...invokeOptions.hooks,
-              onPrepareMessages: chainAfterComposition(
-                composeInputAtModelSeam(
-                  authored,
-                  composeModelInput as ModelInputComposer,
-                ),
-                // VoltAgent's own precedence: the caller's hook, else the
-                // agent's.
-                invokeOptions.hooks?.onPrepareMessages ??
-                  this.inner.hooks?.onPrepareMessages,
-              ),
-            },
-          }
-        : {}),
+    const result = await this.inner.streamText(input, {
+      ...options,
       context: contextWithToolDenialObservations(
-        invokeOptions.context,
+        options?.context,
         observedDenials,
       ),
     });
@@ -625,7 +648,15 @@ class VoltAgentWrapper implements IAgent {
     prompt: string,
     options?: any,
   ): Promise<IGenerateResult> {
-    return this.inner.generateObject(prompt, options);
+    const { structuredOutputSchema, signal, ...invokeOptions } = options ?? {};
+    if (!structuredOutputSchema)
+      throw new Error(
+        'Structured object generation requires structuredOutputSchema.',
+      );
+    return this.inner.generateObject(prompt, structuredOutputSchema, {
+      ...invokeOptions,
+      ...(signal ? { abortSignal: signal } : {}),
+    });
   }
 
   getMemory(): IMemory | null {

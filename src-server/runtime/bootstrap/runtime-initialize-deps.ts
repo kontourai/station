@@ -21,6 +21,7 @@ import type { AttachedSessionSource } from '../../providers/sessions/attached-se
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import type { SkillService } from '../../services/agents/skill-service.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
+import type { FeaturePreviewSelector } from '../../services/feature-previews/feature-preview-registry.js';
 import type { FeedbackService } from '../../services/feedback/feedback-service.js';
 import type { CredentialProfileRecoveryAdapter } from '../../services/orchestration/credential-recovery-module.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
@@ -54,6 +55,7 @@ type ToolNameMapping = Map<
 >;
 
 interface RuntimeInitializationContext {
+  validateProjectTools?: InitializeRuntimeDeps['validateProjectTools'];
   resolveProjectToolServers?: InitializeRuntimeDeps['resolveProjectToolServers'];
   attachedSessionSources?: AttachedSessionSource[];
   port: number;
@@ -65,6 +67,8 @@ interface RuntimeInitializationContext {
     EnvironmentSecurityService,
     | 'verifyCredential'
     | 'resolveGrantedScope'
+    // #3586: the voice WebSocket refuses account-bound devices and tokens.
+    | 'identifyDevice'
     | 'canSharePersonalConversation'
     | 'personalConversationOwnerIds'
     | 'deviceHoldsFullAccess'
@@ -103,6 +107,8 @@ interface RuntimeInitializationContext {
   ) => Promise<BuiltinAgentEngineBinding | null>;
   onACPConnectionsReady?: () => void | Promise<void>;
   orchestrationEventStore: EventStore;
+  /** The `chat-host-images` Feature Preview selector (station-runtime binds it). */
+  hostImagesPreview?: FeaturePreviewSelector;
   credentialProfileRecoveryAdapter?: CredentialProfileRecoveryAdapter;
   usageAggregator?: UsageAggregator;
   /** archive#3245: lifetime analytics' read of the orchestration substrate. */
@@ -183,6 +189,7 @@ export function createRuntimeInitializationDeps(
     timers: context.timers,
     configLoader: context.configLoader,
     storageAdapter: context.storageAdapter,
+    validateProjectTools: context.validateProjectTools,
     resolveProjectToolServers: context.resolveProjectToolServers,
     skillService: context.skillService,
     feedbackService: context.feedbackService,
@@ -191,6 +198,7 @@ export function createRuntimeInitializationDeps(
     resolveBuiltinEngineBinding: context.resolveBuiltinEngineBinding,
     onACPConnectionsReady: context.onACPConnectionsReady,
     orchestrationEventStore: context.orchestrationEventStore,
+    hostImagesPreview: context.hostImagesPreview,
     credentialProfileRecoveryAdapter: context.credentialProfileRecoveryAdapter,
     usageAggregator: context.usageAggregator,
     orchestrationUsageRef: context.orchestrationUsageRef,

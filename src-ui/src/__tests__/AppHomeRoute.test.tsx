@@ -13,11 +13,20 @@ import { type ReactNode, Suspense, useEffect } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import App from '../App';
 import { ResponsiveDialogSurface } from '../components/ResponsiveDialogSurface';
+import {
+  type UpdateNotice,
+  useOpenUpdatesRequest,
+  useUpdateNotices,
+} from '../components/updates/updatesEvents';
 import { bannerStore } from '../contexts/banner-store';
 import { openChatsStore } from '../contexts/open-chats-store';
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import { DEFAULT_DEVICE_REGION_ARRANGEMENT } from '../regions/region-model';
+
+vi.mock('../components/chat/TaskShapingComposer', () => ({
+  TaskShapingHost: () => null,
+}));
 
 vi.mock('../contexts/open-chats-store', () => ({
   openChatsStore: {
@@ -41,6 +50,9 @@ interface QueryState<T> {
    */
   isPending?: boolean;
   isError?: boolean;
+  error?: unknown;
+  errorUpdatedAt?: number;
+  fetchStatus?: 'fetching' | 'paused' | 'idle';
 }
 
 interface ProjectFixture {
@@ -488,6 +500,9 @@ vi.mock('../hooks/useQueryCacheReconnectSync', () => ({
 vi.mock('../hooks/useOutboundQueueFlush', () => ({
   useOutboundQueueFlush: vi.fn(),
 }));
+vi.mock('../hooks/useTurnNotificationReads', () => ({
+  useTurnNotificationReads: vi.fn(),
+}));
 
 function resetHooks() {
   hooks.projects = { data: [], isLoading: false, isError: false };
@@ -603,7 +618,7 @@ describe('App home route resolution', () => {
     }
   });
 
-  test('loads the deferred launch update checker and presents its banner', async () => {
+  test('loads the deferred launch update checker and publishes a server review notice', async () => {
     coreUpdateStatus.data = {
       updateAvailable: true,
       installKind: 'source-checkout',
@@ -611,11 +626,34 @@ describe('App home route resolution', () => {
       behind: 3,
     };
 
-    render(<App />);
-
-    expect((await screen.findByRole('status')).textContent).toContain(
-      'Server checkout is 3 commits behind its configured upstream.',
+    let notices: readonly UpdateNotice[] = [];
+    let request: ReturnType<typeof useOpenUpdatesRequest>;
+    function UpdatesObserver() {
+      notices = useUpdateNotices();
+      request = useOpenUpdatesRequest();
+      return null;
+    }
+    render(
+      <>
+        <App />
+        <UpdatesObserver />
+      </>,
     );
+    await waitFor(() =>
+      expect(notices).toContainEqual(
+        expect.objectContaining({
+          target: 'server',
+          message:
+            'Server checkout is 3 commits behind its configured upstream.',
+          // The Updates server section states the comparison itself.
+          summaryOnly: true,
+        }),
+      ),
+    );
+    expect(
+      notices.find((notice) => notice.id === 'launch-update')!.onAction,
+    ).toBeUndefined();
+    expect(request!.pending).toBe(false);
   });
 
   test('renders pending root route without exposing stale restore state, then settles on Home without redirecting', async () => {
@@ -1422,6 +1460,57 @@ describe('App home route resolution', () => {
       expect(screen.queryByTestId('ambient-chat-controller')).toBeNull();
     });
 
+    /**
+     * The on-device loop: a failed layout read mounted the dock, the dock's
+     * new observer re-ran the errored query, the query went pending, and the
+     * dock unmounted, about once a second for as long as the read failed.
+     * Re-checking a failure must leave the dock host where it is.
+     */
+    test('re-checking a failed layout read keeps the dock host mounted', async () => {
+      window.history.replaceState({}, '', '/projects/demo/layouts/coding');
+      const outage = new TypeError('Failed to fetch');
+      hooks.layout = {
+        data: undefined,
+        isLoading: false,
+        isPending: false,
+        isError: true,
+        error: outage,
+        errorUpdatedAt: 1,
+        fetchStatus: 'idle',
+      };
+      hooks.regionModel = openBottom();
+      const { rerender } = render(<App />);
+      await act(async () => undefined);
+      expect(registerRegionSurfaceHost).toHaveBeenCalledTimes(1);
+
+      // What TanStack reports once that re-check starts.
+      hooks.layout = {
+        data: undefined,
+        isLoading: true,
+        isPending: true,
+        isError: false,
+        error: null,
+        errorUpdatedAt: 1,
+        fetchStatus: 'fetching',
+      };
+      await act(async () => rerender(<App />));
+
+      // ...and fails again: the half of the cycle that remounted the dock.
+      hooks.layout = {
+        data: undefined,
+        isLoading: false,
+        isPending: false,
+        isError: true,
+        error: new TypeError('Failed to fetch'),
+        errorUpdatedAt: 2,
+        fetchStatus: 'idle',
+      };
+      await act(async () => rerender(<App />));
+
+      // An unmount and remount would register the host a second time.
+      expect(registerRegionSurfaceHost).toHaveBeenCalledTimes(1);
+    });
+
     test('a plugin layout typed coding keeps Chat in the dock', async () => {
       window.history.replaceState({}, '', '/projects/demo/layouts/coding');
       hooks.layout = {
@@ -1436,7 +1525,7 @@ describe('App home route resolution', () => {
       expect(screen.getByTestId('ambient-chat-controller')).toBeTruthy();
     });
 
-    test('a bottom-only device keeps Chat in its dock', async () => {
+    test('a phone reads Coding chat in the workbench without a second dock controller', async () => {
       const width = window.innerWidth;
       Object.defineProperty(window, 'innerWidth', {
         configurable: true,
@@ -1450,7 +1539,7 @@ describe('App home route resolution', () => {
         render(<App />);
         await act(async () => undefined);
 
-        expect(screen.getByTestId('ambient-chat-controller')).toBeTruthy();
+        expect(screen.queryByTestId('ambient-chat-controller')).toBeNull();
       } finally {
         Object.defineProperty(window, 'innerWidth', {
           configurable: true,

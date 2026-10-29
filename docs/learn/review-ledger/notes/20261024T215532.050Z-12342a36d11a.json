@@ -1,0 +1,7 @@
+{
+  "revision": "4f2fba1554fce405c8d4065c25965ae03c80ceae",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Bounded #1521 delta: routing table entries for plugin API/SDK references unchanged; linked references updated for registryTrust.","inputs":["docs/guides/integrating-station.md","docs/guides/plugins.md","docs/reference/api.md","docs/reference/sdk.md"]}
+  ]
+}

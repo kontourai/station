@@ -1,0 +1,7 @@
+{
+  "revision": "e49f067d24980faae23d8a84688af5fc24becc7b",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"Fix round 1 source delta: ChatDockBody adds a per-conversation pending Resync guard and status input. Agent and Station settings, prompt expansion, feature flags, persistence scopes, attachment and log contracts, and configuration defaults are unchanged; no config prose change is needed.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]}
+  ]
+}

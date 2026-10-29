@@ -1,0 +1,7 @@
+{
+  "revision": "c15d2e4096d4bee75ff7e919b3c0cbf201eadb9c",
+
+  "notes": [
+    {"path":"docs/design/pane-relationships.md","note":"Delta in pane-relations.ts and openRelatedFilePreview.ts since the last record: parseTargetScope is no longer exported and the RelatedOpenDisposition type is no longer re-exported; neither changes behavior. The persistence-and-authority claims checked in the previous record still hold. No prose changes. Other claims were not re-reviewed.","inputs":["docs/design/pane-relationships.md","src-ui/src/contexts/openRelatedFilePreview.ts","src-ui/src/regions/pane-relations.ts"]}
+  ]
+}

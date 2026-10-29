@@ -1,0 +1,35 @@
+{
+  "revision": "25536ada36e7f628dbb7cd41988ba20d8d6f9e7d",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Required readiness and source aggregates unchanged; reviewed exact title-bootstrap policy pin. Delta reviewed: PR title checkout uses github.workflow_sha, as required by actionlint policy; observed MODULE_NOT_FOUND at old event base84c79c7 explains repair. 341 focused policy/title checks passed; no hosted pass claimed.","inputs":[".veritas/README.md",".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Hosted source checks, hook ownership and independent metadata check requirements unchanged. Delta reviewed: PR title checkout uses github.workflow_sha, as required by actionlint policy; observed MODULE_NOT_FOUND at old event base84c79c7 explains repair. 341 focused policy/title checks passed; no hosted pass claimed.","inputs":["docs/guides/code-quality.md",".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Delegation attempt contracts unchanged; workflow pin repair affects title bootstrap only. Delta reviewed: PR title checkout uses github.workflow_sha, as required by actionlint policy; observed MODULE_NOT_FOUND at old event base84c79c7 explains repair. 341 focused policy/title checks passed; no hosted pass claimed.","inputs":["docs/guides/delegation-attempt-claims.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Read-only title token remains restricted to trusted workflow checkout; no candidate code or mutable branch checkout is introduced. Delta reviewed: PR title checkout uses github.workflow_sha, as required by actionlint policy; observed MODULE_NOT_FOUND at old event base84c79c7 explains repair. 341 focused policy/title checks passed; no hosted pass claimed.","inputs":["docs/guides/dependency-security.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/development.md","note":"Live title grammar and source-verification independence remain unchanged. Delta reviewed: PR title checkout uses github.workflow_sha, as required by actionlint policy; observed MODULE_NOT_FOUND at old event base84c79c7 explains repair. 341 focused policy/title checks passed; no hosted pass claimed.","inputs":["docs/guides/development.md",".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Home-transfer contracts and verification unchanged; no transfer steps altered. Delta reviewed: PR title checkout uses github.workflow_sha, as required by actionlint policy; observed MODULE_NOT_FOUND at old event base84c79c7 explains repair. 341 focused policy/title checks passed; no hosted pass claimed.","inputs":["docs/guides/home-transfer-controller.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Hosted runner and private runner/lease restrictions unchanged. Delta reviewed: PR title checkout uses github.workflow_sha, as required by actionlint policy; observed MODULE_NOT_FOUND at old event base84c79c7 explains repair. 341 focused policy/title checks passed; no hosted pass claimed.","inputs":["docs/guides/private-runner-partition.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Product-law observations and framework checks unchanged. Delta reviewed: PR title checkout uses github.workflow_sha, as required by actionlint policy; observed MODULE_NOT_FOUND at old event base84c79c7 explains repair. 341 focused policy/title checks passed; no hosted pass claimed.","inputs":["docs/guides/product-law-authoring.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/releasing.md","note":"Required-title activation and qualification/promotion authority remain unchanged; old event base revisions can predate the validator. Delta reviewed: PR title checkout uses github.workflow_sha, as required by actionlint policy; observed MODULE_NOT_FOUND at old event base84c79c7 explains repair. 341 focused policy/title checks passed; no hosted pass claimed.","inputs":["docs/guides/releasing.md",".github/workflows/ci.yml","scripts/__tests__/actionlint-gate.test.ts","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Tooling layout unchanged; current helper is loaded from the workflow-owning revision. Delta reviewed: PR title checkout uses github.workflow_sha, as required by actionlint policy; observed MODULE_NOT_FOUND at old event base84c79c7 explains repair. 341 focused policy/title checks passed; no hosted pass claimed.","inputs":["docs/guides/repository-layout.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"Metadata routing still runs only live title validation; exact trusted workflow revision replaces potentially old PR base checkout. Existing source outcomes are untouched. Delta reviewed: PR title checkout uses github.workflow_sha, as required by actionlint policy; observed MODULE_NOT_FOUND at old event base84c79c7 explains repair. 341 focused policy/title checks passed; no hosted pass claimed.","inputs":["docs/guides/testing.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Work-board authority unchanged; title job retains trusted checkout and read-only PR scope. Delta reviewed: PR title checkout uses github.workflow_sha, as required by actionlint policy; observed MODULE_NOT_FOUND at old event base84c79c7 explains repair. 341 focused policy/title checks passed; no hosted pass claimed.","inputs":["docs/guides/work-board-security.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Workspace resolution and package checks unchanged. Delta reviewed: PR title checkout uses github.workflow_sha, as required by actionlint policy; observed MODULE_NOT_FOUND at old event base84c79c7 explains repair. 341 focused policy/title checks passed; no hosted pass claimed.","inputs":["docs/guides/workspace-packages.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/reference/interactive-workspace-performance.md","note":"Performance smoke and reference workflows unchanged. Delta reviewed: PR title checkout uses github.workflow_sha, as required by actionlint policy; observed MODULE_NOT_FOUND at old event base84c79c7 explains repair. 341 focused policy/title checks passed; no hosted pass claimed.","inputs":["docs/reference/interactive-workspace-performance.md",".github/workflows/ci.yml"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Browser isolation, budget, retries and required source routing unchanged. Delta reviewed: PR title checkout uses github.workflow_sha, as required by actionlint policy; observed MODULE_NOT_FOUND at old event base84c79c7 explains repair. 341 focused policy/title checks passed; no hosted pass claimed.","inputs":["docs/testing/browser-smoke.md",".github/workflows/ci.yml"]}
+  ]
+}

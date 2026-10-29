@@ -8,7 +8,7 @@
  *
  * #2211: the card no longer renders inline in the turn footer. The row keeps
  * the transcript focused on the answer: the footer is icon-copy + rating +
- * overflow, and "Turn provenance" opens the SAME card in a dialog.
+ * overflow, and "Answer details" opens the SAME card in a dialog.
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -124,7 +124,7 @@ async function openProvenanceDialog() {
   fireEvent.click(
     await screen.findByRole('button', { name: 'More answer actions' }),
   );
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Turn provenance' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Answer details' }));
   await screen.findByLabelText(/^Answer provenance/);
 }
 
@@ -191,7 +191,7 @@ describe('MessageBubble turn provenance (station#1410, #2211)', () => {
       provenance: envelope,
     });
 
-    expect(screen.getByRole('button', { name: 'Copy message' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Copy answer' })).toBeTruthy();
     expect(
       screen.queryByRole('button', { name: /Share this answer/ }),
     ).toBeNull();
@@ -209,7 +209,7 @@ describe('MessageBubble turn provenance (station#1410, #2211)', () => {
     expect(
       await screen.findByRole(
         'menuitem',
-        { name: 'Add this answer to a Task (turn turn-7)' },
+        { name: 'Add to Task: answer' },
         // The attach affordance mounts beside a lazy message chunk; under
         // full-corpus worker load its dynamic import can exceed findByRole's
         // 1s default, redding this file corpus-only while isolation stays
@@ -219,12 +219,12 @@ describe('MessageBubble turn provenance (station#1410, #2211)', () => {
       ),
     ).toBeTruthy();
     expect(
-      screen.getByRole('menuitem', { name: 'Turn provenance' }),
+      screen.getByRole('menuitem', { name: 'Answer details' }),
     ).toBeTruthy();
 
     // …and choosing provenance swaps the menu for the dialog that hosts the
     // card, share affordance included.
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Turn provenance' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Answer details' }));
     await screen.findByLabelText('Answer provenance for turn turn-7');
     expect(
       await screen.findByRole('button', {
@@ -300,10 +300,10 @@ describe('MessageBubble turn provenance (station#1410, #2211)', () => {
       await screen.findByRole('button', { name: 'More answer actions' }),
     );
     expect(
-      screen.getByRole('menuitem', { name: 'Turn provenance' }),
+      screen.getByRole('menuitem', { name: 'Answer details' }),
     ).toBeTruthy();
     expect(
-      screen.queryByRole('menuitem', { name: /Add this answer to a Task/ }),
+      screen.queryByRole('menuitem', { name: /Add to Task: answer/ }),
     ).toBeNull();
   });
 
@@ -337,7 +337,7 @@ describe('MessageBubble turn provenance (station#1410, #2211)', () => {
     );
     expect(
       await screen.findByRole('menuitem', {
-        name: 'Add this answer to a Task (turn turn-without-provenance)',
+        name: 'Add to Task: answer',
       }),
     ).toBeTruthy();
     expect(screen.queryByLabelText(/^Answer provenance/)).toBeNull();
@@ -368,10 +368,10 @@ describe('MessageBubble turn provenance (station#1410, #2211)', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
     expect(
-      screen.getByRole('menuitem', { name: 'Turn provenance' }),
+      screen.getByRole('menuitem', { name: 'Answer details' }),
     ).toBeTruthy();
     expect(
-      screen.queryByRole('menuitem', { name: /Add this answer to a Task/ }),
+      screen.queryByRole('menuitem', { name: /Add to Task: answer/ }),
     ).toBeNull();
   });
 
@@ -419,7 +419,7 @@ describe('MessageBubble turn provenance (station#1410, #2211)', () => {
     expect(screen.getByText('Operator Person')).toBeTruthy();
   });
 
-  it('keeps Basis inside Provenance and never renders it as a sibling action', async () => {
+  it('puts Basis on the answer row rather than inside Provenance', async () => {
     renderRow({
       role: 'assistant',
       content: 'Here is the answer.',
@@ -428,20 +428,23 @@ describe('MessageBubble turn provenance (station#1410, #2211)', () => {
       provenance: envelope,
     });
 
-    expect(screen.queryByRole('button', { name: /^Basis/ })).toBeNull();
+    const chip = await screen.findByRole(
+      'button',
+      { name: /^Basis/ },
+      { timeout: 10_000 },
+    );
+    expect(chip.closest('.turn-footer__bar')).not.toBeNull();
     await openProvenanceDialog();
+    const detail = document.querySelector('.turn-provenance__detail');
+    expect(detail).not.toBeNull();
+    // One Basis entry: the dialog no longer repeats it (it opened Basis
+    // behind its own modal, where nothing visibly happened).
     expect(
-      await screen.findByRole(
-        'button',
-        { name: /^Basis/ },
-        { timeout: 10_000 },
+      [...(detail?.querySelectorAll('button') ?? [])].filter((button) =>
+        button.textContent?.startsWith('Basis'),
       ),
-    ).toBeTruthy();
-    expect(
-      document
-        .querySelector('.turn-provenance__detail')
-        ?.contains(screen.getByRole('button', { name: /^Basis/ })),
-    ).toBe(true);
+    ).toEqual([]);
+    expect(screen.getAllByRole('button', { name: /^Basis/ })).toEqual([chip]);
   });
 
   it('renders no provenance affordance on a user row', () => {
@@ -520,13 +523,7 @@ describe('MessageBubble turn provenance (station#1410, #2211)', () => {
    * ABORTED turn asked for a basis the server can only refuse and rendered that
    * refusal as "Basis · Unavailable" on a healthy instance.
    */
-  describe('the Basis affordance asks only what the route can answer', () => {
-    /** The affordance lives inside the dialog-hosted card's detail. */
-    async function expandProvenance() {
-      await openProvenanceDialog();
-      await act(async () => {});
-    }
-
+  describe('the Basis chip asks only what the route can answer', () => {
     it('offers Basis for a turn whose envelope records a completed outcome', async () => {
       renderRow({
         role: 'assistant',
@@ -535,13 +532,12 @@ describe('MessageBubble turn provenance (station#1410, #2211)', () => {
         answerEligible: true,
         provenance: envelope,
       });
-      await expandProvenance();
 
-      // The Basis affordance mounts through a lazy chunk inside the dialog.
+      // The chip mounts through a lazy chunk in the answer's footer.
       expect(
         await screen.findByRole(
           'button',
-          { name: 'Basis' },
+          { name: /^Basis/ },
           { timeout: 10_000 },
         ),
       ).toBeTruthy();
@@ -555,9 +551,10 @@ describe('MessageBubble turn provenance (station#1410, #2211)', () => {
         answerEligible: true,
         provenance: { ...envelope, outcome: 'aborted' },
       });
-      await expandProvenance();
+      await openProvenanceDialog();
+      await act(async () => {});
 
-      expect(screen.queryByRole('button', { name: 'Basis' })).toBeNull();
+      expect(screen.queryByRole('button', { name: /^Basis/ })).toBeNull();
       // The rest of the provenance card is unaffected: an aborted turn still
       // has an engine and a turn id worth checking.
       expect(screen.getByLabelText(/^Answer provenance/)).toBeTruthy();

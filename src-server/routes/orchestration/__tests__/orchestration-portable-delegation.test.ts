@@ -1352,59 +1352,19 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
   });
 
   describe('isInboundDelegationPeer derivation (verified device kind is decisive)', () => {
-    test('a delegation device kind is a peer even when display identity names the operator', async () => {
+    test('only the verified delegation device kind is a peer', async () => {
       const { isInboundDelegationPeer } = await import(
         '../../../tools/station-control-delegation.js'
       );
-      const operator = {
-        version: 1,
-        actor: { kind: 'operator' },
-        reported: { version: 1, surface: 'web', build: null },
-      };
-      const internal = {
-        version: 1,
-        actor: { kind: 'internal' },
-        reported: { version: 1, surface: 'mobile', build: null },
-      };
-      const device = {
-        version: 1,
-        actor: { kind: 'device', deviceId: 'd1' },
-        reported: { version: 1, surface: 'mobile', build: null },
-      };
       // A delegation-kind device credential can carry a human person
-      // binding (or ingress identity) naming the local operator: the
-      // verified kind still wins — otherwise the peer escapes no-onward-hop
-      // by wearing the operator's display name.
-      expect(
-        isInboundDelegationPeer(undefined, operator as never, 'delegation'),
-      ).toBe(true);
-      expect(
-        isInboundDelegationPeer(undefined, internal as never, 'delegation'),
-      ).toBe(true);
-      expect(
-        isInboundDelegationPeer(
-          { id: 'human:local:operator', kind: 'human', display: 'op' },
-          undefined,
-          'delegation',
-        ),
-      ).toBe(true);
-      expect(
-        isInboundDelegationPeer(undefined, device as never, 'delegation'),
-      ).toBe(true);
-      // Ordinary personal devices, operator callers with no device
-      // credential, and callers with no kind at all are never peers.
-      expect(
-        isInboundDelegationPeer(undefined, device as never, 'device'),
-      ).toBe(false);
-      expect(
-        isInboundDelegationPeer(undefined, device as never, undefined),
-      ).toBe(false);
-      expect(
-        isInboundDelegationPeer(undefined, operator as never, undefined),
-      ).toBe(false);
-      expect(isInboundDelegationPeer(undefined, undefined, 'delegation')).toBe(
-        true,
-      );
+      // binding (or ingress identity) naming the local operator. The
+      // predicate takes only the verified kind, so a display identity
+      // cannot let the peer escape no-onward-hop.
+      expect(isInboundDelegationPeer('delegation')).toBe(true);
+      // Ordinary personal devices and callers with no device credential
+      // (operator and internal callers) are never peers.
+      expect(isInboundDelegationPeer('device')).toBe(false);
+      expect(isInboundDelegationPeer(undefined)).toBe(false);
     });
 
     test('the wired kind resolver reports the verified device record (actual middleware composition)', async () => {

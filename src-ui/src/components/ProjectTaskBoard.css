@@ -2,7 +2,7 @@
   display: grid;
   grid-template-columns: repeat(
       auto-fit,
-      minmax(min(100%, calc(var(--k-space-6) * 6)), 1fr)
+      minmax(min(100%, calc(var(--k-space-6) * 5 + var(--k-space-4))), 1fr)
     );
   gap: var(--k-space-3);
   min-width: 0;
@@ -73,4 +73,36 @@
 
 .project-page__task-grid.project-page__task-grid--board {
   grid-template-columns: minmax(0, 1fr);
+}
+
+.project-task-board__card strong {
+  display: -webkit-box;
+  font: 600 var(--k-text-sm) / var(--k-leading-normal) var(--k-font-ui);
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.project-page__task-detail a {
+  color: var(--k-action);
+}
+.project-page__task-grid--board {
+  margin-top: var(--k-space-3);
+}
+
+.project-task-board__canceled-disclosure {
+  grid-column: 1 / -1;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.project-task-board__canceled-disclosure summary {
+  display: flex;
+  align-items: center;
+  min-height: calc(var(--k-space-6) + var(--k-space-3));
+  width: fit-content;
+  cursor: pointer;
+  color: var(--k-action);
+}
+.project-task-board__canceled-disclosure summary:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-focus);
+  outline-offset: var(--k-focus-ring-offset);
 }

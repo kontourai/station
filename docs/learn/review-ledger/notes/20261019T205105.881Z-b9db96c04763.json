@@ -1,0 +1,83 @@
+{
+  "revision": "09b9ff8e94886d30aeb49c4320104091fee3ce2c",
+
+  "notes": [
+    {"path":"README.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): cli.md only adds --base to the recovery service commands and the Git Bash entry for a Windows checkout. This document describes none of those changes, so it stays accurate.","inputs":["README.md","docs/reference/cli.md"]},
+
+    {"path":"deploy/gcp-dev/README.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): station-runtime.ts only defers marking the update coordinator ready until orchestration’s whenSessionAttachmentSettled() resolves. This document describes none of those changes, so it stays accurate.","inputs":["deploy/gcp-dev/README.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): station-runtime.ts only defers marking the update coordinator ready until orchestration’s whenSessionAttachmentSettled() resolves. This document describes none of those changes, so it stays accurate.","inputs":["deploy/public-ingress/README.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): station-launcher.mjs only adds --base=\"<home>\" to its needs-operator retry hint. This document describes none of those changes, so it stays accurate.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","packaging/portable-server/bin/station-launcher.mjs"]},
+
+    {"path":"docs/architecture.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): station-runtime.ts only defers marking the update coordinator ready until orchestration’s whenSessionAttachmentSettled() resolves. This document describes none of those changes, so it stays accurate.","inputs":["docs/architecture.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): cli.md only adds --base to the recovery service commands and the Git Bash entry for a Windows checkout. This document describes none of those changes, so it stays accurate.","inputs":["docs/architecture/abstraction-review.md","docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): station-runtime.ts only defers marking the update coordinator ready until orchestration’s whenSessionAttachmentSettled() resolves. This document describes none of those changes, so it stays accurate.","inputs":["docs/architecture/module-map.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): station-runtime.ts only defers marking the update coordinator ready until orchestration’s whenSessionAttachmentSettled() resolves. This document describes none of those changes, so it stays accurate.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): station-runtime.ts only defers marking the update coordinator ready until orchestration’s whenSessionAttachmentSettled() resolves. This document describes none of those changes, so it stays accurate.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): station-runtime.ts only defers marking the update coordinator ready until orchestration’s whenSessionAttachmentSettled() resolves. This document describes none of those changes, so it stays accurate.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): cli.md only adds --base to the recovery service commands and the Git Bash entry for a Windows checkout. This document describes none of those changes, so it stays accurate.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): station-runtime.ts only defers marking the update coordinator ready until orchestration’s whenSessionAttachmentSettled() resolves. This document describes none of those changes, so it stays accurate.","inputs":["docs/design/connections-onboarding.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/hosted-execution-isolation.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): station-runtime.ts only defers marking the update coordinator ready until orchestration’s whenSessionAttachmentSettled() resolves. This document describes none of those changes, so it stays accurate.","inputs":["docs/design/hosted-execution-isolation.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): station-runtime.ts only defers marking the update coordinator ready until orchestration’s whenSessionAttachmentSettled() resolves. This document describes none of those changes, so it stays accurate.","inputs":["docs/design/plugin-installation-lifecycle.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/principals.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): station-runtime.ts only defers marking the update coordinator ready until orchestration’s whenSessionAttachmentSettled() resolves. This document describes none of those changes, so it stays accurate.","inputs":["docs/design/principals.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): station-runtime.ts only defers marking the update coordinator ready until orchestration’s whenSessionAttachmentSettled() resolves. This document describes none of those changes, so it stays accurate.","inputs":["docs/design/project-membership.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/registry-trust-policy.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): station-runtime.ts only defers marking the update coordinator ready until orchestration’s whenSessionAttachmentSettled() resolves. This document describes none of those changes, so it stays accurate.","inputs":["docs/design/registry-trust-policy.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): station-runtime.ts only defers marking the update coordinator ready until orchestration’s whenSessionAttachmentSettled() resolves. This document describes none of those changes, so it stays accurate.","inputs":["docs/design/survey-flow-review.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): station-runtime.ts only defers marking the update coordinator ready until orchestration’s whenSessionAttachmentSettled() resolves. This document describes none of those changes, so it stays accurate.","inputs":["docs/design/task-dispatcher.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): station-runtime.ts only defers marking the update coordinator ready until orchestration’s whenSessionAttachmentSettled() resolves. This document describes none of those changes, so it stays accurate.","inputs":["docs/design/task-room-agent-requests.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/agents.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): station-runtime.ts only defers marking the update coordinator ready until orchestration’s whenSessionAttachmentSettled() resolves. This document describes none of those changes, so it stays accurate.","inputs":["docs/guides/agents.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): station-runtime.ts only defers marking the update coordinator ready until orchestration’s whenSessionAttachmentSettled() resolves. This document describes none of those changes, so it stays accurate.","inputs":["docs/guides/connections.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): station-runtime.ts only defers marking the update coordinator ready until orchestration’s whenSessionAttachmentSettled() resolves. This document describes none of those changes, so it stays accurate.","inputs":["docs/guides/deployment.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): cli.md only adds --base to the recovery service commands and the Git Bash entry for a Windows checkout; station-runtime.ts only defers marking the update coordinator ready until orchestration’s whenSessionAttachmentSettled() resolves. This document describes none of those changes, so it stays accurate.","inputs":["docs/guides/integrating-station.md","docs/reference/cli.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): station-runtime.ts only defers marking the update coordinator ready until orchestration’s whenSessionAttachmentSettled() resolves. This document describes none of those changes, so it stays accurate.","inputs":["docs/guides/plugins.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): station-runtime.ts only defers marking the update coordinator ready until orchestration’s whenSessionAttachmentSettled() resolves. This document describes none of those changes, so it stays accurate.","inputs":["docs/guides/self-configuring-agent.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): station-runtime.ts only defers marking the update coordinator ready until orchestration’s whenSessionAttachmentSettled() resolves. This document describes none of those changes, so it stays accurate.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): station-runtime.ts only defers marking the update coordinator ready until orchestration’s whenSessionAttachmentSettled() resolves. This document describes none of those changes, so it stays accurate.","inputs":["docs/reference/api.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Rechecked the recovery steps against station-home-restore-marker.ts and the launcher hint after review round 3: both service commands now pass --base=\"<home>\", a Windows checkout restores through Git Bash, and the launcher paragraph notes that only services installed or reinstalled since #3851 log the --base form.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/reference/config.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): station-runtime.ts only defers marking the update coordinator ready until orchestration’s whenSessionAttachmentSettled() resolves. This document describes none of those changes, so it stays accurate.","inputs":["docs/reference/config.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): station-runtime.ts only defers marking the update coordinator ready until orchestration’s whenSessionAttachmentSettled() resolves. This document describes none of those changes, so it stays accurate.","inputs":["docs/reference/contracts.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): station-runtime.ts only defers marking the update coordinator ready until orchestration’s whenSessionAttachmentSettled() resolves. This document describes none of those changes, so it stays accurate.","inputs":["docs/reference/env-vars.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): station-runtime.ts only defers marking the update coordinator ready until orchestration’s whenSessionAttachmentSettled() resolves. This document describes none of those changes, so it stays accurate.","inputs":["docs/reference/project-task-room-collaboration-acceptance.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): station-runtime.ts only defers marking the update coordinator ready until orchestration’s whenSessionAttachmentSettled() resolves. This document describes none of those changes, so it stays accurate.","inputs":["docs/reference/usage-telemetry.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"examples/builder-delivery-viewer/README.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): station-runtime.ts only defers marking the update coordinator ready until orchestration’s whenSessionAttachmentSettled() resolves. This document describes none of those changes, so it stays accurate.","inputs":["examples/builder-delivery-viewer/README.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"examples/fieldwork-review/README.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): station-runtime.ts only defers marking the update coordinator ready until orchestration’s whenSessionAttachmentSettled() resolves. This document describes none of those changes, so it stays accurate.","inputs":["examples/fieldwork-review/README.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): station-runtime.ts only defers marking the update coordinator ready until orchestration’s whenSessionAttachmentSettled() resolves. This document describes none of those changes, so it stays accurate.","inputs":["examples/self-configuring-agent/README.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"examples/survey-review-workbench/README.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): station-runtime.ts only defers marking the update coordinator ready until orchestration’s whenSessionAttachmentSettled() resolves. This document describes none of those changes, so it stays accurate.","inputs":["examples/survey-review-workbench/README.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"packages/cli/README.md","note":"Rechecked against #3851 review round 3 (f2dd63e45e5..HEAD): cli.md only adds --base to the recovery service commands and the Git Bash entry for a Windows checkout. This document describes none of those changes, so it stays accurate.","inputs":["packages/cli/README.md","docs/reference/cli.md"]}
+  ]
+}

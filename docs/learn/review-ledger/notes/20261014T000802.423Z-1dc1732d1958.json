@@ -1,0 +1,7 @@
+{
+  "revision": "8783f1eeb091863a0b7ba36bfee30b2623326f73",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed for claims touched by this change: ACP session/load history replay is no longer published (acp-adapter.ts loadingHistory guard) and turn-less projected rows now carry their opening event time (runtime-event-projection.ts). The document makes no claim about replay publication or turn-less row timestamps; its resume/projection statements remain accurate.","inputs":["docs/reference/api.md","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

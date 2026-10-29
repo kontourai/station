@@ -159,6 +159,9 @@ describe('CoreUpdateCheck scope isolation (real query cache)', () => {
     };
     const fetchMock = vi.fn();
     fetchMock.mockImplementation(async (_input, init) => {
+      if (String(_input).endsWith('/running-turns')) {
+        return Response.json({ turns: [], hiddenCount: 0 });
+      }
       if ((init?.method as string | undefined) === 'POST') {
         // The server accepted a git-based self-update: the installer rebuilds
         // from source over minutes while this process keeps serving the OLD
@@ -195,6 +198,13 @@ describe('CoreUpdateCheck scope isolation (real query cache)', () => {
     fireEvent.click(
       await screen.findByRole('button', { name: 'Update server checkout' }),
     );
+    const confirm = await screen.findByRole('button', {
+      name: 'Update and restart',
+    });
+    await waitFor(() =>
+      expect((confirm as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(confirm);
 
     // The acceptance drove the real mutation; the persistent rebuilding state
     // must survive the refetch it triggered (real isFetching true → false).

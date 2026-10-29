@@ -1,0 +1,25 @@
+{
+  "revision": "d7ed75d2984417eec7bf360365c9286baac06f2b",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"workload-resources.ts gained the Station-placed holder state (placed/unplaced) reported per scope; the module map's workload paragraph (oom_kill observation, continuation through the inbox) remains accurate and leaves the mechanism to the development guide.","inputs":["docs/architecture/module-map.md","docs/guides/development.md","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"docs/design/process-supervisor.md","note":"workload-resources.ts now spawns a detached /bin/sleep holder attached to engine scopes; this proposal's current-state note (bounded scopes, no reattachment or turn survival) still holds, and its own \"holder\" means the proposed instance lock holder, a different thing.","inputs":["docs/design/process-supervisor.md","docs/guides/development.md","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"api.md changed only in the workload status holder field; this design's supervisor \"workload\" protocol is unrelated.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/development.md","note":"Added that an unplaced holder is reported as holder: unplaced in GET /api/system/workload, matching workloadBudgetStatus in workload-resources.ts and the fake-manager test that injects an attach that never moves the holder.","inputs":["docs/guides/development.md","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"api.md changed only in the workload status holder field; this guide's deployment sizing text is unrelated.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/testing.md","note":"workload-resources.ts changed only in reporting holder state; the unisolated-OOM guidance and fixture routing here remain accurate.","inputs":["docs/guides/testing.md","docs/guides/development.md","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Added holder: placed | unplaced to running scopes in GET /api/system/workload, checked against system-status.ts and workloadBudgetStatus.","inputs":["docs/reference/api.md","packages/contracts/src/system-status.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Added the holder field to the WorkloadBudgetStatus scopes description, checked against system-status.ts.","inputs":["docs/reference/contracts.md","packages/contracts/src/system-status.ts"]},
+
+    {"path":"packages/shared/README.md","note":"workload-resources.ts holder reporting is server-side; the child-workload leaf this README describes is unchanged.","inputs":["packages/shared/README.md","docs/guides/development.md","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"src-server/AGENTS.md","note":"development.md gained one sentence about holder reporting; this file routes to the development guide and states no workload behaviour, and the new holder spawn sets windowsHide: true as this file requires.","inputs":["src-server/AGENTS.md","docs/guides/development.md"]}
+  ]
+}

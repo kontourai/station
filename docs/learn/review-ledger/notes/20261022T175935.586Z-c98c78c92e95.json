@@ -1,0 +1,7 @@
+{
+  "revision": "0daea9923500aff41f866d9a7b4cc63986ba776f",
+
+  "notes": [
+    {"path":"docs/guides/android-build.md","note":"Reviewed isolated_onboarding fixed boolean build path at0daea992350: real bash admission tests reject main/nonmanual/invalidinput, preserve default package/artifact and select isolated io.kontourai.station.onboarding.debug. Same final overlay reaches freshinit/build; nativebootstrap regression covers generatednamespace. Workflow checks actual packagedID/provenance/hash before alternateartifact upload. Existing downstream workflow_run skips nonmain and resolver requiresmain.31focusedchecks and actionlint/dependency/testimport workflowgate passed; actual hosted compilation/artifact/install NOT_VERIFIED. Shared station-dev-instance externalURI association explicitly remains ambiguous with existingDev; inappQR/discovery and explicitpackage launch only.","inputs":["docs/guides/android-build.md",".github/workflows/build-android.yml","src-desktop/tauri.android.onboarding.conf.json"]}
+  ]
+}

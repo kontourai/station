@@ -1,5 +1,7 @@
 @import url("./fonts.css");
 @import url("./tokens.css");
+@import url("./styles/control-recipes.css");
+@import url("@kontourai/station-sdk/action-control.css");
 /* Console Kit token contract (roadmap), now consumed from the
    published @kontourai/ui@1.1.0 package (was the local console-kit mirror).
    Decision: token *definitions* load globally (the published tokens/index.css
@@ -54,9 +56,9 @@
 
 /* The mark is a raster asset, so retinting --k-brand cannot reach it: the dev
    build showed amber buttons beside the release logo. favicon-dev.png is
-   rendered by scripts/generate-app-icons.mjs with the same selective water-hue
-   shift as the "Station Dev" launcher icon, so the in-app mark and the
-   home-screen icon agree by construction — a CSS filter was the previous
+   rendered by scripts/generate-app-icons.mjs with the same dev palette as the
+   "Station Dev" launcher icon, so the in-app mark and the home-screen icon
+   agree by construction — a CSS filter was the previous
    mechanism and could only approximate the launcher's colours. Selected by
    src rather than by class because the same file renders as
    .app-toolbar__logo, .sidebar__logo, .guided-connect__logo and the SDK's
@@ -161,14 +163,7 @@
   outline-color: var(--k-focus) !important;
 }
 
-/*
- * The tone scale, in ONE place (#1582 C4).
- *
- * `BannerHost.css` and `PageCallout.css` both resolve their borders through
- * these, so a banner and a page callout cannot end up disagreeing about what
- * "warning" looks like. Declared against the theme-scoped colour variables
- * rather than literals, so `color-mix` resolves per theme at use.
- */
+/* Shared theme-aware borders for PageCallout and semantic status tones. */
 :root {
   --tone-border-info: color-mix(
     in srgb,
@@ -189,7 +184,7 @@
 
 :root {
   --chat-dock-header-height: 38px;
-  --app-toolbar-height: 46px;
+  --app-toolbar-height: calc(var(--k-space-5) * 2);
   /* Safe area insets for mobile/APK */
   --safe-top: env(safe-area-inset-top, 0px);
   /* What the toolbar actually occupies. The toolbar pads itself down by the
@@ -370,6 +365,46 @@
   --syntax-function: #b392f0;
   --syntax-tag: #85e89d;
   --syntax-variable: #ffab70;
+  /* The rest of the Shiki theme (highlight/station-syntax-theme.ts): code
+     blocks and diffs are highlighted against these variables instead of
+     github-dark's literals, so the light theme and palette themes reach
+     them. Dark keeps github-dark's own block surface and text. Comments
+     follow the muted text rung, which the File Preview already used. */
+  --syntax-foreground: #e1e4e8;
+  --syntax-background: #24292e;
+  --syntax-comment: var(--text-muted);
+  --syntax-deleted: #fdaeb7;
+
+  /* Diff surface and change tones (@pierre/diffs, through the same
+     variables theme). The tones are the shared status scale, so a palette
+     that retints --k-positive / --k-negative retints the diff with it. */
+  --diff-background: var(--bg-primary);
+  --diff-addition: var(--k-positive);
+  --diff-deletion: var(--k-negative);
+  --diff-modified: var(--k-active);
+
+  /* Terminal (xterm paints a canvas, so TerminalPanel reads these from the
+     computed style and re-reads them when the root theme changes). */
+  --terminal-background: #1a1a2e;
+  --terminal-foreground: #e0e0e0;
+  --terminal-cursor: #7ec8e3;
+  --terminal-selection: #3a3a5e;
+  --terminal-black: #1a1a2e;
+  --terminal-red: #f44336;
+  --terminal-green: #4caf50;
+  --terminal-yellow: #ffeb3b;
+  --terminal-blue: #2196f3;
+  --terminal-magenta: #9c27b0;
+  --terminal-cyan: #7ec8e3;
+  --terminal-white: #e0e0e0;
+  --terminal-bright-black: #4a4a6e;
+  --terminal-bright-red: #ef5350;
+  --terminal-bright-green: #66bb6a;
+  --terminal-bright-yellow: #fff176;
+  --terminal-bright-blue: #42a5f5;
+  --terminal-bright-magenta: #ab47bc;
+  --terminal-bright-cyan: #80deea;
+  --terminal-bright-white: #ffffff;
 
   --overlay-bg: rgba(0, 0, 0, 0.2);
   --overlay-bg-dark: rgba(0, 0, 0, 0.3);
@@ -411,6 +446,16 @@
      (station#3305). Mixing into the panel keeps the step visible in both
      themes. */
   --bg-hover-panel: color-mix(in srgb, var(--k-text) 8%, var(--k-panel));
+  /* Mix target for a surface or border that sits a step ABOVE its base (a
+     modal sheen, a card on a panel, that card's edge):
+     `color-mix(in srgb, var(--bg-secondary) 88%, var(--surface-lift) 12%)`.
+     Those call sites mixed in literal `white`, which ignores the palette.
+     Dark lifts toward the palette's own text colour; light lifts toward its
+     panel, which is white for the built-in palette, so light renders as it
+     did with the literal. For the lifted border (--border-primary 82% /
+     lift 18%) dark lands about 4% below the white mix's contrast and light
+     matches it; absolute ratios depend on how the layers are composited. */
+  --surface-lift: var(--k-text);
 
   --accent-light: color-mix(in srgb, var(--k-brand) 25%, transparent);
   --accent-medium: color-mix(in srgb, var(--k-brand) 15%, transparent);
@@ -505,6 +550,8 @@
   --bg-highlight: color-mix(in srgb, var(--k-text) 16%, var(--k-bg));
   /* Same derivation as the dark block above (operands resolve per theme). */
   --bg-hover-panel: color-mix(in srgb, var(--k-text) 8%, var(--k-panel));
+  /* See the dark block: a light surface lifts toward the panel, not the text. */
+  --surface-lift: var(--k-panel);
   --bg-modal: var(--k-panel);
 
   /* Text */
@@ -639,6 +686,43 @@
   --syntax-function: #6639ba;
   --syntax-tag: #116329;
   --syntax-variable: #953800;
+  /* github-light's text and deletion hues; the block surface is the panel.
+     The aliases are repeated from the dark block on purpose: a custom
+     property's var() resolves where it is declared, so a light island under
+     a dark root would otherwise inherit the dark resolution. */
+  --syntax-foreground: #24292f;
+  --syntax-background: var(--bg-secondary);
+  --syntax-comment: var(--text-muted);
+  --syntax-deleted: #82071e;
+
+  --diff-background: var(--bg-secondary);
+  --diff-addition: var(--k-positive);
+  --diff-deletion: var(--k-negative);
+  --diff-modified: var(--k-active);
+
+  /* A light terminal: GitHub light's ANSI set, each hue at least 3:1 on the
+     white surface ("white" is a mid grey, as light terminal themes do, so
+     text a program prints in white stays visible). */
+  --terminal-background: var(--bg-secondary);
+  --terminal-foreground: #24292f;
+  --terminal-cursor: #0969da;
+  --terminal-selection: #cce1ff;
+  --terminal-black: #24292f;
+  --terminal-red: #cf222e;
+  --terminal-green: #116329;
+  --terminal-yellow: #4d2d00;
+  --terminal-blue: #0969da;
+  --terminal-magenta: #8250df;
+  --terminal-cyan: #1b7c83;
+  --terminal-white: #6e7781;
+  --terminal-bright-black: #57606a;
+  --terminal-bright-red: #a40e26;
+  --terminal-bright-green: #1a7f37;
+  --terminal-bright-yellow: #633c01;
+  --terminal-bright-blue: #218bff;
+  --terminal-bright-magenta: #a475f9;
+  --terminal-bright-cyan: #3192aa;
+  --terminal-bright-white: #8c959f;
 
   /* Overlays & Shadows */
   --overlay-bg: rgba(0, 0, 0, 0.05);
@@ -787,6 +871,7 @@ button:hover {
 .app-toolbar {
   display: flex;
   align-items: center;
+  min-height: var(--app-toolbar-total-height);
   /* Denser, flatter native-titlebar feel: tighter gutters + gap, a
      single hairline, no fill beyond the surface token. */
   gap: 14px;
@@ -940,7 +1025,8 @@ button:hover {
      commit action can never fall below the fold on a long form. */
   max-height: min(92vh, 880px);
   background: var(--bg-secondary);
-  border: 1px solid color-mix(in srgb, var(--border-primary) 82%, white 18%);
+  border: 1px solid
+    color-mix(in srgb, var(--border-primary) 82%, var(--surface-lift) 18%);
   border-radius: var(--radius-overlay);
   box-shadow: var(--elevation-overlay);
 }
@@ -1182,9 +1268,65 @@ button:hover {
    global reset in tokens.css (animation-duration 0.01ms, iteration-count 1)
    fully collapses it — see mobile-css-ratchet on page-local at-rules. */
 
+/* Sheet gestures device preview (useResponsiveSheetGesture). The handle is a
+   sibling of the panel, fixed by the hook over the panel's top edge: a
+   44px-tall hit area reaching 28px above the panel, with the grip drawn just
+   inside it. `touch-action: none` keeps Android from claiming the touch as a
+   pan before the drag threshold. `scroll-margin-top` is never used for
+   scrolling: it is where the Full state's top gap is declared, because the
+   hook can read `env()` back only through a real property. */
+.responsive-sheet-handle {
+  position: fixed;
+  z-index: 2;
+  display: flex;
+  box-sizing: border-box;
+  align-items: flex-end;
+  justify-content: center;
+  height: 44px;
+  padding-bottom: 6px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  scroll-margin-top: calc(var(--safe-top) + var(--k-space-4));
+}
+
+.responsive-sheet-handle:active {
+  cursor: grabbing;
+}
+
+.responsive-sheet-handle__grip {
+  display: block;
+  inline-size: 36px;
+  block-size: 4px;
+  border-radius: var(--k-radius-sm);
+  background: var(--k-text-muted);
+  opacity: 0.5;
+}
+
+/* Full: the sheet reaches from where it rests up to the declared top gap.
+   The hook measures that height (it depends on the overlay's padding and the
+   keyboard, which this rule cannot see) and keeps the property current. The
+   consumer's own height rules are overridden only while this attribute is
+   set, so Default is always exactly the sheet the consumer designed. */
+.responsive-surface-overlay[data-sheet-expanded] > .responsive-surface-panel {
+  height: var(--responsive-sheet-full-height) !important;
+  max-height: var(--responsive-sheet-full-height) !important;
+}
+
 /* Mobile: hamburger + logo in toolbar */
 .app-toolbar__sidebar-toggle {
-  display: none;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: var(--k-space-6);
+  height: var(--k-space-6);
+  border: 0;
+  border-radius: var(--k-radius-control);
+  background: transparent;
+  color: var(--k-text-muted);
+  cursor: pointer;
 }
 .app-toolbar__lockup {
   display: none;
@@ -1219,37 +1361,6 @@ button:hover {
 .theme-toggle:hover {
   border-color: var(--accent-primary);
   color: var(--text-primary);
-}
-
-.toast {
-  position: fixed;
-  right: 24px;
-  bottom: 24px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 18px;
-  border-radius: 10px;
-  border: 1px solid var(--accent-primary);
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  box-shadow: var(--elevation-overlay);
-  backdrop-filter: blur(6px);
-  z-index: var(--layer-notification);
-}
-
-.toast button {
-  padding: 6px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--accent-primary);
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  font-size: var(--text-base);
-}
-
-.toast button:hover {
-  background: var(--accent-light);
 }
 
 .agent-selector {
@@ -1310,6 +1421,11 @@ button:hover {
      who keeps scrolling by hand. Surfaced by /activity's stacked mobile
      header pushing the sessions list's bottom actions below the fold. */
   scroll-padding-bottom: var(--dock-bottom-clearance);
+}
+
+/* Fill frames delegate scrolling to their bodies and need the full width. */
+.content-view:not(:has(> .route-transition--fill, > .page-frame--fill)) {
+  scrollbar-gutter: stable;
 }
 
 /* Root-route (`/`) restore placeholder (archive#223) — holds the content pane's
@@ -1386,19 +1502,7 @@ button:hover {
   bottom: 0;
   left: 0;
   right: 0;
-  /* The dock is an active workspace surface and outranks passive notices at
-     this layer. That used to be a statement about paint order for geometry
-     that never actually overlapped; since station#3308 made BannerHost an
-     overlay it decided reachability too, and a dock covering the banner made
-     a blocking pairing/credential notice unclickable. BannerHost.css resolves
-     it with one rule — the overlay steps aside when there is somewhere to
-     step, and outranks the dock when there is not: a DESKTOP SIDE dock leaves
-     a content column and the banner insets into it, keeping this layer; a
-     BOTTOM dock, EVERY dock on mobile, and any MAXIMIZED dock leave no column
-     (and, once resized, no band above them either), so the notice supersedes
-     the dock there. Collapsed, that takes only the notice's own control
-     rectangles — its host and items are transparent to pointer events.
-     Transient notifications use the next named layer and stay above both. */
+  /* Dialogs and transient notifications remain above the active dock. */
   z-index: var(--layer-dock);
   background: var(--bg-secondary);
   border-top: 2px solid var(--accent-primary);
@@ -1581,6 +1685,7 @@ button:hover {
   letter-spacing: -2px;
   opacity: 0;
   pointer-events: none;
+  transition: opacity var(--motion-fast) var(--ease-standard);
 }
 
 .chat-dock__header:hover .chat-dock__placement-grab,
@@ -2091,28 +2196,6 @@ button:hover {
   touch-action: none;
 }
 
-/* archive#1064: the project context now shares the header row instead of occupying a
-   third chrome bar. It takes the space the "Chat Dock" label used to hold, and
-   must yield before the row's fixed-width controls do.
-
-   #1536 F: `flex: 0 1 auto`, not `1 1 auto`. Two blocks that both GREW split
-   the row's spare width between them, so the identity and the project context
-   drifted to opposite ends and the bar read as three unrelated fragments
-   ([avatar | title] ……… [token] [×] ……… [No project]) rather than one
-   left-aligned cluster. They still shrink — that is what makes the title and
-   the token truncate — but the growth lives in `.chat-dock__title-spacer`
-   below, which is empty and therefore cannot look like a gap inside a label. */
-.chat-dock__header-context {
-  display: flex;
-  min-width: 0;
-  flex: 0 1 auto;
-  align-items: center;
-  overflow: hidden;
-  /* A fixed seam after the identity cluster, so the project badge reads as the
-     next thing along rather than as a separate right-hand region. */
-  margin-left: var(--space-4);
-}
-
 .chat-dock__header-identity {
   display: flex;
   min-width: 0;
@@ -2132,14 +2215,6 @@ button:hover {
 
 .chat-dock__header-identity .chat-dock__active-identity {
   min-width: 0;
-}
-
-.chat-dock__header-context .chat-dock__project-context {
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  background: none;
-  overflow: hidden;
 }
 
 .chat-dock__title {
@@ -2206,7 +2281,7 @@ button:hover {
   font-weight: 600;
 }
 
-/* Quiet chrome (design round 2026-10, B1/B2): the bar's buttons draw no
+/* Quiet chrome (#3239): the bar's buttons draw no
    border at rest. Hover and focus are a wash, not an outline; the one
    labelled action ("New") is the same family at the same weight. */
 .chat-dock__header-actions button {
@@ -2226,27 +2301,14 @@ button:hover {
   color: var(--text-primary);
 }
 
-/* archive#3309 retired the tab strip and clustered its panel toggles (inbox,
-   background tasks) in this bar beside the gear. #1536 F folded that cluster,
-   the gear, and Session inventory into the header's More menu — thirteen
-   controls in a 40px bar left the conversation title about one character — so
-   `.chat-dock__header-workspace` and the `.chat-dock__inbox-toggle` shell it
-   sized are gone with the buttons. The context meter still shares the row. */
-.chat-dock__header-meter {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-}
-
 /* archive#3309 motion polish. The dock's own height already animates
    (`.chat-dock`'s `transition: height`), but everything the expanded dock
-   ADDS to its bar — the panel toggles, the context meter, the Open/New pair —
+   ADDS to its bar — the panel toggles, the Open/New pair —
    was mounted by the same state change and appeared instantly, so the bar's
    contents popped into a box that was still growing. These mount exactly when
    the pane opens, so a mount-triggered entrance is the whole mechanism: no
    state to track, and nothing runs on collapse (they unmount). Same idiom as
    the inbox panel's own entrance below. */
-.chat-dock__header-meter,
 .chat-dock__tab-actions {
   animation: chat-dock-chrome-enter var(--motion-base) var(--ease-standard);
 }
@@ -2316,21 +2378,6 @@ button:hover {
   flex: 0 0 auto;
   color: var(--text-tertiary);
 }
-/* #1536 F: one line, always. A long project name used to wrap this row into a
-   second line inside a bar whose height is a shared geometry token, and the
-   token then lied about it. It truncates instead; the full path (and the name
-   with it) is the button's `title`. */
-.chat-dock__project-badge-lines {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  align-items: flex-start;
-}
-.chat-dock__project-badge-caption {
-  color: var(--text-secondary);
-  font-size: var(--k-text-sm);
-  line-height: var(--k-leading-tight);
-}
 .chat-dock__project-badge-name {
   min-width: 0;
   overflow: hidden;
@@ -2359,17 +2406,6 @@ button:hover {
 .chat-dock__project-badge-clear:focus-visible {
   color: var(--text-primary);
   background: var(--bg-tertiary);
-}
-/* archive#4525: the muted lead-in the facts row shows only
-   when the active session's own project differs from the badge's bound
-   project — same type scale as the directory it precedes, deliberately
-   never the accent color the badge/leaf use (this names a DIVERGENCE, not
-   the current context). */
-.chat-dock__project-session-name {
-  flex-shrink: 0;
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--text-muted);
 }
 /* #1536 F: the start-truncated directory segment (parent + accent leaf, its
    bidi isolate for #304, and the `HomeFolderLabel` fallback) is gone from this
@@ -3326,6 +3362,12 @@ button:hover {
   color: var(--text-primary);
 }
 
+/* The More menu's wrapper only marks where a working-chat choice is made
+   (`data-working-chat-origin`); it takes no box of its own. */
+.chat-dock__more {
+  display: contents;
+}
+
 .chat-dock__body {
   display: flex;
   flex-direction: column;
@@ -3363,8 +3405,7 @@ button:hover {
    (SessionFailureAlert.css), but this notice has exactly one owner (the chat
    dock, both as a top-of-thread banner and as the message list's emptyState)
    so there is no shared base/inset class split to make.
-   `min-width: 0` matches `.session-failure`'s own rule. Review round 2,
-   LOW-2: measured with `min-width: auto` forced, every metric here (detail
+   `min-width: 0` matches `.session-failure`'s own rule. Measured with `min-width: auto` forced, every metric here (detail
    width, notice width, no doc overflow) was identical — `.chat-dock__body`
    is `flex-direction: column`, so the default min-size auto-floor this
    notice sits inside applies to min-height, not min-width, and `auto`
@@ -3433,80 +3474,6 @@ button:hover {
 }
 
 /* Activity indicator */
-.chat-dock__activity {
-  position: relative;
-}
-
-.chat-dock__activity-btn {
-  background: transparent;
-  border: none;
-  color: var(--success-text);
-  cursor: pointer;
-  padding: 4px 8px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--text-sm);
-}
-
-.chat-dock__activity-dropdown {
-  display: none;
-  position: absolute;
-  bottom: calc(100% + 4px);
-  right: 0;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  min-width: 200px;
-  z-index: calc(var(--layer-popover) + 1);
-}
-
-/* Invisible bridge to prevent hover gap */
-.chat-dock__activity-dropdown::after {
-  content: "";
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  height: 8px;
-}
-
-.chat-dock__activity:hover .chat-dock__activity-dropdown {
-  display: block;
-}
-
-.chat-dock__activity-item {
-  width: 100%;
-  padding: 10px 12px;
-  border: none;
-  border-bottom: 1px solid var(--border-primary);
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
-  color: var(--text-primary);
-  font-size: var(--text-lg);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-}
-
-.chat-dock__activity-item:last-child {
-  border-bottom: none;
-}
-
-.chat-dock__activity-item:hover {
-  background: var(--bg-hover);
-}
-
-.chat-dock__activity-label {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* Maximize button */
 .chat-dock__maximize-btn {
   display: inline-flex;
@@ -3547,95 +3514,68 @@ button:hover {
   gap: var(--space-2);
 }
 
+/* One line: the title, then the agent and engine. The agent and the engine
+   are items of this row (the context box is `display: contents`); one that
+   does not fit beside what precedes it wraps onto a second line the row's
+   height clips. So the engine goes first, then the agent, and the title
+   truncates only once it is alone. Its tooltip names all three. */
 .chat-dock__active-identity-text {
   display: flex;
-  /* Grows as well as shrinks: the title inside it is the row's flexible
-     element, and a `0 1 auto` wrapper would never hand it the spare width. */
   flex: 1 1 auto;
+  flex-wrap: wrap;
   min-width: 0;
-  align-items: center;
-  gap: var(--space-2);
+  height: calc(var(--k-text-md) * 1.3);
+  align-items: baseline;
+  gap: 0 var(--k-space-2);
+  overflow: hidden;
 }
-
-/* archive#3309: agent-first. The avatar and the agent's name hold their size.
-   #1536 F: what yields is the engine/model token, not the title — the title is
-   the label that changes per chat, and on a project page it was down to about
-   one character. */
 .chat-dock__active-identity-avatar {
   flex-shrink: 0;
 }
-
-.chat-dock__active-identity-agent {
-  /* Shrinks, with a floor. It held its full width at every size, which on a
-     280px side dock (`MIN_DOCK_WIDTH`) left the conversation title 5px — worse
-     than the overprint this arc set out to fix. The avatar beside it also
-     carries the agent's identity, and this arc's finding is that the title is
-     the row's subject; #3309's claim is that the agent is NAMED, not that it is
-     never abbreviated. Four times the title's shrink factor, so it gives way
-     earlier, and never below ~5 glyphs. */
-  flex: 0 4 auto;
-  min-width: 40px;
+.chat-dock__active-identity-title {
+  display: block;
+  flex: 0 1 auto;
+  min-width: 3em;
   overflow: hidden;
-  font-size: var(--text-sm);
+  color: var(--k-text);
+  font-size: var(--k-text-md);
+  font-weight: 500;
+  line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-/* Separated from the identity ahead of it by a hairline rather than another
-   glyph — the title is a different KIND of fact from the agent/engine/model
-   triple, not a fourth member of it. */
-.chat-dock__active-identity-title {
-  flex: 1 1 auto;
+.chat-dock__active-identity-context {
+  display: contents;
+}
+.chat-dock__active-identity-agent + .chat-dock__active-identity-engine::before {
+  content: "·";
+  margin-right: var(--k-space-1);
+}
+.chat-dock__active-identity-agent,
+.chat-dock__active-identity-engine {
   min-width: 0;
   overflow: hidden;
-  padding-left: var(--space-2);
-  border-left: 1px solid var(--border-primary);
-  /* #1536 F: the row's primary label, so it takes the primary text colour and
-     the weight — it was the muted secondary tone while the engine/model chip
-     beside it read louder than the thing that distinguishes one chat from the
-     next. */
-  color: var(--text-primary);
-  /* #1552 D3: 14px at weight 500. It was 11px/600 — the smallest type in the
-     bar carrying the bar's SUBJECT, and bold to compensate, which reads as
-     shouting rather than as primacy. Size is what makes it primary; the weight
-     comes back down so the row has one emphatic thing in it, not two. */
-  font-size: var(--text-lg);
-  font-weight: 500;
+  line-height: 1.3;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  font-weight: normal;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-/* Engine and model as ONE muted token behind the title. Both used to be
-   `flex-shrink: 0` spans, which in an `overflow: hidden` row does not truncate
-   — it overflows, and the two printed on top of each other ("Claude Code" over
-   "Opus 5"). A shrink factor two orders of magnitude above the title's is what
-   makes this give way FIRST rather than merely give way.
-
-   The floor is the other half of that: with `min-width: 0` the token reached
-   ZERO before the title lost a character, so on a ~400px side dock nothing
-   named the engine or the model and the `title` tooltip had no box left to
-   hover. 64px is measured, not chosen — the token's own font-size renders
-   "Claude…" in it, so what survives is a legible identity and a hover target,
-   and the title yields after that. */
+.chat-dock__active-identity-agent {
+  flex: 0 1 auto;
+}
 .chat-dock__active-identity-engine {
-  flex: 0 100 auto;
-  min-width: 48px;
-  overflow: hidden;
-  /* #1552 D3: 12px muted, one step below the 14px title rather than two below
-     it — the token is a fact about the chat, not a footnote, and at 10px it was
-     the smallest thing in a bar that already had a legibility problem. */
-  color: var(--text-muted);
-  font-size: var(--text-base);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  flex: 0 2 auto;
 }
-
 .chat-dock__active-identity-origin {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  flex: 0 1 auto;
-  min-width: min(165px, 35%);
+  gap: var(--k-space-2);
+}
+.chat-dock__header-identity--pane .chat-dock__active-identity-title,
+.chat-dock__header-identity--pane .chat-dock__active-identity-close {
+  display: none;
 }
 
 /* #1552 D3: quiet until the row is engaged.
@@ -3701,13 +3641,19 @@ button:hover {
 }
 
 .chat-settings-modal {
+  --chat-settings-padding: 16px;
   position: relative;
+  box-sizing: border-box;
   background: var(--bg-primary);
   border: 1px solid var(--border-primary);
   border-radius: 8px;
-  padding: 16px;
+  padding: var(--chat-settings-padding);
   min-width: 340px;
   max-width: 440px;
+  /* The panel scrolls rather than outgrowing a short window; the phone sheet
+     rule (`.responsive-surface-panel`) sets its own bound and scroll. */
+  max-height: calc(100dvh - 2 * var(--chat-settings-padding));
+  overflow-y: auto;
 }
 
 .chat-settings-modal__title {
@@ -3741,6 +3687,7 @@ button:hover {
 
 .chat-settings-modal__control {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
 }
@@ -3753,6 +3700,8 @@ button:hover {
   padding: 4px 10px;
   border-radius: 4px;
   font-size: var(--text-base);
+  /* A row wraps whole buttons; a label never breaks inside its button. */
+  white-space: nowrap;
 }
 
 .chat-settings-modal__btn:disabled {
@@ -3809,11 +3758,25 @@ button:hover {
   cursor: pointer;
 }
 
-.chat-settings-modal__actions {
+/* Done stays on screen however far the panel has scrolled: a sticky footer
+   at the panel's bottom edge, drawn over the content it covers. The negative
+   margins carry its background across the panel's padding so scrolled text
+   never shows beside or below it. Two classes, and `max-width: none`, because
+   the phone rules for `.responsive-surface-actions` cap an action row at
+   100% of its container, which would cancel the right-hand margin. */
+.chat-settings-modal > .chat-settings-modal__actions {
+  max-width: none;
+  position: sticky;
+  bottom: calc(-1 * var(--chat-settings-padding));
+  z-index: 1;
   display: flex;
   justify-content: flex-end;
   gap: 6px;
-  margin-top: 16px;
+  margin: 16px calc(-1 * var(--chat-settings-padding))
+    calc(-1 * var(--chat-settings-padding));
+  padding: 12px var(--chat-settings-padding) var(--chat-settings-padding);
+  border-top: 1px solid var(--border-primary);
+  background: var(--bg-primary);
 }
 
 .chat-settings-modal__done {
@@ -3825,6 +3788,11 @@ button:hover {
   font-size: var(--text-base);
   cursor: pointer;
   font-weight: 500;
+}
+
+.chat-settings-modal__done:hover {
+  background: var(--accent-hover-fill);
+  color: var(--text-on-accent);
 }
 
 .chat-messages--empty {
@@ -3872,7 +3840,9 @@ button:hover {
   border: none;
   border-radius: 50%;
   background: var(--color-primary, var(--accent-primary));
-  color: #fff;
+  /* The accent's own contrast partner: literal white failed on a light
+     accent (dark brand-contrast channels, custom accent presets). */
+  color: var(--text-on-accent);
   font-size: 20px;
   font-weight: bold;
   cursor: pointer;
@@ -4055,6 +4025,14 @@ button:hover {
   gap: 8px;
   align-items: flex-start;
   margin-bottom: 12px;
+  /* The row mounts with its first content (it draws nothing before that when
+     the composer pill carries the turn's status), so it eases in like a
+     settled row instead of popping. Transform and opacity only. */
+  animation: message-slide-in var(--motion-slow) var(--ease-standard);
+}
+
+:root[data-page-hidden] .streaming-message {
+  animation-play-state: paused;
 }
 
 .streaming-message-icon {
@@ -4328,25 +4306,11 @@ button.background-tasks-banner:focus-visible {
    `.cb__input` / `.composer-mode-sheet__option-input`. Carries the
    `role="status"` this text's screen-reader auto-announcement depends on,
    which a `<button>` cannot also carry. */
-.background-tasks-banner__sr-status,
-.copy-status-sr {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-}
 
-/* #1130/#1170 sweep: several call sites reached for a bare
-   `className="sr-only"` — a name no stylesheet in this repo defined, so the
-   "visually-hidden" text rendered fully visible instead. Every other call
-   site above scopes its own feature-named class to this identical clip
-   technique rather than sharing one; these independently reached for a shared
-   generic name instead, so this is that shared utility rather than a fifth
-   near-identical copy. (One of the two originally named here,
-   `CollaborativeEditorPane.tsx`, was never mounted and has been deleted; the
-   rule stays because `OutboundQueuedMessages.tsx` and three other live
-   surfaces still use the class.) */
+/* Shared visually hidden text; input controls retain their own hiding rules. */
+.background-tasks-banner__sr-status,
+.copy-status-sr,
+.new-chat-modal__agent-reason--assistive,
 .sr-only {
   position: absolute;
   width: 1px;
@@ -4378,21 +4342,6 @@ button.background-tasks-banner:focus-visible {
    than on source position, so chunking changes cannot silently un-style it.
    `src-ui/src/__tests__/copy-affordance-cascade.test.ts` asserts one such rule
    per adopter stylesheet. */
-
-@keyframes streaming-progress-pulse {
-  0% {
-    transform: scale(0.9);
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--k-brand) 35%, transparent);
-  }
-  70% {
-    transform: scale(1.05);
-    box-shadow: 0 0 0 8px color-mix(in srgb, var(--k-brand) 0%, transparent);
-  }
-  100% {
-    transform: scale(0.9);
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--k-brand) 0%, transparent);
-  }
-}
 
 @keyframes fadeIn {
   from {
@@ -4698,13 +4647,6 @@ button.tool-call__line:hover {
   font-style: italic;
 }
 
-.tool-call-batch__progress {
-  margin: 0 0 2px 19px;
-  color: var(--text-muted);
-  font-size: 0.78em;
-  font-style: italic;
-}
-
 /* Outcome flags on the collapsed row. --bg-tertiary rather than a
    --color-bg-tertiary alias: the alias was never defined and painted nothing
    (station#1246). */
@@ -4914,6 +4856,10 @@ button.tool-call__line:hover {
    lists the individual calls and reuses ToolCallDisplay per row. */
 .tool-call-batch {
   margin: 2px 0;
+  /* Fills the answer's column (its max width) for its whole life, so the
+     running calls under it changing never resize the card. */
+  width: 100vw;
+  max-width: 100%;
 }
 
 /* Quiet, borderless — the same visual weight as a single activity row
@@ -4951,18 +4897,6 @@ button.tool-call__line:hover {
    on a 0.85em line they were roughly text height on a phone. Only the block
    dimension is constrained — both already run the full reading column — so
    desktop density is untouched. */
-.tool-call__pulse,
-.tool-call-batch__pulse {
-  width: 7px;
-  height: 7px;
-  flex-shrink: 0;
-  border-radius: 999px;
-  background: var(--accent-primary);
-  box-shadow: 0 0 0 0 color-mix(in srgb, var(--k-brand) 45%, transparent);
-  animation: streaming-progress-pulse var(--motion-status-pulse) var(--ease-out)
-    infinite;
-}
-
 .tool-call-batch__label {
   flex: 1;
   min-width: 0;
@@ -5261,23 +5195,6 @@ button.tool-call__line:hover {
   cursor: not-allowed;
 }
 
-.context-indicator {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.context-indicator-content {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-  white-space: nowrap;
-  padding: 4px 8px;
-}
-
 .command-autocomplete {
   position: absolute;
   bottom: 100%;
@@ -5463,62 +5380,11 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
    coarse)` is not that constant. A touch-target floor is the `(pointer: coarse)`
    question anyway, not the mobile-layout one. */
 
-/* Buttons */
-.button {
-  padding: 10px 16px;
-  border-radius: 8px;
-  border: 1px solid transparent;
-  font-size: var(--text-lg);
-  font-weight: 500;
-  cursor: pointer;
-  transition:
-    background-color var(--motion-base) var(--ease-standard),
-    border-color var(--motion-base) var(--ease-standard),
-    color var(--motion-base) var(--ease-standard),
-    box-shadow var(--motion-base) var(--ease-standard),
-    transform var(--motion-base) var(--ease-standard);
-}
-
-.button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* archive#3341's paired half, for the shared Button primitive: co-located with
-   the class it qualifies (this sheet owns `.button`), so a copy failure reads
-   as a failure wherever a shared Button carries the marker, whatever order the
-   bundler injects the chunk stylesheets in. */
+/* Shell-specific consumers of the shared action control. */
 .button.copy-affordance--failed {
   color: var(--status-error);
 }
 
-/* Pending state (SHELL-01/SHELL-12/SHELL-16): every async primary action in
-   the audit fired with no acknowledgement — Create project looked ignored for
-   6-8 seconds. The button keeps its own colours (it is still the primary
-   action, just busy) and gains a spinner; `disabled` supplies the dimming and
-   the refusal. Reduced-motion callers get a static ring rather than a
-   rotating one — the affordance is "there is a spinner here", not the motion.
-   `currentColor` means one rule covers primary, secondary and danger. */
-.button.is-pending {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-.button__spinner {
-  width: 1em;
-  height: 1em;
-  flex-shrink: 0;
-  border: 2px solid color-mix(in srgb, currentColor 30%, transparent);
-  border-top-color: currentColor;
-  border-radius: 50%;
-  animation: spin var(--motion-status-spin) var(--ease-linear) infinite;
-}
-
-/* Buttons used as a shared <Empty> action are touch targets: hold them to the
-   44px minimum (same rule as modal buttons) so empty-state CTAs pass the mobile
-   touch-target guard. */
 .empty__action .button {
   display: inline-flex;
   align-items: center;
@@ -5526,115 +5392,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   min-height: 44px;
 }
 
-.button--primary {
-  background: var(--accent-primary);
-  color: var(--text-on-accent);
-  border-color: var(--accent-primary);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-  /* station#753 item 5: press feedback wants a release faster than `.button`'s
-     shared `--motion-base` transform duration — redeclared here (not folded
-     into `.button`) because only the primary variant gets the scale-down
-     press affordance below. This also speeds up the existing hover lift's
-     transform, a quiet side effect of sharing the one `transform` layer. */
-  transition:
-    background-color var(--motion-base) var(--ease-standard),
-    border-color var(--motion-base) var(--ease-standard),
-    color var(--motion-base) var(--ease-standard),
-    box-shadow var(--motion-base) var(--ease-standard),
-    transform var(--motion-fast) var(--ease-standard);
-}
-
 .empty__description {
   color: var(--text-secondary);
-}
-
-.button--primary:hover:not(:disabled) {
-  background: var(--accent-hover-fill);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
-  transform: translateY(-1px);
-}
-
-/* Press micro-feedback: immediate acknowledgement, not moving layout — the
-   Feedback/state category. Instant onset (`--motion-instant`) so the press
-   reads as direct manipulation; the shared `.button--primary` transition
-   above (`--motion-fast`) takes over for the release once `:active` stops
-   matching. */
-.button--primary:active:not(:disabled) {
-  transform: scale(0.97);
-  transition: transform var(--motion-instant) var(--ease-standard);
-}
-
-.button--secondary {
-  background: transparent;
-  color: var(--text-primary);
-  border-color: var(--border-secondary);
-}
-
-.button--secondary:hover:not(:disabled) {
-  border-color: var(--accent-primary);
-  background: var(--bg-tertiary);
-}
-
-.button--secondary.is-active {
-  border-color: var(--accent-primary);
-  color: var(--accent-primary);
-}
-
-.button--danger {
-  background: var(--error-fill);
-  color: white;
-  border-color: var(--error-fill);
-}
-
-.button--danger:hover:not(:disabled) {
-  background: var(--error-dark);
-}
-
-.button--small {
-  padding: 6px 12px;
-  font-size: var(--text-md);
-}
-
-.button--success {
-  background: color-mix(in srgb, var(--success-text) 12%, transparent);
-  color: var(--success-text);
-  border-color: color-mix(in srgb, var(--success-text) 25%, transparent);
-}
-
-.button--danger-outline {
-  background: color-mix(in srgb, var(--error-text) 10%, transparent);
-  color: var(--error-text);
-  border-color: color-mix(in srgb, var(--error-text) 25%, transparent);
-}
-
-.button--link {
-  background: transparent;
-  border: none;
-  color: var(--accent-primary);
-  padding: 4px 8px;
-  font-size: var(--text-md);
-  cursor: pointer;
-}
-
-/* The one --accent-darker consumer deliberately left alone by archive#3305's
-   accent derivation: this is link text on the page background, not a
-   foreground on an accent fill, so it carries no --text-on-accent pairing to
-   break. Under a custom accent it does visibly revert to the built-in brand
-   on hover — an identity inconsistency, not a contrast one. */
-.button--link:hover {
-  color: var(--accent-darker);
-  text-decoration: underline;
-}
-
-.button--ghost {
-  background: transparent;
-  border-color: transparent;
-  color: var(--text-secondary);
-  padding: 6px 10px;
-}
-.button--ghost:hover:not(:disabled) {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
 }
 
 .form-group {
@@ -5914,6 +5673,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 /* ── Conversation History (push on desktop, overlay on mobile) ── */
 .chat-dock__content-area {
+  min-width: 0;
   display: flex;
   flex: 1;
   min-height: 0;
@@ -6555,6 +6315,10 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     overflow-wrap: anywhere;
   }
 
+  .composer-popover-panel .composer-mode-sheet__notes {
+    padding-inline: calc(var(--k-space-1) + var(--k-space-4));
+  }
+
   .chat-dock__project-switcher-switch {
     min-height: 64px;
     padding: var(--k-space-3);
@@ -6582,7 +6346,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
      padding with the safe area, which is 0 on a phone without a home
      indicator, leaving every dialog's buttons on its bottom edge. Keep the
      footer's padding, and the safe area when it is larger. */
-  .station-dialog__footer.responsive-surface-actions {
+  .station-dialog__footer.responsive-surface-actions,
+  .chat-settings-modal__actions.responsive-surface-actions {
     padding-bottom: max(16px, var(--safe-bottom, 0px));
   }
 
@@ -7191,6 +6956,36 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   inset: min(0px, calc((100% - 44px) / 2));
 }
 
+/* chat-host-images: a host image this device cannot show, and why. */
+.markdown-image-unavailable {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: var(--k-space-2);
+  max-width: 100%;
+  padding: var(--k-space-2) var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel-raised);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  line-height: var(--k-leading-normal);
+  overflow-wrap: anywhere;
+}
+.markdown-image-unavailable > svg {
+  flex-shrink: 0;
+  margin-top: 0.2em;
+}
+.markdown-image-unavailable strong {
+  color: var(--k-text);
+}
+.markdown-image-pending {
+  display: inline-block;
+  width: min(240px, 100%);
+  aspect-ratio: 4 / 3;
+  border-radius: 6px;
+  background: var(--k-panel-raised);
+}
+
 /* File Part Preview */
 .file-part-preview {
   display: inline-flex;
@@ -7310,7 +7105,10 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   font-size: var(--text-xs);
   padding: 1px 8px;
   border-radius: 10px;
-  color: #fff;
+  /* Was white text with no fill of its own, so it vanished on the light
+     theme's modal surface. */
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
   font-weight: 500;
   text-transform: lowercase;
 }
@@ -7623,8 +7421,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 .app-toolbar__breadcrumb {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: var(--text-base);
+  gap: var(--k-space-2);
+  font-size: var(--k-text-sm);
   color: var(--text-muted);
   margin-right: 8px;
 }
@@ -7712,8 +7510,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
         --region-right-track,
         0
       );
-    /* Toolbar row + content row + bottom-region row. BannerHost is an
-       absolutely-positioned overlay (station#3308) and takes no grid row. */
+    /* Toolbar row, content row and bottom-region row. */
     grid-template-rows: auto minmax(0, 1fr) var(--region-bottom-track, 0);
   }
 
@@ -8003,14 +7800,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     > :is([data-region="left"], [data-region="right"])
     .chat-controls-row {
     flex-wrap: nowrap;
-  }
-
-  /* Compact context indicator in side mode */
-  .app__main
-    > :is([data-region="left"], [data-region="right"])
-    .context-indicator-content {
-    font-size: var(--text-2xs);
-    padding: 2px 4px;
   }
 
   /* Side-mode session info bar */
@@ -8533,6 +8322,18 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   padding: 20px;
   border-bottom: 1px solid var(--border-primary);
   flex: 0 0 auto;
+}
+
+/* The automatic start's body (preparing, needs one thing, could not
+   prepare) shares the header's inset; with none, its text and actions
+   touched the sheet's edges on a phone. */
+.new-chat-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px;
 }
 
 .new-chat-modal__title-row {
@@ -9058,18 +8859,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   text-overflow: ellipsis;
 }
 
-/* archive#3027(c): the enableable rows say "Not set up" in a chip instead, so
-   their sentence is screen-reader-only. Same clip technique as
-   `.composer-mode-sheet__option-input` / `.background-tasks-banner__sr-status`
-   — hidden in pixels, present in the accessibility tree. */
-.new-chat-modal__agent-reason--assistive {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-}
-
 /* ── Mobile touch targets for core UI elements ── */
 /* ══════════════════════════════════════════════════════════════════════════
    Mobile chat chrome — one row (owner direction, 2026-07-27)
@@ -9183,8 +8972,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 /* Connection state on the chat surface (archive#3297). Subtle by default —
    a bare dot inside the same 44px target every other control here uses — and
-   it grows a word only for a state that needs a decision (station#4512
-   review H1: `needs-credential`, `needs-repair`, and `awaiting-approval`,
+   it grows a word only for a state that needs a decision (station#4512:
+   `needs-credential`, `needs-repair`, and `awaiting-approval`,
    not just the original one). The label is what survives a colour-blind
    reader; the triangle in ConnectionStatusDot is what survives a 7px dot;
    neither is the only channel. */
@@ -9198,7 +8987,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
      (true of a rejected credential, a mismatched identity, and a pending
      approval alike — none of the three is a dead connection). */
   color: var(--text-primary);
-  background: color-mix(in srgb, #f59e0b 18%, transparent);
+  background: color-mix(in srgb, var(--health-warning) 18%, transparent);
 }
 
 /* archive#4512: `max-width` + ellipsis is a BELT, not the primary fit
@@ -9271,8 +9060,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
    the agent avatar do not return at the same width. They did at exactly 431px:
    both were gated on `max-width: 430px`, both cost the identity block, and
    together they took the agent name and chat title to 10.72px — the same
-   two-rules-relieve-and-reclaim-in-one-breath shape as HIGH-1, one breakpoint
-   up, and measured only because the fix for HIGH-1 was re-measured across the
+   two-rules-relieve-and-reclaim-in-one-breath shape as the label fix above,
+   one breakpoint up, and measured only because that fix was re-measured across the
    whole range instead of at the width that failed.
 
    The avatar wins the earlier slot: it IS the agent identity this issue is
@@ -9332,9 +9121,9 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 
 .chat-dock__mobile-identity {
-  justify-content: center;
+  justify-content: flex-start;
   min-width: 80px;
-  text-align: center;
+  text-align: left;
 }
 
 .chat-dock__mobile-overflow-trigger {
@@ -9353,7 +9142,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 
 .chat-dock__mobile-identity .chat-dock__mobile-identity-lines {
-  align-items: center;
+  align-items: flex-start;
 }
 
 .chat-dock__mobile-identity:hover,
@@ -9398,11 +9187,10 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 
 .chat-dock__mobile-title-text {
-  display: -webkit-box;
+  display: block;
   overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  white-space: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chat-dock__mobile-activity.is-active {
@@ -9526,12 +9314,20 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     border-radius: 0;
   }
 
+  /* The header keeps its content height up to its 62% cap and scrolls only
+     past it. With `flex-shrink: 1` it shared every overflow with the body in
+     proportion to height, so a long recent-chats list squeezed it a few
+     pixels short of its title row and the sheet showed two scrollbars. */
   .new-chat-modal__header {
-    flex: 0 1 auto;
+    flex: 0 0 auto;
     max-height: 62%;
     min-height: 0;
     overflow-y: auto;
     padding: max(12px, var(--safe-top, 0px)) 16px 12px;
+  }
+
+  .new-chat-modal__body {
+    padding: 12px 16px max(16px, var(--safe-bottom, 0px));
   }
 
   .new-chat-modal__title-row {
@@ -9676,7 +9472,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   }
 
   /* station#541: the `.page-frame__header` safe-area rule that used to live
-     here moved to `page-frame.css` (review round 2) — same selector, same
+     here moved to `page-frame.css` — same selector, same
      semantics, zero mobile-css-ratchet cost there (page-frame.css is a
      PRIMITIVE_ALLOWLIST entry: it renders every page header, so it already
      owns this header's one mobile treatment). See page-frame.css's own
@@ -9744,14 +9540,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
       var(--safe-top)
     );
     z-index: var(--layer-dock);
-  }
-
-  /* This short-window chat fills the work area just like a maximized dock.
-     Passive notices yield to its input; explicit system blockers retain
-     BannerHost's higher layer and their repair controls. */
-  .app__main:has(.chat-dock--bottom:not(.is-collapsed):not(.is-dragging))
-  > .banner-host:not(.banner-host--critical-chrome) {
-    z-index: var(--layer-notice);
   }
 
   .app__main .chat-dock--bottom .chat-input {
@@ -9868,6 +9656,19 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   justify-content: flex-start;
 }
 
+/* The notes above the list start where a row's content does: the list's
+   padding (`--space-2`, i.e. `--k-space-1`) plus the row's own
+   (`--space-3`, i.e. half `--k-space-3`). The phone override sits beside the
+   phone row padding. */
+.composer-mode-sheet__notes {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: calc(var(--k-space-1) / 2);
+  padding: calc(var(--k-space-3) / 2)
+    calc(var(--k-space-1) + var(--k-space-3) / 2) 0;
+}
+
 /* Visually-hidden native radio input (same clip technique as Checkbox.css's
    `.cb__input`) — the label carries the visible row styling; the input
    supplies real radio semantics/keyboard behavior. */
@@ -9938,6 +9739,22 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 
 .composer-mode-sheet__confirm-body {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+
+/* #3290: the read-only approval explanation of an engine-decided engine. */
+.composer-mode-sheet__disclosure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  max-width: 22rem;
+}
+
+.composer-mode-sheet__disclosure p {
   margin: 0;
   color: var(--text-muted);
   font-size: var(--text-sm);
@@ -10037,17 +9854,9 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
    already proven immediately above at `.session-history-controls__more`). A
    bespoke rule here previously duplicated that styling AND lost to
    `button:hover` on specificity, so hover never took effect.
-   Review round 2, MEDIUM-1: this rule MUST sit after `.button {}` in source
-   order. Its selector has the same (0,1,0) specificity as `.button`, so
-   `.button`'s own 10px/16px sizing wins on source order whenever this block
-   sits earlier in the file — the override silently stopped applying when
-   this rule previously lived up near `.session-history-error`, ~1800 lines
-   before `.button`. Verified on the built bundle: moving it here measured
-   padding 6px/12px, font-size 11px, height 29px (matching round 1 and the
-   `.session-history-controls__more` sibling it sits next to); left in its
-   old position it measured padding 10px/16px, font-size 14px, height 42px —
-   `.button`'s own primary sizing, unopposed. */
-.session-history-error__retry {
+   Pair the shared button class so compact sizing survives SDK stylesheet
+   injection after the shell entry stylesheet. */
+.button.session-history-error__retry {
   align-self: flex-start;
   margin-top: 2px;
   /* `.button` alone is a primary-sized 10px/16px control at --text-lg — too

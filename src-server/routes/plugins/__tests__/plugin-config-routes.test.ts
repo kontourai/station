@@ -18,6 +18,7 @@ import {
   createPluginActivationSession,
 } from '../../../services/plugins/plugin-activation-composition.js';
 import { installPluginFromSource } from '../../../services/plugins/plugin-install-transaction.js';
+import { createLogger } from '../../../utils/logger.js';
 import {
   emittedPluginSettings,
   registerPluginConfigRoutes,
@@ -32,7 +33,7 @@ import {
 // - Key-name axis (`isSecretField`) — a field NAMED `apiKey`/`apiToken`/
 //   `clientSecret`/etc. is withheld regardless of value shape. This is the
 //   axis that actually covers the issue's scenario (value-only matching
-//   caught only 2/14 real credential shapes in one review round). It is NOT
+//   caught only 2/14 real credential shapes when measured). It is NOT
 //   false-positive-free: `isSecretField` is tuned for log redaction, where
 //   over-redaction is free — a standard OAuth-shaped manifest
 //   (`authorizationUrl`/`tokenEndpoint`/`tokenUrl`) and assorted
@@ -41,7 +42,7 @@ import {
 //   under a withholding gate, with no manifest-side remedy today. See
 //   `emittedPluginSettings`'s own docblock and the "false positives" describe
 //   block below.
-// - Value-shape axis (`redactSecrets`) — a lower-confidence second net for a
+// - Value-shape axis (`containsKnownCredential`) — a lower-confidence second net for a
 //   value that LOOKS credential-shaped under a non-secret-named field. A
 //   match here is warned but still emitted (not withheld), because it
 //   produces real false positives ("Basic plan", "Bearer token") and
@@ -119,6 +120,28 @@ describe('emittedPluginSettings (station#3576)', () => {
       expect(logger.warn).toHaveBeenCalledOnce();
     });
 
+    test.each([
+      { query: '', warns: false },
+      { query: '?port=43123&mode=debug#public', warns: false },
+      { query: `?port=43123&capability=${'C'.repeat(43)}`, warns: true },
+      { query: '?port=43123&password=private-value', warns: true },
+    ])(
+      'native asset setting with query "$query" warns=$warns and still emits',
+      ({ query, warns }) => {
+        const logger = createLogger({ name: 'plugin-url-setting-test' });
+        const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+        const endpoint = `http://station-plugin.localhost/api/plugins/demo/bundle.js${query}`;
+        const result = emittedPluginSettings(
+          'my-plugin',
+          [{ key: 'endpoint', label: 'Endpoint', type: 'string' }],
+          { endpoint },
+          logger,
+        );
+        expect(result).toEqual({ endpoint });
+        expect(warn).toHaveBeenCalledTimes(warns ? 1 : 0);
+      },
+    );
+
     test('a genuine false positive ("Basic plan") is NOT silently dropped', () => {
       const logger = { warn: vi.fn() };
       // Matches SECRET_PATTERNS' `\bBasic\s+[A-Za-z0-9+/_=-]+` even though
@@ -149,7 +172,7 @@ describe('emittedPluginSettings (station#3576)', () => {
     });
   });
 
-  // archive#3577 review round 2 (NIT): the field key here must NOT also
+  // archive#3577: the field key here must NOT also
   // trip the key-name axis (unlike the previous fixture, `password`, which
   // does) — otherwise this test cannot tell "declared `secret: true` is
   // honored" apart from "the key-name axis also caught it," and would keep
@@ -193,7 +216,7 @@ describe('emittedPluginSettings (station#3576)', () => {
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
-  // archive#3577 review round 2 (MEDIUM-3): the round-1 docblock claimed
+  // archive#3577: an earlier docblock claimed
   // "0 false positives on a real corpus." There was no corpus — nine
   // hand-picked names. Measured against `isSecretField`, a standard,
   // entirely non-secret OAuth-shaped manifest is mostly withheld, and a
@@ -538,7 +561,7 @@ describe('PUT /:name/settings unbounded nesting (station#4307 review)', () => {
     // `PUT /:name/overrides` copies `body.disabled` verbatim into the same
     // file, so it is the same vector — and its cap is a SEPARATE `.refine`
     // instance. Removing it left the whole suite green, which is why this
-    // exists (archive#4307 delta review, LOW-4).
+    // exists (archive#4307).
     const root = mkdtempSync(join(tmpdir(), 'station-override-depth-'));
     cleanupDirs.push(root);
     seedDemo(root);

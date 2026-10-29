@@ -51,6 +51,11 @@ import {
   killOwnedHubHelper,
   readHubHelpers,
 } from './device-hub-helpers.js';
+import {
+  type DeviceToolRuntime,
+  DeviceToolRuntimeUnavailableError,
+  resolveDeviceToolRuntime,
+} from './device-tool-runtime.js';
 
 const HUB_INITIAL_DELAY_MS = 1_000;
 const HUB_MAX_DELAY_MS = 30_000;
@@ -200,7 +205,7 @@ export interface DeviceHubSupervisorOptions {
   /** The installed hub to run, or undefined when none is installed. */
   resolveLaunch: () => HubLaunch | undefined;
   spawn?: SpawnHubChild;
-  nodePath?: string;
+  resolveRuntime?: () => Promise<Pick<DeviceToolRuntime, 'nodePath'>>;
   /** Resolves true once `<baseUrl>/readyz` answered 200 (with `headers`). */
   probeReady?: (
     baseUrl: string,
@@ -274,7 +279,9 @@ export class DeviceHubSupervisor {
     this.#options = {
       resolveLaunch: options.resolveLaunch,
       spawn: options.spawn ?? spawnOwnedHubChild,
-      nodePath: options.nodePath ?? process.execPath,
+      resolveRuntime:
+        options.resolveRuntime ??
+        (() => resolveDeviceToolRuntime(options.env ?? process.env)),
       probeReady: options.probeReady ?? defaultProbeReady,
       now: options.now ?? Date.now,
       setTimer: options.setTimer ?? ((fn, ms) => setTimeout(fn, ms)),
@@ -347,7 +354,11 @@ export class DeviceHubSupervisor {
     if (live) return Promise.resolve(live);
     if (this.#starting) return this.#starting;
     this.#stopped = false;
-    if (this.#state.state === 'crashed' || this.#state.state === 'stopped')
+    if (
+      this.#state.state === 'crashed' ||
+      this.#state.state === 'blocked' ||
+      this.#state.state === 'stopped'
+    )
       this.#attempts = 0;
     if (this.#timer !== undefined) {
       this.#options.clearTimer(this.#timer);
@@ -397,7 +408,12 @@ export class DeviceHubSupervisor {
       },
       (error: unknown) => {
         if (this.#starting === attempt) this.#starting = undefined;
-        if (generation === this.#generation)
+        if (
+          generation === this.#generation &&
+          error instanceof DeviceToolRuntimeUnavailableError
+        ) {
+          this.#state = { state: 'blocked', detail: error.message };
+        } else if (generation === this.#generation)
           this.#scheduleRestart(
             error instanceof Error ? error.message : String(error),
           );
@@ -414,6 +430,9 @@ export class DeviceHubSupervisor {
       throw new DeviceHubStartError(
         `Station's hub guard was not verified for expo-device-hub ${launch.version}; it will not run unguarded.`,
       );
+    const runtime = await this.#options.resolveRuntime();
+    if (generation !== this.#generation)
+      throw new DeviceHubStartError('The device hub start was cancelled.');
     this.#lastLaunch = launch;
     // Helpers left behind by an earlier run (a crash, a SIGKILLed Station).
     await this.#killHelpers(launch);
@@ -425,7 +444,7 @@ export class DeviceHubSupervisor {
       mkdirSync(tmpDir, { recursive: true, mode: 0o700 });
       writeFileSync(guardPath, buildHubGuardSource(), { mode: 0o600 });
       child = this.#options.spawn(
-        this.#options.nodePath,
+        runtime.nodePath,
         [launch.entry, ...HUB_LAUNCH_ARGS],
         {
           cwd: launch.cwd,

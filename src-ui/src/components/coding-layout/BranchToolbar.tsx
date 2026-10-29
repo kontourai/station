@@ -1,4 +1,12 @@
 import {
+  type DiscoveredRepo,
+  useGitBranchesQuery,
+  useGitCheckoutMutation,
+  useGitCommitMutation,
+  useGitPushMutation,
+  useReposQuery,
+} from '@kontourai/station-sdk';
+import {
   type ReactNode,
   useEffect,
   useId,
@@ -6,14 +14,6 @@ import {
   useRef,
   useState,
 } from 'react';
-import {
-  type DiscoveredRepo,
-  useGitBranchesQuery,
-  useGitCheckoutMutation,
-  useGitCommitMutation,
-  useGitPushMutation,
-  useReposQuery,
-} from '../../hooks/useGitActions';
 import { useGitStatus } from '../../hooks/useGitStatus';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import { Button } from '../Button';
@@ -71,7 +71,9 @@ export function BranchToolbar({
    */
   showCommit?: boolean;
 }) {
-  const reposQuery = useReposQuery(workingDir || null, { projectSlug });
+  const reposQuery = useReposQuery(
+    workingDir ? { projectSlug, workingDir } : null,
+  );
   const reposResult = reposQuery.data;
   const repos = reposResult?.repos ?? [];
 
@@ -100,10 +102,12 @@ export function BranchToolbar({
   }, [repoRoot, onActiveRepoChange]);
 
   const status = useGitStatus(projectSlug, repoRoot);
-  const branchesQuery = useGitBranchesQuery(projectSlug, repoRoot);
-  const checkout = useGitCheckoutMutation(projectSlug, repoRoot ?? '');
-  const commit = useGitCommitMutation(projectSlug, repoRoot ?? '');
-  const push = useGitPushMutation(projectSlug, repoRoot ?? '');
+  // #2412: every git read and write names the Project and the active repo.
+  const repoLocation = repoRoot ? { projectSlug, workingDir: repoRoot } : null;
+  const branchesQuery = useGitBranchesQuery(repoLocation);
+  const checkout = useGitCheckoutMutation(repoLocation);
+  const commit = useGitCommitMutation(repoLocation);
+  const push = useGitPushMutation(repoLocation);
 
   const gitStatus = status.data?.isRepo ? status.data : null;
   const currentBranch = gitStatus?.branch ?? activeRepo?.branch ?? null;
@@ -320,9 +324,8 @@ export function BranchToolbar({
   // status phrase inside a horizontal toolbar row, not a list/card placeholder,
   // so this deliberately stays a plain inline span rather than adopting the
   // canonical `Empty` component (which renders a framed, centered card even
-  // in its `compact` variant — a poor visual fit for a toolbar strip). See
-  // the state-primitives (#192) plan's Wave 2 "Workflow & connection-surface
-  // convergence" task.
+  // in its `compact` variant — a poor visual fit for a toolbar strip; see the
+  // state-primitives work, archive#192).
   // archive#771: an errored discovery query also settles with `repos = []`
   // (the `dataonly` fallback below), which used to read identically to
   // "no repository here" — a real read failure with no trace, and no way to

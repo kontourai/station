@@ -1,0 +1,7 @@
+{
+  "revision": "db452cd4edde41b1a88e6573a3cf3482e0d903db",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Re-read the merge-queue composition section against the changed AGENTS.md bullet: it states what the queue runs on the synthesized candidate, not the ruleset's required-context list, and AGENTS.md no longer asserts a list that could contradict it. No prose change; the fast-checks references remain accurate for the legacy aggregate during the Source verification policy migration (docs/guides/releasing.md).","inputs":["docs/guides/code-quality.md","AGENTS.md"]}
+  ]
+}

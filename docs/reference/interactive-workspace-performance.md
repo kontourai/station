@@ -1,5 +1,13 @@
 # Interactive workspace performance contract
 
+> **Current qualification limit after #3704:** the v3 diagnostic bridge and
+> Playwright adapter still name explicit Join/Announce/Save controls. The Task
+> page now joins implicitly and autosaves in Brief. Those reference-driver
+> interactions need migration before a current-head reference run can qualify
+> this layout. Retained earlier receipts remain bound to their recorded revision;
+> no timing or Windows/native performance claim is made for the chat-first page.
+
+
 [`scripts/interactive-workspace-performance.mjs`](../../scripts/interactive-workspace-performance.mjs)
 owns the performance contract and report. Its synthetic adapter is smoke-only and executes
 every named workload in a temporary isolated root. Reference mode invokes the

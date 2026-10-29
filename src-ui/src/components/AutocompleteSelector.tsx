@@ -47,7 +47,6 @@ export function AutocompleteSelector({
 
   const { popupStyle, renderPopup } = useAnchoredPopup(anchorRef);
 
-  // Update refs
   selectedIndexRef.current = selectedIndex;
   itemsRef.current = items;
 

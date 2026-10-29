@@ -67,6 +67,7 @@ const BUILTIN_PANE_GLYPHS = {
   'workspace-layout': BoardGlyph,
   'workspace-home': HomeGlyph,
   'workspace-activity': ChartGlyph,
+  'workspace-activity-review': ChartGlyph,
   'workspace-agents': AgentGlyph,
   // A handset, not the Browser Preview globe: the tile names a simulator
   // or emulator screen, not a page (#1969).

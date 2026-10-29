@@ -1,3 +1,8 @@
+import {
+  FULL_REGRESSION_LANES,
+  MERGE_QUEUE_REGRESSION_CHECK,
+} from './fast-checks-shards.mjs';
+
 export const CHANGED_DIAGNOSTIC_ERROR_LIMIT_BYTES = 2 * 1024;
 
 /**
@@ -50,11 +55,32 @@ export function incompleteDiagnosticReasons(diagnostics) {
     if (!execution?.counts && !execution?.error && !execution?.empty)
       reasons.push(`${kind}: no test counts were recorded`);
   }
+  const deferredLanes = Array.isArray(diagnostics?.selection?.deferredLanes)
+    ? diagnostics.selection.deferredLanes
+    : [];
   if (
     executions.length === 0 &&
     preparation?.infrastructureError !== true &&
-    (diagnostics?.selection?.deferredLanes?.length ?? 0) === 0
+    deferredLanes.length === 0
   )
     reasons.push('no test executed and no deferred lane was named');
+  // #1706: `complete` derives from the deferral recorded beside it. A
+  // ci-fast or test-full deferral means the suite this selection stood in
+  // for did not run; an E2E, desktop or pre-push deferral is owned by a
+  // check outside this selection and leaves the run complete.
+  for (const lane of deferredLanes)
+    if (FULL_REGRESSION_LANES.includes(lane))
+      reasons.push(
+        `${lane} deferred: its suite did not run here; ${MERGE_QUEUE_REGRESSION_CHECK} runs it before merge`,
+      );
+  const selectedTargets =
+    (diagnostics?.selection?.relatedPathCount ?? 0) +
+    (diagnostics?.selection?.exactTestCount ?? 0);
+  if (
+    executions.length === 0 &&
+    preparation?.infrastructureError !== true &&
+    selectedTargets > 0
+  )
+    reasons.push(`${selectedTargets} selected target(s), and no test executed`);
   return reasons;
 }

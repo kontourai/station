@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-10-22T17-16-19-233Z-906689727ace",
+  "kind": "policy-change",
+  "actor": {
+    "id": "brian",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": null,
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-10-22T17:16:19.233Z",
+  "repoStandardsHash": "sha256:03b4e8ec9e6d2369d81fe31700dd3804df1a1259d3ba4c3e977feb27e17edbed",
+  "repoMapHash": "sha256:9d34778160693b23973e8048f8cfecde7cfec3c6870e17b2913f6a09d9d5532a",
+  "repoMapHashAlgorithm": "public-policy-v1",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-10-20T10-05-38-674Z-6fd8ff6afa96",
+  "validUntilDays": 90,
+  "notes": "Brian explicitly approved on 2026-10-22T17:14:27.137Z only historical synthetic-fixture fingerprint f5e4ad873375a1ffbb0123c1c56f24ffb0cd070b:src-server/routes/connections/__tests__/acp-sign-in.routes.test.ts:generic-api-key:57 in .gitleaksignore. The isolated engine sign-in test uses a deliberately synthetic value and contacts only the local fake agent; current fixture is obvious noncredential text. No file-wide, commit-wide, rule-wide or future match exception, no dependency exception, and no other standards authorization. Hosted source evidence run39818612497/job119963568246; prepared disposition retained in station-worktrees/_fixtures/gitleaks-engine-fixture-disposition-20261022.md.",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-10-20T10-05-38-674Z-6fd8ff6afa96",
+    "approvalRef": "t3-thread://v1/63d2c37c-00d8-45df-b608-dbcdba53de1f",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-10-22T17-16-19-233Z-906689727ace",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "ee542bcfe47163ded7c34d33322b230214ba8f1163f671ff75c20dd9fc998ff8",
+        "validUntil": "2027-01-20T17:16:19.233Z"
+      },
+      "createdAt": "2026-10-22T17:16:19.233Z",
+      "updatedAt": "2026-10-22T17:16:19.233Z",
+      "status": "proposed",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "weak",
+        "reviewerAuthority": "none",
+        "evidenceStrength": "weak",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-10-22T17-16-19-233Z-906689727ace",
+      "claimId": "veritas.attestation.policy-change-2026-10-22T17-16-19-233Z-906689727ace",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Brian explicitly approved on 2026-10-22T17:14:27.137Z only historical synthetic-fixture fingerprint f5e4ad873375a1ffbb0123c1c56f24ffb0cd070b:src-server/routes/connections/__tests__/acp-sign-in.routes.test.ts:generic-api-key:57 in .gitleaksignore. The isolated engine sign-in test uses a deliberately synthetic value and contacts only the local fake agent; current fixture is obvious noncredential text. No file-wide, commit-wide, rule-wide or future match exception, no dependency exception, and no other standards authorization. Hosted source evidence run39818612497/job119963568246; prepared disposition retained in station-worktrees/_fixtures/gitleaks-engine-fixture-disposition-20261022.md.",
+      "observedAt": "2026-10-22T17:16:19.233Z",
+      "collectedBy": "brian",
+      "integrityRef": "ee542bcfe47163ded7c34d33322b230214ba8f1163f671ff75c20dd9fc998ff8",
+      "metadata": {
+        "actor": {
+          "id": "brian",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-10-22T17:16:19.233Z",
+        "validUntil": "2027-01-20T17:16:19.233Z",
+        "contentHash": "ee542bcfe47163ded7c34d33322b230214ba8f1163f671ff75c20dd9fc998ff8"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-10-22T17-16-19-233Z-906689727ace.proposed",
+      "claimId": "veritas.attestation.policy-change-2026-10-22T17-16-19-233Z-906689727ace",
+      "status": "proposed",
+      "actor": "brian",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-10-22T17-16-19-233Z-906689727ace"
+      ],
+      "createdAt": "2026-10-22T17:16:19.233Z"
+    }
+  },
+  "recordIntegrity": {
+    "algorithm": "veritas-attestation-record-v1",
+    "digest": "71f9904792382b64ebd0159f6becab6c53335b97e7fe60796dd1790620f08e52"
+  }
+}

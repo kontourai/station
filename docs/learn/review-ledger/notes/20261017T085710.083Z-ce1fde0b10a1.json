@@ -1,0 +1,7 @@
+{
+  "revision": "2a8937878e1137ab114708ba95eb42b763a36271",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Rechecked the keyed-send HTTP409 and original-input replay explanation, active inbox placement precedence, unavailable-read behavior and proof/legacy limits against the merged route/runtime composition. Runtime's recorded-actor continuation carries only the server captured inputDigest/inboxPlacement context; inbox proof reads require the recorded user through readAuthorityForExecution, not internal scope. Additional foreground snapshot and source-pinning tests do not change those public DTOs. The corrected changed-model retry and original replay controls passed within the 741 owner cases at 327c5e720a2. Existing document bytes remain accurate; no live-provider, isolated-run lifecycle, registry or release claim is added.","inputs":["docs/reference/session-api.md","src-server/runtime/routes/runtime-routes.ts","src-server/services/execution-target/__tests__/execution-target-execution.test.ts"]}
+  ]
+}

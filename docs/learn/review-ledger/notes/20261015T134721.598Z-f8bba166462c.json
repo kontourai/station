@@ -1,0 +1,7 @@
+{
+  "revision": "e4fb04d302dd8905b5b6e18a2771e9b58a0490b5",
+
+  "notes": [
+    {"path":"docs/adr/0021-separate-plugin-and-agent-sdk-surfaces.md","note":"Reviewed export-map delta against ADR entry ownership: new usage-export-query is an opt-in React query surface; telemetry root queries remain UI/administration, and agent/client entry ownership and no-wildcard rules are unchanged. No ADR prose change. Focused public barrel and usage-export client/query suites passed at e4fb04d302d; no publication or native proof.","inputs":["docs/adr/0021-separate-plugin-and-agent-sdk-surfaces.md","packages/sdk/package.json#/exports"]}
+  ]
+}

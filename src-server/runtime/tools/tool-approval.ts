@@ -1,5 +1,9 @@
 import type { ResolvedAgentToolServer } from '@kontourai/station-contracts/provider';
 import {
+  externalMcpToolApprovalIdentity,
+  mcpToolApprovalKey,
+} from '@kontourai/station-shared/mcp-tool-selection';
+import {
   classifyStationBrowserTool,
   STATION_BROWSER_MCP_SERVER_ID,
 } from '../../tools/station-browser-policy.js';
@@ -34,10 +38,23 @@ export function isAuthoredToolPatternMatch(
   toolNameMapping: ReadonlyMap<string, MCPToolNameMappingEntry>,
 ): boolean {
   if (!patterns || patterns.length === 0) return false;
-  const list = [...patterns];
-  if (isAutoApproved(runtimeToolName, list)) return true;
-  const original = toolNameMapping.get(runtimeToolName)?.original;
-  return original !== undefined && isAutoApproved(original, list);
+  const entry = toolNameMapping.get(runtimeToolName);
+  const legacyPatterns = patterns.filter(
+    (pattern) => !pattern.startsWith('mcp/'),
+  );
+  if (isAutoApproved(runtimeToolName, legacyPatterns)) return true;
+  if (entry?.original && isAutoApproved(entry.original, legacyPatterns))
+    return true;
+  return (
+    entry?.provenance !== undefined &&
+    isAutoApproved(
+      mcpToolApprovalKey(
+        entry.provenance.integrationId,
+        entry.provenance.originalToolName,
+      ),
+      [...patterns],
+    )
+  );
 }
 
 /**
@@ -168,6 +185,36 @@ function masqueradesAsReserved(toolName: string, reserved: string): boolean {
 }
 
 /**
+ * Whether `toolName` is an authentic call to the in-process `station-browser`
+ * server, the only call the server-wide session grant is offered for and
+ * honoured on. All of these must hold, the same guards the #90 N2 auto-approval
+ * applies, plus the delivery fact:
+ *  - the name is `'authentic'`: the engine generated it from the `mcpServers`
+ *    config key Station handed it (an ACP self-reported name never qualifies);
+ *  - it is the raw `mcp__station-browser__<tool>` form with the reserved id as
+ *    its REAL server segment (`masqueradesAsReserved`): the canonicalised
+ *    `station-browser_x` form, and `mcp__station-browser_x__y`, never qualify;
+ *  - no authored tool server squats on the id; and
+ *  - the session was actually delivered the built-in in-process server.
+ */
+export function isAuthenticStationBrowserCall(
+  toolName: string,
+  resolvedToolServers: readonly ResolvedAgentToolServer[] | undefined,
+  toolNameProvenance: ExternalToolNameProvenance,
+  deliveredInProcess: boolean,
+): boolean {
+  if (!deliveredInProcess || toolNameProvenance !== 'authentic') return false;
+  if (!toolName.startsWith('mcp__')) return false;
+  if (reservedBuiltinServerForTool(toolName) !== STATION_BROWSER_MCP_SERVER_ID)
+    return false;
+  if (masqueradesAsReserved(toolName, STATION_BROWSER_MCP_SERVER_ID))
+    return false;
+  return !(resolvedToolServers ?? []).some(
+    (server) => server.id === STATION_BROWSER_MCP_SERVER_ID,
+  );
+}
+
+/**
  * #2584: the bounded-write station-control tools every agent may call without
  * an authored pattern (`SC_AUTO_APPROVED_SIDE_EFFECT_TOOLS`). Granted by
  * EXACT identity, never through pattern matching: a pattern or a
@@ -285,10 +332,24 @@ export function isAutoApprovedExternalTool(
   )
     return true;
   if (!patterns || patterns.length === 0) return false;
+  const qualified =
+    toolNameProvenance === 'authentic'
+      ? externalMcpToolApprovalIdentity(toolName).key
+      : undefined;
+  const qualifiedGrant =
+    qualified !== undefined &&
+    isAutoApproved(
+      qualified,
+      patterns.filter((pattern) => pattern.startsWith('mcp/')),
+    );
+  const legacyPatterns = patterns.filter(
+    (pattern) => !pattern.startsWith('mcp/'),
+  );
   const canonical = canonicalizeExternalToolName(toolName);
   const matched =
-    isAutoApproved(toolName, patterns) ||
-    (canonical !== toolName && isAutoApproved(canonical, patterns));
+    qualifiedGrant ||
+    isAutoApproved(toolName, legacyPatterns) ||
+    (canonical !== toolName && isAutoApproved(canonical, legacyPatterns));
   if (!matched) return false;
 
   const reservedServer = reservedBuiltinServerForTool(toolName);
@@ -300,7 +361,15 @@ export function isAutoApprovedExternalTool(
   if (reservedServer === STATION_BROWSER_MCP_SERVER_ID)
     return stationBrowserAutoApproval(
       toolName,
-      patterns,
+      qualified !== undefined &&
+        qualifiedGrant &&
+        patterns.some(
+          (pattern) =>
+            pattern.startsWith('mcp/station-browser/') &&
+            isAutoApproved(qualified, [pattern]),
+        )
+        ? [...legacyPatterns, toolName]
+        : legacyPatterns,
       resolvedToolServers,
       toolNameProvenance,
     );

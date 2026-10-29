@@ -1,6 +1,7 @@
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type {
   ProjectInvitationPreview,
+  ProjectMemberAction,
   ProjectMemberRole,
   ProjectMembershipScope,
   ProjectMemberView,
@@ -87,6 +88,30 @@ export class ProjectMembershipService {
           throw new ProjectMembershipRefusal('conflict');
       },
     );
+  }
+
+  async withAgentAdministration<T>(
+    slug: string,
+    expectedProjectId: string,
+    expectedActorId: string,
+    authority: ProjectMembershipAuthority,
+    operation: (scope: ProjectMembershipScope) => Promise<T>,
+  ): Promise<T> {
+    const actor = await authority.current();
+    if (actor.principal.id !== expectedActorId)
+      throw new ProjectMembershipRefusal('forbidden');
+    const scope = this.members.scopeForMember(
+      slug,
+      actor.principal,
+      'manage-members',
+    );
+    if (scope.localProjectId !== expectedProjectId)
+      throw new ProjectMembershipRefusal('conflict');
+    return this.withProject(slug, scope, async () => {
+      const current = await this.currentActor(authority, expectedActorId);
+      this.members.require(scope, current.principal, 'manage-members');
+      return operation(scope);
+    });
   }
 
   async administration(slug: string, authority: ProjectMembershipAuthority) {
@@ -192,6 +217,53 @@ export class ProjectMembershipService {
       const current = await this.currentActor(authority, actor.principal.id);
       this.members.require(scope, current.principal, 'view');
     });
+  }
+
+  /** Execute a scoped domain operation while the Project incarnation is leased. */
+  async withProjectAction<T>(
+    scope: ProjectMembershipScope,
+    action: ProjectMemberAction,
+    authority: ProjectMembershipAuthority,
+    expectedActorId: string,
+    operation: (actor: ProjectMembershipActor, assertCurrent: () => void) => T,
+    current: () => boolean,
+  ): Promise<T> {
+    const captured = structuredClone(scope);
+    const initial = await this.currentActor(authority, expectedActorId);
+    this.members.require(captured, initial.principal, action);
+    return this.withProject(captured.localProjectSlug, captured, async () => {
+      const actor = await this.currentActor(authority, expectedActorId);
+      const assertCurrent = () => {
+        if (!current()) throw new ProjectMembershipRefusal('forbidden');
+        this.members.require(captured, actor.principal, action);
+      };
+      assertCurrent();
+      return operation(actor, assertCurrent);
+    });
+  }
+
+  /** Re-authorize a delayed response or stream item, without retaining a lease. */
+  async currentActionAdmission(
+    scope: ProjectMembershipScope,
+    action: ProjectMemberAction,
+    authority: ProjectMembershipAuthority,
+    expectedActorId: string,
+    current: () => boolean,
+  ): Promise<boolean> {
+    try {
+      await this.withProjectAction(
+        scope,
+        action,
+        authority,
+        expectedActorId,
+        (_actor, assertCurrent) => assertCurrent(),
+        current,
+      );
+      return true;
+    } catch (error) {
+      if (error instanceof ProjectMembershipRefusal) return false;
+      throw error;
+    }
   }
 
   async invite(

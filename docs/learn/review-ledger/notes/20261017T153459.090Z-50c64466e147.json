@@ -1,0 +1,9 @@
+{
+  "revision": "29a46830befcb2c9d52db46f9cf1eee8407e5b30",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed integration with the keyed-send input digest change: both foreground dispatch branches retain the Task room receiver admission and independently pass context.submissionDigest into dispatchWithReceipt. Exact raw Session and request/principal checks still run at provider effect; keyed input conflict detection retains the submitted input proof. Idle room shutdown parking and final cleanup do not change public Session commands or wire shapes. The combined execution-target, adopted-continuation and room-owner suites pass 158 tests, and independent delta review found no conflict-resolution defect. Existing explanations remain accurate; no live-provider or release qualification is inferred.","inputs":["docs/architecture/module-map.md","src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed integration with the keyed-send input digest change: both foreground dispatch branches retain the Task room receiver admission and independently pass context.submissionDigest into dispatchWithReceipt. Exact raw Session and request/principal checks still run at provider effect; keyed input conflict detection retains the submitted input proof. Idle room shutdown parking and final cleanup do not change public Session commands or wire shapes. The combined execution-target, adopted-continuation and room-owner suites pass 158 tests, and independent delta review found no conflict-resolution defect. Existing explanations remain accurate; no live-provider or release qualification is inferred.","inputs":["docs/reference/session-api.md","src-server/services/orchestration/conversation-lineage.ts","src-server/services/orchestration/orchestration-service.ts","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

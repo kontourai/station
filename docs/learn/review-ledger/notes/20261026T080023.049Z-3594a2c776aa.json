@@ -1,0 +1,19 @@
+{
+  "revision": "86811e42192647aa10a71756d7c39325c3a68877",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"testing.md delta: the sheet clause now names a modal dialog and states the accepted partial-cover decision (content partly under a covering sheet, including the non-modal expanded dock, is cleared). Guidance unchanged.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"testing.md delta: the sheet clause now names a modal dialog and states the accepted partial-cover decision (content partly under a covering sheet, including the non-modal expanded dock, is cleared). Guidance unchanged.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Reworded the sheet clause: modal dialog only, and the accepted decision that content behind or partly under a covering sheet (non-modal expanded dock included) is cleared while its visible part stays tappable. Matches hit-target-audit.ts SHEET and fixtures A2h, A6, A1n, A1d.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"testing.md delta: the sheet clause now names a modal dialog and states the accepted partial-cover decision (content partly under a covering sheet, including the non-modal expanded dock, is cleared). Guidance unchanged.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"testing.md delta: the sheet clause now names a modal dialog and states the accepted partial-cover decision (content partly under a covering sheet, including the non-modal expanded dock, is cleared). Guidance unchanged.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"testing.md delta: the sheet clause now names a modal dialog and states the accepted partial-cover decision (content partly under a covering sheet, including the non-modal expanded dock, is cleared). Guidance unchanged.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"testing.md delta: the sheet clause now names a modal dialog and states the accepted partial-cover decision (content partly under a covering sheet, including the non-modal expanded dock, is cleared). Guidance unchanged.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

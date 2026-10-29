@@ -13,6 +13,7 @@ import {
   inputRequestContentProblems,
   inputRequestFromRequestEvent,
   inputRequestOutcome,
+  inputRequestSummary,
   readInputRequestForm,
   readInputRequestResponse,
   readLegacyHarnessQuestions,
@@ -732,5 +733,17 @@ describe('validation returns what it checked', () => {
     });
     checks.push('browser');
     expect(admitted.checks).toEqual(['unit']);
+  });
+});
+
+describe('inputRequestSummary', () => {
+  test('a cut never ends on half of a surrogate pair', () => {
+    const summary = inputRequestSummary(`${'a'.repeat(159)}😀 tail`);
+    expect(summary).toBe(`${'a'.repeat(159)}…`);
+    expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(summary)).toBe(false);
+  });
+
+  test('a short single line is returned whole', () => {
+    expect(inputRequestSummary('  Which mode?  ')).toBe('Which mode?');
   });
 });

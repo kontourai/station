@@ -1,0 +1,7 @@
+{
+  "revision": "adf86e77612492e5e2113d207e18c6c7aa688df5",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Re-checked after a copy-only change in useChatInput (failed-restage toast now says to retry the attachment in the composer, then send); no claim in this doc covers that toast or changes.","inputs":["docs/reference/sdk.md","src-ui/src/hooks/useChatInput.ts"]}
+  ]
+}

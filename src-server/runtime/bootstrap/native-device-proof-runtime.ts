@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import type { PairedDevice } from '@kontourai/station-contracts/environment-security';
 import type { SelfHostedBrokerNativeClientSurfaceV2 } from '@kontourai/station-contracts/self-hosted-broker';
 import {
   NativeDeviceRequestAuthority,
@@ -32,6 +33,32 @@ export function nativeDeviceProofPilotEnabled(
   throw new Error('STATION_NATIVE_DEVICE_PROOF_PILOT must be 0 or 1.');
 }
 
+/**
+ * The live paired Device a native request acts as, with the scope it may
+ * actually use: #3557's Station group cap, never the raw stored grant. The
+ * binding's own validity is judged on the raw grant (binding service), so a
+ * group change narrows a native request without invalidating its binding.
+ */
+export function nativeActiveDevice(
+  pairing: Pick<NativeDeviceProofPairingSource, 'listDevices'> & {
+    effectiveScopeOfDevice(deviceId: string): string | undefined;
+  },
+): (deviceId: string) => PairedDevice | undefined {
+  return (deviceId) => {
+    const device = pairing
+      .listDevices()
+      .find(
+        (candidate) =>
+          candidate.id === deviceId &&
+          candidate.kind === 'device' &&
+          candidate.revokedAt === null,
+      );
+    if (!device) return undefined;
+    const scope = pairing.effectiveScopeOfDevice(deviceId);
+    return scope === undefined ? undefined : { ...device, scope };
+  };
+}
+
 /** Trusted runtime composition; configuration never substitutes for private peer provenance. */
 export function createNativeDeviceProofRuntime(input: {
   flag: string | undefined;
@@ -43,7 +70,9 @@ export function createNativeDeviceProofRuntime(input: {
   >;
   virtualApplicationOrigin?: string;
   nativeApplication?: NativeApplicationConnectorConfiguration;
-  pairing: NativeDeviceProofPairingSource;
+  pairing: NativeDeviceProofPairingSource & {
+    effectiveScopeOfDevice(deviceId: string): string | undefined;
+  };
 }): NativeDeviceProofRuntime | undefined {
   if (!nativeDeviceProofPilotEnabled(input.flag)) return undefined;
   const capabilities = input.authentication?.sessionReferenceCapabilities();
@@ -71,17 +100,7 @@ export function createNativeDeviceProofRuntime(input: {
     });
     const configuration: NativeDeviceRequestAuthorityDeps = {
       binding: bindings,
-      pairing: {
-        activeDevice: (deviceId) =>
-          input.pairing
-            .listDevices()
-            .find(
-              (device) =>
-                device.id === deviceId &&
-                device.kind === 'device' &&
-                device.revokedAt === null,
-            ),
-      },
+      pairing: { activeDevice: nativeActiveDevice(input.pairing) },
       replayStore,
     };
     const authority = new NativeDeviceRequestAuthority(configuration);

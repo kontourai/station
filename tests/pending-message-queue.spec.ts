@@ -348,4 +348,111 @@ test.describe('Pending message queue (#613)', () => {
     // The queue is empty once the last drained message has been dispatched.
     await expect(page.locator('.queued-messages')).toHaveCount(0);
   });
+
+  // A long follow-up must not widen the queue panel: it pushed the panel, and
+  // the composer's controls under it, off the screen. Each row's text is
+  // clamped to two lines; its full text stays reachable through Edit.
+  for (const [label, viewport] of [
+    ['390px', { width: 390, height: 844 }],
+    ['desktop', { width: 1280, height: 900 }],
+  ] as const) {
+    test(`long queued messages stay inside the panel and the screen at ${label}`, async ({
+      page,
+    }, testInfo) => {
+      test.setTimeout(60_000);
+      const executionRequests: Array<Record<string, unknown>> = [];
+      await installMockOrchestrationSse(page);
+      await seedRuntimeRoutes(page, executionRequests);
+      await openRuntimeSession(page, 'start the task');
+      await waitForMockOrchestrationSse(page);
+      await expect.poll(() => executionRequests.length).toBe(1);
+      // The session opens from the desktop start flow; the width under test
+      // applies to the open chat.
+      await page.setViewportSize(viewport);
+      const textarea = page
+        .getByRole('group', { name: 'Message composer', exact: true })
+        .getByRole('textbox');
+      const prose =
+        `${'a long follow-up about scrolling to the bottom of the chat '.repeat(40)}`.slice(
+          0,
+          2000,
+        );
+      const token = 'x'.repeat(300);
+      for (const message of [prose, token]) {
+        await textarea.fill(message);
+        await textarea.press('Enter');
+      }
+      const toggle = page
+        .locator('.queued-messages')
+        .getByRole('button', { name: '2 pending messages', exact: true });
+      await toggle.click();
+      await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      const rows = page.locator('.queued-messages .queued-message');
+      await expect(rows).toHaveCount(2);
+
+      const geometry = await page.evaluate(() => {
+        const box = (selector: string) =>
+          [...document.querySelectorAll(selector)].map((element) => {
+            const rect = element.getBoundingClientRect();
+            return { left: rect.left, right: rect.right, height: rect.height };
+          });
+        const text = [
+          ...document.querySelectorAll(
+            '.queued-messages .queued-message__body',
+          ),
+        ].map((element) => {
+          const style = getComputedStyle(element);
+          const fontSize = Number.parseFloat(style.fontSize);
+          const declared = Number.parseFloat(style.lineHeight);
+          return {
+            height: element.getBoundingClientRect().height,
+            // `normal` line height is about 1.2em; allow 1.3em.
+            lineHeight: Number.isFinite(declared) ? declared : fontSize * 1.3,
+            clipped: element.scrollHeight > element.clientHeight,
+          };
+        });
+        return {
+          viewport: innerWidth,
+          scrollWidth: document.documentElement.scrollWidth,
+          panel: box('.queued-messages'),
+          rows: box('.queued-messages .queued-message'),
+          buttons: box('.queued-messages .queued-message__btn'),
+          composer: box('.chat-input'),
+          text,
+        };
+      });
+      await page.screenshot({
+        path: testInfo.outputPath(`long-queued-${label}.png`),
+      });
+      const within = (boxes: Array<{ left: number; right: number }>) =>
+        boxes.every(
+          (rect) => rect.left >= -0.5 && rect.right <= geometry.viewport + 0.5,
+        );
+      expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.viewport);
+      expect(within(geometry.panel), JSON.stringify(geometry.panel)).toBe(true);
+      expect(within(geometry.rows), JSON.stringify(geometry.rows)).toBe(true);
+      expect(within(geometry.buttons), JSON.stringify(geometry.buttons)).toBe(
+        true,
+      );
+      expect(within(geometry.composer), JSON.stringify(geometry.composer)).toBe(
+        true,
+      );
+      // Clamped: two lines of text at most, for prose and an unbroken token.
+      expect(geometry.text).toHaveLength(2);
+      for (const { height, lineHeight, clipped } of geometry.text) {
+        expect(height).toBeLessThanOrEqual(lineHeight * 2 + 1);
+        // There is more text than the two lines show.
+        expect(clipped).toBe(true);
+      }
+
+      // The full text is reachable through Edit.
+      await rows
+        .filter({ hasText: 'xxxx' })
+        .getByRole('button', { name: 'Edit message' })
+        .click();
+      await expect(
+        page.locator('.queued-message input[type="text"]'),
+      ).toHaveValue(token);
+    });
+  }
 });

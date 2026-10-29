@@ -1,0 +1,21 @@
+{
+  "revision": "30f9389c72c20e04279711771d2deff94494581a",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed affected MCP host/admission/CSP references against the optional-discovery change. This change only omits UI lookup outside connection/query contexts; server admission, resource provenance and CSP claims are unchanged. Host design owns the new composition contract; no module-map prose change needed.","inputs":["docs/architecture/module-map.md","docs/design/mcp-ui-host.md"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed connection/profile vocabulary against additive useOptionalConnections. Existing useConnections and profile identities retain their meanings; optional absence neither creates a connection nor changes authority. No glossary wording change needed.","inputs":["docs/glossary.md","docs/reference/connect.md"]},
+
+    {"path":"docs/reference/connect.md","note":"Reviewed useOptionalConnections implementation, root export and production transcript caller. It returns undefined outside the provider; useConnections still throws. Provider-free, query-only, connection-only and connected discovery cases execute with real contexts. No credential or connection mutation occurs in the optional reader.","inputs":["docs/reference/connect.md","packages/connect/src/index.ts","packages/connect/src/react/ConnectionsContext.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed MCP host and useConnections/request-scope references. Required request-authority APIs remain required; optional transcript membership cannot authorize a resource or request without both workspace contexts. No SDK runtime/API behavior changes or prose changes needed.","inputs":["docs/reference/sdk.md","docs/design/mcp-ui-host.md"]},
+
+    {"path":"docs/reference/shared.md","note":"Reviewed recorded MCP envelope and CSP contracts against optional UI lookup. Event stamps, bounded retention, replay and resource policy are unchanged; host design now documents local rendering outside query context. No shared-reference prose change needed.","inputs":["docs/reference/shared.md","docs/design/mcp-ui-host.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed separate MCP App resource-policy/host links. Optional UI discovery changes no scheme/CSP containment or published documentation access. No station-docs-reference prose change needed.","inputs":["docs/reference/station-docs.md","docs/design/mcp-ui-host.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed user-facing preview contract and sample/offline fallback against real main.tsx gate/query composition and browser sample opened through access screen. Connected frame tests still mount Apps; provider-absent tests issue no lookup. Sample browser rendered ordinary batched rows without QueryClient.","inputs":["docs/user/getting-started.md"]},
+
+    {"path":"packages/connect/README.md","note":"Reviewed additive optional context reader and required reader distinction against source, barrel and real transcript caller. Optional absence returns undefined and neither creates connection nor makes requests; credential ownership remains unchanged.","inputs":["packages/connect/README.md","packages/connect/src/index.ts"]}
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "revision": "8dce57eedb164285e2428f565e1d1ecf9f79f13c",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"Reviewed the current review-ledger, append-only note, catch-up and scoped-freshness claims against the 8dce57eedb history replay delta. The replay now reuses a digest only within one invocation, keyed by SHA256 of immutable captured Git bytes and the full binding selector; cached undefined uses explicit membership. Commit traversal, human declaredChecks, pending-input tracking, missing-blob guards, source-drop checks and baseline authority are unchanged. The guide remains accurate without prose changes. Earlier exact 33d76 controls produced complete old/new history, scoped policy and binding equality on both immutable subjects, and 81 focused tests passed, including the actual capture keeper under its unchanged 30-second deadline. Those controls are prior-head evidence; current main-first CI and hosted qualification are not yet established.","inputs":["docs/guides/documentation.md","scripts/lib/review-history.mjs"]},
+
+    {"path":"docs/learn/README.md","note":"Reviewed the current Review status, Screenshots and walkthroughs, and Maintaining the atlas claims against the 8dce57eedb history replay delta. Invocation-local digest reuse preserves Git-history and append-only-note freshness, stale capture refusal, capture provenance and immutable snapshot identity. It neither caches mutable HEAD across invocations nor changes capture bytes, source selectors, renderer behavior, policy or test deadlines. The README remains accurate without prose changes. Prior 33d76 controls matched complete history, scoped policy and binding outputs on the same immutable roots; the real capture keeper passed in 14.524 seconds under its unchanged 30-second limit. These observations do not establish current main-first CI, hosted cure, native behavior or publication.","inputs":["docs/learn/README.md","scripts/lib/review-history.mjs"]}
+  ]
+}

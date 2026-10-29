@@ -1,6 +1,6 @@
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import { telemetry, useEngineConnectionsQuery } from '@kontourai/station-sdk';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { getPathForView } from '../../app-shell/routing';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { useApiBase } from '../../contexts/ApiBaseContext';
@@ -8,12 +8,12 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
 import { useShowSurface } from '../../contexts/useShowSurface';
 import { useLaunchChat } from '../../hooks/useActiveChatSessions';
-import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import type { NavigationView } from '../../types';
 import { resolveAgentExecution } from '../../utils/execution';
 import { getInitials } from '../../utils/layout';
 import { selectFirstChatTarget } from '../agent-selection-policy';
+import { subscribeHelpMenuRequests } from './helpMenuRequest';
 import { getHeaderBreadcrumb, getHelpPrompts } from './utils';
 
 interface UseHeaderViewModelOptions {
@@ -27,7 +27,6 @@ export function useHeaderViewModel({
   agents,
   onNavigate,
 }: UseHeaderViewModelOptions) {
-  const settingsShortcut = useShortcutDisplay('app.settings');
   const { navigate } = useNavigationActions();
   // #928 C2a: the brand link means Home BY NAME, so it reveals the Home
   // surface (placed in `main`; the model navigates to `/`) rather than
@@ -43,8 +42,10 @@ export function useHeaderViewModel({
   const [showHelp, setShowHelp] = useState(false);
   const [showOverflow, setShowOverflow] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-  /** #1552 D1: the avatar's menu, which carries Profile, Help and Settings. */
-  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  // The account menu moved to the sidebar footer (`SidebarAccountControl`);
+  // its "Ask Station for help" row opens this header's menu, which keeps the
+  // current view's prompts and Project-scoped chat target.
+  useEffect(() => subscribeHelpMenuRequests(() => setShowHelp(true)), []);
 
   const helpPrompts = getHelpPrompts(currentView);
   const breadcrumb = getHeaderBreadcrumb(currentView);
@@ -99,21 +100,18 @@ export function useHeaderViewModel({
   return {
     breadcrumb,
     helpPrompts,
-    settingsShortcut,
     showHelp,
     showNotifications,
     showOverflow,
-    showProfileMenu,
     userInitials,
     closeHelp: () => setShowHelp(false),
     closeNotifications: () => setShowNotifications(false),
     closeOverflow: () => setShowOverflow(false),
-    closeProfileMenu: () => setShowProfileMenu(false),
     handleHelpPrompt,
     openConnectionModal: openConnectionsModal,
     /**
-     * OPEN, not toggle. Both remaining callers are menu ROWS ("Ask Station for
-     * help" in the avatar menu and in the `⋯` overflow), and a row that toggles
+     * OPEN, not toggle. Every caller is a menu ROW ("Ask Station for help" in
+     * the sidebar account menu, by request, and in the `⋯` overflow), and a row that toggles
      * closes an already-open help menu instead of showing it — the press then
      * reads as doing nothing (#1552 review L3). The toolbar button that made a
      * toggle the right shape was removed in D1.
@@ -130,7 +128,6 @@ export function useHeaderViewModel({
      */
     openNotifications: () => setShowNotifications(true),
     toggleOverflow: () => setShowOverflow((current) => !current),
-    toggleProfileMenu: () => setShowProfileMenu((current) => !current),
     goHome: () => showSurface('home'),
     openProfile: () => {
       if (currentView?.type === 'profile') {

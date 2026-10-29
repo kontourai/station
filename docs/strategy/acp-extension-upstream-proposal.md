@@ -2,7 +2,7 @@
 
 > **Status: DRAFT — not filed.** Filing upstream (as an RFD/discussion on
 > agentclientprotocol/agent-client-protocol) is an owner call. This is the
-> staged text, per ADR 0013 and station#1815 §7. The ACP spec documents no
+> staged text, per ADR 0013 and archive#1815 §7. The ACP spec documents no
 > path for an extension to become standard; the project's live practice is
 > RFDs (e.g. the session-fork RFD) and discussions that stabilize into
 > capability-gated core methods (`session/list`, `session/close`,

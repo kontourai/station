@@ -1,4 +1,11 @@
+import { createServer } from 'node:http';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  StationReadOnlyError,
+  setClientCredentialResolver,
+} from '../client/http';
+import { sentTurnKey } from '../client/sent-turn-key';
+import { isProvablyNotSent } from '../query-domains/chatRuntimeOrchestration';
 import {
   buildConversationTurnPayload,
   CHAT_STREAM_STALL_TIMEOUT_MS,
@@ -9,6 +16,355 @@ import {
 } from '../query-domains/chatRuntimeStream';
 
 describe('chatRuntimeStream', () => {
+  it('keeps a keyed read-only refusal uncertain without issuing a request', async () => {
+    setClientCredentialResolver(() => ({
+      credential: 'sdk-read-only-fixture',
+      origin: 'http://example.test',
+      mutationAllowed: () => false,
+    }));
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    vi.stubGlobal('fetch', fetch);
+    const error: unknown = await streamConversationTurn({
+      agentSlug: 'default',
+      content: 'hello',
+      chatOptions: { clientTurnId: 'read-only-key' },
+      onStreamEvent: (_data: unknown, state: unknown) => state,
+      apiBase: 'http://example.test',
+    }).catch((error: unknown) => error);
+    expect(error).toBeInstanceOf(StationReadOnlyError);
+    expect(sentTurnKey(error)).toBe('read-only-key');
+    expect(isProvablyNotSent(error)).toBe(false);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('does not replace a sent key with an unsent key when native fetch reuses an abort reason', async () => {
+    let markReceived: (() => void) | undefined;
+    const received = new Promise<void>((resolve) => {
+      markReceived = resolve;
+    });
+    const requests: unknown[] = [];
+    const server = createServer((request) => {
+      let body = '';
+      request.setEncoding('utf8');
+      request.on('data', (chunk) => {
+        body += chunk;
+      });
+      request.on('end', () => {
+        requests.push(JSON.parse(body));
+        markReceived?.();
+      });
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, '127.0.0.1', resolve),
+    );
+    const controller = new AbortController();
+    try {
+      const address = server.address();
+      if (!address || typeof address === 'string')
+        throw Error('Loopback listener prerequisite');
+      const input = {
+        agentSlug: 'default',
+        content: 'hello',
+        signal: controller.signal,
+        onStreamEvent: (_data: unknown, state: unknown) => state,
+        apiBase: `http://127.0.0.1:${address.port}`,
+      };
+      const first = streamConversationTurn({
+        ...input,
+        chatOptions: { clientTurnId: 'sent-key' },
+      }).catch((error: unknown) => error);
+      await received;
+      const reason = new Error('ECONNREFUSED from an unrelated operation');
+      controller.abort(reason);
+      const firstError = await first;
+      expect(firstError).toBe(reason);
+      expect(sentTurnKey(firstError)).toBe('sent-key');
+      expect(isProvablyNotSent(firstError)).toBe(false);
+      const secondError: unknown = await streamConversationTurn({
+        ...input,
+        chatOptions: { clientTurnId: 'unsent-key' },
+      }).catch((error: unknown) => error);
+      expect(secondError).toBe(reason);
+      expect(requests).toMatchObject([
+        { options: { clientTurnId: 'sent-key' } },
+      ]);
+      expect(sentTurnKey(firstError)).toBeUndefined();
+      expect(isProvablyNotSent(firstError)).toBe(false);
+    } finally {
+      controller.abort();
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  });
+
+  it.each([
+    {
+      keys: ['turn-a', 'turn-b', 'turn-a'],
+      expected: ['turn-a', undefined, undefined],
+    },
+    { keys: ['turn-a', 'turn-a'], expected: ['turn-a', 'turn-a'] },
+  ])(
+    'does not assign another turn identity to a reused error for $keys',
+    async ({ keys, expected }) => {
+      const shared = Object.freeze(new TypeError('Shared transport failure'));
+      vi.stubGlobal(
+        'fetch',
+        vi.fn<typeof fetch>(async () => {
+          throw shared;
+        }),
+      );
+      const observed: (string | undefined)[] = [];
+      for (const clientTurnId of keys) {
+        const caught: unknown = await streamConversationTurn({
+          agentSlug: 'default',
+          content: 'hello',
+          chatOptions: { clientTurnId },
+          onStreamEvent: (_data: unknown, state: unknown) => state,
+          apiBase: 'http://example.test',
+        }).catch((error: unknown) => error);
+        expect(caught).toBe(shared);
+        observed.push(sentTurnKey(caught));
+      }
+      expect(observed).toEqual(expected);
+    },
+  );
+
+  for (const error of [
+    new TypeError('Response was lost'),
+    new DOMException('Aborted', 'AbortError'),
+    Object.freeze(new Error('Frozen transport error')),
+  ])
+    it(`retains the key through public entries without replacing or mutating a rejected ${error.name}`, async () => {
+      const [sdk, client] = await Promise.all([
+        import('../index'),
+        import('../client'),
+      ]);
+      const requests: unknown[] = [];
+      vi.stubGlobal(
+        'fetch',
+        vi.fn<typeof fetch>(async (_url, init) => {
+          requests.push(JSON.parse(String(init?.body)));
+          throw error;
+        }),
+      );
+      const caught: unknown = await sdk
+        .streamConversationTurn({
+          agentSlug: 'default',
+          content: 'hello',
+          onStreamEvent: (_data: unknown, state: unknown) => state,
+          apiBase: 'http://example.test',
+        })
+        .catch((error: unknown) => error);
+      expect(caught).toBe(error);
+      const key = sentTurnKey(caught);
+      expect(key).toEqual(expect.any(String));
+      expect(sdk.sentTurnKey(caught)).toBe(key);
+      expect(client.sentTurnKey(caught)).toBe(key);
+      expect(requests).toMatchObject([
+        {
+          input: [{ id: `msg-${key}` }],
+          options: { clientTurnId: key },
+        },
+      ]);
+    });
+
+  it.each(['', '   ', 'x'.repeat(201), 42, null])(
+    'refuses invalid supplied key %j before a request',
+    async (clientTurnId) => {
+      const fetch = vi.fn<typeof globalThis.fetch>();
+      vi.stubGlobal('fetch', fetch);
+      await expect(
+        streamConversationTurn({
+          agentSlug: 'default',
+          content: 'hello',
+          chatOptions: { clientTurnId },
+          onStreamEvent: (_data: unknown, state: unknown) => state,
+          apiBase: 'http://example.test',
+        }),
+      ).rejects.toBeInstanceOf(TypeError);
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['caller', 'upstream'])(
+    'returns the same key when the %s aborts an active stream',
+    async (source) => {
+      const controller = new AbortController();
+      let streamController:
+        | ReadableStreamDefaultController<Uint8Array>
+        | undefined;
+      let signalParsed: (() => void) | undefined;
+      const parsed = new Promise<void>((resolve) => {
+        signalParsed = resolve;
+      });
+      const cancel = vi.fn();
+      const body = new ReadableStream<Uint8Array>({
+        start(stream) {
+          streamController = stream;
+          stream.enqueue(new TextEncoder().encode('data: {"type":"text"}\n\n'));
+        },
+        cancel,
+      });
+      vi.stubGlobal(
+        'fetch',
+        vi.fn<typeof fetch>(async () => new Response(body)),
+      );
+      const turn = streamConversationTurn({
+        agentSlug: 'default',
+        content: 'hello',
+        chatOptions: { clientTurnId: 'aborted-turn' },
+        signal: controller.signal,
+        onStreamEvent: (_data: unknown, state: unknown) => {
+          signalParsed?.();
+          return state;
+        },
+        apiBase: 'http://example.test',
+      });
+      await parsed;
+      if (source === 'caller') controller.abort();
+      else
+        streamController?.error(new DOMException('Body aborted', 'AbortError'));
+      await expect(turn).resolves.toMatchObject({
+        clientTurnId: 'aborted-turn',
+      });
+      expect(cancel).toHaveBeenCalledTimes(source === 'caller' ? 1 : 0);
+    },
+  );
+
+  it.each(['callback failed', null, undefined, 42])(
+    'preserves primitive callback throw %j without claiming it can carry a key',
+    async (failure) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn<typeof fetch>(
+          async () => new Response('data: {"type":"text"}\n\n'),
+        ),
+      );
+      const caught: unknown = await streamConversationTurn({
+        agentSlug: 'default',
+        content: 'hello',
+        chatOptions: { clientTurnId: 'primitive-error' },
+        onStreamEvent: () => {
+          throw failure;
+        },
+        apiBase: 'http://example.test',
+      }).catch((error: unknown) => error);
+      expect(caught).toBe(failure);
+      expect(sentTurnKey(caught)).toBeUndefined();
+    },
+  );
+
+  it.each(['{malformed}', 'ENOTFOUND', 'ECONNREFUSED'])(
+    'does not call malformed response frame %s proof that the turn was never sent',
+    async (frame) => {
+      const fetch = vi.fn<typeof globalThis.fetch>(
+        async () => new Response(`data: ${frame}\n\n`),
+      );
+      vi.stubGlobal('fetch', fetch);
+      const error: unknown = await streamConversationTurn({
+        agentSlug: 'default',
+        content: 'hello',
+        chatOptions: { clientTurnId: 'malformed-response' },
+        onStreamEvent: (_data: unknown, state: unknown) => state,
+        apiBase: 'http://example.test',
+      }).catch((error: unknown) => error);
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(error).toBeInstanceOf(SyntaxError);
+      expect(sentTurnKey(error)).toBe('malformed-response');
+      expect(isProvablyNotSent(error)).toBe(false);
+    },
+  );
+
+  it('gives each unkeyed send a distinct key and the same key-derived message identity on the wire and result', async () => {
+    const requests: unknown[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async (_url, init) => {
+        requests.push(JSON.parse(String(init?.body)));
+        return new Response(
+          'data: {"type":"finish","finishReason":"stop"}\n\n',
+        );
+      }),
+    );
+    const input = {
+      agentSlug: 'default',
+      content: 'hello',
+      onStreamEvent: (_data: unknown, state: unknown) => state,
+      apiBase: 'http://example.test',
+    };
+    const first = await streamConversationTurn(input);
+    const second = await streamConversationTurn(input);
+    expect(first).toMatchObject({ clientTurnId: expect.any(String) });
+    expect(second).toMatchObject({ clientTurnId: expect.any(String) });
+    const firstKey = Reflect.get(first, 'clientTurnId');
+    const secondKey = Reflect.get(second, 'clientTurnId');
+    expect(firstKey).not.toBe(secondKey);
+    expect(requests).toEqual(
+      [firstKey, secondKey].map((key) => ({
+        input: [
+          {
+            id: `msg-${key}`,
+            role: 'user',
+            parts: [{ type: 'text', text: 'hello' }],
+          },
+        ],
+        options: { clientTurnId: key },
+      })),
+    );
+  });
+
+  it('reuses a supplied key and identical attachment message bytes when the caller explicitly retries later', async () => {
+    const requests: unknown[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async (_url, init) => {
+        requests.push(JSON.parse(String(init?.body)));
+        return new Response(
+          'data: {"type":"finish","finishReason":"stop"}\n\n',
+        );
+      }),
+    );
+    const now = vi.spyOn(Date, 'now').mockReturnValue(42);
+    const input = {
+      agentSlug: 'default',
+      content: 'review',
+      conversationId: 'conversation-1',
+      attachments: [{ data: 'data:image/png;base64,abc', type: 'image/png' }],
+      chatOptions: { clientTurnId: 'retry-key', temperature: 0.2 },
+      onStreamEvent: (_data: unknown, state: unknown) => state,
+      apiBase: 'http://example.test',
+    };
+    const first = await streamConversationTurn(input);
+    now.mockReturnValue(99);
+    const retried = await streamConversationTurn(input);
+    const expected = {
+      input: [
+        {
+          id: 'msg-retry-key',
+          role: 'user',
+          parts: [
+            { type: 'text', text: 'review' },
+            {
+              type: 'file',
+              url: 'data:image/png;base64,abc',
+              mediaType: 'image/png',
+            },
+          ],
+        },
+      ],
+      options: {
+        clientTurnId: 'retry-key',
+        temperature: 0.2,
+        conversationId: 'conversation-1',
+      },
+    };
+    expect(requests).toEqual([expected, expected]);
+    expect(first).toMatchObject({ clientTurnId: 'retry-key' });
+    expect(retried).toMatchObject({ clientTurnId: 'retry-key' });
+  });
+
   it('preserves canonical and compatibility purpose fields from history', () => {
     const [message] = mapConversationMessages([
       {
@@ -291,7 +647,9 @@ describe('chatRuntimeStream', () => {
   });
 
   afterEach(() => {
+    setClientCredentialResolver();
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it('surfaces the server-reported error message on a non-ok JSON response instead of discarding it', async () => {
@@ -323,6 +681,58 @@ describe('chatRuntimeStream', () => {
       message:
         'AccessDeniedException: User is not authorized to invoke bedrock:InvokeModel',
     });
+  });
+
+  // #3581: a retried keyed turn that may already have reached the agent.
+  it('surfaces a /chat may-have-started refusal as a typed indeterminate outcome, distinct from a generic error', async () => {
+    const answer = (body: Record<string, unknown>) =>
+      vi.fn(async () => ({
+        ok: false,
+        status: 409,
+        json: async () => body,
+      })) as any;
+    vi.stubGlobal(
+      'fetch',
+      answer({
+        success: false,
+        error:
+          'Foreground Agent message may have started. Do not retry automatically.',
+        code: 'foreground_message_indeterminate',
+        outcome: 'indeterminate',
+      }),
+    );
+    const turn = streamConversationTurn({
+      agentSlug: 'default',
+      content: 'hello',
+      chatOptions: { clientTurnId: 'turn-3581' },
+      onStreamEvent: vi.fn(),
+      apiBase: 'http://example.test',
+    });
+    await expect(turn).rejects.toBeInstanceOf(ChatHttpError);
+    await expect(turn).rejects.toMatchObject({
+      status: 409,
+      code: 'foreground_message_indeterminate',
+      outcome: 'indeterminate',
+    });
+    const error: unknown = await turn.catch((error: unknown) => error);
+    expect(sentTurnKey(error)).toBe('turn-3581');
+
+    // A refusal under another code is an ordinary error with no outcome.
+    vi.stubGlobal(
+      'fetch',
+      answer({ success: false, error: 'Agent busy', code: 'agent_busy' }),
+    );
+    const refused = await streamConversationTurn({
+      agentSlug: 'default',
+      content: 'hello',
+      onStreamEvent: vi.fn(),
+      apiBase: 'http://example.test',
+    }).catch((error: unknown) => error);
+    expect(refused).toBeInstanceOf(ChatHttpError);
+    // #3606 review F3: `outcome` is a declared member of ChatHttpError.
+    const outcome: 'indeterminate' | undefined = (refused as ChatHttpError)
+      .outcome;
+    expect(outcome).toBeUndefined();
   });
 
   it('falls back to a generic HTTP status message when the error body is not JSON', async () => {
@@ -427,6 +837,8 @@ describe('chatRuntimeStream — stall watchdog (station#1207)', () => {
     await expect(resultPromise).rejects.toMatchObject({
       name: 'ChatStreamStallError',
     });
+    const error: unknown = await resultPromise.catch((error: unknown) => error);
+    expect(sentTurnKey(error)).toEqual(expect.any(String));
     expect(onStreamEvent).not.toHaveBeenCalled();
   });
 

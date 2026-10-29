@@ -117,7 +117,7 @@ const unknown = (deps: UsageFetchDeps, reason: string): CredentialUsage => ({
 /**
  * 0-100, integer, or undefined when the value is not a usable number.
  *
- * A NEGATIVE is not clamped to 0 (independent review): -20 is not "nothing
+ * A NEGATIVE is not clamped to 0: -20 is not "nothing
  * used", it is a value this code does not understand, and rendering it as an
  * empty meter is the fail-open the module exists to prevent. Above 100 does
  * clamp, because "more than full" is still unambiguously full.
@@ -247,7 +247,7 @@ const CLAUDE_PLAN_LABELS: Record<string, string> = {
 };
 
 /**
- * Independent review (Codex) found three adversarial 200 bodies that threw
+ * Three adversarial 200 bodies once threw
  * straight past the "every failure is `unknown`" guarantee — `null`,
  * `{limits:{}}` (`.some` is not a function), and an out-of-range `reset_at`.
  * A throw here does not degrade to unknown, it rejects the request, and the
@@ -396,11 +396,11 @@ function normalizeClaude(deps: UsageFetchDeps, raw: unknown): CredentialUsage {
   // Zero derivable windows usually means schema drift, and reporting `ok`
   // there would render a card saying the account is fine when we cannot tell.
   //
-  // But "no percentage windows" is NOT "nothing recognizable" (review round 2,
-  // Codex): a provider can state an explicit exhaustion verdict with no usable
-  // percentages, and the first version of this guard threw that away and hid
-  // "Limit reached" behind `unknown`. A recognized verdict is information, so
-  // it survives; only a payload that yielded neither is unknown.
+  // But "no percentage windows" is NOT "nothing recognizable": a provider can
+  // state an explicit exhaustion verdict with no usable percentages, and the
+  // first version of this guard threw that away and hid "Limit reached" behind
+  // `unknown`. A recognized verdict is information, so it survives; only a
+  // payload that yielded neither is unknown.
   const planKey = typeof body.plan === 'string' ? body.plan : undefined;
   if (windows.length === 0 && !exhausted) {
     return {

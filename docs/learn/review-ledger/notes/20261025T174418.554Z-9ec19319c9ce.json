@@ -1,0 +1,7 @@
+{
+  "revision": "aed88445c660e051c0562106a65bbd0c2d499a8a",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Engine & model caption rule now covers: Agent's own connection name kept while still bound to the Session's connection; dock header follows the same chatEngineIdentity rule; narrow composer (container <=640px) shortens the hint to 'Agent moved' with the full sentence in tooltip/accessible name. Checked against ChatDockBody, ChatInputArea, chat.css and utils/engine.ts.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/chat.css"]}
+  ]
+}

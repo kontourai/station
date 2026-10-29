@@ -30,6 +30,7 @@ import {
   withField,
   withoutField,
 } from './inputRequestDrafts';
+import { LazyMarkdown } from './LazyMarkdown';
 import {
   RequestCard,
   type RequestCardState,
@@ -111,8 +112,9 @@ function inputType(field: InputRequestField): string {
   }
 }
 
-function sourceLabel(form: InputRequestForm): string {
-  return form.source.startsWith('mcp:') ? 'Tool server request' : 'Question';
+function sourceLabel(form: InputRequestForm, planReview: boolean): string {
+  if (form.source.startsWith('mcp:')) return 'Tool server request';
+  return planReview ? 'Plan review' : 'Question';
 }
 
 /**
@@ -130,9 +132,15 @@ function sourceLabel(form: InputRequestForm): string {
 export function InputRequestCard({
   form,
   draftKey,
+  planReview = false,
   onRespond,
 }: {
   form: InputRequestForm;
+  /**
+   * The request asks the person to review a plan the engine proposes
+   * (`toolRequestIsPlanReview`), not to answer a question.
+   */
+  planReview?: boolean;
   /**
    * Saves the non-secret answers on this device under this key while the
    * request is open. Absent: nothing is saved.
@@ -467,9 +475,16 @@ export function InputRequestCard({
   };
   const body = (
     <>
-      {form.message && (
-        <p className="input-request-card__message">{form.message}</p>
-      )}
+      {form.message &&
+        // An engine's own text renders as its chat answers do (Markdown, no
+        // raw HTML); a tool server's message stays plain text.
+        (form.source.startsWith('harness:') ? (
+          <div className="input-request-card__message input-request-card__message--markdown">
+            <LazyMarkdown skipHtml>{form.message}</LazyMarkdown>
+          </div>
+        ) : (
+          <p className="input-request-card__message">{form.message}</p>
+        ))}
       <p className="input-request-card__provenance">
         Your answer goes to {form.requester}. Share only what you would give it
         directly.
@@ -563,7 +578,7 @@ export function InputRequestCard({
         {sheet.open && (
           <RequestSheet
             title={title}
-            subtitle={sourceLabel(form)}
+            subtitle={sourceLabel(form, planReview)}
             onDismiss={sheet.dismiss}
             returnFocusTarget={sheet.triggerRef.current}
             actions={actions}
@@ -594,7 +609,7 @@ export function InputRequestCard({
     >
       <div className="input-request-card__heading">
         <strong>{title}</strong>
-        <span>{sourceLabel(form)}</span>
+        <span>{sourceLabel(form, planReview)}</span>
       </div>
       {body}
       <div className="input-request-card__footer">

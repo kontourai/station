@@ -1,0 +1,9 @@
+{
+  "revision": "941fb89f16e14a3898e30c3b52864a7831646b8e",
+
+  "notes": [
+    {"path":"docs/design/outside-agent-mcp-r4a-evidence.md","note":"Merge reconciliation for PR #4153: inspected the pairing-route-scopes.ts delta against origin/main. It only adds exact GET/POST Task review leaves to the existing orchestration scope family; outside-agent host-proof routes, credential audiences and the compiled release refusal are unchanged. The historical R4a transport/client/fault receipts and their no-release, no-HTTPS/passkey and multi-owner limits remain accurate as historical evidence; no new outside-agent execution is claimed.","inputs":["docs/design/outside-agent-mcp-r4a-evidence.md","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Merge reconciliation for PR #4153: inspected runtime-routes.ts and docs/reference/api.md deltas against origin/main and the personal TerminalSessions composition. Added TaskReviewModule imports, room-authority currentness and /api/tasks review mounts do not change the independent isPersonalHost terminal composition or its isOperatorInPersonNotAgent plus isRequestPrincipalCurrent admission. The API delta only appends Task review documentation; terminal requests and limits are unchanged. Existing personal-operator foundation and proposed transport/SDK/Ghostty/supervisor boundaries remain accurate. Source review only; no new PTY, remote, Windows or native qualification.","inputs":["docs/design/terminal.md","src-server/runtime/routes/runtime-routes.ts","docs/reference/api.md"]}
+  ]
+}

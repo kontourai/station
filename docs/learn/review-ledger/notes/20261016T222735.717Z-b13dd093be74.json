@@ -1,0 +1,11 @@
+{
+  "revision": "4d4710aef25e79669d5ea8b39b4ef40f4a999886",
+
+  "notes": [
+    {"path":".veritas/init-plans/documentation-maintenance.md","note":"Reviewed new attestation against historical documentation-maintenance activation: protected policy hashes and required documentation evidence remain unchanged; this attestation records owner-authorized delivery channel policy, not a new docs waiver.","inputs":[".veritas/init-plans/documentation-maintenance.md",".veritas/attestations/HEAD"]},
+
+    {"path":"docs/guides/documentation.md","note":"Reviewed authority/freshness guidance against new policy attestation; recorded review and generated source obligations remain intact. No documentation gate was removed or weakened.","inputs":["docs/guides/documentation.md",".veritas/attestations/HEAD"]},
+
+    {"path":"CLAUDE.md","note":"Imports AGENTS.md and preserves canonical governance block. Updated parent guidance distinguishes scheduled/tagged full qualification from independent Nightly usability.","inputs":["CLAUDE.md","AGENTS.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "83d57ad163de9d6338c0e8d5780924b1595a3419",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"tests/e2e-manifest.mjs adds tests/server-older-banner.spec.ts to the product bucket as a parallel-safe esbuild harness with no live instance; the bucket, lane and coverage descriptions here still hold and enumerate no specs that need updating.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/e2e-manifest.mjs"]}
+  ]
+}

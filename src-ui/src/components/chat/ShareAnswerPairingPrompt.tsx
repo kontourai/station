@@ -15,7 +15,7 @@ import { errorText } from '../../utils/errorText';
  * share". The host-side confirm step follows a public access request; it does
  * not create protected-route authority from a loopback position. Auto-
  * confirming here — under a per-answer button, to get past a 401 — would
- * functionally reopen, the hole this slice exists to close. The operator
+ * functionally reopen the hole this prompt exists to close. The operator
  * approves it themselves, on
  * the pairing surface, having seen what they are approving.
  *

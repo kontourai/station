@@ -36,10 +36,12 @@ const PUBLIC_QUERY_DOMAINS = [
   'devicePairingRequests',
   'diffComments',
   'featurePreviews',
+  'workloadBudgets',
   'flowRuns',
   'peerCredentials',
   'peerEnrollments',
   'personalLayouts',
+  'personalBoards',
   'pluginVisibility',
   'knowledgeStores',
   'mcpPromptRun',
@@ -49,6 +51,7 @@ const PUBLIC_QUERY_DOMAINS = [
   'operatingState',
   'plugins',
   'projectData',
+  'projectS3Sources',
   'projectTaskRooms',
   'proposedChanges',
   'pullRequests',
@@ -57,11 +60,16 @@ const PUBLIC_QUERY_DOMAINS = [
   'skillExperiences',
   'skills',
   'sshEnvironments',
+  'stationPeople',
   'stationUsage',
   'usageRollup',
   'systemRuntime',
   'taskGraph',
+  'taskMemory',
+  'taskReview',
   'taskRoomWork',
+  'telemetryDelivery',
+  'telemetryCompanion',
   'trustBundles',
   'veritasReadiness',
   'workflowTasks',
@@ -77,6 +85,16 @@ const PUBLIC_QUERY_DOMAINS = [
  * inline reason.
  */
 const INTERNAL_QUERY_DOMAINS: Record<string, string> = {
+  privateInsights:
+    'Published only from the documented private-insights-query subpath for the scoped personal Insights surface; keep private query validators and saved-view controls outside the eager root entry.',
+  projectRoomAgents:
+    'Agent request hooks are published through projectRooms on the documented project-rooms subpath, outside the eager root entry.',
+  taskRelationships:
+    'Task deliverable and canonical work-chat hooks are published from the documented task-relationships subpath; keep scoped relationship queries outside the eager root entry.',
+  projectRooms:
+    'shared Project room hooks are published only from the documented project-rooms subpath; keep the room stream and strict parsers outside the eager root entry.',
+  sessionStructuralSharing:
+    'shared cache-identity policy for session query hooks; not a public query or mutation.',
   catalogRequests:
     "backs catalog.ts's hooks internally; its raw fetchers are deliberately not public.",
   chatRuntimeCoding:
@@ -93,10 +111,14 @@ const INTERNAL_QUERY_DOMAINS: Record<string, string> = {
     'implementation detail folded into chatRuntime.ts via `export *`.',
   insightsResponse:
     'lazy response validator used by fetchInsights; keep the Insights-only schema out of the application entry.',
+  usageExport:
+    'published only from the documented `@kontourai/station-sdk/usage-export-query` subpath; keep protected export paging and its validator outside the eager root query barrel.',
   sessionSummaryNormalize:
     'lazy parser used only by the summary fetcher so strict persisted-data validation does not enter the application shell.',
   developerRuntime:
     'lazy-only developer-surface hooks, intentionally published only from the `@kontourai/station-sdk/developer-runtime` subpath to keep them out of the root entry bundle.',
+  runtimeEventContent:
+    'Lazy subpath `@kontourai/station-sdk/runtime-event-content` (out-of-line event content reads and the approval content gate), kept out of the first-paint barrel like action-operations.',
   actionOperations:
     'Activity-only operation query, intentionally published from the `@kontourai/station-sdk/action-operations` subpath to preserve the lazy Activity bundle boundary.',
   mobileDevices:
@@ -647,6 +669,24 @@ describe('sdk public barrel re-exports the Workspace Pane contract API (#1369/#1
         adaptation.retainedLayoutTab,
       );
     }
+  });
+
+  // Station shares the SDK ROOT with plugin bundles at runtime
+  // (`pluginSharedRuntime.ts`); a hook only on a subpath would be bundled into
+  // the plugin with its own React context and never see the host's. The Pane
+  // subpath carries the frame client and stays free of the provider module,
+  // which frame code compiled without JSX imports through it.
+  it('publishes the related-pane hook on the shared root only, and the frame client on the Pane subpath', async () => {
+    const [sdk, paneSdk] = await Promise.all([
+      import('../index'),
+      import('../workspace-pane'),
+    ]);
+    expect(typeof sdk.useRelatedPanes).toBe('function');
+    expect('useRelatedPanes' in paneSdk).toBe(false);
+    expect(sdk.UNSUPPORTED_RELATED_PANES).toBe(
+      paneSdk.UNSUPPORTED_RELATED_PANES,
+    );
+    expect(typeof paneSdk.createRelatedPanesPaneHost).toBe('function');
   });
 
   it('spells every Workspace Pane contract and adapter type in the SDK barrel', () => {

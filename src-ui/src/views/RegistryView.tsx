@@ -1,4 +1,3 @@
-import { useConnections } from '@kontourai/station-connect';
 import {
   type RegistryCatalogTab,
   useInstalledRegistryItemsQuery,
@@ -14,7 +13,6 @@ import {
 } from '@kontourai/station-sdk';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { Button } from '../components/Button';
-import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { KitCatalog } from '../components/registry/KitCatalog';
 import { MarketplaceSources } from '../components/registry/MarketplaceSources';
 import {
@@ -27,19 +25,17 @@ import {
   type RegistryLayoutAction,
 } from '../components/registry/RegistryLayoutActions';
 import { getRegistrySkillInstallRefusal } from '../components/registry/registryCatalogModel';
-import { useApiBase } from '../contexts/ApiBaseContext';
+import {
+  StationExtensionsAccess,
+  useStationExtensionsAccess,
+} from '../components/registry/StationExtensionsAccess';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useToast } from '../contexts/ToastContext';
 import { useShowSurface } from '../contexts/useShowSurface';
 import { usePermissions } from '../core/PermissionManager';
 import { pluginRegistry } from '../core/PluginRegistry';
-import {
-  reloadAfterRemotePluginBundleRevoke,
-  remotePluginBundlesAllowed,
-  setRemotePluginBundlesAllowed,
-  subscribeRemotePluginBundleConsent,
-} from '../core/remotePluginBundleConsent';
-import { usePlatformProfile } from '../platform/PlatformProfileContext';
+import { AgentToolCatalog } from './agent-editor/AgentToolCatalog';
+import { InstallPreviewExtensionAccess } from './plugin-management/InstallPreviewExtensionAccess';
 import { InstallPreviewModal } from './plugin-management/InstallPreviewModal';
 import {
   installedDependencyPermissions,
@@ -55,18 +51,21 @@ function registryInstallationKey(tab: RegistryCatalogTab, itemId: string) {
 
 export function RegistryView({
   initialTab,
+  toolPicker = false,
+  onInstalled,
+  installTarget,
 }: {
   initialTab?: RegistryCatalogTab;
+  toolPicker?: boolean;
+  onInstalled?: () => void;
+  installTarget?: string;
 } = {}) {
   const { navigate } = useNavigation();
   const { showToast } = useToast();
   // #928 C2a: "Open a Project" means Home by name; reveal the surface.
   const showSurface = useShowSurface();
-  const { isTauri } = usePlatformProfile();
-  const { apiBase } = useApiBase();
   const invalidateQuery = useInvalidateQuery();
-  const { activeConnection } = useConnections();
-  const activeConnectionId = activeConnection?.id ?? 'default';
+  const extensionAccess = useStationExtensionsAccess();
   const [activeTab, setActiveTab] = useState<RegistryCatalogTab>(
     initialTab ?? 'agents',
   );
@@ -78,19 +77,16 @@ export function RegistryView({
   }, [initialTab]);
   const selectTab = (tab: RegistryCatalogTab) => {
     setActiveTab(tab);
-    navigate(`/registry/${tab}`);
+    if (!toolPicker) navigate(`/registry/${tab}`);
   };
   const [message, setMessage] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(installTarget ?? '');
   const [selectedSource, setSelectedSource] = useState('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [inspectedSelection, setInspectedSelection] = useState<{
     tab: RegistryCatalogTab;
     item: RegistryItem;
   } | null>(null);
-  const [remoteBundleModal, setRemoteBundleModal] = useState<
-    'enable' | 'disable' | null
-  >(null);
   const [installationOverrides, setInstallationOverrides] = useState(
     () => new Map<string, boolean>(),
   );
@@ -116,10 +112,6 @@ export function RegistryView({
   const pluginRegistryStatus = useSyncExternalStore(
     pluginRegistry.subscribe,
     pluginRegistry.getLoadStatus,
-  );
-  const remoteBundlesAllowed = useSyncExternalStore(
-    subscribeRemotePluginBundleConsent,
-    () => remotePluginBundlesAllowed(activeConnectionId, apiBase),
   );
   const {
     data: availableData,
@@ -254,6 +246,7 @@ export function RegistryView({
   ) => ({
     onError: (error: Error) => setMessage(error.message),
     onSuccess: () => {
+      if (!isInstalled && tab === 'integrations') onInstalled?.();
       const installationKey = registryInstallationKey(tab, itemId);
       setInstallationOverrides((current) => {
         const next = new Map(current);
@@ -408,7 +401,7 @@ export function RegistryView({
         `Installed ${displayName}`,
         undefined,
         undefined,
-        // Review L7: named for what it DOES. It navigates to the installed
+        // Named for what it DOES. It navigates to the installed
         // plugin's detail page, where "What it adds" carries the action that
         // actually places the layout (and adds it outright when there is only
         // one project); calling it "Add to project" promised an add this button
@@ -466,6 +459,7 @@ export function RegistryView({
         // the new layout components register without depending on that
         // connection being up.
         await pluginRegistry.reload();
+        onInstalled?.();
       },
     };
     const variables = {
@@ -515,28 +509,8 @@ export function RegistryView({
     }
   };
 
-  const remoteBundlesSection = remoteBundlesAllowed ? (
-    <div className="page__message" role="status">
-      Remote extensions enabled for this Station on this device via security
-      override.{' '}
-      <button type="button" onClick={() => setRemoteBundleModal('disable')}>
-        Disable remote extensions
-      </button>
-    </div>
-  ) : pluginRegistryStatus.failure === 'remote-isolation' ? (
-    <div className="page__message" role="status">
-      Extensions are off for this remote Station on this device.{' '}
-      <button type="button" onClick={() => setRemoteBundleModal('enable')}>
-        Enable remote extensions for this Station…
-      </button>
-    </div>
-  ) : null;
-  // Elevation is keyed to the ACTIVE refusal: once consent is granted, the
-  // stale 'remote-isolation' status can linger until the reload completes,
-  // and the enabled-override row must not jump above the catalog then.
-  const remoteIsolationActive =
-    pluginRegistryStatus.failure === 'remote-isolation' &&
-    !remoteBundlesAllowed;
+  const remoteBundlesSection = <StationExtensionsAccess />;
+  const remoteIsolationActive = extensionAccess.blocked;
 
   return (
     <div className="registry-view">
@@ -554,71 +528,121 @@ export function RegistryView({
             </Button>
           </div>
         )}
-      <MarketplaceSources
-        selected={selectedSource}
-        onSelect={setSelectedSource}
-      />
-      <RegistryCatalog
-        model={{
-          activeTab,
-          search,
-          message,
-          isLoading: loadingAvailable && availableData === undefined,
-          loadError: availableError as Error | null,
-          isCheckingInstalled:
-            (loadingInstalled && installedData === undefined) ||
-            !!installedError,
-          installedStatusError: installedError as Error | null,
-          available,
-          filtered,
-          installedIds,
-          installationOverrides,
-          selectedItem,
-          selectedItemId,
-          selectedInstalled,
-          selectedActionPending:
-            (mutationPending && pendingId === selectedItemId) ||
-            (previewMutation.isPending &&
-              previewMutation.variables === selectedItemId),
-          layoutPendingId: layoutMutation.variables?.id,
-          layoutPending: layoutMutation.isPending,
-        }}
-        actions={{
-          setActiveTab: selectTab,
-          setSearch,
-          clearMessage: () => setMessage(null),
-          select: (id) => {
-            setSelectedId(id);
-            const item = available.find(
-              (item) => getRegistryItemId(item) === id,
-            );
-            if (item) setInspectedSelection({ tab: activeTab, item });
-          },
-          runAction,
-          runLayoutAction,
-          onUseLayout: (id) => {
-            setSelectedId(id);
-            setMessage(
-              'Choose a project, then select Add Layout to apply this ready layout.',
-            );
-          },
-          openSkill: (name) =>
-            navigate(`/guidance/${encodeURIComponent(name)}`, {
-              tab: 'skills',
-            }),
-          manageSkills: () => navigate('/guidance?tab=skills'),
-          managePlugins: () => navigate('/plugins'),
-          openProjects: () => showSurface('home'),
-          retryInstalled: () => {
-            void refetchInstalled();
-          },
-          renderKits: () => <KitCatalog />,
-        }}
-      />
+      {!toolPicker && (
+        <MarketplaceSources
+          selected={selectedSource}
+          onSelect={setSelectedSource}
+        />
+      )}
+      {installTarget ? (
+        <div>
+          <Button
+            variant="primary"
+            disabled={
+              previewMutation.isPending || mutationPending || !selectedItem
+            }
+            onClick={() => {
+              if (selectedItem)
+                runAction(
+                  selectedItem,
+                  getRegistryItemId(selectedItem),
+                  isInstalled(selectedItem, getRegistryItemId(selectedItem)),
+                );
+            }}
+          >
+            Review {selectedItem?.displayName || 'tool'} permissions
+          </Button>
+          {message && <p role="status">{message}</p>}
+        </div>
+      ) : toolPicker ? (
+        <AgentToolCatalog
+          tab={activeTab}
+          onTab={selectTab}
+          search={search}
+          onSearch={setSearch}
+          source={selectedSource}
+          onSource={setSelectedSource}
+          items={filtered}
+          loading={loadingAvailable && availableData === undefined}
+          error={availableError as Error | null}
+          message={message}
+          installed={isInstalled}
+          pendingId={
+            previewMutation.isPending ? previewMutation.variables : pendingId
+          }
+          pending={mutationPending || previewMutation.isPending}
+          onInstall={runAction}
+        />
+      ) : (
+        <RegistryCatalog
+          model={{
+            activeTab,
+            search,
+            message,
+            isLoading: loadingAvailable && availableData === undefined,
+            loadError: availableError as Error | null,
+            isCheckingInstalled:
+              (loadingInstalled && installedData === undefined) ||
+              !!installedError,
+            installedStatusError: installedError as Error | null,
+            available,
+            filtered,
+            installedIds,
+            installationOverrides,
+            selectedItem,
+            selectedItemId,
+            selectedInstalled,
+            selectedActionPending:
+              (mutationPending && pendingId === selectedItemId) ||
+              (previewMutation.isPending &&
+                previewMutation.variables === selectedItemId),
+            layoutPendingId: layoutMutation.variables?.id,
+            layoutPending: layoutMutation.isPending,
+          }}
+          actions={{
+            setActiveTab: selectTab,
+            setSearch,
+            clearMessage: () => setMessage(null),
+            select: (id) => {
+              setSelectedId(id);
+              const item = available.find(
+                (item) => getRegistryItemId(item) === id,
+              );
+              if (item) setInspectedSelection({ tab: activeTab, item });
+            },
+            runAction,
+            runLayoutAction,
+            onUseLayout: (id) => {
+              setSelectedId(id);
+              setMessage(
+                'Choose a project, then select Add Layout to apply this ready layout.',
+              );
+            },
+            openSkill: (name) =>
+              navigate(`/guidance/${encodeURIComponent(name)}`, {
+                tab: 'skills',
+              }),
+            manageSkills: () => navigate('/guidance?tab=skills'),
+            managePlugins: () => {
+              if (!toolPicker) navigate('/plugins');
+            },
+            openProjects: () => showSurface('home'),
+            retryInstalled: () => {
+              void refetchInstalled();
+            },
+            renderKits: () => <KitCatalog />,
+          }}
+        />
+      )}
       {!remoteIsolationActive && remoteBundlesSection}
       {pluginInstallPreview && (
         <InstallPreviewModal
           previewData={pluginInstallPreview.data}
+          extensionAccess={
+            <InstallPreviewExtensionAccess
+              preview={pluginInstallPreview.data}
+            />
+          }
           previewSkips={previewSkips}
           installPending={agentMutation.isPending || pluginMutation.isPending}
           onClose={() => setPluginInstallPreview(null)}
@@ -636,44 +660,6 @@ export function RegistryView({
           onConfirm={() => void confirmPluginInstall()}
         />
       )}
-      <ConfirmModal
-        isOpen={remoteBundleModal === 'enable'}
-        title="Enable remote extensions?"
-        message={`Remote plugin code will run with this entire app's authority, including other Stations' data, credentials reachable from this window, and these consent settings.${isTauri ? " On this device that includes the native bridge and this device's paired Station credentials." : ''} The toggle is stored per Station on this device, but the trust granted is app-wide. Enable this only for a Station server you fully control or trust.`}
-        confirmLabel="Enable remote extensions"
-        cancelLabel="Cancel"
-        variant="warning"
-        onConfirm={() => {
-          if (
-            setRemotePluginBundlesAllowed(activeConnectionId, apiBase, true)
-          ) {
-            setRemoteBundleModal(null);
-          } else {
-            setMessage("Couldn't enable — storage is unavailable.");
-          }
-        }}
-        onCancel={() => setRemoteBundleModal(null)}
-      />
-      <ConfirmModal
-        isOpen={remoteBundleModal === 'disable'}
-        title="Disable remote extensions?"
-        message="This disables remote extensions for this Station on this device. Already-executed bundle code cannot be unloaded, so Station will reload this window now."
-        confirmLabel="Disable and reload"
-        cancelLabel="Cancel"
-        variant="warning"
-        onConfirm={() => {
-          if (
-            setRemotePluginBundlesAllowed(activeConnectionId, apiBase, false)
-          ) {
-            reloadAfterRemotePluginBundleRevoke();
-          } else {
-            setMessage(
-              "Couldn't disable — storage is unavailable; remote extensions remain enabled",
-            );
-          }
-        }}
-        onCancel={() => setRemoteBundleModal(null)}
-      />
     </div>
   );
 }

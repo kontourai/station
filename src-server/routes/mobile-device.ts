@@ -1,4 +1,5 @@
 import {
+  type DeviceAgentReveal,
   type DeviceHostSummary,
   isMobileDeviceHostId,
   type MobileDevicePlatform,
@@ -11,7 +12,10 @@ import {
   DeviceSessionError,
   type DeviceSessionService,
 } from '../services/devices/device-session-service.js';
-import { DeviceHostBusyError } from '../services/devices/device-shares.js';
+import {
+  type DeviceAccessDeps,
+  DeviceHostBusyError,
+} from '../services/devices/device-shares.js';
 import {
   isValidMobileDeviceId,
   type LocalMobileDeviceHost,
@@ -70,6 +74,17 @@ export interface MobileDeviceRouteOptions {
    * route can tell who may touch which device, so every route refuses.
    */
   access?: DeviceAccess;
+  agentReveals?: {
+    projectAccess: Pick<
+      DeviceAccessDeps,
+      'authorizeProject' | 'resolveProject'
+    >;
+    list(
+      projectId: string,
+      conversationId: string,
+      principalId?: string,
+    ): Promise<DeviceAgentReveal[]>;
+  };
 }
 
 type SessionFailure =
@@ -161,6 +176,54 @@ export function createMobileDeviceRoutes(
       return c.json({ success: false, code: 'access-denied' }, 403);
     await next();
   });
+  app.get('/agent-reveals', async (c) => {
+    const source = options.agentReveals;
+    const slug = c.req.query('projectSlug');
+    const conversation = c.req.query('conversationId');
+    if (!source || !options.access) return c.json({ success: false }, 404);
+    if (
+      !slug ||
+      !conversation ||
+      !/^[A-Za-z0-9._:-]{1,200}$/.test(conversation)
+    )
+      return c.json({ success: false, code: 'invalid-request' }, 400);
+    const project = source.projectAccess.resolveProject(slug);
+    const actor = project
+      ? await source.projectAccess.authorizeProject(
+          c.req.raw,
+          project.id,
+          'view',
+        )
+      : undefined;
+    if (
+      !project ||
+      !actor ||
+      (actor.kind !== 'operator' && actor.kind !== 'project-admin')
+    )
+      return c.json({ success: false, code: 'access-denied' }, 403);
+    const reveals: DeviceAgentReveal[] = [];
+    for (const reveal of await source.list(
+      project.id,
+      conversation,
+      actor.kind === 'project-admin' ? actor.principalId : undefined,
+    )) {
+      const session = reveal.session;
+      if (
+        await options.access.mayAccessDevice(
+          c.req.raw,
+          session.platform,
+          session.deviceId,
+          'view',
+          session.hostId,
+        )
+      )
+        reveals.push(reveal);
+    }
+    if (!options.isRequestPrincipalCurrent(c.req.raw))
+      return c.json({ success: false, code: 'access-denied' }, 403);
+    return c.json({ success: true, data: { reveals } });
+  });
+
   // The pane's host picker: `local`, then each SSH device host (labels only).
   app.get('/hosts', async (c) => {
     const access = options.access;

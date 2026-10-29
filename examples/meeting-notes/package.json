@@ -16,7 +16,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@kontourai/ui": "^1.8.0"
+    "@kontourai/ui": "^1.19.0"
   },
   "peerDependencies": {
     "@kontourai/station-contracts": "*",

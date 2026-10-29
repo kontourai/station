@@ -22,7 +22,13 @@
 
     "src-server/services/orchestration/project-task-room-history.ts",
 
-    "src-server/services/orchestration/project-task-room-runtime.ts"
+    "src-server/services/orchestration/project-task-room-runtime.ts",
+
+    "src-server/services/orchestration/attached-session-follow-service.ts",
+
+    "src-server/services/orchestration/__tests__/attached-session-write-contention.test.ts",
+
+    "src-server/domain/migrations/023-project-task-room-attachments.ts"
   ],
 
   "checks": [

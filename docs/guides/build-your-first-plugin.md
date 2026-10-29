@@ -21,6 +21,17 @@ For a portable Workspace Pane declaration, also read
 explains identity, placement, provenance, renderer capabilities, and the
 standalone conformance command.
 
+## Build on Station's core
+
+An in-process plugin can import `useConfig`, `useModels`,
+`useConversations(agentSlug)`, and `useActiveChatState(dockId)` from the SDK.
+These hooks use Station's core queries and chat store; a plugin does not need
+to duplicate them or import app internals. `dockId` is the local chat entry ID,
+not a durable server Session ID. For read errors and loading state, use the
+explicit query hooks listed in the [SDK reference](../reference/sdk.md#default-host-bindings-and-custom-hosts).
+Use a Station release containing these bindings; installing a newer SDK alone
+does not add them to an older host.
+
 ## Start from npm
 
 Create the project and install the two published packages:

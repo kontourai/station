@@ -67,7 +67,8 @@ describe('HighlightedCodeBlock copy (station#3339)', () => {
     renderBlock();
 
     const button = copyButton();
-    expect(button.textContent).toBe('Copy');
+    // The shared copy glyph precedes the label, which stays the name.
+    expect(button.textContent?.trim()).toBe('Copy');
     fireEvent.click(button);
 
     // The trailing newline is stripped before the write, as before.

@@ -1,0 +1,7 @@
+{
+  "revision": "fbd23c522db78814b7e75d087045d762c08260ee",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed fixture-only correction after policy refusal: report tests now use existing trackTempDirs cleanup ownership rather than raw mkdtemp. All six report tests and test-temp-dir-ratchet pass; comparator/report semantics and documented signature/provenance limits unchanged. Earlier CI freshness and raw-temp failures preserved. No execution/capture reuse or baseline change.","inputs":["docs/guides/testing.md","scripts/__tests__/gallery-review-evidence.test.ts"]}
+  ]
+}

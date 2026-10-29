@@ -238,6 +238,26 @@ async function respondBindingMutation(
       throw error;
     });
   }
+  if (input.kind === 'instance-telemetry-destination') {
+    const allowed = ['kind', 'transport', 'destination', 'expectedRevision'];
+    if (Object.keys(input).some((key) => !allowed.includes(key)))
+      return c.json(
+        { success: false, error: 'Invalid telemetry destination grant.' },
+        400,
+      );
+    return respond(c, () =>
+      service[operation === 'bind' ? 'grant' : 'ungrant']({
+        id,
+        expectedRevision: input.expectedRevision as number,
+        grant: {
+          kind: 'instance-telemetry-destination',
+          transport: input.transport as 'product' | 'otel',
+          destination: input.destination as string,
+        },
+        ...(viewer ? { viewer } : {}),
+      }),
+    );
+  }
   if (input.kind !== 'acp-provider-header') {
     // Attaching a value to a command's environment chooses that command's
     // environment; detaching one only removes it.

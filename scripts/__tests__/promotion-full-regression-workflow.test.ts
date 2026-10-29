@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { JSON_SCHEMA, load } from 'js-yaml';
 import { describe, expect, test } from 'vitest';
+import { runnerProfile } from '../release-pipeline.mjs';
 import { FULL_REGRESSION_PHASES } from '../verification-lanes.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
@@ -19,6 +20,7 @@ type WorkflowStep = {
 };
 
 type WorkflowJob = {
+  concurrency?: { group: string; 'cancel-in-progress': boolean };
   if?: string;
   needs?: string | string[];
   uses?: string;
@@ -34,6 +36,11 @@ type WorkflowJob = {
 
 type Workflow = {
   on?: Record<string, any>;
+  concurrency?: {
+    group: string;
+    queue?: string;
+    'cancel-in-progress': boolean;
+  };
   jobs?: Record<string, WorkflowJob>;
 };
 
@@ -56,6 +63,22 @@ function githubExpression(expression: string): string {
 }
 
 describe('promotion full-regression workflow', () => {
+  test.each(['exclusive', 'process-heavy'])(
+    '%s installs verified pnpm without its redundant managed Node runtime',
+    (jobId) => {
+      const job = workflow('full-regression.yml').jobs?.[jobId] ?? {};
+      const setup = namedStep(job, 'Setup pinned pnpm');
+      expect(setup.uses).toBe(
+        'kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20',
+      );
+      expect(setup.with).toBeUndefined();
+      const steps = job.steps ?? [];
+      expect(steps.indexOf(setup)).toBeLessThan(
+        steps.findIndex((step) => step.run === 'npm run dependencies:ci'),
+      );
+    },
+  );
+
   test('qualifies every canonical phase against one immutable source without cancelling siblings', () => {
     const reusable = workflow('full-regression.yml');
     expect(Object.keys(reusable.on ?? {})).toEqual(['workflow_call']);
@@ -84,8 +107,6 @@ describe('promotion full-regression workflow', () => {
       'android-viewport',
     ]) {
       const job = jobs[id];
-      expect(job.needs).toBe('resolve');
-      expect(job.if).toBe("needs.resolve.outputs.reuse_run == ''");
       const checkout = job.steps?.find((step) =>
         step.uses?.startsWith('actions/checkout@'),
       );
@@ -101,6 +122,15 @@ describe('promotion full-regression workflow', () => {
         continue;
       }
       const run = namedStep(job, 'Run full-regression phases');
+      if (id === 'static' || id === 'process-heavy') {
+        const install = namedStep(job, 'Install pinned actionlint');
+        expect(install.env?.ACTIONLINT_SHA256).toMatch(/^[0-9a-f]{64}$/u);
+        expect(install.run).toContain('sha256sum --check --status');
+        expect(install.run).toContain('>> "$GITHUB_PATH"');
+        expect(job.steps?.indexOf(install)).toBeLessThan(
+          job.steps?.indexOf(run) ?? -1,
+        );
+      }
       expect(run.run?.trim()).toBe(
         'set -o pipefail\nread -r -a phases <<< "$PHASES"\nnode scripts/run-full-regression-phases.mjs "${phases[@]}" 2>&1 \\\n  | tee "$RUNNER_TEMP/full-regression.log"',
       );
@@ -178,6 +208,224 @@ describe('promotion full-regression workflow', () => {
     expect(attest).not.toHaveProperty('continue-on-error');
   });
 
+  test('every hosted process-heavy corpus caller installs the reviewed real parser before executing it', () => {
+    const reusable = workflow('full-regression.yml');
+    const staticJob = reusable.jobs?.static;
+    if (!staticJob) throw new Error('Missing static qualification job');
+    const pinned = namedStep(staticJob, 'Install pinned actionlint');
+    expect(pinned.run).toContain('sha256sum --check --status');
+    expect(pinned.run).toContain('"$RUNNER_TEMP/actionlint" >> "$GITHUB_PATH"');
+    for (const [job, command] of [
+      [
+        reusable.jobs?.['process-heavy'],
+        'node scripts/run-full-regression-phases.mjs',
+      ],
+      [
+        workflow('ci-extended.yml').jobs?.['coverage-shard'],
+        'node scripts/run-vitest-corpus.mjs',
+      ],
+    ] as const) {
+      if (!job) throw new Error('Missing process-heavy corpus caller');
+      const install = namedStep(job, 'Install pinned actionlint');
+      const { if: condition, ...provision } = install;
+      expect(provision).toEqual(pinned);
+      if (command.includes('run-vitest-corpus'))
+        expect(condition).toBe("matrix.id == 'process-heavy'");
+      else expect(condition).toBeUndefined();
+      const steps = job.steps ?? [];
+      expect(steps.indexOf(install)).toBeLessThan(
+        steps.findIndex((step) => step.run?.includes(command)),
+      );
+    }
+  });
+
+  test('qualifies coalesced main pushes without adding a packaging wave per merge', () => {
+    const main = workflow('main-qualification.yml');
+    expect(main.on?.push).toEqual({ branches: ['main'] });
+    expect(main.on?.schedule).toEqual([{ cron: '17 */6 * * *' }]);
+    const qualification = main.jobs?.qualification;
+    expect(qualification?.if).toBe("github.ref == 'refs/heads/main'");
+    expect(qualification?.with?.source_sha).toBe(
+      githubExpression('github.sha'),
+    );
+    const groupExpression = qualification?.concurrency?.group;
+    if (!groupExpression)
+      throw new Error('Main qualification admission is missing');
+    const group = (event: string, run: number) =>
+      Function(
+        'github',
+        'format',
+        `return (${groupExpression.slice(3, -2)});`,
+      )({ event_name: event, run_id: run }, (template: string, value: number) =>
+        template.replace('{0}', String(value)),
+      );
+    // A running push A and pending push B share their coalescing group.
+    expect(group('push', 1)).toBe(group('push', 2));
+    // A pending scheduled/manual request S must not be displaced by push B.
+    for (const event of ['schedule', 'workflow_dispatch']) {
+      expect(group(event, 3)).not.toBe(group('push', 2));
+      expect(group(event, 3)).not.toBe(group(event, 4));
+    }
+    expect(qualification?.concurrency?.['cancel-in-progress']).toBe(false);
+    // Evaluate the actual downstream admission condition at the event boundary.
+    // Push must never fan out delivery; source failure/skip must never do so.
+    const condition = main.jobs?.['delivery-validation'].if;
+    if (!condition) throw new Error('Delivery admission is missing');
+    for (const event of ['push', 'schedule', 'workflow_dispatch']) {
+      for (const result of ['success', 'failure', 'cancelled', 'skipped']) {
+        const allowed = Function(
+          'github',
+          'needs',
+          `return (${condition});`,
+        )({ event_name: event }, { qualification: { result } });
+        expect(allowed, `${event}/${result}`).toBe(
+          event !== 'push' && result === 'success',
+        );
+      }
+    }
+  });
+
+  test('bounds the workflow DAG to the admitted profile without canceling distinct queued sources', () => {
+    const reusable = workflow('full-regression.yml');
+    const delivery = workflow('delivery-validation.yml');
+    const scheduled = workflow('main-qualification.yml');
+    expect(scheduled).not.toHaveProperty('concurrency');
+    expect(scheduled.jobs?.qualification.concurrency).toEqual({
+      group: githubExpression(
+        "github.event_name == 'push' && 'station-main-qualification-push' || format('station-main-qualification-deliberate-{0}', github.run_id)",
+      ),
+      'cancel-in-progress': false,
+    });
+    expect(delivery.concurrency).toEqual({
+      group: 'station-background-compute',
+      queue: 'max',
+      'cancel-in-progress': false,
+    });
+    expect(reusable.concurrency).toEqual({
+      group: `\${{ inputs.capacity_class == 'background' && 'station-background-compute' || inputs.capacity_class == 'release' && 'station-release-qualification' || format('station-integration-qualification-{0}', inputs.source_sha) }}`,
+      queue: 'max',
+      'cancel-in-progress': false,
+    });
+    expect(workflow('ci.yml').jobs).not.toHaveProperty(
+      'merge-integration-full-regression',
+    );
+    for (const file of [
+      'release.yml',
+      'publish-release.yml',
+      'publish-packages.yml',
+    ]) {
+      const calls = Object.values(workflow(file).jobs ?? {}).filter(
+        (job) => job.uses === './.github/workflows/full-regression.yml',
+      );
+      expect(calls.length).toBeGreaterThan(0);
+      for (const call of calls)
+        expect(call.with?.capacity_class).toBe('release');
+    }
+    expect(
+      workflow('main-qualification.yml').jobs?.qualification.with
+        ?.capacity_class,
+    ).toBe('background');
+    const resolveSteps = reusable.jobs?.resolve.steps ?? [];
+    expect(
+      resolveSteps.some((step) =>
+        step.run?.includes('release-pipeline.mjs admission'),
+      ),
+    ).toBe(false);
+    expect(
+      resolveSteps.some((step) =>
+        step.run?.includes('release-pipeline.mjs profile'),
+      ),
+    ).toBe(true);
+    // Evaluate the real expression's supported string/boolean/format subset.
+    // This checks routing, not GitHub's hosted scheduling implementation.
+    const expression = reusable.concurrency?.group.slice(3, -2);
+    const group = (capacity_class: string, source_sha: string) =>
+      Function(
+        'inputs',
+        'format',
+        `return (${expression});`,
+      )({ capacity_class, source_sha }, (template: string, value: string) =>
+        template.replace('{0}', value),
+      );
+    for (const sha of ['a'.repeat(40), 'b'.repeat(40)]) {
+      expect(group('background', sha)).toBe(delivery.concurrency?.group);
+      expect(group('integration', sha)).not.toBe(delivery.concurrency?.group);
+      expect(group('release', sha)).not.toBe(delivery.concurrency?.group);
+    }
+    expect(group('integration', 'a'.repeat(40))).not.toBe(
+      group('integration', 'b'.repeat(40)),
+    );
+    expect(group('release', 'a'.repeat(40))).toBe(
+      group('release', 'b'.repeat(40)),
+    );
+    const jobs = reusable.jobs ?? {};
+    const continueSuites =
+      "always() && !cancelled() && needs.resolve.result == 'success' && needs.resolve.outputs.reuse_run == ''";
+    expect(jobs.exclusive).toMatchObject({
+      needs: ['resolve', 'static'],
+      if: continueSuites,
+    });
+    expect(jobs['android-viewport']).toMatchObject({
+      needs: ['resolve', 'exclusive'],
+      if: continueSuites,
+    });
+    const ids = Object.keys(jobs);
+    const predecessors = (id: string): Set<string> => {
+      const needs = jobs[id].needs ?? [];
+      const direct = typeof needs === 'string' ? [needs] : needs;
+      return new Set(
+        direct.flatMap((parent) => [parent, ...predecessors(parent)]),
+      );
+    };
+    expect(
+      ids.reduce(
+        (count, id) =>
+          count + (jobs[id].strategy?.matrix?.include?.length ?? 1),
+        0,
+      ),
+    ).toBe(11);
+    for (const [name, total, expectedPeak] of [
+      ['free', '20', 4],
+      ['expanded', '40', 7],
+      ['custom', '20', 3],
+    ] as const) {
+      const profile = runnerProfile({
+        STATION_QUALIFICATION_RUNNER_PROFILE: name,
+        STATION_HOSTED_TOTAL_SLOTS: total,
+        STATION_QUALIFICATION_ORDINARY_SLOTS: '1',
+        STATION_QUALIFICATION_PROCESS_HEAVY_SLOTS: '1',
+        STATION_INTEGRATION_RESERVE: '12',
+      });
+      // Enumerate runnable antichains: jobs related by needs cannot overlap.
+      // Matrix caps determine the weight of the two corpus jobs.
+      let peak = 0;
+      for (let mask = 1; mask < 2 ** ids.length; mask++) {
+        const active = ids.filter((_, index) => mask & (1 << index));
+        if (
+          active.some((id) =>
+            active.some((other) => predecessors(id).has(other)),
+          )
+        )
+          continue;
+        peak = Math.max(
+          peak,
+          active.reduce(
+            (sum, id) =>
+              sum +
+              (id === 'ordinary'
+                ? profile.ordinary
+                : id === 'process-heavy'
+                  ? profile.heavy
+                  : 1),
+            0,
+          ),
+        );
+      }
+      expect(peak, name).toBe(expectedPeak);
+      expect(profile.background, name).toBe(peak);
+    }
+  });
+
   test('requires an exact-source qualification receipt before promotion', () => {
     const retain = namedStep(
       workflow('full-regression.yml').jobs?.qualification ?? {},
@@ -237,64 +485,10 @@ describe('promotion full-regression workflow', () => {
     );
   });
 
-  test('gates the reusable native cohort and independent CLI on the same exact source', () => {
-    const nightly = workflow('nightly.yml');
-    const sourceGate = nightly.jobs?.['test-gate'] ?? {};
-    const full = nightly.jobs?.['full-regression'] ?? {};
-    expect(full.needs).toEqual(['test-gate']);
-    expect(full.uses).toBe('./.github/workflows/full-regression.yml');
-    expect(full.with?.source_sha).toBe(
-      githubExpression('needs.test-gate.outputs.source_sha'),
-    );
-    expect(
-      sourceGate.steps?.some(
-        (step) => step.name === 'Bind every Nightly leg to one main revision',
-      ),
-    ).toBe(true);
-    // Staging publishes nothing, so it may run beside the gate (#1453); the
-    // publishing cohort must not start until the receipt AND staging succeeded.
-    const staging = nightly.jobs?.['native-stage'] ?? {};
-    expect(staging.needs).toEqual(['test-gate']);
-    expect(staging.if).not.toContain('full-regression');
-    expect(staging.uses).toBe('./.github/workflows/nightly-native-stage.yml');
-    for (const id of ['native-cohort', 'nightly-cli']) {
-      const producer = nightly.jobs?.[id] ?? {};
-      expect(producer.if).toContain(
-        "needs['full-regression'].result == 'success'",
-      );
-      if (id === 'native-cohort') {
-        expect(producer.needs).toEqual([
-          'test-gate',
-          'full-regression',
-          'native-stage',
-        ]);
-        expect(producer.if).toContain(
-          "needs['native-stage'].result == 'success'",
-        );
-        expect(producer.uses).toBe(
-          './.github/workflows/nightly-native-cohort.yml',
-        );
-        expect(producer.with?.source_sha).toBe(
-          githubExpression('needs.test-gate.outputs.source_sha'),
-        );
-        expect(producer.secrets).toBe('inherit');
-      } else {
-        expect(producer.needs).toEqual(['test-gate', 'full-regression']);
-        const checkout = producer.steps?.find((step) =>
-          step.uses?.startsWith('actions/checkout@'),
-        );
-        expect(checkout?.with?.ref).toBe(
-          githubExpression('needs.test-gate.outputs.source_sha'),
-        );
-      }
-    }
-    expect(source('nightly.yml')).not.toContain('run: npm run full:regression');
-  });
-
   test('gates every tagged release producer before artifact work starts', () => {
     const release = workflow('release.yml');
     const full = release.jobs?.['full-regression'] ?? {};
-    expect(full.needs).toEqual(['preflight']);
+    expect(full.needs).toEqual(['preflight', 'advisory']);
     expect(full.uses).toBe('./.github/workflows/full-regression.yml');
     expect(full.with?.source_sha).toBe(
       githubExpression('needs.preflight.outputs.sha'),

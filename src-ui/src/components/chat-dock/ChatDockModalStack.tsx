@@ -9,6 +9,7 @@ import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import type { ProjectChatComposerDraft } from '../../lib/projectChatEvents';
 import type { SkillExperienceDraft } from '../../lib/skill-experience-draft';
 import type { ChatSession } from '../../types';
+import type { ApprovalMode } from '../../utils/approvalMode';
 import type { EffectiveModelSource } from '../../utils/execution';
 import type { ReplayCaptureSource } from '../chat/ReplayCaptureControls';
 import { LazyBoundary } from '../LazyBoundary';
@@ -64,7 +65,7 @@ interface ChatDockModalStackProps {
   projects: ProjectMetadata[];
   activeProjectSlug?: string | null;
   newChatProjectOverride?: {
-    slug: string;
+    slug: string | null;
     name: string;
     composerDraft?: ProjectChatComposerDraft;
   } | null;
@@ -73,6 +74,8 @@ interface ChatDockModalStackProps {
   newChatRequestEpoch?: number;
   newChatStartWithDefault?: boolean;
   newChatInitialPrompt?: string;
+  newChatTaskShaping?: boolean;
+  newChatInitialFiles?: File[];
   newChatSelection?: ComponentProps<typeof NewChatModal>['startSelection'];
   newChatHandoff?: ComponentProps<typeof NewChatModal>['handoff'];
   newChatSelectionInvalid?: boolean;
@@ -107,6 +110,11 @@ interface ChatDockModalStackProps {
     executionAgentId?: string,
     expectedDefinitionFingerprint?: string,
     executionOnCurrentStation?: boolean,
+    /** Files for the first message, staged by the chat that opens. */
+    initialFiles?: File[],
+    ambientContext?: string,
+    /** The Permissions chip's pick, queued on the chat that opens. */
+    approvalMode?: ApprovalMode,
   ) => void;
   onCloseNewChat: () => void;
   onNewTaskStarted?: (task: DelegatedTaskHandle, stationName: string) => void;
@@ -143,6 +151,8 @@ export function ChatDockModalStack({
   newChatRequestEpoch,
   newChatStartWithDefault,
   newChatInitialPrompt,
+  newChatTaskShaping,
+  newChatInitialFiles,
   newChatSelection,
   newChatHandoff,
   newChatSelectionInvalid,
@@ -198,6 +208,8 @@ export function ChatDockModalStack({
             requestAuthority,
             startWithDefault: newChatStartWithDefault,
             initialPrompt: newChatInitialPrompt,
+            taskShaping: newChatTaskShaping,
+            initialFiles: forkMode ? undefined : newChatInitialFiles,
             startSelection: forkMode ? undefined : newChatSelection,
             handoff: forkMode ? undefined : newChatHandoff,
             selectionInvalid: forkMode ? false : newChatSelectionInvalid,
@@ -208,8 +220,9 @@ export function ChatDockModalStack({
             projectIconBySlug,
             startSurface: true,
             recentChats,
-            activeProjectSlug:
-              newChatProjectOverride?.slug ?? activeProjectSlug,
+            activeProjectSlug: newChatProjectOverride
+              ? newChatProjectOverride.slug
+              : activeProjectSlug,
             onSelect: handleNewChatSelect,
             onClose: onCloseNewChat,
             onTaskStarted: onNewTaskStarted,

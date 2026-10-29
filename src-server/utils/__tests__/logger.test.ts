@@ -16,6 +16,7 @@ import {
 } from '../../__test-utils__/logger-capture.js';
 import {
   createServerLogStore,
+  getInstalledServerLogSink,
   installServerLogSink,
   resetServerLogSinkForTests,
 } from '../../services/infra/server-log-store.js';
@@ -43,6 +44,7 @@ function createTempDir(): string {
 /** Reads the single today-dated NDJSON file the store just wrote and parses
  * every line, in write order. */
 function readTodayLines(directory: string): any[] {
+  getInstalledServerLogSink()?.flushSync();
   const files = readdirSync(directory).filter((name) =>
     /^server-\d{4}-\d{2}-\d{2}\.ndjson$/.test(name),
   );
@@ -75,6 +77,18 @@ afterEach(() => {
 });
 
 describe('createLogger — level filtering and the store tee', () => {
+  it('does not traverse an uninstalled store context before writing stdout', () => {
+    let observations = 0;
+    const logger = createLogger({ name: 'stdout-only', level: 'info' });
+    logger.info('one traversal', {
+      get value() {
+        observations++;
+        return 'visible';
+      },
+    });
+    expect(observations).toBe(1);
+  });
+
   it('suppresses debug lines below the configured info level, but keeps info+', async () => {
     const directory = createTempDir();
     installServerLogSink({ directory });
@@ -484,7 +498,7 @@ describe('createLogger resolves STATION_LOG_LEVEL from creation, for EVERY logge
   it('a logger created with no explicit level honors STATION_LOG_LEVEL without its caller resolving it — the module-scope-logger shape used at ~57 call sites', () => {
     process.env.STATION_LOG_LEVEL = 'debug';
     // No `level` option at all — mirrors `createLogger({ name: 'config-loader' })`
-    // and the ~13 other module-scope call sites the review named.
+    // and the ~13 other module-scope call sites archive#1895 found.
     const logger = createLogger({ name: 'module-scope-style' });
     expect(logger.getLevel()).toBe('debug');
   });
@@ -532,7 +546,7 @@ describe('createLogger resolves STATION_LOG_LEVEL from creation, for EVERY logge
     const directory = createTempDir();
     installServerLogSink({ directory });
     process.env.STATION_LOG_LEVEL = 'warn';
-    // HIGH-1(a): createLogger resolves STATION_LOG_LEVEL itself, so both
+    // createLogger resolves STATION_LOG_LEVEL itself, so both
     // loggers already start at 'warn' (the env override), not the 'info'
     // passed here — proving the env win happens at creation, not just in
     // this guard.

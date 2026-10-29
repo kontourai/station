@@ -37,6 +37,7 @@ const h = vi.hoisted(() => ({
 
 vi.mock('../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
+  useHostRequestAuthorityScope: () => undefined,
 }));
 vi.mock('../../hooks/useFeatureSettings', () => ({
   useFeatureSettings: () => ({

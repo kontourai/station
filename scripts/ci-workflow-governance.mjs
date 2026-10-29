@@ -6,6 +6,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { JSON_SCHEMA, load } from 'js-yaml';
 import { FAST_CHECKS_PART_JOBS } from './lib/fast-checks-shards.mjs';
+import { FAST_CHECKS_PROVISIONAL_STEP } from './source-verification-policy.mjs';
 
 /**
  * This is intentionally a canonical YAML subset, not a general YAML parser.
@@ -418,7 +419,7 @@ export function findVerdictBearingContinueOnError(workflowText) {
 /** The admission guard of every fast-checks part job that needs `classify`. */
 export const REQUIRED_FAST_CHECKS_CONDITION =
   // biome-ignore lint/suspicious/noTemplateCurlyInString: literal reviewed GitHub Actions predicate.
-  "${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}";
+  "${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}";
 
 /**
  * The required `fast-checks` aggregator's guard (#2709): the same event
@@ -429,7 +430,7 @@ export const REQUIRED_FAST_CHECKS_CONDITION =
  */
 export const REQUIRED_FAST_CHECKS_AGGREGATE_CONDITION =
   // biome-ignore lint/suspicious/noTemplateCurlyInString: literal reviewed GitHub Actions predicate.
-  "${{ always() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}";
+  "${{ always() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}";
 
 /** The aggregator's base-controlled half: every part job must have succeeded. */
 /**
@@ -445,7 +446,7 @@ export const FAST_CHECKS_PART_RESULTS_RUN = `echo "$NEEDS" | jq -r 'to_entries[]
 LEGACY="$(echo "$NEEDS" | jq -r '.["fast-checks-plan"].outputs.legacy // ""')"
 case "$LEGACY" in
   false)
-    echo "$NEEDS" | jq -e '[to_entries[] | select(.key != "classify")] | length == ${FAST_CHECKS_PART_JOBS.length} and all(.value.result == "success")' > /dev/null
+    echo "$NEEDS" | jq -e '.["fast-checks-plan"].result == "success" and .["fast-checks-statics"].result == "success" and (.["fast-checks-shard"].result == "success" or (.["fast-checks-plan"].outputs.empty == "true" and .["fast-checks-shard"].result == "skipped"))' > /dev/null
     ;;
   true)
     echo "::warning::legacy candidate: fast-checks ran unsharded in fast-checks-plan"
@@ -481,12 +482,18 @@ export const FAST_CHECKS_PLANNED_STEP_IF =
  */
 export const FAST_CHECKS_SHARD_IF =
   // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
-  "${{ always() && !cancelled() && needs.fast-checks-plan.result == 'success' && needs.fast-checks-plan.outputs.legacy == 'false' }}";
+  "${{ always() && !cancelled() && needs.fast-checks-plan.result == 'success' && needs.fast-checks-plan.outputs.legacy == 'false' && needs.fast-checks-plan.outputs.empty != 'true' }}";
 export const FAST_CHECKS_AGGREGATE_STEP_IF =
   // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
   "${{ needs.fast-checks-plan.outputs.legacy != 'true' }}";
 export const FAST_CHECKS_AGGREGATE_RUN =
   'node scripts/fast-checks-shard.mjs aggregate --plan-dir="$RUNNER_TEMP/fast-checks-plan" --receipts-dir="$RUNNER_TEMP/fast-checks-receipts"';
+const FAST_CHECKS_AGGREGATE_STEP_ID = 'verify';
+export const FAST_CHECKS_PROVISIONAL_STEP_IF =
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+  "${{ steps.verify.outputs.provisional == 'true' }}";
+export const FAST_CHECKS_PROVISIONAL_RUN =
+  'echo "fast-checks deferred ci-fast/test-full; full regression is deferred to main and release qualification"';
 export const FAST_CHECKS_PLAN_RUN =
   'npm run fast-checks:shard -- plan --out="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json"';
 export const FAST_CHECKS_MATRIX =
@@ -513,6 +520,20 @@ function sameList(left, right) {
  * artifact upload (the same exemption as findVerdictBearingContinueOnError).
  * The plan and receipt uploads are verdict-bearing and checked by name.
  */
+export const MERGE_INTEGRATION_DECISION_STEP = Object.freeze({
+  name: 'Decide merge integration from the authoritative plan',
+  id: 'merge-decision',
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+  if: "${{ always() && !cancelled() && github.event_name == 'merge_group' }}",
+  env: {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+    HEAD_SHA: '${{ github.sha }}',
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+    PLAN_BASE: '${{ github.event.merge_group.base_sha }}',
+  },
+  run: 'node scripts/merge-queue-regression-decision.mjs --plan="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json" --head="$HEAD_SHA" --base="$PLAN_BASE"',
+});
+
 function swallowsFailure(job) {
   return (
     job?.['continue-on-error'] !== undefined ||
@@ -582,6 +603,20 @@ export function collectRequiredBrowserSmokeFindings(workflowText) {
     findings.push(
       'Required fast-checks must fail unless every part job succeeded and every shard receipt verifies.',
     );
+  // #1706: the source policy reads this step's name to mark a provisional
+  // green; renaming it or its trigger would silently drop that marking.
+  const provisional = steps(job).filter(
+    (step) => step?.name === FAST_CHECKS_PROVISIONAL_STEP,
+  );
+  if (
+    aggregate[0]?.id !== FAST_CHECKS_AGGREGATE_STEP_ID ||
+    provisional.length !== 1 ||
+    provisional[0].if !== FAST_CHECKS_PROVISIONAL_STEP_IF ||
+    provisional[0].run !== FAST_CHECKS_PROVISIONAL_RUN
+  )
+    findings.push(
+      'Required fast-checks must mark a deferred plan provisional for the source policy.',
+    );
 
   for (const partId of ['fast-checks-plan', 'fast-checks-statics']) {
     const part = jobs[partId];
@@ -626,10 +661,18 @@ export function collectRequiredBrowserSmokeFindings(workflowText) {
     JSON.stringify(plan?.outputs) !==
       JSON.stringify({
         legacy: FAST_CHECKS_LEGACY_OUTPUT,
+        'integration-ready':
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+          '${{ steps.merge-decision.outputs.integration-ready }}',
+        'full-regression':
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+          '${{ steps.merge-decision.outputs.full-regression }}',
         // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
         shards: '${{ steps.plan.outputs.shards }}',
         // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
         'shard-count': '${{ steps.plan.outputs.shard-count }}',
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        empty: '${{ steps.plan.outputs.empty }}',
       }) ||
     legacyLane.length !== 1 ||
     legacyLane[0].if !== FAST_CHECKS_LEGACY_STEP_IF ||

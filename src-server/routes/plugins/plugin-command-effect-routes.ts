@@ -38,6 +38,7 @@ import {
   type PluginCommandEffectService,
   PluginCommandEffectsUnavailableError,
 } from '../../services/plugins/plugin-command-effects.js';
+import { isRecord } from '../../utils/is-record.js';
 import { errorMessage } from '../schemas/schemas.js';
 import {
   operatorOnly,
@@ -72,10 +73,6 @@ const REFUSAL_STATUS: Record<
 };
 
 const OUTCOMES = new Set<string>(PLUGIN_COMMAND_EFFECT_OUTCOMES);
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
 
 async function readJson(c: Context): Promise<unknown> {
   try {

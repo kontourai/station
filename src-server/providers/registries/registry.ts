@@ -41,7 +41,6 @@ import type {
   IPluginRegistryProvider,
   IProviderAdapterRegistry,
   IPullRequestProvider,
-  ISettingsProvider,
   ISkillRegistryProvider,
   IUserDirectoryProvider,
   IUserIdentityProvider,
@@ -861,7 +860,16 @@ export function getIntegrationRegistryProvider(): IIntegrationRegistryProvider {
     ]);
   }
   providers.push(new BuiltinIntegrationRegistryProvider());
-  return createIntegrationRegistryProvider(providers);
+  return createIntegrationRegistryProvider(
+    providers,
+    undefined,
+    new Map(
+      entries.map((entry) => [
+        entry.provider as IIntegrationRegistryProvider,
+        entry.source,
+      ]),
+    ),
+  );
 }
 
 // ── Skill Registry ─────────────────────────────────────
@@ -1031,12 +1039,6 @@ export function getBrandingProvider(): IBrandingProvider {
   return (
     getProvider<IBrandingProvider>('branding') ?? new DefaultBrandingProvider()
   );
-}
-
-// ── Settings ───────────────────────────────────────────
-
-export function registerSettingsProvider(provider: ISettingsProvider) {
-  registerProvider('settings', provider);
 }
 
 // ── Notification ────────────────────────────────────────

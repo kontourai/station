@@ -1,25 +1,59 @@
 import {
   type CSSProperties,
+  type Ref,
   type RefObject,
   useCallback,
   useEffect,
+  useImperativeHandle,
   useRef,
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import { useMenuTriggerToggle } from '../../hooks/useMenuTriggerToggle';
+import { countWords } from '../../utils/text-display';
+import type { OverflowMenuHandle } from '../ActionOverflowMenu';
 import { Dialog } from '../Dialog';
 import { LazyBoundary } from '../LazyBoundary';
 import type { ForkTurnSource } from './fork-turn-source';
+import { MoreActionsGlyph } from './MoreActionsGlyph';
 import type { TurnProvenanceStatedInRow } from './TurnProvenanceCard';
 import { TurnProvenanceCard } from './TurnProvenanceCard';
 import './TurnActionsMenu.css';
 
+const loadConnectedAttachUserInputToTaskButton = () =>
+  import('./AttachAnswerToTaskButton').then((module) => ({
+    default: module.ConnectedAttachUserInputToTaskButton,
+  }));
 const loadConnectedAttachAnswerToTaskButton = () =>
   import('./AttachAnswerToTaskButton').then((module) => ({
     default: module.ConnectedAttachAnswerToTaskButton,
   }));
+
+/**
+ * The bubble's right-click opens its ⋯ (`OverflowMenuHandle`): the same rows,
+ * anchored to the same trigger. Focus goes to the trigger first so the menu
+ * returns it there on close. No trigger (the phone sheet's inline rows) means
+ * no menu to open. An open, not a toggle: asked again while the menu is open,
+ * it leaves focus in the menu.
+ */
+function useMenuHandle(
+  handleRef: Ref<OverflowMenuHandle> | undefined,
+  triggerRef: RefObject<HTMLButtonElement | null>,
+  isOpen: boolean,
+  openMenu: () => void,
+) {
+  useImperativeHandle(handleRef, () => ({
+    open: () => {
+      const trigger = triggerRef.current;
+      if (!trigger) return false;
+      if (isOpen) return true;
+      trigger.focus();
+      openMenu();
+      return true;
+    },
+  }));
+}
 
 const MENU_GAP_PX = 4;
 /**
@@ -90,7 +124,12 @@ function useFixedMenuPlacement(
 }
 
 export interface TurnActionsMenuProps {
-  taskTarget?: { sessionId: string; turnId: string; projectId?: string };
+  taskTarget?: {
+    sessionId: string;
+    turnId: string;
+    projectId?: string;
+    excerpt?: string;
+  };
   forkSource?: ForkTurnSource | null;
   onForkFromTurn?: (source: ForkTurnSource) => void;
   /**
@@ -106,37 +145,10 @@ export interface TurnActionsMenuProps {
     accountableHuman?: string | null;
     /** Share affordance, composed by the row and mounted only in the dialog. */
     shareContent?: React.ReactNode;
-    /** Basis affordance, composed by the row and mounted only in the dialog. */
-    basisContent?: React.ReactNode;
   };
   reasoning?: { content: string };
-}
-
-/**
- * Word count for the reasoning menu item, mirroring ReasoningSection's
- * Intl.Segmenter count with the same regex fallback.
- */
-function countReasoningWords(content: string): number {
-  const trimmed = content.trim();
-  if (!trimmed) return 0;
-  const Segmenter = (
-    Intl as typeof Intl & {
-      Segmenter?: new (
-        locale?: string,
-        options?: { granularity?: string },
-      ) => { segment(input: string): Iterable<{ isWordLike?: boolean }> };
-    }
-  ).Segmenter;
-  if (Segmenter) {
-    let count = 0;
-    for (const segment of new Segmenter(undefined, {
-      granularity: 'word',
-    }).segment(trimmed)) {
-      if (segment.isWordLike) count += 1;
-    }
-    return count;
-  }
-  return trimmed.match(/\S+/gu)?.length ?? 0;
+  /** Opens the menu from the bubble it belongs to (a right-click on it). */
+  handleRef?: Ref<OverflowMenuHandle>;
 }
 
 /** Lazy per-turn overflow, using the same focus primitive as app header menus. */
@@ -146,6 +158,7 @@ export default function TurnActionsMenu({
   onForkFromTurn,
   provenance,
   reasoning,
+  handleRef,
 }: TurnActionsMenuProps) {
   const [view, setView] = useState<
     'closed' | 'menu' | 'picker' | 'provenance' | 'reasoning'
@@ -157,9 +170,7 @@ export default function TurnActionsMenu({
   const closeDialog = () => setView('closed');
   const menuRef = useMenuFocus<HTMLDivElement>(open, close);
 
-  const reasoningWordCount = reasoning
-    ? countReasoningWords(reasoning.content)
-    : 0;
+  const reasoningWordCount = reasoning ? countWords(reasoning.content) : 0;
   const rowCount =
     (provenance ? 1 : 0) +
     (reasoning && reasoningWordCount > 0 ? 1 : 0) +
@@ -184,6 +195,10 @@ export default function TurnActionsMenu({
     },
     close,
   );
+  useMenuHandle(handleRef, triggerRef, open, () => {
+    place();
+    setView('menu');
+  });
 
   return (
     <span className="turn-footer__actions-menu">
@@ -196,7 +211,7 @@ export default function TurnActionsMenu({
         aria-expanded={open}
         {...triggerProps}
       >
-        …
+        <MoreActionsGlyph />
       </button>
       {/* The menu portals to the document — see `useFixedMenuPlacement` for
           why an in-bubble anchor cannot hold it. The picker and the #2211
@@ -227,7 +242,7 @@ export default function TurnActionsMenu({
                   role="menuitem"
                   onClick={() => setView('provenance')}
                 >
-                  Turn provenance
+                  Answer details
                 </button>
               )}
               {reasoning && reasoningWordCount > 0 && (
@@ -288,7 +303,6 @@ export default function TurnActionsMenu({
                 statedInRow={provenance.statedInRow}
                 accountableHuman={provenance.accountableHuman}
                 shareContent={provenance.shareContent}
-                basisContent={provenance.basisContent}
                 defaultOpen
               />
             </Dialog>
@@ -323,36 +337,141 @@ export default function TurnActionsMenu({
 }
 
 export interface UserMessageActionsMenuProps {
-  onCopy?: () => void;
   forkSource?: ForkTurnSource | null;
   onForkFromTurn?: (source: ForkTurnSource) => void;
   onNewChatFromMessage?: () => void;
+  /**
+   * The message was not sent: its Discard lives here, beside the bubble's
+   * other actions, rather than in a second overflow on the bubble.
+   */
+  onDiscardUnsent?: () => void;
+  /**
+   * A durable authored input that can be pinned to a Task. Listed here, like
+   * an answer's "Add to Task", instead of as a standing button on every
+   * user bubble. Not used inline: the phone sheet lists its own Task row.
+   */
+  taskTarget?: {
+    sessionId: string;
+    eventId: string;
+    projectId?: string;
+    excerpt?: string;
+  };
+  /**
+   * Already inside a surface of its own (the phone's message sheet): the rows
+   * render in place, with no second ⋯ to open.
+   */
+  inline?: boolean;
+  /** Opens the menu from the bubble it belongs to (a right-click on it). */
+  handleRef?: Ref<OverflowMenuHandle>;
 }
 
-/** Overflow for a user bubble: Copy plus fork or a new-chat seed (#2216). */
+/** Overflow for a user bubble: fork or a new-chat seed (#2216). Copy is the
+ * bubble's own icon button, never a second entry here. */
 export function UserMessageActionsMenu({
-  onCopy,
   forkSource,
   onForkFromTurn,
   onNewChatFromMessage,
+  onDiscardUnsent,
+  taskTarget,
+  inline = false,
+  handleRef,
 }: UserMessageActionsMenuProps) {
-  const [open, setOpen] = useState(false);
+  // 'picker': the Task dialog is open and this owner stays mounted (with the
+  // menu hidden) until it settles, exactly as the answer menu does.
+  const [view, setView] = useState<'closed' | 'menu' | 'picker'>('closed');
+  const open = view === 'menu';
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const close = () => setOpen(false);
+  const close = () =>
+    setView((current) => (current === 'menu' ? 'closed' : current));
   const menuRef = useMenuFocus<HTMLDivElement>(open, close);
   const canFork = Boolean(forkSource && onForkFromTurn);
+  const pinsToTask = Boolean(taskTarget) && !inline;
   const rowCount =
-    (onCopy ? 1 : 0) + (canFork ? 1 : onNewChatFromMessage ? 1 : 0);
+    (pinsToTask ? 1 : 0) +
+    (canFork ? 1 : onNewChatFromMessage ? 1 : 0) +
+    (onDiscardUnsent ? 1 : 0);
   const { position, place } = useFixedMenuPlacement(triggerRef, open, rowCount);
   const triggerProps = useMenuTriggerToggle(
     open,
     () => {
       place();
-      setOpen(true);
+      setView('menu');
     },
     close,
   );
+  useMenuHandle(handleRef, triggerRef, open, () => {
+    place();
+    setView('menu');
+  });
 
+  // In the ⋯ popup the rows are menu items (with the menu's arrow-key
+  // focus); inline in the phone's sheet they are plain buttons in a group,
+  // since nothing there gives them menu keyboard behaviour.
+  const rows = (close: () => void, itemRole?: 'menuitem') => (
+    <>
+      {pinsToTask && taskTarget && (
+        <LazyBoundary
+          load={loadConnectedAttachUserInputToTaskButton}
+          componentProps={{
+            ...taskTarget,
+            menuItem: true,
+            onOpen: () => setView('picker'),
+            onClose: () => setView('closed'),
+            returnFocusTarget: triggerRef.current,
+          }}
+          pending={null}
+          unavailable={() => (
+            <span className="turn-footer__unavailable-note">
+              Add to Task is unavailable.
+            </span>
+          )}
+        />
+      )}
+      {canFork && forkSource && onForkFromTurn && (
+        <button
+          type="button"
+          role={itemRole}
+          onClick={() => {
+            close();
+            onForkFromTurn(forkSource);
+          }}
+        >
+          Fork from here…
+        </button>
+      )}
+      {!canFork && onNewChatFromMessage && (
+        <button
+          type="button"
+          role={itemRole}
+          onClick={() => {
+            close();
+            onNewChatFromMessage();
+          }}
+        >
+          New chat from this message
+        </button>
+      )}
+      {onDiscardUnsent && (
+        <button
+          type="button"
+          role={itemRole}
+          className="turn-footer__overflow-item--danger"
+          onClick={() => {
+            close();
+            onDiscardUnsent();
+          }}
+        >
+          Discard unsent message
+        </button>
+      )}
+    </>
+  );
+  if (inline)
+    return (
+      <fieldset className="message-details__menu" aria-label="Message actions">
+        {rows(() => {})}
+      </fieldset>
+    );
   return (
     <span className="turn-footer__actions-menu">
       <button
@@ -364,12 +483,13 @@ export function UserMessageActionsMenu({
         aria-expanded={open}
         {...triggerProps}
       >
-        …
+        <MoreActionsGlyph />
       </button>
       {/* Portalled for the same reason as the answer menu above. */}
-      {open &&
+      {view !== 'closed' &&
         createPortal(
           <div
+            hidden={!open}
             ref={menuRef}
             className="turn-footer__overflow-menu"
             style={position}
@@ -383,42 +503,7 @@ export function UserMessageActionsMenu({
               }
             }}
           >
-            {onCopy && (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  close();
-                  onCopy();
-                }}
-              >
-                Copy
-              </button>
-            )}
-            {canFork && forkSource && onForkFromTurn && (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  close();
-                  onForkFromTurn(forkSource);
-                }}
-              >
-                Fork from here…
-              </button>
-            )}
-            {!canFork && onNewChatFromMessage && (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  close();
-                  onNewChatFromMessage();
-                }}
-              >
-                New chat from this message
-              </button>
-            )}
+            {rows(close, 'menuitem')}
           </div>,
           document.body,
         )}

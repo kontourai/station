@@ -9,6 +9,7 @@ import {
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
+import { EXTERNAL_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 import {
   type ApprovalMode,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
@@ -21,7 +22,10 @@ import {
   MUSE_TURN_TOTAL_TIMEOUT_CODE,
   readApprovalMode,
 } from '@kontourai/station-contracts/provider';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import type {
+  ProviderRuntimeEvent as CanonicalRuntimeEvent,
+  ProviderRuntimeErrorEvent,
+} from '@kontourai/station-contracts/runtime-events';
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
@@ -29,6 +33,12 @@ import {
   spawnOwnedChild,
   terminateProcessTree,
 } from '../../services/infra/process-utils.js';
+import {
+  commitEngineLaunch,
+  engineSessionTmpDir,
+  sessionTempRoot,
+  stampLaunchExit,
+} from '../../services/infra/session-tmpdir.js';
 import {
   adapterSessionStartDuration,
   adapterTurnDuration,
@@ -53,6 +63,7 @@ import {
   findCliBinary,
   resolveAugmentedPathSync,
 } from '../auth/cli-auth.js';
+import { providerFailureForCode } from '../provider-failure.js';
 import {
   AsyncEventQueue,
   type AsyncEventStreamOptions,
@@ -113,7 +124,11 @@ export interface MuseAdapterOptions {
    * suite has to import `node:child_process` (the Vitest resource manifest
    * gate would then demand an explicit process-heavy classification).
    */
-  processFactory?: (args: string[], cwd?: string) => MuseSpawnResult;
+  processFactory?: (
+    args: string[],
+    cwd?: string,
+    tmpDir?: string,
+  ) => MuseSpawnResult;
   now?: () => Date;
   /** Mints the durable `--session-id` handed to every turn of a session. */
   newSessionId?: () => string;
@@ -184,6 +199,8 @@ export interface MuseServeAdapterOptions {
   spawnHost?: (
     posture: MuseServeHostPosture,
     cwd?: string,
+    /** chat-host-images: the session's temp folder, the host's TMPDIR. */
+    tmpDir?: string,
   ) => MuseServeSpawnResult;
   terminateHost?: (spawned: MuseServeSpawnResult) => Promise<void>;
   /** Station's bound on an unanswered approval (default 30 minutes). */
@@ -360,7 +377,7 @@ export const MUSE_BACKGROUND_TASK_UNRESOLVED_OUTPUT =
 export const MUSE_PENDING_BACKGROUND_TASKS_MAX = 64;
 
 /**
- * #2300 (review M5): how long a send waits for the PREVIOUS turn's child to
+ * #2300: how long a send waits for the PREVIOUS turn's child to
  * exit when that turn has already ended. The server frees a turn at its
  * `turn.completed`, but the child can still take a moment to exit (~160 ms
  * observed after muse's follow-up run), and until it does it owns the
@@ -383,7 +400,6 @@ const MUSE_SETTLED_CHILD_EXIT_WAIT_MS = 5_000;
  */
 export class MuseTurnSlotReleasingError extends SendTurnRefusedError {
   readonly code = MUSE_TURN_SLOT_RELEASING_CODE;
-  readonly retryable = true;
   /**
    * Kept off the message: a client queue shows the refusal text to the user
    * verbatim, and a thread id there is noise. `sendTurn` logs it.
@@ -391,6 +407,7 @@ export class MuseTurnSlotReleasingError extends SendTurnRefusedError {
   constructor(readonly threadId: string) {
     super(
       "Muse is still closing the previous turn's process; try again in a moment.",
+      'busy',
     );
     this.name = 'MuseTurnSlotReleasingError';
   }
@@ -561,7 +578,7 @@ const MUSE_STDERR_TAIL_MAX_CHARS = 400;
 
 /**
  * Cap on the accumulated/reported turn text folded into a failed turn's
- * `runtime.error.message` (archive#3450 review). Sized the same order as
+ * `runtime.error.message` (archive#3450). Sized the same order as
  * `MUSE_STDERR_TAIL_MAX_CHARS` so the two DETAILS this file appends —
  * `outputTextDetail` (this bound) and `stderrDetail` — total <= 900 chars
  * and can never together blow `runtime-auth-health-monitor.ts`'s
@@ -578,9 +595,9 @@ const MUSE_STDERR_TAIL_MAX_CHARS = 400;
  * either way — but only the first bound is exact.
  *
  * This bounds only those two appended details. It does NOT bound the
- * `outcome.error.message` PREFIX they are appended to — a second archive#3450
- * review round found that prefix unbounded at the `muse-terminal-not-completed`
- * call site (`effect.terminal`/`effect.reason` interpolated verbatim), which
+ * `outcome.error.message` PREFIX they are appended to — that prefix was once
+ * unbounded at the `muse-terminal-not-completed` call site (archive#3450;
+ * `effect.terminal`/`effect.reason` interpolated verbatim), which
  * `MUSE_TERMINAL_FIELD_MAX_CHARS` bounds separately, below.
  */
 const MUSE_OUTPUT_TEXT_DETAIL_MAX_CHARS = 500;
@@ -588,7 +605,7 @@ const MUSE_OUTPUT_TEXT_DETAIL_MAX_CHARS = 500;
 /**
  * Cap on `effect.terminal`/`effect.reason` when interpolated into
  * `muse-terminal-not-completed`'s `runtime.error.message` prefix
- * (archive#3450 review round 2). Both come from `extractString`
+ * (archive#3450). Both come from `extractString`
  * (`muse-adapter-events.ts:17-19`), a bare `typeof value === 'string'` with
  * no length cap of its own — so either field can carry up to
  * `MUSE_STDOUT_BUFFER_MAX_CHARS` (1,048,576) chars of child-controlled JSONL.
@@ -605,7 +622,7 @@ const MUSE_TERMINAL_FIELD_MAX_CHARS = 200;
  * The terminal outcome `settleTurn` publishes exactly one event for.
  *
  * A discriminated union rather than one object with optional `aborted`/
- * `error` flags (archive#3450 review): the old shape let a caller pass both
+ * `error` flags (archive#3450): the old shape let a caller pass both
  * `aborted: true` and `error`, which nothing checked — the union makes
  * "exactly one of aborted/error/completed" a compile-time property of every
  * call site instead of a comment asserting it holds.
@@ -647,7 +664,12 @@ type MuseTurnSettleOutcome =
       outputText?: string;
     };
 
-function createMuseProcess(args: string[], cwd?: string): MuseSpawnResult {
+function createMuseProcess(
+  args: string[],
+  cwd?: string,
+  /** A session's own Station-owned TMPDIR (`session-tmpdir.ts`). */
+  tmpDir?: string,
+): MuseSpawnResult {
   const binary = findCliBinary('muse') ?? 'muse';
   // Mirrors the Codex spawn recipe (windowsHide + detached + piped stdio +
   // a Station-owned TMPDIR), routed through `spawnOwnedChild` so a per-turn
@@ -659,7 +681,7 @@ function createMuseProcess(args: string[], cwd?: string): MuseSpawnResult {
     // off the service PATH can find its interpreter (see spawnCodexProcess).
     env: childProcessEnvironment({
       PATH: resolveAugmentedPathSync(),
-      TMPDIR: ensureEngineSpawnTmpDir(),
+      TMPDIR: tmpDir ?? ensureEngineSpawnTmpDir(),
     }),
     stdio: ['pipe', 'pipe', 'pipe'],
   });
@@ -684,6 +706,7 @@ function createMuseServeHost(
   posture: MuseServeHostPosture,
   cwd?: string,
   dataHome?: string,
+  tmpDir?: string,
 ): MuseServeSpawnResult {
   const binary = findCliBinary('muse') ?? 'muse';
   if (dataHome) mkdirSync(dataHome, { recursive: true });
@@ -694,7 +717,7 @@ function createMuseServeHost(
       cwd,
       env: childProcessEnvironment({
         PATH: resolveAugmentedPathSync(),
-        TMPDIR: ensureEngineSpawnTmpDir(),
+        TMPDIR: tmpDir ?? ensureEngineSpawnTmpDir(),
         ...museServeEnvOverrides(dataHome),
       }),
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -817,6 +840,7 @@ export class MuseAdapter implements ProviderAdapterShape {
   readonly metadata: ProviderAdapterMetadata;
   private static readonly baseMetadata = {
     displayName: 'Muse Code',
+    durability: EXTERNAL_ENGINE_DURABILITY,
     continuity: { resume: 'none', fork: 'none', rewind: 'none' },
     builtin: true,
     engineId: engineId('muse'),
@@ -839,6 +863,7 @@ export class MuseAdapter implements ProviderAdapterShape {
   private readonly processFactory: (
     args: string[],
     cwd?: string,
+    tmpDir?: string,
   ) => MuseSpawnResult;
   private readonly now: () => Date;
   private readonly newSessionId: () => string;
@@ -1081,6 +1106,9 @@ export class MuseAdapter implements ProviderAdapterShape {
     }
     const startedAt = Date.now();
     const requestedApprovalMode = readApprovalMode(input.modelOptions);
+    // chat-host-images: prepared once, here; the serve host and every exec
+    // turn get this one folder, and none is created later in the session.
+    const sessionTmpDir = engineSessionTmpDir(input.threadId);
     // #2452: a `muse serve` host first, when this runtime enables it. Any
     // failure to use it (no such subcommand, a failed handshake, a schema
     // this Station has not verified, a refused session start) falls back to
@@ -1091,7 +1119,11 @@ export class MuseAdapter implements ProviderAdapterShape {
       | undefined;
     let serveUnavailable: string | undefined;
     if (this.options.serve && this.providerOverride !== 'echo') {
-      const candidate = this.createServeSession(input.threadId, input.cwd);
+      const candidate = this.createServeSession(
+        input.threadId,
+        input.cwd,
+        sessionTmpDir,
+      );
       try {
         serveStarted = await candidate.start({
           ...(input.cwd ? { cwd: input.cwd } : {}),
@@ -1138,8 +1170,22 @@ export class MuseAdapter implements ProviderAdapterShape {
       modelId: input.modelId,
       stopped: false,
       ...(serve ? { serve } : {}),
+      ...(sessionTmpDir ? { tmpDir: sessionTmpDir } : {}),
     };
     this.sessions.set(input.threadId, record);
+    // chat-host-images: the folder prepared at the start is recorded now that
+    // this record is the thread's session. An exec session spawns per turn,
+    // after the first turn's instruction is composed, so recording it here is
+    // what lets that instruction name it.
+    commitEngineLaunch(
+      input.threadId,
+      sessionTmpDir ? { own: sessionTmpDir } : undefined,
+    );
+    // The folder may have gone while the serve host started (an earlier
+    // session's queued removal); exec turns then get no session folder rather
+    // than a TMPDIR that does not exist.
+    if (sessionTmpDir && sessionTempRoot(input.threadId) !== sessionTmpDir)
+      delete record.tmpDir;
     const transportMetadata = serveStarted
       ? {
           museTransport: 'serve',
@@ -1250,18 +1296,19 @@ export class MuseAdapter implements ProviderAdapterShape {
   private createServeSession(
     threadId: string,
     cwd: string | undefined,
+    tmpDir: string | undefined,
   ): MuseServeSession {
     const serve = this.options.serve ?? {};
     const spawnHost =
       serve.spawnHost ??
-      ((posture: MuseServeHostPosture, hostCwd?: string) =>
-        createMuseServeHost(posture, hostCwd, serve.dataHome));
+      ((posture: MuseServeHostPosture, hostCwd?: string, hostTmpDir?: string) =>
+        createMuseServeHost(posture, hostCwd, serve.dataHome, hostTmpDir));
     return new MuseServeSession({
       threadId,
       now: this.now,
       publish: (event) => this.publish(event),
       ...(this.options.logger ? { logger: this.options.logger } : {}),
-      spawnHost: (posture) => spawnHost(posture, cwd),
+      spawnHost: (posture) => spawnHost(posture, cwd, tmpDir),
       terminateHost: serve.terminateHost ?? terminateMuseServeHost,
       newCommandId: serve.newCommandId ?? (() => museUuidV7()),
       approvalTimeoutMs: resolveMuseSupervisionBound(
@@ -1292,13 +1339,16 @@ export class MuseAdapter implements ProviderAdapterShape {
     if (record.stopped) {
       throw this.refuseSend(
         input.threadId,
-        new SendTurnRefusedError('This Muse session is stopped.'),
+        new SendTurnRefusedError(
+          'This Muse session is stopped.',
+          'session_gone',
+        ),
       );
     }
     if (record.serve) return this.sendServeTurn(record, record.serve, input);
     // The slot is held until the child EXITS, not until the turn settles: two
     // `muse exec` processes must never run concurrently against one
-    // `--session-id`. #2300 (review M5): the server frees a turn at its
+    // `--session-id`. #2300: the server frees a turn at its
     // terminal event, so a queued send can arrive while the previous child
     // is still exiting; that is waited out briefly, not refused.
     const previous = record.activeTurn;
@@ -1311,7 +1361,10 @@ export class MuseAdapter implements ProviderAdapterShape {
       if (record.stopped) {
         throw this.refuseSend(
           input.threadId,
-          new SendTurnRefusedError('This Muse session is stopped.'),
+          new SendTurnRefusedError(
+            'This Muse session is stopped.',
+            'session_gone',
+          ),
         );
       }
     }
@@ -1337,6 +1390,7 @@ export class MuseAdapter implements ProviderAdapterShape {
           input.threadId,
           new SendTurnRefusedError(
             'Station could not confirm that the previous Muse process stopped. It will try stopping it again; this message can be sent again after that.',
+            'conflict',
           ),
         );
       }
@@ -1349,6 +1403,7 @@ export class MuseAdapter implements ProviderAdapterShape {
         input.threadId,
         new SendTurnRefusedError(
           'This Muse session already has an active turn.',
+          'busy',
         ),
       );
     }
@@ -1399,7 +1454,7 @@ export class MuseAdapter implements ProviderAdapterShape {
 
     let spawned: MuseSpawnResult;
     try {
-      spawned = this.processFactory(args, record.cwd);
+      spawned = this.processFactory(args, record.cwd, record.tmpDir);
     } catch (error) {
       cleanupImages();
       throw error;
@@ -1463,7 +1518,7 @@ export class MuseAdapter implements ProviderAdapterShape {
     this.attachProcess(record, turn);
     this.armTurnDeadlines(record, turn);
 
-    // Independent review MEDIUM-1: carries the server-owned
+    // Carries the server-owned
     // `firstTurnInstructionsComposed` marker (reserved metadata, stripped
     // from any caller-supplied value) onto THIS turn's own persisted
     // record — see the constant's doc comment in provider.ts — so the
@@ -1750,6 +1805,9 @@ export class MuseAdapter implements ProviderAdapterShape {
   }
 
   private publish(event: CanonicalRuntimeEvent): void {
+    // chat-host-images: which launch this exit ends, taken now (see
+    // `stampLaunchExit`).
+    stampLaunchExit(event);
     this.events.push(event);
   }
 
@@ -2108,10 +2166,10 @@ export class MuseAdapter implements ProviderAdapterShape {
     // deltas streamed — appending it would duplicate what the transcript
     // already rendered. On the failure branch this is that text's only
     // remaining carrier (`settleTurn`'s `outputTextDetail` folds it into
-    // `runtime.error.message` — archive#3450 review).
+    // `runtime.error.message` — archive#3450).
     const outputText =
       turn.outputText.length > 0 ? turn.outputText : (effect.text ?? undefined);
-    // Bounded (archive#3450 review round 2 — MUSE_TERMINAL_FIELD_MAX_CHARS):
+    // Bounded (archive#3450 — MUSE_TERMINAL_FIELD_MAX_CHARS):
     // `effect.terminal`/`effect.reason` are child-controlled JSONL with no
     // length cap of their own, and this message's PREFIX is not covered by
     // `outputTextDetail`'s/`stderrDetail`'s bounds.
@@ -2179,7 +2237,7 @@ export class MuseAdapter implements ProviderAdapterShape {
 
   /**
    * Bounded, SCRUBBED formatting of turn text muse had produced or reported
-   * before a failure, for `runtime.error.message` (archive#3450 review).
+   * before a failure, for `runtime.error.message` (archive#3450).
    *
    * Two of the four `error`-outcome call sites compute and pass
    * `outputText` — `handleStdoutLine`'s non-`completed` `run_terminal`
@@ -2195,7 +2253,7 @@ export class MuseAdapter implements ProviderAdapterShape {
    * durable projection already reconstructed from them, but including it is
    * harmless (bounded, same as the stderr tail below).
    *
-   * `redactSecrets` (archive#3450 review round 2): `stderrDetail` scrubs
+   * `redactSecrets` (archive#3450): `stderrDetail` scrubs
    * because "auth failures are exactly the output most likely to echo a
    * credential back" — and this detail lands in the exact same
    * `runtime.error.message` string, at failure time, from a `run_terminal`
@@ -2225,7 +2283,7 @@ export class MuseAdapter implements ProviderAdapterShape {
   /**
    * Bounds `effect.terminal`/`effect.reason` before they are interpolated
    * into `muse-terminal-not-completed`'s `runtime.error.message` PREFIX
-   * (archive#3450 review round 2 — see `MUSE_TERMINAL_FIELD_MAX_CHARS`).
+   * (archive#3450 — see `MUSE_TERMINAL_FIELD_MAX_CHARS`).
    * Head-truncated, not tail: unlike `outputTextDetail`'s free-form assistant
    * text (where the most RECENT content is the more diagnostic end), these
    * are short discriminator-shaped fields, so the front of an oversized value
@@ -2260,7 +2318,7 @@ export class MuseAdapter implements ProviderAdapterShape {
    * for a turn that failed. See bedrock-adapter.ts's and ollama-adapter.ts's
    * `publishTurnFailure` (archive#3442), which this mirrors.
    *
-   * `MuseTurnSettleOutcome`'s discriminated union (archive#3450 review) is
+   * `MuseTurnSettleOutcome`'s discriminated union (archive#3450) is
    * what makes "exactly one of `turn.aborted` / `runtime.error` /
    * `turn.completed` per turn" true here: a caller cannot construct an
    * `outcome` that is both `aborted` and `error`, so this `switch` is
@@ -2390,6 +2448,7 @@ export class MuseAdapter implements ProviderAdapterShape {
           threadId: record.externalThreadId,
           createdAt: nowIso,
           method: 'runtime.error',
+          ...providerFailureForCode(outcome.error.code),
           severity: 'error',
           turnId: turn.turnId,
           // The bounded output-text detail and stderr tail ride the error
@@ -2399,7 +2458,7 @@ export class MuseAdapter implements ProviderAdapterShape {
           message: `${outcome.error.message}${this.outputTextDetail(outcome.outputText)}${outcome.omitStderr ? '' : this.stderrDetail(turn)}`,
           code: outcome.error.code,
           retriable: false,
-        });
+        } satisfies ProviderRuntimeErrorEvent);
         break;
       case 'completed':
         this.publish({
@@ -2754,7 +2813,7 @@ export class MuseAdapter implements ProviderAdapterShape {
   }
 
   /**
-   * #2300 (review M5): waits, bounded by
+   * #2300: waits, bounded by
    * {@link MUSE_SETTLED_CHILD_EXIT_WAIT_MS}, for a settled turn's child to
    * exit and free the slot. Resolves either way; the caller re-checks.
    */

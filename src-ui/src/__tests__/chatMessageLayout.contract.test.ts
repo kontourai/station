@@ -115,20 +115,23 @@ describe('chat message responsive layout contract (station#4241/#4244)', () => {
     expect(actions).toContain('flex: 0 0 auto');
     // ...and the responsive half: at <=480px the footer is a column, so the
     // cluster moves to the reading edge rather than staying at the far one.
+    // Since the #926 amendment the cluster is `.turn-footer__bar` (the
+    // at-rest Basis chip plus the hover-revealed actions row), so the bar is
+    // what the column aligns.
     //
     // `.some(...)` over the 480px blocks is order-blind on purpose, and that
     // is safe only because a sibling case pins the COUNT: 'narrow screens keep
     // the footer actions at the reading edge' asserts exactly one 480px block
-    // declares `.turn-footer__actions`. Without that pin, a second block
+    // declares `.turn-footer__bar`. Without that pin, a second block
     // declaring the same selector later -- which would win the cascade -- could
     // contradict this one and `.some` would still be satisfied.
     expect(
       atRules(chatCss, '@media (max-width: 480px)').some((body) =>
-        /\.turn-footer \.turn-footer__actions\s*\{[^}]*align-self:\s*flex-start;/s.test(
+        /\.turn-footer \.turn-footer__bar\s*\{[^}]*align-self:\s*flex-start;/s.test(
           body,
         ),
       ),
-      'the 480px block moves .turn-footer__actions to align-self: flex-start',
+      'the 480px block moves .turn-footer__bar to align-self: flex-start',
     ).toBe(true);
     expect(task).toContain('align-items: flex-start');
     const taskTrigger = rule(taskPicker, '.task-picker__trigger');
@@ -164,14 +167,15 @@ describe('chat message responsive layout contract (station#4241/#4244)', () => {
     // chat.css has more than one 480px block, so select the one that carries
     // the rule rather than the first one that matches the query text.
     const narrow = atRules(chatCss, '@media (max-width: 480px)').filter(
-      (body) => body.includes('.turn-footer__actions {'),
+      (body) => body.includes('.turn-footer__bar {'),
     );
-    expect(
-      narrow,
-      'no 480px block declares .turn-footer__actions',
-    ).toHaveLength(1);
+    expect(narrow, 'no 480px block declares .turn-footer__bar').toHaveLength(1);
     expect(narrow[0]).toMatch(
-      /\.turn-footer \.turn-footer__actions\s*\{[^}]*align-self:\s*flex-start;/s,
+      /\.turn-footer \.turn-footer__bar\s*\{[^}]*align-self:\s*flex-start;/s,
+    );
+    // The bar sits at the far edge on wider screens.
+    expect(chatCss).toMatch(
+      /\n\.turn-footer__bar \{[^}]*align-self: flex-end;/s,
     );
     // Anchored at column 0: `rule()` matches by first occurrence, and the
     // nested 480px copy above now precedes the base rule in the file.
@@ -185,13 +189,13 @@ describe('chat message responsive layout contract (station#4241/#4244)', () => {
       /\n\.turn-footer__actions \{[^}]*flex-wrap: nowrap;/s,
     );
     const narrowRuleStart = chatCss.lastIndexOf(
-      '.turn-footer .turn-footer__actions {',
+      '.turn-footer .turn-footer__bar {',
     );
     expect(narrowRuleStart).toBeGreaterThanOrEqual(0);
     const narrowRuleEnd = chatCss.indexOf('}', narrowRuleStart);
     expect(narrowRuleEnd).toBeGreaterThan(narrowRuleStart);
     expect(chatCss.slice(narrowRuleEnd + 1)).not.toMatch(
-      /\.turn-footer \.turn-footer__actions\s*\{[^}]*align-self:/s,
+      /\.turn-footer \.turn-footer__bar\s*\{[^}]*align-self:/s,
     );
   });
 

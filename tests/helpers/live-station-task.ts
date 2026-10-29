@@ -99,6 +99,30 @@ async function waitForReady(
   throw new Error(`${label} did not become ready: ${lastError}`);
 }
 
+/** Compile the exact disposable instance before its process-start deadline begins. */
+export async function prepareLiveStationBuild(
+  live: LiveStation,
+): Promise<void> {
+  await runCommand(
+    ...stationCommand([
+      'build',
+      `--instance=${live.instance}`,
+      `--base=${live.home}`,
+      `--port=${live.serverPort}`,
+      `--ui-port=${live.uiPort}`,
+    ]),
+    {
+      timeoutMs: 180_000,
+      env: {
+        ...process.env,
+        PATH: `${NODE_BIN}${delimiter}${process.env.PATH ?? ''}`,
+        STATION_ROOT: stationRootForLiveHome(live.home),
+        STATION_HOME: live.home,
+      },
+    },
+  );
+}
+
 export async function startStation(
   live: LiveStation,
   clean: boolean,
@@ -351,7 +375,7 @@ export async function createTaskFromProject(
   ).toHaveURL((url) => url.pathname === `/projects/${slug}`);
   const gitStatus = await apiJson<{
     success: boolean;
-    data: { isRepo: boolean; branch?: string };
+    data: { isRepo: boolean; branch?: string; repoRoot?: string };
   }>(
     page,
     // Coding reads are confined to a named Project since #2471; a bare path
@@ -362,6 +386,9 @@ export async function createTaskFromProject(
     success: true,
     data: { isRepo: true, branch },
   });
+  const workspace = page.locator('details.project-page__workspace');
+  if ((await workspace.getAttribute('open')) === null)
+    await workspace.locator('summary').click();
   const branchLabel = page.locator(
     '.project-page__git-section .project-page__section-label',
   );
@@ -372,12 +399,39 @@ export async function createTaskFromProject(
     new RegExp(`^\\s*${escapedBranch}(?:\\s*·.*)?\\s*$`),
     { timeout: 15_000 },
   );
-  await page.getByLabel('Task title').fill(title);
-  await page.getByRole('button', { name: 'Add task' }).click();
-  await page.waitForURL(/\/tasks\//, { timeout: 15_000 });
-  return decodeURIComponent(
-    new URL(page.url()).pathname.slice('/tasks/'.length),
+  // The default Project flow shapes Tasks conversationally; the start-task
+  // starter still has a title form. This lifecycle fixture creates through
+  // the public API, labelled as an API origin, then opens the Task in the UI.
+  const created = await apiJson<{ success: boolean; data?: { id: string } }>(
+    page,
+    '/api/tasks',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        projectId: slug,
+        title,
+        createdBy: 'user',
+        workspaceBinding: {
+          workingDirectory,
+          repoRoot: gitStatus.data.repoRoot,
+          worktreePath: gitStatus.data.repoRoot,
+          branch: gitStatus.data.branch,
+          sourceSurface: 'api',
+        },
+      }),
+    },
   );
+  expect(created).toMatchObject({
+    success: true,
+    data: { id: expect.any(String) },
+  });
+  const taskId = created.data!.id;
+  await page.goto(`${live.ui}/tasks/${encodeURIComponent(taskId)}`);
+  await expect(page).toHaveURL(
+    (url) => url.pathname === `/tasks/${encodeURIComponent(taskId)}`,
+  );
+  return taskId;
 }
 
 export async function pairBrowserDevice(
@@ -428,6 +482,7 @@ export async function pairBrowserDevice(
   if (!exchange.ok)
     throw new Error(`Pairing exchange failed (${exchange.status})`);
   return (await exchange.json()) as {
+    environmentId: string;
     credential: string;
     device: { id: string; name: string };
   };

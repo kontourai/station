@@ -1,0 +1,7 @@
+{
+  "revision": "e610db745338d0910380d5cbfcd3e43b0791f0d5",
+
+  "notes": [
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Re-reviewed the fix round: SDK-views proof now pairs a views/ import scan with the browser spec (the earlier text cited the R ratchet, which scans the other direction); the embedded-root tradeoff for older Stations after a Sigstore key rotation is disclosed in decision 1 and OPEN-4; the NewChatModal row no longer names an unverified UI entry. Source facts unchanged from the previous note at e880e9c92. No test executed.","inputs":["docs/design/shell-plugins-distributions.md"]}
+  ]
+}

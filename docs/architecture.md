@@ -112,10 +112,33 @@ its evidence limits. Configured OTel registers providers before instrument
 creation while identity I/O remains asynchronous (#2755). An instrument
 registration or exporter startup log is not collector receipt.
 
-Terminal and voice use dedicated WebSocket listeners and are not represented
-by the HTTP/SSE arrow. Browser/Device frames use a binary HTTP stream. A
-same-origin UI/API proxy does not by itself expose the dedicated socket ports;
-transport-specific configuration and platform qualification remain necessary.
+Disclosed product observations use a separate
+[UsageTelemetryService](../src-server/services/usage-telemetry-service.ts) and
+[standalone receiver](../packages/telemetry-broker/README.md), with an explicit
+destination. Full requires current disclosure and supports source credentials;
+Built-in Lite is identifier-free and requires a shown notice. Plugin publishers default Off and require opt-in; their plugin-chosen counts can encode identifiers even though Station adds none. The receiver's dedicated
+PostgreSQL store returns a commit receipt for retained source/event identities.
+This optional product path does not feed canonical EventStore accounting or
+establish collector delivery. Settings health describes the current process;
+connection checks do not substitute for an accepted observation or downstream
+query. Personal analytics consumes canonical usage receipts through separate
+verified-person source consent, encrypted receiving custody and explicit sync.
+Bounded indexes/summaries and saved Personal views reuse those current-source
+checks. Operator product incident reports expose retained build/classification
+cohorts; local drafts/references neither reveal private source identity nor
+publish externally. Normal restore and update rollback invalidate copied private
+grants/keys through an activation fence, not through generic stream identity.
+These source boundaries do not establish deployed/native or release qualification;
+see [monitoring](guides/monitoring.md).
+
+The legacy Coding terminal and voice use dedicated WebSocket listeners and are
+not represented by the HTTP/SSE arrow. The additive personal-operator terminal
+gateway uses `/api/terminal/socket` on the API listener; the SDK/Coding cutover
+and relay/broker admission remain pending under
+[the terminal transport boundary](design/terminal.md#transport-implementation-boundary-3994-part-b1).
+Browser/Device frames use a binary HTTP stream. A same-origin UI/API proxy does
+not by itself expose dedicated socket ports or bridge upgrades; each route
+still needs transport configuration and platform qualification.
 
 ### Station-engine chat topology
 
@@ -139,10 +162,10 @@ These are navigation entry points, not an exhaustive inventory:
 | --- | --- | --- |
 | Startup and composition | `src-server/runtime/bootstrap/station-runtime.ts`, `runtime-initialize.ts` | [Development](guides/development.md) |
 | Session commands, reads and recovery | `src-server/services/orchestration/` | [Module map](architecture/module-map.md#sessioncommandmodule) |
-| Engine adaptation | `src-server/providers/adapters/` | [Agent guide](guides/agents.md) |
+| Engine adaptation | `src-server/providers/adapters/` | [Agent guide](guides/agent-configuration.md) |
 | Station-engine stream composition | `src-server/runtime/conversation/stream-orchestrator.ts` | [Streaming pipeline](#streaming-pipeline) |
 | MCP connection and tool adaptation | `src-server/runtime/mcp/mcp-manager.ts` | [Plugin and tool contracts](guides/plugins.md) |
-| Agent configuration | `src-server/services/agents/agent-service.ts`, `src-server/domain/config-loader.ts` | [Agent guide](guides/agents.md) |
+| Agent configuration | `src-server/services/agents/agent-service.ts`, `src-server/domain/config-loader.ts` | [Agent guide](guides/agent-configuration.md) |
 | Scheduling | `src-server/services/scheduling/scheduler-service.ts` | [Scheduler ledger](architecture/module-map.md#schedulerledger-and-builtinscheduler) |
 | Browser sessions and streamed input | `src-server/services/browser/browser-service.ts`, `src-server/services/live-surface/registry.ts` | [Browser workspace](guides/browser-workspace.md) |
 | Knowledge source and derived indexes | `src-server/knowledge-store/`, `src-server/knowledge-index/` | [Knowledge guide](guides/knowledge.md) |
@@ -499,7 +522,9 @@ existing in source does not mean the published CLI can execute it locally.
 ### `src-ui/` — Web UI
 
 React/Vite UI consumes SDK/Connect plus Station-owned navigation, cache and
-Device settings. The UI may be served with an API proxy or packaged in a native
+account preferences and device settings. Account choices are partitioned by the
+verified person on the connected Station; hardware, grants and geometry remain
+device-local. The UI may be served with an API proxy or packaged in a native
 shell; that choice does not merge every HTTP, SSE and dedicated WebSocket
 transport. [Frontend patterns](patterns/frontend.md), [theming](guides/theming.md)
 and [responsive contracts](guides/responsive-ui.md) locate the shared owners.
@@ -515,7 +540,7 @@ packaged shell. See [native-shell verification](guides/native-shell-verification
 
 - [Module map](architecture/module-map.md) — deeper interfaces, invariants and tests.
 - [Repository layout](guides/repository-layout.md) — directory and package ownership.
-- [Agents](guides/agents.md), [Plugins](guides/plugins.md), and [Session API](reference/session-api.md) — authoring and execution contracts.
+- [Agents](guides/agent-configuration.md), [Plugins](guides/plugins.md), and [Session API](reference/session-api.md) — authoring and execution contracts.
 - [Connections](guides/connections.md) and [deployment authentication](guides/deployment-authentication.md) — reachability and authority.
 - [Knowledge](guides/knowledge.md), [Browser](guides/browser-workspace.md), and [Device workspace](guides/mobile-device-workspace.md) — subsystem journeys.
 - [Flow integration](../src-server/services/flow/flow-run-service.ts) — optional Project workflow/evidence integration through public Kontour package contracts, not a prerequisite for ordinary chat.

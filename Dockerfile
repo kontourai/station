@@ -18,6 +18,9 @@ COPY packages/shared/package.json packages/shared/
 COPY packages/cli/package.json packages/cli/
 COPY packages/connect/package.json packages/connect/
 COPY packages/telemetry-broker/package.json packages/telemetry-broker/
+COPY packages/monument/package.json packages/monument/
+COPY packages/agent-runtime/package.json packages/agent-runtime/
+COPY packages/supervisor/package.json packages/supervisor/
 COPY examples/builder-delivery-viewer/package.json examples/builder-delivery-viewer/
 COPY examples/fieldwork-review/package.json examples/fieldwork-review/
 COPY config/dependency-lifecycle-allowlist.json config/plugin-scaffold-dependencies.json config/
@@ -27,7 +30,7 @@ COPY patches ./patches
 # staging read this whether or not the manifest pins artifacts.
 COPY packaging/node-pty-prebuilds packaging/node-pty-prebuilds
 COPY scripts/node-runtime-contract.mjs scripts/dependency-lifecycle.mjs scripts/
-COPY scripts/lib/dependency-install-retirement.mjs scripts/lib/dependency-lifecycle-policy.mjs scripts/lib/module-entry.mjs scripts/lib/workspace-dependency-satisfaction.mjs scripts/lib/pnpm-lockfile.mjs scripts/lib/npm-cli.mjs scripts/lib/posix-path.mjs scripts/lib/
+COPY scripts/lib/dependency-install-retirement.mjs scripts/lib/dependency-lifecycle-policy.mjs scripts/lib/live-service-verification.mjs scripts/lib/module-entry.mjs scripts/lib/workspace-dependency-satisfaction.mjs scripts/lib/pnpm-lockfile.mjs scripts/lib/npm-cli.mjs scripts/lib/posix-path.mjs scripts/lib/
 RUN npm run dependencies:ci
 
 FROM dependencies AS build
@@ -50,6 +53,8 @@ COPY docs ./docs
 # build needs the repository's formatter config; biome.json's vcs.useIgnoreFile
 # makes Biome refuse to run without .gitignore beside it.
 COPY biome.json .gitignore ./
+# The server build copies third-party notices (Cedar) from here into the bundle.
+COPY packaging/licenses ./packaging/licenses
 # The dependencies stage copies only the two config files its install reads;
 # the server bundle imports more (config/release-manifest-keys.json in
 # archive-update.ts), so the build stage takes config/ wholesale, as the
@@ -70,6 +75,36 @@ RUN node scripts/lib/container-release-metadata.mjs \
   --repository="$STATION_IMAGE_REPOSITORY" \
   --station-manifest=.station-release.json >/dev/null
 RUN STATION_UI_BUNDLE_BUDGET=observe ./station build --instance=container --base=/tmp/station-build-home --port=3141 --ui-port=3000
+
+FROM dependencies AS telemetry-build
+ARG STATION_RELEASE_SHA
+ARG STATION_RELEASE_REF
+ARG STATION_RELEASE_CREATED_AT
+WORKDIR /app
+COPY packages ./packages
+COPY scripts ./scripts
+RUN node scripts/lib/container-release-metadata.mjs \
+  --tag="$STATION_RELEASE_REF" \
+  --sha="$STATION_RELEASE_SHA" \
+  --created-at="$STATION_RELEASE_CREATED_AT" \
+  --repository=kontourai/station \
+  --station-manifest=.station-release.json >/dev/null
+RUN npm run build:telemetry-broker
+
+FROM node:24.19.0-bookworm-slim@sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733ceed61167806cee7ea7fbc29df AS telemetry-runtime
+WORKDIR /app
+COPY --from=telemetry-build --chown=node:node /app/packages/telemetry-broker/dist ./dist
+COPY --from=telemetry-build --chown=node:node /app/.station-release.json ./
+ARG STATION_RELEASE_SHA
+ARG STATION_RELEASE_REF
+LABEL org.opencontainers.image.source="https://github.com/kontourai/station" \
+  org.opencontainers.image.revision=$STATION_RELEASE_SHA \
+  org.opencontainers.image.version=$STATION_RELEASE_REF
+USER node
+EXPOSE 43891
+HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 \
+  CMD ["node", "--input-type=module", "-e", "const r = await fetch('http://127.0.0.1:43891/health/live', {signal: AbortSignal.timeout(2000)}); if (!r.ok) process.exit(1)"]
+CMD ["node", "dist/main.mjs"]
 
 FROM node:24-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS runtime
 WORKDIR /app

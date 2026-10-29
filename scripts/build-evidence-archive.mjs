@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Builds the dogfood receipts archive (station#4043): every evidence artifact
+// Builds the dogfood receipts archive (archive#4043): every evidence artifact
 // under docs/strategy/dogfood/*/evidence/ is packed into one tar.gz destined
 // for a GitHub Release asset, and docs/strategy/dogfood/evidence-archive.json
 // records the archive identity plus one entry per artifact. The retention
@@ -162,10 +162,11 @@ function build(outDir, force = false) {
   const manifest = {
     schemaVersion: 1,
     note:
-      'Receipts archive (station#4043): evidence bytes for the digests the dogfood reports commit. ' +
+      'Receipts archive (archive#4043): evidence bytes for the digests the dogfood reports commit. ' +
       'Download the release asset named below and check it with ' +
-      'node scripts/build-evidence-archive.mjs --verify=<path>. The release lives on the repository ' +
-      'this manifest is committed to; re-upload the identical asset (same sha256) if the repository is mirrored.',
+      'node scripts/build-evidence-archive.mjs --verify=<path>. The release lives on ' +
+      'kontourai/station-archive, not on kontourai/station; re-upload the identical asset (same sha256) ' +
+      'if it is mirrored elsewhere.',
     archive: {
       releaseTag: 'dogfood-evidence-archive-v1',
       asset: ARCHIVE_NAME,

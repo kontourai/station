@@ -1,0 +1,13 @@
+{
+  "revision": "8842f6aa17c343eb755f3ef2776ae9a35b591d8a",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Bounded downstream review: web worker registration before the access gate does not reconcile PushManager subscriptions with the selected Station or qualify physical delivery. Existing two-owner/push finding remains scoped; the updated Web Push guide adds independent anonymous shell registration only.","inputs":["docs/architecture/abstraction-review.md","docs/guides/web-push-notifications.md"]},
+
+    {"path":"docs/design/automations.md","note":"Bounded downstream review of the threat-model addition: explicit device-local offline plaintext copies change no inbound route, webhook/source admission, Funnel policy, unattended authority or automation execution. Existing proposal limitations remain accurate; no automation runtime proof claimed.","inputs":["docs/design/automations.md","docs/security/remote-access-threat-model.md"]},
+
+    {"path":"docs/glossary.md","note":"Bounded downstream review of the Connect-reference browser mutation guard delta: this-page network failure versus older stored failure does not change Station/Device/connection/model/engine vocabulary or imply authority from health. No glossary prose change needed.","inputs":["docs/glossary.md","docs/reference/connect.md"]},
+
+    {"path":"docs/reference/deploy-ledger.md","note":"Reviewed inherited generated release-ledger currentness separately from offline changes: markdown remains the JSON projection; source revision/workflow/caveats remain required and no offline lane receipt is a release qualification. No release state is asserted by this review.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}

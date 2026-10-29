@@ -2,6 +2,8 @@
  * @vitest-environment jsdom
  */
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -14,10 +16,7 @@ import type {
 
 type PlatformProfileAdapter = Pick<
   NativePlatformAdapter,
-  | 'platform'
-  | 'getCapabilityReport'
-  | 'getBundledServerStatus'
-  | 'subscribeToStartupReadinessRetry'
+  'platform' | 'getCapabilityReport' | 'getBundledServerStatus'
 >;
 
 const state = vi.hoisted(() => ({
@@ -72,6 +71,11 @@ vi.mock('../platform/native/stationProfileStorage', () => ({
   },
 }));
 
+// Native discovery behavior belongs to native/__tests__/connectionDiscovery.test.ts.
+vi.mock('../platform/native/connectionDiscovery', () => ({
+  registerNativeConnectionDiscovery: () => () => {},
+}));
+
 vi.mock('../lib/device-settings-store', () => ({
   deviceSettingsStore: {
     get: () => state.openLastStationOnLaunch,
@@ -99,7 +103,6 @@ vi.mock('@kontourai/station-sdk', () => ({
 function platformProfileAdapter(
   overrides: Pick<PlatformProfileAdapter, 'platform' | 'getCapabilityReport'>,
 ) {
-  const dispose = vi.fn();
   return {
     ...overrides,
     // These profile-derivation tests do not own a real bundled service. Return
@@ -110,9 +113,6 @@ function platformProfileAdapter(
       command: 'bundled-server-status' as const,
       message: 'not available in the platform-profile fixture',
     }),
-    subscribeToStartupReadinessRetry: vi.fn((_listener: () => void) => ({
-      dispose,
-    })),
   } satisfies PlatformProfileAdapter;
 }
 
@@ -197,6 +197,12 @@ async function resolveProfileWithFakeTimers(adapter: typeof state.adapter) {
   expect(screen.getByTestId('profile')).toBeTruthy();
   return mod;
 }
+
+const readStartupTheme = () =>
+  readFileSync(
+    resolve(import.meta.dirname, '../../public/startup-theme.js'),
+    'utf8',
+  );
 
 describe('PlatformProfile derivation', () => {
   // Unmount before asserting rather than scrubbing `is-desktop-mac` by hand.
@@ -497,6 +503,71 @@ describe('PlatformProfile derivation', () => {
     expect(root.dataset.appChannel).toBe('stable');
   });
 
+  test('remembers the reported mark where the next launch reads it before first paint', async () => {
+    // public/startup-theme.js runs before any module and cannot see the host
+    // report; it reads what this profile wrote on the previous launch. Run
+    // the real script against what the context stored, so a key or value
+    // drift on either side fails here.
+    const startupTheme = readStartupTheme();
+    const root = document.documentElement;
+    for (const [report, mark] of [
+      [{ channel: 'nightly' }, 'nightly'],
+      [{ channel: 'beta' }, 'beta'],
+      [{ channel: 'stable', devBuild: true }, 'dev'],
+    ] as const) {
+      localStorage.clear();
+      await resolveProfile(
+        platformProfileAdapter({
+          platform: 'tauri',
+          getCapabilityReport: async () => ({
+            status: 'ok',
+            value: { platform: 'macos', capabilities: [], ...report },
+          }),
+        }),
+      );
+      cleanup();
+      delete root.dataset.startupMark;
+      new Function(startupTheme)();
+      expect(root.dataset.startupMark).toBe(mark);
+    }
+    delete root.dataset.startupMark;
+    localStorage.clear();
+  });
+
+  test('a stable report replaces a remembered channel mark', async () => {
+    // Without this, a stable install that once stored another mark (or a
+    // writer that skips 'stable') would open on that mark forever.
+    const root = document.documentElement;
+    localStorage.setItem('station-startup-mark', 'nightly');
+    await resolveProfile(
+      platformProfileAdapter({
+        platform: 'tauri',
+        getCapabilityReport: async () => ({
+          status: 'ok',
+          value: { platform: 'macos', capabilities: [], channel: 'stable' },
+        }),
+      }),
+    );
+    expect(root.dataset.startupMark).toBe('stable');
+    expect(localStorage.getItem('station-startup-mark')).toBe('stable');
+    cleanup();
+    expect(root.dataset.startupMark).toBeUndefined();
+    new Function(readStartupTheme())();
+    expect(root.dataset.startupMark).toBeUndefined();
+    localStorage.clear();
+  });
+
+  test('the first-paint script ignores a stored mark it does not know', () => {
+    const root = document.documentElement;
+    for (const stored of ['violet', 'stable', '']) {
+      localStorage.setItem('station-startup-mark', stored);
+      delete root.dataset.startupMark;
+      new Function(readStartupTheme())();
+      expect(root.dataset.startupMark).toBeUndefined();
+    }
+    localStorage.clear();
+  });
+
   test('tauri with an unreadable capability report degrades to unknown', async () => {
     const profile = await resolveProfile(
       platformProfileAdapter({
@@ -544,18 +615,5 @@ describe('PlatformProfile derivation', () => {
     );
     expect(screen.getByRole('button', { name: 'Reload Station' })).toBeTruthy();
     expect(screen.queryByTestId('protected-shell')).toBeNull();
-  });
-
-  test('leaves automatic startup readiness to the native host', async () => {
-    const adapter = platformProfileAdapter({
-      platform: 'tauri',
-      getCapabilityReport: async () => ({
-        status: 'ok',
-        value: { platform: 'android', capabilities: [] },
-      }),
-    });
-
-    await resolveProfile(adapter);
-    expect(adapter.subscribeToStartupReadinessRetry).not.toHaveBeenCalled();
   });
 });

@@ -67,7 +67,7 @@ describe('useCoreUpdateStatusQuery scope', () => {
     // The abort signal reaches the wire: a superseded scope's request can be
     // cancelled, not merely ignored on arrival.
     expect(fetchMock).toHaveBeenCalledWith(
-      `${API_BASE}/api/system/core-update`,
+      `${API_BASE}/api/system/core-update?staged=1`,
       { signal: expect.any(AbortSignal) },
     );
     expect(client.getQueryData(QUERY_KEY)).toMatchObject({

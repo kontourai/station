@@ -69,6 +69,7 @@ function dependencies(): ExecutionTargetExecutionDependencies {
           },
         }) as any,
     ),
+    readInitialConversationContext: async () => undefined,
     readSessionBinding: vi.fn(async () => null),
     startSession: vi.fn(async () => undefined),
     sendTurn: vi.fn(async () => ({ turnId: 'provider-turn-1' })),
@@ -77,6 +78,157 @@ function dependencies(): ExecutionTargetExecutionDependencies {
 }
 
 describe('executeForegroundMessage', () => {
+  // #4162: `resolution` names the Agent's binding at send time. Only a send
+  // that started its Session may let a client read it as that Session's
+  // engine; a turn sent to a running Session (possibly on an older engine)
+  // must not claim it.
+  describe('sessionStarted', () => {
+    const send = (deps: ReturnType<typeof dependencies>) =>
+      executeForegroundMessage(
+        {
+          userId: 'test-user',
+          target: {
+            environment: { kind: 'current' },
+            agent: agentId('station'),
+          },
+          conversationId: 'conversation:test',
+          message: 'hello',
+        },
+        deps,
+      );
+    const bound = (deps: ReturnType<typeof dependencies>) => {
+      deps.readSessionBinding = vi.fn(async () => ({
+        environmentId: 'environment-kontour',
+        agentId: 'station',
+      }));
+      return deps;
+    };
+
+    test('marks a new conversation as started', async () => {
+      const handle = await send(dependencies());
+      expect(handle.sessionStarted).toBe(true);
+    });
+
+    test('marks a successor Session as started', async () => {
+      const deps = bound(dependencies());
+      deps.resolveConversationSession = vi.fn(async () => ({
+        sessionId: 'conversation:test:successor',
+        startRequired: true,
+      }));
+      const handle = await send(deps);
+      expect(handle.sessionId).toBe('conversation:test:successor');
+      expect(handle.sessionStarted).toBe(true);
+    });
+
+    test('leaves a turn sent to a running Session unmarked', async () => {
+      const deps = bound(dependencies());
+      deps.resolveConversationSession = vi.fn(async () => ({
+        sessionId: 'conversation:test',
+        startRequired: false,
+      }));
+      const handle = await send(deps);
+      expect(handle.sessionId).toBe('conversation:test');
+      expect(handle).not.toHaveProperty('sessionStarted');
+    });
+  });
+
+  test('keyed foreground owns raw intent before target authorization awaits', async () => {
+    const deps = dependencies();
+    deps.getAgent = async () => ({
+      slug: 'station',
+      available: true,
+      execution: { agentConnectionId: engineConnectionId('claude') },
+    });
+    deps.getConnection = async () => ({
+      id: 'claude',
+      name: 'Claude',
+      kind: 'agent',
+      type: 'claude',
+      enabled: true,
+      status: 'ready',
+      capabilities: ['agent-runtime'],
+      config: { provider: 'claude' },
+      prerequisites: [],
+    });
+    const original = {
+      target: {
+        environment: { kind: 'current' as const },
+        agent: agentId('station'),
+        model: { override: 'model-a', options: { effort: 'low' } },
+      },
+      skillExperience: {
+        identity: {
+          pluginId: 'visual-skill-experience',
+          pluginVersion: '1.0.0',
+          experienceId: 'inspect',
+          incarnation: 'install-a',
+          materialization: 'materialization-a',
+          contentDigest: `sha256:${'a'.repeat(64)}`,
+          definitionDigest: 'b'.repeat(64),
+        },
+        inputs: { prompt: 'skill A' },
+        attachmentInputs: { source: [0] },
+      },
+      message: ' A ',
+      ambientContext: 'context A',
+      userId: 'owner',
+      clientTurnId: 'K',
+      attachments: [
+        {
+          kind: 'file' as const,
+          name: 'note.txt',
+          mimeType: 'text/plain' as const,
+          size: 1,
+          dataUrl: 'data:text/plain;base64,QQ==',
+        },
+      ],
+    };
+    const retry = structuredClone(original);
+    let entered!: () => void;
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const reached = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const resolveAccess = deps.resolveEnvironmentAccess;
+    deps.resolveEnvironmentAccess = async (...args) => {
+      entered();
+      await held;
+      return resolveAccess(...args);
+    };
+    const pending = executeForegroundMessage(original, deps);
+    await reached;
+    original.target.model.override = 'model-b';
+    original.target.model.options.effort = 'high';
+    original.skillExperience.inputs.prompt = 'skill B';
+    original.skillExperience.attachmentInputs.source[0] = 1;
+    original.message = 'B';
+    original.ambientContext = 'context B';
+    original.attachments[0].dataUrl = 'data:text/plain;base64,Qg==';
+    release();
+    await pending;
+    expect(deps.sendTurn).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        input: 'A',
+        modelId: 'model-a',
+        modelOptions: { effort: 'low' },
+        ambientContext: 'context A',
+        attachments: retry.attachments,
+      }),
+      expect.anything(),
+    );
+    const firstDigest = vi.mocked(deps.sendTurn).mock.calls[0][2]
+      ?.submissionDigest;
+    await executeForegroundMessage(retry, deps);
+    expect(vi.mocked(deps.sendTurn).mock.calls[1][2]?.submissionDigest).toBe(
+      firstDigest,
+    );
+    expect(original.message).toBe('B');
+  });
+
   test('a request-bound sharing decision permits a paired continuation and rejects an unrelated caller', async () => {
     const deps = dependencies();
     deps.readSessionBinding = vi.fn(async () => ({
@@ -174,7 +326,7 @@ describe('executeForegroundMessage', () => {
         threadId: 'conversation:test:handoff-child',
         ambientContext: 'authorized transcript seed',
       }),
-      undefined,
+      expect.anything(),
     );
   });
 
@@ -451,6 +603,50 @@ describe('executeForegroundMessage', () => {
     },
   );
 
+  test('#3568: a key some Session already started is answered from it, and its staged attachments are bound to that turn', async () => {
+    const deps = dependencies();
+    deps.readSessionBinding = vi.fn(async () => ({
+      environmentId: 'environment-kontour',
+      agentId: 'station',
+    }));
+    deps.inspectConversationTurnKey = vi.fn(() => ({
+      outcome: 'started' as const,
+      sessionId: 'conversation:test:child-1',
+      turnId: 'provider-turn-earlier',
+    }));
+    deps.resolveConversationSession = vi.fn(async () => ({
+      sessionId: 'conversation:test:child-2',
+      startRequired: true,
+    }));
+    const resolveAttachments = vi.fn(() => []);
+
+    const handle = await executeForegroundMessage(
+      {
+        target: {
+          environment: { kind: 'current' },
+          agent: agentId('station'),
+        },
+        conversationId: 'conversation:test',
+        clientTurnId: 'client-turn-9',
+        message: 'with a file',
+        resolveAttachments,
+      },
+      deps,
+    );
+
+    expect(handle).toMatchObject({
+      sessionId: 'conversation:test:child-1',
+      providerTurnId: 'provider-turn-earlier',
+    });
+    // The route accepts the staged references under the binding this sets.
+    expect(resolveAttachments).toHaveBeenCalledWith({
+      threadId: 'conversation:test:child-1',
+      clientTurnId: 'client-turn-9',
+    });
+    expect(deps.resolveConversationSession).not.toHaveBeenCalled();
+    expect(deps.sendTurn).not.toHaveBeenCalled();
+  });
+
   test('hydrates staged bytes only after continuation resolves its actual child session', async () => {
     const deps = dependencies();
     deps.readSessionBinding = vi.fn(async () => ({
@@ -496,7 +692,49 @@ describe('executeForegroundMessage', () => {
           requestEventId: 'opened-a',
         },
       }),
-      undefined,
+      expect.anything(),
+    );
+  });
+
+  test("#3290: a carried approval pick names the engine connection, which decides an ACP thread's approval control", async () => {
+    const deps = dependencies();
+    deps.getAgent = vi.fn(async (_access, id) => ({
+      slug: id,
+      available: true,
+      execution: { agentConnectionId: engineConnectionId('my-opencode') },
+    }));
+    deps.getConnection = vi.fn(async () => ({
+      id: 'my-opencode',
+      name: 'OpenCode',
+      kind: 'agent' as const,
+      type: 'acp',
+      enabled: true,
+      status: 'ready' as const,
+      capabilities: ['agent-runtime' as const, 'acp' as const],
+      config: {},
+      prerequisites: [],
+    }));
+    const recordApprovalMode = vi.fn(() => undefined);
+    await executeForegroundMessage(
+      {
+        userId: 'test-user',
+        target: {
+          environment: { kind: 'current' },
+          agent: agentId('builder'),
+        },
+        message: 'Go',
+        setApprovalMode: 'ask',
+        setApprovalModeBasedOn: null,
+      },
+      { ...deps, recordApprovalMode },
+    );
+    expect(recordApprovalMode).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        provider: 'acp',
+        connectionId: 'my-opencode',
+        approvalMode: 'ask',
+      }),
     );
   });
 
@@ -693,7 +931,7 @@ describe('executeForegroundMessage', () => {
         attachments: [expect.objectContaining({ name: 'screen.png' })],
         clientTurnId: 'client-turn-1',
       }),
-      { clientOrigin },
+      expect.objectContaining({ clientOrigin }),
     );
     expect(result).toMatchObject({
       conversationId: 'conversation:test',
@@ -879,6 +1117,9 @@ describe('executeForegroundMessage', () => {
     expect(result).toMatchObject({
       conversationId: 'conversation:existing',
       sessionId: 'conversation:existing:session:1',
+      resolution: {
+        workspace: { kind: 'directory', cwd: '/durable/original-workspace' },
+      },
     });
   });
 
@@ -1211,6 +1452,14 @@ describe('executeForegroundMessage', () => {
         expect.objectContaining({
           path: startInput?.cwd,
           repoPath: realpathSync(repoPath),
+          baseRef: 'HEAD',
+          baseCommit: execGitSync(['rev-parse', 'HEAD'], {
+            cwd: repoPath,
+            encoding: 'utf8',
+            stdio: 'pipe',
+          })
+            .toString()
+            .trim(),
         }),
       );
       await new WorktreeProvisioningService().cleanup({
@@ -1635,7 +1884,16 @@ describe('executeForegroundMessage', () => {
           },
           deps,
         ),
-      ).resolves.toBeDefined();
+      ).resolves.toMatchObject({
+        resolution: {
+          workspace: {
+            kind: 'project',
+            projectSlug: 'station',
+            cwd: repoPath,
+            workspaceIsolation: { mode: 'worktree' },
+          },
+        },
+      });
       deps.getProject = vi.fn(async () => ({
         workingDirectory: repoPath,
         defaultWorkspaceIsolation: 'shared' as const,

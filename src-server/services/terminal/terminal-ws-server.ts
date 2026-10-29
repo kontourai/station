@@ -1,7 +1,8 @@
 import { terminalPtyUnavailableReason } from '@kontourai/station-shared/terminal-capability';
-import { type RawData, WebSocket, WebSocketServer } from 'ws';
+import { type RawData, WebSocket, type WebSocketServer } from 'ws';
 import { isPtyUnavailableError } from '../../domain/pty-adapter.js';
 import type { TerminalEvent } from '../../domain/terminal-types.js';
+import { startWebSocketListener } from '../../runtime/bootstrap/websocket-listener.js';
 import {
   type ExternalSurfaceCapabilityRule,
   requiredExternalSurfaceCapability,
@@ -32,6 +33,7 @@ const DEFAULT_MAX_PAYLOAD_BYTES = 64 * 1_024;
 const DEFAULT_MAX_UNAUTHENTICATED_CONNECTIONS = 64;
 const DEFAULT_MAX_UNAUTHENTICATED_CONNECTIONS_PER_PEER = 8;
 const logger = createLogger({ name: 'terminal-websocket' });
+const SESSION_COMMANDS = new Set(['data', 'cwd', 'resize', 'close']);
 
 interface TerminalWebSocketAuthOptions {
   classifyPeer?: (address: string | undefined) => RuntimePeerClass;
@@ -96,21 +98,23 @@ export class TerminalWebSocketServer {
     host?: string,
     options: { allowedBrowserOrigins?: readonly string[] } = {},
   ): WebSocketServer {
-    this.wss = new WebSocketServer({
-      port,
-      maxPayload: Math.max(
-        DEFAULT_MAX_AUTH_FRAME_BYTES,
-        this.auth?.maxPayloadBytes ?? DEFAULT_MAX_PAYLOAD_BYTES,
-      ),
-      ...(host ? { host } : {}),
-      verifyClient: createCredentialFreeOriginVerifier({
-        allowedOrigins: options.allowedBrowserOrigins ?? [],
-        credentialRequired: this.auth !== undefined,
-        classifyPeer: this.auth?.classifyPeer,
-        onRejected: (peerClass) =>
-          this.auditFailure('origin_forbidden', peerClass),
-      }),
-    });
+    this.wss = startWebSocketListener(
+      'terminal',
+      { port, host },
+      {
+        maxPayload: Math.max(
+          DEFAULT_MAX_AUTH_FRAME_BYTES,
+          this.auth?.maxPayloadBytes ?? DEFAULT_MAX_PAYLOAD_BYTES,
+        ),
+        verifyClient: createCredentialFreeOriginVerifier({
+          allowedOrigins: options.allowedBrowserOrigins ?? [],
+          credentialRequired: this.auth !== undefined,
+          classifyPeer: this.auth?.classifyPeer,
+          onRejected: (peerClass) =>
+            this.auditFailure('origin_forbidden', peerClass),
+        }),
+      },
+    );
 
     this.wss.on('connection', (ws: WebSocket, req) => {
       const url = new URL(req.url ?? '/', `http://localhost:${port}`);
@@ -265,6 +269,26 @@ export class TerminalWebSocketServer {
         return;
       }
 
+      // Only `open` may name a session this socket has not opened. Every other
+      // session command is refused with one frame whether or not the session
+      // exists. This scopes commands to sessions the socket opened; it is not
+      // per-project authorization, since `open` can still attach to any
+      // running session the socket's `terminal:operate` grant can name.
+      if (
+        SESSION_COMMANDS.has(msg.type as string) &&
+        !this.clientSessions.get(ws)?.has(msg.sessionId as string)
+      ) {
+        ws.send(
+          JSON.stringify({
+            type: 'error',
+            code: 'session-not-owned',
+            message: 'Terminal session is not open on this connection.',
+            ...(msg.requestId !== undefined && { requestId: msg.requestId }),
+          }),
+        );
+        return;
+      }
+
       try {
         switch (msg.type) {
           case 'open': {
@@ -316,6 +340,7 @@ export class TerminalWebSocketServer {
             );
             break;
           case 'close':
+            this.clientSessions.get(ws)?.delete(msg.sessionId as string);
             await this.terminalService.close(msg.sessionId as string);
             break;
           default:
@@ -390,8 +415,14 @@ export class TerminalWebSocketServer {
     this.unsubscribe = this.terminalService.subscribe(
       (event: TerminalEvent) => {
         const msg = JSON.stringify(event);
+        // Deliver only to sockets that opened this session, so one panel's
+        // output never reaches a socket that did not open it.
         for (const client of this.clients) {
-          if (client.readyState === client.OPEN) client.send(msg);
+          if (
+            client.readyState === client.OPEN &&
+            this.clientSessions.get(client)?.has(event.sessionId)
+          )
+            client.send(msg);
         }
       },
     );

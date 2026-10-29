@@ -1,0 +1,7 @@
+{
+  "revision": "a506090059cf2a04cb12877ebefffe76538dfc7b",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Follow-up narrow-browser finding: the composer CSS hides the status row after the recovery pill leaves. ChatDock now supplies its existing textarea ref through the status owner, returning focus to the writable composer; the pill retains its status-region fallback. The owner-boundary test uses a real textarea ref and fails when this callback is disconnected. Recovery announcement remains a polite live region. No native or OS screen-reader claim.","inputs":["docs/design/chat-composer.md"]}
+  ]
+}

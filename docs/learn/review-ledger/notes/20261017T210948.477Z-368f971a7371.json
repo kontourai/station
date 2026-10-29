@@ -1,0 +1,7 @@
+{
+  "revision": "fd39284097cc9c446e63a3a30767461e7e6f7a45",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed transcript preview entry through tool identity, bounded EventStore window retention, production message projection, sandbox resource reads, recorded initial result delivery and denied app actions. Browser and provider qualification remain separate; preview scope and remaining capabilities are explicit.","inputs":["docs/design/mcp-ui-host.md","src-ui/src/__tests__/MCPToolUIFrame.test.tsx","src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx"]}
+  ]
+}

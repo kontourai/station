@@ -3,7 +3,10 @@
  *
  * Click to start recording; click again to stop and send the transcript.
  */
+
 import type { STTState } from '@kontourai/station-sdk';
+import { useState } from 'react';
+import { Dialog } from '../Dialog';
 import './VoiceOrb.css';
 
 interface VoiceOrbProps {
@@ -23,8 +26,10 @@ export function VoiceOrb({
   onStart,
   onStop,
 }: VoiceOrbProps) {
+  const [showReason, setShowReason] = useState(false);
   const isListening = state === 'listening';
   const isError = state === 'error';
+  const isTranscribing = state === 'transcribing';
 
   const className = [
     'voice-orb',
@@ -34,22 +39,44 @@ export function VoiceOrb({
     .filter(Boolean)
     .join(' ');
 
-  return (
+  const unavailable = disabled || !supported;
+  const reason = !supported
+    ? (unsupportedReason ?? 'Microphone input is unavailable.')
+    : 'Dictation is unavailable while this composer cannot accept input.';
+
+  const button = (
     <button
       type="button"
       className={className}
       data-testid="voice-orb"
-      onClick={() => (isListening ? onStop() : onStart())}
-      disabled={disabled || !supported}
-      aria-label={supported ? 'Speak message' : 'Microphone unavailable'}
+      onClick={() => {
+        if (isTranscribing) {
+          onStop();
+          return;
+        }
+        if (unavailable) setShowReason(true);
+        else if (isListening) onStop();
+        else onStart();
+      }}
+      aria-disabled={(unavailable && !isTranscribing) || undefined}
+      aria-busy={isTranscribing || undefined}
+      aria-label={
+        isTranscribing
+          ? 'Cancel transcription'
+          : supported
+            ? 'Speak message'
+            : 'Microphone unavailable'
+      }
       title={
-        !supported
-          ? (unsupportedReason ?? 'Microphone input is unavailable.')
-          : isListening
-            ? 'Click to stop'
-            : isError
-              ? 'Mic error — try again'
-              : 'Click to speak'
+        isTranscribing
+          ? 'Cancel transcription on this Station'
+          : unavailable
+            ? reason
+            : isListening
+              ? 'Click to stop'
+              : isError
+                ? 'Mic error — try again'
+                : 'Click to speak'
       }
     >
       {isListening && <span className="voice-orb__pulse" aria-hidden />}
@@ -88,5 +115,21 @@ export function VoiceOrb({
         />
       </svg>
     </button>
+  );
+
+  return (
+    <>
+      {button}
+      {unavailable && showReason && (
+        <Dialog
+          title="Microphone unavailable"
+          closeLabel="Close microphone explanation"
+          size="sm"
+          onClose={() => setShowReason(false)}
+        >
+          <p>{reason}</p>
+        </Dialog>
+      )}
+    </>
   );
 }

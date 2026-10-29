@@ -1,0 +1,7 @@
+{
+  "revision": "d9b88f154cb28fb2646edc8552b2d6a70018ecf2",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"#3800: rewrote the non-host Codex paragraph for the station-workspace permission profile (deny .codex/.claude at any depth on macOS, ignored sandbox_mode/default_permissions/writable_roots/network_access, network via [permissions.station-workspace.network], refusal when the profile is not reported, Linux limitation), traced to codexConfinementConfigArgs and observeCodexSandboxPosture.","inputs":["docs/guides/connections.md","src-server/providers/adapters/codex-adapter.ts","src-server/providers/adapters/codex-approval-mode.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "7766cb17f21acff4c4f4036f36a41b59eb73e3ab",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"PR #3820 round 1 at 7766cb17f21: Reviewed the integration route table and its API/SDK/authentication/evidence instructions against the telemetry API reference delta: status Full availability, bounded outbox query and non-Lite receipt refusal. The guide continues to route callers to the exact public contract and requires refused unauthorized requests; no hosted adapter, ingest protocol, infrastructure or integration recipe changes. No prose change is needed for this source delta.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/contracts.md"]}
+  ]
+}

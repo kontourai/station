@@ -1,0 +1,7 @@
+{
+  "revision": "930acdc5090b64939d3eb1f0d9baf684626cbd4c",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed the child-work subsection against transcript child selection, grouped same-run rendering, card expansion, and pane action layout at 930acdc5090. Spawn anchoring and status truth remain unchanged; model provenance and usage remain accessible through expansion. Focused UI tests passed 58 cases; browser layout verification remains pending.","inputs":["docs/design/placement.md","src-ui/src/__tests__/ChatMessageList.subagentCards.test.tsx","src-ui/src/components/chat/transcript-child-work.ts","src-ui/src/workspace-panes/agents/ChildWorkRow.tsx","src-ui/src/components/chat/SubagentTranscriptCard.tsx","src-ui/src/components/chat/SubagentTranscriptCard.css","src-ui/src/workspace-panes/agents/ChildWorkRow.css"]}
+  ]
+}

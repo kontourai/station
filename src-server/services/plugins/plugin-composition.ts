@@ -1,3 +1,4 @@
+// UNWIRED(#1362): only tests call this; profile loading and activation will.
 import { createHash } from 'node:crypto';
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
 

@@ -6,10 +6,12 @@
  * module-level store directly rather than threading a React context value.
  */
 
+import { ACCOUNT_PREFERENCE_KEYS } from '@kontourai/station-contracts/account-preferences';
 import type { DeviceSettings } from '@kontourai/station-contracts/device-settings';
 import { useCallback, useSyncExternalStore } from 'react';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import { setHapticsUserEnabled } from '../platform/native/haptics';
+import { useAccountPreferences } from './AccountPreferencesContext';
 
 // Keep the fire-and-forget haptic gate in lockstep with the preference
 // without requiring every call site to read device settings (archive#1954).
@@ -27,32 +29,36 @@ export function useDeviceSettings(): DeviceSettings {
   );
 }
 
-/** True once the store has resolved storage — synchronous in this environment. */
-export function useDeviceSettingsHydrated(): boolean {
-  return useSyncExternalStore(
-    deviceSettingsStore.subscribe,
-    deviceSettingsStore.isHydrated,
-    deviceSettingsStore.isHydrated,
-  );
-}
-
 export interface DeviceSettingsActions {
   setDeviceSetting: <K extends keyof DeviceSettings>(
     key: K,
     value: DeviceSettings[K],
   ) => void;
+  /**
+   * Several keys as ONE choice: one envelope write, one notify and, when
+   * signed in, one account patch request. For values that only make sense
+   * together (a color theme and its flavor and accent), so no subscriber sees
+   * half of the change. The server still stores keys per document (a custom
+   * `accentColor` in the account document, the color-theme keys beside it),
+   * so this is one request, not one atomic write.
+   */
+  setDeviceSettings: (values: Partial<DeviceSettings>) => void;
   resetDeviceSetting: <K extends keyof DeviceSettings>(key: K) => void;
   /** One envelope write and one notify for the whole set (#2144 slice 6). */
   resetDeviceSettings: (keys: readonly (keyof DeviceSettings)[]) => void;
 }
 
 export function useDeviceSettingsActions(): DeviceSettingsActions {
+  const account = useAccountPreferences();
   const setDeviceSetting = useCallback(
     <K extends keyof DeviceSettings>(key: K, value: DeviceSettings[K]) => {
       deviceSettingsStore.set(key, value);
     },
     [],
   );
+  const setDeviceSettings = useCallback((values: Partial<DeviceSettings>) => {
+    deviceSettingsStore.merge(values);
+  }, []);
   const resetDeviceSetting = useCallback(
     <K extends keyof DeviceSettings>(key: K) => {
       deviceSettingsStore.reset(key);
@@ -62,10 +68,22 @@ export function useDeviceSettingsActions(): DeviceSettingsActions {
 
   const resetDeviceSettings = useCallback(
     (keys: readonly (keyof DeviceSettings)[]) => {
-      deviceSettingsStore.resetMany(keys);
+      deviceSettingsStore.resetMany(
+        account.status === 'account'
+          ? keys.filter(
+              (key) =>
+                !ACCOUNT_PREFERENCE_KEYS.some((candidate) => candidate === key),
+            )
+          : keys,
+      );
     },
-    [],
+    [account.status],
   );
 
-  return { setDeviceSetting, resetDeviceSetting, resetDeviceSettings };
+  return {
+    setDeviceSetting,
+    setDeviceSettings,
+    resetDeviceSetting,
+    resetDeviceSettings,
+  };
 }

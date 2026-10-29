@@ -1,0 +1,7 @@
+{
+  "revision": "9f31b19022424aca4fd966533aa9c675c6be8a18",
+
+  "notes": [
+    {"path":"docs/design/pane-relationships.md","note":"Independent delta review on transplanted 9f31b190224: previewOpenSurfaceInRegion and previewReplacePane share the actual model planner; related preview new/replacement/focus guards compare committed hidden panes and hold the guard-registration notice through locked admission. The revised fence sentence matches state-confirmed removal and best-effort orphan fence cleanup. Focused 266 tests pass; phone-width browser Keep/reload/exact reopen and Back/Up executed. This review binds the transplanted source, superseding the source-branch revision note; remaining program items stay partial.","inputs":["docs/design/pane-relationships.md","src-ui/src/regions/pane-fence.ts","src-ui/src/contexts/openRelatedFilePreview.ts","src-ui/src/contexts/RegionModelContext.tsx"]}
+  ]
+}

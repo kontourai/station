@@ -16,6 +16,20 @@ const { INTERNAL_NOTIFICATION_SOURCES } = await import(
 describe('NotificationService cross-source dedupe (#2597)', () => {
   test('INTERNAL_NOTIFICATION_SOURCES covers every in-process schedule() caller', () => {
     const root = join(process.cwd(), 'src-server');
+    // A caller may alias a published contracts constant
+    // (`const SOURCE = TURN_COMPLETION_NOTIFICATION_SOURCE`), so resolve
+    // exported string constants from the contracts package too.
+    const contractsRoot = join(process.cwd(), 'packages/contracts/src');
+    const contractConstants = new Map<string, string>();
+    for (const entry of readdirSync(contractsRoot, { recursive: true })) {
+      const file = String(entry);
+      if (!file.endsWith('.ts') || file.includes('__tests__')) continue;
+      const text = readFileSync(join(contractsRoot, file), 'utf8');
+      for (const match of text.matchAll(
+        /export const ([A-Z][A-Z0-9_]*) = '([^']+)'/g,
+      ))
+        contractConstants.set(match[1], match[2]);
+    }
     const found = new Set<string>();
     for (const entry of readdirSync(root, { recursive: true })) {
       const file = String(entry);
@@ -27,7 +41,13 @@ describe('NotificationService cross-source dedupe (#2597)', () => {
         const arg = match[1];
         const literal = /^'([^']+)'$/.exec(arg)?.[1];
         const constant = new RegExp(`const ${arg} = '([^']+)'`).exec(text)?.[1];
-        found.add(literal ?? constant ?? `<unresolved ${arg} in ${file}>`);
+        const alias = new RegExp(`const ${arg} = ([A-Z][A-Z0-9_]*);`).exec(
+          text,
+        )?.[1];
+        const aliased = alias ? contractConstants.get(alias) : undefined;
+        found.add(
+          literal ?? constant ?? aliased ?? `<unresolved ${arg} in ${file}>`,
+        );
       }
     }
     // The scan must reach the known callers, or it proves nothing.

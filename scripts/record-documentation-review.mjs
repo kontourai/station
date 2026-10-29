@@ -15,16 +15,20 @@
 // reviewed bytes, adds the notes as one new append-only notes file, and writes
 // nothing unless every entry validates. It records a review that a person
 // performed; it does not decide whether the prose is accurate.
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import {
   assertDocumentationFresh,
   checkDocumentationFreshness,
   createRepositorySnapshot,
   resolveDocumentationFreshness,
 } from './lib/documentation-freshness.mjs';
-import { evaluateDocumentationReview } from './lib/documentation-review.mjs';
+import {
+  absentReleaseNote,
+  evaluateDocumentationReview,
+} from './lib/documentation-review.mjs';
 import { compileLearningMedia } from './lib/learning-media.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
@@ -49,11 +53,13 @@ import {
   serializeRecordFile,
   writeReviewFiles,
 } from './lib/review-ledger-store.mjs';
+import { redactReviewNoteHosts } from './lib/review-note-privacy.mjs';
 
 const USAGE = [
   'Usage: docs:review:record -- <path> --note "<review note>" [--drop-source <path>]... [--add-source <path>]... [--rereview] [--json]',
   '       docs:review:record -- --batch <file.json>',
   '       docs:review:record -- --advance-baseline',
+  '       docs:review:record -- --redact-private-hosts <note-file>...',
   '       docs:review:record -- --show-delta [<path>...]',
   '       docs:review:record -- --verify-bindings [<path>...]',
 ].join('\n');
@@ -70,12 +76,10 @@ const gitBlobId = (bytes) =>
     .digest('hex');
 
 function git(root, args) {
-  return execFileSync('git', args, {
+  return execFileSyncBounded('git', args, {
     cwd: root,
     encoding: 'utf8',
-    windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],
-    maxBuffer: 64 * 1024 * 1024,
   });
 }
 
@@ -105,7 +109,8 @@ export function parseRecordArguments(argv) {
     else if (
       arg === '--show-delta' ||
       arg === '--verify-bindings' ||
-      arg === '--advance-baseline'
+      arg === '--advance-baseline' ||
+      arg === '--redact-private-hosts'
     ) {
       if (mode !== 'record')
         throw reviewError(
@@ -662,6 +667,41 @@ async function recordReviewNotes(
       entry.removedSources,
       entry.addedSources,
     );
+    const reviewAbsentNote =
+      kind === 'review' &&
+      absentReleaseNote({ ...owner, sources }, new Map(), snapshot.tracked);
+    if (reviewAbsentNote) {
+      const deletion = git(root, [
+        'log',
+        '--full-history',
+        '--no-renames',
+        '--diff-filter=D',
+        '--format=%H',
+        '-1',
+        'HEAD',
+        '--',
+        entry.path,
+      ]).trim();
+      if (!deletion)
+        throw reviewError(
+          'untracked',
+          `No committed deletion for ${entry.path}`,
+        );
+      const [current, previous] = readGitObjects(root, [
+        `HEAD:${entry.path}`,
+        `${deletion}^:${entry.path}`,
+      ]);
+      if (current !== undefined || existsSync(join(root, entry.path)))
+        throw reviewError(
+          'not-committed',
+          `Reviewed deletion is not committed: ${entry.path}`,
+        );
+      if (previous === undefined)
+        throw reviewError(
+          'untracked',
+          `Deleted declaration is not available in history: ${entry.path}`,
+        );
+    }
     const inputs = [
       ...new Set([
         entry.path,
@@ -677,6 +717,7 @@ async function recordReviewNotes(
       ]),
     ];
     for (const input of [entry.path, ...sources.map((source) => source.path)]) {
+      if (input === entry.path && reviewAbsentNote) continue;
       const file = bindingFile(input);
       if (!snapshot.tracked.has(file))
         throw reviewError(
@@ -926,6 +967,36 @@ export async function main(argv = process.argv.slice(2)) {
   const json = argv.includes('--json');
   const parsed = parseRecordArguments(argv);
   const root = git(process.cwd(), ['rev-parse', '--show-toplevel']).trim();
+  if (parsed.mode === 'redact-private-hosts') {
+    if (!parsed.paths.length) throw reviewError('usage', USAGE);
+    const { parsed: files } = readReviewFiles(root);
+    const before = serializeLedgerFiles(files);
+    const after = new Map();
+    for (const file of parsed.paths) {
+      if (
+        !files.notes.some(
+          (note) => note.file === file && note.archive === undefined,
+        )
+      )
+        throw reviewError('usage', `Expected a loose review note: ${file}`);
+      const redacted = redactReviewNoteHosts(file, before.get(file));
+      if (!redacted) continue;
+      after.set(file, undefined);
+      after.set(redacted.file, redacted.text);
+    }
+    const proposed = new Map(before);
+    for (const [file, text] of after)
+      if (text === undefined) proposed.delete(file);
+      else proposed.set(file, text);
+    parseReviewLedgerFiles(proposed);
+    writeReviewFiles(root, after, before);
+    console.log(
+      json
+        ? JSON.stringify({ redacted: after.size / 2 })
+        : `Redacted private hosts in ${after.size / 2} review note(s); original review context retained.`,
+    );
+    return;
+  }
   if (parsed.mode === 'advance-baseline') {
     if (git(root, ['status', '--porcelain']).trim())
       throw reviewError(

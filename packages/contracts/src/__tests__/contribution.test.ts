@@ -344,7 +344,10 @@ describe('two clocks, and the reader that makes the split load-bearing', () => {
     expect(
       contributionFreshness(
         projection({ sourceObservedAt: sourceObservedAt as string | null }),
-        { maxAgeMs: Number.MAX_SAFE_INTEGER, now: Date.now() },
+        {
+          maxAgeMs: Number.MAX_SAFE_INTEGER,
+          now: Date.parse('2026-08-03T12:00:00.000Z'),
+        },
       ),
     ).toBe('unknown');
   });

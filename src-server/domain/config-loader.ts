@@ -1,4 +1,8 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import {
+  assertRequiredSlotDefaultMutable,
+  parseRequiredSlotAssignments,
+} from '@kontourai/station-contracts/required-slots';
 import type { PluginActivationComposition } from '../services/plugins/plugin-activation-composition.js';
 import {
   PLUGIN_AGENT_OWNER_FILE,
@@ -112,8 +116,8 @@ const WATCHED_ROOT_NAMES = ['config', 'agents', 'integrations'] as const;
  * (issue archive#952). Measured on this repo: first-event latency ran to 4.8s even on
  * successful rounds, and archive#952 recorded 11.6s under load — so the last pass sits
  * well past that, and the passes stop entirely once the window has closed.
- * Steady-state correctness is the watcher's job; polling the whole config tree
- * forever would cost far more than the gap it closes.
+ * Steady-state config events use the watcher. App launchability also retains
+ * a slow signature poll to recover silent watchers and ctime-only changes.
  */
 const WATCHER_RECONCILE_BACKOFF_MS = [
   250, 500, 1000, 2000, 4000, 8000,
@@ -370,6 +374,14 @@ export class ConfigLoader {
    * Save plugin provider overrides
    */
   async savePluginOverrides(overrides: PluginOverrides): Promise<void> {
+    for (const [id, override] of Object.entries(overrides)) {
+      if (override.disabled?.length)
+        assertRequiredSlotDefaultMutable(id, 'disable');
+      if (Object.hasOwn(override, 'requiredSlots')) {
+        parseRequiredSlotAssignments(Reflect.get(override, 'requiredSlots'));
+        throw new Error('Slot overrides require the Home-role consent channel');
+      }
+    }
     const configDir = join(this.projectHomeDir, 'config');
     await mkdir(configDir, { recursive: true });
     await writeFile(
@@ -388,7 +400,9 @@ export class ConfigLoader {
   }
 
   async mutateAppConfig(
-    mutate: (current: Readonly<AppConfig>) => Partial<AppConfig>,
+    mutate: (
+      current: Readonly<AppConfig>,
+    ) => Partial<AppConfig> | Promise<Partial<AppConfig>>,
   ): Promise<AppConfig> {
     if (this.enforceHomeSchema) await this.ensureHomeSchema();
     return this.serializeAppMutation(() =>
@@ -415,7 +429,7 @@ export class ConfigLoader {
           ) {
             throw new AppConfigConflictError();
           }
-          const updates = mutate(structuredClone(existing));
+          const updates = await mutate(structuredClone(existing));
           // An explicit null/undefined in `updates` clears non-nullable
           // fields instead of assigning a value AJV would reject.
           const updated = mergeAppConfigUpdate(existing, updates);
@@ -874,6 +888,30 @@ export class ConfigLoader {
     };
   }
 
+  /** Inert App presentation lookup; no credential hydration or connection launch. */
+  readIntegrationAppDefinition(id: string): ToolDef | undefined {
+    if (!isSafeToolServerId(id)) return undefined;
+    try {
+      if (!integrationConfigExists(this.projectHomeDir, id)) {
+        for (const owner of this.integrationSources) {
+          const definition = owner.loadIntegration(id);
+          if (definition) return definition;
+        }
+        return undefined;
+      }
+      const source = readRegularFileNoFollow(
+        this.projectHomeDir,
+        join(this.projectHomeDir, 'integrations', id, 'integration.json'),
+        { maxBytes: INTEGRATION_POLICY_MAX_BYTES },
+      );
+      const value: unknown = JSON.parse(source);
+      validator.validateToolDef(value);
+      return this.withBuiltinIntegrationRuntimeIdentity(id, value as ToolDef);
+    } catch {
+      return undefined;
+    }
+  }
+
   async captureIntegrationPolicySnapshot(
     id: string,
   ): Promise<IntegrationPolicySnapshot | null> {
@@ -1113,14 +1151,29 @@ export class ConfigLoader {
     this.watcher.on('change', forward('change'));
     this.watcher.on('add', forward('add'));
     this.watcher.on('unlink', forward('remove'));
-    this.watcher.on('ready', () => this.scheduleWatcherReconciliation(0));
+    this.watcher.on('ready', () => {
+      this.scheduleWatcherReconciliation(0);
+      this.startAppConfigFallbackPoll(appConfigPath);
+    });
+    this.watcher.on('error', () =>
+      this.startAppConfigFallbackPoll(appConfigPath),
+    );
+    // An armed watcher may stay silent (archive#970); ctime-only changes
+    // also need the full signature check, regardless of watcher health.
+    if (process.env.STATION_CONFIG_WATCH_POLL === '1') {
+      this.startAppConfigFallbackPoll(appConfigPath);
+    }
+  }
+
+  private startAppConfigFallbackPoll(appConfigPath: string): void {
+    if (this.disposed || this.launchabilityPoller) return;
     this.launchabilityPoller = setInterval(() => {
       try {
         this.synchronizeAppConfigFingerprintAfterMetadataChange(appConfigPath);
       } catch {
         logger.error('Failed to poll application configuration fingerprint.');
       }
-    }, 250);
+    }, 5_000);
     this.launchabilityPoller.unref();
   }
 

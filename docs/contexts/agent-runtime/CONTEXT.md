@@ -48,6 +48,19 @@ records that relationship. Reserving a child does not prove its engine started.
 Compatible built-in returns can resume an earlier native identity with bounded
 intervening context. Durable native ownership prevents old Session aliases from
 mutating the transferred thread, and transfer requires confirmed retirement.
+An ordinary follow-up after a native return also requires observed completion
+of its seed-bearing turn. Failed or uncertain catch-up explicitly refuses the
+follow-up instead of silently continuing without that context.
+New history-seeded continuations and saved forks follow the same completion
+fence. Known native identities are captured with the prepared invocation. A
+first identity learned during the turn must come from its correlated engine
+completion, never a later mutable carrier binding; a conflicting report cannot
+qualify the seed. A carrier rebind cannot borrow another identity's completion.
+The handoff fence runs synchronously again at provider dispatch, including
+prepared-turn resumption, after any awaited continuation preparation.
+A context-projection failure
+retains the canonical terminal and leaves delivery unverified. Opening an owned
+saved fork reports `fork-ready` before any provider Session exists.
 Provider handoffs retain the Conversation; explicit forks create a new one.
 The compact history contract reports these boundaries to tool and SDK callers.
 A model change on a Session that never ran a turn stops that predecessor's engine
@@ -79,3 +92,26 @@ restart, cancellation, and stale-provider outcomes before calling a start or
 continuation successful. Use the [module map](../../architecture/module-map.md)
 for focused evidence. Real-engine compatibility and device delivery require
 their own observations; fixture tests do not establish either.
+
+## Experimental model durability package
+
+[`@kontourai/agent-runtime`](../../../packages/agent-runtime/README.md) is a
+private experimental workspace consumer of public Monument contracts. Its
+model-only journal and real SQLite BLOB/projection adapters retain effective
+framework entry/request bytes, fence proven-dead recovery and withhold native
+success/tool-enabling output until completion commits. Its helpers construct
+real VoltAgent and Strands VercelModel consumers with scripted-transport
+conformance owners in the package. Actual tool bodies refuse and block the run. A drain applies its finite initial
+outbox window across pages. Full settled replay expires after seven days.
+Eligible records compact only on an authorized write to that exact generation,
+after every required journal disposition is acknowledged and applied by the
+SQLite sink. Protection lasts thirty days from the same settlement time,
+followed by an irreversible expired-generation marker. Raw audit and BLOB rows remain retained; the replay
+windows do not establish bounded disk usage. Current host authorization and
+callback quiescence still govern effects and explicit cancellation.
+
+Station's existing framework builder, `/chat`, FileMemory/history, approval
+registry, boot continuation and terminal writers have not adopted this package.
+Those current paths and capability disclosures retain their existing owners.
+Package fixtures do not establish Station restart recovery, durable tools or
+approvals, native Bedrock/stateful support, live provider fidelity or a release.

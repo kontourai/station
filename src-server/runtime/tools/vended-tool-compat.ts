@@ -1,5 +1,4 @@
 import { Buffer } from 'node:buffer';
-import { spawn } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import type { RegistryItem } from '@kontourai/station-contracts/catalog';
@@ -8,6 +7,7 @@ import type {
   UIBlock,
   UIFormField,
 } from '@kontourai/station-contracts/ui-block';
+import { spawnChildWorkload as spawn } from '@kontourai/station-shared/child-workload';
 import { uiBlockEmitted } from '../../telemetry/metrics.js';
 import { childProcessEnvironment } from '../../utils/child-process-environment.js';
 import { guardChildStdin } from '../../utils/child-stdin.js';

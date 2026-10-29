@@ -22,7 +22,7 @@
   align-items: center;
   justify-content: center;
   padding: var(--space-4, 16px);
-  background: rgba(7, 10, 16, 0.68);
+  background: var(--overlay-modal);
   backdrop-filter: blur(10px);
 }
 

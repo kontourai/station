@@ -13,6 +13,7 @@ import type {
   SystemIdentityResponse,
 } from '@kontourai/station-contracts/system-status';
 import type { CoreUpdateStatus } from '@kontourai/station-sdk';
+import { Badge, type SemanticTone } from '@kontourai/ui/react';
 import type { ReactNode } from 'react';
 import { CheckGlyph } from '../../components/icons/Glyph';
 
@@ -80,19 +81,9 @@ function releaseComparisonView(status: CoreUpdateStatus): ComparisonView {
   ) {
     return unknown;
   }
-  if (status.updateAvailable) {
-    return {
-      ...unknown,
-      tone: 'warning',
-      text: `Station ${status.latestVersion} is available. This server runs ${status.currentVersion}.`,
-    };
-  }
-  return {
-    ...unknown,
-    tone: 'success',
-    text: `This server runs the newest ${channel} release (${status.currentVersion}).`,
-    glyph: true,
-  };
+  // A verified comparison needs no sentence: the card's header carries it as
+  // a status badge beside "current → latest" (see serverUpdateBadge).
+  return { ...unknown, tone: status.updateAvailable ? 'warning' : 'success' };
 }
 
 function commitCount(n: number): string {
@@ -382,6 +373,35 @@ export const SERVICE_UPDATE_IN_FLIGHT: ReadonlySet<
   ServiceUpdateProgress['state']
 > = new Set(['queued', 'staging', 'updating']);
 
+const MEGABYTE = 1024 * 1024;
+
+/**
+ * #3851: the step the installer reported, with measured bytes while it
+ * downloads. No percentage is shown without both byte counts.
+ */
+function stagingLine(
+  progress: Extract<ServiceUpdateProgress, { state: 'staging' }>,
+): string {
+  if (progress.intent === 'apply')
+    return 'Handing the downloaded release to the Station service…';
+  if (
+    progress.stagePhase === 'downloading' &&
+    progress.downloadedBytes !== undefined &&
+    progress.totalBytes !== undefined
+  ) {
+    const percent = Math.floor(
+      (progress.downloadedBytes / progress.totalBytes) * 100,
+    );
+    return `Downloading the release: ${(progress.downloadedBytes / MEGABYTE).toFixed(1)} of ${(progress.totalBytes / MEGABYTE).toFixed(1)} MB (${percent}%)…`;
+  }
+  if (progress.stagePhase === 'downloading') return 'Downloading the release…';
+  if (progress.stagePhase === 'verifying')
+    return 'Verifying the downloaded release…';
+  if (progress.stagePhase === 'installing')
+    return 'Installing the downloaded release beside the running one…';
+  return 'Downloading and verifying the release…';
+}
+
 /**
  * One line for the service launcher's update progress (#2675 D3): what the
  * runtime files say, in the tone of the outcome. Finished outcomes carry
@@ -403,12 +423,17 @@ export function serviceUpdateProgressLine(
     case 'queued':
       return {
         tone: 'muted',
-        text: 'Update requested. Waiting for the Station service to start it…',
+        text:
+          progress.intent === 'stage'
+            ? 'Download requested. Waiting for the Station service to start it…'
+            : 'Update requested. Waiting for the Station service to start it…',
       };
     case 'staging':
+      return { tone: 'muted', text: stagingLine(progress) };
+    case 'staged':
       return {
-        tone: 'muted',
-        text: 'Downloading and verifying the release…',
+        tone: 'success',
+        text: `Station ${progress.version} is downloaded and verified. The server keeps running the current version until you restart it.`,
       };
     case 'updating':
       switch (progress.phase) {
@@ -472,4 +497,176 @@ export function serviceUpdateProgressLine(
         text: `The Station service refused the update: ${progress.reason}`,
       };
   }
+}
+
+export interface ServerUpdateBadge {
+  label:
+    | 'Up to date'
+    | 'Update available'
+    | 'Downloading'
+    | 'Ready to restart'
+    | 'Updating'
+    | 'Needs operator'
+    | 'Check failed'
+    | 'Unavailable';
+  tone: SemanticTone;
+}
+
+/**
+ * The connected-server card's one status word, from the same facts its lines
+ * are derived from. An unreachable server says only that, and this card's
+ * own restart or rebuild says Updating. Otherwise a superseded comparison
+ * (another selection, an accepted rebuild) claims nothing, not even the
+ * progress cached for it. Progress the server reports outranks the
+ * comparison, but a staged release reads as ready to restart only while the
+ * card offers Restart; otherwise the comparison speaks.
+ */
+export function serverUpdateBadge({
+  view,
+  status,
+  progress,
+  unreachable,
+  superseded,
+  updating,
+  restartOffered,
+}: {
+  view: ComparisonView | null;
+  status: CoreUpdateStatus | undefined;
+  progress: ServiceUpdateProgress | undefined;
+  unreachable: boolean;
+  superseded: boolean;
+  /** A restart being verified or an accepted source rebuild. */
+  updating: boolean;
+  /** The card renders Restart for a staged release (identity matched). */
+  restartOffered: boolean;
+}): ServerUpdateBadge | null {
+  if (unreachable) return { label: 'Unavailable', tone: 'neutral' };
+  if (updating) return { label: 'Updating', tone: 'active' };
+  if (superseded) return null;
+  if (progress?.state === 'updating') {
+    return { label: 'Updating', tone: 'active' };
+  }
+  if (progress?.state === 'queued' || progress?.state === 'staging') {
+    return progress.intent === 'apply'
+      ? { label: 'Updating', tone: 'active' }
+      : { label: 'Downloading', tone: 'active' };
+  }
+  if (progress?.state === 'staged' && restartOffered) {
+    return { label: 'Ready to restart', tone: 'active' };
+  }
+  if (progress?.state === 'needs-operator') {
+    return { label: 'Needs operator', tone: 'negative' };
+  }
+  if (!view || !status) return null;
+  if (view.kind === 'failed-check') {
+    return { label: 'Check failed', tone: 'negative' };
+  }
+  if (view.kind === 'release' && status.releaseCheck === 'verified') {
+    if (!status.currentVersion || !status.latestVersion) return null;
+    return status.updateAvailable
+      ? { label: 'Update available', tone: 'caution' }
+      : { label: 'Up to date', tone: 'positive' };
+  }
+  if (view.kind === 'checkout' && !view.diverged) {
+    if ((status.behind ?? 0) > 0) {
+      return { label: 'Update available', tone: 'caution' };
+    }
+    if ((status.ahead ?? 0) === 0) {
+      return { label: 'Up to date', tone: 'positive' };
+    }
+  }
+  return null;
+}
+
+/**
+ * A download the installer measures, for a progress bar. Null unless both
+ * byte counts are known: no percentage is shown without them.
+ */
+export function serviceUpdateDownload(progress: ServiceUpdateProgress): {
+  percent: number;
+  text: string;
+} | null {
+  if (
+    progress.state !== 'staging' ||
+    progress.intent === 'apply' ||
+    progress.stagePhase !== 'downloading' ||
+    progress.downloadedBytes === undefined ||
+    progress.totalBytes === undefined ||
+    progress.totalBytes <= 0
+  ) {
+    return null;
+  }
+  return {
+    percent: Math.min(
+      100,
+      Math.floor((progress.downloadedBytes / progress.totalBytes) * 100),
+    ),
+    text: `${(progress.downloadedBytes / MEGABYTE).toFixed(1)} / ${(progress.totalBytes / MEGABYTE).toFixed(1)} MB`,
+  };
+}
+
+/** Finished outcomes that are history once read: they belong in Details. */
+export function serviceProgressIsHistory(
+  progress: ServiceUpdateProgress,
+): boolean {
+  return progress.state === 'committed' || progress.state === 'up-to-date';
+}
+
+/** "Auto-downloads at 5:04 PM", with the date only when it is not today. */
+export function autoDownloadLabel(at: string, now = new Date()): string {
+  const time = new Date(at);
+  if (!Number.isFinite(time.getTime())) return `Auto-downloads after ${at}`;
+  const clock = time.toLocaleTimeString([], {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  return time.toDateString() === now.toDateString()
+    ? `Auto-downloads at ${clock}`
+    : `Auto-downloads ${time.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${clock}`;
+}
+
+/**
+ * The server card's header: its name, the running version once (with the
+ * version an update moves to), and one status badge.
+ */
+export function ServerUpdateHeader({
+  title,
+  headingId,
+  badge,
+  current,
+  target,
+}: {
+  title: ReactNode;
+  /** Renders the title as the section heading this id labels. */
+  headingId?: string;
+  badge?: ServerUpdateBadge | null;
+  current?: string | null;
+  target?: string | null;
+}) {
+  const Title = headingId ? 'h3' : 'p';
+  return (
+    <div className="server-update__header">
+      <div className="server-update__identity">
+        <Title id={headingId} className="server-update__title">
+          {title}
+        </Title>
+        {current && (
+          <p className="server-update__version">
+            <span>{current}</span>
+            {target && target !== current && (
+              <>
+                {' '}
+                <span aria-hidden="true">→</span>{' '}
+                <span className="sr-only">to </span>
+                <span>{target}</span>
+              </>
+            )}
+          </p>
+        )}
+      </div>
+      <span className="server-update__badge" role="status">
+        {badge && <Badge value={badge.label} tone={badge.tone} />}
+      </span>
+    </div>
+  );
 }

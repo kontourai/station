@@ -1,3 +1,13 @@
+/* No queued row may widen the panel (and the composer under it) past its
+   column: every box in the chain may shrink below its content's width. */
+.queued-messages,
+.queued-messages__content,
+.queued-messages__list,
+.queued-message {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .queued-messages {
   margin-bottom: 12px;
   padding: 8px 12px;
@@ -63,6 +73,69 @@
   border: 1px solid var(--border-primary);
   border-radius: var(--radius-sm);
   background: var(--bg-secondary);
+}
+
+/* A message that may have reached the agent keeps its text on a line of its
+   own, with its note, Check and Discard… wrapping below; an open
+   confirmation takes a row of its own under them. Any outbox row with a
+   status note (accepted, sending, held, waiting for its Station) does the
+   same, so the note never squeezes the message. */
+.queued-message:has(> :is(.queued-message__actions, .queued-message__confirm)),
+.queued-messages--outbox .queued-message:has(> .queued-messages__label) {
+  flex-wrap: wrap;
+}
+.queued-message:has(> :is(.queued-message__actions, .queued-message__confirm))
+  > .queued-message__text,
+.queued-messages--outbox
+  .queued-message:has(> .queued-messages__label)
+  > .queued-message__text {
+  flex-basis: calc(100% - 16px - 6px);
+}
+/* An unconfirmed row's Check and Discard…: one group, one size. */
+.queued-message__actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-1);
+  font-size: var(--text-sm);
+}
+.queued-message__confirm {
+  flex-basis: 100%;
+  min-width: 0;
+}
+/* The list's three-row window would hide an unconfirmed row's Discard… (or
+   the risk its confirmation states) below the fold. Such rows are few and
+   bounded by the outbox, so the list shows them whole, except in a dock short
+   enough to give the composer priority: there the composer carries the
+   notice and its Discard, and the list keeps its window. */
+.queued-messages__list:has(
+  :is(.queued-message__actions, .queued-message__confirm)
+):not(:where([data-composer-priority] *)) {
+  max-height: none;
+}
+/* The outbox's rows sit at the top of the pending list, spaced like its
+   other rows. */
+.queued-messages__outbox {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+/* Another window's send under way, an accepted message and a copy held from
+   another window read as sentences, not captions (neutral, not a caution). */
+.queued-messages__label.queued-messages__label--sending,
+.queued-messages__label.queued-messages__label--accepted,
+.queued-messages__label.queued-messages__label--held {
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+}
+/* Calm sentence case for this one note, unlike the list's other labels: it
+   says what may have happened, not an instruction to send again. */
+.queued-messages__label.queued-messages__label--unconfirmed {
+  color: var(--k-caution);
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 .queued-message__merge-preview pre {
@@ -157,6 +230,23 @@
   letter-spacing: normal;
 }
 
+/* A pending follow-up's text, and an outbox row's, wraps (long unbroken
+   strings too) and shows at most two lines; the row's title and its Edit
+   carry the full text. */
+.queued-messages--pending .queued-message__text,
+.queued-messages--outbox .queued-message__text {
+  white-space: normal;
+}
+.queued-messages--pending .queued-message__body,
+.queued-messages--outbox .queued-message__body {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow-wrap: anywhere;
+}
+
 .queued-messages--pending .queued-message__status {
   display: block;
   color: var(--k-text-muted);
@@ -249,6 +339,10 @@
     min-height: 44px;
   }
 
+  .queued-message__actions > button {
+    min-height: 44px;
+  }
+
   .queued-messages--pending .queued-messages__list {
     max-height: min(35dvh, 24rem);
   }
@@ -258,6 +352,14 @@
   }
   .queued-messages--pending .queued-message__text {
     flex: 1 0 calc(100% - var(--k-space-5));
+  }
+  /* On a phone an outbox row's text takes its own line too; its 44px
+     controls wrap below it instead of leaving it a dozen characters. */
+  .queued-messages--outbox .queued-message {
+    flex-wrap: wrap;
+  }
+  .queued-messages--outbox .queued-message__text {
+    flex: 1 0 calc(100% - 16px - var(--space-1));
   }
   .queued-messages--pending .queued-message__btn {
     font-size: var(--k-text-sm);
@@ -274,4 +376,66 @@
   .queued-messages--pending .queued-messages__toggle {
     min-height: 44px;
   }
+}
+
+/* #3868 follow-up: the pending list, and each row in it, grows in and
+   collapses out (grid row 0fr <-> 1fr with opacity) instead of popping, so
+   the transcript and composer around it move smoothly rather than jump. Only
+   a surface or row that arrives after the list first rendered animates in. */
+.queued-messages-presence,
+.queued-message-presence {
+  display: grid;
+  grid-template-rows: 1fr;
+  min-width: 0;
+}
+.queued-messages-presence > *,
+.queued-message-presence > * {
+  min-height: 0;
+}
+/* The clip box carries no padding or margin of its own, so it can collapse
+   to nothing, and while it animates it contains the row's padding and the
+   surface's gap to the composer, which collapse with it. */
+.queued-messages-presence:is([data-phase="entering"], [data-phase="exiting"])
+> *,
+.queued-message-presence:is([data-phase="entering"], [data-phase="exiting"])
+  > * {
+  overflow: hidden;
+}
+.queued-messages-presence[data-phase="entering"],
+.queued-message-presence[data-phase="entering"] {
+  animation: queued-presence-enter var(--motion-base) var(--ease-out) both;
+}
+.queued-messages-presence[data-phase="exiting"],
+.queued-message-presence[data-phase="exiting"] {
+  animation: queued-presence-exit var(--motion-base) var(--ease-in) both;
+  pointer-events: none;
+}
+:root[data-page-hidden] .queued-messages-presence,
+:root[data-page-hidden] .queued-message-presence {
+  animation-play-state: paused;
+}
+@keyframes queued-presence-enter {
+  from {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+  to {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+}
+@keyframes queued-presence-exit {
+  from {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+  to {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+}
+
+/* A message Station holds reads like a queued one but has only Remove. */
+.queued-message--held .queued-message__status + .queued-message__status {
+  margin-top: 0;
 }

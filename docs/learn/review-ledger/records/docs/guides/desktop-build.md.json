@@ -54,8 +54,6 @@
 
     "packages/shared/src/station-home-schema.ts",
 
-    "pnpm-lock.yaml",
-
     "scripts/__tests__/browser-preview-packaged-fixture.test.ts",
 
     "scripts/__tests__/startup-readiness-static.test.ts",
@@ -100,8 +98,6 @@
 
     "src-desktop/build.rs",
 
-    "src-desktop/capabilities/desktop-updater.json",
-
     "src-desktop/src/lib.rs",
 
     "src-desktop/src/service_state.rs",
@@ -124,8 +120,6 @@
 
     "src-server/tools/instance-registry-bridge.ts",
 
-    "src-ui/src/components/DesktopUpdateLaunchCheck.tsx",
-
     "src-ui/src/core/PluginRegistry.ts",
 
     "src-ui/src/platform/androidSafeArea.ts",
@@ -144,7 +138,73 @@
 
     "vite.config.ts",
 
-    "scripts/__tests__/tauri-context.test.ts"
+    "scripts/__tests__/tauri-context.test.ts",
+
+    "pnpm-lock.yaml#/packages",
+
+    "pnpm-lock.yaml#/snapshots",
+
+    "src-desktop/src/desktop_update.rs",
+
+    "src-desktop/src/native_secure_entry.rs",
+
+    "src-server/services/devices/toolchain/device-tool-runtime.ts",
+
+    "src-server/services/devices/toolchain/device-hub-supervisor.ts",
+
+    "src-server/services/devices/toolchain/__tests__/device-tool-runtime.process.test.ts",
+
+    "src-ui/src/workspace-panes/device/DeviceSetupWizard.tsx",
+
+    "src-ui/src/components/updates/UpdatesControl.tsx",
+
+    "src-ui/src/components/updates/UpdatesPanel.tsx",
+
+    "src-ui/src/components/updates/updatesEvents.ts",
+
+    "src-ui/src/components/updates/__tests__/UpdatesControl.test.tsx",
+
+    "src-ui/src/components/ServerOlderLaunchCheck.tsx",
+
+    "src-desktop/src/linux_webkit.rs",
+
+    "src-desktop/src/login_shell.rs",
+
+    "esbuild.config.mjs",
+
+    "src-server/index.ts",
+
+    "src-ui/src/__tests__/PluginRegistry.csp.test.ts",
+
+    "tests/plugin-bundle-csp.spec.ts",
+
+    "src-desktop/src/plugin_bundle_protocol.rs",
+
+    "src-ui/src/platform/native/pluginBundleUrl.ts",
+
+    "src-desktop/tauri.windows.conf.json",
+
+    "scripts/__tests__/native-platform-boundary.test.ts",
+
+    "src-ui/src/platform/native/pluginBundleCapability.js",
+
+    "src-ui/src/platform/native/__tests__/pluginBundleCapability.test.ts",
+
+    "src-ui/src/components/report-problem/console-capture.ts",
+
+    "src-ui/src/components/report-problem/__tests__/console-capture.test.ts",
+
+    "src-ui/src/__tests__/PluginRegistry.drafts.test.ts",
+
+    "packages/shared/src/redaction.ts",
+
+    "src-ui/src/workspace-panes/WorkspacePaneFailure.tsx",
+
+    "src-ui/src/workspace-panes/__tests__/WorkspacePaneFailure.details.test.tsx",
+
+    "src-ui/src/views/home/HomeRolePane.tsx",
+
+    "src-ui/src/views/home/__tests__/HomeRolePane.test.tsx"
   ],
 
   "checks": [

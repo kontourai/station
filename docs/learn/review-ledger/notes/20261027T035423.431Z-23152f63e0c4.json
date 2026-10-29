@@ -1,0 +1,7 @@
+{
+  "revision": "5a9920ab99e3bb6605933d46be1551ecdeb0a4ea",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Rechecked after notification-delivery.md gained the sentence on approval cards for spilled requests offering Deny only; the automations document links it for notification delivery generally and its claims are unchanged.","inputs":["docs/design/automations.md","docs/design/notification-delivery.md"]}
+  ]
+}

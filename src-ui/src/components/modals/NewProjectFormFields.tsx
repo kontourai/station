@@ -1,4 +1,5 @@
 import type { ProjectIconCandidate } from '@kontourai/station-contracts/project';
+import type { RefObject } from 'react';
 import { ProjectIcon } from '../icons/ProjectIcon';
 import { PathAutocomplete } from '../PathAutocomplete';
 import { ProjectIconPicker } from '../project-icon/ProjectIconPicker';
@@ -30,9 +31,10 @@ export function NewProjectDirectoryField({
       <section className="new-project-modal__panel new-project-modal__panel--featured">
         <div className="editor-field">
           <label className="editor-label" htmlFor="new-project-directory">
-            Working Directory <span className="editor-hint"> optional</span>
+            Project folder <span className="editor-hint"> optional</span>
           </label>
           <PathAutocomplete
+            autoFocus={false}
             id="new-project-directory"
             value={directory}
             onChange={onDirectoryChange}
@@ -60,6 +62,7 @@ export function NewProjectDirectoryField({
 }
 
 interface IdentityFieldProps {
+  inputRef?: RefObject<HTMLInputElement | null>;
   candidates: ProjectIconCandidate[];
   icon: string;
   name: string;
@@ -90,11 +93,12 @@ export function NewProjectIdentityField({
   onNameChange,
   onToggleIconChoices,
   identityHint,
+  inputRef,
 }: IdentityFieldProps) {
   return (
     <div className="editor-field">
       <label className="editor-label" htmlFor="new-project-name">
-        Project identity
+        Project name
       </label>
       <div className="new-project-modal__identity-row">
         <button
@@ -111,6 +115,7 @@ export function NewProjectIdentityField({
           />
         </button>
         <input
+          ref={inputRef}
           id="new-project-name"
           className="editor-input new-project-modal__name-input"
           type="text"

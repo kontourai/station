@@ -1,0 +1,21 @@
+{
+  "revision": "96ae67c7875b0045485467c0cb977be19b3ef2ff",
+
+  "notes": [
+    {"path":"docs/learn/media/project-with-task.png","note":"The capture is unchanged: this round's index.css delta only moves the chat-dock header's own rules (New split control, inbox badge and dot, working glyph, their keyframes) unchanged into ChatDockHeader.css, loaded with the ChatDock chunk; the live render of those controls was checked identical. Nothing the capture shows changes.","inputs":["docs/learn/media/project-with-task.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"The capture is unchanged: this round's index.css delta only moves the chat-dock header's own rules (New split control, inbox badge and dot, working glyph, their keyframes) unchanged into ChatDockHeader.css, loaded with the ChatDock chunk; the live render of those controls was checked identical. Nothing the capture shows changes.","inputs":["docs/learn/media/shared-task-document.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"The capture is unchanged: this round's index.css delta only moves the chat-dock header's own rules (New split control, inbox badge and dot, working glyph, their keyframes) unchanged into ChatDockHeader.css, loaded with the ChatDock chunk; the live render of those controls was checked identical. Nothing the capture shows changes.","inputs":["docs/learn/media/connections-models.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"The capture is unchanged: this round's index.css delta only moves the chat-dock header's own rules (New split control, inbox badge and dot, working glyph, their keyframes) unchanged into ChatDockHeader.css, loaded with the ChatDock chunk; the live render of those controls was checked identical. Nothing the capture shows changes.","inputs":["docs/learn/media/inspect-request.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"The capture is unchanged: this round's index.css delta only moves the chat-dock header's own rules (New split control, inbox badge and dot, working glyph, their keyframes) unchanged into ChatDockHeader.css, loaded with the ChatDock chunk; the live render of those controls was checked identical. Nothing the capture shows changes.","inputs":["docs/learn/media/inspect-request.webm","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"The capture is unchanged: this round's index.css delta only moves the chat-dock header's own rules (New split control, inbox badge and dot, working glyph, their keyframes) unchanged into ChatDockHeader.css, loaded with the ChatDock chunk; the live render of those controls was checked identical. Nothing the capture shows changes.","inputs":["docs/learn/media/connections-tour.webm","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge.png","note":"The capture is unchanged: this round's index.css delta only moves the chat-dock header's own rules (New split control, inbox badge and dot, working glyph, their keyframes) unchanged into ChatDockHeader.css, loaded with the ChatDock chunk; the live render of those controls was checked identical. Nothing the capture shows changes.","inputs":["docs/learn/media/repository-knowledge.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge-narrow.png","note":"The capture is unchanged: this round's index.css delta only moves the chat-dock header's own rules (New split control, inbox badge and dot, working glyph, their keyframes) unchanged into ChatDockHeader.css, loaded with the ChatDock chunk; the live render of those controls was checked identical. Nothing the capture shows changes.","inputs":["docs/learn/media/repository-knowledge-narrow.png","src-ui/src/index.css"]}
+  ]
+}

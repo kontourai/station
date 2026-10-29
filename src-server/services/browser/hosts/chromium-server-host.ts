@@ -26,8 +26,9 @@
  *   line.
  * - Downloads are denied (`Browser.setDownloadBehavior`). Headless Chrome's
  *   default otherwise writes into the user's real Downloads folder.
- * - Popups load in their opener's tab and the popup target is closed, so the
- *   pane stays on one tab and no second target is left open.
+ * - Popups are admitted as exact targets by the session registry; without a
+ *   registry listener they fold into their opener, so the pane stays on one
+ *   tab and no second target is left open.
  * - Permissions are denied.
  * - Clipboard: measured 2026-09-22 on macOS with Chrome 153 `--headless=new`,
  *   the headless browser does NOT share the host's system clipboard —
@@ -40,6 +41,7 @@
  */
 import { mkdirSync } from 'node:fs';
 import type { Readable, Writable } from 'node:stream';
+import { BROWSER_PANE_TAB_LIMIT } from '@kontourai/station-contracts/workspace-browser-pane';
 import {
   spawnOwnedChild,
   terminateProcessTree,
@@ -70,7 +72,7 @@ const CHROME_ERROR_PAGE = 'chrome-error://chromewebdata/';
 
 /**
  * The ONLY methods the public {@link BrowserHost.cdp} channel forwards, and
- * only on a page session this host opened (review B2/M1). Everything else —
+ * only on a page session this host opened. Everything else —
  * every `Browser.*` and `Target.*` method, `Fetch.*`, storage and download
  * controls, and `DOM.setFileInputFiles` — stays host-owned, because
  * `Target.attachToTarget{flatten:false}` + `Target.sendMessageToTarget` or
@@ -154,7 +156,7 @@ export const PAGE_SESSION_CDP_ALLOWLIST: readonly string[] = Object.freeze([
 const PAGE_SESSION_CDP_ALLOWED = new Set(PAGE_SESSION_CDP_ALLOWLIST);
 
 /**
- * Parameters an allowed method may not carry (review round 2):
+ * Parameters an allowed method may not carry:
  * - `includeCommandLineAPI` exposes DevTools console helpers such as
  *   `copy()`, which writes the clipboard;
  * - `Input.dispatchKeyEvent.commands` runs editor commands (copy, paste,
@@ -233,18 +235,21 @@ export class BrowserHostPolicyError extends Error {
       | 'url-not-allowed'
       | 'profile-mismatch'
       | 'foreign-session'
-      | 'param-not-allowed',
+      | 'param-not-allowed'
+      | 'webrtc-policy-unverified',
   ) {
     super(
-      code === 'url-not-allowed'
-        ? `${method} was refused: the URL is outside the Browser pane's scope.`
-        : code === 'profile-mismatch'
-          ? 'This browser host already runs a different profile directory.'
-          : code === 'foreign-session'
-            ? `${method} was refused: only page sessions this host opened are reachable.`
-            : code === 'param-not-allowed'
-              ? `${method} was refused: a parameter it carries is reserved to the browser host.`
-              : `${method} is reserved to the browser host.`,
+      code === 'webrtc-policy-unverified'
+        ? 'HTML preview could not verify a restrictive effective WebRTC policy; the browser is unsupported or enterprise policy overrides its profile.'
+        : code === 'url-not-allowed'
+          ? `${method} was refused: the URL is outside the Browser pane's scope.`
+          : code === 'profile-mismatch'
+            ? 'This browser host already runs a different profile directory.'
+            : code === 'foreign-session'
+              ? `${method} was refused: only page sessions this host opened are reachable.`
+              : code === 'param-not-allowed'
+                ? `${method} was refused: a parameter it carries is reserved to the browser host.`
+                : `${method} is reserved to the browser host.`,
     );
     this.name = 'BrowserHostPolicyError';
   }
@@ -265,6 +270,12 @@ export type ChromiumLauncher = (request: {
 }) => ChromiumLaunch;
 
 export interface ChromiumServerHostOptions {
+  /** Trusted disposable renderers only; bounds V8 heap, not total process RSS. */
+  jsHeapLimitMb?: 128;
+  /** Disposable previews: refuse browser-side DNS resolution, including ICE. */
+  denyHostResolution?: boolean;
+  /** Refuse startup unless Chromium reports the restrictive effective policy. */
+  requireRestrictedWebRtc?: boolean;
   executablePath: string;
   /**
    * The profile's egress policy (Station listeners plus the actor's reach,
@@ -338,7 +349,7 @@ function isAllowedCommittedUrl(url: string): boolean {
 }
 
 /**
- * A subframe URL that may stay committed (review S3): the main-frame scope
+ * A subframe URL that may stay committed: the main-frame scope
  * plus `about:srcdoc` (an inline iframe). A subframe on `data:`, `blob:`,
  * `filesystem:` or any other scheme is replaced with about:blank AFTER it
  * commits — it is not blocked before load, so its document can run briefly.
@@ -469,6 +480,7 @@ export const launchChromiumProcess: ChromiumLauncher = ({
 
 interface TargetState {
   sessionId: string;
+  viewport: BrowserViewport;
   unsubscribe: () => void;
 }
 
@@ -481,6 +493,7 @@ interface Running {
     string,
     { openerTargetId: string; folded: boolean; timer?: NodeJS.Timeout }
   >;
+  popupAdoptions: Map<string, Promise<boolean>>;
   unsubscribe: Array<() => void>;
   /** Target.createTarget calls in flight (their targets are not yet known). */
   creating: number;
@@ -511,6 +524,35 @@ function withTimeout<T>(
 }
 
 export class ChromiumServerHost implements BrowserHost {
+  private popupListener:
+    | ((openerTargetId: string, target: BrowserTarget, url: string) => boolean)
+    | undefined;
+  private readonly titleListeners = new Set<
+    (targetId: string, title: string) => void
+  >();
+  private readonly targetClosedListeners = new Set<
+    (targetId: string) => void
+  >();
+
+  onPopup(
+    fn: (openerTargetId: string, target: BrowserTarget, url: string) => boolean,
+  ): () => void {
+    this.popupListener = fn;
+    return () => {
+      if (this.popupListener === fn) this.popupListener = undefined;
+    };
+  }
+
+  onTitleChanged(fn: (targetId: string, title: string) => void): () => void {
+    this.titleListeners.add(fn);
+    return () => this.titleListeners.delete(fn);
+  }
+
+  onTargetClosed(fn: (targetId: string) => void): () => void {
+    this.targetClosedListeners.add(fn);
+    return () => this.targetClosedListeners.delete(fn);
+  }
+
   readonly kind: BrowserHostKind = 'server-chromium';
   private running: Running | undefined;
   private starting: Promise<Running> | undefined;
@@ -541,7 +583,7 @@ export class ChromiumServerHost implements BrowserHost {
     const running = await this.ensureRunning(p.profileDir);
     const transport = running.launch.transport;
     running.creating += 1;
-    let targetId: string;
+    let targetId: string | undefined;
     try {
       ({ targetId } = await transport.send<{ targetId: string }>(
         'Target.createTarget',
@@ -549,16 +591,16 @@ export class ChromiumServerHost implements BrowserHost {
       ));
       // Known as ours before the (possibly slow) attach completes.
       running.created.add(targetId);
-    } finally {
-      running.creating -= 1;
-    }
-    try {
       const { sessionId } = await transport.send<{ sessionId: string }>(
         'Target.attachToTarget',
         { targetId, flatten: true },
       );
-      const unsubscribe = this.watchCommittedUrls(running, targetId, sessionId);
-      running.targets.set(targetId, { sessionId, unsubscribe });
+      const unsubscribe = this.watchTarget(running, targetId, sessionId);
+      running.targets.set(targetId, {
+        sessionId,
+        unsubscribe,
+        viewport: { ...p.viewport },
+      });
       const pending = running.pendingUntracked.get(targetId);
       if (pending) clearTimeout(pending);
       running.pendingUntracked.delete(targetId);
@@ -583,8 +625,10 @@ export class ChromiumServerHost implements BrowserHost {
         );
       return { targetId, cdpSessionId: sessionId };
     } catch (error) {
-      await this.closeTarget(targetId).catch(() => {});
+      if (targetId) await this.closeTarget(targetId).catch(() => {});
       throw error;
+    } finally {
+      running.creating -= 1;
     }
   }
 
@@ -597,6 +641,7 @@ export class ChromiumServerHost implements BrowserHost {
     const target = running.targets.get(targetId);
     target?.unsubscribe();
     running.targets.delete(targetId);
+    running.created.delete(targetId);
     await running.launch.transport.send('Target.closeTarget', { targetId });
   }
 
@@ -669,10 +714,18 @@ export class ChromiumServerHost implements BrowserHost {
     try {
       launch = this.launcher({
         executablePath: this.options.executablePath,
-        args: buildChromiumArgs({
-          profileDir,
-          proxyServer: proxy.proxyServerArg,
-        }),
+        args: [
+          ...buildChromiumArgs({
+            profileDir,
+            proxyServer: proxy.proxyServerArg,
+          }),
+          ...(this.options.denyHostResolution
+            ? ['--host-resolver-rules=MAP * ~NOTFOUND']
+            : []),
+          ...(this.options.jsHeapLimitMb
+            ? ['--js-flags=--max-old-space-size=128']
+            : []),
+        ],
       });
     } catch (error) {
       await proxy.close();
@@ -684,6 +737,7 @@ export class ChromiumServerHost implements BrowserHost {
       proxy,
       targets: new Map(),
       popups: new Map(),
+      popupAdoptions: new Map(),
       unsubscribe: [],
       creating: 0,
       created: new Set(),
@@ -705,6 +759,8 @@ export class ChromiumServerHost implements BrowserHost {
         'Chromium launch',
       );
       await this.installBrowserEnforcement(running);
+      if (this.options.requireRestrictedWebRtc)
+        await this.verifyWebRtcPolicy(running);
       return running;
     } catch (error) {
       for (const off of running.unsubscribe) off();
@@ -715,6 +771,185 @@ export class ChromiumServerHost implements BrowserHost {
       );
       throw error;
     }
+  }
+
+  private async verifyWebRtcPolicy(running: Running): Promise<void> {
+    const transport = running.launch.transport;
+    let targetId: string | undefined;
+    let verified = false;
+    const unsubscribe: (() => void)[] = [];
+    try {
+      const check = async () => {
+        running.creating++;
+        try {
+          ({ targetId } = await transport.send<{ targetId: string }>(
+            'Target.createTarget',
+            { url: 'chrome://prefs-internals/' },
+          ));
+          running.created.add(targetId);
+        } finally {
+          running.creating--;
+        }
+        const { sessionId } = await transport.send<{ sessionId: string }>(
+          'Target.attachToTarget',
+          { targetId, flatten: true },
+        );
+        type Frame = {
+          id: string;
+          loaderId: string;
+          url: string;
+          parentId?: unknown;
+        };
+        let snapshotReceived = false;
+        let latestCommit: Frame | undefined;
+        let document: Frame | undefined;
+        let replaced = false;
+        let resolveCommit!: (frame: Frame) => void;
+        const committed = new Promise<Frame>((resolve) => {
+          resolveCommit = resolve;
+        });
+        const observe = (value: unknown) => {
+          if (!value || typeof value !== 'object') return;
+          const candidate = value as Partial<Frame>;
+          if (
+            candidate.parentId !== undefined ||
+            typeof candidate.id !== 'string' ||
+            typeof candidate.loaderId !== 'string' ||
+            !candidate.id ||
+            !candidate.loaderId ||
+            typeof candidate.url !== 'string'
+          )
+            return;
+          const frame: Frame = {
+            id: candidate.id,
+            loaderId: candidate.loaderId,
+            url: candidate.url,
+          };
+          if (document) {
+            if (
+              frame.id !== document.id ||
+              frame.loaderId !== document.loaderId ||
+              frame.url !== document.url
+            )
+              replaced = true;
+            return;
+          }
+          latestCommit = frame;
+          if (snapshotReceived && frame.url === 'chrome://prefs-internals/') {
+            document = frame;
+            resolveCommit(frame);
+          }
+        };
+        unsubscribe.push(
+          transport.on('Page.frameNavigated', (params, session) => {
+            if (session === sessionId)
+              observe((params as { frame?: unknown })?.frame);
+          }),
+          transport.on('Page.frameDetached', (params, session) => {
+            if (
+              session === sessionId &&
+              (params as { frameId?: unknown })?.frameId === document?.id
+            )
+              replaced = true;
+          }),
+        );
+        await transport.send('Page.enable', {}, sessionId);
+        const snapshot = await transport.send<{
+          frameTree: { frame: Frame };
+        }>('Page.getFrameTree', {}, sessionId);
+        snapshotReceived = true;
+        // Events can be newer than the snapshot captured by getFrameTree.
+        observe(latestCommit ?? snapshot.frameTree.frame);
+        const frame = await committed;
+        let contextId: number | undefined;
+        let worldRequested = false;
+        const destroyed = new Set<number>();
+        unsubscribe.push(
+          transport.on(
+            'Runtime.executionContextDestroyed',
+            (params, session) => {
+              const id = (params as { executionContextId?: unknown })
+                ?.executionContextId;
+              if (session === sessionId && typeof id === 'number') {
+                destroyed.add(id);
+                if (id === contextId) replaced = true;
+              }
+            },
+          ),
+          transport.on(
+            'Runtime.executionContextsCleared',
+            (_params, session) => {
+              if (session === sessionId && worldRequested) replaced = true;
+            },
+          ),
+        );
+        await transport.send('Runtime.enable', {}, sessionId);
+        if (replaced) return false;
+        worldRequested = true;
+        const world = await transport.send<{ executionContextId: number }>(
+          'Page.createIsolatedWorld',
+          { frameId: frame.id, worldName: 'station-preview-policy' },
+          sessionId,
+        );
+        contextId = world.executionContextId;
+        if (
+          replaced ||
+          !Number.isSafeInteger(contextId) ||
+          contextId <= 0 ||
+          destroyed.has(contextId)
+        )
+          return false;
+        const result = await transport.send<{
+          result: { value?: { policy?: unknown; urlOverrides?: unknown } };
+        }>(
+          'Runtime.evaluate',
+          {
+            // This internal page reports resolved values, including managed policy.
+            // Return only the network-policy fields, never the full preference dump.
+            expression: `(async()=>{try{if(document.readyState!=='complete')await new Promise(resolve=>addEventListener('load',resolve,{once:true}));if(location.href!=='chrome://prefs-internals/')return null;const p=JSON.parse(document.body.innerText).webrtc;return {policy:p?.ip_handling_policy?.value,urlOverrides:p?.ip_handling_url===undefined?false:!Array.isArray(p.ip_handling_url.value)||p.ip_handling_url.value.length!==0};}catch{return null}})()`,
+            returnByValue: true,
+            awaitPromise: true,
+            contextId,
+          },
+          sessionId,
+        );
+        return (
+          !replaced &&
+          result.result.value?.policy === 'disable_non_proxied_udp' &&
+          result.result.value.urlOverrides === false
+        );
+      };
+      verified = await withTimeout(
+        check(),
+        3000,
+        'Preview effective WebRTC policy',
+      );
+    } catch {
+      verified = false;
+    } finally {
+      for (const off of unsubscribe) off();
+      if (targetId) {
+        try {
+          await withTimeout(
+            transport.send('Target.closeTarget', { targetId }),
+            1000,
+            'Preview policy target cleanup',
+          );
+        } catch {
+          verified = false;
+        } finally {
+          running.created.delete(targetId);
+          const timer = running.pendingUntracked.get(targetId);
+          if (timer) clearTimeout(timer);
+          running.pendingUntracked.delete(targetId);
+        }
+      }
+    }
+    if (!verified)
+      throw new BrowserHostPolicyError(
+        'preview startup',
+        'webrtc-policy-unverified',
+      );
   }
 
   private async installBrowserEnforcement(running: Running): Promise<void> {
@@ -750,9 +985,24 @@ export class ChromiumServerHost implements BrowserHost {
       transport.on('Target.targetCreated', (params) =>
         this.onTargetSeen(running, params),
       ),
-      transport.on('Target.targetInfoChanged', (params) =>
-        this.onTargetSeen(running, params),
-      ),
+      transport.on('Target.targetDestroyed', (params) => {
+        const targetId = (params as { targetId?: unknown })?.targetId;
+        if (typeof targetId !== 'string') return;
+        const target = running.targets.get(targetId);
+        target?.unsubscribe();
+        running.targets.delete(targetId);
+        running.created.delete(targetId);
+        if (target)
+          for (const listener of this.targetClosedListeners) listener(targetId);
+      }),
+      transport.on('Target.targetInfoChanged', (params) => {
+        this.onTargetSeen(running, params);
+        const info = (
+          params as { targetInfo?: { targetId?: unknown; title?: unknown } }
+        )?.targetInfo;
+        if (typeof info?.targetId !== 'string') return;
+        this.emitTitle(running, info.targetId, info.title);
+      }),
     );
     await transport.send('Fetch.enable', {
       patterns: [
@@ -793,11 +1043,35 @@ export class ChromiumServerHost implements BrowserHost {
         interfaceAddresses: this.options.egressPolicy.interfaceAddresses(),
         popupFrameIds: new Set(
           [...running.popups.entries()]
-            .filter(([, popup]) => !popup.folded)
+            .filter(
+              ([id, popup]) => !popup.folded || running.popupAdoptions.has(id),
+            )
             .map(([id]) => id),
         ),
       },
     );
+    if (
+      decision.action === 'fail' &&
+      decision.reason === 'popup' &&
+      this.popupListener &&
+      p.frameId &&
+      isAllowedBrowserUrl(p.request.url)
+    ) {
+      this.foldPopup(running, p.frameId, p.request.url);
+      const adoption = running.popupAdoptions.get(p.frameId);
+      void Promise.resolve(adoption)
+        .then((accepted) =>
+          transport.send(
+            accepted ? 'Fetch.continueRequest' : 'Fetch.failRequest',
+            {
+              requestId: p.requestId,
+              ...(accepted ? {} : { errorReason: 'BlockedByClient' }),
+            },
+          ),
+        )
+        .catch(() => {});
+      return;
+    }
     if (decision.action === 'continue') {
       void transport
         .send('Fetch.continueRequest', { requestId: p.requestId })
@@ -824,6 +1098,7 @@ export class ChromiumServerHost implements BrowserHost {
       .targetInfo;
     if (info?.type !== 'page' || typeof info.targetId !== 'string') return;
     const targetId = info.targetId;
+    if (running.targets.has(targetId) || running.created.has(targetId)) return;
     const url = typeof info.url === 'string' ? info.url : '';
     let popup = running.popups.get(targetId);
     if (!popup) {
@@ -857,7 +1132,7 @@ export class ChromiumServerHost implements BrowserHost {
   /**
    * A page target this host did not create and that is not a popup of one of
    * its targets (the launch tab, an extension page, a view-source: tab) is
-   * closed: no unobserved page may live in the browser (review B2).
+   * closed: no unobserved page may live in the browser.
    */
   private checkUntracked(
     running: Running,
@@ -904,6 +1179,23 @@ export class ChromiumServerHost implements BrowserHost {
     if (!popup || popup.folded) return;
     popup.folded = true;
     if (popup.timer) clearTimeout(popup.timer);
+    if (this.popupListener) {
+      const adoption = this.adoptPopup(
+        running,
+        popupId,
+        popup.openerTargetId,
+        url,
+      ).catch(async () => {
+        await this.closeTarget(popupId).catch(() => {});
+        return false;
+      });
+      running.popupAdoptions.set(popupId, adoption);
+      void adoption.finally(() => {
+        running.popups.delete(popupId);
+        running.popupAdoptions.delete(popupId);
+      });
+      return;
+    }
     const transport = running.launch.transport;
     void transport
       .send('Target.closeTarget', { targetId: popupId })
@@ -928,6 +1220,102 @@ export class ChromiumServerHost implements BrowserHost {
       () => running.popups.delete(popupId),
       POPUP_URL_GRACE_MS,
     ).unref?.();
+  }
+
+  private async adoptPopup(
+    running: Running,
+    targetId: string,
+    openerTargetId: string,
+    url: string | undefined,
+  ): Promise<boolean> {
+    const opener = running.targets.get(openerTargetId);
+    if (
+      !opener ||
+      !url ||
+      !isAllowedBrowserUrl(url) ||
+      running.targets.size + running.creating >= BROWSER_PANE_TAB_LIMIT
+    ) {
+      await this.closeTarget(targetId);
+      return false;
+    }
+    const transport = running.launch.transport;
+    running.creating += 1;
+    try {
+      const { sessionId } = await transport.send<{ sessionId: string }>(
+        'Target.attachToTarget',
+        { targetId, flatten: true },
+      );
+      const unsubscribe = this.watchTarget(running, targetId, sessionId);
+      running.targets.set(targetId, {
+        sessionId,
+        unsubscribe,
+        viewport: { ...opener.viewport },
+      });
+      await transport.send('Page.enable', {}, sessionId);
+      await transport.send(
+        'Emulation.setDeviceMetricsOverride',
+        { ...opener.viewport, mobile: opener.viewport.mobile === true },
+        sessionId,
+      );
+      if (opener.viewport.mobile)
+        await transport.send(
+          'Emulation.setTouchEmulationEnabled',
+          { enabled: true },
+          sessionId,
+        );
+      if (
+        this.running !== running ||
+        running.targets.get(openerTargetId) !== opener ||
+        !running.targets.has(targetId) ||
+        !this.popupListener?.(
+          openerTargetId,
+          { targetId, cdpSessionId: sessionId },
+          url,
+        )
+      ) {
+        await this.closeTarget(targetId);
+        return false;
+      }
+      return true;
+    } finally {
+      running.creating -= 1;
+    }
+  }
+
+  private emitTitle(running: Running, targetId: string, title: unknown): void {
+    if (typeof title !== 'string' || !running.targets.has(targetId)) return;
+    for (const listener of this.titleListeners)
+      listener(targetId, title.slice(0, 300));
+  }
+
+  private watchTarget(
+    running: Running,
+    targetId: string,
+    sessionId: string,
+  ): () => void {
+    const transport = running.launch.transport;
+    // Chromium reports a parsed <title> in no targetInfoChanged event (only
+    // the URL placeholder at commit and later script changes), so the title
+    // is read back once the document has parsed and again at load.
+    const readTitle = (_: unknown, eventSessionId?: string) => {
+      if (eventSessionId !== sessionId) return;
+      void transport
+        .send<{ targetInfo?: { title?: unknown } }>('Target.getTargetInfo', {
+          targetId,
+        })
+        .then(({ targetInfo }) =>
+          this.emitTitle(running, targetId, targetInfo?.title),
+        )
+        .catch(() => {});
+    };
+    const offParsed = transport.on('Page.domContentEventFired', readTitle);
+    const offLoaded = transport.on('Page.loadEventFired', readTitle);
+    const offCommitted = this.watchCommittedUrls(running, targetId, sessionId);
+    return () => {
+      offParsed();
+      offLoaded();
+      offCommitted();
+    };
   }
 
   private watchCommittedUrls(
@@ -1049,7 +1437,23 @@ export class ChromiumServerHost implements BrowserHost {
           if (!entry || !isAllowedBrowserUrl(entry.url))
             return refuse(method, 'url-not-allowed');
         }
-        return running.launch.transport.send<R>(method, params, sessionId);
+        const result = await running.launch.transport.send<R>(
+          method,
+          params,
+          sessionId,
+        );
+        if (method === 'Emulation.setDeviceMetricsOverride') {
+          const viewport = params as BrowserViewport;
+          for (const target of running.targets.values())
+            if (target.sessionId === sessionId)
+              target.viewport = {
+                width: viewport.width,
+                height: viewport.height,
+                deviceScaleFactor: viewport.deviceScaleFactor,
+                mobile: viewport.mobile === true,
+              };
+        }
+        return result;
       },
       // Subscribe after openTarget: before launch there is no channel, and a
       // subscription that silently never fires would read as "no events".

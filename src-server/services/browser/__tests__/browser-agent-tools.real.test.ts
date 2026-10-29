@@ -9,7 +9,7 @@
  * installed every case reports an explicit skip naming why: a missing
  * prerequisite is not a pass.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -17,9 +17,11 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { stationControlCallerPrincipal } from '../../../tools/station-control-shared.js';
 import {
+  claimHumanControl,
   dispatchHumanInput,
   type LiveSurfaceEntry,
   LiveSurfaceRegistry,
+  releaseHumanControl,
 } from '../../live-surface/registry.js';
 import {
   authorizeBrowserAgentCaller,
@@ -54,14 +56,28 @@ const SKIP_REASON = `no installed Google Chrome / Microsoft Edge / Chromium was 
 
 const FIXTURE = `<!doctype html><html><head><title>agent fixture</title>
 <style>body{margin:0;font:16px sans-serif}#go{position:absolute;left:40px;top:100px;width:160px;height:60px}
-#name{position:absolute;left:40px;top:220px;width:300px;height:40px}</style>
+#hover{position:absolute;left:400px;top:100px;width:160px;height:60px}#hover:hover{background:lime}\n#drag{position:absolute;left:400px;top:220px;width:100px;height:60px;background:coral}\n@media(prefers-color-scheme:dark){body{background:#181818;color:white}}\n#name{position:absolute;left:40px;top:220px;width:300px;height:40px}</style>
 </head><body>
 <p id="out">idle</p>
 <button id="go">Go</button>
+<button id="hidden" style="display:none">Hidden control</button>
+<button id="hover">Hover me</button>
+<div id="hoverOut"></div>
+<div id="drag" role="button" aria-label="Drag me">Drag me</div>
+<p id="dragOut" style="position:absolute;top:360px"></p>
+<label style="position:absolute;top:420px">Color <select id="color"><option value="r">Red</option><option value="b">Blue</option><optgroup label="Unavailable" disabled><option value="x">Blocked</option></optgroup></select></label>
+<p id="selection" style="position:absolute;top:460px"></p>
+<fieldset disabled style="position:absolute;top:520px"><select id="disabled-color"><option value="r">Red</option><option value="b">Blue</option></select></fieldset>
+<div style="position:absolute;top:580px"><select id="covered-color"><option value="r">Red</option><option value="b">Blue</option></select><div style="position:absolute;inset:0;background:white">Cover</div></div>
 <label for="name" style="position:absolute;left:40px;top:190px">Your name</label>
 <input id="name" aria-label="Your name">
 <p id="greet" style="position:absolute;top:300px"></p>
 <script>
+document.getElementById('hover').addEventListener('mouseenter', () => document.getElementById('hoverOut').textContent = 'hovered');
+let dragging = false;
+document.getElementById('drag').addEventListener('mousedown', () => dragging = true);
+document.addEventListener('mouseup', (e) => { if (dragging && e.clientX > 600) document.getElementById('dragOut').textContent = 'drag completed'; dragging = false; });
+document.getElementById('color').addEventListener('change', (e) => document.getElementById('selection').textContent = 'Selected ' + e.target.value);
 document.getElementById('go').addEventListener('click', () => {
   document.getElementById('out').textContent = 'clicked';
 });
@@ -227,6 +243,173 @@ describe('browser tools against a real installed Chromium', () => {
         timeoutMs: 10_000,
       }),
     ).toMatchObject({ ok: true, matched: 'locator' });
+    expect(
+      await automation.waitFor(authority, browserSessionId, {
+        locator: 'css=#hidden',
+        timeoutMs: 500,
+      }),
+    ).toMatchObject({ ok: false, code: 'timeout', pageBusy: false });
+
+    expect(
+      await automation.hover(authority, browserSessionId, {
+        locator: 'css=#hover',
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      await automation.waitFor(authority, browserSessionId, {
+        text: 'hovered',
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      await automation.drag(
+        authority,
+        browserSessionId,
+        { locator: 'css=#drag' },
+        { x: 680, y: 250 },
+      ),
+    ).toMatchObject({ ok: true });
+    expect(
+      await automation.waitFor(authority, browserSessionId, {
+        text: 'drag completed',
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      await automation.selectOption(
+        authority,
+        browserSessionId,
+        { locator: 'css=#name' },
+        { value: 'b' },
+      ),
+    ).toMatchObject({ ok: false, code: 'not-selectable' });
+    expect(
+      await automation.selectOption(
+        authority,
+        browserSessionId,
+        { locator: 'css=#color' },
+        { label: 'Blocked' },
+      ),
+    ).toMatchObject({ ok: false, code: 'not-selectable' });
+    expect(
+      await automation.selectOption(
+        authority,
+        browserSessionId,
+        { locator: 'css=#color' },
+        { label: 'Blue' },
+      ),
+    ).toMatchObject({ ok: true });
+    expect(
+      await automation.waitFor(authority, browserSessionId, {
+        text: 'Selected b',
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      await automation.selectOption(
+        authority,
+        browserSessionId,
+        { locator: 'css=#color' },
+        { value: 'r' },
+      ),
+    ).toMatchObject({ ok: true });
+    expect(
+      await automation.waitFor(authority, browserSessionId, {
+        text: 'Selected r',
+      }),
+    ).toMatchObject({ ok: true });
+
+    expect(
+      await automation.selectOption(
+        authority,
+        browserSessionId,
+        { locator: 'css=#disabled-color' },
+        { value: 'b' },
+      ),
+    ).toMatchObject({ ok: false, code: 'not-selectable' });
+    expect(
+      await automation.selectOption(
+        authority,
+        browserSessionId,
+        { locator: 'css=#covered-color' },
+        { value: 'b' },
+      ),
+    ).toMatchObject({ ok: false, code: 'obscured' });
+
+    // Independent browser observation: the emulation changes matchMedia itself.
+    const live = sessions.liveTarget(browserSessionId)!;
+    const dark = async () => {
+      const result = await live.host.cdp().send<{ result: { value: boolean } }>(
+        'Runtime.evaluate',
+        {
+          expression: 'matchMedia("(prefers-color-scheme: dark)").matches',
+          returnByValue: true,
+        },
+        live.target.cdpSessionId,
+      );
+      return result.result.value;
+    };
+    const systemDark = await dark();
+    for (const scheme of ['dark', 'light', 'system'] as const) {
+      expect(
+        await automation.colorScheme(authority, browserSessionId, scheme),
+      ).toMatchObject({ ok: true });
+      expect(await dark()).toBe(
+        scheme === 'system' ? systemDark : scheme === 'dark',
+      );
+    }
+    expect(
+      await automation.colorScheme(authority, browserSessionId, 'dark'),
+    ).toMatchObject({ ok: true });
+    const evidence = await automation.snapshot(authority, browserSessionId, {
+      screenshot: true,
+    });
+    expect(evidence.ok && evidence.screenshot?.data).toBeTruthy();
+    if (
+      process.env.STATION_BROWSER_EVIDENCE_DIR &&
+      evidence.ok &&
+      evidence.screenshot
+    ) {
+      mkdirSync(process.env.STATION_BROWSER_EVIDENCE_DIR, { recursive: true });
+      writeFileSync(
+        join(
+          process.env.STATION_BROWSER_EVIDENCE_DIR,
+          'agent-browser-parity.jpg',
+        ),
+        Buffer.from(evidence.screenshot.data, 'base64'),
+      );
+    }
+
+    // A navigation retains the target override until human takeover restores system.
+    const forced = systemDark ? 'light' : 'dark';
+    expect(
+      await automation.colorScheme(authority, browserSessionId, forced),
+    ).toMatchObject({ ok: true });
+    expect(await dark()).toBe(!systemDark);
+    expect(
+      await automation.navigate(authority, browserSessionId, {
+        action: 'reload',
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      await automation.waitFor(authority, browserSessionId, { text: 'idle' }),
+    ).toMatchObject({ ok: true });
+    expect(await dark()).toBe(!systemDark);
+    expect(claimHumanControl(entry(), HUMAN).ok).toBe(true);
+    // CDP round-trip follows the binder's reset on the same page session.
+    expect(await dark()).toBe(systemDark);
+    expect(
+      releaseHumanControl(entry(), HUMAN, entry().lease.snapshot().epoch).ok,
+    ).toBe(true);
+    expect(
+      await automation.type(authority, browserSessionId, {
+        text: 'Ada',
+        target: { locator: 'css=#name' },
+        clear: true,
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      await automation.waitFor(authority, browserSessionId, {
+        text: 'Hello Ada',
+      }),
+    ).toMatchObject({ ok: true });
 
     // A person moves the mouse over the page while the agent is mid-action.
     const long = automation.type(authority, browserSessionId, {
@@ -269,6 +452,6 @@ describe('browser tools against a real installed Chromium', () => {
     expect(agentKinds).toEqual(
       expect.arrayContaining(['created', 'inspected', 'clicked', 'typed']),
     );
-    expect(history.filter((e) => e.kind === 'typed')).toHaveLength(1);
+    expect(history.filter((e) => e.kind === 'typed')).toHaveLength(2);
   }, 120_000);
 });

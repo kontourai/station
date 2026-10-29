@@ -23,6 +23,7 @@ import {
   useHostRequestAuthorityScope,
   useNativeRelayAccountSession,
 } from '../../contexts/ApiBaseContext';
+import { copyToClipboard } from '../../lib/clipboard';
 import {
   type NativeRelayGrantRedemptionFailureCode,
   type NativeRelayGrantState,
@@ -43,6 +44,7 @@ import { RelayRouteKeyApproval } from './RelayRouteKeyApproval';
 import { RelayRouteProfileDialog } from './RelayRouteProfileDialog';
 import { RelaySetupHelp } from './RelaySetupHelp';
 import './ComputersSection.css';
+import { deviceSettingsStore } from '../../lib/device-settings-store';
 
 const NO_RELAY_PROFILES: readonly StationProfile[] = [];
 const NO_SUBSCRIBE = () => () => {};
@@ -498,9 +500,7 @@ function NativeRelayAccountSessionPanel({
     onSuccess: (_, id) => {
       if (!isCurrentAccountOperation(id)) return;
       setError(null);
-      setNotice(
-        'Station account session is active for this selected route. Device approval and Project access remain separate.',
-      );
+      setNotice('Signed in on this route.');
     },
     onError: (_, id) => {
       if (!isCurrentAccountOperation(id)) return;
@@ -531,9 +531,7 @@ function NativeRelayAccountSessionPanel({
       )
         return;
       setError(null);
-      setNotice(
-        `Access was added for Project ${accepted.scope.localProjectSlug}. Device approval remains separate.`,
-      );
+      setNotice(`Access added for Project ${accepted.scope.localProjectSlug}.`);
       onInvitationAccepted?.(accepted, operation.capturedScope);
     },
     onError: (_, id) => {
@@ -549,6 +547,14 @@ function NativeRelayAccountSessionPanel({
         throw new Error('native_relay_selection_changed');
       return account.logout();
     },
+    // The owner retires the local account session whether or not the remote
+    // revocation is confirmed, so this device has no person either way: its
+    // own appearance replaces the account's cached one.
+    onSettled: (_, __, id) => {
+      if (isCurrentAccountOperation(id))
+        deviceSettingsStore.releaseBootAppearance();
+      settleAccountOperation(id);
+    },
     onSuccess: (result, id) => {
       if (!isCurrentAccountOperation(id)) return;
       if (result.revoked !== true) {
@@ -557,14 +563,13 @@ function NativeRelayAccountSessionPanel({
       }
       setError(null);
       setNotice(
-        'Station confirmed this account session was revoked. Device access remains separate.',
+        'Station confirmed the account session was revoked; device access is unchanged.',
       );
     },
     onError: (_, id) => {
       if (!isCurrentAccountOperation(id)) return;
       setError(REMOTE_LOGOUT_UNCONFIRMED_COPY);
     },
-    onSettled: (_, __, id) => settleAccountOperation(id),
   });
 
   const retire = useMutation({
@@ -575,6 +580,7 @@ function NativeRelayAccountSessionPanel({
     },
     onSuccess: (_, id) => {
       if (!isCurrentAccountOperation(id)) return;
+      deviceSettingsStore.releaseBootAppearance();
       setError(null);
       setNotice(
         'The account session was cleared from this device. The remote Station account was not signed out or revoked.',
@@ -887,7 +893,8 @@ export function RelayRouteProfiles({
           ),
         },
       );
-      await navigator.clipboard.writeText(link);
+      if (!(await copyToClipboard(link)))
+        setError('Station could not copy the setup link.');
     } catch {
       setError('Station could not copy the setup link.');
     }

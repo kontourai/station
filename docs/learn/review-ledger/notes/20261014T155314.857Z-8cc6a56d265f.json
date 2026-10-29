@@ -1,0 +1,7 @@
+{
+  "revision": "d759b56c9eafed18b3481380df5b86ce6be0d6c5",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Reviewed the DeviceScopeEditor delta: Manage device access is now an elevated switch from the contract descriptions; the existing scope survives unrelated edits and only the server operator can add/remove it. Extended the rendered preservation case; pre-fix vocabulary test failed and focused editor/panel tests passed after repair. No change to server authorization or guest/account policy. Browser synthetic component inspection, not remote authentication qualification.","inputs":["docs/guides/connections.md","packages/connect/src/__tests__/DeviceScopeEditor.test.tsx","packages/connect/src/react/connection-manager-modal/DeviceScopeEditor.tsx"]}
+  ]
+}

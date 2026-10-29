@@ -1,0 +1,7 @@
+{
+  "revision": "265d08fa83aaf15a70afdba45c8e13f11abead53",
+
+  "notes": [
+    {"path":"examples/README.md","note":"Added parked #3574 experiment to catalog; its public-command probe recommends Tier 1 and does not ship Flow Agents integration.","inputs":["examples/README.md","examples/experimental-monument-flow-probe/README.md"]}
+  ]
+}

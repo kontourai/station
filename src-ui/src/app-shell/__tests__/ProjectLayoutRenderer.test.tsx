@@ -4,6 +4,7 @@
 
 import { createDirectAnswerBasisMcpPaneOccurrence } from '@kontourai/station-basis-pane/workspace-basis-mcp-pane';
 import { createDirectAnswerBasisPaneInstance } from '@kontourai/station-basis-pane/workspace-basis-pane';
+import { ConnectionsProvider } from '@kontourai/station-connect';
 import { workspaceBrowserPaneCatalogInstance } from '@kontourai/station-contracts/workspace-browser-pane';
 import { WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-browser-preview';
 import {
@@ -27,6 +28,11 @@ import {
   WORKSPACE_TRUST_PANE_DESCRIPTOR,
 } from '@kontourai/station-contracts/workspace-evidence-panels';
 import { WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-file-preview';
+import {
+  parseWorkspacePaneDescriptor,
+  parseWorkspacePaneInstance,
+} from '@kontourai/station-contracts/workspace-pane';
+import type { WorkspacePaneHostDocumentV1 } from '@kontourai/station-contracts/workspace-pane-host';
 import { paneAdaptationFromLayoutTab } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
@@ -34,6 +40,8 @@ import { type ReactNode, useEffect } from 'react';
 import { flushSync } from 'react-dom';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { navigationStore } from '../../contexts/navigation-store';
+import { pluginRegistry } from '../../core/PluginRegistry';
+import { deviceSettingsStore } from '../../lib/device-settings-store';
 import { createBrowserPreviewPaneInstance } from '../../workspace-panes/browserPreviewPaneInstance';
 import { writeBrowserPreviewPaneState } from '../../workspace-panes/browserPreviewPaneStateStorage';
 import { createFilePreviewPaneInstance } from '../../workspace-panes/filePreviewPaneInstance';
@@ -177,7 +185,8 @@ vi.mock('../../workspace-panes/ChatWorkspaceLayout', () => ({
     return <div>Chat workspace rendered</div>;
   },
 }));
-vi.mock('../../hooks/useIsMobile', () => ({
+vi.mock('../../hooks/useIsMobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../hooks/useIsMobile')>()),
   useIsMobile: () => mobileMock(),
   // A phone-sized viewport folds the dock to one region, so its Coding Chat
   // page is the dock, not the centre (`resolveLayoutChatPlacement`).
@@ -255,7 +264,10 @@ vi.mock('../../components/coding-layout/CodingInspectorPanel', () => ({
   TrustInspectorContent: () => <div>Trust pane</div>,
 }));
 vi.mock('../../workspace-panes/resolvedWorkspacePaneCatalog', () => ({
-  useResolvedWorkspacePaneCatalog: (...args: unknown[]) => catalogMock(...args),
+  useResolvedWorkspacePaneCatalog: (...args: unknown[]) => {
+    const catalog = catalogMock(...args);
+    return { ...catalog, registeredEntries: catalog?.entries ?? [] };
+  },
 }));
 vi.mock(
   '../../workspace-panes/workspacePaneRendererSelection',
@@ -441,6 +453,12 @@ function drillIntoHostPane(instanceId?: string) {
 
 describe('ProjectLayoutRenderer', () => {
   afterEach(() => {
+    deviceSettingsStore.resetMany([
+      'developerToolsEnabled',
+      'experimentalFlowEnabled',
+      'experimentalReadinessEnabled',
+      'experimentalTrustEnabled',
+    ]);
     navigationStore.navigate('/', { pane: null, paneScope: null });
   });
 
@@ -641,6 +659,35 @@ describe('ProjectLayoutRenderer', () => {
 
     expect(screen.getByText('Current layout view')).toBeTruthy();
     expect(screen.queryByText('Review rendered for demo')).toBeNull();
+  });
+
+  test('re-checking an unplaced Review keeps the workbench mounted instead of flickering', () => {
+    layoutQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new StationHttpError(404, 'Layout not found'),
+      errorUpdatedAt: 1,
+      fetchStatus: 'idle',
+    });
+    const view = render(
+      <ProjectLayoutRenderer projectSlug="demo" layoutSlug="review" />,
+    );
+    expect(screen.getByText('Review rendered for demo')).toBeTruthy();
+
+    // What TanStack reports once a refetch of the 404 starts.
+    layoutQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      error: null,
+      errorUpdatedAt: 1,
+      fetchStatus: 'fetching',
+    });
+    view.rerender(
+      <ProjectLayoutRenderer projectSlug="demo" layoutSlug="review" />,
+    );
+
+    expect(screen.getByText('Review rendered for demo')).toBeTruthy();
+    expect(screen.queryByText('Current layout view')).toBeNull();
   });
 
   test('a Review request that failed for any other reason is not an unplaced layout (#2065)', () => {
@@ -1026,8 +1073,8 @@ describe('ProjectLayoutRenderer', () => {
 
     drillIntoHostPane();
     expect(screen.getByText(/Hosted 3008a697/)).toBeTruthy();
-    // Six panes: the Coding occurrence is the Chat page, not a pane.
-    expect(screen.getByText(/instances 6/)).toBeTruthy();
+    // Files, diff and terminal remain available with previews off.
+    expect(screen.getByText(/instances 3/)).toBeTruthy();
     expect(screen.getByText('Diff unavailable')).toBeTruthy();
     expect(
       screen.getByText(/Choose a Git repository before opening this pane/),
@@ -1072,6 +1119,81 @@ describe('ProjectLayoutRenderer', () => {
       ],
     };
   }
+  test('a blocked plugin pane rendered by Coding reviews access in place and Cancel keeps the host', () => {
+    const catalog = codingCatalog();
+    const descriptor = parseWorkspacePaneDescriptor({
+      version: '1.0',
+      id: 'pane:plugin%3Areview:main',
+      name: 'Review',
+      rendererId: 'renderer:plugin%3Areview:main',
+      renderer: { kind: 'plugin-component', name: 'review.main' },
+      placement: { supportedRegions: ['primary'] },
+      modes: [{ id: 'default', contextRequirement: { project: true } }],
+      provenance: { origin: 'plugin', pluginId: 'review' },
+      lifecycle: { stage: 'stable' },
+    });
+    const instance = parseWorkspacePaneInstance({
+      version: '1.0',
+      descriptorId: 'pane:plugin%3Areview:main',
+      instanceId: 'instance:plugin:project-uuid:review',
+      stateKey: 'state:plugin:project-uuid:review',
+      boundContext: { projectId: 'project-uuid' },
+    });
+    if (!descriptor || !instance)
+      throw new Error('Plugin pane fixture was refused');
+    const plugin = { descriptor, instance };
+    catalogMock.mockReturnValue({
+      ...catalog,
+      entries: [
+        ...catalog.entries.slice(0, 2),
+        {
+          ...plugin,
+          rendererGate: 'remote-isolation',
+          availability: {
+            state: 'temporarily-unavailable',
+            reason: { code: 'renderer-missing', source: 'renderer' },
+          },
+        },
+      ],
+    });
+    mobileMock.mockReturnValue(false);
+    layoutQueryMock.mockReturnValue({ data: { type: 'coding', config: {} } });
+    const loadStatus = vi
+      .spyOn(pluginRegistry, 'getLoadStatus')
+      .mockReturnValue({
+        state: 'degraded',
+        failedPluginNames: [],
+        failure: 'remote-isolation',
+      });
+    const view = render(
+      withQueryClient(
+        <ConnectionsProvider>
+          <ProjectLayoutRenderer
+            projectSlug="project-route"
+            layoutSlug="coding"
+          />
+        </ConnectionsProvider>,
+      ),
+    );
+    drillIntoHostPane();
+    const hostProps = hostMock.mock.lastCall?.[0];
+    if (!hostProps) throw new Error('Coding host did not mount');
+    render(
+      <ConnectionsProvider>
+        {hostProps.renderPane(plugin.instance)}
+      </ConnectionsProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Review and enable' }));
+    expect(
+      screen.getByRole('dialog', { name: /Allow extensions from/ }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(view.container.textContent).toContain('Hosted project-uuid');
+    expect(screen.getByText('Review unavailable')).toBeTruthy();
+    loadStatus.mockRestore();
+  });
+
   const stackCrumbs = () =>
     within(screen.getByRole('list', { name: 'Breadcrumb' }))
       .getAllByRole('listitem')
@@ -1188,6 +1310,143 @@ describe('ProjectLayoutRenderer', () => {
     act(() => navigationStore.navigate('/', { pane: null, paneScope: null }));
     expect(screen.getByText('Diff pane /repo/workspace')).toBeTruthy();
   });
+
+  test.each(
+    (['legacy', 'compare', 'composition'] as const).flatMap((control) => [
+      {
+        control,
+        key: 'experimentalFlowEnabled' as const,
+        descriptor: WORKSPACE_PLAN_PANE_DESCRIPTOR,
+        instance: createWorkspacePlanPaneInstance('project-uuid'),
+        paneName: 'Plan pane',
+      },
+      {
+        control,
+        key: 'experimentalReadinessEnabled' as const,
+        descriptor: WORKSPACE_READINESS_PANE_DESCRIPTOR,
+        instance: createWorkspaceReadinessPaneInstance('project-uuid'),
+        paneName: 'Readiness pane',
+      },
+      {
+        control,
+        key: 'experimentalTrustEnabled' as const,
+        descriptor: WORKSPACE_TRUST_PANE_DESCRIPTOR,
+        instance: createWorkspaceTrustPaneInstance('project-uuid'),
+        paneName: 'Trust pane',
+      },
+    ]),
+  )(
+    'Coding retains files, diff and terminal with only $paneName opted in ($control)',
+    ({ control, key, descriptor, instance, paneName }) => {
+      const coding = paneAdaptationFromLayoutTab(
+        {
+          id: 'coding',
+          label: 'Coding',
+          component: { kind: 'builtin-component', name: 'coding' },
+        },
+        {
+          layoutSlug: 'coding',
+          instanceScope: 'project:project-uuid:source:builtin:coding',
+          modeContextRequirement: { project: true, source: true },
+          boundContext: {
+            projectId: 'project-uuid',
+            sourceId: 'builtin:coding',
+          },
+        },
+      )!;
+      const availability = {
+        state: 'available',
+        reason: { code: 'ready', source: 'resolver' },
+      } as const;
+      const ordinary = [
+        { ...coding, availability },
+        {
+          descriptor: WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR,
+          instance:
+            createWorkspaceCodingFileBrowserPaneInstance('project-uuid'),
+          availability,
+        },
+        {
+          descriptor: WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR,
+          instance: createWorkspaceCodingDiffPaneInstance('project-uuid'),
+          availability,
+        },
+        {
+          descriptor: WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR,
+          instance: createWorkspaceCodingTerminalPaneInstance('project-uuid'),
+          availability,
+        },
+      ];
+      mobileMock.mockReturnValue(false);
+      layoutQueryMock.mockReturnValue({
+        data: {
+          type: 'coding',
+          config: {
+            workingDirectory: '/repo/workspace',
+            workspaceCompositionEvidencePanes: control,
+          },
+        },
+      });
+      catalogMock.mockReturnValue({
+        projectId: 'project-uuid',
+        platform: { isMobile: false, isDesktop: false },
+        entries: [
+          ...ordinary,
+          {
+            descriptor,
+            instance,
+            availability,
+          },
+        ],
+      });
+      deviceSettingsStore.set('developerToolsEnabled', true);
+      deviceSettingsStore.set(key, true);
+      const singlePreviewView = render(
+        withQueryClient(
+          <ProjectLayoutRenderer
+            projectSlug="project-route"
+            layoutSlug="coding"
+          />,
+        ),
+      );
+      drillIntoHostPane();
+      expect(
+        screen.getByRole('button', { name: /Files pane/, hidden: true }),
+      ).toBeTruthy();
+      expect(screen.getByText('Diff pane /repo/workspace')).toBeTruthy();
+      expect(screen.getByText('Terminal pane /repo/workspace')).toBeTruthy();
+      expect(screen.getByText(paneName)).toBeTruthy();
+      for (const sibling of [
+        'Plan pane',
+        'Readiness pane',
+        'Trust pane',
+      ].filter((name) => name !== paneName))
+        expect(screen.queryByText(sibling)).toBeNull();
+      if (control !== 'legacy') {
+        catalogMock.mockReturnValue({
+          projectId: 'project-uuid',
+          platform: { isMobile: false, isDesktop: false },
+          entries: ordinary,
+        });
+        singlePreviewView.rerender(
+          withQueryClient(
+            <ProjectLayoutRenderer
+              projectSlug="project-route"
+              layoutSlug="coding"
+            />,
+          ),
+        );
+        expect(
+          screen.getByRole('button', { name: /Files pane/, hidden: true }),
+        ).toBeTruthy();
+        expect(screen.getByText('Diff pane /repo/workspace')).toBeTruthy();
+        expect(screen.getByText('Terminal pane /repo/workspace')).toBeTruthy();
+        expect(screen.getByRole('alert').textContent).toContain(
+          'Experimental evidence panes unavailable',
+        );
+      }
+    },
+  );
 
   test('hosts exact builtin panels with the selected layout identity', () => {
     const coding = paneAdaptationFromLayoutTab(
@@ -1372,8 +1631,8 @@ describe('ProjectLayoutRenderer', () => {
     );
     drillIntoHostPane();
     expect(screen.getByText(/Hosted project-uuid/)).toBeTruthy();
-    // Six panes: the Coding occurrence is the Chat page, not a pane.
-    expect(screen.getByText(/instances 6/)).toBeTruthy();
+    // Files, diff and terminal remain available with previews off.
+    expect(screen.getByText(/instances 3/)).toBeTruthy();
     expect(screen.queryByText('Coding chat pane')).toBeNull();
     expect(screen.getByTestId('coding-center-chat')).toBeTruthy();
     // A drill-in is its page: the host is drawn chromeless (no tab strip, no
@@ -1413,6 +1672,15 @@ describe('ProjectLayoutRenderer', () => {
     ).toBeTruthy();
     expect(screen.getByText('Diff pane /repo/workspace')).toBeTruthy();
     expect(screen.getByText('Terminal pane /repo/workspace')).toBeTruthy();
+    expect(screen.queryByText('Plan pane')).toBeNull();
+    expect(screen.queryByText('Readiness pane')).toBeNull();
+    expect(screen.queryByText('Trust pane')).toBeNull();
+    act(() => {
+      deviceSettingsStore.set('developerToolsEnabled', true);
+      deviceSettingsStore.set('experimentalFlowEnabled', true);
+      deviceSettingsStore.set('experimentalReadinessEnabled', true);
+      deviceSettingsStore.set('experimentalTrustEnabled', true);
+    });
     expect(screen.getByText('Plan pane')).toBeTruthy();
     expect(screen.getByText('Readiness pane')).toBeTruthy();
     expect(screen.getByText('Trust pane')).toBeTruthy();
@@ -1661,6 +1929,55 @@ describe('ProjectLayoutRenderer', () => {
       undefined,
       expect.objectContaining({ type: 'split' }),
     );
+    const currentHost = hostMock.mock.lastCall?.[0];
+    const customized: WorkspacePaneHostDocumentV1 = {
+      ...currentHost.document,
+      instances: [...currentHost.document.instances, pluginInstance],
+      activeInstanceId: pluginInstance.instanceId,
+      root: {
+        type: 'split',
+        id: 'custom-split',
+        orientation: 'horizontal',
+        ratio: 0.6,
+        first: currentHost.document.root,
+        second: {
+          type: 'tabs',
+          id: 'plugin-group',
+          instanceIds: [pluginInstance.instanceId],
+          selectedInstanceId: pluginInstance.instanceId,
+        },
+      },
+    };
+    act(() => currentHost.onDocumentChange(customized));
+    act(() => deviceSettingsStore.set('experimentalTrustEnabled', false));
+    const withdrawn = hostMock.mock.lastCall?.[0].document;
+    expect(
+      withdrawn.instances.map(
+        (instance: { instanceId: string }) => instance.instanceId,
+      ),
+    ).toContain(pluginInstance.instanceId);
+    expect(withdrawn.root).toMatchObject({
+      type: 'split',
+      id: 'custom-split',
+      ratio: 0.6,
+      second:
+        customized.root.type === 'split' ? customized.root.second : undefined,
+    });
+    expect(withdrawn.activeInstanceId).toBe(pluginInstance.instanceId);
+    const beforeRevocation = catalogMock.mock.results.at(-1)?.value;
+    catalogMock.mockReturnValue({
+      ...beforeRevocation,
+      entries: beforeRevocation.entries.filter(
+        (candidate: { descriptor: { id: string } }) =>
+          candidate.descriptor.id !== pluginDescriptor.id,
+      ),
+    });
+    act(() => deviceSettingsStore.set('experimentalTrustEnabled', true));
+    expect(
+      hostMock.mock.lastCall?.[0].document.instances.map(
+        (instance: { instanceId: string }) => instance.instanceId,
+      ),
+    ).not.toContain(pluginInstance.instanceId);
     const liveCatalog = catalogMock.mock.results.at(-1)?.value;
     catalogMock.mockReturnValue({
       ...liveCatalog,
@@ -1677,7 +1994,7 @@ describe('ProjectLayoutRenderer', () => {
       'Coding file workspace unavailable',
     );
     expect(screen.getByRole('alert').textContent).toContain(
-      'did not fall back',
+      "The file pane couldn't load.",
     );
   });
 
@@ -2366,7 +2683,7 @@ describe('ProjectLayoutRenderer', () => {
     );
 
     expect(
-      screen.getByText(/Hosted project-uuid; instances 6; compact yes/),
+      screen.getByText(/Hosted project-uuid; instances 3; compact yes/),
     ).toBeTruthy();
     expect(hostMock.mock.lastCall?.[0].runtime).toBeInstanceOf(
       WorkspacePaneHostRuntime,
@@ -2683,5 +3000,197 @@ describe('ProjectLayoutRenderer past the wide fold (#3040 review M5)', () => {
         value: matchMedia,
       });
     }
+  });
+});
+
+/**
+ * #2995: the stack host is chosen by the layout's declaration, not by
+ * `type === 'coding'`. A contributed layout declaring `presentation: 'stack'`
+ * gets the same host — Chat page, breadcrumb, rail — over exactly its own
+ * declared drill-ins, and never built-in Coding's composition.
+ */
+describe('ProjectLayoutRenderer — a contributed stack layout (#2995)', () => {
+  afterEach(() => {
+    navigationStore.navigate('/', { pane: null, paneScope: null });
+  });
+
+  const PLUGIN = 'stack-fixture';
+  const contribution = {
+    id: `plugin:${PLUGIN}:stack`,
+    version: '1.0.0',
+    sourceIdentity: {
+      id: PLUGIN,
+      kind: 'local' as const,
+      source: `plugins/${PLUGIN}`,
+    },
+    provenance: { origin: 'plugin' as const, pluginId: PLUGIN },
+  };
+  const tab = (id: string, label: string) =>
+    paneAdaptationFromLayoutTab(
+      { id, label, component: `stack-fixture-${id}` },
+      {
+        layoutSlug: 'stack',
+        instanceScope: `project:project-uuid:source:plugin:${PLUGIN}:stack`,
+        pluginId: PLUGIN,
+        contribution,
+        modeContextRequirement: { project: true, source: true },
+        boundContext: {
+          projectId: 'project-uuid',
+          sourceId: `plugin:${PLUGIN}:stack`,
+        },
+      },
+    )!;
+  const one = tab('one', 'One');
+  const two = tab('two', 'Two');
+
+  /** The Project catalog: the fixture's two panes beside built-in Coding's. */
+  function catalog() {
+    const coding = paneAdaptationFromLayoutTab(
+      {
+        id: 'coding',
+        label: 'Coding',
+        component: { kind: 'builtin-component', name: 'coding' },
+      },
+      {
+        layoutSlug: 'coding',
+        instanceScope: 'project:project-uuid:source:builtin:coding',
+        modeContextRequirement: { project: true, source: true },
+        boundContext: { projectId: 'project-uuid', sourceId: 'builtin:coding' },
+      },
+    )!;
+    return {
+      projectId: 'project-uuid',
+      projectSlug: 'project-route',
+      entries: [
+        { ...coding, availability: { state: 'available' } },
+        {
+          instance:
+            createWorkspaceCodingFileBrowserPaneInstance('project-uuid')!,
+          availability: { state: 'available' },
+          descriptor: WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR,
+        },
+        {
+          instance: createWorkspaceCodingDiffPaneInstance('project-uuid')!,
+          availability: { state: 'available' },
+          descriptor: WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR,
+        },
+        { ...one, availability: { state: 'available' } },
+        { ...two, availability: { state: 'available' } },
+      ],
+    };
+  }
+
+  /** A plugin layout as the server's read answers it. */
+  const stackLayout = (overrides: Record<string, unknown> = {}) => ({
+    data: {
+      id: 'layout-stack',
+      slug: 'stack',
+      name: 'Stack fixture',
+      type: 'custom',
+      catalogContribution: contribution,
+      config: { plugin: PLUGIN, tabs: [] },
+      primary: 'chat',
+      presentation: 'stack',
+      // Declared out of catalog order: the rail follows the declaration.
+      drillIns: [two.descriptor.id, one.descriptor.id],
+      ...overrides,
+    },
+  });
+
+  const railNames = () =>
+    within(screen.getByRole('navigation', { name: 'Views' }))
+      .getAllByRole('button')
+      .map((button) => button.getAttribute('aria-label'));
+
+  test('mounts the stack host over exactly its declared drill-ins, with Chat in the centre', () => {
+    catalogMock.mockReturnValue(catalog());
+    mobileMock.mockReturnValue(false);
+    chatWorkspacePaneMock.mockClear();
+    hostMock.mockClear();
+    layoutQueryMock.mockReturnValue(stackLayout());
+    render(
+      <ProjectLayoutRenderer projectSlug="project-route" layoutSlug="stack" />,
+    );
+
+    const hostProps = hostMock.mock.lastCall?.[0];
+    if (!hostProps) throw new Error('The stack host did not mount');
+    expect(
+      hostProps.document.instances.map(
+        (instance: { descriptorId: string }) => instance.descriptorId,
+      ),
+    ).toEqual([two.descriptor.id, one.descriptor.id]);
+    expect(hostProps.document.id).toBe('layout-stack-stack');
+    // Its own navigation, its centre Chat, and ⌘D lands on that Chat page.
+    expect(
+      screen.getByRole('navigation', { name: 'Stack fixture navigation' }),
+    ).toBeTruthy();
+    expect(screen.getAllByTestId('coding-center-chat')).toHaveLength(1);
+    expect(requestCenterChatPage()).toBe(true);
+    // The rail lists the declared drill-ins in declared order. (The mocked
+    // host never publishes its open action, so no Add pane item here.)
+    act(() =>
+      hostProps.onDocumentChange({
+        ...hostProps.document,
+        activeInstanceId: two.instance.instanceId,
+      }),
+    );
+    expect(railNames()).toEqual(['Two', 'One']);
+    expect(screen.queryByRole('button', { name: 'Open Browser pane' })).toBe(
+      null,
+    );
+  });
+
+  test('a stack layout answered without its Chat claim points to the dock instead', () => {
+    catalogMock.mockReturnValue(catalog());
+    mobileMock.mockReturnValue(false);
+    chatWorkspacePaneMock.mockClear();
+    layoutQueryMock.mockReturnValue(stackLayout({ primary: undefined }));
+    render(
+      <ProjectLayoutRenderer projectSlug="project-route" layoutSlug="stack" />,
+    );
+    expect(screen.queryAllByTestId('coding-center-chat')).toHaveLength(0);
+    expect(screen.getByText('Chat is in the dock')).toBeTruthy();
+  });
+
+  test('a contributed layout typed coding gets its declared drill-ins, never Coding’s composition', () => {
+    catalogMock.mockReturnValue(catalog());
+    mobileMock.mockReturnValue(false);
+    hostMock.mockClear();
+    layoutQueryMock.mockReturnValue(stackLayout({ type: 'coding' }));
+    render(
+      <ProjectLayoutRenderer projectSlug="project-route" layoutSlug="stack" />,
+    );
+    const hostProps = hostMock.mock.lastCall?.[0];
+    if (!hostProps) throw new Error('The stack host did not mount');
+    expect(
+      hostProps.document.instances.map(
+        (instance: { descriptorId: string }) => instance.descriptorId,
+      ),
+    ).toEqual([two.descriptor.id, one.descriptor.id]);
+    expect(
+      screen.getByRole('navigation', { name: 'Stack fixture navigation' }),
+    ).toBeTruthy();
+  });
+
+  test('a declared drill-in the catalog does not issue is simply not on the rail', () => {
+    const issued = catalog();
+    catalogMock.mockReturnValue({
+      ...issued,
+      entries: issued.entries.filter(
+        (entry) => entry.descriptor.id !== one.descriptor.id,
+      ),
+    });
+    mobileMock.mockReturnValue(false);
+    hostMock.mockClear();
+    layoutQueryMock.mockReturnValue(stackLayout());
+    render(
+      <ProjectLayoutRenderer projectSlug="project-route" layoutSlug="stack" />,
+    );
+    const hostProps = hostMock.mock.lastCall?.[0];
+    expect(
+      hostProps.document.instances.map(
+        (instance: { descriptorId: string }) => instance.descriptorId,
+      ),
+    ).toEqual([two.descriptor.id]);
   });
 });

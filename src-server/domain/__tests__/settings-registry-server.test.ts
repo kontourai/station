@@ -1,8 +1,9 @@
 // @vitest-environment node
 
 import type { AppConfig } from '@kontourai/station-contracts/config';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { APP_CONFIG_SEED } from '../app-config-seed.js';
+import { resolveEffectiveAppSetting } from '../settings-effective.js';
 import {
   buildAppConfigProvenance,
   sanitizeAppConfigUpdate,
@@ -34,13 +35,13 @@ describe('sanitizeAppConfigUpdate', () => {
 
   test('strips and reports runtime-derived (internal) keys', () => {
     const result = sanitizeAppConfigUpdate({
-      managedChatOrchestration: true,
+      pluginFrameOrigin: 'http://127.0.0.1:4556',
       mcpUiFrameOrigin: 'http://127.0.0.1:4555',
     });
     expect(result.accepted).toEqual({});
     expect(result.ignored).toEqual(
       expect.arrayContaining([
-        { key: 'managedChatOrchestration', reason: 'runtime-derived' },
+        { key: 'pluginFrameOrigin', reason: 'runtime-derived' },
         { key: 'mcpUiFrameOrigin', reason: 'runtime-derived' },
       ]),
     );
@@ -140,9 +141,12 @@ describe('buildAppConfigProvenance', () => {
 
   beforeEach(() => {
     delete process.env.AWS_REGION;
+    vi.stubEnv('STATION_PRODUCT_TELEMETRY_ENABLED', undefined);
+    vi.stubEnv('STATION_TELEMETRY_ENABLED', undefined);
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     if (ORIGINAL_AWS_REGION === undefined) {
       delete process.env.AWS_REGION;
     } else {
@@ -174,17 +178,12 @@ describe('buildAppConfigProvenance', () => {
       {
         injected: {
           mcpUiFrameOrigin: 'MCP_UI_FRAME_PORT',
-          managedChatOrchestration: 'STATION_FEATURES',
         },
       },
     );
     expect(provenance.mcpUiFrameOrigin).toEqual({
       source: 'env',
       envVar: 'MCP_UI_FRAME_PORT',
-    });
-    expect(provenance.managedChatOrchestration).toEqual({
-      source: 'env',
-      envVar: 'STATION_FEATURES',
     });
   });
 
@@ -200,6 +199,38 @@ describe('buildAppConfigProvenance', () => {
         `telemetry env spelling ${value} was not reported as its effective source`,
       ).toEqual({ source: 'env', envVar: 'STATION_TELEMETRY_ENABLED' });
       delete process.env.STATION_TELEMETRY_ENABLED;
+    },
+  );
+
+  test.each([
+    ['on', 'off', undefined, true, 'env', 'STATION_PRODUCT_TELEMETRY_ENABLED'],
+    ['off', 'on', undefined, false, 'env', 'STATION_PRODUCT_TELEMETRY_ENABLED'],
+    [' ', 'off', undefined, false, 'env', 'STATION_TELEMETRY_ENABLED'],
+    ['invalid', 'off', undefined, false, 'env', 'STATION_TELEMETRY_ENABLED'],
+    ['invalid', 'invalid', undefined, true, 'default', undefined],
+    ['on', 'on', false, false, 'file', undefined],
+  ] as const)(
+    'telemetry effective value and provenance agree for canonical %s / alias %s',
+    (canonical, alias, saved, value, source, envVar) => {
+      vi.stubEnv('STATION_PRODUCT_TELEMETRY_ENABLED', canonical);
+      vi.stubEnv('STATION_TELEMETRY_ENABLED', alias);
+      const stored: AppConfig = {
+        defaultModel: 'configured-model',
+        invokeModel: 'configured-model',
+        structureModel: 'configured-model',
+        telemetryEnabled: saved,
+      };
+      const provenance = buildAppConfigProvenance(stored, {
+        injected: {},
+      }).telemetryEnabled;
+      expect(provenance).toEqual({ source, ...(envVar ? { envVar } : {}) });
+      expect(
+        resolveEffectiveAppSetting('telemetryEnabled', { config: stored }),
+      ).toEqual({
+        value,
+        source: source === 'file' ? 'station' : source,
+        ...(envVar ? { envVar } : {}),
+      });
     },
   );
 

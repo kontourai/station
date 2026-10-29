@@ -1,0 +1,7 @@
+{
+  "revision": "c43d5a78468f8390278040fb0b212ad913d7d95b",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed the changed task-review reference against the package guidance: the reference still describes pure environment-free contract parsers/reducers and explicit evidence boundaries, and now routes runtime claims to the API and SDK owners. No contract source or package instructions changed in L2. Send mode remains a route/SDK extension pending L0 contract sync; L1 numeric-summary/structured-answer adoption is separate.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

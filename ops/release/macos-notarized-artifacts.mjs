@@ -1,21 +1,26 @@
 import { spawn as defaultSpawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   existsSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
+  readlinkSync,
   realpathSync,
   rmSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, join, resolve } from 'node:path';
+import { basename, isAbsolute, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from '../../scripts/lib/module-entry.mjs';
 import { redactVerificationOutput } from '../../scripts/lib/verification-redaction.mjs';
 import {
   EMBEDDED_MACHO_SEALING_DEADLINE_MS,
+  sealBundledMacosNode,
   sealEmbeddedMacosMachOBounded,
 } from '../nightly/macos-embedded-signing.mjs';
-import { invokedDirectly } from '../../scripts/lib/module-entry.mjs';
 
 const MAX_CODESIGN_REQUIREMENT_STREAM_BYTES = 64 * 1024;
 const MAX_COMMAND_OUTPUT_BYTES = 64 * 1024;
@@ -39,9 +44,11 @@ export const NOTARY_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
 export const LARGE_ARTIFACT_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
 export const COMMAND_TERMINATION_GRACE_MS = 10 * 1000;
 export const MAX_RETRY_ATTEMPTS = 2;
-// `hdiutil create` on hosted macOS runners intermittently exits nonzero under
-// I/O contention (an overlapped notarization upload, attach/detach races)
-// while the identical invocation succeeds moments later. That is the only
+// dmgbuild builds the installer image by driving `hdiutil` (create, attach,
+// detach, convert), and `hdiutil` on hosted macOS runners intermittently exits
+// nonzero under I/O contention (an overlapped notarization upload,
+// attach/detach races) while the identical invocation succeeds moments later;
+// dmgbuild surfaces that as its own nonzero exit. DMG creation is the only
 // release phase with a bounded, program-scoped retry; it is deliberately
 // separate from the transport-classified timestamp/notary retry above.
 export const DMG_CREATION_MAX_ATTEMPTS = 3;
@@ -409,6 +416,30 @@ export function isRetryableTimestampOrNotaryTransportFailure(error, args = []) {
   );
 }
 
+function isRetryableStaplerTicketTransportFailure(error, args) {
+  if (
+    !(error instanceof ReleaseCommandError) ||
+    error.program !== 'xcrun' ||
+    error.status !== 68 ||
+    error.signal ||
+    error.timedOut ||
+    error.outputTruncated ||
+    args[0] !== 'stapler' ||
+    !['staple', 'validate'].includes(args[1])
+  )
+    return false;
+  const diagnostics = `${error.stdout ?? ''}\n${error.stderr ?? ''}`;
+  return (
+    /NSErrorFailingURLKey=https:\/\/api\.apple-cloudkit\.com\/database\/1\/com\.apple\.gk\.ticket-delivery\/production\/public\/records\/lookup(?:[,\s]|$)/.test(
+      diagnostics,
+    ) &&
+    /_kCFStreamErrorDomainKey\s*=\s*4\b/.test(diagnostics) &&
+    !/no ticket|ticket.*invalid|signature.*invalid|certificate|authentication|not notarized|unsupported/i.test(
+      diagnostics,
+    )
+  );
+}
+
 export async function retryRetryableTransportFailure(
   phase,
   args,
@@ -421,7 +452,8 @@ export async function retryRetryableTransportFailure(
     } catch (error) {
       if (
         attempt === MAX_RETRY_ATTEMPTS ||
-        !isRetryableTimestampOrNotaryTransportFailure(error, args)
+        (!isRetryableTimestampOrNotaryTransportFailure(error, args) &&
+          !isRetryableStaplerTicketTransportFailure(error, args))
       ) {
         throw error;
       }
@@ -429,7 +461,7 @@ export async function retryRetryableTransportFailure(
         logger,
         'warn',
       )(
-        `[macOS release] ${phase}: retrying once after a retryable timestamp/notary transport failure.`,
+        `[macOS release] ${phase}: retrying once after a retryable Apple transport failure.`,
       );
     }
   }
@@ -437,17 +469,21 @@ export async function retryRetryableTransportFailure(
 }
 
 /**
- * Only a nonzero `hdiutil create` exit is retried. A timeout already consumed
- * the phase budget and terminated a process group; an overflowed capture is a
- * bound the release refuses to relax; anything that is not a bounded release
- * command failure (deadline exhaustion, spawn refusal, a plain error) is not a
- * transient tool outcome. The transport retry's diagnostic regex is not used
- * here because hdiutil's contention failures carry no stable text.
+ * Only a nonzero exit of the DMG creation program (the release's `dmgbuild`)
+ * is retried. A timeout already consumed the phase budget and terminated a
+ * process group; an overflowed capture is a bound the release refuses to
+ * relax; anything that is not a bounded release command failure of that exact
+ * program in that phase (deadline exhaustion, spawn refusal, a plain error) is
+ * not a transient tool outcome. The transport retry's diagnostic regex is not
+ * used here because hdiutil's contention failures, which dmgbuild relays,
+ * carry no stable text.
  */
-export function isRetryableDmgCreationFailure(error) {
+export function isRetryableDmgCreationFailure(error, program) {
   return (
     error instanceof ReleaseCommandError &&
-    error.program === 'hdiutil' &&
+    typeof program === 'string' &&
+    program !== '' &&
+    error.program === program &&
     error.phase === 'DMG creation' &&
     error.timedOut !== true &&
     error.outputTruncated !== true
@@ -456,23 +492,23 @@ export function isRetryableDmgCreationFailure(error) {
 
 export async function retryTransientDmgCreationFailure(
   operation,
-  { logger, sleep, discardPartialOutput, remainingMs },
+  { program, logger, sleep, discardPartialOutput, remainingMs },
 ) {
   const warn = loggerMethod(logger, 'warn');
   for (let attempt = 1; attempt <= DMG_CREATION_MAX_ATTEMPTS; attempt += 1) {
     try {
       return await operation();
     } catch (error) {
-      if (!isRetryableDmgCreationFailure(error)) throw error;
+      if (!isRetryableDmgCreationFailure(error, program)) throw error;
       // Every nonzero exit discards the image, including the last: a partial
       // image must neither survive the terminal failure nor be mistaken for
       // the output of the next attempt.
       discardPartialOutput();
       if (attempt === DMG_CREATION_MAX_ATTEMPTS) throw error;
       const backoffMs = DMG_CREATION_RETRY_BACKOFF_MS[attempt - 1];
-      const label = `[macOS release] DMG creation: hdiutil attempt ${attempt}/${DMG_CREATION_MAX_ATTEMPTS} failed`;
+      const label = `[macOS release] DMG creation: ${basename(program)} attempt ${attempt}/${DMG_CREATION_MAX_ATTEMPTS} failed`;
       // The next attempt still needs its own cleanup grace after the backoff;
-      // rethrow the informative hdiutil failure rather than sleeping into the
+      // rethrow the informative creation failure rather than sleeping into the
       // deadline error the command wrapper would raise instead.
       if (remainingMs() - backoffMs <= COMMAND_TERMINATION_GRACE_MS) {
         warn(`${label}; the release deadline leaves no room to retry.`);
@@ -528,6 +564,82 @@ export function admitMacosAppBundle(app, fs, path = { resolve }) {
     );
   }
   return canonical;
+}
+
+// dmgbuild writes the installer window (background art, icon positions,
+// hidden toolbar and sidebar) into the image's .DS_Store without scripting
+// Finder, which is unreliable on hosted runners. Both inputs are committed
+// beside this script; docs/guides/native-releases.md describes regeneration.
+const DMG_SETTINGS = fileURLToPath(
+  new URL('./dmg/dmgbuild-settings.py', import.meta.url),
+);
+const DMG_BACKGROUND = fileURLToPath(
+  new URL('./dmg/background.tiff', import.meta.url),
+);
+const DMG_WINDOW_LAYOUT_ENTRY = '.DS_Store';
+const DMG_BACKGROUND_ENTRY = '.background.tiff';
+const DMG_APPLICATIONS_ENTRY = 'Applications';
+const DMG_APPLICATIONS_TARGET = '/Applications';
+
+function sha256Hex(bytes) {
+  return createHash('sha256').update(bytes).digest('hex');
+}
+
+/**
+ * Admits the mounted installer image root. It must hold exactly the window
+ * layout record, the committed background (by digest), an `Applications`
+ * link to `/Applications`, and the application as a real directory. Anything
+ * extra, missing or differently typed fails closed: the window positions only
+ * those two icons, and every other entry would ship inside a notarized image.
+ */
+export function assertInstallerDmgLayout(mount, appName, backgroundSha256, fs) {
+  const expected = [
+    DMG_WINDOW_LAYOUT_ENTRY,
+    DMG_BACKGROUND_ENTRY,
+    DMG_APPLICATIONS_ENTRY,
+    appName,
+  ];
+  const entries = fs.readdirSync(mount);
+  const missing = expected.filter((name) => !entries.includes(name));
+  const unexpected = entries.filter((name) => !expected.includes(name));
+  if (
+    missing.length > 0 ||
+    unexpected.length > 0 ||
+    entries.length !== expected.length
+  )
+    throw new Error(
+      `DMG root must contain exactly ${expected.join(', ')}; missing ${JSON.stringify(missing)}, unexpected ${JSON.stringify(unexpected)}.`,
+    );
+  const entry = (name) => fs.lstatSync(join(mount, name));
+  const isRegularFile = (name) => {
+    const metadata = entry(name);
+    return metadata.isFile() && !metadata.isSymbolicLink();
+  };
+  if (!isRegularFile(DMG_WINDOW_LAYOUT_ENTRY))
+    throw new Error(
+      `DMG ${DMG_WINDOW_LAYOUT_ENTRY} must be a regular file in the image root.`,
+    );
+  if (
+    !isRegularFile(DMG_BACKGROUND_ENTRY) ||
+    sha256Hex(fs.readFileSync(join(mount, DMG_BACKGROUND_ENTRY))) !==
+      backgroundSha256
+  )
+    throw new Error(
+      `DMG ${DMG_BACKGROUND_ENTRY} must be a regular file identical to ops/release/dmg/background.tiff.`,
+    );
+  if (
+    !entry(DMG_APPLICATIONS_ENTRY).isSymbolicLink() ||
+    fs.readlinkSync(join(mount, DMG_APPLICATIONS_ENTRY)) !==
+      DMG_APPLICATIONS_TARGET
+  )
+    throw new Error(
+      `DMG ${DMG_APPLICATIONS_ENTRY} must be a symbolic link to exactly ${DMG_APPLICATIONS_TARGET}.`,
+    );
+  const app = entry(appName);
+  if (!app.isDirectory() || app.isSymbolicLink())
+    throw new Error(
+      `DMG ${appName} must be the application directory, not a link or file.`,
+    );
 }
 
 /**
@@ -750,6 +862,8 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
     mkdirSync,
     mkdtempSync,
     readdirSync,
+    readFileSync,
+    readlinkSync,
     realpathSync,
     rmSync,
   };
@@ -775,11 +889,18 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
     throw new Error('Expected a canonical macOS architecture.');
   if (!fs.existsSync(key))
     throw new Error('Notary API key file does not exist.');
+  const dmgbuild = need(options.dmgbuild, 'dmgbuild');
+  if (!isAbsolute(dmgbuild) || !fs.existsSync(dmgbuild))
+    throw new Error('dmgbuild must be an absolute path that exists.');
+  if (!fs.existsSync(DMG_SETTINGS))
+    throw new Error('DMG layout settings file does not exist.');
+  // Read once, before any signing work, so the mounted image is compared
+  // with the bytes this checkout actually ships.
+  const backgroundSha256 = sha256Hex(fs.readFileSync(DMG_BACKGROUND));
   const appName = basename(app);
   fs.mkdirSync(assets, { recursive: true });
   const root = fs.mkdtempSync(join(tmpdir(), 'station-macos-release-'));
   const mount = join(root, 'mounted');
-  const dmgRoot = join(root, 'dmg-root');
   const zip = join(root, 'notarization-input.zip');
   const prefix = `station-${tag}-macos-${arch}`;
   const dmg = join(assets, `${prefix}.dmg`);
@@ -822,6 +943,12 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
     if (!dmgOnly) {
       const retryEmbeddedSign = (phase, args, operation) =>
         retryRetryableTransportFailure(phase, args, operation, logger);
+      await sealBundledMacosNode(app, identity, {
+        ...injected.embeddedMacos,
+        command: embeddedCommand,
+        sign: embeddedSign,
+        retrySign: retryEmbeddedSign,
+      });
       await sealEmbeddedMacosMachOBounded(app, identity, {
         ...injected.embeddedMacos,
         command: embeddedCommand,
@@ -871,6 +998,21 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
       throw new Error(
         'Staged app bundle identifier does not match the release channel.',
       );
+    // The updater signature binds this version (#3851): the desktop app
+    // restores a cached download only when its signature names the version
+    // it is installing. Both release workflows assert CFBundleShortVersionString
+    // equals the version they write to latest.json.
+    const appVersion = (
+      await command('outer app version', '/usr/libexec/PlistBuddy', [
+        '-c',
+        'Print :CFBundleShortVersionString',
+        join(app, 'Contents/Info.plist'),
+      ])
+    ).stdout.trim();
+    if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(appVersion))
+      throw new Error(
+        `Staged app version ${JSON.stringify(appVersion)} cannot be bound into the updater signature.`,
+      );
     const metadata = (
       await command(
         'outer app signing metadata',
@@ -908,12 +1050,17 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
         entitlementOutput.stderr !== `${entitlementDiagnostic}\n`)
     )
       throw new Error('Outer app has unexpected entitlements.');
+    const stapler = (phase, action, artifact) => {
+      const args = ['stapler', action, artifact];
+      return retryRetryableTransportFailure(
+        phase,
+        args,
+        () => command(phase, 'xcrun', args),
+        logger,
+      );
+    };
     const validateAndAssessApp = async () => {
-      await command('application staple validation', 'xcrun', [
-        'stapler',
-        'validate',
-        app,
-      ]);
+      await stapler('application staple validation', 'validate', app);
       await command('application Gatekeeper assessment', 'spctl', [
         '--assess',
         '--type',
@@ -923,21 +1070,17 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
       ]);
     };
     const stapleAndAdmitApp = async () => {
-      await command('application stapling', 'xcrun', [
-        'stapler',
-        'staple',
-        app,
-      ]);
+      await stapler('application stapling', 'staple', app);
       await validateAndAssessApp();
     };
     // Each `notarytool submit --wait` costs the release five to six minutes,
     // and the two submissions are independent of one another. By default the
     // application submission is joined and stapled here, before the disk image
-    // is staged, so the image encloses an application carrying its own local
+    // is created, so the image encloses an application carrying its own local
     // ticket and an offline user who copies it out of the image is unaffected.
     // `overlapNotarization` trades that away for wall-clock time: the
-    // application submission stays in flight while the disk image is staged,
-    // created, signed, and admitted, so the two service waits overlap, and the
+    // application submission stays in flight while the disk image is created,
+    // signed, and admitted, so the two service waits overlap, and the
     // image then encloses a signed but not-yet-stapled application whose own
     // ticket Gatekeeper resolves online. Only the Nightly channel accepts that
     // trade; nothing is stapled until every submission is accepted either way.
@@ -965,32 +1108,32 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
         await stapleAndAdmitApp();
       }
     }
-    fs.mkdirSync(dmgRoot, { recursive: true });
-    await command(
-      'DMG staging',
-      'ditto',
-      [app, join(dmgRoot, appName)],
-      LARGE_ARTIFACT_COMMAND_TIMEOUT_MS,
-    );
+    // dmgbuild copies the sealed application into the image with ditto, adds
+    // the Applications link and background, writes the window layout, and
+    // converts to compressed UDZO, overwriting any earlier output. `--no-hidpi`
+    // keeps the shipped background byte-identical to the committed TIFF, which
+    // already carries both resolutions, instead of letting dmgbuild combine
+    // whatever `background@Nx.tiff` siblings happen to exist.
     await retryTransientDmgCreationFailure(
       () =>
         command(
           'DMG creation',
-          'hdiutil',
+          dmgbuild,
           [
-            'create',
-            '-volname',
+            '-s',
+            DMG_SETTINGS,
+            '-D',
+            `app=${app}`,
+            '-D',
+            `background=${DMG_BACKGROUND}`,
+            '--no-hidpi',
             'Station',
-            '-srcfolder',
-            dmgRoot,
-            '-ov',
-            '-format',
-            'UDZO',
             dmg,
           ],
           LARGE_ARTIFACT_COMMAND_TIMEOUT_MS,
         ),
       {
+        program: dmgbuild,
         logger,
         sleep,
         discardPartialOutput: () => fs.rmSync(dmg, { force: true }),
@@ -1049,14 +1192,10 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
     ))
       if (outcome.status === 'rejected') throw outcome.reason;
     // Only an overlapped run still owes the application its staple; the
-    // default already joined and stapled it before the disk image was staged.
+    // default already joined and stapled it before the disk image was created.
     if (pendingAppNotarization !== undefined) await stapleAndAdmitApp();
-    await command('DMG stapling', 'xcrun', ['stapler', 'staple', dmg]);
-    await command('DMG staple validation', 'xcrun', [
-      'stapler',
-      'validate',
-      dmg,
-    ]);
+    await stapler('DMG stapling', 'staple', dmg);
+    await stapler('DMG staple validation', 'validate', dmg);
     await command('DMG Gatekeeper assessment', 'spctl', [
       '--assess',
       '--type',
@@ -1075,11 +1214,7 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
       mount,
       dmg,
     ]);
-    const files = fs.readdirSync(mount);
-    if (files.length !== 1 || files[0] !== appName)
-      throw new Error(
-        'DMG must contain exactly the staged application bundle.',
-      );
+    assertInstallerDmgLayout(mount, appName, backgroundSha256, fs);
     const mounted = join(mount, appName);
     await command(
       'mounted app signature verification',
@@ -1129,6 +1264,8 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
       'tauri',
       'signer',
       'sign',
+      '--app-version',
+      appVersion,
       updater,
     ]);
     if (!fs.existsSync(`${updater}.sig`))
@@ -1164,6 +1301,7 @@ export function parseMacosNotarizedArtifactsCli(argv) {
     '--architecture',
     '--bundle-id',
     '--deadline-epoch',
+    '--dmgbuild',
   ]);
   // Bare switches take no value: a following token is read as the next flag
   // name, so `--dmg-only true` still fails the unique --name value check.
@@ -1200,6 +1338,7 @@ export function parseMacosNotarizedArtifactsCli(argv) {
     architecture: raw['--architecture'],
     bundleId: raw['--bundle-id'],
     deadlineEpoch: raw['--deadline-epoch'],
+    dmgbuild: raw['--dmgbuild'],
     dmgOnly: raw['--dmg-only'] === true ? true : undefined,
     overlapNotarization:
       raw['--overlap-notarization'] === true ? true : undefined,

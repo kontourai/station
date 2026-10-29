@@ -601,7 +601,7 @@ describe('station environment access devices / scope / scopes (#1796)', () => {
     }
   });
 
-  test('a non-loopback Station (a paired remote CLI) is refused before any credential is read', async () => {
+  test('an unpaired remote scope command is refused before the local operator credential is read', async () => {
     const request = station();
     const createService = vi.fn(() => makeService());
     await expect(
@@ -622,9 +622,7 @@ describe('station environment access devices / scope / scopes (#1796)', () => {
           isInteractive: false,
         },
       ),
-    ).rejects.toThrow(
-      /Operator access commands \(access list\/approve\/deny\/devices\/scope\/revoke\/remove\) require a loopback --api-base/,
-    );
+    ).rejects.toThrow(/needs a paired CLI credential/);
     expect(request).not.toHaveBeenCalled();
     expect(createService).not.toHaveBeenCalled();
   });
@@ -913,7 +911,7 @@ describe('station environment access revoke / remove (#3256)', () => {
     expect(deletes(removeRequest)).toEqual([]);
   });
 
-  test('a non-loopback Station is refused before any credential is read', async () => {
+  test('unpaired remote revoke and remove commands never read the local operator credential', async () => {
     for (const verb of ['revoke', 'remove']) {
       const request = host();
       const createService = vi.fn(() => makeService());
@@ -935,7 +933,7 @@ describe('station environment access revoke / remove (#3256)', () => {
             isInteractive: false,
           },
         ),
-      ).rejects.toThrow(/require a loopback --api-base/);
+      ).rejects.toThrow(/needs a paired CLI credential/);
       expect(request).not.toHaveBeenCalled();
       expect(createService).not.toHaveBeenCalled();
     }

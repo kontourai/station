@@ -39,6 +39,11 @@ vi.mock('../ProjectKnowledgeNamespaceConfig', () => ({
   ProjectKnowledgeNamespaceConfig: () => null,
 }));
 
+// Store permissions and records have their own mounted owner tests.
+vi.mock('../ProjectKnowledgeStores', () => ({
+  ProjectKnowledgeStores: () => null,
+}));
+
 import { ProjectKnowledgeSection } from '../ProjectKnowledgeSection';
 
 function renderSection(

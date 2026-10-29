@@ -1,17 +1,21 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PAIRING_SCOPE_ORCHESTRATION_OPERATE } from '@kontourai/station-contracts';
 import { MCPLocalConnectionCustody } from '@kontourai/station-shared/mcp';
+import {
+  Client,
+  StreamableHTTPClientTransport,
+} from '@modelcontextprotocol/client';
 import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
 import { Hono } from 'hono';
 import { expect, test, vi } from 'vitest';
 import { z } from 'zod';
-import {
-  getInternalApiToken,
-  INTERNAL_API_TOKEN_HEADER,
-  INTERNAL_TENANT_HEADER,
-} from '../../../utils/internal-api-token.js';
+import { revokeStationControlMcpToken } from '../../../runtime/mcp/station-control-mcp-token.js';
+import { EventBus } from '../../orchestration/event-bus.js';
+import { EventStore } from '../../orchestration/event-store.js';
+import { TaskGraphService } from '../../projects/task-graph-service.js';
+import { createEngineMcpOAuthResolver } from '../engine-mcp-oauth.js';
 
 const runtimeSupport = vi.hoisted(() => {
   const service = new Proxy({}, { get: () => () => undefined });
@@ -51,8 +55,6 @@ const HOSTED_TENANT_REGISTRY_ENV = 'STATION_HOSTED_TENANT_REGISTRY_FILE';
 function operatorHeaders(contentType = true): Record<string, string> {
   return {
     Authorization: `Bearer ${OPERATOR_CREDENTIAL}`,
-    [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
-    [INTERNAL_TENANT_HEADER]: 'oauth-tenant',
     ...(contentType ? { 'content-type': 'application/json' } : {}),
   };
 }
@@ -66,6 +68,7 @@ function runtimeContext(
   loader: InstanceType<typeof ConfigLoader>,
   service: InstanceType<typeof MCPService>,
   logger: Record<string, unknown>,
+  store: EventStore,
 ) {
   const devicePairing = new Proxy(
     { identifyDevice: () => undefined },
@@ -105,7 +108,9 @@ function runtimeContext(
       // This fixture has no operator-installed account provider. The broad
       // service proxy would otherwise invent one for this optional field.
       deploymentAuthentication: undefined,
-      eventBus: { emit: vi.fn() },
+      orchestrationEventStore: store,
+      taskGraphService: new TaskGraphService(loader.getProjectHomeDir()),
+      eventBus: new EventBus(),
       environmentSecurityService,
       activeAgents: new Map(),
       agentMetadataMap: new Map(),
@@ -199,6 +204,10 @@ async function startOAuthFixture(): Promise<OAuthFixture> {
       }
       if (url.pathname === '/register') {
         const registered = (await request.json()) as Record<string, unknown>;
+        expect(registered.redirect_uris).toEqual([
+          'http://127.0.0.1:43141/integrations/oauth-proof/oauth/callback',
+        ]);
+        expect(registered.token_endpoint_auth_method).toBe('none');
         return Response.json({
           ...registered,
           client_id: 'station-runtime-proof',
@@ -207,6 +216,7 @@ async function startOAuthFixture(): Promise<OAuthFixture> {
       }
       if (url.pathname === '/token') {
         const params = new URLSearchParams(await request.text());
+        expect(params.get('resource')).toBe(`${origin}/mcp`);
         if (
           params.get('grant_type') !== 'authorization_code' ||
           params.get('code') !== 'fixture-code' ||
@@ -284,6 +294,7 @@ test('real secured stack: authenticated paste-back reaches the runtime and no pu
   const home = await mkdtemp(join(tmpdir(), 'station-oauth-runtime-e2e-'));
   const previousHostedRegistry = process.env[HOSTED_TENANT_REGISTRY_ENV];
   const custody = new MCPLocalConnectionCustody();
+  const store = new EventStore(join(home, 'orchestration.sqlite'));
   try {
     const loader = new ConfigLoader({ projectHomeDir: home });
     const service = new MCPService(
@@ -312,18 +323,8 @@ test('real secured stack: authenticated paste-back reaches the runtime and no pu
       setLevel: vi.fn(),
       getLevel: vi.fn(() => 'info' as const),
     };
-    const hostedRegistryPath = join(home, 'hosted-tenants.json');
-    await writeFile(
-      hostedRegistryPath,
-      JSON.stringify({
-        schemaVersion: 1,
-        tenants: [
-          { id: 'oauth-tenant', authority: 'oauth-tenant.example.test' },
-        ],
-      }),
-    );
-    process.env[HOSTED_TENANT_REGISTRY_ENV] = hostedRegistryPath;
-    configureRuntimeRoutes(runtimeContext(app, loader, service, logger));
+    delete process.env[HOSTED_TENANT_REGISTRY_ENV];
+    configureRuntimeRoutes(runtimeContext(app, loader, service, logger, store));
 
     const oauthRoutes = app.routes
       .filter((route) => route.path.includes('/oauth/'))
@@ -358,8 +359,6 @@ test('real secured stack: authenticated paste-back reaches the runtime and no pu
         {
           method: route.method,
           headers: {
-            [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
-            [INTERNAL_TENANT_HEADER]: 'oauth-tenant',
             'content-type': 'application/json',
           },
           body:
@@ -413,6 +412,9 @@ test('real secured stack: authenticated paste-back reaches the runtime and no pu
       'copy the full redirected loopback URL from the address bar',
     );
     const authorizationUrl = new URL(authorization.data.authorizationUrl);
+    expect(authorizationUrl.searchParams.get('resource')).toBe(
+      `${fixture.origin}/mcp`,
+    );
     const redirectUri = authorizationUrl.searchParams.get('redirect_uri');
     const state = authorizationUrl.searchParams.get('state');
     expect(redirectUri).toBe(
@@ -464,6 +466,51 @@ test('real secured stack: authenticated paste-back reaches the runtime and no pu
     expect(await replayResponse.text()).toContain('No OAuth consent flow');
 
     await service.setEnabled('oauth-proof', true);
+    const resolveEngine = createEngineMcpOAuthResolver({
+      homeDir: () => home,
+      port: () => 43141,
+      getIntegration: (id) => service.getIntegration(id),
+      needsSignIn: (id, resource) => service.markOAuthNeedsSignIn(id, resource),
+    });
+    const proxyUrls = await resolveEngine(
+      [
+        {
+          id: 'oauth-proof',
+          transport: 'streamable-http',
+          endpoint: `${fixture.origin}/mcp`,
+        },
+      ],
+      undefined,
+      undefined,
+      'proxy-engine',
+    );
+    const engineClient = new Client(
+      { name: 'engine-proxy-proof', version: '1.0.0' },
+      { versionNegotiation: { mode: 'auto' } },
+    );
+    try {
+      await engineClient.connect(
+        new StreamableHTTPClientTransport(
+          new URL(proxyUrls.get('oauth-proof')!),
+          { fetch: async (url, init) => app.request(url, init, loopbackEnv()) },
+        ),
+      );
+      expect(
+        await engineClient.callTool({
+          name: 'proof',
+          arguments: { value: 'through secured proxy' },
+        }),
+      ).toMatchObject({ content: [{ text: 'through secured proxy' }] });
+      const invalid = new URL(proxyUrls.get('oauth-proof')!);
+      invalid.searchParams.set('token', 'wrong-proxy-token');
+      expect((await app.request(invalid.href, {}, loopbackEnv())).status).toBe(
+        401,
+      );
+    } finally {
+      await engineClient.close();
+      revokeStationControlMcpToken('proxy-engine');
+    }
+
     const runtimeLogger = {
       debug: vi.fn(),
       info: vi.fn(),
@@ -529,6 +576,7 @@ test('real secured stack: authenticated paste-back reaches the runtime and no pu
     else process.env[HOSTED_TENANT_REGISTRY_ENV] = previousHostedRegistry;
     expect((await custody.shutdown()).state).toBe('settled');
     await fixture.close();
+    await expect.poll(() => store.close().kind).toBe('closed');
     vi.unstubAllGlobals();
     await rm(home, { recursive: true, force: true });
   }

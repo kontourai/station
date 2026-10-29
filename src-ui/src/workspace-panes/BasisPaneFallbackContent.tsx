@@ -21,9 +21,11 @@ const LazyConnectedStationBasisPane = lazy(() =>
 export function ConnectedBasisFallbackPane({
   scope,
   currentProjectId,
+  onDismiss,
 }: {
   scope: BasisPaneHostScope;
   currentProjectId?: string;
+  onDismiss?(): void;
 }) {
   return (
     <Suspense fallback={<SkeletonBlock count={3} label="Loading Basis" />}>
@@ -32,6 +34,9 @@ export function ConnectedBasisFallbackPane({
           sessionId={scope.sessionId}
           currentProjectId={currentProjectId}
           initialScope={scope.initialScope}
+          onDismiss={onDismiss}
+          // The fallback dialog's chrome names this surface (#4176).
+          titleOwner="host"
         />
       ) : (
         <LazyConnectedStationBasisPane

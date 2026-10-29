@@ -1,0 +1,7 @@
+{
+  "revision": "c17d25a18499790ed036c7106ead3934e36b18f2",
+
+  "notes": [
+    {"path":"docs/patterns/frontend.md","note":"Lockfile-only delta: adds devDependency tsc-ts@0.0.2 and its seven optional @tsc-ts/<platform>@0.0.2 executables (no removals, no lifecycle scripts, no allowBuilds/override/release-age policy change). This document makes no claim about tsc-ts or the typecheck compiler; its cited lockfile claims are unchanged. Scoped to this delta only.","inputs":["docs/patterns/frontend.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]}
+  ]
+}

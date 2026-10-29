@@ -1,0 +1,7 @@
+{
+  "revision": "236da2b7338eb40434c59612ae9e410aaea5066a",
+
+  "notes": [
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"Reviewed the sole changed input: the 261-install paged-history test now inherits the existing finite host-scaled test timeout. All generation retention and paging assertions remain, and the repaired suite passed 36 cases. Installation lifecycle behavior and this explanation are unchanged.","inputs":["docs/design/plugin-installation-lifecycle.md","src-server/services/plugins/__tests__/plugin-installation.integration.test.ts"]}
+  ]
+}

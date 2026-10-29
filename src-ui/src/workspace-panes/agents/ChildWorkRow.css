@@ -2,6 +2,9 @@
    AgentsWorkspacePane chunk. */
 
 .child-work-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   padding-inline-start: calc(var(--child-work-level, 0) * var(--space-4));
 }
 
@@ -11,6 +14,10 @@
 
 .child-work-row__main {
   display: flex;
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+  min-height: 44px;
   width: 100%;
   align-items: flex-start;
   gap: var(--space-2);
@@ -46,14 +53,13 @@
 }
 
 .child-work-row__text {
-  display: flex;
+  display: block;
   min-width: 0;
   flex: 1;
-  flex-direction: column;
-  gap: 1px;
 }
 
 .child-work-row__title {
+  display: block;
   overflow: hidden;
   font-size: var(--text-sm);
   font-weight: 500;
@@ -72,6 +78,7 @@
 }
 
 .child-work-row__progress {
+  display: block;
   overflow: hidden;
   color: var(--text-secondary);
   font-size: var(--text-xs);
@@ -122,6 +129,7 @@
 }
 
 .child-work-row__detail {
+  grid-column: 1 / -1;
   margin: 0 var(--space-3) var(--space-2);
   padding: var(--space-2);
   overflow-wrap: anywhere;
@@ -148,7 +156,10 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
-  margin: 0 var(--space-3) var(--space-2) 34px;
+  grid-column: 2;
+  grid-row: 1;
+  justify-content: flex-end;
+  margin-inline-end: var(--k-space-2);
 }
 
 .child-work-row__error {
@@ -181,58 +192,10 @@
   font-style: italic;
 }
 
-/* #3163: the read-only transcript. Bounded by the server's page size. */
-.child-work-transcript {
-  display: flex;
-  max-height: 360px;
-  flex-direction: column;
-  gap: var(--space-2);
-  overflow-y: auto;
+.child-work-row__model::before {
+  content: " · ";
 }
 
-.child-work-transcript__entries {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.child-work-transcript__entry {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.child-work-transcript__label {
-  color: var(--text-tertiary);
-  font-size: var(--text-2xs);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-
-.child-work-transcript__text {
-  margin: 0;
-  color: var(--text-primary);
-  white-space: pre-wrap;
-}
-
-.child-work-transcript__code {
+.child-work-row__provenance {
   display: block;
-  max-height: 120px;
-  overflow: auto;
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-sm);
-  background: var(--bg-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  white-space: pre-wrap;
-}
-
-.child-work-transcript__note,
-.child-work-transcript__cut {
-  margin: 0;
-  color: var(--text-tertiary);
-  font-size: var(--text-2xs);
 }

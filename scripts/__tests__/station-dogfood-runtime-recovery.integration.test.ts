@@ -5,6 +5,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   symlinkSync,
@@ -17,6 +18,7 @@ import {
   reapAllLongRunningFixtureChildren,
   spawnLongRunningFixtureChild,
 } from '../../packages/cli/src/__tests__/helpers/longrunning-fixture-child.js';
+import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
 import { findFreePortBlock, findFreePortOutside } from '../lib/free-ports.mjs';
 import { probeDogfoodHealth } from '../station-dogfood-health.mjs';
 import { reconcile } from '../station-dogfood-reconcile.mjs';
@@ -84,12 +86,7 @@ function materializeRelease(release: string, instance: string, sha: string) {
     '<head></head><body>Station</body>',
   );
   symlinkSync(join(workspace, 'node_modules'), join(release, 'node_modules'));
-  const shim = join(release, 'station');
-  writeFileSync(
-    shim,
-    `#!/bin/sh\nexec "${process.execPath}" "${join(workspace, 'node_modules', 'tsx', 'dist', 'cli.mjs')}" "${join(workspace, 'scripts', 'station-cli.ts')}" "$@"\n`,
-  );
-  chmodSync(shim, 0o755);
+  fixtureOwner.writeRuntimeRecoveryStationShim(release, instance);
 }
 
 describe('production reconcile backend-only recovery', () => {
@@ -113,6 +110,54 @@ describe('production reconcile backend-only recovery', () => {
       chmodSync(directory, 0o700);
     }
     materializeRelease(previous, instance, previousSha);
+    if (process.platform === 'linux') {
+      // A bad scope must fail in the real post-setpriv bootstrap before CLI load.
+      const requestName = readdirSync(previous).find(
+        (name) =>
+          name.endsWith('.json') && name.startsWith('.station-fixture-'),
+      );
+      if (!requestName)
+        throw new Error('Missing runtime recovery launch request');
+      const requestPath = join(previous, requestName);
+      const original = readFileSync(requestPath);
+      const request = JSON.parse(original.toString());
+      try {
+        writeFileSync(requestPath, JSON.stringify({ ...request, uid: 0 }));
+        const refused = spawnSyncBounded(
+          '/usr/bin/setpriv',
+          [
+            '--no-new-privs',
+            process.execPath,
+            join(
+              workspace,
+              'scripts/__tests__/helpers/runtime-recovery-linux-bootstrap.mjs',
+            ),
+            requestPath,
+            'start',
+            `--instance=${instance}`,
+          ],
+          {
+            cwd: previous,
+            encoding: 'utf8',
+            timeout: 5_000,
+            maxBuffer: 64 * 1024,
+            windowsHide: true,
+          },
+        );
+        expect(refused.error).toBeUndefined();
+        expect(refused.signal).toBeNull();
+        expect(refused.status).toBe(1);
+        expect(refused.stderr).toContain(
+          'Runtime recovery requires an unprivileged fixture actor',
+        );
+        expect(readFileSync(`${requestPath}l`, 'utf8')).toBe('');
+        expect(
+          existsSync(join(previous, '.station/instances', `${instance}.json`)),
+        ).toBe(false);
+      } finally {
+        writeFileSync(requestPath, original);
+      }
+    }
     const config = {
       version: 1,
       repo,
@@ -350,12 +395,7 @@ describe('production reconcile backend-only recovery', () => {
       '<head></head><body>Station</body>',
     );
     symlinkSync(join(workspace, 'node_modules'), join(release, 'node_modules'));
-    const shim = join(release, 'station');
-    writeFileSync(
-      shim,
-      `#!/bin/sh\nexec "${process.execPath}" "${join(workspace, 'node_modules', 'tsx', 'dist', 'cli.mjs')}" "${join(workspace, 'scripts', 'station-cli.ts')}" "$@"\n`,
-    );
-    chmodSync(shim, 0o755);
+    fixtureOwner.writeRuntimeRecoveryStationShim(release, 'phone');
     const statePath = join(supportDir, 'state.json');
     const config = {
       version: 1,
@@ -565,15 +605,20 @@ describe('production reconcile backend-only recovery', () => {
     const runtimeBeforeFailedStop = readFileSync(
       join(logDir, 'station-runtime.log'),
     );
-    expect(() =>
-      reconcile(config, {
-        run: command,
-        now: () => {
-          now += 10;
-          return now;
-        },
-      }),
-    ).toThrow('process fingerprint mismatch');
+    const refusedStop = spawnSync(
+      './station',
+      ['stop', '--instance=phone', `--base=${stationHome}`],
+      {
+        cwd: release,
+        env: { ...process.env, STATION_HOME: stationHome },
+        encoding: 'utf8',
+        windowsHide: true,
+      },
+    );
+    expect(refusedStop.error).toBeUndefined();
+    expect(refusedStop.signal).toBeNull();
+    expect(refusedStop.status).toBe(1);
+    expect(refusedStop.stderr).toContain('process fingerprint mismatch');
     expect(() => process.kill(unrelated.pid!, 0)).not.toThrow();
     expect(
       readFileSync(join(logDir, 'station-runtime.log')).equals(

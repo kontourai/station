@@ -1,0 +1,9 @@
+{
+  "revision": "6b337d1961d2e23fe60330213266554eb3283ad3",
+
+  "notes": [
+    {"path":"docs/pages/README.md","note":"Reviewed only the heading-link delta at 6b337d1961d: Pages renderMarkdown reuses documentation-model headingId on rendered visible heading text, reserves duplicate IDs per document, and emits h1-h6 targets. The Pages workflow still publishes this renderer output and copies only the Corpus bundle; admission and publication boundaries are unchanged. Focused product-docs-source-links/public-docs-admission: 25 passed. Removing only the emitted ID attribute caused both new named assertions to fail (including #install-nightly missing); byte-identical restoration returned 25 passed. docs:pages:build passed (492 Markdown sources, 10 admitted documents, 12 HTML pages); local emitted-HTML DOM audit resolved all 18 local fragment links and found no duplicate IDs. The generic Pages link checker still checks target files, not fragments. Limits: no hosted deployment, browser interaction, MCP semantic review, publication or live consumer activation.","inputs":["docs/pages/README.md","scripts/build-github-pages.mjs"]},
+
+    {"path":"docs/README.md","note":"Reviewed only the public-site boundary and build paragraphs against the 6b337d1961d heading-link delta and pages workflow: exact manifest admission, no recursive docs publication, disposable dist-pages output and emitted-file link check remain accurate. No prose change needed. The builder adds heading IDs; focused renderer tests (25 passed), Pages build and local generated-HTML anchor audit cover that delta. Limits: the remainder of this broad document and its other source relationships were not re-reviewed; no hosted deployment or visual interaction proof.","inputs":["docs/README.md","scripts/build-github-pages.mjs"]}
+  ]
+}

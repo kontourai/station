@@ -1,0 +1,7 @@
+{
+  "revision": "d9fe2f951ad4ebe75e88ef321442fd6f0c1af2cf",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Round 2 scoped re-review: inspected generated ProductTelemetryReceiver and monitoring topic deltas after canonical feedback documentation changes. Topic IDs, public credential-free tool boundary, bounded retrieval and digest/ownership contracts in this reference are unchanged. Generated content now describes source-bound operator-only feedback with retention and erasure; no deployed runtime claim added.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

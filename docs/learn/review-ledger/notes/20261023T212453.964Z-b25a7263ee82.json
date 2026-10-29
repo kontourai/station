@@ -1,0 +1,7 @@
+{
+  "revision": "d01803c4fe8cebe575035870e83f043b5c53314e",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Reviewed the cli-auth source delta and its callers in ACPProcess.findCommand and augmentedSpawnEnv: the existing POSIX fallback now includes OpenCode's standard per-user install directory after the process/login PATH. Executable-file checks, explicit-command handling, PATH precedence, the hardened opt-out, shell-capture deadline and service workload ownership are unchanged. The development guide's local runtime, service budgets and verification instructions remain accurate; no prose change is needed. The focused PATH suites passed, and removing the new directory reproduced the intended missing-executable regression; restoring it passed. This is controlled detection evidence, not a new provider-turn or cross-platform qualification.","inputs":["docs/guides/development.md","src-server/providers/auth/cli-auth.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "83f6a3e456d61dad4cc6e947bbed05560b4b611b",
+
+  "notes": [
+    {"path":"docs/guides/code-hygiene.md","note":"Re-read the comment-scanner paragraph against source-text.mjs: block scalars end at the first non-empty line indented less than their content (counted from the owning key), quoted keys are recognized, run/script blocks are still read as shell and other blocks as prose.","inputs":["docs/guides/code-hygiene.md","scripts/lib/hygiene/source-text.mjs"]}
+  ]
+}

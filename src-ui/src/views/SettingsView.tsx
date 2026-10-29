@@ -1,4 +1,16 @@
+import type {
+  TelemetryFeedbackReason,
+  TelemetryPublisherId,
+  TelemetryTierChoices,
+} from '@kontourai/station-contracts/product-telemetry';
+import { PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL } from '@kontourai/station-contracts/product-telemetry';
 import { SectionNavigation } from '../components/SectionNavigation';
+import { useDeveloperFeatures } from '../hooks/useDeveloperFeatures';
+import { useTelemetryNotice } from '../hooks/useTelemetryNotice';
+import { useTelemetryStatus } from '../hooks/useTelemetryStatus';
+import { AccountPreferencesSection } from './settings/AccountPreferencesSection';
+import { DeveloperFeatures } from './settings/DeveloperFeatures';
+import { SettingsScopeBadge } from './settings/SettingsScopeBadge';
 import './SettingsView.css';
 import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
 import {
@@ -20,7 +32,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from '../components/Button';
 import { ThemeToggle } from '../components/header/ThemeToggle';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
-import { PageRow } from '../components/PageRow';
+import { PageCallout } from '../components/PageCallout';
 import type { SectionNavItem } from '../components/SectionNav';
 import { ExistingSetupImportStepper } from '../components/setup/ExistingSetupImportStepper';
 import {
@@ -31,11 +43,7 @@ import {
   SkeletonBlock,
 } from '../components/state';
 import { Toggle } from '../components/Toggle';
-import {
-  UsageTelemetryDisclosure,
-  usageTelemetryDestinationSummary,
-  useUsageTelemetryDisclosureState,
-} from '../components/UsageTelemetryDisclosure';
+import { useUsageTelemetryDisclosureState } from '../components/UsageTelemetryDisclosure';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import { useConfigActions, useConfigSnapshot } from '../contexts/ConfigContext';
 import {
@@ -51,6 +59,7 @@ import { useSectionNavigation } from '../hooks/useSectionNavigation';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { useLocale } from '../i18n/LocaleContext';
 import { DeviceSettingsImportVersionError } from '../lib/device-settings-store';
+import { prefersReducedMotion } from '../lib/reduced-motion';
 import { usePlatformProfile } from '../platform/PlatformProfileContext';
 import type { AppConfig, NavigationView } from '../types';
 import {
@@ -59,7 +68,7 @@ import {
   answerDeliveryModeOf,
   settingsForAnswerDelivery,
 } from '../utils/answerDelivery';
-import { AccentColorPicker } from './settings/AccentColorPicker';
+import { AboutSection } from './settings/AboutSection';
 import { AgentDefaultsSection } from './settings/AgentDefaultsSection';
 import { AnswerSharesSection } from './settings/AnswerSharesSection';
 import { DeviceHostsSection } from './settings/DeviceHostsSection';
@@ -69,7 +78,10 @@ import { FeaturePreviewsSection } from './settings/FeaturePreviewsSection';
 import { KeyboardShortcutsSection } from './settings/KeyboardShortcutsSection';
 import { KnowledgeStoreSection } from './settings/KnowledgeStoreSection';
 import { LocalAccountsSection } from './settings/LocalAccountsSection';
+import { OfflineReadingSection } from './settings/OfflineReadingSection';
+import { OpenAppearanceButton } from './settings/OpenAppearanceButton';
 import { PairingSection } from './settings/PairingSection';
+import { PeopleSection } from './settings/PeopleSection';
 import { PluginVisibilitySection } from './settings/PluginVisibilitySection';
 import {
   buildProjectOverrideUpdate,
@@ -79,8 +91,10 @@ import {
   projectOverrideDelta,
   savedOverridesFor,
 } from './settings/project-override-draft';
+import { SettingsPageRow as PageRow } from './settings/SettingsPageRow';
 import { SettingsSection as Section } from './settings/SettingsSection';
 import { StationConfigSection } from './settings/StationConfigSection';
+import { StationRoutesSection } from './settings/StationRoutesSection';
 import { SystemSection } from './settings/SystemSection';
 import {
   formatSettingsMessage,
@@ -98,6 +112,7 @@ import {
   settingsSectionsForView,
 } from './settings/settings-pages';
 import { buildStationResetPlan } from './settings/station-reset';
+import { TelemetryDelivery } from './settings/TelemetryDelivery';
 import {
   buildSettingsExportPayload,
   getSettingsValidation,
@@ -107,6 +122,7 @@ import {
   NotificationsSection,
   VoiceFeaturesSection,
 } from './settings/VoiceFeaturesSection';
+import { WorkloadBudgetSettings } from './settings/WorkloadBudgetSettings';
 
 const ALL_LEAF_SECTION_IDS = SETTINGS_SECTIONS.map(({ id }) => id);
 const ALL_SETTINGS_VIEWS = [
@@ -170,6 +186,8 @@ export interface SettingsViewProps {
   onNavigate?: (view: NavigationView) => void;
 }
 
+class SharingDetailsChangedError extends Error {}
+
 export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   const { apiBase: currentApiBase } = useApiBase();
   const {
@@ -225,7 +243,6 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     featureSettings,
     hapticsEnabled,
     developerToolsEnabled,
-    sidebarSections,
     confirmConversationDelete,
     // #2144 decision 2: these five had a device-settings contract row and no
     // Settings row, so the in-chat gear was the only place to change them.
@@ -237,9 +254,25 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   } = useDeviceSettings();
   const { setDeviceSetting, resetDeviceSetting } = useDeviceSettingsActions();
   const { isMobile, isDesktop } = usePlatformProfile();
+  const developerFeatures = useDeveloperFeatures();
   // #2144 slice 6 item D. The same query the disclosure card reads; React
   // Query dedupes on its key so there is one request, not two answers.
   const telemetryDisclosure = useUsageTelemetryDisclosureState();
+  const telemetryStatus = useTelemetryStatus();
+  const telemetryNotice = useTelemetryNotice(
+    !!telemetryStatus.data?.liteInventoryRevision,
+  );
+  const [telemetryConsentRevision, setTelemetryConsentRevision] = useState<
+    string | null
+  >(null);
+  const [telemetryConsentPublishers, setTelemetryConsentPublishers] = useState<
+    ('kontour' | 'operator')[]
+  >([]);
+  const [telemetryConsentAuthor, setTelemetryConsentAuthor] =
+    useState<string>();
+  const [telemetryFeedback, setTelemetryFeedback] = useState<
+    Partial<Record<TelemetryPublisherId, TelemetryFeedbackReason>>
+  >({});
   const { locale } = useLocale();
 
   const [config, setConfig] = useState<AppConfig>(
@@ -277,7 +310,8 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     });
   const configJson = JSON.stringify(config);
   const baselineJson = JSON.stringify(savedConfig);
-  const hasChanges = configJson !== baselineJson;
+  const hasChanges =
+    configJson !== baselineJson || telemetryConsentRevision !== null;
   const overrideDelta = projectOverrideDelta(overrideDraft, savedOverrides);
   const overrideDirty = Object.keys(overrideDelta).length > 0;
   // ONE guard over both drafts. Two guards would ask twice for a single
@@ -287,6 +321,8 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   const selectProject = (slug: string | null) => {
     guard(() => {
       setConfig(savedConfig);
+      setTelemetryFeedback({});
+      setTelemetryConsentRevision(null);
       setOverrideDraft({});
       setSelectedProjectSlug(slug);
     });
@@ -355,37 +391,19 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     operatorSectionsSelectable || !OPERATOR_ONLY_SECTION_IDS.has(section);
   const visibleSections = new Set(
     searchQuery.trim()
-      ? matchingSettingsRows(searchQuery, { isOperator }).map(
-          (entry) => entry.section,
-        )
+      ? matchingSettingsRows(searchQuery, {
+          isOperator,
+          developerToolsEnabled,
+          experimentalTrustEnabled: developerFeatures.trust,
+          experimentalStationRoutesEnabled: developerFeatures.stationRoutes,
+        }).map((entry) => entry.section)
       : activeSection === 'overview'
         ? ALL_LEAF_SECTION_IDS.filter(operatorMayView)
         : settingsSectionsForView(activeSection).filter(operatorMayView),
   );
   const sectionVisible = (section: string) =>
     visibleSections.has(section as never);
-  /**
-   * Whether a scope group has anything to show (#2182, review L7).
-   *
-   * Each `.settings__scope-group` opens with the storage rule its sections
-   * are saved under. Three of the four rendered that caption unconditionally,
-   * so a `?view=` naming one section — or a search matching rows in one
-   * group — printed "Saved to this Station", "Saved to this Station — what
-   * agents may do…" and "Saved to this device only" over nothing at all: a
-   * promise about a box with no contents, twice over.
-   *
-   * Derived from the catalog rather than listed, so a new section joins its
-   * group's visibility the day it is added. It can be a plain `some` over
-   * `sectionVisible` because that set already carries the search filter, the
-   * active `?view=`, and the operator gate on all three paths (search,
-   * overview, direct view — the last since review M-b).
-   *
-   * What it does NOT know is whether a selected section will render anything.
-   * It counts SELECTION, not content: a selected section whose component
-   * returns null (for instance while its own data loads) still makes its
-   * group visible, so the caption can precede it for that interval. That
-   * transient is accepted; this function claims only what it computes.
-   */
+  /** Whether the current view selects any section in this scope group. */
   const groupVisible = (group: SettingsNavGroup) =>
     SETTINGS_SECTIONS.some(
       (section) => section.group === group && sectionVisible(section.id),
@@ -424,6 +442,21 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
           formatSettingsMessage('targetUnavailable', locale),
         );
       }
+      return;
+    }
+    if (
+      (entry.conditional === 'developer' && !developerToolsEnabled) ||
+      (entry.conditional === 'experimental-trust' &&
+        !developerFeatures.trust) ||
+      (entry.conditional === 'experimental-station-routes' &&
+        !developerFeatures.stationRoutes)
+    ) {
+      setHighlightAnnouncement(
+        'This experimental tool is off. Enable it in Advanced → Developer tools.',
+      );
+      const url = new URL(window.location.href);
+      url.searchParams.delete('highlight');
+      window.history.replaceState(window.history.state, '', url);
       return;
     }
     if (entry.conditional === 'mobile' && !isMobile) {
@@ -498,9 +531,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       target.closest('details')?.setAttribute('open', '');
       target.scrollIntoView?.({
         block: 'center',
-        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
-          ? 'auto'
-          : 'smooth',
+        behavior: prefersReducedMotion() ? 'auto' : 'smooth',
       });
       // Delayed mount must not pull focus away from a person who began typing
       // somewhere else while the target was becoming available. The palette's
@@ -554,7 +585,15 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       if (pulseTimer !== undefined) window.clearTimeout(pulseTimer);
       pulsedTarget?.classList.remove('settings__highlight-pulse');
     };
-  }, [highlightRequest, isMobile, isDesktop, locale]);
+  }, [
+    highlightRequest,
+    isMobile,
+    isDesktop,
+    locale,
+    developerToolsEnabled,
+    developerFeatures.trust,
+    developerFeatures.stationRoutes,
+  ]);
 
   // Reconciling the server snapshot with the form is a question about *time*,
   // not about values: a just-invalidated query can still hold the pre-save
@@ -582,7 +621,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     }
     const snapshot = unadoptedSnapshotRef.current;
     if (!snapshot) return;
-    if (configJson !== baselineJson) return;
+    if (configJson !== baselineJson || telemetryConsentRevision) return;
 
     const localWrites: Record<string, unknown> = {};
     for (const [key, writtenAt] of Object.entries(savedAtRef.current)) {
@@ -598,7 +637,14 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     unadoptedSnapshotRef.current = null;
     setConfig(merged);
     setSavedConfig(merged);
-  }, [baselineJson, configData, configJson, configUpdatedAt, savedConfig]);
+  }, [
+    baselineJson,
+    configData,
+    configJson,
+    configUpdatedAt,
+    savedConfig,
+    telemetryConsentRevision,
+  ]);
 
   useCloseShortcut(onBack);
 
@@ -631,6 +677,8 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     try {
       const { serverConfig, droppedDeviceKeys } =
         await parseImportedSettingsFile(file);
+      setTelemetryFeedback({});
+      setTelemetryConsentRevision(null);
       setConfig({ ...config, ...serverConfig });
       // archive#settings-revamp: an invalid device
       // value is dropped (not silently merged, not a hard failure) — surface
@@ -650,6 +698,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   };
 
   const saveConfig = async () => {
+    const recordSharingNotice = telemetryNotice.prepareShown();
     if (!isValid || saveInFlightRef.current) return;
     const changed = Object.fromEntries(
       Object.keys({ ...savedConfig, ...config })
@@ -664,10 +713,150 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
           return [key, key === 'region' && value === '' ? null : value];
         }),
     ) as Partial<AppConfig>;
+    // The server merges publishers independently. Do not replay an untouched
+    // publisher from a draft that predates a withdrawal on another device.
+    const savedTelemetryChoices: TelemetryTierChoices | undefined =
+      savedConfig.telemetryTier;
+    if (changed.telemetryTier) {
+      changed.telemetryTier = Object.fromEntries(
+        Object.entries(changed.telemetryTier).filter(
+          ([publisher, tier]) =>
+            tier !== savedTelemetryChoices?.[publisher as TelemetryPublisherId],
+        ),
+      );
+      if (Object.keys(changed.telemetryTier).length === 0)
+        delete changed.telemetryTier;
+    }
+    if (telemetryConsentRevision) {
+      for (const id of telemetryConsentPublishers) {
+        if (config.telemetryTier?.[id] === 'full')
+          changed.telemetryTier = { ...changed.telemetryTier, [id]: 'full' };
+      }
+    }
     const { logLevel, ...plainChanges } = changed;
+    const feedbackAtSave = telemetryFeedback;
+    const dntAtSave = telemetryStatus.data?.publishers;
+    const savedPlain: Partial<AppConfig> = {};
+    const savedTiers: TelemetryTierChoices = {};
     const plainWrite =
       Object.keys(plainChanges).length > 0
-        ? updateConfig(plainChanges)
+        ? (async () => {
+            const { telemetryTier, ...other } = plainChanges;
+            try {
+              if (
+                telemetryConsentRevision !== null &&
+                Object.entries(telemetryTier ?? {}).some(
+                  ([id, tier]) =>
+                    tier === 'full' &&
+                    dntAtSave?.[id as TelemetryPublisherId]?.reason !== 'DNT',
+                )
+              ) {
+                const data = telemetryDisclosure.data;
+                if (
+                  !data ||
+                  data.inventoryRevision !== telemetryConsentRevision
+                )
+                  throw new SharingDetailsChangedError();
+                const author = data.authorDisclosure;
+                if (
+                  telemetryStatus.data?.authorEndpoint &&
+                  (!author ||
+                    author.inventoryRevision !== telemetryConsentRevision ||
+                    author.destination !== telemetryConsentAuthor ||
+                    author.destination !== telemetryStatus.data.authorEndpoint)
+                )
+                  throw new SharingDetailsChangedError();
+                for (const publisher of ['kontour', 'operator'] as const) {
+                  if (
+                    !telemetryConsentPublishers.includes(publisher) ||
+                    telemetryTier?.[publisher] !== 'full' ||
+                    dntAtSave?.[publisher]?.reason === 'DNT'
+                  )
+                    continue;
+                  if (
+                    publisher === 'kontour' &&
+                    !telemetryStatus.data?.authorEndpoint
+                  )
+                    continue;
+                  const response = await authenticatedFetch(
+                    `${currentApiBase}/api/usage-telemetry/disclosure/acknowledgements`,
+                    {
+                      method: 'POST',
+                      headers: { 'content-type': 'application/json' },
+                      body: JSON.stringify({
+                        acknowledgementProtocol:
+                          PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL,
+                        inventoryRevision: telemetryConsentRevision,
+                        ...(publisher === 'kontour'
+                          ? { publisher, destination: author!.destination }
+                          : {}),
+                      }),
+                    },
+                  );
+                  if (!response.ok) {
+                    void invalidate(['usage-telemetry-disclosure']);
+                    throw new Error(
+                      'Your sharing choice could not be saved. Review the current details and try again.',
+                    );
+                  }
+                }
+              }
+              for (const [id, tier] of Object.entries(telemetryTier ?? {})) {
+                const publisher = id as TelemetryPublisherId;
+                const reason =
+                  dntAtSave?.[publisher]?.reason === 'DNT'
+                    ? undefined
+                    : feedbackAtSave[publisher];
+                // A reason is explicit action metadata, never a stored setting.
+                const write = {
+                  telemetryTier: { [publisher]: tier },
+                  ...(reason && reason !== 'skip'
+                    ? { telemetryFeedbackReason: reason }
+                    : {}),
+                };
+                const result = await updateConfig(write);
+                if (
+                  result?.ignoredKeys?.some(
+                    (entry) => entry.key === 'telemetryTier',
+                  )
+                )
+                  throw new Error('The telemetry tier was refused.');
+                savedTiers[publisher] = tier;
+                if (
+                  (publisher === 'operator' || publisher === 'kontour') &&
+                  tier === 'full'
+                )
+                  setTelemetryConsentRevision(null);
+                savedPlain.telemetryTier = {
+                  ...savedTelemetryChoices,
+                  ...savedTiers,
+                };
+                setTelemetryFeedback((current) => {
+                  const next = { ...current };
+                  delete next[publisher];
+                  return next;
+                });
+              }
+              if (Object.keys(other).length) {
+                await updateConfig(other);
+                Object.assign(
+                  savedPlain,
+                  Object.fromEntries(
+                    Object.keys(other).map((key) => [
+                      key,
+                      (config as Record<string, unknown>)[key],
+                    ]),
+                  ),
+                );
+              }
+              await recordSharingNotice?.().catch(() => {});
+            } finally {
+              if (telemetryTier) {
+                void invalidate(['telemetry-status']);
+                void invalidate(['telemetry-outbox']);
+              }
+            }
+          })()
         : undefined;
     const logLevelWrite =
       logLevel !== undefined
@@ -726,19 +915,12 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
       const logLevelFailed =
         logLevelWrite !== undefined && logLevelOutcome.status === 'rejected';
       const hasSaved =
-        (plainWrite !== undefined && plainOutcome.status === 'fulfilled') ||
+        Object.keys(savedPlain).length > 0 ||
         (logLevelWrite !== undefined && logLevelOutcome.status === 'fulfilled');
       if (hasSaved) {
         // Preserve draft spelling until readback, including '' for cleared Region.
         const written = {
-          ...(plainWrite !== undefined && plainOutcome.status === 'fulfilled'
-            ? Object.fromEntries(
-                Object.keys(plainChanges).map((key) => [
-                  key,
-                  (config as Record<string, unknown>)[key],
-                ]),
-              )
-            : {}),
+          ...savedPlain,
           ...(logLevelWrite &&
           logLevelOutcome.status === 'fulfilled' &&
           logLevelOutcome.value
@@ -790,18 +972,26 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
         overrideWrite !== undefined && overrideOutcome.status === 'rejected';
       const stationMessage =
         plainFailed && logLevelFailed
-          ? 'Log Level and other settings could not be saved. Your changes are kept here until you retry.'
+          ? hasSaved
+            ? 'Some settings were saved. Log Level and other unsaved changes are kept here until you retry.'
+            : 'Log Level and other settings could not be saved. Your changes are kept here until you retry.'
           : logLevelFailed
-            ? plainOutcome.status === 'fulfilled'
+            ? hasSaved
               ? 'Log Level could not be saved. Other settings were saved; your Log Level change is kept here until you retry.'
               : 'Log Level could not be saved. Your change is kept here until you retry.'
             : plainFailed
-              ? plainOutcome.reason instanceof StationReadOnlyError
-                ? 'Save failed — Station is unreachable. Your changes are kept here until you retry; they are not saved yet.'
-                : fullAccessRefusal(plainOutcome.reason)
-                  ? // #2436: a retry would be refused again; say why instead.
-                    `${fullAccessRefusal(plainOutcome.reason)} Nothing in this save was stored. Choose a stricter default approval mode to save your other changes.`
-                  : 'Some settings could not be saved. Your changes are kept here until you retry.'
+              ? plainOutcome.reason instanceof SharingDetailsChangedError
+                ? 'Sharing details changed. Choose Detailed again to review and save. Your unsaved changes are kept here.'
+                : plainOutcome.reason instanceof StationReadOnlyError
+                  ? hasSaved
+                    ? 'Some settings were saved before Station became unreachable. Unsaved changes are kept here until you retry.'
+                    : 'Save failed — Station is unreachable. Your changes are kept here until you retry; they are not saved yet.'
+                  : fullAccessRefusal(plainOutcome.reason)
+                    ? // #2436: a retry would be refused again; say why instead.
+                      `${fullAccessRefusal(plainOutcome.reason)} ${hasSaved ? 'Some settings were saved. Unsaved changes are kept here.' : 'Nothing in this save was stored.'} Choose a stricter default approval mode to save your other changes.`
+                    : hasSaved
+                      ? 'Some settings were saved. Unsaved changes are kept here until you retry.'
+                      : 'Some settings could not be saved. Your changes are kept here until you retry.'
               : null;
       const messages = [
         stationMessage,
@@ -919,23 +1109,20 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     <>
       <div className="settings">
         {highlightNotice}
-        {/* archive#1826: the three-card "This device / Station / Defaults"
-            legend is gone. It restated the taxonomy the grouped nav below
-            already shows, in implementation vocabulary, and treated
-            "Defaults" (a precedence rule) as a peer of two storage
-            locations. Each scope group's caption states the persistence
-            fact where it applies instead. */}
         {error && (
-          <div className="settings__error-banner">
-            <span className="settings__error-banner-msg">{error}</span>
-            <button
-              type="button"
-              className="settings__error-banner-retry"
-              onClick={saveConfig}
-            >
-              Retry
-            </button>
-          </div>
+          <PageCallout
+            calloutId="settings-save-error"
+            tone="error"
+            role="alert"
+            ariaLabel="Settings save error"
+            action={
+              <Button variant="secondary" onClick={saveConfig}>
+                Retry
+              </Button>
+            }
+          >
+            {error}
+          </PageCallout>
         )}
 
         <div className="section-nav-rail">
@@ -995,15 +1182,19 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
               </div>
             )}
 
+            {sectionVisible('account-preferences') && (
+              <AccountPreferencesSection />
+            )}
+
             {/* ── Station scope ── */}
             {groupVisible('this-station') && (
               <section
                 aria-label="This Station settings"
                 className="settings__scope-group"
               >
-                <p className="settings__scope-caption">
-                  Saved to this Station.
-                </p>
+                <div className="settings__scope-caption">
+                  <SettingsScopeBadge scope="station" />
+                </div>
 
                 {sectionVisible('system') && (
                   <>
@@ -1047,6 +1238,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 {/* #1973: SSH device hosts. Operator-only (the same gate as
               plugin visibility); the panel itself is lazy-loaded. */}
                 {sectionVisible('device-hosts') && <DeviceHostsSection />}
+                {/* #3557: people, their Station group and their tokens.
+              Operator-only (the same gate as device hosts); the section
+              renders nothing for a caller the route refuses. */}
+                {sectionVisible('people') && <PeopleSection />}
                 {sectionVisible('host-runtime') && (
                   <EnvironmentStatus apiBase={currentApiBase}>
                     {/* #2182: three settings whose subject is the machine,
@@ -1062,6 +1257,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       containerScope="station"
                       projectOverride={projectOverride}
                     />
+                    {/* Behind the workload-budget-settings Feature Preview;
+                  renders nothing while it is off. */}
+                    <WorkloadBudgetSettings />
                   </EnvironmentStatus>
                 )}
 
@@ -1090,43 +1288,92 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
               decoration. ⚙ is the dissolved card's own glyph, kept for
               Sources; ◉ and ◆ were already carried. */}
                 {sectionVisible('telemetry') && (
-                  <Section icon="◉" title="Telemetry" id="section-telemetry">
+                  <Section
+                    icon="◉"
+                    title="Privacy & sharing"
+                    id="section-telemetry"
+                  >
+                    <OfflineReadingSection />
                     <StationConfigSection
                       section="telemetry"
+                      telemetryPublishers={telemetryStatus.data?.publishers}
+                      telemetryDisclosure={telemetryDisclosure.data}
+                      telemetryCounts={telemetryStatus.data?.liteInventory}
+                      telemetryNoticeRef={telemetryNotice.element}
+                      telemetryNoticeError={telemetryNotice.isError}
+                      onTelemetryDetailedIntent={(publisher) => {
+                        setTelemetryConsentPublishers((current) =>
+                          publisher
+                            ? [
+                                ...new Set([
+                                  ...(telemetryConsentRevision ===
+                                    telemetryDisclosure.data
+                                      ?.inventoryRevision &&
+                                  telemetryConsentAuthor ===
+                                    telemetryDisclosure.data?.authorDisclosure
+                                      ?.destination
+                                    ? current
+                                    : []),
+                                  publisher,
+                                ]),
+                              ]
+                            : ['kontour', 'operator'],
+                        );
+                        setTelemetryConsentRevision(
+                          telemetryDisclosure.data?.inventoryRevision ?? null,
+                        );
+                        setTelemetryConsentAuthor(
+                          telemetryDisclosure.data?.authorDisclosure
+                            ?.destination,
+                        );
+                      }}
+                      savedTelemetryChoices={savedConfig.telemetryTier}
+                      telemetryStatusError={telemetryStatus.isError}
+                      telemetryAdvanced={
+                        <>
+                          <PageRow
+                            {...settingsRow('telemetry-destination')}
+                            description="Sharing uses configured destinations only."
+                            control={
+                              <span className="settings__field-hint">
+                                {telemetryDisclosure.settled
+                                  ? telemetryDisclosure.isError
+                                    ? 'Could not read whether a destination is configured.'
+                                    : telemetryDisclosure.data
+                                          ?.endpointConfigured === false
+                                      ? 'No additional destination configured.'
+                                      : telemetryDisclosure.data
+                                            ?.endpointConfigured === true
+                                        ? 'Additional destination configured.'
+                                        : 'This Station has not reported whether a destination is configured.'
+                                  : null}
+                              </span>
+                            }
+                          />
+                          <TelemetryDelivery />
+                        </>
+                      }
+                      showTelemetryOutbox
+                      onTelemetryFeedback={(publisher, reason) =>
+                        setTelemetryFeedback((current) => ({
+                          ...current,
+                          [publisher]: reason,
+                        }))
+                      }
                       embedded
                       config={config}
                       provenance={provenance}
-                      onChange={setConfig}
+                      onChange={(next) => {
+                        if (
+                          next.telemetryTier?.operator !== 'full' &&
+                          next.telemetryTier?.kontour !== 'full'
+                        )
+                          setTelemetryConsentRevision(null);
+                        setConfig(next);
+                      }}
                       containerScope="station"
                       projectOverride={projectOverride}
                     />
-                    {/* #2144 slice 6 item D: whether anything CAN be sent, beside
-                  the toggle that decides whether it is. Derived from the
-                  boolean the disclosure query already holds — React Query
-                  dedupes on the key, so this is the same request the
-                  disclosure below makes, not a second one. The host is not
-                  exposed (see `usageTelemetryDestinationSummary`). */}
-                    <PageRow
-                      {...settingsRow('telemetry-destination')}
-                      description="Usage telemetry has somewhere to go only when the operator has configured a destination for this Station. Station does not show where that is."
-                      control={(() => {
-                        // `null` is the in-flight read: the row keeps its place
-                        // (and its catalog identity) while saying nothing, rather
-                        // than asserting the host reported nothing.
-                        const summary = usageTelemetryDestinationSummary({
-                          endpointConfigured:
-                            telemetryDisclosure.data?.endpointConfigured,
-                          settled: telemetryDisclosure.settled,
-                          isError: telemetryDisclosure.isError,
-                        });
-                        return summary === null ? null : (
-                          <span className="settings__field-hint">
-                            {summary}
-                          </span>
-                        );
-                      })()}
-                    />
-                    <UsageTelemetryDisclosure />
                   </Section>
                 )}
 
@@ -1138,7 +1385,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   >
                     <PageRow
                       {...settingsRow('diagnostics-bundle')}
-                      description="Download a redacted snapshot of Station health and configuration. It includes recent server logs when logging is enabled."
+                      description="Redacted health, configuration, and recent logs when logging is enabled."
                       control={
                         <button
                           type="button"
@@ -1187,9 +1434,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 aria-label="Control settings"
                 className="settings__scope-group"
               >
-                <p className="settings__scope-caption">
-                  Saved to this Station.
-                </p>
+                <div className="settings__scope-caption">
+                  <SettingsScopeBadge scope="station" />
+                </div>
 
                 {sectionVisible('permissions') && (
                   <StationConfigSection
@@ -1240,57 +1487,27 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
             {/* ── This device scope ── */}
             {groupVisible('you') && (
               <section
-                aria-label="This device settings"
+                aria-label="Personal and device settings"
                 className="settings__scope-group"
               >
-                <p className="settings__scope-caption">Saved to this device.</p>
-
                 {sectionVisible('appearance') && (
                   <Section icon="◐" title="Appearance" id="section-appearance">
+                    {/* Mode stays one click away here (and keeps ⌘H on this
+                    page); color themes and accents live on Appearance. */}
                     <PageRow
                       {...settingsRow('theme')}
-                      control={<ThemeToggle />}
-                    />
-                    {/* archive#3314: the restore path for a section removed via the
-                  sidebar's own × affordance. */}
-                    <PageRow
-                      {...settingsRow('sidebar-sections')}
-                      description="Show the Open chats and Drafts sections in the sidebar."
+                      description="Switch light and dark here. Color themes are on the Appearance page."
                       control={
-                        <div className="settings__toggle-column">
-                          <div className="settings__toggle-line">
-                            <Toggle
-                              checked={!sidebarSections.openChatsHidden}
-                              onChange={(checked) =>
-                                setDeviceSetting('sidebarSections', {
-                                  ...sidebarSections,
-                                  openChatsHidden: !checked,
-                                })
-                              }
-                              label="Open chats in sidebar"
-                            />
-                            <span aria-hidden="true">Open chats</span>
-                          </div>
-                          <div className="settings__toggle-line">
-                            <Toggle
-                              checked={!sidebarSections.draftsHidden}
-                              onChange={(checked) =>
-                                setDeviceSetting('sidebarSections', {
-                                  ...sidebarSections,
-                                  draftsHidden: !checked,
-                                })
-                              }
-                              label="Drafts in sidebar"
-                            />
-                            <span aria-hidden="true">Drafts</span>
-                          </div>
-                        </div>
+                        <span className="settings__appearance-controls">
+                          <ThemeToggle />
+                          <OpenAppearanceButton forRow="Theme" />
+                        </span>
                       }
                     />
                     {isMobile && (
                       <PageRow
                         {...settingsRow('haptic-feedback')}
-                        description="Light pulses while an assistant reply streams, plus feedback on copy, pairing success, and destructive confirms."
+                        description="Vibrate while replies stream and when you copy, pair, or confirm a destructive action."
                         control={
                           <Toggle
                             checked={hapticsEnabled}
@@ -1302,7 +1519,11 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                         }
                       />
                     )}
-                    <AccentColorPicker />
+                    <PageRow
+                      {...settingsRow('accent-color')}
+                      description="Choose an accent on the Appearance page."
+                      control={<OpenAppearanceButton forRow="Accent color" />}
+                    />
                   </Section>
                 )}
 
@@ -1332,19 +1553,17 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
               for decoration. A speech bubble would have. */}
                 {sectionVisible('chat') && (
                   <Section icon="◇" title="Chat" id="section-chat">
-                    {/* This slider writes the DEVICE key only. The Station
-                  default it falls back to (`defaultChatFontSize`) has its own
-                  row, immediately below — the catalog entry used to
-                  claim both keys while nothing here wrote the Station one. */}
+                    {/* The personal override falls back to the saved Station default below. */}
                     <PageRow
                       {...settingsRow('chat-font-size')}
+                      resetHandledByControl
                       // `savedConfig`, not `config`, in all three places below: this
                       // row reports what this device falls back to, which is the
                       // STORED Station default. An unsaved draft of
                       // `defaultChatFontSize` is not in force anywhere yet, so
                       // moving the slider with it would show a fallback no chat is
                       // using.
-                      description={`Font size for chat messages on this device (10–24px). Leave at the Station default of ${savedConfig.defaultChatFontSize ?? 14}px unless you want this device to differ.`}
+                      description={`Message text size (10–24px). Station default: ${savedConfig.defaultChatFontSize ?? 14}px.`}
                       control={
                         <div className="settings__range-row">
                           <input
@@ -1369,13 +1588,15 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                             {`${chatFontSize ?? savedConfig.defaultChatFontSize ?? 14}px`}
                           </span>
                           {chatFontSize != null && (
-                            <button
-                              type="button"
-                              className="settings__secondary-btn"
+                            <Button
+                              size="sm"
+                              variant="link"
+                              aria-label="Reset Chat font size to default"
+                              title="Use the Station’s default chat font size."
                               onClick={() => resetDeviceSetting('chatFontSize')}
                             >
-                              Use Station default
-                            </button>
+                              Reset
+                            </Button>
                           )}
                         </div>
                       }
@@ -1400,7 +1621,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   from the same mapping module. */}
                     <PageRow
                       {...settingsRow('smooth-answer-reveal')}
-                      description="How this device displays streamed answer text: immediately, at a steady pace, or in larger updates at action boundaries."
+                      description="Show text as it arrives, at a steady pace, or in larger updates between actions."
                       control={
                         <select
                           className="editor-select"
@@ -1428,7 +1649,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     />
                     <PageRow
                       {...settingsRow('chat-show-reasoning')}
-                      description="Chat messages on this device include the model’s reasoning steps."
+                      description="Show the model’s reasoning when available."
                       control={
                         <Toggle
                           checked={chatShowReasoning}
@@ -1441,7 +1662,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     />
                     <PageRow
                       {...settingsRow('chat-show-tool-details')}
-                      description="Tool calls can be expanded to read their arguments and results."
+                      description="Expand tool calls to see arguments and results."
                       control={
                         <Toggle
                           checked={chatShowToolDetails}
@@ -1454,7 +1675,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     />
                     <PageRow
                       {...settingsRow('chat-dock-auto-hide')}
-                      description="An idle, open chat dock collapses to its bar after five seconds."
+                      description="Collapse the idle chat dock after five seconds."
                       control={
                         <Toggle
                           checked={chatDockAutoHide}
@@ -1468,7 +1689,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     {/* #90 D9: the same key the in-chat gear panel sets. */}
                     <PageRow
                       {...settingsRow('chat-auto-float-browser')}
-                      description="When an agent in a chat opens or drives a browser and no pane shows it, the browser floats over that chat. A session you close stays closed in that chat."
+                      description="Show an agent’s browser over its chat when no pane displays it. Closing it keeps it closed for that chat."
                       control={
                         <Toggle
                           checked={
@@ -1490,7 +1711,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   keys from its own controls. */}
                     <PageRow
                       {...settingsRow('diff-style')}
-                      description="Changed files show as one column, or as two side-by-side columns."
+                      description="Show changes in one column or side by side."
                       control={
                         <select
                           className="editor-select"
@@ -1510,7 +1731,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     />
                     <PageRow
                       {...settingsRow('diff-wrap')}
-                      description="Long diff lines wrap instead of scrolling sideways."
+                      description="Wrap long lines in file changes."
                       control={
                         <Toggle
                           checked={diffWrap}
@@ -1531,7 +1752,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     <h3 className="settings__group-title">Confirmations</h3>
                     <PageRow
                       {...settingsRow('confirm-conversation-delete')}
-                      description="Deleting a conversation cannot be undone. Turn this off to delete immediately. Clearing all conversations always asks."
+                      description="Ask before deleting a conversation. Deletion is permanent; clearing all conversations always asks."
                       control={
                         <Toggle
                           checked={confirmConversationDelete}
@@ -1566,6 +1787,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
 
                 {/* #2182: pairing is not a voice feature, and now says so. */}
                 {sectionVisible('pairing') && <PairingSection />}
+                {sectionVisible('station-routes') && <StationRoutesSection />}
 
                 {sectionVisible('developer-tools') && (
                   <Section
@@ -1575,7 +1797,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   >
                     <PageRow
                       {...settingsRow('enable-developer-tools')}
-                      description="Show Developer in Customize and the command palette on this device."
+                      description="Show Developer navigation and experimental feature opt-ins."
                       control={
                         <Toggle
                           checked={developerToolsEnabled}
@@ -1586,7 +1808,12 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                         />
                       }
                     />
+                    <DeveloperFeatures />
                   </Section>
+                )}
+
+                {sectionVisible('about') && (
+                  <AboutSection onOpenSection={navigateToSection} />
                 )}
               </section>
             )}
@@ -1602,10 +1829,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 aria-label="Knowledge settings"
                 className="settings__scope-group"
               >
-                <p className="settings__scope-caption">
-                  Saved to this Station — available from every device that
-                  connects to it.
-                </p>
+                <div className="settings__scope-caption">
+                  <SettingsScopeBadge scope="station" />
+                </div>
                 <KnowledgeStoreSection />
               </section>
             )}
@@ -1621,6 +1847,8 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
             className="settings__save-pill-discard"
             onClick={() => {
               setConfig(savedConfig);
+              setTelemetryFeedback({});
+              setTelemetryConsentRevision(null);
               setOverrideDraft({});
             }}
           >

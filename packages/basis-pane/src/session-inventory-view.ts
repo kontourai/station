@@ -86,6 +86,12 @@ export type SessionInventoryViewItem = {
   relation: 'Contributed to this answer' | 'Context from this Session';
   classification: 'current' | 'kept';
   actions: readonly SessionInventoryAction[];
+  /**
+   * An owner-reported state the row's title does not carry. Today only a
+   * command with no recorded outcome (#4178); the words claim neither
+   * success nor failure.
+   */
+  status?: 'No result recorded';
   row?: SessionInventoryV2Row;
 };
 export type SessionInventoryLiveItem = {
@@ -118,16 +124,16 @@ export type SessionInventoryViewModel = {
 
 const labels: Readonly<Record<SessionInventoryV2GroupId, string>> = {
   inputs: 'Inputs',
-  sources: 'Sources',
-  'work-items': 'Work items',
   execution: 'Execution',
   decisions: 'Decisions',
   outputs: 'Outputs',
+  'work-items': 'Work items',
   'verification-delivery': 'Verification & delivery',
-  'live-now': 'Live now',
+  sources: 'Sources',
   kept: 'Kept',
   attention: 'Attention',
   resources: 'Resources',
+  'live-now': 'Live now',
 };
 
 function scopeLabel(scope: SessionInventoryScope): string {
@@ -244,6 +250,9 @@ function toItem(
             ? ['inspect-output', 'keep-file']
             : ['inspect-output', 'keep-pr']
           : [],
+    ...(row.kind === 'thread-tool-result' && row.terminalStatus === 'unresolved'
+      ? { status: 'No result recorded' as const }
+      : {}),
     row,
   };
 }
@@ -325,9 +334,7 @@ export function buildSessionInventoryViewModel(
   // not-captured/unsupported gaps, not only errors.
   const ownerGaps = [
     ...new Set(
-      groups
-        .filter((group) => group.id !== 'attention')
-        .flatMap((group) => group.gaps),
+      groups.flatMap((group) => (group.id === 'attention' ? [] : group.gaps)),
     ),
   ];
   const withAttention = isV1

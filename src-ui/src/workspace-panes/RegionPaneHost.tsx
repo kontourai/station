@@ -20,6 +20,8 @@ import { DockShell } from '../components/chat-dock/DockShell';
 import { LazyBoundary } from '../components/LazyBoundary';
 import { SkeletonBlock } from '../components/Skeleton';
 import { Empty } from '../components/state';
+import { navigationStore } from '../contexts/navigation-store';
+import { usePaneRelations } from '../contexts/PaneRelationsContext';
 import { useRegionModelOptional } from '../contexts/RegionModelContext';
 import { UnsavedGuardOwnerContext } from '../contexts/UnsavedGuardOwnerContext';
 import type { DockShellChrome } from '../hooks/useDockShellChrome';
@@ -38,8 +40,11 @@ import {
 } from '../regions/region-surface-panes';
 import type { DockMode } from '../types';
 import { LayoutPaneTitles } from './LayoutPaneTitles';
-import { RegionChromeBar, type RegionChromeTab } from './RegionChromeBar';
-import { RegionChromeSlotsContext } from './RegionChromeSlots';
+import {
+  RegionChromeBar,
+  RegionChromeSlotsProvider,
+  type RegionChromeTab,
+} from './RegionChromeBar';
 import { RegionEmptyChooser } from './RegionEmptyChooser';
 import { useDockProject } from './useDockProject';
 import type { WorkspacePaneFailureContext } from './WorkspacePaneFailure';
@@ -329,6 +334,21 @@ const loadRegionBuiltinPane = () =>
   }));
 
 /**
+ * A plugin's own pane a related open placed (`plugin-pane:`), behind its own
+ * lazy boundary: the plugin render graph joins the host only when a region
+ * holds one.
+ */
+const loadRegionPluginPane = () =>
+  import('./RegionPluginPane').then((module) => ({
+    default: module.RegionPluginPane,
+  }));
+
+const loadRegionActivityReviewPane = () =>
+  import('./RegionActivityReviewPane').then((module) => ({
+    default: module.RegionActivityReviewPane,
+  }));
+
+/**
  * What a region shows for a selected pane its dock cannot supply (#2047 D6:
  * a coding pane while the dock has no project). The tab and the record keep
  * the surface; only the rendering waits. Same scroll container as every
@@ -376,7 +396,7 @@ function RegionPaneUnavailable({
       <Empty
         variant="compact"
         label={`${title} is not available in this dock`}
-        description="Not available in this Project: it was opened for another one, where it still works, or Station no longer remembers what it showed. Removing it closes this tab. Open it again from the chat that linked it."
+        description="It belongs to another Project or is no longer known. Reopen it from the chat that linked it."
         action={<RemoveRegionPaneButton onRemove={onRemove} />}
       />
     </div>
@@ -512,6 +532,14 @@ export function RegionPaneHost({
   chatPaneFailureContext?: () => WorkspacePaneFailureContext | undefined;
 }) {
   const model = useRegionModelOptional();
+  const relations = usePaneRelations();
+  const layerRelation = model?.phoneLayer
+    ? relations.relationOf(model.phoneLayer.surfaceId)
+    : undefined;
+  const layerBackLabel =
+    layerRelation && layerRelation.stationId === relations.stationId
+      ? layerRelation.opener.label
+      : 'Chat';
   const region = regionId && model ? model.regions[regionId] : undefined;
   const regionPanes = region?.panes;
   // The panes with a built-in pane entry, in the region's tab order; an id
@@ -581,7 +609,7 @@ export function RegionPaneHost({
   // its own state initialiser, so a write after this render would be too
   // late. A ref rather than a `useState` initialiser because the run is
   // deferred while the project read is in flight AND that read is what is
-  // holding a pane out of the document (review M3): writing the pane set
+  // holding a pane out of the document (#2075): writing the pane set
   // derived then would drop a persisted pane on a premise the query has not
   // established. A document holding every pane the region does cannot change
   // when the project resolves, so Chat's own regions — adoption included —
@@ -675,20 +703,39 @@ export function RegionPaneHost({
     },
     [model, regionId],
   );
-  const closeTab = useCallback(
-    (surfaceId: string) => {
-      if (regionId && model) model.removePane(regionId, surfaceId);
+  // A close unmounts the pane, so the pane's OWN unsaved-changes guards are
+  // asked first (scoped by `UnsavedGuardOwnerContext`, `ownedByPane`): Cancel
+  // leaves the arrangement, the selection, the relation and the pane's state
+  // exactly as they were. A related pane's state, fence and relation go with
+  // it; nothing else can read them once it is gone. The answer can arrive
+  // after the pane moved (a phone fold ending its layer puts it back in its
+  // own region): only a pane this region still held is closed, and only a
+  // closed pane's state is forgotten — a moved pane keeps everything.
+  const closePane = useCallback(
+    (surfaceId: string, forgetState: boolean) => {
+      if (!regionId || !model) return;
+      navigationStore.runNavigationGuards(
+        () => {
+          if (!model.removePane(regionId, surfaceId)) return;
+          const related = relations.relationOf(surfaceId) !== undefined;
+          if (forgetState || related) forgetRegionPaneState(surfaceId);
+          if (related) void relations.forget(surfaceId);
+        },
+        undefined,
+        { owner: surfaceId },
+      );
     },
-    [model, regionId],
+    [model, regionId, relations],
+  );
+  const closeTab = useCallback(
+    (surfaceId: string) => closePane(surfaceId, false),
+    [closePane],
   );
   // "Remove this pane" (#90 D9): the tab's close, plus the per-device state
   // the pane rendered from, which nothing can read once it is gone.
   const removePane = useCallback(
-    (surfaceId: string) => {
-      closeTab(surfaceId);
-      forgetRegionPaneState(surfaceId);
-    },
-    [closeTab],
+    (surfaceId: string) => closePane(surfaceId, true),
+    [closePane],
   );
   const reorderTab = useCallback(
     (surfaceId: string, toIndex: number) => {
@@ -714,11 +761,12 @@ export function RegionPaneHost({
   // The bar's slots, published to the panes below so the selected pane's
   // toolbar can render into them (`RegionChromeSlots`). State, not refs: the
   // pane must re-render once the slot exists.
+  const [startSlot, setStartSlot] = useState<HTMLElement | null>(null);
   const [leadingSlot, setLeadingSlot] = useState<HTMLElement | null>(null);
   const [trailingSlot, setTrailingSlot] = useState<HTMLElement | null>(null);
   const slots = useMemo(
-    () => ({ leading: leadingSlot, trailing: trailingSlot }),
-    [leadingSlot, trailingSlot],
+    () => ({ start: startSlot, leading: leadingSlot, trailing: trailingSlot }),
+    [startSlot, leadingSlot, trailingSlot],
   );
   // The "+" chooser (#2154, where #2047 D4's catalog modal was): the same
   // rows the empty region shows in its body, as a menu under the button.
@@ -733,6 +781,13 @@ export function RegionPaneHost({
     setChooserAnchor({ right: box.right, top: box.top, bottom: box.bottom });
   }, []);
   const closeChooser = useCallback(() => setChooserAnchor(null), []);
+  // How many mounted panes fold the region's commands into their own menu
+  // (`RegionMenu`); while any does, the bar drops its buttons for them.
+  const [regionActionsAbsorbed, setRegionActionsAbsorbed] = useState(0);
+  const absorbRegionActions = useCallback(() => {
+    setRegionActionsAbsorbed((count) => count + 1);
+    return () => setRegionActionsAbsorbed((count) => count - 1);
+  }, []);
   // A visible region with no panes (#2153): the bar over the chooser. Only
   // under a model — the model-less mount's `panes` is Chat's, never empty.
   const emptyRegion =
@@ -740,7 +795,7 @@ export function RegionPaneHost({
   // Offered for every dock region under the model, project or not (#2154:
   // the rows that need a project list disabled with the reason), and for an
   // empty region too — both routes open the one chooser. Not while the
-  // project read is in flight (review M3): the rows would name a remedy for
+  // project read is in flight (#2174): the rows would name a remedy for
   // a state the user is not in, for the few frames before the read settles.
   const chooserRegion =
     regionId && model && isDockRegion(regionId) && !projectPending
@@ -752,7 +807,15 @@ export function RegionPaneHost({
       onRenderedRegionGeometryChange={reportRegionClearance}
     >
       {(shellChrome) => (
-        <RegionChromeSlotsContext.Provider value={slots}>
+        <RegionChromeSlotsProvider
+          slots={slots}
+          chrome={shellChrome}
+          tabs={tabs}
+          selectedSurfaceId={selected}
+          onMoveTab={regionId && model ? moveTab : undefined}
+          onAddPane={chooserRegion ? openChooser : undefined}
+          absorb={absorbRegionActions}
+        >
           {layoutPaneIds.length > 0 ? (
             <LayoutPaneTitles
               surfaceIds={layoutPaneIds}
@@ -772,13 +835,18 @@ export function RegionPaneHost({
             onMoveTab={regionId && model ? moveTab : undefined}
             onAddPane={chooserRegion ? openChooser : undefined}
             addPaneOpen={chooserAnchor !== null}
+            startSlotRef={setStartSlot}
             leadingSlotRef={setLeadingSlot}
             trailingSlotRef={setTrailingSlot}
+            regionActionsAbsorbed={regionActionsAbsorbed > 0}
             onBackToChat={
               model?.phoneLayer && model.phoneLayer.region === regionId
-                ? model.closePhoneLayer
+                ? // Called, not passed: the click event must not become
+                  // the layer close's continuation.
+                  () => model.closePhoneLayer()
                 : undefined
             }
+            backLabel={layerBackLabel}
           />
           {chooserAnchor && chooserRegion ? (
             <RegionEmptyChooser
@@ -794,7 +862,7 @@ export function RegionPaneHost({
             // whose rendering the project read could be holding up, so a
             // region emptied while that read is in flight must not sit on the
             // skeleton (it would never resolve into anything). The rows take
-            // the same rule as the "+" (review M3): while the read is in
+            // the same rule as the "+" (#2174): while the read is in
             // flight the context is projectless, and a coding row disabled
             // "until you choose a project" on a dock that HAS one would be a
             // remedy for a state the user is not in — and a disabled→enabled
@@ -850,7 +918,15 @@ export function RegionPaneHost({
                     return ownedByPane(
                       instance,
                       <LazyBoundary
-                        load={loadRegionBuiltinPane}
+                        load={
+                          String(instance.instanceId).startsWith('plugin-pane:')
+                            ? loadRegionPluginPane
+                            : String(instance.instanceId).startsWith(
+                                  'activity-review:',
+                                )
+                              ? loadRegionActivityReviewPane
+                              : loadRegionBuiltinPane
+                        }
                         componentProps={{ instance }}
                         pending={
                           <SkeletonBlock count={3} label="Loading pane" />
@@ -876,7 +952,7 @@ export function RegionPaneHost({
           ) : projectPending ? (
             // The dock's project read is in flight: the pane is neither
             // rendered nor refused yet, so the region waits rather than
-            // telling the user to pick a project (review M3).
+            // telling the user to pick a project (#2075).
             <div className="dock-slot__body">
               <SkeletonBlock count={3} label="Loading pane" />
             </div>
@@ -890,7 +966,7 @@ export function RegionPaneHost({
               />
             )
           ) : null}
-        </RegionChromeSlotsContext.Provider>
+        </RegionChromeSlotsProvider>
       )}
     </DockShell>
   );

@@ -1,11 +1,24 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { load } from 'js-yaml';
 import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
+import { canonicalJson } from '../release-cohort.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
+const makeTempDir = trackTempDirs();
 
 type Step = {
   env?: Record<string, unknown>;
@@ -41,6 +54,151 @@ function namedStep(job: Job, name: string): Step {
 }
 
 describe('one-revision native promotion contract', () => {
+  test.skipIf(process.platform === 'win32').each([
+    ['absent fence', [404], undefined, 0],
+    ['ref unavailable', [503], 'read-ref', 0],
+    ['ref unauthorized', [403], 'read-ref', 0],
+    ['malformed ref', [200], 'validate-ref', 0],
+    ['tag unavailable', [200, 503], 'read-tag', 0],
+    ['foreign owner', [200, 200], 'validate-owner', 0],
+    ['delete refused', [200, 200, 403], 'delete-ref', 1],
+    ['confirmation unavailable', [200, 200, 204, 503], 'confirm-absent', 1],
+    ['fence still observed', [200, 200, 204, 200], 'confirm-absent', 1],
+    ['confirmed clear', [200, 200, 204, 404], undefined, 1],
+  ] as const)(
+    'promotion fence HTTP boundary: %s',
+    (label, statuses, failedPhase, deletions) => {
+      const directory = makeTempDir('station-fence-http-');
+      try {
+        const bin = join(directory, 'bin');
+        const cohort = join(directory, 'cohort');
+        mkdirSync(bin);
+        mkdirSync(cohort);
+        symlinkSync(join(root, 'scripts'), join(directory, 'scripts'), 'dir');
+        const plan = {
+          kind: 'station.release-cohort-plan/v1',
+          sourceSha: 'a'.repeat(40),
+          workflowRunId: '12345',
+          cohortId: 'fixture-cohort',
+          planContentDigest: 'b'.repeat(64),
+        };
+        const admission = {
+          kind: 'station.release-cohort-admission/v1',
+          plan,
+          admissionContentDigest: 'c'.repeat(64),
+        };
+        writeFileSync(join(cohort, 'cohort-plan.json'), JSON.stringify(plan));
+        writeFileSync(
+          join(cohort, 'cohort-admission.json'),
+          JSON.stringify(admission),
+        );
+        const fenceBase = {
+          kind: 'station.release-cohort-promotion-fence/v1',
+          sourceSha: plan.sourceSha,
+          workflowRunId:
+            label === 'foreign owner' ? '99999' : plan.workflowRunId,
+          cohortId: plan.cohortId,
+          planContentDigest: plan.planContentDigest,
+          admissionContentDigest: admission.admissionContentDigest,
+        };
+        const tag = {
+          tag: 'nightly-promotion-fence',
+          object: { type: 'commit', sha: plan.sourceSha },
+          message: canonicalJson({
+            ...fenceBase,
+            fenceContentDigest: `sha256:${createHash('sha256').update(canonicalJson(fenceBase)).digest('hex')}`,
+          }),
+        };
+        const ref = {
+          ref: 'refs/tags/nightly-promotion-fence',
+          object: { type: 'tag', sha: 'd'.repeat(40) },
+        };
+        writeFileSync(
+          join(directory, 'responses.json'),
+          JSON.stringify(
+            statuses.map((status, index) => ({
+              status,
+              body:
+                status === 200
+                  ? index === 0
+                    ? label === 'malformed ref'
+                      ? {
+                          ref: ref.ref,
+                          object: { type: 'commit', sha: plan.sourceSha },
+                        }
+                      : ref
+                    : tag
+                  : { message: 'raw-response-must-not-appear' },
+            })),
+          ),
+        );
+        const curl = join(bin, 'curl');
+        writeFileSync(
+          curl,
+          `#!${process.execPath}
+const fs = require('node:fs');
+const args = process.argv.slice(2);
+const path = process.env.FIXTURE_ROOT;
+const callsFile = path + '/calls.json';
+const calls = fs.existsSync(callsFile) ? JSON.parse(fs.readFileSync(callsFile)) : [];
+const responses = JSON.parse(fs.readFileSync(path + '/responses.json'));
+const response = responses[calls.length];
+if (!response) process.exit(9);
+calls.push({method: args.includes('--request') ? args[args.indexOf('--request') + 1] : 'GET'});
+fs.writeFileSync(callsFile, JSON.stringify(calls));
+fs.writeFileSync(args[args.indexOf('--output') + 1], JSON.stringify(response.body));
+process.stdout.write(String(response.status));
+`,
+        );
+        chmodSync(curl, 0o755);
+        const step = namedStep(
+          workflow('nightly-native-cohort.yml').jobs?.[
+            'clear-promotion-fence'
+          ] ?? {},
+          'Remove the exact promotion fence at the end of the run that created it',
+        );
+        const result = spawnSyncBounded(
+          '/bin/bash',
+          ['-e', '-c', step.run ?? 'exit 99'],
+          {
+            cwd: directory,
+            encoding: 'utf8',
+            windowsHide: true,
+            maxBuffer: 32 * 1024,
+            timeout: 10_000,
+            env: {
+              ...process.env,
+              PATH: `${bin}:${process.env.PATH}`,
+              FIXTURE_ROOT: directory,
+              GITHUB_API_URL: 'https://api.invalid',
+              GITHUB_REPOSITORY: 'fixture/repository',
+              GITHUB_TOKEN: 'credential-must-not-appear',
+            },
+          },
+        );
+        expect(result.error).toBeUndefined();
+        expect(result.status, result.stderr).toBe(failedPhase ? 1 : 0);
+        if (failedPhase) {
+          expect(result.stderr).toContain(
+            `Promotion fence cleanup failed in ${failedPhase}`,
+          );
+          expect(result.stderr).toContain(`HTTP ${statuses.at(-1)}`);
+        }
+        expect(result.stderr).not.toContain('credential-must-not-appear');
+        expect(result.stderr).not.toContain('raw-response-must-not-appear');
+        const calls = JSON.parse(
+          readFileSync(join(directory, 'calls.json'), 'utf8'),
+        ) as Array<{ method: string }>;
+        expect(calls.filter((call) => call.method === 'DELETE')).toHaveLength(
+          deletions,
+        );
+        expect(calls).toHaveLength(statuses.length);
+      } finally {
+        rmSync(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
   test.skipIf(process.platform === 'win32')(
     'exports expanded verifier paths and writes the key where the verifier will read it',
     () => {
@@ -140,14 +298,8 @@ describe('one-revision native promotion contract', () => {
       rebuild_index: '$' + '{{ inputs.rebuild_index }}',
     });
     expect((stageCaller as any)?.secrets).toBe('inherit');
-    expect(caller?.needs).toEqual([
-      'test-gate',
-      'full-regression',
-      'native-stage',
-    ]);
-    expect(caller?.if).toContain(
-      "needs['full-regression'].result == 'success'",
-    );
+    expect(caller?.needs).toEqual(['test-gate', 'native-stage']);
+    expect(caller?.if).toContain("needs['test-gate'].result == 'success'");
     expect(caller?.if).toContain("needs['native-stage'].result == 'success'");
     expect(caller?.permissions).toEqual({
       contents: 'write',
@@ -229,7 +381,7 @@ describe('one-revision native promotion contract', () => {
       marketing_version: '$' + '{{ inputs.marketing_version }}',
       bundle_version: '$' + '{{ inputs.bundle_version }}',
     });
-    expect(fleetCaller?.needs).toEqual(['test-gate', 'full-regression']);
+    expect(fleetCaller?.needs).toEqual(['test-gate']);
     expect((fleetCaller as any)?.uses).toBe(
       './.github/workflows/nightly-fleet-staging.yml',
     );
@@ -795,7 +947,7 @@ describe('one-revision native promotion contract', () => {
       default: 'build-and-upload',
     });
     expect(ios.if).toBe('$' + "{{ inputs.delivery != 'upload' }}");
-    expect(iosUpload.needs).toBe('deliver');
+    expect(iosUpload.needs).toEqual(['deliver', 'advisory']);
     expect(iosUpload.if).toContain("inputs.delivery != 'build'");
     expect(iosUpload.if).toContain("needs.deliver.result == 'success'");
     expect(iosUpload.if).toContain(

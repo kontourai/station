@@ -1,0 +1,7 @@
+{
+  "revision": "36542aef5847fba7db4b4f439ef63564db88e6f9",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed round-2 skill proof: actual CLI Skill invocation/completion and loaded-body capture under loopback fixture inference, mapped through the production Claude mapper, paired with per-turn nonce-or-output observation. Read-only script access fails and absent shapes remain unverified. The local provider supplies synthetic inference, so no live-model behavior is claimed. A clean-head acceptance mutation is caught by the intended assertion and restored 27/27; combined suites 126/126. Real route/persistence checks cover temporary MCP/skill/policy/Agent setup and cleanup with acknowledgement loss. Native pre-tool policy still unverified; known base start/send public-route admission gap remains for round 3.","inputs":["docs/conformance/tool-policy-delivery.md","scripts/__tests__/engine-delivery-probes.test.ts","scripts/engine-delivery-probes.ts","src-server/providers/__tests__/fixtures/claude-2.1.296-skill-invocation-local.jsonl","src-server/providers/__tests__/fixtures/claude-2.1.296-script-read-local.jsonl","src-server/providers/__tests__/fixtures/claude-2.1.296-skill-local.meta.json","scripts/__tests__/engine-delivery-routes.test.ts"]}
+  ]
+}

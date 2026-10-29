@@ -8,13 +8,18 @@ import {
   MUSE_APPROVAL_MODE_NOT_APPLIED_CODE,
   MUSE_SERVE_HOST_EXITED_CODE,
 } from '@kontourai/station-contracts/provider';
+import type {
+  ProviderRuntimeErrorBody,
+  ProviderRuntimeErrorEvent,
+} from '@kontourai/station-contracts/runtime-events';
 import {
   type ApprovalAcknowledgement,
   type ApprovalStatus,
-  type CanonicalRuntimeEvent,
+  type ProviderRuntimeEvent as CanonicalRuntimeEvent,
   PROVIDER_TURN_TRIGGER,
 } from '@kontourai/station-contracts/runtime-events';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
+import { isRecord } from '../../utils/is-record.js';
 import type { Logger } from '../../utils/logger.js';
 import {
   type ProviderInterruptTurnResult,
@@ -22,6 +27,7 @@ import {
   ProviderTurnInProgressError,
   SendTurnRefusedError,
 } from '../adapter-shape.js';
+import { providerFailure } from '../provider-failure.js';
 import { projectBoundedToolOutput } from '../tool-output-projection.js';
 import {
   createMuseServeChildWorkState,
@@ -328,10 +334,6 @@ function approvalSubjectSignature(
   ]);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function readString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
@@ -507,13 +509,17 @@ export class MuseServeSession {
 
   async sendTurn(input: MuseServeTurnInput): Promise<{ turnId: string }> {
     if (this.stopped) {
-      throw new SendTurnRefusedError('This Muse session is stopped.');
+      throw new SendTurnRefusedError(
+        'This Muse session is stopped.',
+        'session_gone',
+      );
     }
     const live = this.liveTurn();
     if (live?.kind === 'provider') throw new ProviderTurnInProgressError();
     if (live || this.sending) {
       throw new SendTurnRefusedError(
         'This Muse session already has an active turn.',
+        'busy',
       );
     }
     this.sending = true;
@@ -565,6 +571,7 @@ export class MuseServeSession {
           // JSON-RPC error means nothing started.
           throw new SendTurnRefusedError(
             `Muse did not accept this message: ${error.message}`,
+            'provider_error',
           );
         }
         // A timeout or a vanished host is indeterminate: the turn may exist.
@@ -804,6 +811,7 @@ export class MuseServeSession {
       ) {
         throw new SendTurnRefusedError(
           'Muse cannot change its sandbox while background work or an approval is still open. Send again when it finishes.',
+          'busy',
         );
       }
       await this.closeHost();
@@ -834,6 +842,7 @@ export class MuseServeSession {
       await this.closeHost();
       throw new SendTurnRefusedError(
         `Muse's host could not be restarted: ${error instanceof Error ? error.message : String(error)}`,
+        'provider_error',
       );
     }
   }
@@ -917,9 +926,11 @@ export class MuseServeSession {
       this.closeOpenTools(turn);
       this.settle(turn, {
         method: 'runtime.error',
+        severity: 'error',
+        ...providerFailure('engine_crashed'),
         message,
         code: MUSE_SERVE_HOST_EXITED_CODE,
-      });
+      } satisfies ProviderRuntimeErrorBody);
     }
     for (const pending of this.approvals.values()) {
       this.clearDeadline(pending);
@@ -1071,6 +1082,8 @@ export class MuseServeSession {
       const detail = readString(error.message) ?? readString(params.reason);
       this.settle(turn, {
         method: 'runtime.error',
+        severity: 'error',
+        ...providerFailure('provider_error'),
         code: ENGINE_TURN_FAILED_CODE,
         message: `The Muse turn failed${
           detail
@@ -1080,7 +1093,7 @@ export class MuseServeSession {
         ...(typeof error.retryable === 'boolean'
           ? { retriable: error.retryable }
           : {}),
-      });
+      } satisfies ProviderRuntimeErrorBody);
       return;
     }
     // An open terminal this build does not know: the turn is over, with no
@@ -2127,12 +2140,7 @@ export class MuseServeSession {
           finishReason: 'stop' | 'cancelled' | 'other';
         }
       | { method: 'turn.aborted'; reason: string }
-      | {
-          method: 'runtime.error';
-          message: string;
-          code: string;
-          retriable?: boolean;
-        },
+      | (ProviderRuntimeErrorBody & { code: string }),
   ): void {
     if (turn.settled) return;
     turn.settled = true;
@@ -2164,6 +2172,11 @@ export class MuseServeSession {
       this.deps.publish({
         ...base,
         method: 'runtime.error',
+        ...providerFailure(
+          outcome.kind,
+          outcome.failurePhase,
+          outcome.retryAfter,
+        ),
         severity: 'error',
         message: outcome.message,
         code: outcome.code,
@@ -2171,7 +2184,7 @@ export class MuseServeSession {
           ? { retriable: outcome.retriable }
           : {}),
         ...(metadata ? { metadata } : {}),
-      });
+      } satisfies ProviderRuntimeErrorEvent);
     }
     turn.resolveSettled();
     this.forgetSettledTurns();
@@ -2210,6 +2223,7 @@ export class MuseServeSession {
     } catch (error) {
       throw new SendTurnRefusedError(
         `Muse refused to change its approval mode: ${error instanceof Error ? error.message : String(error)}`,
+        'permission_denied',
       );
     }
     const effective =
@@ -2238,7 +2252,7 @@ export class MuseServeSession {
         ...(applyOutcome ? { applyOutcome } : {}),
       },
     });
-    throw new SendTurnRefusedError(message);
+    throw new SendTurnRefusedError(message, 'permission_denied');
   }
 
   private async refusingRequest(
@@ -2253,6 +2267,7 @@ export class MuseServeSession {
     } catch (error) {
       throw new SendTurnRefusedError(
         `Muse refused ${method}: ${error instanceof Error ? error.message : String(error)}`,
+        'provider_error',
       );
     }
   }

@@ -503,3 +503,88 @@ test('an unanswered constructor field is the one marked, and its draft restores'
     screen.getByRole<HTMLInputElement>('radio', { name: 'PDF' }).checked,
   ).toBe(true);
 });
+
+test("an engine's form message renders as Markdown, never as raw HTML", async () => {
+  // An engine's plan review is its own Markdown, at the same trust as its
+  // chat answers; raw HTML in it is dropped, never rendered.
+  const plan: InputRequestForm = {
+    ...HARNESS,
+    message:
+      '# Migrate storage\n\nUse **WAL** mode.\n\n<img src="x" onerror="alert(1)">',
+  };
+  const { container } = render(
+    <InputRequestCard form={plan} onRespond={vi.fn()} />,
+  );
+  await waitFor(() =>
+    expect(
+      screen.getByRole('heading', { name: 'Migrate storage' }),
+    ).toBeTruthy(),
+  );
+  const message = container.querySelector('.input-request-card__message');
+  expect(message?.querySelector('strong')?.textContent).toBe('WAL');
+  expect(container.querySelector('img')).toBeNull();
+  expect(message?.textContent).not.toContain('# Migrate');
+});
+
+test("a tool server's form message stays plain text", () => {
+  const server: InputRequestForm = { ...MCP, message: '# Not a heading' };
+  render(<InputRequestCard form={server} onRespond={vi.fn()} />);
+  expect(screen.getByText('# Not a heading')).toBeTruthy();
+  expect(screen.queryByRole('heading', { name: 'Not a heading' })).toBeNull();
+});
+
+// A plan review (Cursor's `cursor/create_plan`, published under its method
+// name) is a form too, but it is not a question: its card says what it is.
+test('a plan review is labelled as one, and a question stays a question', () => {
+  const plan: InputRequestForm = {
+    schema: 'station.input-request/v1',
+    source: 'harness:cursor',
+    requester: 'Cursor',
+    message: 'Plan: migrate session storage',
+    body: {
+      kind: 'form',
+      fields: [
+        {
+          name: 'decision',
+          kind: 'choice',
+          title: "Approve Cursor's plan?",
+          required: true,
+          options: [
+            { value: 'approve', label: 'Approve' },
+            { value: 'reject', label: 'Reject' },
+          ],
+        },
+      ],
+    },
+  };
+  const opened = (toolName: string, eventId: string) =>
+    ({
+      provider: 'acp',
+      threadId: 'thread-plan',
+      createdAt: '2026-10-21T00:00:00Z',
+      method: 'request.opened',
+      eventId,
+      requestId: `request-${eventId}`,
+      requestType: 'approval',
+      title: 'Cursor wants you to review a plan',
+      // The adapter's own shape: its payload plus the form.
+      payload: { toolCallId: 'call-1', toolName, inputRequest: plan },
+    }) as unknown as CanonicalRuntimeEvent;
+
+  const [review] = unansweredApprovalRequests(
+    [],
+    [opened('cursor/create_plan', 'plan')],
+  );
+  const view = render(<InputRequestRequest request={review} />);
+  expect(screen.getByText('Plan review')).toBeTruthy();
+  expect(screen.queryByText('Question')).toBeNull();
+  view.unmount();
+
+  const [question] = unansweredApprovalRequests(
+    [],
+    [opened('cursor/ask_question', 'question')],
+  );
+  render(<InputRequestRequest request={question} />);
+  expect(screen.getByText('Question')).toBeTruthy();
+  expect(screen.queryByText('Plan review')).toBeNull();
+});

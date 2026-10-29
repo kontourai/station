@@ -131,7 +131,7 @@ describe('station#1157 e2e: resolver → Claude adapter delivers the REAL statio
         id: 'station-control',
         displayName: 'Station Control',
         transport: 'stdio',
-        command: 'node',
+        command: process.execPath,
         args: [builtinStationControlServerPath()],
         endpoint: undefined,
       },
@@ -156,7 +156,7 @@ describe('station#1157 e2e: resolver → Claude adapter delivers the REAL statio
     };
     expect(queryArgs.options.mcpServers['station-control']).toEqual({
       type: 'stdio',
-      command: 'node',
+      command: process.execPath,
       args: [builtinStationControlServerPath()],
       env: {
         STATION_API_BASE: 'http://127.0.0.1:4321',

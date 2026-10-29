@@ -1,0 +1,51 @@
+{
+  "revision": "2156c3d084b001a4555c989143e309362e6421dc",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Fix-round 4 delta: runtime-http.ts changes only the comment on the telemetry producer same-machine test (it now states that the UI proxy forwards ingest POSTs and that its attestations mark Tailscale Serve senders remote). No behavior or claim in this document changes.","inputs":["docs/architecture.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Dependency delta: a cited document corrected its UI-proxy wording for telemetry ingest (the proxy forwards the ingest POSTs; Tailscale Serve in front of the UI port is the remote producer path; its senders classify remote). Nothing here depends on it.","inputs":["docs/architecture/abstraction-review.md","docs/guides/monitoring.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Fix-round 4 delta: runtime-http.ts changes only the comment on the telemetry producer same-machine test (it now states that the UI proxy forwards ingest POSTs and that its attestations mark Tailscale Serve senders remote). No behavior or claim in this document changes.","inputs":["docs/architecture/module-map.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/design/automations.md","note":"Dependency delta: a cited document corrected its UI-proxy wording for telemetry ingest (the proxy forwards the ingest POSTs; Tailscale Serve in front of the UI port is the remote producer path; its senders classify remote). Nothing here depends on it.","inputs":["docs/design/automations.md","docs/security/remote-access-threat-model.md"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Fix-round 4 delta: runtime-http.ts changes only the comment on the telemetry producer same-machine test (it now states that the UI proxy forwards ingest POSTs and that its attestations mark Tailscale Serve senders remote). No behavior or claim in this document changes.","inputs":["docs/design/connection-broker.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Fix-round 4 delta: runtime-http.ts changes only the comment on the telemetry producer same-machine test (it now states that the UI proxy forwards ingest POSTs and that its attestations mark Tailscale Serve senders remote). No behavior or claim in this document changes.","inputs":["docs/design/local-bootstrap-token.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Fix-round 4 delta: runtime-http.ts changes only the comment on the telemetry producer same-machine test (it now states that the UI proxy forwards ingest POSTs and that its attestations mark Tailscale Serve senders remote). No behavior or claim in this document changes.","inputs":["docs/guides/connections.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Fix-round 4 delta: runtime-http.ts changes only the comment on the telemetry producer same-machine test (it now states that the UI proxy forwards ingest POSTs and that its attestations mark Tailscale Serve senders remote). No behavior or claim in this document changes.","inputs":["docs/guides/deployment-authentication.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Dependency delta: a cited document corrected its UI-proxy wording for telemetry ingest (the proxy forwards the ingest POSTs; Tailscale Serve in front of the UI port is the remote producer path; its senders classify remote). Nothing here depends on it.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Fix-round 4 delta: runtime-http.ts changes only the comment on the telemetry producer same-machine test (it now states that the UI proxy forwards ingest POSTs and that its attestations mark Tailscale Serve senders remote). No behavior or claim in this document changes.","inputs":["docs/guides/local-collaboration-lab.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Fix-round 4 delta: runtime-http.ts changes only the comment on the telemetry producer same-machine test (it now states that the UI proxy forwards ingest POSTs and that its attestations mark Tailscale Serve senders remote). No behavior or claim in this document changes.","inputs":["docs/guides/machine-relationships.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Fix-round 4: the producer contract now names the remote URL form (https://<host>.<tailnet>.ts.net/v1/agent-events via Tailscale Serve in front of the UI port) beside the loopback example; checked against the UI proxy forwarding and the real-socket test.","inputs":["docs/guides/monitoring.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Fix-round 4 delta: runtime-http.ts changes only the comment on the telemetry producer same-machine test (it now states that the UI proxy forwards ingest POSTs and that its attestations mark Tailscale Serve senders remote). No behavior or claim in this document changes.","inputs":["docs/guides/responsive-ui.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Fix-round 4 delta: runtime-http.ts changes only the comment on the telemetry producer same-machine test (it now states that the UI proxy forwards ingest POSTs and that its attestations mark Tailscale Serve senders remote). No behavior or claim in this document changes.","inputs":["docs/guides/theming.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Fix-round 4 delta: runtime-http.ts changes only the comment on the telemetry producer same-machine test (it now states that the UI proxy forwards ingest POSTs and that its attestations mark Tailscale Serve senders remote). No behavior or claim in this document changes.","inputs":["docs/guides/web-push-notifications.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Fix-round 4 delta: runtime-http.ts changes only the comment on the telemetry producer same-machine test (it now states that the UI proxy forwards ingest POSTs and that its attestations mark Tailscale Serve senders remote). No behavior or claim in this document changes.","inputs":["docs/patterns/backend.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Fix-round 4 delta: runtime-http.ts changes only the comment on the telemetry producer same-machine test (it now states that the UI proxy forwards ingest POSTs and that its attestations mark Tailscale Serve senders remote). No behavior or claim in this document changes.","inputs":["docs/patterns/frontend.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Fix-round 4 delta: runtime-http.ts changes only the comment on the telemetry producer same-machine test (it now states that the UI proxy forwards ingest POSTs and that its attestations mark Tailscale Serve senders remote). No behavior or claim in this document changes.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Fix-round 4: corrected the locality paragraph. The UI proxy forwards every non-GET (lifecycle.ts uiRequestHandler), so ingest POSTs work on the UI port and through Tailscale Serve; a GET to /v1 is not forwarded. A loopback client relayed by the proxy counts as local; Serve requests are remote via the proxy's forwarded Host and forwarding-evidence marker. Pinned by telemetry-producer-ui-proxy-transport.test.ts over real sockets.","inputs":["docs/reference/api.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Fix-round 4 delta: runtime-http.ts changes only the comment on the telemetry producer same-machine test (it now states that the UI proxy forwards ingest POSTs and that its attestations mark Tailscale Serve senders remote). No behavior or claim in this document changes.","inputs":["docs/reference/config.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Fix-round 4 delta: runtime-http.ts changes only the comment on the telemetry producer same-machine test (it now states that the UI proxy forwards ingest POSTs and that its attestations mark Tailscale Serve senders remote). No behavior or claim in this document changes.","inputs":["docs/reference/connect.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Fix-round 4 delta: runtime-http.ts changes only the comment on the telemetry producer same-machine test (it now states that the UI proxy forwards ingest POSTs and that its attestations mark Tailscale Serve senders remote). No behavior or claim in this document changes.","inputs":["docs/reference/env-vars.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Fix-round 4: restored the attested-UI-proxy branch (a loopback client that addressed loopback) and stated that Tailscale Serve senders through the UI port classify remote from the proxy's attestations; checked against lifecycle.ts proxyToBackend and host-operator-credential.ts, pinned by the real-socket test.","inputs":["docs/security/remote-access-threat-model.md","src-server/runtime/bootstrap/runtime-http.ts"]}
+  ]
+}

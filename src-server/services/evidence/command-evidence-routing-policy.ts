@@ -613,19 +613,6 @@ export function definitionExpectedClaimTypesByGate(
   });
 }
 
-/** Every claim type the definition expects, deduplicated across its gates. */
-export function definitionExpectedClaimTypes(
-  definition: FlowDefinition,
-): string[] {
-  return [
-    ...new Set(
-      definitionExpectedClaimTypesByGate(definition).flatMap(
-        (gate) => gate.claimTypes,
-      ),
-    ),
-  ];
-}
-
 /** True when `gateId` declares a trust.bundle expectation of `claimType`. */
 export function gateExpectsClaim(
   definition: FlowDefinition,

@@ -1,3 +1,7 @@
+import type { TelemetryPublisherId } from '@kontourai/station-contracts/product-telemetry';
+import { isTelemetryPublisherId } from '@kontourai/station-shared/plugin-telemetry';
+import { requestFromPluginPane } from '../../security/plugin-pane-context.js';
+import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
 /**
  * Config Routes - app configuration management
  */
@@ -5,6 +9,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import { parseEngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import {
+  type AppConfig,
   describeFirstRunTransitionViolation,
   type FirstRunTransitionRequest,
   firstRunStateForTransition,
@@ -18,28 +23,39 @@ import {
   PAIRING_SCOPE_INFERENCE_INVOKE,
   pairingScopeIncludes,
 } from '@kontourai/station-contracts/environment-security';
+import {
+  TELEMETRY_FEEDBACK_REASONS,
+  type TelemetryFeedbackReason,
+  type TelemetryTier,
+} from '@kontourai/station-contracts/product-telemetry';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import { readProjectOverrides } from '@kontourai/station-contracts/project-settings-overrides';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { Hono } from 'hono';
 import type { ConfigLoader } from '../../domain/config-loader.js';
+import { mergeAppConfigUpdate } from '../../domain/config-loader-app.js';
 import { FileStorageNotFoundError } from '../../domain/project-file-transactions.js';
 import {
   buildAppConfigProvenance,
   sanitizeAppConfigUpdate,
 } from '../../domain/settings-registry-server.js';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
+import { resolveTelemetryConfiguration } from '../../domain/telemetry-configuration.js';
 import { InvalidPathSegmentError } from '../../knowledge-index/path-safety.js';
 import {
   persistableCredentialProfiles,
   projectPublicCredentialProfiles,
 } from '../../providers/app-home/credential-profile-registry.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
-import { mayGrantFullAccess } from '../../security/coding-authority.js';
+import {
+  isOperatorInPersonNotAgent,
+  mayGrantFullAccess,
+} from '../../security/coding-authority.js';
 import {
   grantedPairingScope,
   type PairingScopeContextStore,
 } from '../../security/pairing-route-scopes.js';
+import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import {
   LOG_LEVELS,
   type LogLevel,
@@ -225,10 +241,6 @@ export function createConfigRoutes(
   // Runtime-derived origin of the dedicated MCP-UI frame server, if running.
   // Injected into GET /app only (never persisted via the update schema).
   getMcpUiFrameOrigin?: () => string | undefined,
-  // archive#980: runtime-derived (STATION_FEATURES=managed-chat-orchestration,
-  // never persisted) — same injected-into-GET-/app-only, never-in-the-update-
-  // schema pattern as `getMcpUiFrameOrigin` above.
-  getManagedChatOrchestrationEnabled?: () => boolean,
   // archive#1194 (epic archive#1191, slice B): re-applies the built-in default
   // agent's engine binding via the existing bootstrap function whenever an
   // update touches `builtinAgentEngineConnectionId` — Voice is deliberately
@@ -249,6 +261,12 @@ export function createConfigRoutes(
   // that never ask about a project see no behavior change.
   readProject?: (slug: string) => ProjectConfig | undefined,
   authorizeContributionMutation?: (request: Request) => boolean,
+  onAppConfigPersisted?: (config: AppConfig) => void,
+  onTelemetryTierLowering?: (
+    publisher: TelemetryPublisherId,
+    reason?: TelemetryFeedbackReason,
+  ) => Promise<void>,
+  canSaveAuthorFull?: () => Promise<boolean>,
 ) {
   const app = new Hono();
   const logLevelEdits = new LogLevelEditService(configLoader);
@@ -371,8 +389,6 @@ export function createConfigRoutes(
       const config = await configLoader.loadAppConfig();
       const frameOrigin = getMcpUiFrameOrigin?.();
       const pluginFrameOrigin = getPluginFrameOrigin?.();
-      const managedChatOrchestrationEnabled =
-        getManagedChatOrchestrationEnabled?.() === true;
       // #1582 D9: what a terminal would start here with nothing configured,
       // derived from the resolver a spawn actually walks rather than a
       // hard-coded hint the Settings input would print on every host. Same
@@ -385,9 +401,6 @@ export function createConfigRoutes(
       const injected: Record<string, string> = {};
       if (frameOrigin) injected.mcpUiFrameOrigin = 'MCP_UI_FRAME_PORT';
       if (pluginFrameOrigin) injected.pluginFrameOrigin = 'MCP_UI_FRAME_PORT';
-      if (managedChatOrchestrationEnabled) {
-        injected.managedChatOrchestration = 'STATION_FEATURES';
-      }
       // Only claimed as environment-sourced when the environment is what
       // supplied it; a platform fallback is nobody's setting.
       if (terminalShellDefault?.source === 'env') {
@@ -401,11 +414,9 @@ export function createConfigRoutes(
         success: true,
         data: {
           ...projectPublicAppConfig(config),
+          lanDiscoveryStatus: lanDiscoveryFor(configLoader).snapshot(),
           ...(frameOrigin ? { mcpUiFrameOrigin: frameOrigin } : {}),
           ...(pluginFrameOrigin ? { pluginFrameOrigin } : {}),
-          ...(managedChatOrchestrationEnabled
-            ? { managedChatOrchestration: true }
-            : {}),
           ...(terminalShellDefault
             ? { defaultTerminalShell: terminalShellDefault.shell }
             : {}),
@@ -425,10 +436,102 @@ export function createConfigRoutes(
 
   // Update app config
   app.put('/app', validate(appConfigUpdateSchema), async (c) => {
+    let telemetryChanges:
+      | Partial<
+          Record<
+            TelemetryPublisherId,
+            { before: TelemetryTier; after: TelemetryTier }
+          >
+        >
+      | undefined;
+    const logRefusal = (reason: string) => {
+      const principal = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+      logger.warn('App config update refused', {
+        reason,
+        principalKind: principal?.kind ?? 'unknown',
+        deviceKind: principal?.deviceKind ?? 'none',
+        ...(reason === 'telemetry_choice_not_granted' && telemetryChanges
+          ? { telemetryChanges }
+          : {}),
+      });
+    };
     try {
       configOps.add(1, { op: 'update_app' });
       const body = getBody(c);
+      if (
+        Object.hasOwn(body as object, 'telemetryFeedbackReason') &&
+        requestMayBeAnAgent(c.req.raw)
+      )
+        throw new Error('TELEMETRY_CHOICE_NOT_GRANTED');
+      const reason = (body as Record<string, unknown>).telemetryFeedbackReason;
+      if (
+        reason !== undefined &&
+        (!TELEMETRY_FEEDBACK_REASONS.some((allowed) => allowed === reason) ||
+          !Object.hasOwn(body as object, 'telemetryTier'))
+      )
+        return c.json(
+          {
+            success: false,
+            error:
+              'telemetryFeedbackReason requires a tier change and a fixed-enum reason.',
+          },
+          400,
+        );
+      if (Object.hasOwn(body as object, 'telemetryTier')) {
+        const tiers = (body as Record<string, unknown>).telemetryTier;
+        if (
+          !tiers ||
+          typeof tiers !== 'object' ||
+          Array.isArray(tiers) ||
+          Object.keys(tiers).length > 128 ||
+          Object.entries(tiers).some(
+            ([publisher, tier]) =>
+              !isTelemetryPublisherId(publisher) ||
+              !['off', 'lite', 'full'].includes(tier),
+          )
+        )
+          return c.json(
+            {
+              success: false,
+              error:
+                'telemetryTier must be an object with valid publisher IDs and off/lite/full values.',
+            },
+            400,
+          );
+      }
 
+      for (const field of [
+        'publicTelemetryRegistries',
+        'telemetryPublisherPolicy',
+      ] as const) {
+        if (!Object.hasOwn(body as object, field)) continue;
+        const value = (body as Record<string, unknown>)[field];
+        const valid =
+          field === 'publicTelemetryRegistries'
+            ? Array.isArray(value) &&
+              value.length <= 32 &&
+              value.every(
+                (key) =>
+                  typeof key === 'string' &&
+                  key.length > 0 &&
+                  key.length <= 2048,
+              ) &&
+              new Set(value).size === value.length
+            : value &&
+              typeof value === 'object' &&
+              !Array.isArray(value) &&
+              Object.keys(value).length <= 128 &&
+              Object.entries(value).every(
+                ([id, tier]) =>
+                  isTelemetryPublisherId(id) &&
+                  ['off', 'lite', 'full'].includes(tier),
+              );
+        if (!valid)
+          return c.json(
+            { success: false, error: 'Invalid publisher telemetry policy.' },
+            400,
+          );
+      }
       // The first-run record is a TRANSITION, not a setting (review M1). Left
       // on this route it was an ordinary composite: an `orchestration:operate`
       // peer could re-arm an existing home as `pending` and re-run the guided
@@ -456,7 +559,8 @@ export function createConfigRoutes(
           // the folder and command rule otherwise leaves to its own policy;
           // the terminal shell is the one setting it may not change, as it
           // may not raise the default approval mode to full access.
-          if (requestMayBeAnAgent(c.req.raw))
+          if (requestMayBeAnAgent(c.req.raw)) {
+            logRefusal('scope_agent_command_not_granted');
             return c.json(
               {
                 success: false,
@@ -466,8 +570,12 @@ export function createConfigRoutes(
               },
               403,
             );
+          }
           const commandRefused = refuseUngrantedCommandChoice(c);
-          if (commandRefused) return commandRefused;
+          if (commandRefused) {
+            logRefusal('scope_command_not_granted');
+            return commandRefused;
+          }
         }
       }
 
@@ -514,6 +622,70 @@ export function createConfigRoutes(
       const presentedScope = grantedPairingScope(
         c as unknown as PairingScopeContextStore,
       );
+      if (
+        [
+          'productTelemetryEndpoint',
+          'productTelemetryKeyRef',
+          'otelTelemetryEndpoint',
+          'otelTelemetryKeyRef',
+        ].some((key) => Object.hasOwn(body as object, key))
+      ) {
+        if (requestMayBeAnAgent(c.req.raw)) {
+          logRefusal('scope_agent_telemetry_destination_not_granted');
+          return c.json(
+            {
+              success: false,
+              error:
+                'An agent cannot change telemetry choices, destinations or key references. The operator can, in Settings.',
+            },
+            403,
+          );
+        }
+        if (
+          !isOperatorInPersonNotAgent(c.req.raw) &&
+          (presentedScope === undefined ||
+            !pairingScopeIncludes(presentedScope, 'access:manage'))
+        ) {
+          logRefusal('scope_telemetry_destination_not_granted');
+          return c.json(
+            {
+              success: false,
+              error:
+                'An operator must configure telemetry choices, destinations and key references.',
+            },
+            403,
+          );
+        }
+        for (const name of [
+          'productTelemetryEndpoint',
+          'otelTelemetryEndpoint',
+        ]) {
+          const endpoint = (body as Record<string, unknown>)[name];
+          if (endpoint !== undefined && endpoint !== null && endpoint !== '') {
+            try {
+              if (typeof endpoint !== 'string') throw new Error();
+              const address = new URL(endpoint);
+              if (
+                !['http:', 'https:'].includes(address.protocol) ||
+                address.username ||
+                address.password ||
+                address.search ||
+                address.hash
+              )
+                throw new Error();
+            } catch {
+              return c.json(
+                {
+                  success: false,
+                  error:
+                    'Use a full HTTP(S) telemetry destination without embedded credentials, a query or a fragment.',
+                },
+                400,
+              );
+            }
+          }
+        }
+      }
       //
       // archive#1500 extends the SAME guard to the scoped
       // `contribution` map, before any consumer of it exists. That map's
@@ -534,6 +706,7 @@ export function createConfigRoutes(
         pairingScopeIncludes(presentedScope, PAIRING_SCOPE_INFERENCE_INVOKE)
       ) {
         configOps.add(1, { op: 'update_app_fleet_contribution_denied' });
+        logRefusal('scope_inference_contribution_not_granted');
         return c.json(
           {
             success: false,
@@ -580,7 +753,10 @@ export function createConfigRoutes(
         );
       }
 
-      const { accepted, ignored, violations } = sanitizeAppConfigUpdate(body);
+      const settings = { ...(body as Record<string, unknown>) };
+      delete settings.telemetryFeedbackReason;
+      const { accepted, ignored, violations } =
+        sanitizeAppConfigUpdate(settings);
       if (violations.length > 0) {
         return c.json(
           {
@@ -634,6 +810,14 @@ export function createConfigRoutes(
       // hung second PUT in tests/settings.spec.ts 'save persists changes').
       // The onboarding picker (archive#1194) sends a delta with a genuinely new
       // value, so change-gating preserves its contract exactly.
+      const writesTelemetryChoice = ['telemetryTier', 'telemetryEnabled'].some(
+        (key) => Object.hasOwn(body as object, key),
+      );
+      const mayRaiseTelemetry =
+        !requestMayBeAnAgent(c.req.raw) &&
+        (isOperatorInPersonNotAgent(c.req.raw) ||
+          (presentedScope !== undefined &&
+            pairingScopeIncludes(presentedScope, 'access:manage')));
       const priorConfig = await configLoader.loadAppConfig();
       // #2436: the Station default applies to every session start, the
       // unattended ones included, so raising it to full access needs the
@@ -647,9 +831,73 @@ export function createConfigRoutes(
       const priorBuiltinEngineConnectionId =
         priorConfig.builtinAgentEngineConnectionId;
       const contributionRequested = Object.hasOwn(accepted, 'contribution');
-      const update = (beginMutation: () => void) => {
+      const lowerings: TelemetryPublisherId[] = [];
+      const update = async (beginMutation: () => void) => {
         beginMutation();
-        return configLoader.mutateAppConfig((current) => {
+        const updated = await configLoader.mutateAppConfig(async (current) => {
+          if (
+            ['publicTelemetryRegistries', 'telemetryPublisherPolicy'].some(
+              (key) =>
+                Object.hasOwn(accepted, key) &&
+                !isDeepStrictEqual(
+                  current[key as keyof AppConfig],
+                  accepted[key as keyof AppConfig],
+                ),
+            ) &&
+            !isOperatorInPersonNotAgent(c.req.raw)
+          )
+            throw new Error('TELEMETRY_CHOICE_NOT_GRANTED');
+          if (writesTelemetryChoice) {
+            const next = mergeAppConfigUpdate(current, accepted);
+            const rank = { off: 0, lite: 1, full: 2 } as const;
+            const publishers = new Set([
+              ...Object.keys(current.telemetryTier ?? {}),
+              ...Object.keys(next.telemetryTier ?? {}),
+            ]);
+            const defaults = resolveTelemetryConfiguration(
+              { ...current, telemetryTier: {} },
+              { ...process.env, DO_NOT_TRACK: '' },
+              {},
+              {},
+              [...publishers].filter(isTelemetryPublisherId),
+            ).publishers;
+            telemetryChanges = {};
+            let raisesTelemetry = false;
+            for (const publisher of publishers) {
+              const key = publisher as keyof NonNullable<
+                AppConfig['telemetryTier']
+              >;
+              const fallback = key.startsWith('publisher:') ? 'off' : 'lite';
+              const before =
+                current.telemetryTier?.[key] ?? defaults[key]?.tier ?? fallback;
+              const after =
+                next.telemetryTier?.[key] ?? defaults[key]?.tier ?? fallback;
+              telemetryChanges[key] = { before, after };
+              if (rank[after] < rank[before]) lowerings.push(key);
+              if (rank[after] > rank[before]) raisesTelemetry = true;
+            }
+            if (
+              requestMayBeAnAgent(c.req.raw) ||
+              (raisesTelemetry &&
+                (!mayRaiseTelemetry || requestFromPluginPane(c.req.raw)))
+            )
+              throw new Error('TELEMETRY_CHOICE_NOT_GRANTED');
+            if (
+              next.telemetryTier?.kontour === 'full' &&
+              current.telemetryTier?.kontour !== 'full' &&
+              !(await canSaveAuthorFull?.())
+            )
+              throw new Error(
+                "The current confirmation for sharing detailed usage with Kontour is missing. Review what's included and save your choice.",
+              );
+          }
+          if (
+            accepted.lanDiscoveryEnabled !== undefined &&
+            accepted.lanDiscoveryEnabled !==
+              (current.lanDiscoveryEnabled ?? false) &&
+            authorizeContributionMutation?.(c.req.raw) !== true
+          )
+            throw new Error('LAN_DISCOVERY_OPERATOR_REQUIRED');
           // A semantic contribution change needs the BOUND-OPERATOR verdict,
           // whatever scope the presenting credential claims — an absent
           // presented scope is NOT an operator, it is an unscoped caller, so
@@ -677,8 +925,25 @@ export function createConfigRoutes(
           ) {
             throw new Error(FULL_ACCESS_DEFAULT_NOT_GRANTED);
           }
+          for (const publisher of lowerings) {
+            try {
+              await onTelemetryTierLowering?.(
+                publisher,
+                reason as TelemetryFeedbackReason | undefined,
+              );
+            } catch (error) {
+              logger.warn(
+                'Telemetry feedback unavailable; applying the lower tier.',
+                { error },
+              );
+            }
+          }
           return accepted;
         });
+        // Telemetry withdrawal must not wait for unrelated Agent activation.
+        onAppConfigPersisted?.(updated);
+        await lanDiscoveryFor(configLoader).configure(updated);
+        return updated;
       };
       const mutation = await captureConfigurationMutation(
         applyConfigurationMutation,
@@ -722,15 +987,31 @@ export function createConfigRoutes(
     } catch (error: unknown) {
       if (
         error instanceof Error &&
+        error.message === 'TELEMETRY_CHOICE_NOT_GRANTED'
+      ) {
+        logRefusal('telemetry_choice_not_granted');
+        return c.json(
+          {
+            success: false,
+            error:
+              'Only the operator or a device with access:manage can raise telemetry tiers. Agents cannot change telemetry choices.',
+          },
+          403,
+        );
+      }
+      if (
+        error instanceof Error &&
         error.message === FULL_ACCESS_DEFAULT_NOT_GRANTED
       ) {
         configOps.add(1, { op: 'update_app_full_access_default_refused' });
+        logRefusal('full_access_default_not_granted');
         return fullAccessRefusal(c);
       }
       if (
         error instanceof Error &&
         error.message === 'PROJECT_CONTRIBUTION_OPERATOR_REQUIRED'
-      )
+      ) {
+        logRefusal('project_contribution_operator_required');
         return c.json(
           {
             success: false,
@@ -739,6 +1020,20 @@ export function createConfigRoutes(
           },
           403,
         );
+      }
+      if (
+        error instanceof Error &&
+        error.message === 'LAN_DISCOVERY_OPERATOR_REQUIRED'
+      ) {
+        return c.json(
+          {
+            success: false,
+            error:
+              'Only this Station’s local operator can change nearby discovery.',
+          },
+          403,
+        );
+      }
       logger.error('Failed to update app config', { error });
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }

@@ -1,0 +1,9 @@
+{
+  "revision": "0eadd6f6b0eb478eb8b4f437b259111b9ded0e68",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Against the merge base, the scripts/vitest-resource-manifest.mjs delta adds fourteen packages/supervisor test files to the process-heavy list (handoff, rollback, crash-restart, build-root, listener-handle, stale-generation, generation-registry, instance-lock, instance-lock-module, registry-failure, cli, bundle, protocol, handle-guard), with comments, and nothing else. This document enumerates no manifest entries. No prose change.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Against the merge base, the scripts/vitest-resource-manifest.mjs delta adds fourteen packages/supervisor test files to the process-heavy list (handoff, rollback, crash-restart, build-root, listener-handle, stale-generation, generation-registry, instance-lock, instance-lock-module, registry-failure, cli, bundle, protocol, handle-guard), with comments, and nothing else. This document enumerates no manifest entries. No prose change.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

@@ -1,0 +1,164 @@
+/*
+ * What an agent scheduled in this chat, above the composer. Each row grows
+ * from and collapses to nothing on its own grid track (0fr <-> 1fr) with a
+ * fade, so neighbours move smoothly rather than snap. The global
+ * reduced-motion rule shortens the transitions; a hidden page pauses them.
+ */
+.agent-schedule-notes {
+  display: flex;
+  flex-direction: column;
+  margin: 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.agent-schedule-notes__item {
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition:
+    grid-template-rows var(--motion-base) var(--ease-standard),
+    opacity var(--motion-base) var(--ease-standard);
+}
+
+/* Only an item that arrived after the list first rendered grows in
+   (`usePresenceList` marks it `entering`); what is there when the chat
+   opens or switches is simply shown. */
+.agent-schedule-notes__item[data-phase="entering"] {
+  animation: agent-schedule-notes-enter var(--motion-base) var(--ease-standard);
+}
+
+@keyframes agent-schedule-notes-enter {
+  from {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+}
+
+.agent-schedule-notes__item[data-phase="exiting"] {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+
+:root[data-page-hidden] .agent-schedule-notes__item {
+  transition: none;
+  animation: none;
+}
+
+.agent-schedule-notes__clip {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.agent-schedule-notes__note {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  margin-bottom: var(--k-space-2);
+  padding: var(--k-space-1) var(--k-space-1) var(--k-space-1) var(--k-space-3);
+  border: var(--k-border-thin, 1px) solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.agent-schedule-notes__glyph {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
+.agent-schedule-notes__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-schedule-notes__text time {
+  color: var(--k-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-schedule-card {
+  display: grid;
+  gap: var(--k-space-2);
+  margin-bottom: var(--k-space-2);
+  padding: var(--k-space-3);
+  border: var(--k-border-thin, 1px) solid var(--k-line-strong);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel-raised);
+  color: var(--k-text);
+  font-size: var(--k-text-sm);
+}
+
+.agent-schedule-card__title {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  margin: 0;
+}
+
+.agent-schedule-card__facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--k-space-1) var(--k-space-3);
+  margin: 0;
+}
+
+.agent-schedule-card__facts dt {
+  color: var(--k-text-muted);
+}
+
+.agent-schedule-card__facts dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.agent-schedule-card__name {
+  font-family: var(--k-font-mono);
+}
+
+/* The whole text an approval is for, never clamped: long text scrolls in
+   place (touch and keyboard), so nothing is approved unseen. */
+.agent-schedule-card__prompt,
+.agent-schedule-card__note {
+  max-height: 12rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.agent-schedule-card__prompt:focus-visible,
+.agent-schedule-card__note:focus-visible {
+  outline: var(--k-focus-ring-width, 2px) solid var(--k-focus);
+  outline-offset: var(--k-focus-ring-offset, 2px);
+}
+
+.agent-schedule-card__note {
+  margin: 0;
+  padding: var(--k-space-2);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel);
+  color: var(--k-text);
+}
+
+.agent-schedule-card__why {
+  margin: 0;
+  color: var(--k-text-muted);
+}
+
+.agent-schedule-card__error {
+  margin: 0;
+  color: var(--k-negative);
+}
+
+.agent-schedule-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+}

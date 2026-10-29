@@ -245,6 +245,11 @@ it('reads published task content through the real member SDK without starting op
     let data: unknown;
     if (path === '/api/projects') data = [member];
     else if (path === '/api/projects/shared') data = member;
+    else if (path === '/api/projects/shared/room')
+      return Response.json(
+        { success: false, error: 'Room unavailable' },
+        { status: 404 },
+      );
     else if (path === '/api/projects/shared/shared-work') data = [sharedTask];
     else if (path === '/api/projects/shared/shared-work/task-a/publication')
       data = { kind: 'shared', publication: sharedTask };
@@ -299,6 +304,7 @@ it('reads published task content through the real member SDK without starting op
       '/api/relay-management/capabilities',
       '/api/projects',
       '/api/projects/shared',
+      '/api/projects/shared/room',
       '/api/projects/shared/shared-work',
       '/api/projects/shared/shared-work/task-a/publication',
       '/api/projects/shared/shared-work/task-a/document',

@@ -1,4 +1,6 @@
 import { OPEN_NEW_CHAT_EVENT, readNewChatIntent } from '../lib/newChatIntent';
+import { PairingEndpointSuggestions } from './PairingEndpointSuggestions';
+import { StationExtensionsAccess } from './registry/StationExtensionsAccess';
 /**
  * OnboardingGate keeps the shell available when a Station endpoint is
  * unavailable. ConnectionBannerSource owns reachability disclosure while this
@@ -12,6 +14,7 @@ import {
   connectionFailureCopy,
   loadPendingExchange,
   type PendingPairingExchange,
+  restoreHeldPairingExchanges,
   retryLocalSelfProvisionAfterRejection,
   useConnectionStatus,
   useConnections,
@@ -84,6 +87,8 @@ import { UsageTelemetryDisclosure } from './UsageTelemetryDisclosure';
 type ConnectionModalMode =
   | 'list'
   | 'pair-device'
+  | 'pair-code'
+  | 'discover'
   | 'request-access'
   | 'devices'
   | 'pair-host';
@@ -136,10 +141,6 @@ const loadPendingPairingReconciler = () =>
   import('./PendingPairingReconciler').then((module) => ({
     default: module.PendingPairingReconciler,
   }));
-const loadMobileConnectionBanner = () =>
-  import('./MobileConnectionBanner').then((module) => ({
-    default: module.MobileConnectionBanner,
-  }));
 const loadBundledServiceBanner = () =>
   import('./BundledServiceBanner').then((module) => ({
     default: module.BundledServiceBanner,
@@ -165,8 +166,8 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   const forceRefetch = useForceRefetchSystemStatus(apiBase);
   const profile = usePlatformProfile();
   const bundledStatus = useBundledServerStatus(profile.supervisesBundledServer);
-  const { navigate, pathname } = useNavigation();
-  const { showToast } = useToast();
+  const { navigate, pathname, activeChat } = useNavigation();
+  const { showToast, upsertToast, dismissToast } = useToast();
   const bootstrapRecoveryError = nativeProfileBootstrapRecoveryError();
   const [showModal, setShowModal] = useState(false);
   const [stationSetup, setStationSetup] =
@@ -187,6 +188,21 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   const [pendingExchange, setPendingExchange] =
     useState<PendingPairingExchange | null>(null);
   const [waitingForTransport, setWaitingForTransport] = useState(false);
+  useEffect(() => {
+    let disposed = false;
+    void restoreHeldPairingExchanges().then(({ status, held }) => {
+      if (!disposed && status !== 'available')
+        setPairingLinkError(
+          'Previous pairing attempts could not be fully recovered. Check paired devices on the computer before creating another invitation.',
+        );
+      if (!disposed && held[0])
+        setPendingExchange((current) => current ?? held[0]);
+    });
+    return () => {
+      disposed = true;
+    };
+  }, []);
+
   const [ignoredPendingRequestId, setIgnoredPendingRequestId] = useState<
     string | null
   >(null);
@@ -218,28 +234,13 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   const firstRunChapterOpen = useFirstRunChapterOpen();
   // Identity-scoped recovery read (not the shared bare-key `useConfig`):
   // under the stable boundary a bare entry would survive its connection.
-  const { data: config } = useRecoveryConfig();
+  const unconfiguredPhone =
+    profile.isMobile && !hasRealSavedConnection(connections);
+  const { data: config } = useRecoveryConfig({ enabled: !unconfiguredPhone });
   const wasInConnections = useRef(pathname.startsWith('/connections'));
   const credentialRequired = activeConnection?.credentialState === 'required';
   const connectionEvidence = `${activeConnection?.id ?? ''}:${activeConnection?.lastSuccessAt ?? ''}:${activeConnection?.credentialState ?? ''}`;
   const previousConnectionEvidence = useRef(connectionEvidence);
-  // archive#1007: the pairing banner is dismissible, but the dismissal is keyed to the
-  // exact connection evidence it was shown for and lives only in component
-  // state. Deliberately not persisted: "this host needs pairing" is an
-  // unresolved, actionable state, and a relaunch is the natural moment to ask
-  // again — the same reasoning archive#794 used to prefer a page-lifetime `defer` over
-  // a durable `dismiss` for an unfinished setup. Because the key is the
-  // evidence string, selecting another connection or a change in credential
-  // state re-arms the banner on its own, with no effect and no cleanup.
-  const [dismissedCredentialNotice, setDismissedCredentialNotice] = useState<
-    string | null
-  >(null);
-  // A decline is never withheld — a silent refusal is the original archive#3387
-  // defect — and it always takes the band's single visible slot, because both
-  // banners sit in `connectionBlocking` where the stack shows one and collapses
-  // the rest, and the id tie-break would otherwise bury the decline behind
-  // `chrome:onboarding:credential`. That is the exact shape archive#3387 fixed.
-  //
   // DISCLOSED TRADEOFF: while a decline stands for ANY Station, the active
   // Station's own "request access to reconnect" reminder is suppressed even
   // when they are different Stations. The reminder is a standing prompt; the
@@ -279,8 +280,6 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (pairingFailureIsStale) setPairingFailure(null);
   }, [pairingFailureIsStale]);
-  const credentialNoticeDismissed =
-    dismissedCredentialNotice === connectionEvidence;
 
   // The native bootstrap has completed its one credential recovery attempt
   // (a window already shown to the user releases it early when the owned
@@ -301,41 +300,33 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     showToast(bootstrapRecoveryError);
   }, [bootstrapRecoveryError, profile.isDesktop, showToast]);
 
-  // archive#4475 — `restartBundledServer` reports whether the request even
-  // REACHED the host (its own doc comment: "so the recovery screen can tell
-  // the user when it didn't"), but both callers of it here used to discard
-  // that boolean entirely (`void restartBundledServer;`) — the exact
-  // "dead button" mechanism the owner hit on their phone: a dangling proxy
-  // (tailscale serve → a port nothing owns) makes the restart POST fail,
-  // and nothing on screen ever said so. Both the banner's "Restart Station"
-  // action and the Stations sheet row's "Restart" button now go through
-  // this, and it is `useCallback`-stable and self-referencing so the toast's
-  // own "Try again" action can retry the exact same request.
-  //
-  // archive#4512: `duration: 0` — sticky until dismissed, the
-  // same precedent `showToolApproval` already sets for a decision the
-  // reader has to act on rather than merely notice ("No auto-dismiss for
-  // approvals", `ToastContext.tsx`). A restart that could not even reach
-  // the host is exactly that: a 5-second default would vanish this toast,
-  // "Try again" and all, while the reader was still reading the FIRST
-  // sentence of it — which is the same silence-on-failure defect one layer
-  // up from the one this whole fix exists to close.
-  const handleRestartBundledServer = useCallback(() => {
-    void restartBundledServer().then((ok) => {
-      if (ok) return;
-      showToast(
-        "Couldn't restart the local Station. Check the connection, then try again.",
-        undefined,
-        0,
-        [{ label: 'Try again', onClick: () => handleRestartBundledServer() }],
-      );
+  const restartNoticeId = useRef<string | null>(null);
+  const handleRestartBundledServer = useCallback((): Promise<void> => {
+    const priorNoticeId = restartNoticeId.current;
+    return restartBundledServer().then((ok) => {
+      if (ok) {
+        if (priorNoticeId) dismissToast(priorNoticeId);
+        if (restartNoticeId.current === priorNoticeId)
+          restartNoticeId.current = null;
+        return;
+      }
+      const noticeId = upsertToast({
+        dedupeKey: 'local-station-restart',
+        message:
+          "Couldn't restart the local Station. Check the connection, then try again.",
+        tone: 'error',
+        duration: 0,
+        recallText: 'The local Station could not restart.',
+        actions: [
+          { label: 'Try again', onClick: () => handleRestartBundledServer() },
+        ],
+      });
+      if (noticeId) restartNoticeId.current = noticeId;
     });
-  }, [showToast]);
+  }, [upsertToast, dismissToast]);
 
-  // Keep banner actions stable while connection probes update the shell. A
-  // fresh callback on every retry makes MobileConnectionBanner tear down and
-  // re-present its store item, replacing the actionable button underneath an
-  // in-flight mobile tap.
+  // Service probes must not replace an actionable connection-management callback
+  // while a tap is in flight.
   const openConnectionList = useCallback(() => {
     setConnectionModalMode('list');
     setShowModal(true);
@@ -381,6 +372,8 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
       // panel that is correct for every connection state.
       setConnectionModalMode(
         detail?.mode === 'pair-device' ||
+          detail?.mode === 'pair-code' ||
+          detail?.mode === 'discover' ||
           detail?.mode === 'request-access' ||
           detail?.mode === 'devices' ||
           detail?.mode === 'pair-host'
@@ -481,7 +474,8 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   const pendingApproval = useMemo(
     () =>
       effectivePendingExchange &&
-      effectivePendingExchange.expiresAt > Date.now()
+      (effectivePendingExchange.exchangeAttempt ||
+        effectivePendingExchange.expiresAt > Date.now())
         ? {
             requestKind: effectivePendingExchange.requestKind,
             expiresAt: effectivePendingExchange.expiresAt,
@@ -500,16 +494,23 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     // "the host" — a noun docs/glossary.md forbids introducing, and the wrong
     // one twice over here, since the sentence before it had just named the
     // Station. Naming it again is what the map does.
+    if (effectivePendingExchange?.exchangeAttempt)
+      return `Pairing with ${serverLabel} may have granted access without saving it, and won’t be retried. On that computer, revoke that access, then start again.`;
     const waitMessage = waitingForTransport
-      ? `Waiting to reach ${serverLabel} again. The access request is still open and will resume automatically.`
+      ? `Waiting to reach ${serverLabel} again. The request stays open.`
       : pairingStateCopy(
           pendingApproval.requestKind === 'code'
             ? 'waiting-for-code-approval'
             : 'waiting-for-approval',
           serverLabel,
         ).message;
-    return `Preparing the connection to ${serverLabel}. ${waitMessage}`;
-  }, [pendingApproval, serverLabel, waitingForTransport]);
+    return waitMessage;
+  }, [
+    pendingApproval,
+    serverLabel,
+    waitingForTransport,
+    effectivePendingExchange?.exchangeAttempt,
+  ]);
 
   useEffect(() => {
     if (!pendingApprovalMessage) {
@@ -524,9 +525,16 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
       message: pendingApprovalMessage,
       actions: [
         {
-          label: 'Cancel request',
+          label: effectivePendingExchange?.exchangeAttempt
+            ? 'Review connection'
+            : 'Cancel request',
           variant: 'secondary',
           onClick: () => {
+            if (effectivePendingExchange?.exchangeAttempt) {
+              setConnectionModalMode('request-access');
+              setShowModal(true);
+              return;
+            }
             clearPendingExchange(
               effectivePendingExchange?.endpoint ??
                 activeConnection?.url ??
@@ -543,7 +551,6 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
           },
         },
       ],
-      dragRegion: true,
     });
     return () => {
       bannerStore.dismiss(PAIRING_APPROVAL_BANNER_ID);
@@ -556,9 +563,10 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     effectivePendingExchange?.endpoint,
     effectivePendingExchange?.requestId,
     effectivePendingExchange?.requestKind,
+    effectivePendingExchange?.exchangeAttempt,
   ]);
 
-  // archive#1958: credential pairing chrome → BannerHost under Header.
+  // Credential repair remains available in Station details.
   // Plain reachability while the shell is up is ConnectionBannerSource
   // (same slot) — do not dual-mount a second reconnect strip.
   const credentialFailure =
@@ -581,15 +589,8 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   // stack an instruction to begin pairing again underneath it. A terminal
   // pairing failure is the same thing one step later — it carries its own
   // "Request access again" action — and it is not just redundant underneath:
-  // both banners sit in the connectionBlocking band, where the stack shows one
-  // front banner and collapses the rest, and `chrome:onboarding:credential`
-  // wins that band's id tie-break over `chrome:onboarding:pairing-failure`
-  // (archive#3387).
   const showCredentialChrome =
-    !credentialNoticeDismissed &&
-    credentialRequired &&
-    !pendingApproval &&
-    !pairingFailure;
+    credentialRequired && !pendingApproval && !pairingFailure;
 
   useEffect(() => {
     if (showCredentialChrome) {
@@ -597,23 +598,16 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
         id: BANNER_IDS.credential,
         priority: BANNER_PRIORITY.connectionBlocking,
         tone: 'blocked',
-        // The occurrence is the same evidence string the component's own
-        // durable dismissal keys on: connection id + last success + credential
-        // state. Without it the store suppressed on id alone, permanently —
-        // a NEW credential incident on the same connection stayed hidden
-        // behind an old dismissal (archive#2557 finding).
         occurrence: connectionEvidence,
         message: credentialMessage,
         detail: credentialDetail,
-        dragRegion: true,
-        dismissible: true,
-        dismissAriaLabel: 'Dismiss pairing reminder',
-        onDismiss: () => setDismissedCredentialNotice(connectionEvidence),
+        dismissible: false,
         actions: [
           {
             label: 'Request access',
+            closesDetails: true,
             onClick: () => {
-              setConnectionModalMode('list');
+              setConnectionModalMode('request-access');
               setShowModal(true);
             },
             variant: 'secondary',
@@ -653,6 +647,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
       actions: [
         {
           label: 'Request access again',
+          closesDetails: true,
           onClick: () => {
             setPairingFailure(null);
             setConnectionModalMode('list');
@@ -670,27 +665,10 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     pairingFailureSubjectName,
   ]);
 
-  // Same-user local self-authorization (archive#1715, revised archive#1818
-  //). The desktop shell's OWN local-service Station is the one case
-  // where "needs a credential" is never a user problem to solve — the
-  // native broker refuses every request until
-  // `station_profile_authorize_active` has run at least once (see
-  // `authorized_profile_for_origin` in `src-desktop/src/lib.rs`), and a
-  // freshly installed local Station has no credential to authorize yet.
-  // `pendingLocalSelfProvisionProfileName` answers `undefined` for every
-  // saved Station shape except the process-selected Station with `localService` set — it
-  // deliberately does NOT also check `credentialRef`/`configurationState`
-  // (archive#1818: a stranded profile after a bundle-swap keychain ACL
-  // mismatch has both set, exactly like a healthy one, and the webview
-  // cannot read the keychain to tell the difference). This effect therefore
-  // runs, and `station_local_self_provision` (the Rust command) decides
-  // eligibility fresh every boot: it refuses instantly and harmlessly for an
-  // already-working profile, and re-provisions for one whose credential
-  // cannot actually be read back. One attempt per app boot (the imported
-  // function's own module latch) either way; on success, re-read the shared
-  // saved Station store the native command just wrote and force a genuinely new
-  // status attempt so the app proceeds straight past the pairing screen it
-  // would otherwise have shown.
+  // Native code resolves local ownership and grant eligibility; the renderer
+  // cannot infer either from saved credential metadata (archive#1715/#1818).
+  // The module latch bounds boot attempts. After native success, refresh the
+  // saved profile and status so onboarding observes the new authorization.
   useEffect(() => {
     if (!profile.isDesktop) return;
     let cancelled = false;
@@ -710,17 +688,10 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     };
   }, [profile.isDesktop, forceRefetch]);
 
-  // archive#1866: re-provisioning reachable from an authentication refusal.
-  // The boot-time effect above deliberately does NOT fire when the credential
-  // reads back as `Readable` — which proves only that the bytes are in the
-  // keychain, not that the server will honour them. A server restart
-  // invalidates the local grant while it stays perfectly readable, so the
-  // app would strand with no recovery. When the transport observes a coded
-  // auth rejection (`authentication-failed`) for the active local-service
-  // profile, the native side records the rejection (401/403) and this effect
-  // fires the one-shot rejection-retry — `retryLocalSelfProvisionAfterRejection`
-  // has its OWN per-boot guard (independent of `attemptedThisBoot`) so a
-  // genuinely-rejecting server cannot cause a mint loop.
+  // A readable credential may be rejected after a server restart. Auth
+  // failure gets one additional native check, independent of the boot latch
+  // (archive#1866). Native eligibility still decides whether to replace it;
+  // the transport failure alone is not mint authority.
   const observedAuthFailure =
     activeConnection?.lastError?.reason === 'authentication-failed';
   useEffect(() => {
@@ -759,38 +730,40 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
       setupVisible: setupBannerVisible,
       setupContent: setupBannerContent,
       pathname,
+      conversationOpen: Boolean(activeChat),
     }) && setupBannerContent;
-  const connectedNotice: ReactNode = setupLauncherVisible ? (
-    <SetupLauncher
-      content={setupBannerContent}
-      firstRun={
-        config?.firstRun?.status === 'pending' ||
-        config?.firstRun?.status === 'skipped'
-      }
-      onOpenTarget={() => {
-        // Going to Connections to *do* the setup is not evidence the setup
-        // worked — defer for this page lifetime instead of recording a
-        // permanent dismissal (archive#794).
-        deferSetupBanner();
-        navigate(
-          setupBannerContent.actionTarget === 'providers'
-            ? getPathForView({ type: 'connections-models' })!
-            : setupBannerContent.actionTarget === 'engine' &&
-                setupBannerContent.engineConnectionId
-              ? getPathForView({
-                  type: 'connections-engine-edit',
-                  id: setupBannerContent.engineConnectionId,
-                })!
-              : getPathForView({ type: 'connections' })!,
-        );
-      }}
-      onOpenHub={() => {
-        deferSetupBanner();
-        navigate(getPathForView({ type: 'connections' })!);
-      }}
-      onDismiss={dismiss}
-    />
-  ) : null;
+  const connectedNotice: ReactNode =
+    !unconfiguredPhone && setupLauncherVisible ? (
+      <SetupLauncher
+        content={setupBannerContent}
+        firstRun={
+          config?.firstRun?.status === 'pending' ||
+          config?.firstRun?.status === 'skipped'
+        }
+        onOpenTarget={() => {
+          // Going to Connections to *do* the setup is not evidence the setup
+          // worked — defer for this page lifetime instead of recording a
+          // permanent dismissal (archive#794).
+          deferSetupBanner();
+          navigate(
+            setupBannerContent.actionTarget === 'providers'
+              ? getPathForView({ type: 'connections-models' })!
+              : setupBannerContent.actionTarget === 'engine' &&
+                  setupBannerContent.engineConnectionId
+                ? getPathForView({
+                    type: 'connections-engine-edit',
+                    id: setupBannerContent.engineConnectionId,
+                  })!
+                : getPathForView({ type: 'connections' })!,
+          );
+        }}
+        onOpenHub={() => {
+          deferSetupBanner();
+          navigate(getPathForView({ type: 'connections' })!);
+        }}
+        onDismiss={dismiss}
+      />
+    ) : null;
 
   // THE THIRD OVERLAY, under the same one-at-a-time rule as the other two.
   // It is mounted after `{children}`, so wherever it renders it renders on
@@ -817,15 +790,6 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
             status: bundledStatus,
             onRestart: handleRestartBundledServer,
             onOpenConnections: openConnectionList,
-          }}
-        />
-      )}
-      {profile.isMobile && !hasRealSavedConnection(connections) && (
-        <LazyBoundary
-          load={loadMobileConnectionBanner}
-          pending={null}
-          componentProps={{
-            onOpen: openConnectionList,
           }}
         />
       )}
@@ -879,12 +843,18 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
             },
             onConnectionWaiting: () => setWaitingForTransport(true),
             onApprovalWaiting: () => setWaitingForTransport(false),
+            onIndeterminate: (held: PendingPairingExchange) => {
+              setWaitingForTransport(false);
+              setPendingExchange((current) =>
+                current?.exchangeAttempt ? current : held,
+              );
+            },
           }}
         />
       )}
       {connectedNotice}
       {children}
-      {usageTelemetryDisclosureMounted ? (
+      {!unconfiguredPhone && usageTelemetryDisclosureMounted ? (
         <UsageTelemetryDisclosure firstRun />
       ) : null}
       {stationSetup ? (
@@ -948,6 +918,11 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
           setStationSetupOpen(true);
         }}
         initialPanel={connectionModalMode}
+        renderConnectionDetails={(connection) =>
+          connection.id === activeConnection?.id ? (
+            <StationExtensionsAccess />
+          ) : null
+        }
         listFooterContent={
           profile.isTauri ? <NativeRelayRouteSetupFooter /> : undefined
         }
@@ -967,6 +942,9 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
         authenticatedRequest={
           profile.isDesktop ? authenticatedFetch : undefined
         }
+        renderPairingEndpointSuggestions={(input) => (
+          <PairingEndpointSuggestions {...input} />
+        )}
         onReconnectLocalService={
           profile.isDesktop ? reconnectLocalService : undefined
         }

@@ -193,9 +193,7 @@ describe('AttentionCard — dismiss affordance', () => {
 
     const dismissButton = screen.getByRole('button', { name: 'Dismiss' });
     expect(dismissButton.className).toContain('attention-dismiss-link');
-    expect(dismissButton.className).not.toContain(
-      'attention-item__action--ghost',
-    );
+    expect(dismissButton.className).not.toContain('notice-action--ghost');
 
     dismissButton.click();
     expect(dismiss).toHaveBeenCalledWith('notif-1');
@@ -208,9 +206,7 @@ describe('AttentionCard — dismiss affordance', () => {
 
     const dismissButton = screen.getByRole('button', { name: 'Dismiss' });
     expect(dismissButton.className).toContain('attention-dismiss-link');
-    expect(dismissButton.className).not.toContain(
-      'attention-item__action--ghost',
-    );
+    expect(dismissButton.className).not.toContain('notice-action--ghost');
 
     dismissButton.click();
     expect(dismiss).toHaveBeenCalledWith('notif-1');
@@ -222,7 +218,7 @@ describe('AttentionCard — dismiss affordance', () => {
     );
 
     const dismissButton = screen.getByRole('button', { name: 'Dismiss' });
-    expect(dismissButton.className).toContain('attention-item__action--ghost');
+    expect(dismissButton.className).toContain('notice-action--ghost');
   });
 
   // archive#1548: the kind that exists because archive#1296's test comment claimed

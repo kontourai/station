@@ -25,12 +25,14 @@ import type {
   UpdateEvidence,
   UpdateFields,
 } from '@kontourai/station-contracts/knowledge-store';
+import { isSafePathSegment } from '../../knowledge-index/path-safety.js';
 import { createLogger } from '../../utils/logger.js';
 import {
   KnowledgeRecordNotFoundError,
   KnowledgeStoreCorruptionError,
   MissingEvidenceError,
 } from '../errors.js';
+import { assertKnowledgeWriteAuthority } from '../knowledge-write-authority.js';
 import { isValidCategory } from './shared/category.js';
 import { KnowledgeFileTransactions } from './shared/file-transactions.js';
 import { freshnessPatch } from './shared/freshness.js';
@@ -85,6 +87,7 @@ export class KitDefaultStoreAdapter implements KnowledgeStoreAdapter {
     this.recordsDir = join(this.root, 'records');
     this.graphPath = join(this.root, 'graph-index.json');
     this.aliasPath = join(this.root, 'alias-index.json');
+    assertKnowledgeWriteAuthority(this.root);
     mkdirSync(this.recordsDir, { recursive: true });
     this.files = new KnowledgeFileTransactions(this.root);
   }
@@ -332,6 +335,16 @@ export class KitDefaultStoreAdapter implements KnowledgeStoreAdapter {
     }
 
     const id = input.id || randomUUID();
+    if (!isSafePathSegment(id)) {
+      throw new MissingEvidenceError(
+        'create: record id must be a safe single path segment',
+      );
+    }
+    if (id.length > 200) {
+      throw new MissingEvidenceError(
+        'create: record id must be at most 200 characters',
+      );
+    }
     if (this.readRecord(id)) {
       throw new MissingEvidenceError('create: record id already exists');
     }

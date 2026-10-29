@@ -6,25 +6,32 @@ export const TOKENIZER = Object.freeze({
   package: 'js-tiktoken@1.0.21',
   encoding: 'o200k_base',
 });
+// The root loads into every session. These ceilings lock in the slimmed root
+// with roughly a third of headroom; they fail only on growth past it.
 export const ROOT_BUDGET = Object.freeze({
-  bytes: 8_192,
-  lines: 140,
-  tokens: 2_048,
+  bytes: 6_144,
+  lines: 100,
+  tokens: 1_536,
 });
 export const SCOPE_BUDGET = Object.freeze({
   bytes: 8_192,
   lines: 160,
   tokens: 2_048,
 });
+// Root plus one scope: the sum of the two ceilings above.
 export const COMBINED_BUDGET = Object.freeze({
-  bytes: 16_384,
-  lines: 300,
-  tokens: 4_096,
+  bytes: 14_336,
+  lines: 260,
+  tokens: 3_584,
 });
 
 export const SCOPES = Object.freeze([
   Object.freeze({ directory: 'src-server', routes: ['src-server/'] }),
-  Object.freeze({ directory: 'src-ui', routes: ['src-ui/'] }),
+  // Pane packages render inside the shell and share its UI brief.
+  Object.freeze({
+    directory: 'src-ui',
+    routes: ['src-ui/', 'packages/basis-pane/', 'packages/board-pane/'],
+  }),
   Object.freeze({
     directory: 'scripts',
     routes: ['scripts/', '.github/', 'patches/'],
@@ -61,7 +68,7 @@ export const GENERATED_BLOCK_OWNERS = Object.freeze({
   'verification-scheduling': 'docs/guides/testing.md',
   'verification-policy': 'docs/guides/testing.md',
 });
-export const GOVERNANCE_BLOCK = `<!-- veritas:governance-block:start -->\nThis repo uses Veritas for AI governance. Read \`.veritas/GOVERNANCE.md\` before making changes.\nAfter changes, run \`veritas readiness\` and address any FAIL lines before finishing.\n<!-- veritas:governance-block:end -->\n`;
+export const GOVERNANCE_BLOCK = `<!-- veritas:governance-block:start -->\nThis repo uses Veritas for AI governance. Read \`.veritas/GOVERNANCE.md\` before making changes.\nAfter changes, run \`npx --no @kontourai/veritas readiness\` and address any FAIL lines before finishing.\nIf npx says the package is missing, install this repo's dependencies, adding \`@kontourai/veritas\` as a development dependency if it is not one, and run it again.\n<!-- veritas:governance-block:end -->\n`;
 export const ROOT_UNIVERSAL_MARKERS = Object.freeze([
   'Diagnose the failure rather than rerun-to-green',
   'signal to diagnose, not a request to rerun until green',

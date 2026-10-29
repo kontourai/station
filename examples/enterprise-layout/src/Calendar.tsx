@@ -401,7 +401,6 @@ export function Calendar(_props: CalendarProps) {
   // biome-ignore lint/correctness/useExhaustiveDependencies: fetchMeetingDetails recreated each render; omitting avoids infinite loop
   useEffect(() => {
     if (selectedEventId && events.length > 0) {
-      // eslint-disable-next-line react-hooks/exhaustive-deps
       fetchMeetingDetails(selectedEventId);
       if (isUserSelected) {
         setTimeout(() => {

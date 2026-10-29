@@ -1,0 +1,7 @@
+{
+  "revision": "5d827212019fc9fa0b9b5a626e6ecbcf55863824",
+
+  "notes": [
+    {"path":"src-ui/AGENTS.md","note":"Reviewed after docs/guides/testing.md gained the server update check in the gallery paragraph's list of mocked live endpoints (#3851). This document only routes to testing.md or cites other parts of it; none of its routing or claims depends on that list, so they still hold.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

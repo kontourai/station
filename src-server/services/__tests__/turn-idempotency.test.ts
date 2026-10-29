@@ -1,34 +1,186 @@
-import { describe, expect, test } from 'vitest';
+import { DatabaseSync } from 'node:sqlite';
+import type { KernelCommand, OwnerLiveness } from '@kontourai/monument';
+import { openSqliteKernelStorage } from '@kontourai/monument/sqlite';
+import { afterEach, describe, expect, test } from 'vitest';
+import { ORCHESTRATION_EVENT_STORE_MIGRATION } from '../../domain/migrations/003-orchestration-events.js';
+import {
+  createSqliteTurnDedupPersistence,
+  STATION_TURN_DEDUP_KERNEL_TABLES,
+} from '../orchestration/sqlite-turn-dedup-persistence.js';
 import {
   awaitTurnResolution,
   type TurnIdempotencyPersistence,
-  type TurnIdempotencyRecord,
   TurnIdempotencyStore,
 } from '../turn-idempotency.js';
 
-/** Trivial in-memory persistence — proves the ALGORITHM independent of any storage medium. */
-class InMemoryTurnIdempotencyPersistence implements TurnIdempotencyPersistence {
-  private readonly data = new Map<string, TurnIdempotencyRecord>();
+const databases: DatabaseSync[] = [];
+afterEach(() => {
+  for (const database of databases.splice(0)) database.close();
+});
 
-  read(key: string): TurnIdempotencyRecord | undefined {
-    return this.data.get(key);
+/**
+ * Station's own dedup tables on an in-memory connection, behind Monument's
+ * adapter: the algorithm independent of any file. The algorithm itself is
+ * Monument's, so this proves Station's use of it (the owner it records, the
+ * tracking it asks for, how it maps each answer); the rules have their own
+ * conformance suite.
+ */
+class InMemoryTurnIdempotencyPersistence implements TurnIdempotencyPersistence {
+  private readonly database = new DatabaseSync(':memory:');
+  private readonly persistence: TurnIdempotencyPersistence;
+
+  constructor() {
+    databases.push(this.database);
+    this.database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
+    this.persistence = createSqliteTurnDedupPersistence({
+      db: this.database,
+    });
   }
 
-  update<T>(
+  execute<C extends KernelCommand>(command: C, liveness: OwnerLiveness) {
+    return this.persistence.execute(command, liveness);
+  }
+
+  /** The stored record, as Monument decodes it. */
+  read(key: string) {
+    const read = this.persistence.execute(
+      { type: 'turnDedup.read', key },
+      () => 'unknown',
+    );
+    return read.kind === 'found' ? read.record : undefined;
+  }
+
+  prepare(
     key: string,
-    updater: (current: TurnIdempotencyRecord | undefined) => {
-      record?: TurnIdempotencyRecord;
-      result: T;
-    },
-  ): T {
-    const decision = updater(this.data.get(key));
-    if (decision.record) this.data.set(key, decision.record);
-    else this.data.delete(key);
-    return decision.result;
+    disposition?: 'cancelled' | 'definitively-refused',
+  ): void {
+    const row = this.read(key);
+    if (!row?.owner) throw new Error('Expected the actual claimed owner.');
+    const kernel = openSqliteKernelStorage({
+      database: this.database,
+      tables: {
+        turnDedup: STATION_TURN_DEDUP_KERNEL_TABLES.turnDedup,
+        requestKeys: 'unused',
+        inbox: 'unused',
+      },
+    });
+    const context = { liveness: () => 'unknown' as const };
+    const at = (value: number) => new Date(value).toISOString();
+    const intent = {
+      invocationId: `invocation:${key}`,
+      inputDigest: 'input',
+      intentDigest: 'envelope',
+      bodyRef: 'body',
+      dedupKey: key,
+    };
+    expect(
+      kernel.executeSync(
+        {
+          type: 'turnBoundary.create',
+          boundaryId: key,
+          threadId: 'thread',
+          state: 'reserved',
+          purpose: 'turn',
+          owner: row.owner,
+          now: at(2),
+        },
+        context,
+      ),
+    ).toEqual({ kind: 'applied' });
+    expect(
+      kernel.executeSync(
+        {
+          type: 'turnBoundary.prepare',
+          boundaryId: key,
+          ownerId: row.owner.id,
+          dedupOwnerId: row.owner.id,
+          intent,
+          now: at(3),
+        },
+        context,
+      ),
+    ).toEqual({ kind: 'applied' });
+    if (disposition === undefined) return;
+    if (disposition === 'definitively-refused')
+      expect(
+        kernel.executeSync(
+          {
+            type: 'turnBoundary.beginInvocation',
+            boundaryId: key,
+            ownerId: row.owner.id,
+            dedupOwnerId: row.owner.id,
+            intent,
+            now: at(4),
+          },
+          context,
+        ),
+      ).toEqual({ kind: 'applied' });
+    expect(
+      kernel.executeSync(
+        {
+          type:
+            disposition === 'cancelled'
+              ? 'turnBoundary.cancelPrepared'
+              : 'turnBoundary.recordDefinitiveRefusal',
+          boundaryId: key,
+          intent,
+          boundary: {
+            owner: row.owner,
+            createdAt: at(2),
+            updatedAt: at(disposition === 'cancelled' ? 3 : 4),
+          },
+          dedup: {
+            owner: row.owner,
+            createdAt: row.createdAt,
+            updatedAt: at(3),
+          },
+          settlementId: `settlement:${key}`,
+          now: at(5),
+        },
+        context,
+      ),
+    ).toEqual({ kind: 'applied' });
+  }
+
+  /** A row written by something that is not this store, in Station's encoding. */
+  seed(key: string, owner: object): void {
+    this.database
+      .prepare(
+        'INSERT INTO orchestration_turn_dedup (dedup_key, value, created_at, owner_json) VALUES (?, NULL, 0, ?)',
+      )
+      .run(key, JSON.stringify(owner));
   }
 }
 
 describe('TurnIdempotencyStore (station#1224 offline slice 2 — shared idempotency algorithm)', () => {
+  test.each(['cancelled', 'definitively-refused'] as const)(
+    'a %s prepared key refuses a new claim and inspection without becoming a provider result',
+    (disposition) => {
+      const persistence = new InMemoryTurnIdempotencyPersistence();
+      const store = new TurnIdempotencyStore(persistence);
+      expect(store.claim('settled-key', 1, 'tracked')).toEqual({
+        claimed: true,
+      });
+      persistence.prepare('settled-key', disposition);
+      const before = persistence.read('settled-key');
+      for (const operation of [
+        () => store.claim('settled-key'),
+        () => store.inspect('settled-key'),
+      ]) {
+        try {
+          operation();
+          throw new Error('Expected settled-key refusal.');
+        } catch (error) {
+          expect(error).toMatchObject({
+            code: 'client_turn_settled',
+            disposition,
+          });
+        }
+      }
+      expect(persistence.read('settled-key')).toEqual(before);
+      expect(before?.value).toBeNull();
+    },
+  );
   test('a fresh key claims successfully', () => {
     const store = new TurnIdempotencyStore(
       new InMemoryTurnIdempotencyPersistence(),
@@ -149,6 +301,24 @@ describe('TurnIdempotencyStore (station#1224 offline slice 2 — shared idempote
       probe: () => ({ state: 'dead' as const }),
     };
 
+    test('a prepared linked claim with a dead owner refuses ordinary replay without reclaiming', () => {
+      const persistence = new InMemoryTurnIdempotencyPersistence();
+      const first = new TurnIdempotencyStore(persistence, alive);
+      expect(first.claim('prepared-key', 1, 'tracked')).toEqual({
+        claimed: true,
+      });
+      persistence.prepare('prepared-key');
+      const before = persistence.read('prepared-key');
+      expect(
+        new TurnIdempotencyStore(persistence, dead).claim(
+          'prepared-key',
+          4,
+          'tracked',
+        ),
+      ).toEqual({ claimed: false, indeterminate: true });
+      expect(persistence.read('prepared-key')).toEqual(before);
+    });
+
     test('a tracked claim whose dead owner never began invoking is reclaimed', () => {
       const persistence = new InMemoryTurnIdempotencyPersistence();
       new TurnIdempotencyStore(persistence, alive).claim('k', 0, 'tracked');
@@ -200,19 +370,12 @@ describe('TurnIdempotencyStore (station#1224 offline slice 2 — shared idempote
 
     test('a dead owner row with no invocation record is indeterminate', () => {
       const persistence = new InMemoryTurnIdempotencyPersistence();
-      persistence.update('k', () => ({
-        record: {
-          value: null,
-          createdAt: 0,
-          owner: {
-            pid: 999_999_999,
-            birth: 'b',
-            token: 't',
-            identityKind: 'exact',
-          },
-        },
-        result: undefined,
-      }));
+      persistence.seed('k', {
+        pid: 999_999_999,
+        birth: 'b',
+        token: 't',
+        identityKind: 'exact',
+      });
       expect(
         new TurnIdempotencyStore(persistence, dead).claim('k', 1, 'tracked'),
       ).toEqual({ claimed: false, indeterminate: true });

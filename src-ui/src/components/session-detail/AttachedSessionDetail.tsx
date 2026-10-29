@@ -15,7 +15,17 @@ import {
 } from '@kontourai/station-sdk';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { useMutation } from '@tanstack/react-query';
-import { useEffect, useId, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
+import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import { navigationStore } from '../../contexts/navigation-store';
 import { useToast } from '../../contexts/ToastContext';
 import { conversationPartToContentParts } from '../../hooks/orchestration/conversationTranscriptParts';
@@ -30,6 +40,7 @@ import {
   type AttachedSessionContinuationRead,
   browserAttachedSessionContinuationStore,
 } from '../../lib/attached-session-continuation-store';
+import { copyToClipboard } from '../../lib/clipboard';
 import type { ChatMessage } from '../../types';
 import { displayProvider, sessionTitle } from '../../utils/sessionDisplay';
 import { isStationTransportFailure } from '../../utils/stationTransportFailure';
@@ -80,14 +91,18 @@ function withoutApprovalBinding(part: TranscriptPart): TranscriptPart {
     approvalId: _approvalId,
     approvalThreadId: _approvalThreadId,
     approvalEventId: _approvalEventId,
+    approvalContentEvent: _approvalContentEvent,
     approvalToolName: _approvalToolName,
     approvalSessionGrant: _approvalSessionGrant,
+    approvalServerGrant: _approvalServerGrant,
     ...rest
   } = part as TranscriptPart & Record<string, unknown>;
   return rest as TranscriptPart;
 }
 
 export function AttachedSessionDetail({
+  draftScope,
+  handoffScope,
   apiBase,
   chatFontSize = 14,
   showHeader = false,
@@ -110,6 +125,8 @@ export function AttachedSessionDetail({
   onRetryCapabilityRecovery,
   visualViewport,
 }: {
+  draftScope?: string;
+  handoffScope?: string;
   /**
    * #3552: the same chat everywhere. Activity's pane has no surrounding
    * chrome, so it shows the conversation's name and origin above it; the dock
@@ -121,7 +138,9 @@ export function AttachedSessionDetail({
    * its Agent's chat. A host that is not the dock passes this, and Send hands
    * the exact draft to the dock instead of continuing here.
    */
-  onContinueInChat?: (draft: string) => void;
+  onContinueInChat?:
+    | ((draft: string) => void)
+    | ((draft: string) => boolean | Promise<boolean>);
   openingContinuation?: boolean;
   continuationCreated?: boolean;
   onLoadOlder?: () => Promise<void>;
@@ -219,8 +238,43 @@ export function AttachedSessionDetail({
   );
   const [replyRequested, setReplyRequested] = useState(false);
   const unavailableReasonId = useId();
-  const [draft, setDraft] = useState('');
+  const [localDraft, setLocalDraft] = useState('');
+  const savedDraft = useSyncExternalStore(chatDraftsStore.subscribe, () =>
+    draftScope !== undefined
+      ? chatDraftsStore.getActivityDraft(draftScope, session.threadId)
+      : '',
+  );
+  const draft = draftScope !== undefined ? savedDraft : localDraft;
+  const currentDraft = useRef(draft);
+  useLayoutEffect(() => {
+    currentDraft.current = draft;
+  }, [draft]);
+  const setDraft = useCallback(
+    (value: string) => {
+      currentDraft.current = value;
+      if (draftScope !== undefined)
+        chatDraftsStore.setActivityDraft(draftScope, session.threadId, value);
+      else setLocalDraft(value);
+    },
+    [draftScope, session.threadId],
+  );
   const confirmedDraft = useRef('');
+  const handoffIdentity = JSON.stringify([
+    apiBase,
+    draftScope,
+    session.threadId,
+  ]);
+  const handoff = useMemo(
+    () => ({ identity: handoffIdentity, alive: false }),
+    [handoffIdentity],
+  );
+  const [handoffPending, setHandoffPending] = useState(false);
+  useLayoutEffect(() => {
+    handoff.alive = true;
+    return () => {
+      handoff.alive = false;
+    };
+  }, [handoff]);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const transcriptScrollRef = useRef<HTMLDivElement>(null);
   const transcriptBodyRef = useRef<HTMLDivElement>(null);
@@ -265,8 +319,10 @@ export function AttachedSessionDetail({
                 'Starter correlation is unavailable, so no continuation was requested.',
               retryable: true,
             });
+          // `return await`, not `return`: a rejection must land in the
+          // classifying `catch` below, not skip it unclassified (#2722).
           if (status.state === 'bound')
-            return adoptOrchestrationSession({
+            return await adoptOrchestrationSession({
               sourceThreadId: session.threadId,
               apiBase,
               intent: adoptionIntent.current,
@@ -471,12 +527,31 @@ export function AttachedSessionDetail({
     </>
   );
   const composerDisabled =
-    !continuationSupported || adoption.isPending || continued;
-  const requestSend = () => {
+    !continuationSupported || adoption.isPending || continued || handoffPending;
+  const requestSend = async () => {
     if (!draft.trim() || composerDisabled) return;
     if (onContinueInChat) {
-      onContinueInChat(draft);
-      setDraft('');
+      const held = handoff;
+      setHandoffPending(true);
+      try {
+        const submittedDraft = draft;
+        const result = onContinueInChat(submittedDraft);
+        const accepted = result instanceof Promise ? await result : result;
+        const latest =
+          draftScope === undefined
+            ? currentDraft.current
+            : chatDraftsStore.getActivityDraft(draftScope, session.threadId);
+        if (held.alive && accepted !== false && latest === submittedDraft)
+          setDraft('');
+      } catch {
+        if (held.alive)
+          showToast(
+            'Could not open this conversation. Your message is still here.',
+            session.threadId,
+          );
+      } finally {
+        if (held.alive) setHandoffPending(false);
+      }
       return;
     }
     setReplyRequested(true);
@@ -487,7 +562,10 @@ export function AttachedSessionDetail({
   useEffect(() => {
     if (handsOff) return;
     const receive = () => {
-      const handedOver = takeAttachedContinuationHandoff(session.threadId);
+      const handedOver = takeAttachedContinuationHandoff(
+        session.threadId,
+        handoffScope,
+      );
       if (handedOver === null) return;
       setDraft(handedOver);
       // If this reader cannot continue, its reason shows above the composer;
@@ -496,7 +574,13 @@ export function AttachedSessionDetail({
     };
     receive();
     return subscribeAttachedContinuationHandoff(receive);
-  }, [handsOff, session.threadId, continuationSupported]);
+  }, [
+    handsOff,
+    session.threadId,
+    continuationSupported,
+    setDraft,
+    handoffScope,
+  ]);
 
   return (
     <section
@@ -576,11 +660,6 @@ export function AttachedSessionDetail({
         tabIndex={-1}
         aria-label="Conversation messages"
         ref={transcriptScrollRef}
-        onPointerDown={pauseFollowing}
-        onKeyDown={(event) => {
-          if (['ArrowUp', 'PageUp', 'Home'].includes(event.key))
-            pauseFollowing();
-        }}
       >
         {!atLatest && (
           <div className="session-transcript__toolbar responsive-surface-actions">
@@ -657,14 +736,16 @@ export function AttachedSessionDetail({
                   showReasoning={false}
                   showToolDetails={false}
                   onCopy={(text) => {
-                    void navigator.clipboard
-                      .writeText(text)
-                      .catch(() =>
+                    // copyToClipboard also answers false where there is no
+                    // clipboard at all (a plain http:// origin), which the
+                    // direct writeText call threw on instead of toasting.
+                    void copyToClipboard(text).then((copied) => {
+                      if (!copied)
                         showToast(
                           'Could not copy this message.',
                           session.threadId,
-                        ),
-                      );
+                        );
+                    });
                   }}
                 />
               );

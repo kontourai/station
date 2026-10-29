@@ -68,8 +68,6 @@ pub enum ReadinessInput {
     /// Native recovery proof for an attached/non-sidecar owner. It never
     /// implies that React mounted.
     NativeRecoveryCommitted,
-    /// Compatibility renderer recovery commit; the caller is mounted.
-    RecoveryUiCommitted,
     RendererPageStarted,
     RendererMounted,
     ServerLost {
@@ -248,13 +246,6 @@ pub fn transition(
         ReadinessInput::NativeRecoveryCommitted => {
             if matches!(next.phase, ReadinessPhase::Waiting) && !next.owned_sidecar {
                 next.identity_committed = true;
-                maybe_reveal(&mut next, &mut effects);
-            }
-        }
-        ReadinessInput::RecoveryUiCommitted => {
-            if matches!(next.phase, ReadinessPhase::Waiting) && !next.owned_sidecar {
-                next.identity_committed = true;
-                next.renderer_mounted = true;
                 maybe_reveal(&mut next, &mut effects);
             }
         }

@@ -31,12 +31,16 @@ export function useProjectSidebarState() {
         document.activeElement instanceof HTMLElement
           ? document.activeElement
           : null;
+      if (!isMobile) {
+        setDeviceSetting('projectSidebarCollapsed', !collapsed);
+        return;
+      }
       mobileTriggerRef.current = eventTrigger ?? activeTrigger;
       setMobileOpen((prev) => !prev);
     };
     window.addEventListener('toggle-sidebar', handler);
     return () => window.removeEventListener('toggle-sidebar', handler);
-  }, []);
+  }, [isMobile, collapsed, setDeviceSetting]);
 
   const effectiveCollapsed = isMobile ? !mobileOpen : collapsed;
 

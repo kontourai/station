@@ -189,4 +189,18 @@ describe('#3390 live input request record', () => {
     );
     expect(shellRecords()).toEqual([]);
   });
+
+  test('a long form message is recorded as its first line, as the projection does', () => {
+    handleRequestOpenedEvent(
+      'http://station.test',
+      opened('plan-1', {
+        inputRequest: {
+          ...form,
+          message:
+            'Session storage on SQLite\n\n# Migrate\n\nA long plan body.',
+        },
+      }),
+    );
+    expect(shellRecords()[0]?.message).toBe('Session storage on SQLite…');
+  });
 });

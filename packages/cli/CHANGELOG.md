@@ -1,5 +1,97 @@
 # @kontourai/station-cli
 
+## 0.11.0
+
+### Minor Changes
+
+- 5abbeaa: Add public host services for in-process plugins. `useShortcut` registers a shortcut in Station's shortcut registry, where it is listed in the shortcut list and Settings and suppressed under modals. `useShortcutScope` turns on a plugin-owned scope for `when`. `useHost()` provides `clipboard.writeText`, `openExternal` (http and https only), and Station's `prompt` and `confirm` dialogs. `useHostFacts()` returns the pane host's device facts.
+
+  Station refuses plugin shortcuts on the reserved command palette, Settings and shortcut-list chords and on the text-editing chords, registers them only for a verified installed plugin, ranks them below Station's own shortcuts, and namespaces their ids so they cannot replace Station's. Prompt and confirm dialogs name the requesting plugin; `openExternal` refuses URLs with credentials and opens the normalised URL. `useKeyboardShortcut` and `useKeyboardShortcuts` are deprecated in favour of `useShortcut`. `station dev` supplies all four new hooks with the same refusals.
+- 463e2e1: Add telemetry producer tokens for external monitoring producers. The CLI gains `station telemetry producers create|list|revoke` and a `--producer=<name>` filter on `station insights get` and `station insights events`. The SDK's `InsightsFilters` and `MonitoringEventFilters` take `producer`, and its Insights response carries `producerActivity` and `applied.producer`, which the `UsageInsights` contract now declares.
+
+### Patch Changes
+
+- b7d8c21: Environment-only product telemetry opt-in (`STATION_PRODUCT_TELEMETRY_ENABLED=true`, legacy `STATION_TELEMETRY_ENABLED=true`, or `STATION_TELEMETRY_TIER=full`) now supplies at most a Lite default, even with a disclosure receipt. Full delivery stops until the operator explicitly chooses Full in config and acknowledges the current disclosure in Settings. Lite sending is not implemented in this foundation. `station telemetry status` and Settings report the environment reason and migration guidance. Existing explicit stored choices still take precedence; DO_NOT_TRACK still forces Off.
+- b7d8c21: Reset Full telemetry acknowledgements because the earlier disclosure wording overstated anonymity. Full telemetry is pseudonymous, with a monthly installation hash. Disclosure wording revision 2 participates in the Full acknowledgement hash independently of the data inventory revision used by batches and probes, so existing receipts are stale and saved operator Full choices require acknowledgement of the accurate disclosure before sending resumes.
+
+  Under DO_NOT_TRACK, the disclosure offers Off, Lite, and Full operator choices without acknowledging. Nothing is sent while DNT is active; saving Full leaves it pending and requires confirmation after DNT is removed. Correct the legacy telemetryEnabled schema description and restrict operator Full migration guidance to the operator CLI status line.
+- 9285574: Send only completed previous-day Lite aggregates, show first-start notices for CLI and unattended services, and classify telemetry write guards as POST routes so startup coverage succeeds. Unknown channel, distribution and layout-customization facts remain explicit unknowns; version fields use the running build.
+
+  Scope monthly Full IDs to their publisher. Tier-lowering requests can include one fixed-enum reason before applying the lower choice, including Off; standalone feedback requires a recorded lowering within ten minutes. Inline and standalone reasons share a limit of one per publisher per UTC day. DNT suppresses both paths. Coalesce dropped outbox observations and retain independent age and byte bounds.
+
+  Upgrading immediately replaces the permanent `sha256(uuid)` Full `distinct_id` with a per-publisher monthly ID, breaking existing receiver installation continuity without a migration link. Round Full occurrence and admission timestamps down to the minute. Full omits unknown channels and maps beta to preview; Lite retains unknown. Senders validate daily versions as SemVer; receivers retain their configured release lists.
+
+## 0.10.0
+
+### Minor Changes
+
+- b97b819: Support repeatable `station delegate --attach=<path>` for new current-host tasks. Stage files with owner and digest checks, preserve exact bytes in the resolved workspace, and refuse unsupported hosts or over-limit batches instead of dropping files.
+
+  Use coded refusals, release staged bindings and remove workspace files after confirmed pre-effect failure, and retain files for uncertain invocations. Refuse unsupported attachment fields instead of stripping them; pre-check duplicate basenames and cancel CLI stages on failed dispatch.
+
+## 0.9.0
+
+### Minor Changes
+
+- 9e16733: Add explicit source-version requirements to portable delegation with
+  `--portable-project`, `--resource`, `--source-commit` and `--attempt-id`.
+  Add receiver-local `delegate attempt` lookup for existing grant-bound claims.
+  These operations do not transfer files, install dependencies, protect a checkout
+  against later writers or retry uncertain execution.
+
+### Patch Changes
+
+- 64d458b: Update the published dependency contracts together. Preserve Surface's reviewed-source `not-chosen` state and gap in Session inventory without inferring answer support, and use the MCP Apps 2 protocol packages in bundled consumers.
+
+  Also update dependency consumers in the private `@kontourai/station-basis-pane` and `@kontourai/station-board-pane` packages. These changes do not request private-package version bumps or tags.
+- b7d8c21: Environment-only product telemetry opt-in (`STATION_PRODUCT_TELEMETRY_ENABLED=true`, legacy `STATION_TELEMETRY_ENABLED=true`, or `STATION_TELEMETRY_TIER=full`) now supplies at most a Lite default, even with a disclosure receipt. Full delivery stops until the operator explicitly chooses Full in config and acknowledges the current disclosure in Settings. Lite sending is not implemented in this foundation. `station telemetry status` and Settings report the environment reason and migration guidance. Existing explicit stored choices still take precedence; DO_NOT_TRACK still forces Off.
+- b7d8c21: Reset Full telemetry acknowledgements because the earlier disclosure wording overstated anonymity. Full telemetry is pseudonymous, with a monthly installation hash. Disclosure wording revision 2 participates in the Full acknowledgement hash independently of the data inventory revision used by batches and probes, so existing receipts are stale and saved operator Full choices require acknowledgement of the accurate disclosure before sending resumes.
+
+  Under DO_NOT_TRACK, the disclosure offers Off, Lite, and Full operator choices without acknowledging. Nothing is sent while DNT is active; saving Full leaves it pending and requires confirmation after DNT is removed. Correct the legacy telemetryEnabled schema description and restrict operator Full migration guidance to the operator CLI status line.
+
+## 0.8.0
+
+### Minor Changes
+
+- 19aff2a: Add local Skill library inspection and revision-bound experience author review commands. Include a Station-curated attributed Matt Pocock engineering Agent Plugin example with portable dependency materialization and explicit workflow stops.
+
+### Patch Changes
+
+- db816d2: Desktop sidecars and installed services now share one atomic host-owner claim. `claimHostOwner` replaces
+  `claimDesktopSidecar` and refuses any other live Desktop sidecar or durable
+  service on the home under one registry lock, reaping provably stale sidecar
+  records and returning the winning owner. `station service install` reserves the home and records policy before backend
+  startup, restoring the prior entry on backend failure. The service supervisor
+  refuses missing policy or a live conflicting owner with a readable remedy,
+  and stops Station if readiness publication fails. It takes the installer's
+  reservation before starting Station. Desktop publishes its spawned child's
+  PID/birth before Listening, retaining the fence while a live orphan shuts down.
+  Direct server entrypoints remain unfenced; bare container `service run` now
+  refuses missing policy and needs an explicit policy-registration lifecycle.
+  `removeOwnedInstance` gains `removeWhenOwnerGone`.
+- 971eba6: `station plugins list`, `preview`, `install`, `update`, `remove` and
+  `registry install` report a request that hit its deadline as a timeout
+  instead of claiming Station is not reachable. A timed-out install or update
+  now says the write may still have been applied, rather than inviting a
+  blind retry. A refused connection is still reported as unreachable.
+- c6c7d4d: A request left open by an aborted turn is settled instead of staying pending.
+  `@kontourai/station-shared/request-settlement` exports
+  `requestIdsSettledByTurnAbort`, the fold the server and the CLI both apply.
+  `station approvals list` and `station operate` no longer offer such a request,
+  `approvals list` rows carry `requestEventId`, and `approvals respond` and
+  `operate` bind a decision to the request event they showed. The contracts
+  change is documentation of `request.opened.turnId` and of what a
+  `request.resolved` with status `cancelled` or `expired` means.
+- 884f77c: `station start --temp-home` and `station fresh --temp-home` no longer fail
+  when run by an agent Station spawned. That agent's `TMPDIR` is
+  `<home>/tmp/engine-spawn`, so the temporary home either was refused as a
+  non-leaf instance path or, under a self-rooted parent home, was admitted into
+  a tree the parent reaps by age. A candidate under the `tmp/` tree of
+  `STATION_HOME` or the resolved Station root, or one the runtime-home guard
+  refuses, is now removed and the home is created under `/tmp/station` instead
+  (not on Windows). When that retry is refused too, the error reports both
+  refusals. `createStationTempDirSync` accepts an optional `root`.
+
 ## 0.7.0
 
 ### Minor Changes

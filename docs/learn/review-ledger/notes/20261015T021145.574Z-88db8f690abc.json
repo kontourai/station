@@ -1,0 +1,7 @@
+{
+  "revision": "29a75cc05fd8d89614f63ee9c31acaeb45bd8cd2",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Fix round 1: traced shared VoiceOrb from StartComposer and ChatInputArea; unavailable speech and composer lock now keep a focusable aria-disabled trigger that opens the reason. Existing attachment, draft ownership and running-turn claims remain accurate; browser/provider/native limits remain explicit.","inputs":["docs/design/chat-composer.md"]}
+  ]
+}

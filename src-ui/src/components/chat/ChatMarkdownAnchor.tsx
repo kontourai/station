@@ -1,8 +1,23 @@
 import { isWorkspaceFilePreviewRelativePath } from '@kontourai/station-contracts/workspace-file-preview';
 import { usePullRequestContextQuery } from '@kontourai/station-sdk';
-import type { AnchorHTMLAttributes, MouseEvent, ReactNode } from 'react';
+import {
+  type AnchorHTMLAttributes,
+  type MouseEvent,
+  type ReactNode,
+  useContext,
+  useRef,
+} from 'react';
+import {
+  describeRelatedOpenRefusal,
+  openRelatedFilePreview,
+} from '../../contexts/openRelatedFilePreview';
+import {
+  type PaneRelationsValue,
+  usePaneRelations,
+} from '../../contexts/PaneRelationsContext';
 import { useRegionModelOptional } from '../../contexts/RegionModelContext';
 import { toastStore } from '../../contexts/ToastContext';
+import { UnsavedGuardOwnerContext } from '../../contexts/UnsavedGuardOwnerContext';
 import {
   openFilePreviewInRegion,
   openPullRequestInRegion,
@@ -11,6 +26,8 @@ import {
   hostOwnsExternalLinks,
   openNativeExternalLink,
 } from '../../platform/openExternalLink';
+import { conversationOpener } from '../../regions/pane-opener';
+import type { PaneOpener } from '../../regions/pane-relations';
 import {
   chipFor,
   LinkHostBadge,
@@ -29,6 +46,7 @@ import {
 import { PATH_MENTION_ATTRIBUTE } from './remarkPathMentions';
 import { sessionRunsInProjectDirectory } from './sessionDirectory';
 import { useWorkspaceFileExists } from './useWorkspaceFileExists';
+import { WorkspaceFileReply, workspaceVisualPath } from './WorkspaceFileReply';
 
 /**
  * One link in a rendered chat message (#2049).
@@ -88,11 +106,42 @@ function fileScope(link: MarkdownLinkContextValue | null): {
   return { roots: [], resolvable: false };
 }
 
+/**
+ * The conversation as a pane opener: the occurrence that hosts it (the
+ * region pane's surface, else the Coding centre's Chat) at the conversation
+ * and session it shows. Null without a conversation to name.
+ */
+function linkOpener(
+  link: MarkdownLinkContextValue | null,
+  owner: string | null,
+): PaneOpener | null {
+  if (!link) return null;
+  return conversationOpener(owner, link.openerLabel ?? 'Chat', {
+    conversationId: link.conversationId,
+    threadId: link.threadId,
+    projectSlug: link.projectSlug,
+  });
+}
+
+/** A refusal from the region model itself, which the layout route can answer. */
+function isRegionRefusal(reason: string): boolean {
+  return (
+    reason === 'no-surface' ||
+    reason === 'unsupported-placement' ||
+    reason === 'region-unavailable' ||
+    reason === 'refused'
+  );
+}
+
 function activate(
   event: MouseEvent<HTMLAnchorElement>,
   target: MarkdownLinkTarget | null,
   link: MarkdownLinkContextValue | null,
   model: ReturnType<typeof useRegionModelOptional>,
+  relations: PaneRelationsValue,
+  opener: PaneOpener | null,
+  /** The region model as of NOW, for the related open's post-guard steps. */
+  latestModel: () => ReturnType<typeof useRegionModelOptional>,
 ) {
   if (
     event.defaultPrevented ||
@@ -104,7 +153,20 @@ function activate(
   )
     return;
   if (!link) return;
-  if (!target) return;
+  if (!target) {
+    if (event.currentTarget.getAttribute('href')?.startsWith('/')) {
+      event.preventDefault();
+      toastStore.show(
+        'This file is outside the session workspace and cannot be previewed here.',
+        undefined,
+        5000,
+        undefined,
+        undefined,
+        'warning',
+      );
+    }
+    return;
+  }
   // A forge file this checkout is not known to hold opens on the forge.
   if (target.kind === 'external' || target.kind === 'repo-file') {
     // Only the native host has somewhere else to put it. On the web an
@@ -165,18 +227,48 @@ function activate(
   if (dockCanHold) {
     event.preventDefault();
     const thread = scope.thread;
-    const outcome = openFilePreviewInRegion(model, {
+    const request = {
       projectId: link.projectId,
       projectSlug: link.projectSlug,
       path: target.path,
       ...(target.lineRange ? { lineRange: target.lineRange } : {}),
       ...(thread ? { thread } : {}),
-    });
-    if (outcome.ok) return;
+    };
     // The model refused (a device fold, a region rule). The preview still
     // has the route it had before #2049, if this session has a layout — but
     // that route reads the CHECKOUT, so a worktree's file never takes it.
-    if (!thread) link.openPathInMain?.(target.path, target.lineRange);
+    const fallBack = () => {
+      if (!thread) link.openPathInMain?.(target.path, target.lineRange);
+    };
+    if (opener) {
+      // Related to the conversation: one reusable preview per session, which
+      // hides while another session is on screen, fenced to this Station
+      // (docs/design/pane-relationships.md). With no verified Station it is
+      // refused and says so; it never falls back to an unfenced preview.
+      void openRelatedFilePreview(
+        () => latestModel() ?? model,
+        relations,
+        opener,
+        request,
+      ).then((outcome) => {
+        if (outcome.ok || outcome.reason === 'guard-cancelled') return;
+        if (isRegionRefusal(outcome.reason)) {
+          fallBack();
+          return;
+        }
+        toastStore.show(
+          describeRelatedOpenRefusal(outcome.reason),
+          undefined,
+          5000,
+          undefined,
+          undefined,
+          'warning',
+        );
+      });
+      return;
+    }
+    if (openFilePreviewInRegion(model, request).ok) return;
+    fallBack();
     return;
   }
   // No dock that may hold it: a dock bound to a different project than the
@@ -213,6 +305,12 @@ export function ChatMarkdownAnchor({ href, children, ...props }: AnchorProps) {
   const isMention = mentionMarker !== undefined;
   const scope = fileScope(link);
   const target = classifyMarkdownLink(href, { roots: scope.roots });
+  const visualPath = workspaceVisualPath(href);
+  if (link?.projectSlug && visualPath) {
+    return (
+      <WorkspaceFileReply path={visualPath}>{children}</WorkspaceFileReply>
+    );
+  }
   if (isMention) {
     // A path written in prose is a link only inside a conversation, only when
     // it names a file in the directory that conversation's session works in,
@@ -284,6 +382,10 @@ function LinkAnchor({
   target: MarkdownLinkTarget | null;
   clickTarget: MarkdownLinkTarget | null;
 }) {
+  const relations = usePaneRelations();
+  const owner = useContext(UnsavedGuardOwnerContext);
+  const modelRef = useRef(model);
+  modelRef.current = model;
   // Raw: the text IS the href — an autolinked URL, or a path mention (whose
   // href gained a `./` so it would not parse as a scheme).
   const text = textOf(children).trim();
@@ -300,7 +402,15 @@ function LinkAnchor({
   const title = realHost && url ? url : undefined;
   const hostBadge = realHost ? <LinkHostBadge host={realHost} /> : null;
   const onClick = (event: MouseEvent<HTMLAnchorElement>) =>
-    activate(event, clickTarget, link, model);
+    activate(
+      event,
+      clickTarget,
+      link,
+      model,
+      relations,
+      linkOpener(link, owner),
+      () => modelRef.current,
+    );
   // A web URL the handler lets through (no dock for a pull request, an
   // external site, a forge file) must not replace the running Station tab;
   // #2049 specified "a new tab on web". Paths never leave, so they get none.

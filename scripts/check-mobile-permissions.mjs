@@ -5,6 +5,8 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 
 const REQUIRED_ANDROID_PERMISSIONS = new Set([
   'android.permission.INTERNET',
+  // StationAndroidInsetsBridge observes the default network and its cost.
+  'android.permission.ACCESS_NETWORK_STATE',
   'android.permission.POST_NOTIFICATIONS',
   'android.permission.CAMERA',
   'android.permission.RECORD_AUDIO',
@@ -29,7 +31,10 @@ const PACKAGED_LIBRARY_PERMISSIONS = new Map([
     'firebase-messaging (FCM receipt)',
   ],
   ['android.permission.WAKE_LOCK', 'firebase-messaging'],
-  ['android.permission.ACCESS_NETWORK_STATE', 'firebase-messaging'],
+  [
+    'android.permission.ACCESS_LOCAL_NETWORK',
+    'station-discovery (explicit Android 17 LAN permission admission)',
+  ],
 ]);
 // androidx.core declares `${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`,
 // signature-level and private to the app; the prefix differs per channel.

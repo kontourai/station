@@ -1,0 +1,7 @@
+{
+  "revision": "48141e60edaa61152a858faff936428d93992123",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Added a 2026-10-14 amendment: tool-call-spawned subagents also render as an inline transcript card folded from the transcript window's child-work.updated events; the Agents pane remains the full list and stop surface. ChildWorkRow only moved its labels and time format to utils/child-work-display.ts, so the #2459 amendment still holds.","inputs":["docs/design/placement.md","src-ui/src/workspace-panes/agents/ChildWorkRow.tsx"]}
+  ]
+}

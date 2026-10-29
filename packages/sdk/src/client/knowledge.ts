@@ -1,16 +1,26 @@
+import type {
+  KnowledgeDocumentImportInput,
+  KnowledgeDocumentImportReceipt,
+  KnowledgeSourceCapabilities,
+} from '@kontourai/station-contracts/knowledge-store';
+
 /**
- * K3 knowledge-index management fetchers (`s201-knowledge-retrieval` Wave 4) —
- * the DRY client for the two explicit, user/CLI-triggered index-management
- * verbs (`docs/design/knowledge-foundation.md`'s K3 section):
+ * K3 knowledge-index management fetchers: the client for the two explicit,
+ * user/CLI-triggered index-management verbs
+ * (`docs/design/knowledge-foundation.md`'s K3 section),
  * `POST /api/knowledge/index/rebuild` and `POST /api/knowledge/migrate`
- * (`src-server/routes/knowledge/knowledge-index-routes.ts`, Wave 3). Both the CLI
- * (`station knowledge reindex`/`migrate`, Wave 4) and station-control tool
- * wiring (`reindex_knowledge`/`migrate_knowledge`, Wave 4) call through these
- * two fetchers — the HTTP call is never re-implemented inline in either
- * caller, per this module family's own portability contract
- * (`./index.ts`'s header comment).
+ * (`src-server/routes/knowledge/knowledge-index-routes.ts`). Both the CLI
+ * (`station knowledge reindex`/`migrate`) and the station-control tools
+ * (`reindex_knowledge`/`migrate_knowledge`) call through these two fetchers;
+ * the HTTP call is never re-implemented inline in either caller, per this
+ * module family's portability contract (`./index.ts`'s header comment).
  */
 
+import type {
+  ProjectS3ObjectPage,
+  ProjectS3ObjectRead,
+  ProjectS3Source,
+} from '@kontourai/station-contracts/project';
 import { envelopeError } from './api-error-message';
 import { type ClientRequestOptions, getJson, mutateJson } from './http';
 
@@ -19,6 +29,154 @@ interface KnowledgeEnvelope<T> {
   data?: T;
   error?: string;
   code?: 'knowledge_migration_failed';
+  /** `POST /api/knowledge/index/search` only. */
+  index?: KnowledgeSearchIndexReport;
+}
+
+export interface AttachProjectS3SourceInput {
+  shareWithProject: true;
+  id: string;
+  expectedProjectId: string;
+  displayName: string;
+  accountId: string;
+  region: string;
+  bucket: string;
+  prefix: string;
+  profile: string;
+}
+export async function getProjectS3Capabilities(
+  base: string,
+  opts: ClientRequestOptions,
+): Promise<{ enabled: boolean; canManage: boolean }> {
+  return unwrapKnowledgeResponse(
+    await getJson(`${base}/api/knowledge/s3-sources/capabilities`, opts),
+  );
+}
+export async function getProjectS3Profiles(
+  base: string,
+  opts: ClientRequestOptions,
+): Promise<{ available: boolean; profiles: string[] }> {
+  return unwrapKnowledgeResponse(
+    await getJson(`${base}/api/knowledge/s3-sources/profiles`, opts),
+  );
+}
+function s3Path(base: string, projectSlug: string, sourceId?: string) {
+  return `${base}/api/knowledge/s3-sources/projects/${encodeURIComponent(projectSlug)}${sourceId ? `/${encodeURIComponent(sourceId)}` : ''}`;
+}
+export async function listProjectS3Sources(
+  base: string,
+  projectSlug: string,
+  opts: ClientRequestOptions,
+): Promise<ProjectS3Source[]> {
+  return unwrapKnowledgeResponse(
+    await getJson(s3Path(base, projectSlug), opts),
+  );
+}
+export async function attachProjectS3Source(
+  base: string,
+  projectSlug: string,
+  input: AttachProjectS3SourceInput,
+  opts: ClientRequestOptions,
+): Promise<ProjectS3Source> {
+  return unwrapKnowledgeResponse(
+    await mutateJson(s3Path(base, projectSlug), 'POST', opts, input),
+  );
+}
+export async function disconnectProjectS3Source(
+  base: string,
+  projectSlug: string,
+  source: ProjectS3Source,
+  opts: ClientRequestOptions,
+): Promise<void> {
+  await unwrapKnowledgeResponse(
+    await mutateJson(
+      `${s3Path(base, projectSlug, source.id)}/disconnect`,
+      'POST',
+      opts,
+      { expectedSource: source },
+    ),
+  );
+}
+export async function listProjectS3Objects(
+  base: string,
+  projectSlug: string,
+  sourceId: string,
+  cursor: string | undefined,
+  opts: ClientRequestOptions,
+): Promise<ProjectS3ObjectPage> {
+  return unwrapKnowledgeResponse(
+    await getJson(
+      `${s3Path(base, projectSlug, sourceId)}/objects${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`,
+      opts,
+    ),
+  );
+}
+export async function readProjectS3Object(
+  base: string,
+  projectSlug: string,
+  sourceId: string,
+  key: string,
+  etag: string,
+  opts: ClientRequestOptions,
+): Promise<ProjectS3ObjectRead> {
+  const query = new URLSearchParams({ key, etag });
+  return unwrapKnowledgeResponse(
+    await getJson(
+      `${s3Path(base, projectSlug, sourceId)}/object?${query}`,
+      opts,
+    ),
+  );
+}
+
+export async function importKnowledgeDocuments(
+  apiBase: string,
+  input: KnowledgeDocumentImportInput,
+  opts: ClientRequestOptions,
+): Promise<KnowledgeDocumentImportReceipt> {
+  return unwrapKnowledgeResponse(
+    await mutateJson(
+      `${apiBase}/api/knowledge/document-imports`,
+      'POST',
+      opts,
+      input,
+    ),
+  );
+}
+
+export async function getKnowledgeDocumentImport(
+  apiBase: string,
+  rootId: string,
+  requestId: string,
+  opts: ClientRequestOptions,
+): Promise<KnowledgeDocumentImportReceipt> {
+  return unwrapKnowledgeResponse(
+    await getJson(
+      `${apiBase}/api/knowledge/roots/${encodeURIComponent(rootId)}/document-imports/${encodeURIComponent(requestId)}`,
+      opts,
+    ),
+  );
+}
+
+export async function resumeKnowledgeDocumentImport(
+  apiBase: string,
+  input: {
+    expectedRoot: KnowledgeStoreRoot;
+    requestId: string;
+    retryUncertain: boolean;
+  },
+  opts: ClientRequestOptions,
+): Promise<KnowledgeDocumentImportReceipt> {
+  return unwrapKnowledgeResponse(
+    await mutateJson(
+      `${apiBase}/api/knowledge/roots/${encodeURIComponent(input.expectedRoot.id)}/document-imports/${encodeURIComponent(input.requestId)}/resume`,
+      'POST',
+      opts,
+      {
+        expectedRoot: input.expectedRoot,
+        retryUncertain: input.retryUncertain,
+      },
+    ),
+  );
 }
 
 /**
@@ -29,6 +187,12 @@ interface KnowledgeEnvelope<T> {
  * no-embedder (400) and unexpected-failure (500) paths.
  */
 async function unwrapKnowledgeResponse<T>(response: Response): Promise<T> {
+  return (await unwrapKnowledgeEnvelope<T>(response)).data as T;
+}
+
+async function unwrapKnowledgeEnvelope<T>(
+  response: Response,
+): Promise<KnowledgeEnvelope<T>> {
   const fallback = `Knowledge API error: ${response.status}`;
   let result: KnowledgeEnvelope<T> | null = null;
   try {
@@ -43,7 +207,7 @@ async function unwrapKnowledgeResponse<T>(response: Response): Promise<T> {
     // `knowledge_migration_failed`) and `details` survive.
     throw envelopeError(response, result, fallback);
   }
-  return result.data as T;
+  return result;
 }
 
 export interface RebuildKnowledgeIndexOptions {
@@ -133,9 +297,9 @@ export async function migratePreIndexKnowledge(
 }
 
 /**
- * K4 knowledge-store-root fetchers (`s202-knowledge-onboarding` Wave 1) —
- * thin delegations to the new `/api/knowledge/roots`, `/api/knowledge/roots/
- * validate`, and `/api/knowledge/adapters` routes
+ * K4 knowledge-store-root fetchers: thin delegations to the
+ * `/api/knowledge/roots`, `/api/knowledge/roots/validate`, and
+ * `/api/knowledge/adapters` routes
  * (`src-server/routes/knowledge/knowledge-store-routes.ts`), which themselves delegate
  * to K2's `KnowledgeStoreProvider` (`listRoots`/`createRoot`/`removeRoot`/
  * `listAdapters`/`validateRootForAdapter`). Same envelope shape and
@@ -152,6 +316,8 @@ import type {
  * the server defaults `storeRoot` server-side (personal/project scope) when omitted. */
 export interface CreateKnowledgeRootInput {
   scope: KnowledgeRootScope;
+  /** Required by current Stations for Project registration; comparison only, not stored authority. */
+  expectedProjectId?: string;
   adapterId: string;
   storeRoot?: string;
   displayName?: string;
@@ -244,19 +410,20 @@ export async function listKnowledgeAdapters(
 export async function deleteKnowledgeRoot(
   apiBase: string,
   rootId: string,
-  opts?: ClientRequestOptions,
+  opts?: ClientRequestOptions & { expectedRoot?: KnowledgeStoreRoot },
 ): Promise<void> {
+  const { expectedRoot, ...transportOptions } = opts ?? {};
   const response = await mutateJson(
-    `${apiBase}/api/knowledge/roots/${encodeURIComponent(rootId)}`,
-    'DELETE',
-    opts,
+    `${apiBase}/api/knowledge/roots/${encodeURIComponent(rootId)}${expectedRoot ? '/disconnect' : ''}`,
+    expectedRoot ? 'POST' : 'DELETE',
+    opts ? transportOptions : undefined,
+    expectedRoot ? { expectedRoot } : undefined,
   );
   await unwrapKnowledgeResponse<void>(response);
 }
 
 /**
- * K5 knowledge-record + index-search fetchers (`s203-knowledge-meeting-notes`
- * Wave 1 Task 2) — the DRY client for the record-CRUD routes
+ * K5 knowledge-record + index-search fetchers: the client for the record-CRUD routes
  * (`src-server/routes/knowledge/knowledge-record-routes.ts`) and the K3 index-search route
  * (`POST /api/knowledge/index/search`, `src-server/routes/knowledge/knowledge-index-routes.ts`).
  * Same envelope shape and `unwrapKnowledgeResponse` pattern as every other
@@ -407,15 +574,49 @@ export interface KnowledgeSearchResult {
   category: string;
 }
 
+/** What `POST /api/knowledge/index/search` could not answer for the current
+ * embedding connection (#2727, #2728). Only roots the caller may read appear. */
+export interface KnowledgeSearchIndexReport {
+  /** Roots indexed by another, or an unknown, embedding generation. Their
+   * chunks are never searched until the root is reindexed. */
+  staleRoots: Array<{
+    rootId: string;
+    reason: 'embedding-changed' | 'unknown-generation';
+  }>;
+  /** Records whose indexed excerpt no longer appears in the record; their
+   * hits were withheld. Reindex to recover them. */
+  staleRecords: number;
+  /** The server stopped reading the ranking before it found `topK` results. */
+  scanLimitReached: boolean;
+}
+
+export interface KnowledgeSearchWithReport {
+  results: KnowledgeSearchResult[];
+  /** `null` from a server that predates the report. */
+  index: KnowledgeSearchIndexReport | null;
+}
+
 /** `POST /api/knowledge/index/search` — embeds `options.query` server-side and
  * searches the K3 index, scoped to `options.rootIds` when supplied. Returns the
  * `NO_EMBEDDER_ERROR` 400 convention (surfaced as a thrown Error, same as every
- * other fetcher in this file) when no embedding provider connection is configured. */
+ * other fetcher in this file) when no embedding provider connection is configured.
+ * Use `searchKnowledgeIndexWithReport` to learn which roots need a reindex. */
 export async function searchKnowledgeIndex(
   apiBase: string,
   options: SearchKnowledgeIndexOptions,
   opts?: ClientRequestOptions,
 ): Promise<KnowledgeSearchResult[]> {
+  return (await searchKnowledgeIndexWithReport(apiBase, options, opts)).results;
+}
+
+/** `searchKnowledgeIndex` plus the server's report of stale roots and
+ * withheld excerpts, so a caller can say a reindex is needed instead of
+ * presenting a short answer as complete. */
+export async function searchKnowledgeIndexWithReport(
+  apiBase: string,
+  options: SearchKnowledgeIndexOptions,
+  opts?: ClientRequestOptions,
+): Promise<KnowledgeSearchWithReport> {
   const response = await mutateJson(
     `${apiBase}/api/knowledge/index/search`,
     'POST',
@@ -427,14 +628,18 @@ export async function searchKnowledgeIndex(
     { ...opts, readOnly: true },
     options,
   );
-  return unwrapKnowledgeResponse<KnowledgeSearchResult[]>(response);
+  const envelope =
+    await unwrapKnowledgeEnvelope<KnowledgeSearchResult[]>(response);
+  return {
+    results: envelope.data as KnowledgeSearchResult[],
+    index: envelope.index ?? null,
+  };
 }
 
 /**
- * K5 Neo4j graph-view fetchers (`s203-knowledge-meeting-notes` Wave 3 cleanup,
- * plan item 1c) — the DRY client for the Neo4j-backed graph read/sync routes
- * (`src-server/routes/knowledge/neo4j-graph-routes.ts`, Wave 1 Task 1's Q1-ratified
- * "Graph view, synced" scope). Same envelope + `unwrapKnowledgeResponse`
+ * K5 Neo4j graph-view fetchers: the client for the Neo4j-backed graph read/sync
+ * routes (`src-server/routes/knowledge/neo4j-graph-routes.ts`), scoped to a
+ * synced graph view rather than a graph store. Same envelope + `unwrapKnowledgeResponse`
  * convention as every other `/api/knowledge/*` fetcher in this file. Both
  * routes answer an honest `503` when no Neo4j graph-view connection is
  * registered (or the driver failed to load) — that surfaces here as a thrown
@@ -488,4 +693,34 @@ export async function syncKnowledgeGraphNeo4j(
     opts,
   );
   return unwrapKnowledgeResponse<KnowledgeGraphNeo4jSyncStats>(response);
+}
+
+export interface AttachKnowledgeRootProjectInput {
+  expectedRoot: KnowledgeStoreRoot;
+  projectSlug: string;
+  projectId: string;
+}
+/** Explicitly bind one legacy registration; retained store files are unchanged. */
+export async function attachKnowledgeRootProject(
+  apiBase: string,
+  input: AttachKnowledgeRootProjectInput,
+  opts?: ClientRequestOptions,
+): Promise<KnowledgeStoreRoot> {
+  const response = await mutateJson(
+    `${apiBase}/api/knowledge/roots/${encodeURIComponent(input.expectedRoot.id)}/attach-project`,
+    'POST',
+    opts,
+    input,
+  );
+  return unwrapKnowledgeResponse<KnowledgeStoreRoot>(response);
+}
+
+/** Read current caller management capabilities without granting them. */
+export async function getKnowledgeSourceCapabilities(
+  apiBase: string,
+  opts?: ClientRequestOptions,
+): Promise<KnowledgeSourceCapabilities> {
+  return unwrapKnowledgeResponse<KnowledgeSourceCapabilities>(
+    await getJson(`${apiBase}/api/knowledge/capabilities`, opts),
+  );
 }

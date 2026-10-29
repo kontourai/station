@@ -1,8 +1,20 @@
 /** @vitest-environment jsdom */
 
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+} from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { closeSessionInventoryOccurrence } from '../sessionInventoryOccurrence';
+import {
+  closeSessionInventoryOccurrence,
+  openSessionInventoryOccurrence,
+  readSessionInventoryHostRegistration,
+  useSessionInventoryHostRegistration,
+  useSessionInventoryOccurrence,
+} from '../sessionInventoryOccurrence';
 
 const hooks = vi.hoisted(() => ({
   fallback: vi.fn(),
@@ -59,7 +71,7 @@ afterEach(() => {
 
 const scope = { kind: 'whole-session' as const, sessionId: 'session-a' };
 
-function renderHost(options: { isMobile?: boolean } = {}) {
+function renderHost(options: { isMobile?: boolean; full?: boolean } = {}) {
   const trigger = document.createElement('button');
   trigger.type = 'button';
   trigger.textContent = 'Chat inventory';
@@ -68,6 +80,7 @@ function renderHost(options: { isMobile?: boolean } = {}) {
   const result = render(
     <SessionInventoryHost
       scope={scope}
+      full={options.full}
       chatStoreId="chat-a"
       hostId="host-a"
       trigger={trigger}
@@ -81,6 +94,83 @@ function renderHost(options: { isMobile?: boolean } = {}) {
 }
 
 describe('SessionInventoryHost', () => {
+  test('a direct Inventory launch opens the full reader without a summary handoff', () => {
+    const view = renderHost({ full: true });
+    expect(screen.getByRole('dialog', { name: 'Basis' })).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: 'Open full Basis' }),
+    ).toBeNull();
+    expect(hooks.fallback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope,
+        trigger: view.trigger,
+        forceFallback: false,
+      }),
+    );
+    view.unmount();
+    view.trigger.remove();
+  });
+
+  test('an exact answer survives current-execution refresh but closes for another chat or unmount', () => {
+    const mount = document.createElement('div');
+    document.body.appendChild(mount);
+    const input = {
+      hostId: 'refresh-host',
+      chatStoreId: 'chat-a',
+      executionId: 'execution-a',
+      mountRef: { current: mount },
+      executionRead: 'present',
+      dockMode: 'bottom' as const,
+      fullscreen: false,
+    };
+    const view = renderHook(
+      ({ chatStoreId, executionId }) =>
+        useSessionInventoryHostRegistration(
+          'refresh-host',
+          'handoff-test',
+          chatStoreId,
+          executionId,
+        ),
+      { initialProps: input },
+    );
+    const occurrence = renderHook(() =>
+      useSessionInventoryOccurrence('refresh-host'),
+    );
+    act(() => {
+      expect(
+        openSessionInventoryOccurrence({
+          hostId: 'refresh-host',
+          authorityKey: 'handoff-test',
+          activeSessionId: 'chat-a',
+          executionSessionId: 'execution-a',
+          executionRead: 'present',
+          trigger: null,
+          requestedScope: {
+            kind: 'current-answer',
+            sessionId: 'execution-a',
+            turnId: 'turn-a',
+          },
+        }),
+      ).toBe(true);
+    });
+    view.rerender({ ...input, executionId: 'execution-b' });
+    expect(occurrence.result.current?.requestedScope).toEqual({
+      kind: 'current-answer',
+      sessionId: 'execution-a',
+      turnId: 'turn-a',
+    });
+    expect(
+      readSessionInventoryHostRegistration('refresh-host')?.executionId,
+    ).toBe('execution-b');
+    view.rerender({ ...input, chatStoreId: 'another-chat' });
+    expect(occurrence.result.current).toBeNull();
+    view.unmount();
+    expect(
+      readSessionInventoryHostRegistration('refresh-host'),
+    ).toBeUndefined();
+    mount.remove();
+  });
+
   test('replaces compact inventory with the full fallback and returns focus to the invoking control on close', () => {
     const { onClose, trigger } = renderHost();
 

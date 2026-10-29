@@ -1,0 +1,7 @@
+{
+  "revision": "4f2fba1554fce405c8d4065c25965ae03c80ceae",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Bounded #1521 delta: GET /api/plugins and preview responses document registryTrust (receipt fields, none, unavailable) against plugin-install-routes list and preview handlers and the route test.","inputs":["docs/reference/api.md","src-server/routes/plugins/plugin-install-routes.ts"]}
+  ]
+}

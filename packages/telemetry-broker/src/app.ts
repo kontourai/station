@@ -1,55 +1,153 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
+import type { HttpBindings } from '@hono/node-server';
 import type { ProductTelemetryBatch } from '@kontourai/station-contracts/product-telemetry';
 import {
+  PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
   parseProductTelemetryBatch,
-  USAGE_TELEMETRY_INVENTORY_REVISION,
+  parseProductTelemetryProbeRequest,
 } from '@kontourai/station-shared/product-telemetry';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
-import { BrokerError, type ProductRepository } from './store.js';
+import { receiverAdmission } from './admission.js';
+import { BrokerError } from './broker-error.js';
+import { clientAddressPolicy } from './client-address.js';
+import { registerLiteRoutes } from './lite-routes.js';
+import { createPrivateUsageRoutes } from './private-usage-routes.js';
+import { PrivateUsageError } from './private-usage-store.js';
+import type { ProductRepository } from './store.js';
 
 export function createProductBroker(
   store: ProductRepository,
   operatorKey: string,
+  addresses = clientAddressPolicy(),
 ) {
   if (!/^sto_[A-Za-z0-9_-]{43}$/.test(operatorKey))
     throw new Error('A private product operator credential is required');
   const operatorHash = createHash('sha256').update(operatorKey).digest();
-  const app = new Hono();
-  let active = 0;
-  let tokens = 60;
-  let replenishedAt = performance.now();
+  const app = new Hono<{
+    Bindings: HttpBindings;
+    Variables: { dailyClient: { day: string; hash: string } };
+  }>();
+  const fullAdmission = receiverAdmission();
+  const preAuthAdmission = receiverAdmission();
+  const credentials = new Map<string, ReturnType<typeof receiverAdmission>>();
+  const liteAdmission = receiverAdmission();
+  const publicPageAdmission = receiverAdmission();
+  const privateAdmission = receiverAdmission();
   app.use('*', async (c, next) => {
-    if (c.req.method === 'GET' && c.req.path === '/health/live') return next();
-    const now = performance.now();
-    tokens = Math.min(60, tokens + (now - replenishedAt) / 1000);
-    replenishedAt = now;
-    if (tokens < 1) {
-      c.header('Retry-After', '1');
-      return c.json({ error: 'receiver_rate_limit' }, 429);
-    }
-    if (active >= 8) return c.json({ error: 'receiver_busy' }, 503);
-    tokens--;
-    active++;
-    try {
-      await next();
-    } finally {
-      active--;
-    }
+    if (
+      addresses.isTrustedPeer(c.env?.incoming?.socket.remoteAddress ?? '') &&
+      !(
+        (c.req.method === 'POST' && /^\/v1\/lite\/[^/]+$/.test(c.req.path)) ||
+        (c.req.method === 'GET' &&
+          (c.req.path === '/v1/public/aggregates' ||
+            c.req.path.startsWith('/public/') ||
+            c.req.path === '/health/live'))
+      )
+    )
+      return c.notFound();
+    await next();
   });
-  app.use(
-    '*',
+  app.use('*', async (c, next) => {
+    if (c.req.path === '/health/live' || c.req.path === '/v1/public/aggregates')
+      return next();
+    if (c.req.path.startsWith('/v1/private-usage/')) {
+      return privateAdmission(c, async () => {
+        const key = /^Bearer (stai_[A-Za-z0-9_-]{43})$/.exec(
+          c.req.header('authorization') ?? '',
+        )?.[1];
+        if (!key) {
+          c.res = c.json({ error: 'private_usage_unauthorized' }, 401);
+          return;
+        }
+        const digest = `private:${createHash('sha256').update(key).digest('hex')}`;
+        const admission = credentials.get(digest) ?? receiverAdmission();
+        credentials.delete(digest);
+        if (credentials.size >= 10000)
+          credentials.delete(credentials.keys().next().value!);
+        credentials.set(digest, admission);
+        const result = await admission(c, next);
+        if (result) c.res = result;
+      });
+    }
+    if (
+      (c.req.method === 'POST' &&
+        ['/v1/product/events', '/v1/product/probes'].includes(c.req.path)) ||
+      (c.req.method === 'GET' &&
+        /^\/v1\/product\/receipts\/[^/]+$/.test(c.req.path))
+    ) {
+      const key = c.req.header('x-api-key') ?? '';
+      // Cache lookup only. Unknown keys enter pre-auth admission before any DB work.
+      if (!store.hasCredential(key))
+        return preAuthAdmission(c, async () => {
+          c.res = c.json({ error: 'source_unauthorized' }, 401);
+        });
+      const digest = createHash('sha256').update(key).digest('hex');
+      const admission = credentials.get(digest) ?? receiverAdmission();
+      credentials.delete(digest);
+      if (credentials.size >= 10000)
+        credentials.delete(credentials.keys().next().value!);
+      credentials.set(digest, admission);
+      return admission(c, async () => {
+        await store.authenticate(key);
+        await next();
+      });
+    }
+    const publisherMatch =
+      c.req.method === 'GET' &&
+      /^\/v1\/publishers\/([^/]+)\/aggregates$/.exec(c.req.path);
+    if (publisherMatch) {
+      const key =
+        /^Bearer (stq_[A-Za-z0-9_-]{43})$/.exec(
+          c.req.header('authorization') ?? '',
+        )?.[1] ?? '';
+      let publisher: string;
+      try {
+        publisher = decodeURIComponent(publisherMatch[1]);
+      } catch {
+        return c.json({ error: 'invalid_publisher' }, 400);
+      }
+      if (key && (await store.lite?.isPublicationSuppressed())) {
+        await next();
+        return;
+      }
+      if (!store.lite?.hasCredential(publisher, key))
+        return preAuthAdmission(c, async () => {
+          c.res = c.json({ error: 'source_unauthorized' }, 401);
+        });
+      const digest = createHash('sha256').update(key).digest('hex');
+      const admission = credentials.get(digest) ?? receiverAdmission();
+      credentials.delete(digest);
+      if (credentials.size >= 10000)
+        credentials.delete(credentials.keys().next().value!);
+      credentials.set(digest, admission);
+      return admission(c, next);
+    }
+    return (
+      c.req.path.startsWith('/v1/lite/')
+        ? liteAdmission
+        : c.req.path.startsWith('/public/')
+          ? publicPageAdmission
+          : c.req.path.startsWith('/v1/operator/') &&
+              c.req.header('authorization') === `Bearer ${operatorKey}`
+            ? fullAdmission
+            : preAuthAdmission
+    )(c, next);
+  });
+  app.use('*', (c, next) =>
     bodyLimit({
-      maxSize: 131_072,
+      maxSize: c.req.path.startsWith('/v1/private-usage/')
+        ? 2 * 1024 * 1024
+        : 131_072,
       onError: (c) => c.json({ error: 'body_too_large' }, 413),
-    }),
+    })(c, next),
   );
   app.get('/health/live', (c) =>
     c.json({
       state: 'alive',
       scope: 'process',
       productProtocol: 1,
-      inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+      inventoryRevision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
     }),
   );
   app.use('/v1/operator/*', async (c, next) => {
@@ -67,6 +165,21 @@ export function createProductBroker(
   app.get('/v1/operator/storage', async (c) => {
     await store.ready();
     return c.json({ state: 'ready', scope: 'postgres-schema-v1' });
+  });
+  app.get('/v1/operator/diagnostics', (c) => c.json(addresses.diagnostics()));
+  app.post('/v1/operator/private-usage-vaults', async (c) => {
+    if (!store.privateUsage) return c.notFound();
+    const body: unknown = await c.req.json().catch(() => null);
+    if (
+      !body ||
+      typeof body !== 'object' ||
+      Array.isArray(body) ||
+      Object.keys(body).join(',') !== 'credentialHash' ||
+      !('credentialHash' in body) ||
+      typeof body.credentialHash !== 'string'
+    )
+      return c.json({ error: 'invalid_private_usage_vault' }, 400);
+    return c.json(await store.privateUsage.provision(body.credentialHash), 201);
   });
   app.post('/v1/operator/sources', async (c) => {
     const body: unknown = await c.req.json().catch(() => null);
@@ -118,6 +231,36 @@ export function createProductBroker(
       ),
     );
   });
+  app.get('/v1/operator/incidents', async (c) => {
+    const from = c.req.query('from'),
+      to = c.req.query('to');
+    if (
+      !from ||
+      !to ||
+      !Number.isFinite(Date.parse(from)) ||
+      !Number.isFinite(Date.parse(to)) ||
+      Date.parse(to) <= Date.parse(from) ||
+      Date.parse(to) - Date.parse(from) > 365 * 86400000
+    )
+      return c.json({ error: 'invalid_window' }, 400);
+    return c.json(
+      await store.incidents(
+        new Date(from).toISOString(),
+        new Date(to).toISOString(),
+      ),
+    );
+  });
+  app.post('/v1/product/probes', async (c) => {
+    const key = c.req.header('x-api-key') ?? '';
+    if (!/^stp_[A-Za-z0-9_-]{43}$/.test(key))
+      return c.json({ error: 'source_unauthorized' }, 401);
+    try {
+      parseProductTelemetryProbeRequest(await c.req.json());
+    } catch {
+      return c.json({ error: 'invalid_product_probe' }, 400);
+    }
+    return c.json({ probe: await store.probe(key) });
+  });
   app.post('/v1/product/events', async (c) => {
     const key = c.req.header('x-api-key') ?? '';
     if (!/^stp_[A-Za-z0-9_-]{43}$/.test(key))
@@ -137,7 +280,24 @@ export function createProductBroker(
       ? c.json({ receipt })
       : c.json({ error: 'receipt_unavailable' }, 404);
   });
+  if (store.lite) registerLiteRoutes(app, store.lite, addresses);
+  if (store.privateUsage)
+    app.route(
+      '/v1/private-usage',
+      createPrivateUsageRoutes(store.privateUsage),
+    );
   app.onError((error, c) => {
+    if (error instanceof PrivateUsageError)
+      return c.json(
+        { error: error.message },
+        error.code === 'invalid_commit'
+          ? 400
+          : error.code === 'conflict'
+            ? 409
+            : error.code === 'capacity'
+              ? 507
+              : 503,
+      );
     if (error instanceof BrokerError) {
       const status =
         error.code === 'source_unauthorized'
@@ -148,7 +308,9 @@ export function createProductBroker(
               ? 507
               : error.code === 'query_limit'
                 ? 422
-                : error.code === 'invalid_source'
+                : error.code === 'invalid_cursor' ||
+                    error.code === 'invalid_source' ||
+                    error.code === 'invalid_daily_ping'
                   ? 400
                   : 503;
       return c.json({ error: error.code }, status);

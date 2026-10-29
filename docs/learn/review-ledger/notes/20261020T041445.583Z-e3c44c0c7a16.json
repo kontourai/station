@@ -1,0 +1,7 @@
+{
+  "revision": "f07abe9f73e2bf410de825beef62e93ba66e10fa",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Re-read the resource-manifest claims (scripts/AGENTS.md classification rule; testing.md resource groups and worker limits). The change only adds scripts/__tests__/dated-todo-sweep.test.ts to the existing process-heavy group; no group, worker limit, or classification rule changed, so the prose stays accurate.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

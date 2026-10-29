@@ -60,9 +60,10 @@ ownership requirements. CloudFormation completion is not application readiness.
 The `gcp-compute` preview reuses the same bounded inventory and non-transfer
 contract for `e2-micro`, `e2-small`, and `e2-medium`. It does not inspect cloud
 credentials, billing, quotas, or target readiness. GCP template generation is
-not implemented; use the [operator-run development recipe](../../deploy/gcp-dev/README.md)
-for an isolated persistent test host. Provider selection never turns preparation
-into permission to move a home or resume work.
+not implemented. The operator-run GCP development recipe was removed; its last
+version is at [`db816d256f6`](https://github.com/kontourai/station/tree/db816d256f64707a1e1278ad763fc0bc8a54773e/deploy/gcp-dev).
+Provider selection never turns preparation into permission to move a home or
+resume work.
 
 ## AWS development template
 

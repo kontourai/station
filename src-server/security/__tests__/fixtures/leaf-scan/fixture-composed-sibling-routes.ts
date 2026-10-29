@@ -1,7 +1,7 @@
 import type { Hono } from 'hono';
 
 /**
- * archive#1131 review round 1 (AC1 follow-up, HIGH item 2). Mirrors the
+ * archive#1131 (AC1 follow-up). Mirrors the
  * REAL composition shape `plugins.ts` uses: `createFixtureComposedRoutes`
  * owns a local `const app = new Hono()` and hands it to this sibling
  * `register*Routes(app, deps)` function, which attaches routes directly to

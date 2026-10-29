@@ -1,8 +1,13 @@
 import {
+  type AcpApprovalControl,
+  acpStationApprovalEngine,
+} from '@kontourai/station-contracts/engine-capability-matrix';
+import {
   APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
   type ApprovalFullAccessRefusalDetails,
   parseApprovalFullAccessRefusalDetails,
 } from '@kontourai/station-contracts/orchestration';
+import type { ProjectChatApprovalDefault } from '@kontourai/station-contracts/project-chat-defaults';
 import {
   type ApprovalMode,
   isApprovalMode,
@@ -15,16 +20,51 @@ export type { ApprovalMode } from '@kontourai/station-contracts/provider';
  * Muse's is its `muse serve` approval mode (#2452); a Muse session on the
  * `muse exec` fallback reports what actually applied, so the chip shows the
  * request as not yet applied rather than claiming it.
+ *
+ * `opencode` is an ACP engine whose approval rules Station sets at launch
+ * (#3290). An ACP connection's own id is NOT an engine identity: callers
+ * derive this one from the connection's command (`acpApprovalFor`), so
+ * a connection merely named `opencode` gets no knob.
  */
-const APPROVAL_MODE_KNOB_ENGINE_IDS = new Set(['claude', 'codex', 'muse']);
+const APPROVAL_MODE_KNOB_ENGINE_IDS = new Set([
+  'claude',
+  'codex',
+  'muse',
+  'opencode',
+]);
 
 /**
  * Whether this engine connection's adapter reads `approvalMode` at all.
- * Everything else (ACP, Ollama, Bedrock, the Station agent runtime) has no
- * native knob, so the composer chip renders read-only for them.
+ * Everything else (an ACP engine that decides for itself, Ollama, Bedrock,
+ * the Station agent runtime) has no native knob, so the composer chip
+ * renders read-only for them.
  */
 export function approvalModeKnobSupported(engineId?: string | null): boolean {
   return !!engineId && APPROVAL_MODE_KNOB_ENGINE_IDS.has(engineId);
+}
+
+/**
+ * #3290: an ACP session's approval control, from its connection. `engineId`
+ * is the engine identity the approval surfaces read (`opencode` when Station
+ * sets the engine's approval rules), derived from the connection's command
+ * and never its id; `null` when the engine decides for itself.
+ */
+export function acpApprovalFor(
+  connection?: { command?: string | null; name?: string | null } | null,
+):
+  | {
+      control: AcpApprovalControl;
+      engineId: string | null;
+      engineName?: string;
+    }
+  | undefined {
+  if (!connection) return undefined;
+  const engineId = acpStationApprovalEngine(connection.command) ?? null;
+  return {
+    control: engineId ? 'station' : 'engine',
+    engineId,
+    ...(connection.name ? { engineName: connection.name } : {}),
+  };
 }
 
 /**
@@ -68,7 +108,7 @@ export const APPROVAL_MODE_OPTIONS: Array<{
     value: 'never',
     label: 'Never ask (full access)',
     description:
-      'Runs fully autonomously with no sandbox — the agent can do anything you can.',
+      'Turns off approval prompts where the engine allows it. Without a full-access grant, Station applies a narrower setting, so some actions may still ask.',
   },
 ];
 
@@ -83,10 +123,39 @@ const ENGINE_MODE_DESCRIPTIONS: Partial<
 > = {
   auto: {
     codex:
-      'Agent asks at its own discretion; file writes sandboxed to the workspace.',
+      "Agent requests approval at its own discretion; Codex's configured reviewer may approve sandbox escalations automatically. File writes stay sandboxed to the workspace.",
     claude: 'File edits auto-approved; other actions still ask.',
+    // #3290: Station answers OpenCode's requests; only edits are allowed.
+    opencode:
+      'File edits run on their own; shell commands, web access and MCP tools still ask.',
+  },
+  never: {
+    // #3290: nothing asks; the built-in subagents may run (their rules cannot
+    // ask either); plan mode's own edit block stays.
+    opencode:
+      'With full access granted, permitted actions run without approval prompts. Questions, plan exits and network-host requests may still ask. Without a grant, Station applies Auto, so some actions still ask. Plan mode still blocks most edits.',
+  },
+  'connection-default': {
+    // #3290 (owner decision): Station sends OpenCode no mode until it takes
+    // over, as with Claude and Codex (`resolveDefaultPick`).
+    opencode:
+      "Uses OpenCode's own permission settings until you pick a mode here. After that, Default means Ask first.",
+    // Station sends Codex no mode here, so the user's Codex configuration
+    // decides. With none, Codex (EXECUTED, codex-cli 0.164.0, empty
+    // CODEX_HOME, approval policy `on-request`) reports a read-only sandbox
+    // for a host session in a folder with no trust entry, and workspace-write
+    // without network (temp writable too) for a trusted host folder and
+    // under Station's `station-workspace` profile. The copy is a bound on
+    // which commands run unasked, which holds for all three; it is not
+    // "Codex Auto", which the read-only case is not. It is scoped to
+    // commands: Codex's hosted web search and MCP tool calls are not
+    // sandboxed commands, so they fall outside it.
+    codex:
+      'Your Codex settings apply until you pick a mode. If unset, no command uses the network or writes beyond this folder and temp unasked.',
   },
   ask: {
+    codex:
+      'Codex asks about untrusted commands; its configured reviewer may approve sandbox escalations automatically.',
     // #1545: Station imposes no approval floor over Claude's own permission
     // flow in this mode, so the copy has to name whose rules can skip an
     // approval. It says "and this workspace's" because Station sets no
@@ -97,6 +166,10 @@ const ENGINE_MODE_DESCRIPTIONS: Partial<
     // narrowing was in place — do not restore that wording without it.
     claude:
       "Claude asks before tool calls its own rules don't already allow — your Claude settings and a trusted workspace's both count.",
+    // #3290: Station launches OpenCode asking before every action that is
+    // not a read, whatever the user's own OpenCode rules allow.
+    opencode:
+      'Asks before shell commands, file edits, web access, MCP tools and files outside the project. Reads run on their own.',
   },
 };
 
@@ -147,6 +220,10 @@ export function approvalModeChipLabel(mode: ApprovalMode): string {
 type ApprovalModeSource =
   | 'session override'
   | 'agent default'
+  | 'project default'
+  | 'project last used'
+  | 'project unavailable'
+  | 'account default'
   | 'station default'
   | 'adapter default';
 
@@ -176,12 +253,31 @@ export function resolveEffectiveApprovalMode({
   engineConnectionId,
   sessionOverride,
   agentDefault,
+  projectDefault,
+  projectDefaultUnavailable,
+  personalDefault,
   stationDefault,
 }: {
   engineConnectionId?: string | null;
   sessionOverride?: unknown;
   /** The session's Agent's own default (`execution.approvalMode`). */
   agentDefault?: unknown;
+  /**
+   * A NEW chat's Project layer, as the server resolved it for this person
+   * (`ProjectChatDefaultsView.approvalMode.resolved`). The server applies it
+   * below the Agent's default and above the Station's; it also replaces the
+   * personal default, which the first send then does not queue. Pass it only
+   * for a chat that has not started.
+   */
+  projectDefault?: ProjectChatApprovalDefault;
+  /**
+   * A NEW chat in a Project whose new-chat defaults could not be read (or are
+   * still being read). The server applies the Project layer whatever this
+   * client knows, so the chat shows that the mode is decided at start rather
+   * than claiming a personal or Station default the server may not apply.
+   */
+  projectDefaultUnavailable?: boolean;
+  personalDefault?: unknown;
   /**
    * This Station's `AppConfig.defaultApprovalMode`. Applies only to an
    * engine whose adapter reads the knob at all — passing it for any other
@@ -192,6 +288,11 @@ export function resolveEffectiveApprovalMode({
   const override = isApprovalMode(sessionOverride)
     ? sessionOverride
     : undefined;
+  // An explicit Default pick is recorded as a decision, and the server
+  // resolves it to the Agent's default, then the Station's
+  // (`ApprovalPosture.resolveDefaultPick`): no Project layer and no personal
+  // default, which the first send queues only when nothing was picked.
+  const defaultPicked = override === 'connection-default';
   if (override && override !== 'connection-default') {
     return {
       mode: override,
@@ -211,6 +312,48 @@ export function resolveEffectiveApprovalMode({
       mode: agentDefaultMode,
       label: `${approvalModeLabel(agentDefaultMode)} (agent default)`,
       source: 'agent default',
+    };
+  }
+
+  if (
+    !defaultPicked &&
+    projectDefaultUnavailable &&
+    approvalModeKnobSupported(engineConnectionId)
+  ) {
+    return {
+      mode: 'connection-default',
+      label: 'Set when the chat starts',
+      source: 'project unavailable',
+    };
+  }
+
+  const projectDefaultMode =
+    !defaultPicked &&
+    approvalModeKnobSupported(engineConnectionId) &&
+    isApprovalMode(projectDefault?.approvalMode)
+      ? projectDefault.approvalMode
+      : undefined;
+  if (projectDefaultMode) {
+    const lastUsed = projectDefault?.source === 'last-used';
+    return {
+      mode: projectDefaultMode,
+      label: `${approvalModeLabel(projectDefaultMode)} (${
+        lastUsed ? 'last used in project' : 'project default'
+      })`,
+      source: lastUsed ? 'project last used' : 'project default',
+    };
+  }
+
+  if (
+    !defaultPicked &&
+    approvalModeKnobSupported(engineConnectionId) &&
+    isApprovalMode(personalDefault) &&
+    personalDefault !== 'connection-default'
+  ) {
+    return {
+      mode: personalDefault,
+      label: `${approvalModeLabel(personalDefault)} (your default)`,
+      source: 'account default',
     };
   }
 
@@ -279,14 +422,17 @@ export interface SessionApprovalOverride {
    * - `refused`: a recorded full access the engine refused because the
    *   session was not spawned with it (Claude); it needs a session restart.
    * - `confirmed`: the engine's latest report shows it applied.
+   * - `not-applied`: the engine's latest turn could not be moved onto the
+   *   rules this mode needs (#3290, OpenCode); it kept what it ran before.
    */
-  state: 'requested' | 'refused' | 'confirmed';
+  state: 'requested' | 'refused' | 'confirmed' | 'not-applied';
 }
 
 /** The approval-posture fields of a chat (#2436). */
 export interface ApprovalPostureState {
   /** A pick the server has not received yet. A Default pick is a decision too. */
   queuedApprovalMode?: ApprovalMode;
+  queuedApprovalDefaultNamespace?: string;
   /** The latest recorded decision this client has folded. */
   approvalPosture?: ApprovalMode;
   /** Its server global sequence; absent when only this client's send vouches for it. */
@@ -294,6 +440,8 @@ export interface ApprovalPostureState {
   lastAppliedApprovalMode?: ApprovalMode;
   /** The engine refused the recorded full access on its latest turn. */
   approvalEscalationRejected?: boolean;
+  /** #3290: the engine's latest turn could not take the recorded posture. */
+  approvalTakeoverFailed?: boolean;
 }
 
 /**
@@ -317,8 +465,9 @@ export function sessionApprovalOverride(
     return { mode: posture, state: 'confirmed' };
   return {
     mode: posture,
-    state:
-      posture === 'never' && chat.approvalEscalationRejected
+    state: chat.approvalTakeoverFailed
+      ? 'not-applied'
+      : posture === 'never' && chat.approvalEscalationRejected
         ? 'refused'
         : 'requested',
   };
@@ -355,6 +504,12 @@ export function foldApprovalPosture(
   return {
     approvalPosture: approvalMode,
     approvalPostureSequence: sequence,
+    // #3290: a newly recorded decision has not failed yet; the engine's next
+    // turn or warning says whether it took it.
+    ...(chat?.approvalPosture !== approvalMode ||
+    sequence !== chat?.approvalPostureSequence
+      ? { approvalTakeoverFailed: undefined }
+      : {}),
   };
 }
 

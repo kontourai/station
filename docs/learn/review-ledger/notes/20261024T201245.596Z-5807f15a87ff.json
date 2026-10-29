@@ -1,0 +1,9 @@
+{
+  "revision": "2988d7195bd6bbd14d8aea0072d37234d26458fe",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Reviewed the final CLI copy-only correction against this reference. The rejected non-loopback target now uses the canonical saved Station terminology. Endpoint validation, selected-target resolution, authority, file output, TTL, revocation and uncertainty semantics are unchanged. The existing CLI owner suite passed14 cases with its intentional Windows private-file skip; the actual Station vocabulary gate changed from one violation before repair to zero after it. No new runtime/provider or account evidence. No prose change is needed for this literal-only delta.","inputs":["docs/reference/cli.md","packages/cli/src/commands/mcp-clients.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the final CLI copy-only correction against this reference. The rejected non-loopback target now uses the canonical saved Station terminology. Endpoint validation, selected-target resolution, authority, file output, TTL, revocation and uncertainty semantics are unchanged. The existing CLI owner suite passed14 cases with its intentional Windows private-file skip; the actual Station vocabulary gate changed from one violation before repair to zero after it. No new runtime/provider or account evidence. No prose change is needed for this literal-only delta.","inputs":["docs/reference/session-api.md","packages/cli/src/commands/mcp-clients.ts"]}
+  ]
+}

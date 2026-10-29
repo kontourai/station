@@ -1,0 +1,11 @@
+{
+  "revision": "cd80f3a956494e27d6349e30e0d9861bdfc7a7e4",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"NO_PROSE_CHANGE: reviewed the additive operator-setup-service.test.ts admission in scripts/vitest-resource-manifest.mjs. It owns real bounded command/Git and abrupt-owner-process fixtures and belongs to the existing process-heavy pool; no worker, deadline, exclusion or partition policy changed. Testing guide resource groups, agent-runtime disk/process evidence distinctions and scripts agent classification/cleanup instructions remain accurate. Scoped source review only; existing process-heavy tests and actual setup SIGKILL fixture were executed separately by parent, not broader platform qualification.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"NO_PROSE_CHANGE: reviewed the additive operator-setup-service.test.ts admission in scripts/vitest-resource-manifest.mjs. It owns real bounded command/Git and abrupt-owner-process fixtures and belongs to the existing process-heavy pool; no worker, deadline, exclusion or partition policy changed. Testing guide resource groups, agent-runtime disk/process evidence distinctions and scripts agent classification/cleanup instructions remain accurate. Scoped source review only; existing process-heavy tests and actual setup SIGKILL fixture were executed separately by parent, not broader platform qualification.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"NO_PROSE_CHANGE: reviewed the additive operator-setup-service.test.ts admission in scripts/vitest-resource-manifest.mjs. It owns real bounded command/Git and abrupt-owner-process fixtures and belongs to the existing process-heavy pool; no worker, deadline, exclusion or partition policy changed. Testing guide resource groups, agent-runtime disk/process evidence distinctions and scripts agent classification/cleanup instructions remain accurate. Scoped source review only; existing process-heavy tests and actual setup SIGKILL fixture were executed separately by parent, not broader platform qualification.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

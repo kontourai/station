@@ -1,4 +1,8 @@
 import {
+  findPrimaryChatLayout,
+  type LayoutMetadataReadView,
+} from '@kontourai/station-contracts/layout';
+import {
   useAcknowledgeConversationMutation,
   useConversationInventoryQuery,
   useOrchestrationSessionsQuery,
@@ -47,6 +51,7 @@ interface HomeWorkData {
    */
   agents: ReturnType<typeof useAgents>;
   actionsLoading: boolean;
+  firstSession: boolean;
   workItems: HomeWorkItem[];
   /**
    * Status facts by item id (`buildWorkFacts`), derived beside `workItems`
@@ -103,6 +108,7 @@ function useHomeWorkData(): HomeWorkData {
       chats: {},
       sessions: sessions.data ?? [],
       tasks: tasks.data ?? [],
+      retainTaskChildren: true,
       agents,
       chatItems: openChatItems,
       remoteEnvironments,
@@ -149,6 +155,15 @@ function useHomeWorkData(): HomeWorkData {
   return {
     projects,
     agents,
+    firstSession:
+      projectsQuery.isSuccess &&
+      agentsLoaded &&
+      projects.length === 0 &&
+      workItems.length === 0 &&
+      !workLoading &&
+      !workError &&
+      (remoteSessionsResult?.unavailable.length ?? 0) === 0 &&
+      (remoteSessionsResult?.authenticationRequired?.length ?? 0) === 0,
     actionsLoading:
       !agentsLoaded || projectsQuery.isLoading || pickerCatalogLoading,
     workItems,
@@ -169,7 +184,7 @@ function useHomeWorkData(): HomeWorkData {
 }
 
 /**
- * U1 (design round 2026-10): where a chat opened from Home LIVES. A chat
+ * #3239: where a chat opened from Home LIVES. A chat
  * whose project has a Coding layout belongs in that layout's centre, not in
  * a dock squeezed under Home; a chat with no project, or whose project has
  * no Coding layout, stays in the dock, and a device that folds every region
@@ -241,13 +256,13 @@ export function useHomeViewModel(onNavigate: (view: NavigationView) => void) {
     try {
       // The same key `useProjectLayoutsQuery` writes, so a sidebar that has
       // already listed this project's layouts answers without a request.
-      const layouts: Array<{ slug: string; type?: string }> =
-        await queryClient.fetchQuery({
-          queryKey: ['projects', projectSlug, 'layouts'],
-          queryFn: () => listProjectLayouts(apiBase, projectSlug),
-          staleTime: 60_000,
-        });
-      return layouts.find((layout) => layout.type === 'coding')?.slug ?? null;
+      const layouts: LayoutMetadataReadView[] = await queryClient.fetchQuery({
+        queryKey: ['projects', projectSlug, 'layouts'],
+        queryFn: () => listProjectLayouts(apiBase, projectSlug),
+        staleTime: 60_000,
+      });
+      // The layout whose centre is Chat (#2995), whoever contributed it.
+      return findPrimaryChatLayout(layouts)?.slug ?? null;
     } catch {
       return null;
     }
@@ -258,7 +273,9 @@ export function useHomeViewModel(onNavigate: (view: NavigationView) => void) {
     // has none — nothing was ever sent — and stays reachable in its lane.
     primaryWorkItem: data.workItems.find(
       (task) =>
-        task.kind !== 'remote-session' && task.lifecycleLabel !== 'Draft',
+        task.kind !== 'remote-session' &&
+        task.lifecycleLabel !== 'Draft' &&
+        !data.workFacts?.get(task.id)?.runRootId,
     ),
     continueWork: createContinueWork(
       onNavigate,

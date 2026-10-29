@@ -2,7 +2,13 @@
  * @vitest-environment jsdom
  */
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { projectOutboundQueueEntries } from '../hooks/outboundQueueProjection';
@@ -13,6 +19,8 @@ const editOutboundTurnMock = vi.fn();
 const reorderOutboundTurnMock = vi.fn();
 const mergeOutboundTurnsMock = vi.fn();
 const unmergeOutboundTurnMock = vi.fn();
+const sendHeldMock = vi.fn();
+const dismissUnconfirmedMock = vi.fn();
 
 vi.mock('../lib/outboundQueue', () => ({
   isWorkspaceRefusedTurn: (turn: { status: string; lastError?: string }) =>
@@ -24,6 +32,9 @@ vi.mock('../lib/outboundQueue', () => ({
     reorder: (...args: unknown[]) => reorderOutboundTurnMock(...args),
     merge: (...args: unknown[]) => mergeOutboundTurnsMock(...args),
     unmerge: (...args: unknown[]) => unmergeOutboundTurnMock(...args),
+    sendHeld: (...args: unknown[]) => sendHeldMock(...args),
+    dismissUnconfirmed: (...args: unknown[]) => dismissUnconfirmedMock(...args),
+    retiredKeys: async () => ({ discarded: [], accepted: [] }),
   },
 }));
 
@@ -42,7 +53,62 @@ describe('OutboundQueuedMessages (station#2522)', () => {
     }
   });
 
-  it('deletes a pending offline message immediately', async () => {
+  it('a copy held by another or a closed window offers Send and Discard only, and Send releases it', async () => {
+    sendHeldMock.mockResolvedValue(undefined);
+    const { rerender } = render(
+      <OutboundQueuedMessages
+        sessionId="session-1"
+        turns={[
+          {
+            clientTurnId: 'held-away',
+            content: 'held elsewhere',
+            status: 'pending',
+            heldElsewhere: true,
+          },
+          { clientTurnId: 'after', content: 'after it', status: 'pending' },
+        ]}
+        onError={vi.fn()}
+        onRetry={vi.fn()}
+        onStartNewChat={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getAllByRole('button', { name: 'Edit message' }),
+    ).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: /Merge/ })).toBeNull();
+    // An open window's copy is its ordinary follow-up: one short line; the
+    // full explanation is its tooltip.
+    const open = screen.getByText(/Queued in another window\./);
+    expect(open.getAttribute('title')).toMatch(/sends it when this turn ends/);
+    rerender(
+      <OutboundQueuedMessages
+        sessionId="session-1"
+        turns={[
+          {
+            clientTurnId: 'held-away',
+            content: 'held elsewhere',
+            status: 'pending',
+            heldElsewhere: true,
+            heldByClosedWindow: true,
+          },
+          { clientTurnId: 'after', content: 'after it', status: 'pending' },
+        ]}
+        onError={vi.fn()}
+        onRetry={vi.fn()}
+        onStartNewChat={vi.fn()}
+      />,
+    );
+    const note = screen.getByText(/From a closed window\. Not sent\./);
+    expect(note.getAttribute('title')).toMatch(/only when you press Send/);
+    // Its remove action says what it does.
+    expect(
+      screen.getAllByRole('button', { name: 'Discard message' }),
+    ).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(sendHeldMock).toHaveBeenCalledWith('held-away'));
+  });
+
+  it('discards a pending offline message immediately', async () => {
     render(
       <OutboundQueuedMessages
         sessionId="session-1"
@@ -55,7 +121,7 @@ describe('OutboundQueuedMessages (station#2522)', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Delete message' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Discard message' }));
 
     await waitFor(() =>
       expect(discardOutboundTurnMock).toHaveBeenCalledWith('turn-1'),
@@ -78,14 +144,14 @@ describe('OutboundQueuedMessages (station#2522)', () => {
         onStartNewChat={vi.fn()}
       />,
     );
-    const [first] = screen.getAllByRole('button', { name: 'Delete message' });
+    const [first] = screen.getAllByRole('button', { name: 'Discard message' });
     fireEvent.click(first);
     await waitFor(() => expect(onDiscarded).toHaveBeenCalledWith(1));
 
     discardOutboundTurnMock.mockRejectedValueOnce(new Error('store gone'));
     onDiscarded.mockClear();
     fireEvent.click(
-      screen.getAllByRole('button', { name: 'Delete message' })[1],
+      screen.getAllByRole('button', { name: 'Discard message' })[1],
     );
     await waitFor(() => expect(onError).toHaveBeenCalled());
     expect(onDiscarded).not.toHaveBeenCalled();
@@ -138,6 +204,43 @@ describe('OutboundQueuedMessages (station#2522)', () => {
     await waitFor(() =>
       expect(reorderOutboundTurnMock).toHaveBeenCalledWith('second', 'up'),
     );
+  });
+
+  it('rows carry no order number, and Send on a held copy goes to the caller when it decides', async () => {
+    const onSendHeld = vi.fn(async () => {});
+    const { container } = render(
+      <OutboundQueuedMessages
+        sessionId="session-1"
+        turns={[
+          {
+            clientTurnId: 'held-away',
+            content: 'held elsewhere',
+            status: 'pending',
+            heldElsewhere: true,
+            heldByClosedWindow: true,
+          },
+          { clientTurnId: 'first', content: 'goes first', status: 'pending' },
+        ]}
+        onSendHeld={onSendHeld}
+        onError={vi.fn()}
+        onRetry={vi.fn()}
+        onStartNewChat={vi.fn()}
+      />,
+    );
+    // When an outbox row lands relative to the list's own follow-ups is not
+    // known ahead, so no row claims a place in the order.
+    expect(
+      [...container.querySelectorAll('.queued-message__order')].map(
+        (order) => order.textContent,
+      ),
+    ).toEqual(['', '']);
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() =>
+      expect(onSendHeld).toHaveBeenCalledWith(
+        expect.objectContaining({ clientTurnId: 'held-away' }),
+      ),
+    );
+    expect(sendHeldMock).not.toHaveBeenCalled();
   });
 
   it('keeps merging opt-in, previews the text, and offers a pre-send undo', async () => {
@@ -218,7 +321,7 @@ describe('OutboundQueuedMessages (station#2522)', () => {
     );
   });
 
-  it('projects a durable invocation claim as possible-effect evidence after reload', () => {
+  it("lists a running window's claimed send as sending, never as uncertain or withdrawable", () => {
     render(
       <OutboundQueuedMessages
         sessionId="session-1"
@@ -227,6 +330,7 @@ describe('OutboundQueuedMessages (station#2522)', () => {
             clientTurnId: 'turn-1',
             content: 'already sending',
             status: 'invoking',
+            sendUnderWay: true,
           },
         ]}
         onError={vi.fn()}
@@ -235,16 +339,51 @@ describe('OutboundQueuedMessages (station#2522)', () => {
       />,
     );
 
+    const label = screen.getByText('Sending');
+    // Under way elsewhere: a neutral note, not the caution tone.
+    expect(label.classList.contains('queued-messages__label--sending')).toBe(
+      true,
+    );
     expect(
-      screen.getByText(
-        'May have started; inspect this session before sending again',
-      ),
-    ).not.toBeNull();
+      label.classList.contains('queued-messages__label--unconfirmed'),
+    ).toBe(false);
+    expect(screen.queryByText(/may have reached/i)).toBeNull();
+    expect(screen.queryByText(/no answer yet/i)).toBeNull();
+    // Its answer is coming in that window; a Check here would find nothing.
+    expect(screen.queryByRole('button', { name: 'Check' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Discard…' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Edit message' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Delete message' })).toBeNull();
   });
 
-  it('separates waiting, accepted, and delivery-uncertain counts', () => {
+  it("a closed or crashed window's claimed send reads as its bubble does: no answer yet, with Check", () => {
+    render(
+      <OutboundQueuedMessages
+        sessionId="session-1"
+        turns={[
+          {
+            clientTurnId: 'turn-1',
+            content: 'its window is gone',
+            status: 'invoking',
+          },
+        ]}
+        onError={vi.fn()}
+        onRetry={vi.fn()}
+        onStartNewChat={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText('Sending')).toBeNull();
+    expect(screen.queryByText(/sending/)).toBeNull();
+    const label = screen.getByText(
+      'No answer yet. Resends only if it never arrived.',
+    );
+    expect(
+      label.classList.contains('queued-messages__label--unconfirmed'),
+    ).toBe(true);
+    expect(screen.getByRole('button', { name: 'Check' })).toBeTruthy();
+  });
+
+  it('rows only: the pending list above the composer owns the frame and the count', () => {
     render(
       <OutboundQueuedMessages
         sessionId="session-1"
@@ -263,14 +402,24 @@ describe('OutboundQueuedMessages (station#2522)', () => {
       />,
     );
 
+    // No second list: no frame of its own and no summary line.
+    expect(document.querySelector('.queued-messages')).toBeNull();
+    expect(document.querySelector('.queued-messages__label--summary')).toBe(
+      null,
+    );
+    expect(screen.queryByText(/waiting to send/)).toBeNull();
+    expect(document.querySelectorAll('.queued-message')).toHaveLength(3);
+    // The accepted row's note: sentence case, in this list's own words.
+    const accepted = screen.getByText(
+      'Accepted · waiting for the agent to finish',
+    );
     expect(
-      screen.getByText(
-        '1 message waiting to send · 1 accepted and waiting for completion · 1 delivery-uncertain; inspect this session',
-      ),
-    ).not.toBeNull();
+      accepted.classList.contains('queued-messages__label--accepted'),
+    ).toBe(true);
+    expect(screen.queryByText(/Accepted; waiting for completion/)).toBeNull();
   });
 
-  it('counts failed drafts as action-required rather than waiting to send', () => {
+  it('a failed draft offers Retry on its own row', () => {
     render(
       <OutboundQueuedMessages
         sessionId="session-1"
@@ -284,9 +433,11 @@ describe('OutboundQueuedMessages (station#2522)', () => {
       />,
     );
 
-    expect(
-      screen.getByText('1 message waiting to send · 1 message need action'),
-    ).not.toBeNull();
+    const failed = screen
+      .getByText('fix me')
+      .closest('.queued-message') as HTMLElement;
+    expect(failed.textContent).toContain('Needs retry');
+    expect(within(failed).getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
 
   it('does not offer retry or mutation for a foreground turn that may already have started', () => {
@@ -307,14 +458,110 @@ describe('OutboundQueuedMessages (station#2522)', () => {
       />,
     );
 
-    expect(
-      screen.getByText(
-        'May have started; inspect this session before sending again',
-      ),
-    ).not.toBeNull();
+    expect(screen.getByText('May have reached the agent')).not.toBeNull();
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Edit message' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Delete message' })).toBeNull();
+  });
+
+  it('#3596: an unconfirmed message can be discarded only after the risk is stated and the user confirms', async () => {
+    dismissUnconfirmedMock.mockResolvedValue(undefined);
+    const onDiscarded = vi.fn();
+    render(
+      <OutboundQueuedMessages
+        sessionId="session-1"
+        turns={[
+          {
+            clientTurnId: 'turn-1',
+            content: 'may have gone',
+            status: 'may-have-started',
+          },
+          { clientTurnId: 'turn-2', content: 'after it', status: 'pending' },
+        ]}
+        onError={vi.fn()}
+        onDiscarded={onDiscarded}
+        onRetry={vi.fn()}
+        onStartNewChat={vi.fn()}
+      />,
+    );
+    const discard = screen.getByRole('button', { name: 'Discard…' });
+    discard.focus();
+    fireEvent.click(discard);
+    const confirm = screen.getByRole('group', {
+      name: 'Discard this message?',
+    });
+    expect(confirm.textContent).toContain(
+      'It may already have reached the agent.',
+    );
+    // The button stays, points at the question, and focus moves into it.
+    expect(discard.isConnected).toBe(true);
+    expect(discard.getAttribute('aria-expanded')).toBe('true');
+    expect(discard.getAttribute('aria-controls')).toBe(confirm.id);
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Keep it' }),
+    );
+    // Keep it closes the question and hands focus back to Discard….
+    fireEvent.click(screen.getByRole('button', { name: 'Keep it' }));
+    expect(
+      screen.queryByRole('group', { name: 'Discard this message?' }),
+    ).toBeNull();
+    expect(document.activeElement).toBe(discard);
+    fireEvent.click(discard);
+    expect(dismissUnconfirmedMock).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'I checked, discard it' }),
+    );
+    await waitFor(() =>
+      expect(dismissUnconfirmedMock).toHaveBeenCalledWith('turn-1'),
+    );
+    expect(discardOutboundTurnMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(onDiscarded).toHaveBeenCalledWith(1));
+  });
+
+  it('a send with no answer says so, and offers Check and the explicit discard', () => {
+    render(
+      <OutboundQueuedMessages
+        sessionId="session-1"
+        turns={[
+          {
+            clientTurnId: 'turn-1',
+            content: 'no answer came back',
+            status: 'invoking',
+            awaitingLookup: true,
+          },
+        ]}
+        onError={vi.fn()}
+        onRetry={vi.fn()}
+        onStartNewChat={vi.fn()}
+      />,
+    );
+    // The same words its bubble uses.
+    expect(
+      screen.getByText('No answer yet. Resends only if it never arrived.'),
+    ).toBeTruthy();
+    expect(screen.queryByText(/delivery-uncertain/)).toBeNull();
+    // Check and Discard… sit in one action group, outside the label.
+    const check = screen.getByRole('button', { name: 'Check' });
+    const discard = screen.getByRole('button', { name: 'Discard…' });
+    expect(check.parentElement).toBe(discard.parentElement);
+    expect(
+      check.parentElement?.classList.contains('queued-message__actions'),
+    ).toBe(true);
+  });
+
+  it('#3596: a row still invoking offers no discard; its send may be under way', () => {
+    render(
+      <OutboundQueuedMessages
+        sessionId="session-1"
+        turns={[
+          { clientTurnId: 'turn-1', content: 'in flight', status: 'invoking' },
+        ]}
+        onError={vi.fn()}
+        onRetry={vi.fn()}
+        onStartNewChat={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Discard…' })).toBeNull();
   });
 
   it('offers workspace recovery without a Retry for a permanent refusal', () => {

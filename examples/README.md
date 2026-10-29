@@ -17,6 +17,7 @@ prove.
 | [Getting Started Starter](getting-started-starter/README.md) | Registry-installed first extension |
 | [Coding Starter](coding-starter/README.md) | Coding-oriented starter layout |
 | [Minimal Workspace](minimal-layout/README.md) | Small Workspace Pane and SDK basics |
+| [Related Reports](related-reports/README.md) | A Pane that opens related panes beside it, direct and framed |
 | [Demo Layout](demo-layout/README.md) | Local layout installation and registry fixture |
 | [Documentation Snippets](docs-snippets/README.md) | Compile-checked copies of guide code blocks; not a plugin |
 
@@ -52,7 +53,7 @@ prove.
 | Example | Focus |
 | --- | --- |
 | [MCP UI Demo](mcp-ui-demo/README.md) | Sandboxed MCP App resource |
-| [Station Sessions MCP](station-sessions-mcp/README.md) | Read-only session panel over MCP UI |
+| [Station Sessions MCP](station-sessions-mcp/README.md) | Read-only session panel over MCP UI; its reader is broken ([#2785](https://github.com/kontourai/station/issues/2785)), and an empty panel is not evidence |
 | [Self-Configuring Agent](self-configuring-agent/README.md) | Agent-authored configuration pattern |
 | [Example Registry](registry/README.md) | Reproducible local registry manifest |
 
@@ -77,8 +78,9 @@ npm run typecheck:examples
 `examples:conformance` validates every manifest path and documented npm script,
 then builds every example that declares a build. Example unit tests run in the
 normal test corpus. Credential-gated live-provider examples are reported as
-`NOT PROVEN AT RUNTIME`; a successful static build does not prove an external
-service or credential path.
+`NOT PROVEN AT RUNTIME`, and examples that cannot work as shipped (Nova Sonic,
+ElevenLabs, Station Sessions MCP) as `KNOWN BROKEN`. A successful static build
+does not prove an external service or credential path.
 
 `typecheck:examples` compiles every example that ships TypeScript, including
 its tests. `examples:conformance` fails when an example's TypeScript is outside

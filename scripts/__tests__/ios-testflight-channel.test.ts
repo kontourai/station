@@ -67,6 +67,9 @@ describe('iOS TestFlight channel config', () => {
         bundleVersion: '243201',
       });
       const expected = IOS_TESTFLIGHT_CHANNELS[channel];
+      expect((config.build?.features ?? []).includes('native-devtools')).toBe(
+        channel === 'nightly',
+      );
       expect(config).toMatchObject({
         identifier: expected.bundleId,
         productName: expected.productName,
@@ -104,12 +107,8 @@ describe('iOS TestFlight channel config', () => {
     },
   );
 
-  test('names both extensions for Beta and Nightly only, derived from the app', () => {
-    expect(IOS_TESTFLIGHT_CHANNELS.stable.agentActivityBundleId).toBeNull();
-    expect(
-      IOS_TESTFLIGHT_CHANNELS.stable.notificationServiceBundleId,
-    ).toBeNull();
-    for (const channel of ['beta', 'nightly'] as const) {
+  test('names reviewed extensions for all release channels, derived from the app', () => {
+    for (const channel of ['stable', 'beta', 'nightly'] as const) {
       const identity = IOS_TESTFLIGHT_CHANNELS[channel];
       expect(identity.agentActivityBundleId).toBe(
         `${identity.bundleId}.AgentActivity`,

@@ -1,0 +1,15 @@
+{
+  "revision": "e91d160a762f4d4c2158e7cb03b661f5a2f13190",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Reviewed against this PR's changed inputs (docs/guides/testing.md): testing.md gains one paragraph that workspace package.json files must not reach Vitest related discovery and need explicit impact-manifest readers. This document only routes to or summarizes the testing guide; none of its claims change.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed against this PR's changed inputs (docs/guides/testing.md): testing.md gains one paragraph that workspace package.json files must not reach Vitest related discovery and need explicit impact-manifest readers. This document only routes to or summarizes the testing guide; none of its claims change.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed against this PR's changed inputs (docs/guides/testing.md): testing.md gains one paragraph that workspace package.json files must not reach Vitest related discovery and need explicit impact-manifest readers. This document only routes to or summarizes the testing guide; none of its claims change.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed against this PR's changed inputs (docs/guides/testing.md): testing.md gains one paragraph that workspace package.json files must not reach Vitest related discovery and need explicit impact-manifest readers. This document only routes to or summarizes the testing guide; none of its claims change.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Reviewed against this PR's changed inputs (docs/guides/testing.md): testing.md gains one paragraph that workspace package.json files must not reach Vitest related discovery and need explicit impact-manifest readers. This document only routes to or summarizes the testing guide; none of its claims change.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

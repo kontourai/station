@@ -1,0 +1,7 @@
+{
+  "revision": "55c6318b8f46347771da109597e233f158e04e4e",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the single resource-manifest addition for #3824: the new engine delivery suite starts isolated MCP/script children and belongs beside station-engine-matrix in the existing independent process group. No worker limits, classification behavior, fixture rules, generated verification lanes or testing recipes change. Fixture guard 33/33, scripts typecheck and e2e typecheck pass after building the missing lane-local connect prerequisite.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

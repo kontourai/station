@@ -1,0 +1,7 @@
+{
+  "revision": "e38202ec6fa478d6911332d6d12fb3a2d054d0b2",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed walkthrough delta: two retained Connections captures now explicitly name inset-tab and in-pane add-flow limits. The abstraction investigation remains historical source observations with public owner boundaries; this caption correction adds no runtime, release or abstraction acceptance claim.","inputs":["docs/architecture/abstraction-review.md","docs/learn/walkthroughs.md"]}
+  ]
+}

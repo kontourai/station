@@ -11,9 +11,13 @@ import { boardPath } from '../../app-shell/board-route';
 import { useProjects } from '../../contexts/ProjectsContext';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import { regionLabel } from '../../regions/region-model';
+import { Button } from '../Button';
+import { DashboardGlyph } from '../icons/Glyph';
+import { ErrorState, SkeletonBlock } from '../state';
 import { NEW_BOARD_REQUEST_EVENT } from './new-board-events';
 import { useSidebarPillRegions } from './pill-region-open';
 import { sidebarLayoutPaneId } from './pill-region-placement';
+import { SidebarPopover } from './SidebarPopover';
 import './ProjectSidebarBoards.css';
 
 /**
@@ -21,14 +25,12 @@ import './ProjectSidebarBoards.css';
  * `docs/design/shell-ownership-and-boards.md`).
  *
  * A Board is a Layout owned by a principal rather than a project — the
- * project-less place D3 puts between Activity and Projects. This is NOT a
+ * project-less place the workspace map lists after Projects. This is NOT a
  * destination-registry entry, and that is the registry's own rule rather than
  * a shortcut: `sidebar: { order }` registers a fixed PLACE (Activity is the
  * only one), while a list of records the user creates and deletes at runtime
- * is rendered here the way Projects, Open chats and Drafts already are —
+ * is rendered here the way Projects are —
  * a `sidebar__section-label` header with a `+`, then a row per record.
- *
- * ## Hidden when empty
  *
  * D3's section is the viewer's personal Boards first, then instance-shared
  * ones. Only the personal half exists: slice #2061 shipped `/api/me/layouts`
@@ -165,9 +167,19 @@ export function ProjectSidebarBoards({
   activePath,
   onAfterNavigate,
 }: ProjectSidebarBoardsProps) {
-  const { data: boards } = usePersonalLayoutsQuery();
+  const {
+    data: boards,
+    isPending,
+    isError,
+    refetch,
+  } = usePersonalLayoutsQuery();
   const { projects } = useProjects();
   const [mode, setMode] = useState<RowMode>({ kind: 'rest' });
+  const [navigatorOpen, setNavigatorOpen] = useState(false);
+  const navigatorTriggerRef = useRef<HTMLButtonElement>(null);
+  const closeNavigator = useCallback(() => setNavigatorOpen(false), []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Route and presentation changes dismiss the transient navigator.
+  useEffect(closeNavigator, [activePath, collapsed, isMobile, closeNavigator]);
   /**
    * Where a Board may be opened, on this device (#2158). Read ONCE for the
    * section rather than per row: the answer is the viewport's and the
@@ -415,7 +427,7 @@ export function ProjectSidebarBoards({
         onAfterNavigate?.();
         return;
       }
-      setMode({ kind: 'rename', slug: created.slug });
+      if (!collapsed) setMode({ kind: 'rename', slug: created.slug });
     },
     // #2062 review F2 — without this, a refused create (409, 500, offline)
     // leaves `openOnCreate` stuck true, and the user's next `+` navigates
@@ -443,7 +455,7 @@ export function ProjectSidebarBoards({
    * the slug from the list as it stands when the event actually arrives.
    */
   const createBoardFromPalette = () => {
-    if (createBoard.isPending) return;
+    if (createBoard.isPending || !Array.isArray(boards) || isError) return;
     openOnCreate.current = true;
     createBoard.mutate({
       slug: nextBoardSlug(rows.map((row) => row.slug)),
@@ -463,15 +475,6 @@ export function ProjectSidebarBoards({
     return () => window.removeEventListener(NEW_BOARD_REQUEST_EVENT, handle);
   }, []);
 
-  // Hidden when the viewer has no Boards. The section is a list of the
-  // viewer's own things; an empty header with a `+` would take a row to
-  // advertise a scope that holds nothing.
-  //
-  // This is a render-time `null`, and every hook above it has already run —
-  // which is what keeps the palette's trigger alive for exactly the viewer
-  // who cannot see the `+`.
-  if (rows.length === 0 && mode.kind === 'rest') return null;
-
   const commitRename = (slug: string, name: string) => {
     setMode({ kind: 'rest' });
     const trimmed = name.trim();
@@ -480,16 +483,16 @@ export function ProjectSidebarBoards({
     renameBoard.mutate({ layoutSlug: slug, update: { name: trimmed } });
   };
 
-  return (
+  const content = (
     <>
       <div className="sidebar__section-label sidebar__section-label--boards">
-        <span className="sidebar__section-label-text">Boards</span>
+        <span className="sidebar__section-label-text">Personal Boards</span>
         <button
           type="button"
           className="sidebar__section-add"
           aria-label="New Board"
           title="New Board"
-          disabled={createBoard.isPending}
+          disabled={createBoard.isPending || !Array.isArray(boards) || isError}
           onClick={() =>
             createBoard.mutate({
               slug: nextBoardSlug(rows.map((row) => row.slug)),
@@ -513,6 +516,23 @@ export function ProjectSidebarBoards({
           </svg>
         </button>
       </div>
+      {isPending && <SkeletonBlock count={2} label="Loading personal Boards" />}
+      {isError && (
+        <ErrorState
+          variant="compact"
+          title="Unable to load personal Boards"
+          action={
+            <Button size="sm" onClick={() => void refetch()}>
+              Retry
+            </Button>
+          }
+        />
+      )}
+      {!collapsed && Array.isArray(boards) && rows.length === 0 && (
+        <p className="sidebar__boards-description">
+          Dashboards across projects.
+        </p>
+      )}
       {rows.map((board) => {
         const path = boardPath(board.slug);
         const isActive = activePath === path;
@@ -582,6 +602,7 @@ export function ProjectSidebarBoards({
                   aria-current={isActive ? 'page' : undefined}
                   title={collapsed ? board.name : undefined}
                   onClick={() => {
+                    closeNavigator();
                     navigate(path);
                     if (isMobile) onAfterNavigate?.();
                   }}
@@ -621,7 +642,7 @@ export function ProjectSidebarBoards({
                   }}
                 >
                   <span aria-hidden="true" className="sidebar__board-glyph">
-                    {board.icon ?? '▦'}
+                    {board.icon ?? <DashboardGlyph />}
                   </span>
                   <span className="sidebar__project-name">{board.name}</span>
                 </button>
@@ -805,6 +826,34 @@ export function ProjectSidebarBoards({
           </div>
         );
       })}
+    </>
+  );
+  if (!collapsed) return content;
+  return (
+    <>
+      <button
+        ref={navigatorTriggerRef}
+        type="button"
+        className="sidebar__boards-trigger"
+        aria-label="Personal Boards"
+        title="Personal Boards"
+        aria-haspopup="dialog"
+        aria-expanded={navigatorOpen}
+        onPointerDown={(event) => {
+          if (navigatorOpen) event.preventDefault();
+        }}
+        onClick={() => setNavigatorOpen((open) => !open)}
+      >
+        <DashboardGlyph />
+      </button>
+      <SidebarPopover
+        open={collapsed && !isMobile && navigatorOpen}
+        anchorRef={navigatorTriggerRef}
+        label="Personal Boards"
+        onClose={closeNavigator}
+      >
+        <div className="sidebar__boards-popover">{content}</div>
+      </SidebarPopover>
     </>
   );
 }

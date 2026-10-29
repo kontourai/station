@@ -1,0 +1,7 @@
+{
+  "revision": "2a8937878e1137ab114708ba95eb42b763a36271",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the unchanged TurnDeduplicator and conversation delivery claims against the current main integration. The foreground test delta adds owned raw-intent-before-await coverage and changes internal-context expectations; the source-pinning caller fixture remains intact. The versioned digest, matching-input replay, conflict-before-successor, caller-authorized inbox inspection, legacy unknown proof and mixed-version limits still match the unchanged digest/idempotency modules and current foreground/runtime ports. The four focused owner suites passed 741 cases at 327c5e720a2; this does not establish real-provider or release operation. No prose or baseline change.","inputs":["docs/architecture/module-map.md","src-server/services/execution-target/__tests__/execution-target-execution.test.ts"]}
+  ]
+}

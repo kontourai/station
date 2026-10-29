@@ -1,0 +1,7 @@
+{
+  "revision": "f44cec61337e7e20856f0f415f3512ddedd7ef01",
+
+  "notes": [
+    {"path":"docs/design/settings-launch-triage.md","note":"SystemSection core-app-updates row now labelled by the card's own server heading instead of a duplicate row title. The triage row (server update distinct from app update; target and restart consequences shown) remains accurate.","inputs":["docs/design/settings-launch-triage.md","src-ui/src/views/settings/SystemSection.tsx"]}
+  ]
+}

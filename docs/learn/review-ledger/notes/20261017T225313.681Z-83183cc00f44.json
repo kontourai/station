@@ -1,0 +1,7 @@
+{
+  "revision": "513d838cfd28ecbc031557264dc5ae2bdb198f8b",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the final loading-primitive-only change: MCPToolUIFrame now uses SkeletonBlock under its reserved resource-load height. Recorded result gating, AppBridge authority, intrinsic loaded geometry, resource/CSP leaf separation and EventStore read behavior are unchanged. The module map still routes these limits to the canonical host design; no prose change or broader provider/platform qualification follows from this loading presentation delta.","inputs":["docs/architecture/module-map.md","src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx"]}
+  ]
+}

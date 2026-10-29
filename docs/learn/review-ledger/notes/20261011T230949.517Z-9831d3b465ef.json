@@ -1,0 +1,19 @@
+{
+  "revision": "e95f69c42bf0ff54c0c292aa60eb88cc9a7081e5",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Changed in #3557 PR B: the `environment reset` bullet now says reset also revokes every paired device and personal access token. Checked against EnvironmentSecurityService.resetEnvironment: it awaits devicePairing.clearPersonalTokens() before writing the new record (a failed clear aborts the reset) and again after DevicePairingService.resetEnvironment empties the registry. The rest of the environment command rows (credential rotate, offer, access request/list/approve/deny, peers) are unaffected by the token and group changes.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"README.md","note":"Flagged only because docs/reference/cli.md changed. README links the CLI reference for target and credential setup and names `npx @kontourai/station-cli@latest --help`; neither the link target's anchor nor that command changed (the cli.md edit only extends the environment reset bullet).","inputs":["README.md","docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Flagged only because docs/reference/cli.md changed. Its CLI distribution row points at the availability reference for command admission, and its home-reset gap (#2849, line ~331) concerns home reset skipping the home instance, not environment reset; the cli.md change (environment reset also revokes devices and personal tokens) affects neither claim.","inputs":["docs/architecture/abstraction-review.md","docs/guides/web-push-notifications.md","docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Flagged only because docs/reference/cli.md changed. Searched it for environment reset, access, and token claims; it makes none about environment reset or credentials that the reset-bullet edit (now also revoking personal access tokens) could falsify.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Flagged only because docs/reference/cli.md changed. It routes 'Automate an operator workflow' to the CLI reference for exact command, exit status, retry and redacted output; the cli.md edit only adds that environment reset revokes paired devices and personal tokens, which does not change that routing claim.","inputs":["docs/guides/integrating-station.md","docs/reference/cli.md"]},
+
+    {"path":"packages/cli/README.md","note":"Flagged only because docs/reference/cli.md changed. Line ~215 says environment peers, credential rotate and environment reset remain checkout-only and access request is the remote requester side; still true (reset's revocation of personal tokens does not change where it runs). The invocation and availability-table links resolve unchanged.","inputs":["packages/cli/README.md","docs/reference/cli.md"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Updated for #3557 PR B: push-routes.ts now refuses a credential whose identifyDevice result is a personal access token (credentialKind 'personal-token') on both push-subscribe and push-unsubscribe with the same 403 device_pairing_required, covered by push-routes.test.ts '#3557: a personal access token is not a device a notification reaches'. Rewrote the Authentication paragraph to say so; the 401 outer-gate and audit-reason claims are unchanged.","inputs":["docs/guides/web-push-notifications.md","src-server/routes/operations/push-routes.ts","src-server/runtime/__tests__/push-routes.test.ts"]}
+  ]
+}

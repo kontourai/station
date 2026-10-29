@@ -2,6 +2,7 @@
  * @vitest-environment jsdom
  */
 
+import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { ChatDockActiveIdentity } from '../components/chat-dock/ChatDockActiveIdentity';
@@ -47,7 +48,12 @@ describe('ChatDockActiveIdentity agent identity (#3309)', () => {
    * is that the label distinguishing this chat from the last one is no longer
    * the first thing to vanish.
    */
-  test('shows the execution route alongside the reported model', () => {
+  /**
+   * One line: title, agent, engine. The model and the route are the
+   * composer's (its model picker names them), so the bar carries them only in
+   * the context's tooltip.
+   */
+  test('keeps the model and route out of the line and in the tooltip', () => {
     render(
       <ChatDockActiveIdentity
         session={session}
@@ -59,10 +65,15 @@ describe('ChatDockActiveIdentity agent identity (#3309)', () => {
     );
     expect(
       document.querySelector('.chat-dock__active-identity-engine')?.textContent,
-    ).toBe('Claude Code · GPT-6.1 Sol · via home-media');
+    ).toBe('Claude Code');
+    expect(
+      document
+        .querySelector('.chat-dock__active-identity-context')
+        ?.getAttribute('title'),
+    ).toBe('Codex · Claude Code · GPT-6.1 Sol · via home-media');
   });
 
-  test('leads with the agent, then the title, with engine and model as one token behind it', () => {
+  test('leads with the conversation title, then the agent and engine', () => {
     render(
       <ChatDockActiveIdentity
         session={session}
@@ -72,13 +83,8 @@ describe('ChatDockActiveIdentity agent identity (#3309)', () => {
       />,
     );
 
-    // Order is the claim, not just presence: agent → title → engine · model.
-    expect(identityText()).toBe(
-      'CodexPolish the Station dockClaude Code · Opus 5 (1M context)',
-    );
-    expect(
-      document.querySelector('.chat-dock__active-identity-engine')?.textContent,
-    ).toBe('Claude Code · Opus 5 (1M context)');
+    // Order is the claim, not just presence: title → agent → engine.
+    expect(identityText()).toBe('Polish the Station dockCodexClaude Code');
     expect(
       document.querySelector('.chat-dock__active-identity-avatar'),
     ).not.toBeNull();
@@ -103,9 +109,29 @@ describe('ChatDockActiveIdentity agent identity (#3309)', () => {
     expect(
       screen.getByText('Driven from delegation').getAttribute('title'),
     ).toBe('Driven from delegated task: Review Station');
+    // It is the first to give way on a narrow bar, so the title's tooltip
+    // keeps it.
+    expect(
+      document
+        .querySelector('.chat-dock__active-identity-title')
+        ?.getAttribute('title')
+        ?.split('\n')
+        .at(-1),
+    ).toBe('Driven from delegated task: Review Station');
+    // With no task title, it says so plainly rather than show the raw id.
+    rerender(
+      <ChatDockActiveIdentity
+        session={session}
+        inputOrigin={{ kind: 'delegation', taskId: 'task:01da7f' }}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByText('Driven from delegation').getAttribute('title'),
+    ).toBe('Driven from a delegated task');
   });
 
-  test('the title and the token each carry their full text as a tooltip, because each ellipsizes', () => {
+  test('the title and the context each carry their full text as a tooltip; the title names the context too, which may have stepped aside', () => {
     render(
       <ChatDockActiveIdentity
         session={session}
@@ -117,12 +143,14 @@ describe('ChatDockActiveIdentity agent identity (#3309)', () => {
 
     expect(
       screen.getByText('Polish the Station dock').getAttribute('title'),
-    ).toBe('Polish the Station dock');
+    ).toBe(
+      'Polish the Station dock\nCodex · Claude Code · Opus 5 (1M context)',
+    );
     expect(
-      screen
-        .getByText('Claude Code · Opus 5 (1M context)')
-        .getAttribute('title'),
-    ).toBe('Claude Code · Opus 5 (1M context)');
+      document
+        .querySelector('.chat-dock__active-identity-context')
+        ?.getAttribute('title'),
+    ).toBe('Codex · Claude Code · Opus 5 (1M context)');
   });
 
   test('an unreported model names none rather than a placeholder', () => {
@@ -166,7 +194,7 @@ describe('ChatDockActiveIdentity agent identity (#3309)', () => {
     );
 
     // One "Station", not two: the agent's own name now carries that identity.
-    expect(identityText()).toBe('StationPolish the Station dock');
+    expect(identityText()).toBe('Polish the Station dockStation');
     expect(
       document.querySelector('.chat-dock__active-identity-engine'),
     ).toBeNull();
@@ -200,7 +228,7 @@ describe('ChatDockActiveIdentity agent identity (#3309)', () => {
     expect(
       (swatch as HTMLElement).style.getPropertyValue('--identicon-hue'),
     ).toBe(String(identiconHue('release-bot')));
-    expect(identityText()).toBe('Release BotPolish the Station dock');
+    expect(identityText()).toBe('Polish the Station dockRelease Bot');
   });
 
   test('an unresolved agent still attributes from the session, and claims no engine', () => {
@@ -209,7 +237,7 @@ describe('ChatDockActiveIdentity agent identity (#3309)', () => {
     // `agentName`/`agentSlug` are the session's own committed facts, so the
     // avatar and name survive a catalog miss; the engine is not derivable
     // without the catalog row, so nothing is asserted about it.
-    expect(identityText()).toBe('CodexPolish the Station dock');
+    expect(identityText()).toBe('Polish the Station dockCodex');
     expect(
       document.querySelector('.chat-dock__active-identity-avatar'),
     ).not.toBeNull();
@@ -365,5 +393,115 @@ describe('ChatDockActiveIdentity engine mark for a local chat (#3355)', () => {
       avatar()?.querySelector('.brand-icon__initials') ??
       (avatar()?.classList.contains('brand-icon--identicon') ? avatar() : null);
     expect(fallback).not.toBeNull();
+  });
+});
+
+/**
+ * The header names the engine the chat's Session runs on, by the same rule as
+ * the composer's engine chip (`chatEngineIdentity`). Repointing the Agent does
+ * not move an open Session, so the Agent's configured connection must not
+ * relabel it; the two surfaces sit on one screen and must agree.
+ */
+describe('ChatDockActiveIdentity session engine', () => {
+  const agentOn = (connection: string, name: string, slug = 'station') =>
+    ({
+      slug,
+      name: slug === 'station' ? 'Station' : slug,
+      engineId: connection,
+      engineDisplayName: name,
+      execution: { agentConnectionId: connection },
+    }) as unknown as AgentData;
+
+  const engineText = () =>
+    document.querySelector('.chat-dock__active-identity-engine')?.textContent ??
+    null;
+
+  /** A chat whose connection was observed for its current Session. */
+  function observed(provider: string, connection: string) {
+    return {
+      orchestrationProvider: provider,
+      agentConnectionId: engineConnectionId(connection),
+      currentSessionId: 'session-1',
+      agentConnectionObservedFor: 'session-1',
+    } as Partial<ChatSession>;
+  }
+
+  function renderHeader(
+    session: Partial<ChatSession>,
+    agent: AgentData,
+    executionAgent?: AgentData,
+  ) {
+    render(
+      <ChatDockActiveIdentity
+        session={
+          {
+            id: 'chat-engine',
+            title: 'Continue',
+            agentSlug: 'station',
+            agentName: 'Station',
+            ...session,
+          } as ChatSession
+        }
+        agent={agent}
+        executionAgent={executionAgent}
+        acpConnections={[
+          { id: 'opencode', name: 'OpenCode' },
+          // Resolvable, so a header that trusts a stale connection would
+          // name it rather than coincidentally finding nothing.
+          { id: 'codex', name: 'Stale ACP' },
+        ]}
+        onClose={vi.fn()}
+      />,
+    );
+  }
+
+  test('a Codex Session reads Codex after its Agent is repointed to OpenCode', () => {
+    renderHeader(observed('codex', 'codex'), agentOn('opencode', 'OpenCode'));
+    expect(engineText()).toBe('Codex');
+  });
+
+  test('an ACP Session is named by its own connection', () => {
+    renderHeader(observed('acp', 'opencode'), agentOn('codex', 'Codex'));
+    expect(engineText()).toBe('OpenCode');
+  });
+
+  test('an Agent still bound to the Session keeps its own connection name', () => {
+    renderHeader(
+      observed('codex', 'codex-work'),
+      agentOn('codex-work', 'Codex (work)'),
+    );
+    expect(engineText()).toBe('Codex (work)');
+  });
+
+  test('before any Session exists the header names the configured engine', () => {
+    renderHeader({}, agentOn('opencode', 'OpenCode'));
+    expect(engineText()).toBe('OpenCode');
+  });
+
+  test('a connection observed for an earlier Session claims no engine name (#4162)', () => {
+    // A successor started on the Agent's new ACP connection, but the chat's
+    // connection is still the one observed for its predecessor.
+    renderHeader(
+      {
+        orchestrationProvider: 'acp',
+        agentConnectionId: engineConnectionId('codex'),
+        currentSessionId: 'session-2',
+        agentConnectionObservedFor: 'session-1',
+      } as Partial<ChatSession>,
+      agentOn('opencode-work', 'OpenCode (work)'),
+    );
+    expect(engineText()).toBeNull();
+  });
+
+  test('a conversation override is judged against its execution Agent', () => {
+    // The profile Agent is on OpenCode; the override runs this chat on the
+    // Codex (work) connection, which is the Session's. The chip compares
+    // against the same execution Agent and names "Codex (work)".
+    renderHeader(
+      observed('codex', 'codex-work'),
+      agentOn('opencode', 'OpenCode'),
+      agentOn('codex-work', 'Codex (work)', 'codex-work-default'),
+    );
+    expect(engineText()).toBe('Codex (work)');
   });
 });

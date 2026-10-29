@@ -1,0 +1,9 @@
+{
+  "revision": "01db6cdfc6a254e241d66ac6afa44647a7d50508",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-read the ColorThemes module-map entry against this change: the Appearance page's branch re-adds the export keyword to the three root attribute-name constants in color-theme-apply.ts (data-color-theme, -flavor, -accent), which the page reads. The entry does not name these constants; the applier behavior it describes is unchanged.","inputs":["docs/architecture/module-map.md","src-ui/src/lib/color-theme-apply.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Re-read the theming guide against this change: the Appearance page's branch re-adds the export keyword to the three root attribute-name constants in color-theme-apply.ts (data-color-theme, -flavor, -accent), which the page reads. The guide does not name these constants; the applier behavior it describes is unchanged.","inputs":["docs/guides/theming.md","src-ui/src/lib/color-theme-apply.ts"]}
+  ]
+}

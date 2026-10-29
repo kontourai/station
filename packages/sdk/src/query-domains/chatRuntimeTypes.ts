@@ -136,6 +136,8 @@ export type OrchestrationCommandInput =
       requestId: string;
       expectedRequestEventId?: string;
       decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
+      sessionGrantScope?: 'server';
+      viewedContentDigest?: string;
     }
   | {
       type: 'interruptTurn';

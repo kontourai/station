@@ -65,10 +65,12 @@
 }
 
 /* The "+" panel: fixed under the button (or above it, when there is no room
-   below — the chooser measures and flips), on the navigation layer like a
-   tab's move menu, above the dock it opens from. */
+   below — the chooser measures and flips), above the dock it opens from. Its
+   triggers include the toolbar's region toggles at the toolbar's right end,
+   which open straight into the notification column, so it takes the toolbar
+   menus' tier over notifications (`--layer-toolbar-menu`). */
 .region-chooser__menu {
   position: fixed;
-  z-index: var(--layer-navigation);
+  z-index: var(--layer-toolbar-menu);
   min-width: 14rem;
 }

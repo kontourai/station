@@ -1,0 +1,7 @@
+{
+  "revision": "8a1276b0347e43e210ea9ffdb1dd37e0be1ae80e",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Documents the read-only delivery lookup (SDK getTurnDelivery) and that a text send survives the app closing; checked against outboundQueue reconcile and execution.ts.","inputs":["docs/reference/sdk.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]}
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "revision": "386e5ecc6c669b97b766863a1b8f7ecbbe068641",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"glossary.md: the Live lanes entry was regrouped into labelled sub-bullets with every lane, status word, ordering rule, time and duration format and limit preserved (the retired 'Active now' history became the rule that idle sessions are not counted as active), and 'station#1004 unification slice 7' became archive#1004; routing here is unchanged.","inputs":["CONTEXT-MAP.md","docs/glossary.md"]},
+
+    {"path":"CONTEXT.md","note":"glossary.md: the Live lanes entry was regrouped into labelled sub-bullets with every lane, status word, ordering rule, time and duration format and limit preserved (the retired 'Active now' history became the rule that idle sessions are not counted as active), and 'station#1004 unification slice 7' became archive#1004; domain context here is unchanged.","inputs":["CONTEXT.md","docs/glossary.md"]},
+
+    {"path":"README.md","note":"release-channel-ports.md: '#2675 slice W3' became '#2675' with the Task Scheduler service description unchanged; README claims are unchanged.","inputs":["README.md","docs/guides/release-channel-ports.md"]},
+
+    {"path":"docs/acp-chat-architecture.md","note":"acp.md: the retention-suppression paragraph was split into an intro and three labelled bullets (snapshot at turn start, only enrichment withheld, bounded list) with every condition kept; this historical proposal's claims are unchanged.","inputs":["docs/acp-chat-architecture.md","docs/guides/acp.md"]},
+
+    {"path":"docs/glossary.md","note":"glossary.md: the Live lanes entry was regrouped into labelled sub-bullets with every lane, status word, ordering rule, time and duration format and limit preserved (the retired 'Active now' history became the rule that idle sessions are not counted as active), and 'station#1004 unification slice 7' became archive#1004.","inputs":["docs/glossary.md"]},
+
+    {"path":"docs/guides/acp.md","note":"acp.md: the retention-suppression paragraph was split into an intro and three labelled bullets (snapshot at turn start, only enrichment withheld, bounded list) with every condition kept. No behavior claim changed.","inputs":["docs/guides/acp.md"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Removed the '(receiver request-claim slice)' title suffix and 'First slice only' / 'Nothing in this slice' narration; the page now says only the receiver claim and lookup exist and that sender ledger, fences, cancel, UI and retention are not built. Limits and the 1024-record bound are unchanged.","inputs":["docs/guides/delegation-attempt-claims.md"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Replaced 'on Windows since slice W3' with 'on Windows too' for the installer-owned service launcher; release-channel-ports.md describes the Windows Task Scheduler service that runs that launcher.","inputs":["docs/guides/desktop-tray.md"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Replaced 'in this slice' with 'yet' in the list of absent admission endpoints, room writer, Agent launch and target activation; no behavior claim changed.","inputs":["docs/guides/home-transfer-controller.md"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Replaced 'this first slice does not reveal the pane automatically' with 'Station does not reveal the pane automatically yet'; paneRevealed:false behavior unchanged.","inputs":["docs/guides/mobile-device-workspace.md"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"release-channel-ports.md: '#2675 slice W3' became '#2675' with the Task Scheduler service description unchanged.","inputs":["docs/guides/release-channel-ports.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"release-channel-ports.md: '#2675 slice W3' became '#2675' with the Task Scheduler service description unchanged; Getting started claims are unchanged.","inputs":["docs/user/getting-started.md","docs/guides/release-channel-ports.md"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"Replaced 'this slice does not fetch missing commits' and 'This first slice does not provide ...' with present-tense statements of what guides do not fetch or support; the unsupported list is unchanged.","inputs":["docs/user/pull-request-guides.md"]}
+  ]
+}

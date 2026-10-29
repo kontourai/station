@@ -5,7 +5,11 @@
  *
  * An account-bound device (a paired device whose `principalBinding.kind` is
  * `account`) is restricted to an explicit public/self-service route
- * allowlist and must carry a CURRENT authenticated account session. This is
+ * allowlist and must carry a CURRENT authenticated account session. A
+ * personal access token tied to an account (#3586) carries no session: the
+ * pairing service resolves it only while its account's standing is current,
+ * it must present no other account or ingress identity, and its allowlist
+ * is narrower still (see {@link isAccountTokenRefusedRoute}). This is
  * the client-side containment for shared deployments (#488's restricted
  * guest surface among them); it is authorization boundary logic, not a
  * principal resolver — the effective principal still belongs to the
@@ -21,7 +25,10 @@ import { NATIVE_DEVICE_PROOF_SELF_RECEIPT_BASE_PATH } from '@kontourai/station-c
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { nativeDeviceOnlyObservationRoute } from '../../security/native-device-request-authority.js';
-import { isRelayManagementHttpLeaf } from '../../security/pairing-route-scopes.js';
+import {
+  isRelayManagementHttpLeaf,
+  matchPairingScopeRule,
+} from '../../security/pairing-route-scopes.js';
 import {
   getRuntimeAuthenticatedRequestPrincipal,
   getRuntimeNativeDeviceProofPrincipal,
@@ -67,10 +74,59 @@ function principalForDeviceBinding(binding: DevicePrincipalBinding) {
       );
 }
 
+/** Exact relationship leaves only; domain authority still decides every target. */
+export function isTaskRelationshipHttpLeaf(
+  method: string,
+  path: string,
+): boolean {
+  if (method === 'GET' || method === 'HEAD')
+    return /^\/api\/tasks\/[^/]+\/(?:children|work-chats(?:\/[^/]+)?)$/.test(
+      path,
+    );
+  if (method === 'PUT') return /^\/api\/tasks\/[^/]+\/parent$/.test(path);
+  if (method === 'POST')
+    return /^\/api\/tasks\/[^/]+\/(?:children|work-chats)$/.test(path);
+  return method === 'DELETE' && /^\/api\/tasks\/[^/]+\/work-chats$/.test(path);
+}
+
+/** Layout transport only; principal ownership and Project action checks remain in their routes. */
+function isAccountBoundLayoutLeaf(path: string, method: string): boolean {
+  if (method === 'GET' || method === 'HEAD')
+    return (
+      /^\/api\/me\/layouts(?:\/[^/]+(?:\/open)?)?$/.test(path) ||
+      /^\/api\/projects\/[^/]+\/layouts(?:\/[^/]+)?$/.test(path)
+    );
+  if (method === 'POST')
+    return (
+      /^\/api\/me\/layouts(?:\/clone-project|\/[^/]+\/(?:clone|promote))?$/.test(
+        path,
+      ) ||
+      /^\/api\/projects\/[^/]+\/layouts(?:\/(?:apply|from-plugin))?$/.test(path)
+    );
+  if (method === 'PUT')
+    return (
+      /^\/api\/me\/layouts\/[^/]+$/.test(path) ||
+      /^\/api\/projects\/[^/]+\/(?:layouts\/[^/]+|layout-policy)$/.test(path)
+    );
+  return (
+    method === 'DELETE' &&
+    (/^\/api\/me\/layouts\/[^/]+$/.test(path) ||
+      /^\/api\/projects\/[^/]+\/layouts\/[^/]+$/.test(path))
+  );
+}
+
 export interface AccountBoundDeviceGateDeps {
-  identifyDevice(
-    credential: string,
-  ): { principalBinding?: DevicePrincipalBinding } | null | undefined;
+  currentRelationshipAccountDevice?(
+    request: Request,
+    binding: Extract<DevicePrincipalBinding, { kind: 'account' }>,
+  ): boolean;
+  identifyDevice(credential: string):
+    | {
+        principalBinding?: DevicePrincipalBinding;
+        credentialKind?: string;
+      }
+    | null
+    | undefined;
   /** The SAME ingress reader `runtime-routes.ts` resolves principals with. */
   identifyIngress(context: {
     env: unknown;
@@ -78,6 +134,8 @@ export interface AccountBoundDeviceGateDeps {
   }): IngressIdentity;
   deploymentAuthentication?: {
     service: {
+      /** Whether the request presents any account credential at all. */
+      hasCredential(request: Request): boolean;
       current(
         request: Request,
       ):
@@ -146,6 +204,35 @@ function isAccountBoundGuestAdminLeaf(path: string, method: string): boolean {
   return isAccountBoundGuestAdminWrite(path, method);
 }
 
+/**
+ * #3586: an account-bound device's own personal access tokens (list, make,
+ * revoke), method-pinned. The route handler refuses a token caller itself.
+ */
+function isAccountBoundOwnTokenLeaf(path: string, method: string): boolean {
+  return (
+    ((method === 'GET' || method === 'HEAD' || method === 'POST') &&
+      path === '/api/access/tokens') ||
+    (method === 'DELETE' && /^\/api\/access\/tokens\/[^/]+$/.test(path))
+  );
+}
+
+/**
+ * #3586: what an account-tied personal access token may never reach, even
+ * inside the account-bound allowlist: the account's own sign-in surface,
+ * token management (a token never makes or lists tokens), and every
+ * Project access leaf, the administration read included. A leaked script
+ * credential must not administer who holds a Project.
+ */
+function isAccountTokenRefusedRoute(path: string): boolean {
+  return (
+    path === '/api/account-auth' ||
+    path.startsWith('/api/account-auth/') ||
+    path === '/api/access/tokens' ||
+    path.startsWith('/api/access/tokens/') ||
+    /^\/api\/projects\/[^/]+\/access(?:\/|$)/.test(path)
+  );
+}
+
 function isAccountBoundGuestAdminWrite(path: string, method: string): boolean {
   if (method !== 'POST') return false;
   return (
@@ -153,6 +240,22 @@ function isAccountBoundGuestAdminWrite(path: string, method: string): boolean {
     /^\/api\/projects\/[^/]+\/access\/invitations\/[^/]+\/revoke$/.test(path) ||
     /^\/api\/projects\/[^/]+\/access\/members$/.test(path) ||
     /^\/api\/projects\/[^/]+\/access\/transfer$/.test(path)
+  );
+}
+
+/** Closed Room leaves; the mounted service owns each membership action. */
+function isAccountBoundRoomLeaf(path: string, method: string): boolean {
+  if (method === 'GET' || method === 'HEAD')
+    return /^\/api\/projects\/[^/]+\/room(?:\/(?:messages|events|agents\/[^/]+))?$/.test(
+      path,
+    );
+  if (method === 'PUT')
+    return /^\/api\/projects\/[^/]+\/room\/note$/.test(path);
+  return (
+    method === 'POST' &&
+    /^\/api\/projects\/[^/]+\/room\/(?:init|messages|presence|agents|agents\/[^/]+\/(?:cancel|reconcile))$/.test(
+      path,
+    )
   );
 }
 
@@ -172,12 +275,15 @@ export function installAccountBoundDeviceGate(
     const runtimePrincipal = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
     // This exact protected Device self-read bootstraps binding observation
     // before an account session exists. Its handler rechecks Device custody;
-    // it supplies no account principal or Project authority.
+    // it supplies no account principal or Project authority. A personal
+    // access token is not a Device and never takes this shortcut (#3586).
     if (
       runtimePrincipal?.kind === 'credential' &&
       runtimePrincipal.authority === 'device-credential' &&
       runtimePrincipal.source === 'bearer' &&
       runtimePrincipal.deviceKind === 'device' &&
+      deps.identifyDevice(runtimePrincipal.credential)?.credentialKind !==
+        'personal-token' &&
       (c.req.method === 'GET' || c.req.method === 'HEAD') &&
       c.req.path.startsWith(`${NATIVE_DEVICE_PROOF_SELF_RECEIPT_BASE_PATH}/`) &&
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/receipt$/.test(
@@ -194,26 +300,50 @@ export function installAccountBoundDeviceGate(
         { error: { code: 'native_device_proof_device_not_current' } },
         403,
       );
+    const credentialDevice =
+      !nativeDevice &&
+      (runtimePrincipal?.authority === 'device-credential' ||
+        runtimePrincipal?.authority === 'operator-session')
+        ? deps.identifyDevice(runtimePrincipal.credential)
+        : undefined;
     const binding = nativeDevice
       ? nativeDevice.device.principalBinding
-      : runtimePrincipal?.authority === 'device-credential'
-        ? deps.identifyDevice(runtimePrincipal.credential)?.principalBinding
-        : undefined;
+      : credentialDevice?.principalBinding;
     const accountBinding =
       binding && 'kind' in binding && binding.kind === 'account'
         ? binding
         : undefined;
+    // #3586: a personal access token tied to an account acts as that
+    // account on its own. Any other identity alongside it, an account
+    // credential (cookie or continuation) or an ingress identity, is a
+    // conflict, never a corroboration.
+    const accountToken =
+      accountBinding !== undefined &&
+      credentialDevice?.credentialKind === 'personal-token';
+    if (
+      accountToken &&
+      (deps.deploymentAuthentication?.service.hasCredential(c.req.raw) ||
+        deps.identifyIngress(c))
+    )
+      return c.json({ error: { code: 'account_identity_conflict' } }, 401);
     const accountOperation =
       c.req.path === '/api/account-auth' ||
       c.req.path.startsWith('/api/account-auth/');
     if (
       accountBinding &&
+      !accountToken &&
       !accountOperation &&
       !(
         getRuntimeNativeDeviceProofPrincipal(c.req.raw) &&
         nativeDeviceOnlyObservationRoute(c.req.method, c.req.path)
       ) &&
-      account?.kind !== 'authenticated'
+      account?.kind !== 'authenticated' &&
+      !(
+        account?.kind === 'absent' &&
+        isTaskRelationshipHttpLeaf(c.req.method, c.req.path) &&
+        deps.currentRelationshipAccountDevice?.(c.req.raw, accountBinding) ===
+          true
+      )
     ) {
       c.header(ACCOUNT_AUTHENTICATION_FAILURE_HEADER, 'account');
       return c.json(
@@ -251,18 +381,65 @@ export function installAccountBoundDeviceGate(
     if (accountBinding) {
       const path = c.req.path;
       const method = c.req.method;
+      if (accountToken && isAccountTokenRefusedRoute(path))
+        return c.json(
+          { error: { code: 'account_bound_device_route_forbidden' } },
+          403,
+        );
       if (
         (path === '/api/projects' || path.startsWith('/api/projects/')) &&
         method !== 'GET' &&
         method !== 'HEAD' &&
-        !isAccountBoundGuestAdminWrite(path, method)
+        !isAccountBoundGuestAdminWrite(path, method) &&
+        !isAccountBoundRoomLeaf(path, method) &&
+        !isAccountBoundLayoutLeaf(path, method)
       ) {
         return c.json(
           { error: { code: 'account_bound_device_route_forbidden' } },
           403,
         );
       }
+      const rule = matchPairingScopeRule(method, path);
+      const personLeaf =
+        rule?.exact === true && rule.accountBoundPerson === true;
+      if (accountToken && personLeaf)
+        return c.json(
+          { error: { code: 'account_bound_device_route_forbidden' } },
+          403,
+        );
       const permitted =
+        personLeaf ||
+        (method === 'GET' &&
+          [
+            '/api/tool-library/access',
+            '/api/tool-library/catalog',
+            '/api/tool-library/requests',
+          ].includes(path)) ||
+        (method === 'POST' && path === '/api/tool-library/requests') ||
+        (method === 'POST' &&
+          /^\/api\/tool-library\/sources\/[^/]+\/discover$/.test(path)) ||
+        (/^(?:\/api\/tool-library\/projects\/[^/]+\/agents(?:\/[^/]+)?|\/api\/tool-library\/projects\/[^/]+\/policy)$/.test(
+          path,
+        ) &&
+          ['GET', 'POST', 'PUT'].includes(method)) ||
+        (/^\/api\/tool-library\/accounts\/[^/]+(?:\/(?:authorize|callback))?$/.test(
+          path,
+        ) &&
+          ['GET', 'POST'].includes(method)) ||
+        ((method === 'GET' || method === 'HEAD') &&
+          (path === '/api/knowledge/capabilities' ||
+            path === '/api/knowledge/s3-sources/capabilities' ||
+            /^\/api\/knowledge\/s3-sources\/projects\/[^/]+(?:\/[^/]+\/(?:objects|object))?$/.test(
+              path,
+            ) ||
+            path === '/api/knowledge/roots' ||
+            path === '/api/knowledge/adapters' ||
+            /^\/api\/knowledge\/roots\/[^/]+\/document-imports\/[^/]+\/originals\/\d+$/.test(
+              path,
+            ) ||
+            /^\/api\/knowledge\/roots\/[^/]+\/(?:graph|records(?:\/[^/]+)?)$/.test(
+              path,
+            ))) ||
         path === '/' ||
         path.startsWith('/assets/') ||
         // Neutral observations are open only to a verified native Device
@@ -278,6 +455,12 @@ export function installAccountBoundDeviceGate(
           path,
         ) ||
         isAccountBoundGuestAdminLeaf(path, method) ||
+        isAccountBoundRoomLeaf(path, method) ||
+        isAccountBoundLayoutLeaf(path, method) ||
+        isTaskRelationshipHttpLeaf(method, path) ||
+        isAccountBoundOwnTokenLeaf(path, method) ||
+        (path === '/api/me/preferences' &&
+          (method === 'GET' || method === 'HEAD' || method === 'PATCH')) ||
         path === '/api/account-auth' ||
         path.startsWith('/api/account-auth/') ||
         // #481 groundwork: the credential-bound authority observation is an

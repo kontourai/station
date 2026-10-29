@@ -106,6 +106,18 @@ describe('agent instruction topology', () => {
           );
       }
     }
+    const paneText = resolveEffectiveInstructions({
+      path: 'packages/board-pane/src/ConsoleBoardPane.tsx',
+      harness: 'codex',
+      root,
+      ...fixture({
+        'AGENTS.md': 'RULE_ROOT\n',
+        'src-ui/AGENTS.md': 'RULE_SRC_UI\n',
+      }),
+    })
+      .routed.map(({ text }: { text: string }) => text)
+      .join('\n');
+    expect(paneText).toContain('RULE_SRC_UI');
     const rootLaunch = resolveEffectiveInstructions({
       path: 'src-ui/example.ts',
       harness: 'codex',
@@ -139,7 +151,7 @@ describe('agent instruction topology', () => {
         ...fixture(),
         encoder: { encode: () => Array(9_999), free() {} },
       }),
-    ).toContain('AGENTS.md exceeds tokens budget (9999 > 2048)');
+    ).toContain('AGENTS.md exceeds tokens budget (9999 > 1536)');
     expect(
       instructionGateErrors({ ...fixture({ 'CLAUDE.md': '@AGENTS.md\n' }) }),
     ).toContain(

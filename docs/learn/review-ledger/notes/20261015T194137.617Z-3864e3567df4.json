@@ -1,0 +1,7 @@
+{
+  "revision": "ac50647854d550274ac3daa290ad07ea5dd8a9bf",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"Reviewed ac50647854d: the real SplitPane mobile focus fixture now uses an h3 detail heading, consistent with the shell-owned collection title. The visible name and keyboard-focus/Enter assertions are unchanged; 9/9 presentation checks pass. No product behavior or guide claim changed.","inputs":["docs/guides/theming.md","src-ui/src/__tests__/startup-presentation.browser.test.tsx"]}
+  ]
+}

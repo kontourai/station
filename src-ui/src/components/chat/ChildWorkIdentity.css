@@ -1,0 +1,12 @@
+.child-work-identity {
+  display: inline-flex;
+  position: relative;
+  flex: 0 0 auto;
+  align-self: flex-start;
+}
+
+.child-work-identity__engine {
+  position: absolute;
+  inset-inline-end: calc(-1 * var(--k-space-1));
+  inset-block-end: calc(-1 * var(--k-space-1));
+}

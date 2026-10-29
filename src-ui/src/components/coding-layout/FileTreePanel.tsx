@@ -6,7 +6,7 @@ import {
   useRenameCodingFileMutation,
 } from '@kontourai/station-sdk';
 import { previewProjectWorkspaceFile } from '@kontourai/station-sdk/workspace-file-preview';
-import { useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useDeferredValue, useMemo, useState } from 'react';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { copyToClipboard } from '../../lib/clipboard';
 import { useCodingFilesContext } from '../../providers/context/CodingFilesContextProvider';
@@ -16,14 +16,22 @@ import { activeTerminalWriter } from './activeTerminal';
 import './FileTreePanel.css';
 import { parseWorkspaceOpenFilePreviewIntent } from '@kontourai/station-contracts/workspace-file-preview';
 import { createPortal } from 'react-dom';
+import {
+  type ContextMenuPoint,
+  useContextMenuGesture,
+} from '../../hooks/useContextMenuGesture';
+import { wantsNativeContextMenu } from '../../lib/native-context-menu';
 import type { OpenFilePreviewIntent } from '../../workspace-panes/openFilePreviewIntent';
 import { usePaneHeadSlots } from '../../workspace-panes/PaneHeadSlots';
-import { SkeletonList } from '../state';
 import {
-  FileTreeContextMenu,
-  type FileTreeMenuAction,
-} from './FileTreeContextMenu';
+  ContextMenu,
+  type ContextMenuAction,
+  contextMenuAnchor,
+} from '../ContextMenu';
+import { SkeletonList } from '../state';
 import { filterTree } from './fileTreeFilter';
+
+const EMPTY_TREE: FileEntry[] = [];
 
 /** Parent directory of a workspace-relative path ('' for a top-level entry). */
 function parentDir(path: string): string {
@@ -31,13 +39,17 @@ function parentDir(path: string): string {
   return i > 0 ? path.slice(0, i) : '';
 }
 
-type MenuState = { entry: FileEntry | null; x: number; y: number };
+type MenuState = {
+  entry: FileEntry | null;
+  at: ContextMenuPoint;
+  origin: HTMLElement;
+};
 type PromptState = {
   mode: 'create-file' | 'create-folder' | 'rename';
   entry: FileEntry | null;
 };
 
-function FileTreeNode({
+const FileTreeNode = memo(function FileTreeNodeView({
   entry,
   projectSlug,
   depth,
@@ -54,33 +66,30 @@ function FileTreeNode({
   selectedPath: string | null;
   attachedPaths: Set<string>;
   onSelect: (intent: OpenFilePreviewIntent) => void;
-  onContextMenu: (entry: FileEntry, x: number, y: number) => void;
+  onContextMenu: (
+    entry: FileEntry,
+    at: ContextMenuPoint,
+    origin: HTMLElement,
+  ) => void;
 }) {
   const [open, setOpen] = useState(depth === 0);
-  const longPress = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const isOpen = open || forceOpen.has(entry.path);
+  const isOpen =
+    open ||
+    forceOpen.has(entry.path) ||
+    Boolean(selectedPath?.startsWith(`${entry.path}/`));
 
-  // Long-press opens the context menu on touch devices.
-  const touchStart = (event: React.TouchEvent) => {
-    const t = event.touches[0];
-    longPress.current = setTimeout(() => {
-      onContextMenu(entry, t.clientX, t.clientY);
-    }, 500);
-  };
-  const touchCancel = () => {
-    if (longPress.current) clearTimeout(longPress.current);
-    longPress.current = null;
-  };
+  // Right-click, the keyboard's menu key, or a hold on touch. The hook also
+  // swallows the click a hold ends in, which used to open the file (or fold
+  // the folder) under the menu the hold had just opened.
+  const gesture = useContextMenuGesture({
+    onOpen: (row, point) => {
+      onContextMenu(entry, contextMenuAnchor(row, point), row);
+    },
+  });
 
   const rowProps = {
-    onContextMenu: (event: React.MouseEvent) => {
-      event.preventDefault();
-      onContextMenu(entry, event.clientX, event.clientY);
-    },
-    onTouchStart: touchStart,
-    onTouchEnd: touchCancel,
-    onTouchMove: touchCancel,
+    ...gesture,
     style: { '--depth': depth } as React.CSSProperties,
   };
 
@@ -106,7 +115,12 @@ function FileTreeNode({
               projectSlug={projectSlug}
               depth={depth + 1}
               forceOpen={forceOpen}
-              selectedPath={selectedPath}
+              selectedPath={
+                selectedPath === child.path ||
+                selectedPath?.startsWith(`${child.path}/`)
+                  ? selectedPath
+                  : null
+              }
               attachedPaths={attachedPaths}
               onSelect={onSelect}
               onContextMenu={onContextMenu}
@@ -148,7 +162,7 @@ function FileTreeNode({
       )}
     </button>
   );
-}
+});
 
 export function FileTreePanel({
   projectSlug,
@@ -168,7 +182,7 @@ export function FileTreePanel({
     [projectSlug, workingDir],
   );
   const {
-    data: tree = [],
+    data: tree = EMPTY_TREE,
     isLoading: loading,
     error: queryError,
   } = useCodingFilesQuery(location, apiBase);
@@ -183,24 +197,27 @@ export function FileTreePanel({
     removeFile,
     removeFilesAtPath,
   } = useCodingFilesContext();
-  const attachedPaths = new Set(
-    attachedFiles
-      .filter((file) => file.projectSlug === projectSlug)
-      .map((file) => file.path),
+  const attachedPaths = useMemo(
+    () =>
+      new Set(
+        attachedFiles
+          .filter((file) => file.projectSlug === projectSlug)
+          .map((file) => file.path),
+      ),
+    [attachedFiles, projectSlug],
   );
 
   const [search, setSearch] = useState('');
+  const deferredSearch = useDeferredValue(search);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [prompt, setPrompt] = useState<PromptState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<FileEntry | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const { tree: visibleTree, expanded } = filterTree(tree, search);
-  const revealedDirectories = new Set(expanded);
-  for (let cursor = selectedPath?.lastIndexOf('/') ?? -1; cursor > 0; ) {
-    revealedDirectories.add(selectedPath!.slice(0, cursor));
-    cursor = selectedPath!.lastIndexOf('/', cursor - 1);
-  }
+  const { tree: visibleTree, expanded } = useMemo(
+    () => filterTree(tree, deferredSearch),
+    [tree, deferredSearch],
+  );
 
   const loadError = queryError?.message ?? null;
   const opError =
@@ -210,8 +227,11 @@ export function FileTreePanel({
     deleteMut.error?.message ??
     null;
 
-  const openMenu = (entry: FileEntry | null, x: number, y: number) =>
-    setMenu({ entry, x, y });
+  const openMenu = useCallback(
+    (entry: FileEntry | null, at: ContextMenuPoint, origin: HTMLElement) =>
+      setMenu({ entry, at, origin }),
+    [],
+  );
 
   // Attach a file's current content to the chat context provider.
   const addToChat = async (entry: FileEntry) => {
@@ -261,15 +281,17 @@ export function FileTreePanel({
     }
   };
 
-  const menuActions = (entry: FileEntry | null): FileTreeMenuAction[] => {
-    const actions: FileTreeMenuAction[] = [
+  const menuActions = (entry: FileEntry | null): ContextMenuAction[] => {
+    const actions: ContextMenuAction[] = [
       {
+        key: 'new-file',
         label: 'New File',
-        onClick: () => setPrompt({ mode: 'create-file', entry }),
+        onSelect: () => setPrompt({ mode: 'create-file', entry }),
       },
       {
+        key: 'new-folder',
         label: 'New Folder',
-        onClick: () => setPrompt({ mode: 'create-folder', entry }),
+        onSelect: () => setPrompt({ mode: 'create-folder', entry }),
       },
     ];
     if (entry) {
@@ -282,47 +304,54 @@ export function FileTreePanel({
 
         if (attachmentsForPath.length === 0) {
           actions.push({
+            key: 'add-to-chat',
             label: 'Add to chat',
-            onClick: () => void addToChat(entry),
+            onSelect: () => void addToChat(entry),
           });
         } else {
           if (hasWholeFile) {
             actions.push({
+              key: 'remove-from-chat',
               label:
                 attachmentsForPath.length === 1
                   ? 'Remove from chat'
                   : 'Remove whole file from chat',
-              onClick: () => removeFile({ projectSlug, path: entry.path }),
+              onSelect: () => removeFile({ projectSlug, path: entry.path }),
             });
           }
           if (attachmentsForPath.length > (hasWholeFile ? 1 : 0)) {
             const attachmentNoun =
               attachmentsForPath.length === 1 ? 'attachment' : 'attachments';
             actions.push({
+              key: 'remove-all-from-chat',
               label: `Remove all ${attachmentsForPath.length} ${attachmentNoun} from chat`,
-              onClick: () => removeFilesAtPath(projectSlug, entry.path),
+              onSelect: () => removeFilesAtPath(projectSlug, entry.path),
             });
           }
         }
         actions.push({
+          key: 'copy-path',
           label: 'Copy path',
-          onClick: () => {
+          onSelect: () => {
             void copyPath(entry);
           },
         });
         actions.push({
+          key: 'send-to-terminal',
           label: 'Send to terminal',
-          onClick: () => sendToTerminal(entry),
+          onSelect: () => sendToTerminal(entry),
         });
       }
       actions.push({
+        key: 'rename',
         label: 'Rename',
-        onClick: () => setPrompt({ mode: 'rename', entry }),
+        onSelect: () => setPrompt({ mode: 'rename', entry }),
       });
       actions.push({
+        key: 'delete',
         label: 'Delete',
-        danger: true,
-        onClick: () => setDeleteTarget(entry),
+        tone: 'danger',
+        onSelect: () => setDeleteTarget(entry),
       });
     }
     return actions;
@@ -372,7 +401,7 @@ export function FileTreePanel({
       aria-label="New file or folder"
       onClick={(e) => {
         const r = e.currentTarget.getBoundingClientRect();
-        openMenu(null, r.left, r.bottom + 2);
+        openMenu(null, { x: r.left, y: r.bottom + 2 }, e.currentTarget);
       }}
     >
       +
@@ -410,9 +439,9 @@ export function FileTreePanel({
         aria-label="File tree"
         onContextMenu={(e) => {
           // Right-click on the empty area → root-level menu.
-          if (e.target === e.currentTarget) {
+          if (e.target === e.currentTarget && !wantsNativeContextMenu(e)) {
             e.preventDefault();
-            openMenu(null, e.clientX, e.clientY);
+            openMenu(null, { x: e.clientX, y: e.clientY }, e.currentTarget);
           }
         }}
       >
@@ -430,7 +459,7 @@ export function FileTreePanel({
           tree.length > 0 &&
           visibleTree.length === 0 && (
             <div className="file-tree-panel__hint">
-              No files match “{search}”
+              No files match “{deferredSearch}”
             </div>
           )}
         {visibleTree.map((entry) => (
@@ -439,8 +468,13 @@ export function FileTreePanel({
             entry={entry}
             projectSlug={projectSlug}
             depth={0}
-            forceOpen={revealedDirectories}
-            selectedPath={selectedPath}
+            forceOpen={expanded}
+            selectedPath={
+              selectedPath === entry.path ||
+              selectedPath?.startsWith(`${entry.path}/`)
+                ? selectedPath
+                : null
+            }
             attachedPaths={attachedPaths}
             onSelect={onFileSelect}
             onContextMenu={openMenu}
@@ -449,9 +483,12 @@ export function FileTreePanel({
       </section>
 
       {menu && (
-        <FileTreeContextMenu
-          x={menu.x}
-          y={menu.y}
+        <ContextMenu
+          at={menu.at}
+          origin={menu.origin}
+          label={
+            menu.entry ? `Actions for ${menu.entry.name}` : 'File tree actions'
+          }
           actions={menuActions(menu.entry)}
           onClose={() => setMenu(null)}
         />

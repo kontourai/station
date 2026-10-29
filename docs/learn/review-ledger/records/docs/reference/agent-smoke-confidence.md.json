@@ -46,7 +46,91 @@
 
     "src-ui/src/views/ProviderSettingsView.tsx",
 
-    "tests/connections-crud.spec.ts"
+    "tests/connections-crud.spec.ts",
+
+    "scripts/station-engine-matrix.mjs",
+
+    "scripts/lib/agent-smoke-client.mjs",
+
+    "scripts/lib/engine-matrix.mjs",
+
+    "scripts/__tests__/station-engine-matrix.test.ts",
+
+    "src-server/providers/adapter-shape.ts",
+
+    "src-server/services/orchestration/model-launch-planning.ts",
+
+    "src-server/services/orchestration/orchestration-service.ts",
+
+    "src-server/routes/orchestration/__tests__/orchestration.routes.test.ts",
+
+    "src-server/routes/orchestration/__tests__/engine-matrix.integration.test.ts",
+
+    "src-server/routes/orchestration/orchestration.ts",
+
+    "src-server/tools/station-control-delegation.ts",
+
+    "packages/sdk/src/client/execution.ts",
+
+    "src-server/runtime/bootstrap/runtime-http.ts",
+
+    "src-server/runtime/bootstrap/orchestration-request-principal.ts",
+
+    "src-server/security/runtime-request-security.ts",
+
+    "src-server/services/ssh/environment-security-service.ts",
+
+    "src-server/services/orchestration/orchestration-session-state.ts",
+
+    "packages/contracts/src/provider.ts",
+
+    "src-server/routes/agents/tools.ts",
+
+    "src-server/routes/agents/skills.ts",
+
+    "src-server/routes/agents/agents.ts",
+
+    "src-server/routes/agents/enriched-agents.ts",
+
+    "src-server/runtime/bootstrap/station-runtime.ts",
+
+    "src-server/services/plugins/mcp-service.ts",
+
+    "src-server/services/agents/skill-service.ts",
+
+    "src-server/services/agents/agent-service.ts",
+
+    "src-server/routes/schemas/schema-definitions/content.ts",
+
+    "src-server/routes/schemas/schema-definitions/runtime.ts",
+
+    "scripts/engine-delivery-probes.ts",
+
+    "scripts/fixtures/delivery-probe-mcp.mjs",
+
+    "scripts/__tests__/engine-delivery-probes.test.ts",
+
+    "scripts/__tests__/engine-delivery-routes.test.ts",
+
+    "scripts/fixtures/capture-skill-delivery.mjs",
+
+    "src-server/providers/__tests__/fixtures/claude-2.1.296-skill-invocation-local.jsonl",
+
+    "src-server/providers/__tests__/fixtures/claude-2.1.296-script-read-local.jsonl",
+
+    "src-server/providers/__tests__/fixtures/claude-2.1.296-skill-local.meta.json",
+
+    "src-server/providers/adapters/claude-adapter-events.ts",
+
+    "src-server/routes/schemas/schema-validation.ts",
+
+    "src-server/domain/validator.ts",
+
+    "scripts/lib/matrix-cleanup.mjs",
+
+    "src-server/providers/__tests__/claude-adapter-events.test.ts",
+
+    "src-server/providers/__tests__/claude-adapter.test.ts"
   ],
 
   "checks": [

@@ -331,6 +331,45 @@ function startedSession() {
 }
 
 describe('an approval pick as a server-ordered command (#2436)', () => {
+  // #4162: the send receipt is the one place a client learns which engine a
+  // Session it just started runs on, even when that Session's own
+  // `session.started` arrived before the chat knew its id. The receipt's
+  // engine names the Session only when the server says the send started it.
+  describe('the engine connection a send receipt reports', () => {
+    const receipt = (extra: Record<string, unknown>) =>
+      sendExecutionMessage.mockImplementationOnce(async () => ({
+        conversationId: 'conv-1',
+        providerTurnId: 'provider-turn',
+        target: { kind: 'agent', id: 'codex' },
+        resolution: {
+          engine: { kind: 'connection', connectionId: 'opencode' },
+        },
+        ...extra,
+      }));
+
+    test('a send that started a successor records its connection for it', async () => {
+      startedSession();
+      receipt({ sessionId: 'session-2', sessionStarted: true });
+      const { send } = renderComposer();
+      await send();
+      expect(chat().currentSessionId).toBe('session-2');
+      expect(chat().agentConnectionId).toBe('opencode');
+      expect(chat().agentConnectionObservedFor).toBe('session-2');
+    });
+
+    test('a turn sent to a running Session keeps its connection', async () => {
+      startedSession();
+      activeChatsStore.updateChat(SESSION_ID, {
+        agentConnectionObservedFor: SESSION_ID,
+      });
+      receipt({ sessionId: SESSION_ID });
+      const { send } = renderComposer();
+      await send();
+      expect(chat().agentConnectionId).toBe('codex');
+      expect(chat().agentConnectionObservedFor).toBe(SESSION_ID);
+    });
+  });
+
   beforeEach(() => {
     clock = 0;
     activeChatsStore.removeChat(SESSION_ID);
@@ -631,13 +670,13 @@ describe('an approval pick as a server-ordered command (#2436)', () => {
       expect.objectContaining({ approvalMode: 'connection-default' }),
     );
     expect(chat().approvalPosture).toBe('connection-default');
-    expect(renderPill().text).toBe('Default');
+    expect(renderPill().text).toBe('Engine default');
     const wire = await send();
     expect(wire.setApprovalMode).toBeUndefined();
     expect(wire.model?.options ?? {}).not.toHaveProperty('approvalMode');
     // What the engine applied is what the chip names (#2409).
     act(() => turnStarted('t1', 'ask'));
-    expect(renderPill().name).toMatch(/^Approval mode: Default — Ask first/);
+    expect(renderPill().name).toMatch(/^Approval mode: Ask — Ask first/);
   });
 
   test('T3: the Station default is not sent for a new session when a posture is recorded', async () => {

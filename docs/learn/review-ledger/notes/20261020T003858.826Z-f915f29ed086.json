@@ -1,0 +1,7 @@
+{
+  "revision": "5e87100f80ecad507efe740e5dc53cc890277b79",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Monitoring guide wording change (layout query) keeps #2751 as the owner this review cites; no claim here changes.","inputs":["docs/architecture/abstraction-review.md","docs/guides/monitoring.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "b1b5e3e5ade3d676ba711dddd69bbcb64092ec78",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"PR #3820 round 1 at b1b5e3e5ade: Traced all round-one changes through real Settings and dialog writers, status scope, outbox route/ledger and notice persistence. Updated collapsed per-publisher layout, saved-tier comparison, Cancel/Escape, partial-save bookkeeping, error focus, named polite notice, Full availability, and bounded scoped history. Executed 284 tests in eight focused UI/server suites plus UI, server-test and E2E typechecks. M1/M2/L1/L2 mutations each produced their intended assertion failure and restored green; final-head gallery capture remains pending. No native, hosted exact-head, live publisher or deployment proof is asserted.","inputs":["docs/reference/usage-telemetry.md","packages/contracts/src/product-telemetry.ts","src-server/routes/operations/usage-telemetry-disclosure.ts","src-server/services/usage-telemetry-service.ts","src-ui/src/components/TelemetryFeedbackPrompt.tsx","src-ui/src/components/TelemetryLiteNotice.tsx","src-ui/src/components/TelemetryPrivacy.css","src-ui/src/components/UsageTelemetryDisclosure.tsx","src-ui/src/components/__tests__/TelemetryConsent.routes.test.tsx","src-ui/src/views/SettingsView.tsx","src-ui/src/views/settings/StationConfigSection.tsx","src-ui/src/views/settings/TelemetryOutbox.tsx","src-ui/src/views/settings/TelemetryTierSettings.tsx","tests/screenshots.spec.ts"]}
+  ]
+}

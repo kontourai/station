@@ -1,0 +1,11 @@
+{
+  "revision": "2b86d7d7becfde7cf670a01add3e08ff0e5e57d3",
+
+  "notes": [
+    {"path":"docs/user/pull-request-guides.md","note":"Reviewed the guide MCP handlers and real in-process MCP transport tests: route refusals and unreadable responses carry isError, mixed batches retain every target and mark the batch failed. Guide generation, authority, bounded admission and read-only UI behavior are unchanged. Updated the agent instructions paragraph to explain partial batch failures. Fault injection removing error flags failed the named transport tests; hosted exact-head and live provider checks remain unverified in this round.","inputs":["docs/user/pull-request-guides.md","src-server/tools/station-control-review-guide-tools.ts"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed the catalog relocation against StationConfigSection Agent runs order, catalog-derived reset candidates and the mounted DOM order test. The three guide keys remain Station-scoped and resettable; only catalog placement and generated publication order changed. Existing design scope/persistence claims remain accurate. Injecting the old catalog order and excluding reviewGuideInstructions from reset each failed the named independent invariants.","inputs":["docs/design/settings-architecture.md","src-ui/src/views/settings/settings-catalog.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the incoming main #3773 session structural-sharing callback and its two erased-data casts. Normalize answerability at that callback boundary, retaining row identity through replaceEqualDeep. Real sessions and personal-board query tests still preserve earlier genuine observation clocks and expose changed verdicts/work/reordering; source invariant rejects the upstream unnormalized casts under fault injection. The reference cache semantics and authorization limits remain accurate; no public exports or server observations changed.","inputs":["docs/reference/sdk.md","packages/sdk/src/query-domains/sessionStructuralSharing.ts"]}
+  ]
+}

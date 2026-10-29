@@ -1,0 +1,7 @@
+{
+  "revision": "f4794e85ffa9e00f7e1eaa20744e860323d70995",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Reviewed active engine repair precedence in AgentConnectionView and its owning-view registration regression at f4794e85ffa. Existing Retry check and Ready/Done guidance remains accurate; no prose change needed. Focused 53 tests pass; original precedence mutation fails the new regression and exact bytes restored. Product E2E startup exceeded fixed 120s build deadline before tests; provider/browser delivery remains unverified.","inputs":["docs/guides/connections.md","src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx","src-ui/src/index.css","src-ui/src/views/AgentConnectionView.tsx","src-ui/src/views/ConnectionsSectionFrame.tsx","tests/connections-crud.spec.ts","packages/contracts/src/engine-capability-matrix.ts","src-server/providers/adapters/acp-adapter.ts","src-server/routes/system/system-status-routes.ts","src-ui/src/views/provider-settings/providerCatalog.tsx"]}
+  ]
+}

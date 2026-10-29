@@ -1,0 +1,7 @@
+{
+  "revision": "a899357be52606bd97c4009a8b41c38a829c0b70",
+
+  "notes": [
+    {"path":"docs/reviews/workspace-map-20261015/README.md","note":"Reviewed corrected 0bff7654025 source, six real-app captures, focused tests and six browser journeys; preserved older capture attribution and separate hosted/native evidence limits.","inputs":["docs/reviews/workspace-map-20261015/README.md","src-ui/src/__tests__/ProjectSidebarRow.test.tsx","src-ui/src/components/header/Header.tsx","src-ui/src/components/project-sidebar/ProjectSidebar.tsx","src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx"]}
+  ]
+}

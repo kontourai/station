@@ -1,0 +1,7 @@
+{
+  "revision": "1e719a9223029fdb2c417213d02e88c1786ee90c",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Dependency delta: the monitoring guide now says producer rows are outside Insights aggregates. Nothing here depends on it.","inputs":["docs/architecture/abstraction-review.md","docs/guides/monitoring.md"]}
+  ]
+}

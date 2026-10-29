@@ -1,0 +1,13 @@
+{
+  "revision": "2a3e8d07c7f21f8f756593c694d0a89cde63ac3d",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Checked against this change: one entry added to docs/ui/responsive-action-surfaces.txt for src-ui/src/components/engine-install/EngineInstallHint.tsx as an exception (wrapping rows, shared Button, no 390px fixture yet). The inventory's format, strategies and the ratchet that reads it are unchanged; no claim here is affected.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt","pnpm-lock.yaml#/packages"]},
+
+    {"path":"docs/guides/theming.md","note":"Checked against this change: one entry added to docs/ui/responsive-action-surfaces.txt for src-ui/src/components/engine-install/EngineInstallHint.tsx as an exception (wrapping rows, shared Button, no 390px fixture yet). The inventory's format, strategies and the ratchet that reads it are unchanged; no claim here is affected.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"Checked against this change: one entry added to docs/ui/responsive-action-surfaces.txt for src-ui/src/components/engine-install/EngineInstallHint.tsx as an exception (wrapping rows, shared Button, no 390px fixture yet). The inventory's format, strategies and the ratchet that reads it are unchanged; no claim here is affected.","inputs":["docs/patterns/backend.md","docs/ui/responsive-action-surfaces.txt","pnpm-lock.yaml#/packages"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Checked against this change: one entry added to docs/ui/responsive-action-surfaces.txt for src-ui/src/components/engine-install/EngineInstallHint.tsx as an exception (wrapping rows, shared Button, no 390px fixture yet). The inventory's format, strategies and the ratchet that reads it are unchanged; no claim here is affected.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt","pnpm-lock.yaml#/packages"]}
+  ]
+}

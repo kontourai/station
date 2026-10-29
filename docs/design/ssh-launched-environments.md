@@ -24,7 +24,7 @@ A launched environment is code WE started on a machine, which is a stronger clai
 
 1. **Launch and pairing stay separate acts.** The SSH flow ends by producing a pairing offer exactly as if the remote had run `station environment offer` itself. The desktop then pairs through the normal exchange — same credential issuance, same device record, same revocation. No SSH-derived bearer shortcuts.
 2. **Checkout identity and running-server identity are separate.** The native launcher verifies the requested checkout SHA. Its discovery probe can reuse a running server and does not authenticate that server's build SHA. A caller must pair and check the authenticated server identity. Existing saved-forward rows compare recorded and reported SHA; they do not compare install paths or establish that one SHA is a downgrade.
-3. **SSH credentials never enter the browser surface.** Launch is a desktop (Tauri) capability; the webview sees only the resulting environment. Same boundary the native credential store established in #2298.
+3. **SSH credentials never enter the browser surface.** Launch is a desktop (Tauri) capability; the webview sees only the resulting environment. Same boundary the native credential store established in archive#2298.
 
 ## Mechanics
 

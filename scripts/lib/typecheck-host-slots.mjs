@@ -127,8 +127,10 @@ export function resolveSlotCount({
  *
  * On POSIX that is a fixed, uid-scoped path under `/tmp`, deliberately NOT
  * `os.tmpdir()`: `TMPDIR` differs between a login shell, sudo, a sandboxed
- * agent (Codex), and a systemd PrivateTmp unit, and each would otherwise form
- * its own pool. Windows has no shared `/tmp`; its per-user `os.tmpdir()` is
+ * agent (Codex), and each would otherwise form its own pool within the same
+ * mount namespace. A systemd PrivateTmp mount still creates a separate pool;
+ * callers across namespaces need an explicitly shared directory. Windows has
+ * no shared `/tmp`; its per-user `os.tmpdir()` is
  * the stable choice there. `STATION_TYPECHECK_SLOT_DIR` overrides both, and a
  * caller who sets it must set the same value everywhere.
  *

@@ -282,6 +282,7 @@ describe('lane ownedOutputs truthfulness', () => {
       'packages/connect/dist',
       'packages/cli/dist/',
       'src-desktop/target/',
+      'src-desktop/binaries/',
     ]);
   });
 
@@ -458,7 +459,7 @@ describe('ownedOutputs trace to the literal rebuild script', () => {
     // test script and the mobile compiler use src-desktop as that directory,
     // so their shared durable output is src-desktop/target/.
     expect(packageJson.scripts['verify:desktop-rust']).toBe(
-      'mkdir -p dist-server dist-desktop-runtime/node_modules dist-desktop-runtime/examples && cd src-desktop && cargo test',
+      'node scripts/prepare-desktop-rust-resources.mjs && cd src-desktop && cargo test',
     );
     const mobileCompileSource = readFileSync(
       'scripts/check-mobile-compile.mjs',

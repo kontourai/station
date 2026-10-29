@@ -63,7 +63,7 @@ interface RuntimeDefaultAgentContext {
   >;
   agentHooksMap?: Map<string, ReturnType<typeof createAgentHooks>>;
   /**
-   * archive#1834 review round 2: the guardian the default agent's gate
+   * archive#1834: the guardian the default agent's gate
    * consults, matching what persisted agents get from
    * `runtime-agent-builder.ts`. Present ⇒ wired; both production bootstrap
    * paths construct it from the same runtime services the builder uses.
@@ -108,7 +108,7 @@ export function createRuntimeSelfIntegration() {
       id: selfIntegrationId,
       displayName: 'Station Control',
       description:
-        'Manage agents, skills, integrations, and jobs via natural language',
+        'Search conversations and active work before starting. Manage agents, skills, integrations, and jobs.',
       kind: 'mcp' as const,
       transport: 'stdio' as const,
     },

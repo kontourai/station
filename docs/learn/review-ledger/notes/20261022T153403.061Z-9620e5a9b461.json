@@ -1,0 +1,7 @@
+{
+  "revision": "f3f383a1f9e3d9b6fb19365531b04513697b54b6",
+
+  "notes": [
+    {"path":"docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","note":"Reviewed behavior-neutral credential boundary comment correction: engine-owned login tokens and inbound callbacks remain unbridged; user-supplied per-connection API keys are distinct. No extension mechanism or callback authority changes. Prior sign-in scope/source review remains applicable.","inputs":["docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","src-server/services/acp/acp-inbound-extension-policy.ts"]}
+  ]
+}

@@ -18,21 +18,23 @@ registerCommand(
   }) => {
     try {
       const support = bindingStatus?.capabilityState;
+      const agentSlug = agent?.slug || chatState.agentSlug;
 
-      if (!support?.mcp) {
+      // No agent id yet: there is no tool list to read, so say we cannot
+      // tell rather than fetching tools for an absent id.
+      if (!support?.mcp || !agentSlug) {
         addEphemeralMessage(sessionId, {
           role: 'system',
           // Same guard, two facts — see the note in `tools.ts`.
-          content: support
-            ? 'This chat’s agent doesn’t support MCP servers, so there are none to show.'
-            : 'Station can’t tell yet what this chat’s agent can do. Try again in a moment.',
+          content:
+            support && agentSlug
+              ? 'This chat’s agent doesn’t support MCP servers, so there are none to show.'
+              : 'Station can’t tell yet what this chat’s agent can do. Try again in a moment.',
         });
         return;
       }
 
-      const tools = await queryClient.fetchQuery(
-        agentQueries.tools(agent?.slug || chatState.agentSlug),
-      );
+      const tools = await queryClient.fetchQuery(agentQueries.tools(agentSlug));
 
       const mcpServers = (
         [
@@ -150,7 +152,9 @@ registerCommand(
   'stats',
   async ({ sessionId, chatState, queryClient, addEphemeralMessage }) => {
     try {
-      if (!chatState.conversationId) {
+      // Usage is recorded per agent conversation; without both ids there is
+      // nothing to read yet.
+      if (!chatState.conversationId || !chatState.agentSlug) {
         addEphemeralMessage(sessionId, {
           role: 'system',
           content: `Messages: ${chatState.messages?.length ?? 0}. No usage recorded yet.`,
@@ -228,7 +232,7 @@ registerCommand(
           <div style="padding: 12px 8px;">
             <span style="color: var(--text-muted);">${stats.contextTokens?.toLocaleString() || 0} tokens (all messages + system prompt + tools)</span><br/>
             <div style="background: var(--bg-tertiary); height: 8px; border-radius: 4px; margin-top: 8px; overflow: hidden;">
-              <div style="background: #10b981; height: 100%; width: ${stats.contextWindowPercentage}%;"></div>
+              <div style="background: var(--meter-low); height: 100%; width: ${stats.contextWindowPercentage}%;"></div>
             </div>
             <span style="font-weight: 600; margin-top: 4px; display: inline-block;">${stats.contextWindowPercentage.toFixed(1)}%</span>
           </div>

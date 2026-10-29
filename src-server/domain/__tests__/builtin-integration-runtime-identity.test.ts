@@ -202,7 +202,7 @@ describe('builtin integration runtime identity (station#3063)', () => {
     // MCPService.setEnabled's exact shape: load (overlay-bearing), flip a
     // field, save the whole def back.
     const loaded = await loader.loadIntegration('station-control');
-    expect(loaded.command).toBe('node'); // the overlay is present in memory
+    expect(loaded.command).toBe(process.execPath); // the overlay is present in memory
     await loader.saveIntegration('station-control', {
       ...loaded,
       enabled: false,
@@ -235,7 +235,7 @@ describe('builtin integration runtime identity (station#3063)', () => {
           id: 'station-control',
           displayName: 'Station Control',
           description:
-            'Manage agents, skills, integrations, and jobs via natural language',
+            'Search conversations and active work before starting. Manage agents, skills, integrations, and jobs.',
           kind: 'mcp',
           transport: 'stdio',
           command: 'node',
@@ -280,7 +280,7 @@ describe('builtin integration runtime identity (station#3063)', () => {
     // listing must not start advertising the control server as secret-free
     // (the ACP tool-server picker keys on this flag).
     expect(control?.requiresEnvSecrets).toBe(true);
-    expect(control?.source).toBe('node');
+    expect(control?.source).toBe(process.execPath);
     expect(docs?.requiresEnvSecrets).toBe(false);
   });
 

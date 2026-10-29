@@ -78,6 +78,24 @@ describe('QRScanner camera lifecycle', () => {
     expect(onManualEntry).toHaveBeenCalledTimes(1);
   });
 
+  test('retries camera acquisition after a denial and stops the recovered stream on cancel', async () => {
+    getUserMedia.mockRejectedValueOnce(
+      Object.assign(new Error('denied'), { name: 'NotAllowedError' }),
+    );
+    const onCancel = vi.fn();
+    const { findByRole, getByRole } = render(
+      <QRScanner onScan={vi.fn()} onCancel={onCancel} />,
+    );
+    fireEvent.click(await findByRole('button', { name: 'Try camera again' }));
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(document.querySelector('video')?.srcObject).toBeTruthy(),
+    );
+    fireEvent.click(getByRole('button', { name: 'Cancel' }));
+    expect(onCancel).toHaveBeenCalledOnce();
+    expect(stopTrack).toHaveBeenCalledOnce();
+  });
+
   test('omits the manual-entry affordance when no handler is supplied', async () => {
     getUserMedia.mockRejectedValue(
       Object.assign(new Error('denied'), { name: 'NotAllowedError' }),

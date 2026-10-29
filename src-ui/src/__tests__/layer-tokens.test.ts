@@ -70,6 +70,7 @@ describe('chrome stacking uses the layer tokens', () => {
       'floating-action',
       'navigation',
       'notification',
+      'toolbar-menu',
       'palette',
       'dialog',
       'system',

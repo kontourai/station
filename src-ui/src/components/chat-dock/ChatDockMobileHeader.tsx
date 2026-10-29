@@ -13,6 +13,8 @@ import {
 } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import '../NewChatAction.css';
+import './ChatDockHeader.css';
+import type { ContextPercentageSource } from '../conversation-stats/ContextPercentage';
 import type { DockMoreAction } from './ChatDockHeaderMoreMenu';
 import { ProjectSwitcherOverlay } from './ChatDockProjectContext';
 import { MobileSheetPending } from './MobileSheetPending';
@@ -23,6 +25,8 @@ const loadChatDockMobileOverflowSheet = () =>
   }));
 
 export interface ChatDockMobileOverflowActions {
+  onTurnIntoTask?: () => void;
+  turnIntoTaskLabel?: string;
   onOpenConversation: () => void;
   onToggleHistory: () => void;
   onOpenChatSettings: () => void;
@@ -39,6 +43,12 @@ export interface ChatDockMobileOverflowActions {
   inputOriginLabel?: string;
   onOpenProfile: () => void;
   onOpenAppSettings: () => void;
+  /**
+   * Chat inventory, a row of the sheet like the session context below: a
+   * third trailing control in the bar wrapped it onto a second line (#4192).
+   * The trigger passed is ⋯, where focus returns when the reader closes.
+   */
+  onOpenInventory?: (trigger: HTMLElement) => void;
   sessionInventory?: {
     sessionId: string;
     chatStoreId: string;
@@ -67,6 +77,25 @@ export interface ChatDockMobileOverflowActions {
    */
   onOpenBackgroundTasks?: () => void;
   backgroundTasksRunningCount?: number;
+  /**
+   * The session context sheet (the desktop card's rows). A row of this sheet
+   * rather than a third control in the bar: the bar's edge reserve holds two
+   * 44px controls beside the chat title, and a third wrapped the header onto
+   * a second line. `returnFocus` is the ⋯ trigger, so closing the context
+   * sheet lands where the reader started. Absent: no row.
+   */
+  onOpenSessionContext?: (returnFocus: HTMLElement | null) => void;
+  /** The chat's ladder line, named on the row ("This chat — Running"). */
+  sessionContextStatus?: string;
+  /**
+   * The composer's context meter, again as a row of this sheet. On a phone
+   * the meter is the last chip of a row that scrolls sideways with its
+   * scrollbar hidden, and that row is hidden altogether while typing on a
+   * short screen, so it is easy never to see. The row names the share used
+   * and opens the same Conversation stats panel the meter does. Absent: no
+   * row (ChatDock offers it exactly where it shows the meter).
+   */
+  conversationStats?: ContextPercentageSource & { onOpen: () => void };
 }
 
 export interface ChatDockMobileProjectSwitcher {
@@ -90,7 +119,6 @@ interface ChatDockMobileHeaderProps {
   routeLabel?: string;
   sessionProjectMismatchLabel?: string | null;
   agentIdentity: { name: string; slug: string; icon?: string } | null;
-  branchLabel: string | null;
   projectScope?: { name: string; onClear: () => void };
   projectSwitcher: ChatDockMobileProjectSwitcher | null;
   activeCount: number;
@@ -113,7 +141,6 @@ export function ChatDockMobileHeader({
   routeLabel,
   sessionProjectMismatchLabel,
   agentIdentity,
-  branchLabel,
   projectScope,
   projectSwitcher,
   activeCount,
@@ -131,7 +158,6 @@ export function ChatDockMobileHeader({
   const [isProjectOpen, setIsProjectOpen] = useState(false);
   const projectTriggerRef = useRef<HTMLButtonElement>(null);
   const chatActionsTriggerRef = useRef<HTMLButtonElement>(null);
-  const titleDescriptionId = useId();
   const activityDescriptionId = useId();
   // The dot on ⋯ used to be decoration only: an unexplained orange mark on
   // the chat-actions button. It means chats (this one included) are working
@@ -187,7 +213,10 @@ export function ChatDockMobileHeader({
             ref={projectTriggerRef}
             type="button"
             className="chat-dock__mobile-project"
-            aria-label={`Switch project — ${projectSwitcher.projectName}`}
+            // The name repeats the words on screen, caption included, so a
+            // spoken command matching the visible label reaches this control
+            // (WCAG 2.5.3); the icon-only width keeps the same name.
+            aria-label={`Switch project — New chats, ${projectSwitcher.projectName}`}
             aria-haspopup="dialog"
             aria-expanded={isProjectOpen}
             data-dock-drag-passthrough=""
@@ -208,7 +237,7 @@ export function ChatDockMobileHeader({
                 aria-hidden="true"
               >
                 New chats
-              </span>
+              </span>{' '}
               <span className="chat-dock__mobile-project-name">
                 {projectSwitcher.projectName}
               </span>
@@ -231,22 +260,28 @@ export function ChatDockMobileHeader({
         type="button"
         className="chat-dock__mobile-identity"
         data-dock-drag-passthrough=""
-        aria-label={
+        // The name carries the title and eyebrow on screen, in their order,
+        // so a spoken command matching the visible label reaches it (WCAG
+        // 2.5.3).
+        aria-label={`Chats and tasks — ${sessionTitle}${
           agentIdentity
-            ? `Chats and tasks — ${agentIdentity.name}${routeLabel ? ` · via ${routeLabel}` : ''}`
-            : 'Chats and tasks'
-        }
-        aria-describedby={titleDescriptionId}
+            ? `, ${agentIdentity.name}${routeLabel ? ` · via ${routeLabel}` : ''}${
+                sessionProjectMismatchLabel
+                  ? ` · ${sessionProjectMismatchLabel}`
+                  : ''
+              }`
+            : ''
+        }`}
         onClick={onOpenTaskSwitcher}
       >
         <span className="chat-dock__mobile-identity-lines">
           <span
             className="chat-dock__mobile-title chat-dock__mobile-title-text"
-            id={titleDescriptionId}
             title={sessionTitle}
           >
             {sessionTitle}
           </span>
+          {agentIdentity && ' '}
           {agentIdentity && (
             <span className="chat-dock__mobile-eyebrow" aria-hidden="true">
               {agentIdentity.name}
@@ -311,7 +346,6 @@ export function ChatDockMobileHeader({
             projectScope,
             showConnection,
             onNewChat,
-            branchLabel,
             returnFocusTarget: chatActionsTriggerRef.current,
             onClose: () => setIsOverflowOpen(false),
           }}

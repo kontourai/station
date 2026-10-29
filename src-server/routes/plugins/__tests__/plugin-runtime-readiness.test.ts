@@ -540,6 +540,8 @@ test('inventory and Pane catalogs retain pending rows without loading them and d
       hasBundle: true,
       retainedOnRemoval: true,
       installationReadiness: { state: 'ready' },
+      // #1521: a journal installation with no verified claim says so.
+      registryTrust: { state: 'none' },
     }),
   );
   expect(distribution.listPluginWorkspacePaneContributions()).toContainEqual(

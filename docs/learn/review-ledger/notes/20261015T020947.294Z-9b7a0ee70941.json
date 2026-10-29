@@ -1,0 +1,7 @@
+{
+  "revision": "9ba4bd1ea6ba75318a1d684e8d956f0f89e757b0",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Fix round 1: traced failed-read Resync from ChatDockBody through the status pill and stream registry. Pending reads hold a disabled live-announced control; auth/reconnect status takes priority and explicit parked-stream retries use the existing 30-second floor. Browser recovery fixtures exercise the real open/history/inbox owners. These are source and local fixture claims, not native/provider/hosted acceptance.","inputs":["docs/design/chat-composer.md","src-ui/src/components/status/chatStatus.ts"]}
+  ]
+}

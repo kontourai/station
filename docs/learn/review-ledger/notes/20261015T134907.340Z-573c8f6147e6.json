@@ -1,0 +1,7 @@
+{
+  "revision": "e4fb04d302dd8905b5b6e18a2771e9b58a0490b5",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed root delivery exports and canonical usage-export section against index/query barrels, usage-export-query export and its captured authority/window/cursor/snapshot key. Hook suppresses stale/failed data and preserves cancellation/selection failure; focused SDK public barrel/client/query and mounted route suites passed at e4fb04d302d. No package publication, real two-Station sync or native acceptance claimed.","inputs":["docs/reference/sdk.md","packages/sdk/src/__tests__/publicBarrel.test.ts","packages/sdk/package.json#/exports"]}
+  ]
+}

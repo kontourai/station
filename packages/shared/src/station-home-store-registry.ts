@@ -21,7 +21,8 @@
  * - `external`: content kept in the home that an update does not snapshot
  *   or roll back: the default project directories under `workspaces/`
  *   (users' repositories, with their `node_modules` and its symbolic links),
- *   left in place exactly as the trial left it. Copying it made every update
+ *   left in place exactly as the trial left it. Versioned media-tools installs
+ *   are also external: downloads for a new pin leave the old version intact. Copying it made every update
  *   backup as large as the user's code (#2675 D review).
  *   Accepted gap, stated plainly: `workspaces/` is NOT free of
  *   Station-versioned data. Station writes `<project>/.station/` stores into
@@ -37,8 +38,9 @@
  * `__tests__/station-home-store-registry.test.ts` fails CI when Station's own
  * source names a home root that is missing here.
  *
- * The same `live` set is what `station home backup` leaves out, so the two
- * backups cannot disagree about what is product data.
+ * Both backup kinds omit `live` roots and re-acquirable `media-tools`. Full
+ * home backups still include other in-home external content; update snapshots
+ * omit all external paths.
  */
 export type StationHomeRootClass = 'state' | 'live' | 'external';
 
@@ -62,6 +64,12 @@ export const STATION_HOME_ROOTS: Readonly<
   'checkpoint-restores.json': 'state',
   'checkpoint-retention.json': 'state',
   config: 'state',
+  // #2494: Seatbelt-confined engine config homes and any credential enrolled
+  // for confined use; like app-homes, product state.
+  'confined-homes': 'state',
+  // Copies Station can download again (the public agent registry index,
+  // public-agent-registry.ts): small, so restored like any state.
+  cache: 'state',
   'connection-smoke.json': 'state',
   'conversation-acknowledgements.json': 'state',
   'conversation-intent-summaries': 'state',
@@ -76,19 +84,34 @@ export const STATION_HOME_ROOTS: Readonly<
   integrations: 'state',
   kits: 'state',
   knowledge: 'state',
+  // Import originals and per-document uncertain outcomes, not a derived index.
+  'knowledge-document-imports': 'state',
   'knowledge-index': 'state',
   'knowledge-stores': 'state',
   layouts: 'state',
   'mcp-ui-render-grants.json': 'state',
+  // Versioned, pinned downloads are re-acquirable; trials retain older pins.
+  'media-tools': 'external',
   'notifications.json': 'state',
+  // Reviewed commands and started-effect receipts must survive maintenance.
+  'operator-setup': 'state',
   'plugin-grants.json': 'state',
   'plugin-install-publication.mutation': 'state',
+  // Install trust records; rolled back with the installation journal that
+  // tracks their migration, so the two stay consistent.
+  'plugin-trust.json': 'state',
   plugins: 'state',
   pricing: 'state',
+  'project-creation-requests': 'state',
   'project-resource-shadow.json': 'state',
+  // Private source selections and AWS profile names; credentials stay with AWS.
+  'project-s3-sources.json': 'state',
   projects: 'state',
   prompts: 'state',
   'proposed-changes.json': 'state',
+  'pull-request-guides': 'state',
+  // Durable receipts are state; nested working copies are external below.
+  'repository-acquisitions': 'state',
   runtime: 'state',
   'runtime-auth-health.json': 'state',
   scheduler: 'state',
@@ -97,9 +120,13 @@ export const STATION_HOME_ROOTS: Readonly<
   'setup-imports.json': 'state',
   skills: 'state',
   'station-home-recovery.json': 'state',
+  'task-captures': 'state',
   'task-graph.json': 'state',
   'task-outputs': 'state',
   'terminal-history': 'state',
+  // Durable terminal session identities and their bounded output journals.
+  'terminal-journals': 'state',
+  'terminal-sessions.json': 'state',
   'turn-checkpoints': 'state',
   'turn-checkpoints-evicted': 'state',
   vectordb: 'state',
@@ -117,6 +144,9 @@ export const STATION_HOME_ROOTS: Readonly<
   quarantine: 'live',
   service: 'live',
   tmp: 'live',
+  // #3851: the update restore marker (station-home-restore-marker.ts). Live,
+  // so a backup leaves it out and the restore it triggers leaves it alone.
+  'update-restore.json': 'live',
 });
 
 /**
@@ -156,6 +186,10 @@ export function isLiveStationHomeRoot(name: string): boolean {
  *   (browser-session-registry.ts), in Chromium's format, which hold its
  *   `Singleton*` symbolic links and can grow to gigabytes.
  *
+ * Acquisition working copies under `repository-acquisitions/<uuid>/checkout-N`
+ * follow the same policy dynamically; their receipts remain state. Only real
+ * checkout directories qualify at the walk, never a file or a symbolic link.
+ *
  * The rest of `browser/` (sessions.json, local-targets.json,
  * project-settings.json) is Station's and stays `state`.
  */
@@ -178,12 +212,34 @@ function startsWith(
   );
 }
 
-/** Whether a home path is, or is inside, an `external` path. */
+// Matches RepositoryAcquisitionService's UUID request IDs and checkout-${attempt}
+// layout, independently of receipts: missing receipts must not expose user work.
+function acquisitionCheckoutParent(segments: readonly string[]): boolean {
+  return (
+    segments[0] === 'repository-acquisitions' &&
+    (segments.length === 1 ||
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        segments[1],
+      ))
+  );
+}
+
+/**
+ * Whether a validated home path is, or is inside, an `external` path.
+ * Segments are raw names: the archive validates platform-specific safety.
+ */
 export function isExternalStationHomePath(
   segments: readonly string[],
+  isDirectory = false,
 ): boolean {
-  return STATION_HOME_EXTERNAL_PATHS.some((external) =>
-    startsWith(segments, external),
+  return (
+    STATION_HOME_EXTERNAL_PATHS.some((external) =>
+      startsWith(segments, external),
+    ) ||
+    (segments.length >= 3 &&
+      acquisitionCheckoutParent(segments) &&
+      /^checkout-[1-9][0-9]*$/.test(segments[2]) &&
+      (segments.length > 3 || isDirectory))
   );
 }
 
@@ -191,9 +247,14 @@ export function isExternalStationHomePath(
 export function containsExternalStationHomePath(
   segments: readonly string[],
 ): boolean {
-  return STATION_HOME_EXTERNAL_PATHS.some(
-    (external) =>
-      external.length > segments.length && startsWith(external, segments),
+  return (
+    STATION_HOME_EXTERNAL_PATHS.some(
+      (external) =>
+        external.length > segments.length && startsWith(external, segments),
+    ) ||
+    (segments.length > 0 &&
+      segments.length < 3 &&
+      acquisitionCheckoutParent(segments))
   );
 }
 
@@ -216,7 +277,10 @@ export const STATION_HOME_SQLITE_STORES: readonly (readonly string[])[] =
     ['authentication', 'native-relay-enrollment.sqlite'],
     // #3257: operator passkey public keys. Created at the first enrollment.
     ['authentication', 'operator-passkeys.sqlite'],
+    ['authentication', 'outside-agent-oauth.sqlite'],
     ['security', 'project-membership.sqlite'],
+    ['security', 'project-room-agent.sqlite'],
+    ['security', 'project-rooms.sqlite'],
     ['security', 'native-surfaces.sqlite'],
     ['security', 'native-device-proof-replay.sqlite'],
     // sqlite-vec knowledge index; a `.db`, not a `.sqlite`.

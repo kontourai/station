@@ -13,7 +13,10 @@ import type {
   ContributionReadV2,
 } from '@kontourai/surface/basis';
 import type { SessionAnswerBasisQueryOutcome } from '../orchestration/session-query-module.js';
-import { composeAuthorizedSessionAnswerBasis } from '../projects/task-basis-module.js';
+import {
+  composeAuthorizedSessionAnswerBasis,
+  StationBasisCompositionInvariantError,
+} from '../projects/task-basis-module.js';
 import type { ExactAnswerAssessmentRead } from './answer-assessment-module.js';
 
 type FoundAnswer = Extract<SessionAnswerBasisQueryOutcome, { status: 'found' }>;
@@ -87,6 +90,10 @@ export function createExactAnswerBasisModule(input: {
       current: () => boolean;
     }) => Promise<ContributionReadV2 | undefined>;
   };
+  /** Diagnostic sink for Station's own Basis composition invariant failures. */
+  reportCompositionInvariant?: (
+    error: StationBasisCompositionInvariantError,
+  ) => void;
 }): ExactAnswerBasisModule {
   const authorized = (
     sessionId: string,
@@ -149,15 +156,28 @@ export function createExactAnswerBasisModule(input: {
           : undefined;
       if (!authorized(sessionId, authority, current))
         return { status: 'not-found' };
-      return {
-        status: 'found',
-        answer,
-        projection: composeAuthorizedSessionAnswerBasis(
+      let projection: StationBasisProjection;
+      try {
+        projection = composeAuthorizedSessionAnswerBasis(
           answer,
           assessment.assessment,
           narrative,
           reviewedSource,
-        ) as StationBasisProjection,
+        ) as StationBasisProjection;
+      } catch (error) {
+        if (!(error instanceof StationBasisCompositionInvariantError))
+          throw error;
+        // The answer exists and is readable; Station cannot represent it.
+        // Publishing Surface's generic fallback would blame an owner instead.
+        try {
+          input.reportCompositionInvariant?.(error);
+        } catch {}
+        return { status: 'unavailable' };
+      }
+      return {
+        status: 'found',
+        answer,
+        projection,
         ...(reviewedSource ? { reviewedSource } : {}),
       };
     },

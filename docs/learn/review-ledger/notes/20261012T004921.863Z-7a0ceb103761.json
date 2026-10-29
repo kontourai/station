@@ -1,0 +1,17 @@
+{
+  "revision": "18e22a97a0ac10fcb6239f149bc5d26e1df5f25d",
+
+  "notes": [
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Checked the updated refusal shape against packages/contracts/src/orchestration.ts and src-server/security/full-access-refusal.ts: for a group-limited refusal there is no top-level grant.cli; the command travels as grant.groupLimited.cli (kept only up to GROUP_LIMITED_CLI_MAX_LENGTH = 222 so its appended step fits the 256-character step bound) and as the final uiSteps entry from groupLimitedCommandStep; the People steps open with 'As the operator, open Settings, then Devices, then People.'; the card and CLI show the command once via groupLimitedPeopleSteps; the non-group path is unchanged.","inputs":["docs/design/approval-posture-server-ordered.md"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Re-reviewed the full-access refusal paragraph: when the device's person is in the Member group the refusal names it (grant.groupLimited), points the operator at People first, and carries the device grant command only as groupLimited.cli plus a final 'Then, on the Station's host, run:' step, never as an alternative; matches full-access-refusal.ts and full-access-refusal-identity.ts and their tests.","inputs":["docs/security/remote-access-threat-model.md"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Flagged for packages/contracts/src/orchestration.ts. It cites the orchestration wire contract for session-summary answerability decoration; the change only adds the full-access refusal's groupLimited field, its helpers and a length bound, none of which touch session summaries.","inputs":["docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Flagged for packages/contracts/src/orchestration.ts. Its refusal mentions concern capability incompatibility, resource admission and post-revocation turns; it does not describe the full-access refusal details shape, so the groupLimited addition does not falsify it.","inputs":["docs/design/chat-composer.md","packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Flagged for packages/contracts/src/orchestration.ts. Its orchestration references (TurnSupervisionFacts, routes) do not enumerate ApprovalFullAccessRefusalDetails fields; the module export list is unchanged (the new helpers live in the existing orchestration subpath).","inputs":["docs/reference/contracts.md","packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/design/automations.md","note":"Flagged because approval-posture-server-ordered.md and the threat model changed. It references DispatchIntent.fullAccessGrant as the full-access ceiling for automations, which the refusal wording change does not affect.","inputs":["docs/design/automations.md","docs/design/approval-posture-server-ordered.md","docs/security/remote-access-threat-model.md"]}
+  ]
+}

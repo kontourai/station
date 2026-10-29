@@ -3,6 +3,8 @@ import type { ChatActivityHint } from '../../contexts/active-chats-state';
 import type { ChatStreamStatus } from '../../hooks/orchestration/useChatStreamStatus';
 import { retryActivityLabel } from '../../utils/chat-activity';
 import { openTurnStartedAtMs } from '../../utils/conversation-activity';
+import { turnToolsRunning } from '../../utils/turn-tools-running';
+import { receivedDeliveryLabel } from '../chat/deliveryLabels';
 import type { LiveStatusGlyphKind, LiveStatusTone } from './LiveStatusGlyph';
 
 export type ChatStatusKind =
@@ -13,6 +15,7 @@ export type ChatStatusKind =
   | 'restored'
   | 'resumed'
   | 'waiting'
+  | 'sending'
   | 'working';
 
 export interface ChatStatus {
@@ -25,18 +28,20 @@ export interface ChatStatus {
   clockFrom?: number;
   /** Pending approvals, shown as a badge when more than one. */
   count?: number;
+  pending?: boolean;
   /**
    * Lines shown when the pill is expanded. A line with `since` is followed by
    * the time elapsed since then, kept current while the details are open.
    */
   details: Array<{ text: string; since?: number }>;
   /** What a tap does. */
-  action: 'reveal-approval' | 'repair' | 'details' | undefined;
+  action: 'reveal-approval' | 'repair' | 'resync' | 'details' | undefined;
 }
 
 export interface ChatStatusInput {
   /** A history or continuation read failed; cached activity is not current proof. */
   observationUnavailable?: boolean;
+  resyncPending?: boolean;
   /** This chat's open approval requests. */
   approvalCount: number;
   stream?: ChatStreamStatus;
@@ -47,6 +52,16 @@ export interface ChatStatusInput {
   activityHint?: ChatActivityHint;
   /** The witnessed turn start, for a server without an activity record. */
   turnStartedAt?: number;
+  /** This chat's own send is out and its turn has not started yet. */
+  sendAwaitingTurnStart?: boolean;
+  /** Station's delivery lookup said it has that send (`received`). */
+  stationHasSend?: boolean;
+  /**
+   * The Station keeps running when this app closes (`useStationOutlivesApp`).
+   * Only `true` lets the pill say closing the app is safe; `false` says keep
+   * it open, exactly as the bubble's received glyph does.
+   */
+  stationOutlivesApp?: boolean;
 }
 
 const STREAM_DETAIL =
@@ -59,10 +74,9 @@ function epochMs(value: string | undefined): number | undefined {
 }
 
 /**
- * The one status a chat pane shows, by priority: a decision the user owes
- * (approval) outranks the transport (blocked, reconnecting, catching up),
- * which outranks the brief "restored" confirmation, which outranks what the
- * turn is doing (waiting on the user, working). Nothing live → undefined.
+ * The one status a chat pane shows: transport recovery, then failed-read
+ * recovery, then approvals, connection confirmation and turn activity.
+ * Cached approvals cannot hide repair while their observation is unverified.
  *
  * Pure; times are carried as epoch starts, never as rendered durations, so
  * the result does not go stale between renders. Every fact comes from the chat's own record or
@@ -72,30 +86,6 @@ export function deriveChatStatus(
   input: ChatStatusInput,
 ): ChatStatus | undefined {
   const { stream, activity } = input;
-  if (input.observationUnavailable)
-    return {
-      kind: 'blocked',
-      tone: 'broken',
-      glyph: 'attention',
-      label: 'Status unavailable',
-      details: [
-        {
-          text: 'Station could not verify this conversation. The remote turn may still be running.',
-        },
-      ],
-      action: 'repair',
-    };
-  if (input.approvalCount > 0) {
-    return {
-      kind: 'approval',
-      tone: 'attention',
-      glyph: 'approval',
-      label: 'Needs approval',
-      count: input.approvalCount > 1 ? input.approvalCount : undefined,
-      details: [],
-      action: 'reveal-approval',
-    };
-  }
   if (stream?.kind === 'blocked') {
     return {
       kind: 'blocked',
@@ -114,6 +104,35 @@ export function deriveChatStatus(
       label: stream.kind === 'reconnecting' ? 'Reconnecting' : 'Catching up',
       details: [{ text: STREAM_DETAIL }],
       action: 'details',
+    };
+  }
+  // Auth and reconnect status take priority over failed reads: Resync is
+  // offered again once transport recovery has settled.
+  if (input.observationUnavailable)
+    return {
+      kind: 'blocked',
+      tone: 'broken',
+      glyph: 'attention',
+      label: input.resyncPending
+        ? 'Resyncing conversation'
+        : 'Status unavailable',
+      pending: input.resyncPending,
+      details: [
+        {
+          text: 'Station could not verify this conversation. The remote turn may still be running.',
+        },
+      ],
+      action: 'resync',
+    };
+  if (input.approvalCount > 0) {
+    return {
+      kind: 'approval',
+      tone: 'attention',
+      glyph: 'approval',
+      label: 'Needs approval',
+      count: input.approvalCount > 1 ? input.approvalCount : undefined,
+      details: [],
+      action: 'reveal-approval',
     };
   }
   if (stream?.kind === 'restored') {
@@ -142,9 +161,26 @@ export function deriveChatStatus(
       action: undefined,
     };
   }
+  // The chat's own send, before the agent has its turn: the message is on
+  // its way, not being worked on. Only while no turn is open on the server.
+  // Once Station's lookup says it has the send, the pill says what the bubble
+  // says: received, and the agent is starting. One kind for both, so the pill
+  // eases its width and swaps the word instead of re-entering.
+  if (input.sendAwaitingTurnStart && !activity?.openTurn) {
+    const received = input.stationHasSend === true;
+    return {
+      kind: 'sending',
+      tone: 'neutral',
+      glyph: 'working',
+      label: received ? 'Starting' : 'Sending',
+      details: received
+        ? [{ text: receivedDeliveryLabel(input.stationOutlivesApp) }]
+        : [],
+      action: received ? 'details' : undefined,
+    };
+  }
   const details: ChatStatus['details'] = [];
-  const running =
-    activity?.openTurn && (activity.runningTools?.length ?? 0) > 0;
+  const running = turnToolsRunning(activity);
   let label = running
     ? 'Working'
     : input.activityHint?.kind === 'thinking'

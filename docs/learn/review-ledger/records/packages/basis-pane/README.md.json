@@ -10,8 +10,6 @@
   "limits": "No full protected-reader/server lifecycle audit, live MCP host, provider execution, physical native display, accessibility/visual proof or public package release. Protected authority belongs to the host; package source and tests are not grants.",
 
   "sources": [
-    "packages/basis-pane/package.json",
-
     "packages/basis-pane/src/StationBasisPane.tsx",
 
     "packages/basis-pane/src/index.ts",
@@ -30,7 +28,25 @@
 
     "src-server/tools/station-control-session-inventory-tools.ts",
 
-    "src-ui/src/workspace-panes/ConnectedStationBasisPane.tsx"
+    "src-ui/src/workspace-panes/ConnectedStationBasisPane.tsx",
+
+    "packages/basis-pane/package.json#/name",
+
+    "packages/basis-pane/package.json#/private",
+
+    "packages/basis-pane/package.json#/exports",
+
+    "packages/basis-pane/package.json#/files",
+
+    "packages/basis-pane/package.json#/main",
+
+    "packages/basis-pane/package.json#/types",
+
+    "packages/basis-pane/package.json#/sideEffects",
+
+    "packages/basis-pane/package.json#/publishConfig",
+
+    "packages/basis-pane/package.json#/dependencies/@kontourai~1ui"
   ],
 
   "checks": [

@@ -7,6 +7,7 @@ import Ajv2020 from 'ajv/dist/2020.js';
 import schema from '../schemas/staged-fleet-inventory.schema.json' with {
   type: 'json',
 };
+import { canonicalValue } from './lib/canonical-json.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const SHA = /^[0-9a-f]{40}$/;
@@ -24,19 +25,9 @@ const INVENTORY_VALIDATOR = new Ajv2020({
 function fail(message) {
   throw new Error(`staged fleet inventory: ${message}`);
 }
-function canonical(value) {
-  if (Array.isArray(value)) return value.map(canonical);
-  if (value && typeof value === 'object')
-    return Object.fromEntries(
-      Object.keys(value)
-        .sort()
-        .map((key) => [key, canonical(value[key])]),
-    );
-  return value;
-}
 function digest(value) {
   return createHash('sha256')
-    .update(JSON.stringify(canonical(value)))
+    .update(JSON.stringify(canonicalValue(value)))
     .digest('hex');
 }
 export function contentDigest(value, omitted = []) {

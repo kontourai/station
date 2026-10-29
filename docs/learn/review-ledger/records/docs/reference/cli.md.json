@@ -18,8 +18,6 @@
 
     "packages/cli/bundle-externals.mjs",
 
-    "packages/cli/package.json",
-
     "packages/cli/src/__tests__/cloud-project-import-durability.test.ts",
 
     "packages/cli/src/__tests__/cloud-project-import.test.ts",
@@ -192,7 +190,69 @@
 
     "src-server/utils/path-containment.ts",
 
-    "station"
+    "station",
+
+    "packages/cli/package.json#/name",
+
+    "packages/cli/package.json#/bin",
+
+    "packages/cli/package.json#/files",
+
+    "packages/cli/package.json#/scripts",
+
+    "packages/cli/package.json#/engines",
+
+    "packages/cli/package.json#/publishConfig",
+
+    "packages/cli/src/commands/delegate.ts",
+
+    "packages/cli/src/__tests__/delegate.test.ts",
+
+    "packages/cli/src/bin.ts",
+
+    "packages/cli/src/help.ts",
+
+    "packages/cli/src/__tests__/core-http.test.ts",
+
+    "packages/cli/src/commands/telemetry.ts",
+
+    "packages/cli/src/commands/delegate-attachments.ts",
+
+    "src-server/services/orchestration/delegation-files.ts",
+
+    "src-server/routes/orchestration/__tests__/delegation-files.integration.test.ts",
+
+    "packages/shared/src/delegation-files.ts",
+
+    "src-server/routes/schemas/schema-validation.ts",
+
+    "src-server/services/orchestration/__tests__/delegation-files.test.ts",
+
+    "packages/contracts/src/plugin-telemetry.ts",
+
+    "packages/shared/src/plugin-telemetry.ts",
+
+    "src-server/services/plugin-telemetry-service.ts",
+
+    "src-server/services/plugins/plugin-telemetry-admission.ts",
+
+    "src-server/routes/operations/telemetry-events.ts",
+
+    "packages/sdk/src/client/plugin-telemetry.ts",
+
+    "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts",
+
+    "packages/cli/src/commands/mcp-clients.ts",
+
+    "packages/cli/src/__tests__/mcp-clients.test.ts",
+
+    "packages/contracts/src/station-control-external-client.ts",
+
+    "packages/cli/src/passive-cli.ts",
+
+    "packages/cli/src/distribution-info.ts",
+
+    "packages/cli/src/commands/walkthrough.ts"
   ],
 
   "checks": [

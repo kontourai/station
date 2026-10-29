@@ -11,6 +11,8 @@ import {
 } from '../../services/orchestration/orchestration-session-state.js';
 import { applyWalJournalMode } from '../../utils/sqlite-wal.js';
 import { PROJECT_TASK_ROOM_RUNTIME_MIGRATION } from './006-project-task-room-runtime.js';
+import { ensureTurnBoundarySequenceFence } from './014-turn-boundary-sequence-fence.js';
+import { ensureTurnDedupInputDigest } from './015-turn-dedup-input-digest.js';
 
 const require = createRequire(import.meta.url);
 const { DatabaseSync } = require('node:sqlite') as {
@@ -264,8 +266,19 @@ CREATE TABLE IF NOT EXISTS orchestration_turn_dedup (
   dedup_key TEXT PRIMARY KEY,
   value TEXT,
   created_at INTEGER NOT NULL,
-  owner_json TEXT
+  owner_json TEXT,
+  input_digest TEXT
 );
+
+-- #3559: keys whose resolved dedup row capacity retention evicted. A retry of
+-- one answers expired instead of claiming the key afresh: a chat: key for 30
+-- days, a thread key until its thread is deleted.
+CREATE TABLE IF NOT EXISTS orchestration_turn_dedup_expired (
+  dedup_key TEXT PRIMARY KEY,
+  expired_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS orchestration_turn_dedup_expired_at
+  ON orchestration_turn_dedup_expired(expired_at);
 
 CREATE TABLE IF NOT EXISTS provider_session_adoptions (
   source_thread_id TEXT PRIMARY KEY,
@@ -812,6 +825,7 @@ export function ensureOrchestrationTurnDedupColumns(
         'ALTER TABLE orchestration_turn_dedup ADD COLUMN owner_json TEXT',
       );
     }
+    ensureTurnDedupInputDigest(db);
     // This migration is deliberately additive-only. An ownerless unresolved
     // row may belong to an older runtime that is still executing its turn;
     // deleting it would permit a new runtime to execute that same turn.
@@ -1458,6 +1472,7 @@ export function runOrchestrationEventMigration(projectHomeDir: string): void {
   ensureOrchestrationTurnDedupColumns(db);
   ensureOrchestrationEventStoreColumns(db);
   ensureOrchestrationAdoptionColumns(db);
+  ensureTurnBoundarySequenceFence(db);
   db.close();
 }
 

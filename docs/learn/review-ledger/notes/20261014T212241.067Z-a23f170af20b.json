@@ -1,0 +1,7 @@
+{
+  "revision": "e88208d9cffe2f47a0252fb051de939a04019a79",
+
+  "notes": [
+    {"path":"docs/guides/release-channel-ports.md","note":"Re-read root derivation/admission and --temp-home claims. helpers.ts change only affects --temp-home minting: a candidate inside the resolved Station root or STATION_HOME, or refused by admission, is removed and retried once under /tmp/station; a refused retry is appended to the error. Other home selections, ports and channel derivation unchanged. Doc names --temp-home usage, not its location; no prose change. runtime-path-resolver.ts change is additive: new exported stationTreeContaining(path, env) returns the canonical Station root or STATION_HOME containing a path; resolveStationRoot, admitStationRuntimeHome and every existing export are unchanged. Searched this doc for admission/temp-home claims; none affected, no prose change.","inputs":["docs/guides/release-channel-ports.md","packages/cli/src/commands/helpers.ts","packages/shared/src/runtime-path-resolver.ts"]}
+  ]
+}

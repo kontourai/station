@@ -86,7 +86,29 @@
 
     "scripts/lib/public-release-locations.mjs",
 
-    "scripts/portable-release-publication.mjs"
+    "scripts/portable-release-publication.mjs",
+
+    "esbuild.config.mjs",
+
+    "packages/cli/esbuild.config.mjs",
+
+    ".github/workflows/publish-packages.yml",
+
+    "scripts/lib/author-telemetry-build.mjs",
+
+    "scripts/check-author-telemetry-workflows.mjs",
+
+    "scripts/check-author-telemetry-build.mjs",
+
+    "scripts/__tests__/author-telemetry-build.test.ts",
+
+    "scripts/actionlint-gate.mjs",
+
+    "src-server/domain/telemetry-build-constants.ts",
+
+    "scripts/pr-delivery-paths.json",
+
+    "packages/shared/src/release-rings.generated.mjs"
   ],
 
   "checks": [

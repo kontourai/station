@@ -34,7 +34,7 @@ function runtimeEvent(
 describe('runtime auth health monitor', () => {
   afterEach(() => {
     vi.useRealTimers();
-    // archive#3587 review MEDIUM-1: every `vi.spyOn(console, 'warn')` in
+    // archive#3587: every `vi.spyOn(console, 'warn')` in
     // this file only calls `mockRestore()` AFTER its own assertions — so a
     // failing assertion on ONE test's spy (asserted before `mockRestore()`
     // runs) leaves that spy in place. `@vitest/spy`'s `vi.spyOn` on an
@@ -192,16 +192,16 @@ describe('runtime auth health monitor', () => {
   // `normalizeFinishReason`/`?? 'stop'` fallback still only applies to a
   // genuinely absent value.
   //
-  // archive#3545 delta review round 3: this used to hard-code a single
+  // archive#3545: this used to hard-code a single
   // `finishReason: 'stop'` fixture. That is the FAITHFUL, ordinary-case shape
   // post-fix, but it means this test no longer drives the absence path at
-  // all — round 1's original defect (`normalizeFinishReason` collapsing
+  // all — the original defect (`normalizeFinishReason` collapsing
   // `undefined` into `'other'`) reddened this exact test; a fixture that
   // never supplies `undefined` cannot. `test.each` over both the ordinary
   // shape (`finishReason: 'stop'`) and the fallback shape (no `finishReason`
   // key — the producer's own promise rejected/resolved non-string) restores
   // that coverage: BOTH must clear the failure and reset the streak, and
-  // BOTH must reproduce round 1's defect when re-injected.
+  // BOTH must reproduce that defect when re-injected.
   //
   // This drives an actual `BedrockAdapter` through `sendTurn` and bridges
   // its own published events onto the shared bus the way
@@ -290,8 +290,8 @@ describe('runtime auth health monitor', () => {
     },
   );
 
-  // archive#3587 review "Pin the auth-erasure coupling permanently": the
-  // harm HIGH-1 fixed (archive#3596, folded into archive#3586's own change)
+  // archive#3587 asked to pin the auth-erasure coupling permanently. The
+  // harm fixed in archive#3596 (folded into archive#3586's own change)
   // was that a FAILED Ollama turn could erase its own recorded auth
   // failure — both halves of that composition look correct in isolation
   // (`OllamaAdapter` throws on an error chunk; `RuntimeAuthHealthMonitor`
@@ -425,7 +425,7 @@ describe('runtime auth health monitor', () => {
   });
 
   test.each(['stop', 'tool-calls', 'max-tokens'])(
-    // archive#3509 fix round MEDIUM 2: PROVIDER_PROVEN_FINISH_REASONS is an
+    // archive#3509: PROVIDER_PROVEN_FINISH_REASONS is an
     // allowlist, not WELL_FORMED_FINISH_REASONS minus 'cancelled'/'other' —
     // this pins its full, exact membership (all three clear) rather than
     // just one representative member.

@@ -1,0 +1,7 @@
+{
+  "revision": "764b270379659c09cba29775a5eb939e489eae8f",
+
+  "notes": [
+    {"path":"docs/user/workspace-checkpoints.md","note":"Reviewed against MessageBubble.tsx: the changed-files details, checkpoint restore and settle-only visibility paths are unchanged; the edit adds the answer Basis chip and removes the provenance dialog Basis entry, neither of which this guide describes.","inputs":["docs/user/workspace-checkpoints.md","src-ui/src/components/chat/MessageBubble.tsx"]}
+  ]
+}

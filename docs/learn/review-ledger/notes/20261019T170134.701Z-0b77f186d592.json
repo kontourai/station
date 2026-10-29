@@ -1,0 +1,7 @@
+{
+  "revision": "4106e6ac38e20b94e20e7a740c2a333184ecb74b",
+
+  "notes": [
+    {"path":"docs/patterns/backend.md","note":"Only the responsive inventories changed beside this pattern doc; no backend pattern claim affected.","inputs":["docs/patterns/backend.md","docs/ui/responsive-action-surfaces.txt","docs/ui/responsive-surfaces.json"]}
+  ]
+}

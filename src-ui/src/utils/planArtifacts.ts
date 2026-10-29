@@ -1,4 +1,12 @@
-import type { ChatMessage, ChatUIState } from '../contexts/active-chats-state';
+import {
+  hasRuntimeEventContentRefs,
+  runtimeEventContentDisplayText,
+} from '@kontourai/station-contracts/runtime-event-content';
+import type {
+  ChatMessage,
+  ChatUIState,
+  StreamingMessage,
+} from '../contexts/active-chats-state';
 
 type PlanArtifactStepStatus = 'pending' | 'in_progress' | 'completed';
 
@@ -12,6 +20,37 @@ export interface PlanArtifact {
   rawText: string;
   steps: PlanArtifactStep[];
   updatedAt: string;
+  /** A canonical plan whose entries (or an entry's text) are stored out of
+   * line: what "Load full content" resolves (docs/design/event-content-spill.md). */
+  spilled?: { threadId: string; entries: unknown };
+}
+
+/**
+ * The typed artifact for a canonical `plan.updated`. Entries may be a
+ * reference to the whole list or carry referenced text; either shows as its
+ * marked preview until loaded, and `spilled` records what to load.
+ */
+export function canonicalPlanArtifact(
+  entries: unknown,
+  updatedAt: string,
+  threadId?: string,
+): PlanArtifact {
+  const list = Array.isArray(entries) ? entries : undefined;
+  const steps = (list ?? []).map((entry) => ({
+    content: runtimeEventContentDisplayText(entry?.content) ?? '',
+    status: entry?.status,
+  }));
+  return {
+    source: 'canonical',
+    rawText: list
+      ? steps.map((step) => step.content).join('\n')
+      : (runtimeEventContentDisplayText(entries) ?? ''),
+    steps,
+    updatedAt,
+    ...(threadId && hasRuntimeEventContentRefs(entries)
+      ? { spilled: { threadId, entries } }
+      : {}),
+  };
 }
 
 const LINE_STATUS_PATTERNS: Array<{
@@ -48,7 +87,7 @@ const LINE_STATUS_PATTERNS: Array<{
 /**
  * Every character any `LINE_STATUS_PATTERNS` entry can begin a step with.
  *
- * A streamed answer is re-derived on every token with the whole accumulated
+ * A streamed answer is re-derived at line boundaries with the accumulated
  * text, and the parse below splits it into lines and runs six regexes over
  * each one. Prose that contains none of these characters cannot produce a
  * single step, so the scan is skipped rather than performed and discarded.
@@ -183,17 +222,116 @@ export function derivePlanArtifactFromStreamingState(
     'reasoning',
     updatedAt,
   );
-  if (fromReasoning) {
-    return fromReasoning;
-  }
+  const text = fromReasoning
+    ? undefined
+    : chat.streamingMessage?.contentParts
+        ?.filter((part) => part.type === 'text' && part.content)
+        .map((part) => part.content)
+        .join('\n');
+  const next =
+    fromReasoning ?? derivePlanArtifactFromText(text, 'assistant', updatedAt);
+  const previous = chat.planArtifact;
+  // rawText is rendered and downloadable; equal steps alone cannot make two
+  // artifacts interchangeable (headings and explanatory prose may differ).
+  if (
+    next &&
+    previous?.source === next.source &&
+    previous.rawText === next.rawText
+  )
+    return previous;
+  return next ?? previous ?? null;
+}
 
-  const text = chat.streamingMessage?.contentParts
-    ?.filter((part) => part.type === 'text' && part.content)
-    .map((part) => part.content)
-    .join('\n');
-  return (
-    derivePlanArtifactFromText(text, 'assistant', updatedAt) ??
-    chat.planArtifact ??
-    null
+interface StreamingPlanText {
+  raw: string;
+  pending: string;
+  steps: PlanArtifactStep[];
+  hasKeyword: boolean;
+}
+const streamingPlans = new WeakMap<
+  StreamingMessage,
+  { text: StreamingPlanText; reasoning: StreamingPlanText }
+>();
+const PLAN_KEYWORD = /\b(plan|steps?|todo|next)\b/i;
+
+function appendPlanText(scan: StreamingPlanText, delta: string): void {
+  scan.raw += delta;
+  scan.pending += delta;
+  if (!delta.includes('\n')) return;
+  const lines = scan.pending.split('\n');
+  scan.pending = lines.pop()!;
+  for (const line of lines) {
+    scan.steps.push(...parsePlanSteps(line));
+    scan.hasKeyword ||= PLAN_KEYWORD.test(line);
+  }
+}
+
+function createPlanScan(
+  message: StreamingMessage | undefined,
+  type: 'text' | 'reasoning',
+): StreamingPlanText {
+  const scan: StreamingPlanText = {
+    raw: '',
+    pending: '',
+    steps: [],
+    hasKeyword: false,
+  };
+  appendPlanText(
+    scan,
+    message?.contentParts
+      ?.filter((part) => part.type === type && part.content)
+      .map((part) => part.content)
+      .join('\n') ?? '',
   );
+  return scan;
+}
+
+/** Consume each completed line once; the final unterminated line remains live.
+ * Weak keys tie parser lifetime to the streaming shell, never to chat history.
+ */
+export function derivePlanArtifactFromStreamingDelta(
+  chat: Pick<ChatUIState, 'streamingMessage' | 'planArtifact'>,
+  next: StreamingMessage,
+  type: 'text' | 'reasoning',
+  delta: string,
+  updatedAt: string,
+): PlanArtifact | null | undefined {
+  const previous = chat.streamingMessage;
+  const scans = (previous && streamingPlans.get(previous)) ?? {
+    text: createPlanScan(previous, 'text'),
+    reasoning: createPlanScan(previous, 'reasoning'),
+  };
+  if (previous) streamingPlans.delete(previous);
+  const scan = scans[type];
+  const tail = previous?.contentParts?.at(-1);
+  const separator =
+    scan.raw && (tail?.type !== type || !tail.content) ? '\n' : '';
+  if (delta) appendPlanText(scan, separator + delta);
+  streamingPlans.set(next, scans);
+  if (!delta.includes('\n')) return chat.planArtifact;
+
+  const artifact = (
+    value: StreamingPlanText,
+    source: PlanArtifact['source'],
+  ): PlanArtifact | null => {
+    const steps = [...value.steps, ...parsePlanSteps(value.pending)];
+    if (
+      steps.length < 2 &&
+      !(
+        steps.length === 1 &&
+        (value.hasKeyword || PLAN_KEYWORD.test(value.pending))
+      )
+    )
+      return null;
+    return { source, rawText: value.raw.trim(), steps, updatedAt };
+  };
+  const result =
+    artifact(scans.reasoning, 'reasoning') ?? artifact(scans.text, 'assistant');
+  if (
+    result &&
+    result.source === chat.planArtifact?.source &&
+    result.rawText === chat.planArtifact.rawText
+  )
+    return chat.planArtifact;
+  return result ?? chat.planArtifact ?? null;
 }

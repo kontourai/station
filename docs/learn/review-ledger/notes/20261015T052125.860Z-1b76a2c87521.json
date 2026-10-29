@@ -1,0 +1,7 @@
+{
+  "revision": "44a9c624102e9f822732adec8b565b24fcc2ac83",
+
+  "notes": [
+    {"path":"packages/monument/README.md","note":"Re-read the complete boundary API section after removing the per-command terminal authority. Traced KernelContext to the adapter SPI and both SQLite transaction branches: fixed KernelTerminalFacts reaches dispatch only from validated storage-open configuration. Reviewed the replacement host-open conformance case, four portable fence cases, stale default-fact/stray-context tests, and all five clean-tree mutation outcomes at 44a9c624102 (strict differential: 402 pass, 400 assertion failures, 402 pass). The default memory/SQLite suite now covers kernel facts; host capability is checked by the explicit host harness. Production boundary/read-projection migration remains deferred.","inputs":["packages/monument/README.md","packages/monument/src/__tests__/sqlite-bound-boundaries.test.ts","packages/monument/src/port.ts","packages/monument/src/sqlite.ts","packages/monument/src/step.ts","packages/monument/src/testing/host-boundary-conformance.ts","src-server/services/orchestration/__tests__/fixtures/monument-boundary.ts","src-server/services/orchestration/__tests__/monument-boundary-append.test.ts","src-server/services/orchestration/__tests__/monument-boundary-host.test.ts","packages/monument/src/adapter.ts","packages/monument/src/testing/conformance.ts"]}
+  ]
+}

@@ -32,7 +32,10 @@ import {
   type NotificationOutcome,
   rankNotificationContent,
 } from '@kontourai/station-shared/notification-priority';
-import { resolveNotificationOpenHref } from './notification-deep-link.js';
+import {
+  resolveNotificationOpenHref,
+  withOpenedNotification,
+} from './notification-deep-link.js';
 import {
   osNotificationBody,
   osNotificationTitle,
@@ -86,7 +89,7 @@ export function composeWebPushPayload(
       body: osNotificationBody(lead.notification.body),
       category: lead.notification.category,
       notificationId: lead.notification.id,
-      url,
+      url: withOpenedNotification(url, lead.notification.id),
     },
     ttlSeconds: Math.round(NOTIFICATION_TTL_MS[lead.outcome] / 1000),
   };

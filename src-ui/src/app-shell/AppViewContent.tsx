@@ -19,11 +19,6 @@ const NewProjectModal = lazy(() =>
   })),
 );
 
-const ACPConnectionsView = lazy(() =>
-  import('../views/ACPConnectionsView').then((module) => ({
-    default: module.ACPConnectionsView,
-  })),
-);
 const AgentConnectionView = lazy(() =>
   import('../views/AgentConnectionView').then((module) => ({
     default: module.AgentConnectionView,
@@ -67,6 +62,11 @@ const KnowledgeConnectionView = lazy(() =>
 const DeveloperView = lazy(() =>
   import('../views/DeveloperView').then((module) => ({
     default: module.DeveloperView,
+  })),
+);
+const AppearancePage = lazy(() =>
+  import('../pages/AppearancePage').then((module) => ({
+    default: module.AppearancePage,
   })),
 );
 const NotificationsPage = lazy(() =>
@@ -239,7 +239,10 @@ export function AppViewContent(props: AppViewContentProps) {
             entrance remount TOGETHER here — `route-enter` already IS the
             item-4 fade for every route this seam covers. Removed; do not
             re-add without re-deriving the actual composed opacity curve. */}
-        <div className="route-transition" key={surfaceKey}>
+        <div
+          className={`route-transition${props.currentView.type === 'layout' ? ' route-transition--fill' : ''}`}
+          key={surfaceKey}
+        >
           <AppViewContentBody {...props} />
         </div>
       </RouteViewBoundary>
@@ -318,6 +321,7 @@ function AppViewContentBody({
       <ConnectionsSectionFrame sectionId="engines">
         <AgentConnectionView
           selectedRuntimeId={currentView.id}
+          agents={agents}
           onNavigate={onNavigate}
         />
       </ConnectionsSectionFrame>
@@ -326,16 +330,21 @@ function AppViewContentBody({
   if (currentView.type === 'connections-engines') {
     return (
       <ConnectionsSectionFrame sectionId="engines">
-        <AgentConnectionView onNavigate={onNavigate} />
+        <AgentConnectionView agents={agents} onNavigate={onNavigate} />
       </ConnectionsSectionFrame>
     );
   }
+  // A deep link to one catalogue entry (`/connections/engines/new/<id>`,
+  // and the legacy `/connections/acp/new/<id>` that redirects here) opens
+  // the same Add engine flow on that entry's confirm step.
   if (currentView.type === 'connections-engine-new') {
     return (
       <ConnectionsSectionFrame sectionId="engines">
-        <ACPConnectionsView
+        <AgentConnectionView
+          selectedRuntimeId="new"
+          addChoiceId={currentView.providerId}
           agents={agents}
-          initialProviderId={currentView.providerId}
+          onNavigate={onNavigate}
         />
       </ConnectionsSectionFrame>
     );
@@ -444,6 +453,9 @@ function AppViewContentBody({
   }
   if (currentView.type === 'profile') {
     return <ProfilePage />;
+  }
+  if (currentView.type === 'appearance') {
+    return <AppearancePage />;
   }
   if (currentView.type === 'notifications') {
     return <NotificationsPage />;

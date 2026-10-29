@@ -42,8 +42,7 @@ interface ConnectionManagerDiscoverPanelProps {
   providerCount: number;
   existingUrls: Set<string>;
   onRefresh: () => void;
-  onReview: (candidate: ConnectionCandidate) => Promise<boolean>;
-  onOpen: (candidate: ConnectionCandidate) => void;
+  onSelect: (candidate: ConnectionCandidate) => void;
   onBack: () => void;
 }
 
@@ -54,26 +53,25 @@ export function ConnectionManagerDiscoverPanel({
   providerCount,
   existingUrls,
   onRefresh,
-  onReview,
-  onOpen,
+  onSelect,
   onBack,
 }: ConnectionManagerDiscoverPanelProps) {
-  const [checkingId, setCheckingId] = React.useState<string | null>(null);
-  const checkingRef = React.useRef<string | null>(null);
-  const mountedRef = React.useRef(true);
-  const [reviewedIds, setReviewedIds] = React.useState<Set<string>>(
-    () => new Set(),
+  const cancelled = providers.some(
+    (provider) => provider.status === 'cancelled',
   );
-  const [reviewErrorId, setReviewErrorId] = React.useState<string | null>(null);
-  const failedProviders = providers.filter(
-    (provider) => provider.status === 'failed',
-  ).length;
-  React.useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
+  const permissionRequired = providers.some(
+    (provider) => provider.status === 'permission-required',
+  );
+  const denied = providers.some(
+    (provider) => provider.status === 'permission-denied',
+  );
+  const unavailable = providers.some(
+    (provider) => provider.status === 'unavailable',
+  );
+  const timedOut = providers.some(
+    (provider) => provider.status === 'timed-out',
+  );
+  const failed = providers.some((provider) => provider.status === 'failed');
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <p
@@ -84,8 +82,7 @@ export function ConnectionManagerDiscoverPanel({
           color: 'var(--text-secondary, #999)',
         }}
       >
-        Connection suggestions are reachability hints. Station verifies the
-        environment and requests access before trusting a new browser.
+        Choose your computer. You’ll still need to approve access there.
       </p>
 
       {providerCount === 0 ? (
@@ -100,9 +97,8 @@ export function ConnectionManagerDiscoverPanel({
             color: 'var(--text-secondary, #999)',
           }}
         >
-          Automatic discovery is not available in this browser. Station does not
-          scan every address on your network. Use a saved Station, pair with a
-          code, or add an address from Advanced options.
+          Nearby discovery is not available here. Scan a QR code, enter a
+          pairing code, or use a Station address instead.
         </div>
       ) : (
         <div
@@ -122,17 +118,27 @@ export function ConnectionManagerDiscoverPanel({
             }}
           >
             {discovering
-              ? 'Checking available connection providers…'
+              ? 'Looking for nearby Stations…'
               : candidates.length > 0
                 ? `${candidates.length} Station suggestion${candidates.length === 1 ? '' : 's'}`
-                : failedProviders > 0
-                  ? 'No suggestions available; a provider could not respond.'
-                  : 'No other Stations are currently advertised.'}
+                : permissionRequired
+                  ? 'Allow local network access when asked. After returning to Station, choose Check again.'
+                  : denied
+                    ? 'Local network permission is denied. Allow access in system settings, then check again.'
+                    : unavailable
+                      ? 'Local network discovery is unavailable on this device. Use a QR code or address.'
+                      : timedOut
+                        ? 'Discovery did not finish in time. Check network access, then try again.'
+                        : cancelled
+                          ? 'Discovery stopped. Keep Station open and check again.'
+                          : failed
+                            ? 'Local network discovery failed. Try again or use a QR code.'
+                            : 'No Stations found. On your computer, enable nearby discovery in Settings → Devices → Pairing.'}
           </span>
           <button
             type="button"
             onClick={onRefresh}
-            disabled={discovering || checkingId !== null}
+            disabled={discovering}
             style={secondaryBtnStyle}
           >
             {discovering ? 'Checking…' : 'Check again'}
@@ -144,8 +150,6 @@ export function ConnectionManagerDiscoverPanel({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {candidates.map((candidate) => {
             const alreadyAdded = existingUrls.has(candidate.url);
-            const reviewed = reviewedIds.has(candidate.id);
-            const checking = checkingId === candidate.id;
             return (
               <div
                 key={candidate.id}
@@ -172,24 +176,14 @@ export function ConnectionManagerDiscoverPanel({
                       overflowWrap: 'anywhere',
                     }}
                   >
-                    {SOURCE_LABEL[candidate.source]} ·{' '}
-                    {reviewed
-                      ? 'Station found · Access not granted'
-                      : 'Unverified'}
+                    {SOURCE_LABEL[candidate.source]} · Unverified · Access not
+                    granted
                     <br />
                     {candidate.url}
-                    {reviewErrorId === candidate.id && (
-                      <span
-                        role="alert"
-                        style={{
-                          display: 'block',
-                          color: 'var(--error-text, #ef4444)',
-                        }}
-                      >
-                        This suggestion did not answer with a valid Station
-                        identity. It was not saved or opened.
-                      </span>
-                    )}
+                    <br />
+                    {candidate.url.startsWith('http:')
+                      ? 'Unencrypted HTTP · requires your consent'
+                      : 'HTTPS · still requires access approval'}
                   </div>
                 </div>
                 {alreadyAdded ? (
@@ -204,52 +198,11 @@ export function ConnectionManagerDiscoverPanel({
                 ) : (
                   <button
                     type="button"
-                    disabled={checkingId !== null}
-                    onClick={() => {
-                      if (reviewed) {
-                        onOpen(candidate);
-                        return;
-                      }
-                      if (checkingRef.current) return;
-                      checkingRef.current = candidate.id;
-                      setCheckingId(candidate.id);
-                      setReviewErrorId(null);
-                      void onReview(candidate).then(
-                        (valid) => {
-                          if (!mountedRef.current) return;
-                          if (checkingRef.current === candidate.id) {
-                            checkingRef.current = null;
-                          }
-                          setCheckingId((current) =>
-                            current === candidate.id ? null : current,
-                          );
-                          if (valid) {
-                            setReviewedIds((current) =>
-                              new Set(current).add(candidate.id),
-                            );
-                          } else {
-                            setReviewErrorId(candidate.id);
-                          }
-                        },
-                        () => {
-                          if (!mountedRef.current) return;
-                          if (checkingRef.current === candidate.id) {
-                            checkingRef.current = null;
-                          }
-                          setCheckingId((current) =>
-                            current === candidate.id ? null : current,
-                          );
-                          setReviewErrorId(candidate.id);
-                        },
-                      );
-                    }}
+                    aria-label={`Request access to ${candidate.name}`}
+                    onClick={() => onSelect(candidate)}
                     style={primaryBtnStyle}
                   >
-                    {checking
-                      ? 'Checking…'
-                      : reviewed
-                        ? 'Open Station'
-                        : 'Check'}
+                    Request access
                   </button>
                 )}
               </div>

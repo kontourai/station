@@ -1,0 +1,7 @@
+{
+  "revision": "1df6c4d11a4d464a0acd73d07051ca0862da0cc4",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Added the owner's standing rule for the answer Basis chip (#926 decision comment): plain Basis for an unassessed answer with the standing in its accessible name, Surface's own label for policy met, assessed with gaps or unresolved, reads only on screen, no re-read of a cached standing, refresh on assessment/narrative update, plain and openable while pending or failed. Checked against AnswerBasisAffordance (closed code list, staleTime), ConnectedAnswerBasisAffordance (IntersectionObserver, host requestScope) and MessageBubble.basisChipStanding.test.tsx.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/MessageBubble.tsx"]}
+  ]
+}

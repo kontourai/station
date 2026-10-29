@@ -3,12 +3,14 @@
  */
 
 import {
+  act,
   fireEvent,
   render,
   screen,
   waitFor,
   within,
 } from '@testing-library/react';
+import { Profiler } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   clipboardAbsent,
@@ -68,6 +70,7 @@ vi.mock('../../../providers/context/CodingFilesContextProvider', () => ({
 import { PaneHeadSlotsContext } from '../../../workspace-panes/PaneHeadSlots';
 import { activeTerminalWriter } from '../activeTerminal';
 import { FileTreePanel } from '../FileTreePanel';
+import * as treeFilter from '../fileTreeFilter';
 
 const tree = [
   {
@@ -106,6 +109,40 @@ function renderPanel(onFileSelect = vi.fn()) {
 }
 
 describe('FileTreePanel', () => {
+  test('reuses filtering for menu changes and refreshes results when search or tree changes', () => {
+    const filter = vi.spyOn(treeFilter, 'filterTree');
+    const onFileSelect = vi.fn();
+    try {
+      const mounted = renderPanel(onFileSelect);
+      expect(screen.getByText('README.md')).toBeTruthy();
+      const initialCalls = filter.mock.calls.length;
+      fireEvent.contextMenu(screen.getByText('app.ts'));
+      expect(screen.getByRole('menu')).toBeTruthy();
+      expect(filter).toHaveBeenCalledTimes(initialCalls);
+      fireEvent.change(screen.getByPlaceholderText('Filter files…'), {
+        target: { value: 'README' },
+      });
+      expect(screen.queryByText('app.ts')).toBeNull();
+      expect(screen.getByText('README.md')).toBeTruthy();
+      expect(filter).toHaveBeenCalledTimes(initialCalls + 1);
+      filesState.data = [
+        ...tree,
+        { name: 'README-notes.md', path: 'README-notes.md', type: 'file' },
+      ];
+      mounted.rerender(
+        <FileTreePanel
+          projectSlug="project"
+          workingDir="/repo"
+          onFileSelect={onFileSelect}
+        />,
+      );
+      expect(screen.getByText('README-notes.md')).toBeTruthy();
+      expect(filter).toHaveBeenCalledTimes(initialCalls + 2);
+    } finally {
+      filter.mockRestore();
+    }
+  });
+
   test('renders directories and (expanded) files', () => {
     renderPanel();
     expect(screen.getByText('src')).toBeTruthy();
@@ -173,6 +210,33 @@ describe('FileTreePanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create' }));
     expect(createMutate).not.toHaveBeenCalled();
     expect(screen.getByText('Name cannot contain a slash')).toBeTruthy();
+  });
+
+  test('a touch hold on a file opens its menu and does not also open the file', () => {
+    vi.useFakeTimers();
+    try {
+      const onFileSelect = vi.fn();
+      renderPanel(onFileSelect);
+      const row = screen.getByText('app.ts').closest('button')!;
+      fireEvent.pointerDown(row, {
+        pointerType: 'touch',
+        button: 0,
+        clientX: 30,
+        clientY: 60,
+      });
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
+      expect(
+        screen.getByRole('menu', { name: 'Actions for app.ts' }),
+      ).toBeTruthy();
+      fireEvent.pointerUp(row, { pointerType: 'touch' });
+      fireEvent.click(row);
+      expect(onFileSelect).not.toHaveBeenCalled();
+      expect(screen.getByRole('menuitem', { name: 'Rename' })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test('the header + button opens a New File / New Folder menu', () => {
@@ -416,4 +480,48 @@ describe('FileTreePanel in a host that draws its head (#3046 round)', () => {
       }),
     ).toBeTruthy();
   });
+});
+
+test('profiles mounted file selection across a wide open tree', () => {
+  let rowReads = 0;
+  const touchedRows = new Set<number>();
+  filesState.data = Array.from({ length: 1000 }, (_, index) => ({
+    get name() {
+      rowReads++;
+      touchedRows.add(index);
+      return `file-${index}.ts`;
+    },
+    path: `file-${index}.ts`,
+    type: 'file',
+  }));
+  const onSelect = vi.fn();
+  const durations: number[] = [];
+  const view = (selectedPath: string | null) => (
+    <Profiler
+      id="files"
+      onRender={(_id, phase, duration) => {
+        if (phase === 'update') durations.push(duration);
+      }}
+    >
+      <FileTreePanel
+        projectSlug="project"
+        workingDir="/repo"
+        selectedPath={selectedPath}
+        onFileSelect={onSelect}
+      />
+    </Profiler>
+  );
+  const mounted = render(view(null));
+  rowReads = 0;
+  touchedRows.clear();
+  for (let index = 0; index < 20; index++)
+    mounted.rerender(view(`file-${index}.ts`));
+  expect(screen.getByText('file-19.ts').closest('button')?.className).toContain(
+    'selected',
+  );
+  process.stdout.write(
+    `FILE_PROFILE ${JSON.stringify({ rowReads, commits: durations.length, reactCpuMs: durations.reduce((a, b) => a + b, 0) })}\n`,
+  );
+  expect(touchedRows.size).toBeLessThanOrEqual(20);
+  mounted.unmount();
 });

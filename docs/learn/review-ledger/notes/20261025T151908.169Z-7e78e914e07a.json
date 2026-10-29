@@ -1,0 +1,15 @@
+{
+  "revision": "44a0a31fa0075a17578915f4b99d1232a7efb8dd",
+
+  "notes": [
+    {"path":"docs/design/walkthroughs.md","note":"Reviewed the recorder compatibility follow-up against real WebM metadata and SherpaTranscriber: missing input duration proceeds only through capped conversion, decoded WAV requires finite duration within 60 minutes. The queue-inclusive deadline and no-truncation claims remain accurate. Actual browser recording initially failed invalid-input, the regression test was observed red, and the fixed real recognizer delivered synthetic narration into the composer.","inputs":["docs/design/walkthroughs.md","docs/guides/local-speech.md","src-server/routes/transcription.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Reviewed the settings link correction and runtime entry points after recorder repair. Default-off live provider reconciliation, explicit operator consent and server refusals remain unchanged; public settings now links to the non-public operating guide through GitHub. Public documentation hygiene and the 72-test focused suite passed.","inputs":["docs/guides/feature-previews.md","docs/user/settings.md"]},
+
+    {"path":"docs/guides/local-speech.md","note":"Reviewed bounded durationless MediaRecorder input through real ffprobe metadata, capped conversion, strict decoded-duration checks, route-authored busy refusal, and client state/error mapping. New regression failed before repair; missing/over-limit decoded duration controls and the full 72-test owner/consumer suite pass. A real downloaded sherpa-onnx/Parakeet recognized say-generated PCM fed through a synthetic browser MediaStream and real MediaRecorder, and final text landed in the Home composer. Native Chromium fake-device getUserMedia probes timed out; physical microphone capture, unsynthesized human speech and other platforms remain unverified.","inputs":["docs/guides/local-speech.md","src-server/routes/transcription.ts","src-server/services/transcription/sherpa-transcriber.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed regenerated shipped documentation content at digest 37549d1c68d50311a71326166ce6ad45beb35951e7c0712c925e6f24d0a80c07. The generator reports 121 topics; updated preview wording, queue behavior and public voice contracts are consistent with their canonical owners. Regeneration is content consistency evidence, not provider/platform qualification or human approval.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Reviewed final Voice and Local speech instructions, runtime catalog description and registration behavior, and changed the guide link to its absolute GitHub URL because that guide is not admitted to Pages. Public documentation hygiene and preview docs sync pass. Existing default-off, per-device provider selection and explicit operator download consent remain accurate.","inputs":["docs/user/settings.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "39e90f7b6cd3d9fd7758cf668ce14390843950b2",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed tests/screenshots.spec.ts delta from the recorded 42b6272 owner through39e90f7: bounded-history handshake, real ChatDock resync reads with held responses and repeated activation counts, failed-inbox recovery, raster diagnostic, complete Project A selection, and per-screen cleanup through capture. The guide still accurately distinguishes capture completeness, exact-pixel comparison, hosted baseline provenance, and fixture evidence from provider/native proof; no prose change needed. Executed profile/mismatch/desktop+mobile resync at39e90f7; all4 captures and recovery assertions passed. Negative controls caught missing Project A detail (200 vs404) and status portal overflow (900 vs901); restored normal/diagnostic images both1440x900 and pixel-identical. E2E typecheck/fixture policy and18status tests passed. Baseline acceptance remains pending exact hosted capture; common Gallery repairs are being landed by the separate Gallery owner.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]}
+  ]
+}

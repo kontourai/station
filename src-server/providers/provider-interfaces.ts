@@ -42,6 +42,16 @@ export interface IAgentRegistryProvider {
 }
 
 export interface IIntegrationRegistryProvider {
+  readonly registryKey?: string;
+  readonly displayName?: string;
+  installWithDefinition?(
+    id: string,
+    expectedRegistryId?: string,
+  ): Promise<{
+    result: InstallResult;
+    definition?: ToolDef;
+    origin?: import('@kontourai/station-contracts/tool').ToolOrigin;
+  }>;
   listAvailable(): Promise<RegistryItem[]>;
   listInstalled(): Promise<RegistryItem[]>;
   install(id: string): Promise<InstallResult>;
@@ -159,6 +169,16 @@ export interface INotificationProvider {
     notificationId: string,
     clientOrigin?: import('@kontourai/station-contracts/client-origin').ClientOrigin,
   ): Promise<void>;
+  /**
+   * Called after `handleAction` threw and the action lease was released, so
+   * the provider can rewrite the notification (its actions) in response.
+   * Best effort: a throw here is logged, never surfaced.
+   */
+  handleActionFailed?(
+    notificationId: string,
+    actionId: string,
+    error: unknown,
+  ): Promise<void>;
 }
 
 export interface NotificationStatusUpdate {
@@ -173,7 +193,12 @@ export interface NotificationStatusUpdate {
 export interface IACPConnectionRegistryProvider {
   readonly id?: string;
   readonly displayName?: string;
-  listAvailable(): ACPConnectionRegistryEntry[];
+  /**
+   * `detect: false` asks for the descriptors only; a provider may skip its
+   * host lookup and leave `detected` unset. Providers that ignore the option
+   * stay correct, only slower.
+   */
+  listAvailable(options?: { detect?: boolean }): ACPConnectionRegistryEntry[];
 }
 
 export interface IProviderAdapterRegistry {

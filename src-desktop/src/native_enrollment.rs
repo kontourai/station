@@ -43,15 +43,14 @@ pub(crate) trait NativeEnrollmentSecretBackend {
     fn delete(&self, account: &str) -> Result<()>;
 }
 
+const KEYRING_SERVICE: &str = "io.kontourai.station.native-enrollment-recipient";
+
 pub(crate) struct NativeEnrollmentSystemBackend;
 impl NativeEnrollmentSystemBackend {
     fn entry(account: &str) -> Result<crate::native_secure_entry::NativeSecureEntry> {
         crate::initialize_credential_store().map_err(|_| REFUSED.to_owned())?;
-        crate::native_secure_entry::NativeSecureEntry::new(
-            "io.kontourai.station.native-enrollment-recipient",
-            account,
-        )
-        .map_err(|_| REFUSED.to_owned())
+        crate::native_secure_entry::NativeSecureEntry::new(KEYRING_SERVICE, account)
+            .map_err(|_| REFUSED.to_owned())
     }
 }
 impl NativeEnrollmentSecretBackend for NativeEnrollmentSystemBackend {
@@ -783,4 +782,10 @@ mod tests {
             REFUSED
         );
     }
+}
+
+#[cfg(all(test, not(mobile)))]
+#[test]
+fn keyring_service_is_registered() {
+    crate::native_secure_entry::assert_registered_service(KEYRING_SERVICE);
 }

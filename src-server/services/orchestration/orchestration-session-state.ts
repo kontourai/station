@@ -1,3 +1,9 @@
+import { SESSION_RECOVERY_FAILED_CODE } from '@kontourai/station-contracts/provider-failure';
+import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/runtime-events';
+import { providerFailure } from '../../providers/provider-failure.js';
+
+export { SESSION_RECOVERY_FAILED_CODE } from '@kontourai/station-contracts/provider-failure';
+
 import { createHash } from 'node:crypto';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import {
@@ -6,8 +12,10 @@ import {
 } from '@kontourai/station-contracts/child-work';
 import {
   type ClientOrigin,
+  clientOriginSender,
   isClientOrigin,
 } from '@kontourai/station-contracts/client-origin';
+import { sessionDeliveryChannels } from '@kontourai/station-contracts/engine-capability-matrix';
 import type {
   AgentRunFailureKind,
   AgentRunStatus,
@@ -32,6 +40,7 @@ import {
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_SELECTION_RECEIPT_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
+import { runtimeEventContentText } from '@kontourai/station-contracts/runtime-event-content';
 import {
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
@@ -42,12 +51,15 @@ import {
   type TenantExecutionContext,
   tenantExecutionContextFromSession,
 } from '@kontourai/station-contracts/tenancy';
+import { unframeAgentMessage } from '@kontourai/station-shared/agent-message-frame';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
+import { withoutCompletedTurnRecovery } from '@kontourai/station-shared/runtime-event-projection';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import type { IProviderAdapterRegistry } from '../../providers/provider-interfaces.js';
 import { withTenantExecutionContext } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/ui-block-provenance.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { isManagedAcpWorkspace } from '../acp/managed-acp-workspace.js';
 import { receiptBus } from '../infra/receipt-bus.js';
 import type { RuntimeEngineStartLease } from '../infra/resource-posture.js';
 import { assertDispatchCwdUnmoved } from './dispatch-cwd-admission.js';
@@ -56,12 +68,14 @@ import {
   projectRequestAnswerability,
   type SessionAnswerabilityObservation,
 } from './open-requests.js';
+import { sessionAgentStartUnavailableReason } from './session-agent-start-policy.js';
 import {
   acceptsTurnTerminalEvent,
   activeTurnIdForEvents,
   isUnattributedRuntimeError,
   nextTurnIdentityAnchor,
   projectSessionLifecycle,
+  type TurnIdentityAnchor,
 } from './session-lifecycle-service.js';
 import {
   SESSION_START_INDETERMINATE_CODE,
@@ -382,31 +396,78 @@ export function projectOrchestrationEventToReadModel(options: {
   sessionReadModel: Map<string, ProviderSession>;
   eventStore?: EventStore;
 }): void {
-  const { event, threadProviders, sessionReadModel, eventStore } = options;
-  const existing = sessionReadModel.get(event.threadId);
-  const baseSession: ProviderSession = existing ?? {
-    provider: event.provider,
-    threadId: event.threadId,
-    status: 'ready',
-    createdAt: event.createdAt,
-    updatedAt: event.createdAt,
-  };
+  const { threadProviders, sessionReadModel, eventStore } = options;
+  const session = deriveReadModelSession({
+    ...options,
+    readPersistedSession: (threadId) =>
+      eventStore?.readSessionByThread(threadId),
+  });
+  if (!session) return;
+  trackOrchestrationSession({ threadProviders, sessionReadModel, session });
+  persistReadModelSession(eventStore, session);
+}
 
-  let nextSession: ProviderSession | null = baseSession;
+/**
+ * #3561: the durable half of {@link projectOrchestrationEventToReadModel}. The
+ * live publish path runs it as a co-commit participant of the event's own
+ * append, so the session row changes only with the event that justifies it.
+ */
+export function persistReadModelSession(
+  eventStore: EventStore | undefined,
+  session: ProviderSession,
+): void {
+  if (session.status === 'closed') {
+    eventStore?.markSessionClosed(session.threadId, session.provider);
+    return;
+  }
+  eventStore?.upsertSession(session);
+}
+
+/**
+ * #3561: the session an event would project, read from the current read
+ * model and changing nothing. `null` when the event projects no session.
+ */
+export function deriveReadModelSession(options: {
+  event: CanonicalRuntimeEvent;
+  sessionReadModel: ReadonlyMap<string, ProviderSession>;
+  /**
+   * The durable row for a thread the in-memory model does not hold. Boot
+   * restores no closed session, so an event for one (the next boot's
+   * interrupted-turn recovery after a graceful stop) would otherwise project
+   * a blank session over the row and erase its cwd and resume cursor.
+   */
+  readPersistedSession?: (threadId: string) => ProviderSession | undefined;
+}): ProviderSession | null {
+  const { event, sessionReadModel } = options;
+  const existing = sessionReadModel.get(event.threadId);
+  // Read only by the events below that project a session without one in
+  // memory; the rest keep projecting nothing for such a thread.
+  let base: ProviderSession | undefined;
+  const baseSession = (): ProviderSession =>
+    (base ??= existing ??
+      options.readPersistedSession?.(event.threadId) ?? {
+        provider: event.provider,
+        threadId: event.threadId,
+        status: 'ready',
+        createdAt: event.createdAt,
+        updatedAt: event.createdAt,
+      });
+
+  let nextSession: ProviderSession | null;
 
   switch (event.method) {
     case 'session.started':
       nextSession = {
-        ...baseSession,
+        ...baseSession(),
         provider: event.provider,
         status: 'connecting',
-        createdAt: baseSession.createdAt ?? event.createdAt,
+        createdAt: baseSession().createdAt ?? event.createdAt,
         updatedAt: event.createdAt,
       };
       break;
     case 'session.configured':
       nextSession = {
-        ...baseSession,
+        ...baseSession(),
         modelRoute: readModelRoute(event.metadata?.modelRoute),
         // A session already marked terminal keeps that status: 'closed' is
         // preserved today, and a `dead` binding (archive#1827) must not be
@@ -415,23 +476,30 @@ export function projectOrchestrationEventToReadModel(options: {
         // in `recoverOrchestrationSessions`, same as closed), so this is a
         // defensive mirror of the 'closed' guard, not a load-bearing path.
         status:
-          baseSession.status === 'closed' || baseSession.status === 'dead'
-            ? baseSession.status
+          baseSession().status === 'closed' || baseSession().status === 'dead'
+            ? baseSession().status
             : 'ready',
-        model: event.model ?? baseSession.model,
+        model: event.model ?? baseSession().model,
         updatedAt: event.createdAt,
       };
       break;
     case 'session.state-changed':
       nextSession = {
-        ...baseSession,
-        status: mapOrchestrationSessionState(event.to),
+        ...baseSession(),
+        // The same terminal guard as `session.configured`: a state change
+        // (the interrupted-turn banner on a session a graceful stop closed)
+        // reports the conversation's state, not a live engine, so it never
+        // reopens a closed or dead binding. Only a new start does.
+        status:
+          baseSession().status === 'closed' || baseSession().status === 'dead'
+            ? baseSession().status
+            : mapOrchestrationSessionState(event.to),
         updatedAt: event.createdAt,
       };
       break;
     case 'session.exited':
       nextSession = {
-        ...baseSession,
+        ...baseSession(),
         status: 'closed',
         updatedAt: event.createdAt,
       };
@@ -443,9 +511,9 @@ export function projectOrchestrationEventToReadModel(options: {
       // dead or ready. Other legacy/config errors keep their existing policy.
       nextSession =
         event.code === ENGINE_SESSION_BINDING_DEAD_CODE
-          ? { ...baseSession, status: 'dead', updatedAt: event.createdAt }
+          ? { ...baseSession(), status: 'dead', updatedAt: event.createdAt }
           : event.code === ENGINE_TURN_FAILED_CODE
-            ? { ...baseSession, status: 'error', updatedAt: event.createdAt }
+            ? { ...baseSession(), status: 'error', updatedAt: event.createdAt }
             : existing
               ? { ...existing, updatedAt: event.createdAt }
               : null;
@@ -457,17 +525,7 @@ export function projectOrchestrationEventToReadModel(options: {
       break;
   }
 
-  if (!nextSession) return;
-  trackOrchestrationSession({
-    threadProviders,
-    sessionReadModel,
-    session: nextSession,
-  });
-  if (nextSession.status === 'closed') {
-    eventStore?.markSessionClosed(nextSession.threadId, nextSession.provider);
-    return;
-  }
-  eventStore?.upsertSession(nextSession);
+  return nextSession;
 }
 
 export function buildOrchestrationSessionSummary(options: {
@@ -547,7 +605,7 @@ export function buildOrchestrationSessionSummary(options: {
     throw new Error('A persisted or loaded session is required');
   }
 
-  const events = options.events ?? [];
+  const events = withoutCompletedTurnRecovery(options.events ?? []);
   const lastEvent = events.at(-1);
   const foldedLifecycle = projectSessionLifecycle({ session: base, events });
   const delegation = withPeerPendingRequest(
@@ -576,6 +634,7 @@ export function buildOrchestrationSessionSummary(options: {
   const reportedModel = extractReportedModel(events);
   const conversationIdentity = extractConversationIdentity(events);
   const displayTitle =
+    (delegation?.title ? displayPromptTitle(delegation.title) : undefined) ??
     (options.conversationFirstPromptedTurn
       ? extractDisplayTitle([options.conversationFirstPromptedTurn])
       : undefined) ??
@@ -651,6 +710,9 @@ export function buildOrchestrationSessionSummary(options: {
     ...(modelRoute ? { modelRoute } : {}),
     ...(base.model ? { model: base.model } : {}),
     ...(base.cwd ? { cwd: base.cwd } : {}),
+    ...(base.cwd && isManagedAcpWorkspace(base.cwd)
+      ? { cwdManagedWorkspace: true as const }
+      : {}),
     ...(resumeCursor !== undefined ? { resumeCursor } : {}),
     // A partial live projection cannot erase a persisted native cursor or its
     // persistence posture; explicit false still refuses a native continuation.
@@ -660,7 +722,7 @@ export function buildOrchestrationSessionSummary(options: {
     updatedAt: base.updatedAt,
     isLoaded: Boolean(options.loaded),
     isPersisted: Boolean(options.persisted),
-    eventCount: options.eventCount ?? events.length,
+    eventCount: options.eventCount ?? options.events?.length ?? 0,
     ...(turnOrigin ? { turnOrigin } : {}),
     ...lifecycleWithoutProjectSlug,
     ...(assignedAgentSlug
@@ -871,26 +933,36 @@ function extractModelSelectionReceipt(
  * projecting their full prompts. Only the first meaningful user turn is
  * considered, and injected timezone context is removed before bounding.
  */
-function extractDisplayTitle(
+export function extractDisplayTitle(
   events: CanonicalRuntimeEvent[],
 ): string | undefined {
   for (const event of events) {
-    if (event.method !== 'turn.started' || typeof event.prompt !== 'string') {
-      continue;
-    }
-    const normalized = event.prompt
-      .replace(/^\s*\[Timezone:\s*[^\]]*\]\s*/i, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-    if (!normalized) continue;
-    const codePoints = Array.from(normalized);
-    if (codePoints.length <= DISPLAY_TITLE_MAX_LENGTH) return normalized;
-    return `${codePoints
-      .slice(0, DISPLAY_TITLE_MAX_LENGTH - 1)
-      .join('')
-      .trimEnd()}…`;
+    if (event.method !== 'turn.started') continue;
+    // A long prompt stored out of line titles from its preview: a title is
+    // a short prefix either way.
+    const text = runtimeEventContentText(event.prompt)?.text;
+    if (!text) continue;
+    const prompt = clientOriginSender(event.clientOrigin)
+      ? (unframeAgentMessage(text) ?? text)
+      : text;
+    const title = displayPromptTitle(prompt);
+    if (title) return title;
   }
   return undefined;
+}
+
+function displayPromptTitle(prompt: string): string | undefined {
+  const normalized = prompt
+    .replace(/^\s*\[Timezone:\s*[^\]]*\]\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized) return undefined;
+  const codePoints = Array.from(normalized);
+  if (codePoints.length <= DISPLAY_TITLE_MAX_LENGTH) return normalized;
+  return `${codePoints
+    .slice(0, DISPLAY_TITLE_MAX_LENGTH - 1)
+    .join('')
+    .trimEnd()}…`;
 }
 
 function effectiveModelBoundary(event: CanonicalRuntimeEvent): {
@@ -1332,6 +1404,11 @@ function extractTerminalTurnAt(
     if (!event) continue;
     if (turnId && event.turnId && event.turnId !== turnId) continue;
     if (
+      events[latestStart]?.invocationId !== undefined &&
+      event.invocationId !== events[latestStart]?.invocationId
+    )
+      continue;
+    if (
       event.method === 'turn.completed' ||
       event.method === 'turn.aborted' ||
       (event.method === 'runtime.error' && !isDeferredRetriableTurnError(event))
@@ -1406,7 +1483,7 @@ export function buildAgentRunSummary(options: {
     throw new Error('A persisted or loaded session is required');
   }
 
-  const events = options.events ?? [];
+  const events = withoutCompletedTurnRecovery(options.events ?? []);
   const lastEvent = events.at(-1);
   const lastError = findTerminalFailureEvent(events);
   const configured = [...events]
@@ -1471,7 +1548,7 @@ export function buildAgentRunSummary(options: {
       : {}),
     retryEligible: failureKind ? isAgentRunRetryEligible(failureKind) : false,
     attempt: 1,
-    eventCount: options.eventCount ?? events.length,
+    eventCount: options.eventCount ?? options.events?.length ?? 0,
   };
 }
 
@@ -1523,7 +1600,6 @@ function isAgentRunRetryEligible(kind: AgentRunFailureKind): boolean {
  * A conversation Station could not reopen IS retryable: the usual cause is a
  * connection setting the user can change back.
  */
-export const SESSION_RECOVERY_FAILED_CODE = 'session_recovery_failed';
 
 /**
  * Deterministic event id for a recovery failure, so the same failure recorded
@@ -1558,6 +1634,8 @@ function recoveryFailureEventId(threadId: string, message: string): string {
  * spawned 36 seconds after boot for conversations nobody had opened.
  */
 export interface RecoveredSessionStartOptions {
+  /** Production composition reauthorizes the retained Project after preparation. */
+  assertRetainedWorkspaceAuthorized?: (threadId: string) => Promise<void>;
   /** Production composition joins the same durable start/turn authority. */
   invokeSessionStart?: (
     threadId: string,
@@ -1717,22 +1795,15 @@ export async function startRecoveredOrchestrationSession(options: {
       startInput = await deps.applyApprovalPosture(adapter, startInput);
     }
     if (deps.resolveSessionAgent) {
-      try {
-        startInput = await deps.resolveSessionAgent(startInput);
-      } catch (error) {
-        if (startInput.metadata?.executionAgentId) throw error;
-        // Ordinary saved bindings retain boot recovery's unresolved-input
-        // fallback. Explicit overrides above require verified profile delivery.
-        deps.logger.warn(
-          'resolveSessionAgent failed during session recovery; continuing without a resolved agent definition',
-          {
-            provider: session.provider,
-            threadId: session.threadId,
-            error: errorMessage(error),
-          },
-        );
-      }
+      startInput = await deps.resolveSessionAgent(startInput);
     }
+    const unavailableReason = sessionAgentStartUnavailableReason({
+      agentSlug: startInput.metadata?.agentSlug,
+      hasResolvedAgent:
+        Boolean(startInput.agent) ||
+        sessionDeliveryChannels(startInput.provider) === undefined,
+    });
+    if (unavailableReason) throw new Error(unavailableReason);
     // Apply credentials before reserving the independent engine-start slot.
     // Not wrapped in a try/catch: see `applyCredentialProfile`'s docs.
     if (deps.applyCredentialProfile) {
@@ -1741,6 +1812,7 @@ export async function startRecoveredOrchestrationSession(options: {
     const admissionLease = await deps.admitEngineStart?.(startInput.threadId);
     let recovered: ProviderSession;
     try {
+      await deps.assertRetainedWorkspaceAuthorized?.(startInput.threadId);
       // #2873: a respawn re-resolves the folder an agent's dispatch recorded
       // and refuses a different result, before any adapter call.
       assertDispatchCwdUnmoved(startInput, startInput.cwd);
@@ -1796,6 +1868,14 @@ export async function startRecoveredOrchestrationSession(options: {
           threadId: session.threadId,
           createdAt: failedAt,
           method: 'runtime.error',
+          ...providerFailure(
+            error instanceof SessionStartIndeterminateError
+              ? 'indeterminate'
+              : 'unavailable',
+            error instanceof SessionStartIndeterminateError
+              ? 'indeterminate'
+              : 'failed',
+          ),
           severity: 'error',
           code:
             error instanceof SessionStartIndeterminateError
@@ -1803,7 +1883,7 @@ export async function startRecoveredOrchestrationSession(options: {
               : SESSION_RECOVERY_FAILED_CODE,
           retriable: !(error instanceof SessionStartIndeterminateError),
           message: `This conversation could not be reopened: ${message}`,
-        },
+        } satisfies ProviderRuntimeErrorEvent,
         (warnMessage, meta) => deps.logger.warn(warnMessage, meta),
       ),
     );
@@ -1834,6 +1914,18 @@ export async function startRecoveredOrchestrationSession(options: {
  * That second half is not optional: without it every restored session would
  * fail its first use with `No provider session found for thread`.
  */
+/** Only a completed pass certifies which durable targets could not be observed. */
+export interface AttachedSessionRecoveryObservation {
+  readonly scanObserved: boolean;
+  readonly failedTargets: ReadonlyMap<
+    string,
+    {
+      readonly provider: string;
+      readonly reason: 'quarantined' | 'missing-adapter' | 'presence-failed';
+    }
+  >;
+}
+
 export async function recoverOrchestrationSessions(options: {
   adapterRegistry: IProviderAdapterRegistry;
   eventStore?: EventStore;
@@ -1856,13 +1948,20 @@ export async function recoverOrchestrationSessions(options: {
   ) => TenantExecutionContext | undefined;
   /** Removes an invalid persisted row from every in-memory read/publish path. */
   quarantineSession?: (session: ProviderSession) => void;
-}): Promise<void> {
+}): Promise<AttachedSessionRecoveryObservation> {
   const persistedSessions = options.eventStore?.readSessions() ?? [];
   // archive#1101: threadIds this pass restored — quarantined,
   // read-only-attached, already-closed/dead, and no-adapter sessions are
   // skipped and never appear in the 'session.recovery.completed' milestone
   // this function publishes once the whole pass finishes.
   const restoredThreadIds: string[] = [];
+  const failedTargets = new Map<
+    string,
+    {
+      provider: string;
+      reason: 'quarantined' | 'missing-adapter' | 'presence-failed';
+    }
+  >();
   for (const session of persistedSessions) {
     // Validate BEFORE every recovery escape hatch. In particular, an attached
     // session used to be tracked and published before this check, allowing an
@@ -1875,6 +1974,10 @@ export async function recoverOrchestrationSessions(options: {
           )
         : session.tenantExecutionContext;
     if (options.requireTenantExecutionContext?.() && !tenantExecutionContext) {
+      failedTargets.set(session.threadId, {
+        provider: session.provider,
+        reason: 'quarantined',
+      });
       options.quarantineSession?.(session);
       options.eventStore?.markSessionClosed(session.threadId, session.provider);
       options.logger.warn(
@@ -1903,7 +2006,13 @@ export async function recoverOrchestrationSessions(options: {
     // rows have never entered the in-memory read model and this change is
     // not the place to start.
     const adapter = options.adapterRegistry.get(session.provider);
-    if (!adapter) continue;
+    if (!adapter) {
+      failedTargets.set(session.threadId, {
+        provider: session.provider,
+        reason: 'missing-adapter',
+      });
+      continue;
+    }
     restoredThreadIds.push(session.threadId);
     // archive#3476: THIS is the whole recovery pass now. The session's state
     // is restored — it is listed, addressable, and resumable — and no engine
@@ -1927,6 +2036,10 @@ export async function recoverOrchestrationSessions(options: {
     try {
       if (await adapter.hasSession(session.threadId)) attachedAdapter = adapter;
     } catch (error) {
+      failedTargets.set(session.threadId, {
+        provider: session.provider,
+        reason: 'presence-failed',
+      });
       options.logger.warn(
         'Provider adapter could not report whether it still holds a recovered thread; treating it as not attached',
         {
@@ -1956,6 +2069,7 @@ export async function recoverOrchestrationSessions(options: {
     attemptedCount: restoredThreadIds.length,
     threadIds: restoredThreadIds,
   });
+  return { scanObserved: options.eventStore !== undefined, failedTargets };
 }
 
 function mapOrchestrationSessionState(
@@ -2014,7 +2128,7 @@ function deriveAgentRunStatus(options: {
   // terminal — it retains the last-started turn's id for the session's
   // life (MEDIUM 3) — so this variable's name understates it slightly:
   // "the identity anchor", not merely "the preceding turn's id".
-  let turnIdentityAnchor: string | undefined;
+  let turnIdentityAnchor: TurnIdentityAnchor | undefined;
   for (const event of options.events) {
     switch (event.method) {
       case 'session.started':
@@ -2066,6 +2180,12 @@ function deriveAgentRunStatus(options: {
           agentRunStatusFromSessionState(event.sessionState) ?? 'running';
         break;
       case 'runtime.error':
+        if (
+          typeof turnIdentityAnchor === 'object' &&
+          (event.turnId !== undefined || event.invocationId !== undefined) &&
+          !acceptsTurnTerminalEvent(event, turnIdentityAnchor)
+        )
+          break;
         // UX audit AW-8 (live): the SAME rule as `session.exited` below, for
         // the route the audit actually reproduced. Killing a pooled Claude
         // Code engine after its turn had finished published
@@ -2266,12 +2386,18 @@ function extractRuntimeThreadId(resumeCursor: unknown): string | undefined {
 function findTerminalFailureEvent(
   events: CanonicalRuntimeEvent[],
 ): Extract<CanonicalRuntimeEvent, { method: 'runtime.error' }> | undefined {
-  let turnIdentityAnchor: string | undefined;
+  let turnIdentityAnchor: TurnIdentityAnchor | undefined;
   let lastFailure:
     | Extract<CanonicalRuntimeEvent, { method: 'runtime.error' }>
     | undefined;
   for (const event of events) {
     if (event.method === 'runtime.error') {
+      if (
+        typeof turnIdentityAnchor === 'object' &&
+        (event.turnId !== undefined || event.invocationId !== undefined) &&
+        !acceptsTurnTerminalEvent(event, turnIdentityAnchor)
+      )
+        continue;
       lastFailure = event;
     } else if (
       (event.method === 'turn.completed' || event.method === 'turn.aborted') &&

@@ -46,7 +46,10 @@ vi.mock('../../../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate: hoisted.navigate }),
 }));
 vi.mock('../../../contexts/ConfigContext', () => ({ useConfig: () => ({}) }));
-vi.mock('../../../hooks/useIsMobile', () => ({ useIsMobile: () => false }));
+vi.mock('../../../hooks/useIsMobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../hooks/useIsMobile')>()),
+  useIsMobile: () => false,
+}));
 
 vi.mock('@kontourai/station-sdk', () => ({
   authenticatedFetch: vi.fn(),

@@ -1,0 +1,7 @@
+{
+  "revision": "3843b2f367569eb0c183374252017037e8e638e6",
+
+  "notes": [
+    {"path":"docs/design/session-tape-replay.md","note":"Reviewed eventHandlers change moving request.resolved handling before the no-chat return: it clears the live answer cache for closed chats and keeps existing replay membership fences. Tape identities, event fold, fake transport, mutation controls and replay exclusion are unchanged; no prose change required.","inputs":["docs/design/session-tape-replay.md","src-ui/src/hooks/orchestration/eventHandlers.ts"]}
+  ]
+}

@@ -1,6 +1,10 @@
 # Station
 
-**An agent workspace for projects, execution, and evidence.**
+**The agent workspace where work ships with receipts.**
+
+[![Docs](https://img.shields.io/badge/docs-kontourai.github.io-blue)](https://kontourai.github.io/station/)
+[![Site](https://img.shields.io/badge/site-station.kontourai.io-blue)](https://station.kontourai.io)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 Station is Kontour's open-source, local-first workspace for agent work. Bring
 your agents, projects, and devices together, hand a Task to the agent you
@@ -14,7 +18,7 @@ the work. A completed run and a passed review are separate facts.
 [Contributing](CONTRIBUTING.md)
 
 > **Status:** open source under active development (Apache-2.0). Run Station
-> from source on macOS or Linux, or try a Nightly desktop build.
+> using a signed Nightly server archive or a Nightly desktop build.
 > The portable installer requires a published release in the selected ring. See
 > [Get Station](#get-station).
 
@@ -39,9 +43,10 @@ Station brings several parts of agent work into one workspace:
 - **Local-first ownership** — Station data lives under `~/.station` by
   default. Networked features have separate settings and destinations;
   review those boundaries under [Data and privacy](#data-and-privacy).
-- **Built to extend** — plugins add layouts, agents, tools, knowledge,
-  connections, skills, and work surfaces through the public SDK and extension
-  contracts. Private core services are not part of that plugin API.
+- **Built to extend** — build on Station's core capabilities through its public
+  SDK and plugin APIs. Add layouts, agents, tools, knowledge, connections, skills,
+  and work surfaces to shape the workspace around your work. Start with the
+  included experience and extend it with your own plugins.
 
 ## What people use it for
 
@@ -56,7 +61,44 @@ Station brings several parts of agent work into one workspace:
 
 ## Get Station
 
-### Run from source (macOS, Linux)
+### Install the app
+
+For a first try, use the [Nightly desktop downloads](docs/user/getting-started.md#nightly-desktop-downloads)
+for macOS Apple silicon or Windows x64. Download the installer for your computer,
+open it, and launch Station. Nightly is a testing channel; see the linked guide
+for signing and platform limitations.
+
+### One-command server install
+
+On macOS or Linux, paste this into Terminal:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kontourai/station/main/install.sh | STATION_CHANNEL=nightly sh
+```
+
+The signed Nightly archive includes Node.js. You do not need Git, a GitHub
+account, or a source build. The installer starts Station and prints a sign-in
+link. Later, launch it with:
+
+```bash
+~/.local/bin/station-nightly start
+```
+
+Using the full path works before your shell knows the `station-nightly` command.
+For Windows PowerShell, updates, and connection help, follow
+[Getting started](docs/user/getting-started.md#install-nightly).
+
+### On your phone
+
+Connect to a Station running on a computer. The phone uses that computer’s
+agents and files; it does not need Node.js or coding tools. The phone apps are
+distributed through Google Play internal testing and invited TestFlight
+testing, so most people open the Station's address in the phone's browser. Follow
+[Connect your phone](docs/user/getting-started.md#connect-your-phone).
+
+<a id="run-from-source-macos-linux"></a>
+
+### For contributors: run from source
 
 Requires Node.js 24.x, npm 10 or newer, and git. On Linux, interactive
 terminal panes additionally need a C++ toolchain (`g++`, `make`, `python3`);
@@ -73,77 +115,44 @@ Open the UI address the command prints, then follow
 [First steps](#first-steps). The [developer guide](docs/guides/development.md)
 covers instances, ports, temporary homes, and the desktop app build.
 
-### Nightly desktop build
+### Other ways to run Station
 
-The [Nightly desktop pre-release](https://github.com/kontourai/station/releases/tag/nightly-desktop)
-carries macOS Apple silicon and Windows x64 builds for testers. Choose an asset
-for your platform and check its version; retained assets can belong to earlier
-builds. Nightly has its own install and update channel. See the
-[Nightly guide](docs/guides/nightly.md) for supported paths and limitations.
+[Getting started](docs/user/getting-started.md) is the single owner of the install
+steps. Use it for:
 
-### Verified installer (when a stable release is published)
+- the Windows PowerShell Nightly install, updates and uninstall;
+- the [verified installer](docs/user/getting-started.md#install-or-upgrade)
+  for a published stable or beta release ring, and the signed
+  prebuilt-archive path;
+- [the release list](https://github.com/kontourai/station/releases) and
+  [release rings](docs/guides/release-rings.md) for what is currently published.
 
-Stable and beta portable releases use signed GitHub release rings. Check the
-[release list](https://github.com/kontourai/station/releases) and
-[release-ring guide](docs/guides/release-rings.md) for current availability;
-desktop updater channel tags are not portable release rings. For an available
-ring, the bootstrap below verifies the release's
-GitHub OIDC attestation and SHA-256 receipt before installing under
-`~/.station/installs/stable`, linking `station` into `~/.local/bin`, and
-opening the UI at `http://localhost:18000`. It requires Node.js 24.x, npm 10
-or newer, curl, tar, and [GitHub CLI](https://cli.github.com/) with attestation
-verification support. The command below supplies a token from your authenticated
-GitHub CLI session to the installer's isolated verification environment.
-
-```bash
-sh -c 'set -eu; file=$(mktemp "${TMPDIR:-/tmp}/station-install.XXXXXX"); trap '\''rm -f "$file"'\'' EXIT HUP INT TERM; curl -fsSL https://raw.githubusercontent.com/kontourai/station/main/install.sh >"$file"; chmod 600 "$file"; GH_TOKEN=$(gh auth token) sh "$file"'
-```
-
-Run the command again to install the selected release. The installer stages it
-before switching the current link.
-Set `STATION_CHANNEL=beta`
-for the beta ring, which uses `station-beta` and `http://localhost:28000`.
-[Getting started](docs/user/getting-started.md) covers channels, updates, and
-uninstall.
-
-The separate [signed prebuilt-archive path](docs/guides/release-channel-ports.md#prebuilt-archives-and-source-releases)
-uses an explicit public manifest URL and bundled Node.js on macOS/Linux,
-without a host build. It may download a pinned Node.js for initial verification;
-installer support does not establish availability of a published manifest.
-
-### Self-host with Docker
-
-The Dockerfile's foreground `service run` supervisor atomically claims a fresh
-home without requiring `service install`. While another live owner holds the
-home, it waits without running Station and starts after that owner is gone.
-See the [deployment guide](docs/guides/deployment.md) for this cooperative fence;
-direct server entrypoints do not claim it.
-
-The repository ships a `Dockerfile` and `docker-compose.yml`. The UI, HTTP API,
-and event streams share the exposed origin on port 3000; the home persists in a
-named volume. Voice has a separate WebSocket listener and is not exposed by
-that single-port mapping. You can build the image from this checkout and select it
-with `STATION_IMAGE`; Compose otherwise names `ghcr.io/kontourai/station:latest`.
-The existence of that default does not establish registry availability. The
-[deployment guide](docs/guides/deployment.md) covers the source build, binding
-a workspace directory, and running it behind your own authenticated ingress.
+To self-host on a server with Docker or Compose, follow the
+[deployment guide](docs/guides/deployment.md). It covers building the image,
+home ownership, binding a workspace, and putting Station behind your own
+authenticated ingress.
 
 ## First steps
 
-1. Open **Connections** and choose **Add model connection** (a local or
+1. Open **Customize → Connections** and choose **Add model connection** (a local or
    hosted model service) or **Add engine** (an installed agent CLI). Startup
    can register supported native CLIs and their default Agents; check their
-   readiness before starting work. The [Connections guide](docs/guides/connections.md)
-   lists the engines and adoption rules.
+   readiness before starting work. The
+   [Connections guide](docs/guides/connections.md#add-an-engine) lists the
+   engines Station knows by name and how startup adopts them.
 2. Open a local project.
-3. Start a direct chat for a quick question, or create a Task for work you
-   want to keep.
+3. Start a chat for ordinary work. Chats retain their history. Create a Task
+   when you need a tracked deliverable or workflow.
 4. Follow the Task's execution and inspect the evidence its workflow records.
 
+To connect a phone, start Station on your computer and create a pairing code,
+then choose **Scan QR code** on the phone. **Nearby Stations** is an optional
+local-network path when the computer's discovery setting is enabled. Follow
+[Connect your phone](docs/user/getting-started.md#connect-your-phone) for address,
+manual-entry and approval steps.
+
 If something is not ready, Station keeps the setup action visible. Run
-`station doctor` for a local diagnosis. The
-[Connections guide](docs/guides/connections.md) lists the current model
-services and agent engines with their exact setup steps.
+`station doctor` for a local diagnosis.
 
 ## For developers
 

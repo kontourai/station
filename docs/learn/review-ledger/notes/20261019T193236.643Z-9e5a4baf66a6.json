@@ -1,0 +1,13 @@
+{
+  "revision": "b78836b5a15a1f0c6fed1e0bddb75bb915df3556",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Its Web Push paragraph only points to the guide and states the channel race was exercised with synthetic state; the guide edits this round (opened-record parameter, renewal allowance wording) do not change that claim.","inputs":["docs/architecture/abstraction-review.md","docs/guides/web-push-notifications.md"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Edited this round. Payload section: the push URL now carries openedNotification=<id> (push-payload-composer.ts via withOpenedNotification in notification-deep-link.ts; asserted in push-payload-composer.test.ts and web-push-channel.test.ts), and the client marks that record read on load and drops it (openedNotificationRead.ts; turn-notification-reads.test.ts). Focus section: renewal allowance is per document since the last input or focus, across chats and turns (focusReporter.ts FOCUS_WATCH_RENEWAL_MAX); opened alerts read their record; the two-minute walk-away gap and native Android/iOS taps (session route, no record id) are stated as limits. Executed: the focused suites above. Not executed: a physical browser or phone tap.","inputs":["docs/guides/web-push-notifications.md","src-server/services/notifications/notification-deep-link.ts","src-server/services/notifications/push-payload-composer.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"contracts/notification gains OPENED_NOTIFICATION_QUERY_PARAM (additive). This reference documents SDK hooks, not contract constants, and no SDK API changed; its notification hook sections still hold.","inputs":["docs/reference/sdk.md","packages/contracts/src/notification.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"contracts/notification gains OPENED_NOTIFICATION_QUERY_PARAM (additive). The notification re-export note here covers types re-exported for compatibility and lists no constants; unaffected.","inputs":["docs/reference/shared.md","packages/contracts/src/notification.ts"]}
+  ]
+}

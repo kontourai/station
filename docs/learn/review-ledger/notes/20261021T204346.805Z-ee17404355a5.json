@@ -1,0 +1,7 @@
+{
+  "revision": "dd1cb7943df0b67af172c5e4e0565f9a2c7fc338",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Integration review: module-map changes in this tree add Cursor's cursor/ask_question to harness-question normalization and the acp.cursor.todos extension binding; this guide links module-map only for SessionTurnBoundaryAuthority, which those edits do not touch, and makes no claim about harness questions or extension bindings. No prose change.","inputs":["docs/guides/self-configuring-agent.md","docs/architecture/module-map.md"]}
+  ]
+}

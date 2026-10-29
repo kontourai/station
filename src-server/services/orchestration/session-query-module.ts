@@ -11,6 +11,7 @@ import type {
   InternalSessionReadScope,
   SessionReadAuthority,
 } from '@kontourai/station-contracts/tenancy';
+import { isAuthoredInputContent } from '@kontourai/station-shared/authored-input';
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
 import {
   observedAssistantMessageId,
@@ -67,9 +68,12 @@ export type SessionAnswerBasisQueryOutcome =
         prompt: string;
         attachments: readonly UserInputAttachmentProjection[];
       }[];
+      /** A terminal descriptor was withheld by the bounded result projector. */
+      partialResults?: boolean;
       /** The event id stays separate so reused toolCallId results never fold. */
       results: readonly {
         eventId: string;
+        toolCallId?: string;
         result: SafeToolResultProjection;
       }[];
     }
@@ -200,6 +204,7 @@ interface SessionConversationQuerySource<Session> {
     events: readonly CanonicalRuntimeEvent[],
   ): {
     assignedAgentSlug?: string;
+    delegationTitle?: string;
     conversationId?: string;
     environmentId?: string;
     acceptedModel?: string;
@@ -468,11 +473,10 @@ function isObservedAt(value: unknown): value is string {
 function projectUserInput(
   event: SessionUserInputEventDescriptor,
 ): UserInputProjection | null {
-  const hasPrompt = typeof event.prompt === 'string' && event.prompt.trim();
   if (
     event.method !== 'turn.started' ||
     !event.turnId ||
-    (!hasPrompt && event.attachments.length === 0)
+    !isAuthoredInputContent(event.prompt, event.attachments.length)
   ) {
     return null;
   }
@@ -513,7 +517,9 @@ export function createSessionQueryModule<Session>(
             ...(conversationSession.projectSlug
               ? { projectSlug: conversationSession.projectSlug }
               : {}),
-            title: conversationTitle(messages),
+            title:
+              derivedConversationTitle(conversationSession.delegationTitle) ??
+              conversationTitle(messages),
             ...(model ? { model } : {}),
             ...(conversationSession.acceptedModel
               ? { acceptedModel: conversationSession.acceptedModel }
@@ -750,18 +756,27 @@ export function createSessionQueryModule<Session>(
             ? [{ eventId: event.eventId, ...event.input }]
             : [];
         });
+        let partialResults = false;
         const results = events.flatMap((event) => {
           if (
             event.threadId !== query.threadId ||
             event.turnId !== query.turnId ||
-            event.method !== 'tool.completed' ||
-            !event.tool
+            event.method !== 'tool.completed'
           ) {
             return [];
           }
-          const projected = projectToolCompletedDescriptor(event.tool);
+          const projected = event.tool
+            ? projectToolCompletedDescriptor(event.tool)
+            : null;
+          if (projected?.state !== 'available') partialResults = true;
           return projected?.state === 'available'
-            ? [{ eventId: event.eventId, result: projected.result }]
+            ? [
+                {
+                  eventId: event.eventId,
+                  toolCallId: event.tool?.toolCallId,
+                  result: projected.result,
+                },
+              ]
             : [];
         });
         const projectSlug = source.projectSlugForSession?.(
@@ -782,6 +797,7 @@ export function createSessionQueryModule<Session>(
           ...(projectSlug ? { projectSlug } : {}),
           inputs,
           results,
+          ...(partialResults ? { partialResults: true } : {}),
         };
       } catch (error) {
         try {

@@ -10,7 +10,7 @@
 > live in the [desktop guide](../guides/desktop-build.md) and
 > [mobile release guide](../guides/mobile-release.md).
 
-Status: implemented foundation for Station #809; native release contract for #818 (2026-07-25)
+Status: implemented foundation for #58; native release contract for #59 (2026-07-25)
 
 Station is web/PWA-first. The React application talks to exactly one typed
 platform boundary at `src-ui/src/platform/native/`; it never imports Tauri
@@ -32,18 +32,19 @@ host.
 | Capability | Web/PWA | Current Tauri host | Notes |
 | --- | --- | --- | --- |
 | PWA share URL intake | enabled | n/a | Preserves `share`, `text`, `url`, and `title` query parameters and removes them after delivery. |
-| Native host-event bridge | unsupported | enabled | Share intake uses `station://share-received`; separate typed subscriptions handle tray navigation, bundled-server status and startup-readiness retry. |
+| Native host-event bridge | unsupported | enabled | Share intake uses `station://share-received`; separate typed subscriptions handle tray navigation and bundled-server status. |
 | Native share receiver | n/a | disabled | Generic OS share intake remains off; it has a different untrusted-content boundary. |
 | Pairing deep link | unsupported | enabled | Release schemes are `station-stable`, `station-beta`, and `station-nightly`; isolated development configuration uses a generated `station-dev-<suffix>` scheme. The pairing route accepts only `pair?linkVersion=1&clientChannel=<channel>&payload=station-pairing:v1:...`, opens Join for explicit confirmation, and never navigates or fetches a supplied URL. |
 | Native relay link delivery | unsupported | iOS source path; other targets unsupported | Separate `station-relay-<channel>` associations deliver public routing metadata and an opaque pending handle. Build enablement and compilation do not qualify installed cold/warm delivery. |
+| Nearby Station discovery | unsupported | iOS and Android 14+ source integration | Fixed `_station._tcp.local.` DNS-SD browsing returns untrusted private host/port hints. Earlier Android versions retain QR/manual entry. Bounded foreground scans require the existing access review; compilation and physical behavior require separate verification. |
 | Compile-target report | unsupported | enabled | Rust reports target and Station-enabled state. |
-| Haptics | unsupported | enabled on mobile compile targets; unsupported on desktop | Official `tauri-plugin-haptics` (station#1954). Selection/impact/notification kinds only; preference `hapticsEnabled` (default on). |
+| Haptics | unsupported | enabled on mobile compile targets; unsupported on desktop | Official `tauri-plugin-haptics` (#178). Selection/impact/notification kinds only; preference `hapticsEnabled` (default on). |
 | Remote push wakeup | unsupported | build-dependent | Enabled for Android builds carrying all four Firebase values or iOS builds carrying the Live Activity plugin. iOS also checks push signing before offering registration. User opt-in, server registration and provider delivery remain separate. |
 | Station service tray | unsupported | report-authoritative | Desktop implementation remains Rust-owned. The renderer may request native menu reveal through one typed command but receives no opener permission, URL, port, or menu mutation authority. |
 
 Desktop startup readiness is also Rust-owned. A sidecar status may carry the
 secret-free exact `(generation, instanceId, bootId, apiBase)` observation that
-the renderer must match after an authenticated identity read; it is not a
+the native host must match after an authenticated identity read; it is not a
 credential and does not authorize arbitrary loopback traffic. The pure epoch
 authority has overdue-without-restart timeout, late-ticket reveal,
 stale-receipt, loss, explicit retry, activation-deferral, and dev bypass
@@ -59,6 +60,53 @@ are deliberately separate from this generic share boundary.
 Both adapters enforce the same 256 KiB text limit before shared content reaches
 React state. Rejected native events and host-listener registration failures are
 reported through the typed adapter error callback and surfaced to the user.
+
+### Nearby Station discovery
+
+The [native adapter](../../src-ui/src/platform/native/connectionDiscovery.ts)
+registers only after the trusted platform profile establishes a mobile Tauri
+host. The [station-discovery plugin](../../src-desktop/plugins/station-discovery/src/lib.rs)
+uses iOS NWBrowser/NetService and Android NsdManager, accepts TXT `v=1` and an
+HTTP(S) transport, and returns validated private host/port hints. Cancellation,
+backgrounding and provider disposal cancel the exact scan; the registry ignores
+late or replaced-provider results. The outer deadline is 18 seconds. iOS declares
+the exact Bonjour service and local-network usage description; this fixed service
+does not require a multicast entitlement. Android resolver cancellation requires
+API 34, while the application's earlier supported versions keep QR/manual paths. Android 17's local-network permission is admitted by a separate
+`prepare` command before a scan is owned. The permission prompt may pause the
+Activity; after returning, the user checks again. `discover` refuses ungranted
+permission, and active scans still cancel on hide or pause.
+
+Host publication is separately opt-in and currently private-IPv4-only. Discovery
+creates no trust, credentials, saved profile, browser navigation or Tailscale
+inventory. Selecting a LAN HTTP result enters exact-origin unencrypted consent
+and host approval. QR invitation creation still requires reachable HTTPS.
+See [native shell verification](../guides/native-shell-verification.md#nearby-station-discovery)
+for installed-shell and physical-network evidence requirements. The source and
+unit checks do not qualify permission prompts, real mobile discovery or background
+recovery.
+
+### Personal analytics requester consent
+
+[The requester adapter](../../src-ui/src/platform/native/requesterConsent.ts)
+selects the browser popup or native requester-session path. Browser review opens
+from the user's action, detaches its opener, and uses the separate consent
+origin. Native review uses the host's existing consent-dialog capability; that
+capability alone grants no decision authority.
+
+[The native requester owner](../../src-desktop/src/native_requester_consent.rs)
+captures a transaction cookie only from the known analytics approval creators.
+Pending custody is bounded, expiring and bound to the active profile, API origin
+and request ID. The secret and render nonce remain in the host. Generic native
+HTTP cannot relay consent routes or supply the requester-secret header, and the
+requester flow cannot fall back to operator consent. The server rechecks the
+exact transaction's requester session and unchanged target. Profile switching,
+expiry or revoked authority must refuse the decision rather than substitute a
+new identity.
+
+Route and adapter controls do not qualify Rust compilation, OS dialogs, physical
+mobile behavior or installed releases. See [source approval](../guides/monitoring.md#source-approval-review)
+and the separate native-shell evidence requirements.
 
 ### iOS relay URL intake
 
@@ -117,7 +165,11 @@ mobile storage behavior or a completed collaborator journey.
 `src-desktop/capabilities/default.json` grants the typed event bridge plus the
 listed app-name, window-drag/maximize, notification, haptics, and deep-link
 operations. It is the exact JavaScript permission inventory; event listening
-is not its only permission. Application commands registered by the Rust host remain outside
+is not its only permission. `scripts/native-platform-boundary.mjs` refuses any
+updater or process grant in every file under `capabilities/` and
+`permissions/` and in `app.security.capabilities` of every Tauri config, and
+refuses any file there that is not JSON, since the gate parses only JSON.
+Application commands registered by the Rust host remain outside
 the plugin permission surface. The manifest no longer grants `core:default`,
 `shell:allow-open`, or `shell:allow-execute`. The desktop tray opens its validated local Station UI or fixed `/ui` API-docs
 URL from Rust. A separate `open_external_link` command admits user-clicked HTTPS
@@ -176,9 +228,12 @@ Station health, authority and member Project/shared-work reads; fixed account
 challenge/exchange/revoke and invitation acceptance are separate control leaves.
 The separate closed management inventory adds relay setup/invitation/Device
 decisions and Project access administration without granting terminal, Agent
-or Task publication writes. The account-bound gate admits only exact native
-relay-management leaves with current Device/account proof and separate
-`relay:manage`; credential-only account-bound Devices remain refused.
+or Task publication writes. For relay management, the account-bound gate admits
+only exact native leaves with current Device/account proof and separate
+`relay:manage`; credential-only account-bound Devices remain refused on those leaves.
+The independent [personal analytics leaves](../guides/monitoring.md#connect-a-personal-source-in-insights)
+require a person-bound Device, matching current account session and
+`orchestration:read`; this exception does not qualify native analytics transport.
 Capabilities are neutral false without management authority. Account
 continuation and Project membership remain independent. A mounted
 consumer is not proof of a completed fresh native or physical Project journey.
@@ -402,7 +457,7 @@ See the [shell verification evidence](../guides/native-shell-verification.md).
 Source tests and the macOS Keychain roundtrip do not establish
 physical-device Project access.
 
-### Pairing deep-link threat review (station#1957)
+### Pairing deep-link threat review (archive#1957)
 
 The `tauri-plugin-deep-link` association uses the custom channel-specific scheme
 configured for a native build. On its `pair` route, the adapter accepts exactly
@@ -433,13 +488,13 @@ exists.
 | --- | --- | --- |
 | Deep linking | Schemes are build-time configuration, not runtime registration. | The pinned `tauri-plugin-deep-link` admits the reviewed pairing and owned-local-browser routes above; generic share intake remains disabled. |
 | Local notifications | Supported across listed Tauri targets. | enabled, but cannot wake a frozen or closed mobile app. |
-| Single instance | Desktop only (Windows mutex, Linux session D-Bus, macOS `/tmp` Unix socket keyed on the app identifier). | the pinned `tauri-plugin-single-instance` with the `deep-link` feature, registered as the first plugin so a second launch exits before any other plugin or setup side effect (one benign pre-builder log-dir write probe still runs) and its argv (a pairing URL on Windows/Linux) is forwarded to the running app; a foreground second launch requests activation of its existing window, while a background launch does not (station#2904). Best-effort, not a hard mutex — the home-scoped sidecar claim remains the cross-surface guard. Known limits, accepted: a squatted macOS socket is an availability-only concern — the squatter also sees the launching process's argv/cwd, but no pairing secret transits argv on macOS (Apple Events); an unisolated `tauri dev` using the installed app’s identifier can activate that app instead of starting a separate one; isolated development configuration uses its own identifier. |
+| Single instance | Desktop only (Windows mutex, Linux session D-Bus, macOS `/tmp` Unix socket keyed on the app identifier). | the pinned `tauri-plugin-single-instance` with the `deep-link` feature, registered as the first plugin so a second launch exits before any other plugin or setup side effect (one benign pre-builder log-dir write probe still runs) and its argv (a pairing URL on Windows/Linux) is forwarded to the running app; a foreground second launch requests activation of its existing window, while a background launch does not (archive#2904). Best-effort, not a hard mutex — the home-scoped sidecar claim remains the cross-surface guard. Known limits, accepted: a squatted macOS socket is an availability-only concern — the squatter also sees the launching process's argv/cwd, but no pairing secret transits argv on macOS (Apple Events); an unisolated `tauri dev` using the installed app’s identifier can activate that app instead of starting a separate one; isolated development configuration uses its own identifier. |
 | Remote push | Platform support requires FCM on Android and APNs on iOS. | Build-dependent enablement as above. See [notification delivery](notification-delivery.md) for payload, opt-in and recorded qualification scope. |
-| Updater | Desktop only; mobile is unsupported. | Rust registers it only when the desktop build has usable updater configuration. This is not proof an update feed or signed release is available. |
+| Updater | Desktop only; mobile is unsupported. | Rust registers it only when the desktop build has usable updater configuration, and the native shell owns check, download, install and restart (`src-desktop/src/desktop_update.rs`, #3851). No capability grants the webview updater permissions; it reads the native state and calls the desktop-update commands. This is not proof an update feed or signed release is available. |
 | Dialog | The original survey recorded partial mobile support. | Enabled for Rust-owned consent dialogs; this does not expose a generic JavaScript file picker. |
 | File system | Mobile is partial/sandboxed. | disabled. |
 | Opener / shell | Platform behavior remains target-specific. | Rust-owned tray and reviewed external-link commands use the opener on desktop/mobile; JavaScript link interception and generic opener permissions remain disabled. |
-| Process | Desktop only. | Registered by the desktop host; JavaScript authority still depends on the applicable capability manifest. |
+| Process | Desktop only. | Registered by the desktop host, but no capability manifest grants the webview its permissions (#3851); the native updater restarts through the Rust app handle. |
 | Credential storage | Platform-specific OS stores. | Host-owned pairing capture, credential persistence and request brokering are implemented. No fallback to a plaintext store is implied; runtime/device qualification remains separate. |
 | Clipboard | Mobile supports plain text only. | disabled. |
 | Autostart | Desktop only. | disabled. |
@@ -472,7 +527,7 @@ Physical release distribution, signing/store delivery, real-device credential
 lifecycle, inbound native shares, remote-push delivery and background mobile
 agents remain **NOT_VERIFIED** by the receipts on this page. Development
 simulator build/install and the older paired simulator IPC journey are narrower
-observed results, not physical Nightly acceptance. #818 adds source-controlled Android/iOS Tauri configuration and
+observed results, not physical Nightly acceptance. #59 adds source-controlled Android/iOS Tauri configuration and
 a fail-closed GitHub workflow contract, not credential-backed distribution
 proof. The only secretless mobile output is an unsigned iOS simulator archive
 marked verification-only; it is never a distributable asset. The 2026-07-25

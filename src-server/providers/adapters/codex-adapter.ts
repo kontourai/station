@@ -2,7 +2,6 @@ import crypto from 'node:crypto';
 import { existsSync, lstatSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { isAbsolute, join, relative, sep } from 'node:path';
-import { createInterface } from 'node:readline';
 import {
   engineConnectionId,
   engineId,
@@ -13,6 +12,8 @@ import type {
   ConnectionQuotaSnapshotUpdate,
 } from '@kontourai/station-contracts/connection-quota';
 import { mergeQuotaSnapshot } from '@kontourai/station-contracts/connection-quota';
+import { STEERING_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
+import { STATION_CONFINEMENT_RECORD_METADATA_KEY } from '@kontourai/station-contracts/execution-confinement';
 import type {
   CapabilityDeliveryChannelReport,
   CapabilityUndelivered,
@@ -27,15 +28,31 @@ import {
   NATIVE_RESUME_BINDING_METADATA_KEY,
   NATIVE_RESUME_IDENTITY_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import type {
+  ProviderRuntimeEvent as CanonicalRuntimeEvent,
+  ProviderRuntimeErrorEvent,
+} from '@kontourai/station-contracts/runtime-events';
 import type {
   ModelOptionCapabilities,
   Prerequisite,
 } from '@kontourai/station-contracts/tool';
 import { validateInputRequestContent } from '@kontourai/station-shared/input-request';
 import { builtinStationApiServerId } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import {
+  assertRequiredConfinementObserved,
+  ConfinementRefusedError,
+  observedConfinementRecord,
+} from '../../security/confinement/confinement-provider.js';
 import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
+import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
+import {
+  commitEngineLaunch,
+  engineSessionTmpDir,
+} from '../../services/infra/session-tmpdir.js';
+import { WORKLOAD_SESSION_ENV } from '../../services/infra/workload-budget.js';
 import type { NativeSessionOwnership } from '../../services/orchestration/native-session-ownership.js';
+import { SESSION_CONFINEMENT_ROOT_METADATA_KEY } from '../../services/orchestration/session-project-identity.js';
+import type { EngineMcpOAuthResolver } from '../../services/plugins/engine-mcp-oauth.js';
 import {
   adapterSessionStartDuration,
   agentCapabilityUndelivered,
@@ -52,6 +69,7 @@ import {
 } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
+import { onNdjsonLines } from '../../utils/ndjson-lines.js';
 import {
   type ProviderAdapterModelCatalog,
   type ProviderAdapterShape,
@@ -74,13 +92,16 @@ import {
 } from '../app-home/app-home-profiles.js';
 import {
   buildCliRuntimePrerequisites,
+  type CliAuthState,
   type CliCommandResult,
+  parseCliAuthState,
   runCliCommand,
 } from '../auth/cli-auth.js';
 import {
   effectiveModelMetadata,
   reportedModelMetadata,
 } from '../llm/effective-model-metadata.js';
+import { providerFailure } from '../provider-failure.js';
 import {
   decodeChatAttachments,
   rejectFileAttachments,
@@ -132,11 +153,21 @@ import {
   resolveCodexExecutionKnobs,
 } from './codex-approval-mode.js';
 import {
+  codexConfinementConfigArgs,
+  codexThreadSandboxRequest,
+  describeCodexSandboxGap,
+  observeCodexSandboxPosture,
+  requiredByReportedPolicy,
+  STATION_CODEX_PERMISSION_PROFILE,
+} from './codex-confinement.js';
+import {
   type CodexToolServerSkip,
   resolveCodexMcpServers,
 } from './codex-mcp-passthrough.js';
 import type { CodexModelOptions } from './codex-models.js';
 import { terminateCodexProcess } from './codex-process-termination.js';
+import { findUnaccountedCodexConfig } from './codex-project-config-provenance.js';
+import { applyEngineProxyAuthPrerequisite } from './engine-proxy-auth-prerequisite.js';
 import { codexAnswers, codexInputRequest } from './harness-questions.js';
 import {
   nativeResumeBindingKey,
@@ -149,9 +180,11 @@ type CodexExecutionKnobs = NonNullable<
 >;
 
 interface CodexAdapterOptions {
+  resolveMcpOAuth?: EngineMcpOAuthResolver;
   processFactory?: (
     appHomeEnv?: Record<string, string>,
     extraArgs?: string[],
+    tmpDir?: string,
   ) => ReturnType<typeof createCodexProcess>;
   now?: () => Date;
   /**
@@ -327,6 +360,9 @@ type CodexModelListResult = {
   nextCursor?: string | null;
 };
 
+/** The executable name this adapter probes and spawns. */
+const CODEX_CLI_COMMAND = 'codex';
+
 const CODEX_MODEL_MAX_ENTRIES = 1000;
 const CODEX_MODEL_MAX_PAGES = 32;
 const CODEX_MODEL_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
@@ -499,6 +535,12 @@ function readCodexAdoptionRolloutHeader(
   }
 }
 
+/** #3800: the `activePermissionProfile.id` of a thread response, if any. */
+function readActivePermissionProfileId(result: unknown): string | undefined {
+  const profile = record(record(result)?.activePermissionProfile);
+  return typeof profile?.id === 'string' ? profile.id : undefined;
+}
+
 function validateCodexForkExecution(
   result: unknown,
   expectedCwd: string | undefined,
@@ -586,6 +628,7 @@ export function projectCodexQuotaUpdate(
     );
   }
   const windows = ['primary', 'secondary'].flatMap((id) => {
+    if (limits[id] === null) return [];
     const window = record(limits[id]);
     const usedPercent = quotaPercent(window?.usedPercent);
     if (!window) {
@@ -598,12 +641,13 @@ export function projectCodexQuotaUpdate(
     const windowDurationMins = number(window.windowDurationMins);
     const resetsAt = number(window.resetsAt);
     requireValidGroup(
-      window.windowDurationMins !== undefined,
+      window.windowDurationMins !== undefined &&
+        window.windowDurationMins !== null,
       windowDurationMins !== undefined,
       `${id}.windowDurationMins`,
     );
     requireValidGroup(
-      window.resetsAt !== undefined,
+      window.resetsAt !== undefined && window.resetsAt !== null,
       resetsAt !== undefined,
       `${id}.resetsAt`,
     );
@@ -614,7 +658,16 @@ export function projectCodexQuotaUpdate(
         observedAt,
         ...(label ? { label } : {}),
         ...(windowDurationMins === undefined ? {} : { windowDurationMins }),
-        ...(resetsAt === undefined ? {} : { resetsAt }),
+        // An explicitly unavailable reset revokes prior deadline qualification.
+        ...(window.resetsAt === null ? { resetDeadlineAt: undefined } : {}),
+        ...(resetsAt === undefined
+          ? {}
+          : {
+              resetsAt,
+              ...(Number.isFinite(new Date(resetsAt * 1_000).getTime())
+                ? { resetDeadlineAt: new Date(resetsAt * 1_000).toISOString() }
+                : {}),
+            }),
       },
     ];
   });
@@ -630,6 +683,7 @@ export function projectCodexQuotaUpdate(
       typeof hasCredits === 'boolean' &&
       typeof unlimited === 'boolean' &&
       (credits?.balance === undefined ||
+        credits?.balance === null ||
         string(credits?.balance) !== undefined),
     'credits',
   );
@@ -731,11 +785,13 @@ export class CodexAdapter implements ProviderAdapterShape {
       'external-process',
       'image-input',
     ],
+    durability: STEERING_ENGINE_DURABILITY,
     continuity: this.continuity,
     connectionId: engineConnectionId('codex'),
     builtin: true,
     engineId: engineId('codex'),
     abortSettlement: 'await',
+    workloadScope: 'engine-process' as const,
     recovery: {
       sameSession: true,
       maxAttempts: 1,
@@ -772,10 +828,20 @@ export class CodexAdapter implements ProviderAdapterShape {
     };
   }
 
+  preparedTurnBinding(threadId: string) {
+    const record = this.transport.getSession(threadId);
+    const nativeIdentity =
+      record && this.nativeSessionIdentity(record.session.resumeCursor);
+    return record?.preparedResumeBindingKey && nativeIdentity
+      ? { bindingKey: record.preparedResumeBindingKey, nativeIdentity }
+      : undefined;
+  }
+
   private readonly transport: CodexAdapterTransport;
   private readonly processFactory: (
     appHomeEnv?: Record<string, string>,
     extraArgs?: string[],
+    tmpDir?: string,
   ) => ReturnType<typeof createCodexProcess>;
   private readonly now: () => Date;
   private modelCatalogCache: {
@@ -798,7 +864,8 @@ export class CodexAdapter implements ProviderAdapterShape {
       this.continuity.nativeReturn = 'same-binding';
     this.processFactory =
       options.processFactory ??
-      ((env, extraArgs) => createCodexProcess(undefined, env, extraArgs));
+      ((env, extraArgs, tmpDir) =>
+        createCodexProcess(undefined, env, extraArgs, tmpDir));
     this.now = options.now ?? (() => new Date());
     this.transport = new CodexAdapterTransport(
       this.now,
@@ -809,6 +876,7 @@ export class CodexAdapter implements ProviderAdapterShape {
           provider: 'codex',
           method,
         }),
+      (threadId) => this.options.revokeStationControlMcpAuth?.(threadId),
     );
   }
 
@@ -820,15 +888,59 @@ export class CodexAdapter implements ProviderAdapterShape {
     // configHome (→ CODEX_HOME) is the account readiness reports on. The
     // app-home / credential-profile layer is not modelled: resolving it can
     // create profile directories, which a readiness read must not do.
-    const connectionEnv = await this.resolveConnectionEnv();
+    //
+    // Resolve the LAUNCH, not just the env: the route is part of the answer
+    // for a proxy-routed connection (see the `detectAuthState` comment below),
+    // and only the launch resolves it.
+    const launch = await this.resolveConnectionLaunch();
+    const connectionEnv = launch.env;
     const runCommand = this.options.runCommand ?? runCliCommand;
-    return buildCliRuntimePrerequisites({
-      command: 'codex',
+    const prerequisites = await buildCliRuntimePrerequisites({
+      command: CODEX_CLI_COMMAND,
       displayName: 'Codex',
       versionArgs: ['--version'],
       authArgs: ['login', 'status'],
+      // A connection routed through a selected model connection
+      // (`config.proxyConnectionId`) authenticates with THAT connection's key:
+      // `engineProxyLaunch` passes it as `STATION_ENGINE_PROXY_KEY` and as
+      // `model_provider` overrides on every `codex app-server` spawn, and never
+      // asks the CLI to log in. `codex login status` therefore answered "Not
+      // logged in" (exit 1) for a connection that runs fine — `codex exec`
+      // over the same proxy answered with no login at all on 2026-10-22 — and
+      // that single wrong answer marked the engine "Setup required" in the
+      // inventory AND made the launch gate
+      // (`orchestration-service.assertAdapterReady`) refuse to start it:
+      // `POST /api/connections/codex/smoke` reported `codex prerequisites
+      // missing: Codex login`. Route present ⇒ the CLI's login is not the
+      // credential, so it is not probed.
+      ...(launch.route
+        ? {
+            detectAuthState: async (): Promise<CliAuthState> => 'authenticated',
+          }
+        : {}),
       runCommand: (command, args, signal) =>
         runCommand(command, args, signal, connectionEnv),
+      // Readiness judges the credentials a fresh session would launch with,
+      // resolved exactly as a spawn resolves them. A proxy-routed connection
+      // authenticates through its env: the launch injects the
+      // `model_providers.station-proxy` provider whose `env_key` is
+      // `STATION_ENGINE_PROXY_KEY`, so the CLI's own login state is
+      // irrelevant there — `codex login status` cannot see the proxy and
+      // reports "Not logged in" for a connection that works. The Claude
+      // adapter makes the same decision through its connection env. Without
+      // a proxy route, keep the plain probe under the connection env, where
+      // a configured configHome (→ CODEX_HOME) is the account it reports on.
+      detectAuthState: async () => {
+        const launch = await this.resolveConnectionLaunch();
+        if (launch.route) return 'authenticated';
+        const result = await runCommand(
+          'codex',
+          ['login', 'status'],
+          options?.signal,
+          launch.env,
+        );
+        return result ? parseCliAuthState(result, 'codex') : 'unknown';
+      },
       ...(this.options.findBinary
         ? { findBinary: this.options.findBinary }
         : {}),
@@ -836,6 +948,11 @@ export class CodexAdapter implements ProviderAdapterShape {
       authStep: 'Run `codex login` before starting Station.',
       signal: options?.signal,
     });
+    return applyEngineProxyAuthPrerequisite(
+      prerequisites,
+      CODEX_CLI_COMMAND,
+      launch.route?.label,
+    );
   }
 
   async readQuotaSnapshot(options: {
@@ -874,7 +991,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       for (const entry of pending.values()) entry.reject(error);
       pending.clear();
     };
-    let stdout: ReturnType<typeof createInterface> | undefined;
+    let detachStdout: (() => void) | undefined;
     try {
       const quotaEnv = appHomeEnv
         ? { ...connectionEnvForQuota, ...appHomeEnv }
@@ -882,8 +999,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       processHandle = quotaLaunch.args.length
         ? this.processFactory(quotaEnv, quotaLaunch.args)
         : this.processFactory(quotaEnv);
-      stdout = createInterface({ input: processHandle.stdout });
-      stdout.on('line', (line) => {
+      detachStdout = onNdjsonLines(processHandle.stdout, (line) => {
         let message: any;
         try {
           message = JSON.parse(line);
@@ -989,7 +1105,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       connectionQuotaReads.add(1, { outcome: reason });
       return { kind: 'unavailable', reason };
     } finally {
-      stdout?.close();
+      detachStdout?.();
       if (processHandle)
         await terminateCodexProcess(processHandle).catch(() => undefined);
     }
@@ -1239,14 +1355,13 @@ export class CodexAdapter implements ProviderAdapterShape {
       void terminate();
     };
     processHandle.stdout.on('data', onStdoutData);
-    const stdout = createInterface({ input: processHandle.stdout });
     const onAbort = () => {
       failPending(abortError(options?.signal));
       void terminate();
     };
     options?.signal?.addEventListener('abort', onAbort, { once: true });
 
-    stdout.on('line', (line) => {
+    const detachStdout = onNdjsonLines(processHandle.stdout, (line) => {
       if (responseLimitExceeded) return;
       const trimmed = line.trim();
       if (!trimmed) return;
@@ -1371,7 +1486,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     } finally {
       options?.signal?.removeEventListener('abort', onAbort);
       processHandle.stdout.removeListener('data', onStdoutData);
-      stdout.close();
+      detachStdout();
       await terminate();
     }
   }
@@ -1412,6 +1527,9 @@ export class CodexAdapter implements ProviderAdapterShape {
     this.startingSessionThreads.add(input.threadId);
     try {
       return await this.startReservedSession(input, adoption);
+    } catch (error) {
+      this.options.revokeStationControlMcpAuth?.(input.threadId);
+      throw error;
     } finally {
       this.startingSessionThreads.delete(input.threadId);
     }
@@ -1750,6 +1868,27 @@ export class CodexAdapter implements ProviderAdapterShape {
     adoption?: CodexNativeAdoption,
   ): Promise<ProviderSession> {
     this.options.nativeSessionOwnership?.assertMutable(input.threadId);
+    // #3800: refused before Codex is spawned, since a project `mcp_servers`
+    // command runs outside the sandbox at thread start (start, resume, fork
+    // and respawn all come through here).
+    // Without a cwd Codex runs in the server's own directory, so that is the
+    // one checked.
+    if (input.confinement !== 'host') {
+      const cwd = input.cwd ?? process.cwd();
+      const stamped = input.metadata?.[SESSION_CONFINEMENT_ROOT_METADATA_KEY];
+      // Missing, malformed and explicit empty stamps confer no config trust.
+      // The cwd above is a scan location, never an authority fallback.
+      const unaccounted = await findUnaccountedCodexConfig(cwd, {
+        root: typeof stamped === 'string' ? stamped : '',
+        codexHome: process.env.CODEX_HOME,
+      });
+      if (unaccounted)
+        throw new ConfinementRefusedError(
+          'confinement_workspace_incompatible',
+          `This codex session was not started: ${unaccounted} is Codex project configuration that did not come from its repository's upstream (it is not on a remote-tracking branch of the repository containing the session's Project folder with these exact bytes, it is inside another repository below that folder, or there is no such repository, remote or recorded folder), and a session that does not run as the operator would load it. Commit and push \`.codex\` to its upstream and fetch, remove it, or run the session as the operator (a host session).`,
+        );
+    }
+    this.options.nativeSessionOwnership?.assertMutable(input.threadId);
     const startedAt = Date.now();
     const resumeRecord =
       input.resumeCursor &&
@@ -1785,7 +1924,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       appHome = appHomeEnv ? 'profile' : 'global';
     }
     const quotaConnectionId = string(input.metadata?.connectionId);
-    const toolServers = this.resolveAgentToolServers(input);
+    const toolServers = await this.resolveAgentToolServers(input);
     // station#2072: the connection env layer merges UNDER the app-home
     // home key — a source-affinity or credential-profile home always owns
     // CODEX_HOME (an adopted session must run where its rollout lives),
@@ -1833,12 +1972,31 @@ export class CodexAdapter implements ProviderAdapterShape {
         input.threadId,
         Boolean(input.credentialProfileRef) && !input.nativeResumeBindingKey,
       );
-    const processHandle = this.processFactory(
-      spawnEnv,
-      connectionLaunch.args.length
-        ? [...connectionLaunch.args, ...(toolServers.configArgs ?? [])]
-        : toolServers.configArgs,
-    );
+    const spawnArgs = [
+      ...connectionLaunch.args,
+      ...(toolServers.configArgs ?? []),
+      ...codexConfinementConfigArgs(input.confinement),
+    ];
+    // Only a session start gets the per-session TMPDIR; quota, model and
+    // maintenance probes keep the shared engine-spawn directory.
+    const sessionTmpDir = engineSessionTmpDir(input.threadId);
+    // The workload launcher attributes this engine's scope to the session.
+    const sessionSpawnEnv = {
+      ...spawnEnv,
+      [WORKLOAD_SESSION_ENV]: input.threadId,
+    };
+    // Without a session folder the call is exactly the two-argument one
+    // the workload change made.
+    const processHandle = sessionTmpDir
+      ? this.processFactory(
+          sessionSpawnEnv,
+          spawnArgs.length ? spawnArgs : undefined,
+          sessionTmpDir,
+        )
+      : this.processFactory(
+          sessionSpawnEnv,
+          spawnArgs.length ? spawnArgs : undefined,
+        );
     const record = createCodexSessionRecord({
       externalThreadId: input.threadId,
       process: processHandle,
@@ -1848,6 +2006,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       resumeCursor: input.resumeCursor,
       nowIso: () => this.now().toISOString(),
     });
+    record.preparedResumeBindingKey = resumeBindingKey;
     if (sourceAffinity) {
       this.transport.setStdoutIngressLimit(
         record,
@@ -1874,6 +2033,12 @@ export class CodexAdapter implements ProviderAdapterShape {
     }
 
     this.transport.registerSession(record);
+    // chat-host-images: recorded only once this record is the thread's
+    // session, so a start that throws before here keeps the old launch.
+    commitEngineLaunch(
+      input.threadId,
+      sessionTmpDir ? { own: sessionTmpDir } : undefined,
+    );
     this.transport.handleProcess(record);
 
     try {
@@ -1907,15 +2072,33 @@ export class CodexAdapter implements ProviderAdapterShape {
         input.reviewIsolation,
         input.confinement,
       );
-      const approvalWire = approvalKnobs
-        ? {
-            approvalPolicy: approvalKnobs.approvalPolicy,
-            sandbox: approvalKnobs.sandbox,
-          }
-        : {};
+      // #2494 D1: a workspace session Station sends no mode to still asks
+      // Codex for its sandbox at thread level, with `approvalPolicy` left
+      // unset so Codex's own configuration keeps governing approvals. Codex
+      // configured `never` + `danger-full-access` then runs confined from the
+      // start instead of being refused; only a Codex that still reports
+      // something wider is refused below.
+      const sandboxRequest =
+        approvalKnobs?.sandbox ??
+        (input.confinementPlan?.policyBasis === 'workspace-floor'
+          ? ('workspace-write' as const)
+          : undefined);
+      // #3800: outside `host`, workspace-write is the permission profile the
+      // spawn selects; sending the mode would replace it.
+      const sandboxWire = codexThreadSandboxRequest(
+        sandboxRequest,
+        input.confinement,
+      );
+      const approvalWire = {
+        ...(approvalKnobs
+          ? { approvalPolicy: approvalKnobs.approvalPolicy }
+          : {}),
+        ...(sandboxWire ? { sandbox: sandboxWire } : {}),
+      };
       const result = adoption
         ? await this.forkNativeAdoption(record, adoption, {
             approvalKnobs,
+            ...(sandboxWire ? { sandboxRequest: sandboxWire } : {}),
             serviceTier: modelOptions.fastMode ? 'fast' : null,
             ...(authoredMcpConfig ? { config: authoredMcpConfig } : {}),
           })
@@ -1957,17 +2140,69 @@ export class CodexAdapter implements ProviderAdapterShape {
           threadId: input.threadId,
           createdAt: this.now().toISOString(),
           method: 'runtime.error',
+          ...providerFailure('session_gone'),
           severity: 'error',
           code: ENGINE_SESSION_BINDING_DEAD_CODE,
           retriable: false,
           message:
             'The engine opened a different native conversation; the requested resume was refused.',
           metadata: { [NATIVE_RESUME_IDENTITY_METADATA_KEY]: 'mismatch' },
-        });
+        } satisfies ProviderRuntimeErrorEvent);
         throw new Error(
           'The engine opened a different native conversation; the requested resume was refused.',
         );
       }
+      // #2559: the sandbox the thread actually runs in. Codex reports it on
+      // start, resume and fork alike; when it does not, what Station asked
+      // for is the best-known value.
+      const reportedSandbox = readCodexSandboxPolicy(
+        (result as { sandbox?: unknown } | undefined)?.sandbox,
+      );
+      // #2494: the confinement record comes from Codex's response, never
+      // from the sandbox Station sent. A start whose policy requires
+      // confinement and whose engine does not report it applied is refused
+      // here, before it is claimed or announced; the catch below stops the
+      // process. The requirement also follows the approval policy Codex
+      // reports: a workspace session Codex runs at `never` (its own
+      // configuration, when Station sent no knobs) requires confinement too.
+      const plan = requiredByReportedPolicy(
+        input.confinementPlan,
+        (result as { approvalPolicy?: unknown } | undefined)?.approvalPolicy,
+      );
+      const reportedProfile = readActivePermissionProfileId(result);
+      const sandboxEvidence = {
+        requested: sandboxRequest,
+        reported: reportedSandbox,
+        workspace: input.cwd,
+        permittedRoots: [
+          ...(sessionTmpDir ? [sessionTmpDir] : []),
+          engineSpawnTmpDirPath(),
+        ],
+        // #3800: Station relies on its profile wherever it sent no mode.
+        ...(sandboxRequest && !sandboxWire
+          ? { requestedProfile: STATION_CODEX_PERMISSION_PROFILE }
+          : {}),
+        reportedProfile,
+      };
+      const confinementRecord = plan
+        ? observedConfinementRecord(
+            plan,
+            plan.mechanism === 'codex-sandbox'
+              ? observeCodexSandboxPosture(sandboxEvidence)
+              : 'configured-but-failed',
+          )
+        : undefined;
+      // INVARIANT (#2494 D5): this refusal runs before `session.started` is
+      // published below. `ConfinementRefusedError` is a
+      // `SessionStartRefusedError`, whose contract lets the start boundary
+      // settle the thread only because no session was announced: moving this
+      // after the publish would leave an announced session with no end.
+      if (confinementRecord)
+        assertRequiredConfinementObserved(
+          confinementRecord,
+          this.provider,
+          describeCodexSandboxGap(sandboxEvidence),
+        );
       this.transport.setCodexThreadId(record, codexThread.id);
       this.options.nativeSessionOwnership?.claim(
         nativeSessionIdentityKey(
@@ -1994,15 +2229,10 @@ export class CodexAdapter implements ProviderAdapterShape {
       // the ONLY place the resolved model ever appears.
       const reportedModelFromInit =
         extractStringField(result, 'model') ?? undefined;
-      // #2559: the sandbox the thread actually runs in. Codex reports it on
-      // start, resume and fork alike; when it does not, what Station asked
-      // for is the best-known value.
-      const reportedSandbox = readCodexSandboxPolicy(
-        (result as { sandbox?: unknown } | undefined)?.sandbox,
-      );
       record.threadSandbox = reportedCodexThreadSandbox(
         reportedSandbox,
-        approvalKnobs?.sandbox,
+        sandboxRequest,
+        reportedProfile === STATION_CODEX_PERMISSION_PROFILE,
       );
       // #2559 R5: what `session.configured` reports is the sandbox Codex
       // said the thread runs in; the requested mode only when it said
@@ -2034,6 +2264,9 @@ export class CodexAdapter implements ProviderAdapterShape {
             ? usageCredentialAccountKey(this.provider, resolvedHome.profileRef)
             : undefined,
           codexThreadId: codexThread.id,
+          ...(confinementRecord
+            ? { [STATION_CONFINEMENT_RECORD_METADATA_KEY]: confinementRecord }
+            : {}),
           ...(adoption
             ? {
                 continuation: 'native-fork',
@@ -2239,6 +2472,8 @@ export class CodexAdapter implements ProviderAdapterShape {
     adoption: CodexNativeAdoption,
     execution: {
       approvalKnobs?: CodexExecutionKnobs;
+      /** The thread-level sandbox mode to send (`codexThreadSandboxRequest`). */
+      sandboxRequest?: CodexExecutionKnobs['sandbox'];
       serviceTier: string | null;
       config?: Record<string, unknown>;
     },
@@ -2255,10 +2490,10 @@ export class CodexAdapter implements ProviderAdapterShape {
         cwd: adoption.input.cwd,
         threadSource: adoption.marker,
         ...(execution.approvalKnobs
-          ? {
-              approvalPolicy: execution.approvalKnobs.approvalPolicy,
-              sandbox: execution.approvalKnobs.sandbox,
-            }
+          ? { approvalPolicy: execution.approvalKnobs.approvalPolicy }
+          : {}),
+        ...(execution.sandboxRequest
+          ? { sandbox: execution.sandboxRequest }
           : {}),
         serviceTier: execution.serviceTier,
         ...(execution.config ? { config: execution.config } : {}),
@@ -2349,13 +2584,16 @@ export class CodexAdapter implements ProviderAdapterShape {
    * `undefined` so the spawn argv is byte-identical to before this feature
    * for every session that doesn't author tool servers.
    */
-  private resolveAgentToolServers(input: ProviderSessionStartInput): {
+  private async resolveAgentToolServers(
+    input: ProviderSessionStartInput,
+  ): Promise<{
     configArgs?: string[];
     report?: CapabilityDeliveryChannelReport;
-  } {
+  }> {
     const toolServers = input.agent?.toolServers;
     if (toolServers === undefined) return {};
 
+    const oauthTokens = await this.options.resolveMcpOAuth?.(input);
     const hasBuiltinStationControl = toolServers.some(
       (server) =>
         builtinStationApiServerId(server.id, toPassthroughToolDef(server)) ===
@@ -2412,6 +2650,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       toolServers,
       stationControlMcpUrl,
       stationKnowledgeMcpUrl,
+      oauthTokens,
     );
     const undelivered: CapabilityUndelivered[] = skipped.map(
       (skip: CodexToolServerSkip) => ({
@@ -2507,6 +2746,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     this.options.nativeSessionOwnership?.assertMutable(input.threadId);
     const record = this.transport.requireSession(input.threadId);
     const turnStartedAt = Date.now();
+    const invocationId = input.invocationId;
     const modelOptions = (input.modelOptions ?? {}) as CodexModelOptions;
     const hasModelOptions = Boolean(
       mapReasoningEffort(modelOptions) || modelOptions.fastMode,
@@ -2538,36 +2778,153 @@ export class CodexAdapter implements ProviderAdapterShape {
       ? postured.plan.sandboxPolicy
       : planCodexTurnSandbox(undefined, thread, input.confinement)
           .sandboxPolicy;
-    let result: unknown;
-    try {
-      result = await this.transport.sendRequest(record, 'turn/start', {
-        threadId: record.codexThreadId,
-        input: [
-          ...(input.input
-            ? [
-                {
-                  type: 'text',
-                  text: input.input,
-                  text_elements: [],
-                },
-              ]
-            : []),
-          ...decodedAttachments.map(({ attachment }) => ({
-            type: 'image',
-            url: attachment.dataUrl,
-          })),
-        ],
-        model: input.modelId,
-        effort: mapReasoningEffort(modelOptions),
-        ...(approvalKnobs
-          ? { approvalPolicy: approvalKnobs.approvalPolicy }
+    // Bind and publish before the parser handles the next notification, which
+    // can complete this turn in the same stdout chunk as the start response.
+    const acceptTurn = (result: unknown): ProviderTurnStartResult => {
+      const turnId = extractTurn(result).id;
+      const origins = record.turnInvocationIds;
+      if (origins.has(turnId)) origins.set(turnId, null);
+      else origins.set(turnId, invocationId ?? null);
+      record.activeTurnId = turnId;
+      // archive#3473 fix round: a new turn starts with no terminal published
+      // for it yet — clear whatever the PREVIOUS turn (if any) left behind.
+      record.terminalPublishedForTurnId = undefined;
+      record.activeTurnStartedAt = turnStartedAt;
+      record.turnOutput.set(turnId, '');
+      // archive#903: restate the model when a turn changes it — `session.configured` is
+      // the only event that carries a model into the read model and the
+      // persisted row, and it is otherwise published once at session start.
+      if (input.modelId && input.modelId !== record.session.model) {
+        this.transport.publish({
+          eventId: crypto.randomUUID(),
+          provider: this.provider,
+          threadId: input.threadId,
+          createdAt: this.now().toISOString(),
+          method: 'session.configured',
+          sessionId: input.threadId,
+          model: input.modelId,
+          ...(record.session.cwd ? { cwd: record.session.cwd } : {}),
+          metadata: {
+            [MODEL_SELECTION_RECEIPT_METADATA_KEY]: modelSelectionReceipt(
+              input.modelId,
+              input.modelId,
+            ),
+          },
+        });
+      }
+      record.session = {
+        ...record.session,
+        status: 'running',
+        updatedAt: this.now().toISOString(),
+        model: input.modelId ?? record.session.model,
+      };
+
+      this.transport.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId: input.threadId,
+        createdAt: this.now().toISOString(),
+        method: 'turn.started',
+        turnId,
+        ...(invocationId ? { invocationId } : {}),
+        // Transcript-facing: the typed text, never the composed model input.
+        prompt: input.displayInput ?? input.input,
+        attachments: input.attachments,
+        ...(input.ambientContext
+          ? { ambientContext: input.ambientContext }
           : {}),
-        ...(sandboxPolicy ? { sandboxPolicy } : {}),
-        serviceTier: modelOptions.fastMode ? 'fast' : undefined,
+        // Durable per-turn record of the resolved approval posture (archive#727
+        // review item 5) — turn/start has no dedicated "turn configured"
+        // event, so this reuses turn.started's existing metadata bag rather
+        // than adding a new canonical event for one field pair.
+        metadata: {
+          ...effectiveModelMetadata(
+            input.modelId ?? record.session.model,
+            modelOptions,
+          ),
+          ...(input.recoveryCorrelationId
+            ? { recoveryCorrelationId: input.recoveryCorrelationId }
+            : {}),
+          ...(postured
+            ? {
+                approvalPolicy: postured.knobs.approvalPolicy,
+                // #2559: the sandbox this turn runs in (the thread's, or the
+                // policy just sent), never merely the one requested, and the
+                // mode that pair really is. Lets the client track a durable
+                // lastAppliedApprovalMode baseline (archive#727 review round 3,
+                // item 1).
+                sandbox: postured.plan.applied,
+                approvalMode: mapCodexKnobsToApprovalMode({
+                  approvalPolicy: postured.knobs.approvalPolicy,
+                  sandbox: postured.plan.applied,
+                }),
+                confinement: input.confinement ?? 'workspace',
+              }
+            : {}),
+          [MODEL_SELECTION_RECEIPT_METADATA_KEY]: modelSelectionReceipt(
+            input.modelId,
+            input.modelId ? record.session.model : undefined,
+          ),
+          // Independent review MEDIUM-1: carries the server-owned
+          // `firstTurnInstructionsComposed` marker onto THIS turn's own
+          // persisted record — see the constant's doc comment in
+          // provider.ts — so the delegate-seam disclosure can derive
+          // 'delivered' from this turn having actually composed it, not
+          // merely from having started.
+          ...(input.metadata?.[FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]
+            ? { [FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]: true }
+            : {}),
+        },
       });
-      // Applies to this turn and every later one (TurnStartParams).
-      if (sandboxPolicy)
-        record.threadSandbox = { ...thread, policy: sandboxPolicy };
+
+      return {
+        threadId: input.threadId,
+        turnId,
+        resumeCursor: codexResumeCursor(
+          record.codexThreadId,
+          record.session.resumeCursor,
+          turnId,
+        ),
+      };
+    };
+    let result: ProviderTurnStartResult;
+    try {
+      result = await this.transport.sendRequest(
+        record,
+        'turn/start',
+        {
+          threadId: record.codexThreadId,
+          input: [
+            ...(input.input
+              ? [
+                  {
+                    type: 'text',
+                    text: input.input,
+                    text_elements: [],
+                  },
+                ]
+              : []),
+            ...decodedAttachments.map(({ attachment }) => ({
+              type: 'image',
+              url: attachment.dataUrl,
+            })),
+          ],
+          model: input.modelId,
+          effort: mapReasoningEffort(modelOptions),
+          ...(approvalKnobs
+            ? { approvalPolicy: approvalKnobs.approvalPolicy }
+            : {}),
+          ...(sandboxPolicy ? { sandboxPolicy } : {}),
+          serviceTier: modelOptions.fastMode ? 'fast' : undefined,
+        },
+        { mapResult: acceptTurn },
+      );
+      // Applies to this turn and every later one (TurnStartParams), and
+      // replaces a permission profile (#3800).
+      if (sandboxPolicy) {
+        const { stationProfile: _replaced, ...rest } = thread;
+        record.threadSandbox = { ...rest, policy: sandboxPolicy };
+      }
       providerOps.add(1, {
         operation: 'adapter-model-options',
         provider: this.provider,
@@ -2584,105 +2941,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       throw error;
     }
 
-    const turnId = extractTurn(result).id;
-    record.activeTurnId = turnId;
-    // archive#3473 fix round: a new turn starts with no terminal published
-    // for it yet — clear whatever the PREVIOUS turn (if any) left behind.
-    record.terminalPublishedForTurnId = undefined;
-    record.activeTurnStartedAt = turnStartedAt;
-    record.turnOutput.set(turnId, '');
-    // archive#903: restate the model when a turn changes it — `session.configured` is
-    // the only event that carries a model into the read model and the
-    // persisted row, and it is otherwise published once at session start.
-    if (input.modelId && input.modelId !== record.session.model) {
-      this.transport.publish({
-        eventId: crypto.randomUUID(),
-        provider: this.provider,
-        threadId: input.threadId,
-        createdAt: this.now().toISOString(),
-        method: 'session.configured',
-        sessionId: input.threadId,
-        model: input.modelId,
-        ...(record.session.cwd ? { cwd: record.session.cwd } : {}),
-        metadata: {
-          [MODEL_SELECTION_RECEIPT_METADATA_KEY]: modelSelectionReceipt(
-            input.modelId,
-            input.modelId,
-          ),
-        },
-      });
-    }
-    record.session = {
-      ...record.session,
-      status: 'running',
-      updatedAt: this.now().toISOString(),
-      model: input.modelId ?? record.session.model,
-    };
-
-    this.transport.publish({
-      eventId: crypto.randomUUID(),
-      provider: this.provider,
-      threadId: input.threadId,
-      createdAt: this.now().toISOString(),
-      method: 'turn.started',
-      turnId,
-      // Transcript-facing: the typed text, never the composed model input.
-      prompt: input.displayInput ?? input.input,
-      attachments: input.attachments,
-      ...(input.ambientContext ? { ambientContext: input.ambientContext } : {}),
-      // Durable per-turn record of the resolved approval posture (archive#727
-      // review item 5) — turn/start has no dedicated "turn configured"
-      // event, so this reuses turn.started's existing metadata bag rather
-      // than adding a new canonical event for one field pair.
-      metadata: {
-        ...effectiveModelMetadata(
-          input.modelId ?? record.session.model,
-          modelOptions,
-        ),
-        ...(input.recoveryCorrelationId
-          ? { recoveryCorrelationId: input.recoveryCorrelationId }
-          : {}),
-        ...(postured
-          ? {
-              approvalPolicy: postured.knobs.approvalPolicy,
-              // #2559: the sandbox this turn runs in (the thread's, or the
-              // policy just sent), never merely the one requested, and the
-              // mode that pair really is. Lets the client track a durable
-              // lastAppliedApprovalMode baseline (archive#727 review round 3,
-              // item 1).
-              sandbox: postured.plan.applied,
-              approvalMode: mapCodexKnobsToApprovalMode({
-                approvalPolicy: postured.knobs.approvalPolicy,
-                sandbox: postured.plan.applied,
-              }),
-              confinement: input.confinement ?? 'workspace',
-            }
-          : {}),
-        [MODEL_SELECTION_RECEIPT_METADATA_KEY]: modelSelectionReceipt(
-          input.modelId,
-          input.modelId ? record.session.model : undefined,
-        ),
-        // Independent review MEDIUM-1: carries the server-owned
-        // `firstTurnInstructionsComposed` marker onto THIS turn's own
-        // persisted record — see the constant's doc comment in
-        // provider.ts — so the delegate-seam disclosure can derive
-        // 'delivered' from this turn having actually composed it, not
-        // merely from having started.
-        ...(input.metadata?.[FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]
-          ? { [FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]: true }
-          : {}),
-      },
-    });
-
-    return {
-      threadId: input.threadId,
-      turnId,
-      resumeCursor: codexResumeCursor(
-        record.codexThreadId,
-        record.session.resumeCursor,
-        turnId,
-      ),
-    };
+    return result;
   }
 
   async steerTurn(

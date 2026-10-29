@@ -1,0 +1,17 @@
+{
+  "revision": "53b56b805076bbd704dd4512df92bb9b6f67394f",
+
+  "notes": [
+    {"path":"docs/guides/deployment.md","note":"Hosted answer-share sentence traced to src-server/routes/share/answer-share-routes.ts: POST returns 409 'Answer sharing is not available on a hosted Station yet.' for hosted authority (asserted by answer-share-routes.test.ts, #2561); list returns empty and revoke 404 without a tenant execution context, otherwise both use the caller's authority.","inputs":["docs/guides/deployment.md"]},
+
+    {"path":"README.md","note":"Checked: the only change in docs/guides/deployment.md is the hosted answer-share sentence; README makes no answer-share availability claim.","inputs":["README.md","docs/guides/deployment.md"]},
+
+    {"path":"deployment/telemetry/README.md","note":"Checked: the only change in docs/guides/deployment.md is the hosted answer-share sentence; no telemetry claim is touched.","inputs":["deployment/telemetry/README.md","docs/guides/deployment.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked: the only change in docs/guides/deployment.md is the hosted answer-share sentence; the review makes no answer-share availability claim.","inputs":["docs/architecture/abstraction-review.md","docs/guides/deployment.md"]},
+
+    {"path":"docs/design/automations.md","note":"Checked: the only change in docs/guides/deployment.md is the hosted answer-share sentence; automations design makes no answer-share claim.","inputs":["docs/design/automations.md","docs/guides/deployment.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked: the only change in docs/guides/deployment.md is the hosted answer-share sentence; the integration guide makes no answer-share availability claim.","inputs":["docs/guides/integrating-station.md","docs/guides/deployment.md"]}
+  ]
+}

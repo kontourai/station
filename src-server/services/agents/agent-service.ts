@@ -177,7 +177,7 @@ function resolvedCreateSlug(body: Record<string, unknown>): string {
  * and is deliberately not renamed here (see `enriched-agents.ts`'s `isActive`,
  * which reads the pair as one Agent).
  */
-export const RUNTIME_DEFAULT_AGENT_KEY = 'default';
+const RUNTIME_DEFAULT_AGENT_KEY = 'default';
 
 /**
  * The engine binding the RUNTIME resolved for the reserved Station identity

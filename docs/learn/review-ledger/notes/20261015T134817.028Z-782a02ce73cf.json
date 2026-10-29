@@ -1,0 +1,7 @@
+{
+  "revision": "e4fb04d302dd8905b5b6e18a2771e9b58a0490b5",
+
+  "notes": [
+    {"path":"docs/guides/agent-development.md","note":"Reviewed Agent-versus-UI entry guidance against added usage-export-query and telemetry root APIs. New React hook is not added to agent entry; explicit selected Station request scope remains required. Agent authoring/execution examples and publication caveats remain accurate; focused public-barrel and export tests do not establish provider or published-package acceptance.","inputs":["docs/guides/agent-development.md","packages/sdk/package.json#/exports"]}
+  ]
+}

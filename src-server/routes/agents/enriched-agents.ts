@@ -299,8 +299,8 @@ export function externalEngineUnavailable(
   }
   // A fresh passed smoke is real proof: neither its passing summary nor the
   // unproven sentence is truthful for a connection that is CURRENTLY
-  // unavailable. Its current status is what is true now — the switch below
-  // says it, without discarding the proof.
+  // unavailable. Retain the current failure reason, with a status sentence
+  // below when no concrete reason was recorded.
   if (connection.readinessReason && !isProvenChatEvidence(connection)) {
     return {
       // Replace only a summary that states what the level has observed. A
@@ -312,6 +312,18 @@ export function externalEngineUnavailable(
         !connection.summaryNamesFailure
           ? unprovenEngineRefusal(connection)
           : connection.readinessReason,
+      fix: {
+        kind:
+          connection.status === 'missing_prerequisites'
+            ? 'cli-missing'
+            : 'connection-broken',
+        target: id,
+      },
+    };
+  }
+  if (connection.status !== 'ready' && connection.stateReason) {
+    return {
+      reason: connection.stateReason,
       fix: {
         kind:
           connection.status === 'missing_prerequisites'

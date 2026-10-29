@@ -356,5 +356,3 @@ export class S2SSessionAdapter implements VoiceSessionAdapter {
     };
   }
 }
-
-export { mapProviderState as mapS2SProviderState };

@@ -1,6 +1,14 @@
 import type { WorkspacePaneAvailabilityAction } from '@kontourai/station-contracts/workspace-pane-availability';
-import { type CSSProperties, useId, useState } from 'react';
+import {
+  type CSSProperties,
+  useCallback,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { PlugGlyph } from '../components/icons/Glyph';
+import { useStationExtensionsAccess } from '../components/registry/StationExtensionsAccess';
 import {
   presentWorkspacePaneAvailability,
   type WorkspacePaneAvailabilityCatalogEntry,
@@ -27,7 +35,7 @@ export interface WorkspacePaneAvailabilityListProps {
   isPending?: (entry: WorkspacePaneAvailabilityCatalogEntry) => boolean;
   /** A host can report that one exact catalog occurrence is already open. */
   isOpen?: (entry: WorkspacePaneAvailabilityCatalogEntry) => boolean;
-  onReviewInRegistry?: () => void;
+  onReviewExtensions?: () => void;
   'aria-label'?: string;
 }
 
@@ -60,7 +68,7 @@ function WorkspacePaneAvailabilityCard({
   canExecuteAction,
   pending,
   open,
-  onReviewInRegistry,
+  onReviewExtensions,
 }: {
   entry: WorkspacePaneAvailabilityCatalogEntry;
   onSelect: (entry: WorkspacePaneAvailabilityCatalogEntry) => void;
@@ -74,7 +82,7 @@ function WorkspacePaneAvailabilityCard({
   ) => boolean;
   pending: boolean;
   open: boolean;
-  onReviewInRegistry?: () => void;
+  onReviewExtensions?: () => void;
 }) {
   const ids = useId();
   const [expanded, setExpanded] = useState(false);
@@ -85,15 +93,7 @@ function WorkspacePaneAvailabilityCard({
     entry.rendererGate,
     entry.rendererResolution,
   );
-  // A direct route has no Registry navigation callback. Keep the gate's
-  // truthful explanation there, but retain the ordinary bounded action so a
-  // card never advertises remediation with no reachable affordance.
-  const actionPresentation =
-    presentation.reviewInRegistry && !onReviewInRegistry
-      ? presentWorkspacePaneAvailability(entry.availability)
-      : presentation;
-  const reviewActionAvailable =
-    presentation.reviewInRegistry && onReviewInRegistry !== undefined;
+  const reviewActionAvailable = presentation.reviewExtensions;
   const isAvailable =
     presentation.state === 'available' && entry.instance !== undefined && !open;
   const stateLabel = open ? 'Open in this workspace' : presentation.stateLabel;
@@ -108,15 +108,15 @@ function WorkspacePaneAvailabilityCard({
   const hasDescription = Boolean(entry.descriptor.description);
 
   const activateAction = () => {
-    if (!actionPresentation.action || !onAction) return;
-    setActionNotice(onAction(entry, actionPresentation.action));
+    if (!presentation.action || !onAction) return;
+    setActionNotice(onAction(entry, presentation.action));
   };
 
   const executableAction =
     !reviewActionAvailable &&
-    actionPresentation.action !== undefined &&
-    actionPresentation.actionLabel !== undefined &&
-    canExecuteAction?.(entry, actionPresentation.action) === true;
+    presentation.action !== undefined &&
+    presentation.actionLabel !== undefined &&
+    canExecuteAction?.(entry, presentation.action) === true;
 
   return (
     <li
@@ -239,14 +239,14 @@ function WorkspacePaneAvailabilityCard({
                 <span id={openLabelId}>Open</span>
               </button>
             )}
-            {!isAvailable && reviewActionAvailable && (
+            {!isAvailable && reviewActionAvailable && onReviewExtensions && (
               <button
                 type="button"
                 className="workspace-pane-availability-list__remedy"
-                onClick={() => onReviewInRegistry?.()}
+                onClick={() => onReviewExtensions()}
                 disabled={pending}
               >
-                Review in Registry
+                Review and enable
               </button>
             )}
             {!isAvailable && executableAction && (
@@ -256,7 +256,7 @@ function WorkspacePaneAvailabilityCard({
                 onClick={activateAction}
                 disabled={pending}
               >
-                {actionPresentation.actionLabel}
+                {presentation.actionLabel}
               </button>
             )}
           </div>
@@ -269,12 +269,11 @@ function WorkspacePaneAvailabilityCard({
           >
             <p>{reasonLabel}</p>
             {!reviewActionAvailable &&
-              actionPresentation.action &&
-              actionPresentation.actionLabel &&
+              presentation.action &&
+              presentation.actionLabel &&
               !executableAction && (
                 <p>
-                  {actionPresentation.actionLabel} is not available from this
-                  screen.
+                  {presentation.actionLabel} is not available from this screen.
                 </p>
               )}
             {actionNotice && <p role="status">{actionNotice}</p>}
@@ -295,14 +294,14 @@ function WorkspacePaneAvailabilityCard({
  * keyboard, and touch activation; unavailable entries stay enabled so their
  * reason and bounded next action remain reachable.
  */
-export function WorkspacePaneAvailabilityList({
+function PaneAvailabilityCards({
   entries,
   onSelect,
   onAction,
   canExecuteAction,
   isPending,
   isOpen,
-  onReviewInRegistry,
+  onReviewExtensions,
   'aria-label': ariaLabel = 'Workspace panes',
 }: WorkspacePaneAvailabilityListProps) {
   return (
@@ -316,9 +315,56 @@ export function WorkspacePaneAvailabilityList({
           canExecuteAction={canExecuteAction}
           pending={isPending?.(entry) ?? false}
           open={isOpen?.(entry) ?? false}
-          onReviewInRegistry={onReviewInRegistry}
+          onReviewExtensions={onReviewExtensions}
         />
       ))}
     </ul>
+  );
+}
+
+function ExtensionReviewHost({
+  registerReview,
+}: {
+  registerReview: (review: () => void) => () => void;
+}) {
+  const access = useStationExtensionsAccess();
+  useLayoutEffect(
+    () => registerReview(access.review),
+    [registerReview, access.review],
+  );
+  return access.dialog;
+}
+
+export function WorkspacePaneAvailabilityList(
+  props: WorkspacePaneAvailabilityListProps,
+) {
+  const review = useRef<(() => void) | null>(null);
+  const registerReview = useCallback((callback: () => void) => {
+    review.current = callback;
+    return () => {
+      if (review.current === callback) review.current = null;
+    };
+  }, []);
+  const openReview = useCallback(() => review.current?.(), []);
+  const needsReview =
+    !props.onReviewExtensions &&
+    props.entries.some(
+      (entry) =>
+        presentWorkspacePaneAvailability(
+          entry.availability,
+          entry.rendererGate,
+          entry.rendererResolution,
+        ).reviewExtensions,
+    );
+  return (
+    <>
+      <PaneAvailabilityCards
+        {...props}
+        onReviewExtensions={
+          props.onReviewExtensions ?? (needsReview ? openReview : undefined)
+        }
+      />
+      {needsReview && <ExtensionReviewHost registerReview={registerReview} />}
+    </>
   );
 }

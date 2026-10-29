@@ -56,6 +56,1033 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'terminal-observation-timeout-missing',
+    test: 'src-server/adapters/__tests__/node-pty-adapter.test.ts',
+    failure:
+      'timed-out exit 1 ps failure stays paused and retries with bounded backoff',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(source, '            !error.killed &&\n', ''),
+      },
+    ],
+  },
+  {
+    id: 'terminal-observation-signal-missing',
+    test: 'src-server/adapters/__tests__/node-pty-adapter.test.ts',
+    failure:
+      'signaled exit 1 ps failure stays paused and retries with bounded backoff',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(source, '            !error.signal &&\n', ''),
+      },
+    ],
+  },
+  {
+    id: 'terminal-observation-errors',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure: 'ps failure preserves session pressure and clean exit',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'if (gone || (!error && /[ZE]/.test(stdout.trim()))) {',
+            'if (error || gone || (!error && /[ZE]/.test(stdout.trim()))) {',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-observation-backoff',
+    test: 'src-server/adapters/__tests__/node-pty-adapter.test.ts',
+    failure: 'ps failure stays paused and retries with bounded backoff',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'delay = Math.min(delay * 2, 1000);',
+            'delay = 50;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-adapter-exit-latch',
+    test: 'src-server/adapters/__tests__/node-pty-adapter.test.ts',
+    failure:
+      'backend exit while paused marks output incomplete without a census observation',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'if (this.paused) this.outputIncomplete = true;',
+            '',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-adapter-incomplete-flag',
+    test: 'src-server/adapters/__tests__/node-pty-adapter.test.ts',
+    failure:
+      'positive Z observation releases delivery and retains incomplete output after drain',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'outputIncomplete: this.outputIncomplete,',
+            'outputIncomplete: false,',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-paused-child-observation',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure: 'slow storage plus paused shell exit records unavailable output',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "    if (process.platform === 'win32' || this.pauseWatch) return;",
+            '    if (true) return;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-paused-exit',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure: 'slow storage plus paused shell exit records unavailable output',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-sessions.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '          if (event.outputIncomplete) {',
+            '          if (false) {',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-final-batch-drain',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure:
+      'a final batch releases backpressure before its append promises settle',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-journal.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '      this.queuedBytes -= batch.reduce((sum, item) => sum + item.bytes, 0);',
+            '      setTimeout(() => { this.queuedBytes -= batch.reduce((sum, item) => sum + item.bytes, 0); }, 0);',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-observe-group-ceiling',
+    test: 'packages/contracts/src/__tests__/station-groups.test.ts',
+    failure: 'a cap removes only governed permissions the group does not allow',
+    files: [
+      {
+        path: 'packages/contracts/src/station-groups.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '  ...PAIRING_SCOPE_PRESETS.standard,\n  PAIRING_SCOPE_TERMINAL_OBSERVE,',
+            '  ...PAIRING_SCOPE_PRESETS.standard,',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-session-read-scope',
+    test: 'src-server/security/__tests__/pairing-route-scopes.test.ts',
+    failure:
+      'terminal session ingress requires observe for reads and operate for writes without generic Project grants',
+    files: [
+      {
+        path: 'src-server/security/pairing-route-scopes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '        scope: PAIRING_SCOPE_TERMINAL_OBSERVE,',
+            '        scope: PAIRING_SCOPE_ORCHESTRATION_READ,',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-session-write-scope',
+    test: 'src-server/security/__tests__/pairing-route-scopes.test.ts',
+    failure:
+      'terminal session ingress requires observe for reads and operate for writes without generic Project grants',
+    files: [
+      {
+        path: 'src-server/security/pairing-route-scopes.ts',
+        change: (source) => {
+          const start = source.indexOf(
+            "    { method: 'POST', prefix: '/api/projects/:slug/terminal-sessions' },",
+          );
+          const end = source.indexOf(
+            '  // Terminal termination kills a PTY process.',
+            start,
+          );
+          if (start < 0 || end < start)
+            throw new Error('Terminal mutation rule landmarks missing');
+          return `${source.slice(0, start)}${exactReplace(
+            source.slice(start, end),
+            'scope: PAIRING_SCOPE_TERMINAL_OPERATE,',
+            'scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,',
+          )}${source.slice(end)}`;
+        },
+      },
+    ],
+  },
+  {
+    id: 'terminal-session-burst-backpressure',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure:
+      'an 8 MiB PTY burst remains live and readable; memory mode need not pause (persist=true)',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-sessions.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '            proc.pause();',
+            '            void proc;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-session-read-barrier',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure: 'coalesced journal appends preserve intervening read barriers',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-journal.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '    if (this.appendScheduled) {\n      this.pendingAppends = [];\n      this.appendScheduled = false;\n    }\n    const task = this.queue.then(() => this.readSnapshot(fromSeq));',
+            '    const task = this.queue.then(() => this.readSnapshot(fromSeq));',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-surface-write',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'subject-bound chat writes require a matching Project surface type',
+    files: [
+      {
+        path: 'src-server/services/layouts/personal-layout-policy.ts',
+        change: (source) =>
+          exactReplace(source, "layout.type !== 'custom' &&", 'false &&'),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-surface-read',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure: 'subject-bound chat reads hide a surface removed from the Project',
+    files: [
+      {
+        path: 'src-server/routes/me/personal-layouts.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'if (!subject) return true;',
+            "if (!subject || 'id' in layout) return true;",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-promote-not-found',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'promotion gives identical not-found answers for every unavailable source as contributor',
+    files: [
+      {
+        path: 'src-server/routes/me/personal-layouts.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'layoutSlug === undefined || !service.get(owner, layoutSlug)',
+            'layoutSlug === undefined',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-promote-wiring',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure: 'promotion fails closed without Project authorization wiring',
+    files: [
+      {
+        path: 'src-server/routes/me/personal-layouts.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "!(await deps.canUseProject?.(c, projectSlug, 'manage-layouts'))",
+            "deps.canUseProject && !(await deps.canUseProject(c, projectSlug, 'manage-layouts'))",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-hidden-delete',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure: 'only the owner can delete a policy-hidden personal layout',
+    files: [
+      {
+        path: 'src-server/routes/me/personal-layouts.ts',
+        change: (source) => exactReplace(source, '    }, true),', '    }),'),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-admission',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'Project panes and allowed plugins constrain writes, updates and reads without deleting records',
+    files: [
+      {
+        path: 'src-server/routes/me/personal-layouts.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'const subject = layoutSubject(layout);',
+            'const subject = undefined;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-runtime-management',
+    test: 'src-server/runtime/routes/__tests__/runtime-routes-project-guest-admin.test.ts',
+    failure:
+      'layout management and personal subjects compose through real account credentials without sharing personal records',
+    files: [
+      {
+        path: 'src-server/runtime/routes/runtime-routes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "member.actions.includes('manage-layouts')",
+            "member.actions.includes('view')",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-isolation',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'personal Project layout list/fetch/update/delete/clone disclose nothing to a second principal',
+    files: [
+      {
+        path: 'src-server/domain/layout-owner-storage.ts',
+        change: (source) =>
+          exactReplace(source, '  return key;', "  return 'personal';"),
+      },
+      {
+        path: 'src-server/domain/file-storage-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '!isSameLayoutOwner(layoutOwner(parsed), owner)',
+            'false',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-read-policy',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'Project panes and allowed plugins constrain writes, updates and reads without deleting records',
+    files: [
+      {
+        path: 'src-server/routes/me/personal-layouts.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'if (!allowHidden && saved && !(await eligible(c, saved)))',
+            'if (false)',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-project-panes',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'Project panes and allowed plugins constrain writes, updates and reads without deleting records',
+    files: [
+      {
+        path: 'src-server/services/layouts/personal-layout-policy.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'return projectComponents.has(key);',
+            'return true;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-allowed-plugins',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'Project panes and allowed plugins constrain writes, updates and reads without deleting records',
+    files: [
+      {
+        path: 'src-server/services/layouts/personal-layout-policy.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "if (policy === 'allowed-plugins' && allowed.has(ids[0])) return true;",
+            "if (policy === 'allowed-plugins') return true;",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-visibility',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'unknown or hidden plugin renderers cannot bypass policy via missing binding or alternative renderer',
+    files: [
+      {
+        path: 'src-server/services/layouts/personal-layout-policy.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'if (ids.length !== 1 || !canSeePlugin(ids[0])) return false;',
+            'if (ids.length !== 1) return false;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-clone-identity',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'clone keeps source bytes and identity; save as my layout clears subject; template open binds without writing',
+    files: [
+      {
+        path: 'src-server/services/layouts/personal-layout-service.ts',
+        change: (source) =>
+          exactReplace(source, 'id: this.#newId(),', 'id: source.id,'),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-clone-source',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'clone keeps source bytes and identity; save as my layout clears subject; template open binds without writing',
+    files: [
+      {
+        path: 'src-server/routes/me/personal-layouts.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '      const created = await service.clone(owner, source, {',
+            '      await store.deleteOwnedLayout(source.owner ?? { kind: "project", projectSlug: source.projectSlug! }, source.slug);\n      const created = await service.clone(owner, source, {',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-template-clear',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'clone keeps source bytes and identity; save as my layout clears subject; template open binds without writing',
+    files: [
+      {
+        path: 'src-server/routes/me/personal-layouts.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'const subject = input.asTemplate\n      ? undefined',
+            'const subject = input.asTemplate\n      ? source.subject',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-template-open',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'clone keeps source bytes and identity; save as my layout clears subject; template open binds without writing',
+    files: [
+      {
+        path: 'src-server/routes/me/personal-layouts.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'return c.json({ success: true, data: readView(bound) });',
+            'await store.mutateOwnedLayout(owner, slug, () => bound);\n      return c.json({ success: true, data: readView(bound) });',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-manage-layouts',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'promotion remains a move and requires manage layouts; personal coding records cannot declare primary Chat',
+    files: [
+      {
+        path: 'src-server/routes/me/personal-layouts.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "!(await deps.canUseProject?.(c, projectSlug, 'manage-layouts'))",
+            'false',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-primary-chat',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'promotion remains a move and requires manage layouts; personal coding records cannot declare primary Chat',
+    files: [
+      {
+        path: 'packages/contracts/src/layout.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "isContributedLayoutRecord(layout) || layout.owner?.kind === 'principal'",
+            'isContributedLayoutRecord(layout)',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-legacy-migration',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      "today's stored Board and Project shapes read and persist unchanged under subject derivation",
+    files: [
+      {
+        path: 'packages/contracts/src/layout.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '  return subject;',
+            "  return subject ?? { kind: 'project', projectSlug: 'legacy-default' };",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'outside-host-grant-change',
+    test: 'src-server/routes/outside-agent/__tests__/host-routes.test.ts',
+    failure:
+      'host changes apply in place to existing access and refresh tokens with before/after audit and stale-state refusal',
+    files: [
+      {
+        path: 'src-server/services/outside-agent/oauth-store.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "this.#put('grant', grantId, changed);",
+            "this.#terminal(grantId, 'revoked', 'changed');\n      this.#put('grant', grantId, { ...this.#get('grant', grantId)!, selection: next, expiresAt: next.expiresAt });",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'outside-host-channel-reuse',
+    test: 'src-server/runtime/__tests__/device-pairing-routes.test.ts',
+    failure:
+      'outside host CLI channels reuse live keyring credentials without growing devices or spending the desktop mint budget',
+    files: [
+      {
+        path: 'packages/cli/src/commands/outside-host-channel.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "const canCache = input.credentialStore.status(ref) !== 'unavailable';",
+            'const canCache = false;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'outside-host-channel-supersession',
+    test: 'src-server/runtime/__tests__/device-pairing-routes.test.ts',
+    failure:
+      'outside host CLI channels reuse live keyring credentials without growing devices or spending the desktop mint budget',
+    files: [
+      {
+        path: 'packages/cli/src/commands/outside-host-channel.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "      deviceName: 'Outside-client host CLI',\n      clientInstanceId,",
+            "      deviceName: 'Outside-client host CLI',",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'outside-host-authority',
+    test: 'src-server/routes/outside-agent/__tests__/host-routes.test.ts',
+    failure:
+      'every host route refuses non-host credentials, raw operator/session without step-up, missing and prior-boot proof before domain work',
+    files: [
+      {
+        path: 'src-server/routes/outside-agent/host-routes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '!isBoundLocalGrantMintedOperator(c.req.raw)',
+            'false',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'outside-host-release-refusal',
+    test: 'src-server/routes/outside-agent/__tests__/host-routes.test.ts',
+    failure:
+      'released composition refuses every actual host route with valid host proof and zero outside writes',
+    files: [
+      {
+        path: 'src-server/security/outside-agent-release-guard.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'isOutsideAgentPath(path) ||\n    (path !== rawPath && isOutsideAgentPath(rawPath))',
+            'false',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'outside-host-command-refusal',
+    test: 'packages/cli/src/__tests__/outside-clients.test.ts',
+    failure:
+      'every released outside-clients command refuses with a not-yet-available message before home, auth, network or store access',
+    files: [
+      {
+        path: 'packages/cli/src/commands/outside-clients.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "throw new Error(\n    'Outside-agent clients are not yet available. Host commands remain disabled until R6 qualification (#4115).',\n  );",
+            'return;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'outside-oauth-refresh-family',
+    test: 'src-server/services/outside-agent/__tests__/oauth-store.test.ts',
+    failure:
+      'refresh replay ends family and grant, invalidates successor, bumps version and frees client capacity through five cycles',
+    files: [
+      {
+        path: 'src-server/services/outside-agent/oauth-store.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "this.#put('family', family.id, { ...family, state });",
+            "if (reason !== 'refresh_replay') this.#put('family', family.id, { ...family, state });",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'outside-oauth-refresh-grant',
+    test: 'src-server/services/outside-agent/__tests__/oauth-store.test.ts',
+    failure:
+      'refresh replay ends family and grant, invalidates successor, bumps version and frees client capacity through five cycles',
+    files: [
+      {
+        path: 'src-server/services/outside-agent/oauth-store.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "this.#put('grant', id, {\n      ...grant,\n      state,",
+            "if (reason !== 'refresh_replay') this.#put('grant', id, {\n      ...grant,\n      state,",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'outside-oauth-idle-grant',
+    test: 'src-server/services/outside-agent/__tests__/oauth-store.test.ts',
+    failure:
+      'idle expiry ends family and grant without replay, and frees capacity on admission/allocation/sweep',
+    files: [
+      {
+        path: 'src-server/services/outside-agent/oauth-store.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "this.#put('grant', id, {\n      ...grant,\n      state,",
+            "if (reason !== 'idle') this.#put('grant', id, {\n      ...grant,\n      state,",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'outside-oauth-code-replay',
+    test: 'src-server/services/outside-agent/__tests__/oauth-store.test.ts',
+    failure:
+      'older consumed refresh and correctly bound code reuse revoke their sole family/grant',
+    files: [
+      {
+        path: 'src-server/services/outside-agent/oauth-store.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "if (family) this.#terminal(family.grantId, 'revoked', 'code_replay');",
+            'if (family) void family.grantId;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'outside-oauth-cap-after-supersession',
+    test: 'src-server/services/outside-agent/__tests__/oauth-store.test.ts',
+    failure:
+      'cap enforcement follows selected supersessions, and a refused activation never partially supersedes',
+    files: [
+      {
+        path: 'src-server/services/outside-agent/oauth-store.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'const resulting = this.#active().filter((g) => !selected.has(g.id));',
+            'const resulting = this.#active();',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'outside-oauth-cap-last-slot',
+    test: 'src-server/services/outside-agent/__tests__/oauth-concurrency.test.ts',
+    failure:
+      'two approved intents racing for the last client slot activate exactly one',
+    files: [
+      {
+        path: 'src-server/services/outside-agent/oauth-store.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'resulting.length >= this.#limits.grants ||\n        resulting.filter((g) => g.clientId === client.id).length >=\n          this.#limits.grantsPerClient',
+            'false',
+          ),
+      },
+    ],
+  },
+
+  {
+    id: 'basis-chip-hidden-at-rest',
+    test: 'src-ui/src/__tests__/MessageBubble.basisChip.test.tsx',
+    failure:
+      'is visible and hittable while the hover-revealed row is hidden (delayed entry)',
+    files: [
+      {
+        path: 'src-ui/src/components/chat/chat.css',
+        change: (source) =>
+          exactReplace(
+            source,
+            '.answer-basis-chip {\n  display: inline-flex;',
+            '.answer-basis-chip {\n  opacity: 0;\n  pointer-events: none;\n  display: inline-flex;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'testflight-required-mobile-endpoint',
+    test: 'scripts/__tests__/testflight-live-activity-workflow.test.ts',
+    failure:
+      'admits nightly signing without a mobile endpoint and still rejects missing protected prerequisites',
+    files: [
+      {
+        path: '.github/workflows/testflight-delivery.yml',
+        change: (source) =>
+          exactReplace(
+            source,
+            'TESTFLIGHT_INTERNAL_GROUP_ID VITE_NATIVE_APP_UPDATE_CHANNEL',
+            'TESTFLIGHT_INTERNAL_GROUP_ID STATION_MOBILE_DEFAULT_ENDPOINT VITE_NATIVE_APP_UPDATE_CHANNEL',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'plugin-telemetry-undeclared-event',
+    test: 'src-server/routes/operations/__tests__/telemetry-events.routes.test.ts',
+    failure:
+      'real signed install and kernel route reject undeclared events, props and values before admitting a batch',
+    files: [
+      {
+        path: 'src-server/services/plugin-telemetry-service.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'const parsed = events.map((event) =>',
+            'const parsed = events.filter(event => Object.hasOwn(binding.declaration.events, event.event)).map((event) =>',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'plugin-telemetry-unsigned-declaration',
+    test: 'src-server/routes/operations/__tests__/telemetry-events.routes.test.ts',
+    failure: 'installation rejects telemetry from unqualified registry',
+    files: [
+      {
+        path: 'src-server/services/plugins/plugin-telemetry-admission.ts',
+        change: (source) =>
+          exactReplace(source, '!receipt?.signer ||', '!receipt ||'),
+      },
+    ],
+  },
+  {
+    id: 'plugin-telemetry-policy-raises',
+    test: 'src-server/routes/operations/__tests__/telemetry-events.routes.test.ts',
+    failure:
+      'publisher policy only lowers defaults, and a user choice wins downward through status and DNT',
+    files: [
+      {
+        path: 'packages/contracts/src/product-telemetry.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'rank[policy] < rank[tier]',
+            'rank[policy] > rank[tier]',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'plugin-telemetry-no-notice',
+    test: 'src-server/routes/operations/__tests__/telemetry-events.routes.test.ts',
+    failure:
+      'Lite needs its own notice and sends only bucketed yesterday counts once',
+    files: [
+      {
+        path: 'src-server/services/plugin-telemetry-service.ts',
+        change: (source) =>
+          exactReplace(source, '!currentNotice(binding, state)', 'false'),
+      },
+    ],
+  },
+  {
+    id: 'plugin-telemetry-uninstall-queued-send',
+    test: 'src-server/routes/operations/__tests__/telemetry-events.routes.test.ts',
+    failure:
+      'uninstall aborts an already admitted Full send still waiting to reach the receiver',
+    files: [
+      {
+        path: 'src-server/services/plugin-telemetry-service.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'if (owner === publisher) request.abort();',
+            'if (owner === publisher) continue;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'worktree-diff-untracked-inclusion',
+    test: 'src-server/services/projects/__tests__/workspace-diff-service.test.ts',
+    failure:
+      'literal quoted, newline, Unicode and shell-looking names parse as distinct additions, including no final newline',
+    files: [
+      {
+        path: 'src-server/services/projects/workspace-diff-service.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '  return patch;',
+            "  return await git(['diff', '--no-color'], MAX_PATCH_BYTES);",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'worktree-diff-hardlink-refusal',
+    test: 'src-server/services/projects/__tests__/workspace-diff-service.test.ts',
+    failure: 'refuses hardlink entries rather than reporting no changes',
+    files: [
+      {
+        path: 'src-server/services/projects/workspace-diff-service.ts',
+        change: (source) => exactReplace(source, ' || before.nlink !== 1', ''),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-decline-pending-full',
+    test: 'src-ui/src/components/__tests__/TelemetryConsent.routes.test.tsx',
+    failure:
+      'declining pending Full through the real dialog and routes persists Off before acknowledgement and never sends',
+    files: [
+      {
+        path: 'src-ui/src/components/UsageTelemetryDisclosure.tsx',
+        change: (source) =>
+          exactReplace(
+            source,
+            '    updateProtected.mutate(\n',
+            '    if (!next) { acknowledgeProtected.mutate(data.inventoryRevision); return; }\n    updateProtected.mutate(\n',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-tier-only-authority',
+    test: 'src-server/routes/system/__tests__/config.routes.test.ts',
+    failure: 'tier-only raises require consent authority',
+    files: [
+      {
+        path: 'src-server/routes/system/config.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "const writesTelemetryChoice = ['telemetryTier', 'telemetryEnabled'].some(",
+            'const writesTelemetryChoice = [].some(',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-standard-withdrawal',
+    test: 'src-server/routes/system/__tests__/config.routes.test.ts',
+    failure: 'a standard paired device can lower Full',
+    files: [
+      {
+        path: 'src-server/routes/system/config.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '          if (writesTelemetryChoice) {',
+            "          if (writesTelemetryChoice && !mayRaiseTelemetry) throw new Error('TELEMETRY_CHOICE_NOT_GRANTED');\n          if (writesTelemetryChoice) {",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-daily-duplicate',
+    test: 'src-server/services/__tests__/telemetry-publishers.test.ts',
+    failure:
+      'persists one daily attempt across simultaneous flushes and a real service restart',
+    files: [
+      {
+        path: 'src-server/services/telemetry-publisher-service.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "        if ((state.attempted[publisher] ?? '') >= today) continue;",
+            '',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-empty-author',
+    test: 'src-server/services/__tests__/telemetry-publishers.test.ts',
+    failure:
+      'keeps author inert with an empty build constant even when runtime environment supplies one',
+    files: [
+      {
+        path: 'src-server/services/telemetry-publisher-service.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '? this.options.configuration().authorEndpoint',
+            '? this.options.configuration().authorEndpoint || this.options.operatorEndpoint()',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-full-at-lite',
+    test: 'src-server/services/__tests__/telemetry-publishers.test.ts',
+    failure:
+      'never sends a Full event at Lite; Full needs its own receipt and uses the monthly ID',
+    files: [
+      {
+        path: 'src-server/services/usage-telemetry-service.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "this.resolvedConfiguration().publishers[this.publisher].tier === 'full'",
+            "this.resolvedConfiguration().publishers[this.publisher].tier !== 'off'",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-outbox-unbounded',
+    test: 'src-server/services/__tests__/telemetry-publishers.test.ts',
+    failure:
+      'outbox evicts oldest entries at both the 30-day and actual serialized 5 MiB bounds',
+    files: [
+      {
+        path: 'src-server/services/telemetry-local-state.ts',
+        change: (source) =>
+          exactReplace(
+            exactReplace(
+              source,
+              'while (bytes > TELEMETRY_OUTBOX_LIMITS.maxBytes && entries.length)',
+              'while (false && entries.length)',
+            ),
+            'maxBytes: TELEMETRY_OUTBOX_LIMITS.maxBytes, label:',
+            'maxBytes: TELEMETRY_OUTBOX_LIMITS.maxBytes * 2, label:',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'telemetry-muted-headless-notice',
+    test: 'src-server/services/__tests__/telemetry-publishers.test.ts',
+    failure:
+      'notice is recorded once per inventory and desktop/web must record the shown revision before Lite',
+    files: [
+      {
+        path: 'src-server/utils/logger.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '  process.stderr.write(',
+            "  if (process.env.STATION_STDOUT_LOGS !== '0') process.stderr.write(",
+          ),
+      },
+    ],
+  },
+  {
     id: 'telemetry-hosted-first-write',
     test: 'src-server/__tests__/telemetry.test.ts',
     failure:
@@ -548,6 +1575,537 @@ export const MUTATIONS = [
             source,
             'engineId: matrix.engineId',
             'engineId: undefined',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-owned-shell-fallback',
+    test: 'src-server/adapters/__tests__/node-pty-adapter.test.ts',
+    failure: 'kills the owned shell when the census refuses tty',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "        if (!this.exited) this.pty.kill('SIGKILL');",
+            '',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-remote-admission-guard',
+    test: 'src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts',
+    failure:
+      'production terminal gateway refuses paired remote devices until admission prerequisites exist',
+    files: [
+      {
+        path: 'src-server/runtime/routes/runtime-routes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'isOperatorInPersonNotAgent(request) && isRequestPrincipalCurrent(request);',
+            'isRequestPrincipalCurrent(request);',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-linux-tty-acceptance',
+    test: 'src-server/adapters/__tests__/pty-process-groups.test.ts',
+    failure: 'accepts concrete tty pts/3',
+    files: [
+      {
+        path: 'src-server/adapters/pty-process-groups.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '!/^(?:ttys[0-9]+|pts\\/[0-9]+)$/.test(currentTty) ||',
+            '!/^ttys[0-9]+$/.test(currentTty) ||',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-macos-tty-acceptance',
+    test: 'src-server/adapters/__tests__/pty-process-groups.test.ts',
+    failure: 'accepts concrete tty ttys003',
+    files: [
+      {
+        path: 'src-server/adapters/pty-process-groups.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '!/^(?:ttys[0-9]+|pts\\/[0-9]+)$/.test(currentTty) ||',
+            '!/^pts\\/[0-9]+$/.test(currentTty) ||',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-paused-backoff-cap',
+    test: 'src-server/adapters/__tests__/node-pty-adapter.test.ts',
+    failure: 'paused observation retries cap backoff at one second',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'delay = Math.min(delay * 2, 1000);',
+            'delay *= 2;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-paused-stderr',
+    test: 'src-server/adapters/__tests__/node-pty-adapter.test.ts',
+    failure:
+      'exit 1 with stderr stays paused instead of declaring the child gone',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '!stdout.trim() &&\n            !stderr.trim();',
+            '!stdout.trim();',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-no-tty-census',
+    test: 'src-server/adapters/__tests__/pty-process-groups.test.ts',
+    failure: 'refuses a census with non-device tty',
+    files: [
+      {
+        path: 'src-server/adapters/pty-process-groups.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '!/^(?:ttys[0-9]+|pts\\/[0-9]+)$/.test(currentTty) ||',
+            'false ||',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-peer-pending-cap',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure:
+      'pending sockets do not consume authenticated capacity and concurrent auth cannot exceed it',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-gateway.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '(this.pendingPeers.get(peer) ?? 0) >= 8 ||',
+            'false ||',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-auth-timeout-close',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure:
+      'auth timeout terminates a peer that ignores the close handshake promptly',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-gateway.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'const terminate = setTimeout(() => ws.terminate(), 100);',
+            'const terminate = setTimeout(() => ws.terminate(), 30000);',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-http-incomplete-page',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure: 'HTTP replay refuses an incomplete page below the byte bound',
+    files: [
+      {
+        path: 'src-server/routes/projects/terminal-session-routes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '(result.journal.records.at(-1)?.seq ?? fromSeq) <\n          result.journal.lastSeq',
+            'false',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-http-empty-reset',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure: 'HTTP replay returns an empty retention reset instead of 413',
+    files: [
+      {
+        path: 'src-server/routes/projects/terminal-session-routes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '(!result.journal.reset || result.journal.records.length > 0)',
+            'true',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-data-backlog-pause',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure: 'aggregate channel credit fits the socket output backlog guard',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-channel-connection.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'value instanceof Uint8Array &&\n      this.ws.bufferedAmount > 32 * TERMINAL_WINDOW_BYTES',
+            'false',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-orphan-tty',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure: 'close accounts for a reparented tty job on a real PTY',
+    files: [
+      {
+        path: 'src-server/adapters/pty-process-groups.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '.filter((row) => row.tty === tty)',
+            '.filter(() => false)',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-group-rescan',
+    test: 'src-server/adapters/__tests__/pty-process-groups.test.ts',
+    failure:
+      'rescans after freezing and kills a newly discovered reparented tty group',
+    files: [
+      {
+        path: 'src-server/adapters/pty-process-groups.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '      if (added) continue;',
+            '      void added;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-group-thaw-custody',
+    test: 'src-server/adapters/__tests__/pty-process-groups.test.ts',
+    failure:
+      'never continues a frozen group that has left the owned terminal census',
+    files: [
+      {
+        path: 'src-server/adapters/pty-process-groups.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '        if (\n          !remaining.has(group) ||\n          ![...members].some((pid) => rows.get(pid)?.group === group)\n        )\n          continue;',
+            '        if (false) continue;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-production-http-auth',
+    test: 'src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts',
+    failure: 'production terminal gateway authenticates through HTTP admission',
+    files: [
+      {
+        path: 'src-server/runtime/routes/runtime-routes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '          const response = await context.app.fetch(request, { incoming });\n          return response.status === 204 && authorizeTerminalRequest(request)\n            ? request\n            : undefined;',
+            '          return request;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-production-operation-scope',
+    test: 'src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts',
+    failure:
+      'production terminal gateway consumes the per-operation scope decision',
+    files: [
+      {
+        path: 'src-server/runtime/routes/runtime-routes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "            terminalScopeAllows(\n              context.environmentSecurityService.resolveGrantedScope(\n                principal.credential,\n              ) ?? '',\n              operation,\n            )",
+            '            true',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-quiet-revocation',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure:
+      'quiet shell revocation is published without client input or PTY output',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-channel-connection.ts',
+        change: (source) =>
+          exactReplace(source, '    }, 1000);', '    }, 1000000);'),
+      },
+    ],
+  },
+  {
+    id: 'terminal-pending-cap',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure:
+      'pending authentication has a separate global budget and releases a slot on success',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-gateway.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '        this.pendingSockets.size >= 32 ||',
+            '        false ||',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-authenticated-cap',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure:
+      'pending sockets do not consume authenticated capacity and concurrent auth cannot exceed it',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-gateway.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '        this.connections.size >= 64 ||',
+            '        this.wss.clients.size >= 64 ||',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-auth-timeout-throttle',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure: 'auth timeouts count toward peer failure throttling',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-gateway.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '    const timeout = setTimeout(() => {\n      this.limiter.recordFailure(peer);',
+            '    const timeout = setTimeout(() => {',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-http-sanitizer',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure:
+      'HTTP replay filters active links while preserving safe links and text',
+    files: [
+      {
+        path: 'src-server/routes/projects/terminal-session-routes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '    const filter = new TerminalOutputSanitizer(TERMINAL_LINK_PROTOCOLS);',
+            '    const filter = new TerminalOutputSanitizer();',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-http-read-bound',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure:
+      'HTTP replay refuses an over-bound journal instead of silently truncating it',
+    files: [
+      {
+        path: 'src-server/routes/projects/terminal-session-routes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '    if (\n      bytes > 64 * 1024 ||\n      ((!result.journal.reset || result.journal.records.length > 0) &&\n        (result.journal.records.at(-1)?.seq ?? fromSeq) <\n          result.journal.lastSeq)\n    )',
+            '    if (false)',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-aggregate-credit-buffer',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure: 'aggregate channel credit fits the socket output backlog guard',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-channel-connection.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "    // Wire headers are outside channel credit. Pause data on socket backlog;\n    // the heartbeat retries the same journal sequence after the socket drains.\n    if (\n      value instanceof Uint8Array &&\n      this.ws.bufferedAmount > 32 * TERMINAL_WINDOW_BYTES\n    )\n      return false;\n    if (this.ws.bufferedAmount > 32 * TERMINAL_WINDOW_BYTES + 256 * 1024) {\n      this.ws.close(4429, 'terminal_output_capacity');\n      return false;\n    }",
+            "    if (this.ws.bufferedAmount > 256 * 1024) {\n      this.ws.close(4429, 'terminal_output_capacity');\n      return false;\n    }",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-socket-personal-token-rule',
+    test: 'src-server/security/__tests__/pairing-route-scopes.test.ts',
+    failure:
+      'terminal socket HTTP classification refuses personal tokens explicitly',
+    files: [
+      {
+        path: 'src-server/security/pairing-route-scopes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "    prefix: '/api/terminal/socket',\n    exact: true,\n    scope: PAIRING_SCOPE_TERMINAL_OPERATE,\n    origin: 'explicit',\n    personalTokens: 'refused',",
+            "    prefix: '/api/terminal/socket',\n    exact: true,\n    scope: PAIRING_SCOPE_TERMINAL_OPERATE,\n    origin: 'explicit',",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-socket-credential-kind',
+    test: 'src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts',
+    failure:
+      'production terminal socket refuses account credentials before HTTP forwarding',
+    files: [
+      {
+        path: 'src-server/runtime/routes/runtime-routes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '          if (\n            !(await credentialAuthorizedForScope(\n              context.environmentSecurityService,\n              PAIRING_SCOPE_TERMINAL_OPERATE,\n              credential,\n            ))\n          )\n            return undefined;',
+            '',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-global-admission',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure:
+      'global quotas evict ended and failed records without evicting a live session',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-sessions.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'await this.makeRoom(1, principal);',
+            'void principal;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-global-disk-retention',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure:
+      'aggregate journal payload and disk retention stay bounded across recreation',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-sessions.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'if (journal) await journal.discard();',
+            'if (journal) await journal.flush();',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-quota-project-authority',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure:
+      'quota eviction cannot delete an ended session outside the caller Project grant',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-sessions.ts',
+        change: (source) =>
+          exactReplace(
+            exactReplace(
+              source,
+              "        if (\n          principal !== undefined &&\n          !(await this.authority.authorize(principal, record, 'operate'))\n        )\n          continue;\n",
+              '',
+            ),
+            "      if (principal !== undefined)\n        await this.check(principal, victim, 'operate');\n",
+            '',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-owned-process-groups',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure: 'close terminates a nohup child process group',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'await terminatePtyProcessGroups(this.pid, () => !this.exited);',
+            "this.pty.kill('SIGKILL');",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-hyperlink-schemes',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure:
+      'transport replay and live output admit only http and https hyperlink schemes',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-output-sanitizer.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'return this.hyperlinkProtocols.includes(new URL(uri).protocol);',
+            'return true;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-observer-reports',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure:
+      'observer mouse and focus reports are discarded without typing or losing input order',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-channel-connection.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'if (!canOperate && OBSERVER_REPORTS.test(work.data)) {',
+            'if (false) {',
           ),
       },
     ],

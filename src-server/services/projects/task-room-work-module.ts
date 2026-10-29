@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { isTaskRoomAttachments } from '@kontourai/station-contracts/project-task-room';
 import {
   TASK_ROOM_CONTEXT_VERSION,
   TASK_ROOM_WORK_VERSION,
@@ -21,14 +22,21 @@ const MAX_BYTES = 4 * 1024 * 1024;
 const MAX_REQUESTS = 256;
 type StoredRecord = Omit<TaskRoomWorkRecord, 'requesterId'> & {
   ownerId: string;
+  replyAdmissions?: {
+    operationId: string;
+    requesterId: string;
+    clientTurnId: string;
+  }[];
 };
 const CONTEXT_STORE_VERSION = 'station.task-room-work-store/v2' as const;
 const EXECUTION_STORE_VERSION = 'station.task-room-work-store/v3' as const;
+const ATTACHMENT_STORE_VERSION = 'station.task-room-work-store/v4' as const;
 type Store = {
   version:
     | typeof TASK_ROOM_WORK_VERSION
     | typeof CONTEXT_STORE_VERSION
-    | typeof EXECUTION_STORE_VERSION;
+    | typeof EXECUTION_STORE_VERSION
+    | typeof ATTACHMENT_STORE_VERSION;
   records: StoredRecord[];
 };
 export type TaskRoomWorkScope = {
@@ -39,6 +47,9 @@ export type TaskRoomWorkScope = {
   requesterId: string;
 };
 export type TaskRoomInvocationAdmission = ReceiverExecutionEffectAdmission & {
+  readonly expectedSessionId?: string;
+  readonly clientTurnId?: string;
+  readonly releasePublication?: () => void;
   readonly roomBinding: { readonly projectId: string; readonly taskId: string };
 };
 type Scope = TaskRoomWorkScope;
@@ -59,7 +70,9 @@ function validRecord(value: unknown): value is StoredRecord {
   return (
     Object.keys(r).length ===
       11 +
+        Number(r.attachments !== undefined) +
         Number(r.context !== undefined) +
+        Number(r.replyAdmissions !== undefined) +
         Number(r.executionAgentId !== undefined) +
         Number(r.modelId !== undefined) +
         Number(r.modelOptionsDigest !== undefined) +
@@ -73,6 +86,20 @@ function validRecord(value: unknown): value is StoredRecord {
     (r.modelOptionsDigest === undefined ||
       (typeof r.modelOptionsDigest === 'string' &&
         /^[0-9a-f]{64}$/.test(r.modelOptionsDigest))) &&
+    (r.replyAdmissions === undefined ||
+      (Array.isArray(r.replyAdmissions) &&
+        r.replyAdmissions.length <= MAX_REQUESTS &&
+        r.replyAdmissions.every((reply: unknown) => {
+          if (!reply || typeof reply !== 'object') return false;
+          const value = reply as Record<string, unknown>;
+          return (
+            Object.keys(value).length === 3 &&
+            validText(value.operationId, 160) &&
+            validText(value.requesterId, 512) &&
+            typeof value.clientTurnId === 'string' &&
+            /^room-reply:[0-9a-f-]{36}$/.test(value.clientTurnId)
+          );
+        }))) &&
     validText(r.taskId, 160) &&
     validText(r.projectId, 160) &&
     validText(r.taskCreatedAt, 40) &&
@@ -86,6 +113,7 @@ function validRecord(value: unknown): value is StoredRecord {
     ['operationId', 'ownerId', 'agentId'].every((key) =>
       validText(r[key], 160),
     ) &&
+    (r.attachments === undefined || isTaskRoomAttachments(r.attachments)) &&
     validText(r.prompt, 12_000) &&
     typeof r.sessionId === 'string' &&
     /^task:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
@@ -108,11 +136,15 @@ function checkedStore(value: unknown): Store {
     Object.keys(store).length !== 2 ||
     (store.version !== TASK_ROOM_WORK_VERSION &&
       store.version !== CONTEXT_STORE_VERSION &&
-      store.version !== EXECUTION_STORE_VERSION) ||
+      store.version !== EXECUTION_STORE_VERSION &&
+      store.version !== ATTACHMENT_STORE_VERSION) ||
     !Array.isArray(store.records) ||
     store.records.length > MAX_REQUESTS ||
     !store.records.every(validRecord) ||
-    (store.version !== EXECUTION_STORE_VERSION &&
+    (store.version !== ATTACHMENT_STORE_VERSION &&
+      store.records.some((record) => record.attachments !== undefined)) ||
+    (store.version !== ATTACHMENT_STORE_VERSION &&
+      store.version !== EXECUTION_STORE_VERSION &&
       store.records.some(
         (record) =>
           record.executionAgentId !== undefined ||
@@ -144,7 +176,7 @@ function checkedStore(value: unknown): Store {
 }
 
 function publishedRecord(record: StoredRecord): TaskRoomWorkRecord {
-  const { ownerId, ...view } = record;
+  const { ownerId, replyAdmissions: _replyAdmissions, ...view } = record;
   return { ...view, requesterId: requesterDisplayId(record.taskId, ownerId) };
 }
 
@@ -195,6 +227,80 @@ export class TaskRoomWorkModule {
         );
       },
     );
+  }
+
+  /** Private server admissions; never included in the browser request journal. */
+  async admitReply(input: {
+    taskId: string;
+    sessionId: string;
+    operationId: string;
+    scope: Scope;
+  }): Promise<string> {
+    let clientTurnId: string | undefined;
+    await mutateJsonFile<Store>(
+      this.file,
+      { version: TASK_ROOM_WORK_VERSION, records: [] },
+      (raw) => {
+        const store = checkedStore(raw);
+        const record = store.records.find(
+          (record) =>
+            record.sessionId === input.sessionId &&
+            record.taskId === input.taskId &&
+            record.projectId === input.scope.projectId &&
+            record.taskCreatedAt === input.scope.taskCreatedAt &&
+            record.state !== 'refused',
+        );
+        if (!record)
+          throw new TaskRoomWorkAuthorityChangedError(
+            'Room reply request changed.',
+          );
+        record.replyAdmissions ??= [];
+        const admissions = record.replyAdmissions;
+        const existing = admissions.find(
+          (entry) =>
+            entry.operationId === input.operationId &&
+            entry.requesterId === input.scope.requesterId,
+        );
+        if (existing) clientTurnId = existing.clientTurnId;
+        else {
+          if (admissions.length >= MAX_REQUESTS)
+            throw new TaskRoomWorkUnavailableError(
+              'Room reply admission limit reached.',
+            );
+          clientTurnId = `room-reply:${randomUUID()}`;
+          admissions.push({
+            operationId: input.operationId,
+            requesterId: input.scope.requesterId,
+            clientTurnId,
+          });
+        }
+        return store;
+      },
+      { maxBytes: MAX_BYTES, label: 'Agent request history' },
+    );
+    if (!clientTurnId)
+      throw new TaskRoomWorkUnavailableError(
+        'Room reply admission is unavailable.',
+      );
+    return clientTurnId;
+  }
+
+  async readReplyAdmissions(sessionId: string): Promise<readonly string[]> {
+    let bytes: Buffer;
+    try {
+      bytes = await readFile(this.file);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw error;
+    }
+    if (bytes.length > MAX_BYTES)
+      throw new TaskRoomWorkUnavailableError(
+        'Agent request history exceeds its limit.',
+      );
+    const record = checkedStore(
+      JSON.parse(bytes.toString('utf8')),
+    ).records.find((record) => record.sessionId === sessionId);
+    return record?.replyAdmissions?.map((entry) => entry.clientTurnId) ?? [];
   }
 
   async list(
@@ -250,11 +356,15 @@ export class TaskRoomWorkModule {
       context?: TaskRoomContextSnapshot,
     ) => Promise<{ sessionId: string }>,
     resolveContext?: () => Promise<TaskRoomContextSnapshot | undefined>,
+    beforeReserve?: () => Promise<void>,
   ): Promise<TaskRoomWorkOutcome> {
+    input = structuredClone(input);
     if (
       ![taskId, requesterId, input.operationId, input.agentId].every((v) =>
         validText(v, 160),
       ) ||
+      (input.attachments !== undefined &&
+        !isTaskRoomAttachments(input.attachments)) ||
       !validText(input.prompt, 12_000) ||
       (input.executionAgentId !== undefined &&
         !validText(input.executionAgentId, 64)) ||
@@ -306,7 +416,10 @@ export class TaskRoomWorkModule {
             record.ownerId === requesterId &&
             record.operationId === input.operationId,
         );
-        if (!existing && input.context) captured = await resolveContext?.();
+        if (!existing) {
+          if (input.context) captured = await resolveContext?.();
+          await beforeReserve?.();
+        }
         return store;
       },
       (store) => {
@@ -327,6 +440,19 @@ export class TaskRoomWorkModule {
               input.expectedDefinitionFingerprint ||
             existing.modelId !== modelId ||
             existing.modelOptionsDigest !== modelOptionsDigest ||
+            (existing.attachments ?? []).length !==
+              (input.attachments ?? []).length ||
+            (existing.attachments ?? []).some((attachment, index) => {
+              const other = input.attachments?.[index];
+              return (
+                !other ||
+                attachment.id !== other.id ||
+                attachment.kind !== other.kind ||
+                attachment.name !== other.name ||
+                attachment.mimeType !== other.mimeType ||
+                attachment.size !== other.size
+              );
+            }) ||
             existing.prompt !== input.prompt ||
             existing.context?.digest !== input.context?.digest
               ? { kind: 'refused', reason: 'conflict' }
@@ -374,6 +500,9 @@ export class TaskRoomWorkModule {
           ...(modelId ? { modelId } : {}),
           ...(modelOptionsDigest ? { modelOptionsDigest } : {}),
           prompt: input.prompt,
+          ...(input.attachments?.length
+            ? { attachments: structuredClone(input.attachments) }
+            : {}),
           sessionId: `task:${randomUUID()}`,
           createdAt: new Date().toISOString(),
           state: 'starting',
@@ -386,14 +515,17 @@ export class TaskRoomWorkModule {
         };
         return {
           version:
-            input.executionAgentId !== undefined ||
-            modelId !== undefined ||
-            modelOptionsDigest !== undefined ||
-            checked.version === EXECUTION_STORE_VERSION
-              ? EXECUTION_STORE_VERSION
-              : captured
-                ? CONTEXT_STORE_VERSION
-                : checked.version,
+            input.attachments?.length ||
+            checked.version === ATTACHMENT_STORE_VERSION
+              ? ATTACHMENT_STORE_VERSION
+              : input.executionAgentId !== undefined ||
+                  modelId !== undefined ||
+                  modelOptionsDigest !== undefined ||
+                  checked.version === EXECUTION_STORE_VERSION
+                ? EXECUTION_STORE_VERSION
+                : captured
+                  ? CONTEXT_STORE_VERSION
+                  : checked.version,
           records: [...checked.records, record],
         };
       },
@@ -482,6 +614,8 @@ export class TaskRoomWorkModule {
             record.expectedDefinitionFingerprint ||
           previous.modelId !== record.modelId ||
           previous.modelOptionsDigest !== record.modelOptionsDigest ||
+          JSON.stringify(previous.attachments ?? []) !==
+            JSON.stringify(record.attachments ?? []) ||
           previous.prompt !== record.prompt ||
           previous.context?.digest !== record.context?.digest ||
           previous.createdAt !== record.createdAt

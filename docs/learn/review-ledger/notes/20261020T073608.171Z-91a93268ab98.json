@@ -1,0 +1,7 @@
+{
+  "revision": "affa8b40f6fdb895f9971c27fd122e50f14f6b57",
+
+  "notes": [
+    {"path":"docs/patterns/backend.md","note":"Reviewed against the responsive-action-surfaces MessageBubble note, which now says the Basis chip is the footer's one shrinkable control (ellipsized Surface label, bar capped at the bubble width, phone timestamp kept on one line) with a Chromium fit test at 280/320/360px docks and 320/375px phones. Touch floors and the action cap are unchanged; no claim in this document is affected.","inputs":["docs/patterns/backend.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

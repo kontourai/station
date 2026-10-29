@@ -1,0 +1,21 @@
+{
+  "revision": "9d5009a4dcf6b5ec38aa24dff72fa883f613c022",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"ChatDock.tsx changed only by formatting (an import list collapsed onto one line); no behaviour this document states moved. No prose change.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"ChatDock.tsx changed only by formatting (an import list collapsed onto one line); no behaviour this document states moved. No prose change.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"ChatDock.tsx changed only by formatting (an import list collapsed onto one line); no behaviour this document states moved. No prose change.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"ChatDock.tsx changed only by formatting (an import list collapsed onto one line); no behaviour this document states moved. No prose change.","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"ChatDock.tsx changed only by formatting (an import list collapsed onto one line); no behaviour this document states moved. No prose change.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"ChatDock.tsx changed only by formatting (an import list collapsed onto one line); no behaviour this document states moved. No prose change.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"ChatDock.tsx changed only by formatting (an import list collapsed onto one line); no behaviour this document states moved. No prose change.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"ChatDock.tsx changed only by formatting (an import list collapsed onto one line); no behaviour this document states moved. No prose change.","inputs":["docs/user/personal-boards.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

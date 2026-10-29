@@ -12,18 +12,20 @@ const SOURCE_ROOT = path.resolve(import.meta.dirname, '..');
  */
 const ALLOWED_RAW_LOCAL_STORAGE_KEYS = [
   'debug', // Development-only logger bootstrap flag, not a product preference.
+  'station.transcriptTrace.overlay', // Opt-in transcript layout tracer's debug overlay toggle (only read while the `app:transcript-layout` debug namespace is on); developer tooling, not a product preference.
   'lastProject', // Navigation restore pointer to the last visited project.
   'lastProjectLayout', // Navigation restore pointer to the last visited layout.
   'recentAgents', // Derived MRU used for picker ordering, not a setting.
   'recentLayouts', // Derived MRU used for picker ordering, not a setting.
+  'station.switcher.recent', // Derived MRU of saved Station ids for switcher ordering (bounded to 20), not a setting.
   'station-device-settings-v1', // The versioned device-settings envelope itself.
   'station.activity.snoozed', // Per-work-item snooze state, not a setting.
   'station.activity.terminalSince', // Terminal activity cursor.
   'station-attached-session-continuations-v1', // Exact Attached Session continuation evidence.
   'station-browser-relay-account-scope-event-v1', // Transient cross-tab relay account-scope signal; written and removed, never a setting or credential.
+  'station-outbound-unlocked-renderers', // Cross-window runtime signal: boot ids of renderers whose outbox liveness lock could not be taken, so other windows read them as unknown rather than gone (lib/outboundQueueLease.ts). Bounded to 32 ids; never a setting or credential.
   'station.background-tasks.sections', // Ephemeral panel disclosure state.
   'station.agents-pane.scope', // Ephemeral Agents pane scope (this conversation / all), view state not a setting.
-  'station.banners.dismissed', // Per-occurrence banner dismissals, not a setting.
   'station.chatDock.snap', // Ephemeral dock geometry/snap state.
   'station.dockFirstRunSeen', // One-time affordance marker.
   // archive#3122's `station.home.variant` used to sit here. It was written by
@@ -35,12 +37,16 @@ const ALLOWED_RAW_LOCAL_STORAGE_KEYS = [
   'station.newChat.lastModelByBinding', // Derived per-agent last-choice memory.
   'station.newChat.lastAgentByContext', // Derived authority-and-project last-choice memory; not a device setting.
   'station.usage-telemetry-disclosure.snoozed', // Revision-bound disclosure deferral, not acknowledgement or a preference.
+  'station.usage-telemetry-disclosure.dnt-decisions', // Revision-bound DNT decision reminder, not acknowledgement or a preference.
   'station-starter-work-operations-v1', // Exact Starter Work retry-operation evidence.
   'station-layout-tabs', // Per-layout navigation memory.
   'station:chat-drafts:v1', // Draft message content, not a setting.
+  'station:pane-relations:v1', // Pane relationships side record (docs/design/pane-relationships.md): which pane opened which related pane, its target and Keep. Navigation/display state beside the arrangement, written only under an exclusive Web Lock; never a setting, a grant or a credential.
   'theme', // Read-only first-paint compatibility path; migrated and deleted by the envelope.
   'station-accent-color', // Read-only first-paint compatibility path; migrated and deleted by the envelope.
   'station-branding-theme-v1', // Validated branding cache for first paint; re-validated on read. Server data, not a device setting.
+  'station-appearance-v1', // The mode and color theme this device last rendered and whether the account supplied them, so startup-theme.js can paint a signed-in person's appearance before first paint. A render cache, not a setting: nothing edits it and the account's answer replaces it (lib/appearance-cache.ts).
+  'station-startup-mark', // The channel mark the native host last reported, so startup-theme.js can paint the splash before the report arrives. Host identity, not a setting.
 ] as const;
 
 // Known accepted limitation ( 2, accepted-with-rationale): this is
@@ -50,9 +56,11 @@ const ALLOWED_RAW_LOCAL_STORAGE_KEYS = [
 // their storage keys internally, so the allowlist cannot be laundered through
 // a re-exported raw-key writer.
 const ALLOWED_COMPUTED_KEY_FILES = new Set([
+  'lib/project-onboarding-recovery.ts', // Exact Project creation/import recovery pointers derive keys from Station authority and Project/request identities; no public raw-key writer.
   'components/chat-dock/conversationContextBoundaryUiState.ts', // Boundary UI state is scoped by conversation id; `key` is module-private and every export takes the semantic id, never a raw key.
   'components/SplitPaneLayout.tsx', // Pane geometry is scoped by the caller-provided pane id.
   'components/split-pane-metrics.ts', // Shared pane restoration reads the same pane-id-scoped geometry key.
+  'contexts/ToastContext.tsx', // Recent messages use a module-private prefix plus Station scope; only bounded caller-approved recall text persists, never actions or raw diagnostics.
   'core/remotePluginBundleConsent.ts', // Consent is scoped by the normalized remote plugin origin.
   'platform/native/deliveryFeed.ts', // The alert cursor is scoped by the feed's scope key; the prefix is module-private and only the default deps read or write it.
 ]);

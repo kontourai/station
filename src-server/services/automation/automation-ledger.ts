@@ -1,4 +1,6 @@
 /**
+ * UNWIRED(#3439): no runtime composition yet; Automation dispatch will call this.
+ *
  * AutomationLedger: durable delivery dedupe, episodes and action claims for
  * Station Automations (epic kontourai/station#3439).
  *

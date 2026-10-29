@@ -28,6 +28,7 @@ interface PairedDeviceListProps {
   busyIds: ReadonlySet<string>;
   /** Rendered in place of the list when the host has no devices at all. */
   emptyMessage?: string;
+  readOnly?: boolean;
 }
 
 function DeviceRow({
@@ -195,6 +196,7 @@ export function PairedDeviceList({
   onRemoveRevoked,
   onChangeScope,
   busyIds,
+  readOnly = false,
   emptyMessage = 'No devices are paired with this Station yet.',
 }: PairedDeviceListProps) {
   const { active, revoked } = partitionPairedDevices(devices);
@@ -225,7 +227,7 @@ export function PairedDeviceList({
               onRevoke={onRevoke}
               onRemoveRevoked={onRemoveRevoked}
               onChangeScope={onChangeScope}
-              busy={busyIds.has(device.id)}
+              busy={readOnly || busyIds.has(device.id)}
             />
           ))
         )}
@@ -242,7 +244,7 @@ export function PairedDeviceList({
               onRevoke={onRevoke}
               onRemoveRevoked={onRemoveRevoked}
               onChangeScope={onChangeScope}
-              busy={busyIds.has(device.id)}
+              busy={readOnly || busyIds.has(device.id)}
             />
           ))}
         </section>

@@ -1,8 +1,8 @@
-# Delegation attempt claims (receiver request-claim slice)
+# Delegation attempt claims
 
-Opt-in durable duplicate suppression for portable delegation creates. First
-slice only: the receiver claim + lookup foundation. Not the sender ledger,
-fences, cancel, UI, or retention protocol.
+Opt-in durable duplicate suppression for portable delegation creates. Only the
+receiver side exists: the request claim and its lookup. There is no sender
+ledger, fence, cancel, UI or retention protocol yet.
 
 ## Opt-in field
 
@@ -61,7 +61,7 @@ conflicts; unknown capacity refuses.
 
 Every accepted key — including terminal tombstones — is retained up to a
 finite bound (1024 records); the next NEW claim at capacity is refused,
-never evicted. Nothing in this slice replays, resends, or expires a claim:
+never evicted. Nothing replays, resends, or expires a claim:
 `none`/`preparing`/`unresolved` never authorize a second POST, and a
 production retention/expiry protocol with sender-visible semantics is still
 required before capacity pressure becomes routine.

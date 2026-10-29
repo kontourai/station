@@ -1,9 +1,17 @@
 import type { DevicePresentation } from '@kontourai/station-contracts/system-status';
 import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
+import { lazy, Suspense, useState } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { openExternalLink } from '../../platform/openExternalLink';
 import { type AgentFixRoute, AgentReadinessCell } from '../AgentReadinessCell';
 import { Button } from '../Button';
+import { SkeletonBlock } from '../state';
+
+const EnginePicker = lazy(() =>
+  import('../EnginePicker').then((module) => ({
+    default: module.EnginePicker,
+  })),
+);
 
 /** Setup guidance reads server prerequisites; installation and sign-in remain explicit actions. */
 export function ChatSetupHelper({
@@ -25,6 +33,7 @@ export function ChatSetupHelper({
   onModels: () => void;
   onCheck: () => void;
 }) {
+  const [choosingStationEngine, setChoosingStationEngine] = useState(false);
   return (
     <section className="chat-start__setup" aria-label="Set up an AI connection">
       <div className="chat-start__recent-heading">
@@ -53,8 +62,17 @@ export function ChatSetupHelper({
               agentName={agent.name}
               devicePresentation={devicePresentation}
               fixDisabled={busy}
+              part={agent.slug === 'station' ? 'status' : 'both'}
               onFix={(route) => onRepair(agent, route)}
             />
+            {agent.slug === 'station' && (
+              <Button
+                disabled={busy}
+                onClick={() => setChoosingStationEngine(true)}
+              >
+                Choose AI for Station
+              </Button>
+            )}
             {prerequisites.map((item) => (
               <details key={item.id}>
                 <summary>{item.name}</summary>
@@ -93,6 +111,23 @@ export function ChatSetupHelper({
           </div>
         );
       })}
+      {choosingStationEngine && (
+        <Suspense
+          fallback={
+            <SkeletonBlock count={1} label="Opening assistant choices" />
+          }
+        >
+          <EnginePicker
+            title="Choose what powers the Station assistant"
+            description="Choose an AI connection for the Station assistant."
+            onDismiss={() => setChoosingStationEngine(false)}
+            onChosen={() => {
+              setChoosingStationEngine(false);
+              onCheck();
+            }}
+          />
+        </Suspense>
+      )}
       <div className="chat-start__controls">
         <Button onClick={() => onSetup()}>Set up an AI app</Button>
         <Button variant="link" onClick={onModels}>

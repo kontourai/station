@@ -4,7 +4,9 @@ import {
   DEFAULT_NOTIFICATION_SOUND_PREFERENCES,
   DEVICE_SETTINGS_REGISTRY,
 } from '@kontourai/station-contracts/device-settings';
+import type { TelemetryTierChoices } from '@kontourai/station-contracts/product-telemetry';
 import type { ModelConnectionConfig } from '@kontourai/station-contracts/tool';
+import { authenticatedFetch } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -16,7 +18,9 @@ import {
 } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { AccountPreferencesContext } from '../contexts/AccountPreferencesContext';
 import {
+  matchingSettingsRows,
   OPERATOR_ONLY_SECTION_IDS,
   SETTINGS_CATALOG,
   SETTINGS_SECTIONS,
@@ -42,7 +46,11 @@ vi.mock('@kontourai/station-connect', () => ({
   // hook's health composition; the catalog under test is the enumeration, so
   // a stable connected status is the neutral answer here.
   useConnectionStatus: () => ({ status: 'connected' }),
+  // #3557: the People section summarizes each tied device's access.
+  describeDeviceGrant: () => 'full device access',
+  requestedScopeTokens: (scope: string) => scope.split(' ').filter(Boolean),
 }));
+const systemStatusRead = vi.hoisted(() => vi.fn());
 vi.mock('@kontourai/station-sdk', async () => {
   const { defaultNotificationPreferences } = await import(
     '@kontourai/station-contracts/notification-preferences'
@@ -126,6 +134,58 @@ vi.mock('@kontourai/station-sdk', async () => {
     isPluginVisibilityForbidden: (error: unknown) =>
       error instanceof Error && error.message === 'forbidden',
     useRevokeAnswerShareMutation: () => ({ mutate: vi.fn(), isError: false }),
+    // #3557: the People section, in the ORDINARY operator case — one person
+    // with one tied device — for the same reason plugin visibility has data
+    // here. A person's own token panel answers the refusal an operator gets
+    // (it is not a person's device), so it renders nothing.
+    useStationPeopleQuery: () => ({
+      data: [
+        {
+          principalId: 'human:tailscale-serve:ada@example.com',
+          displayName: 'ada@example.com',
+          group: 'member',
+          assigned: false,
+          devices: [
+            {
+              id: 'dev-ada',
+              name: 'Ada laptop',
+              scope: 'orchestration:read',
+              effectiveScope: 'orchestration:read',
+            },
+          ],
+          tokens: [],
+          canHoldTokens: true,
+        },
+      ],
+      isPending: false,
+      isError: false,
+      error: null,
+    }),
+    useOwnAccessTokensQuery: () => ({
+      data: undefined,
+      isPending: false,
+      isError: true,
+      error: new Error('person_device_required'),
+    }),
+    isStationAccessUnavailable: (error: unknown) =>
+      error instanceof Error && error.message === 'person_device_required',
+    useSetStationPersonGroupMutation: () => ({
+      mutateAsync: vi.fn(),
+      isPending: false,
+    }),
+    useMintStationPersonTokenMutation: () => ({
+      mutateAsync: vi.fn(),
+      reset: vi.fn(),
+    }),
+    useRevokeStationPersonTokenMutation: () => ({ mutateAsync: vi.fn() }),
+    useMintOwnAccessTokenMutation: () => ({
+      mutateAsync: vi.fn(),
+      reset: vi.fn(),
+    }),
+    useRevokeOwnAccessTokenMutation: () => ({ mutateAsync: vi.fn() }),
+    isOperatorCredentialRequired: () => false,
+    StationAccessError: class extends Error {},
+    STATION_PEOPLE_QUERY_KEY: ['station-people'],
     // #2144 slice 3: the hook takes the selected project's slug, and the
     // server reports DIFFERENT provenance for a scoped read (`scope: 'project'`
     // on whatever the project overrides). The mock keys on the slug for the
@@ -151,22 +211,33 @@ vi.mock('@kontourai/station-sdk', async () => {
     // about.
     useConfigQuery: () => ({ data: { telemetryEnabled: true } }),
     useUpdateConfigMutation: () => ({ mutate: vi.fn(), isPending: false }),
+    useTelemetryDeliveryStatusQuery: () => {
+      throw new Error('Catalog fixture has no captured telemetry authority');
+    },
+    useCheckTelemetryConnectionMutation: () => {
+      throw new Error(
+        'Catalog fixture must not initiate a telemetry connection check',
+      );
+    },
     useInvalidateQuery: () => invalidateQuery,
-    useSystemStatusForApiBaseQuery: () => ({
-      data: {
-        build: {},
-        prerequisites: [
-          {
-            id: 'node',
-            name: 'Node',
-            description: 'ready',
-            status: 'installed',
-            category: 'required',
-          },
-        ],
-      },
-      isLoading: false,
-    }),
+    useSystemStatusForApiBaseQuery: () => {
+      systemStatusRead();
+      return {
+        data: {
+          build: {},
+          prerequisites: [
+            {
+              id: 'node',
+              name: 'Node',
+              description: 'ready',
+              status: 'installed',
+              category: 'required',
+            },
+          ],
+        },
+        isLoading: false,
+      };
+    },
     useFeaturePreviewsQuery: () => ({
       isLoading: false,
       error: null,
@@ -249,9 +320,47 @@ const resetDeviceSettings = vi.fn();
  * `UsageTelemetryDisclosure` card and the real summary function still run.
  */
 let telemetryEndpointConfigured: boolean | undefined;
+let telemetryDisclosureRevision = 'settings-revision';
+let telemetryAuthorDestination: string | undefined;
 /** The read's own state, which the row must not speak ahead of. */
 let telemetryDisclosureSettled = true;
 let telemetryDisclosureIsError = false;
+let telemetryDnt = false;
+let telemetryStatusFailed = false;
+vi.mock('../hooks/useTelemetryStatus', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../hooks/useTelemetryStatus')>();
+  return {
+    ...actual,
+    useTelemetryStatus: () => ({
+      isError: telemetryStatusFailed,
+      data: telemetryStatusFailed
+        ? undefined
+        : {
+            authorEndpoint: telemetryAuthorDestination,
+            liteInventoryRevision: 'settings-counts-revision',
+            liteInventory: { event: { domain: ['station_daily'] } },
+            liteNotices: {},
+            publishers: Object.fromEntries(
+              ['kontour', 'operator'].map((id) => [
+                id,
+                {
+                  tier: telemetryDnt ? 'off' : 'lite',
+                  reason: telemetryDnt ? 'DNT' : 'user',
+                  fullAvailable:
+                    id === 'operator' || !!telemetryAuthorDestination,
+                  userChoice: (
+                    configSnapshot.config?.telemetryTier as
+                      | TelemetryTierChoices
+                      | undefined
+                  )?.[id as 'kontour' | 'operator'],
+                },
+              ]),
+            ),
+          },
+    }),
+  };
+});
 vi.mock('../components/UsageTelemetryDisclosure', async (importOriginal) => {
   const actual =
     await importOriginal<
@@ -263,7 +372,25 @@ vi.mock('../components/UsageTelemetryDisclosure', async (importOriginal) => {
       data:
         telemetryEndpointConfigured === undefined
           ? undefined
-          : { endpointConfigured: telemetryEndpointConfigured },
+          : {
+              endpointConfigured: telemetryEndpointConfigured,
+              inventoryRevision: telemetryDisclosureRevision,
+              ...(telemetryAuthorDestination
+                ? {
+                    authorDisclosure: {
+                      destination: telemetryAuthorDestination,
+                      inventoryRevision: telemetryDisclosureRevision,
+                      events: {},
+                    },
+                  }
+                : {}),
+              events: {
+                station_started: {
+                  description: 'Station completed startup.',
+                  properties: { platform: { domain: ['linux'] } },
+                },
+              },
+            },
       isError: telemetryDisclosureIsError,
       settled: telemetryDisclosureSettled,
       outstanding: false,
@@ -331,8 +458,9 @@ let pluginVisibilityFailed = false;
 vi.mock('../platform/PlatformProfileContext', () => ({
   usePlatformProfile: () => ({ isMobile, isDesktop }),
 }));
+const navigateMock = vi.hoisted(() => vi.fn());
 vi.mock('../contexts/NavigationContext', () => ({
-  useNavigation: () => ({ navigate: vi.fn() }),
+  useNavigation: () => ({ navigate: navigateMock }),
   // #2059: the page's nav-only rows navigate to other DESTINATIONS (Agents,
   // Skills, Engines & Models, …) rather than to a `?view=` section of this
   // page, so the section nav reads the navigation actions directly. Where
@@ -355,7 +483,10 @@ vi.mock('../contexts/KeyboardShortcutsContext', () => {
     useShortcutRegistry: () => store,
   };
 });
-vi.mock('../hooks/useIsMobile', () => ({ useIsMobile: () => false }));
+vi.mock('../hooks/useIsMobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useIsMobile')>()),
+  useIsMobile: () => false,
+}));
 vi.mock('../hooks/useFeatureSettings', () => ({
   useFeatureSettings: () => ({
     settings: {
@@ -407,11 +538,17 @@ vi.mock('../views/settings/CoreUpdateCheck', () => ({
 
 describe('settings catalog completeness', () => {
   beforeEach(() => {
+    telemetryDisclosureRevision = 'settings-revision';
+    telemetryAuthorDestination = undefined;
+    vi.mocked(authenticatedFetch).mockReset();
+    telemetryDnt = false;
+    telemetryStatusFailed = false;
     isMobile = false;
     isDesktop = false;
     pluginVisibilityRefused = false;
     pluginVisibilityFailed = false;
     updateConfig.mockReset();
+    systemStatusRead.mockClear();
     exerciseModelSelection = false;
     modelConnections = [];
     updateAppLogLevel.mockReset();
@@ -453,6 +590,14 @@ describe('settings catalog completeness', () => {
       </QueryClientProvider>
     );
     const result = render(tree());
+    // Catalog evidence includes explicitly expanded Advanced controls.
+    const advanced = result.container.querySelector(
+      '[data-catalog-id="usage-telemetry"] > details > summary',
+    );
+    if (advanced?.parentElement?.tagName === 'DETAILS') {
+      advanced.parentElement.setAttribute('open', '');
+      fireEvent(advanced.parentElement, new Event('toggle'));
+    }
     return {
       container: result.container,
       unmount: result.unmount,
@@ -463,7 +608,16 @@ describe('settings catalog completeness', () => {
 
   async function renderedCatalogIds(): Promise<string[]> {
     const { container } = await renderSettings();
-    await waitFor(() => expect(container.outerHTML).toContain('settings'));
+    const view = new URLSearchParams(window.location.search).get('view');
+    if (view === 'overview' || view === 'telemetry') {
+      await screen.findByRole('group', { name: 'Usage sharing' });
+      const advanced = container.querySelector(
+        '[data-catalog-id="usage-telemetry"] > details',
+      );
+      if (!advanced) throw new Error('Missing sharing Advanced controls');
+      advanced.setAttribute('open', '');
+      fireEvent(advanced, new Event('toggle'));
+    }
     return [
       ...container.querySelectorAll<HTMLElement>('[data-catalog-id]'),
     ].map((node) => node.dataset.catalogId!);
@@ -587,7 +741,7 @@ describe('settings catalog completeness', () => {
       container.querySelector(
         '[aria-label="This Station settings"] .settings__scope-caption',
       )?.textContent,
-    ).toContain('Saved to this Station');
+    ).toContain('Station');
   });
 
   /**
@@ -610,6 +764,8 @@ describe('settings catalog completeness', () => {
     const operator = !pluginVisibilityRefused;
     const expected = SETTINGS_SECTIONS.map((section) => section.id)
       .filter((key) => operator || !OPERATOR_ONLY_SECTION_IDS.has(key))
+      // Routes renders only behind the Station routes preview, off here.
+      .filter((key) => key !== 'station-routes')
       .map((key) => `section-${key}`);
     // The expectation itself must not be empty, or the comparison below is
     // satisfied by an empty page.
@@ -643,7 +799,7 @@ describe('settings catalog completeness', () => {
     );
     const expected: string[] = RESETTABLE_STATION_SETTING_KEYS.map(
       (key) => idForKey.get(key as string) as string,
-    );
+    ).filter((id) => id !== 'surface-trust');
     expect(expected.filter(Boolean)).toHaveLength(expected.length);
     const domOrder = () =>
       [...container.querySelectorAll('[data-catalog-id]')]
@@ -660,10 +816,9 @@ describe('settings catalog completeness', () => {
    * promises over nothing. A caption is a claim about contents; with no
    * contents it is a claim about nothing.
    */
-  describe('scope-group captions', () => {
-    const CONTROL_CAPTION = 'Saved to this Station.';
-    const STATION_CAPTION = 'Saved to this Station.';
-    const DEVICE_CAPTION = 'Saved to this device.';
+  describe('scope-group indicators', () => {
+    const CONTROL_CAPTION = 'Station';
+    const STATION_CAPTION = 'Station';
 
     function captions(container: HTMLElement) {
       return [...container.querySelectorAll('.settings__scope-caption')].map(
@@ -683,14 +838,19 @@ describe('settings catalog completeness', () => {
       expect(captions(container)).toEqual([CONTROL_CAPTION]);
     });
 
-    test('a This device view shows only the device caption', async () => {
+    test('personal preferences show their scope beside the row instead of an explanatory caption', async () => {
       window.history.replaceState({}, '', '/settings?view=chat');
       const { container } = await renderSettings();
 
       await waitFor(() =>
         expect(container.querySelector('#section-chat')).toBeTruthy(),
       );
-      expect(captions(container)).toEqual([DEVICE_CAPTION]);
+      expect(captions(container)).toEqual([]);
+      expect(
+        within(container.querySelector('#section-chat')!).getAllByText(
+          'This device',
+        ).length,
+      ).toBeGreaterThan(0);
     });
 
     test('the overview shows every group, which is what makes the two above a filter and not a break', async () => {
@@ -698,7 +858,11 @@ describe('settings catalog completeness', () => {
       await waitFor(() =>
         expect(container.querySelector('#section-knowledge')).toBeTruthy(),
       );
-      expect(captions(container).length).toBeGreaterThanOrEqual(4);
+      expect(captions(container)).toEqual([
+        STATION_CAPTION,
+        CONTROL_CAPTION,
+        STATION_CAPTION,
+      ]);
     });
 
     /**
@@ -833,7 +997,7 @@ describe('settings catalog completeness', () => {
 
     expect(
       await screen.findByText(
-        'Log Level could not be saved. Other settings were saved; your Log Level change is kept here until you retry.',
+        'Log Level could not be saved. Your change is kept here until you retry.',
       ),
     ).toBeTruthy();
     expect((logLevel as HTMLSelectElement).value).toBe('debug');
@@ -911,7 +1075,9 @@ describe('settings catalog completeness', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
-    await screen.findByText(/Some settings could not be saved\./);
+    await screen.findByText(
+      /Some settings were saved. Unsaved changes are kept here/,
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     await waitFor(() => expect(updateConfig).toHaveBeenCalledTimes(2));
     expect(sdk.updateAppLogLevel).toHaveBeenCalledTimes(1);
@@ -1285,7 +1451,9 @@ describe('settings catalog completeness', () => {
     expectExactCatalog(
       rendered,
       SETTINGS_CATALOG.filter((entry) =>
-        ['permissions', 'agent-runs'].includes(entry.section),
+        ['account-preferences', 'permissions', 'agent-runs'].includes(
+          entry.section,
+        ),
       ).map((entry) => entry.id),
     );
     expect(window.location.search).toBe('');
@@ -1478,6 +1646,47 @@ describe('settings catalog completeness', () => {
     expect(container.querySelector('#section-appearance')).toBeTruthy();
   });
 
+  // The theme and accent controls moved to the Appearance page. Their rows
+  // stayed, as links there, so a recorded link and the palette's
+  // `settings:theme` / `settings:accent-color` targets still reveal a row
+  // rather than reporting a target that no longer exists.
+  test.each([
+    ['theme', 'Theme'],
+    ['accent-color', 'Accent color'],
+  ])(
+    'a recorded highlight=%s link reveals its row, which opens Appearance',
+    async (highlight, title) => {
+      navigateMock.mockClear();
+      window.history.replaceState(
+        {},
+        '',
+        `/settings?view=appearance&highlight=${highlight}`,
+      );
+      const { container } = await renderSettings();
+
+      expect(
+        await screen.findByText(`${title} revealed in Settings.`),
+      ).toBeTruthy();
+      const row = container.querySelector<HTMLElement>(
+        `[data-catalog-id="${highlight}"]`,
+      )!;
+      fireEvent.click(
+        within(row).getByRole('button', {
+          name: `Open Appearance for ${title}`,
+        }),
+      );
+      expect(navigateMock).toHaveBeenCalledWith('/appearance');
+    },
+  );
+
+  test.each([
+    ['catppuccin', 'theme'],
+    ['color theme', 'theme'],
+    ['accent', 'accent-color'],
+  ])('Settings search for "%s" still finds the %s row', (query, id) => {
+    expect(matchingSettingsRows(query).map((entry) => entry.id)).toContain(id);
+  });
+
   test('focuses a deep-linked editable field in the Agent runs section', async () => {
     // The `.agent-defaults__disclosure` assertion that used to close this
     // test is gone with the disclosure itself: these fields render directly
@@ -1551,14 +1760,14 @@ describe('settings catalog completeness', () => {
     ).toBeNull();
   });
 
-  test('the developer-tools row points to Customize', async () => {
+  test('the developer-tools row explains navigation and experimental opt-ins', async () => {
     window.history.replaceState({}, '', '/settings?view=developer-tools');
     const { container } = await renderSettings();
     expect(
       container.querySelector(
         '[data-catalog-id="enable-developer-tools"] .page-row__description',
       )?.textContent,
-    ).toContain('Customize');
+    ).toContain('experimental feature opt-ins');
   });
 
   test('opens General by default and switches topics without leaving Settings', async () => {
@@ -1668,7 +1877,7 @@ describe('settings catalog completeness', () => {
     expect(groups.map((group) => group.getAttribute('aria-label'))).toEqual([
       'This Station settings',
       'Control settings',
-      'This device settings',
+      'Personal and device settings',
       'Knowledge settings',
     ]);
     // Named regions, not styling wrappers: the name has to reach the
@@ -1831,6 +2040,22 @@ describe('settings catalog completeness', () => {
     }
   });
 
+  test('Advanced defers the host-status request until diagnostics or build details are opened', async () => {
+    window.history.replaceState({}, '', '/settings?view=advanced');
+    await renderSettings();
+    expect(
+      screen.getByText('Host diagnostics', { selector: 'summary' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText('Build details', { selector: 'summary' }),
+    ).toBeTruthy();
+    expect(systemStatusRead).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByText('Host diagnostics', { selector: 'summary' }),
+    );
+    await waitFor(() => expect(systemStatusRead).toHaveBeenCalled());
+  });
+
   test('can reveal the persistent host-runtime status row', async () => {
     window.history.replaceState(
       {},
@@ -1918,19 +2143,50 @@ describe('settings catalog completeness', () => {
   });
 
   /**
-   * The Appearance slider writes a DEVICE value that then shadows the
-   * Station default for this browser alone. "Use Station default" is the
-   * only way back, and it is meaningless before a device value exists — so
-   * the row offers it only then.
+   * Clearing the personal override resumes the shared Station font default.
    */
-  describe('Use Station default', () => {
+  describe('Reset Chat font size to default', () => {
+    test('an account font override offers one reset action', async () => {
+      deviceChatFontSize = 18;
+      const { SettingsView } = await import('../views/SettingsView');
+      const view = render(
+        <QueryClientProvider client={new QueryClient()}>
+          <AccountPreferencesContext.Provider
+            value={{
+              status: 'account',
+              saving: false,
+              waitingForConnection: false,
+              error: false,
+              conflict: false,
+              data: { schemaVersion: 1, values: { chatFontSize: 18 } },
+              save: vi.fn(),
+              retry: vi.fn(),
+            }}
+          >
+            <SettingsView onBack={vi.fn()} />
+          </AccountPreferencesContext.Provider>
+        </QueryClientProvider>,
+      );
+      const slider = await screen.findByRole('slider', {
+        name: 'Chat font size',
+      });
+      const row = slider.closest<HTMLElement>('[data-catalog-id]')!;
+      const resetActions = within(row).getAllByRole('button');
+      expect(resetActions).toHaveLength(1);
+      fireEvent.click(resetActions[0]!);
+      expect(resetDeviceSetting).toHaveBeenCalledWith('chatFontSize');
+      view.unmount();
+    });
+
     test('is absent while this device follows the Station default', async () => {
       deviceChatFontSize = null;
       const { container } = await renderSettings();
 
       expect(container.querySelector('#chatFontSize')).toBeTruthy();
       expect(
-        screen.queryByRole('button', { name: 'Use Station default' }),
+        screen.queryByRole('button', {
+          name: 'Reset Chat font size to default',
+        }),
       ).toBeNull();
     });
 
@@ -1939,7 +2195,7 @@ describe('settings catalog completeness', () => {
       await renderSettings();
 
       const button = screen.getByRole('button', {
-        name: 'Use Station default',
+        name: 'Reset Chat font size to default',
       });
       fireEvent.click(button);
 
@@ -2087,12 +2343,637 @@ describe('settings catalog completeness', () => {
    * WOULD send; this row says whether there is anywhere to send to. Both
    * answers are the host's, and the host itself is never named.
    */
+  test('saving a publisher edit excludes a stale untouched Full choice after another device withdraws it', async () => {
+    window.history.replaceState({}, '', '/settings?view=telemetry');
+    configSnapshot = {
+      config: {
+        ...INITIAL_CONFIG,
+        telemetryTier: { kontour: 'off', operator: 'full' },
+      },
+      dataUpdatedAt: 1,
+    };
+    await renderSettings();
+    // Another device persists Off while this form still holds the old snapshot.
+    let persisted = { kontour: 'off', operator: 'off' };
+    updateConfig.mockImplementation(async (delta) => {
+      persisted = { ...persisted, ...delta.telemetryTier };
+    });
+    fireEvent.change(
+      screen.getByRole('combobox', { name: 'Kontour telemetry' }),
+      {
+        target: { value: 'lite' },
+      },
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(updateConfig).toHaveBeenCalledWith({
+        telemetryTier: { kontour: 'lite' },
+      }),
+    );
+    expect(persisted).toEqual({ kontour: 'lite', operator: 'off' });
+  });
+
+  test.each([true, false])(
+    'viewing Privacy records nothing; Save records only a visible combined notice (visible %s)',
+    async (noticeVisible) => {
+      window.history.replaceState({}, '', '/settings?view=telemetry');
+      configSnapshot = {
+        config: {
+          ...INITIAL_CONFIG,
+          telemetryTier: {
+            kontour: 'lite',
+            operator: 'lite',
+            'publisher:fixture': 'off',
+          },
+        },
+        dataUpdatedAt: 1,
+      };
+      const original = vi.mocked(authenticatedFetch).getMockImplementation()!;
+      vi.mocked(authenticatedFetch).mockImplementation(async (...args) =>
+        String(args[0]).endsWith('/lite-notices')
+          ? new Response(JSON.stringify({ success: true }), { status: 200 })
+          : original(...args),
+      );
+      const rect = vi
+        .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+        .mockImplementation(function (this: HTMLElement) {
+          const clipped =
+            !noticeVisible &&
+            (this.getAttribute('aria-label') === 'Usage sharing choices' ||
+              (this.classList.contains('telemetry-publisher') &&
+                !this.textContent?.includes('fixture telemetry')));
+          return {
+            top: clipped ? -400 : 100,
+            bottom: clipped ? -200 : 300,
+            height: 200,
+            left: 0,
+            right: 390,
+            width: 390,
+            x: 0,
+            y: 100,
+            toJSON: () => ({}),
+          };
+        });
+      const view = await renderSettings();
+      const notices = () =>
+        vi
+          .mocked(authenticatedFetch)
+          .mock.calls.filter(([url]) => String(url).endsWith('/lite-notices'));
+      try {
+        fireEvent.click(screen.getByText('Advanced', { selector: 'summary' }));
+        await act(async () => {
+          await new Promise((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(resolve)),
+          );
+        });
+        expect(notices()).toHaveLength(0);
+        if (noticeVisible) {
+          for (const name of ['Kontour telemetry', 'Operator telemetry']) {
+            fireEvent.change(screen.getByRole('combobox', { name }), {
+              target: { value: 'off' },
+            });
+            fireEvent.click(screen.getByRole('button', { name: 'Skip' }));
+          }
+        } else {
+          fireEvent.change(
+            screen.getByRole('combobox', { name: 'fixture telemetry' }),
+            {
+              target: { value: 'lite' },
+            },
+          );
+        }
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+        await waitFor(() =>
+          expect(screen.queryByRole('button', { name: 'Save' })).toBeNull(),
+        );
+        expect(notices()).toHaveLength(noticeVisible ? 2 : 0);
+        expect(updateConfig.mock.calls.map(([patch]) => patch)).toEqual(
+          noticeVisible
+            ? [
+                { telemetryTier: { kontour: 'off' } },
+                { telemetryTier: { operator: 'off' } },
+              ]
+            : [{ telemetryTier: { 'publisher:fixture': 'lite' } }],
+        );
+        if (noticeVisible) {
+          const firstNotice = vi
+            .mocked(authenticatedFetch)
+            .mock.calls.findIndex(([url]) =>
+              String(url).endsWith('/lite-notices'),
+            );
+          expect(updateConfig.mock.invocationCallOrder.at(-1)).toBeLessThan(
+            vi.mocked(authenticatedFetch).mock.invocationCallOrder[firstNotice],
+          );
+        }
+      } finally {
+        view.unmount();
+        rect.mockRestore();
+      }
+    },
+  );
+
+  test('saving two deliberate publisher edits retains both choices', async () => {
+    window.history.replaceState({}, '', '/settings?view=telemetry');
+    configSnapshot = {
+      config: {
+        ...INITIAL_CONFIG,
+        telemetryTier: { kontour: 'off', operator: 'off' },
+      },
+      dataUpdatedAt: 1,
+    };
+    await renderSettings();
+    for (const name of ['Kontour telemetry', 'Operator telemetry'])
+      fireEvent.change(screen.getByRole('combobox', { name }), {
+        target: { value: 'lite' },
+      });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(updateConfig).toHaveBeenCalledWith({
+        telemetryTier: { operator: 'lite' },
+      }),
+    );
+    expect(updateConfig).toHaveBeenCalledWith({
+      telemetryTier: { kontour: 'lite' },
+    });
+    expect(updateConfig).toHaveBeenCalledTimes(2);
+  });
+
+  test.each([false, true])(
+    'Settings stages feedback with the publisher write and skips the offer under DNT=%s',
+    async (dnt) => {
+      telemetryDnt = dnt;
+      window.history.replaceState({}, '', '/settings?view=telemetry');
+      configSnapshot = {
+        config: {
+          ...INITIAL_CONFIG,
+          telemetryTier: { kontour: 'lite', operator: 'full' },
+        },
+        dataUpdatedAt: 1,
+      };
+      await renderSettings();
+      fireEvent.change(
+        screen.getByRole('combobox', { name: 'Operator telemetry' }),
+        { target: { value: 'off' } },
+      );
+      if (dnt)
+        expect(
+          screen.queryByText(/(?:Why lower|Lowering) Operator/),
+        ).toBeNull();
+      else {
+        expect(updateConfig).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole('button', { name: 'Privacy' }));
+      }
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() =>
+        expect(updateConfig).toHaveBeenCalledWith({
+          telemetryTier: { operator: 'off' },
+          ...(dnt ? {} : { telemetryFeedbackReason: 'privacy' }),
+        }),
+      );
+    },
+  );
+
+  test('an unrelated setting failure does not prevent the publisher withdrawal', async () => {
+    configSnapshot = {
+      config: {
+        ...INITIAL_CONFIG,
+        telemetryTier: { operator: 'lite', kontour: 'off' },
+      },
+      dataUpdatedAt: 1,
+    };
+    updateConfig.mockImplementation(async (delta) => {
+      if (!delta.telemetryTier)
+        throw Object.assign(new Error('Full access refused.'), {
+          code: 'approval-full-access-not-granted',
+        });
+    });
+    await renderSettings();
+    fireEvent.change(screen.getByLabelText('Default max turns'), {
+      target: { value: '201' },
+    });
+    fireEvent.change(
+      screen.getByRole('combobox', { name: 'Operator telemetry' }),
+      { target: { value: 'off' } },
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Skip' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(updateConfig).toHaveBeenCalledTimes(2));
+    expect(updateConfig.mock.calls[0][0]).toEqual({
+      telemetryTier: { operator: 'off' },
+    });
+    expect(updateConfig.mock.calls[1][0]).toEqual({ defaultMaxTurns: 201 });
+    await screen.findByText(
+      /Some settings were saved. Unsaved changes are kept here./,
+    );
+    expect(screen.queryByText(/Nothing in this save was stored/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(updateConfig).toHaveBeenCalledTimes(3));
+    expect(updateConfig.mock.calls[2][0]).toEqual({ defaultMaxTurns: 201 });
+  });
+
+  test('failed status with no saved choices keeps both built-in controls and disables Full', async () => {
+    telemetryStatusFailed = true;
+    window.history.replaceState({}, '', '/settings?view=telemetry');
+    await renderSettings();
+    expect(screen.getByText(/Sharing status could not be loaded/)).toBeTruthy();
+    for (const name of ['Kontour telemetry', 'Operator telemetry']) {
+      const select = screen.getByRole('combobox', { name });
+      expect(
+        (
+          within(select).getByRole('option', {
+            name: 'Detailed usage to help improve Station (unavailable)',
+          }) as HTMLOptionElement
+        ).disabled,
+      ).toBe(true);
+      expect(
+        (
+          within(select).getByRole('option', {
+            name: "Don't share",
+          }) as HTMLOptionElement
+        ).disabled,
+      ).toBe(false);
+    }
+  });
+
+  test('a draft raise followed by Lite compares with saved Off and sends no lowering reason', async () => {
+    configSnapshot = {
+      config: {
+        ...INITIAL_CONFIG,
+        telemetryTier: { operator: 'off', kontour: 'off' },
+      },
+      dataUpdatedAt: 1,
+    };
+    await renderSettings();
+    const select = screen.getByRole('combobox', { name: 'Operator telemetry' });
+    fireEvent.change(select, { target: { value: 'full' } });
+    fireEvent.change(select, { target: { value: 'lite' } });
+    expect(screen.queryByText(/(?:Why lower|Lowering) Operator/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(updateConfig).toHaveBeenCalledWith({
+        telemetryTier: { operator: 'lite' },
+      }),
+    );
+  });
+
+  test.each(['button', 'Escape'])(
+    'cancelling a Settings reason with %s restores the draft and sends nothing',
+    async (method) => {
+      configSnapshot = {
+        config: {
+          ...INITIAL_CONFIG,
+          telemetryTier: { operator: 'full', kontour: 'off' },
+        },
+        dataUpdatedAt: 1,
+      };
+      await renderSettings();
+      const select = screen.getByRole('combobox', {
+        name: 'Operator telemetry',
+      }) as HTMLSelectElement;
+      fireEvent.change(select, { target: { value: 'off' } });
+      expect(select.value).toBe('off');
+      const heading = screen.getByRole('heading', {
+        name: "Changing sharing with Operator to “Don't share” — why? (optional)",
+      });
+      if (method === 'Escape') fireEvent.keyDown(heading, { key: 'Escape' });
+      else fireEvent.click(screen.getByRole('button', { name: /^Cancel$/ }));
+      expect(screen.queryByText(/(?:Why lower|Lowering) Operator/)).toBeNull();
+      expect(select.value).toBe('full');
+      expect(document.activeElement).toBe(select);
+      expect(screen.queryByText('Unsaved changes')).toBeNull();
+      expect(updateConfig).not.toHaveBeenCalled();
+    },
+  );
+
+  test('discarding an optional reason does not attach it to an imported tier change', async () => {
+    window.history.replaceState({}, '', '/settings?view=overview');
+    configSnapshot = {
+      config: {
+        ...INITIAL_CONFIG,
+        telemetryTier: { operator: 'lite', kontour: 'off' },
+      },
+      dataUpdatedAt: 1,
+    };
+    const { container } = await renderSettings();
+    fireEvent.change(
+      screen.getByRole('combobox', { name: 'Operator telemetry' }),
+      { target: { value: 'off' } },
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Privacy' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    const file = new File([], 'station-settings.json', {
+      type: 'application/json',
+    });
+    Object.defineProperty(file, 'text', {
+      value: async () =>
+        JSON.stringify({
+          version: 2,
+          station: { telemetryTier: { operator: 'off' } },
+        }),
+    });
+    fireEvent.change(container.querySelector('input[type="file"]')!, {
+      target: { files: [file] },
+    });
+    await screen.findByText('Unsaved changes');
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(updateConfig).toHaveBeenCalledWith({
+        telemetryTier: { operator: 'off' },
+      }),
+    );
+  });
+
+  test.each([
+    ['combined', 200],
+    ['combined', 403],
+    ['kontour-only', 200],
+    ['kontour-stale-sibling', 200],
+    ['advanced-kontour-first', 200],
+    ['advanced-operator-first', 200],
+  ] as const)(
+    'Settings %s Detailed binds author acknowledgement; response %s',
+    async (mode, status) => {
+      telemetryEndpointConfigured = true;
+      telemetryAuthorDestination = 'https://kontour.test/counts';
+      window.history.replaceState({}, '', '/settings?view=telemetry');
+      configSnapshot = {
+        config: {
+          ...INITIAL_CONFIG,
+          telemetryTier: {
+            kontour: 'lite',
+            operator: mode === 'kontour-stale-sibling' ? 'full' : 'off',
+          },
+        },
+        dataUpdatedAt: 1,
+      };
+      let remoteOperator: string = 'off';
+      const order: string[] = [];
+      vi.mocked(authenticatedFetch).mockImplementation(async (url, init) => {
+        if (String(url).endsWith('/acknowledgements')) {
+          const body = JSON.parse(String(init?.body));
+          order.push(body.publisher ?? 'operator');
+          return new Response(null, {
+            status: body.publisher === 'kontour' ? status : 200,
+          });
+        }
+        return new Response(null, { status: 503 });
+      });
+      updateConfig.mockImplementation(async (patch) => {
+        order.push('config');
+        if (patch.telemetryTier?.operator)
+          remoteOperator = patch.telemetryTier.operator;
+        return {};
+      });
+      await renderSettings();
+      if (mode === 'combined')
+        fireEvent.click(
+          screen.getByRole('radio', {
+            name: 'Detailed usage to help improve Station',
+          }),
+        );
+      else if (mode.startsWith('advanced-')) {
+        const names =
+          mode === 'advanced-kontour-first'
+            ? ['Kontour telemetry', 'Operator telemetry']
+            : ['Operator telemetry', 'Kontour telemetry'];
+        for (const name of names)
+          fireEvent.change(screen.getByRole('combobox', { name }), {
+            target: { value: 'full' },
+          });
+      } else
+        fireEvent.change(
+          screen.getByRole('combobox', { name: 'Kontour telemetry' }),
+          { target: { value: 'full' } },
+        );
+      expect(
+        screen.getByRole('region', { name: "What's included" }),
+      ).toBeTruthy();
+      expect(order).toEqual([]);
+      expect(
+        screen.getByText('Changes wait until you select Save.'),
+      ).toBeTruthy();
+      expect(
+        screen.getByText(
+          "Review what's included, then select Save to confirm detailed sharing.",
+        ),
+      ).toBeTruthy();
+      expect(
+        screen.queryByText(/You can change this in Privacy & sharing/),
+      ).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() =>
+        expect(authenticatedFetch).toHaveBeenCalledWith(
+          'http://station.test/api/usage-telemetry/disclosure/acknowledgements',
+          expect.objectContaining({
+            body: JSON.stringify({
+              acknowledgementProtocol: 2,
+              inventoryRevision: 'settings-revision',
+              publisher: 'kontour',
+              destination: 'https://kontour.test/counts',
+            }),
+          }),
+        ),
+      );
+      if (status === 403) {
+        await screen.findByText(
+          'Some settings could not be saved. Your changes are kept here until you retry.',
+        );
+        expect(updateConfig).not.toHaveBeenCalled();
+        expect(order).toEqual(['kontour']);
+      } else {
+        await waitFor(() =>
+          expect(updateConfig).toHaveBeenCalledWith({
+            telemetryTier: { kontour: 'full' },
+          }),
+        );
+        await waitFor(() =>
+          expect(screen.queryByRole('button', { name: 'Save' })).toBeNull(),
+        );
+        expect(order).toEqual(
+          mode === 'combined' || mode.startsWith('advanced-')
+            ? ['kontour', 'operator', 'config', 'config']
+            : ['kontour', 'config'],
+        );
+        if (mode === 'kontour-stale-sibling')
+          expect(remoteOperator).toBe('off');
+      }
+    },
+  );
+
+  test.each([
+    [200, 'lite'],
+    [403, 'lite'],
+    [409, 'lite'],
+    [200, 'full'],
+  ] as const)(
+    'Settings Detailed save acknowledges the displayed revision before config; acknowledgement status %s, saved %s',
+    async (status, savedTier) => {
+      telemetryEndpointConfigured = false;
+      window.history.replaceState({}, '', '/settings?view=telemetry');
+      configSnapshot = {
+        config: {
+          ...INITIAL_CONFIG,
+          telemetryTier: { kontour: 'lite', operator: savedTier },
+        },
+        dataUpdatedAt: 1,
+      };
+      const order: string[] = [];
+      vi.mocked(authenticatedFetch).mockImplementation(async (url) => {
+        if (String(url).endsWith('/acknowledgements')) {
+          order.push('acknowledge');
+          return new Response(null, { status });
+        }
+        return new Response(null, { status: 503 });
+      });
+      updateConfig.mockImplementation(async () => {
+        order.push('config');
+        return {};
+      });
+      await renderSettings();
+      fireEvent.click(
+        screen.getByRole('radio', {
+          name: 'Detailed usage to help improve Station',
+        }),
+      );
+      expect(
+        screen.getByRole('region', { name: "What's included" }),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() =>
+        expect(authenticatedFetch).toHaveBeenCalledWith(
+          'http://station.test/api/usage-telemetry/disclosure/acknowledgements',
+          expect.objectContaining({
+            method: 'POST',
+            body: JSON.stringify({
+              acknowledgementProtocol: 2,
+              inventoryRevision: 'settings-revision',
+            }),
+          }),
+        ),
+      );
+      if (status === 200) {
+        await waitFor(() =>
+          expect(updateConfig).toHaveBeenCalledWith({
+            telemetryTier: { operator: 'full' },
+          }),
+        );
+        expect(order).toEqual(['acknowledge', 'config', 'config']);
+      } else {
+        await screen.findByText(
+          'Some settings could not be saved. Your changes are kept here until you retry.',
+        );
+        expect(updateConfig).not.toHaveBeenCalled();
+        expect(order).toEqual(['acknowledge']);
+      }
+      vi.mocked(authenticatedFetch).mockReset();
+    },
+  );
+
+  test('importing Detailed from Advanced saves a latent choice without acknowledging unseen details', async () => {
+    window.history.replaceState({}, '', '/settings?view=advanced');
+    configSnapshot = {
+      config: {
+        ...INITIAL_CONFIG,
+        telemetryTier: { kontour: 'lite', operator: 'lite' },
+      },
+      dataUpdatedAt: 1,
+    };
+    updateConfig.mockResolvedValue({});
+    const { container } = await renderSettings();
+    const file = new File([], 'sharing.json', { type: 'application/json' });
+    Object.defineProperty(file, 'text', {
+      value: async () =>
+        JSON.stringify({
+          version: 2,
+          station: { telemetryTier: { operator: 'full' } },
+        }),
+    });
+    fireEvent.change(container.querySelector('input[type="file"]')!, {
+      target: { files: [file] },
+    });
+    await screen.findByText('Unsaved changes');
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(updateConfig).toHaveBeenCalledWith({
+        telemetryTier: { operator: 'full' },
+      }),
+    );
+    expect(
+      vi
+        .mocked(authenticatedFetch)
+        .mock.calls.filter(([url]) =>
+          String(url).endsWith('/acknowledgements'),
+        ),
+    ).toHaveLength(0);
+  });
+
+  test('a changed disclosure requires another explicit Detailed choice before Settings can acknowledge it', async () => {
+    telemetryEndpointConfigured = false;
+    window.history.replaceState({}, '', '/settings?view=telemetry');
+    configSnapshot = {
+      config: {
+        ...INITIAL_CONFIG,
+        telemetryTier: { kontour: 'lite', operator: 'lite' },
+      },
+      dataUpdatedAt: 1,
+    };
+    updateConfig.mockResolvedValue({});
+    vi.mocked(authenticatedFetch).mockImplementation(
+      async (url) =>
+        new Response(null, {
+          status: String(url).endsWith('/acknowledgements') ? 200 : 503,
+        }),
+    );
+    const view = await renderSettings();
+    fireEvent.click(
+      screen.getByRole('radio', {
+        name: 'Detailed usage to help improve Station',
+      }),
+    );
+    telemetryDisclosureRevision = 'changed-revision';
+    view.applyServerSnapshot();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await screen.findByText(
+      'Sharing details changed. Choose Detailed again to review and save. Your unsaved changes are kept here.',
+    );
+    expect(updateConfig).not.toHaveBeenCalled();
+    expect(
+      vi
+        .mocked(authenticatedFetch)
+        .mock.calls.filter(([url]) =>
+          String(url).endsWith('/acknowledgements'),
+        ),
+    ).toHaveLength(0);
+    fireEvent.click(
+      screen.getByRole('radio', {
+        name: 'Detailed usage to help improve Station',
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(authenticatedFetch).toHaveBeenCalledWith(
+        'http://station.test/api/usage-telemetry/disclosure/acknowledgements',
+        expect.objectContaining({
+          body: JSON.stringify({
+            acknowledgementProtocol: 2,
+            inventoryRevision: 'changed-revision',
+          }),
+        }),
+      ),
+    );
+    await waitFor(() =>
+      expect(updateConfig).toHaveBeenCalledWith({
+        telemetryTier: { operator: 'full' },
+      }),
+    );
+  });
+
   describe('Telemetry destination', () => {
     test('reports a configured destination without naming it', async () => {
       telemetryEndpointConfigured = true;
       await renderSettings();
       expect(
-        screen.getByText('Destination: configured by the operator.'),
+        screen.getByText('Additional destination configured.'),
       ).toBeTruthy();
     });
 
@@ -2100,7 +2981,7 @@ describe('settings catalog completeness', () => {
       telemetryEndpointConfigured = false;
       await renderSettings();
       expect(
-        screen.getByText('No destination configured; nothing is sent.'),
+        screen.getByText('No additional destination configured.'),
       ).toBeTruthy();
     });
 
@@ -2113,7 +2994,7 @@ describe('settings catalog completeness', () => {
         ),
       ).toBeTruthy();
       expect(
-        screen.queryByText('No destination configured; nothing is sent.'),
+        screen.queryByText('No additional destination configured.'),
       ).toBeNull();
     });
 
@@ -2130,7 +3011,7 @@ describe('settings catalog completeness', () => {
         ),
       ).toBeNull();
       expect(
-        screen.queryByText('No destination configured; nothing is sent.'),
+        screen.queryByText('No additional destination configured.'),
       ).toBeNull();
       // The row itself stays, so the catalog still enumerates it.
       expect(
@@ -2703,7 +3584,7 @@ describe('settings catalog completeness', () => {
       expect(updateProjectAsync).not.toHaveBeenCalled();
     });
 
-    test('an unsaved override makes the row’s own popover say so', async () => {
+    test('an unsaved override makes the row’s source explanation say so', async () => {
       // The whole path, once: SettingsView derives the pending map,
       // StationConfigSection routes it per key, registry-row hands it to the
       // status strip, and the lazily-loaded layer list withholds its "in
@@ -2718,6 +3599,9 @@ describe('settings catalog completeness', () => {
         defaultWorkspaceIsolation: { source: 'file', scope: 'project' },
       };
       await renderSettings();
+      await waitFor(() =>
+        expect(document.activeElement?.id).toBe('section-overview'),
+      );
 
       selectAtlas();
       const workspace = screen.getByLabelText(
@@ -2730,12 +3614,21 @@ describe('settings catalog completeness', () => {
         { name: `Where ${WORKSPACE_ROW} comes from` },
       );
 
+      const closeSources = async () => {
+        fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+        await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+        await waitFor(() => expect(document.activeElement).toBe(trigger));
+      };
+      const historyLength = window.history.length;
       // Saved state first: the project layer is claimed as in effect.
+      trigger.focus();
       fireEvent.click(trigger);
       expect(await screen.findByText('in effect')).toBeTruthy();
-      fireEvent.click(trigger);
+      expect(window.history.length).toBe(historyLength);
+      await closeSources();
 
       fireEvent.change(workspace, { target: { value: 'shared' } });
+      trigger.focus();
       fireEvent.click(trigger);
       expect(
         await screen.findByText(
@@ -2743,6 +3636,7 @@ describe('settings catalog completeness', () => {
         ),
       ).toBeTruthy();
       expect(screen.queryByText('in effect')).toBeNull();
+      await closeSources();
     });
   });
 

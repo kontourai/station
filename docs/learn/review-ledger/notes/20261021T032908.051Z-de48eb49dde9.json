@@ -1,0 +1,7 @@
+{
+  "revision": "37319c90a67ec9bf9021946299eb3ab36cf15f09",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed retained sender provenance after public Monument extraction: server-owned sender framing, unchanged internal actors and authorization, and exact transcript anchors. Owning route, projection, delivery and UI tests passed; provider/native/browser geometry remains unqualified.","inputs":["docs/guides/self-configuring-agent.md","docs/architecture/module-map.md","packages/monument/src/session-message-delivery.ts","src-server/providers/adapters/claude-adapter.ts","src-server/providers/adapters/codex-adapter.ts","src-server/routes/orchestration/session-agent-control.ts","src-server/runtime/routes/__tests__/runtime-routes-station-control-session-control.test.ts","src-server/services/orchestration/__tests__/delegation-result-delivery.test.ts","src-server/services/orchestration/delegation-result-delivery.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/session-message-delivery.ts"]}
+  ]
+}

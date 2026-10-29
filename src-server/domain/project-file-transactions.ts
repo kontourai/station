@@ -10,12 +10,20 @@ import {
 import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { isSafePathSegment } from '../knowledge-index/path-safety.js';
+import { KnowledgeStoreUnavailableError } from '../knowledge-store/errors.js';
 import {
   type JsonFileSnapshot,
   mutateJsonFile,
   publishJsonFileWithOwnedLock,
   readJsonFileSnapshot,
 } from './file-storage-helpers.js';
+import {
+  type ProjectDocumentFiles,
+  ProjectDocumentRoot,
+  type ProjectDocumentTransactionFaults,
+} from './project-document-transactions.js';
+
+export type { ProjectDocumentFiles };
 
 export class FileStorageConflictError extends Error {
   readonly code = 'file_storage_conflict';
@@ -95,7 +103,11 @@ export interface ProjectStoredFileRevision<T> extends StoredFileRevision<T> {
   /** Server-only read admission under the existing Project mutation owner. */
   withCurrentRead?<R>(operation: (value: T) => Promise<R>): Promise<R>;
   /** Atomically replace this Project's manifest under this exact Project revision. */
-  replaceManifest?(expected: unknown, next: unknown): Promise<void>;
+  replaceManifest?(
+    expected: unknown,
+    next: unknown,
+    assertCurrent?: () => void,
+  ): Promise<void>;
 }
 
 export interface ProjectFileTransactionFaults {
@@ -104,6 +116,7 @@ export interface ProjectFileTransactionFaults {
   afterRemoveCommit?: (path: string) => void;
   afterProjectCreatePrepared?: (projectSlug: string) => Promise<void> | void;
   afterProjectCreateCommit?: (path: string) => void;
+  documents?: ProjectDocumentTransactionFaults;
 }
 
 type Parser<T> = (value: unknown) => T;
@@ -424,7 +437,11 @@ export class ProjectFileTransactions {
                 }
                 return operation(structuredClone(admissionValue as T));
               }),
-            replaceManifest: (expectedManifest: unknown, next: unknown) => {
+            replaceManifest: (
+              expectedManifest: unknown,
+              next: unknown,
+              assertCurrent?: () => void,
+            ) => {
               const manifestPath = join(
                 this.projectDirectory(projectSlug),
                 'manifest.json',
@@ -466,8 +483,9 @@ export class ProjectFileTransactions {
                         'Project identity changed before the manifest could publish',
                       );
                     }
+                    assertCurrent?.();
                     if (isDeepStrictEqual(current, ownedNext)) return;
-                    await this.#publish(manifestPath, ownedNext);
+                    await this.#publish(manifestPath, ownedNext, assertCurrent);
                   }),
               );
             },
@@ -598,11 +616,26 @@ export class ProjectFileTransactions {
     }
   }
 
-  async #publish(path: string, value: unknown): Promise<void> {
+  async #publish(
+    path: string,
+    value: unknown,
+    assertCurrent?: () => void,
+  ): Promise<void> {
+    let admissionRefused = false;
     try {
-      await publishJsonFileWithOwnedLock(path, value);
+      await publishJsonFileWithOwnedLock(path, value, {
+        assertCurrent: () => {
+          try {
+            assertCurrent?.();
+          } catch (error) {
+            admissionRefused = true;
+            throw error;
+          }
+        },
+      });
       this.faults.afterPublish?.(path);
     } catch (error) {
+      if (admissionRefused) throw error;
       // A rename may have committed before a later durability/fault seam
       // reported failure. Exact bytes are authoritative for this capability.
       const expected = `${JSON.stringify(value, null, 2)}`;
@@ -658,18 +691,70 @@ export class ProjectFileTransactions {
     return join(projectsRoot, relative.split(/[\\/]/, 1)[0] ?? '');
   }
 
+  /**
+   * Runs one crash-safe, multi-file transaction over a Project document root
+   * (a knowledge namespace's `metadata.json` and `files/`). The root may be a
+   * configured directory outside the Project tree.
+   *
+   * Two locks are held, always in this order: the Project lock, so a document
+   * write and Project deletion are ordered; then the root's own identity lock,
+   * so two Projects configured onto one directory, or an earlier Station build
+   * writing the same root, never interleave. Any journal a crashed writer left
+   * in the root is recovered before `body` runs, or the root is refused.
+   *
+   * Errors keep the knowledge-store contract: lock and I/O failures are
+   * `KnowledgeStoreUnavailableError`, a changed read set is
+   * `KnowledgeStoreConflictError`, an untrustworthy root or journal is
+   * `KnowledgeStoreCorruptionError`, and a `body` rejection passes through
+   * unchanged with nothing published.
+   */
+  async mutateDocuments<T>(
+    projectSlug: string,
+    root: string,
+    operation: string,
+    body: (files: ProjectDocumentFiles) => T | Promise<T>,
+  ): Promise<T> {
+    let release: () => Promise<void>;
+    try {
+      release = await this.#acquireProjectLock(projectSlug);
+    } catch (error) {
+      throw new KnowledgeStoreUnavailableError({ cause: error });
+    }
+    try {
+      const documents = new ProjectDocumentRoot(
+        root,
+        this.projectHomeDir,
+        this.faults.documents,
+      );
+      return await documents.run(operation, body);
+    } finally {
+      await release().catch(() => {});
+    }
+  }
+
+  /** {@link mutateDocuments} for read-only work; it still repairs a crash. */
+  readDocuments<T>(
+    projectSlug: string,
+    root: string,
+    body: (files: ProjectDocumentFiles) => T | Promise<T>,
+  ): Promise<T> {
+    return this.mutateDocuments(projectSlug, root, 'read-repair', body);
+  }
+
+  async #acquireProjectLock(projectSlug: string): Promise<() => Promise<void>> {
+    const locksRoot = join(this.#coordinationRoot, 'projects');
+    const key = createHash('sha256').update(projectSlug).digest('hex');
+    await mkdir(locksRoot, { recursive: true, mode: 0o700 });
+    return acquireFileMutationLockAsync(join(locksRoot, `${key}.mutation`));
+  }
+
   async #withProjectLock<T>(
     projectSlug: string,
     operation: () => Promise<T>,
   ): Promise<T> {
-    const locksRoot = join(this.#coordinationRoot, 'projects');
-    const key = createHash('sha256').update(projectSlug).digest('hex');
     let release: (() => Promise<void>) | undefined;
     try {
-      await mkdir(locksRoot, { recursive: true, mode: 0o700 });
-      release = await acquireFileMutationLockAsync(
-        join(locksRoot, `${key}.mutation`),
-      );
+      release = await this.#acquireProjectLock(projectSlug);
       await this.faults.afterLockAcquired?.(projectSlug);
       return await operation();
     } catch (error) {

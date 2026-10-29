@@ -39,10 +39,10 @@ import type { AuthorityObservation } from '@kontourai/station-contracts/authorit
 /**
  * Storage-key prefix, equal to the legacy singleton key
  * (`queryPersistence.ts`'s `QUERY_PERSISTENCE_STORAGE_KEY`). That singleton
- * is QUARANTINED, not adopted: no active namespace ever reads it, and this
- * slice never deletes it either — deleting an unverified blob would be
- * silent loss of data the operator may still be entitled to. First boot
- * after this slice leaves it untouched on disk; a future migration with
+ * is QUARANTINED, not adopted: no active namespace ever reads it, and
+ * nothing here deletes it either — deleting an unverified blob would be
+ * silent loss of data the operator may still be entitled to. Boot leaves it
+ * untouched on disk; a future migration with
  * explicit operator consent may reclaim it.
  */
 export const AUTHORITY_CACHE_KEY_PREFIX = 'station-query-cache-v1';

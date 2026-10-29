@@ -6,6 +6,8 @@ import {
   type SessionInventoryScope,
   type SessionInventoryV2GroupId,
 } from '@kontourai/station-contracts/session-inventory';
+import type { TaskUserInputProjection } from '@kontourai/station-contracts/task-graph';
+import { isAuthoredInputContent } from '@kontourai/station-shared/authored-input';
 import { envelopeError, type StationHttpError } from './api-error-message';
 import { type ClientRequestOptions, getJson } from './http';
 import { rethrowDeadline } from './request-deadline';
@@ -97,6 +99,76 @@ export async function getSessionInventoryGroupPage(
         options,
       ),
       parseSessionInventoryGroupPage,
+    );
+  } catch (error) {
+    throw error instanceof SessionInventoryRequestError
+      ? error
+      : new SessionInventoryRequestError(0);
+  }
+}
+
+/** Reopen one exact input without loading the Session transcript. */
+export async function getSessionInventoryInput(
+  apiBase: string,
+  sessionId: string,
+  eventId: string,
+  turnId: string,
+  options?: ClientRequestOptions,
+): Promise<TaskUserInputProjection> {
+  try {
+    return await unwrap(
+      await getJson(
+        `${apiBase}/api/orchestration/sessions/${encodeURIComponent(sessionId)}/inputs/${encodeURIComponent(eventId)}?turnId=${encodeURIComponent(turnId)}`,
+        options,
+      ),
+      (value) => {
+        if (
+          !value ||
+          typeof value !== 'object' ||
+          !('sessionId' in value) ||
+          value.sessionId !== sessionId ||
+          !('eventId' in value) ||
+          value.eventId !== eventId ||
+          !('turnId' in value) ||
+          value.turnId !== turnId ||
+          !('input' in value) ||
+          !value.input ||
+          typeof value.input !== 'object'
+        )
+          return null;
+        const input = value.input;
+        if (
+          !('prompt' in input) ||
+          typeof input.prompt !== 'string' ||
+          !('attachments' in input) ||
+          !Array.isArray(input.attachments) ||
+          input.attachments.length > 64
+        )
+          return null;
+        const attachments: TaskUserInputProjection['attachments'][number][] =
+          [];
+        for (const attachment of input.attachments) {
+          if (
+            !attachment ||
+            typeof attachment !== 'object' ||
+            typeof attachment.name !== 'string' ||
+            typeof attachment.mediaType !== 'string' ||
+            !Number.isSafeInteger(attachment.size) ||
+            attachment.size < 0
+          )
+            return null;
+          attachments.push({
+            name: attachment.name,
+            mediaType: attachment.mediaType,
+            size: attachment.size,
+          });
+        }
+        // A read of nothing authored is not an input; refuse it the way the
+        // listing and the server read do, rather than render an empty body.
+        if (!isAuthoredInputContent(input.prompt, attachments.length))
+          return null;
+        return { prompt: input.prompt, attachments };
+      },
     );
   } catch (error) {
     throw error instanceof SessionInventoryRequestError

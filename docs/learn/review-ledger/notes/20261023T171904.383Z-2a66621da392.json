@@ -1,0 +1,9 @@
+{
+  "revision": "adc4e18eff417b9401624dac2affc4631a0e5289",
+
+  "notes": [
+    {"path":"AGENTS.md","note":"Reviewed the native plan adapter JSDoc return-type correction against the root and native agent instructions. Pre-edit gate:for still invokes the installed CLI, validates an unexecuted ChangePlan and presents matched policies. Worktree isolation, managed installs, focused verification and native/device evidence requirements are unchanged. The correction only restores type inference for callers; scripts typechecking and all10gate-for tests passed. No instruction change or native qualification is claimed.","inputs":["AGENTS.md","scripts/gate-for.mjs"]},
+
+    {"path":"src-desktop/AGENTS.md","note":"Reviewed the native plan adapter JSDoc return-type correction against the root and native agent instructions. Pre-edit gate:for still invokes the installed CLI, validates an unexecuted ChangePlan and presents matched policies. Worktree isolation, managed installs, focused verification and native/device evidence requirements are unchanged. The correction only restores type inference for callers; scripts typechecking and all10gate-for tests passed. No instruction change or native qualification is claimed.","inputs":["src-desktop/AGENTS.md","scripts/gate-for.mjs"]}
+  ]
+}

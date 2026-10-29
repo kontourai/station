@@ -1,5 +1,10 @@
+import type { TelemetryPublisherId } from '@kontourai/station-contracts/product-telemetry';
+import { assertRequiredSlotDefaultMutable } from '@kontourai/station-contracts/required-slots';
+import { pluginTelemetryPublisherId } from '@kontourai/station-shared/plugin-telemetry';
 import { readRegistryCatalogSelection } from '../../providers/registries/registry-source-manager.js';
+import { retirePluginTelemetry } from '../plugin-telemetry-service.js';
 import { assertPluginNameSegment } from './plugin-name.js';
+import { assertPluginTelemetryAdmission } from './plugin-telemetry-admission.js';
 
 export { assertPluginNameSegment } from './plugin-name.js';
 
@@ -69,6 +74,7 @@ import {
   assertExistingPathInside,
   assertPathInside,
 } from '../../utils/path-containment.js';
+import { assertInstallablePluginLayoutDeclaration } from '../layouts/layout-presentation-declaration.js';
 import type { PackageMcpAdmissionJournal } from './package-mcp-admission.js';
 import { pluginAcquisitionOrigin } from './plugin-acquisition-origin.js';
 import {
@@ -127,12 +133,27 @@ import {
   withPluginPublicationContext,
   withPluginRetirementScope,
 } from './plugin-install-publication.js';
+import { ensurePluginInstallTrustMigration } from './plugin-install-trust-migration.js';
+import {
+  defaultPluginInstallTrustPolicy,
+  type PluginInstallTrustPolicy,
+  pluginTrustRecordFor,
+  preparePluginInstallTrust,
+} from './plugin-install-trust-recording.js';
+import {
+  PluginTrustRecordNewerError,
+  pluginTrustForInstalledBytes,
+  pluginTrustMigrationWitness,
+  readPluginTrustRecord,
+  writePluginTrustRecord,
+} from './plugin-install-trust-store.js';
 import {
   captureLocalPluginActivation,
   captureLocalPluginInstallation,
   createLocalPluginInstallationHost,
 } from './plugin-installation-local.js';
 import {
+  PluginInstallationConflict,
   type PluginInstallationHost,
   PluginInstallationPending,
   type PluginInstallationService,
@@ -150,6 +171,7 @@ import {
   hasGrant,
   isPluginInstallAuthorityRecord,
   observePluginGrantRevisions,
+  PluginContentUnavailableError,
   type PluginDependencyOwnershipEntry,
   type PluginDependencyOwnershipHandoff,
   type PluginGrantMutationScope,
@@ -180,6 +202,8 @@ import {
   resolvePluginDependencySource,
 } from './plugin-source.js';
 import {
+  findRegistryAcquisitionRefusal,
+  pluginRegistryTrust,
   RegistryAcquisitionRefused,
   registryAcquisitionRevision,
   verifyRegistryAcquisition,
@@ -455,10 +479,15 @@ export interface PluginLifecycleEventBus {
 }
 
 export interface PluginInstallTransactionDeps {
+  beforeTelemetryRemoval?: (
+    publisher: TelemetryPublisherId,
+  ) => Promise<undefined | (() => void)>;
   /** Explicit private installer owner, never request data or ambient state. */
   activationSession?: PluginActivationSession;
   installationHost?: PluginInstallationHost;
   registryTrustPolicyAuthority?: RegistryTrustPolicyAuthority;
+  /** Install trust pins, lock and verifier; production uses the default. */
+  installTrust?: PluginInstallTrustPolicy;
   packageMcpJournal?: PackageMcpAdmissionJournal;
   agentsDir: string;
   eventBus?: PluginLifecycleEventBus;
@@ -3011,6 +3040,8 @@ async function inspectRetainedPluginRecovery(
       registryTrustRevision: priorTrust.receipt
         ? registryAcquisitionRevision(priorTrust.receipt)
         : undefined,
+      // #1521: the receipt this recovery binds, shown by the recovery review.
+      registryTrust: pluginRegistryTrust(priorTrust),
       permissions: {
         required: basis.required,
         autoGranted: basis.autoGranted,
@@ -3206,6 +3237,16 @@ async function installPluginFromSourceUnderContext(
     kind: 'no-operator-decision',
     caller: 'this caller',
   };
+  // #2998: freeze the pre-d1 migration set before this install can create
+  // anything, dependencies included, so nothing it adds is grandfathered.
+  await ensurePluginInstallTrustMigration({
+    projectHomeDir,
+    ...(deps.packageMcpJournal
+      ? { packageMcpJournal: deps.packageMcpJournal }
+      : {}),
+    logger,
+  });
+  const trustWitness = pluginTrustMigrationWitness(deps.packageMcpJournal);
   const skipSet = new Set<string>(skip || []);
   // Populated by `installPluginDependency` as it creates trees, and read only
   // by this function's rollback. Identity of what WE created, never a listing
@@ -3482,6 +3523,9 @@ async function installPluginFromSourceUnderContext(
       );
       if (childTrust.state === 'unavailable')
         throw new RegistryAcquisitionRefused('receipt-unavailable');
+      // #1521: a pinned approval for a dependency that has no receipt is stale.
+      if (!childTrust.receipt && approval.registryTrustRevision !== undefined)
+        throw new RegistryAcquisitionRefused('stale-review');
       if (childTrust.receipt) {
         if (
           approval?.registryTrustRevision !==
@@ -3719,17 +3763,66 @@ async function installPluginFromSourceUnderContext(
             options?.registryKey,
             priorTrust?.receipt ?? undefined,
           );
+    if (manifest.telemetry)
+      assertPluginTelemetryAdmission(
+        manifest.telemetry,
+        registryAcquisition,
+        (await observeAppConfigFile(projectHomeDir))?.publicTelemetryRegistries,
+      );
     if (options?.requireRegistryClaim && !registryAcquisition)
       throw new RegistryAcquisitionRefused();
     if (registryAcquisition && !isAgentPlugin)
       throw new RegistryAcquisitionRefused();
+    // #1521: the reviewed pin and this acquisition must agree in both
+    // directions. A receipt the review did not pin, or a pinned review that
+    // now produces no receipt (profile and claim withdrawn), is stale.
+    const reviewedRegistryTrust =
+      consent.kind === 'operator-decision'
+        ? consent.registryTrustRevision
+        : undefined;
     if (
-      registryAcquisition &&
-      (consent.kind !== 'operator-decision' ||
-        consent.registryTrustRevision !==
-          registryAcquisitionRevision(registryAcquisition))
+      (registryAcquisition && consent.kind !== 'operator-decision') ||
+      (registryAcquisition
+        ? registryAcquisitionRevision(registryAcquisition)
+        : undefined) !== reviewedRegistryTrust
     )
       throw new RegistryAcquisitionRefused('stale-review');
+    // A pinned approval for a dependency that is installed now must match that
+    // installation's receipt before the parent builds. Adoption rechecks it.
+    if (consent.kind === 'operator-decision' && deps.packageMcpJournal)
+      for (const approval of consent.dependencyApprovals ?? []) {
+        if (approval.registryTrustRevision === undefined) continue;
+        const installed = deps.packageMcpJournal.currentInstallation(
+          approval.id,
+        );
+        // An unreadable journal is a conflict, as in captureLocalPluginInstallation.
+        if (installed.state === 'unavailable')
+          throw new PluginInstallationConflict();
+        if (installed.state !== 'observed') continue;
+        const trust = deps.packageMcpJournal.registryAcquisition(
+          installed.installation,
+        );
+        if (trust.state === 'unavailable')
+          throw new RegistryAcquisitionRefused('receipt-unavailable');
+        if (
+          !trust.receipt ||
+          registryAcquisitionRevision(trust.receipt) !==
+            approval.registryTrustRevision
+        )
+          throw new RegistryAcquisitionRefused('stale-review');
+      }
+    // #2998: decide install trust from THIS acquisition's own verification,
+    // before any effect (the migration ran at entry).
+    const installTrust = await preparePluginInstallTrust({
+      projectHomeDir,
+      pluginName,
+      manifestName: manifest.name,
+      sourceDigest:
+        recovery?.originalSourceDigest ?? consentBasis.contentDigest,
+      registrySigner: registryAcquisition?.signer ?? null,
+      policy: deps.installTrust ?? defaultPluginInstallTrustPolicy(),
+      ...(trustWitness ? { witness: trustWitness } : {}),
+    });
     let permissionArtifact: CapturedPluginPermissionArtifact | undefined;
     let managedLifecycle:
       | Awaited<ReturnType<NonNullable<typeof installationService>['install']>>
@@ -3787,6 +3880,11 @@ async function installPluginFromSourceUnderContext(
     // releases. The lock is taken here rather than at the top of the function
     // because the plugin's NAME is not known until its manifest is read.
     return await withPluginContentLock(pluginsDir, pluginName, async () => {
+      // #2998: the bytes installed under this name, read under the lock.
+      const trustBytesBefore = computePluginContentDigest(
+        pluginsDir,
+        pluginName,
+      );
       try {
         const installBackupRoot = createStationTempDirSync('plugin-install');
         backupRoot = installBackupRoot;
@@ -3993,6 +4091,10 @@ async function installPluginFromSourceUnderContext(
               dependencyResult.cause,
             );
             if (refusal) throw refusal;
+            const trustRefusal = findRegistryAcquisitionRefusal(
+              dependencyResult.cause,
+            );
+            if (trustRefusal) throw trustRefusal;
             // `cause`, not just the message: a refused lock acquisition is a
             // typed error carrying WHICH plugins are waiting on each other,
             // and flattening it here is what left the routes with a sentence
@@ -4037,6 +4139,21 @@ async function installPluginFromSourceUnderContext(
             'Plugin layout source',
           );
           if (existsSync(layoutSource)) {
+            // #2995: refuse a layout whose contract fields the shell cannot
+            // honour before anything is published, naming the field.
+            const definition = JSON.parse(
+              readFileSync(layoutSource, 'utf-8'),
+            ) as unknown;
+            assertInstallablePluginLayoutDeclaration(definition, {
+              name: pluginName,
+              layoutSlug:
+                definition &&
+                typeof definition === 'object' &&
+                typeof (definition as { slug?: unknown }).slug === 'string'
+                  ? (definition as { slug: string }).slug
+                  : manifest.layout.slug,
+              requestedPermissions: requiredPermissionsForManifest(manifest),
+            });
             installedLayoutSlug = manifest.layout.slug;
           }
         }
@@ -4246,7 +4363,7 @@ async function installPluginFromSourceUnderContext(
           {
             strict: true,
             beforeEffect: () =>
-              policyAdmission?.assertCurrent() ?? Promise.resolve(),
+              policyAdmission?.assertCurrent() ?? Promise.resolve(undefined),
             ...(permissionArtifact
               ? (captureManagedPluginPermission(deps, pluginName) ?? {
                   artifact: permissionArtifact,
@@ -4334,6 +4451,39 @@ async function installPluginFromSourceUnderContext(
           });
         });
         pluginInstalls.add(1, { plugin: pluginName });
+
+        // #2998: the last fallible step, so a failed write rolls the whole
+        // install back and an install never lands without its record.
+        const trustedDigest =
+          permissionArtifact?.digest ??
+          computePluginContentDigest(dirname(pluginDir), basename(pluginDir));
+        if (!trustedDigest) throw new PluginContentUnavailableError(pluginName);
+        // Decided from what this content lock saw: the record read now, and
+        // whether it described the bytes installed when the lock was taken.
+        // A record that survived an uninstall, or bytes placed by hand, is
+        // not an installation this record describes.
+        const previousTrust = readPluginTrustRecord(
+          projectHomeDir,
+          pluginName,
+          trustWitness,
+        );
+        if (previousTrust.state === 'unreadable')
+          throw new PluginTrustRecordNewerError(pluginName);
+        await writePluginTrustRecord(
+          projectHomeDir,
+          pluginName,
+          pluginTrustRecordFor(
+            { ...installTrust, previous: previousTrust },
+            trustedDigest,
+            new Date(),
+            {
+              installedBefore:
+                pluginTrustForInstalledBytes(previousTrust, trustBytesBefore)
+                  .state === 'recorded',
+            },
+          ),
+          trustWitness,
+        );
 
         dependencyLifecycle.commit?.();
         commitRemovedDependencies(retiredDependencyBackups);
@@ -4643,6 +4793,7 @@ async function uninstallInstalledPluginUnderContext(
 ): Promise<
   { success: true; lifecycle?: unknown } & PluginCommandEffectResponseFields
 > {
+  assertRequiredSlotDefaultMutable(name, 'uninstall');
   const requestGrants = publicationGrantRevisions(() =>
     observePluginGrantRevisions(deps.projectHomeDir),
   );
@@ -4656,6 +4807,7 @@ async function uninstallInstalledPluginUnderContext(
     const installedName =
       resolveInstalledPluginName(deps.projectHomeDir, deps.pluginsDir, name) ||
       name;
+    assertRequiredSlotDefaultMutable(installedName, 'uninstall');
     return await withPluginContentLock(deps.pluginsDir, installedName, () =>
       uninstallPluginUnderPublication(
         name,
@@ -4751,6 +4903,22 @@ async function uninstallPluginUnderPublication(
     throw new Error(
       'Plugin installation changed before removal; reload before retrying',
     );
+  let telemetryPublisher: TelemetryPublisherId | undefined;
+  if (manifest.telemetry && priorJournal?.state === 'observed') {
+    const trust = deps.packageMcpJournal!.registryAcquisition(
+      priorJournal.installation,
+    );
+    if (
+      trust.state === 'observed' &&
+      trust.receipt?.signer &&
+      trust.receipt.registryId === manifest.telemetry.publisher
+    ) {
+      telemetryPublisher = pluginTelemetryPublisherId(
+        trust.receipt.registryKeyDigest,
+        trust.receipt.registryId,
+      );
+    }
+  }
   const priorWasReady =
     priorJournal?.state === 'observed' &&
     deps.packageMcpJournal!.admissionOpen(priorJournal.installation);
@@ -4906,7 +5074,27 @@ async function uninstallPluginUnderPublication(
     return managed ? await installationService!.inspect(pluginName) : null;
   };
 
+  let resumeTelemetry: (() => void) | undefined;
+  let restoreTelemetry: (() => Promise<void>) | undefined;
+  const rollbackTelemetry = async () => {
+    await restoreTelemetry?.();
+    restoreTelemetry = undefined;
+    resumeTelemetry?.();
+    resumeTelemetry = undefined;
+  };
   try {
+    if (telemetryPublisher) {
+      try {
+        resumeTelemetry =
+          await deps.beforeTelemetryRemoval?.(telemetryPublisher);
+      } catch {
+        logger.warn('Plugin uninstall feedback unavailable');
+      }
+      restoreTelemetry = await retirePluginTelemetry(
+        projectHomeDir,
+        telemetryPublisher,
+      );
+    }
     backupRoot = recovery?.root ?? createStationTempDirSync('plugin-uninstall');
     if (recovery) mkdirSync(backupRoot, { recursive: true });
     if (!managed)
@@ -4997,7 +5185,12 @@ async function uninstallPluginUnderPublication(
       commitRemovedDependencies(removedDependencyBackups);
       grantScope.commit();
     };
-    if (recovery) recovery.capture(compensateRemoval, finishRemoval);
+    if (recovery)
+      recovery.capture(async (parent) => {
+        const restored = await compensateRemoval(parent);
+        await rollbackTelemetry();
+        return restored;
+      }, finishRemoval);
     else finishRemoval();
     return {
       success: true,
@@ -5010,6 +5203,7 @@ async function uninstallPluginUnderPublication(
   } catch (error) {
     try {
       await compensateRemoval();
+      await rollbackTelemetry();
     } catch (rollbackError) {
       throw new AggregateError(
         [error, rollbackError],

@@ -6,7 +6,7 @@ import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { PAIRING_SCOPE_ROUTE_TABLE } from '../../../security/pairing-route-scopes.js';
-import type { EventBus } from '../../../services/orchestration/event-bus.js';
+import { EventBus } from '../../../services/orchestration/event-bus.js';
 import type { Logger } from '../../../utils/logger.js';
 import { RouteError } from '../../../utils/route-error.js';
 import {
@@ -27,6 +27,15 @@ test.each([
   ['POST', '/api/projects/demo/file-preview', 200, []],
   ['POST', '/api/projects/demo/file-preview/download', 200, []],
   ['POST', '/api/projects/demo/file-preview/exists', 200, []],
+  ['POST', '/api/projects/demo/file-preview/changes', 200, []],
+  ['POST', '/api/projects/demo/file-preview/changes/', 200, []],
+  ['POST', '/api/projects/demo/file-preview/visual/', 200, []],
+  ['POST', '/api/projects/demo/file-preview/visual/extra', 200, ['projects']],
+  ['PUT', '/api/projects/demo/file-preview/visual', 200, ['projects']],
+  ['POST', '/api/projects/demo/plugin-draft/lease', 200, []],
+  ['POST', '/api/projects/demo/plugin-draft/lease/', 200, []],
+  ['POST', '/agents/demo/chat', 200, []],
+  ['POST', '/agents/demo/chat/', 200, []],
   ['POST', '/api/projects/demo/file-preview', 400, []],
   ['POST', '/api/projects/demo/knowledge/search', 200, []],
   ['POST', '/api/projects/demo/knowledge/ns/notes/search', 200, []],
@@ -36,9 +45,21 @@ test.each([
   // The receiver contribution query is a POST-carried read: no invalidation,
   // or the query refetches itself. The offer PUT is a real config mutation.
   ['POST', '/api/project-contributions/query', 200, []],
+  ['POST', '/api/analytics/recipient-candidates/demo/outcomes', 200, []],
+  ['POST', '/api/analytics/recipient-candidates/demo/query', 200, []],
   ['PUT', '/api/project-contributions/offer', 200, ['config']],
   ['GET', '/api/projects/demo', 200, []],
   ['PATCH', '/api/projects/demo', 200, ['projects']],
+  ['POST', '/api/projects', 201, ['projects']],
+  ['POST', '/api/projects/demo/plugin-draft/lease/extra', 200, ['projects']],
+  ['PUT', '/api/projects/demo/plugin-draft/lease', 200, ['projects']],
+  ['PUT', '/api/projects/demo/file-preview/changes', 200, ['projects']],
+  ['POST', '/api/projects/demo/file-preview/changes/extra', 200, ['projects']],
+  ['POST', '/agents', 201, ['agents']],
+  ['PATCH', '/agents/demo', 200, ['agents']],
+  ['DELETE', '/agents/demo', 200, ['agents']],
+  ['POST', '/agents/demo/chat/extra', 200, ['agents']],
+  ['PUT', '/agents/demo/chat', 200, ['agents']],
   ['PUT', '/api/projects/demo/file-preview', 200, ['projects']],
   ['POST', '/api/projects/demo/file-preview/rebuild', 200, ['projects']],
   ['POST', '/api/knowledge/index/rebuild', 200, ['knowledge']],
@@ -70,7 +91,7 @@ test.each([
       eventBus: { emit } as unknown as EventBus,
     });
     app.on(method, path, (c) =>
-      c.json({ success: status === 200, data: {} }, status),
+      c.json({ success: status < 400, data: {} }, status),
     );
     const response = await app.request(`http://station.test${path}`, {
       method,
@@ -175,7 +196,7 @@ describe('resolveRuntimeCorsOrigin', () => {
           Origin: 'http://localhost:5173',
           'Access-Control-Request-Method': 'GET',
           'Access-Control-Request-Headers':
-            'last-event-id, x-station-client-session',
+            'last-event-id, x-station-client-session, x-station-background-refresh',
         },
       },
       { incoming: { socket: { remoteAddress: '127.0.0.1' } } } as never,
@@ -190,6 +211,7 @@ describe('resolveRuntimeCorsOrigin', () => {
     expect(allowed).toContain('last-event-id');
     expect(allowed).toContain('authorization');
     expect(allowed).toContain('x-station-client-session');
+    expect(allowed).toContain('x-station-background-refresh');
   });
 
   test('station#1848: the access log never reports a stream-open time as a request duration', async () => {
@@ -653,3 +675,25 @@ describe('resolveRuntimeCorsOrigin', () => {
     );
   });
 });
+
+test.each(['oat_', 'ort_', 'oac_'])(
+  'live audience middleware permits a 43-character Station token starting with %s',
+  async (prefix) => {
+    const token = prefix + 'a'.repeat(39);
+    const app = new Hono();
+    configureRuntimeHttp({
+      app: app as never,
+      logger: createCapturingLogger(),
+      eventBus: new EventBus(),
+      security: {
+        verifyCredential: (candidate) => candidate === token,
+        resolveGrantedScope: () => DEFAULT_GRANT_PAIRING_SCOPE,
+      },
+    });
+    app.get('/api/projects', (c) => c.json({ success: true }));
+    const response = await app.request('http://station.test/api/projects', {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(response.status).toBe(200);
+  },
+);

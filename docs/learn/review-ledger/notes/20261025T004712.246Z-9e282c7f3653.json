@@ -1,0 +1,7 @@
+{
+  "revision": "1f422b33b482483fbef871ac7533b743475a90f1",
+
+  "notes": [
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Security-review fix round: added readings for public station-plugins repository (private attestations use GitHub's log-less instance), SAN plus build config URI pinning, the tier ceiling at the new provenance (with the branch-dispatch case it closes), raw-byte input with a 512 KiB pre-parse bound, and the test-only root constructor. Checked each against plugin-sigstore-verifier.ts, plugin-install-trust.ts and their tests.","inputs":["docs/design/shell-plugins-distributions.md","src-server/services/plugins/plugin-install-trust.ts","src-server/services/plugins/plugin-sigstore-verifier.ts"]}
+  ]
+}

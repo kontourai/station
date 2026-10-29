@@ -202,6 +202,53 @@ describe('Agent schema validation', () => {
   });
 });
 
+describe('Deprecated AgentSpec.streaming block (#3879)', () => {
+  let workDir: string;
+
+  beforeEach(() => {
+    workDir = createTempDir();
+  });
+
+  afterEach(() => {
+    rmSync(workDir, { recursive: true, force: true });
+  });
+
+  // Nothing reads `streaming`, but the schema rejects unknown keys, so an
+  // agent file written before the block was deprecated must keep loading.
+  it('still loads an agent file that carries the streaming block', async () => {
+    const agentDir = join(workDir, 'agents', 'legacy-streaming');
+    mkdirSync(agentDir, { recursive: true });
+    writeFileSync(
+      join(agentDir, 'agent.json'),
+      JSON.stringify({
+        name: 'Legacy Streaming Agent',
+        prompt: 'Prompt',
+        streaming: {
+          useNewPipeline: true,
+          enableThinking: false,
+          debugStreaming: true,
+        },
+      }),
+      'utf-8',
+    );
+
+    const loader = new ConfigLoader({ projectHomeDir: workDir });
+    const spec = await loader.loadAgent('legacy-streaming');
+
+    expect(spec.name).toBe('Legacy Streaming Agent');
+  });
+
+  it('still rejects an unknown key inside the streaming block', () => {
+    expect(() =>
+      validator.validateAgentSpec({
+        name: 'Typo Agent',
+        prompt: '',
+        streaming: { enableThinkng: true },
+      }),
+    ).toThrow();
+  });
+});
+
 describe('App schema validation', () => {
   it('accepts app config without region', () => {
     const config = {

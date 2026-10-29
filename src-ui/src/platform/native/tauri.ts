@@ -26,7 +26,6 @@ import type {
   NativePlatformAdapter,
   NativePlatformError,
   NativeShareEvent,
-  NativeStartupReadinessTicket,
   NativeTrayNavigationEvent,
   NativeWorkspacePanePopOutRequest,
 } from './types';
@@ -385,23 +384,6 @@ function parseCapabilityReport(value: unknown): NativeCapabilityReport | null {
     return null;
   }
 
-  let mobileDefaultEndpoint: string | undefined;
-  if (typeof candidate.mobileDefaultEndpoint === 'string') {
-    try {
-      const endpoint = new URL(candidate.mobileDefaultEndpoint);
-      if (
-        endpoint.protocol === 'https:' &&
-        !endpoint.username &&
-        !endpoint.password &&
-        endpoint.origin === candidate.mobileDefaultEndpoint
-      ) {
-        mobileDefaultEndpoint = endpoint.origin;
-      }
-    } catch {
-      // Invalid optional bootstrap metadata is ignored fail-closed. The rest
-      // of the capability report remains useful and the pairing UI remains.
-    }
-  }
   const clientBuild = parseClientBuildProvenance(candidate.clientBuild);
   const pairingDeepLinkScheme =
     typeof candidate.pairingDeepLinkScheme === 'string' &&
@@ -423,7 +405,6 @@ function parseCapabilityReport(value: unknown): NativeCapabilityReport | null {
     // absent or malformed value reads as release rather than tinting a real
     // install. Dropping it here silently disabled the dev tint entirely.
     devBuild: candidate.devBuild === true,
-    ...(mobileDefaultEndpoint ? { mobileDefaultEndpoint } : {}),
     ...(clientBuild ? { clientBuild } : {}),
     ...(pairingDeepLinkScheme ? { pairingDeepLinkScheme } : {}),
   };
@@ -1105,21 +1086,6 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
     }
   }
 
-  async commitStartupReadiness(
-    ticket: NativeStartupReadinessTicket,
-  ): Promise<NativeCommandResult<void>> {
-    try {
-      await this.bridge.invoke<unknown>('commit_startup_readiness', { ticket });
-      return { status: 'ok', value: undefined };
-    } catch (error) {
-      return {
-        status: 'error',
-        command: 'commit-startup-readiness',
-        message: errorMessage(error),
-      };
-    }
-  }
-
   async isStartupWindowAdmitted(): Promise<NativeCommandResult<boolean>> {
     try {
       const admitted = await this.bridge.invoke<unknown>(
@@ -1153,40 +1119,6 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
         message: errorMessage(error),
       };
     }
-  }
-
-  async commitStartupRecoveryUi(): Promise<NativeCommandResult<void>> {
-    try {
-      await this.bridge.invoke<unknown>('commit_startup_recovery_ui');
-      return { status: 'ok', value: undefined };
-    } catch (error) {
-      return {
-        status: 'error',
-        command: 'commit-startup-recovery-ui',
-        message: errorMessage(error),
-      };
-    }
-  }
-
-  subscribeToStartupReadinessRetry(
-    listener: () => void,
-  ): NativeEventSubscription {
-    let disposed = false;
-    let unlisten: UnlistenFn | undefined;
-    void this.bridge
-      .listen('station://startup-readiness-retry', () => {
-        if (!disposed) listener();
-      })
-      .then((value) => {
-        unlisten = value;
-        if (disposed) value();
-      });
-    return {
-      dispose() {
-        disposed = true;
-        unlisten?.();
-      },
-    };
   }
 
   async openLocalBrowserPreview(
@@ -1381,6 +1313,7 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
 
   async reviewConsentNatively(
     requestId: string,
+    authority: 'operator' | 'requester-session' = 'operator',
   ): Promise<NativeCommandResult<NativeConsentOutcome>> {
     const capability = this.capabilities['native-consent-broker'];
     if (capability.state !== 'enabled') {
@@ -1393,7 +1326,9 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
     try {
       const outcome = await this.bridge.invoke<unknown>(
         'station_native_consent_review',
-        { requestId },
+        authority === 'requester-session'
+          ? { requestId, requesterOnly: true }
+          : { requestId },
       );
       const status =
         typeof outcome === 'object' &&

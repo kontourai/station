@@ -1,0 +1,9 @@
+{
+  "revision": "52c16d6541bfaa6d52c8ac4797d99ac828eea6a6",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.png","note":"Re-reviewed for #3551's orchestration-service.ts change (canBindNewAttachedSubject and the recovery observation that feeds it). The capture shows Notifications → Inspect request for a Station-owned request; request routes, the inspector, approval controls and request projection are untouched, and the change only gates importing new read-only-attached subjects. The image still depicts current behaviour; no recapture.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Re-reviewed for #3551's orchestration-service.ts change (canBindNewAttachedSubject and the recovery observation that feeds it). The recording opens Inspect request, expands Request identity and closes without deciding; none of that path changes, and the change only gates importing new read-only-attached subjects. The recording still depicts current behaviour; no recapture.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

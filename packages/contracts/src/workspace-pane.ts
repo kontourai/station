@@ -583,6 +583,20 @@ export interface WorkspacePaneAlternativeRenderer {
   reason?: string;
 }
 
+/**
+ * How a pane is presented when another pane opens it as a related pane
+ * (docs/design/pane-relationships.md): a `destination` opens beside its
+ * source on a desktop and as a child screen on a phone; a `tool` is ongoing
+ * work and opens with the Tools, below Main. A hint the host reads to choose
+ * a presentation, never a placement order, a region admission or a grant.
+ * A selection inspector role is not offered to plugins yet.
+ */
+export type WorkspacePaneRelationRole = 'destination' | 'tool';
+const WORKSPACE_PANE_RELATION_ROLES: readonly WorkspacePaneRelationRole[] = [
+  'destination',
+  'tool',
+];
+
 /** The version `1.0` WorkspacePane descriptor shape. */
 export interface WorkspacePaneDescriptor {
   version: WorkspacePaneContractVersion;
@@ -621,6 +635,12 @@ export interface WorkspacePaneDescriptor {
   provenance: WorkspacePaneProvenance;
   lifecycle: WorkspacePaneLifecycle;
   alternativeRenderer?: WorkspacePaneAlternativeRenderer;
+  /**
+   * Optional: a related open of a descriptor without it is a `destination`.
+   * A role this version does not know is dropped on read, so a descriptor
+   * written for a newer host still parses here, as a destination.
+   */
+  relationRole?: WorkspacePaneRelationRole;
 }
 
 /**
@@ -903,9 +923,24 @@ function parseLayoutCatalogContribution(
   ) {
     return null;
   }
+  if (
+    value.lifecycleGeneration !== undefined &&
+    value.lifecycleGeneration !== null &&
+    !(
+      isNonEmptyTrimmedString(value.lifecycleGeneration) &&
+      value.lifecycleGeneration.length <= 256
+    )
+  ) {
+    return null;
+  }
   return {
     id: value.id,
     version: value.version,
+    ...(value.lifecycleGeneration === undefined
+      ? {}
+      : {
+          lifecycleGeneration: value.lifecycleGeneration as string | null,
+        }),
     sourceIdentity: {
       id: sourceIdentity.id,
       kind: sourceIdentity.kind as LayoutCatalogContribution['sourceIdentity']['kind'],
@@ -1179,6 +1214,10 @@ export function parseWorkspacePaneDescriptor(
   );
   if (alternativeRenderer === null) return null;
 
+  const relationRole = descriptorInput.relationRole;
+  if (relationRole !== undefined && typeof relationRole !== 'string')
+    return null;
+
   const descriptor: WorkspacePaneDescriptor = {
     version: WORKSPACE_PANE_CONTRACT_VERSION,
     id: toWorkspacePaneDescriptorId(descriptorInput.id),
@@ -1212,6 +1251,13 @@ export function parseWorkspacePaneDescriptor(
   }
   if (alternativeRenderer !== undefined) {
     descriptor.alternativeRenderer = alternativeRenderer;
+  }
+  if (
+    WORKSPACE_PANE_RELATION_ROLES.includes(
+      relationRole as WorkspacePaneRelationRole,
+    )
+  ) {
+    descriptor.relationRole = relationRole as WorkspacePaneRelationRole;
   }
   return descriptor;
 }

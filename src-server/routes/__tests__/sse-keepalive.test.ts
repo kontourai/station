@@ -67,7 +67,7 @@ describe('sseKeepalive', () => {
     vi.useRealTimers();
   });
 
-  it('writes the shared ping frame once per SSE_KEEPALIVE_INTERVAL_MS by default', () => {
+  it('writes the shared ping frame once per SSE_KEEPALIVE_INTERVAL_MS by default', async () => {
     const fake = fakeStream();
     const stop = start(fake);
     try {
@@ -77,18 +77,38 @@ describe('sseKeepalive', () => {
       // itself, not merely that something is eventually written — the whole
       // point of the constant is WHEN the frame lands, and no route test
       // asserts this cadence.
-      vi.advanceTimersByTime(SSE_KEEPALIVE_INTERVAL_MS - 1);
+      await vi.advanceTimersByTimeAsync(SSE_KEEPALIVE_INTERVAL_MS - 1);
       expect(fake.written).toHaveLength(0);
 
-      vi.advanceTimersByTime(1);
+      await vi.advanceTimersByTimeAsync(1);
       expect(fake.written).toEqual([SSE_KEEPALIVE_FRAME]);
 
-      vi.advanceTimersByTime(SSE_KEEPALIVE_INTERVAL_MS * 3);
+      await vi.advanceTimersByTimeAsync(SSE_KEEPALIVE_INTERVAL_MS * 3);
       expect(fake.written).toHaveLength(4);
       expect(fake.written.every((frame) => frame === SSE_KEEPALIVE_FRAME)).toBe(
         true,
       );
     } finally {
+      stop();
+    }
+  });
+
+  it('holds at most one heartbeat write while a subscriber is stalled', async () => {
+    const fake = fakeStream();
+    let release!: () => void;
+    const barrier = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const write = vi.spyOn(fake.stream, 'writeSSE').mockReturnValue(barrier);
+    const stop = start(fake);
+    try {
+      await vi.advanceTimersByTimeAsync(SSE_KEEPALIVE_INTERVAL_MS * 5);
+      expect(write).toHaveBeenCalledTimes(1);
+      release();
+      await vi.advanceTimersByTimeAsync(SSE_KEEPALIVE_INTERVAL_MS);
+      expect(write).toHaveBeenCalledTimes(2);
+    } finally {
+      release();
       stop();
     }
   });

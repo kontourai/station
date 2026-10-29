@@ -1,0 +1,7 @@
+{
+  "revision": "84746f956321c7e9fcd2ba8df1a446fbf3589a14",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Fix round 8 of the delivery-state change: the flush hook's deferred-row retry timer now re-reads the queue when it fires (arming itself for the next row still waiting) before starting its pass, so a second deferred row is not stranded when the first one's pass claims nothing; 'deferredAt' joins OutboundDispatchIntent's omitted fields. station-docs-content.ts was regenerated with npm run docs:mcp:generate after the module-map edit; this reference's description of the shipped topics and their digest check is unchanged. No prose change.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

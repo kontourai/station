@@ -19,7 +19,10 @@ import {
   assertNoRetiredLayoutKeys,
   BUILTIN_SESSION_BOARD_LAYOUT,
   type LayoutConfig,
+  type LayoutMetadataReadView,
   type LayoutReadView,
+  type LayoutWorkspaceBinding,
+  layoutUsesRepositoryWorkspace,
   RetiredLayoutKeyError,
 } from '@kontourai/station-contracts/layout';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
@@ -29,6 +32,7 @@ import {
   type ProjectConfig,
   type ProjectRunLocations,
 } from '@kontourai/station-contracts/project';
+import type { ProjectChatDefaultsView } from '@kontourai/station-contracts/project-chat-defaults';
 import type { ProjectResourceBindOutcome } from '@kontourai/station-contracts/project-identity';
 import type {
   ProjectMemberAction,
@@ -48,6 +52,7 @@ import {
   WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR_ID,
 } from '@kontourai/station-contracts/workspace-coding-panels';
 import { type Context, Hono } from 'hono';
+import { z } from 'zod/v3';
 import {
   FileStorageAlreadyExistsError,
   FileStorageConflictError,
@@ -59,7 +64,9 @@ import {
   type IStorageAdapter,
 } from '../../domain/storage-adapter.js';
 import {
+  isOperatorInPersonNotAgent,
   mayChooseWorkingDirectory,
+  mayGrantFullAccess,
   WORKING_DIRECTORY_NOT_GRANTED_CODE,
 } from '../../security/coding-authority.js';
 import {
@@ -73,9 +80,22 @@ import {
   withoutPluginBinding,
   withPluginBindingRestored,
 } from '../../services/layouts/layout-pane-reference.js';
+import {
+  type LayoutDeclarationRecord,
+  type LayoutDeclarationSources,
+  memoizeLayoutDeclarationSources,
+  resolveLayoutReadDeclaration,
+  withoutClientLayoutDeclaration,
+} from '../../services/layouts/layout-presentation-declaration.js';
 import { DistributionProfileService } from '../../services/plugins/distribution-profile-service.js';
+import { hasGrant } from '../../services/plugins/plugin-permissions.js';
 import type { CheckoutRemoteReader } from '../../services/projects/checkout-remote-reader.js';
 import { findGitEntryOnPath } from '../../services/projects/checkout-remote-reader.js';
+import type { ProjectBindingsStore } from '../../services/projects/project-binding-store.js';
+import {
+  ProjectCreationConflict,
+  ProjectCreationService,
+} from '../../services/projects/project-creation-service.js';
 import { discoverProjectIconCandidates } from '../../services/projects/project-icon-discovery.js';
 import { ProjectIdentityService } from '../../services/projects/project-identity-service.js';
 import {
@@ -91,8 +111,15 @@ import {
   type ProjectManifestReader,
 } from '../../services/projects/project-resource-binder.js';
 import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
-import type { ProjectService } from '../../services/projects/project-service.js';
+import {
+  ProjectFullAccessDefaultRefusal,
+  type ProjectService,
+} from '../../services/projects/project-service.js';
 import { resolveProjectWorkspacePath } from '../../services/projects/project-workspace-path.js';
+import {
+  RepositoryAcquisitionConflict,
+  RepositoryAcquisitionService,
+} from '../../services/projects/repository-acquisition-service.js';
 import { workspacePaneAvailabilityMetricAttributes } from '../../services/projects/workspace-pane-availability-resolver.js';
 import { readCurrentWorkspacePaneCatalog } from '../../services/projects/workspace-pane-catalog.js';
 import type { TerminalService } from '../../services/terminal/terminal-service.js';
@@ -122,18 +149,42 @@ import {
   validate,
 } from '../schemas/schemas.js';
 import {
-  codingLayoutRepoId,
+  layoutRepositoryId,
   withDerivedWorkingDirectory,
   withoutPersistedWorkingDirectory,
 } from './layout-working-directory.js';
+import { createOperatorSetupRoutes } from './operator-setup-routes.js';
 import { createProjectIdentityRoutes } from './project-identity-routes.js';
 import { admitProjectLayoutWrite } from './project-layout-admission.js';
+import { createRepositoryAcquisitionRoutes } from './repository-acquisition-routes.js';
 import {
   createWorkspacePanePreviewRoutes,
   type SessionWorkspaceDirectory,
 } from './workspace-pane-previews.js';
 
 /** Read a plugin's layout.json to create a layout reference */
+/**
+ * The contribution a Project layout records: the installation's identity,
+ * without the catalog's `lifecycleGeneration`. That changes with every
+ * enablement change and reinstall, which is what a related occurrence needs
+ * to tell installations apart, not what a layout binds; and the stored layout
+ * shape is strict, so an older server keeps reading what this one writes.
+ */
+function layoutBindingContribution<
+  T extends { lifecycleGeneration?: string | null },
+>(contribution: T): Omit<T, 'lifecycleGeneration'>;
+function layoutBindingContribution<
+  T extends { lifecycleGeneration?: string | null },
+>(contribution: T | undefined): Omit<T, 'lifecycleGeneration'> | undefined;
+function layoutBindingContribution<
+  T extends { lifecycleGeneration?: string | null },
+>(contribution: T | undefined): Omit<T, 'lifecycleGeneration'> | undefined {
+  if (contribution === undefined) return undefined;
+  const { lifecycleGeneration: _lifecycleGeneration, ...binding } =
+    contribution;
+  return binding;
+}
+
 function readPluginLayout(projectHomeDir: string, pluginName: string) {
   const pluginFile = join(projectHomeDir, 'plugins', pluginName, 'plugin.json');
   if (!existsSync(pluginFile)) return null;
@@ -193,11 +244,16 @@ async function registerPluginNamespaces(
   storageAdapter: IStorageAdapter,
   projectSlug: string,
   manifest: PluginManifest,
+  expectedProjectId?: string,
 ): Promise<void> {
   const namespaces = manifest.knowledge?.namespaces;
   if (!namespaces?.length) return;
   const revision = storageAdapter.projectRevision(projectSlug);
   const project = revision.value;
+  if (expectedProjectId && project.id !== expectedProjectId)
+    throw new FileStorageConflictError(
+      'Project identity changed before starter preparation.',
+    );
   const existing: KnowledgeNamespaceConfig[] =
     project.knowledgeNamespaces ?? [];
   const existingIds = new Set(existing.map((n) => n.id));
@@ -210,12 +266,18 @@ async function registerPluginNamespaces(
 }
 
 interface ProjectRouteDeps {
+  repositoryDiscoveryCurrent?: (request: Request) => boolean;
+  identityMutationCurrent?: (
+    request: Request,
+    choosingDirectory: boolean,
+  ) => boolean;
   /**
    * #2476: the directory a session of this project runs in, for a caller
    * allowed to read it — so a file preview of that conversation reads its
    * isolated worktree rather than the checkout.
    */
   sessionWorkspaceDirectory?: SessionWorkspaceDirectory;
+  visualFileFrameOrigin?: () => string | undefined;
   /** Restricts the Project catalogue for an authenticated shared member. */
   memberProjectAdmissions?: (c: Context) => Promise<
     | readonly {
@@ -291,6 +353,17 @@ interface ProjectRouteDeps {
    * availability from it; absent means unknown, which fails closed.
    */
   browserPaneDeployment?: 'supported' | 'unsupported';
+  /**
+   * What a new chat in a Project starts with for the request's caller
+   * (`ProjectChatDefaultsService.view`). Absent: `GET /:slug/chat-defaults`
+   * answers 501 rather than inventing a view.
+   */
+  chatDefaults?: (
+    c: Context,
+    project: ProjectConfig,
+    /** The caller's own full-access proof, decided by this route. */
+    options: { mayGrantFullAccess: boolean },
+  ) => ProjectChatDefaultsView | Promise<ProjectChatDefaultsView>;
 }
 
 /**
@@ -300,7 +373,9 @@ interface ProjectRouteDeps {
 export interface ProjectResolutionRouteDeps {
   resolver: ProjectResourceResolverLike;
   manifests: ProjectManifestRecordReader & ProjectManifestReader;
-  bindings: ProjectBindingWriter & ProjectResolutionBindingReader;
+  bindings: ProjectBindingWriter &
+    ProjectResolutionBindingReader &
+    Partial<Pick<ProjectBindingsStore, 'confirmProjectBinding'>>;
   readRemotes: CheckoutRemoteReader;
 }
 
@@ -484,6 +559,26 @@ export function createProjectRoutes(
   deps: ProjectRouteDeps = {},
 ) {
   const app = new Hono();
+  app.route(
+    '/',
+    createOperatorSetupRoutes(
+      projectHomeDir,
+      storageAdapter,
+      deps.repositoryDiscoveryCurrent,
+    ),
+  );
+  const acquisitions = new RepositoryAcquisitionService(projectHomeDir);
+  const creationRequests = new ProjectCreationService(
+    projectHomeDir,
+    storageAdapter,
+  );
+  app.route(
+    '/',
+    createRepositoryAcquisitionRoutes(
+      projectHomeDir,
+      deps.repositoryDiscoveryCurrent,
+    ),
+  );
   const resolution = deps.resolution;
   const listProjectCatalogue = createProjectCatalogueReader(
     projectService,
@@ -501,10 +596,79 @@ export function createProjectRoutes(
             () => resolution.bindings.hostAliases(),
           )
         : undefined,
+      resolution?.bindings.findBinding &&
+        resolution.bindings.confirmProjectBinding
+        ? {
+            acquisitions,
+            bindings: {
+              findBinding: resolution.bindings.findBinding.bind(
+                resolution.bindings,
+              ),
+              confirmProjectBinding:
+                resolution.bindings.confirmProjectBinding.bind(
+                  resolution.bindings,
+                ),
+              upsertProjectBinding:
+                resolution.bindings.upsertProjectBinding.bind(
+                  resolution.bindings,
+                ),
+            },
+            current:
+              deps.repositoryDiscoveryCurrent ?? isOperatorInPersonNotAgent,
+          }
+        : undefined,
+      deps.identityMutationCurrent,
     ),
   );
   const layoutCatalog =
     deps.layoutCatalog ?? new DistributionProfileService(projectHomeDir);
+
+  /**
+   * Where a layout read's declaration comes from (#2995): the installed
+   * plugin's current catalog definition — parsed once, by the catalog, with
+   * its refusals — and the plugin's own permission grants. One set per
+   * request: the catalog listing, each declaration and each grant are read at
+   * most once however many rows the request answers.
+   */
+  function layoutDeclarationSources(): LayoutDeclarationSources {
+    let listed: ReturnType<typeof layoutCatalog.listLayouts> | undefined;
+    return memoizeLayoutDeclarationSources({
+      pluginDeclaration(pluginName, contributionId) {
+        try {
+          listed ??= layoutCatalog.listLayouts();
+          const item = listed.find(
+            (candidate) =>
+              candidate.source === 'plugin' &&
+              candidate.plugin === pluginName &&
+              (contributionId === undefined || candidate.id === contributionId),
+          );
+          if (item?.lifecycle.state !== 'installed' || !item.enabled)
+            return null;
+          const { definition } = layoutCatalog.resolveForCatalog(item.id);
+          return {
+            ...(definition.primary ? { primary: definition.primary } : {}),
+            ...(definition.presentation
+              ? { presentation: definition.presentation }
+              : {}),
+            ...(definition.drillIns ? { drillIns: definition.drillIns } : {}),
+          };
+        } catch (error) {
+          logger.debug('Layout declaration unavailable', {
+            plugin: pluginName,
+            error,
+          });
+          return null;
+        }
+      },
+      pluginHoldsPermission: (pluginName, permission) =>
+        hasGrant(projectHomeDir, pluginName, permission, logger),
+    });
+  }
+  const layoutReadDeclaration = (
+    layout: LayoutDeclarationRecord,
+    withheld: boolean,
+    sources: LayoutDeclarationSources = layoutDeclarationSources(),
+  ) => resolveLayoutReadDeclaration(layout, { withheld, sources });
 
   async function readKnownAgents(): Promise<AgentOwnershipRef[] | undefined> {
     return deps.listAgents ? await deps.listAgents() : undefined;
@@ -592,10 +756,14 @@ export function createProjectRoutes(
    */
   async function derivedLayoutWorkingDirectory(
     slug: string,
-    layout: { type?: string; config?: Record<string, unknown> },
+    layout: {
+      type?: string;
+      workspaceBinding?: LayoutWorkspaceBinding;
+      config?: Record<string, unknown>;
+    },
     project?: ProjectConfig,
   ): Promise<string | undefined> {
-    const repoId = codingLayoutRepoId(layout);
+    const repoId = layoutRepositoryId(layout);
     if (repoId === undefined)
       return project?.workingDirectory ?? projectWorkingDirectory(slug);
     // Read the project anyway, so an unknown slug still throws here exactly as
@@ -620,14 +788,14 @@ export function createProjectRoutes(
    */
   function conflictingWorkingDirectory(
     projectSlug: string,
-    type: string | undefined,
+    layout: { type?: string; workspaceBinding?: LayoutWorkspaceBinding },
     body: { config?: Record<string, unknown> },
     derived: string | undefined,
   ): string | undefined {
-    if (type !== 'coding') return undefined;
+    if (!layoutUsesRepositoryWorkspace(layout)) return undefined;
     const supplied = body.config?.workingDirectory;
     if (supplied === undefined || supplied === derived) return undefined;
-    return `A coding layout's config.workingDirectory is derived from its project and cannot be set independently. Project '${projectSlug}' resolves to ${derived ? `'${derived}'` : 'no working directory'}; change the project's working directory instead.`;
+    return `A ${layout.type === 'coding' ? 'coding' : 'repository-bound'} layout's config.workingDirectory is derived from its project and cannot be set independently. Project '${projectSlug}' resolves to ${derived ? `'${derived}'` : 'no working directory'}; change the project's working directory instead.`;
   }
 
   /**
@@ -745,6 +913,25 @@ export function createProjectRoutes(
   }
 
   /**
+   * A Project's new-chat approval mode at full access (`never`) puts every new
+   * chat there at full access, as the Station default does, so raising it
+   * takes the grant raising the Station default takes (`PUT /config/app`,
+   * #2436): the operator in person or a device holding `approval:full-access`.
+   * At create there is nothing to raise from; an update is checked by
+   * `ProjectService.updateProject` against the revision it replaces, and a
+   * resent `never` the Project already has is not a raise there.
+   */
+  function mayRaiseFullAccessDefault(c: Context): boolean {
+    return mayGrantFullAccess(
+      c.req.raw,
+      grantedPairingScope(c as unknown as PairingScopeContextStore),
+    );
+  }
+
+  const FULL_ACCESS_DEFAULT_REFUSAL =
+    'Starting new chats at full access needs full-access permission. No changes were saved.';
+
+  /**
    * #2412 review: a Project's working directory is what every coding route
    * is confined to, so whoever may set it decides where the coding routes
    * read, edit and run. Setting it (create) or changing it (update) is
@@ -814,6 +1001,8 @@ export function createProjectRoutes(
       projectService,
       undefined,
       deps.sessionWorkspaceDirectory,
+      undefined,
+      deps.visualFileFrameOrigin,
     ),
   );
 
@@ -863,10 +1052,70 @@ export function createProjectRoutes(
     }
   });
 
+  app.get('/creation-requests', (c) =>
+    c.json({
+      success: true,
+      data: { available: isOperatorInPersonNotAgent(c.req.raw) },
+    }),
+  );
+
+  app.get('/creation-requests/:id', async (c) => {
+    if (!isOperatorInPersonNotAgent(c.req.raw))
+      return c.json(
+        {
+          success: false,
+          error: 'Project creation recovery requires the Station operator.',
+        },
+        403,
+      );
+    const id = c.req.param('id');
+    if (!z.string().uuid().safeParse(id).success)
+      return c.json(
+        { success: false, error: 'Invalid creation request ID.' },
+        400,
+      );
+    try {
+      const data = creationRequests.get(id);
+      return data
+        ? c.json({ success: true, data })
+        : c.json(
+            { success: false, error: 'Creation request was not found.' },
+            404,
+          );
+    } catch {
+      return c.json(
+        { success: false, error: 'Project creation could not be inspected.' },
+        503,
+      );
+    }
+  });
+
   // Create project
   app.post('/', validate(projectCreateSchema), async (c) => {
     const body = normalizeProjectBody(getBody(c));
     try {
+      if (Object.hasOwn(body, 'repositorySource')) {
+        return c.json(
+          {
+            success: false,
+            error: 'Repository provenance is owned by Station.',
+          },
+          400,
+        );
+      }
+      if (
+        (body.repositoryAcquisitionId || body.creationRequestId) &&
+        !isOperatorInPersonNotAgent(c.req.raw)
+      ) {
+        return c.json(
+          {
+            success: false,
+            error:
+              'Repository acquisition or creation recovery requires its Station operator.',
+          },
+          403,
+        );
+      }
       const knownAgents = await readKnownAgents();
       if (knownAgents) {
         const diagnostics = validateProjectAgentScope(body as any, {
@@ -904,10 +1153,83 @@ export function createProjectRoutes(
         undefined,
       );
       if (folderRefusal) return folderRefusal;
-      const project = await projectService.createProject(body);
+      if (body.defaultApprovalMode === 'never' && !mayRaiseFullAccessDefault(c))
+        return c.json(
+          { success: false, error: FULL_ACCESS_DEFAULT_REFUSAL },
+          403,
+        );
+      if (body.starterLayoutId !== undefined && !body.creationRequestId)
+        return c.json(
+          {
+            success: false,
+            error: 'Retaining a starter requires a creation request.',
+          },
+          400,
+        );
+      const { creationRequestId, ...request } = body;
+      const publish = async (reservedId?: string, admitted = request) => {
+        const {
+          repositoryAcquisitionId,
+          starterLayoutId: _starterLayoutId,
+          ...input
+        } = admitted;
+        const acquired = repositoryAcquisitionId
+          ? await acquisitions.projectSource(
+              repositoryAcquisitionId,
+              input.workingDirectory,
+            )
+          : {};
+        const config = { ...input, ...acquired };
+        return reservedId
+          ? projectService.createProject(config, reservedId)
+          : projectService.createProject(config);
+      };
+      let project: ProjectConfig;
+      if (creationRequestId) {
+        if (typeof request.slug !== 'string' || !request.slug.trim())
+          return c.json(
+            {
+              success: false,
+              error: 'Durable creation requires an explicit Project slug.',
+            },
+            400,
+          );
+        const outcome = await creationRequests.create(
+          creationRequestId,
+          request,
+          publish,
+        );
+        if (outcome.phase !== 'created' || !outcome.project) {
+          return c.json(
+            {
+              success: false,
+              error:
+                'Creation outcome is unresolved or the original Project is unavailable. Inspect the retained request before starting again.',
+              data: outcome,
+            },
+            409,
+          );
+        }
+        project = outcome.project;
+      } else {
+        project = await publish();
+      }
       projectOps.add(1, { op: 'create' });
       return c.json({ success: true, data: project }, 201);
     } catch (error: unknown) {
+      if (
+        error instanceof RepositoryAcquisitionConflict ||
+        error instanceof ProjectCreationConflict
+      ) {
+        return c.json(
+          {
+            success: false,
+            error:
+              'Project creation conflicts with the retained operation or its checkout could not be verified. Inspect the operation before retrying. Existing files were preserved.',
+          },
+          409,
+        );
+      }
       // 4-HOME-007: a name collision and a lost CAS race are both 409s from
       // the storage layer, and reporting both as "Project storage changed
       // before the operation could commit" told a user creating a second
@@ -1019,11 +1341,57 @@ export function createProjectRoutes(
     }
   });
 
+  // What a new chat here starts with, for the caller. A shared member reads
+  // it too: the session start applies the same Project layer to a member's
+  // chat, so the member's composer must show what will apply. The view holds
+  // only the Project's new-chat selections and the caller's own last-used
+  // values, never another person's.
+  app.get('/:slug/chat-defaults', async (c) => {
+    try {
+      const slug = param(c, 'slug');
+      const project = await projectService.getProject(slug);
+      const memberAdmission = await deps.memberProjectAdmission?.(c, slug);
+      if (
+        memberAdmission === null ||
+        (memberAdmission && memberAdmission.scope.localProjectId !== project.id)
+      )
+        return c.json({ success: false, error: 'Project not found' }, 404);
+      if (!deps.chatDefaults)
+        return c.json(
+          { success: false, error: 'Project chat defaults are unavailable.' },
+          501,
+        );
+      return c.json({
+        success: true,
+        data: await deps.chatDefaults(c, project, {
+          mayGrantFullAccess: mayRaiseFullAccessDefault(c),
+        }),
+      });
+    } catch (error: unknown) {
+      const failure = projectReadFailure(error, 'Project');
+      return c.json({ success: false, error: failure.error }, failure.status);
+    }
+  });
+
   // Update project
   app.put('/:slug', validate(projectUpdateSchema), async (c) => {
     try {
       const slug = param(c, 'slug');
       const body = normalizeProjectBody(getBody(c));
+      if (
+        Object.hasOwn(body, 'repositorySource') ||
+        Object.hasOwn(body, 'repositoryAcquisitionId') ||
+        Object.hasOwn(body, 'creationRequestId') ||
+        Object.hasOwn(body, 'starterLayoutId')
+      ) {
+        return c.json(
+          {
+            success: false,
+            error: 'Repository acquisition provenance cannot be edited.',
+          },
+          400,
+        );
+      }
       const knownAgents = await readKnownAgents();
       if (knownAgents) {
         const existing = await projectService.getProject(slug);
@@ -1049,10 +1417,17 @@ export function createProjectRoutes(
         async () => projectService.getProject(slug),
       );
       if (folderRefusal) return folderRefusal;
-      const updated = await projectService.updateProject(slug, body);
+      const updated = await projectService.updateProject(slug, body, {
+        mayRaiseFullAccessDefault: mayRaiseFullAccessDefault(c),
+      });
       projectOps.add(1, { op: 'update' });
       return c.json({ success: true, data: updated });
     } catch (error: unknown) {
+      if (error instanceof ProjectFullAccessDefaultRefusal)
+        return c.json(
+          { success: false, error: FULL_ACCESS_DEFAULT_REFUSAL },
+          403,
+        );
       return c.json(
         { success: false, error: projectMutationMessage(error) },
         projectMutationStatus(error),
@@ -1304,17 +1679,39 @@ export function createProjectRoutes(
       // would make the detail route's withholding theatre, so the same
       // predicate answers both. `tabCount` stays: it is a fact about the
       // project's own record, and it is what the picker reads.
+      //
+      // #2995 — each row also states its contributor's declaration, so a
+      // reader finds the layout that owns Chat (`findPrimaryChatLayout`)
+      // without a detail read per row. A withheld row states only `tabs`.
+      // A listing carries no attribution, and the declaration is decided
+      // from server-owned attribution alone, so each visible row reads its
+      // stored record for it. The catalog and grant reads behind those
+      // records happen once per request (`layoutDeclarationSources`).
       const canSee = viewerPluginSight(c);
-      return c.json({
-        success: true,
-        data: canSee
-          ? layouts.map((layout) =>
-              layout.plugin !== undefined && !canSee(layout.plugin)
-                ? { ...layout, plugin: undefined }
-                : layout,
-            )
-          : layouts,
+      const sources = layoutDeclarationSources();
+      const data: LayoutMetadataReadView[] = layouts.map((layout) => {
+        // Withholding is decided from the stored record — its attribution
+        // as well as its `config.plugin` — with the same predicate the
+        // detail read uses, because the declaration is read from that
+        // attribution. A record that cannot be read here fails closed:
+        // its row is withheld and states `tabs`.
+        let record: LayoutDeclarationRecord | undefined;
+        try {
+          record = storageAdapter.getLayout(slug, layout.slug);
+        } catch {
+          record = undefined;
+        }
+        const withheld =
+          record === undefined ||
+          (canSee !== undefined &&
+            ((layout.plugin !== undefined && !canSee(layout.plugin)) ||
+              layoutPluginBindingWithheld(record, { canSeePlugin: canSee })));
+        return {
+          ...(withheld ? { ...layout, plugin: undefined } : layout),
+          ...layoutReadDeclaration(record ?? layout, withheld, sources),
+        };
       });
+      return c.json({ success: true, data });
     } catch (error: unknown) {
       const message = errorMessage(error);
       return c.json(
@@ -1437,6 +1834,38 @@ export function createProjectRoutes(
     }
   });
 
+  // This leaf is authorized as manage-extensions by the runtime Project guard.
+  app.put(
+    '/:slug/layout-policy',
+    validate(
+      z
+        .object({
+          personalLayouts: z.enum(['off', 'project-panes', 'allowed-plugins']),
+          personalLayoutAllowedPlugins: z.array(z.string().min(1)).optional(),
+        })
+        .strict(),
+    ),
+    async (c) => {
+      try {
+        const slug = param(c, 'slug');
+        assertSafeLayoutPathSegment('project slug', slug);
+        const revision = storageAdapter.projectRevision(slug);
+        const updated = {
+          ...revision.value,
+          ...getBody(c),
+          updatedAt: new Date().toISOString(),
+        };
+        await revision.replace(updated);
+        return c.json({ success: true, data: updated });
+      } catch (error) {
+        return c.json(
+          { success: false, error: projectMutationMessage(error) },
+          projectMutationStatus(error),
+        );
+      }
+    },
+  );
+
   // Create layout
   app.post('/:slug/layouts', validate(projectLayoutCreateSchema), async (c) => {
     try {
@@ -1474,7 +1903,11 @@ export function createProjectRoutes(
       // the list read.
       const now = new Date().toISOString();
       const persisted = withoutPersistedWorkingDirectory({
-        ...withoutClientLayoutOwner(withoutClientCatalogContribution(body)),
+        ...withoutClientLayoutOwner(
+          withoutClientCatalogContribution(
+            withoutClientLayoutDeclaration(body),
+          ),
+        ),
         id: randomUUID(),
         projectSlug: slug,
         slug: body.slug,
@@ -1485,13 +1918,16 @@ export function createProjectRoutes(
       } as LayoutConfig);
       await projectRevision.createLayout(persisted.slug, persisted);
       projectOps.add(1, { op: 'add_layout' });
-      return c.json(
-        {
-          success: true,
-          data: withDerivedWorkingDirectory(persisted, derived),
-        },
-        201,
-      );
+      const created: LayoutReadView = {
+        ...withDerivedWorkingDirectory(persisted, derived),
+        ...layoutReadDeclaration(
+          persisted,
+          layoutPluginBindingWithheld(persisted, {
+            canSeePlugin: viewerPluginSight(c),
+          }),
+        ),
+      };
+      return c.json({ success: true, data: created }, 201);
     } catch (error: unknown) {
       if (error instanceof FileStorageConflictError) {
         return c.json(
@@ -1514,6 +1950,7 @@ export function createProjectRoutes(
       assertSafeLayoutPathSegment('project slug', slug);
       assertSafeLayoutPathSegment('layout slug', layoutSlug);
       let layout = storageAdapter.getLayout(slug, layoutSlug);
+      const storedForDeclaration = layout;
 
       // #2103 — this route was an enumeration oracle: `config` is
       // `z.record(z.unknown())` and create strips only `owner` and
@@ -1560,7 +1997,10 @@ export function createProjectRoutes(
                 candidate.plugin === pluginName,
             )?.contribution;
           if (contribution) {
-            layout = { ...layout, catalogContribution: contribution };
+            layout = {
+              ...layout,
+              catalogContribution: layoutBindingContribution(contribution),
+            };
           }
         }
       }
@@ -1596,6 +2036,9 @@ export function createProjectRoutes(
       // typed binding does error (probed: TS2551).
       const data: LayoutReadView & { _integrityDiagnostics?: unknown } = {
         ...derived,
+        // #2995: the contributor's declaration, decided from the record as
+        // stored (before the withheld strip) and from the withheld verdict.
+        ...layoutReadDeclaration(storedForDeclaration, withheld),
       };
       if (diagnostics.length > 0) data._integrityDiagnostics = diagnostics;
       // #2090. Response-only, and absent unless something really is
@@ -1632,7 +2075,10 @@ export function createProjectRoutes(
         assertSafeLayoutPathSegment('project slug', slug);
         assertSafeLayoutPathSegment('layout slug', layoutSlug);
         const revision = storageAdapter.layoutRevision(slug, layoutSlug);
-        const existing = revision.value;
+        const stored = revision.value;
+        const existing = layoutUsesRepositoryWorkspace(stored)
+          ? { ...stored, workspaceBinding: 'repository' as const }
+          : stored;
         const immutableMismatch = layoutImmutableMismatch(
           existing,
           slug,
@@ -1677,7 +2123,9 @@ export function createProjectRoutes(
         const layout = {
           ...existing,
           ...withoutClientLayoutOwner(
-            withoutClientCatalogContribution(withoutPaneReferences(body)),
+            withoutClientCatalogContribution(
+              withoutClientLayoutDeclaration(withoutPaneReferences(body)),
+            ),
           ),
           id: existing.id,
           projectSlug: slug,
@@ -1720,7 +2168,7 @@ export function createProjectRoutes(
         const derived = await derivedLayoutWorkingDirectory(slug, layout);
         const conflict = conflictingWorkingDirectory(
           slug,
-          layout.type,
+          layout,
           body,
           derived,
         );
@@ -1744,6 +2192,10 @@ export function createProjectRoutes(
           : persisted;
         const data: LayoutReadView = {
           ...withDerivedWorkingDirectory(answered, derived),
+          ...layoutReadDeclaration(
+            persisted,
+            layoutPluginBindingWithheld(persisted, { canSeePlugin: canSee }),
+          ),
         };
         if (paneReferences) data.paneReferences = paneReferences;
         return c.json({ success: true, data });
@@ -1804,8 +2256,17 @@ export function createProjectRoutes(
     slug: string,
     layoutId: string,
     canSeePlugin?: (pluginId: string) => boolean,
+    reservedId?: string,
+    expectedProjectId?: string,
   ) {
     assertSafeLayoutPathSegment('project slug', slug);
+    if (
+      expectedProjectId &&
+      storageAdapter.getProject(slug).id !== expectedProjectId
+    )
+      throw new FileStorageConflictError(
+        'Project identity changed before starter preparation.',
+      );
     // #2103 — apply had no visibility check at all, so a member could apply a
     // hidden plugin's layout into a shared project (and learn it exists from
     // the 201).
@@ -1857,10 +2318,19 @@ export function createProjectRoutes(
     // completes before any Layout effect, so a Project CAS conflict cannot
     // leave a created Layout behind or make retry choose another slug.
     if (pluginManifest) {
-      await registerPluginNamespaces(storageAdapter, slug, pluginManifest);
+      await registerPluginNamespaces(
+        storageAdapter,
+        slug,
+        pluginManifest,
+        expectedProjectId,
+      );
     }
     const projectRevision = storageAdapter.projectRevision(slug);
     const project = projectRevision.value;
+    if (expectedProjectId && project.id !== expectedProjectId)
+      throw new FileStorageConflictError(
+        'Project identity changed before starter publication.',
+      );
     const existingSlugs = new Set(
       storageAdapter.listLayouts(slug).map((layout) => layout.slug),
     );
@@ -1870,14 +2340,19 @@ export function createProjectRoutes(
     }
     const now = new Date().toISOString();
     const layout = {
-      id: randomUUID(),
+      id: reservedId ?? randomUUID(),
       projectSlug: slug,
       type: resolved.definition.type,
+      ...(resolved.definition.workspaceBinding === undefined
+        ? {}
+        : { workspaceBinding: resolved.definition.workspaceBinding }),
       name: resolved.definition.name,
       slug: layoutSlug,
       icon: resolved.definition.icon,
       description: resolved.definition.description,
-      catalogContribution: resolved.item.contribution,
+      catalogContribution: layoutBindingContribution(
+        resolved.item.contribution,
+      ),
       // archive#1497 — a catalog-materialized coding layout no longer embeds
       // the project's working directory in its persisted config; the read
       // paths derive it.
@@ -1918,13 +2393,71 @@ export function createProjectRoutes(
     validate(projectLayoutApplySchema),
     async (c) => {
       try {
-        const layout = await applyCatalogLayout(
-          param(c, 'slug'),
-          getBody(c).layoutId,
-          viewerPluginSight(c),
+        const { layoutId, creationRequestId, retryUncertain } = getBody(c);
+        if (creationRequestId && !isOperatorInPersonNotAgent(c.req.raw))
+          return c.json(
+            {
+              success: false,
+              error: 'Starter recovery requires the Station operator.',
+            },
+            403,
+          );
+        const slug = param(c, 'slug');
+        const layout = creationRequestId
+          ? await creationRequests.applyStarter(
+              creationRequestId,
+              slug,
+              layoutId,
+              (reservedId, expectedProjectId) =>
+                applyCatalogLayout(
+                  slug,
+                  layoutId,
+                  viewerPluginSight(c),
+                  reservedId,
+                  expectedProjectId,
+                ),
+              retryUncertain === true,
+            )
+          : await applyCatalogLayout(slug, layoutId, viewerPluginSight(c));
+        if (creationRequestId) {
+          if (
+            layoutPluginBindingWithheld(layout, {
+              canSeePlugin: viewerPluginSight(c),
+            })
+          )
+            throw new Error('Layout is not a known installed contribution');
+          const project = projectService.getProject(slug);
+          return c.json(
+            {
+              success: true,
+              data: {
+                ...withDerivedWorkingDirectory(
+                  layout,
+                  project.workingDirectory,
+                ),
+                ...layoutReadDeclaration(layout, false),
+              },
+            },
+            201,
+          );
+        }
+        return c.json(
+          {
+            success: true,
+            data: { ...layout, ...layoutReadDeclaration(layout, false) },
+          },
+          201,
         );
-        return c.json({ success: true, data: layout }, 201);
       } catch (error: unknown) {
+        if (error instanceof ProjectCreationConflict)
+          return c.json(
+            {
+              success: false,
+              error:
+                'The starter conflicts with its retained creation request or its outcome is unresolved. Inspect Project setup before retrying.',
+            },
+            409,
+          );
         if (error instanceof FileStorageConflictError) {
           return c.json(
             { success: false, error: projectMutationMessage(error) },
@@ -1969,7 +2502,13 @@ export function createProjectRoutes(
           item.id,
           canSee,
         );
-        return c.json({ success: true, data: layout }, 201);
+        return c.json(
+          {
+            success: true,
+            data: { ...layout, ...layoutReadDeclaration(layout, false) },
+          },
+          201,
+        );
       } catch (error: unknown) {
         return c.json(
           { success: false, error: projectMutationMessage(error) },
@@ -1990,8 +2529,8 @@ export function createProjectRoutes(
  */
 function withoutClientLayoutOwner<T extends Record<string, unknown>>(
   value: T,
-): Omit<T, 'owner'> {
-  const { owner: _owner, ...withoutOwner } = value;
+): Omit<T, 'owner' | 'subject'> {
+  const { owner: _owner, subject: _subject, ...withoutOwner } = value;
   return withoutOwner;
 }
 

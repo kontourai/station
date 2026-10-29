@@ -1,0 +1,7 @@
+{
+  "revision": "62c3dc3a9c3413b52d815cab055ea1e63e4db578",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Integration delta review at main64c3: migration016, parent naming tests and frozen oracle retain byte-identical reviewed115c source; frozen SQL also equals current main original scan. Traced usage-tree HTTP authorization through OrchestrationService and level-batched indexed query, plus session-project-activity delegated-children filtering and real runtime-route matrix. Current-head focused storage/caller/migration256 and route/boundary/inbox495 tests pass; connect build, server-tests typecheck, docs freshness and13-lane truth gate pass. Naming index adds no initiating ownership, lifecycle/cascade authority, detached lifetime or idle/restart-stop proof. Existing guide remains accurate; no prose change.","inputs":["docs/guides/monitoring.md"]}
+  ]
+}

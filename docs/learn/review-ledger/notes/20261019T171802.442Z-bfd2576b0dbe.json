@@ -1,0 +1,9 @@
+{
+  "revision": "a3ad245b166e4100699dcce6379e78a5ed6d66bc",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"Checked: it routes contract work to docs/reference/contracts.md and requires explicit compatibility; the contracts.md change only adds the #3851 update-state shapes to the system-status rows, so the routing and rules stay accurate.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Checked: it routes SDK work to docs/reference/sdk.md and states plugin import and cancellation rules; the sdk.md change only documents the #3851 server-update requests and hooks, so the routing and rules stay accurate.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

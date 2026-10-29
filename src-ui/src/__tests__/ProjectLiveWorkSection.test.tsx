@@ -407,6 +407,36 @@ describe('ProjectLiveWorkSection', () => {
     });
   });
 
+  // A continuation child Session belongs to its Conversation. Opening its row
+  // must reopen that Conversation, not a new chat keyed by the child Session
+  // id, whose conversation-scoped reads (open, event window, schedule) 404.
+  test('opening a continuation Session reopens its Conversation', () => {
+    mocks.sessions.push(
+      session({
+        threadId: 'codex:1793105146656:session:21f6b118',
+        conversationId: 'codex:1793105146656',
+        assignedAgentSlug: 'codex',
+        model: 'gpt-5',
+        lifecycleState: 'needs_input',
+        pendingReview: true,
+      }),
+    );
+
+    render(<ProjectLiveWorkSection slug="station" />);
+    fireEvent.click(
+      screen.getByRole('button', { name: /Ship the badge fix/i }),
+    );
+
+    expect(mocks.focus).toHaveBeenCalledWith({
+      conversationId: 'codex:1793105146656',
+      agentSlug: 'codex',
+      projectSlug: 'station',
+      projectName: undefined,
+      model: 'gpt-5',
+      threadId: 'codex:1793105146656:session:21f6b118',
+    });
+  });
+
   // A delegated task running on a PAIRED Station: its record names the
   // peer's agent and conversation, so opening it must not rehydrate a chat
   // on them, and its Needs-you row invites opening rather than replying here.

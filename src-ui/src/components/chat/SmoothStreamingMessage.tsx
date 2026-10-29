@@ -112,6 +112,7 @@ export function useSmoothRevealText(
   const cursorRef = useRef<SmoothRevealCursor | null>(null);
   if (!cursorRef.current) cursorRef.current = new SmoothRevealCursor();
   const frameHandleRef = useRef<unknown>(null);
+  const lastPublishedAtRef = useRef(-Infinity);
   const textRef = useRef(text);
   textRef.current = text;
   const [visible, setVisible] = useState({ length: 0, revision: 0 });
@@ -120,14 +121,19 @@ export function useSmoothRevealText(
     (now: number) => {
       frameHandleRef.current = null;
       const snapshot = cursorRef.current!.advance(now);
-      setVisible((current) =>
-        current.length === snapshot.visibleLength
-          ? current
-          : {
-              length: snapshot.visibleLength,
-              revision: current.revision + 1,
-            },
-      );
+      if (
+        now - lastPublishedAtRef.current >= 1000 / 30 ||
+        !snapshot.needsFrame
+      ) {
+        setVisible((current) => {
+          if (current.length === snapshot.visibleLength) return current;
+          lastPublishedAtRef.current = now;
+          return {
+            length: snapshot.visibleLength,
+            revision: current.revision + 1,
+          };
+        });
+      }
       if (snapshot.needsFrame) {
         frameHandleRef.current = frames.request(runFrame);
       }

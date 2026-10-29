@@ -1,0 +1,7 @@
+{
+  "revision": "907e706082cb9444c5857e1c72476be0d9c9a2d3",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the Gallery reference-only delta: complete hosted run 38818975525 at d2e1387, artifact12014971888 (archive SHA256 3eff6c8eec3afaef117fede400e75e3e6af3dbe438a6921b8e723bb75ed75db4), captured56/56 successfully. UI/capture/diff inputs are unchanged through853575f. Parent and independent reviewer inspected all40 changed and2 new scenes; width/header/footer reflow is intended, inherited composer/dictation/inboxRefresh/resync additions trace to already-based #3672/#3673. The mismatch scene is1440x901 with visible bottom controls; cause of extra pixel is not established by screenshots. Preserved the sole existing volatile exception; omitted diagnostic-only image. Baseline writer consumed that hosted artifact; same-artifact consistency55/55 is consistency proof only. No comparator/capture code, threshold, mask or authority changed. Current-head hosted Gallery remains required separately; guide remains accurate.","inputs":["docs/guides/testing.md","tests/screenshots.baseline.json","tests/screenshots.baseline/overlay-dock-project-bound.png","tests/screenshots.baseline/overlay-dock-project-mismatch.png"]}
+  ]
+}

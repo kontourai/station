@@ -7,6 +7,7 @@ import {
   realpathSync,
 } from 'node:fs';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { invokedDirectly } from '../../scripts/lib/module-entry.mjs';
 
 export const EMBEDDED_MACHO_FIND_MAX_BUFFER = 64 * 1024 * 1024;
@@ -185,6 +186,97 @@ async function boundedMustSucceed(run, phase, program, args, options) {
   const result = await boundedCommand(run, phase, program, args, options);
   if (result.status !== 0) throw new Error(`${phase} failed.`);
   return result;
+}
+
+/** Node needs JIT, but must share the add-ons' team and retain library validation. */
+export async function sealBundledMacosNode(
+  app,
+  identity,
+  {
+    command: run,
+    sign = run,
+    realpath = realpathSync,
+    lstat = lstatSync,
+    retrySign = (_phase, _args, operation) => operation(),
+  } = {},
+) {
+  const file = resolve(app, 'Contents/MacOS/station-node');
+  const canonicalApp = realpath(app);
+  const info = lstat(file);
+  if (
+    !info.isFile() ||
+    info.isSymbolicLink() ||
+    !within(canonicalApp, realpath(file))
+  )
+    throw new Error('The bundled Node must be a regular file inside the app.');
+  await boundedMustSucceed(
+    run,
+    'bundled Node: verify input signature',
+    'codesign',
+    ['--verify', '--strict', '--verbose=2', file],
+  );
+  const entitlements = fileURLToPath(
+    new URL('../../src-desktop/Node.entitlements.plist', import.meta.url),
+  );
+  const args = [
+    '--force',
+    '--sign',
+    identity,
+    '--options',
+    'runtime',
+    '--timestamp',
+    '--entitlements',
+    entitlements,
+    file,
+  ];
+  await retrySign('bundled Node: signing', args, () =>
+    boundedMustSucceed(sign, 'bundled Node: signing', 'codesign', args),
+  );
+  await boundedMustSucceed(run, 'bundled Node: verify signature', 'codesign', [
+    '--verify',
+    '--strict',
+    '--verbose=2',
+    file,
+  ]);
+  await boundedMustSucceed(
+    run,
+    'bundled Node: verify Developer ID',
+    'codesign',
+    ['--verify', '--strict', '-R', DEVELOPER_ID_REQUIREMENT, file],
+  );
+  const metadata = await boundedMustSucceed(
+    run,
+    'bundled Node: inspect signature',
+    'codesign',
+    ['-dvv', file],
+  );
+  if (
+    !metadataField(metadata, 'Timestamp') ||
+    !/TeamIdentifier=U7KHF2QAC4(?:\r?\n|$)/.test(
+      `${metadata.stdout}\n${metadata.stderr}`,
+    ) ||
+    !/CodeDirectory .*\(.*\bruntime\b.*\)/.test(
+      `${metadata.stdout}\n${metadata.stderr}`,
+    )
+  )
+    throw new Error('Bundled Node must have Kontour hardened-runtime signing.');
+  const actual = await boundedMustSucceed(
+    run,
+    'bundled Node: inspect entitlements',
+    'codesign',
+    ['-d', '--entitlements', '-', '--xml', file],
+  );
+  const keys = [...actual.stdout.matchAll(/<key>([^<]+)<\/key>/g)].map(
+    (match) => match[1],
+  );
+  if (
+    keys.length !== 1 ||
+    keys[0] !== 'com.apple.security.cs.allow-jit' ||
+    !/<key>com\.apple\.security\.cs\.allow-jit<\/key>\s*<true\s*\/>/.test(
+      actual.stdout,
+    )
+  )
+    throw new Error('Bundled Node must have only the allow-jit entitlement.');
 }
 
 async function boundedProbe(run, phase, program, args, options) {
@@ -655,6 +747,10 @@ if (invokedDirectly(import.meta.url)) {
   const [app, identity] = process.argv.slice(2);
   if (!app || !identity)
     throw new Error('Expected <app> <Developer ID identity>.');
+  await sealBundledMacosNode(app, identity, {
+    command: async (_phase, program, args) =>
+      command(spawnSync, program, args, { timeout: 90_000 }),
+  });
   process.stdout.write(
     `${JSON.stringify(
       sealEmbeddedMacosMachO(app, identity, {

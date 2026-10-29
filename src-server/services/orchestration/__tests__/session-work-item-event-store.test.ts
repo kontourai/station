@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { DatabaseSync, StatementSync } from 'node:sqlite';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   EventStore,
   SessionWorkItemObservationCorruptionError,
@@ -28,6 +29,8 @@ function loaderProvenance() {
 }
 
 const directories: string[] = [];
+/** #2421: new temp directories go through the tracker; `open` predates it. */
+const makeTempDir = trackTempDirs();
 
 afterEach(() => {
   for (const directory of directories.splice(0))
@@ -364,6 +367,121 @@ describe('EventStore Session work-item associations', () => {
       ).toThrow('replay does not match');
     } finally {
       reopened.close();
+    }
+  });
+
+  // #3561: the admission commit runs after RELEASE, so the event is already
+  // durable. A settlement failure there must not report the append as
+  // failed, and must not answer with a ROLLBACK TO a released savepoint.
+  function failNextSettlement(store: EventStore) {
+    const registry = (store as any).sessionWorkItemAdmissions as {
+      commit: (claim: unknown) => void;
+    };
+    return vi.spyOn(registry, 'commit').mockImplementationOnce(() => {
+      throw new Error('injected post-release settlement failure');
+    });
+  }
+
+  function observations(store: EventStore) {
+    return store.listSessionWorkItemObservations({
+      sessionId: 'session-a',
+      conversationId: 'session-a',
+    });
+  }
+
+  test('a settlement failure after RELEASE still reports a new event as appended and keeps it readable', () => {
+    const { store } = open();
+    try {
+      expect(
+        store.stageSessionWorkItemCandidate({
+          candidate: candidate(),
+          current: () => true,
+        }),
+      ).toEqual({ kind: 'staged' });
+      const commit = failNextSettlement(store);
+      expect(store.appendEvent(completion())).toBe(1);
+      expect(commit).toHaveBeenCalledOnce();
+      expect(
+        store.listEvents('session-a').map((event) => event.payload.eventId),
+      ).toEqual(['event-a']);
+      expect(observations(store)).toEqual([
+        expect.objectContaining({
+          associationId: 'association-a',
+          eventId: 'event-a',
+        }),
+      ]);
+      // No savepoint was left open: the next append commits on its own.
+      expect(store.appendEvent(completion('event-b'))).toBe(2);
+    } finally {
+      vi.restoreAllMocks();
+      store.close();
+    }
+  });
+
+  test('a settlement failure after RELEASE still reports an exact replay as appended', () => {
+    const { store, path } = open();
+    try {
+      store.stageSessionWorkItemCandidate({
+        candidate: candidate(),
+        current: () => true,
+      });
+      expect(store.appendEvent(completion())).toBe(1);
+    } finally {
+      store.close();
+    }
+    const reopened = new EventStore(path);
+    try {
+      expect(
+        reopened.stageSessionWorkItemCandidate({
+          candidate: candidate(),
+          current: () => true,
+        }),
+      ).toEqual({ kind: 'staged' });
+      const commit = failNextSettlement(reopened);
+      expect(reopened.appendEvent(completion())).toBe(1);
+      expect(commit).toHaveBeenCalledOnce();
+      expect(reopened.listEvents('session-a')).toHaveLength(1);
+      expect(observations(reopened)).toHaveLength(1);
+      expect(reopened.appendEvent(completion('event-b'))).toBe(2);
+    } finally {
+      vi.restoreAllMocks();
+      reopened.close();
+    }
+  });
+
+  // #3561 review F2: the session row is a co-commit participant, and an
+  // upsert is what establishes a root Session's lineage. Admission reads that
+  // lineage, so the participant must run before the work item is taken.
+  test('a co-committed session row establishes the lineage its terminal admission reads', () => {
+    const store = new EventStore(
+      join(makeTempDir('station-work-item-store-'), 'orchestration.sqlite'),
+    );
+    try {
+      expect(
+        store.stageSessionWorkItemCandidate({
+          candidate: candidate(),
+          current: () => true,
+        }),
+      ).toEqual({ kind: 'staged' });
+      expect(
+        store.appendEvent(completion(), [], () =>
+          store.upsertSession({
+            provider: 'claude',
+            threadId: 'session-a',
+            status: 'ready',
+            createdAt: '2026-08-28T11:00:00.000Z',
+            updatedAt: '2026-08-28T12:00:00.000Z',
+          }),
+        ),
+      ).toBe(1);
+      expect(observations(store)).toEqual([
+        expect.objectContaining({
+          associationId: 'association-a',
+          eventId: 'event-a',
+        }),
+      ]);
+    } finally {
+      store.close();
     }
   });
 

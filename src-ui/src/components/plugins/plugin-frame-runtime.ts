@@ -1,4 +1,7 @@
-import { createSkillExperiencePaneHost } from '@kontourai/station-sdk/workspace-pane';
+import {
+  createRelatedPanesPaneHost,
+  createSkillExperiencePaneHost,
+} from '@kontourai/station-sdk/workspace-pane';
 
 function javascriptStringLiteral(value: string): string {
   return JSON.stringify(value).replace(
@@ -12,5 +15,5 @@ export function buildPluginFrameRuntime(
   origin: string,
   pluginName: string,
 ): string {
-  return `window.__stationCreateSkillExperiencePaneHost=${createSkillExperiencePaneHost.toString()};window.__stationPaneHostOrigin=${javascriptStringLiteral(origin)};addEventListener('load',()=>queueMicrotask(()=>parent.postMessage({method:'initialize',params:{exports:Object.keys(window.__station_ai_plugins?.[${javascriptStringLiteral(pluginName)}]?.components||{})}},'*')));`;
+  return `window.__stationCreateSkillExperiencePaneHost=${createSkillExperiencePaneHost.toString()};window.__stationCreateRelatedPanesPaneHost=${createRelatedPanesPaneHost.toString()};window.__stationPaneHostOrigin=${javascriptStringLiteral(origin)};addEventListener('load',()=>queueMicrotask(()=>parent.postMessage({method:'initialize',params:{exports:Object.keys(window.__station_ai_plugins?.[${javascriptStringLiteral(pluginName)}]?.components||{})}},'*')));`;
 }

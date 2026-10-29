@@ -22,16 +22,22 @@ of prebuild staging. Other native dependencies retain their own platform
 requirements. Rust and platform SDKs are needed for native builds/checks; a server/UI-only
 loop need not run them.
 
+Scoped terminal process-group cleanup on POSIX also needs `ps` with PID, PPID
+and process-group columns. A missing or failed census is a cleanup error, not
+proof that descendants stopped. The new cleanup path has real-PTY macOS
+coverage; other POSIX hosts and Windows still need their own qualification.
+
+
 ## Optional `just` contributor Interface
 
 `just` forwards to Station's existing commands; it does not replace them. Use
 the [generated contributor command reference](../reference/contributor-commands.md)
 for the exact nine recipes and their checked Unix and Windows implementations.
 
-Install Just **1.44.0 or later**: `brew install just` on macOS, your Linux
-distribution's package manager (or `cargo install just --locked`), or `winget install --id Casey.Just --exact` in Windows Package Manager. The minimum is
-required for the Windows `[script]` recipes. Run `just --version` after
-installation.
+Install Just 1.44.0 or later by following the
+[contribution guide](../../CONTRIBUTING.md#optional-just-contributor-interface),
+which owns the per-platform install commands, and check it with
+`just --version`.
 
 Run the recipes from the repository root. The forwarding recipes preserve
 arguments: on macOS/Linux quote shell-sensitive values with single quotes; in
@@ -99,6 +105,18 @@ Agent and contributor smoke runs should use unique ports and `--temp-home`
 unless the task explicitly needs the selected channel's default runtime home.
 See [release channel ports](release-channel-ports.md) for the canonical map.
 
+### Handing a running instance to the operator
+
+Starting the app is not the whole handoff. The UI signs in through a
+`station open --print` link whose `#station-ui-bootstrap` token is single-use:
+it pairs the browser profile that opens it, and a plain `localhost` address
+presents no credential afterwards, so the operator lands on the pairing
+screen. Mint the link at handoff time — an earlier link may already be
+consumed or name a boot that has since restarted — and open it in the
+operator's browser rather than asking them to retype a URL. Pairing is stored
+per browser profile in the instance home, so once paired, ordinary stop and
+start on the same home needs no new link.
+
 ### Running a second Station in development mode
 
 To edit Station's own code while a browser workspace shows the change live, run
@@ -152,6 +170,280 @@ just dev --watch --instance=hot --temp-home --port=3342 --ui-port=3374
   `STATION_DEV_WATCH_POLL=1` to poll instead: Vite uses `usePolling`, and the
   server runs under `scripts/dev-server-watch.mts` (`tsx watch` cannot poll).
   Polling costs some CPU; leave it off where native watching works.
+
+### Linux service workload budgets
+
+When the server runs inside a `station-*.service` user unit on Linux,
+[`workload-resources.ts`](../../src-server/services/infra/workload-resources.ts)
+places owned child workloads in systemd scopes outside the server unit. Engine
+tools inherit their engine's scope; separately launched terminals, MCP servers,
+ACP commands, Flow commands, plugin builds, project commands, Veritas readiness
+runs, Claude model discovery, engine CLI probes and owned browser/device helpers
+receive their own scopes. This separates their memory accounting and OOM failure
+domain from the control server. It does not isolate filesystem or network access.
+
+Each scope has a hard memory limit and a thread/process limit. A shared slice
+bounds their combined memory, swap, CPU and thread/process usage. There is no
+soft memory threshold: sustained reclaim throttling can otherwise stall a
+workload before it reaches its hard limit. Configure these trusted server
+environment variables before starting the service:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `STATION_WORKLOAD_MEMORY_MIB` | 60% of the total budget, at least `3072`, at most the total | Per-scope memory, capped by the aggregate budget |
+| `STATION_WORKLOAD_TOTAL_MEMORY_MIB` | Half physical RAM | Combined memory for this service's workload slice |
+| `STATION_WORKLOAD_SWAP_MIB` | `256` | Per-scope swap; `0` disables it |
+| `STATION_WORKLOAD_CPU_PERCENT` | Logical CPUs × `75` | Combined CPU quota; `100` is one core |
+| `STATION_WORKLOAD_TASKS_MAX` | `512` | Per-scope processes and threads |
+| `STATION_WORKLOAD_TOTAL_TASKS_MAX` | `2048` | Combined processes and threads |
+
+The per-scope default grows with the host: a 16 GiB host has an 8 GiB total
+and about 4.8 GiB per engine, while an 8 GiB host keeps the earlier 3 GiB. One
+runaway engine still leaves at least 40% of the slice to its siblings. A fixed
+3 GiB was too small for an engine running a build, a repository-wide lint and a
+browser at once, which is exactly what a 16 GiB host could otherwise afford.
+
+The two memory budgets can also be saved as Station settings in
+`<home>/config/workload-budgets.json`. Each value resolves in this order: the
+environment variable, then the saved setting, then the default above. A
+setting is never silently capped: one below 256 MiB or above the host's memory,
+a per-engine value above the total it would resolve against (a saved or
+environment total, or the default), and a saved total below
+`STATION_WORKLOAD_MEMORY_MIB` are refused. The same check runs when the file is
+read at start; a file that is unreadable, malformed or out of range is
+reported (`settingsError`) and ignored, so the environment and defaults apply.
+
+While enforcement runs, a save applies without a restart. The total is the
+slice's `MemoryMax`, which binds every running engine at once, so a total
+below what the slice uses now is refused. A new per-engine budget reaches only
+scopes launched after the save; running scopes keep the limit they started
+with, and `GET /api/system/workload` lists each running scope with its own
+limit. Saves are serialized; the slice is changed before the file is replaced,
+and a failed change leaves the file, the reported state and the enforced limits
+as they were. Where enforcement is not running, the saved values are read when
+it next starts.
+
+Only the editor is a preview: Settings → Advanced → Host options shows it, and
+`PUT /api/system/workload/settings` accepts a save, only while the **Workload
+budget settings** Feature Preview is on. The budgets themselves, the
+host-sized default, the engine statement, `workload_status` and memory-kill
+recovery are not previews. Turning the preview off keeps saved values in
+force; to clear them, save empty fields (the default) before turning it off, or
+remove `workload-budgets.json` and restart Station. The read
+(`GET /api/system/workload`) and the save are ordinary `/api/system` routes:
+a paired device holding `orchestration:operate` can save, like it can change
+feature previews. Hosted deployments mount neither.
+
+The slice also caps combined swap at 1 GiB. At most 256 scopes can be active.
+One engine's budget includes all of its tools, so size it for the intended
+workload. Engine scopes launch with `OOMPolicy=continue`: when a scope reaches
+its limit, the kernel OOM killer kills one process in it, normally the largest
+command (a build, a linter, a browser), and the engine keeps running and sees
+that command fail (SIGKILL, exit 137) within the same turn. Only when the
+engine itself is the process killed does the engine end. Aggregate exhaustion
+can kill any workload in the slice, including a sibling engine.
+
+Under host pressure caused by those workloads, the server's own unit is
+favoured:
+
+- `MemoryLow` asks for 1536 MiB, the measured working set of a busy server
+  with headroom, but never more than 1/8 of the memory the kernel reports
+  (`MemTotal`, a little under installed RAM): 1536 MiB at 16 GiB, 512 MiB at
+  4 GiB, 256 MiB at 2 GiB. Under host-wide reclaim the kernel
+  caps a cgroup's effective protection by its ancestors', and a user manager
+  cannot set `user.slice` or `user@.service`. So there this protection takes
+  effect only where the host protects those ancestors; by default they have
+  none.
+- `MemorySwapMax=0` keeps the server's anonymous memory resident on hosts
+  where the whole 1536 MiB fits in 1/8 of `MemTotal` (12 GiB and up). A
+  swapped page faulted back in on the event loop stalls every request. This
+  limit holds whatever the unit's ancestors set, but it puts no ceiling on how
+  much the server keeps resident, so smaller hosts get
+  `MemorySwapMax=infinity` and can still swap the server. File-backed pages
+  such as the Node.js binary stay reclaimable either way.
+- `ManagedOOMPreference=avoid` makes systemd-oomd pick other candidates first.
+  For a user unit, systemd-oomd honours this only when it acts on pressure at
+  or below the user manager, not on swap usage or on the whole host.
+- The workload slice has `CPUWeight=25`. It sits beside the `app.slice` that
+  holds the server's unit, so when just those two contend for CPU, that
+  subtree gets 80% of it. When the server is idle, workloads keep the whole
+  quota. There is no `IOWeight`: a user manager is normally delegated only the
+  cpu, memory and pids controllers.
+
+None of this guarantees survival under host-wide exhaustion or an ancestor
+policy that kills the entire user session.
+
+Managed Linux service isolation requires systemd 253 or newer, which accepts
+`OOMPolicy=` on a scope; an older `systemd-run` rejects the property (systemd
+249 was observed to). Memory-kill causes no longer depend on the scope result
+systemd reports, so the floor is set by the property, not by reporting. Older installations must upgrade systemd before
+starting workloads. Scope launches preserve literal arguments; systemd 254 and
+newer receive an explicit option disabling environment expansion.
+
+Boot checks that version and probes the actual scope launch. Probe failures
+retain up to 2 KiB of command stderr. If enforcement cannot be configured, the
+server keeps management available and refuses new workloads with an actionable
+error. macOS, Windows and Linux launches outside a matching user service retain
+their existing process behavior and do not gain these limits. The developer
+`/api/system/resource-posture` response includes workload state, budgets, active
+scopes, recent results/peaks and slice memory/pressure measurements. An unavailable
+measurement is reported separately from enforcement state.
+
+Under `OOMPolicy=continue` systemd records no `oom-kill` result for a scope,
+so Station reads the kernel's own count: the `oom_kill` line of the scope's
+cgroup v2 `memory.events`. A 1-second poll reads every running scope and
+announces a kill count to the engine's adapter only once a later poll finds the
+very engine it launched (same pid and start time) still alive; kills seen at
+that later poll wait for the next one, so a steady stream of command kills is
+reported one poll behind (a kill can take up to about two seconds to appear).
+A poll that lands between the kernel killing the engine itself and Station
+noticing the exit therefore never reports the engine's own death as a command
+kill. The count is read again when the scope closes. systemd collects a scope
+as soon as its last process exits, cgroup and counters with it, so an engine's
+own scope (a launch that names its Session) also runs a holder: the scope's
+shell wrapper first runs `setsid -f` on a holder with descriptors 0-2 on
+`/dev/null` and 3-9 closed, then execs the engine. Where the host has bash the
+holder is a bash, run with `-p` so an inherited `BASH_ENV` or `SHELLOPTS` cannot change it, that closes every remaining descriptor from 3 up (as listed in
+`/dev/fd`) and execs `sleep 2147483647`; otherwise it is that sleep directly. The holder is forked inside
+the scope before the engine starts, so it is there however soon the engine
+dies, and nothing is moved between cgroups (a transient scope is the user
+manager's and is not delegated, so Station never migrates processes). It runs in
+its own session and process group, out of reach of the group kill that tears a
+Codex engine down, and holds none of the engine's pipes: Node maps a child's
+stdio, IPC and extra pipes onto the lowest descriptors and opens the rest
+close-on-exec. The bash sweep also drops descriptors from 10 up that Station
+itself inherited without close-on-exec (a harness, a terminal, a CI step),
+which dash cannot name; without bash, those stay open in the holder. When the engine dies, the holder keeps the scope and its
+`memory.events` until Station reads the count and stops the scope, which kills
+the holder with everything else. Until the holder is found, each poll searches
+the scope's own `cgroup.procs` for a pid other than the engine whose command
+line is exactly the holder's; once found, each poll confirms that pid is still
+in the scope with the same start time. `GET /api/system/workload` reports an
+engine scope's `holder` as `placed`, or `unplaced` with `holderReason`
+`not-in-scope` after two polls in a row miss it (the search stops after five
+polls without it),
+`holder-gone` once a found holder has left the scope or its pid names another
+process (an agent's `pkill sleep`, say), or `holder-unavailable` when the
+host has no `setsid`(1) or `sleep`(1) (then engine scopes run without one).
+A process in the scope running the same `sleep 2147483647` can pass for the
+holder; that misreports status only. An
+engine scope without a holder has its count at close unknown, like any
+scope already gone: unknown, never inferred. The settled record
+(`recent` in `/api/system/resource-posture` and the "Workload scope settled"
+log) reports `result: oom-kill-in-scope` with `oomKills` whenever the kernel
+killed a process in the scope (the engine or a command; the engine adapter
+decides which), and keeps systemd's own `systemdResult` (`success` under
+`continue`). Its `oomKillsSource` is `close` for the exact read before the
+stop, or `last-poll` when systemd had already collected the scope (a terminal
+whose shell exited on hangup, since only engine scopes have holders): then a
+kill in the scope's final second can be missing.
+
+Codex reports both cases. A kill while Codex runs publishes a live warning
+(`workload-command-oom-killed`, naming the budget) and a transcript marker
+("A command was killed … for exceeding the engine's workload memory budget");
+Station does not know which command it was and fabricates no tool result —
+Codex reports that command's own failure. Codex's own death is a SIGKILL with
+an `oom_kill` no listener was told about, or a scope systemd reports as
+`oom-kill`; it produces an `engine-memory-exhausted` failure with the budget
+and peak and `session.exited` reason `memory-exhausted`. A signal alone does
+not prove OOM; an unknown count (a scope systemd already collected) leaves
+the cause unknown, and the turn and interrupted tool/child rows still settle.
+Claude Code runs in the same scopes and is told its budget, but its adapter
+does not yet read these counts: a Claude command kill is reported only by
+Claude, and Claude's own memory death is not classified as such.
+
+#### What engines are told
+
+Engine adapters that launch one engine process per Session through the shared
+launcher declare `workloadScope: 'engine-process'` (Codex and Claude Code).
+While enforcement is `ready`, the first turn of each such Session starts with a
+short Station section naming the per-engine limit, that it covers every command
+the engine starts, and that memory-heavy work should run one step at a time.
+Nothing is said where no scope is enforced, or for engines that have not
+declared one (ACP, Muse and in-process engines today).
+
+The statement names the limit of the Session's own scope when it already
+exists (a later settings save does not change a running scope), otherwise the
+limit a launch would receive now. Codex and Claude Code launches also name
+their Station session to the launcher, which attributes the scope to it. The
+`workload_status` station-control tool (`GET /api/system/workload/session`)
+reports the calling Session's own scope: enforcement state, limits, and
+`memory.current`, `memory.peak`, `memory.max`, swap, `oom_kill` and task
+counters read from the scope's cgroup v2 files, with the time Station first saw
+the latest kill (to its 1-second poll). A Session whose engine is not attributed reports
+`unattributed` rather than another scope's numbers. Operators read the whole
+Station's budgets with `station workload status` (`GET /api/system/workload`).
+
+After the engine itself is killed for memory, Station continues the
+conversation on its own: it hands one Station-authored turn ("Continue the
+task from where it stopped.") to the conversation inbox, which runs it in a
+successor Session. That Session's first turn is prefixed with a Station
+recovery note built from the predecessor's own events: the commands whose tool
+calls never reported a result (secrets redacted, set as code, and labelled as
+a record of the previous engine's commands rather than an instruction from the
+user), the peak and the limit, and the instruction to check their partial
+results and run heavy steps one at a time. The chat shows "The engine ran out
+of memory and was restarted — continuing", with **Stop** while it runs.
+
+Automatic continuation is withheld when the turn was interrupted, when a
+request (approval or question) was still open at the kill, when the
+conversation has moved on, for a delegated child (its parent decides whether
+to retry), after `AUTO_CONTINUE_CHAIN_MAX` (2) automatic continuations in a row
+in the conversation's lineage (a task that always runs out of memory stops
+after two restarts). A person's Continue, or a turn an operator or a device
+sent, resets the chain; Station's other turns and turns of unknown origin
+(project-room agent runs) neither count nor reset it. Station also does not
+continue on its own once its continuation for that turn was cancelled or
+refused. A rate cap also allows at most `AUTO_CONTINUE_MAX` (3) automatic
+continuations within `AUTO_CONTINUE_WINDOW_MS` (5 minutes) per conversation, counted in the server
+process (a restart resets that rate cap; the chain is read from the stored
+turns). Then the chat offers
+**Continue** instead of **Send again**, because resending the original prompt
+would restart the same concurrent work. Continue posts
+`/api/orchestration/conversations/:id/memory-continuation`, which sends the
+same turn under a key derived from the dead Session and turn (Station's bare
+key, or the `-p` person key). Whoever continues first owns the one live entry;
+every later request, including the owner's click after Station continued on
+its own, gets 409 `memory_continuation_already_started` and never a second
+turn. Only an entry the inbox proves sent nothing (refused, or cancelled before
+it was ever placed) is spent: a person's Continue then takes the next person key
+(`-p2` … `-p5`), so two devices clicking still name one entry. A dismissed
+unconfirmed entry may have started a turn and still counts as continued. Once
+every key is spent, Continue answers 409 `memory_continuation_retries_exhausted`. The
+`memory-continue-` key prefix is reserved: `/chat` refuses it and the inbox
+accepts it only from Station's own origin, so nobody can pre-claim the key. An older
+Station without the route answers 404 and the client sends the short
+continuation as an ordinary message. Ordinary connection recovery still treats
+a memory kill as manual and never replays the prompt.
+
+`npm run lint:check` and `lint:fix` share one Biome slot per OS user across
+worktrees and use at most two Biome worker threads. This prevents overlapping
+repository-wide lint runs inside one engine's memory budget. The holder keeps
+Biome's PID on POSIX; on Windows an owned process tree retains the slot until
+settlement. `STATION_BIOME_SLOT_DIR` selects an explicitly shared slot directory
+when mount namespaces do not share the default temporary directory. This bounds
+these script entry points, not arbitrary commands or direct Biome invocations.
+
+
+The pinned MCP client 2.3.1 patch adds a spawn callback at the physical process
+boundary. Its protocol-negotiation sibling inherits that callback, so probe and
+session processes each own a fresh scope. Retain the patch until the upstream
+client supports equivalent process ownership across negotiation and session
+launches; verify removal with the full-client handshake regression.
+
+Cancellation preserves the existing graceful shutdown before scope cleanup.
+Scope cleanup also reaps descendants that start new sessions. A stopped service
+stops its bound scopes; on the next server generation, the startup sweep reaps
+scopes whose owner PID and birth fingerprint are no longer live. This work does
+not make running turns survive server restarts; the
+[process supervisor proposal](../design/process-supervisor.md) owns that design.
+
+The [process fixture](../../src-server/services/infra/__tests__/workload-resources.process.test.ts)
+exercises the manager from a disposable service, including real OOMs and PTY
+behavior when the native dependency is available. It is not a live provider,
+packaged service or cross-platform qualification receipt. Full verification and
+dependency installs refuse admission inside the unisolated Station service;
+run them from an external shell, a bounded workload scope or hosted CI.
 
 The root Vite development command is local-only by default:
 
@@ -230,14 +522,27 @@ implicitly reactivate sessions, scheduled jobs, grants, or account selection.
 | `@kontourai/station-sdk` | `packages/sdk/` | Published (npm, Apache-2.0) | Plugin SDK hooks, components, query domains, and client helpers |
 | `@kontourai/station-shared` | `packages/shared/` | Published (npm, Apache-2.0) | Shared runtime helpers and compatibility re-exports |
 | `@kontourai/station-connect` | `packages/connect/` | Private in this checkout (`private: true`) | Standalone bidirectional pairing library |
-| `@kontourai/station-telemetry-broker` | `packages/telemetry-broker/` | Private optional companion; separate Node bundle | Durable receiver for disclosed product observations; no personal accounting |
+| `@kontourai/station-telemetry-broker` | `packages/telemetry-broker/` | Private optional companion; separate Node bundle | Durable product receiver and isolated private usage storage; Core owns person/source authority, not the receiver |
+| `@kontourai/monument` | `packages/monument/` | Tier 1 package (ADR 0005), `private: true` until a qualified functional release (see its README); imports nothing of Station's | Engine-neutral durability kernel: turn dedup, turn boundaries, request keys, message delivery decisions and sequencing, conformance suite. Station uses its public entry points, binds storage commands to its existing tables and supplies host admission, terminal facts, owner liveness and start/steer invocation |
+| `@kontourai/agent-runtime` | `packages/agent-runtime/` | Private experimental Tier 1 boundary; source workspace exports | Model-only request journal, retained stream replay and guarded VoltAgent/Strands consumers over public Monument contracts; Station chat/boot adoption and package release remain unqualified |
+| `@kontourai/station-supervisor` | `packages/supervisor/` | Private (`private: true`); self-contained `dist-server/station-supervisor.js` bundle, Node built-ins only | [Process supervisor](../design/process-supervisor.md) that holds listeners and hands them between core server generations. `station start`, and `station service run` through it, run the core server under it unless `STATION_DIRECT_LAUNCH=1`, `--watch` or `--lifecycle-journal` keeps the direct start. Its [README](../../packages/supervisor/README.md) covers status and build. The core's supervisor link imports the protocol from `@kontourai/station-supervisor/protocol` |
+| `@kontourai/station-basis-pane` | `packages/basis-pane/` | Private workspace package (`private: true`); consumed from TypeScript source through Station's bundler | First-party Basis Workspace Pane, answer-basis affordance and session inventory views, built on SDK and Surface view contracts. See its [README](../../packages/basis-pane/README.md) |
+| `@kontourai/station-board-pane` | `packages/board-pane/` | Private workspace package (`private: true`); consumed from TypeScript source | The Console Board as an in-process Workspace Pane over published contracts. See its [README](../../packages/board-pane/README.md) |
 | `@kontourai/station-cli` | `packages/cli/` | Published (npm, Apache-2.0) | Client CLI package; checkout-only host commands remain behind `./station` |
 
 The contracts, SDK, and shared packages ship raw TypeScript source, so their
 consumers need a bundler or a TS-aware loader; each README documents that
-constraint. The CLI ships a bundled executable. Connect is marked `private: true` in this checkout; that does not imply it was
+constraint. Monument publishes compiled `dist/` (build it with
+`npm run build:monument`, smoke the packed tarball with `npm run monument-pack:smoke`),
+and its README says why only pnpm packs it correctly. The CLI ships a bundled executable. Connect is marked `private: true` in this checkout; that does not imply it was
 never published historically. The repo-root `./station` launcher
 remains the checkout entry point for host and contributor commands.
+
+For the experimental model runtime, use `npm run build:agent-runtime` and
+`npm run typecheck:agent-runtime`. Its workspace exports currently resolve
+TypeScript source. Those scoped checks do not qualify a packed plain-Node
+consumer, a registry release or Station runtime adoption. See its
+[README](../../packages/agent-runtime/README.md) for supported modes and limits.
 
 New cross-package types should live in the owning `@kontourai/station-contracts/*` module. Keep compatibility re-exports in `shared` only when needed for older callers.
 
@@ -250,6 +555,23 @@ new example there when its tests are part of the root verification corpus and
 it owns dependencies that the root install must provide. Root-managed examples
 use the repository's `pnpm-lock.yaml`; do not add a second lock inside the
 example.
+
+### Verified CI package-manager bootstrap
+
+CI, Windows PR verification, iOS verification, and the paired PR/Nightly
+Gallery workflows use the immutable `setup-verified-pnpm` action. It installs
+exactly `pnpm@11.25.0` from the JavaScript package, after checking npm's
+ECDSA registry signature against a reviewed fixed public key and checking the
+archive against a pinned SHA-512 integrity value. Identity, version, origin,
+signature, archive or extraction failures stop setup; there is no mirror or
+unsigned fallback. Trust-root and package-version changes require source review.
+
+The action installs Node through the pinned Node setup action, preserves the
+existing `.cjs` package-manager discovery path on Windows, and runs no dependency
+lifecycle scripts. `npm run dependencies:ci` remains the reviewed install owner.
+The JavaScript artifact avoids the native platform-package metadata endpoints;
+this does not establish the cause or availability of those network paths.
+Release packaging retains its separately owned bootstrap until migrated.
 
 ### Dependency install deadline
 
@@ -286,7 +608,7 @@ packages/         Contracts, SDK, connect package, shared helpers, CLI
 examples/         Plugin and provider examples
 docs/             Strategy, guides, reference, design docs, Pages source
 tests/            Playwright E2E specs and manifest
-monitoring/       OTel collector, Prometheus, Grafana, Jaeger stack
+deployment/       Self-hosted broker and telemetry/monitoring Compose profiles
 ```
 
 ## CLI Reference
@@ -309,6 +631,39 @@ Common commands:
 ```
 
 See [../reference/cli.md](../reference/cli.md) for the complete command reference.
+
+### CLI and Station Control parity
+
+People and scripts use the `station` CLI; agents use Station Control tools.
+`scripts/cli-mcp-parity.json` classifies every tool in the authority table
+(`src-server/tools/station-control-policy.ts`) and every CLI action in
+`packages/cli/src/help.ts` as one of:
+
+- a counterpart: `"cli": ["<verb> <action>"]` on a tool, or `"tools": [...]` on a CLI action, naming entries that exist;
+- `"exempt"`: a category from `EXEMPT_CATEGORIES` in `scripts/cli-mcp-parity.mjs`, plus a one-line `"reason"`;
+- `"missing"`: the number of the issue tracking the gap.
+
+The `app` section records capabilities only the web app offers, keyed by
+name with their `"route"`; one is covered only when it has both a CLI and a
+tool counterpart. Keep section keys sorted.
+
+`npm run cli-mcp:parity:check` runs in `ci:fast` and `docs:truth:gate`. It
+fails on an unclassified or stale entry, a counterpart that does not exist, a
+`missing` entry without an issue number, and a tool or CLI action newly
+classified `missing` relative to the merge base with `origin/main`. That
+ratchet is keyed by name, so the missing set can only shrink. When you build a
+counterpart, change its entry from `missing` to the counterpart. The `app`
+section is outside the ratchet, so recording a newly found gap there passes.
+The check does not confirm that an `app` route exists, or that two
+counterparts reach the same server route.
+
+## New user-facing capabilities
+
+Ship new capabilities that are not yet hardened behind a Station-wide Feature
+Preview, off by default. Follow [Ship a feature preview](feature-previews.md)
+for scope, runtime binding, entry-point gating, refusal behavior, tests, user
+documentation, and promotion. Device developer previews serve local developer
+UI experiments and do not gate shared server behavior.
 
 ## Plugin Development
 
@@ -340,6 +695,11 @@ That example is not a root-checkout install command or a way to replace
 Station's pinned workspace dependencies.
 
 ## Commit Messages
+
+The required `PR title policy` commit status applies the same grammar to live
+squash titles using trusted workflow code. It validates all open main-target
+PRs sharing a head, so correcting one cannot hide another invalid title. Title/body edits rerun that small check,
+not source CI. A title correction cannot clear an actual source-check failure.
 
 Commit subjects follow the Conventional Commits grammar enforced by the
 repository hooks:
@@ -381,89 +741,49 @@ last 100 non-merge `origin/main` subjects still pass and that every merge
 subject in the last 3000 commits is exempt or conforming, so a vocabulary
 that stops fitting the repo fails a gate rather than its contributors.
 
-## GitHub automation token
+## Landing a pull request
 
-Agent sessions and tools that arm auto-merge, confirm the merge queue or poll
-checks must not spend the owner's personal GitHub quota: during #2886 the
-shared 5,000-per-hour GraphQL limit ran out three times and blocked merges
-for 20 to 40 minutes each time (#2926). Automation uses a dedicated GitHub
-App instead, whose installation tokens carry their own quota.
-`scripts/gh-app-token.mjs` mints one per call:
+`main` is governed by the **main requires green checks** ruleset, which
+includes a merge queue. The ruleset is the authority for required checks,
+batching, and merge method; read it rather than copying its values into
+prose that drifts:
 
 ```bash
-# Read-only by default; workflows is excluded because it permits only write.
-GH_TOKEN=$(node scripts/gh-app-token.mjs) gh api repos/kontourai/station/pulls/<n>
-# Ask for exactly the write scope a call needs; the child gets GH_TOKEN, never your GITHUB_TOKEN.
-node scripts/gh-app-token.mjs --permissions pull_requests:write,contents:write,workflows:write -- \
-  gh pr merge <n> --repo kontourai/station --auto
+gh api repos/kontourai/station/rules/branches/main
 ```
 
-Workflow-changing PRs require `workflows: write` on the installation and on
-the token used to arm them. Updating the App's requested permissions can leave
-an installation awaiting approval; inspect the installed permissions before
-using the grant. Read-only status tokens never request this write-only scope.
-The hosted landing caller requests it for workflow PR admission. After arming,
-it checks the current head once and reports either `queued` or
-`armed_waiting_for_queue`; an armed request is not evidence of enqueueing.
-A successful command that leaves the PR neither armed nor queued fails the
-landing job. Already queued PRs are left alone. No polling or bypass is added.
+- **Arm auto-merge; do not merge by hand.**
+  `gh pr merge <n> --repo kontourai/station --auto`. Auto-merge is opt-in per
+  PR: a green PR that nobody armed sits forever, which is the usual reason a
+  ready PR has not landed.
+- **Pass no merge-method flag.** The `merge_queue` rule's `merge_method` owns
+  the strategy, and `gh pr merge --squash` is refused with `The merge strategy
+  for main is set by the merge queue`. The `pull_request` rule's
+  `allowed_merge_methods` list does not grant permission to pass a flag.
+- **Read the queue, not the exit text.** A refused method flag prints a `!`
+  line that looks like a failure while the PR is queued anyway, and a second
+  attempt then reports `already queued to merge`. `autoMergeRequest` is `null`
+  for an entry already in the queue. The merge queue has no REST endpoint, so
+  confirm once with this GraphQL query, then stop:
 
-Each token is scoped to the `station` repository and the requested
-permissions, lives about an hour, and is never cached or written anywhere.
-The helper fails closed (exit 78) and points here when it is not set up. It
-refuses to print a token to a terminal, so a bare run cannot leak one into a
-session transcript; capture it with `$(...)` or run a command after `--`.
-Each refusal starts with a stable reason code, such as
-`gh-app-token: key-in-repository:`.
+  ```bash
+  gh api graphql -f query='{ repository(owner:"kontourai", name:"station") {
+    mergeQueue { entries(first:20) { nodes {
+      position state pullRequest { number } } } } } }'
+  ```
 
-**Prefer REST for status reads.** `gh pr view`, `gh pr checks` and
-`gh pr status` are GraphQL calls. Read state over REST instead:
-`gh api repos/kontourai/station/pulls/<n>`,
-`gh api repos/kontourai/station/commits/<sha>/check-runs` and
-`gh api repos/kontourai/station/commits/<sha>/status`. The merge queue has no
-REST endpoint, so confirm an armed PR with the single GraphQL query in
-[AGENTS.md](../../AGENTS.md), once, with the app token.
-
-### Setup (owner, once)
-
-1. Create a dedicated app, not the release app. The release app's
-   permissions are broader than arming and reading need. This link pre-fills
-   the minimal permissions and no webhook:
-   `https://github.com/organizations/kontourai/settings/apps/new?name=station-automation&url=https://github.com/kontourai/station&public=false&webhook_active=false&pull_requests=write&contents=write&workflows=write&issues=write&checks=read&statuses=read&actions=read&metadata=read`
-2. Install it on `kontourai` with **Only select repositories**:
-   `kontourai/station`.
-3. Keep the app **off every ruleset bypass list**. It arms auto-merge; the
-   merge queue and required checks must still decide.
-4. Generate a private key, store it in the macOS Keychain, then delete the
-   downloaded file:
-
-   ```bash
-   security add-generic-password -U -s kontourai-station-automation -a <app-id> -w "$(cat station-automation.pem)"
-   rm -P station-automation.pem
-   ```
-
-   The key briefly appears in the process list while that command runs.
-   `security find-generic-password -w` returns a multi-line secret
-   hex-encoded; the helper decodes it in memory.
-5. Point the helper at the app outside the repository, in
-   `~/.config/station/gh-app.json` (or `$STATION_GH_APP_CONFIG`):
-
-   ```json
-   { "appId": "5113898", "installationId": "165937750" }
-   ```
-
-   Environment variables override the file: `STATION_GH_APP_ID`,
-   `STATION_GH_APP_INSTALLATION_ID` (looked up from the app's installation on
-   `kontourai` when absent), `STATION_GH_APP_KEYCHAIN_SERVICE` (default
-   `kontourai-station-automation`), `STATION_GH_APP_KEYCHAIN_ACCOUNT`
-   (default: the app ID) and `STATION_GH_APP_PRIVATE_KEY_PATH`, a key file
-   used instead of the Keychain, for hosts without one. The helper refuses a
-   config or key file inside a repository.
-
-**Rotation.** Generate a new key in the app's settings, replace the Keychain
-item with the same `security add-generic-password -U` command, confirm
-`node scripts/gh-app-token.mjs >/dev/null` exits 0, then delete the old key
-from the app's settings.
+  Never poll the queue; a red or conflicted dequeue shows only on the PR
+  itself. A red entry is removed and the entries behind it rebuild.
+- **Branches need not be up to date** (`strict_required_status_checks_policy`
+  is `false`), but two independently green PRs can still break `main` in
+  combination. `.github/workflows/main-health.yml` files a P1 when that
+  happens.
+- **Keep authorship real.** The ruleset sets
+  `require_extra_approval_for_unattributed_changes`, so a commit GitHub cannot
+  attribute needs an extra approval. Credit delegates with a `Co-authored-by:`
+  trailer.
+- **Do not arm another lane's in-flight PR.** Coordinate with the owning
+  session first; green checks do not make its merge yours.
 
 ## Verification
 
@@ -487,36 +807,43 @@ receipt does not certify completion. Do not repeatedly launch `npm test`,
 `test:full`, `verify:static`, `verify:local`, or full E2E while editing; those
 host-coordinated lanes consume shared CPU and mutable-output leases.
 
-Use `npm run ci:fast` for bounded per-push feedback: it runs affected tests
+`npm run ci:fast` runs affected tests
 against `STATION_CI_FAST_BASE` first, then fixed runtime, lockfile, workflow,
 evidence-check registration, generated-output, documentation,
 verification-policy, lint, governance and typecheck invariants. It is not
 the full static/build chain or full Vitest corpus.
-Hosted CI splits that work: `fast-checks-plan` selects once, one to four planned
+Hosted CI splits that work: `fast-checks-plan` selects once, zero to four planned
 `fast-checks-shard` jobs run the affected tests, and `fast-checks-statics` runs
 the fixed invariants plus browser/performance smoke and the UI bundle budget.
-The required `fast-checks` result combines job outcomes with exact-plan shard
-receipts. A failing shard also annotates each failed test and uploads its
+The `fast-checks` result combines job outcomes with exact-plan shard receipts;
+the required `Source verification policy` context reconciles it (the
+[ruleset](#landing-a-pull-request) lists required contexts). A failing shard also annotates each failed test and uploads its
 redacted Vitest JSON report. Local `ci:fast` remains unsharded; see the
 [testing guide](testing.md#what-counts-as-tested) for evidence interpretation.
-Ordinary pull requests use focused evidence plus `npm run ci:fast`.
+Ordinary pull requests use focused local evidence, normal push hooks, and required hosted checks.
+Follow the [local feedback rule](testing.md#what-counts-as-tested).
 GitHub's merge queue verifies the synthesized latest-main candidate.
 Do not run `npm run full:regression`
 locally merely because `main` moved.
 
-Nightly and tagged preview and stable promotions pass one exact source SHA
-to the hosted qualification authority.
-
 The reusable hosted workflow `.github/workflows/full-regression.yml` qualifies
-one exact source through every canonical phase and the Android viewport suite.
-`Main: Qualification` runs after main source changes with an hourly fallback.
-It finishes the active source and coalesces pending candidates. Eligible Nightly
-delivery uses a separate lease and a configurable interval (six hours by default). Nightly has no independent schedule; its
-manual dispatch remains available for recovery. The hourly qualification-health
-watchdog reports missed starts, stale success and failed delivery. Nightly
-and tagged Preview/Stable require that qualification, with bounded reuse of
-exact-source evidence. See [the release process](releasing.md) for receipt
-admission, failure repair and promotion.
+one exact source SHA through every canonical phase and the Android viewport suite.
+`Main: Qualification` runs after main pushes (one admitted push and one
+replaceable pending push), every six hours or manually. Scheduled/manual
+requests retain distinct admission groups and cannot be displaced by a push. Push runs qualify
+source only; scheduled/manual success then runs all five packaging/platform
+validation families. Replaced pending revisions have no qualification claim. Optional
+PR delivery families run in sequence after core fast checks, selected by a
+trusted base-owned diff planner; required integration contexts stay unchanged.
+Scheduled main qualification and tagged Preview/Stable require full qualification with bounded exact-source reuse.
+
+Nightly runs independently: an hourly eligibility decision enforces a six-hour
+default publication minimum before source tests or builds. Eligible sources
+must pass exact-SHA lint, all typecheck lanes, native boundary checks and real
+browser smoke, followed by signed artifact and provider gates. That usability
+gate does not emit a full qualification receipt. Manual Nightly recovery retains
+the same gates. The hourly health watchdog reports stale qualification and
+failed publication separately. See [the release process](releasing.md).
 A manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.
 Escalate to public native or full E2E lanes only when selector/policy output
 names them or the final risk surface requires them.
@@ -543,9 +870,11 @@ npm run test:e2e:product -- --spec=tests/<owned-product-spec>.spec.ts
 
 Every Playwright spec must be assigned to exactly one bucket in `tests/e2e-manifest.mjs`.
 
-Dependency updates must also pass the workspace advisory floor. See
-[Dependency security](dependency-security.md) for the root, SDK, and shared lock
-workflow, production-reachability interpretation, and exception contract.
+Dependency updates retain lock and compatibility checks. Feature PRs, merge
+queues and Nightly builds do not run advisory audits; the central scheduled
+scan tracks disclosures, and Preview/Stable publication enforces a fresh
+exact-source floor. See [Dependency security](dependency-security.md) for graph
+views, accountable ownership, trusted release policy and exception contracts.
 
 Pushes that touch orchestration transfer inputs run the transfer gate from
 `.githooks/pre-push`. It reads its baseline from
@@ -563,6 +892,83 @@ Choose bounded, privacy-reviewed attributes such as provider, operation or
 outcome; do not emit credentials, arbitrary paths or unbounded identifiers.
 Instrumentation is observation, not a durable product receipt or proof of
 collector delivery. [Monitoring](monitoring.md) owns the current export limits.
+
+### Transcript layout tracing
+
+When a conversation's transcript gains space below or above its rows while it
+loads, or a reader loses their place, the opt-in transcript layout tracer
+records what moved and why. It is off by default. While it is off, each
+loading phase mark returns after two flag checks, and no observer attaches.
+The observers ship in the lazily loaded transcript chunk, not the entry
+bundle. The [entry module](../../src-ui/src/components/chat/transcriptLayoutTrace.ts)
+decides whether tracing is on, and the [tracer](../../src-ui/src/components/chat/transcriptLayoutTracer.ts)
+attaches to the transcript scroller when the list mounts.
+
+Turn it on for one browser profile, then reload:
+
+```js
+localStorage.debug = 'app:transcript-layout'; // also prints each record
+location.reload();
+```
+
+Only that explicit namespace turns it on. The implicit `app:*` logging of a
+development build ([logger](../../src-ui/src/utils/logger.ts)) and the
+Developer tools setting do not.
+
+In the page console:
+
+```js
+__stationTranscriptTrace.dump();     // { capacity, total, dropped, records }
+__stationTranscriptTrace.clear();
+__stationTranscriptTrace.overlay(true); // live numbers in a corner; persists
+                                        // (removed when the tracer detaches)
+copy(JSON.stringify(__stationTranscriptTrace.dump())); // DevTools only
+```
+
+Every record carries the scroller's `scrollTop`, `scrollHeight`,
+`clientHeight`, `distanceFromBottom` and whether the reader is scrolled up.
+Its `kind` says what happened:
+
+| Kind | Meaning |
+| --- | --- |
+| `resize` | A row (`row:<role>#<hash>`), the virtualizer spacer (`#virtualized-transcript-spacer`), the history controls, the scroller, or a sibling such as a loading skeleton changed height (`from` and `to`). |
+| `scroll` | A scroll event, labelled `programmatic` when it lands on the transcript list's own last write, otherwise `reader`. The virtualizer's own scroll writes are not noted, so they read as `reader`. |
+| `layout-shift` | A Chromium layout-shift entry and the rows or elements it names as sources. A chat switch does not record the browser's buffered entries twice. |
+| `rows`, `sibling` | Rows mounted or removed in the transcript, and elements added beside it in the chat body. |
+| `phase` | A named step: `pin-layout`, `pin-raf`, `content-repin`, `content-reanchor`, `clamp-repin`, `older-request`, `older-commit`, `scroll-to-bottom-*`, `turn-jump`, `virtualizer-*`, `dock-loading`, `lazy-chunk-resolved`, `markdown-renderer-resolved`, and `highlight-applied`. |
+
+Records name elements without user content. A row appears as its role and a
+one-way hash of its key, because a row key can embed message text. Other
+elements appear by test id, or by tag, classes and ARIA role; accessible
+labels, which can carry file names, are never read.
+
+The buffer keeps the newest 2,000 records; `dropped` counts every record it
+let go. Phase marks raised before the tracer attached (the dock's loading
+phases) are replayed when it attaches, at most 200 of them; a
+`pending-marks-dropped` phase counts any beyond that. A replayed mark has
+`replayed: true`: its `t` is when it was raised, but its geometry was read at
+attach. A production build minifies the loader name that `lazy-chunk-resolved`
+reports. Layout-shift entries exist only in Chromium-based browsers.
+
+To look at a phone layout against a running Station:
+
+- **Desktop Chrome:** open the web UI of the Station under test, turn on
+  device emulation (for example 390 x 844), and set CPU throttling to 4x or
+  6x and a slow network profile in the Performance panel. The automated
+  journey below uses the same 4x CPU throttle.
+- **Android:** connect over USB with USB debugging on, open `chrome://inspect`
+  on the desktop, and inspect the page in Chrome on the phone (or the app's
+  WebView, in a build with WebView debugging enabled). Set `localStorage.debug`
+  in that console, reload, and use the commands above.
+- **iOS:** turn on Web Inspector on the device (Settings > Safari > Advanced),
+  then use Safari's Develop menu on a Mac to inspect Safari (or the app's
+  WebView, in a build that marks it inspectable).
+
+`tests/transcript-load-stability.spec.ts` is the automated version: a
+throttled 390 x 844 journey that holds the conversation-open read and the
+late row chunks behind gates, samples transcript geometry every frame, and
+attaches both that timeline and this tracer's dump to each test's results.
+Run it with `npm run test:e2e:product -- --spec=tests/transcript-load-stability.spec.ts`.
 
 ## Docs And Pages
 

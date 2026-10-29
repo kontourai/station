@@ -55,12 +55,13 @@
  */
 
 import { initShiki } from '../contexts/SyntaxHighlighterContext';
+import { highlightedHtmlCache as cache } from './highlight-cache';
 import {
   IncrementalHighlightStore,
   sessionTokenizerFor,
 } from './incremental-session';
 import type { PreviewTokenLine } from './preview-tokens';
-import { escapeHtml, HighlightCache, highlightCacheKey, THEME } from './shared';
+import { highlightCacheKey, plainCodeBlockHtml, THEME } from './shared';
 
 /**
  * #2093 — the fallback shares the worker's resume store (same module, same
@@ -91,7 +92,7 @@ async function highlightOnMainThread(
       resolvedLang,
     );
   } catch {
-    return `<pre style="background:#0d1117;color:#e6edf3;padding:12px;border-radius:6px;overflow-x:auto"><code>${escapeHtml(code)}</code></pre>`;
+    return plainCodeBlockHtml(code);
   }
 }
 
@@ -361,8 +362,6 @@ export class HighlightWorkerPool {
     }
   }
 }
-
-const cache = new HighlightCache(300);
 
 type HighlightFn = (code: string, lang: string) => Promise<string>;
 type TokenizeFn = (code: string, lang: string) => Promise<PreviewTokenLine[]>;

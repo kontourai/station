@@ -1,0 +1,7 @@
+{
+  "revision": "2a16fb233ee8b5d52b32a736c598f067335faa56",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Reviewed inbox storage commits, observer wiring, conversation read authorization, pre-deletion audience capture, empty deletion wire payloads, thread filtering and general-event denial. Updated inbox stream and adaptive polling policy. Real EventStore/Hono tests passed for authorized observers, another owner and the same principal on another tenant; mounted inbox tests passed for safety polling and invalidation. No native or production execution is claimed.","inputs":["docs/reference/session-api.md","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/thread-inbox.ts"]}
+  ]
+}

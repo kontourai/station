@@ -1,0 +1,7 @@
+{
+  "revision": "13332800dd3e31b6703ce4e5d516761c443b0395",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Scoped review of the added basis-chip-hidden-at-rest mutation registry entry. Mutation ownership, baseline, exact source restoration and failure classification are unchanged. The Chromium Basis at-rest fixture now waits for real finite message-entry animations before keeping the original visibility, hit-target, height and hidden-hover-row assertions. A delayed-entry control reproduced the hosted opacity-zero failure before the test repair. Focused Basis, neighboring geometry and mutation-driver tests passed; canonical product-CSS hiding mutation was caught and byte-restored pass confirmed. No production CSS or endpoint behavior changed, and no prose change is required for this registry addition.","inputs":["docs/architecture/module-map.md","scripts/run-test-mutations.mjs"]}
+  ]
+}

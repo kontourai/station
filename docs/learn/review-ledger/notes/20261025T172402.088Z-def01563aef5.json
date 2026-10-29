@@ -1,0 +1,7 @@
+{
+  "revision": "7f9b4627faa25c984dc51f588cbf96323296186c",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"component-style-hygiene line now names the alert-with-action signature and pane-package scope; checked against ROOTS and inspectComponentStyle in scripts/component-style-hygiene.mjs.","inputs":[".veritas/README.md"]}
+  ]
+}

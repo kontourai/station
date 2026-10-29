@@ -30,13 +30,12 @@ const FEATURE_META: Array<{
     catalogId: 'voice-pill',
     key: 'voiceS2SEnabled',
     description:
-      'Show the floating voice pill for full-duplex speech-to-speech sessions with app control.',
+      'Show a floating control for two-way voice conversations and app control.',
   },
   {
     catalogId: 'tts-readback',
     key: 'ttsReadbackEnabled',
-    description:
-      'Automatically reads the latest assistant response via the selected TTS provider after each reply.',
+    description: 'Read each reply with the selected speech service.',
   },
 ];
 
@@ -126,8 +125,7 @@ export function VoiceFeaturesSection() {
           )}
         </select>
         <div className="voice-provider-section__hint">
-          Using WisprFlow? Focus the chat input and press your hotkey — it
-          injects text naturally.
+          Using a dictation app? Focus the chat input and use its shortcut.
         </div>
       </div>
 
@@ -237,8 +235,7 @@ export function NotificationsSection() {
               {settingsRow('push-notifications').title}
             </div>
             <div className="settings__toggle-desc" id="notif-desc">
-              Browser push notifications for tool approvals and high-priority
-              alerts
+              Browser notifications for approvals and high-priority alerts
             </div>
           </div>
         </SettingsToggle>

@@ -1,0 +1,7 @@
+{
+  "revision": "26fe9dc8c50ee75234d336e08d223b987a276299",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Re-checked after a send with no answer became 'waiting for Station to confirm' (awaitingLookup rows, the awaiting-confirmation bubble state, the queued notice's explicit withdrawal) and the composer-priority list window; searched for delivery, outbox, queue and discard claims; none in this document changes. No prose change.","inputs":["docs/reference/sdk.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]}
+  ]
+}

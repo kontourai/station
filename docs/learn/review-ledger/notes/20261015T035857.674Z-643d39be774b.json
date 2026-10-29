@@ -1,0 +1,11 @@
+{
+  "revision": "40ff8adfe051fc56aed6b56dcbfc7d8c0356e8e4",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed the affected ChatDock open/retry entry points against the placement and mounted-pane lifecycle explanation. The only new behavior is passing a transient observation owner to existing conversation reads. setLayout/setProject, placement declarations, region registration, reveal/focus navigation, unsaved guards and host continuity are unchanged. No placement prose change is required; the shared status rendering change is documented in chat-composer and user concepts.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the affected ChatDock caller delta and conversation/open/history API explanation. Freshness publication is local UI state around existing SDK reads; it adds no endpoint, payload field, authorization permission or server lifecycle state. Existing API response, lineage and typed refusal contracts remain accurate. The 120-second UI history bound and recovery precedence are inherited from #3672 round 2. No live-provider/API deployment claim is added.","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/deploy-ledger.md","note":"Reviewed the inherited ledger inputs from the merged base, with no follow-up delta to either deploy-ledger file. Validated every recorded entry with assertValidEntry and compared the Markdown byte-for-byte with renderLedgerMarkdown over the committed JSON. Existing schema, source links and publication-versus-ledger caveats remain accurate. This is committed-record/render evidence, not verification of provider publication, current artifact availability or completeness.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}

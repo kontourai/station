@@ -10,7 +10,10 @@ import { join } from 'node:path';
 import type { StationTaskBasisCollection } from '@kontourai/station-contracts/task-basis';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { describe, expect, test, vi } from 'vitest';
-import { basisInteropCollection } from '../../../../tests/helpers/basis-interop-fixture';
+import {
+  BASIS_INTEROP_SESSION_ID,
+  basisInteropCollection,
+} from '../../../../tests/helpers/basis-interop-fixture';
 import {
   ConfigLoader,
   type IntegrationPolicySnapshot,
@@ -265,7 +268,7 @@ describe('independent Basis App read-session boundary proofs', () => {
                 authority: '@kontourai/thread',
                 schemaVersion: '1.2.0',
                 kind: 'result',
-                threadId: 'fixture-session',
+                threadId: BASIS_INTEROP_SESSION_ID,
                 resultId: 'changed-result',
               },
               kept: true,

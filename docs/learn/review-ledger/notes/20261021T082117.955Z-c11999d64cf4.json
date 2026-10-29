@@ -1,0 +1,7 @@
+{
+  "revision": "b7539d8c48ca49edbe1b10c566616a30ef5789a7",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Round-3 chat polish: the dock title keeps its line (agent and engine wrap off it first); the browser outbox joins the one pending list above the composer, which yields to the draft in a short dock; the context card mounts in the chip's exit commit and fades under the composer; an empty stopped turn shows why when the person did not stop it; check-back timers wait past setTimeout's maximum in steps; check-back Approve answers 503 while delivery is stopped. Changed 'in the outbox list' to 'in the pending list above the composer' for Discard…, since the outbox rows now live in that list (OutboundQueuedMessages renders rows only, inside QueuedMessages). Re-read the delivery-state list; labels unchanged. No other prose change.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/chat.css","src-ui/src/index.css"]}
+  ]
+}

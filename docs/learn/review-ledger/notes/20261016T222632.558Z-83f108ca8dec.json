@@ -1,0 +1,7 @@
+{
+  "revision": "5df00270c307efdd0aa35cfb9443d71f6003c520",
+
+  "notes": [
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"Normal push caught the shared real-Git route fixture in the production Coding dependency scan. Moved the identical fixture implementation under the existing route __tests__/fixtures tree and adjusted only relative imports; service and production behavior are unchanged. Updated this dependency path through the official command. Existing service, Task and route acceptance assertions remain the behavior owners; no scan exclusion, policy change or fabricated runtime claim.","inputs":["docs/contexts/workspace-surfaces/CONTEXT.md","src-server/__test-utils__/coding-worktree-diff.ts","src-server/routes/projects/__tests__/coding-git-read-confinement.routes.test.ts","src-server/services/projects/__tests__/workspace-diff-service.test.ts","src-ui/src/__tests__/TaskWorkspaceView.test.tsx","src-server/routes/projects/__tests__/fixtures/coding-worktree-diff.ts"]}
+  ]
+}

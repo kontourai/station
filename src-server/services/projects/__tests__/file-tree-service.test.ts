@@ -36,25 +36,68 @@ describe('FileTreeService', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  test('listDirectory returns files and directories', () => {
-    const entries = svc.listDirectory(dir);
+  test('listDirectory returns files and directories', async () => {
+    const entries = await svc.listDirectory(dir);
     const names = entries.map((e) => e.name);
     expect(names).toContain('index.ts');
     expect(names).toContain('src');
   });
 
-  test('listDirectory skips node_modules', () => {
-    const entries = svc.listDirectory(dir, { depth: 3 });
+  test('listDirectory skips node_modules', async () => {
+    const entries = await svc.listDirectory(dir, { depth: 3 });
     const allPaths = JSON.stringify(entries);
     expect(allPaths).not.toContain('node_modules');
   });
 
-  test('readFile returns content', () => {
-    expect(svc.readFile(join(dir, 'index.ts'))).toBe('export {}');
+  test('listDirectory yields to the event loop while traversing files', async () => {
+    for (let i = 0; i < 100; i += 1) writeFileSync(join(dir, `entry-${i}`), '');
+    let heartbeats = 0;
+    const timer = setInterval(() => {
+      heartbeats += 1;
+    }, 1);
+    try {
+      const entries = await svc.listDirectory(dir);
+      expect(entries.length).toBeGreaterThanOrEqual(100);
+      expect(heartbeats).toBeGreaterThan(0);
+    } finally {
+      clearInterval(timer);
+    }
   });
 
-  test('readFile throws for missing file', () => {
-    expect(() => svc.readFile(join(dir, 'nope.ts'))).toThrow('File not found');
+  test('readFile returns content', async () => {
+    await expect(svc.readFile(join(dir, 'index.ts'))).resolves.toBe(
+      'export {}',
+    );
+  });
+
+  test('readFile throws for missing file', async () => {
+    await expect(svc.readFile(join(dir, 'nope.ts'))).rejects.toMatchObject({
+      code: 'not-found',
+    });
+  });
+
+  test('readFileWithin refuses oversized files', async () => {
+    const path = join(dir, 'large.txt');
+    writeFileSync(path, 'x'.repeat(2 * 1024 * 1024 + 1));
+    await expect(svc.readFileWithin(dir, 'large.txt')).rejects.toMatchObject({
+      code: 'file-too-large',
+    });
+  });
+
+  test('readFileWithin yields to the event loop during a contained file read', async () => {
+    writeFileSync(join(dir, 'large.txt'), 'x'.repeat(2 * 1024 * 1024));
+    let yielded = false;
+    const heartbeat = setImmediate(() => {
+      yielded = true;
+    });
+    try {
+      expect(await svc.readFileWithin(dir, 'large.txt')).toHaveLength(
+        2 * 1024 * 1024,
+      );
+      expect(yielded).toBe(true);
+    } finally {
+      clearImmediate(heartbeat);
+    }
   });
 
   test('searchFiles finds matching files', async () => {
@@ -187,14 +230,14 @@ describe('FileTreeService', () => {
     });
 
     describe('workspace containment', () => {
-      test('rejects a final symlink instead of reading outside content', () => {
+      test('rejects a final symlink instead of reading outside content', async () => {
         const outside = join(dir, '..', `outside-${Date.now()}.txt`);
         writeFileSync(outside, 'outside secret');
         symlinkSync(outside, join(dir, 'outside-link.txt'));
 
-        expect(() => svc.readFileWithin(dir, 'outside-link.txt')).toThrow(
-          'Symlink target is not allowed',
-        );
+        await expect(
+          svc.readFileWithin(dir, 'outside-link.txt'),
+        ).rejects.toThrow('Symlink target is not allowed');
         rmSync(outside, { force: true });
       });
 
@@ -210,14 +253,14 @@ describe('FileTreeService', () => {
         );
       });
 
-      test('rejects an intermediate symlink that escapes the workspace', () => {
+      test('rejects an intermediate symlink that escapes the workspace', async () => {
         const outside = mkdtempSync(join(tmpdir(), 'filetree-outside-'));
         writeFileSync(join(outside, 'secret.txt'), 'outside secret');
         symlinkSync(outside, join(dir, 'outside-directory'));
 
-        expect(() =>
+        await expect(
           svc.readFileWithin(dir, 'outside-directory/secret.txt'),
-        ).toThrow('Path escapes workspace');
+        ).rejects.toThrow('Path escapes workspace');
         rmSync(outside, { recursive: true, force: true });
       });
 

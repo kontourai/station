@@ -15,6 +15,7 @@
 import type { AddressInfo } from 'node:net';
 import { DatabaseSync } from 'node:sqlite';
 import { serve } from '@hono/node-server';
+import { frameAgentMessage } from '@kontourai/station-shared/agent-message-frame';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -55,6 +56,9 @@ const support = vi.hoisted(() => ({
   /** A session's conversation, and a conversation's current session. */
   conversations: new Map<string, string>(),
   current: new Map<string, string>(),
+  /** Read the actual key table at the instant an effect port is entered. */
+  readDecisions: () => [] as unknown[],
+  decisionsAtEffect: [] as unknown[],
   steerOutcome: 'steered' as string,
   /** What an interrupt answers. */
   interruptOutcome: 'cooperative' as string,
@@ -83,6 +87,7 @@ vi.mock('../../../tools/station-control-delegation.js', async (original) => {
   return {
     ...actual,
     continueExecutionTargetMessage: async (input: Record<string, unknown>) => {
+      support.decisionsAtEffect.push(support.readDecisions());
       support.continued.push(input);
       return {
         conversationId: String(input.conversationId),
@@ -117,6 +122,10 @@ function projectOf(threadId: string): string | undefined {
   return 'project-a';
 }
 
+/** What the engine is handed for `text` sent by the `op-caller-a` Session. */
+const framedFromCaller = (text: string) =>
+  frameAgentMessage({ kind: 'agent-session', sessionId: 'op-caller-a' }, text);
+
 const OPERATOR_CREDENTIAL = 'test-only-operator-credential-session-control';
 const makeTempDir = trackTempDirs();
 const ASSURANCE = 'station_control_assurance_insufficient';
@@ -149,6 +158,8 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
     __resetStationControlMcpTokensForTests();
     for (const controller of open.splice(0)) controller.abort();
     support.continued.length = 0;
+    support.decisionsAtEffect.length = 0;
+    support.readDecisions = () => [];
     support.commands.length = 0;
     support.hostThreads.clear();
     support.busy.clear();
@@ -172,6 +183,13 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
     const db = new DatabaseSync(':memory:');
     db.exec(SESSION_CONTROL_REQUEST_KEY_SCHEMA);
     const keys = createSqliteSessionControlRequestKeys(db);
+    support.readDecisions = () =>
+      db
+        .prepare(
+          "SELECT decision FROM session_control_request_keys WHERE tool = 'send_to_session' ORDER BY created_at, request_key",
+        )
+        .all();
+
     const app = new Hono();
     const context = deepStub({
       projectSharedTasks: undefined,
@@ -198,6 +216,7 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
       metricsLog: [],
       monitoringEvents: [],
       orchestrationEventStore: deepStub({
+        readInputlessTurnDisposition: () => ({ kind: 'inputless' as const }),
         sessionTurnBoundaryAuthority: () => ({
           reconcile: () => ({ kind: 'available', interrupted: [] }),
         }),
@@ -230,7 +249,8 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
         hasActiveTurn: (threadId: string) => support.busy.has(threadId),
         dispatchWithReceipt: async (command: Record<string, unknown>) => {
           support.commands.push(command);
-          if (command.type === 'steerTurn')
+          if (command.type === 'steerTurn') {
+            support.decisionsAtEffect.push(support.readDecisions());
             return {
               result:
                 support.steerOutcome === 'steered'
@@ -245,6 +265,7 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
                       clientInputId: command.clientInputId,
                     },
             };
+          }
           return {
             result: {
               outcome: support.interruptOutcome,
@@ -383,7 +404,9 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
   /** The verdict of one request: a typed refusal, 404, or `reached`. */
   const verdict = (answer: Answer, reached: boolean): string =>
     answer.status === 403 && answer.body.code?.startsWith('station_control_')
-      ? answer.body.code
+      ? answer.body.reason
+        ? `${answer.body.code}:${answer.body.reason}`
+        : answer.body.code
       : reached
         ? 'reached'
         : `not reached (${answer.status} ${answer.body.code ?? ''})`;
@@ -401,11 +424,24 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
 
   /** Aims, as [label, caller session, target, expected for a non-bound caller, expected for a bound operator]. */
   const NOT_FOUND = 'not reached (404 session_not_found)';
+  const OUT = (reason: string) => `station_control_out_of_scope:${reason}`;
   const MATRIX: ReadonlyArray<[string, string, string, string, string]> = [
     ['same Project', 'op-caller-a', 'op-thread-a', 'reached', 'reached'],
-    ['other Project', 'op-caller-a', 'op-thread-b', ASSURANCE, 'reached'],
-    ['global', 'op-caller-a', 'op-thread-global', ASSURANCE, 'reached'],
-    ['host thread', 'op-caller-a', 'op-host-a', ASSURANCE, 'reached'],
+    [
+      'other Project',
+      'op-caller-a',
+      'op-thread-b',
+      OUT('other-project'),
+      'reached',
+    ],
+    [
+      'global',
+      'op-caller-a',
+      'op-thread-global',
+      OUT('global-space'),
+      'reached',
+    ],
+    ['host thread', 'op-caller-a', 'op-host-a', OUT('host'), 'reached'],
     ['another owner', 'op-caller-a', 'person-thread-a', ASSURANCE, NOT_FOUND],
     // `new-*` has no start record here. This is NOT another Station: these
     // leaves carry no environment, so a remote target is unreachable through
@@ -422,7 +458,7 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
       'global caller → Project',
       'op-caller-global',
       'op-thread-a',
-      ASSURANCE,
+      OUT('project-from-global'),
       'reached',
     ],
   ];
@@ -619,9 +655,16 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
     );
     expect(input).toMatchObject({
       conversationId: 'op-thread-a',
-      message: 'please look at this',
+      // #3419: the engine is told it is another agent's message, by name.
+      message: framedFromCaller('please look at this'),
       userId: LOCAL_OPERATOR_PRINCIPAL_ID,
       fullAccessGrant: null,
+      // The turn is recorded as the agent's, with who sent it, so it is
+      // never a person's (`actor`) and never anonymous (`sender`).
+      clientOrigin: {
+        actor: { kind: 'internal' },
+        sender: { kind: 'agent-session', sessionId: 'op-caller-a' },
+      },
     });
     expect(String(input!.clientTurnId)).toMatch(/^sc-[0-9a-f]{40}$/);
   });
@@ -633,6 +676,9 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
       const body = sendReq('op-thread-a');
       const first = await post(base, 'send', caller(), body);
       const second = await post(base, 'send', caller(), body);
+      expect(support.decisionsAtEffect).toEqual([
+        [{ decision: 'start:op-thread-a' }],
+      ]);
       expect(support.continued).toHaveLength(1);
       expect(first.body.data.replayed).toBeUndefined();
       expect(second.body.data).toEqual({ ...first.body.data, replayed: true });
@@ -651,11 +697,14 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
         turnId: 'live-turn',
         eventCursor: 1,
       });
+      expect(support.decisionsAtEffect).toEqual([
+        [{ decision: 'steer:op-thread-a' }],
+      ]);
       expect(second.body.data.replayed).toBe(true);
       expect(support.commands).toHaveLength(1);
       expect(support.commands[0]).toMatchObject({
         type: 'steerTurn',
-        input: 'please look at this',
+        input: framedFromCaller('please look at this'),
       });
       expect(support.commands[0]!.clientInputId).toMatch(/^sc-[0-9a-f]{40}$/);
     });
@@ -834,7 +883,11 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
       support.current.set('op-thread-a', 'op-thread-a2');
       support.hostThreads.add('op-thread-a');
       const refused = await post(base, 'send', caller(), body);
-      expect([refused.status, refused.body.code]).toEqual([403, ASSURANCE]);
+      expect([refused.status, refused.body.code, refused.body.reason]).toEqual([
+        403,
+        'station_control_out_of_scope',
+        'host',
+      ]);
       expect(support.commands).toHaveLength(1);
       expect(support.continued).toHaveLength(0);
     });

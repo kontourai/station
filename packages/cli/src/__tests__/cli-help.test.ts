@@ -120,7 +120,11 @@ describe('top-level help', () => {
   test('is a grouped one-line-per-command summary, not a flag wall', async () => {
     const text = usageText();
 
-    expect(text.split('\n').length).toBeLessThan(80);
+    // One line per verb plus group headers: a bound on the summary's shape,
+    // not on the number of verbs (restart and supervisor brought it to 80,
+    // claims to 85). Headroom so the next verb does not fail on the count; a
+    // flag wall would add hundreds of lines, not a few.
+    expect(text.split('\n').length).toBeLessThan(100);
     for (const group of [
       'Lifecycle:',
       'Stations:',
@@ -219,15 +223,16 @@ describe('tasks help inventory', () => {
       'station tasks show-inputs <taskId> [--json]',
       'station tasks attach-result <taskId> --session=<sessionId> --event=<eventId>',
       'station tasks show-results <taskId> [--json]',
-      'station tasks basis <taskId> [--answer-reference=<referenceId>] [--format summary|json]',
+      'station tasks basis <taskId> [--answer-reference=<referenceId>] [--format=summary|json] [--json]',
       'station tasks show-support <taskId>',
       'station tasks list-support-bundles <taskId> --reference=<referenceId>',
       'station tasks list-support-claims <taskId> --reference=<referenceId> --bundle=<bundleId>',
       'station tasks attach-support <taskId> --reference=<referenceId> --bundle=<bundleId> --claim=<claimId>',
       'station tasks replace-support <taskId> --reference=<referenceId> --bundle=<bundleId> --claim=<claimId> --revision=<revision>',
       'station tasks remove-support <taskId> --reference=<referenceId> --revision=<revision>',
-      'station tasks list-outputs|get-output <taskId> [outputId]',
-      'station tasks keep-output <taskId> --path=<relativePath> --title=<title> --operation=<operationId>',
+      'station tasks list-outputs <taskId>',
+      'station tasks get-output <taskId> <outputId>',
+      'station tasks keep-output <taskId> --path=<relativePath> --title=<title> --operation=<operationId> [--media=<mediaType>]',
       'station tasks download-output <taskId> <outputId> --out=<absolute destination>',
       'station tasks delete-output <taskId> <outputId>',
     ]) {

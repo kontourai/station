@@ -55,9 +55,14 @@ test('Fleet consumer probes toggle the actual runtime consuming path', async () 
   const registry = new FeaturePreviewRegistry(directory, logger);
   const runtime = runtimeFor(registry);
 
-  expect(registry.list()).toEqual([
-    expect.objectContaining({ id: 'fleet-consumer-probes', enabled: false }),
-  ]);
+  expect(registry.list()).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ id: 'fleet-consumer-probes', enabled: false }),
+      expect.objectContaining({ id: 'task-review', enabled: false }),
+      expect.objectContaining({ id: 'visual-skills', enabled: false }),
+    ]),
+  );
+  expect(registry.list()).toHaveLength(3);
   expect(runtime.fleetProbes()).toBeUndefined();
   await registry.setEnabled('fleet-consumer-probes', true);
 

@@ -1,0 +1,7 @@
+{
+  "revision": "381819009f338806c574afb085f1b57627ae2f30",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Reviewed round 3 runner, schema-aware stub, real-route harness and resource manifest against script instructions. Existing wording remains accurate: bounded subprocesses use windowsHide, focused tests own evidence, pre-push hooks remain enabled. Code-health gate passes with no blockers; manual capture helper is a documented and executed CLI entrypoint, seven complexity advisories retained as explicit review debt with fault-injection coverage.","inputs":["scripts/AGENTS.md"]}
+  ]
+}

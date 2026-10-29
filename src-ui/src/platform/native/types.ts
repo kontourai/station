@@ -54,11 +54,6 @@ export interface NativeCapabilityReport {
    * value as a release build rather than tinting a real install by accident.
    */
   devBuild?: boolean;
-  /**
-   * Secret-free HTTPS origin baked into a native-mobile build by its trusted
-   * release environment. Saved/default profiles remain authoritative.
-   */
-  mobileDefaultEndpoint?: string;
   /** Immutable provenance baked into this installed native client artifact. */
   clientBuild?: NativeClientBuildProvenance;
 }
@@ -80,8 +75,6 @@ export type NativeCommandName =
   | 'open-desktop-tray-menu'
   | 'restart-bundled-server'
   | 'commit-renderer-mount'
-  | 'commit-startup-readiness'
-  | 'commit-startup-recovery-ui'
   | 'startup-window-admitted'
   | 'review-consent-natively'
   | 'agent-activity-status'
@@ -393,13 +386,6 @@ export interface BundledServerStatus {
   detail?: string | null;
 }
 
-export interface NativeStartupReadinessTicket {
-  generation: number;
-  instanceId: string;
-  bootId: string;
-  apiBase: string;
-}
-
 export interface NativeShareEvent {
   type: 'share-received';
   source: 'host-event' | 'pwa-share-target';
@@ -459,19 +445,13 @@ export interface NativePlatformAdapter {
   restartBundledServer(): Promise<NativeCommandResult<void>>;
   /** Commit one post-React-layout mount from the exact main WebView. */
   commitRendererMount(): Promise<NativeCommandResult<void>>;
-  /** Recheck and reveal the main window after the renderer commits its exact proof. */
-  commitStartupReadiness(
-    ticket: NativeStartupReadinessTicket,
-  ): Promise<NativeCommandResult<void>>;
-  commitStartupRecoveryUi(): Promise<NativeCommandResult<void>>;
   /**
    * Whether this WebView is already shown to the user: a non-main window, or
-   * the main window after native startup readiness admitted it. Read-only.
+   * the main window after native startup readiness admitted it. On macOS this
+   * also observes that the cover is gone and WebView opacity is restored.
+   * Read-only; a readiness phase alone does not establish visible content.
    */
   isStartupWindowAdmitted(): Promise<NativeCommandResult<boolean>>;
-  subscribeToStartupReadinessRetry(
-    listener: () => void,
-  ): NativeEventSubscription;
   /**
    * Ask the desktop host to open one revalidated loopback URL in the system
    * browser. The host, not the webview, owns this boundary.
@@ -508,11 +488,14 @@ export interface NativePlatformAdapter {
    * (archive#3677). The native host fetches the server-authored
    * description with its own local-grant credential, shows an OS dialog the
    * webview cannot script, commits the decision server-side, and returns
-   * only the settled status. Web hosts return `unsupported` — they use the
+   * only the settled status. Requester-session mode requires the matching
+   * host-held session from the originating person request and never falls
+   * back to operator authority. Web hosts return `unsupported` — they use the
    * distinct-origin consent page instead.
    */
   reviewConsentNatively(
     requestId: string,
+    authority?: 'operator' | 'requester-session',
   ): Promise<NativeCommandResult<NativeConsentOutcome>>;
   /**
    * Agent activity on this phone (Android, and iOS builds with the Live

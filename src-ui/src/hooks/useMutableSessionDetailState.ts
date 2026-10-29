@@ -1,4 +1,5 @@
 import { isPendingAttentionItem } from '@kontourai/station-contracts/attention';
+import { runtimeEventContentText } from '@kontourai/station-contracts/runtime-event-content';
 import {
   foldedSessionLifecycleState,
   isSessionLifecycleStateAtRest,
@@ -68,9 +69,11 @@ function truncateOneLine(text: string, max = 96): string {
 /** The opening user turn's own text, if the live feed has caught it yet. */
 function firstUserPrompt(events: OrchestrationEvent[]): string | undefined {
   for (const event of events) {
-    if (event.method === 'turn.started' && event.prompt?.trim()) {
-      return event.prompt.trim();
-    }
+    const prompt =
+      event.method === 'turn.started'
+        ? runtimeEventContentText(event.prompt)?.text.trim()
+        : undefined;
+    if (prompt) return prompt;
   }
   return undefined;
 }
@@ -270,12 +273,14 @@ function requestPresentation(request: OpenRequest): {
  */
 export function useMutableSessionDetailState({
   apiBase,
+  draftScope = apiBase,
   session,
   onTaskChanged,
   events,
   visualViewport,
 }: {
   apiBase: string;
+  draftScope?: string;
   session: OrchestrationSessionSummary;
   onTaskChanged: () => void;
   events: OrchestrationEvent[];
@@ -283,19 +288,19 @@ export function useMutableSessionDetailState({
 }) {
   const threadId = session.threadId;
   const input = useSyncExternalStore(chatDraftsStore.subscribe, () =>
-    chatDraftsStore.getActivityDraft(apiBase, threadId),
+    chatDraftsStore.getActivityDraft(draftScope, threadId),
   );
   const setInput = useCallback(
     (next: SetStateAction<string>) => {
       chatDraftsStore.setActivityDraft(
-        apiBase,
+        draftScope,
         threadId,
         typeof next === 'function'
-          ? next(chatDraftsStore.getActivityDraft(apiBase, threadId))
+          ? next(chatDraftsStore.getActivityDraft(draftScope, threadId))
           : next,
       );
     },
-    [apiBase, threadId],
+    [draftScope, threadId],
   );
   const isDelegated = Boolean(session.delegation);
   const { showToast } = useToast();
@@ -306,8 +311,8 @@ export function useMutableSessionDetailState({
     mutationFn: ({ text }: { text: string }) =>
       sendOrchestrationTurn({ threadId, text, apiBase }),
     onSuccess: (_result, { text }) => {
-      if (chatDraftsStore.getActivityDraft(apiBase, threadId) === text)
-        chatDraftsStore.clearActivityDraft(apiBase, threadId);
+      if (chatDraftsStore.getActivityDraft(draftScope, threadId) === text)
+        chatDraftsStore.clearActivityDraft(draftScope, threadId);
     },
   });
   const sendAttempts = useMutationState({

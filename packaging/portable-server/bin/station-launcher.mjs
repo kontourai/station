@@ -962,11 +962,13 @@ class Launcher {
       }
     }
     // Self-supervised (Windows), the version's own `stop` also follows an
-    // orderly exit: measured on a Windows runner, `service run`'s shutdown
-    // could refuse to signal its UI ("identity could not be verified") and
-    // exit with it still running, which left the home active and failed the
-    // update's backup; `station stop` by record stopped it. With nothing
-    // left running it does nothing.
+    // orderly exit, as it follows the kill above: it is the backstop for
+    // anything `service run` left running, whatever the reason. The case
+    // measured on a Windows runner (#3361) was its shutdown refusing to
+    // signal its UI ("identity could not be verified") and exiting with it
+    // still running, which left the home active and failed the update's
+    // backup; `station stop` by record stopped it. With nothing left running
+    // it does nothing.
     if (this.selfSupervised) this.ownStop(version);
   }
 
@@ -1446,7 +1448,10 @@ class Launcher {
     log(
       `could not restore ${this.home} after ${restoreAttempts} attempts to roll back the update to ${update.targetVersion} (${reason}); ` +
         `its backup is kept at ${this.backupDir(update)}. Station stays stopped. ` +
-        `Fix the cause shown above, then retry the restore with: station service stop --instance=${this.instance} && station service start --instance=${this.instance}`,
+        // The home is named: a service installed with --base finds its
+        // manifest only there (#3851 review round 3; this frozen copy only
+        // reaches services installed or reinstalled after the change).
+        `Fix the cause shown above, then retry the restore with: station service stop --instance=${this.instance} --base="${this.home}" && station service start --instance=${this.instance} --base="${this.home}"`,
     );
   }
 

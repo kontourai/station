@@ -44,6 +44,31 @@ function git(cwd: string, args: string[]) {
   }) as string;
 }
 
+const runRealGit: GitCommandRunner['run'] = (args, options) =>
+  new Promise((resolve, reject) => {
+    const child = spawnGit(args, {
+      cwd: options?.cwd,
+      env: options?.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout?.setEncoding('utf8');
+    child.stdout?.on('data', (chunk: string) => {
+      stdout += chunk;
+    });
+    child.stderr?.setEncoding('utf8');
+    child.stderr?.on('data', (chunk: string) => {
+      stderr += chunk;
+    });
+    child.on('error', reject);
+    child.on('close', (code) =>
+      (options?.allowCodes ?? [0]).includes(code ?? 1)
+        ? resolve({ stdout, stderr, code: code ?? 1 })
+        : reject(new Error(`git ${args.join(' ')}: ${stderr}`)),
+    );
+  });
+
 function createRepo() {
   const dir = mkdtempSync(join(tmpdir(), 'station-worktree-test-'));
   tmpRoots.push(dir);
@@ -285,6 +310,8 @@ describe('WorktreeProvisioningService', () => {
           return { stdout: `${repoPath}\n`, stderr: '', code: 0 };
         if (args.includes('config')) return { stdout: '', stderr: '', code: 0 };
         if (args.includes('status')) return { stdout: '', stderr: '', code: 0 };
+        if (args.includes('--end-of-options'))
+          return { stdout: `${'a'.repeat(40)}\n`, stderr: '', code: 0 };
         if (args.includes('--verify'))
           return { stdout: '', stderr: '', code: 1 };
         if (args.includes('add')) return { stdout: '', stderr: '', code: 0 };
@@ -331,6 +358,8 @@ describe('WorktreeProvisioningService', () => {
         if (args.includes('status')) {
           return { stdout: '', stderr: '', code: 0 };
         }
+        if (args.includes('--end-of-options'))
+          return { stdout: `${'a'.repeat(40)}\n`, stderr: '', code: 0 };
         if (args.includes('--verify')) {
           return { stdout: '', stderr: '', code: 1 };
         }
@@ -359,13 +388,101 @@ describe('WorktreeProvisioningService', () => {
     expect(calls.map((call) => call.args.join(' '))).toEqual([
       `-C ${repoPath} status --porcelain`,
       `-C ${repoPath} rev-parse --verify --quiet refs/heads/${branch}`,
+      `-C ${repoPath} rev-parse --verify --end-of-options HEAD^{commit}`,
       `-C ${repoPath} worktree add -b ${branch} ${join(
         worktreeBaseDir,
         segment,
-      )} HEAD`,
+      )} ${'a'.repeat(40)}`,
     ]);
     expect(calls[1]?.allowCodes).toEqual([0, 1]);
   });
+
+  test.each([
+    'moving-ref',
+    'replacement-before-resolution',
+    'replacement-before-checkout',
+  ] as const)(
+    'pins the base commit and its file contents despite %s',
+    async (change) => {
+      const repoPath = createRepo();
+      const first = git(repoPath, ['rev-parse', 'HEAD']).trim();
+      writeFileSync(join(repoPath, 'README.md'), '# later revision\n');
+      git(repoPath, ['commit', '-am', 'later revision']);
+      const later = git(repoPath, ['rev-parse', 'HEAD']).trim();
+      const baseRef = 'refs/heads/preparation-base';
+      git(repoPath, ['update-ref', baseRef, first]);
+      if (change === 'replacement-before-resolution')
+        git(repoPath, ['replace', first, later]);
+      const worktreeBaseDir = `${repoPath}-pinned`;
+      tmpRoots.push(worktreeBaseDir);
+      const runner: GitCommandRunner = {
+        run: (args, options) => {
+          if (args.includes('worktree') && args.includes('add')) {
+            if (change === 'moving-ref')
+              git(repoPath, ['update-ref', baseRef, later]);
+            if (change === 'replacement-before-checkout')
+              git(repoPath, ['replace', first, later]);
+          }
+          return runRealGit(args, options);
+        },
+      };
+      const service = new WorktreeProvisioningService(runner);
+      const metadata = await service.provision({
+        repoPath,
+        threadId: 'pinned-source',
+        providerKind: 'codex',
+        isolation: { mode: 'worktree', policy: { baseRef, worktreeBaseDir } },
+      });
+      expect(git(repoPath, ['rev-parse', baseRef]).trim()).toBe(
+        change === 'moving-ref' ? later : first,
+      );
+      if (change !== 'moving-ref') {
+        expect(git(repoPath, ['replace', '-l']).trim()).toBe(first);
+        expect(git(repoPath, ['show', `${first}:README.md`])).toBe(
+          '# later revision\n',
+        );
+      }
+      expect(metadata?.baseRef).toBe(baseRef);
+      expect(metadata?.baseCommit).toBe(first);
+      expect(git(metadata!.path, ['rev-parse', 'HEAD']).trim()).toBe(first);
+      expect(readFileSync(join(metadata!.path, 'README.md'), 'utf8')).toBe(
+        '# test\n',
+      );
+      await service.cleanup({
+        metadata: metadata!,
+        terminalState: 'completed',
+      });
+    },
+  );
+
+  test.each(['refs/heads/missing', 'refs/tags/blob'])(
+    'refuses a base that is not a commit before creating workspace files: %s',
+    async (baseRef) => {
+      const repoPath = createRepo();
+      const blob = git(repoPath, ['rev-parse', 'HEAD:README.md']).trim();
+      git(repoPath, ['update-ref', 'refs/tags/blob', blob]);
+      const worktreeBaseDir = `${repoPath}-refused`;
+      tmpRoots.push(worktreeBaseDir);
+      const before = git(repoPath, ['worktree', 'list', '--porcelain']);
+      await expect(
+        new WorktreeProvisioningService().provision({
+          repoPath,
+          threadId: 'refused-base',
+          providerKind: 'codex',
+          isolation: { mode: 'worktree', policy: { baseRef, worktreeBaseDir } },
+        }),
+      ).rejects.toThrow();
+      expect(existsSync(worktreeBaseDir)).toBe(false);
+      expect(git(repoPath, ['worktree', 'list', '--porcelain'])).toBe(before);
+      expect(
+        git(repoPath, [
+          'for-each-ref',
+          '--format=%(refname)',
+          'refs/heads/station/session/',
+        ]).trim(),
+      ).toBe('');
+    },
+  );
 
   test('provisions and cleans up an isolated worktree', async () => {
     const repoPath = createRepo();
@@ -684,26 +801,10 @@ describe('repository-defined programs (#2411)', () => {
     // The real runner, with the repository's config rewritten in place
     // just before `worktree add` starts: after the judgement, before git.
     const runner: GitCommandRunner = {
-      run: (args, options) =>
-        new Promise((resolve, reject) => {
-          if (args.includes('worktree')) writeFileSync(configPath, planted);
-          const child = spawnGit(args, {
-            cwd: options?.cwd,
-            env: options?.env,
-            stdio: ['ignore', 'pipe', 'pipe'],
-          });
-          let stderr = '';
-          child.stderr?.setEncoding('utf8');
-          child.stderr?.on('data', (chunk: string) => {
-            stderr += chunk;
-          });
-          child.on('error', reject);
-          child.on('close', (code) =>
-            (options?.allowCodes ?? [0]).includes(code ?? 1)
-              ? resolve({ stdout: '', stderr, code: code ?? 1 })
-              : reject(new Error(`git ${args.join(' ')}: ${stderr}`)),
-          );
-        }),
+      run: (args, options) => {
+        if (args.includes('worktree')) writeFileSync(configPath, planted);
+        return runRealGit(args, options);
+      },
     };
 
     const metadata = await new WorktreeProvisioningService(runner).provision({

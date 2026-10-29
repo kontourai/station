@@ -7,7 +7,10 @@
  * real QueryClient with the app's query defaults against a counting fetch.
  */
 
-import { _setApiBase } from '@kontourai/station-sdk';
+import {
+  _setApiBase,
+  type OrchestrationSessionSummary,
+} from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
@@ -71,8 +74,20 @@ const fullListReads = () =>
     ),
   );
 
-const session = (threadId: string) =>
-  ({ threadId, projectSlug: 'station' }) as any;
+const session = (threadId: string): OrchestrationSessionSummary => ({
+  threadId,
+  projectSlug: 'station',
+  provider: 'codex',
+  status: 'closed',
+  lifecycleState: 'completed',
+  controlMode: 'station-owned',
+  answerability: { answerable: true },
+  isLoaded: false,
+  isPersisted: true,
+  eventCount: 2,
+  createdAt: '2026-01-01T00:00:00Z',
+  updatedAt: '2026-01-01T00:01:00Z',
+});
 
 function Rows({ threads }: { threads: string[] }) {
   return (
@@ -147,6 +162,66 @@ describe('session conflict chips observe once per repository (#2937)', () => {
     setVisibility('visible');
     vi.unstubAllGlobals();
     vi.useRealTimers();
+  });
+
+  test('observes only visible rows, including completed sessions with an open conflicting PR', async () => {
+    const callbacks = new Map<Element, (visible: boolean) => void>();
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class implements IntersectionObserver {
+        readonly root = null;
+        readonly rootMargin = '0px';
+        readonly scrollMargin = '0px';
+        readonly thresholds = [0];
+        takeRecords() {
+          return [];
+        }
+        unobserve(target: Element) {
+          callbacks.delete(target);
+        }
+        private targets: Element[] = [];
+        constructor(private callback: IntersectionObserverCallback) {}
+        observe(target: Element) {
+          this.targets.push(target);
+          callbacks.set(target, (visible) =>
+            this.callback(
+              [
+                {
+                  target,
+                  isIntersecting: visible,
+                  intersectionRatio: visible ? 1 : 0,
+                  boundingClientRect: target.getBoundingClientRect(),
+                  intersectionRect: target.getBoundingClientRect(),
+                  rootBounds: null,
+                  time: 0,
+                },
+              ],
+              this,
+            ),
+          );
+        }
+        disconnect() {
+          for (const target of this.targets) callbacks.delete(target);
+        }
+      },
+    );
+    const rendered = render(withClient(client, <Rows threads={stationRows} />));
+    await settle();
+    expect(contextReads()).toBe(0);
+    const firstRow = screen.getByTestId('row-t1');
+    act(() => callbacks.get(firstRow)?.(true));
+    await settle();
+    expect(contextReads()).toBe(1);
+    expect(screen.getByText('PR conflict')).toBeTruthy();
+    act(() => callbacks.get(firstRow)?.(false));
+    await advance(OBSERVATION_INTERVAL_MS * 2);
+    expect(contextReads()).toBe(1);
+    expect(mergeabilityReads('station')).toBe(1);
+    act(() => callbacks.get(firstRow)?.(true));
+    await settle();
+    expect(contextReads()).toBe(2);
+    rendered.unmount();
+    expect(callbacks.size).toBe(0);
   });
 
   test('N rows of one repository make one narrow read per interval, never the full list', async () => {

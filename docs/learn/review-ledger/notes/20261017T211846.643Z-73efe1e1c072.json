@@ -1,0 +1,9 @@
+{
+  "revision": "28959335733592ab72e7932ef7ef9974310a4d12",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Reviewed the additive html-reply paragraph in the contracts reference: prepared page bytes and theme vocabulary do not change Station Task, Session, Client, Device or plugin terminology. The new guide explicitly withholds publication/provider claims. No glossary definition changes are needed.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the additive html-reply paragraph in the contracts reference: it describes a viewer foundation without publishing tools, conversation storage, new provider routes, hosted guarantees or integration authority. Existing integration boundary and supported-contract guidance remain accurate.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]}
+  ]
+}

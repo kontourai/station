@@ -1,0 +1,7 @@
+{
+  "revision": "23b8d757bc5a25c6b14e12d35dad1d091ba19240",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"PR #3676 fix round 1: re-read the shared freshness and recovery claims against scoped useObservedWorkStatus subscriptions, per-authority WorkObservation and older-history success publication. Successful accepted older pages now verify the conversation and clear reader error, matching the existing successful-read claim. Inventory notifications batch by conversation; last-subscriber eviction preserves failures while a row remains mounted. No composer interaction prose change. Merged-base focused 241/241 and desktop 1440px/mobile 390px browser journey passed; native and hosted evidence remain separate.","inputs":["docs/design/chat-composer.md","src-ui/src/contexts/work-observation.ts","src-ui/src/views/home/useObservedWorkStatus.ts"]}
+  ]
+}

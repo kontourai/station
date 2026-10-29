@@ -1,0 +1,7 @@
+{
+  "revision": "76766fd0391094e0d6a144b32ce50e02028e7822",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Updated harness-question normalization to include cursor/ask_question and the ExtensionNotificationBindings callers/evidence for the cursor/update_todos plan fold.","inputs":["docs/architecture/module-map.md","src-server/providers/adapters/acp-adapter-events.ts","src-shared/__tests__/extension-notification-bindings.test.ts","src-shared/extension-notification-bindings.ts"]}
+  ]
+}

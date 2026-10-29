@@ -1,0 +1,7 @@
+{
+  "revision": "0f34fc04e434cfb1757ebad4b889f05d726a8c0d",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Re-reviewed terminal WebSocket claims (terminal:operate first-frame gate, retained direct-loopback path, browser Origin check) against the session-scoping fix in terminal-ws-server.ts. Admission and scope behavior are unchanged; the fix narrows event delivery and data/resize/cwd/close to sockets that opened the session. No prose change needed.","inputs":["docs/guides/connections.md","src-server/services/terminal/terminal-ws-server.ts"]}
+  ]
+}

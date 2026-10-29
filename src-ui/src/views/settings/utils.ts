@@ -102,7 +102,7 @@ function sanitizeStationConfig(raw: unknown): Partial<AppConfig> {
  * slice 3 onto the registry-driven envelope's `shortcutOverrides`/
  * `modelPickerPreferences` entries (see `device-settings.ts`'s
  * `priorRead`). An OLD export file (from the coexistence window between
- * archive#1359 and this slice) can still carry this root's raw JSON string, either
+ * archive#1359 and that convergence) can still carry this root's raw JSON string, either
  * as the v2 payload's `sharedDeviceRoot` field or nested inside an earlier
  * file's `_localStorage` map — both are migrated through this helper rather
  * than written back verbatim, so the shared root itself never resurfaces in

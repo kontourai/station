@@ -1,0 +1,7 @@
+{
+  "revision": "8a776134f677858cf04c48208ad652a443b4d691",
+
+  "notes": [
+    {"path":"docs/learn/media/project-with-task.png","note":"live-station-task.ts now creates the fixture Task through POST /api/tasks with the same workspace binding (the Project page title form was removed by #3720). The capture shows a Project with a saved Task and workspace details, which the helper still produces; image not re-captured (disk), no claim changes.","inputs":["docs/learn/media/project-with-task.png","tests/helpers/live-station-task.ts"]}
+  ]
+}

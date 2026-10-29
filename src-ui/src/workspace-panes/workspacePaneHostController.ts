@@ -226,6 +226,9 @@ export function useWorkspacePaneHostController({
   const tabRefs = useRef(new Map<string, HTMLButtonElement>());
   const pendingResize = useRef<{ splitId: string; ratio: number } | null>(null);
   const resizeFrame = useRef<number | null>(null);
+  const resizedDocument = useRef<WorkspacePaneHostDocumentV1 | null>(null);
+  const resizeDispatched = useRef(false);
+  const flushResizePublication = useRef<(() => void) | null>(null);
   const authorityFingerprint = workspacePaneHostAuthorityFingerprint(document);
   const authorityFingerprintRef = useRef(authorityFingerprint);
   const documentRef = useRef(document);
@@ -412,6 +415,7 @@ export function useWorkspacePaneHostController({
       });
 
     return () => {
+      flushResizePublication.current?.();
       active = false;
       persistenceStatusRef.current = 'unavailable';
       waitAbortController.abort();
@@ -611,10 +615,6 @@ export function useWorkspacePaneHostController({
    * instance list.
    */
   useEffect(() => {
-    if (persistenceStatus === 'owned')
-      onDocumentChangeRef.current?.(state.document);
-  }, [persistenceStatus, state.document]);
-  useEffect(() => {
     if (persistenceStatus !== 'owned' || !operationalAvailability) return;
     for (const instance of state.document.instances) {
       const next = operationalAvailability(instance);
@@ -635,14 +635,54 @@ export function useWorkspacePaneHostController({
     persistenceStatus,
     state.document,
   ]);
+  useLayoutEffect(() => {
+    if (!resizeDispatched.current) return;
+    resizedDocument.current = state.document;
+    resizeDispatched.current = false;
+  }, [state.document]);
   useEffect(() => {
     if (persistenceStatus !== 'owned') return;
-    try {
-      persistWorkspacePaneHost(hostStorage, state.document);
-    } catch {
-      /* optional browser storage */
+    const publish = () => {
+      if (!hasPersistenceLease()) return;
+      onDocumentChangeRef.current?.(state.document);
+      try {
+        persistWorkspacePaneHost(hostStorage, state.document);
+      } catch {
+        /* optional browser storage */
+      }
+    };
+    if (state.document !== resizedDocument.current) {
+      publish();
+      return;
     }
-  }, [hostStorage, persistenceStatus, state.document]);
+    // Ratios render every frame; durable writes and parent notifications wait
+    // until the resize settles. Other host actions still publish immediately.
+    let pending = true;
+    function flush() {
+      if (!pending) return;
+      pending = false;
+      clearTimeout(timer);
+      flushResizePublication.current = null;
+      publish();
+    }
+    const timer = setTimeout(flush, 250);
+    const onVisibilityChange = () => {
+      if (window.document.visibilityState === 'hidden') flush();
+    };
+    flushResizePublication.current = flush;
+    window.addEventListener('pagehide', flush);
+    window.document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      pending = false;
+      clearTimeout(timer);
+      flushResizePublication.current = null;
+      window.removeEventListener('pagehide', flush);
+      window.document.removeEventListener(
+        'visibilitychange',
+        onVisibilityChange,
+      );
+    };
+  }, [hasPersistenceLease, hostStorage, persistenceStatus, state.document]);
   useEffect(() => {
     if (!runtime) return;
     const target = compact
@@ -839,8 +879,10 @@ export function useWorkspacePaneHostController({
         resizeFrame.current = null;
         const pending = pendingResize.current;
         pendingResize.current = null;
-        if (pending && hasPersistenceLease())
+        if (pending && hasPersistenceLease()) {
+          resizeDispatched.current = true;
           dispatch({ type: 'resize', ...pending });
+        }
       });
     },
     [hasPersistenceLease],

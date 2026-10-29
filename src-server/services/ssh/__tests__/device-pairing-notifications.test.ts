@@ -61,7 +61,9 @@ describe('device pairing notifications', () => {
       createdAt: now,
       updatedAt: now,
     });
-    expect(composed?.payload.url).toBe('/notifications?pairing=request-1');
+    expect(composed?.payload.url).toBe(
+      '/notifications?pairing=request-1&openedNotification=notification-1',
+    );
     expect(pending.metadata?.navigateTo).toEqual({
       path: '/notifications?pairing=request-1',
     });

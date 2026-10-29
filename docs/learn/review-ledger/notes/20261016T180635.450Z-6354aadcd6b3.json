@@ -1,0 +1,13 @@
+{
+  "revision": "e58072a9ed241d53352809d975eacb752658f616",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the additional payload encoder input union: it accepts the already-scanned canonical offer without requiring a manual-code field, and serializes the same payload fields. Browser link intake keeps the environment ID and one-time proof but binds the endpoint to the chosen web origin so pairing traverses its API proxy. Native schemes, Device use grants and native consent remain unchanged.","inputs":["docs/architecture/module-map.md","packages/connect/src/core/devicePairing.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Reviewed canonical offer serialization and browser invitation intake after the web-origin fix. Browser links target a web UI that proxies the same Station; pairing and cookie delivery use that web origin, while native offers retain the API endpoint. Executed GuidedConnect and hook tests cover fresh-browser review, fragment removal, malformed rejection and a separate API listener. No physical-device or hosted qualification.","inputs":["docs/reference/connect.md","packages/connect/src/core/devicePairing.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed final scope, require-approval and browser-url flags and output against the CLI command and focused tests. Browser-url names the web origin that proxies this same Station, not an inferred API port. Local approval still prefers the active home listener and verifies its identity before presenting the operator credential.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed generated MCP delta against npm run docs:mcp:generate: the module-map Device-access paragraph and resulting digest changed; manual topic bodies, credential-free docs delivery, engine delivery limits and tool authorization are unchanged. The generated module text distinguishes host-browser Device administration from native consent.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

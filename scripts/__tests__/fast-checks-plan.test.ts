@@ -88,6 +88,7 @@ describe('adaptive planner outputs (child process)', () => {
       env: {
         GITHUB_OUTPUT: output,
         STATION_FAST_CHECKS_ADAPTIVE_SHARDS: 'true',
+        STATION_FAST_CHECKS_SKIP_EMPTY_SHARDS: 'true',
       },
     });
     expect(result.status, result.stderr).toBe(0);
@@ -95,7 +96,7 @@ describe('adaptive planner outputs (child process)', () => {
       JSON.parse(readFileSync(join(directory, 'plan.json'), 'utf8')).shardCount,
     ).toBe(expected);
     expect(readFileSync(output, 'utf8')).toBe(
-      `shards=${JSON.stringify(Array.from({ length: expected }, (_, i) => i + 1))}\nshard-count=${expected}\n`,
+      `shards=${JSON.stringify(Array.from({ length: expected }, (_, i) => i + 1))}\nshard-count=${expected}\nempty=${fileCount === 0}\n`,
     );
   });
 

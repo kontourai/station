@@ -270,11 +270,26 @@ class NavigationStore {
    */
   private readonly entryLocations = new Map<number, NavigationLocation>();
   private readonly navigationGuardOwners = new Map<symbol, string>();
+  private readonly guardOwnerListeners = new Set<(owner: string) => void>();
   /** Whether any registered guard protects `owner`'s content (it is dirty). */
   hasNavigationGuard(owner: string): boolean {
     for (const value of this.navigationGuardOwners.values())
       if (value === owner) return true;
     return false;
+  }
+  /**
+   * Told the owner each time a guard registers FOR an owner — the moment that
+   * owner's content becomes dirty. The relations owner protects a related
+   * preview on it (docs/design/pane-relationships.md: beginning an edit
+   * protects the target). Returns the unsubscribe.
+   */
+  subscribeNavigationGuardOwners(
+    listener: (owner: string) => void,
+  ): () => void {
+    this.guardOwnerListeners.add(listener);
+    return () => {
+      this.guardOwnerListeners.delete(listener);
+    };
   }
   private readonly navigationGuards = new Map<
     symbol,
@@ -491,6 +506,16 @@ class NavigationStore {
             ...(this.state.surfaceIntent.sessionId && {
               session: this.state.surfaceIntent.sessionId,
             }),
+            ...(this.state.surfaceIntent.messageAnchor &&
+            this.state.surfaceIntent.sessionId
+              ? {
+                  messageSession: this.state.surfaceIntent.sessionId,
+                  messageDirection:
+                    this.state.surfaceIntent.messageAnchor.direction,
+                  messageRequest:
+                    this.state.surfaceIntent.messageAnchor.requestKey,
+                }
+              : {}),
             ...(this.state.surfaceIntent.focus && {
               focus: this.state.surfaceIntent.focus,
             }),
@@ -708,8 +733,10 @@ class NavigationStore {
   ): () => void {
     this.guardGeneration = {};
     this.navigationGuards.set(identity, guard);
-    if (owner) this.navigationGuardOwners.set(identity, owner);
-    else this.navigationGuardOwners.delete(identity);
+    if (owner) {
+      this.navigationGuardOwners.set(identity, owner);
+      for (const listener of [...this.guardOwnerListeners]) listener(owner);
+    } else this.navigationGuardOwners.delete(identity);
     return () => {
       if (this.navigationGuards.get(identity) !== guard) return;
       this.navigationGuards.delete(identity);
@@ -730,14 +757,22 @@ class NavigationStore {
   runNavigationGuards(
     continuation: () => void,
     cancelled?: () => void,
-    options: { owner?: string } = {},
+    options: {
+      owner?: string;
+      skipGuard?: { identity: symbol; owner: string };
+    } = {},
   ): void {
-    const { owner } = options;
+    const { owner, skipGuard } = options;
     const guards = [...this.navigationGuards.entries()]
       .filter(
         ([identity]) =>
-          owner === undefined ||
-          this.navigationGuardOwners.get(identity) === owner,
+          (owner === undefined ||
+            this.navigationGuardOwners.get(identity) === owner) &&
+          !(
+            skipGuard !== undefined &&
+            identity === skipGuard.identity &&
+            this.navigationGuardOwners.get(identity) === skipGuard.owner
+          ),
       )
       .map(([, guard]) => guard);
     const continueAt = (index: number): void => {
@@ -909,8 +944,9 @@ class NavigationStore {
         if (SHELL_SCOPED_QUERY_PARAMS.has(key)) continue;
         if (
           surfaceSurvives &&
-          (key === SURFACE_DEEP_LINK_QUERY_KEYS.session ||
-            key === SURFACE_DEEP_LINK_QUERY_KEYS.focus)
+          Object.values(SURFACE_DEEP_LINK_QUERY_KEYS).some(
+            (surfaceKey) => surfaceKey === key,
+          )
         )
           continue;
         if (params && key in params) continue;

@@ -314,7 +314,29 @@ export type ToolRequestGrantInput = {
    * escalates (see `claudeAskEscalates`).
    */
   claudeAsk?: unknown;
+  /**
+   * Asserted ONLY by an adapter that established the call is an authentic
+   * call to the in-process `station-browser` server (the engine generated the
+   * name from the config key Station delivered it under, and no authored
+   * server squats on the id). Never derived from the tool name here: an
+   * external server named to look like `station-browser` produces the same
+   * name. See `toolRequestServerGrant`.
+   */
+  authenticStationBrowser?: unknown;
 };
+
+/**
+ * The server-wide session grant a request can additionally offer. `server`
+ * (owner decision, #90 N2 follow-up): the person may allow every later call to
+ * the in-process Station browser server in this session, instead of one
+ * approval per browser tool. It is a second choice beside the per-tool
+ * `acceptForSession`, answered with the typed `sessionGrantScope: 'server'`.
+ */
+export type ToolRequestServerGrant = 'server' | 'none';
+
+/** The words of the server-wide Station browser grant, on every surface. */
+export const STATION_BROWSER_SERVER_GRANT_LABEL =
+  'Allow the Station browser for this session';
 
 /**
  * #2932: the reason fields of a Claude Code `can_use_tool` frame that Agent
@@ -334,15 +356,24 @@ export type ClaudeAskReason = {
 /** Tools that leave plan mode (see `toolRequestIsPlanExit`). */
 const PLAN_EXIT_TOOLS: ReadonlySet<string> = new Set(['exitplanmode']);
 /**
- * Tools whose request gets no standing answer: a plan exit and a harness
- * question, which are addressed to a person, and Claude Code's sandbox
- * network ask (#2932; input `{host}`). The engine remembers an allowed host
- * for the session itself, and a Station grant on that tool would answer
- * every later host (see `toolRequestNeedsPerson`).
+ * Plan reviews: the ACP adapter publishes Cursor's `cursor/create_plan` under
+ * its method name (see `toolRequestIsPlanReview`).
+ */
+const PLAN_REVIEW_TOOLS: ReadonlySet<string> = new Set(['cursor/createplan']);
+/**
+ * Tools whose request gets no standing answer: a plan exit, a plan review
+ * and a harness question, which are addressed to a person, and Claude Code's
+ * sandbox network ask (#2932; input `{host}`). The engine remembers an
+ * allowed host for the session itself, and a Station grant on that tool
+ * would answer every later host (see `toolRequestNeedsPerson`). The ACP
+ * adapter publishes Cursor's question and plan review under their method
+ * names (`cursor/ask_question`, `cursor/create_plan`).
  */
 const TOOLS_WITHOUT_SESSION_GRANT: ReadonlySet<string> = new Set([
   'askuserquestion',
   'sandboxnetworkaccess',
+  'cursor/askquestion',
+  ...PLAN_REVIEW_TOOLS,
   ...PLAN_EXIT_TOOLS,
 ]);
 /**
@@ -612,6 +643,14 @@ export function toolRequestIsPlanExit(
   return !!trimmed && PLAN_EXIT_TOOLS.has(canonicalKey(trimmed));
 }
 
+/** Whether the request asks a person to review a plan the engine proposes. */
+export function toolRequestIsPlanReview(
+  toolName: string | null | undefined,
+): boolean {
+  const trimmed = toolName?.trim();
+  return !!trimmed && PLAN_REVIEW_TOOLS.has(canonicalKey(trimmed));
+}
+
 /**
  * Whether the request is addressed to a person, so nothing standing answers
  * it: no session grant is offered or honoured and no `tools.autoApprove`
@@ -685,6 +724,44 @@ export function toolRequestIsPlainCall(
 ): boolean {
   const grant = toolRequestSessionGrant(request);
   return grant === 'tool' || grant === 'edit-mode';
+}
+
+/**
+ * Whether the request also offers the server-wide Station browser grant. Only
+ * a plain call (`tool` grant: never an escalation, plan exit or question) that
+ * the adapter asserted is an authentic Station browser call
+ * (`authenticStationBrowser`). The adapter honours the answer with this same
+ * computation, and the toast, card and inbox offer from the same payload.
+ */
+export function toolRequestServerGrant(
+  request: ToolRequestGrantInput,
+): ToolRequestServerGrant {
+  return request.authenticStationBrowser === true &&
+    toolRequestSessionGrant(request) === 'tool'
+    ? 'server'
+    : 'none';
+}
+
+/** `toolRequestServerGrant` over a whole `request.opened` payload. */
+export function toolRequestServerGrantFromPayload(
+  payload: Record<string, unknown> | undefined,
+): ToolRequestServerGrant {
+  const { toolName, toolInput } = toolRequestFromPayload(payload);
+  return toolRequestServerGrant({
+    toolName,
+    toolInput,
+    decisionReason: payload?.decisionReason,
+    suppressAlwaysAllowRule: payload?.suppressAlwaysAllowRule,
+    defaultToNo: payload?.defaultToNo,
+    requiresUserInteraction: payload?.requiresUserInteraction,
+    claudeAsk: payload?.claudeAsk,
+    suggestions: payload?.suggestions,
+    blockedPath: payload?.blockedPath,
+    matchedAskRule: payload?.matchedAskRule,
+    permissionMode: payload?.permissionMode,
+    toolKind: payload?.toolKind,
+    authenticStationBrowser: payload?.stationBrowserServer,
+  });
 }
 
 /** `toolRequestSessionGrant` over a whole `request.opened` payload. */

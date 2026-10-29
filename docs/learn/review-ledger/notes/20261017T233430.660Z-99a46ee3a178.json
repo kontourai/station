@@ -1,0 +1,7 @@
+{
+  "revision": "4e88480f4d8afbddbac1f9600c357729cd4688aa",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed regenerated MobileDeviceHost topic and digest: input batches are serialized, observations remain concurrent, failed dispatch cancels held input, incomplete gestures and unsupported kinds are rejected before delivery, and lease replies are post-completion. The catalog/delivery contract is unchanged. Final focused service suite has 96 passes, and nine source-bound mutations are caught/restored at 35baa5ce73c85474ca66e88c75a0310d629766e3; no live-device/provider evidence is claimed.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

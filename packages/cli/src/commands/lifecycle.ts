@@ -1,4 +1,10 @@
-import { execFileSync, execSync, spawn, spawnSync } from 'node:child_process';
+import {
+  execFileSync,
+  execSync,
+  type StdioOptions,
+  spawn,
+  spawnSync,
+} from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
 import {
   chmodSync,
@@ -38,7 +44,15 @@ import {
   type HostedTenantRegistry,
   parseHostedTenantRegistry,
 } from '@kontourai/station-contracts/tenancy';
+import {
+  MEDIA_UPLOAD_POLICIES,
+  mediaUploadPolicy,
+} from '@kontourai/station-contracts/walkthrough';
 import { readGitHeadSha, resolveGitInfo } from '@kontourai/station-shared/git';
+import {
+  configureHttpKeepAlive,
+  configureHttpReceive,
+} from '@kontourai/station-shared/http-upload';
 import {
   claimInstanceEntry,
   findRunning as findRunningHomeInstances,
@@ -65,6 +79,10 @@ import {
   birthProvesReuse,
   lookupProcessBirthFingerprint,
 } from '@kontourai/station-shared/process-identity';
+import {
+  LITE_TELEMETRY_INVENTORY_REVISION,
+  liteTelemetryNoticeText,
+} from '@kontourai/station-shared/product-telemetry';
 import { spawnedStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
 import { SERVICE_LAUNCHER_ENV } from '@kontourai/station-shared/service-launcher-protocol';
 import {
@@ -80,11 +98,16 @@ import {
   type StationHomeBackupResult,
   type StationHomeRestoreResult,
 } from '@kontourai/station-shared/station-home-archive';
+import { acquireStationHomeMaintenanceLease } from '@kontourai/station-shared/station-home-lifecycle';
 import { inspectStationHomeRecovery } from '@kontourai/station-shared/station-home-recovery-preflight';
 import {
   ensureStationHomeSchemaSync,
   stationHomeSchemaNeedsReset,
 } from '@kontourai/station-shared/station-home-schema';
+import {
+  UI_IMMUTABLE_ASSET_PATTERN,
+  uiDocumentContentSecurityPolicy,
+} from '@kontourai/station-shared/ui-document-policy';
 import {
   publishActiveLocalStation,
   removeOwnedActiveLocalStation,
@@ -128,8 +151,8 @@ import {
 } from './platform.js';
 import type { CommandRunner } from './service.js';
 import {
-  renderServiceInstallRemedy,
   renderServiceStatusCommand,
+  resolveInstalledServiceRemedy,
 } from './service-remedy.js';
 import { inspectServiceSchedulingPolicy } from './service-scheduling.js';
 import {
@@ -137,7 +160,17 @@ import {
   IGNORE_SERVICE_STATE_FLAG,
   renderSupervisingServiceRefusal,
 } from './service-upgrade-guard.js';
-import { UI_PROXY_BACKEND_PREFIXES } from './ui-proxy-prefixes.js';
+import {
+  DIRECT_LAUNCH_ENV,
+  planServerLaunch,
+  requestSupervisorSync,
+  runSupervisorHandoff,
+  SUPERVISOR_BUNDLE_FILENAME,
+} from './supervisor-launch.js';
+import {
+  UI_PROXY_BACKEND_PREFIXES,
+  UI_PROXY_EXCLUDED_PREFIXES,
+} from './ui-proxy-prefixes.js';
 import {
   assertWindowsPathsTrusted,
   runWindowsTrustCommand,
@@ -166,6 +199,8 @@ export const UI_MIME_TYPES: Record<string, string> = {
   '.woff': 'font/woff',
   '.ttf': 'font/ttf',
   '.map': 'application/json',
+  '.wasm': 'application/wasm',
+  '.webmanifest': 'application/manifest+json',
 };
 
 export { UI_PROXY_BACKEND_PREFIXES };
@@ -195,14 +230,32 @@ interface UiServerDeps {
   upstreamPort: number;
   /** Bare backend prefixes to proxy instead of 404ing (see {@link UI_PROXY_BACKEND_PREFIXES}). */
   backendPrefixes: string[];
+  backendExcludedPrefixes?: readonly string[];
   /** Backend-owned HTML paths that bypass the navigation SPA fallback. */
   backendNavigationPrefixes?: string[];
   readinessFile?: string;
-  identity?: { instanceId: string; sha: string; bootId: string };
+  /**
+   * The boot identity the backend must answer with. `supervised`: the backend
+   * runs under the process supervisor, whose handoffs may serve a rebuilt
+   * bundle with another sha. Its instance id and boot id, which every
+   * generation inherits from this start, are the identity then.
+   */
+  identity?: SupervisedBootIdentity;
   internalApiToken?: string;
   trustedTailscaleServeOrigin?: string;
   /** Plain validated projection: no parser or live registry crosses serialization. */
   hostedTenantAuthorities?: Record<string, string>;
+}
+
+/**
+ * The UI document rules shared with the web service worker
+ * (`@kontourai/station-shared/ui-document-policy`). Module imports do not
+ * survive `toString` serialization, so the spawned listener receives them as
+ * dependencies like everything else; the in-process wrapper supplies them.
+ */
+interface UiRequestHandlerDeps extends UiServerDeps {
+  immutableAsset: RegExp;
+  documentCsp: (scriptNonce?: string) => string;
 }
 
 /**
@@ -231,6 +284,23 @@ interface UiServerDeps {
  * the unit test — no drift between the two.
  */
 export function uiRequestHandler(deps: UiServerDeps) {
+  return createUiRequestHandler(
+    {
+      immutableAsset: UI_IMMUTABLE_ASSET_PATTERN,
+      documentCsp: uiDocumentContentSecurityPolicy,
+      ...deps,
+    },
+    (method, path) => mediaUploadPolicy(method, path, MEDIA_UPLOAD_POLICIES),
+  );
+}
+
+function createUiRequestHandler(
+  deps: UiRequestHandlerDeps,
+  uploadPolicy: (
+    method: string,
+    path: string,
+  ) => typeof MEDIA_UPLOAD_POLICIES.walkthrough | undefined,
+) {
   const {
     http,
     crypto,
@@ -241,12 +311,15 @@ export function uiRequestHandler(deps: UiServerDeps) {
     inject,
     upstreamPort,
     backendPrefixes,
+    backendExcludedPrefixes = [],
     backendNavigationPrefixes = [],
     readinessFile,
     identity,
     internalApiToken,
     trustedTailscaleServeOrigin,
     hostedTenantAuthorities,
+    immutableAsset,
+    documentCsp,
   } = deps;
   const canonicalRoot = fs.realpathSync(dir);
   const containedAsset = (rawUrl: string) => {
@@ -497,23 +570,7 @@ export function uiRequestHandler(deps: UiServerDeps) {
   const READINESS_IDENTITY_BUDGET_MAX_MS = 40_000;
   const READINESS_BUDGET_REQUEST_HEADER = 'x-station-readiness-budget-ms';
   const securityHeaders = (nonce: string) => ({
-    'Content-Security-Policy': [
-      "default-src 'none'",
-      `script-src 'self' 'nonce-${nonce}' 'wasm-unsafe-eval'`,
-      // Fonts are self-hosted (#2648) — no external font origins.
-      "style-src 'self' 'unsafe-inline'",
-      "font-src 'self' data:",
-      "img-src 'self' data: blob:",
-      "media-src 'self' blob:",
-      "connect-src 'self' http: https: ws: wss:",
-      "frame-src 'self' blob: http: https:",
-      "worker-src 'self' blob:",
-      "manifest-src 'self'",
-      "object-src 'none'",
-      "base-uri 'none'",
-      "frame-ancestors 'none'",
-      "form-action 'self'",
-    ].join('; '),
+    'Content-Security-Policy': documentCsp(nonce),
     'Referrer-Policy': 'no-referrer',
     'X-Content-Type-Options': 'nosniff',
   });
@@ -548,7 +605,15 @@ export function uiRequestHandler(deps: UiServerDeps) {
     res: import('node:http').ServerResponse,
     status: number,
   ) => {
-    res.writeHead(status, { 'Content-Type': 'application/json' });
+    if (res.headersSent || res.writableEnded || res.destroyed) return;
+    const upload = uploadPolicy(
+      res.req.method ?? '',
+      (res.req.url ?? '/').split('?')[0],
+    );
+    res.writeHead(status, {
+      'Content-Type': 'application/json',
+      ...(upload ? { Connection: 'close' } : {}),
+    });
     res.end(JSON.stringify({ ready: false, status: 'unavailable' }));
   };
   const proxyToBackend = (
@@ -563,6 +628,7 @@ export function uiRequestHandler(deps: UiServerDeps) {
     const tailscaleIngress = trustedTailscaleIdentity(req);
     if (tailscaleIngress?.rejected) {
       res.writeHead(403, {
+        Connection: 'close',
         'Content-Type': 'application/json',
         'Cache-Control': 'no-store',
       });
@@ -628,7 +694,13 @@ export function uiRequestHandler(deps: UiServerDeps) {
         JSON.stringify(ingressIdentity),
       ).toString('base64url');
     }
+    const mediaUpload = uploadPolicy(
+      req.method ?? '',
+      (req.url ?? '/').split('?')[0],
+    );
+    let upstreamResponded = false;
     let timedOut = false;
+    let upstreamResponse: import('node:http').IncomingMessage | undefined;
     const proxyReq = http.request(
       {
         host: '127.0.0.1',
@@ -636,45 +708,68 @@ export function uiRequestHandler(deps: UiServerDeps) {
         path: req.url,
         method: req.method,
         headers,
-        timeout: PROXY_UPSTREAM_TIMEOUT_MS,
+        timeout: mediaUpload?.idleMs ?? PROXY_UPSTREAM_TIMEOUT_MS,
       },
       (proxyRes) => {
-        // The idle timeout above exists to bound the connection/header
-        // phase against a wedged upstream — it must not keep running once a
-        // genuine streaming response is underway, or it will always lose
-        // the race against a periodic heartbeat exactly as long as itself
-        // (see the comment on PROXY_UPSTREAM_TIMEOUT_MS above). Disable it
-        // now, the moment headers confirm this is an SSE stream; a non-SSE
-        // response that hangs mid-body still keeps the timeout's
-        // protection, since SSE is the only response shape here designed to
-        // idle for tens of seconds at a time.
-        const contentType = proxyRes.headers['content-type'];
-        if (
-          typeof contentType === 'string' &&
-          contentType.startsWith('text/event-stream')
-        ) {
-          proxyReq.setTimeout(0);
+        upstreamResponse = proxyRes;
+        try {
+          if (res.headersSent || res.writableEnded || res.destroyed) {
+            proxyRes.destroy();
+            proxyReq.destroy();
+            return;
+          }
+          upstreamResponded = true;
+          // The idle timeout above exists to bound the connection/header
+          // phase against a wedged upstream — it must not keep running once a
+          // genuine streaming response is underway, or it will always lose
+          // the race against a periodic heartbeat exactly as long as itself
+          // (see the comment on PROXY_UPSTREAM_TIMEOUT_MS above). Disable it
+          // now, the moment headers confirm this is an SSE stream; a non-SSE
+          // response that hangs mid-body still keeps the timeout's
+          // protection, since SSE is the only response shape here designed to
+          // idle for tens of seconds at a time.
+          const contentType = proxyRes.headers['content-type'];
+          if (
+            typeof contentType === 'string' &&
+            contentType.startsWith('text/event-stream')
+          ) {
+            proxyReq.setTimeout(0);
+          }
+          res.writeHead(proxyRes.statusCode || 502, {
+            ...proxyRes.headers,
+            ...(mediaUpload && (proxyRes.statusCode ?? 502) >= 400
+              ? { connection: 'close' }
+              : {}),
+          });
+          // Pipe without buffering so SSE chunks stream through as they
+          // arrive instead of waiting for the upstream stream to end.
+          proxyRes.pipe(res);
+          // An upstream error arriving *after* headers are already flushed
+          // (mid-stream, e.g. the backend process dies mid-SSE) can't be
+          // turned into a fresh status code — just tear the client-facing
+          // response down instead of leaving it hanging open.
+          proxyRes.on('error', () => {
+            if (!res.writableEnded) res.destroy();
+          });
+        } catch (error) {
+          proxyRes.destroy();
+          answerRequestFailure(res, error);
         }
-        res.writeHead(proxyRes.statusCode || 502, proxyRes.headers);
-        // Pipe without buffering so SSE chunks stream through as they
-        // arrive instead of waiting for the upstream stream to end.
-        proxyRes.pipe(res);
-        // An upstream error arriving *after* headers are already flushed
-        // (mid-stream, e.g. the backend process dies mid-SSE) can't be
-        // turned into a fresh status code — just tear the client-facing
-        // response down instead of leaving it hanging open.
-        proxyRes.on('error', () => {
-          if (!res.writableEnded) res.destroy();
-        });
       },
     );
+    req.once('end', () => {
+      if (mediaUpload && !upstreamResponded)
+        proxyReq.setTimeout(mediaUpload.responseMs);
+    });
     proxyReq.on('timeout', () => {
       timedOut = true;
       proxyReq.destroy(new Error('Upstream request timed out'));
     });
     proxyReq.on('error', () => {
+      if (res.writableEnded || res.destroyed) return;
       if (res.headersSent) {
-        if (!res.writableEnded) res.end();
+        upstreamResponse?.unpipe(res);
+        res.destroy();
         return;
       }
       if (timedOut) {
@@ -695,34 +790,44 @@ export function uiRequestHandler(deps: UiServerDeps) {
       }
       answerHostUnavailable(res, 503);
     });
-    // Propagate a client-initiated disconnect upstream. `stream.pipe()`
-    // only forwards data one direction — it never tears down the *source*
-    // when the destination closes without erroring, so without this, every
-    // routine client disconnect (tab close, navigation, an SSE
-    // `EventSource`'s own periodic reconnect cycle — all normal on every
-    // one of this proxy's SSE endpoints: `/events`, `/scheduler/events`,
-    // `/monitoring/events`, `/api/orchestration/events`) leaves the
-    // upstream connection (and whatever backend work/timers it's driving)
-    // open indefinitely.
-    //
-    // Deliberately `res.on('close', ...)` ONLY — not `req.on('close'/
-    // 'aborted', ...)`. Verified empirically (a standalone repro, not just
-    // reasoned about): once `req.pipe(proxyReq)` below starts consuming a
-    // body-less GET/HEAD request (every SSE endpoint), the *request*'s
-    // `'close'` fires almost immediately — as soon as its (empty) readable
-    // side is drained — regardless of whether the client is still
-    // connected; wiring an unconditional abort to it broke every proxied
-    // request, aborting the upstream call before the real response ever
-    // arrived. `'aborted'` doesn't fire at all for a genuine mid-stream
-    // client-destroy in the same repro. `res`'s `'close'` is the reliable
-    // signal: it reflects the underlying socket's actual lifecycle (fires
-    // with `writableEnded === false` only on a real premature disconnect —
-    // before headers, mid-stream, or otherwise — and with `writableEnded
-    // === true`, a no-op below, on every normal completion).
-    res.on('close', () => {
-      if (!res.writableEnded && !proxyReq.destroyed) proxyReq.destroy();
-    });
+    // A local receive timeout can finish the response before the body ends.
+    // Release forwarding on that finish, or on a client disconnect. Request
+    // 'close' alone also fires for fully consumed bodies and cannot own this.
+    const stopForwarding = () => {
+      if ((!req.complete || !res.writableEnded) && !proxyReq.destroyed) {
+        req.unpipe(proxyReq);
+        proxyReq.destroy();
+      }
+    };
+    res.once('finish', stopForwarding);
+    res.once('close', stopForwarding);
     req.pipe(proxyReq);
+  };
+
+  const answerRequestFailure = (
+    res: import('node:http').ServerResponse,
+    error: unknown,
+  ) => {
+    const code =
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      typeof error.code === 'string' &&
+      /^[A-Z0-9_]{1,64}$/.test(error.code)
+        ? error.code
+        : 'UNKNOWN';
+    console.error(`UI request failed (${code})`);
+    if (res.writableEnded || res.destroyed) return;
+    if (res.headersSent) {
+      res.destroy();
+      return;
+    }
+    res.writeHead(500, {
+      'Content-Type': 'text/plain',
+      'Cache-Control': 'no-store',
+      Connection: 'close',
+    });
+    res.end('Internal server error');
   };
 
   const serve = (
@@ -730,6 +835,7 @@ export function uiRequestHandler(deps: UiServerDeps) {
     res: import('node:http').ServerResponse,
     tenantId?: string,
   ) => {
+    if (res.headersSent || res.writableEnded || res.destroyed) return;
     const u = (req.url ?? '/').split('?')[0];
     const resolved = containedAsset(u === '/' ? '/index.html' : u);
     if (resolved.rejected) {
@@ -805,12 +911,100 @@ export function uiRequestHandler(deps: UiServerDeps) {
       });
       res.end(html);
     } else {
-      res.writeHead(200, {
+      const relative = path
+        .relative(canonicalRoot, p)
+        .split(path.sep)
+        .join('/');
+      const immutable = immutableAsset.test(relative);
+      const quality = new Map<string, number>();
+      for (const item of (req.headers['accept-encoding'] ?? '').split(',')) {
+        const [coding, ...parameters] = item.trim().toLowerCase().split(';');
+        if (!coding) continue;
+        const q = parameters.find((parameter) =>
+          parameter.trim().startsWith('q='),
+        );
+        const value = q ? Number(q.trim().slice(2)) : 1;
+        quality.set(
+          coding,
+          Number.isFinite(value) && value >= 0 && value <= 1 ? value : 0,
+        );
+      }
+      const weight = (coding: string) =>
+        quality.get(coding) ?? quality.get('*') ?? 0;
+      let encoding: string | undefined;
+      // Reuse the same realpath containment check for sidecars, including symlinks.
+      for (const [coding, suffix] of [
+        ['br', '.br'],
+        ['gzip', '.gz'],
+      ].sort((a, b) => weight(b[0]!) - weight(a[0]!))) {
+        if (
+          weight(coding!) <= 0 ||
+          (quality.get('identity') ?? 0) > weight(coding!)
+        )
+          continue;
+        const sidecar = containedAsset(`/${relative}${suffix}`);
+        if (
+          !sidecar.rejected &&
+          fs.existsSync(sidecar.candidate) &&
+          fs.statSync(sidecar.candidate).isFile()
+        ) {
+          p = sidecar.candidate;
+          encoding = coding;
+          break;
+        }
+      }
+      if (
+        !encoding &&
+        (quality.get('identity') === 0 ||
+          (quality.get('*') === 0 && !quality.has('identity')))
+      ) {
+        res.writeHead(406, {
+          Vary: 'Accept-Encoding',
+          'Cache-Control': 'no-store',
+        });
+        res.end();
+        return;
+      }
+      const info = fs.statSync(p);
+      const etag = `W/"${info.size.toString(16)}-${info.mtimeMs.toString(16)}-${encoding ?? 'identity'}"`;
+      const headers = {
         'Content-Type': mime[ext] || 'application/octet-stream',
-        'Cache-Control': 'no-cache',
+        'Cache-Control': immutable
+          ? 'public, max-age=31536000, immutable'
+          : 'no-cache',
+        Vary: 'Accept-Encoding',
+        ETag: etag,
+        ...(encoding ? { 'Content-Encoding': encoding } : {}),
         ...securityHeaders(nonce),
-      });
-      fs.createReadStream(p).pipe(res);
+      };
+      const matches = (req.headers['if-none-match'] ?? '')
+        .split(',')
+        .some(
+          (value) =>
+            value.trim() === '*' ||
+            value.trim().replace(/^W\//, '') === etag.replace(/^W\//, ''),
+        );
+      if ((req.method === 'GET' || req.method === 'HEAD') && matches) {
+        res.writeHead(304, headers);
+        res.end();
+        return;
+      }
+      if (req.method === 'HEAD') {
+        res.writeHead(200, { ...headers, 'Content-Length': info.size });
+        res.end();
+      } else {
+        const stream = fs.createReadStream(p);
+        stream.once('error', (error) => answerRequestFailure(res, error));
+        res.once('close', () => stream.destroy());
+        stream.once('open', () => {
+          if (res.headersSent || res.writableEnded || res.destroyed) {
+            stream.destroy();
+            return;
+          }
+          res.writeHead(200, { ...headers, 'Content-Length': info.size });
+          stream.pipe(res);
+        });
+      }
     }
   };
 
@@ -871,12 +1065,19 @@ export function uiRequestHandler(deps: UiServerDeps) {
     res: import('node:http').ServerResponse,
     callback: (state: 'ready' | 'degraded' | 'unavailable') => void,
   ) => {
+    const respond = (state: 'ready' | 'degraded' | 'unavailable') => {
+      try {
+        callback(state);
+      } catch (error) {
+        answerRequestFailure(res, error);
+      }
+    };
     if (!declaredReady()) {
-      callback('unavailable');
+      respond('unavailable');
       return;
     }
     if (!internalApiToken) {
-      callback('unavailable');
+      respond('unavailable');
       return;
     }
     let settled = false;
@@ -886,7 +1087,7 @@ export function uiRequestHandler(deps: UiServerDeps) {
       if (settled) return;
       settled = true;
       if (deadline) clearTimeout(deadline);
-      callback(state);
+      respond(state);
     };
     const request = http.request(
       {
@@ -920,10 +1121,13 @@ export function uiRequestHandler(deps: UiServerDeps) {
         response.on('end', () => {
           try {
             const upstreamIdentity = JSON.parse(raw);
+            // A supervised backend may hand off to a rebuilt bundle: its
+            // sha changes while the boot id this start minted does not.
             finish(
               response.statusCode === 200 &&
-                (upstreamIdentity?.sha ?? upstreamIdentity?.fullSha) ===
-                  identity?.sha &&
+                (identity?.supervised === true ||
+                  (upstreamIdentity?.sha ?? upstreamIdentity?.fullSha) ===
+                    identity?.sha) &&
                 upstreamIdentity?.bootId === identity?.bootId &&
                 upstreamIdentity?.instanceId === identity?.instanceId
                 ? 'ready'
@@ -962,6 +1166,7 @@ export function uiRequestHandler(deps: UiServerDeps) {
     res: import('node:http').ServerResponse,
     html: boolean,
   ) => {
+    if (res.headersSent || res.writableEnded || res.destroyed) return;
     res.writeHead(503, {
       'Content-Type': html ? 'text/html; charset=utf-8' : 'application/json',
       'Cache-Control': 'no-store',
@@ -976,71 +1181,97 @@ export function uiRequestHandler(deps: UiServerDeps) {
     req: import('node:http').IncomingMessage,
     res: import('node:http').ServerResponse,
   ) => {
-    const hostedTenant = resolvedHostedTenant(req);
-    let tenantId: string | undefined;
-    if (hostedTenant.enabled) {
-      if ('error' in hostedTenant) {
-        res.writeHead(421, {
-          'Content-Type': 'application/json',
+    res.on('error', () => res.destroy());
+    try {
+      let decodedPath: string;
+      try {
+        decodedPath = decodeURIComponent((req.url ?? '/').split('?')[0]!);
+      } catch {
+        decodedPath = '';
+      }
+      if (
+        !decodedPath ||
+        backendExcludedPrefixes.some(
+          (prefix) =>
+            decodedPath === prefix || decodedPath.startsWith(`${prefix}/`),
+        )
+      ) {
+        res.writeHead(404, {
+          'Content-Type': 'text/plain',
           'Cache-Control': 'no-store',
         });
-        res.end(JSON.stringify({ error: { code: hostedTenant.error } }));
+        res.end('Not found');
         return;
       }
-      tenantId = hostedTenant.tenantId;
-    }
-    const pathname = (req.url ?? '/').split('?')[0];
-    if (pathname === '/__station/identity') {
-      res.writeHead(200, {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-store',
-      });
-      res.end(JSON.stringify(identity ?? null));
-      return;
-    }
-    if (pathname === '/api/system/readiness') {
-      checkLiveReady(tenantId, readinessBudgetMs(req), res, (state) => {
-        if (state === 'unavailable') {
-          unavailable(res, false);
+      const hostedTenant = resolvedHostedTenant(req);
+      let tenantId: string | undefined;
+      if (hostedTenant.enabled) {
+        if ('error' in hostedTenant) {
+          res.writeHead(421, {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-store',
+          });
+          res.end(JSON.stringify({ error: { code: hostedTenant.error } }));
           return;
         }
-        // #263: 'degraded' keeps `ready: false` AND a 503. Identity was not
-        // confirmed, and a checker that reads only the status code (a load
-        // balancer, an orchestrator probe) cannot tell a busy backend from a
-        // wedged one — a 200 here would report a hung event loop healthy
-        // forever. Every in-repo checker requires `status: 'ready'`, so the
-        // body is where the distinction lives for anything that can read it.
-        res.writeHead(state === 'ready' ? 200 : 503, {
+        tenantId = hostedTenant.tenantId;
+      }
+      const pathname = (req.url ?? '/').split('?')[0];
+      if (pathname === '/__station/identity') {
+        res.writeHead(200, {
           'Content-Type': 'application/json',
           'Cache-Control': 'no-store',
         });
-        res.end(
-          JSON.stringify(
-            state === 'ready'
-              ? { ready: true, status: 'ready' }
-              : { ready: false, status: 'degraded' },
-          ),
+        res.end(JSON.stringify(identity ?? null));
+        return;
+      }
+      if (pathname === '/api/system/readiness') {
+        checkLiveReady(tenantId, readinessBudgetMs(req), res, (state) => {
+          if (res.headersSent || res.writableEnded || res.destroyed) return;
+          if (state === 'unavailable') {
+            unavailable(res, false);
+            return;
+          }
+          // #263: 'degraded' keeps `ready: false` AND a 503. Identity was not
+          // confirmed, and a checker that reads only the status code (a load
+          // balancer, an orchestrator probe) cannot tell a busy backend from a
+          // wedged one — a 200 here would report a hung event loop healthy
+          // forever. Every in-repo checker requires `status: 'ready'`, so the
+          // body is where the distinction lives for anything that can read it.
+          res.writeHead(state === 'ready' ? 200 : 503, {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-store',
+          });
+          res.end(
+            JSON.stringify(
+              state === 'ready'
+                ? { ready: true, status: 'ready' }
+                : { ready: false, status: 'degraded' },
+            ),
+          );
+        });
+        return;
+      }
+      const isNavigation =
+        (req.method === 'GET' || req.method === 'HEAD') &&
+        (req.headers.accept ?? '').startsWith('text/html');
+      if (readinessFile && isNavigation) {
+        // #263: a degraded backend still gets the app shell. The recovery
+        // document is for a backend that is down or is not ours; replacing the
+        // whole UI because the host is slow is what made a running Station look
+        // dead. Serving the shell grants nothing new: API calls are proxied (and
+        // bounded) exactly as they are for any other page load.
+        checkLiveReady(tenantId, READINESS_IDENTITY_BUDGET_MS, res, (state) =>
+          state === 'unavailable'
+            ? unavailable(res, true)
+            : serve(req, res, tenantId),
         );
-      });
-      return;
+        return;
+      }
+      serve(req, res, tenantId);
+    } catch (error) {
+      answerRequestFailure(res, error);
     }
-    const isNavigation =
-      (req.method === 'GET' || req.method === 'HEAD') &&
-      (req.headers.accept ?? '').startsWith('text/html');
-    if (readinessFile && isNavigation) {
-      // #263: a degraded backend still gets the app shell. The recovery
-      // document is for a backend that is down or is not ours; replacing the
-      // whole UI because the host is slow is what made a running Station look
-      // dead. Serving the shell grants nothing new: API calls are proxied (and
-      // bounded) exactly as they are for any other page load.
-      checkLiveReady(tenantId, READINESS_IDENTITY_BUDGET_MS, res, (state) =>
-        state === 'unavailable'
-          ? unavailable(res, true)
-          : serve(req, res, tenantId),
-      );
-      return;
-    }
-    serve(req, res, tenantId);
   };
 }
 
@@ -1099,8 +1330,10 @@ export function buildUiServerScript(opts: {
   uiPort: number;
   host?: string;
   readinessFile?: string;
-  identity?: { instanceId: string; sha: string; bootId: string };
+  identity?: SupervisedBootIdentity;
   hostedTenantAuthorities?: Record<string, string>;
+  /** Exit when the IPC channel from the launcher that started it closes. */
+  exitWithLauncher?: boolean;
 }): string {
   const inject = buildUiBootstrapScript(
     opts.apiBaseOverride !== undefined
@@ -1125,14 +1358,24 @@ export function buildUiServerScript(opts: {
     const inject=${JSON.stringify(inject)};
     const upstreamPort=${JSON.stringify(opts.upstreamPort)};
     const backendPrefixes=${JSON.stringify(UI_PROXY_BACKEND_PREFIXES)};
+    const backendExcludedPrefixes=${JSON.stringify(UI_PROXY_EXCLUDED_PREFIXES)};
     const backendNavigationPrefixes=${JSON.stringify(UI_PROXY_BACKEND_NAVIGATION_PREFIXES)};
+    const immutableAsset=new RegExp(${JSON.stringify(UI_IMMUTABLE_ASSET_PATTERN.source)});
+    const documentCsp=${uiDocumentContentSecurityPolicy.toString()};
     const readinessFile=${JSON.stringify(opts.readinessFile)};
     const identity=${JSON.stringify(opts.identity)};
     const internalApiToken=process.env.STATION_INTERNAL_API_TOKEN;
     const trustedTailscaleServeOrigin=process.env.STATION_TRUSTED_TAILSCALE_SERVE_ORIGIN;
     const hostedTenantAuthorities=${JSON.stringify(opts.hostedTenantAuthorities)};
-    const uiRequestHandler=${uiRequestHandler.toString()};
-    http.createServer(uiRequestHandler({http,crypto,fs,path,dir,mime,inject,upstreamPort,backendPrefixes,backendNavigationPrefixes,readinessFile,identity,internalApiToken,trustedTailscaleServeOrigin,hostedTenantAuthorities})).listen(${opts.uiPort},${JSON.stringify(opts.host ?? '0.0.0.0')});
+    const mediaUploadPolicies=${JSON.stringify(MEDIA_UPLOAD_POLICIES)};
+    const classifyMediaUpload=${mediaUploadPolicy.toString()};
+    const uploadPolicy=(method,path)=>classifyMediaUpload(method,path,mediaUploadPolicies);
+    const uiRequestHandler=(deps)=>(${createUiRequestHandler.toString()})(deps,uploadPolicy);
+    const server=http.createServer(uiRequestHandler({http,crypto,fs,path,dir,mime,inject,upstreamPort,backendPrefixes,backendExcludedPrefixes,backendNavigationPrefixes,readinessFile,identity,internalApiToken,trustedTailscaleServeOrigin,hostedTenantAuthorities,immutableAsset,documentCsp}));
+    (${configureHttpReceive.toString()})(server,uploadPolicy,mediaUploadPolicies.walkthrough.totalMs);
+    (${configureHttpKeepAlive.toString()})(server);
+    server.listen(${opts.uiPort},${JSON.stringify(opts.host ?? '0.0.0.0')});
+    ${opts.exitWithLauncher ? "if(process.connected)process.on('disconnect',()=>process.exit(0));else process.exit(0);" : ''}
   `;
 }
 
@@ -1171,6 +1414,13 @@ export interface InstanceStateRecord {
   uiPort: number;
   readinessFile?: string;
   hostedProbeAuthority?: string;
+  /**
+   * The server runs under the Station process supervisor: `serverPid` and
+   * `serverFingerprint` are the supervisor's, which owns the instance while
+   * core server generations come and go beneath it. Absent for a direct
+   * start, including every record an earlier CLI wrote.
+   */
+  supervised?: boolean;
 }
 
 /**
@@ -1200,9 +1450,22 @@ export interface CollectedChildStatus {
   reachable: boolean;
 }
 
+/**
+ * Which Station answered. For a supervised instance the sha is the build
+ * the record last knew, not part of the identity (see `UiServerDeps.identity`).
+ */
+interface SupervisedBootIdentity {
+  instanceId: string;
+  sha: string;
+  bootId: string;
+  supervised?: boolean;
+}
+
 export interface CollectedInstanceStatus {
   bootId?: string;
   found: boolean;
+  /** Runs under the process supervisor: its sha may change at a handoff. */
+  supervised?: boolean;
   healthy: boolean;
   instanceId: string;
   server: CollectedChildStatus;
@@ -1251,6 +1514,13 @@ export interface StartOptions extends InstanceSelector {
   readinessFile?: string;
   /** Present only for `station service run`, never ordinary `station start`. */
   supervisorPid?: number;
+  /**
+   * With `supervisorPid`: that launcher's own process start fingerprint,
+   * resolved by the launcher on its own-process budget and asked for only
+   * when the server starts directly (a supervisor does not use it). Null when
+   * it could not be read.
+   */
+  supervisorBirth?: () => string | null;
   /** Captures cleanup authority before readiness, without reloading shared state. */
   onSpawned?: (generation: InstanceStateRecord) => void;
 }
@@ -1572,6 +1842,7 @@ function readInstanceStateFile(path: string): InstanceStateRecord {
         parsed.hostedProbeAuthority,
         path,
       ),
+      ...(parsed.supervised === true ? { supervised: true } : {}),
       statePath: path,
       stateIdentity: { dev: info.dev, ino: info.ino },
       stateContent,
@@ -1826,6 +2097,92 @@ function waitForInstanceShutdown(
   return isInstanceFullyStopped(record);
 }
 
+/** A command an operator can run to see what a PID is on this host. */
+function processCheckCommand(pid: number): string {
+  return process.platform === 'win32'
+    ? `tasklist /V /FI "PID eq ${pid}"`
+    : `ps -p ${pid} -o command=`;
+}
+
+/**
+ * The whole budget for stopping a supervisor, request and fallback signal
+ * included. `station service run` force-exits 60 seconds into its own
+ * shutdown (SERVICE_SHUTDOWN_DEADLINE_MS), and after this the stop still
+ * spends up to about 5 seconds each on `killProcessTree` of the supervisor
+ * and of the UI process, so this leaves it room.
+ */
+const SUPERVISOR_STOP_BUDGET_MS = 40_000;
+/**
+ * The control-channel request's share: the supervisor's stop drain cap (30s,
+ * voice calls included) and kill grace (5s), with a second of margin. Longer
+ * than `killProcessTree`'s 5s, which would cut a draining core off.
+ */
+const SUPERVISOR_STOP_REQUEST_MS = 36_000;
+/**
+ * The bound on a whole supervised `stopRecord`: the supervisor's budget,
+ * about 5 seconds of `killProcessTree` fallback for it and for the UI
+ * listener each, and the final liveness check, which never runs past this.
+ */
+const SUPERVISED_STOP_TOTAL_MS = 55_000;
+
+/** The supervisor bundles that can reach a record's supervisor, newest first. */
+function supervisorBundlesFor(record: InstanceStateRecord): string[] {
+  const relative = join(
+    resolveBuildPaths(record.instanceId).server,
+    SUPERVISOR_BUNDLE_FILENAME,
+  );
+  return [...new Set([join(CWD, relative), join(record.cwd, relative)])];
+}
+
+function supervisorTarget(record: InstanceStateRecord) {
+  return {
+    bundles: supervisorBundlesFor(record),
+    home: record.baseDir,
+    instanceId: record.instanceId,
+  };
+}
+
+function waitForProcessExit(pid: number, timeoutMs: number): boolean {
+  const deadline = Date.now() + timeoutMs;
+  while (isProcessAlive(pid)) {
+    if (Date.now() >= deadline) return false;
+    sleepSync(200);
+  }
+  return true;
+}
+
+/**
+ * Stops a supervised instance's supervisor, which drains its core server and
+ * exits. The `stop` request over the control channel first; when nothing
+ * answers there, a signal. On POSIX SIGTERM is the same graceful stop. On
+ * Windows a signal ends the process outright, and its core dies with it
+ * (Node's job object), so the tree kill there loses only the drain.
+ */
+function stopSupervisor(record: InstanceStateRecord, pid: number): void {
+  const deadline = Date.now() + SUPERVISOR_STOP_BUDGET_MS;
+  const remaining = () => Math.max(0, deadline - Date.now());
+  const asked = requestSupervisorSync(
+    supervisorTarget(record),
+    'stop',
+    SUPERVISOR_STOP_REQUEST_MS,
+  );
+  if (asked.status === 'ok' && waitForProcessExit(pid, remaining())) return;
+  console.error(
+    asked.status === 'ok'
+      ? `The supervisor of ${record.instanceId} accepted the stop but is still running; signalling pid ${pid}.`
+      : `The supervisor of ${record.instanceId} did not take a stop request (${asked.detail}); signalling pid ${pid}.`,
+  );
+  if (process.platform !== 'win32') {
+    try {
+      process.kill(pid, 'SIGTERM');
+    } catch {
+      // Already gone.
+    }
+    if (waitForProcessExit(pid, remaining())) return;
+  }
+  killProcessTree(pid);
+}
+
 function stopRecord(
   record: InstanceStateRecord,
   announce = true,
@@ -1834,6 +2191,12 @@ function stopRecord(
 ): void {
   const operationId = randomUUID();
   const operationStartedAt = new Date();
+  // The whole stop of a supervised instance, supervisor, UI listener and the
+  // final check together, stays inside `station service run`'s 60-second
+  // shutdown deadline (SERVICE_SHUTDOWN_DEADLINE_MS).
+  const supervisedStopDeadline = record.supervised
+    ? Date.now() + SUPERVISED_STOP_TOTAL_MS
+    : null;
   const appendStopResult = (
     result: 'completed' | 'already_absent' | 'failed',
   ) => {
@@ -1887,7 +2250,11 @@ function stopRecord(
       [record.uiPid, record.uiFingerprint, 'ui'],
     ] as const;
     let anyAlive = false;
-    let unverifiable: { label: string; pid: number } | undefined;
+    const unverifiable: Array<{
+      label: string;
+      pid: number;
+      unrecorded: boolean;
+    }> = [];
     for (const [pid, expected, label] of identities) {
       if (!pid) continue;
       // Liveness is decided by `isProcessAlive` (signal-0 + a zombie check),
@@ -1910,10 +2277,16 @@ function stopRecord(
         // wrong for a live Station; this refuses both and names the way out
         // (check the pid, then remove the state file), since only the
         // operator can tell them apart.
-        unverifiable = { label, pid };
+        unverifiable.push({ label, pid, unrecorded: false });
         continue;
       }
-      if (!expected || !fingerprintMatchesRecorded(actual, expected)) {
+      if (!expected) {
+        // A record without a fingerprint (one whose start could not capture
+        // it) has nothing to match: unverified, not a proven mismatch.
+        unverifiable.push({ label, pid, unrecorded: true });
+        continue;
+      }
+      if (!fingerprintMatchesRecorded(actual, expected)) {
         appendStopResult('failed');
         throw new Error(
           `Refusing to signal ${label} PID ${pid}: process fingerprint mismatch`,
@@ -1948,14 +2321,24 @@ function stopRecord(
       );
       return;
     }
-    if (unverifiable) {
+    if (unverifiable.length > 0) {
       appendStopResult('failed');
+      // Every unverified process is named, so the operator checks the right
+      // ones; none was signalled.
+      const several = unverifiable.length > 1;
       throw new Error(
         [
-          `Refusing to stop Station instance ${record.instanceId}: its ${unverifiable.label} PID ${unverifiable.pid} is running, but its identity could not be verified (unreadable /proc, unsupported ps output, or a missing boot id), so it was not signalled and the recorded state was kept.`,
-          `Check what PID ${unverifiable.pid} is (for example \`ps -p ${unverifiable.pid} -o command=\`).`,
-          `If it is this Station, stop it with your OS tools and run \`station stop\` again.`,
-          `If it is an unrelated process that reused the PID, do not signal it; remove ${record.statePath} to forget this instance.`,
+          `Refusing to stop Station instance ${record.instanceId}: ${unverifiable
+            .map(
+              (entry) =>
+                `its ${entry.label} PID ${entry.pid} is running, but its identity could not be verified (${entry.unrecorded ? 'its start recorded no fingerprint to check it against' : 'unreadable /proc, unsupported ps output, a missing boot id, or a failed Windows PowerShell probe'})`,
+            )
+            .join(
+              '; ',
+            )}, so ${several ? 'none was' : 'it was not'} signalled and the recorded state was kept.`,
+          `Check what ${unverifiable.map((entry) => `PID ${entry.pid}`).join(' and ')} ${several ? 'are' : 'is'} (for example ${unverifiable.map((entry) => `\`${processCheckCommand(entry.pid)}\``).join(', ')}).`,
+          `If ${several ? 'they are' : 'it is'} this Station, stop ${several ? 'them' : 'it'} with your OS tools and run \`station stop\` again.`,
+          `If ${several ? 'every one is an unrelated process' : 'it is an unrelated process'} that reused the PID, do not signal it; remove ${record.statePath} to forget this instance.`,
         ].join(' '),
       );
     }
@@ -1974,7 +2357,19 @@ function stopRecord(
       // PID alone: an accepted residual, never extended to port ownership.
       if (expected && isProcessAlive(pid)) {
         const actual = inspectProcessFingerprint(pid);
-        if (!actual || !fingerprintMatchesRecorded(actual, expected)) {
+        if (!actual) {
+          // Unread is not reused: the process may be this Station's, alive,
+          // so forgetting the record would orphan it. Keep it and name the
+          // ways forward that never drop a live instance.
+          throw new Error(
+            [
+              `Refusing to signal PID ${pid}: it is running, but its identity could not be read to confirm it is the process recorded for Station instance ${record.instanceId}, so it was not signalled and the recorded state was kept.`,
+              'Run `station stop` again.',
+              `If it still cannot be read, check what PID ${pid} is (for example \`${processCheckCommand(pid)}\`); if it is this Station, end it with your OS tools, then run \`station stop\` again.`,
+            ].join(' '),
+          );
+        }
+        if (!fingerprintMatchesRecorded(actual, expected)) {
           throw new Error(
             `Refusing to signal PID ${pid}: it no longer matches the process recorded for Station instance ${record.instanceId}. The recorded state was kept; remove ${record.statePath} to forget this instance.`,
           );
@@ -1996,9 +2391,19 @@ function stopRecord(
         );
       }
     }
+    if (record.supervised && pid === record.serverPid) {
+      stopSupervisor(record, pid);
+      continue;
+    }
     killProcessTree(pid);
   }
-  if (!waitForInstanceShutdown(record, managed ? 15_000 : 5_000)) {
+  const shutdownWaitMs =
+    supervisedStopDeadline === null
+      ? managed
+        ? 15_000
+        : 5_000
+      : Math.max(1_000, supervisedStopDeadline - Date.now());
+  if (!waitForInstanceShutdown(record, shutdownWaitMs)) {
     appendStopResult('failed');
     // Report which recorded process is still holding the instance open
     // (station#1846). Port listeners are not reported: a port owner that is
@@ -2079,6 +2484,7 @@ function writeInstanceState(record: InstanceStateRecord): void {
       logFile: record.logFile,
       readinessFile: record.readinessFile,
       hostedProbeAuthority: record.hostedProbeAuthority,
+      supervised: record.supervised,
     },
     null,
     2,
@@ -3726,7 +4132,7 @@ function describeIdentityMismatch(
 
 async function probeIdentityOnce(
   url: string,
-  expected: { instanceId: string; sha: string; bootId: string },
+  expected: SupervisedBootIdentity,
   timeoutMs = 3_000,
   headers?: Readonly<Record<string, string>>,
 ): Promise<IdentityProbeOutcome> {
@@ -3742,7 +4148,7 @@ async function probeIdentityOnce(
     if (!response.ok) return 'unreachable';
     const actual = (await response.json()) as Partial<typeof expected>;
     return actual.instanceId === expected.instanceId &&
-      actual.sha === expected.sha &&
+      (expected.supervised === true || actual.sha === expected.sha) &&
       actual.bootId === expected.bootId
       ? 'ok'
       : 'identity-mismatch';
@@ -3979,7 +4385,12 @@ export async function collectInstanceStatus(
       },
     };
   }
-  const expected = { instanceId, sha, bootId };
+  const expected = {
+    instanceId,
+    sha,
+    bootId,
+    ...(record.supervised ? { supervised: true } : {}),
+  };
   const probeHost =
     record.host === '0.0.0.0' || record.host === '::'
       ? '127.0.0.1'
@@ -4019,6 +4430,7 @@ export async function collectInstanceStatus(
   return {
     bootId,
     found: true,
+    ...(record.supervised ? { supervised: true } : {}),
     healthy: serverProbe === 'ok' && uiProbe === 'ok',
     instanceId,
     server: {
@@ -4473,6 +4885,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   // The desktop addresses this to its own sidecar; a server started from a
   // desktop terminal must still log to its stdout log file (#2327).
   delete serverEnv.STATION_STDOUT_LOGS;
+  delete serverEnv.STATION_STDOUT_HANDSHAKE;
   const internalApiToken = randomBytes(32).toString('base64url');
   const uiBootstrapToken = randomBytes(32).toString('base64url');
   serverEnv.STATION_INTERNAL_API_TOKEN = internalApiToken;
@@ -4505,6 +4918,8 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   serverEnv.STATION_BUILD_BRANCH = buildManifest?.branch ?? 'unknown';
   serverEnv.STATION_BUILD_BUILT_AT = buildManifest?.builtAt ?? 'unknown';
   serverEnv.STATION_BOOT_ID = bootId;
+  // Only this spawn may carry a launcher's birth, like the pid below.
+  delete serverEnv.STATION_SUPERVISOR_BIRTH;
   if (opts.supervisorPid !== undefined) {
     serverEnv.STATION_SUPERVISOR_PID = String(opts.supervisorPid);
     if (serviceManaged === '1') serverEnv.STATION_SERVICE_MANAGED = '1';
@@ -4526,16 +4941,72 @@ export async function start(opts: StartOptions = {}): Promise<void> {
         poll: process.env.STATION_DEV_WATCH_POLL === '1',
       })
     : undefined;
+  let telemetryNoticesToShow: Array<'kontour' | 'operator'> = [
+    'kontour',
+    'operator',
+  ];
+  try {
+    const state = JSON.parse(
+      readFileSync(join(projectHome, 'config', 'telemetry-daily.json'), 'utf8'),
+    );
+    telemetryNoticesToShow = telemetryNoticesToShow.filter(
+      (publisher) =>
+        state.notices?.[publisher]?.inventoryRevision !==
+        LITE_TELEMETRY_INVENTORY_REVISION,
+    );
+  } catch {
+    // The server records the log receipt asynchronously after HTTP readiness.
+  }
+  // The supervisor, when this start runs one, is the process spawned here:
+  // it forks the core server and owns the instance from now on.
+  const launch = planServerLaunch({
+    serverDir: join(CWD, buildPaths.server),
+    entry: join(CWD, buildPaths.server, SERVER_ENTRY_FILENAME),
+    projectHome,
+    instanceId,
+    codeRoot: CWD,
+    watch: Boolean(watch),
+    lifecycleJournal: opts.lifecycleJournal,
+    exitWithLauncher: opts.supervisorPid !== undefined,
+    env: process.env,
+  });
+  // Under a launcher that supervises this start (`station service run`), the
+  // supervisor and the UI listener each get an IPC channel to it and exit
+  // when it closes: the OS closes it when the launcher exits, however it
+  // exits. A plain `station start` exits at once, so its children get none.
+  const withLauncherChannel = (stdio: StdioOptions): StdioOptions => {
+    if (opts.supervisorPid === undefined) return stdio;
+    const streams = typeof stdio === 'string' ? [stdio, stdio, stdio] : stdio;
+    return [...streams, 'ipc'];
+  };
+  if (!launch.supervised && launch.notice) console.error(launch.notice);
+  // A direct server's parent watchdog proves its launcher gone by the
+  // launcher's start fingerprint. Without it the watchdog falls back to the
+  // parent pid, which Windows keeps after the parent exits, so a direct
+  // server there outlived a killed `service run` and held its ports.
+  if (!launch.supervised && opts.supervisorPid !== undefined) {
+    const launcherBirth = opts.supervisorBirth?.() ?? null;
+    if (launcherBirth) serverEnv.STATION_SUPERVISOR_BIRTH = launcherBirth;
+  }
+  // An operator's opt-out applies to this start, not to the server's own
+  // children (a server-initiated start is not this operator's).
+  delete serverEnv[DIRECT_LAUNCH_ENV];
   let serverProc: ReturnType<typeof spawn>;
   try {
     serverProc = spawn(
       watchPlan?.server.command ?? process.execPath,
-      watchPlan?.server.args ?? [
-        `${buildPaths.server}/${SERVER_ENTRY_FILENAME}`,
-      ],
+      watchPlan?.server.args ??
+        (launch.supervised
+          ? launch.args
+          : [`${buildPaths.server}/${SERVER_ENTRY_FILENAME}`]),
       {
         cwd: CWD,
-        stdio: serverStdio,
+        // The direct core keeps its own parent watchdog
+        // (STATION_SUPERVISOR_PID): an IPC channel would read as supervision.
+        stdio:
+          launch.supervised && !watchPlan
+            ? withLauncherChannel(serverStdio)
+            : serverStdio,
         detached: true,
         windowsHide: true,
         env: watchPlan ? { ...serverEnv, ...watchPlan.server.env } : serverEnv,
@@ -4544,7 +5015,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     if (logDescriptor !== null) {
       writeSync(
         logDescriptor,
-        `\n--- ${new Date().toISOString()} station lifecycle start instance=${instanceId} build=${serverEnv.STATION_BUILD_SHA} pid=${serverProc.pid ?? 'unknown'} ---\n`,
+        `\n--- ${new Date().toISOString()} station lifecycle start instance=${instanceId} build=${serverEnv.STATION_BUILD_SHA} pid=${serverProc.pid ?? 'unknown'}${launch.supervised ? ' supervised' : ''} ---\n`,
       );
     }
   } finally {
@@ -4554,6 +5025,8 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   let generation: InstanceStateRecord;
   try {
     serverProc.unref();
+    // The channel exists only to close when this process exits.
+    serverProc.channel?.unref();
     if (opts.lifecycleJournal && serverProc.pid) {
       appendLifecycleEvent(opts.lifecycleJournal, {
         instanceId,
@@ -4596,7 +5069,9 @@ export async function start(opts: StartOptions = {}): Promise<void> {
             instanceId,
             sha: buildManifest?.sha ?? 'unknown',
             bootId,
+            ...(launch.supervised ? { supervised: true } : {}),
           },
+          exitWithLauncher: opts.supervisorPid !== undefined,
           hostedTenantAuthorities: hostedTenantRegistry
             ? { ...hostedTenantRegistry.authorityToTenant }
             : undefined,
@@ -4606,10 +5081,11 @@ export async function start(opts: StartOptions = {}): Promise<void> {
         cwd: CWD,
         // Vite's log (HMR updates, proxy errors) is the dev loop's feedback;
         // the production UI listener has none and stays silent.
-        stdio:
+        stdio: withLauncherChannel(
           uiLogDescriptor === null
             ? 'ignore'
             : ['ignore', uiLogDescriptor, uiLogDescriptor],
+        ),
         detached: true,
         windowsHide: true,
         env: (() => {
@@ -4629,6 +5105,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
           };
           // The UI child is never supervised by the server's parent watchdog.
           delete uiEnv.STATION_SUPERVISOR_PID;
+          delete uiEnv.STATION_SUPERVISOR_BIRTH;
           delete uiEnv.STATION_SERVICE_MANAGED;
           delete uiEnv[SERVICE_LAUNCHER_ENV];
           return uiEnv;
@@ -4637,6 +5114,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     );
     if (uiLogDescriptor !== null) closeSync(uiLogDescriptor);
     uiProc.unref();
+    uiProc.channel?.unref();
 
     const serverFingerprint = serverProc.pid
       ? captureStableProcessFingerprint(serverProc.pid)
@@ -4671,6 +5149,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
       logFile,
       readinessFile: opts.readinessFile,
       hostedProbeAuthority,
+      ...(launch.supervised ? { supervised: true } : {}),
     };
     writeInstanceState(generation);
     opts.onSpawned?.(generation);
@@ -4747,6 +5226,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
           { childAlive: childAliveProbe(uiProc.pid), signal },
         ),
     ]);
+    if (telemetryNoticesToShow.length) console.error(liteTelemetryNoticeText());
     const activeApiBase = activeLocalApiBase(host, serverPort);
     if (activeApiBase) {
       publishActiveLocalStation(
@@ -4813,6 +5293,11 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     console.log(
       `  ✓ Home:   ${projectHome} (${describeHomeSource(homeSource)})`,
     );
+    if (launch.supervised) {
+      console.log(
+        `  ✓ Supervisor: pid ${serverProc.pid} (\`station restart\` hands off in place)`,
+      );
+    }
     console.log(`  ✓ Instance: ${instanceId}`);
     console.log(
       `\n  Stop with: ${renderStopCommand(instanceId, projectHome, homeSource)}`,
@@ -4913,6 +5398,136 @@ export function stop(opts: StopOptions = {}): void {
   stopRecord(match, true, opts.intent ?? 'operator_stop');
 }
 
+/** The one running instance a supervisor command targets. */
+function findRunningTarget(
+  opts: StopOptions,
+  action: string,
+): InstanceStateRecord {
+  const selector = normalizeSelector(opts);
+  const match = ensureSingleMatch(
+    listRunningInstances({
+      projectHome: opts.stateHome ?? selector.baseDir,
+    }).filter((record) => matchesSelector(record, selector)),
+    action,
+  );
+  if (!match) {
+    throw new Error(
+      `No running Station instance matches${selector.instanceId ? ` '${selector.instanceId}'` : ''}. Start one with \`station start\`.`,
+    );
+  }
+  return match;
+}
+
+function describeDirectStart(record: InstanceStateRecord): string {
+  return `Station instance ${record.instanceId} runs without the process supervisor (an earlier CLI started it, or ${DIRECT_LAUNCH_ENV}=1 was set)`;
+}
+
+/**
+ * `station restart`: hands the instance to a new core server generation
+ * through its supervisor. Connections wait in the supervisor's listeners
+ * while the generations swap; a generation that fails to come up is rolled
+ * back to the entry that was serving. Resolves once the new generation
+ * serves; throws when the handoff rolled back or was refused.
+ */
+export async function restart(opts: StopOptions = {}): Promise<void> {
+  const record = findRunningTarget(opts, 'restart');
+  if (!record.supervised) {
+    throw new Error(
+      `${describeDirectStart(record)}, so it cannot restart in place. Restart it with \`station start --force\`, passing the options it was started with.`,
+    );
+  }
+  console.log(`Handing ${record.instanceId} to a new core generation…`);
+  const result = await runSupervisorHandoff(
+    supervisorTarget(record),
+    (message) => {
+      if (message.type === 'handoff.progress') {
+        console.log(`  · ${message.phase} (generation ${message.generation})`);
+      }
+    },
+  );
+  const final = result.messages.find(
+    (message) => message.type === 'handoff.result',
+  );
+  if (final?.type !== 'handoff.result') {
+    throw new Error(
+      `Could not restart ${record.instanceId} through its supervisor: ${result.detail || 'it gave no result'}.`,
+    );
+  }
+  if (final.outcome === 'committed') {
+    // The new generation ran the instance's build directory as it is now:
+    // record that build, so status and the start banner's identity follow it.
+    const served = readBuildManifest(record.instanceId);
+    if (served && served.sha !== record.build?.sha) {
+      writeInstanceState({ ...record, build: served });
+    }
+    console.log(
+      `  ✓ Restarted: generation ${final.generation} serves${final.bootId ? ` (boot ${final.bootId})` : ''}`,
+    );
+    return;
+  }
+  if (final.outcome === 'rolled-back') {
+    throw new Error(
+      `Restart of ${record.instanceId} rolled back (${final.reason ?? 'no reason given'}); ${final.generation ? `generation ${final.generation} serves the previous entry` : 'the supervisor is restarting the previous entry'}.`,
+    );
+  }
+  throw new Error(
+    `The supervisor of ${record.instanceId} refused the restart (${final.reason ?? 'no reason given'}).`,
+  );
+}
+
+/** `station supervisor status`: what the instance's supervisor reports. */
+export function supervisorStatus(
+  opts: StopOptions & { json?: boolean } = {},
+): void {
+  const record = findRunningTarget(opts, 'supervisor status');
+  if (!record.supervised) {
+    if (opts.json) {
+      console.log(
+        JSON.stringify({ instanceId: record.instanceId, supervised: false }),
+      );
+    } else {
+      console.log(`${describeDirectStart(record)}.`);
+    }
+    return;
+  }
+  const result = requestSupervisorSync(
+    supervisorTarget(record),
+    'status',
+    15_000,
+  );
+  const reply = result.messages.find(
+    (message) => message.type === 'status.result',
+  );
+  if (reply?.type !== 'status.result') {
+    throw new Error(
+      `Could not read the supervisor status of ${record.instanceId}: ${result.detail || 'no answer'}.`,
+    );
+  }
+  const status = reply.status;
+  if (opts.json) {
+    console.log(JSON.stringify(status, null, 2));
+    return;
+  }
+  const { supervisor, active, trial, listeners, restarts } = status;
+  console.log(
+    [
+      `Supervisor of ${supervisor.instance}: ${status.state}`,
+      `  pid ${supervisor.pid}, version ${supervisor.version}, protocol ${supervisor.protocol.major}.${supervisor.protocol.minor}`,
+      active
+        ? `  Active: generation ${active.generation} (pid ${active.pid ?? 'unknown'}, ${active.state}${active.bootId ? `, boot ${active.bootId}` : ''})`
+        : '  Active: none',
+      ...(active ? [`          ${active.entry}`] : []),
+      ...(trial
+        ? [
+            `  Trial:  generation ${trial.generation} (pid ${trial.pid ?? 'unknown'}, ${trial.state})`,
+          ]
+        : []),
+      `  Listeners: ${listeners.length > 0 ? listeners.map((listener) => `${listener.name} ${listener.port}`).join(', ') : 'none held'}`,
+      `  Restarts: ${restarts.consecutiveFailures} consecutive failure(s)${restarts.lastBackoffMs !== null ? `, last backoff ${restarts.lastBackoffMs}ms` : ''}`,
+    ].join('\n'),
+  );
+}
+
 export function link(): void {
   createPathLink(CWD);
 }
@@ -4960,8 +5575,14 @@ export async function clean(
   }
 
   stop({ instanceId, serverPort, uiPort, baseDir: projectHome });
-  rmSync(projectHome, { recursive: true, force: true });
-  removeOwnedBuildOutputs(resolveBuildPaths(instanceId));
+  const maintenance = acquireStationHomeMaintenanceLease(projectHome);
+  try {
+    assertStationHomeInactive(projectHome, 'clean');
+    rmSync(projectHome, { recursive: true, force: true });
+    removeOwnedBuildOutputs(resolveBuildPaths(instanceId));
+  } finally {
+    maintenance.release();
+  }
   console.log('  ✓ Cleaned');
 }
 
@@ -4993,23 +5614,31 @@ export function homeReset(options: HomeResetOptions = {}): HomeResetResult {
   }
 
   assertStationHomeInactive(projectHome, 'reset');
+  const maintenance = acquireStationHomeMaintenanceLease(projectHome);
+  try {
+    assertStationHomeInactive(projectHome, 'reset');
+    if (options.ifIncompatible && !stationHomeSchemaNeedsReset(projectHome)) {
+      return { archived: false, projectHome };
+    }
+    if (!existsSync(projectHome)) {
+      return { archived: false, projectHome };
+    }
 
-  if (!existsSync(projectHome)) {
-    return { archived: false, projectHome };
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    let archivePath = `${projectHome}.pre-schema-reset.${stamp}`;
+    for (let suffix = 1; existsSync(archivePath); suffix += 1) {
+      archivePath = `${projectHome}.pre-schema-reset.${stamp}-${suffix}`;
+    }
+    renameSync(projectHome, archivePath);
+    return { archived: true, archivePath, projectHome };
+  } finally {
+    maintenance.release();
   }
-
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  let archivePath = `${projectHome}.pre-schema-reset.${stamp}`;
-  for (let suffix = 1; existsSync(archivePath); suffix += 1) {
-    archivePath = `${projectHome}.pre-schema-reset.${stamp}-${suffix}`;
-  }
-  renameSync(projectHome, archivePath);
-  return { archived: true, archivePath, projectHome };
 }
 
 function assertStationHomeInactive(
   projectHome: string,
-  operation: 'backup' | 'reset' | 'restore',
+  operation: 'backup' | 'clean' | 'reset' | 'restore',
 ): void {
   const normalizedSelector = normalizeSelector({ baseDir: projectHome });
   const runningMatches = listRunningInstances({ projectHome }).filter(
@@ -5399,8 +6028,11 @@ function reportSchedulingPolicyUpgradeGuidance(stationHome?: string): void {
         baseDir?: unknown;
         features?: unknown;
         host?: unknown;
+        installRoot?: unknown;
+        kind?: unknown;
         platform?: unknown;
         serverPort?: unknown;
+        stationRoot?: unknown;
         taskName?: unknown;
         uiPort?: unknown;
         unitPath?: unknown;
@@ -5430,11 +6062,25 @@ function reportSchedulingPolicyUpgradeGuidance(stationHome?: string): void {
         console.log(
           `\nService scheduling is stale for ${manifest.instanceId} (${scheduling.observed}, expected ${scheduling.expected}).`,
         );
-        const remedy = renderServiceInstallRemedy(manifest, stationHome);
+        // From the installed unit itself: it is named by instance id
+        // alone, so this home's manifest may not describe it (#4189).
+        const remedy = resolveInstalledServiceRemedy(
+          {
+            ...manifest,
+            platform: manifest.platform,
+            taskName:
+              typeof manifest.taskName === 'string'
+                ? manifest.taskName
+                : undefined,
+            unitPath: manifest.unitPath,
+          },
+          stationHome,
+          { fs: { readFileSync }, run: runServiceProbe },
+        );
         console.log(
-          remedy
-            ? `Run "${remedy}" to update the registration; upgrade does not reinstall services automatically.`
-            : 'The installed registration does not record every setting, so Station will not suggest a reinstall command. Inspect its manifest before reinstalling; upgrade does not reinstall services automatically.',
+          remedy.command
+            ? `Run "${remedy.command}" to update the registration; upgrade does not reinstall services automatically.`
+            : `Station will not suggest a reinstall command: ${remedy.reason} Upgrade does not reinstall services automatically.`,
         );
       } else if (scheduling.status === 'unknown') {
         console.log(

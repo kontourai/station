@@ -1,0 +1,15 @@
+{
+  "revision": "ea245c234e0514dcf2f3d31cec5563a9feeee0f5",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Fix-round 11 delta: MonitoringWidgets.css lets pill text break inside the pill, lets the tool group wrap its label, and removes a doubled divider when a group header opens the agent list. Layout only; no coverage claim changes.","inputs":["docs/guides/e2e-coverage-matrix.md","src-ui/src/views/MonitoringWidgets.css"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Dependency delta: api.md documents the reserved producer prefix. Nothing here depends on it.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Fix-round 11: otlp-receiver.ts refuses reserved producer: ids from senders without a producer token (400 reserved_identity) and trims required text; monitoring-keys.ts display helpers now parse a namespaced id only for the row's own producer. The guide's producer contract and attribute table remain accurate.","inputs":["docs/guides/monitoring.md","src-server/monitoring/otlp-receiver.ts","src-shared/monitoring-keys.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Fix-round 11: documented the reserved producer: prefix (400 reserved_identity on the non-producer path, nothing stored; batch checked before any emit), trimmed required text, and that the UI shows a producer's own value only for rows its producer delivered. Checked against otlp-receiver.ts reservedIdentity and the route tests.","inputs":["docs/reference/api.md","src-server/monitoring/otlp-receiver.ts","src-shared/monitoring-keys.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Fix-round 11 delta: monitoring-keys.ts display helpers take the row's producer; no configuration claim changes.","inputs":["docs/reference/config.md","src-shared/monitoring-keys.ts"]}
+  ]
+}

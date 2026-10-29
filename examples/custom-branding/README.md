@@ -73,6 +73,12 @@ What Station accepts:
 - All or nothing: if any key, value or check fails, in either mode, none of the
   theme is applied and the default stays. Each rejection is logged in the
   browser console with a `[branding-theme]` prefix.
+- Under a named color theme (Settings → Appearance), an accepted theme is rated
+  again on that theme's page, panel and raised panel with the same checks. A
+  slot group that fails there (brand and its text, action and its text, or
+  focus) is left to the color theme's own value and logged with the same
+  `[branding-theme]` prefix; the rest of the theme still applies. See the
+  [color themes decision](../../docs/decisions/user-color-themes.md).
 - The raised-panel check on the brand is new with `@kontourai/ui` 1.18. A dark
   brand that cleared the page and the panel but is under 4.5:1 on the dark
   raised panel `#16202d` (for example `#9364ff` at 4.31:1 or `#007efa` at

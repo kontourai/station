@@ -1,0 +1,7 @@
+{
+  "revision": "ddd1a86ebff7f53d197912849ee89558ee4474a1",
+
+  "notes": [
+    {"path":"docs/reference/deploy-ledger.md","note":"Issue #3704 fix-round delta review: inspected the generated deploy-ledger pair and its source routing. The room-only implementation and additional acknowledgement field change no deployment commands, OIDC ownership, release or hosted completion claim. Existing ledger generation and linked operation scopes remain accurate; this is source review, not new deployment evidence.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}

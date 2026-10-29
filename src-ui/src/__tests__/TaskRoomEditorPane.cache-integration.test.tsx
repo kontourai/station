@@ -140,7 +140,7 @@ async function mountRoom() {
 
 function editor() {
   return screen.getByRole('textbox', {
-    name: 'Task document',
+    name: 'Task brief',
   }) as HTMLTextAreaElement;
 }
 async function deliver(revision: string, text: string) {
@@ -153,7 +153,7 @@ async function deliver(revision: string, text: string) {
 }
 function save(text: string) {
   fireEvent.change(editor(), { target: { value: text } });
-  fireEvent.click(screen.getByRole('button', { name: 'Save shared document' }));
+  fireEvent.blur(editor());
 }
 
 test('saves after an existing-cache SSE and again after a structurally shared settlement', async () => {
@@ -171,9 +171,7 @@ test('saves after an existing-cache SSE and again after a structurally shared se
     text: 'first save',
   });
   save('first save');
-  await waitFor(() =>
-    expect(screen.getByText('Shared document saved.')).toBeTruthy(),
-  );
+  await waitFor(() => expect(screen.getByText('Saved')).toBeTruthy());
   expect(editor().value).toBe('first save');
   expect(client.getQueryData(key)).toMatchObject({
     revision: 'r3',
@@ -233,9 +231,7 @@ test('does not capture unseen newer cache truth as authority for a displayed dra
       revision: 'r3',
       text: 'unseen edit',
     });
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Save shared document' }),
-    );
+    fireEvent.blur(editor());
   });
   expect(mocks.plan).not.toHaveBeenCalled();
   expect(mocks.batch).not.toHaveBeenCalled();

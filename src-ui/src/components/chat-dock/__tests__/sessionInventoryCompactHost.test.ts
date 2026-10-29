@@ -2,7 +2,11 @@
 
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium, expect as expectPlaywright } from '@playwright/test';
+import {
+  chromium,
+  expect as expectPlaywright,
+  type Locator,
+} from '@playwright/test';
 import { render } from '@testing-library/react';
 import { createElement } from 'react';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
@@ -32,6 +36,7 @@ vi.mock('../useSessionInventoryLive', () => ({
   sessionInventoryLiveItems: () => [],
 }));
 
+import { SplitPaneCompanion } from '../../SplitPaneLayout';
 import { SessionInventoryCompact } from '../SessionInventoryCompact';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -60,7 +65,7 @@ const DOCK_VIEWPORT = { width: 720, height: 720 } as const;
 const BLINK_LAYOUT_UNIT_CSS_PX = 1 / 64;
 
 function buildFixtureCss(): string {
-  const css = `${resolveCssImports(INDEX_CSS_PATH)}\n${resolveCssImports(COMPACT_CSS_PATH)}\n${resolveCssImports(BASIS_LAUNCHER_CSS_PATH)}`;
+  const css = `${resolveCssImports(INDEX_CSS_PATH)}\n${resolveCssImports(COMPACT_CSS_PATH)}\n${resolveCssImports(resolve(HERE, '../../SplitPaneLayout.css'))}\n${resolveCssImports(BASIS_LAUNCHER_CSS_PATH)}`;
   assertNoImportsSurvive(css);
   return css;
 }
@@ -71,7 +76,7 @@ function buildBasisFallbackHtml(): string {
 <style>${buildFixtureCss()}</style></head>
 <body style="margin:0"><header id="app-header" style="position:fixed;inset:0 0 auto;height:46px;z-index:1;background:#111;color:#fff">App header</header>
 <main style="padding-top:46px"><div class="chat-dock__conversation-surface" style="width:480px;height:360px;overflow:hidden;transform:translateZ(0)">Chat dock</div></main>
-<div class="station-dialog__overlay responsive-surface-overlay basis-pane-fallback-overlay" data-responsive-layer="dialog"><div class="station-dialog station-dialog--lg basis-pane-fallback responsive-surface-panel" role="dialog" aria-label="Basis"><div class="station-dialog__header"><div class="station-dialog__heading"><h2 class="station-dialog__title">Basis</h2></div><button type="button" class="responsive-dialog-close" aria-label="Close Basis">Close</button></div><div class="station-dialog__body"><section class="session-inventory"><h2>Session inventory</h2></section></div></div></div></body></html>`;
+<div class="station-dialog__overlay responsive-surface-overlay basis-pane-fallback-overlay" data-responsive-layer="dialog"><div class="station-dialog station-dialog--lg basis-pane-fallback responsive-surface-panel" role="dialog" aria-label="Basis"><div class="station-dialog__header"><div class="station-dialog__heading"><h2 class="station-dialog__title">Basis</h2></div><button type="button" class="responsive-dialog-close" aria-label="Close Basis">Close</button></div><div class="station-dialog__body"><section class="session-inventory"><h2>Chat inventory</h2></section></div></div></div></body></html>`;
 }
 
 function renderCompactMarkup(density: 'aside' | 'card'): string {
@@ -122,13 +127,28 @@ function renderCompactMarkup(density: 'aside' | 'card'): string {
     error: null,
   });
   const { container, unmount } = render(
-    createElement(SessionInventoryCompact, {
-      scope: compactScope,
-      density,
-      chatStoreId: 'compact-geometry',
-      onClose: () => {},
-      onOpenFull: () => {},
-    }),
+    createElement(
+      SplitPaneCompanion,
+      {
+        inspection: { containerFit: false },
+        companion: createElement(
+          'div',
+          { id: 'session-inventory-host' },
+          createElement(SessionInventoryCompact, {
+            scope: compactScope,
+            density,
+            chatStoreId: 'compact-geometry',
+            onClose: () => {},
+            onOpenFull: () => {},
+          }),
+        ),
+      },
+      createElement(
+        'section',
+        { id: 'chat-body', style: { flex: 1, minWidth: 0 } },
+        'Conversation',
+      ),
+    ),
   );
   const markup = container.innerHTML;
   unmount();
@@ -142,7 +162,7 @@ function buildFixtureHtml(
   return `<!doctype html>
 <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <style>${buildFixtureCss()}</style></head>
-<body style="margin:0"><main class="chat-dock__conversation-surface" style="width:${hostWidth}px;max-width:100%;height:680px"><div id="session-inventory-host">${renderCompactMarkup(density)}</div><section id="chat-body" style="flex:1;min-width:0">Conversation</section></main></body></html>`;
+<body style="margin:0"><main style="display:flex;width:${hostWidth}px;max-width:100%;height:680px">${renderCompactMarkup(density)}</main></body></html>`;
 }
 
 const chromiumAvailable = chromiumIsInstalled(REPO_ROOT);
@@ -189,6 +209,24 @@ describe('Session inventory compact host', () => {
     ).toBe('full-fallback');
   });
 });
+
+/**
+ * One rendered line of `element`'s text, in CSS pixels: the height of a
+ * single-glyph probe laid out with the element's own computed font and line
+ * height, so the bound follows whatever fonts this host resolves.
+ */
+async function lineHeightOf(element: Locator): Promise<number> {
+  return element.evaluate((node) => {
+    const probe = document.createElement('span');
+    const style = getComputedStyle(node);
+    probe.style.cssText = `display:block;position:absolute;visibility:hidden;white-space:nowrap;font:${style.font};line-height:${style.lineHeight};letter-spacing:${style.letterSpacing}`;
+    probe.textContent = 'X';
+    node.parentElement!.appendChild(probe);
+    const height = probe.getBoundingClientRect().height;
+    probe.remove();
+    return height;
+  });
+}
 
 describe.skipIf(!chromiumAvailable)(
   'Session inventory compact host geometry',
@@ -259,8 +297,14 @@ describe.skipIf(!chromiumAvailable)(
           expect(inventoryBox!.width).toBeLessThanOrEqual(fixture.inventoryMax);
           expect(chatBox!.width).toBeGreaterThanOrEqual(fixture.chatMin);
           expect(titleBox!.width).toBeGreaterThan(100);
-          expect(titleBox!.height).toBeLessThanOrEqual(60);
-          expect(scopeBox!.height).toBeLessThanOrEqual(40);
+          // At most two lines each, measured in the element's own line
+          // height rather than pixels: a fixed 60px bound held on the hosted
+          // Linux fonts and failed on macOS's, where the same two-line title
+          // measures 62px (#3887). Three lines still fail on either.
+          const titleLine = await lineHeightOf(heading.locator('h2'));
+          const scopeLine = await lineHeightOf(heading.locator('bdi'));
+          expect(titleBox!.height).toBeLessThanOrEqual(2 * titleLine + 1);
+          expect(scopeBox!.height).toBeLessThanOrEqual(2 * scopeLine + 1);
           const highlights = page.getByRole('region', {
             name: 'Inventory highlights',
           });

@@ -1,0 +1,7 @@
+{
+  "revision": "64891c18e241c760375382105cf509fe4f9e2e9c",
+
+  "notes": [
+    {"path":"deployment/telemetry/README.md","note":"Reviewed maintained source-checkout runtime exercise and its explicit diagnostic scope. Exact clean HEAD/candidate captured and reverified; owned bounded subprocesses and private logs, local pinned Docker endpoint, unique labelled profile/credentials/loopback ports, intent files before mutations and explicit unknown outcomes. Actual64891 run passed storage/auth/network placement, synthetic source commit/replay, Compose one-shot fence and copied-key refusal after receiver restart. Project stopped with material retained; installationAuthority remains false. Earlier650 stale-source control failed before Docker; 37 package/entry-scan tests passed. Public root command is npm qualify:telemetry-companion. Diagnostic query/durability/fresh restore/version/real Station/personal/native/release acceptance remain notVerified, even though separate private probes tested some of those paths. No baseline or publisher authority promotion.","inputs":["deployment/telemetry/README.md","scripts/qualify-telemetry-companion.mjs"]}
+  ]
+}

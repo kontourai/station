@@ -38,11 +38,11 @@ import {
   orchestrationEventsPersisted,
   orchestrationEventWindowElisions,
 } from '../../../telemetry/metrics.js';
+import { MAX_EVENT_CONTENT_BYTES } from '../event-content-spill.js';
 import type { PersistedRuntimeEvent } from '../event-store.js';
 import {
   EventStore,
   EventStoreIntegrityError,
-  MAX_EVENT_STORE_INGRESS_BYTES,
   MESSAGE_SEARCH_BACKFILL_EVENT_BATCH_SIZE,
 } from '../event-store.js';
 import {
@@ -557,6 +557,200 @@ describe('EventStore', () => {
     }
   });
 
+  // #3158 fix round 5, P2-B: the delegation-result migration runs on every
+  // boot and reads (PRAGMA table_info) before it writes. As a deferred
+  // SAVEPOINT that upgrade was refused at once under a peer writer, so a
+  // second runtime on a shared home died booting an ALREADY-migrated store.
+  test('reopens an already-migrated home while a peer writer holds the lock', async () => {
+    const path = join(dir, 'orchestration.sqlite');
+    store.delegationResultStore().arm({
+      childConversationId: 'child',
+      taskId: 'child',
+      parentConversationId: 'parent',
+      actor: { userId: 'human:local:owner', attribution: 'verified-bound' },
+    });
+    const peer = await holdPeerWriteLock(path, 1_000);
+    const startedAt = Date.now();
+    let returnedAt: number | undefined;
+    let reopened: EventStore | undefined;
+    try {
+      expect(() => {
+        reopened = new EventStore(path);
+      }).not.toThrow();
+      returnedAt = Date.now();
+      expect(reopened!.delegationResultStore().owner('child')).toBeDefined();
+    } finally {
+      reopened?.close();
+      const releasedAt = await peer.releasedAt();
+      expect(startedAt).toBeLessThan(releasedAt);
+      if (returnedAt !== undefined)
+        expect(returnedAt).toBeGreaterThanOrEqual(releasedAt);
+    }
+  });
+
+  // The same failure on the delivery store's runtime transitions that read
+  // before they write, on the shared EventStore connection.
+  test.each(['arm', 'spendSuppressions'] as const)(
+    'delegation result %s waits through a peer writer',
+    async (transition) => {
+      const results = store.delegationResultStore();
+      results.arm({
+        childConversationId: 'child',
+        taskId: 'child',
+        parentConversationId: 'parent',
+        actor: { userId: 'human:local:owner', attribution: 'verified-bound' },
+      });
+      results.beginCancel('child', 'token', 'turn-a');
+      const peer = await holdPeerWriteLock(
+        join(dir, 'orchestration.sqlite'),
+        1_000,
+      );
+      const startedAt = Date.now();
+      let returnedAt: number | undefined;
+      try {
+        if (transition === 'arm')
+          expect(
+            results.arm({
+              childConversationId: 'child-2',
+              taskId: 'child-2',
+              parentConversationId: 'parent',
+              actor: {
+                userId: 'human:local:owner',
+                attribution: 'verified-bound',
+              },
+            }),
+          ).toBe('armed');
+        else
+          expect(
+            results.spendSuppressions('child', 'turn-a', 'aborted'),
+          ).toEqual(['token']);
+        returnedAt = Date.now();
+      } finally {
+        const releasedAt = await peer.releasedAt();
+        expect(startedAt).toBeLessThan(releasedAt);
+        if (returnedAt !== undefined)
+          expect(returnedAt).toBeGreaterThanOrEqual(releasedAt);
+      }
+    },
+  );
+
+  // #3561 review F1: SQLite can answer SQLITE_FULL/IOERR/NOMEM by rolling
+  // back the whole transaction. A co-commit participant that swallows that
+  // error returns into autocommit mode; the append must then store nothing,
+  // not commit the event row by row and report it failed.
+  test('an append whose co-commit participant ends the transaction stores nothing and fails', () => {
+    expect(() =>
+      store.appendEvent(
+        {
+          eventId: 'participant-lost-transaction',
+          provider: 'codex',
+          threadId: 'lost-transaction',
+          method: 'turn.started',
+          turnId: 'lost-transaction-turn',
+          createdAt: '2026-10-10T00:00:00.000Z',
+          prompt: 'never stored',
+        },
+        [],
+        () => {
+          (store as any).db.exec('ROLLBACK');
+        },
+      ),
+    ).toThrow();
+    expect(store.listEvents('lost-transaction')).toEqual([]);
+    expect(store.hasEventId('participant-lost-transaction')).toBe(false);
+    // Nothing was left open: the next append commits on its own.
+    expect(
+      store.appendEvent({
+        eventId: 'after-lost-transaction',
+        provider: 'codex',
+        threadId: 'lost-transaction',
+        method: 'turn.started',
+        turnId: 'lost-transaction-turn',
+        createdAt: '2026-10-10T00:00:01.000Z',
+        prompt: 'stored',
+      }),
+    ).toBe(1);
+  });
+
+  // #3561 delta review: SQLITE_FULL/IOERR/NOMEM may roll back the whole
+  // transaction. A session write's own ROLLBACK TO then has no savepoint, and
+  // must not replace the real error with `no such savepoint`.
+  describe('a session write whose statement SQLite answers with a full rollback surfaces the original error', () => {
+    function rollBackWholeTransactionOnSessionInsert() {
+      const db = (store as any).db;
+      const prepare = db.prepare.bind(db);
+      return vi.spyOn(db, 'prepare').mockImplementation((sql: unknown) => {
+        if (!String(sql).includes('INSERT INTO provider_session_state'))
+          return prepare(sql);
+        return {
+          run: () => {
+            db.exec('ROLLBACK');
+            throw Object.assign(new Error('database or disk is full'), {
+              errcode: 13,
+              code: 'ERR_SQLITE_ERROR',
+            });
+          },
+        };
+      });
+    }
+    const session = {
+      provider: 'codex',
+      threadId: 'full-rollback',
+      status: 'ready' as const,
+      createdAt: '2026-10-10T00:00:00.000Z',
+      updatedAt: '2026-10-10T00:00:00.000Z',
+    };
+
+    test('upsertSession', () => {
+      const spy = rollBackWholeTransactionOnSessionInsert();
+      try {
+        expect(() => store.upsertSession(session)).toThrow(
+          'database or disk is full',
+        );
+      } finally {
+        spy.mockRestore();
+      }
+      expect(store.readSessionByThread('full-rollback')).toBeUndefined();
+    });
+
+    test('markSessionClosed', () => {
+      store.upsertSession(session);
+      const spy = rollBackWholeTransactionOnSessionInsert();
+      try {
+        expect(() => store.markSessionClosed('full-rollback', 'codex')).toThrow(
+          'database or disk is full',
+        );
+      } finally {
+        spy.mockRestore();
+      }
+      expect(store.readSessionByThread('full-rollback')?.status).toBe('ready');
+    });
+
+    test('upsertSession as a co-commit participant of an append', () => {
+      const spy = rollBackWholeTransactionOnSessionInsert();
+      try {
+        expect(() =>
+          store.appendEvent(
+            {
+              eventId: 'full-rollback-started',
+              provider: 'codex',
+              threadId: 'full-rollback',
+              method: 'turn.started',
+              turnId: 'full-rollback-turn',
+              createdAt: '2026-10-10T00:00:01.000Z',
+              prompt: 'never stored',
+            },
+            [],
+            () => store.upsertSession(session),
+          ),
+        ).toThrow('database or disk is full');
+      } finally {
+        spy.mockRestore();
+      }
+      expect(store.listEvents('full-rollback')).toEqual([]);
+    });
+  });
+
   test('seeded replay cursors remain monotonic across physical Draft discard', () => {
     // The connected client has seen every append. The reconnecting client
     // must see every surviving event whose append happened after its cursor.
@@ -773,6 +967,197 @@ describe('EventStore', () => {
     }
   });
 
+  test.each([
+    { deltas: 180, detached: true },
+    { deltas: 10, detached: false },
+    // The byte budget, not the count, cuts this page.
+    { deltas: 40, detached: true, size: 2_000 },
+    // Only the `turn.started` itself was left out: re-adding it closes the page.
+    { deltas: 149, detached: false },
+  ])(
+    'a newest page reports a detached turn start only across omitted rows ($deltas deltas)',
+    ({
+      deltas,
+      detached,
+      size = 1,
+    }: {
+      deltas: number;
+      detached: boolean;
+      size?: number;
+    }) => {
+      const threadId = `detached-${deltas}-${size}`;
+      const fields = {
+        provider: 'codex' as const,
+        threadId,
+        turnId: 'turn',
+        itemId: 'answer',
+        createdAt: '2026-09-12T00:00:00Z',
+      };
+      store.appendEvent({
+        ...fields,
+        eventId: `${threadId}-start`,
+        method: 'turn.started',
+        prompt: 'Question',
+      });
+      for (let i = 0; i < deltas; i++)
+        store.appendEvent({
+          ...fields,
+          eventId: `${threadId}-delta-${i}`,
+          method: 'content.text-delta',
+          delta: 'x'.repeat(size),
+        });
+      const read = (cursor?: string) =>
+        store.listConversationEventWindowByTurn([threadId], {
+          direction: 'newest',
+          turnLimit: 1,
+          cursor,
+        });
+      const first = read();
+      expect(first.events[0].method).toBe('turn.started');
+      expect(first.turnStartDetached === true).toBe(detached);
+      // Far under the count limit: only the byte budget can have cut it.
+      if (size > 1) expect(first.events.length).toBeLessThan(deltas);
+      if (!detached) return;
+      // The cursor reads the gap: its page holds the rest of the turn and is
+      // contiguous, so together the two pages are the whole turn.
+      const gap = read(first.nextCursor);
+      expect(gap.turnStartDetached).toBeUndefined();
+      expect(
+        new Set([...first.events, ...gap.events].map((event) => event.id)).size,
+      ).toBe(deltas + 1);
+    },
+  );
+
+  test.each([
+    // A steer re-announces the turn; it is not the turn's start.
+    { label: 'steered', before: 200, steer: true, after: 20 },
+    // The oldest row that fit is turnless; the turn behind it is anchored.
+    { label: 'turnless oldest', before: 100, steer: false, after: 148 },
+    // A steer is not a turn: counting it would push the start out of range.
+    {
+      label: 'steered before the cap',
+      before: 20,
+      steer: true,
+      after: 200,
+      turnLimit: 1,
+    },
+  ])(
+    'a capped newest page re-adds the original turn start ($label)',
+    ({
+      label,
+      before,
+      steer,
+      after,
+      turnLimit = 10,
+    }: {
+      label: string;
+      before: number;
+      steer: boolean;
+      after: number;
+      turnLimit?: number;
+    }) => {
+      const threadId = `anchor-${label}`;
+      const fields = {
+        provider: 'codex' as const,
+        threadId,
+        turnId: 'turn',
+        itemId: 'answer',
+        createdAt: '2026-09-12T00:00:00Z',
+      };
+      const delta = (index: number) =>
+        store.appendEvent({
+          ...fields,
+          eventId: `${threadId}-delta-${index}`,
+          method: 'content.text-delta',
+          delta: 'x',
+        });
+      store.appendEvent({
+        ...fields,
+        eventId: `${threadId}-start`,
+        method: 'turn.started',
+        prompt: 'Question',
+      });
+      for (let i = 0; i < before; i++) delta(i);
+      if (steer)
+        store.appendEvent({
+          ...fields,
+          eventId: `${threadId}-steer`,
+          method: 'turn.started',
+          inputKind: 'steer',
+          prompt: 'Steer',
+        } as never);
+      else
+        store.appendEvent({
+          provider: 'codex',
+          threadId,
+          eventId: `${threadId}-idle`,
+          method: 'session.state-changed',
+          from: 'running',
+          to: 'idle',
+          createdAt: '2026-09-12T00:00:00Z',
+        } as never);
+      for (let i = before; i < before + after; i++) delta(i);
+      const page = store.listConversationEventWindowByTurn([threadId], {
+        direction: 'newest',
+        turnLimit,
+      });
+      expect(page.events[0].id).toBe(`${threadId}-start`);
+      expect(page.turnStartDetached).toBe(true);
+      if (!steer) expect(page.events[1].turnId).toBeUndefined();
+    },
+  );
+
+  // A steer is published after the engine accepts it, so it can land after
+  // the next turn started. Its turn's own start then lies before the range,
+  // and the steer must not be re-added in its place.
+  test('a capped newest page never re-adds a late steer as its turn start', () => {
+    const threadId = 'late-steer';
+    const base = {
+      provider: 'codex' as const,
+      threadId,
+      itemId: 'answer',
+      createdAt: '2026-09-12T00:00:00Z',
+    };
+    store.appendEvent({
+      ...base,
+      turnId: 'turn-1',
+      eventId: 'late-steer-start-1',
+      method: 'turn.started',
+      prompt: 'First',
+    });
+    store.appendEvent({
+      ...base,
+      turnId: 'turn-2',
+      eventId: 'late-steer-start-2',
+      method: 'turn.started',
+      prompt: 'Second',
+    });
+    store.appendEvent({
+      ...base,
+      turnId: 'turn-1',
+      eventId: 'late-steer-steer-1',
+      method: 'turn.started',
+      inputKind: 'steer',
+      prompt: 'Steer',
+    } as never);
+    for (let i = 0; i < 200; i++)
+      store.appendEvent({
+        ...base,
+        turnId: 'turn-1',
+        eventId: `late-steer-delta-${i}`,
+        method: 'content.text-delta',
+        delta: 'x',
+      });
+    const page = store.listConversationEventWindowByTurn([threadId], {
+      direction: 'newest',
+      turnLimit: 1,
+    });
+    expect(page.events.map((event) => event.id)).not.toContain(
+      'late-steer-steer-1',
+    );
+    expect(page.turnStartDetached).toBeUndefined();
+  });
+
   test('newest paging pins its watermark and lineage while rejecting malformed cursors', () => {
     const base = {
       provider: 'codex' as const,
@@ -879,6 +1264,85 @@ describe('EventStore', () => {
     );
   });
 
+  test('exact-answer lineage selects only its turn and explicit child Session handles', () => {
+    const threadId = 'station:inventory-lineage';
+    const base = {
+      provider: 'station-agent' as const,
+      threadId,
+      createdAt: '2026-10-20T00:00:00.000Z',
+    };
+    for (const turnId of ['turn-a', 'turn-b']) {
+      store.appendEvent({
+        ...base,
+        eventId: `decision-${turnId}`,
+        turnId,
+        method: 'request.resolved',
+        requestId: `request-${turnId}`,
+        status: 'approved',
+        response: { secret: 'not a descriptor' },
+      });
+      store.appendEvent({
+        ...base,
+        eventId: `child-${turnId}`,
+        turnId,
+        method: 'child-work.updated',
+        delta: {
+          kind: 'upsert',
+          item: {
+            producer: 'engine-subagent',
+            reporterThreadId: threadId,
+            childId: `engine-${turnId}`,
+            status: 'completed',
+            parent: { turnId, toolCallId: `spawn-${turnId}` },
+            result: {
+              summary: 'not a descriptor',
+              handle: { kind: 'session', threadId: `child-session-${turnId}` },
+            },
+          },
+        },
+      });
+    }
+    store.appendEvent({
+      ...base,
+      eventId: 'child-without-session',
+      turnId: 'turn-a',
+      method: 'child-work.updated',
+      delta: {
+        kind: 'upsert',
+        item: {
+          producer: 'engine-subagent',
+          reporterThreadId: threadId,
+          childId: 'opaque-provider-id',
+          status: 'running',
+          parent: { turnId: 'turn-a', toolCallId: 'spawn-unknown' },
+        },
+      },
+    });
+    const result = store.readAnswerInventoryLineage(threadId, 'turn-a');
+    expect(result).toEqual({
+      status: 'found',
+      decisions: [
+        {
+          eventId: 'decision-turn-a',
+          requestId: 'request-turn-a',
+          status: 'accepted',
+        },
+      ],
+      delegations: [
+        {
+          eventId: 'child-turn-a',
+          toolCallId: 'spawn-turn-a',
+          childSessionId: 'child-session-turn-a',
+        },
+      ],
+      partialDelegations: true,
+    });
+    expect(JSON.stringify(result)).not.toContain('not a descriptor');
+    expect(
+      store.readAnswerInventoryLineage('another-session', 'turn-a'),
+    ).toMatchObject({ status: 'found', decisions: [], delegations: [] });
+  });
+
   test('reads complete Session inventory descriptors in bounded stable pages', () => {
     const threadId = 'inventory-paging';
     for (let index = 0; index < 45; index += 1) {
@@ -976,6 +1440,25 @@ describe('EventStore', () => {
 
     test('counts its reply but not its start as a message', () => {
       seed();
+      store.close();
+      store = new EventStore(join(dir, 'orchestration.sqlite'));
+      const restored = projectRuntimeEventsToMessages(
+        store.listEvents(threadId).map((row) => row.payload),
+      );
+      const providerReply = restored.find(
+        (message) =>
+          message.role === 'assistant' &&
+          message.metadata?.turnId === 'provider:p',
+      );
+      expect(providerReply?.metadata?.sender).toEqual({
+        kind: 'provider',
+        sessionId: threadId,
+        engine: 'claude',
+      });
+      expect(
+        restored.find((message) => message.metadata?.turnId === 'user-turn')
+          ?.metadata?.sender,
+      ).toBeUndefined();
       expect(
         store.listConversationHistoryPage({
           ownerUserId: 'owner-alpha',
@@ -990,14 +1473,50 @@ describe('EventStore', () => {
       const starts = page.events.filter(
         (event) => event.method === 'turn.started',
       );
+      // Its start carries no prompt and no attachments, so the listing query
+      // never returns it (the module's trigger check stays as a second
+      // guard for a provider turn that does carry text).
       expect(starts).toEqual([
         expect.objectContaining({ id: 'pt-user-start' }),
-        expect.objectContaining({
-          id: 'pt-provider-start',
-          trigger: 'provider',
-        }),
       ]);
       expect(starts[0]).not.toHaveProperty('trigger');
+    });
+
+    test('projects the provider trigger for a provider-opened start that carries text', () => {
+      // A provider-opened turn with text passes the authored-input filter, so
+      // the store's own trigger projection is what lets the inventory module
+      // drop it as a turn nobody authored.
+      const textThread = 'provider-turn-with-text';
+      store.appendEvent({
+        provider: 'claude',
+        threadId: textThread,
+        createdAt: at,
+        eventId: 'pt-text-provider-start',
+        turnId: 'provider:text',
+        method: 'turn.started',
+        prompt: 'background job finished',
+        metadata: trigger,
+      });
+      store.appendEvent({
+        provider: 'claude',
+        threadId: textThread,
+        createdAt: at,
+        eventId: 'pt-text-user-start',
+        turnId: 'user-text',
+        method: 'turn.started',
+        prompt: 'start the job',
+      });
+      const starts = store
+        .listSessionInventoryEvents(textThread)
+        .events.filter((event) => event.method === 'turn.started');
+      expect(starts).toEqual([
+        expect.objectContaining({
+          id: 'pt-text-provider-start',
+          trigger: 'provider',
+        }),
+        expect.objectContaining({ id: 'pt-text-user-start' }),
+      ]);
+      expect(starts[1]).not.toHaveProperty('trigger');
     });
 
     test('its Basis window carries no input for its start', () => {
@@ -4214,19 +4733,47 @@ describe('EventStore', () => {
       return found;
     };
 
+    // A long prompt is spilled out of line (event-content-spill.ts), so only
+    // a large field outside the spill allowlist (here adapter metadata) can
+    // still push a stored event past the per-event window ceiling.
+    const startTurnWithLargeMetadata = (turnId: string) => {
+      store.appendEvent({
+        eventId: `${turnId}-start`,
+        provider: 'codex',
+        threadId,
+        turnId,
+        createdAt: '2026-08-19T03:00:00.000Z',
+        method: 'turn.started',
+        prompt: 'short',
+        metadata: { note: 'p'.repeat(32_000) },
+      });
+    };
+
     test('labels a payload stripped by the serialized ceiling byte_limit', () => {
       // Comfortably past the per-event ceiling (24 KiB — sized to clear the
-      // 16 KiB transcript chunks, so this needs 32 KiB), and nothing else
-      // about it is unusual — this is the shape a very long prompt or an
-      // inline attachment produces.
-      startTurn('turn-big', 'p'.repeat(32_000));
+      // 16 KiB transcript chunks, so this needs 32 KiB).
+      startTurnWithLargeMetadata('turn-big');
       const started = windowEvent('turn-big-start');
 
       expect(started.elided).toBe('byte_limit');
       // The label is not decoration: the fields it accounts for really are
       // gone from this read.
-      expect((started.payload as { prompt?: string }).prompt).toBeUndefined();
+      expect(
+        (started.payload as { metadata?: unknown }).metadata,
+      ).toBeUndefined();
       expect(started.payload.eventId).toBe('turn-big-start');
+    });
+
+    test('a long prompt is spilled, so its event stays whole in the window', () => {
+      startTurn('turn-long', 'p'.repeat(32_000));
+      const started = windowEvent('turn-long-start');
+
+      expect(started.elided).toBeUndefined();
+      expect((started.payload as { prompt?: unknown }).prompt).toMatchObject({
+        $stationContent: 1,
+        kind: 'string',
+        length: 32_000,
+      });
     });
 
     test('labels a cut tool result output_limit and leaves the rest of the payload alone', () => {
@@ -4331,7 +4878,7 @@ describe('EventStore', () => {
      */
     test('counts what it withheld, by reason', () => {
       vi.mocked(orchestrationEventWindowElisions.add).mockClear();
-      startTurn('turn-counted', 'p'.repeat(32_000));
+      startTurnWithLargeMetadata('turn-counted');
 
       store.listEventWindowByTurn(threadId, { turnLimit: 1 });
 
@@ -4615,10 +5162,10 @@ describe('EventStore', () => {
       createdAt: '2026-08-09T02:00:02.000Z',
       method: 'tool.completed',
       toolCallId: 'tool-1',
-      // The ACP ingress ceiling rejects a megabyte before this read-side
-      // window can project it. This remains far above the 84-char window
-      // output limit while staying below that ingress boundary.
-      output: 'x'.repeat(60_000),
+      // Far above the 84-char window output limit, and below the size at
+      // which ingress would store the output out of line (16 KiB), so the
+      // window itself must cut it.
+      output: 'x'.repeat(10_000),
     } as any);
 
     const newest = store.listEventWindowByTurn(threadId, { turnLimit: 1 });
@@ -4915,7 +5462,13 @@ describe('EventStore', () => {
       (event) => event.id === 'long-turn-completed',
     )!;
     expect(completed.elided).toBeUndefined();
-    expect((completed.payload as { outputText?: string }).outputText).toBe(
+    // Past the stored-event target the reply is stored out of line: the
+    // window carries a reference whose resolution is the exact reply.
+    expect(
+      (completed.payload as { outputText?: unknown }).outputText,
+    ).toMatchObject({ $stationContent: 1, kind: 'string', length: 30_000 });
+    const [resolved] = store.resolveEventContent([completed]);
+    expect((resolved!.payload as { outputText?: string }).outputText).toBe(
       reply,
     );
     const messages = projectRuntimeEventsToMessages(
@@ -4925,6 +5478,12 @@ describe('EventStore', () => {
       'user',
       'assistant',
     ]);
+    // Unresolved, the assistant row shows the preview marked as partial,
+    // never the preview as if it were the reply.
+    const assistantText = messages[1]!.parts
+      .map((part) => (part as { text?: string }).text ?? '')
+      .join('');
+    expect(assistantText).toContain('[30000 bytes of content not inlined]');
   });
 
   test('keeps a ten-session conversation cursor within the route cursor cap', () => {
@@ -5555,15 +6114,26 @@ describe('EventStore', () => {
 
     const prepare = vi.spyOn(DatabaseSync.prototype as any, 'prepare');
     store = new EventStore(databasePath);
-    const payloadQueries = prepare.mock.calls
-      .map(([sql]) => String(sql))
-      .filter((sql) =>
-        sql.includes('SELECT payload FROM orchestration_events'),
-      );
+    const allQueries = prepare.mock.calls.map(([sql]) => String(sql));
+    const payloadQueries = allQueries.filter((sql) =>
+      sql.includes('SELECT payload FROM orchestration_events'),
+    );
     prepare.mockRestore();
 
     // The bounded project-label upgrade adds its latest metadata lookup and
     // one no-op legacy-label probe. Every projection read remains capped.
+    console.info(
+      '[high-volume-payload-queries]',
+      JSON.stringify(payloadQueries),
+    );
+    expect(
+      allQueries.filter(
+        (sql) =>
+          sql.includes(
+            "('turn.completed','turn.aborted','runtime.error','session.exited')",
+          ) && /SELECT (event\.)?payload FROM orchestration_events/.test(sql),
+      ),
+    ).toEqual([]);
     expect(payloadQueries).toHaveLength(5);
     expect(payloadQueries.every((sql) => sql.includes('LIMIT'))).toBe(true);
     expect(payloadQueries.join('\n')).not.toContain("'turn.completed'");
@@ -6576,6 +7146,339 @@ describe('EventStore', () => {
   // superset queries grouped in memory), so agreement here is real evidence,
   // not tautology.
   describe('listSessionProjectionEventsForThreads (station#4466 batched read)', () => {
+    test('positive start seeks stay indexed across large legacy-only and raw-suffix histories', () => {
+      const database = store['db'];
+      const size = 6000;
+      const createdAt = '2030-01-01T00:00:00Z';
+      store.appendEvent({
+        eventId: 'indexed-B',
+        provider: 'claude',
+        threadId: 'raw-suffix',
+        turnId: 'N',
+        invocationId: 'B',
+        method: 'turn.started',
+        prompt: 'B',
+        createdAt,
+      });
+      const insert = database.prepare(
+        'INSERT INTO orchestration_events(id,provider,thread_id,turn_id,method,payload,created_at,sequence,global_sequence) VALUES (?,?,?,?,?,?,?,?,?)',
+      );
+      database.exec('BEGIN IMMEDIATE');
+      try {
+        for (const threadId of ['legacy-only', 'raw-suffix'])
+          for (let index = 1; index <= size; index++) {
+            const event = {
+              eventId: `${threadId}:raw:${index}`,
+              provider: 'claude',
+              threadId,
+              turnId: 'N',
+              method: 'turn.started',
+              prompt: 'unassigned',
+              createdAt,
+            };
+            insert.run(
+              event.eventId,
+              event.provider,
+              threadId,
+              'N',
+              event.method,
+              JSON.stringify(event),
+              createdAt,
+              index + 1,
+              (threadId === 'legacy-only' ? 0 : size) + index + 1,
+            );
+          }
+        database.exec('COMMIT');
+      } catch (cause) {
+        database.exec('ROLLBACK');
+        throw cause;
+      }
+      database.exec('DROP INDEX idx_events_positive_turn_start');
+      store.close();
+      const originalExec = DatabaseSync.prototype.exec;
+      let indexBuildMs = 0;
+      const observedBuild = vi
+        .spyOn(DatabaseSync.prototype, 'exec')
+        .mockImplementation(function (
+          this: InstanceType<typeof DatabaseSync>,
+          sql: unknown,
+        ) {
+          const before = performance.now();
+          const result = originalExec.call(this, sql);
+          if (
+            typeof sql === 'string' &&
+            sql.startsWith('CREATE INDEX idx_events_positive_turn_start')
+          )
+            indexBuildMs = performance.now() - before;
+          return result;
+        });
+      try {
+        store = new EventStore(join(dir, 'orchestration.sqlite'));
+      } finally {
+        observedBuild.mockRestore();
+      }
+      console.info(
+        '[positive-start-existing-data-build]',
+        JSON.stringify({ legacyStarts: size, rawSuffix: size, indexBuildMs }),
+      );
+      const started = performance.now();
+      const direct = capturePreparedStatements(store, () => {
+        expect(
+          store
+            .listSessionProjectionEvents('raw-suffix')
+            .some((row) => row.id === 'indexed-B'),
+        ).toBe(true);
+        store.listSessionProjectionEvents('legacy-only');
+      });
+      const singleMs = performance.now() - started;
+      const batchStarted = performance.now();
+      const batch = capturePreparedStatements(store, () => {
+        expect(
+          store
+            .listSessionProjectionEventsForThreads([
+              'legacy-only',
+              'raw-suffix',
+            ])
+            .get('raw-suffix')
+            ?.some((row) => row.id === 'indexed-B'),
+        ).toBe(true);
+      });
+      const selected = [...direct, ...batch].filter(
+        ({ sql }) =>
+          sql.includes("'$.metadata.trigger'") &&
+          sql.includes("method = 'turn.started'"),
+      );
+      expect(selected).toHaveLength(3);
+      const plans = selected.map((statement) => capturedPlan(store, statement));
+      console.info(
+        '[positive-start-work]',
+        JSON.stringify({
+          startsPerThread: size,
+          singleMs,
+          batchMs: performance.now() - batchStarted,
+          statements: selected,
+          plans,
+        }),
+      );
+      if (process.env.STATION_POSITIVE_START_EVIDENCE_PATH)
+        writeFileSync(
+          process.env.STATION_POSITIVE_START_EVIDENCE_PATH,
+          JSON.stringify(
+            {
+              startsPerThread: size,
+              indexBuildMs,
+              singleMs,
+              batchMs: performance.now() - batchStarted,
+              statements: selected,
+              plans,
+            },
+            null,
+            2,
+          ),
+        );
+      for (const plan of plans) {
+        expect(plan).toContain('idx_events_positive_turn_start');
+        expect(plan).not.toContain('USE TEMP B-TREE');
+      }
+    });
+
+    test.each(['absent', 'wrong'] as const)(
+      'a required positive-start index that is %s refuses instead of scanning',
+      (mode) => {
+        store.appendEvent({
+          eventId: 'required-index-B',
+          provider: 'claude',
+          threadId: 'required-index',
+          turnId: 'N',
+          invocationId: 'B',
+          method: 'turn.started',
+          prompt: 'B',
+          createdAt: '2030-01-01T00:00:00Z',
+        });
+        store['db'].exec('DROP INDEX idx_events_positive_turn_start');
+        if (mode === 'wrong')
+          store['db'].exec(
+            'CREATE INDEX idx_events_positive_turn_start ON orchestration_events(thread_id,sequence DESC)',
+          );
+        expect(() =>
+          store.listSessionProjectionEvents('required-index'),
+        ).toThrow('positive-start index');
+        expect(() =>
+          store.listSessionProjectionEventsForThreads(['required-index']),
+        ).toThrow('positive-start index');
+      },
+    );
+
+    test.each(['legacy-corrupt', 'suffix-corrupt', 'older-corrupt'] as const)(
+      'indexed canonical malformed-start blocker preserves %s semantics',
+      (mode) => {
+        const db = store['db'];
+        const raw = (id: string, sequence: number, payload: string) =>
+          db
+            .prepare(
+              'INSERT INTO orchestration_events(id,provider,thread_id,turn_id,method,payload,created_at,sequence,global_sequence) VALUES(?,?,?,?,?,?,?,?,?)',
+            )
+            .run(
+              id,
+              'claude',
+              'corrupt-index',
+              'N',
+              'turn.started',
+              payload,
+              '2030-01-01T00:00:00Z',
+              sequence,
+              sequence,
+            );
+        if (mode !== 'legacy-corrupt')
+          raw(
+            'valid-index-B',
+            mode === 'older-corrupt' ? 3 : 1,
+            JSON.stringify({
+              eventId: 'valid-index-B',
+              provider: 'claude',
+              threadId: 'corrupt-index',
+              turnId: 'N',
+              invocationId: 'B',
+              method: 'turn.started',
+              prompt: 'B',
+              createdAt: '2030-01-01T00:00:00Z',
+            }),
+          );
+        const captured =
+          mode === 'older-corrupt'
+            ? capturePreparedStatements(store, () => {
+                store.listSessionProjectionEvents('corrupt-index');
+                store.listSessionProjectionEventsForThreads(['corrupt-index']);
+              }).filter(({ sql }) =>
+                sql.includes('INDEXED BY idx_events_positive_turn_start'),
+              )
+            : [];
+        raw('malformed-index-start', 2, '{invalid');
+        raw(
+          'raw-index-suffix',
+          4,
+          JSON.stringify({
+            eventId: 'raw-index-suffix',
+            provider: 'claude',
+            threadId: 'corrupt-index',
+            turnId: 'N',
+            method: 'turn.started',
+            prompt: 'raw',
+            createdAt: '2030-01-01T00:00:00Z',
+          }),
+        );
+        if (mode === 'older-corrupt') {
+          expect(captured).toHaveLength(2);
+          for (const statement of captured) {
+            const rows = db
+              .prepare(statement.sql)
+              .all(...statement.values) as Array<{
+              id: string;
+              payload: string;
+            }>;
+            expect(rows).toHaveLength(1);
+            expect(rows[0]?.id).toBe('valid-index-B');
+            expect(() => JSON.parse(rows[0]!.payload)).not.toThrow();
+          }
+        }
+        for (const read of [
+          () => store.listSessionProjectionEvents('corrupt-index'),
+          () => store.listSessionProjectionEventsForThreads(['corrupt-index']),
+        ]) {
+          expect(read).toThrow();
+        }
+      },
+    );
+
+    test('positive-start migration builds retained history atomically and is idempotent on reopen', () => {
+      const path = join(dir, 'index-migration.sqlite');
+      const first = new EventStore(path);
+      first.appendEvent({
+        eventId: 'migration-B',
+        provider: 'claude',
+        threadId: 'migration-B',
+        turnId: 'N',
+        invocationId: 'B',
+        method: 'turn.started',
+        prompt: 'B',
+        createdAt: '2030-01-01T00:00:00Z',
+      });
+      first['db'].exec('DROP INDEX idx_events_positive_turn_start');
+      const before = first['db']
+        .prepare('SELECT * FROM orchestration_events')
+        .all();
+      first.close();
+      const originalExec = DatabaseSync.prototype.exec;
+      const fault = vi
+        .spyOn(DatabaseSync.prototype, 'exec')
+        .mockImplementation(function (
+          this: InstanceType<typeof DatabaseSync>,
+          sql: unknown,
+        ) {
+          const result = originalExec.call(this, sql);
+          if (
+            typeof sql === 'string' &&
+            sql.startsWith('CREATE INDEX idx_events_positive_turn_start')
+          )
+            throw new Error('after actual index build');
+          return result;
+        });
+      try {
+        expect(() => new EventStore(path)).toThrow('after actual index build');
+      } finally {
+        fault.mockRestore();
+      }
+      const inspect = new DatabaseSync(path);
+      expect(
+        inspect
+          .prepare(
+            "SELECT 1 FROM sqlite_schema WHERE name='idx_events_positive_turn_start'",
+          )
+          .get(),
+      ).toBeUndefined();
+      expect(
+        inspect.prepare('SELECT * FROM orchestration_events').all(),
+      ).toEqual(before);
+      inspect.close();
+      const started = performance.now();
+      const migrated = new EventStore(path);
+      const schema = migrated['db']
+        .prepare(
+          "SELECT sql FROM sqlite_schema WHERE name='idx_events_positive_turn_start'",
+        )
+        .get();
+      expect(
+        migrated
+          .listSessionProjectionEvents('migration-B')
+          .some((row) => row.id === 'migration-B'),
+      ).toBe(true);
+      expect(
+        migrated['db'].prepare('SELECT * FROM orchestration_events').all(),
+      ).toEqual(before);
+      console.info(
+        '[positive-start-index-build]',
+        JSON.stringify({
+          elapsedMs: performance.now() - started,
+          retainedEvents: before.length,
+          schema,
+        }),
+      );
+      migrated.close();
+      const reopened = new EventStore(path);
+      expect(
+        reopened['db']
+          .prepare(
+            "SELECT sql FROM sqlite_schema WHERE name='idx_events_positive_turn_start'",
+          )
+          .get(),
+      ).toEqual(schema);
+      reopened['db'].exec(
+        'DROP INDEX idx_events_positive_turn_start; CREATE INDEX idx_events_positive_turn_start ON orchestration_events(thread_id)',
+      );
+      reopened.close();
+      expect(() => new EventStore(path)).toThrow('positive-start index');
+    });
+
     test('the latest-any slot seeks once per requested thread instead of ranking history', () => {
       for (const threadId of ['seek-a', 'seek-b']) {
         seedProjectionThread(threadId, 'ordinary');
@@ -7572,38 +8475,150 @@ describe('EventStore', () => {
       ],
       { stdio: ['ignore', 'pipe', 'pipe'] },
     );
-    await new Promise<void>((resolve, reject) => {
-      holder.once('error', reject);
-      holder.stdout.once('data', () => resolve());
+    const stdout = { head: Buffer.alloc(0), tail: Buffer.alloc(0), bytes: 0 };
+    const stderr = { head: Buffer.alloc(0), tail: Buffer.alloc(0), bytes: 0 };
+    const retain = (output: typeof stdout, chunk: Buffer) => {
+      output.bytes += chunk.length;
+      const headBytes = Math.min(16_384 - output.head.length, chunk.length);
+      output.head = Buffer.concat([output.head, chunk.subarray(0, headBytes)]);
+      output.tail = Buffer.concat([
+        output.tail,
+        chunk.subarray(headBytes),
+      ]).subarray(-16_384);
+    };
+    const snapshot = (output: typeof stdout) => ({
+      text:
+        output.bytes > output.head.length + output.tail.length
+          ? `${output.head.toString('utf8')}\n[${output.bytes - output.head.length - output.tail.length} bytes omitted]\n${output.tail.toString('utf8')}`
+          : Buffer.concat([output.head, output.tail]).toString('utf8'),
+      bytes: output.bytes,
+      retainedBytes: output.head.length + output.tail.length,
+      truncated: output.bytes > output.head.length + output.tail.length,
+      retention:
+        'first 16384 bytes and last 16384 bytes; omitted middle if truncated',
     });
-    const first = new EventStore(path);
-    await new Promise<void>((resolve, reject) => {
-      holder.once('error', reject);
-      holder.once('exit', (code) =>
-        code === 0 ? resolve() : reject(new Error(`holder exited ${code}`)),
+    // Decoded from the unchanged child script's stdout literal, not any data chunk.
+    const lockMarker = Buffer.from('locked\n');
+    let markerTail = Buffer.alloc(0);
+    let lockObserved = false;
+    let phase = 'waiting for lock marker';
+    let spawnError: {
+      name: string;
+      message: string;
+      stack?: string;
+      code?: unknown;
+    } | null = null;
+    let exit: { code: number | null; signal: NodeJS.Signals | null } | null =
+      null;
+    holder.stderr.on('data', (chunk: Buffer) => retain(stderr, chunk));
+    holder.once('error', (error) => {
+      spawnError = {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+        code: 'code' in error ? error.code : undefined,
+      };
+    });
+    holder.once('exit', (code, signal) => {
+      exit = { code, signal };
+    });
+    const ready = new Promise<'locked' | 'closed'>((resolve) => {
+      holder.stdout.on('data', (chunk: Buffer) => {
+        retain(stdout, chunk);
+        const pending = Buffer.concat([markerTail, chunk]);
+        if (!lockObserved && pending.includes(lockMarker)) {
+          lockObserved = true;
+          resolve('locked');
+        }
+        markerTail = pending.subarray(-(lockMarker.length - 1));
+      });
+      holder.once('close', () => resolve('closed'));
+    });
+    // Resolve rather than reject: even an early failure is observed after both pipes close.
+    const closed = new Promise<{
+      code: number | null;
+      signal: NodeJS.Signals | null;
+    }>((resolve) => {
+      holder.once('close', (code, signal) => resolve({ code, signal }));
+    });
+    const reached: string[] = [];
+    let first: EventStore | undefined;
+    let second: EventStore | undefined;
+    const failure = (outcome: Awaited<typeof closed>) =>
+      new Error(
+        `holder failed during ${phase}: ${JSON.stringify({
+          ...outcome,
+          exit,
+          spawnError,
+          lockObserved,
+          stdout: snapshot(stdout),
+          stderr: snapshot(stderr),
+        })}`,
       );
-    });
-    const second = new EventStore(path);
-    recoveryLedger(first).arm({
-      fingerprint: 'after-migration:turn:capacity:account',
-      threadId: 'after-migration',
-      provider: 'codex',
-      sourceEventId: 'event',
-      sourceTurnId: 'turn',
-      failureKind: 'capacity',
-      scope: 'account',
-      decision: 'retry-now',
-      dueAt: '2026-08-13T00:00:00.000Z',
-      maxAttempts: 1,
-      outcome: 'armed',
-      createdAt: '2026-08-13T00:00:00.000Z',
-      updatedAt: '2026-08-13T00:00:00.000Z',
-    });
-    expect(
-      recoveryLedger(second).find('after-migration:turn:capacity:account'),
-    ).toBeTruthy();
-    first.close();
-    second.close();
+    try {
+      if ((await ready) !== 'locked' || spawnError) throw failure(await closed);
+      reached.push('actual lock marker observed');
+      phase = 'first EventStore constructor';
+      first = new EventStore(path);
+      reached.push('first EventStore constructor returned');
+      phase = 'holder stream closure';
+      const outcome = await closed;
+      if (spawnError || outcome.code !== 0 || outcome.signal !== null)
+        throw failure(outcome);
+      reached.push('holder closed with code 0 and no signal');
+      phase = 'second EventStore constructor';
+      second = new EventStore(path);
+      reached.push('second EventStore constructor returned');
+      phase = 'cross-store recovery arm/find';
+      recoveryLedger(first).arm({
+        fingerprint: 'after-migration:turn:capacity:account',
+        threadId: 'after-migration',
+        provider: 'codex',
+        sourceEventId: 'event',
+        sourceTurnId: 'turn',
+        failureKind: 'capacity',
+        scope: 'account',
+        decision: 'retry-now',
+        dueAt: '2026-08-13T00:00:00.000Z',
+        maxAttempts: 1,
+        outcome: 'armed',
+        createdAt: '2026-08-13T00:00:00.000Z',
+        updatedAt: '2026-08-13T00:00:00.000Z',
+      });
+      expect(
+        recoveryLedger(second).find('after-migration:turn:capacity:account'),
+      ).toBeTruthy();
+      reached.push('original cross-store recovery arm/find assertion passed');
+      phase = 'assertions complete';
+    } finally {
+      const close = await closed;
+      try {
+        process.stdout.write(
+          `\n<<<STATION_EVENT_STORE_RECOVERY_HOLDER_JSON_BEGIN>>>\n${JSON.stringify(
+            {
+              test: 'waits through writer contention before recovery-settlement migration',
+              pid: holder.pid,
+              executable: process.execPath,
+              databasePath: path,
+              lockMarkerHex: lockMarker.toString('hex'),
+              lockObserved,
+              phase,
+              reached,
+              spawnError,
+              exit,
+              close,
+              stdout: snapshot(stdout),
+              stderr: snapshot(stderr),
+            },
+            null,
+            2,
+          )}\n<<<STATION_EVENT_STORE_RECOVERY_HOLDER_JSON_END>>>\n`,
+        );
+      } finally {
+        first?.close();
+        second?.close();
+      }
+    }
   });
 
   test('reads bounded event pages after a stable per-thread sequence', () => {
@@ -8476,6 +9491,8 @@ describe('EventStore', () => {
       expect(
         store.toolCompletedEventById('thread', 'evt-tool-result-utf8-boundary'),
       ).toMatchObject({ output: exact });
+      // Tool output is spilled out of line, so the backstop now guards only
+      // fields outside the spill allowlist (adapter-built fields).
       expect(() =>
         store.appendEvent({
           eventId: 'evt-tool-result-overflow',
@@ -8488,8 +9505,9 @@ describe('EventStore', () => {
           toolCallId: 'call',
           toolName: 'shell',
           status: 'success',
-          output: '😀'.repeat(16_384),
-        }),
+          output: 'ok',
+          adapterNote: '😀'.repeat(16_384),
+        } as CanonicalRuntimeEvent),
       ).toThrow('ingress ceiling');
       expect(
         store.toolCompletedEventById('thread', 'evt-tool-result-overflow'),
@@ -8512,8 +9530,9 @@ describe('EventStore', () => {
           toolCallId: 'call',
           toolName: 'shell',
           status: 'success',
-          output: 'x'.repeat(70_000),
-        }),
+          output: 'ok',
+          adapterNote: 'x'.repeat(70_000),
+        } as CanonicalRuntimeEvent),
       ).toThrow(
         /method=tool\.completed, threadId=external:claude:oversized.*ingress ceiling/s,
       );
@@ -8521,7 +9540,9 @@ describe('EventStore', () => {
 
     test('bounds both event insert paths before JSON serialization', () => {
       const stringify = vi.spyOn(JSON, 'stringify');
-      const oversized = '😀'.repeat(MAX_EVENT_STORE_INGRESS_BYTES);
+      // Engine content may reach the per-event ceiling before spilling; one
+      // glyph past it must be refused before anything serializes the value.
+      const oversized = '😀'.repeat(MAX_EVENT_CONTENT_BYTES / 4 + 1);
       const appenders = [
         (event: CanonicalRuntimeEvent) => store.appendEvent(event),
         (event: CanonicalRuntimeEvent) => store.appendEventIfAbsent(event),
@@ -8566,11 +9587,47 @@ describe('EventStore', () => {
       const tooManyProperties = Object.fromEntries(
         Array.from({ length: 513 }, (_, index) => [`property-${index}`, index]),
       );
-      const hostileValues: Array<[string, unknown]> = [
-        ['cycle', cycle],
+      // Wide and deep structures are refused only outside the spill
+      // allowlist; inside it they are stored out of line (asserted below).
+      const structural: Array<[string, unknown]> = [
         ['depth', nested],
         ['properties', tooManyProperties],
         ['array', Array.from({ length: 513 }, () => 'item')],
+      ];
+      for (const [appendIndex, append] of appenders.entries()) {
+        for (const [label, value] of structural) {
+          // A field outside the contract: an adapter can still send one.
+          const completed: CanonicalRuntimeEvent = {
+            eventId: `evt-ingress-structure-${appendIndex}-${label}`,
+            provider: 'claude',
+            threadId: 'thread',
+            createdAt: '2026-08-25T00:00:00.000Z',
+            method: 'tool.completed',
+            itemId: 'call',
+            toolCallId: 'call',
+            toolName: 'shell',
+            status: 'success',
+          };
+          expect(() =>
+            append(Object.assign(completed, { adapterNote: value })),
+          ).toThrow('cannot be safely persisted');
+          expect(
+            append({
+              eventId: `evt-ingress-spilled-${appendIndex}-${label}`,
+              provider: 'claude',
+              threadId: 'thread',
+              createdAt: '2026-08-25T00:00:00.000Z',
+              method: 'tool.completed',
+              toolCallId: 'call',
+              toolName: 'shell',
+              status: 'success',
+              output: value,
+            } as CanonicalRuntimeEvent),
+          ).toBeTypeOf('number');
+        }
+      }
+      const hostileValues: Array<[string, unknown]> = [
+        ['cycle', cycle],
         [
           'ownKeys',
           new Proxy(

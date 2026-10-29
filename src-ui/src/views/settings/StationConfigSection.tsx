@@ -1,3 +1,4 @@
+import { useDeveloperFeatures } from '../../hooks/useDeveloperFeatures';
 /**
  * The registry-driven rows of the Station document, rendered under whichever
  * settings section owns each one.
@@ -16,6 +17,11 @@
  * reader who follows `?view=` lands somewhere the row is not.
  */
 
+import type {
+  TelemetryFeedbackReason,
+  TelemetryPublisherId,
+  TelemetryPublisherStatus,
+} from '@kontourai/station-contracts/product-telemetry';
 import {
   PROJECT_OVERRIDABLE_APP_SETTING_KEYS,
   type ProjectOverridableAppSettingKey,
@@ -25,20 +31,24 @@ import type {
   SettingProvenanceEntry,
 } from '@kontourai/station-contracts/settings-registry';
 import { USER_FACING_APP_SETTINGS_REGISTRY } from '@kontourai/station-contracts/settings-registry';
-import type { ReactNode } from 'react';
+import type { ReactNode, Ref } from 'react';
+import type {
+  SharingCounts,
+  SharingDisclosure,
+} from '../../components/UsageSharingChoices';
 import type { AppConfig } from '../../types';
 import { renderSettingRow } from './registry-row';
 import type { PendingOverrideChange } from './SettingInheritanceLayers';
 import { SettingsSection } from './SettingsSection';
 import type { SettingsSectionId } from './settings-catalog';
+import { TelemetryTierSettings } from './TelemetryTierSettings';
 
 /**
  * The Station-document keys each section renders, in render order.
  *
- * Every key here was in the single `STATION_CONFIG_KEYS` list this module
- * used to hold; nothing was added and nothing dropped, which
- * `station-config-section.test.tsx` asserts against a literal inventory of
- * that list. It also asserts each key's catalog row names the section it is
+ * The original split and later additions retain an independent literal
+ * inventory in `station-config-section.test.tsx`. It also asserts each
+ * key's catalog row names the section it is
  * rendered under — the placement and the deep link are two statements about
  * the same row, and they are only true together.
  */
@@ -59,9 +69,13 @@ export const STATION_SETTING_KEYS_BY_SECTION = {
     'disableDefaultSkillRegistries',
     'distributionProfile',
   ],
-  // Whether anything is sent. Where it would go is a derived status line with
-  // no writer, so it is a `PageRow` in `SettingsView`, not a registry row.
-  telemetry: ['telemetryEnabled'],
+  telemetry: [
+    'telemetryTier',
+    'productTelemetryEndpoint',
+    'productTelemetryKeyRef',
+    'otelTelemetryEndpoint',
+    'otelTelemetryKeyRef',
+  ],
   // What agents may do without asking.
   permissions: ['approvalGuardian', 'defaultApprovalMode'],
   // What a run starts with and what bounds it.
@@ -72,6 +86,9 @@ export const STATION_SETTING_KEYS_BY_SECTION = {
     'defaultWorkspaceIsolation',
     'workspaceCheckpoints',
     'usageLimitAutoResume',
+    'reviewGuidesEnabled',
+    'reviewGuideModel',
+    'reviewGuideInstructions',
   ],
   // The Station default this device's chat-font-size slider falls back to.
   chat: ['defaultChatFontSize'],
@@ -150,6 +167,17 @@ export function StationConfigSection({
   embedded = false,
   containerScope,
   projectOverride,
+  telemetryPublishers,
+  telemetryDisclosure,
+  savedTelemetryChoices,
+  telemetryStatusError,
+  onTelemetryFeedback,
+  showTelemetryOutbox,
+  telemetryAdvanced,
+  telemetryCounts,
+  telemetryNoticeRef,
+  telemetryNoticeError,
+  onTelemetryDetailedIntent,
 }: {
   /** Which section's keys to render; see `STATION_SETTING_KEYS_BY_SECTION`. */
   section: StationSettingsSectionId;
@@ -173,10 +201,30 @@ export function StationConfigSection({
    */
   containerScope: 'station' | 'device';
   projectOverride?: StationConfigProjectOverride;
+  savedTelemetryChoices?: AppConfig['telemetryTier'];
+  telemetryStatusError?: boolean;
+  telemetryDisclosure?: SharingDisclosure;
+  telemetryPublishers?: Partial<
+    Record<TelemetryPublisherId, TelemetryPublisherStatus>
+  >;
+  onTelemetryFeedback?: (
+    publisher: TelemetryPublisherId,
+    reason: TelemetryFeedbackReason,
+  ) => void;
+  showTelemetryOutbox?: boolean;
+  telemetryAdvanced?: ReactNode;
+  telemetryCounts?: SharingCounts;
+  telemetryNoticeRef?: Ref<HTMLElement>;
+  telemetryNoticeError?: boolean;
+  onTelemetryDetailedIntent?: (publisher?: 'kontour' | 'operator') => void;
 }) {
+  const developerFeatures = useDeveloperFeatures();
   const rows = (
     STATION_SETTING_KEYS_BY_SECTION[section] as readonly (keyof AppConfig)[]
   ).map((key) => {
+    if (key === 'surfaceTrustFromVeritasEvidence' && !developerFeatures.trust)
+      return null;
+    if (key === 'telemetryTier') return null;
     const definition = REGISTRY_BY_KEY.get(key);
     if (!definition) return null;
     // A project may override only the keys the contract lists, and only
@@ -233,14 +281,39 @@ export function StationConfigSection({
     });
   });
 
-  if (embedded) return <>{rows}</>;
+  const content =
+    section === 'telemetry' ? (
+      <TelemetryTierSettings
+        config={config}
+        onChange={onChange}
+        publishers={telemetryPublishers}
+        disclosure={telemetryDisclosure}
+        counts={telemetryCounts}
+        noticeRef={telemetryNoticeRef}
+        noticeError={telemetryNoticeError}
+        onDetailedIntent={onTelemetryDetailedIntent}
+        savedChoices={savedTelemetryChoices}
+        statusError={telemetryStatusError}
+        onFeedback={onTelemetryFeedback}
+        showOutbox={showTelemetryOutbox}
+        advancedContent={
+          <>
+            {rows}
+            {telemetryAdvanced}
+          </>
+        }
+      />
+    ) : (
+      rows
+    );
+  if (embedded) return <>{content}</>;
   // The empty `title` is not a missing title: `SettingsSection` resolves the
   // heading from `SETTINGS_SECTIONS` by matching `section-<id>`, and the prop
   // is only its fallback for a card with no catalog section. Repeating the
   // title here would be a second place for it to drift.
   return (
     <SettingsSection icon={icon} title="" id={`section-${section}`}>
-      {rows}
+      {content}
     </SettingsSection>
   );
 }

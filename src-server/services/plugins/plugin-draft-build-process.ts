@@ -1,13 +1,14 @@
-import { type ChildProcess, spawn } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import type {
   PluginDraftBuildOptions,
   PluginDraftBuildResult,
 } from '@kontourai/station-shared/build';
+import { spawnChildWorkload as spawn } from '@kontourai/station-shared/child-workload';
+import { registerDetachedOwnedChild } from '../infra/process-utils.js';
 
 /**
- * Runs one plugin DRAFT build in a disposable child process (epic #2323 S3,
- * review round 3).
+ * Runs one plugin DRAFT build in a disposable child process (epic #2323 S3).
  *
  * A draft is authored by any Project member, and some of what esbuild reads
  * never passes through Station's `onLoad` checks: its resolver opens files
@@ -95,6 +96,7 @@ export function buildPluginDraftInChildProcess(
     // `spawn` with an 'ipc' stdio slot, not `fork`: it is the same IPC
     // channel, and unlike ForkOptions its options carry `windowsHide`, which
     // every process this server launches sets.
+    const detached = process.platform !== 'win32';
     const child = spawn(
       process.execPath,
       [
@@ -102,13 +104,17 @@ export function buildPluginDraftInChildProcess(
         fileURLToPath(CHILD_ENTRY),
       ],
       {
-        detached: process.platform !== 'win32',
+        detached,
         stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
         serialization: 'json',
         windowsHide: true,
         env: draftBuildChildEnv(),
       },
     );
+    // #561: the deadline that kills this group lives in the server, so
+    // register it for the startup sweep. Registration happens here, in the
+    // parent; the child's allow-listed environment is unchanged.
+    if (detached) registerDetachedOwnedChild(child, 'plugin draft build');
     let settled = false;
     const settle = (result: PluginDraftBuildResult) => {
       if (settled) return;

@@ -2,7 +2,7 @@
 // station#4464: the screenshot feedback loop's comparator. Two modes:
 //
 //   node scripts/screenshot-diff.mjs baseline [--gallery=<dir>] [--out=<file>] [--allow-partial] [--force-replace]
-//   node scripts/screenshot-diff.mjs diff     [--gallery=<dir>] [--baseline=<file>] [--diff-dir=<dir>] [--screens=a,b]
+//   node scripts/screenshot-diff.mjs diff     [--gallery=<dir>] [--baseline=<file>] [--diff-dir=<dir>] [--screens=a,b] [--report-only] [--summary=<file>]
 //
 // (also exposed as `npm run screenshot:baseline` / `npm run screenshot:diff`)
 //
@@ -35,6 +35,7 @@
 
 import { createHash } from 'node:crypto';
 import {
+  appendFileSync,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -62,7 +63,7 @@ export function parseScreenshotDiffArgs(argv) {
     throw new Error(
       `Usage: screenshot-diff.mjs <baseline|diff> [options]\n` +
         `  baseline [--gallery=<dir>] [--out=<file>] [--allow-partial] [--force-replace]\n` +
-        `  diff     [--gallery=<dir>] [--baseline=<file>] [--diff-dir=<dir>] [--screens=a,b]`,
+        `  diff     [--gallery=<dir>] [--baseline=<file>] [--diff-dir=<dir>] [--screens=a,b] [--report-only] [--summary=<file>]`,
     );
   }
   const options = {
@@ -73,8 +74,15 @@ export function parseScreenshotDiffArgs(argv) {
     forceReplace: false,
     screens: null,
     diffDir: null,
+    reportOnly: false,
+    summary: null,
   };
   for (const arg of rest) {
+    if (arg === '--report-only') {
+      if (mode !== 'diff') throw new Error('--report-only requires diff mode.');
+      options.reportOnly = true;
+      continue;
+    }
     if (arg === '--allow-partial') {
       options.allowPartial = true;
       continue;
@@ -98,6 +106,11 @@ export function parseScreenshotDiffArgs(argv) {
       case '--out':
         if (!value) throw new Error(`${flag} requires a value.`);
         options.baseline = value;
+        break;
+      case '--summary':
+        if (mode !== 'diff' || !value)
+          throw new Error('--summary requires diff mode and a file path.');
+        options.summary = value;
         break;
       case '--diff-dir':
         if (!value) throw new Error('--diff-dir requires a value.');
@@ -552,6 +565,10 @@ export function runDiff(options, { log = console.log } = {}) {
       continue;
     }
 
+    const buffer = readFileSync(join(galleryDir, captureEntry.file));
+    const decoded = decodePng(buffer);
+    const sha256 = pixelSha256(decoded.data);
+
     if (baselineEntry?.volatile === true) {
       // Hand-curated, last-resort exception: named loudly, never silently
       // folded into "unchanged".
@@ -572,9 +589,6 @@ export function runDiff(options, { log = console.log } = {}) {
       continue;
     }
 
-    const buffer = readFileSync(join(galleryDir, captureEntry.file));
-    const decoded = decodePng(buffer);
-    const sha256 = pixelSha256(decoded.data);
     comparisons += 1;
 
     if (
@@ -634,7 +648,10 @@ export function runDiff(options, { log = console.log } = {}) {
 
   renderTable(rows, log);
 
-  const failing = capturedFailedCount + missingCount + changedCount;
+  const failing =
+    capturedFailedCount +
+    missingCount +
+    (options.reportOnly ? 0 : changedCount);
   log(
     `[screenshot-diff] ${comparisons} compared (unchanged=${unchangedCount}, changed=${changedCount}), ` +
       `${newCount} new, ${volatileCount} skipped (volatile), ` +
@@ -646,10 +663,10 @@ export function runDiff(options, { log = console.log } = {}) {
     // exit-driving status (changed / capture-failed / missing-from-gallery),
     // not only visual regressions — a caller checking "did anything actually
     // change" should filter this by `status === 'changed'` itself.
-    const problems = rows.filter((row) =>
-      ['changed', 'capture-failed', 'missing-from-gallery'].includes(
-        row.status,
-      ),
+    const problems = rows.filter(
+      (row) =>
+        ['capture-failed', 'missing-from-gallery'].includes(row.status) ||
+        (!options.reportOnly && row.status === 'changed'),
     );
     log(
       `[screenshot-diff] FAILED (${problems.length}): ${problems.map((r) => r.name).join(', ')}`,
@@ -677,6 +694,14 @@ export function runDiff(options, { log = console.log } = {}) {
         `(if used) names screens the baseline actually has entries for.`,
     );
     return { exitCode: 1, rows, comparisons, failing: [] };
+  }
+
+  if (options.reportOnly && changedCount > 0) {
+    log(
+      `[screenshot-diff] REVIEW: ${changedCount} changed screen(s) (advisory); ` +
+        'capture integrity checks passed. Inspect the gallery and pixel diffs; baseline refresh is optional.',
+    );
+    return { exitCode: 0, rows, comparisons, failing: [] };
   }
 
   log(
@@ -710,7 +735,34 @@ async function main(argv) {
     runBaseline(options);
     return 0;
   }
-  return runDiff(options).exitCode;
+  const lines = [];
+  const log = (line) => {
+    console.log(line);
+    lines.push(line);
+  };
+  try {
+    return runDiff(options, { log }).exitCode;
+  } catch (error) {
+    log(
+      `[screenshot-diff] ERROR: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    throw error;
+  } finally {
+    if (options.summary) {
+      appendFileSync(
+        options.summary,
+        '\n### Gallery comparison\n\n' +
+          (options.reportOnly
+            ? 'Pixel changes are advisory. Broken captures and invalid comparisons still fail.\n\n'
+            : 'Strict baseline comparison.\n\n') +
+          lines
+            .flatMap((line) => line.split('\n'))
+            .map((line) => `    ${line}`)
+            .join('\n') +
+          '\n',
+      );
+    }
+  }
 }
 
 // station#4464: not a bare pathname compare, which silently no-ops on a path

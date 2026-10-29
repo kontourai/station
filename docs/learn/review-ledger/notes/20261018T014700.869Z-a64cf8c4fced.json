@@ -1,0 +1,7 @@
+{
+  "revision": "8d585313ab25b83c5dd54494e036d8c450896dff",
+
+  "notes": [
+    {"path":".veritas/init-plans/documentation-maintenance.md","note":"Reviewed new attestation HEAD against GOVERNANCE.md and installed Veritas attest policy-change: only Brian-approved four advisory identities renew to exclusive 2026-10-25T00:00:00Z. Protected hashes, documentation-truth requirement and recorded activation behavior are unchanged; no prose change needed.","inputs":[".veritas/init-plans/documentation-maintenance.md",".veritas/attestations/HEAD"]}
+  ]
+}

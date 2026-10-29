@@ -14,7 +14,9 @@
  */
 
 import { memo, useEffect, useRef, useState } from 'react';
+import { peekHighlight } from '../../highlight/highlight-cache';
 import { CodeBlockFrame } from './CodeBlockFrame';
+import { markTranscriptPhase } from './transcriptLayoutTrace';
 
 const LANG_REGEX = /language-(\S+)/;
 
@@ -41,7 +43,7 @@ function extractLang(className?: string): string | undefined {
  * check keeps that an invariant rather than an assumption.
  */
 function useHighlightedHtml(code: string, lang?: string): string | null {
-  const [html, setHtml] = useState<string | null>(null);
+  const [html, setHtml] = useState(() => peekHighlight(code, lang));
   const mountedRef = useRef(true);
   useEffect(
     () => () => {
@@ -53,7 +55,7 @@ function useHighlightedHtml(code: string, lang?: string): string | null {
     generation: 0,
     inFlight: false,
     pending: null as string | null,
-    settledLang: undefined as string | undefined,
+    settledLang: lang,
   });
 
   useEffect(() => {
@@ -68,7 +70,7 @@ function useHighlightedHtml(code: string, lang?: string): string | null {
       tracking.generation++;
       tracking.inFlight = false;
       tracking.pending = null;
-      setHtml(null);
+      setHtml(peekHighlight(code, lang));
     }
     const request = (text: string) => {
       const generation = ++tracking.generation;
@@ -82,6 +84,7 @@ function useHighlightedHtml(code: string, lang?: string): string | null {
             }
             tracking.inFlight = false;
             setHtml(result);
+            markTranscriptPhase('highlight-applied', { lang });
             const next = tracking.pending;
             tracking.pending = null;
             if (next !== null && next !== text) request(next);

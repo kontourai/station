@@ -1,0 +1,7 @@
+{
+  "revision": "db452cd4edde41b1a88e6573a3cf3482e0d903db",
+
+  "notes": [
+    {"path":"CLAUDE.md","note":"Complete file only imports AGENTS.md via @AGENTS.md; the changed Required checks bullet adds no claim that affects the import or the Veritas governance lines.","inputs":["CLAUDE.md","AGENTS.md"]}
+  ]
+}

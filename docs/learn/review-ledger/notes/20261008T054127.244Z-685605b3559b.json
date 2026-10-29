@@ -1,0 +1,7 @@
+{
+  "revision": "c7e8df2ccf029ea2c84a00234a941076f50da0c1",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"MessageBubble.tsx and MessageContent.tsx changes arrived from main's own reviewed work; this document's composer claims were checked against the merged components; unchanged by this PR.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/MessageBubble.tsx","src-ui/src/components/chat/message-bubble/MessageContent.tsx"]}
+  ]
+}

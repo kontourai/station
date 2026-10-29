@@ -5,7 +5,6 @@ import {
   type SchedulerEvent,
   type SchedulerManualRunReceipt,
 } from '@kontourai/station-contracts/scheduler';
-import { SCHEDULED_CHECK_STARTER_DEFINITION_VERSION } from '@kontourai/station-contracts/starter-work';
 import type {
   AddJobOpts,
   SchedulerCapability,
@@ -236,10 +235,7 @@ export interface BuiltinSchedulerOptions {
   disposeMonitorTasks?: () => void;
 }
 
-export const STARTER_SCHEDULED_CHECK_DEFINITION_VERSION =
-  SCHEDULED_CHECK_STARTER_DEFINITION_VERSION;
-export const STARTER_SCHEDULED_CHECK_JOB_NAME =
-  SCHEDULER_STARTER_CHECK_JOB_NAME;
+const STARTER_SCHEDULED_CHECK_JOB_NAME = SCHEDULER_STARTER_CHECK_JOB_NAME;
 
 export interface PreparedStarterScheduledRun {
   readonly replayed: boolean;
@@ -320,6 +316,18 @@ export class BuiltinScheduler implements ISchedulerProvider {
         // so the ledger reports it here and it takes the same route to the
         // user as an invocation failure.
         onAbandonedRun: (entry) => this.announceFailedRun(entry),
+        // One unreadable job record no longer stops every other job's tick,
+        // so it must be said once rather than vanish from the schedule.
+        onQuarantinedJob: (job) =>
+          this.options.logger?.error(
+            'Scheduler job record is unreadable; it will not run until it is repaired or removed',
+            {
+              job: job.name,
+              jobId: job.jobId,
+              revision: job.revision,
+              reason: job.reason,
+            },
+          ),
       });
     this.announcementOutbox = this.ledger.announcementOutbox();
     this.monitorTerminalOutbox =

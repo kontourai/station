@@ -4,8 +4,15 @@ import type {
   SessionInventoryV2GroupId,
 } from '@kontourai/station-contracts/session-inventory';
 import { useSessionInventoryQuery } from '@kontourai/station-sdk/session-inventory';
-import { useEffect, useMemo } from 'react';
+import {
+  type KeyboardEvent,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+} from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { KeepAnswerInTask } from '../../workspace-panes/KeepAnswerInTask';
 import type { SessionInventorySelection } from '../../workspace-panes/sessionInventorySelection';
 import {
   commitSessionInventorySelection,
@@ -62,6 +69,20 @@ export function SessionInventoryCompact({
     [scope],
   );
   const selection = useSessionInventorySelection(key, initial);
+  // #3882: the control that opened the inventory may not survive its
+  // opening (the session context card folds to make room, taking its Chat
+  // inventory button with it), so focus moves into the panel as it opens.
+  // Every state below renders the same aside, so the focused node stays.
+  const asideRef = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    asideRef.current?.focus({ preventScroll: true });
+  }, []);
+  const onAsideKeyDown = (event: KeyboardEvent) => {
+    if (event.key !== 'Escape' || event.defaultPrevented) return;
+    // Claimed here so the app's "go up one level" Escape does not also run.
+    event.preventDefault();
+    onClose();
+  };
   // Activation is the boundary: this component itself is dynamically imported
   // only after the trigger.  Capture/commit never consults current chat state.
   useEffect(() => {
@@ -91,19 +112,66 @@ export function SessionInventoryCompact({
     if (key && model?.repairedSelection)
       commitSessionInventorySelection(key, model.selection);
   }, [key, model]);
+  // Every state is the same sized aside: a bare one has no width in the
+  // dock's conversation row, so its loading and unavailable states rendered
+  // 2px wide and the panel seemed never to open.
+  const asideClass = `session-inventory-compact session-inventory-compact--${density}`;
   if (!requestScope || !key)
     return (
-      <aside aria-label="Chat inventory">Chat inventory is unavailable.</aside>
+      <aside
+        ref={asideRef}
+        data-companion-content=""
+        className={asideClass}
+        aria-label="Chat inventory"
+        tabIndex={-1}
+        onKeyDown={onAsideKeyDown}
+      >
+        Chat inventory is unavailable.
+      </aside>
     );
   if (inventory.isLoading)
     return (
-      <aside aria-label="Chat inventory">
+      <aside
+        ref={asideRef}
+        data-companion-content=""
+        className={asideClass}
+        aria-label="Chat inventory"
+        tabIndex={-1}
+        onKeyDown={onAsideKeyDown}
+      >
         <SkeletonBlock count={2} label="Loading Chat inventory" />
       </aside>
     );
-  if (inventory.error || !inventory.data)
+  if (!inventory.data)
     return (
-      <aside aria-label="Chat inventory">Chat inventory is unavailable.</aside>
+      <aside
+        ref={asideRef}
+        data-companion-content=""
+        className={asideClass}
+        aria-label="Chat inventory"
+        tabIndex={-1}
+        onKeyDown={onAsideKeyDown}
+      >
+        <div className="session-inventory-compact__heading">
+          <div>
+            <p>Basis</p>
+            <h2>Chat inventory</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close Chat inventory"
+          >
+            ×
+          </button>
+        </div>
+        <p role="status" className="session-inventory-compact__intro">
+          Chat inventory is unavailable.
+        </p>
+        <button type="button" onClick={() => void inventory.refetch()}>
+          Retry
+        </button>
+      </aside>
     );
   if (!model) return null;
   const reportedGroups = model.groups.filter(
@@ -132,8 +200,12 @@ export function SessionInventoryCompact({
   const firstGap = model.groups.flatMap((group) => group.gaps)[0];
   return (
     <aside
-      className={`session-inventory-compact session-inventory-compact--${density}`}
+      ref={asideRef}
+      data-companion-content=""
+      className={asideClass}
       aria-label="Chat inventory"
+      tabIndex={-1}
+      onKeyDown={onAsideKeyDown}
     >
       <div className="session-inventory-compact__heading">
         <div>
@@ -149,10 +221,28 @@ export function SessionInventoryCompact({
           ×
         </button>
       </div>
+      {scope.kind === 'current-answer' &&
+      requestScope &&
+      inventory.data?.basisBinding ? (
+        <KeepAnswerInTask
+          key={JSON.stringify([requestScope, scope])}
+          sessionId={scope.sessionId}
+          turnId={scope.turnId}
+          requestScope={requestScope}
+        />
+      ) : null}
       <p className="session-inventory-compact__intro">
         Highlights from this scope. Open full Basis to browse every group and
         exact detail.
       </p>
+      {inventory.error ? (
+        <p role="status">
+          Couldn’t refresh this inventory; showing the last read.{' '}
+          <button type="button" onClick={() => void inventory.refetch()}>
+            Retry
+          </button>
+        </p>
+      ) : null}
       <section
         className="session-inventory-compact__highlights"
         aria-label="Inventory highlights"

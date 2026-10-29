@@ -1,5 +1,9 @@
 import { createHash } from 'node:crypto';
+import { canonicalJson } from './canonical-json.mjs';
 import { releaseVariants } from './release-variants.mjs';
+
+// Release tooling imports the SBOM canonical form from here.
+export { canonicalJson };
 
 export const SBOM_ASSETS = Object.freeze({
   portable: 'station-sbom-portable.cdx.json',
@@ -167,16 +171,6 @@ function parseCanonical(bytes) {
   if (canonicalJson(value) !== source)
     throw new Error('SBOM JSON is not canonical');
   return { source, value };
-}
-
-export function canonicalJson(value) {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
-  if (value && typeof value === 'object')
-    return `{${Object.keys(value)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
-      .join(',')}}`;
-  return JSON.stringify(value);
 }
 
 function validateContext(context) {

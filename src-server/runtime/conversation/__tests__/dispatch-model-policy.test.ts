@@ -31,7 +31,9 @@ vi.mock('@kontourai/dispatch/ai-sdk', () => ({
 // M-1b: the module-level fallback logger (`moduleLogger`) is created once at
 // import time via `createLogger`. Stub it so the "no config.logger wired"
 // warning tests can observe it fired, instead of writing to real pino output.
-const moduleLoggerWarn = vi.fn();
+// Hoisted with the mock: any module in this import graph that creates its
+// logger at import time calls the factory before this line would run.
+const moduleLoggerWarn = vi.hoisted(() => vi.fn());
 vi.mock('../../../utils/logger.js', async () => {
   const actual = await vi.importActual<
     typeof import('../../../utils/logger.js')

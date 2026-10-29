@@ -1,0 +1,7 @@
+{
+  "revision": "19d7495ea6012a79449f3523ca194e15d2a04f90",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed the package export delta: tool-library, telemetry-delivery, station-groups, personal-tokens, usage-export and account-preferences resolve to domain-owned contract modules. Existing tool-library DTO, telemetry observation, group ceiling, usage-export and account-preference claims remain accurate; additive personal-token shapes do not change package ownership or grant authority. The internal unused service accessor deletion changes no published export. Prior native/provider/release limits remain.","inputs":["docs/reference/contracts.md","packages/contracts/package.json"]}
+  ]
+}

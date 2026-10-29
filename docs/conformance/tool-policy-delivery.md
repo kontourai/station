@@ -1,14 +1,15 @@
 # Pre-tool blocking and grant delivery boundary
 
 This page combines current source contracts with historical provider probes.
-The recorded Claude 2.1.224 / Agent SDK 0.3.224 experiments below were not rerun
-for this review. The reviewed lockfile resolves Agent SDK 0.3.289; its installed
-`sdk.d.ts` still documents that omitted `settingSources` loads all filesystem
-settings. That dependency contract is not a fresh live test of permission-rule
-precedence, workspace trust, or memory/MCP discovery.
+The recorded Claude 2.1.224 / Agent SDK 0.3.224 experiments below were not rerun.
+The earlier dependency review inspected Agent SDK 0.3.302. The current lockfile
+selects 0.3.304; source inspection of its installed `sdk.d.ts` still finds that
+omitted `settingSources` loads all filesystem settings. That type declaration
+is not a fresh live test of permission-rule precedence, workspace trust, or
+memory/MCP discovery.
 
 Version-specific observations below retain the SDK and CLI versions actually
-inspected or executed. They are not new provider results for SDK 0.3.289.
+inspected or executed. They are not new provider results for SDK 0.3.304.
 
 `EngineCapabilityMatrix.toolPolicy` declares only whether Station can make a
 pre-tool blocking or grant decision on the actual tool-call path. It does not
@@ -18,7 +19,8 @@ The managed Station engine delivers its full pre-tool chain through
 `beforeToolCall`. Claude Code is partial. For a session with a resolved Agent
 and its evaluator, `PreToolUse` runs Station's staged evaluator before the call.
 `canUseTool` also honors that Agent's matching `tools.autoApprove` patterns,
-for plain calls only (#2933). A pattern never answers an escalation or a plan
+for plain calls only (#2933) and only without an effective authored Ask rule.
+A pattern never answers an escalation or a plan
 exit, even `*`: it is allowed only where `toolRequestIsPlainCall` holds, the
 `tool` or `edit-mode` case of the session-grant computation below. That
 computation reads the engine's structured reason for the ask (#2932), so a
@@ -42,7 +44,8 @@ for a guardian allow, and the adapter keeps the allow under the engine's
 tool-use id, with the tool's name and a digest of the input the guardian
 reviewed (SHA-256 of the input's JSON with object keys sorted). If the engine
 then asks `canUseTool` about that call of that tool with the same input, the
-allow answers it only where `toolRequestIsPlainCall` holds, and it is used
+allow answers it only where `toolRequestIsPlainCall` holds and no effective
+authored Ask requires approval, and it is used
 once. A different input, which another `PreToolUse` hook's `updatedInput` can
 produce, consumes the allow without using it, and the request prompts. A
 chained Bash command is a plain call, so a guardian allow answers it,
@@ -60,7 +63,9 @@ nothing else, so a working-directory ask and a plan-mode refusal were skipped.
 On ACP, no staged-evaluator allow (a `toolGrant`, a pattern match or a
 guardian allow) answers a request addressed to a person
 (`toolRequestNeedsPerson`: a plan exit by `switch_mode` kind or
-`ExitPlanMode`, `AskUserQuestion`, `SandboxNetworkAccess`). ACP reports no
+`ExitPlanMode`, the `cursor/create_plan` plan review and `cursor/ask_question`
+question, `AskUserQuestion`,
+`SandboxNetworkAccess`). ACP reports no
 other escalation signal, so there a guardian allow still answers every other
 call. A session answer to an ACP plan exit is
 an `accept` and mints no Station session grant. Its response mapper prefers
@@ -71,6 +76,8 @@ session option. In a delegated child that cannot grant approvals
 (`delegation.denyApprovals`), a request either adapter would otherwise open is
 denied at once with the staged evaluator's `delegation_deny_approvals` denial,
 since nobody could answer it. That includes a question from such a child.
+`cursor/ask_question` and `cursor/create_plan` requests from such a child are
+answered at once with Cursor's documented `skipped` and `rejected` outcomes.
 Known `AskUserQuestion` callbacks are handled before those grants: answering
 a question requires content that passes the opened form (#3390) and never
 creates a session tool grant. This is a question interaction boundary, not a new consent floor
@@ -83,17 +90,117 @@ stages, and the external adapters carry no unattended principal for them to
 read.
 
 Handing interaction back is also all Station does about consent on that path:
-in Ask mode the engine asks before tool calls its own rules and classifier do
-not already allow, and Station adds no floor over it. What that leaves open, and
+without an authored `askBeforeUse` rule, the engine asks before tool calls its
+own rules and classifier do not already allow. Explicit Ask rules are described
+below. What that leaves open, and
 what Station ships instead, is the Accepted-gap section below.
 
 ACP is partial at its protocol `requestPermission` callback through the same
 staged evaluator. It has the unattended gap above and an additional coverage
 limit: only calls that invoke that callback and report a tool name enter the
-policy check, and the external engine reports that identity. Codex
+policy check, and the external engine reports that identity. Which calls
+invoke the callback is the engine's own configuration; for OpenCode, Station
+sets that configuration from the chat's approval mode
+([which side decides](../guides/acp.md#which-side-decides-which-calls-ask)). Codex
 has no Station pre-tool interception seam. Muse is also unsupported. An
 unknown engine receives an unsupported matrix entry; that does not mean Station
 intercepts or blocks all of that engine's tool calls.
+
+### Codex approval policy and reviewer
+
+The session-level engine Ask mode is separate from the authored per-tool Ask
+rules below. Selecting it does not make Codex enforce those rules.
+
+Station's Codex Ask mode selects `approvalPolicy: untrusted` and
+`sandbox: workspace-write`; Auto selects `on-request` with the same sandbox.
+Outside a `host` session that sandbox is Station's `station-workspace`
+permission profile, selected on the app-server spawn, so the thread and turn
+requests carry no sandbox mode (#3800). A `workspace` session with no Station
+mode sends no `approvalPolicy`, so Codex's own approval configuration
+governs it ([confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494)).
+These policies determine when Codex requests approval. They do not select who
+reviews a sandbox escalation. For a `host` session Station leaves Codex's
+`approvalsReviewer` unchanged on thread start, resume, native adoption by
+fork, and subsequent turns, so Codex configuration and managed requirements
+govern that reviewer. Every other session's app-server is started with
+`approvals_reviewer="user"`, which outranks every configuration file: a
+confined session's escalation is never approved by a model (#3800). An
+untrusted-command prompt and a sandbox escalation can take different
+approval paths.
+
+With `approvals_reviewer: auto_review`, Codex can review eligible sandbox
+escalations of a `host` session automatically without opening a Station
+approval card. The Ask
+chip confirms the approval-policy mapping only; Station does not currently
+report the effective reviewer. Its picker and chip disclosure name that gap.
+Ask alone is not evidence that a person must approve every sandbox escalation.
+See OpenAI's [Auto-review documentation](https://learn.chatgpt.com/docs/sandboxing/auto-review).
+
+This mapping was checked against Codex CLI 0.162.1's generated app-server
+schema, which still accepts `untrusted` and exposes a separate
+`approvalsReviewer` request field. Newer OpenAI documentation retires
+`untrusted`; that does not establish behavior for every installed CLI version.
+A future reviewer selector must respect supported protocol versions and managed
+requirements, surface refusals, and preserve the sandbox boundary. Changing
+approval policy or selecting Full access is not a substitute for selecting a
+reviewer.
+
+## Project source policy
+
+Project policy is a source ceiling, separate from per-action approval.
+[Tool library state](../../src-server/services/plugins/tool-library-service.ts)
+checks exact Project bindings for Project-authored agents and source selections
+for all agents used in a Project. Session resolution validates inherited defaults;
+managed native loading validates added Project tools. Dormant-session recovery
+uses the same authored-definition gate as new sessions. Permission refusals and
+unreadable Project defaults or policy stop startup; they cannot fall back to an
+engine without the Agent definition. The staged pre-tool policy
+rechecks current permission on each intercepted call. Legacy operator-authored
+agents retain their Station Control capability; Project-authored agents cannot
+select it. Personal account credentials remain separately owned. The managed Station
+engine resolves the current principal and Project per call. Claude Code and Codex
+select that session owner's OAuth account before engine launch and deliver a
+session-scoped loopback proxy. Station refreshes remote credentials at request
+time and refuses launch when sign-in is required. They use
+a Project account before the person's account; an instance fallback must be
+explicitly enabled. ACP still reports personal accounts as `engine-unsupported`.
+See [OAuth MCP setup](../guides/connections.md#connect-an-oauth-mcp-server-to-an-agent)
+for proxy credential limits and sign-in recovery.
+
+Engines without a pre-tool interception seam receive the admitted configuration
+at session start. A mid-session policy change cannot revoke a tool call already
+owned by such an engine. This is a delivery limit, not a guarantee of universal
+live revocation. Existing direct Agent and orchestration HTTP surfaces retain
+their member-execution gate. Project Room Agent requests use a separate path
+requiring current Project execution authority, transport permission, host
+execution permission and an admitted execution root. Scoped authoring alone
+grants none of these permissions.
+
+## Explicit per-tool Ask
+
+`tools.askBeforeUse` is an authored per-tool rule, separate from the
+session-level engine approval mode above. It is delivered by Station and Claude. New picker choices
+use `mcp/<server>/<action>` approval keys and source defaults use
+`mcp/<server>/*`. Station derives these from loader provenance; Claude uses
+an unambiguous SDK-owned MCP identity. Ambiguous SDK names with additional or overlapping
+double-underscore separators require approval when the Agent has Ask rules.
+Both key components are percent-encoded, including literal `*` as `%2A`; only
+a source default's terminal `*` is a wildcard. Legacy flattened Always rules cannot override a
+source-qualified Ask default. Matching source-qualified exact choices
+in either approval list override wildcard defaults; Ask wins at equal
+specificity. A source-level Ask default therefore covers newly discovered
+actions while exact reviewed-read grants remain allowed. An effective Ask runs
+after generation, delegation and config-protection refusals and retains guardian
+denies; guardian allows, session grants and unattended grants cannot bypass it.
+Managed calls without an approval channel are denied.
+
+Claude's staged evaluator returns a required Ask as a `PreToolUse` permission
+ask; `canUseTool` also excludes it from automatic, guardian and session grants.
+Adapter tests exercise both callbacks, including repeated calls after a session
+answer. This is not fresh live-provider proof of every Claude permission mode;
+the earlier quota-blocked live run did not execute a tool. Codex, Muse and ACP
+cannot deliver this contract and refuse resolved Agents with nonempty Ask rules.
+Their picker labels approval as **Engine controlled**.
 
 ## Selected MCP tools
 
@@ -125,6 +232,30 @@ refuses startup when required profile delivery is unsupported or undelivered;
 it cannot reduce the selected Agent profile to fit the engine. See
 [execution overrides](../reference/session-api.md#preserve-an-agent-profile-with-an-execution-override).
 
+## Opt-in delivery evidence (#3824)
+
+The [engine delivery probes](../reference/agent-smoke-confidence.md#opt-in-engine-delivery-probes-3824)
+register with the live matrix runner. They use a temporary API-created Agent,
+skill and MCP integration. A recorded, named skill invocation with a successful completion plus the
+verified HMAC execution receipt in inspected artifact contents and answer tests skill delivery. A Read-only path fails;
+an absent invocation shape stays unverified. The Claude shape comes from real
+CLI tool execution with loopback fixture inference, not a billable/live model
+capture. A follow-up tool start plus a call-ID-matched successful completion tests MCP use; observable output must contain the ping marker. A known
+fixture action is disabled through Station's integration policy and checked
+against the same run's discovered tool inventory. Non-use alone is unverified:
+positive selection evidence requires an engine tool list naming this server's
+ping but excluding blocked. Rejected attempts are not breaches; successful
+blocked completions or the action's output are breaches.
+
+This is an MCP tool-selection probe for Station, Claude and Codex. The separate
+`nativeToolPolicy` cell always renders unverified; an MCP selection pass cannot
+verify native-tool disabling or the pre-tool blocking/grant chain. ACP cannot carry restricted MCP
+selection and reports that probe unsupported. Unsupported skills and missing
+passing evidence are not promoted to delivered. Cleanup failure remains a failed
+result, and an unreachable third-party dependency is skipped with a reason.
+These deterministic fixtures do not refresh the historical live Claude results
+below; live delivery and UI rendering remain NOT_VERIFIED until explicitly run.
+
 ## Accepted gap: a trusted workspace's settings can grant a Claude tool call (#1545)
 
 In Ask mode (`approvalMode: 'ask'` → the SDK's `permissionMode: 'default'`) the
@@ -147,6 +278,10 @@ with a real turn in `permissionMode: 'default'`:
   `hasTrustDialogAccepted`), the same rule did **not** shadow the callback. The
   user tier carries no such precondition: `~/.claude/settings.json` applies to
   every session regardless, because the operator wrote it for themselves.
+  A full-access session Station runs inside its Seatbelt profile (#2494) reads
+  both the user tier and that trust from a Station-owned configuration
+  directory instead, never the operator's
+  ([confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494)).
 
 So this reaches a workspace the operator has already trusted in Claude Code —
 their own repositories, normally. That makes it a same-user threat model:
@@ -164,10 +299,11 @@ falls back to its title/tool label. The Ask-mode chip copy says the engine asks 
 do not already allow, rather than claiming a floor Station does not impose.
 
 The standing grant covers calls to the tool, never an escalation beyond the
-call (#2915; #2911 set the same rule for Codex). The lockfile resolves Agent
-SDK 0.3.278, which bundles Claude Code 2.1.278. That engine signals
-escalations in several shapes, first read in 2.1.261 and re-checked in
-2.1.278. Read, Glob, Grep and LSP ask for a path outside
+call (#2915; #2911 set the same rule for Codex). The recorded escalation
+inspection used Agent SDK 0.3.278, which bundled Claude Code 2.1.278.
+This checkout now resolves SDK 0.3.304 as noted above; the historical
+2.1.261 and 2.1.278 observations below were not freshly rerun against it.
+That inspected engine signals escalations in several shapes. Read, Glob, Grep and LSP ask for a path outside
 the session's working directories without a `blockedPath`. They carry a session
 `Read(//<dir>/**)` rule suggestion and the workingDir reason text; the SDK
 drops the reason's type, which Station reads from the engine's request
@@ -184,6 +320,15 @@ its request sheet's overflow item, #3331) and inbox card label it:
 
 - A plain call to a tool grants every later call to that tool ("Allow Bash for
   this session"). Only this case mints a Station tool grant.
+- An authentic `station-browser` plain call also offers the server-wide choice
+  "Allow the Station browser for this session", computed by
+  `toolRequestServerGrant` and answered with `acceptForSession` plus the typed
+  `sessionGrantScope: 'server'`. The adapter records it on the session and
+  honours it only for a plain call it found authentic: the engine-generated
+  `mcp__station-browser__` name, the in-process server delivered to that
+  session and no authored server using the id. It is offered beside the
+  per-tool grant, never instead of it, and changes nothing in the #90 N2
+  auto-approval rule.
 - A plain Claude file edit (Edit, Write, MultiEdit, NotebookEdit), outside plan
   mode and full access, allows the call and forwards only the engine's
   `acceptEdits` mode change ("Auto-accept file edits for this session"). The
@@ -290,8 +435,10 @@ Claude Code writes why it asks on each `can_use_tool` control request:
 `permissionPromptTool`, `hook`, `asyncAgent`, `sandboxOverride`,
 `workingDir`, `safetyCheck`, `classifier`, `other`), `classifier_approvable`,
 `decision_reason_code` and `requires_user_interaction`. The installed Agent
-SDK 0.3.289 forwards reason type, reason code and interaction fields, but not
-`classifier_approvable`. A test runs the real installed SDK against a stand-in
+SDK 0.3.289 was observed forwarding reason type, reason code and interaction
+fields, but not `classifier_approvable`. The current 0.3.304 type contract exposes
+`requestId`, `decisionReason` and `matchedAskRule`; Station obtains the structured
+reason fields from its frame tap below. A test runs the real installed SDK against a stand-in
 CLI and verifies the reason values, request identities and classifier facts
 retained by the tap
 (`src-server/providers/__tests__/claude-code-spawn.sdk.test.ts`). The request
@@ -489,10 +636,13 @@ promising more than it does:
   (`packages/shared/src/redaction.ts`, see its docblock for the exact inventory)
   removes recognised credential patterns and `key=value` pairs whose key looks
   like a secret. An unrecognised token in an unrecognised field is rendered as
-  written. It deliberately keeps paths and URLs, which are the substance of a
-  preview. One consequence worth knowing: its contextual pass consumes the rest
-  of the line after a redacted key, so a command with a secret in the middle can
-  show its head and `[REDACTED]` and none of its tail — pre-existing behaviour,
+  written. It keeps ordinary paths and URLs, which are the substance of a
+  preview. Native plugin asset URLs retain `/api/plugins/<name>/<asset>` and
+  source coordinates while dropping queries and fragments; capability query
+  values are also redacted. One consequence worth knowing: its contextual pass
+  consumes the rest of the line after a redacted key, so a command with a
+  secret in the middle can show its head and `[REDACTED]` and none of its tail
+  — pre-existing behaviour,
   and in the safe direction.
 
 ### Answering on a phone and recovering delivery
@@ -503,17 +653,32 @@ Closing the sheet hides it without answering; that prompt remains dismissed
 until Answer or Needs approval reopens it. A newly opened prompt can open the
 sheet again. Sending and failure state survive hiding the sheet.
 
-Approval toasts open the originating conversation and send the selected
-decision. Accepted approval actions in notification history and Attention also
+Approval toasts send the selected decision. If the originating conversation
+is already visible, its layout stays in place; otherwise the action opens it. Accepted approval actions in notification history and Attention also
 open the conversation. These actions preserve the request's thread and opened
 event; a session grant retains the engine's existing scope.
 
-The shared answer path coalesces concurrent answers to the same prompt. Its
+While a decision is being sent, the shared answer path coalesces concurrent
+answers to the same prompt only when the decision and session grant scope both
+match. A per-tool choice and a server-wide choice remain distinct. Its
 15-second send deadline is followed by a bounded 5-second inspection when the
 send fails. A resolved request is shown as settled without claiming a local
 grant. If a lost response or a refusal from a proxy cannot be inspected, delivery remains unconfirmed:
-Check status reads the request before another decision can be sent. Errors
-keep a short summary beside the controls and technical details in a disclosure.
+Check status reads the request before another decision can be sent. An accepted
+decision stays locked across hiding or remounting the controls while its
+confirmed receipt is retained, until the request resolves or inspection
+confirms it is still answerable. The shared cache holds at most 256 decisions;
+confirmed receipts may age out to admit a new request, while uncertain
+deliveries stay locked. The controls show
+sending and accepted state; an accepted decision also offers Check status while
+waiting for the tool to continue. Desktop controls and delivery feedback follow
+the command preview, with technical details in a disclosure. A failed status
+read keeps the decision locked and does not resend it.
+While delivery is unconfirmed, all further decisions remain locked regardless
+of their decision or grant scope until inspection settles the uncertainty.
+The shared state retains the chosen server scope while delivery is unconfirmed
+and after inspection finds the request settled; that settled result sends no
+additional decision and does not establish which grant the server recorded.
 
 Owners: [approval sheet](../../src-ui/src/components/chat/ApprovalSheetProvider.tsx),
 [decision delivery](../../src-ui/src/hooks/orchestration/answerRequest.ts),

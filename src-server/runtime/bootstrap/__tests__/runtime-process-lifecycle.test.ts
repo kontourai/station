@@ -4,7 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readLifecycleEvents } from '@kontourai/station-shared/lifecycle-events';
 import { describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { createRuntimeProcessLifecycle } from '../runtime-process-lifecycle.js';
+
+const makeTempDir = trackTempDirs();
 
 describe('runtime process lifecycle', () => {
   it('records actual shutdown and exit evidence with the managed boot identity', () => {
@@ -54,4 +57,22 @@ describe('runtime process lifecycle', () => {
       });
     },
   );
+
+  it.each([
+    'supervisor_drain',
+    'supervisor_disconnect',
+    'stdout_epipe',
+  ] as const)('persists the %s shutdown reason', (reason) => {
+    const file = join(makeTempDir('station-runtime-reason-'), 'events.jsonl');
+    const lifecycle = createRuntimeProcessLifecycle({
+      STATION_LIFECYCLE_JOURNAL: file,
+      STATION_INSTANCE_ID: 'phone',
+      STATION_BUILD_SHA: 'a'.repeat(40),
+      STATION_BOOT_ID: '11111111-1111-4111-8111-111111111111',
+    });
+    lifecycle.observeShutdown(reason);
+    expect(readLifecycleEvents(file)).toMatchObject([
+      { type: 'shutdown_observed', reason },
+    ]);
+  });
 });

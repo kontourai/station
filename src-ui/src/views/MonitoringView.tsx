@@ -1,6 +1,14 @@
 import { useOrchestrationSessionsQuery } from '@kontourai/station-sdk';
 import { K } from '@shared/monitoring-keys';
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Button } from '../components/Button';
 import { FleetReceipts } from '../components/monitoring/FleetRoutingReceipts';
 import { Tabs, tabElementId, tabPanelElementId } from '../components/Tabs';
@@ -64,7 +72,7 @@ function MonitoringView() {
     data: orchestrationSessions,
     status: orchestrationSessionsStatus,
     refetch: refetchOrchestrationSessions,
-  } = useOrchestrationSessionsQuery({ refetchInterval: 5_000 });
+  } = useOrchestrationSessionsQuery();
   // audit 6-OPS-26: `data` is `undefined` while the read is
   // pending and while it has failed, and defaulting that to `[]` reported an
   // authoritative `0 / 0` — a transient (and, on a failed read, permanent)
@@ -234,7 +242,8 @@ function MonitoringView() {
   }, [autoFollow, view]);
 
   const scrollToBottom = () => {
-    logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const log = logStreamRef.current;
+    log?.scrollTo({ top: log.scrollHeight, behavior: 'smooth' });
   };
 
   const handleAutocompleteSelect = (
@@ -284,10 +293,11 @@ function MonitoringView() {
    * on. Depends on the RENDERED list, so a filtered-out arrival does not
    * scroll the view.
    */
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (view !== 'activity' || !autoFollow || filteredEvents.length === 0)
       return;
-    logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const log = logStreamRef.current;
+    if (log) log.scrollTop = log.scrollHeight;
   }, [autoFollow, filteredEvents, view]);
 
   return (

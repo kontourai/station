@@ -1,0 +1,7 @@
+{
+  "revision": "802b1c2bb5c4f8bef48507ae1b94ce9f4b405b66",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"chat.css changed only for the answer Basis chip: .turn-footer__bar is capped at the bubble width, the chip shrinks with its Surface label ellipsized after a whole 'Basis · ', and the phone .message-meta__time keeps one line. Searched this document for chat.css, footer, timestamp, chip and Basis claims: none describes the answer footer, the Basis chip or the meta-row timestamp, so no claim is affected.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

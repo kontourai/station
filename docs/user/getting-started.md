@@ -4,6 +4,264 @@ Station is a local-first workspace for agent work. This guide covers the ways
 to run Station today, a verified macOS/Linux install when its release ring is
 published, first launch, connection setup, and routine lifecycle.
 
+## First chat with Codex
+
+If Codex is installed and signed in on this computer, you can use that account
+without adding a model API key:
+
+1. Start Station using one of the paths below. For a source checkout, follow
+   the [README commands](https://github.com/kontourai/station/blob/main/README.md#run-from-source-macos-linux) and open
+   the single-use sign-in link printed by `./station start`.
+2. Open **Customize** (the sparkle icon at the bottom of the sidebar) →
+   **Connections** → **Engines** → **Codex**. Confirm the account is signed in.
+   **Check connection** sends a short message using your model allowance.
+3. An empty Home guides you through choosing an agent and optionally adding
+   files. **View available agents** opens the agent list; **Set up an agent
+   engine** opens Connections when no agent is runnable. On Home, choose **Codex** in the Agent picker, write a request, and choose
+   **Start**. You can start without a Project. The detected Codex Agent is
+   enough; creating a custom Agent is optional.
+4. Choose **New Project** on Home, enter a name, and choose **Repository or
+   folder**, **Documents and knowledge**, **Connected tools**, or **Blank
+   Project**. Documents opens Files & connections after creation; connected tools opens
+   the Project's Tools section. Neither asks for a folder or repository.
+   Blank also permits an optional installed layout. For a repository, open
+   **Start from a Git repository**, paste its HTTPS/SSH URL or choose **GitHub** or **GitLab**
+   under **Repository provider**, using an account signed in on the Station host. Choose
+   **Acquire repository**, then **Use this checkout**. Creating the Project rechecks
+   that working copy and retains its source and exact commit. Acquisition currently
+   requires the Station operator and uses that host's Git credentials.
+   Station recommends **Coding** for a Git repository; you can choose another
+   layout or none. Choose **Create** to open
+   the Project. Operator setup is saved across reloads; reopen **New Project** to
+   check and continue the same Project, intent and starter. See [repository setup and recovery](https://github.com/kontourai/station/blob/main/docs/guides/connections.md#start-a-project-from-a-repository)
+   and [document import](https://github.com/kontourai/station/blob/main/docs/guides/knowledge.md#import-documents-from-your-computer).
+5. To talk to the built-in **Station** assistant using the same Codex account,
+   open **Settings → General → Built-in agent engine → Change…**, choose
+   **Codex**, choose **Use this engine**, then **Save**. Select **Station** in
+   the chat's Agent picker. Ask it to list your projects to exercise a read-only
+   Station tool as well as chat.
+
+For a customized Codex Agent, open **Customize → Agents → New agent → Use an
+AI app**, enter a name, select **Codex**, and choose its model and Project.
+In **Tools**, choose **Station** to add read-only controls; expand the row to
+inspect the selection. Save with **Create Agent**, then choose it in a new chat.
+Codex receives your instructions with the first message in each new chat, at
+the same priority as that message. You can edit or clear them before saving. See the [Agents guide](https://github.com/kontourai/station/blob/main/docs/guides/agent-configuration.md#mcp-tool-configuration)
+for tool selection and approval details.
+
+In **Coding**, use **Files** to open a project file, **Diff** to inspect changes,
+and **Terminal** for a shell. These controls sit in the right-hand rail. Chat
+and its inbox remain available alongside them. A successful answer to a file
+question and a successful Station tool call establish different capabilities;
+check both before relying on the Agent for work.
+
+If Terminal loses its connection, it keeps its output visible and offers
+**Reconnect terminal**. Commands typed while disconnected are not sent or
+replayed. Reconnecting can reattach a retained shell; restarting Station may
+end that process and open a new shell with the same tab identity. On a phone,
+the terminal also offers **Ctrl+C**, **Tab**, and command-history arrows.
+
+New installations start without importing conversations outside your Projects.
+To include those later, turn on **Conversations outside projects** in Settings.
+Existing installations retain their choice and previously imported history.
+
+## Inspect what a chat used
+
+Choose **Inventory** in the chat header on desktop, or **⋯** then **Chat
+inventory** in the phone chat header. Pick a group,
+then **View details** on an item to read the authored message, attachment
+metadata, or recorded tool result. **Recorded origin** identifies the Session,
+turn and event; **Open session** opens the surrounding work. Output rows keep
+their **Inspect output** action. Items that cannot be read show an unavailable
+state rather than an empty result. The answer's **Basis** chip still opens
+inspection scoped to that answer.
+
+To see how much of the model's context window a chat has used, read the meter
+beside the model under the message box, or choose **⋯** then **Conversation
+stats** in the phone chat header, which names the share used. Either opens the
+chat's stats.
+
+## MCP app previews in chat
+
+In Station's web client, a completed MCP call can show its declared app directly
+below the tool row. No layout pin is needed. The integration must still be
+connected and permit rendering, and its current tool definition must declare a
+UI resource. Station's own inventory and Basis Apps use shipped resources and
+can mount when Codex owns the default Agent without a Station-engine connection.
+Inventory App data publication is currently unavailable; frame mounting does not
+change that limitation.
+The result itself needs only the standard MCP content envelope. Reloading and
+opening the saved conversation mounts its retained preview again; Station does
+not call the tool or start a disconnected third-party server to display it.
+
+App membership is cached for five minutes. New declarations may wait for a
+stale query to refetch on mount or focus; reload to refresh the catalog. Read-only
+paired devices may discover and view previews.
+
+The Codex adapter preserves complete MCP results with canonical server/tool
+identity. Claude-provider MCP calls cannot mount: their output is summarized to
+text and their flattened names lack unambiguous server identity. ACP and managed
+engines have not been qualified. Ordinary calls keep their rows and batching.
+Sample and offline views outside the connected workspace keep ordinary rows
+without app lookup. Unknown or disconnected integrations add no app card. Result UI metadata alone
+cannot mount an app or authorize a resource read.
+
+The preview follows your theme and labels interactions as unavailable. App tool
+calls, resource reads, messages and links are refused in transcript previews.
+Fullscreen and model-context notes are not supported there yet. Native shells
+continue to refuse scripted MCP frames; use the web client for these previews.
+See the [host design](https://github.com/kontourai/station/blob/main/docs/design/mcp-ui-host.md#transcript-previews) for the
+capability boundary and remaining work.
+
+## Connect your phone
+
+Your computer runs Station and the agents. Your phone connects to it to read
+replies, continue chats, and review work. Start on your computer:
+
+1. Install and launch Station there using the options below.
+2. Open the Station name at the top of the computer’s window and choose
+   **Pair phone**. Check the address before creating the invitation.
+   **Settings → Pairing → Pair device** opens the same screen.
+3. On a new phone, open Station and choose **Scan pairing QR code**. Scan the
+   invitation from the computer. **Enter a pairing code** is available if the
+   camera cannot be used. Keep the computer running.
+
+Pairing codes require a reachable HTTPS address. The computer can suggest its
+own configured Tailscale Serve address; choose **Use this address** after checking
+it. Both devices still need access to that address.
+
+For local network access, enable **Settings → Pairing → Discover this Station
+nearby** on the computer, then choose **Find nearby Stations** on the native phone
+app. Discovery is off by default and shows names and local addresses without
+granting access. Select the intended computer, confirm the exact address and any
+unencrypted HTTP warning, request access, and approve on the computer. Android
+versions before Android 14 offer QR and manual address entry instead. Browser
+clients do not browse the local network. **Other ways to connect** expands to **Open connection manager**, where you can
+enter an address when discovery is unavailable or finds nothing.
+
+If an exchange loses its response or cannot save approved access, Station holds
+the attempt instead of sending the one-time proof again. Check paired devices on
+the computer and revoke any unintended access before retiring the held request
+and creating a fresh invitation.
+
+A new phone shows the connection welcome until you save a real Station.
+A saved Station that is offline or needs access keeps its connection recovery
+controls instead. The welcome does not run workspace queries against an
+unconfigured endpoint.
+
+Station's phone apps are not in public app stores yet. Android builds reach
+testers in a Google Play internal testing group and iOS builds reach invited
+TestFlight testers. Without one of those, open the Station's reachable address
+(see below) in your phone's browser instead; the browser offers the same
+**Pair with a code** step and **Request access**.
+
+A browser opened with the host's one-time sign-in link can create invitations
+and manage paired devices. Choose Read-only, Standard or Full device access
+before creating the invitation;
+anyone holding it can pair once before it expires, without another approval.
+Cancel an unused invitation to prevent it being redeemed. Revoking a paired
+device removes access it already received.
+
+For a terminal-only host, run `station-nightly environment offer` on the
+computer running your Nightly install (or `./station environment offer` from a
+source checkout). This prints a single-use invitation with Standard access.
+Use `--scope=orchestration:read` for read-only access or `--require-approval`
+to review the recipient before granting access.
+
+A browser that arrives without an invitation can choose **Request access**.
+Approve that request in a trusted session or with the displayed command on the
+Station host. Bare host-approval commands discover the running Station in the
+selected local home before consulting saved Station defaults, so a saved remote
+Station does not override that local instance. Use the same home and channel
+that started Station; a remote host requires running the command there, such
+as over SSH.
+
+The address in that invitation must be reachable from your phone. `localhost`
+means the device you are using, so a computer’s localhost address does not reach
+it from a physical phone. Use the reachable address shown in the pairing flow;
+see [Connections](https://github.com/kontourai/station/blob/main/docs/guides/connections.md)
+for remote access. A pairing code grants access; it does not create a network route.
+
+If you have no Station yet, install and open it on your computer using the
+options below. The phone's connection manager offers QR scanning, pairing-code
+entry and **Connect a Station** for a host address. Broker route setup is a
+separate advanced option. You can start with an ordinary chat; custom Agents,
+remote tasks, and layouts are optional.
+
+## Preferences across devices
+
+Open **Settings → General → Your account** to set the approval default for your
+new Codex, Claude or Muse chats. You can also use the chat's approval picker and
+choose **Save as my … default**. Full access requires an explicit
+confirmation. An Agent's own default takes precedence over your personal
+preference; an explicit chat choice takes precedence over both. Existing chats
+and unattended jobs keep their settings. Device grants and Station policy still
+control what may execute.
+
+Appearance, chat display, answer delivery, diff preferences and model-picker
+choices follow the same signed-in person across devices connected to this
+Station. They are saved as you change them, and other clients refresh on focus
+or reconnect. **Import previous preferences** brings over this browser's older
+portable choices without replacing settings your account already has. **Use
+default** removes a personal display choice; **Use inherited default** returns
+new-chat approvals to the Agent, Station or engine setting.
+
+While offline, changes wait on this page and are not saved yet. Keep the page
+open until saving finishes. If another device changed a composite preference,
+**Reload saved preferences** shows the current choice before you try again.
+
+Microphone/output providers, push permission, haptics, keyboard behavior and
+shortcuts, screen layout and device access stay on the device. Settings labels
+which scope owns a choice. If your Device is not linked to a person, preferences
+remain local. Different Stations keep separate account preferences.
+
+The approval chip shows the known mode, including **Full access**, **Auto** or
+**Ask**. **Engine default** means the engine's active mode has not been confirmed.
+For Codex the picker says what that is: your own Codex settings. If you set
+none, no command Codex runs uses the network or writes outside the chat's
+folder and temporary directories without asking; it may ask before other
+writes too. Codex's web search and MCP tools are not commands and are not
+covered by this. Open the picker to see the source, the confirmed mode and whether a request takes
+effect next turn or requires restarting the session. A Claude chat started in a
+chosen mode by someone who may grant full access can switch to full access on
+its next turn. A chat left on Claude's own settings, one that started before
+this was available, or one on a Station running as root outside a sandbox
+needs a restart.
+
+## Read recent conversations offline
+
+In the browser, open **Settings → Privacy & sharing** and enable **Save offline
+reading copies**. It starts off. Then open conversations while connected to save
+text from their most recent history read: at most 20 conversations, 10 recent
+turns per conversation, 256 KiB per conversation and 2 MiB in total. Copies expire
+after 24 hours or a build change. Tools, reasoning, attachments and provider
+recovery state are excluded. A running answer is captured after its history is
+read again; this is not a continuous backup.
+
+Message text can contain pasted secrets. These local IndexedDB copies have no
+additional encryption, and anyone using this browser profile can read them
+while offline. Enable this only on a device where that trade-off is acceptable.
+**Clear offline copies** deletes the saved text and turns saving off. Signing out,
+changing credential authority or account, or switching Station also clears the
+copies. A build change also turns saving off with the expired copies, so enable it
+again after an update. Reachability failures leave saved copies and the saving
+preference intact.
+
+A browser reload while the Station route is unavailable shows a separate, read-only reader with an **offline
+copy from** timestamp. If you lose connectivity in an already open workspace,
+choose **Read offline copies**; **Back to workspace** keeps drafts and the existing
+outbox available. Reconnecting leaves the reader, verifies live access and uses
+server data. Local copies never enter the live transcript or authorize actions.
+
+After one successful web-worker installation on HTTPS or localhost, the app
+shell can load offline. An initial visit without any cached shell still needs a
+network connection. Only the local text reader bypasses live access verification;
+ordinary protected query caches remain quarantined on a cold offline start. A
+small identifier-only session index is persisted under the normal 24-hour,
+build and authority rules, rather than caching provider recovery state or titles
+taken from prompts. Native shells already bundle their app assets; the browser
+service-worker cache is not installed there.
+
 ## Ways To Run Station Today
 
 Station is open source and under active development. Check the
@@ -48,8 +306,22 @@ needed.
 The install lives under `~/.station/installs/nightly`, keeps its data in
 `~/.station/instances/nightly`, and owns the `station-nightly` launcher
 (`~/.local/bin/station-nightly`, or `station-nightly.cmd` on Windows). Open
-`http://localhost:38000` when it finishes. Run the same command again to
-upgrade, and `station-nightly --version` to see the installed build. Set
+the single-use sign-in link printed when it finishes. For later launches on
+macOS/Linux, use one command:
+
+```bash
+~/.local/bin/station-nightly start
+```
+
+On Windows, in PowerShell:
+
+```powershell
+& "$env:USERPROFILE\.local\bin\station-nightly.cmd" start
+```
+
+The default browser address is `http://localhost:38000`; use the sign-in link when access is requested.
+Run the same install command again to upgrade. Replace `start` with
+`--version` in the launch command to see the installed build. Set
 `STATION_INSTALL_PUBLIC_MANIFEST_URL` to install from a different signed
 manifest instead. The Station Nightly desktop app uses the same ports and
 data directory; the installer refuses to share them silently (see
@@ -143,11 +415,14 @@ or hosted model service that Station's own engine runs inference on. An
 **Engine** is an installed agent CLI, or a custom engine you connected, that
 runs its own agent loop.
 
-1. Open **Connections**.
+1. Open **Customize → Connections**.
 2. On the **Models** tab choose a detected service or **Add model connection**;
    on the **Engines** tab choose a detected engine or **Add engine**. During
    first run, a detected Engine can be ticked to connect it and create its
-   External agent in the same confirmed action.
+   External agent in the same confirmed action. An engine that is starting for
+   the first time can be reported as still starting rather than failed: its
+   Agent is added if it connects while Station is running; otherwise set it up
+   again later.
 3. Follow its setup action until it reports **Ready**.
 
 For OpenAI's model service, supply its API key. A custom server may use another
@@ -180,7 +455,7 @@ Choose the simplest path for what you want to do:
 
 ## Start Your First Chat
 
-Home, the chat dock and operator Project pages use the same start composer. Write
+Home and the chat dock use the same start composer. Write
 what you want done and choose **Start**. You do not need to choose anything
 first; the controls show what **Start** will use:
 
@@ -207,7 +482,8 @@ first; the controls show what **Start** will use:
   can be chosen too. Its chats run in your home folder, or, for an ACP
   engine, in that engine's own Working Directory or else a private folder
   Station makes for the chat; the chip and list say which.
-- **⋯** holds **Use a visual skill**.
+- **⋯** holds **Use a visual skill** while the **Visual skills** Feature
+  Preview is on; with it off there is no **⋯**.
 
 **Runs on <Station>** says which Station runs the work. When you can run work
 on another Station (a verified SSH environment or a paired Station you are
@@ -223,12 +499,13 @@ foreground chat stays on its existing Station; choosing a remote task
 destination does not move that chat. With no other Station to choose, the
 control is plain text.
 
-An operator's Project page has the same composer in a compact form above its
-activity. Its Project is fixed, so starting there uses that Project even when
-the chat dock is bound elsewhere. A missing Project blocks starting and keeps
-the message. This does not change Home's remembered Project. To inspect or
-change this Station's local folder, open **Settings** on the Project page;
-the folder is workspace configuration rather than the Project's identity.
+The Project page opens on **Overview**. **Project room** is shared discussion
+with people in that Project; use **Bring an Agent** for an explicit request
+whose answer returns to the room. Direct Agent conversations stay in the chat
+dock. **Tasks** separates current work, backlog and history; **Files & connections**
+holds the Project's context. To change where new Agent work starts, open the
+workspace controls under Files & connections. A local folder is execution
+configuration rather than the Project's identity.
 
 Choosing on a chip starts nothing, and Station remembers it. The Agent is
 remembered for each project and for **No project** on this browser and
@@ -240,7 +517,31 @@ Runtime options such as reasoning effort stay with the Model choice for this
 browser tab only; they are not remembered after it. A choice you make stays on
 both surfaces for this browser tab, even if another chat later runs on a
 different Model, until you change it or choose the picker's **Use …** reset,
-which names the default it returns to.
+which names the default it returns to. Station does not start a chat on a Model
+its engine does not offer: a default that an engine advertising its own model
+list left out is skipped, and a kept choice that list no longer contains is
+refused at **Start** with the message kept, so you can choose another.
+
+Project settings keeps workspace details and chat defaults together. Use
+**Save** to apply workspace, identity, model, new-chat, execution, Agent, and
+tool changes. Layouts, Sources, People and access, and Project knowledge
+have their own actions, which apply immediately. Background refreshes preserve
+unsaved edits. Clearing the working directory removes the configured folder;
+a Project that requires worktree isolation still needs a valid Git directory.
+
+A Project can choose how its new chats start, in Project settings → **New
+chats**. **Use the AI model above** starts each new chat on the Project's AI
+model wherever its Agent offers that model, ahead of your last pick on this
+device. **Last model used in this project** starts on the model your last chat
+there started with for the same Agent; if that model is no longer offered, the
+Project's model or the usual default applies and the Model chip's tooltip says
+why. The approval mode can be set for the Project (Ask first, Auto or full
+access) or follow your last chat there. It applies below the Agent's own mode
+and replaces your personal default for that engine, and full access is only
+reused when you can grant it. **Permissions** on the composer names where its
+mode came from, and opens the approval picker to choose this chat's mode
+before you start; picking **Default** there uses the Agent's, then the
+Station's default instead.
 
 Until Station has loaded your projects, the chips show placeholders and
 **Start** waits, so a start never runs in a project Station has guessed. If
@@ -321,15 +622,40 @@ Both save the same selected answers before opening their next step.
 
 On a phone, use the compose button at the right of the chat bar, or tap the
 current chat title to open **Chats and tasks** and choose **New chat** at the
-lower right. The three-dot menu holds chat actions; connection health remains
-in the app header. In fullscreen chat, where that header is hidden, Station
+lower right. The three-dot menu holds chat actions, including **This chat**:
+the chat's workspace, branch and changed files, status, background tasks and
+linked pull requests, each opening its own view. On a computer, a wide dock
+shows the same panel beside the transcript, and a narrower one puts it behind
+a chip in the dock header. Connection health remains in the app header. In fullscreen chat, where that header is hidden, Station
 management remains in the chat actions menu. **Projects** has the same add control
 for creating a project, including a short first-project prompt when empty.
 
+In **Chats and tasks**, delegated work folds under its recorded parent.
+Expand the subtask count to read the children; children that need you stay
+visible. Task-owned chats appear under their Task as sessions. **Show work**
+filters by project or Station and stays selected on this device. If work needs
+you outside the filter, choose **Show all** from the notice.
+
+The workspace map lists Projects and their named Layouts, followed by your
+**Personal Boards**. Its **+** creates a Board and lets you name it, even
+when the list is empty. Select a project to see its configured views as child rows.
+Use Up/Down inside the view list, or the header's Layout picker, to change
+views. The header's sidebar button collapses the desktop map to a project
+rail; clicking a project icon opens its views without navigating first.
+The dashboard icon below projects opens your Personal Boards and their add
+button. Escape closes either popup and returns focus to its icon.
+The footer puts live work beside your initials, which open a summary of your
+access with **My access**, **Profile**, **Ask Station for help** and **Open
+settings**; Schedule, Customize and Settings sit on the row below. The collapsed rail stacks live work and your initials above
+Sidebar utilities. Conversations and composer drafts stay in the chat dock and
+its inbox (⌘D).
+
 Selecting a project in the sidebar opens its workspace and makes it the default
-for new chats. An existing chat stays with its original project. The chat bar's
-**New chats** value lets you choose another default without leaving the workspace.
-On a phone with a long chat title, that control shows only a folder icon.
+for new chats. An existing chat stays with its original project. On a computer,
+the project beside **New** in the dock header shows that default; choose it to
+pick another without leaving the workspace. On a phone, the chat bar's **New
+chats** value does the same, and with a long chat title it shows only a folder
+icon.
 The next sidebar project selection updates that default again.
 
 To give a project an icon, open its settings and choose the icon beside its
@@ -347,6 +673,10 @@ project page shows its initials. A row for work on another Station shows
 neither, since its project belongs to that Station.
 
 ### Prepare a visual skill
+
+Visual skills are a Feature Preview: turn on **Visual skills** in
+**Settings → Advanced → Feature previews** first. Off, the start composer and
+the agent list offer none, even if one is installed.
 
 Choose **⋯** then **Use a visual skill** in the start composer to browse
 installed visual skills, including when only one Agent is ready. A card describes its purpose, example and owning plugin. Choose
@@ -384,6 +714,29 @@ an unsent next stage. Secret questions and tool approvals use the ordinary
 conversation controls.
 
 
+### Station status, updates, and recent messages
+
+Open the Station control in the toolbar, then **Station details**, for connection
+repair, pairing requests, local-service recovery, and recovered-copy information.
+On the full-screen mobile chat surface, tap the Station indicator to open details.
+These local facts remain readable when the selected Station is unavailable.
+Blocking work restrictions also appear in the workspace. Recovered-copy warnings
+stay available until the underlying condition clears; restoring a copy does not
+transfer execution authority.
+
+The sidebar **Updates** control opens one panel for the app and connected server.
+Their actions remain separate. The desktop app update includes its built-in
+server; a separately installed server keeps its own update and restart steps.
+Update policies remain in Settings.
+
+Toasts report short outcomes. Hovering, focusing, or opening their details pauses
+the reading time, as does leaving the app. Extra messages wait behind **View all**.
+**Notifications** includes recent local messages and a clear action, separately
+from the server-backed attention inbox. Only messages explicitly approved for safe
+recall survive a reload, on this device and for the selected Station. Actions and
+raw error details are never saved in that recall. Approvals keep their existing
+durable request flow.
+
 ### Finish setup and return
 
 When no selected Agent can respond, the composer shows a setup helper alongside
@@ -398,7 +751,7 @@ other integrations retain their own authorization instructions.
 If New Chat offers **Connect**, **Set up**, **Edit agent**, or **Set up
 Connections**, use that action to open the owning setup page. The picker steps
 aside while keeping your chosen workspace, Agent, Model, and selected context.
-Use **Return to New Chat** in the setup banner when finished, **Cancel
+Use **Return to New Chat** in the inline setup notice when finished, **Cancel
 return** to stay, or browser Back to return to the page you left. Station rechecks setup before selection;
 that manual return sends no message. For a written Home goal, readiness of the
 selected agent returns you automatically and resumes the original request after
@@ -434,10 +787,66 @@ native steering. Other engines hold steering until a safe boundary can be proven
 currently they wait until the turn finishes. Each pending row shows its mode.
 **Send now** deliberately stops the active turn immediately and sends the
 selected message after Station confirms the stop. **Stop** remains separate.
+Steer and Queue carry text only. You can still attach files or dictate during a
+turn: files wait in the draft, which says why, until you send it after the turn
+ends.
+
+A text message is saved on this device before it is sent. If the app closes or
+the connection drops before Station answers, the app asks Station what happened
+at its next launch or reconnect: a message Station never received is sent once,
+with the same identity, and one Station may have started is kept and marked,
+never sent twice. A message with attachments or a visual skill keeps its draft
+until Station answers instead.
+
+Once Station confirms a turn started, a late network error does not queue that
+message again.
+
+Until the agent has a message, its bubble is outlined rather than filled. On
+the way there it shows no text, only a small mark beside the bubble (hover it,
+or use a screen reader, for its words):
+
+- a turning ring while it is **Sending**, also while another open window of the
+  app is sending it; the outline is dimmed
+- a check once Station has **Received** it. The mark's label adds **Safe to
+  close the app** when Station keeps running without the app, or **Keep the app
+  open** when the app's own Station stops with it. The composer's status pill
+  says **Starting** at the same time.
+- once the agent has it, the bubble fills and the check fades out
+
+When something needs your attention instead, the bubble opens one short line:
+
+- **Sends when connected**: kept on this device until Station can be reached
+- **No answer yet. Resends only if it never arrived.**, after a send that got no
+  answer: when Station can be reached it is asked about the message, which is
+  sent once only if it never arrived
+- **Waits for the unsent message above**: messages in a chat go in order, so a
+  message waits until an earlier one that was not sent is retried or discarded
+- **Waits for its own Station**, for a message written for another Station
+- **Not sent**, with **Retry** (the same message again, never a second copy) and
+  **Edit** (the text goes back to the composer); **Discard unsent message** is in
+  the message's **⋯** menu (on a phone, listed in its sheet)
+- **May have reached the agent**, with **Check**, which asks Station again and
+  never resends
+- **Not confirmed**, for a message this device sent with no answer from Station
+  (for example a send that was stopped)
+
+A message that may have reached the agent, or got no answer, is never discarded
+automatically:
+**Discard…**, on the message, in the queued-message notice or in the pending
+list above the composer, states the risk and removes it only after **I checked, discard it**, in
+every open window. It does not hold back the messages written after
+it.
 
 Quiet turns show elapsed silence without guessing that an engine retried. Retry
-status appears only when the engine reports it. The Drafts icon saves and restores
-unsent composer content; the trash icon clears the current message. Hold or focus
+status appears only when the engine reports it. The **Drafts** icon opens **Saved
+drafts** (also Ctrl/Cmd+S in the composer). Save a copy of an unsent prompt,
+including attachments and quoted context, then choose it from any chat on this
+device to put it in that chat's composer. Saving leaves the current message in
+place; restoring replaces the destination composer's content without sending it.
+Drafts are stored in this browser or app on this device, not synced to other
+devices. Station keeps the 20 newest saved drafts, with up to five images per
+draft, and lists any dropped or unreadable images. The trash icon clears the
+current message. Hold or focus
 either icon to read its label. Choose **Chat settings → Return in chat** to change
 Return behavior on this device. Touch devices default to a new line; desktop
 Return sends. Shift+Return adds a line and Ctrl/Cmd+Return sends.
@@ -498,18 +907,68 @@ unavailable.
 
 ## Start Your First Task
 
-1. Open a Project and create a Task for work you want to keep.
-2. Choose an Agent that is ready to run.
-3. Open the Task to follow its Sessions, files, artifacts, and evidence.
+1. Open a Project and choose **New Task**. The normal chat composer opens in **New Task** mode, focused for your idea. Use its existing Project and Agent chips if you want different choices.
+2. Refine the idea in chat, or accept an immediate proposal for a clear one-liner.
+3. Choose **Create Task** on the proposal to keep its brief and linked chat. The Task opens with its brief and references; accepting does not assign an Agent or start an execution Session.
+
+In new chats and New Task conversations, drop an image onto the composer or paste
+a screenshot. Review its thumbnail and remove it before sending if needed.
+The existing Task room and agent-thread replies accept images the same way,
+including messages with only an image. You can attach up to five files, 5 MiB
+each and 15 MiB combined. Keep unsent local files in the open draft; reloading
+does not restore them. An older image in history may become unavailable after
+the server's attachment retention expires.
+
+An existing chat can become a Task through **New Task from this** in its More menu.
+The **Add to Task** picker also offers **New Task from this** for an answer or input.
+**New Task from this** starts shaping immediately; type any focus or refinement as your next message. New Task mode stays on through clarifying questions and reloads until you accept a proposal or choose **Stop shaping this Task** in the chat’s More menu. No Task is created until acceptance.
+
+On a Project's Tasks board, a GitHub issue offers **Start Task**. It copies the
+issue's description and latest comments into a new Task and links back to the
+issue; if the issue already has an open Task, Station opens that Task instead.
+
+After reload, an accepted card offers **Open Task**. The Task description is the Goal sentence. Its shared Task document keeps the complete accepted brief. If saving that document fails after creation, the proposal shows a recovery error: retry **Create Task** to finish saving the same Task.
+
+The Task opens as a chat room. Press Enter to send, or Shift+Enter for a new
+line. New messages follow the newest message while you are at the bottom; if
+you scroll up, **Jump to latest** returns you there. **Load earlier messages**
+appears above the visible history. A failed agent request stays in the room
+with **Retry** and **Open run**. The Brief is shared with agent requests unless
+you turn off **Brief attached**. Saved answers appear in Results, with their
+source and evidence available through **Answer details**. For engines that can resume, idle agent threads remain available after restarting Station. Ended or replaced runs still require a new agent request.
 
 After first-run setup, Home can offer **Start your first task** for a confirmed
-Project. It uses the ordinary Task form. If the Agent is unavailable, Station
+Project. This separate guided starter keeps its focused title entry and dispatch receipt. If the Agent is unavailable, Station
 shows the setup reason without creating a Task. If a start has an uncertain
 outcome, inspect that Task rather than creating another to retry it.
 
 Task status alone does not establish that work passed a gate. Read the run and
 review evidence. The [Starter Work guide](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md) explains
 how Station preserves the same work identity through retries and response loss.
+
+## Review Activity Without Changing Your Place
+
+Open **Activity** from the workspace sidebar. Use a row's **More actions →
+Quick review** to read it in Related while keeping the selected item, search,
+filters and list position. **Previous** and **Next** follow the rows currently
+visible in that list. When an item leaves the current results, review says so
+and disables those controls rather than choosing from hidden results.
+
+Choose **Open** to keep the reviewed item as durable work. Reopening the same
+kept item focuses it. Typing a reply also protects it; Cancel in the unsaved
+changes dialog leaves the reply and source in place. A review belongs to the
+Station it was opened on and does not read another Station's data.
+
+**Open conversation** uses Chat's normal conversation owner. A review that
+stays visible does not ask you to leave it. If opening Chat hides dirty work,
+that work asks once; Cancel keeps the current view and reply. An attached
+review hands its message to Chat's **Continue here?** confirmation on the same
+Station. Switching Station or closing that reader stops a late result from
+opening or sending in the new view.
+
+On a phone, review opens as a child screen. Back returns through the real
+history entry; **Up to Activity** returns to its captured Activity opener.
+Session properties sheets and cold child links remain separate planned work.
 
 ## See Conversations Started Outside Station
 
@@ -546,7 +1005,9 @@ point Station at a different folder (for OpenCode, the folder holding the
 database). Station checks every two seconds and reads the 128 most recently
 changed conversations from each place. Older ones stay in Activity once Station
 has read them, but new messages in them are not picked up until they are among
-the 128 again.
+the 128 again. Conversations Station has not listed before appear only after it
+finishes restoring its own sessions at startup; if that restore fails, already
+listed conversations keep updating but new ones wait until Station restarts.
 
 Each conversation is filed under a Project by the folder it ran in:
 
@@ -577,7 +1038,7 @@ gone. You can open these conversations, and so can every device you have
 paired with Activity read access, including a phone.
 
 To stop reading conversations from folders outside your Projects, turn off
-**Conversations outside projects** in **Settings → Advanced** (under Station host), then **Save**
+**Conversations outside projects** in **Settings → Advanced** (under Host options), then **Save**
 (`attachedSessionsOutsideProjects` in the Station configuration). Station stops on its
 next check, including for conversations it already lists: new messages in
 them no longer arrive. What it already read stays in Activity, in search and
@@ -598,16 +1059,19 @@ conversations are read only: the message box shows why it is unavailable.
 Codex continues from the latest completed turn Station has observed, so wait
 for one if the message box is unavailable.
 
-The continuation always works in the folder the conversation ran in, and the
-engine is confined to that folder. Station checks the folder again when you
-continue:
+The continuation starts in the folder the conversation ran in. Its actual
+confinement depends on the Session's access grant and the engine's enforcement;
+a continuation granted Full access can run with host authority. The working
+folder alone is not a sandbox guarantee. Station checks the folder again when
+you continue:
 
 - A conversation filed under a Project continues under that Project. This
   includes one in a worktree outside the Project folder: it continues in that
   worktree. Station refuses if the worktree was removed or replaced, or if its
   `.git` does not lead back to the Project's repository.
 - A conversation under **No project** continues as a **No project** chat
-  confined to its own folder, after you confirm that choice. This is allowed
+  in its own folder, after you confirm that choice. Its access grant still
+  determines confinement as described above. This is allowed
   only for a folder inside your home folder. Station refuses your home folder
   itself, every folder outside it (system folders included), any hidden
   folder directly in your home folder and everything in it (such as `.ssh`,
@@ -711,6 +1175,8 @@ directory for manual review.
 
 - Read [Station concepts](concepts.md).
 - Customize [keyboard shortcuts](../guides/keyboard-shortcuts.md).
+- Find [settings you may not have found](settings.md), such as feature
+  previews and developer tools, and learn how to [share an answer](sharing-answers.md).
 - Review the [Station privacy policy](https://kontourai.io/privacy/station/).
 
 ## Inspect a learning source

@@ -1,0 +1,9 @@
+{
+  "revision": "935d3605893a9cffb19e99959fac229751460887",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Reviewed the Task entry journey against TasksLayout, ProjectTasksSection and their mounted tests at 935d3605893. Board creation now forwards the same scoped git snapshot as ProjectPage; missing Task agent identity disables Dispatch with a visible reason. Ordinary project creation still awaits its explicit list invalidation before canonical Task navigation, and create/back showed the Task without Refresh on baseline main. Existing Starter readiness, correlation and dispatch descriptions remain accurate; no prose change. New regression cases only qualify adapter/navigation/guard behavior, not provider execution.","inputs":["docs/guides/starter-work.md","src-ui/src/__tests__/ProjectTasksSection.test.tsx","src-ui/src/components/TasksLayout.tsx","src-ui/src/views/project-page/ProjectTasksSection.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed JobDetail delta at 935d3605893 against Scheduler and Open File with System Handler claims. The triggered Task link now uses the existing /tasks/:taskId router with canonical guarded navigation. RunOutputRef preview and /api/runs/output behavior, Scheduler routes, authentication and response contracts are unchanged. No API prose change is needed; focused UI regression qualifies the link, not hosted or provider delivery.","inputs":["docs/reference/api.md","src-ui/src/components/scheduler/JobDetail.tsx"]}
+  ]
+}

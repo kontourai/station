@@ -1,0 +1,7 @@
+{
+  "revision": "757b510858ea116c0e722d5eda68c5d30b95739a",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"#561: vitest-resource-manifest.mjs adds flow-run-service.owned-process.test.ts to the process-heavy group. Re-read the scripts scope guidance (owned-process.mjs reuse, evidence tooling); unaffected. No prose change.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

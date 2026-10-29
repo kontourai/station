@@ -1,0 +1,7 @@
+{
+  "revision": "02def594bb37edd0bc0e2f45eecd5f2a18f0aa64",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Corrected the legacy on-host and on-Project-default visible labels against StartStationControl.tsx: Run a task… is the visible action; destination remains in tooltip and accessible name. TaskChooser retains draft, Project and routing, and cancellation preserves edits. Direct phone Project access remains unchanged. No physical-device, fresh OAuth or Terminal qualification is implied.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "bda348ca17d90c0aefc461837ab6071586560a88",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Scoped merge review against MCP preview changes in tools.ts, station-runtime.ts and mcp-service.ts. The added ui-tools read route and transcript open-only resolve/resource paths do not run matrix sends, setup POSTs, activation reloads or smoke admission. The bootstrap callback reads trusted app metadata for history retention; it does not start an engine. Normal MCP probing may still connect, as documented; transcript open-only discovery is a separate path. The matrix isolation, budgets, receipt/provenance distinctions, cleanup limits and NOT_VERIFIED live-provider/browser qualification remain accurate. No prose change or new live smoke claim; existing MCP route/service and transcript seam evidence is separate from matrix qualification.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/routes/agents/tools.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/services/plugins/mcp-service.ts"]}
+  ]
+}

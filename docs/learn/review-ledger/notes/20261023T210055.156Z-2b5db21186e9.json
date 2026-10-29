@@ -1,0 +1,7 @@
+{
+  "revision": "c78f951e52a0a13ac82af4f8c916bd06870815ad",
+
+  "notes": [
+    {"path":"docs/guides/mobile-release.md","note":"Bounded merge review of 693f2b8a506 + main c0830bbae83 at c78f951e52a: resolve only the overlapping testflight-live-activity-workflow guard hunk, adopting main's signing/build-only rationale and removing its obsolete whole-file channel-name ban. Preserved the sweep's Stable push opt-in resolver calls, invalid-value refusal, both protected profile prerequisites, generated Cargo/plist checks and all non-conflicting tests. The advisory-job release-advisory.yml binding remains enforced in its canonical test; independent Nightly upload policy remains covered separately. Reviewed Live Activity/Stable opt-in and Nightly distribution claims against real workflow, channel resolver and retained tests; no prose correction. Focused release, internal-distribution and advisory suites passed 61 tests in 38.12s. A discarded whole-file resolution failed two existing assertions and was not committed. Source/test review only; no package/signing/provider/device/hosted qualification and no whole-guide recertification.","inputs":["docs/guides/mobile-release.md","scripts/__tests__/testflight-live-activity-workflow.test.ts"]}
+  ]
+}

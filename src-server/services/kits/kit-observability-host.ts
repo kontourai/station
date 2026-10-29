@@ -15,7 +15,7 @@ import {
 import type { LayoutComponentRef } from '@kontourai/station-contracts/layout';
 import type { FileMutationLock } from '@kontourai/station-shared/lifecycle-events';
 
-export const STATION_KIT_OBSERVABILITY_ADAPTER_VERSION = '1.0.0';
+const STATION_KIT_OBSERVABILITY_ADAPTER_VERSION = '1.0.0';
 export type StationKitLifecycle = 'installed' | 'disabled' | 'uninstalled';
 
 export interface StationKitProjectBinding {

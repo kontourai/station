@@ -4,6 +4,11 @@ import {
 } from '@kontourai/station-basis-pane/workspace-basis-pane';
 import { WORKSPACE_BOARD_PANE_DESCRIPTOR } from '@kontourai/station-board-pane/workspace-board-pane';
 import { WORKSPACE_ACTIVITY_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-activity-pane';
+import {
+  isCanonicalWorkspaceActivityReviewPaneInstance,
+  WORKSPACE_ACTIVITY_REVIEW_PANE_DESCRIPTOR,
+  WORKSPACE_ACTIVITY_REVIEW_PANE_RENDERER_NAME,
+} from '@kontourai/station-contracts/workspace-activity-review-pane';
 import { WORKSPACE_AGENTS_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-agents-pane';
 import {
   WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR,
@@ -457,6 +462,15 @@ export function isCanonicalBuiltinWorkspacePaneDescriptor(
 ): boolean {
   if (descriptor.renderer.kind !== 'builtin-component') return false;
   const name = descriptor.renderer.name;
+  if (name === WORKSPACE_ACTIVITY_REVIEW_PANE_RENDERER_NAME)
+    return (
+      sameBuiltinDescriptor(
+        descriptor,
+        WORKSPACE_ACTIVITY_REVIEW_PANE_DESCRIPTOR,
+      ) &&
+      (instance === undefined ||
+        isCanonicalWorkspaceActivityReviewPaneInstance(instance))
+    );
   if (name === 'flow-run-console') {
     return isCanonicalBuiltinFlowRunConsoleDescriptor(descriptor);
   }
@@ -590,6 +604,7 @@ export function builtinWorkspacePaneRendererPresence(
  * renderer-name table.
  */
 const BUILTIN_WORKSPACE_PANE_DESCRIPTORS: readonly WorkspacePaneDescriptor[] = [
+  WORKSPACE_ACTIVITY_REVIEW_PANE_DESCRIPTOR,
   WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
   WORKSPACE_BASIS_PANE_DESCRIPTOR,
   WORKSPACE_BOARD_PANE_DESCRIPTOR,

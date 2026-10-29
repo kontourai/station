@@ -49,6 +49,12 @@ vi.mock('../contexts/AuthorityPersistenceContext', () => ({
   }),
 }));
 vi.mock('@kontourai/station-sdk', () => ({
+  // The visual-skills Feature Preview on, so the start composer offers them.
+  useFeaturePreviewsQuery: () => ({
+    data: [{ id: 'visual-skills', enabled: true }],
+  }),
+  useAgentsQuery: () => ({ data: [] }),
+  useConfigQuery: () => ({ data: {}, dataUpdatedAt: 1, refetch: vi.fn() }),
   useSkillExperienceInventoryQuery: () => ({
     data: experienceRead.inventory,
     refetch: experienceRead.refetch,
@@ -59,7 +65,8 @@ vi.mock('@kontourai/station-sdk', () => ({
   usePeerCredentialsQuery: () => ({ data: [], isSuccess: true, isError: false }),
 }));
 const screenSize = vi.hoisted(() => ({ mobile: false }));
-vi.mock('../hooks/useIsMobile', () => ({
+vi.mock('../hooks/useIsMobile', async (importActual) => ({
+  ...(await importActual<typeof import('../hooks/useIsMobile')>()),
   useIsMobile: () => screenSize.mobile,
 }));
 vi.mock('../hooks/useDevicePresentation', () => ({

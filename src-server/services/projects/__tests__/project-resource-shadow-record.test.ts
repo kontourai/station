@@ -148,7 +148,7 @@ describe('accumulation', () => {
   });
 
   test('accumulation CONTINUES across a boot that recovers from `.previous`', () => {
-    // Review round 1, MEDIUM 3. The reader recovers a lost primary from the
+    // The reader recovers a lost primary from the
     // retained `.previous`; the writer used to gate on the primary alone, so
     // on this exact boot it started from an empty record and reset the count
     // to 1 — silently destroying the cross-boot accumulation that is the only
@@ -181,7 +181,7 @@ describe('accumulation', () => {
 });
 
 describe('the reader refuses a broken record instead of crashing the reporter', () => {
-  // Review round 1, MEDIUM 4: `Array.isArray(entries)` said nothing about the
+  // `Array.isArray(entries)` once said nothing about the
   // elements, so a structurally-broken entry reached the reporter, which sums
   // `entry.count` and renders `entry.outcome`. "A guardrail whose rejection
   // path has never executed is unproven" — these are that rejection path.
@@ -222,8 +222,7 @@ describe('the reader refuses a broken record instead of crashing the reporter', 
   // ran. `JSON.parse` cannot produce NaN or Infinity at all, so a
   // `Number.isFinite` guard here had no reachable rejection path — which is
   // why it is now `Number.isInteger` plus a floor, constraints a real file
-  // CAN violate and the three numeric cases below actually exercise (round 2,
-  // LOW 5).
+  // CAN violate and the three numeric cases below actually exercise.
   test.each([
     ['a null entry', null],
     ['a string entry', 'agree'],
@@ -262,7 +261,7 @@ describe('the reader refuses a broken record instead of crashing the reporter', 
   });
 
   test('a corrupt PRIMARY recovers from `.previous` instead of stranding the home', () => {
-    // Round 2, MEDIUM 2. `JsonFileStore.read()` consults `.previous` only
+    // `JsonFileStore.read()` consults `.previous` only
     // when the primary is MISSING; a present-but-garbage primary — the state
     // dropping the fsyncs makes reachable — threw straight past the retained
     // copy. Combined with the writer's (correct) refusal to overwrite an

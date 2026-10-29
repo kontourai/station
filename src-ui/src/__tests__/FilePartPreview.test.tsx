@@ -15,10 +15,13 @@ vi.mock('../contexts/PreviewContext', () => ({
   usePreview: () => ({ openPreview }),
 }));
 
+import { renderToStaticMarkup } from 'react-dom/server';
 import {
   attachmentBlobForObjectUrl,
+  attachmentObjectUrlKey,
   releaseAttachmentObjectUrl,
   resetAttachmentObjectUrls,
+  seedAttachmentObjectUrl,
   storeAttachmentObjectUrl,
 } from '../components/chat/attachment-object-urls';
 import { FilePartPreview } from '../components/chat/FilePartPreview';
@@ -40,6 +43,30 @@ afterEach(() => {
 });
 
 describe('FilePartPreview', () => {
+  // A sent bubble switches from its inline bytes to the recorded reference at
+  // turn.started, with those bytes seeded under the reference. The chip's very
+  // first render (no effects have run: server markup) must already be the
+  // tappable picture, or it flashes to an untappable placeholder.
+  test('a reference whose bytes are already cached is a preview button on its first render, without a fetch', () => {
+    seedAttachmentObjectUrl(
+      attachmentObjectUrlKey(REF, 'image/png'),
+      new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' }),
+    );
+    const markup = renderToStaticMarkup(
+      <FilePartPreview
+        part={{
+          type: 'file',
+          blobRef: REF,
+          mediaType: 'image/png',
+          name: 'screen.png',
+        }}
+      />,
+    );
+    expect(markup).toContain('aria-label="Preview screen.png"');
+    expect(markup).toContain('src="blob:station-attachment"');
+    expect(authenticatedFetch).not.toHaveBeenCalled();
+  });
+
   test('renders an inline restored image without fetching anything', async () => {
     render(
       <FilePartPreview
@@ -192,5 +219,112 @@ describe('FilePartPreview', () => {
     const { container } = render(<FilePartPreview part={{ type: 'file' }} />);
 
     expect(container.firstChild).toBeNull();
+  });
+
+  describe('a large photo', () => {
+    // Over the 256 KiB floor below which the chip shows the bytes themselves.
+    const PHOTO = new Uint8Array(300 * 1024);
+    const close = vi.fn();
+    const createImageBitmap = vi.fn(async () => ({
+      width: 160,
+      height: 120,
+      close,
+    }));
+    class FakeOffscreenCanvas {
+      constructor(
+        readonly width: number,
+        readonly height: number,
+      ) {}
+      getContext() {
+        return { drawImage: () => {} };
+      }
+      async convertToBlob() {
+        return new Blob([new Uint8Array(4)], { type: 'image/png' });
+      }
+    }
+
+    beforeEach(() => {
+      createImageBitmap.mockClear();
+      close.mockClear();
+      vi.stubGlobal('createImageBitmap', createImageBitmap);
+      vi.stubGlobal('OffscreenCanvas', FakeOffscreenCanvas);
+      createObjectURL.mockImplementation((blob: Blob) =>
+        blob.size === PHOTO.length
+          ? 'blob:station-attachment'
+          : 'blob:station-thumbnail',
+      );
+    });
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      createObjectURL.mockImplementation(() => 'blob:station-attachment');
+    });
+
+    function photo() {
+      authenticatedFetch.mockResolvedValueOnce(
+        new Response(PHOTO, { status: 200 }),
+      );
+      return (
+        <FilePartPreview
+          part={{
+            type: 'file',
+            blobRef: REF,
+            mediaType: 'image/jpeg',
+            name: 'photo.jpg',
+          }}
+        />
+      );
+    }
+
+    test('shows a thumbnail sized to the chip, never the full image', async () => {
+      let decode: (
+        bitmap: Awaited<ReturnType<typeof createImageBitmap>>,
+      ) => void = () => {};
+      createImageBitmap.mockImplementationOnce(
+        () => new Promise((resolve) => (decode = resolve)),
+      );
+      const { container } = render(photo());
+      await waitFor(() => expect(createImageBitmap).toHaveBeenCalled());
+      // While the thumbnail is being made the chip keeps its icon: an <img>
+      // of the full bytes here is the 48 MB decode this exists to avoid.
+      expect(container.querySelector('img')).toBeNull();
+      decode({ width: 160, height: 120, close });
+      const image = await waitFor(() => screen.getByAltText('photo.jpg'));
+      expect(image.getAttribute('src')).toBe('blob:station-thumbnail');
+      expect(image.getAttribute('width')).toBe('80');
+      expect(image.getAttribute('height')).toBe('60');
+      expect(createImageBitmap).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'image/jpeg' }),
+        expect.objectContaining({ resizeWidth: 160 }),
+      );
+      expect(close).toHaveBeenCalledOnce();
+      // The previewer still opens the full bytes.
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Preview photo.jpg' }),
+      );
+      expect(openPreview.mock.calls[0][0].url).toBe('blob:station-attachment');
+      expect(
+        [...container.querySelectorAll('img')].map((img) =>
+          img.getAttribute('src'),
+        ),
+      ).not.toContain('blob:station-attachment');
+    });
+
+    test('a row scrolled back into view reuses its thumbnail', async () => {
+      const first = render(photo());
+      await waitFor(() => screen.getByAltText('photo.jpg'));
+      first.unmount();
+      render(photo());
+      const image = await waitFor(() => screen.getByAltText('photo.jpg'));
+      expect(image.getAttribute('src')).toBe('blob:station-thumbnail');
+      expect(createImageBitmap).toHaveBeenCalledOnce();
+    });
+
+    test('a browser that cannot make one shows the image as before', async () => {
+      createImageBitmap.mockRejectedValueOnce(new Error('unsupported'));
+      render(photo());
+      const image = await waitFor(() => screen.getByAltText('photo.jpg'));
+      expect(image.getAttribute('src')).toBe('blob:station-attachment');
+      expect(image.getAttribute('width')).toBeNull();
+    });
   });
 });

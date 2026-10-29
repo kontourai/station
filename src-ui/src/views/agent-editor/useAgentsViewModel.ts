@@ -17,6 +17,7 @@ import {
   type AgentRunnability,
   agentRunnability,
 } from '../../components/agent-runnability';
+import { GLOBAL_CONTEXT } from '../../components/modals/new-chat-modal-utils';
 import {
   type AgentData,
   useAgentActions,
@@ -30,6 +31,7 @@ import { useDegradedQueryState } from '../../hooks/useDegradedQueryState';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { useUrlSelection } from '../../hooks/useUrlSelection';
+import { dispatchNewChatIntent } from '../../lib/newChatIntent';
 import type { NavigationView, Tool } from '../../types';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import {
@@ -81,13 +83,19 @@ export function resolveAuthoritativeLoadedAgent(
  * copy picker and anything else that offers the repair — the label and the
  * destination must not be decided in two places.
  */
-function navigateFix(route: AgentFixRoute) {
+function navigateFix(agent: AgentData, route: AgentFixRoute) {
   if (route === 'models') {
     navigationStore.navigate('/connections?section=models');
     return;
   }
   if (route === 'engines') {
-    navigationStore.navigate('/connections?section=engines');
+    const connectionId =
+      agent.unavailableFix?.target || agent.execution?.agentConnectionId;
+    navigationStore.navigate(
+      connectionId
+        ? `/connections/engines/${encodeURIComponent(connectionId)}`
+        : '/connections?section=engines',
+    );
     return;
   }
   navigationStore.navigate('/connections');
@@ -364,12 +372,13 @@ export function useAgentsViewModel({
         filteredAgents,
         {
           onChat: (agent) =>
-            window.dispatchEvent(
-              new CustomEvent('station:open-new-chat', {
-                detail: { agentSlug: agent.slug },
-              }),
-            ),
-          onFix: (_agent, route) => navigateFix(route),
+            dispatchNewChatIntent({
+              selection: {
+                context: agent.project || GLOBAL_CONTEXT,
+                agentSlug: agent.slug,
+              },
+            }),
+          onFix: navigateFix,
         },
         { readinessKnown, devicePresentation },
       ),
@@ -972,8 +981,7 @@ export function useAgentsViewModel({
     handleStartWithCli,
     handleCopyAgent,
     handleDuplicate,
-    handleFixAgent: (_agent: AgentData, route: AgentFixRoute) =>
-      navigateFix(route),
+    handleFixAgent: navigateFix,
     engineKind,
     setEngineKindOverride,
     createBlocked,

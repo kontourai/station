@@ -1,0 +1,7 @@
+{
+  "revision": "316ce8d8861f4619020f52c21bbf6d014b0141e4",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Checked the one claim this change touches: the Playwright-pin section says ci-workflow-contract.test.ts asserts the image version equals the lockfile's resolved @playwright/test version; that assertion is untouched. The removed pins were job timeouts, workflow names, a cron, a runner label and lease weights, none described here.","inputs":["docs/guides/testing.md","scripts/__tests__/ci-workflow-contract.test.ts","scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts","scripts/proof-repo-guardrails.mjs"]}
+  ]
+}

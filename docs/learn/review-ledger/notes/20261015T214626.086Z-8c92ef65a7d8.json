@@ -1,0 +1,9 @@
+{
+  "revision": "a3a0661a1f6062129d4570ffe1db466db3229ee5",
+
+  "notes": [
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Reviewed final footer9260f8fe: same Schedule/Customize/Settings callbacks shared between icon-only expanded footer and vertical labelled popup navigation. Pointer dismissal, Customize trigger/return target and canonical route semantics retained. Footer and lazy-recovery owners30/30 passed; independent source delta review found no blocker. Shared loading/error adoptione654 remains unchanged.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/components/project-sidebar/ProjectSidebarFooter.tsx"]},
+
+    {"path":"docs/reviews/workspace-map-20261015/README.md","note":"Reviewed final pending/error and footer presentation deltas through9260f8fe. The record retains its exact earlier screenshot revision and independent evidence limits; footer labels are now mounted only in the vertical collapsed navigation, with identical destinations, pointer behavior and focus restoration. No hosted/native/Gallery proof is inferred.","inputs":["docs/reviews/workspace-map-20261015/README.md","src-ui/src/components/project-sidebar/ProjectSidebarFooter.tsx"]}
+  ]
+}

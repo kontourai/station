@@ -103,6 +103,19 @@ const request = (cookie = 'fixture_account=valid') =>
   });
 
 describe('deployment authentication identity boundary', () => {
+  test.each([
+    'station-device',
+    '__Host-station-device',
+    'station-device-0123456789abcdef',
+    '__Host-station-device-0123456789abcdef',
+  ])('refuses the device-cookie namespace for account cookie %s', (name) => {
+    const adapter = provider();
+    adapter.sessionCookies = [name];
+    expect(
+      () => new DeploymentAuthenticationService(adapter, () => now),
+    ).toThrow('Unsupported deployment authentication provider contract.');
+  });
+
   test('ignores unrelated device cookies and refuses duplicate or empty account credentials', async () => {
     const adapter = provider();
     const service = new DeploymentAuthenticationService(adapter, () => now);
@@ -436,4 +449,16 @@ describe('deployment authentication identity boundary', () => {
       'endpoint method',
     );
   });
+});
+
+test('cached external authentication without a synchronous witness cannot authorize a commit seam', async () => {
+  const service = new DeploymentAuthenticationService(provider(), () => now);
+  const request = new Request(
+    'https://station.example.test/api/tasks/task/children',
+    { headers: { Cookie: 'fixture_account=credential' } },
+  );
+  expect((await service.authenticate(request)).kind).toBe('authenticated');
+  expect(service.current(request)?.kind).toBe('authenticated');
+  expect(service.captureCurrentSession(request)()).toBe(false);
+  await service.close();
 });

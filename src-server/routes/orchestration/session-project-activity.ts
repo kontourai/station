@@ -19,11 +19,18 @@
  *   runs `host`, and never another Station. A bound operator keeps the
  *   operator's reach for a digest, as for `read_conversation`;
  * - `list_project_activity` lists the caller's own Project (or the global
- *   space) for every caller, bound or not: it answers "who is active HERE";
+ *   space) for every caller, bound or not: it answers "who is active HERE".
+ *   The caller's own conversation (its current Session) is always in it, as
+ *   its digest always reads, even when that Session runs `host`;
  * - a Session outside that reads exactly like one that does not exist
  *   (`session_not_found`), never refused with detail, in a list or a digest.
  *   No remote host or other Station is ever returned: a delegated Session on a
  *   paired Station or an SSH Environment is left out.
+ *
+ * Each row carries its Session's active claims (#3413 part B,
+ * `session-work-claims.ts`): unreleased and unexpired, in the caller's own
+ * scope (its own row's whatever their scope), and none for a Session that has
+ * ended (`workClaimSessionEnded`).
  *
  * Nothing here is summarized by a model. The status is the ladder's word
  * (`sessionLadderWord`, the same derivation the UI words a row with); the
@@ -54,7 +61,13 @@ import {
   digestTurn,
   encodeDigestCursor,
   fitDigestPage,
+  sessionDigestLineage,
 } from '../../services/orchestration/session-digest.js';
+import {
+  type WorkClaimRecord,
+  type WorkClaimStore,
+  workClaimSessionEnded,
+} from '../../services/orchestration/work-claims.js';
 import {
   sameScope,
   stationControlRefusal,
@@ -63,6 +76,11 @@ import {
   stationControlSessionScope,
 } from '../../tools/station-control-policy.js';
 import type { StationControlCaller } from '../../tools/station-control-shared.js';
+import {
+  ACTIVE_WORK_DEFAULT_MINUTES,
+  ACTIVE_WORK_MAX_MINUTES,
+  WORK_DISCOVERY_DEFAULT_LIMIT,
+} from '../chat/work-discovery-limits.js';
 import {
   type PrincipalResolutionContext,
   resolveActorPrincipal,
@@ -98,6 +116,8 @@ export interface SessionProjectActivityDeps {
   stationControlDispatchScope?: StationControlDispatchScope;
   resolvePrincipal?: (c: PrincipalResolutionContext) => PrincipalRef;
   hostedTenantRegistry?: HostedTenantRegistry;
+  /** #3413 part B: absent, rows carry no claims. */
+  workClaims?: Pick<WorkClaimStore, 'listUnexpired'>;
 }
 
 function callerOf(c: Context): StationControlCaller | Response {
@@ -140,6 +160,15 @@ function recordedWorktree(
   return undefined;
 }
 
+/** Whether a Session is the caller's own, or of the caller's own conversation. */
+const isOwnSession = (
+  caller: StationControlCaller,
+  session: Pick<OrchestrationSessionSummary, 'threadId' | 'conversationId'>,
+): boolean =>
+  session.threadId === caller.sessionId ||
+  (caller.conversationId !== undefined &&
+    session.conversationId === caller.conversationId);
+
 const sessionNotFound = (c: Context) =>
   c.json(
     { success: false, code: 'session_not_found', error: 'Session not found' },
@@ -160,7 +189,7 @@ function parseBoundedInteger(
   max: number,
 ): number | undefined {
   if (value === undefined) return fallback;
-  if (!/^\d{1,4}$/u.test(value)) return undefined;
+  if (!/^\d{1,5}$/u.test(value)) return undefined;
   const parsed = Number(value);
   return parsed >= 1 && parsed <= max ? parsed : undefined;
 }
@@ -204,6 +233,17 @@ function isAfter(cursor: ListCursor, position: ListCursor): boolean {
     (position.at === cursor.at && position.id > cursor.id)
   );
 }
+
+/** A claim as a row in the list shows it: what, until when, and the note. */
+const activityClaim = (claim: WorkClaimRecord) => ({
+  claimId: claim.claimId,
+  ...(claim.workItemRef ? { workItemRef: claim.workItemRef } : {}),
+  ...(claim.paths.length > 0 ? { paths: claim.paths } : {}),
+  ...(claim.note ? { note: claim.note } : {}),
+  ...(claim.taskId ? { taskId: claim.taskId } : {}),
+  claimedAt: claim.claimedAt,
+  expiresAt: claim.expiresAt,
+});
 
 export function createSessionProjectActivityRoutes(
   deps: SessionProjectActivityDeps,
@@ -281,7 +321,8 @@ export function createSessionProjectActivityRoutes(
    * caller's Project selected BEFORE the fold (`listThreadIdsStartedIn`), so a
    * call costs its own Project's Sessions (plus those that name none), not the
    * Station's. That narrowing is an optimization and never the check: every
-   * row still passes `visibleToCaller` and the caller's own scope here. Every
+   * row still passes `visibleToCaller` and the caller's own scope here, except
+   * the caller's own conversation, which is its own whatever its scope. Every
    * caller, bound or not, sees only its own Project (or the global space).
    */
   const visibleRowsPage = (
@@ -295,9 +336,14 @@ export function createSessionProjectActivityRoutes(
     for (const row of rows) {
       const position = { at: row.at, id: row.session.threadId };
       if (cursor && !isAfter(cursor, position)) continue;
-      const seen = visibleToCaller(caller, row.session.threadId);
-      if (!seen.visible || !seen.scope || !sameScope(callerScope, seen.scope))
-        continue;
+      // The caller's own conversation is listed whatever its scope, as its
+      // digest is read: the `host` and Project checks keep a scoped caller
+      // out of OTHER Sessions, and its own Session is not another.
+      if (!isOwnSession(caller, row.session)) {
+        const seen = visibleToCaller(caller, row.session.threadId);
+        if (!seen.visible || !seen.scope || !sameScope(callerScope, seen.scope))
+          continue;
+      }
       // One visible row past the page proves there is more.
       if (page.length === limit) return { page, more: true };
       page.push(row);
@@ -305,9 +351,45 @@ export function createSessionProjectActivityRoutes(
     return { page, more: false };
   };
 
+  /**
+   * The page's active claims, by row: a claim is its Session's, or its
+   * conversation's (a later Session of the same conversation keeps it). A row
+   * other than the caller's own shows only claims in the caller's scope.
+   */
+  const claimsByRow = (
+    caller: StationControlCaller,
+    page: ReturnType<typeof activityRows>,
+  ): Map<string, WorkClaimRecord[]> => {
+    const byRow = new Map<string, WorkClaimRecord[]>();
+    if (!deps.workClaims || page.length === 0) return byRow;
+    const live = page.filter((row) => !workClaimSessionEnded(row.session));
+    const claims = deps.workClaims.listUnexpired({
+      claimants: {
+        sessionIds: live.map((row) => row.session.threadId),
+        conversationIds: live.flatMap((row) =>
+          row.session.conversationId ? [row.session.conversationId] : [],
+        ),
+      },
+    });
+    const callerScope = stationControlSessionScope(caller);
+    for (const row of live) {
+      const own = isOwnSession(caller, row.session);
+      const mine = claims.filter(
+        (claim) =>
+          (claim.sessionId === row.session.threadId ||
+            (claim.conversationId !== undefined &&
+              claim.conversationId === row.session.conversationId)) &&
+          (own || sameScope(callerScope, claim.scope)),
+      );
+      if (mine.length > 0) byRow.set(row.session.threadId, mine);
+    }
+    return byRow;
+  };
+
   const listRow = (
     caller: StationControlCaller,
     { session, at }: ReturnType<typeof activityRows>[number],
+    claims: readonly WorkClaimRecord[] | undefined,
   ) => {
     const title =
       deps.eventStore.conversationTitle([
@@ -317,10 +399,7 @@ export function createSessionProjectActivityRoutes(
     const worktree = recordedWorktree(
       deps.orchestrationService.firstStartedMetadataOfThread(session.threadId),
     );
-    const isCaller =
-      session.threadId === caller.sessionId ||
-      (caller.conversationId !== undefined &&
-        session.conversationId === caller.conversationId);
+    const isCaller = isOwnSession(caller, session);
     return {
       sessionId: session.threadId,
       ...(session.conversationId
@@ -332,15 +411,20 @@ export function createSessionProjectActivityRoutes(
       ...(session.cwd ? { workingDirectory: session.cwd } : {}),
       ...(worktree ? { worktree } : {}),
       ...(isCaller ? { self: true as const } : {}),
+      ...(claims && claims.length > 0
+        ? { claims: claims.map(activityClaim) }
+        : {}),
     };
   };
 
-  app.get('/', async (c) => {
+  const listActivity = async (c: Context, activeOnly: boolean) => {
     const caller = callerOf(c);
     if (caller instanceof Response) return caller;
     const limit = parseBoundedInteger(
       c.req.query('limit'),
-      PROJECT_ACTIVITY_DEFAULT_LIMIT,
+      activeOnly
+        ? WORK_DISCOVERY_DEFAULT_LIMIT
+        : PROJECT_ACTIVITY_DEFAULT_LIMIT,
       PROJECT_ACTIVITY_MAX_LIMIT,
     );
     if (limit === undefined)
@@ -359,40 +443,67 @@ export function createSessionProjectActivityRoutes(
         'project_activity_cursor_invalid',
       );
 
-    // A caller whose own scope cannot be read matches no Session (the rule
-    // refuses it), so there is nothing to fold.
+    // A caller whose own scope cannot be read matches no other Session (the
+    // rule refuses it); its own conversation's current Session, and its own,
+    // are candidates whatever its scope.
     const callerScope = stationControlSessionScope(caller);
-    const candidates =
-      callerScope.kind === 'unreadable'
-        ? []
-        : deps.eventStore.listThreadIdsStartedIn(
-            callerScope.kind === 'project' ? callerScope.id : undefined,
-          );
-    const sessions =
-      candidates.length === 0
-        ? []
-        : await deps.orchestrationService.listSessionReadModel(
-            readAuthorityFor(c),
-            { threadIds: candidates },
-          );
-    const { page, more } = visibleRowsPage(
-      caller,
-      activityRows(sessions),
-      cursor,
-      limit,
+    const candidates = [
+      ...new Set([
+        caller.sessionId,
+        ...(caller.conversationId !== undefined
+          ? [
+              deps.orchestrationService.currentConversationSessionId(
+                caller.conversationId,
+              ),
+            ]
+          : []),
+        ...(callerScope.kind === 'unreadable'
+          ? []
+          : deps.eventStore.listThreadIdsStartedIn(
+              callerScope.kind === 'project' ? callerScope.id : undefined,
+            )),
+      ]),
+    ];
+    const sessions = await deps.orchestrationService.listSessionReadModel(
+      readAuthorityFor(c),
+      { threadIds: candidates },
     );
+    const minutes = parseBoundedInteger(
+      c.req.query('activeWithinMinutes'),
+      ACTIVE_WORK_DEFAULT_MINUTES,
+      ACTIVE_WORK_MAX_MINUTES,
+    );
+    if (activeOnly && minutes === undefined)
+      return invalid(
+        c,
+        `activeWithinMinutes must be a whole number from 1 to ${ACTIVE_WORK_MAX_MINUTES}.`,
+      );
+    const since =
+      Date.now() - (minutes ?? ACTIVE_WORK_DEFAULT_MINUTES) * 60_000;
+    const rows = activityRows(sessions).filter(
+      ({ session, at }) =>
+        !activeOnly ||
+        session.hasActiveTurn === true ||
+        Date.parse(at) >= since,
+    );
+    const { page, more } = visibleRowsPage(caller, rows, cursor, limit);
     const last = page.at(-1);
+    const claims = claimsByRow(caller, page);
     return c.json({
       success: true,
       data: {
-        sessions: page.map((row) => listRow(caller, row)),
+        sessions: page.map((row) =>
+          listRow(caller, row, claims.get(row.session.threadId)),
+        ),
         nextCursor:
           more && last
             ? encodeListCursor({ at: last.at, id: last.session.threadId })
             : null,
       },
     });
-  });
+  };
+  app.get('/', (c) => listActivity(c, false));
+  app.get('/active-work', (c) => listActivity(c, true));
 
   /**
    * Delegated children: Sessions Station itself derived as launched from the
@@ -466,18 +577,10 @@ export function createSessionProjectActivityRoutes(
     caller: StationControlCaller,
     requestedId: string,
   ) => {
-    const conversationId =
-      deps.eventStore.conversationForSession(requestedId)?.conversationId ??
-      requestedId;
-    const lineage = [
-      ...new Set([
-        conversationId,
-        requestedId,
-        ...deps.eventStore
-          .conversationSessions(conversationId)
-          .map((entry) => entry.sessionId),
-      ]),
-    ];
+    const { conversationId, lineage } = sessionDigestLineage(
+      deps.eventStore,
+      requestedId,
+    );
     const currentId =
       deps.orchestrationService.currentConversationSessionId(conversationId);
     const subjectId = lineage.includes(currentId) ? currentId : requestedId;

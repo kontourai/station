@@ -1,0 +1,7 @@
+{
+  "revision": "da57b678357d3e124585d309994152e9d834e0c4",
+
+  "notes": [
+    {"path":"docs/guides/deployment.md","note":"Delta review for #2675 (changed: packages/cli/src/commands/lifecycle.ts). lifecycle.ts: a supervised stop's refusal now names every unverified process, and an unreadable identity is refused without advising to drop the record; searched for stop/fingerprint claims, none contradicted.","inputs":["docs/guides/deployment.md","packages/cli/src/commands/lifecycle.ts"]}
+  ]
+}

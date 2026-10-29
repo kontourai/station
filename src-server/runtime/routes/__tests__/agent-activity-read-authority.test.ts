@@ -256,6 +256,7 @@ async function fixture() {
   }
   const reader = createAgentActivitySessionReader({
     listDevices: () => pairing.listDevices(),
+    deviceLocality: (deviceId) => pairing.deviceLocality(deviceId),
     listSessionReadModel: (authority) =>
       service.listSessionReadModel(authority),
     listProjectionEvents: (threadIds) =>

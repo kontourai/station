@@ -77,6 +77,7 @@ import {
   executionEnvironment,
   rejectRetiredExecutionSelectors,
 } from './execution-target.js';
+import { runMcpClientsCommand } from './mcp-clients.js';
 import { collectModelOptions, resolveOnRequestMode } from './model-options.js';
 import { runOperateCommand } from './operate/index.js';
 import { runProjectIdentityCommand } from './project-identity.js';
@@ -1166,12 +1167,13 @@ async function runChat(
 ): Promise<void> {
   rejectRetiredExecutionSelectors(parsed);
   const selectedAgent = agentId(requirePositional(parsed, agentIndex, 'agent'));
+  const clientTurnId = optionalValueFlag(parsed, 'client-turn-id');
+  if (clientTurnId !== undefined && clientTurnId.length > 200) {
+    throw new Error('--client-turn-id must be at most 200 characters.');
+  }
   const content = await loadTextInput(parsed, agentIndex + 1);
   const sessionFlag = optionalValueFlag(parsed, 'session');
-  const conversationFlag =
-    typeof parsed.flags.conversation === 'string'
-      ? parsed.flags.conversation
-      : undefined;
+  const conversationFlag = optionalValueFlag(parsed, 'conversation');
   if (sessionFlag && conversationFlag && sessionFlag !== conversationFlag) {
     throw new Error(
       '--session and --conversation must identify the same session.',
@@ -1239,6 +1241,7 @@ async function runChat(
     {
       message: content,
       conversationId: sessionFlag ?? conversationFlag,
+      clientTurnId,
       jsonMode: parsed.flags.json === true,
       onRequest,
     },
@@ -1309,6 +1312,11 @@ export async function runCoreCommand(
   const apiBase = resolveApiBase(parsed);
   configureApiCredential(parsed, apiBase);
 
+  if (command === 'mcp-clients') {
+    await runMcpClientsCommand(apiBase, parsed);
+    return;
+  }
+
   if (command === 'chat') {
     await runChat(parsed, apiBase);
     return;
@@ -1322,6 +1330,12 @@ export async function runCoreCommand(
   if (command === 'conversation') {
     const { runConversationCommand } = await import('./conversation.js');
     await runConversationCommand(apiBase, parsed);
+    return;
+  }
+
+  if (command === 'claims') {
+    const { runClaimsCommand } = await import('./claims.js');
+    await runClaimsCommand(apiBase, parsed);
     return;
   }
 

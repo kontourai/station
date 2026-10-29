@@ -1,0 +1,7 @@
+{
+  "revision": "443ebaf4de575a96cad78a2ed93b87cd51f8b7e2",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-recorded after a Biome import-order fix in thread-inbox.ts (no behaviour change, diff is one moved import line); the fix round 4 review recorded for this document still applies.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/thread-inbox.ts"]}
+  ]
+}

@@ -1,6 +1,14 @@
-import type { SecretBindingView } from '@kontourai/station-contracts/secret-binding';
+import type {
+  SecretBindingView,
+  TelemetryDestinationGrant,
+} from '@kontourai/station-contracts/secret-binding';
 import { envelopeError } from './api-error-message';
-import { authenticatedFetch } from './http';
+import {
+  authenticatedFetch,
+  type ClientRequestOptions,
+  getJson,
+  mutateJson,
+} from './http';
 import { rethrowDeadline } from './request-deadline';
 
 export interface SecretBindingConsumerInput {
@@ -52,6 +60,10 @@ async function request<T>(
     `${apiBase}/api/secret-bindings${path}`,
     init,
   );
+  return bindingResponse<T>(response);
+}
+
+async function bindingResponse<T>(response: Response): Promise<T> {
   let result: Envelope<T>;
   try {
     result = (await response.json()) as Envelope<T>;
@@ -76,6 +88,112 @@ async function request<T>(
 
 export const listSecretBindings = (apiBase: string) =>
   request<SecretBindingView[]>(apiBase, '');
+
+/** Captured authority for operator telemetry grants; never materializes a key. */
+export async function listTelemetrySecretBindings(
+  apiBase: string,
+  options?: ClientRequestOptions,
+): Promise<SecretBindingView[]> {
+  const base = options?.requestScope?.apiBase ?? apiBase;
+  const response = await getJson(`${base}/api/secret-bindings`, {
+    ...options,
+    maxResponseBytes: 65_536,
+  });
+  const bindings = await bindingResponse<SecretBindingView[]>(response);
+  if (
+    !Array.isArray(bindings) ||
+    !bindings.every(telemetryBindingMetadataValid)
+  )
+    throw new Error('Telemetry key references returned invalid metadata.');
+  return bindings;
+}
+
+function telemetryBindingMetadataValid(binding: SecretBindingView): boolean {
+  return Boolean(
+    binding &&
+      typeof binding.id === 'string' &&
+      typeof binding.name === 'string' &&
+      Number.isSafeInteger(binding.revision) &&
+      binding.revision > 0 &&
+      (!binding.owner ||
+        ['instance', 'principal', 'principal-project'].includes(
+          binding.owner.kind,
+        )) &&
+      (binding.telemetryDestinationGrants === undefined ||
+        (Array.isArray(binding.telemetryDestinationGrants) &&
+          binding.telemetryDestinationGrants.every(telemetryGrantValid))),
+  );
+}
+
+function telemetryGrantValid(grant: TelemetryDestinationGrant): boolean {
+  if (
+    grant?.kind !== 'instance-telemetry-destination' ||
+    !['product', 'otel'].includes(grant.transport) ||
+    typeof grant.destination !== 'string' ||
+    grant.destination.length > 2048 ||
+    grant.destination !== grant.destination.trim()
+  )
+    return false;
+  try {
+    const address = new URL(grant.destination);
+    return (
+      ['http:', 'https:'].includes(address.protocol) &&
+      !address.username &&
+      !address.password &&
+      !address.search &&
+      !address.hash
+    );
+  } catch {
+    return false;
+  }
+}
+
+export interface TelemetrySecretBindingInput extends TelemetryDestinationGrant {
+  expectedRevision: number;
+}
+
+export async function updateTelemetrySecretBindingGrant(
+  apiBase: string,
+  id: string,
+  operation: 'bind' | 'unbind',
+  input: TelemetrySecretBindingInput,
+  options?: ClientRequestOptions,
+): Promise<SecretBindingView> {
+  if (
+    !telemetryGrantValid(input) ||
+    !Number.isSafeInteger(input.expectedRevision) ||
+    input.expectedRevision < 1
+  )
+    throw new Error(
+      'Choose an exact HTTP or HTTPS destination without credentials, query or fragment.',
+    );
+  const base = options?.requestScope?.apiBase ?? apiBase;
+  const response = await mutateJson(
+    `${base}/api/secret-bindings/${encodeURIComponent(id)}/${operation}`,
+    'POST',
+    { ...options, maxResponseBytes: 32_768 },
+    input,
+  );
+  const binding = await bindingResponse<SecretBindingView>(response);
+  if (
+    !telemetryBindingMetadataValid(binding) ||
+    binding.id !== id ||
+    binding.revision !== input.expectedRevision + 1
+  )
+    throw new Error(
+      'Telemetry destination grant returned invalid metadata. Refresh before retrying.',
+    );
+  const granted = (binding.telemetryDestinationGrants ?? []).some(
+    (grant) =>
+      grant.transport === input.transport &&
+      new URL(grant.destination).href === new URL(input.destination).href,
+  );
+  if (granted !== (operation === 'bind'))
+    throw new Error(
+      'Telemetry destination grant was not confirmed. Refresh before retrying.',
+    );
+  return binding;
+}
 export const getSecretBinding = (apiBase: string, id: string) =>
   request<SecretBindingView>(apiBase, `/${encodeURIComponent(id)}`);
 export const getIntegrationSecretBindings = (

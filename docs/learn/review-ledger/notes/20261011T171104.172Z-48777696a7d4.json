@@ -1,0 +1,7 @@
+{
+  "revision": "b588053d7d27e8b9e77f3064b3bc5262d96d07ee",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the b588053d usage-helper proof delta against utils.ts, UsageBreakdownSection and UsageDrillDownModal callers and retained usage regressions. The structural proof now requires the real recorded-cost formatter and retires requirements for removed partial-total averages and current-default Agent inference. The real-script positive control failed for exactly those obsolete names before repair; after repair all 16 fail-closed controls and selected usage tests passed (35 tests). Testing-guide claims about independently meaningful contracts, missing-source refusal and behavioral evidence remain accurate; no prose change needed. This review covers only the Profile proof delta; prior source reviews remain separate.","inputs":["docs/guides/testing.md","scripts/proof-repo-guardrails.mjs"]}
+  ]
+}

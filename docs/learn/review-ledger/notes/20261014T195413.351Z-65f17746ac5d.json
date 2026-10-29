@@ -1,0 +1,7 @@
+{
+  "revision": "26fe9dc8c50ee75234d336e08d223b987a276299",
+
+  "notes": [
+    {"path":"docs/design/offline-outbound-queue.md","note":"Reviewed against the awaiting-lookup change: outboundQueue awaitingLookup and dismissUnconfirmed accepting an unclaimed invoking row, the awaiting-confirmation bubble state, the outbox list's waiting-for-Station summary, label and Discard…, and the queued notice's risk sentence and explicit withdrawal.","inputs":["docs/design/offline-outbound-queue.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts","src-ui/src/lib/outboundQueue.ts"]}
+  ]
+}

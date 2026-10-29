@@ -116,7 +116,21 @@
 
     "src-ui/src/components/monitoring/FleetRoutingReceipts.tsx",
 
-    "src-ui/src/hooks/useActiveChatSessionLifecycle.ts"
+    "src-ui/src/hooks/useActiveChatSessionLifecycle.ts",
+
+    "src-ui/src/views/agent-editor/AgentToolLibrary.tsx",
+
+    "src-ui/src/views/agent-editor/AgentEditorToolsTab.tsx",
+
+    "src-ui/src/lib/task-shaping.ts",
+
+    "src-ui/src/components/chat/TaskShapingComposer.tsx",
+
+    "src-ui/src/components/chat/TaskProposalCard.tsx",
+
+    "docs/architecture/module-map.md",
+
+    "docs/learn/atlas.json"
   ],
 
   "checks": [

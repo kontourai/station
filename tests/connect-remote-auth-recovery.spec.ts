@@ -49,6 +49,9 @@ async function openConnections(page: Page) {
     name: 'Enter a host address',
     exact: true,
   });
+  const otherWays = accessRequired.getByText('Other ways to connect', {
+    exact: true,
+  });
   const addressInput = dialog.getByPlaceholder(
     'https://station.example.ts.net',
   );
@@ -72,12 +75,15 @@ async function openConnections(page: Page) {
       async () =>
         (await managerControl.first().isVisible()) ||
         (await requestAccess.isVisible()) ||
+        (await otherWays.isVisible()) ||
         (await addComputer.isVisible()) ||
         (await controlThisStation.isVisible()),
       { timeout: 15_000 },
     )
     .toBe(true);
   if (!(await managerControl.first().isVisible())) {
+    if ((await otherWays.isVisible()) && !(await requestAccess.isVisible()))
+      await otherWays.click();
     if (await requestAccess.isVisible()) {
       await requestAccess.click();
       return dialog;
@@ -279,6 +285,10 @@ for (const fixture of [
 
     await page.goto('/');
 
+    await page
+      .getByRole('region', { name: 'Station access required' })
+      .getByText('Other ways to connect', { exact: true })
+      .click();
     const pairingAction = page
       .getByRole('button', { name: 'Enter a host address' })
       .first();
@@ -287,6 +297,7 @@ for (const fixture of [
     // established; pairing begins on the credential-free public surface.
     expect(statusAuthorizations).toEqual([]);
     expect(pluginAuthorizations).toEqual([]);
+    await pairingAction.scrollIntoViewIfNeeded();
     const actionBox = await pairingAction.boundingBox();
     expect(actionBox?.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
     expect(actionBox?.x).toBeGreaterThanOrEqual(0);
@@ -603,8 +614,23 @@ for (const fixture of [
       .getByRole('button', { name: 'Done', exact: true })
       .click();
     // This keeper recovers a previously held credential, not a new receiver grant.
-    await page
+    await page.getByTestId('app-toolbar-connection').click();
+    await page.getByRole('menuitem', { name: /^Station details/ }).click();
+    const stationDetails = page.getByRole('dialog', {
+      name: 'Station details',
+      exact: true,
+    });
+    await stationDetails
       .getByRole('button', { name: 'Cancel request', exact: true })
+      .click();
+    await expect(
+      stationDetails.getByRole('button', {
+        name: 'Cancel request',
+        exact: true,
+      }),
+    ).toHaveCount(0);
+    await stationDetails
+      .getByRole('button', { name: 'Close Station details', exact: true })
       .click();
     await page.getByTestId('app-toolbar-connection').click();
     await page

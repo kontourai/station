@@ -13,7 +13,10 @@ import { readApprovalMode } from '@kontourai/station-contracts/provider';
  * dead vocabulary.
  */
 type CodexApprovalPolicy = 'untrusted' | 'on-request' | 'never';
-type CodexSandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access';
+export type CodexSandboxMode =
+  | 'read-only'
+  | 'workspace-write'
+  | 'danger-full-access';
 
 interface CodexApprovalKnobs {
   approvalPolicy: CodexApprovalPolicy;
@@ -86,8 +89,7 @@ export function resolveCodexExecutionKnobs(
  * Reverse mapping used only to tell the client which Station-level
  * `ApprovalMode` a knob pair Station sent corresponds to, so durable events
  * (`session.configured`, `turn.started`) can carry the actually-applied
- * `approvalMode` alongside the raw Codex knobs (archive#727 review round 3,
- * item 1).
+ * `approvalMode` alongside the raw Codex knobs (archive#727).
  *
  * Not an inverse of `mapApprovalModeToCodex`: that mapping also depends on
  * confinement, and two pairs (`never` + `danger-full-access` for a `host`
@@ -198,19 +200,27 @@ export interface CodexThreadSandbox {
    * gains network or roots the user's config did not give.
    */
   workspaceBaseline?: Extract<CodexSandboxPolicy, { type: 'workspaceWrite' }>;
+  /**
+   * #3800: Codex reported Station's permission profile active for the
+   * thread. Any `sandboxPolicy` sent replaces it, so it is cleared then.
+   */
+  stationProfile?: true;
 }
 
 /** A thread's sandbox as Codex reported it at start, resume or fork. */
 export function reportedCodexThreadSandbox(
   reported: CodexSandboxPolicy | undefined,
   requestedMode: CodexSandboxMode | undefined,
+  stationProfile = false,
 ): CodexThreadSandbox {
-  if (!reported) return requestedMode ? { requestedMode } : {};
+  const profile = stationProfile ? { stationProfile: true as const } : {};
+  if (!reported) return requestedMode ? { requestedMode, ...profile } : profile;
   return {
     policy: reported,
     ...(reported.type === 'workspaceWrite'
       ? { workspaceBaseline: reported }
       : {}),
+    ...profile,
   };
 }
 
@@ -239,6 +249,10 @@ type CodexTurnSandboxPlan = {
  *   is, and a posture the thread already satisfies sends nothing, so the
  *   thread's own configuration keeps governing.
  * - `danger-full-access` is only ever sent to a `host` session.
+ * - #3800: outside a `host` session, a thread under Station's permission
+ *   profile is never sent `workspaceWrite`: the profile already is the
+ *   workspace-write confinement, with its deny rules, and a sent policy
+ *   would replace it for this and every later turn.
  * - A workspace-write policy is the thread's `workspaceBaseline` when Codex
  *   reported one, else no network, no extra roots and no excludes: a
  *   tightening never gains what the thread's own configuration did not
@@ -270,6 +284,12 @@ export function planCodexTurnSandbox(
       : asked;
   if (!wanted) return {};
   if (wanted === current) return { applied: current };
+  if (
+    wanted === 'workspace-write' &&
+    thread.stationProfile &&
+    confinement !== 'host'
+  )
+    return { applied: wanted };
   switch (wanted) {
     case 'danger-full-access':
       return {

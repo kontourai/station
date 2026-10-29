@@ -1,10 +1,15 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { describe, expect, test, vi } from 'vitest';
+import { EventStore } from '../event-store.js';
+import { captureTurnIntent } from '../prepared-turn-intent.js';
 import {
   SessionExecutionCoordinator,
   SessionLifecycleClaimRefusedError,
 } from '../session-execution-coordinator.js';
-import type { SessionTurnBoundaryAuthority } from '../session-turn-boundary.js';
+import {
+  createInMemorySessionTurnBoundaryAuthority,
+  type SessionTurnBoundaryAuthority,
+} from '../session-turn-boundary.js';
 import { WorkspaceExecutionBusyError } from '../workspace-execution-barrier.js';
 
 function deferred() {
@@ -128,6 +133,92 @@ describe('SessionExecutionCoordinator', () => {
     },
   );
 
+  test.each([
+    { kind: 'ordinary', effect: true, oldTerminal: false },
+    { kind: 'prepared', effect: true, oldTerminal: false },
+    { kind: 'ordinary', effect: false, oldTerminal: false },
+    { kind: 'prepared', effect: false, oldTerminal: false },
+    { kind: 'ordinary', effect: true, oldTerminal: true },
+    { kind: 'prepared', effect: true, oldTerminal: true },
+  ])(
+    'a failed $kind start retains custody with effect=$effect, unrelated terminal=$oldTerminal',
+    async ({ kind, effect, oldTerminal }) => {
+      const boundaries = createInMemorySessionTurnBoundaryAuthority();
+      const coordinator = new SessionExecutionCoordinator(boundaries);
+      if (kind === 'prepared' && effect) {
+        const existing = boundaries.claim('thread-1', new Date().toISOString());
+        if (existing.kind !== 'owner')
+          throw new Error('Expected actual boundary ownership.');
+        expect(
+          existing.claim.beginInvocation(new Date().toISOString()),
+        ).toEqual({ kind: 'applied' });
+        expect(existing.claim.indeterminate(new Date().toISOString())).toEqual({
+          kind: 'applied',
+        });
+      }
+      const failed =
+        kind === 'ordinary'
+          ? coordinator.runTurnStart(
+              'thread-1',
+              async (claim) => {
+                if (effect) {
+                  expect(
+                    claim.beginInvocation(new Date().toISOString()),
+                  ).toEqual({ kind: 'applied' });
+                  expect(claim.indeterminate(new Date().toISOString())).toEqual(
+                    { kind: 'applied' },
+                  );
+                }
+                if (oldTerminal)
+                  coordinator.observe(
+                    event('turn.completed', 'unrelated-old-turn'),
+                  );
+                throw new Error('Provider acknowledgement unavailable.');
+              },
+              '/repo',
+            )
+          : coordinator.runPreparedTurnStart(
+              'thread-1',
+              async () => {
+                if (oldTerminal)
+                  coordinator.observe(
+                    event('turn.completed', 'unrelated-old-turn'),
+                  );
+                throw new Error('Provider acknowledgement unavailable.');
+              },
+              '/repo',
+            );
+      await expect(failed).rejects.toThrow(
+        'Provider acknowledgement unavailable.',
+      );
+      expect(coordinator.hasActiveTurn('thread-1')).toBe(effect);
+      const exclusive = coordinator.runWorkspaceExclusive(
+        '/repo',
+        async () => 'restore',
+      );
+      if (effect)
+        await expect(exclusive).rejects.toBeInstanceOf(
+          WorkspaceExecutionBusyError,
+        );
+      else await expect(exclusive).resolves.toBe('restore');
+      await expect(
+        coordinator.runWorkspaceExclusive('/other', async () => 'independent'),
+      ).resolves.toBe('independent');
+      coordinator.observe({
+        method: 'session.exited',
+        eventId: `exit-uncertain-${kind}`,
+        provider: 'claude',
+        threadId: 'thread-1',
+        sessionId: 'thread-1',
+        createdAt: new Date().toISOString(),
+      });
+      expect(coordinator.hasActiveTurn('thread-1')).toBe(false);
+      await expect(
+        coordinator.runWorkspaceExclusive('/repo', async () => 'restore'),
+      ).resolves.toBe('restore');
+    },
+  );
+
   test('does not resurrect a fast turn that completed before sendTurn resolved', async () => {
     const coordinator = new SessionExecutionCoordinator();
     await coordinator.runTurnStart('thread-1', async (claim) => {
@@ -248,4 +339,104 @@ describe('SessionExecutionCoordinator', () => {
       }),
     ).rejects.toBe(failure);
   });
+});
+
+test('real invocation custody fences workspace against old future-clock and untagged terminals while B is starting', async () => {
+  const store = new EventStore(':memory:');
+  const authority = store.sessionTurnBoundaryAuthority();
+  const coordinator = new SessionExecutionCoordinator(authority);
+  const entered = deferred();
+  const finish = deferred();
+  let invocationId = '';
+  const running = coordinator.runTurnStart(
+    'exact-workspace',
+    async (claim) => {
+      const capture = captureTurnIntent(
+        { threadId: 'exact-workspace', input: 'B' },
+        { binding: {}, requiresFreshCompanions: false },
+      );
+      invocationId = capture.intent.invocationId;
+      expect(
+        claim.prepareIntent!(capture, undefined, '2030-01-01T00:00:01Z'),
+      ).toEqual({ kind: 'applied' });
+      expect(claim.beginInvocation('2030-01-01T00:00:02Z')).toEqual({
+        kind: 'applied',
+      });
+      coordinator.markTurnBegun('exact-workspace', invocationId);
+      entered.resolve();
+      await finish.promise;
+      expect(claim.accepted('N', '2030-01-01T00:00:03Z')).toEqual({
+        kind: 'applied',
+      });
+      expect(
+        coordinator.markTurnAccepted('exact-workspace', 'N', invocationId),
+      ).toBe(true);
+    },
+    'exact-workspace-key',
+    true,
+  );
+  try {
+    await entered.promise;
+    for (const invocationId of ['A', undefined]) {
+      const event: CanonicalRuntimeEvent = {
+        eventId: 'old-' + invocationId,
+        method: 'turn.completed',
+        threadId: 'exact-workspace',
+        provider: 'claude',
+        turnId: 'N',
+        invocationId,
+        createdAt: '2100-01-01T00:00:00Z',
+      };
+      store.appendEvent(event);
+      coordinator.observe(event);
+      await expect(
+        coordinator.runWorkspaceExclusive(
+          'exact-workspace-key',
+          async () => 'unsafe',
+        ),
+      ).rejects.toBeInstanceOf(WorkspaceExecutionBusyError);
+      expect(coordinator.hasActiveTurn('exact-workspace')).toBe(true);
+    }
+    finish.resolve();
+    await running;
+    const late: CanonicalRuntimeEvent = {
+      eventId: 'late-A-after-acceptance',
+      method: 'turn.completed',
+      threadId: 'exact-workspace',
+      provider: 'claude',
+      turnId: 'N',
+      invocationId: 'A',
+      createdAt: '2100-01-01T00:00:00Z',
+    };
+    store.appendEvent(late);
+    coordinator.observe(late);
+    await expect(
+      coordinator.runWorkspaceExclusive(
+        'exact-workspace-key',
+        async () => 'unsafe-after-acceptance',
+      ),
+    ).rejects.toBeInstanceOf(WorkspaceExecutionBusyError);
+    const exact: CanonicalRuntimeEvent = {
+      eventId: 'exact-B',
+      method: 'turn.completed',
+      threadId: 'exact-workspace',
+      provider: 'claude',
+      turnId: 'N',
+      invocationId,
+      createdAt: '1900-01-01T00:00:00Z',
+    };
+    store.appendEvent(exact);
+    coordinator.observe(exact);
+    expect(coordinator.hasActiveTurn('exact-workspace')).toBe(false);
+    await expect(
+      coordinator.runWorkspaceExclusive(
+        'exact-workspace-key',
+        async () => 'safe',
+      ),
+    ).resolves.toBe('safe');
+  } finally {
+    finish.resolve();
+    await running;
+    store.close();
+  }
 });

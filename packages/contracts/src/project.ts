@@ -1,6 +1,10 @@
 import type { AgentId } from './agent-identity.js';
 import type { EnvironmentRef } from './execution-target.js';
 import type { KnowledgeNamespaceConfig } from './knowledge.js';
+import type {
+  ProjectChatApprovalPosture,
+  ProjectChatDefaultSelection,
+} from './project-chat-defaults.js';
 import type { ProjectMemberAction } from './project-membership.js';
 import type { WorkspaceIsolationMode } from './workspace-isolation.js';
 
@@ -11,19 +15,111 @@ export interface ProjectToolDefaults {
   knowledge?: boolean;
 }
 
+/** Initial user intent guides setup without granting execution or source access. */
+export type ProjectStartIntent =
+  | 'workspace'
+  | 'knowledge'
+  | 'connections'
+  | 'blank';
+
+export type RepositoryProvider = 'github' | 'gitlab';
+export interface RepositoryProviderSelection {
+  id: string;
+  fullName: string;
+  webUrl: string;
+  httpsCloneUrl: string;
+  sshCloneUrl: string;
+  defaultBranch?: string;
+  visibility: 'public' | 'private' | 'internal';
+}
+export interface RepositoryProviderPage {
+  provider: RepositoryProvider;
+  account: { id: string; login: string };
+  repositories: RepositoryProviderSelection[];
+  page: number;
+  hasMore: boolean;
+  observedAt: string;
+}
+
+/** An immutable, explicitly shared read-only source registration. AWS credentials stay on the host. */
+export interface ProjectS3Source {
+  id: string;
+  projectId: string;
+  displayName: string;
+  accountId: string;
+  region: string;
+  bucket: string;
+  prefix: string;
+  createdAt: string;
+}
+
+export interface ProjectS3ObjectReference {
+  key: string;
+  etag: string;
+  bytes: number;
+  modifiedAt?: string;
+}
+
+export interface ProjectS3ObjectPage {
+  source: ProjectS3Source;
+  objects: ProjectS3ObjectReference[];
+  continuationToken?: string;
+  observedAt: string;
+  /** One bounded page, never a completeness or indexing claim. */
+  truncated: boolean;
+}
+
+export interface ProjectS3ObjectRead {
+  source: ProjectS3Source;
+  object: ProjectS3ObjectReference & { versionId?: string; sha256: string };
+  text: string;
+  observedAt: string;
+  citation: string;
+}
+
+/** Historical verified acquisition used when this Project was created. */
+export interface ProjectRepositorySource {
+  acquisitionId: string;
+  attempt: number;
+  sourceUrl: string;
+  sourceRef?: string;
+  canonicalRemote: string;
+  resolvedCommit: string;
+  acquiredAt: string;
+  subdirectory?: string;
+}
+
 export interface ProjectConfig {
+  personalLayouts?: 'off' | 'project-panes' | 'allowed-plugins';
+  personalLayoutAllowedPlugins?: string[];
   id: string;
   name: string;
   slug: string;
   icon?: string;
   description?: string;
   workingDirectory?: string;
+  repositorySource?: ProjectRepositorySource;
   /** Default workspace mode for newly started project threads. */
   defaultWorkspaceIsolation?: WorkspaceIsolationMode;
   /** Environment used when project execution does not select one explicitly. */
   defaultEnvironment?: EnvironmentRef;
   defaultProviderId?: string;
   defaultModel?: string;
+  /**
+   * How a new chat's model is preselected: the `defaultProviderId`/
+   * `defaultModel` chain (`fixed`, the meaning of absent) or the model the
+   * caller's last chat here started with (`last-used`). See
+   * `project-chat-defaults.ts`.
+   */
+  defaultModelSelection?: ProjectChatDefaultSelection;
+  /**
+   * The approval mode a new chat here starts in, below the Agent's own
+   * default and above `AppConfig.defaultApprovalMode`. Absent: the Project
+   * does not decide.
+   */
+  defaultApprovalMode?: ProjectChatApprovalPosture;
+  /** `fixed` (absent) applies `defaultApprovalMode`; `last-used` the caller's last start. */
+  defaultApprovalModeSelection?: ProjectChatDefaultSelection;
   /** Agent used for new chats when this project has no remembered choice. */
   defaultAgent?: AgentId;
   defaultEmbeddingProviderId?: string;
@@ -41,6 +137,20 @@ export interface ProjectConfig {
   position?: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Observed result of one durable host-local Project creation intent. */
+export interface ProjectCreationRequest {
+  requestId: string;
+  projectId: string;
+  phase: 'created' | 'uncertain' | 'unavailable';
+  project?: ProjectConfig;
+  starter?: {
+    catalogId: string;
+    layoutId: string;
+    phase: 'applied' | 'uncertain' | 'unavailable';
+    layoutSlug?: string;
+  };
 }
 
 export interface ProjectMetadata {
@@ -361,4 +471,55 @@ export function projectIconProblem(
 /** Whether a stored icon is an inline image (vs a glyph). Assumes it is valid. */
 export function isProjectIconImage(icon: string): boolean {
   return icon.startsWith('data:');
+}
+
+/** Host-local repository acquisition; this record is never portable identity. */
+export interface RepositoryAcquisitionRequest {
+  /** Caller retains this UUID across uncertain responses. */
+  requestId: string;
+  /** Explicit HTTPS, SSH or absolute local mirror source. Never inferred from identity. */
+  sourceUrl: string;
+  /** A branch or tag; omission uses the remote's default branch. */
+  sourceRef?: string;
+  /** Optional repository-relative working directory, using forward slashes. */
+  subdirectory?: string;
+}
+
+export interface RepositoryAcquisition {
+  schemaVersion: 1;
+  request: RepositoryAcquisitionRequest;
+  phase: 'acquiring' | 'ready' | 'failed' | 'cancelled';
+  attempt: number;
+  /** Owned directory, retained even after a failed or interrupted acquisition. */
+  checkoutPath: string;
+  /** Verified starting directory within the owned checkout. */
+  workingDirectory?: string;
+  resolvedCommit?: string;
+  canonicalRemote?: string;
+  /** Fixed UI-safe summary; subprocess output is never returned here. */
+  error?: string;
+  updatedAt: string;
+}
+
+/** Local operator setup; this is not a portable preparation guarantee. */
+export interface OperatorSetupReceipt {
+  id: string;
+  projectId: string;
+  projectSlug: string;
+  cwd: string;
+  command: string;
+  inputs: Array<{ path: string; sha256: string | null }>;
+  sourceCommit: string;
+  timeoutSeconds: number;
+  inputDigest: string;
+  phase:
+    | 'previewed'
+    | 'running'
+    | 'uncertain'
+    | 'succeeded'
+    | 'failed'
+    | 'stale';
+  updatedAt: string;
+  exitCode?: number;
+  observedDigest?: string;
 }

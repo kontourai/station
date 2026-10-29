@@ -32,6 +32,74 @@ const response = (data: unknown) =>
   });
 afterEach(() => vi.unstubAllGlobals());
 
+test('attachment acknowledgements accept reordered descriptor keys and reject changed fields', async () => {
+  const attachment = {
+    id: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+    kind: 'image' as const,
+    name: 'screen.png',
+    mimeType: 'image/png' as const,
+    size: 8,
+  };
+  let name = attachment.name;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<typeof fetch>().mockImplementation(async (url) =>
+      String(url).endsWith('/agent-requests')
+        ? response({
+            version: TASK_ROOM_WORK_VERSION,
+            kind: 'available',
+            records: [],
+          })
+        : response({
+            kind: 'recorded',
+            replayed: false,
+            record: {
+              ...record,
+              attachments: [
+                {
+                  size: 8,
+                  mimeType: 'image/png',
+                  name,
+                  kind: 'image',
+                  id: attachment.id,
+                },
+              ],
+            },
+          }),
+    ),
+  );
+  const submit = () =>
+    submitTaskRoomAgentRequest(
+      'http://station.test',
+      'task-1',
+      'demo',
+      incarnation,
+      { ...input, attachments: [attachment] },
+    );
+  await expect(submit()).resolves.toMatchObject({ kind: 'recorded' });
+  name = 'changed.png';
+  await expect(submit()).rejects.toThrow('acknowledgement');
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<typeof fetch>().mockImplementation(async (url) =>
+      String(url).endsWith('/agent-requests')
+        ? response({
+            version: TASK_ROOM_WORK_VERSION,
+            kind: 'available',
+            records: [],
+          })
+        : new Response(
+            JSON.stringify({
+              success: false,
+              code: 'task_room_attachments_unavailable',
+            }),
+            { status: 409 },
+          ),
+    ),
+  );
+  await expect(submit()).rejects.toBeInstanceOf(TaskRoomWorkNotSentError);
+});
+
 test('an older Station never receives a delegation before version negotiation succeeds', async () => {
   const fetcher = vi
     .fn<typeof fetch>()

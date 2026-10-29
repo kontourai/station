@@ -1,0 +1,7 @@
+{
+  "revision": "a81b1d0cd1bfed9ab62c588963a815682f0a061e",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Re-recorded after moving the 640px transcript floor to components/chat/transcriptMeasure.ts (TRANSCRIPT_MIN_WIDTH; codingPanels.ts keeps CODING_TRANSCRIPT_MIN_WIDTH as an alias, so the 'transcript keeps 640px beside a tool' claim is unchanged). Session context card section re-read against sessionContextCardModel.ts.","inputs":["docs/design/placement.md"]}
+  ]
+}

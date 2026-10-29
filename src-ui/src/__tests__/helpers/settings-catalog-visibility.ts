@@ -11,10 +11,19 @@ export function visibleCatalogIds(options: {
   isDesktop: boolean;
   /** Absent reads as "not the operator" — the fail-closed direction (#2067). */
   isOperator?: boolean;
+  developerToolsEnabled?: boolean;
+  experimentalTrustEnabled?: boolean;
+  experimentalStationRoutesEnabled?: boolean;
 }) {
   return SETTINGS_CATALOG.filter((entry) => {
     if (entry.conditional === 'mobile') return options.isMobile;
     if (entry.conditional === 'desktop') return options.isDesktop;
+    if (entry.conditional === 'developer')
+      return options.developerToolsEnabled === true;
+    if (entry.conditional === 'experimental-trust')
+      return options.experimentalTrustEnabled === true;
+    if (entry.conditional === 'experimental-station-routes')
+      return options.experimentalStationRoutesEnabled === true;
     if (entry.conditional === 'operator') return options.isOperator === true;
     return true;
   }).map((entry) => entry.id);

@@ -1,3 +1,7 @@
+import {
+  taskRoomAttachmentsSchema,
+  taskRoomAttachmentUploadSchema,
+} from './task-room-attachment-http.js';
 /** Transport adapter for the personal Project/Task room runtime. */
 
 import {
@@ -5,6 +9,12 @@ import {
   parseProjectTaskRoomBrowserHistory,
   parseProjectTaskRoomBrowserLiveSnapshot,
 } from '@kontourai/station-contracts/project-task-room-browser';
+import {
+  TASK_MEMORY_LIMITS,
+  TASK_MEMORY_VERSION,
+  type TaskMemoryView,
+  type TaskSummaryHistoryView,
+} from '@kontourai/station-contracts/task-memory';
 import {
   TASK_ROOM_WORK_VERSION,
   type TaskRoomWorkList,
@@ -20,6 +30,12 @@ import {
 import type { ProjectTaskRoomRuntime } from '../../services/orchestration/project-task-room-runtime.js';
 import { getBody, param, validate } from '../schemas/schemas.js';
 import { SSE_KEEPALIVE_FRAME, streamSSE } from '../sse-response.js';
+import {
+  taskRecordResponse,
+  taskRecordWriteSchema,
+  taskSummaryResponse,
+  taskSummaryUpdateSchema,
+} from './task-memory-http.js';
 
 export async function settleProjectTaskRoomCadence(input: {
   /** A rejected cadence is operationally incomplete, never authorization proof. */
@@ -173,6 +189,7 @@ export function createProjectTaskRoomSseDeliveryQueue(input: {
 const messageSchema = z
   .object({
     proposalId: z.string().min(1).max(256),
+    attachments: taskRoomAttachmentsSchema.optional(),
     text: z
       .string()
       .min(1)
@@ -496,6 +513,119 @@ export function createProjectTaskRoomRoutes(
       );
     },
   );
+  // #4003 Task memory, as a person reads and edits it from the Task
+  // workspace: the same request authority as the person's document edits,
+  // and the same bounds and refusals an agent's tools get.
+  app.get('/:taskId/room/memory', async (c) => {
+    const taskId = param(c, 'taskId');
+    const result = await runtime.readTaskMemory({
+      taskId,
+      request: c.req.raw,
+    });
+    if (result.kind !== 'available') return response(c, result);
+    const view: TaskMemoryView = {
+      version: TASK_MEMORY_VERSION,
+      taskId,
+      ...(result.summary ? { summary: result.summary } : {}),
+      records: result.records,
+      limits: TASK_MEMORY_LIMITS,
+    };
+    return c.json({ success: true, data: view });
+  });
+  app.get('/:taskId/room/memory/summary/revisions', async (c) => {
+    const taskId = param(c, 'taskId');
+    const limitText = c.req.query('limit') ?? '20';
+    const limit = /^\d{1,3}$/.test(limitText) ? Number(limitText) : NaN;
+    if (!(limit >= 1 && limit <= 100))
+      return c.json(
+        { success: false, error: 'limit must be a whole number from 1 to 100' },
+        400,
+      );
+    const result = await runtime.readTaskMemory({
+      taskId,
+      request: c.req.raw,
+      summaryHistory: limit,
+    });
+    if (result.kind !== 'available') return response(c, result);
+    const view: TaskSummaryHistoryView = {
+      version: TASK_MEMORY_VERSION,
+      taskId,
+      revisions: result.history?.revisions ?? [],
+      total: result.history?.total ?? 0,
+    };
+    return c.json({ success: true, data: view });
+  });
+  app.put(
+    '/:taskId/room/memory/summary',
+    validate(taskSummaryUpdateSchema),
+    async (c) => {
+      const body = getBody(c);
+      const outcome = taskSummaryResponse(
+        await runtime.updateTaskSummaryForPerson({
+          taskId: param(c, 'taskId'),
+          request: c.req.raw,
+          text: body.text,
+          baseRevision: body.baseRevision,
+        }),
+      );
+      // The room routes' `data` envelope on success; a refusal (a stale base
+      // carries the current summary) is the shared body as it is.
+      return outcome.status === 200
+        ? c.json({ success: true, data: outcome.body.summary })
+        : c.json(outcome.body, outcome.status);
+    },
+  );
+  app.post(
+    '/:taskId/room/memory/records',
+    validate(taskRecordWriteSchema),
+    async (c) => {
+      const body = getBody(c);
+      const outcome = taskRecordResponse(
+        await runtime.writeTaskRecordForPerson({
+          taskId: param(c, 'taskId'),
+          request: c.req.raw,
+          write: body,
+        }),
+      );
+      return outcome.status === 200
+        ? c.json({ success: true, data: outcome.body.record })
+        : c.json(outcome.body, outcome.status);
+    },
+  );
+  app.post(
+    '/:taskId/room/attachments',
+    validate(taskRoomAttachmentUploadSchema),
+    async (c) => {
+      const attachments = await runtime.storeAttachments({
+        taskId: param(c, 'taskId'),
+        request: c.req.raw,
+        ...getBody(c),
+      });
+      return attachments
+        ? c.json({ success: true, data: attachments })
+        : c.json(
+            { success: false, error: 'Task attachments are unavailable.' },
+            404,
+          );
+    },
+  );
+  app.get('/:taskId/room/attachments/:attachmentId', async (c) => {
+    const value = await runtime.readAttachment({
+      taskId: param(c, 'taskId'),
+      id: param(c, 'attachmentId'),
+      taskCreatedAt: c.req.query('taskCreatedAt') ?? '',
+      request: c.req.raw,
+    });
+    const headers = {
+      'Cache-Control': 'private, no-cache',
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Type': 'application/octet-stream',
+      'Content-Security-Policy': 'sandbox',
+    };
+    return value
+      ? c.body(Uint8Array.from(value.bytes), 200, headers)
+      : c.body(null, 404, { ...headers, 'Cache-Control': 'no-store' });
+  });
   app.post('/:taskId/room/messages', validate(messageSchema), async (c) => {
     const body = getBody(c);
     return response(
@@ -505,6 +635,7 @@ export function createProjectTaskRoomRoutes(
         request: c.req.raw,
         proposalId: body.proposalId,
         text: body.text,
+        ...(body.attachments?.length ? { attachments: body.attachments } : {}),
         ...(body.occurredAt ? { occurredAt: body.occurredAt } : {}),
         ...(body.expectedTaskCreatedAt
           ? { expectedTaskCreatedAt: body.expectedTaskCreatedAt }

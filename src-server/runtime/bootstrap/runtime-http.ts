@@ -22,6 +22,11 @@ import {
 import { NATIVE_DEVICE_PROOF_HEADER } from '@kontourai/station-contracts/native-device-proof';
 import { NATIVE_RELAY_ENROLLMENT_PATHS } from '@kontourai/station-contracts/native-relay-enrollment';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import {
+  MEDIA_UPLOAD_POLICIES,
+  mediaUploadPolicy,
+} from '@kontourai/station-contracts/walkthrough';
+import { UploadBodyLimitError } from '@kontourai/station-shared/http-upload';
 import { KNOWLEDGE_ROOT_IDENTITY_HEADER } from '@kontourai/station-shared/knowledge-root-identity';
 import {
   redactDeep,
@@ -35,17 +40,22 @@ import {
   INTERACTIVE_WORKSPACE_TIMING_MODE,
   INTERACTIVE_WORKSPACE_TIMING_REQUEST_HEADER,
 } from '../../../src-shared/interactive-workspace-performance-timing.js';
+import { jsonRevalidation } from '../../routes/conditional-get.js';
 import {
   clientProtocolApplies,
   evaluateClientProtocol,
 } from '../../security/client-protocol-admission.js';
+import { classifyOperatorCredentialPosition } from '../../security/host-operator-credential.js';
 import {
   NativeDeviceRequestRefusedError,
   nativeDeviceOnlyObservationRoute,
   nativeDeviceProofPilotRoute,
 } from '../../security/native-device-request-authority.js';
+import { outsideAgentReleaseGuard } from '../../security/outside-agent-release-guard.js';
+import { outsideAgentTokenAudience } from '../../security/outside-agent-token-audience.js';
 import {
   type ExternalSurfaceCapabilityRule,
+  isTelemetryIngestRoute,
   type PairingScopeContextStore,
   pairingScopeSatisfiesHttpRoute,
   requiredExternalSurfaceCapability,
@@ -79,9 +89,20 @@ import {
   transferVerifiedNativeVirtualApplicationRequest,
 } from '../../services/connections/virtual-application.js';
 import { guardAccountResponse } from '../../services/identity/account-response-guard.js';
+import {
+  isOperatorSessionLeaf,
+  isOperatorSessionRead,
+  OPERATOR_SESSION_COOKIE,
+  OPERATOR_SESSION_IDLE_MS,
+  parseOperatorSessionCookie,
+} from '../../services/identity/operator-sessions.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import { RELAYED_RESPONSE_HEADER } from '../../services/remote-stations/remote-station-forwarder.js';
 import { HOST_STATION_COMPATIBILITY } from '../../services/ssh/environment-security-service.js';
+import {
+  bindAdmittedTelemetryProducer,
+  isTelemetryProducerSecret,
+} from '../../services/telemetry-producers/telemetry-producer-store.js';
 import {
   deviceSessionAuthorizations,
   requestBudgetOutcomes,
@@ -102,7 +123,7 @@ import { getTenantRequestContext } from './runtime-tenant-context.js';
 
 type RuntimeApp = Parameters<NonNullable<HonoServerConfig['configureApp']>>[0];
 
-export const SECURE_DEVICE_SESSION_COOKIE = '__Host-station-device';
+const SECURE_DEVICE_SESSION_COOKIE = '__Host-station-device';
 export const LOOPBACK_DEVICE_SESSION_COOKIE = 'station-device';
 const DEVICE_CREDENTIAL_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const SAFE_HTTP_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -253,12 +274,26 @@ const envelopeMarkedApps = new WeakSet<object>();
  * marker and without the peer's.
  *
  * It must wrap every writer, so it is installed before any other middleware.
+ * This earliest composition seam also installs the compiled outside-agent refusal.
  * `configureRuntimeHttp` installs it; runtime composition calls it earlier
  * still, ahead of the hosted tenant gate, and the second call is a no-op.
  */
-export function installStationEnvelopeMarker(app: RuntimeApp): void {
+export function installStationEnvelopeMarker(
+  app: Pick<RuntimeApp, 'use'>,
+): void {
   if (envelopeMarkedApps.has(app)) return;
   envelopeMarkedApps.add(app);
+  app.use('*', async (c, next) => {
+    const upload = mediaUploadPolicy(
+      c.req.method,
+      c.req.path,
+      MEDIA_UPLOAD_POLICIES,
+    );
+    await next();
+    if (upload && c.res.status >= 400) c.header('Connection', 'close');
+  });
+  app.use('*', outsideAgentReleaseGuard);
+  app.use('*', outsideAgentTokenAudience);
   app.use('*', async (c, next) => {
     await next();
     if (c.res.headers.has(RELAYED_RESPONSE_HEADER)) {
@@ -296,6 +331,13 @@ export function configureRuntimeHttp({
     }
   });
   app.onError((err, c) => {
+    if (err instanceof UploadBodyLimitError) {
+      c.header('Connection', 'close');
+      return c.json(
+        { error: { code: 'request_too_large', limit_bytes: err.limitBytes } },
+        413,
+      );
+    }
     // Before the auth allow-list, deliberately. The allow-list matches on
     // message text (`isAuthError` substring-matches "unauthorized", "401",
     // "authentication failed"), so a route that threw a typed 403 whose
@@ -391,14 +433,13 @@ export function configureRuntimeHttp({
     configureRuntimeRouteClassificationGate(app, security, routeLabeler);
     configureRuntimeSecurity(app, security, routeLabeler);
   } else {
-    app.use(
-      '*',
-      cors({
-        origin: resolveRuntimeCorsOrigin,
-        credentials: true,
-        // #2842: a cross-origin client must be able to read the marker.
-        exposeHeaders: [STATION_ENVELOPE_HEADER],
-      }),
+    const ordinaryCors = cors({
+      origin: resolveRuntimeCorsOrigin,
+      credentials: true,
+      exposeHeaders: [STATION_ENVELOPE_HEADER],
+    });
+    app.use('*', (c, next) =>
+      outsideProtocolOwnsAdmission(c) ? next() : ordinaryCors(c, next),
     );
   }
 
@@ -429,6 +470,10 @@ export function configureRuntimeHttp({
       eventBus.emit(SERVER_EVENTS.DATA_CHANGED, { keys });
     }
   });
+
+  // Innermost: it compares the body a handler produced for this caller, after
+  // every admission check above, and before the account guard re-checks it.
+  app.use('*', jsonRevalidation());
 }
 
 /**
@@ -517,6 +562,125 @@ function isInteractiveWorkspacePerformanceDiagnostic(c: {
   );
 }
 
+/**
+ * The producer token on a telemetry ingest request, or `undefined` when this
+ * request is not one: a producer secret on any other route is not recognized
+ * here and fails the ordinary credential check like any unknown bearer.
+ */
+function telemetryProducerBearer(c: Context): string | undefined {
+  if (!isTelemetryIngestRoute(c.req.method, c.req.path)) return undefined;
+  const bearer = parseStrictBearer(c.req.header('authorization'));
+  return bearer !== undefined && isTelemetryProducerSecret(bearer)
+    ? bearer
+    : undefined;
+}
+
+/**
+ * The one telemetry producer admission path. A presented producer token never
+ * falls through to the paired-credential checks: it is admitted here or
+ * refused here. Order: no credential in the query (401), store usable (503),
+ * token known (401, or 429 once the address's failure budget is spent), not
+ * expired (403), sender position allowed (403).
+ *
+ * "Same machine" is `classifyOperatorCredentialPosition`: a direct loopback
+ * socket with a loopback `Host` and no forwarding or ingress evidence, or
+ * Station's own attested UI proxy relaying a loopback client that addressed
+ * loopback. The UI proxy forwards every non-GET request, so ingest POSTs
+ * reach here through it; that is the remote producer path (Tailscale Serve
+ * terminates TLS and dials the UI port). Serve dials from loopback, so the
+ * sockets alone would count every tailnet sender as local; the proxy's
+ * forwarded-Host, forwarding-evidence and ingress-identity attestations are
+ * what mark it remote
+ * (`telemetry-producer-ui-proxy-transport.test.ts`). A plain SSH local forward still reads as same-machine; the
+ * default is a narrowing, not proof of locality.
+ */
+async function admitTelemetryProducerRequest(call: {
+  c: Context;
+  secret: string;
+  security: RuntimeHttpSecurityOptions;
+  limiter: RuntimeAuthFailureLimiter;
+  limiterKey: string;
+  routeClass: 'public' | 'protected';
+  effectivePeerClass: RuntimePeerClass;
+  routeLabeler: RuntimeRouteLabeler;
+  next: () => Promise<void>;
+}): Promise<Response | undefined> {
+  const { c, security, limiter, limiterKey } = call;
+  const refused = (
+    status: 401 | 403 | 429 | 503,
+    code: string,
+    reason: string,
+  ): Response => {
+    emitSecurityAudit(security, c, call.routeLabeler, {
+      event:
+        status === 429 ? 'station.auth.rate_limited' : 'station.auth.failure',
+      outcome: 'denied',
+      reason,
+      routeClass: call.routeClass,
+      peerClass: call.effectivePeerClass,
+      transport: 'http',
+      timestamp: security.now?.() ?? Date.now(),
+    });
+    return c.json({ error: { code } }, status);
+  };
+  // The same refusal every other credential gets: a secret in a URL lands
+  // in logs and history, so it is never accepted alongside one.
+  if (hasCredentialQuery(c.req.url)) {
+    limiter.recordFailure(limiterKey);
+    return refused(401, 'authentication_required', 'query_credential_rejected');
+  }
+  const producers = security.telemetryProducers;
+  if (producers && !producers.usable())
+    return refused(
+      503,
+      'telemetry_producers_unavailable',
+      'telemetry_producers_unavailable',
+    );
+  const producer = producers?.find(call.secret);
+  if (!producers || !producer) {
+    // Only an unknown token consumes the per-address failure budget, as in
+    // the paired-credential path. The address is shared: Tailscale Serve
+    // dials from loopback, so every tailnet sender counts against it too.
+    const retryAfter = limiter.retryAfterSeconds(limiterKey);
+    if (retryAfter !== undefined) {
+      c.header('Retry-After', String(retryAfter));
+      return refused(429, AUTH_RATE_LIMITED_ERROR_CODE, 'too_many_failures');
+    }
+    limiter.recordFailure(limiterKey);
+    return refused(401, 'authentication_required', 'credential_invalid');
+  }
+  // A recognized token is not a guess: refusing it for expiry or position
+  // records no failure, so it cannot lock out the other producers on this
+  // address. Only an admitted token clears the budget; an expired token is
+  // kept until revoked, and must not be a standing reset for guessers.
+  if (producers.isExpired(producer))
+    return refused(
+      403,
+      'telemetry_producer_expired',
+      'telemetry_producer_expired',
+    );
+  if (
+    !producer.allowRemote &&
+    classifyOperatorCredentialPosition(c) === 'off-host'
+  )
+    return refused(
+      403,
+      'telemetry_producer_remote_not_allowed',
+      'telemetry_producer_remote_not_allowed',
+    );
+  limiter.clear(limiterKey);
+  bindAdmittedTelemetryProducer(c, producer);
+  // The existing mutation budget keys on this principal, so a producer's
+  // event rate is bounded like any other credential's.
+  setBudgetPrincipal(
+    c as unknown as PairingScopeContextStore,
+    deriveBudgetPrincipal('bearer', call.secret),
+  );
+  producers.touch(producer);
+  await call.next();
+  return undefined;
+}
+
 /** #2893 pilot body bound; identical to the verifier's channel bound. */
 const NATIVE_DEVICE_PROOF_BODY_LIMIT_BYTES = 16 * 1024;
 
@@ -575,8 +739,9 @@ async function admitNativeDeviceProofRequest(
   // refused with no credential fallback.
   if (
     c.req.raw.headers.has('authorization') ||
-    parseDeviceSessionCookie(c.req.raw.headers.get('cookie') ?? undefined) !==
-      undefined
+    /(?:^|;)\s*(?:__Host-)?station-device(?:-[a-f0-9]{16})?\s*=/.test(
+      c.req.raw.headers.get('cookie') ?? '',
+    )
   )
     return refused(
       403,
@@ -725,6 +890,15 @@ async function admitNativeDeviceProofRequest(
   return c.res;
 }
 
+/** Exact declared leaves own their Origin, preflight, bearer and budgets after the compiled refusal. */
+function outsideProtocolOwnsAdmission(c: Context): boolean {
+  const capability = runtimeRouteCapability(c);
+  return (
+    capability?.capability === 'outside-mcp-token' ||
+    capability?.id.startsWith('public:outside-oauth-') === true
+  );
+}
+
 function configureRuntimeSecurity(
   app: RuntimeApp,
   security: RuntimeHttpSecurityOptions,
@@ -738,6 +912,7 @@ function configureRuntimeSecurity(
     security.clientCompatibility ?? HOST_STATION_COMPATIBILITY;
 
   app.use('*', async (c, next) => {
+    if (outsideProtocolOwnsAdmission(c)) return next();
     const origin = c.req.header('origin');
     if (origin && !allowedOrigins.has(origin)) {
       return c.json({ error: { code: 'origin_forbidden' } }, 403);
@@ -761,7 +936,7 @@ function configureRuntimeSecurity(
         // Last-Event-ID: set by the SDK's fetchSSE reconnect loop and consumed
         // by the orchestration resume cursor — omitting it preflight-blocks
         // every cross-origin SSE reconnect (#169).
-        `Authorization, Content-Type, Last-Event-ID, X-Station-Client-Session, ${CLIENT_ORIGIN_HEADER}, ${CLIENT_PROTOCOL_HEADER}, ${STATION_PLUGIN_HEADER}, ${KNOWLEDGE_ROOT_IDENTITY_HEADER}, ${APPLICATION_SESSION_HEADER}, ${APPLICATION_SESSION_PROOF_HEADER}${
+        `Authorization, Content-Type, Last-Event-ID, X-Station-Client-Session, X-Station-Background-Refresh, ${CLIENT_ORIGIN_HEADER}, ${CLIENT_PROTOCOL_HEADER}, ${STATION_PLUGIN_HEADER}, ${KNOWLEDGE_ROOT_IDENTITY_HEADER}, ${APPLICATION_SESSION_HEADER}, ${APPLICATION_SESSION_PROOF_HEADER}${
           process.env.STATION_PERFORMANCE_REFERENCE === '1'
             ? `, ${INTERACTIVE_WORKSPACE_TIMING_REQUEST_HEADER}`
             : ''
@@ -771,6 +946,12 @@ function configureRuntimeSecurity(
         'Access-Control-Allow-Methods',
         'GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS',
       );
+      // Without it the browser re-asks before nearly every cross-origin
+      // request, an extra round trip a phone pays on each poll. A cached
+      // answer cannot widen access: a request needing a header or method
+      // this one did not allow is preflighted again, and every response is
+      // still authorized on its own. Two hours is Chromium's ceiling.
+      c.header('Access-Control-Max-Age', '7200');
       return c.body(null, 204);
     }
 
@@ -802,11 +983,17 @@ function configureRuntimeSecurity(
       });
       return c.json({ error: { code: 'insufficient_scope' } }, 403);
     }
+    // A telemetry producer is a hook script, not a Station client: it has no
+    // client protocol to declare, so the protocol gate does not apply to it.
+    const producerSecret = telemetryProducerBearer(c);
     // ── #2962 client API protocol admission ──
     // Before any credential check, so an outdated client is told to update
     // rather than handed an authentication failure it cannot fix. CORS
     // headers are already set above, so a browser can read the refusal.
-    if (clientProtocolApplies(requiredCapability, proxyCaller === 'loopback')) {
+    if (
+      producerSecret === undefined &&
+      clientProtocolApplies(requiredCapability, proxyCaller === 'loopback')
+    ) {
       const refusal = evaluateClientProtocol(
         c.req.header(CLIENT_PROTOCOL_HEADER),
         clientProtocolPolicy,
@@ -927,11 +1114,144 @@ function configureRuntimeSecurity(
     if (
       requiredCapability.capability === 'public' ||
       requiredCapability.capability === 'mcp-token' ||
+      requiredCapability.capability === 'outside-mcp-token' ||
       requiredCapability.capability === 'webhook-token' ||
-      requiredCapability.capability === 'stage-grant'
+      requiredCapability.capability === 'stage-grant' ||
+      requiredCapability.capability === 'analytics-grant'
     ) {
       return next();
     }
+    // Ingest leaves stay `pairing-scope` for paired credentials; a producer
+    // token is the additional, narrower credential they also accept.
+    if (producerSecret !== undefined) {
+      return admitTelemetryProducerRequest({
+        c,
+        secret: producerSecret,
+        security,
+        limiter,
+        limiterKey,
+        routeClass,
+        effectivePeerClass,
+        routeLabeler,
+        next,
+      });
+    }
+    const checkAliasAdmission = (candidate: string): Response | undefined => {
+      const aliasId = security.resolveCredentialAliasId?.(candidate);
+      const proofBoundContinuation =
+        c.req.raw.headers.has(APPLICATION_SESSION_HEADER) &&
+        c.req.raw.headers.has(APPLICATION_SESSION_PROOF_HEADER);
+      const aliasAccountControl =
+        accountOperation &&
+        c.req.method === 'POST' &&
+        ALIAS_SESSION_CONTROL_PATHS.has(c.req.path);
+      if (
+        aliasId !== undefined &&
+        !aliasAccountControl &&
+        (!proofBoundContinuation ||
+          (!accountOperation &&
+            security.deploymentAuthentication?.current(c.req.raw)?.kind !==
+              'authenticated'))
+      ) {
+        c.header(ACCOUNT_AUTHENTICATION_FAILURE_HEADER, 'account');
+        return c.json(
+          { error: { code: 'account_authentication_required' } },
+          401,
+        );
+      }
+      return undefined;
+    };
+    // Try ordinary admission first: a stale cookie must never block a bearer
+    // or an independently authorized device. The session adds exact reads only.
+    const operatorCookiePresent = (c.req.header('cookie') ?? '')
+      .split(';')
+      .some((part) => part.trim().startsWith(`${OPERATOR_SESSION_COOKIE}=`));
+    const admitOperatorSession = async (
+      admittedDevice = false,
+    ): Promise<Response | undefined> => {
+      if (
+        !(
+          isOperatorSessionLeaf(c.req.method, c.req.path) &&
+          (operatorCookiePresent ||
+            ((c.req.path === '/api/operator/session' ||
+              c.req.path === '/api/operator/passkeys') &&
+              !c.req.header('authorization')))
+        )
+      )
+        return undefined;
+      const sessionSecret = parseOperatorSessionCookie(c.req.header('cookie'));
+      const deviceCredential = parseDeviceSessionCookie(
+        c.req.header('cookie'),
+        (candidate) =>
+          security.resolveCredentialAuthority?.(candidate) ===
+          'device-credential',
+      );
+      // Session expiry withdraws the added read scope, not the independently
+      // admitted Device. A 401 would make SDK clients discard its credential.
+      const bindingDeviceAdmitted =
+        !!deviceCredential &&
+        (await security.verifyCredential(deviceCredential, {
+          method: 'GET',
+          path: '/api/auth/authority',
+          tenant: getTenantRequestContext(c.req.raw),
+        }));
+      const refuse = () =>
+        c.json(
+          {
+            error: { code: 'operator_session_required' },
+            signInUrl: security.operatorSessions?.signInUrl ?? null,
+          },
+          admittedDevice || bindingDeviceAdmitted ? 403 : 401,
+        );
+      if (!sessionSecret || !deviceCredential || hasCredentialQuery(c.req.url))
+        return refuse();
+      // Validate the binding credential through ordinary device admission on
+      // its neutral self-read. The session supplies the additional read scope;
+      // alias and account policy still apply to the binding device.
+      if (!bindingDeviceAdmitted) return refuse();
+      const aliasFailure = checkAliasAdmission(deviceCredential);
+      if (aliasFailure) return aliasFailure;
+      const session = security.operatorSessions?.resolve(
+        sessionSecret,
+        deviceCredential,
+        isOperatorSessionRead(c.req.method, c.req.path) &&
+          !c.req.path.startsWith('/api/pairing/device-access-transactions/') &&
+          !c.req.path.startsWith('/api/outside-agent/transactions/') &&
+          c.req.header('x-station-background-refresh') !== '1',
+      );
+      if (!session) return refuse();
+      setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+        kind: 'credential',
+        credential: deviceCredential,
+        authority: 'operator-session',
+        source: 'session',
+        operatorSession: {
+          sessionId: session.sessionId,
+          passkeyId: session.passkeyId,
+          boundDeviceId: session.boundDeviceId,
+          expiresAt: session.expiresAt,
+          idleExpiresAt: session.lastUsedAt + OPERATOR_SESSION_IDLE_MS,
+          isCurrent: () =>
+            !!security.operatorSessions?.resolve(
+              sessionSecret,
+              deviceCredential,
+            ),
+        },
+      });
+      bindRuntimeLocalOperator(c.req.raw);
+      c.header(ACCOUNT_AUTHENTICATION_FAILURE_HEADER, undefined);
+      c.set(RUNTIME_CREDENTIAL_AUTHORITY_VAR, 'operator-session');
+      setBudgetPrincipal(
+        c as unknown as PairingScopeContextStore,
+        deriveBudgetPrincipal('session', deviceCredential),
+      );
+      await next();
+      return c.res;
+    };
+    const inventorySignIn =
+      c.req.method === 'GET' && c.req.path === '/api/pairing/devices'
+        ? security.operatorSessions?.signInUrl
+        : null;
     const hasQueryCredential = hasCredentialQuery(c.req.url);
     if (hasQueryCredential) {
       const retryAfter = limiter.retryAfterSeconds(limiterKey);
@@ -964,7 +1284,13 @@ function configureRuntimeSecurity(
     const bearerCredential = parseStrictBearer(authorization);
     const cookieCredential =
       authorization === undefined
-        ? parseDeviceSessionCookie(c.req.header('cookie'))
+        ? parseDeviceSessionCookie(
+            c.req.header('cookie'),
+            security.resolveCredentialAuthority
+              ? (candidate) =>
+                  security.resolveCredentialAuthority!(candidate) !== undefined
+              : undefined,
+          )
         : undefined;
     const credential = bearerCredential ?? cookieCredential;
 
@@ -1031,28 +1357,8 @@ function configureRuntimeSecurity(
         })(),
       }));
     if (valid) {
-      const aliasId = security.resolveCredentialAliasId?.(credential!);
-      const proofBoundContinuation =
-        c.req.raw.headers.has(APPLICATION_SESSION_HEADER) &&
-        c.req.raw.headers.has(APPLICATION_SESSION_PROOF_HEADER);
-      const aliasAccountControl =
-        accountOperation &&
-        c.req.method === 'POST' &&
-        ALIAS_SESSION_CONTROL_PATHS.has(c.req.path);
-      if (
-        aliasId !== undefined &&
-        !aliasAccountControl &&
-        (!proofBoundContinuation ||
-          (!accountOperation &&
-            security.deploymentAuthentication?.current(c.req.raw)?.kind !==
-              'authenticated'))
-      ) {
-        c.header(ACCOUNT_AUTHENTICATION_FAILURE_HEADER, 'account');
-        return c.json(
-          { error: { code: 'account_authentication_required' } },
-          401,
-        );
-      }
+      const aliasFailure = checkAliasAdmission(credential!);
+      if (aliasFailure) return aliasFailure;
       const authority = security.resolveCredentialAuthority?.(credential!);
       const deviceId = security.resolveCredentialDeviceId?.(credential!);
       const deviceKind = deviceId
@@ -1102,6 +1408,10 @@ function configureRuntimeSecurity(
           locality === 'home-possession',
         );
       if (!permitted) {
+        const sessionResponse = await admitOperatorSession(
+          authority === 'device-credential',
+        );
+        if (sessionResponse) return sessionResponse;
         if (cookieCredential) {
           deviceSessionAuthorizations.add(1, {
             outcome: 'denied',
@@ -1126,7 +1436,13 @@ function configureRuntimeSecurity(
           timestamp: security.now?.() ?? Date.now(),
         });
         limiter.clear(limiterKey);
-        return c.json({ error: { code: 'insufficient_scope' } }, 403);
+        return c.json(
+          {
+            error: { code: 'insufficient_scope' },
+            ...(inventorySignIn ? { signInUrl: inventorySignIn } : {}),
+          },
+          403,
+        );
       }
       if (cookieCredential) {
         deviceSessionAuthorizations.add(1, { outcome: 'allowed' });
@@ -1158,6 +1474,9 @@ function configureRuntimeSecurity(
       return next();
     }
 
+    const recognizedCredential =
+      credential !== undefined &&
+      (await security.recognizeCredential?.(credential));
     // Admission refused a credential the server still recognizes. A 401
     // tells the browser the device session is dead: it drops the cookie,
     // remounts the protected tree, and asks again. Settings does that on a
@@ -1165,10 +1484,14 @@ function configureRuntimeSecurity(
     // desktop and mobile, and an ordinary device credential is not admitted
     // to that inventory. Answer 403, the same status an authenticated caller
     // already receives when a route will not serve them.
-    if (
-      credential !== undefined &&
-      (await security.recognizeCredential?.(credential))
-    ) {
+    if (recognizedCredential) {
+      const aliasFailure = checkAliasAdmission(credential!);
+      if (aliasFailure) return aliasFailure;
+      const sessionResponse = await admitOperatorSession(
+        security.resolveCredentialAuthority?.(credential!) ===
+          'device-credential',
+      );
+      if (sessionResponse) return sessionResponse;
       if (cookieCredential) {
         deviceSessionAuthorizations.add(1, {
           outcome: 'denied',
@@ -1185,7 +1508,13 @@ function configureRuntimeSecurity(
         timestamp: security.now?.() ?? Date.now(),
       });
       limiter.clear(limiterKey);
-      return c.json({ error: { code: 'insufficient_scope' } }, 403);
+      return c.json(
+        {
+          error: { code: 'insufficient_scope' },
+          ...(inventorySignIn ? { signInUrl: inventorySignIn } : {}),
+        },
+        403,
+      );
     }
 
     if (cookieCredential) {
@@ -1220,7 +1549,10 @@ function configureRuntimeSecurity(
       transport: 'http',
       timestamp: security.now?.() ?? Date.now(),
     });
-    return c.json({ error: { code: 'authentication_required' } }, 401);
+    return (
+      (await admitOperatorSession()) ??
+      c.json({ error: { code: 'authentication_required' } }, 401)
+    );
   });
 
   // ── archive#514: authenticated mutation budget ──
@@ -1271,11 +1603,13 @@ function configureRuntimeSecurity(
     }
 
     // 2. Body-size check. Content-Length first (reject before any read); then a
-    //    bounded byte-counting read that catches a lying or absent
-    //    Content-Length. The body is re-buffered into a new Request so the
-    //    handler's `c.req.json()` reads the bounded copy — this is the same
-    //    buffering `c.req.json()` would do, just with a ceiling.
-    const ceiling = budget.bodyByteCeiling(mutationClass);
+    //    bounded byte counter catches a lying or absent Content-Length. Media
+    //    uploads remain lazy streams so route admission precedes every read.
+    //    Ordinary JSON mutations retain the existing buffered copy.
+    const ceiling = budget.bodyByteCeiling(mutationClass, {
+      method: c.req.method,
+      path: c.req.path,
+    });
     const contentLength = c.req.raw.headers.get('content-length');
     if (contentLength !== null) {
       if (!/^\d+$/.test(contentLength) || Number(contentLength) > ceiling) {
@@ -1296,7 +1630,17 @@ function configureRuntimeSecurity(
       }
     }
 
-    const bodyResult = await readBoundedBody(c.req.raw, ceiling);
+    const uploadPolicy = mediaUploadPolicy(
+      c.req.method,
+      c.req.path,
+      MEDIA_UPLOAD_POLICIES,
+    );
+    const boundedUpload =
+      uploadPolicy && c.req.raw.body
+        ? boundUploadStream(c.req.raw.body, ceiling)
+        : undefined;
+    const bodyResult =
+      boundedUpload?.stream ?? (await readBoundedBody(c.req.raw, ceiling));
     if (bodyResult === 'too-large') {
       requestBudgetOutcomes.add(1, {
         outcome: 'oversized',
@@ -1315,7 +1659,8 @@ function configureRuntimeSecurity(
     }
 
     // Replace the raw request so the handler reads the bounded body. The
-    // stream was consumed by the bounded read above, so even a zero-length
+    // ordinary stream was consumed above; uploads carry the lazy bound instead.
+    // Even a zero-length
     // body must be re-wrapped. Only a truly absent body stream ('no-stream')
     // needs no replacement. The replacement is built from the request's own
     // fields, never by passing `c.req.raw` itself into the `Request`
@@ -1358,8 +1703,58 @@ function configureRuntimeSecurity(
       class: mutationClass,
       source: principal.source,
     });
-    return next();
+    await next();
+    if (boundedUpload?.exceeded()) {
+      c.header('Connection', 'close');
+      c.res = c.json(
+        { error: { code: 'request_too_large', limit_bytes: ceiling } },
+        413,
+      );
+    }
   });
+}
+
+function boundUploadStream(
+  source: ReadableStream<Uint8Array>,
+  maxBytes: number,
+) {
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  let total = 0;
+  let exceeded = false;
+  const stream = new ReadableStream<Uint8Array>(
+    {
+      async pull(controller) {
+        reader ??= source.getReader();
+        try {
+          const result = await reader.read();
+          if (result.done) {
+            controller.close();
+            reader.releaseLock();
+            return;
+          }
+          total += result.value.byteLength;
+          if (total > maxBytes) {
+            exceeded = true;
+            controller.error(new UploadBodyLimitError(maxBytes));
+            await reader.cancel().catch(() => {});
+            reader.releaseLock();
+            return;
+          }
+          controller.enqueue(result.value);
+        } catch (error) {
+          controller.error(error);
+        }
+      },
+      async cancel(reason) {
+        if (reader) {
+          await reader.cancel(reason);
+          reader.releaseLock();
+        } else await source.cancel(reason);
+      },
+    },
+    { highWaterMark: 0 },
+  );
+  return { stream, exceeded: () => exceeded };
 }
 
 type BoundedBodyResult = Uint8Array | 'too-large' | 'no-stream';
@@ -1408,44 +1803,69 @@ async function readBoundedBody(
   return bytes;
 }
 
+export function deviceSessionCookieName(
+  secure: boolean,
+  environmentId: string,
+): string {
+  const scope = createHash('sha256')
+    .update(environmentId)
+    .digest('hex')
+    .slice(0, 16);
+  return `${secure ? SECURE_DEVICE_SESSION_COOKIE : LOOPBACK_DEVICE_SESSION_COOKIE}-${scope}`;
+}
+
 export function parseDeviceSessionCookie(
   value: string | undefined,
+  recognizes?: (credential: string) => boolean,
 ): string | undefined {
   // Cookie jars are shared across ports. Other localhost applications can
   // legitimately contribute several KiB; bound the header at the Node HTTP
   // default while still validating only one exact Station credential below.
   if (!value || value.length > 16 * 1024) return undefined;
   const matches: string[] = [];
+  const names = new Set<string>();
   for (const segment of value.split(';')) {
     const separator = segment.indexOf('=');
     if (separator <= 0) continue;
     const name = segment.slice(0, separator).trim();
     if (
       name !== SECURE_DEVICE_SESSION_COOKIE &&
-      name !== LOOPBACK_DEVICE_SESSION_COOKIE
+      name !== LOOPBACK_DEVICE_SESSION_COOKIE &&
+      !/^(?:__Host-)?station-device-[a-f0-9]{16}$/.test(name)
     ) {
       continue;
     }
     const candidate = segment.slice(separator + 1).trim();
-    if (!DEVICE_CREDENTIAL_PATTERN.test(candidate)) return undefined;
+    if (names.has(name) || !DEVICE_CREDENTIAL_PATTERN.test(candidate))
+      return undefined;
+    names.add(name);
     matches.push(candidate);
   }
-  return matches.length === 1 ? matches[0] : undefined;
+  if (matches.length === 1) return matches[0];
+  const current = recognizes ? matches.filter(recognizes) : [];
+  return current.length === 1 ? current[0] : undefined;
 }
 
 /** Cookie-adoption is an HTTPS browser ceremony; reject loopback's cleartext cookie name. */
 export function parseSecureDeviceSessionCookie(
   value: string | undefined,
+  recognizes?: (credential: string) => boolean,
 ): string | undefined {
   if (!value || value.length > 16 * 1024) return undefined;
-  const hasSecureName = value.split(';').some((segment) => {
+  const credential = parseDeviceSessionCookie(value, recognizes);
+  if (!credential) return undefined;
+  const hasSecureCredential = value.split(';').some((segment) => {
     const separator = segment.indexOf('=');
     return (
       separator > 0 &&
-      segment.slice(0, separator).trim() === SECURE_DEVICE_SESSION_COOKIE
+      segment.slice(separator + 1).trim() === credential &&
+      (segment.slice(0, separator).trim() === SECURE_DEVICE_SESSION_COOKIE ||
+        /^__Host-station-device-[a-f0-9]{16}$/.test(
+          segment.slice(0, separator).trim(),
+        ))
     );
   });
-  return hasSecureName ? parseDeviceSessionCookie(value) : undefined;
+  return hasSecureCredential ? credential : undefined;
 }
 
 function hasCredentialQuery(url: string): boolean {
@@ -1523,7 +1943,8 @@ export function resolveRuntimeCorsOrigin(
 // it exhausts the request quota. Keep exact read leaves separate from writes;
 // authentication and request budgets still apply unchanged.
 const READ_ONLY_DATA_POST_ROUTES = [
-  /^\/api\/projects\/[^/]+\/file-preview(?:\/download|\/exists)?\/?$/,
+  /^\/api\/analytics\/recipient-candidates\/[^/]+\/(?:query|outcomes)\/?$/,
+  /^\/api\/projects\/[^/]+\/file-preview(?:\/download|\/exists|\/changes|\/visual)?\/?$/,
   /^\/api\/projects\/[^/]+\/knowledge\/(?:ns\/[^/]+\/)?search\/?$/,
   /^\/api\/knowledge\/(?:search|index\/search|roots\/validate)\/?$/,
   // The receiver-side contribution query is a POST-carried read: it changes
@@ -1539,9 +1960,20 @@ function getInvalidationKeysForRequest(method: string, path: string): string[] {
     READ_ONLY_DATA_POST_ROUTES.some((route) => route.test(path))
   )
     return [];
+  // A draft lease keeps its watcher alive. Successful draft revisions publish
+  // PLUGIN_DRAFTS_REBUILT; the pane's own query refetches otherwise.
+  if (
+    method === 'POST' &&
+    /^\/api\/projects\/[^/]+\/plugin-draft\/lease\/?$/.test(path)
+  )
+    return [];
   const keys: string[] = [];
 
-  if (path.startsWith('/agents')) keys.push('agents');
+  if (
+    path.startsWith('/agents') &&
+    !(method === 'POST' && /^\/agents\/[^/]+\/chat\/?$/.test(path))
+  )
+    keys.push('agents');
   if (path.startsWith('/integrations')) keys.push('integrations');
   if (path.includes('/skills')) keys.push('skills');
   if (path.includes('/providers')) keys.push('providers');

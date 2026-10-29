@@ -1,0 +1,7 @@
+{
+  "revision": "ea7280dd9d9d5c1257419029e34a10b10689eff4",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed the fixture-only follow-up for #3671: typed Claude history items and generic event builder preserve writer shapes; managed browser screenshot paths preserve isolated runner ownership. UI and E2E typechecks, fixture policy, and all 36 mounted tests pass. Placement claims and production source are unchanged.","inputs":["docs/design/placement.md","src-ui/src/__tests__/ChatMessageList.subagentCards.test.tsx"]}
+  ]
+}

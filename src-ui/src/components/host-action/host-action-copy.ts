@@ -41,6 +41,10 @@ export type HostActionId =
   | 'engine-scan-pending'
   /** archive#3843 — an engine the scan did not find. */
   | 'engine-missing'
+  /** An engine's install command, shown where the engine was not found. */
+  | 'engine-install-command'
+  /** "Check again" refused because this credential cannot ask the host to re-check. */
+  | 'engine-recheck-not-permitted'
   /** archive#3843 — the Agents row's one fixing verb, accessibly named. */
   | 'agent-engine-setup'
   /** archive#3843 — the Developer surface's redacted log read. */
@@ -64,7 +68,13 @@ export type HostActionId =
    * already posts to the host today -- so the affordance stays and only the
    * machine that will hold the key is named.
    */
-  | 'connection-api-key';
+  | 'connection-api-key'
+  /** The sign-in panel's lede: where the engine's sign-in is kept. */
+  | 'engine-sign-in'
+  /** A sign-in the engine runs in a terminal, opened by Station on the host. */
+  | 'engine-sign-in-terminal'
+  /** A sign-in the engine runs itself, which may open a browser on the host. */
+  | 'engine-sign-in-browser';
 
 interface HostActionCopyEntry {
   reach: HostActionReach;
@@ -123,6 +133,22 @@ export const HOST_ACTION_COPY: Record<HostActionId, HostActionCopyEntry> = {
     paired: (hostName) =>
       `Not found on ${hostName}. Agent CLIs run on that computer, so it has to be installed there.`,
   },
+  'engine-install-command': {
+    // The CLI has to land on the host's PATH; running it on a phone or a
+    // laptop that only pairs with Station installs nothing Station can use.
+    reach: 'host-hands',
+    host: 'Install it on this machine:',
+    paired: (hostName) =>
+      `Install it on ${hostName}, the computer Station runs on. Engines run there, so installing it on this device does not help.`,
+  },
+  'engine-recheck-not-permitted': {
+    // Re-checking runs the host user's login shell, so it needs the operate
+    // scope. The plain list read still ran; only the re-check was refused.
+    reach: 'remote-safe',
+    host: 'This sign-in cannot ask Station to look again. The list shows what Station last found.',
+    paired: (hostName) =>
+      `This device cannot ask ${hostName} to look again. An operator can change this device's permissions.`,
+  },
   'connection-sign-in': {
     // The engine's own login runs on the host and writes to the credential
     // store there. Nothing a browser on another device can do reaches it.
@@ -146,6 +172,26 @@ export const HOST_ACTION_COPY: Record<HostActionId, HostActionCopyEntry> = {
     host: '',
     paired: (hostName) =>
       `The key is saved on ${hostName}, the computer Station runs on. It is never sent back to this device.`,
+  },
+  'engine-sign-in': {
+    // The engine signs in on the host and keeps its credentials there;
+    // Station only starts the sign-in, from any device allowed to.
+    reach: 'remote-safe',
+    host: 'The engine keeps its own sign-in on this computer.',
+    paired: (hostName) =>
+      `Signing in here signs the engine in on ${hostName}, the computer Station runs on. The engine keeps its sign-in there.`,
+  },
+  'engine-sign-in-terminal': {
+    reach: 'remote-safe',
+    host: "Opens the engine's own sign-in in a terminal on this computer.",
+    paired: (hostName) =>
+      `Opens the engine's own sign-in in a terminal on ${hostName}. You can use that terminal from this device.`,
+  },
+  'engine-sign-in-browser': {
+    reach: 'remote-safe',
+    host: 'The engine may open a browser on this computer. If it shows a link, you can open it here.',
+    paired: (hostName) =>
+      `The engine may open a browser on ${hostName}. If it shows a link, you can open it on this device.`,
   },
   'agent-engine-setup': {
     // Setting up an engine sends you to Connections, which a paired device
@@ -187,9 +233,4 @@ export function hostActionCopy(
   return presentation?.deviceClass === 'paired'
     ? entry.paired(presentation.hostName)
     : entry.host;
-}
-
-/** Whether this affordance needs hands on the host's machine. */
-export function hostActionReach(id: HostActionId): HostActionReach {
-  return HOST_ACTION_COPY[id].reach;
 }

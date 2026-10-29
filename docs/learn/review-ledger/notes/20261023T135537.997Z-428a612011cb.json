@@ -1,0 +1,9 @@
+{
+  "revision": "00202e3c5a38e0a7cfaed8a8bf4fde1a1dfb73b2",
+
+  "notes": [
+    {"path":".veritas/init-plans/documentation-maintenance.md","note":"Bounded review of current attestation HEAD after explicit owner approval of one historical Gitleaks fingerprint. New policy-change record cites the approval conversation and exact squash commit/file/rule/line; protected Repo Map/Standards/authority hashes are unchanged. Documentation-maintenance activation and its historical candidate measurements remain attributed to their original approval; a later attestation does not rewrite or renew those receipts. The maintenance guide still routes semantic reviews and genuine owner attestation correctly. No prose change needed. Full historical scanner with approved exact exception found zero; separate fresh-location control still found one. No blanket file/rule or future-match exemption.","inputs":[".veritas/init-plans/documentation-maintenance.md",".veritas/attestations/HEAD"]},
+
+    {"path":"docs/guides/documentation.md","note":"Bounded review of current attestation HEAD after explicit owner approval of one historical Gitleaks fingerprint. New policy-change record cites the approval conversation and exact squash commit/file/rule/line; protected Repo Map/Standards/authority hashes are unchanged. Documentation-maintenance activation and its historical candidate measurements remain attributed to their original approval; a later attestation does not rewrite or renew those receipts. The maintenance guide still routes semantic reviews and genuine owner attestation correctly. No prose change needed. Full historical scanner with approved exact exception found zero; separate fresh-location control still found one. No blanket file/rule or future-match exemption.","inputs":["docs/guides/documentation.md",".veritas/attestations/HEAD"]}
+  ]
+}

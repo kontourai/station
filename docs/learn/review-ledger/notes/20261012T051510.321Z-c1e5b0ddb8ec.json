@@ -1,0 +1,7 @@
+{
+  "revision": "da57b678357d3e124585d309994152e9d834e0c4",
+
+  "notes": [
+    {"path":"docs/guides/product-law-authoring.md","note":"Delta review for #2675 (changed: package.json). package.json: test:windows:portable gained the Windows identity probe test; this document makes no claim about that script's file list.","inputs":["docs/guides/product-law-authoring.md","package.json"]}
+  ]
+}

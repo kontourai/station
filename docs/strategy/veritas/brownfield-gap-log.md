@@ -5,6 +5,12 @@
 > [current integration guide](../kontour-integration-surface.md) and
 > [Veritas configuration guide](../../../.veritas/README.md) before acting on a
 > recorded workaround.
+>
+> Two files this log cites, `scripts/verify-convergence.mjs` and
+> `docs/strategy/veritas/guardrail-usefulness-inventory.md`, were removed
+> before the 2026-08-28 public reset and never existed in this repository. The
+> guardrail families they describe are declared in
+> [`repo-guardrails.families.json`](../../../.veritas/proof-families/repo-guardrails.families.json).
 
 
 This log tracks what work-agent reveals about introducing Veritas into an existing application with custom verification, complex CI, existing instruction files, and adjacent "guidance" terminology.

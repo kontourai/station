@@ -3,6 +3,7 @@ import { mkdir, readdir, readFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { publishJsonFileWithOwnedLock } from '@kontourai/station-shared/json-file-storage';
 import type { Conversation, ConversationQueryOptions } from '@voltagent/core';
+import { tornRecordQuarantinePath } from './memory-adapter-messages.js';
 import { MemoryAdapterPaths } from './memory-adapter-paths.js';
 
 export function applyConversationQueryOptions(
@@ -362,6 +363,11 @@ export function createMemoryConversationStore(options: {
     const messagesPath = paths.getMessagesPath(resourceId, conversationId);
     if (existsSync(messagesPath)) {
       await unlink(messagesPath);
+    }
+
+    const tornRecordsPath = tornRecordQuarantinePath(messagesPath);
+    if (existsSync(tornRecordsPath)) {
+      await unlink(tornRecordsPath);
     }
 
     const workingMemoryPath = paths.getConversationWorkingMemoryPath(

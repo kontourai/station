@@ -1,0 +1,7 @@
+{
+  "revision": "23b8d757bc5a25c6b14e12d35dad1d091ba19240",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"PR #3676 fix round 1: re-read Restored conversation execution and follow its revalidation caller. ConversationOpenRevalidator now subscribes using conversationId in the existing authority QueryClient namespace. Resolution, current-child execution binding, model-choice retention and SDK response parsing are unchanged. No SDK or wire contract change. Merged-base focused 241/241 passed; browser recovery passed at 1440px and 390px.","inputs":["docs/reference/sdk.md","src-ui/src/components/chat-dock/ConversationOpenRevalidator.tsx"]}
+  ]
+}

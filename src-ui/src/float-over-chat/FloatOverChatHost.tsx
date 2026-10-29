@@ -48,6 +48,7 @@ import {
   deviceCornerRadius,
   deviceOsLabel,
 } from '../workspace-panes/device/deviceScreen';
+import { AgentDeviceReveal } from './AgentDeviceReveal';
 import { pickAutoFloatCandidate } from './autoFloatCandidate';
 import {
   clampFloatPosition,
@@ -403,7 +404,7 @@ export function FloatOverChatHost({
           signal,
         );
         sessionFailures.current = 0;
-        // Stamped where the data ARRIVES (review L2): a remount that reads
+        // Stamped where the data ARRIVES (#2444): a remount that reads
         // cached data sees how long ago it really came, on the monotonic
         // clock the agent-driving window is measured in.
         return { list, receivedAt: performance.now() };
@@ -481,7 +482,7 @@ export function FloatOverChatHost({
     // floater goes, and the chat says why. Not a dismissal.
     if (deviceError !== null && !deviceReadRetries(deviceError)) {
       closeFloat(conversationKey);
-      // No "Open in right panel" here (review LOW-2): refused, or its host
+      // No "Open in right panel" here (#2467): refused, or its host
       // is gone or untrusted — the pane could not show it either, and would
       // only dead-end after its wait.
       setFloatNotice(conversationKey, {
@@ -577,6 +578,10 @@ export function FloatOverChatHost({
   ) : null;
   return (
     <>
+      <AgentDeviceReveal
+        projectSlug={projectSlug}
+        conversationId={conversationKey}
+      />
       {noticeCard}
       {source && !shownInPane ? renderSource(source) : null}
     </>

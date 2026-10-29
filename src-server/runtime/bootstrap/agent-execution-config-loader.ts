@@ -3,15 +3,15 @@
  * orchestration which credential profile (account) an agent runs on.
  *
  * Extracted from `runtime-initialize.ts` so it can be tested for BEHAVIOUR.
- * Two review rounds landed on this composition and both got it wrong, in
- * opposite directions, because it was an inline closure nothing could exercise:
+ * Two earlier versions of this composition both got it wrong, in opposite
+ * directions, because it was an inline closure nothing could exercise:
  *
- *  - Round 1 ended it in `.catch(() => undefined)`. That collapsed "this agent
+ *  - The first ended it in `.catch(() => undefined)`. That collapsed "this agent
  *    has no execution config" and "this agent could not be read" into one
  *    value, which made orchestration's deliberate fail-closed branch
  *    unreachable in production — a credential-pinned agent whose spec was
  *    unreadable silently ran on the connection's account.
- *  - Round 2 removed the catch entirely. That propagated EVERY rejection,
+ *  - The second removed the catch entirely. That propagated EVERY rejection,
  *    including the ordinary one: `loadAgent` also rejects when an agent has no
  *    on-disk spec, which is the normal state of every registry default
  *    (`station`, `claude`, `codex` are deliberately never written to

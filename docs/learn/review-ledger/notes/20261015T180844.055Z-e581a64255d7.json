@@ -1,0 +1,7 @@
+{
+  "revision": "aab4c947629e6939b08f48df3b0dba39f7ad8f2b",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Scoped analyzer-entry review at aab4c947629: src-ui/index.html loads /src/boot.ts as its module entry. Declared that exact file in dynamicallyLoaded so Fallow follows the real boot observer and its imports; no export suppression or broad allowlist was added. The explicit boot import/call and existing document-bootstrap-aware native factory were independently delta-reviewed. New-only code-health gate now passes with zero introduced unused API and duplication; three low-cognitive-complexity startup-policy observations are advisory and retained at their owning boundaries. Final UI build passes initial gzip budget at317718/430000 JS and51445/54000 CSS. Existing prevention and exact-head evidence guidance remains accurate; no prose change required.","inputs":["docs/guides/code-quality.md",".fallowrc.json#/dynamicallyLoaded"]}
+  ]
+}

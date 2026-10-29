@@ -1,0 +1,7 @@
+{
+  "revision": "cfd6c05c087ee53626ef87b9aeba238f88601d5d",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"Fix round 3: re-read the complete concepts guide and checked the Last known explanation against work-observation and InboxOpenChatStatusConsistency real history/open/stream reader and dock renderer regressions. Clarified that absence from inventory alone cannot release a mounted consumer failure; release requires no consumers too. A stream observation supersedes each older source failure individually and verifies status without clearing the history reader error. Focused suite 248/248, ten fault injections caught and restored 20/20, browser desktop/mobile recovery passed; no provider/device/hosted proof claimed. Other concepts are unchanged by this scoped UI correction.","inputs":["docs/user/concepts.md","src-ui/src/__tests__/InboxOpenChatStatusConsistency.test.tsx","src-ui/src/contexts/work-observation.ts"]}
+  ]
+}

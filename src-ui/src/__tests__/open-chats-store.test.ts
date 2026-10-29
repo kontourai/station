@@ -35,6 +35,43 @@ afterEach(() => {
 });
 
 describe('openChatsStore', () => {
+  test.each(['current', 'aborted', 'stale'])(
+    'a scoped Conversation open waiting for the phone Chat owner is %s',
+    async (state) => {
+      const controller = new AbortController();
+      let current = true;
+      const pending = openChatsStore.openConversation(
+        'phone-conversation',
+        () => current,
+        { signal: controller.signal, revealDock: false },
+      );
+      if (state === 'aborted') controller.abort();
+      if (state === 'stale') current = false;
+      const openConversation = vi.fn(async () => true);
+      const unregister = openChatsStore.registerNavigation({
+        openConversation,
+        focus: vi.fn(),
+        openCollection: vi.fn(),
+      });
+      try {
+        expect(await pending).toBe(state === 'current');
+        expect(openConversation).toHaveBeenCalledTimes(
+          state === 'current' ? 1 : 0,
+        );
+        if (state === 'current') {
+          expect(openConversation.mock.calls[0]).toEqual([
+            'phone-conversation',
+            expect.any(Function),
+            { revealDock: false },
+          ]);
+        }
+      } finally {
+        unregister();
+        controller.abort();
+      }
+    },
+  );
+
   test('delegates canonical Conversation open without manufacturing a focus target', async () => {
     const openConversation = vi.fn(async () => true);
     const focus = vi.fn();
@@ -51,6 +88,7 @@ describe('openChatsStore', () => {
       expect(openConversation).toHaveBeenCalledExactlyOnceWith(
         'conversation-target',
         isCurrent,
+        undefined,
       );
       expect(focus).not.toHaveBeenCalled();
     } finally {

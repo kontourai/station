@@ -50,3 +50,15 @@ it('excludes only the installer-owned uninstaller from comparisons', () => {
   writeFileSync(join(root, 'uninstall.exe'), 'installer-generated');
   expect(inspectWindowsInstalledTree(root).summary).toEqual(clean);
 });
+
+it('binds the private Node executable into the runtime digest while accepting older installs without it', () => {
+  const root = fixture();
+  const legacy = inspectWindowsInstalledTree(root).summary;
+  writeFileSync(join(root, 'station-node.exe'), 'pinned Node');
+  const current = inspectWindowsInstalledTree(root).summary;
+  expect(current.runtimeSha256).not.toBe(legacy.runtimeSha256);
+  writeFileSync(join(root, 'station-node.exe'), 'different Node');
+  expect(inspectWindowsInstalledTree(root).summary.runtimeSha256).not.toBe(
+    current.runtimeSha256,
+  );
+});

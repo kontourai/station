@@ -2,8 +2,10 @@ import type { EngineConnectionId } from './agent-identity.js';
 import type { ContributionConfig } from './contribution.js';
 import type { DistributionProfileSelection } from './distribution.js';
 import type { FleetContributionConfig } from './fleet-contribution.js';
+import type { TelemetryTierChoices } from './product-telemetry.js';
 import type { ApprovalMode } from './provider.js';
 import type { RegistryTrustConfiguration } from './registry-trust.js';
+import type { ServerUpdateDownloadPolicy } from './system-status.js';
 import type { AgentConnectionSettings } from './tool.js';
 import type { UserProfileSettings } from './user-profile.js';
 import type { WorkspaceIsolationMode } from './workspace-isolation.js';
@@ -16,6 +18,9 @@ export interface ApprovalGuardianConfig {
 }
 
 export interface AppConfig {
+  reviewGuidesEnabled?: boolean;
+  reviewGuideModel?: string;
+  reviewGuideInstructions?: string;
   region?: string;
   defaultModel: string;
   invokeModel: string;
@@ -65,8 +70,30 @@ export interface AppConfig {
    */
   defaultApprovalMode?: ApprovalMode;
   logLevel?: 'trace' | 'debug' | 'info' | 'warn' | 'error';
+  /**
+   * When a Station service run by the fixed launcher downloads an available
+   * server update by itself (#3851). Absent means `after-24h`
+   * (`DEFAULT_SERVER_UPDATE_DOWNLOAD_POLICY`). Downloading never restarts.
+   */
+  serverUpdateDownloadPolicy?: ServerUpdateDownloadPolicy;
   /** Default on, but nothing is sent unless an endpoint is configured. */
+  /** Per-publisher explicit choices; absent publishers default to Lite. */
+  telemetryTier?: TelemetryTierChoices;
+  /** Opt-in local DNS-SD publication; absent is disabled. */
+  lanDiscoveryEnabled?: boolean;
+  /** Operator classification of public catalog source keys; absent means none. */
+  publicTelemetryRegistries?: string[];
+  /** Lower publisher defaults only; never grants Full or replaces user choice. */
+  telemetryPublisherPolicy?: TelemetryTierChoices;
+  /** @deprecated Compatibility input, migrated when app.json is loaded. */
   telemetryEnabled?: boolean;
+  /** Saved full product POST destination; takes precedence over environment fallback. */
+  productTelemetryEndpoint?: string;
+  /** Instance-owned, exact-destination SecretBinding reference; never inline key material. */
+  productTelemetryKeyRef?: string;
+  /** Collector base address and an exact instance secret reference, activated at process start. */
+  otelTelemetryEndpoint?: string;
+  otelTelemetryKeyRef?: string;
   registryUrl?: string;
   registryTrust?: RegistryTrustConfiguration;
   gitRemote?: string;
@@ -144,19 +171,6 @@ export interface AppConfig {
    * hosted mode skips this projection. Other Knowledge routes are independent.
    */
   knowledgeStores?: boolean;
-  /**
-   * archive#980: whether the interactive managed-chat callers (CLI `station
-   * chat`, the UI managed branch) start a `station-agent` orchestration
-   * session (mirroring `delegateTask`) instead of calling
-   * `POST /api/agents/:slug/chat` directly — so managed chats land in
-   * orchestration.sqlite and appear in `station runs`. **Runtime-derived from
-   * `STATION_FEATURES=managed-chat-orchestration`, never persisted** (same
-   * pattern as `mcpUiFrameOrigin`): `GET /config/app` injects this field when
-   * the flag is on and omits it when off — it is never accepted by
-   * `PUT /config/app`. **Default off** — off is today's exact managed-chat
-   * behavior, byte-identical.
-   */
-  managedChatOrchestration?: boolean;
   /**
    * archive#2802: capture workspace checkpoints at turn boundaries — a
    * git snapshot (hidden `STATION_CHECKPOINTS/…` pseudo-ref + reflog) of
@@ -399,4 +413,18 @@ export function templateVariableFormatError(
     }
   }
   return undefined;
+}
+
+/** Runtime observation, never persisted as configuration or used as identity. */
+export interface LanDiscoveryStatus {
+  state:
+    | 'disabled'
+    | 'starting'
+    | 'published'
+    | 'loopback-only'
+    | 'unavailable';
+  message: string;
+  serviceName?: string;
+  port?: number;
+  addresses?: string[];
 }

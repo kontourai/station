@@ -71,6 +71,11 @@ export interface StationHomeSchemaGateHooks {
   markerOpenFlags?: number;
   /** Test-only migration registry injection. Production uses the empty registry above. */
   migrations?: readonly StationHomeSchemaMigration[];
+  /**
+   * Test-only target schema version, so a test can drive a real migration
+   * through the gate. Production uses STATION_HOME_SCHEMA_VERSION.
+   */
+  targetVersion?: number;
   /** Test-only lock replacement; production always uses the sibling lock. */
   acquireMutationLock?: (lockPath: string) => () => void;
 }
@@ -389,8 +394,9 @@ function migrateStationHome(
   homeDir: string,
   fromVersion: number,
   migrations: readonly StationHomeSchemaMigration[],
+  targetVersion: number,
 ): void {
-  const path = migrationPath(fromVersion, migrations);
+  const path = migrationPath(fromVersion, migrations, targetVersion);
   const stagingDir = join(
     dirname(homeDir),
     `.${basename(homeDir)}.station-home-migration.${process.pid}.${randomUUID()}`,
@@ -404,7 +410,7 @@ function migrateStationHome(
     const stagedMarker = join(stagingDir, STATION_HOME_SCHEMA_FILE);
     writeFileSync(
       stagedMarker,
-      JSON.stringify({ version: STATION_HOME_SCHEMA_VERSION }, null, 2),
+      JSON.stringify({ version: targetVersion }, null, 2),
       'utf8',
     );
     // The marker is written after every migration. The caller still owns the
@@ -598,7 +604,8 @@ export function ensureStationHomeSchemaSync(
 ): void {
   const homeDir = canonicalStationHome(requestedHomeDir);
   const migrations = hooks.migrations ?? STATION_HOME_SCHEMA_MIGRATIONS;
-  validateStationHomeMigrationRegistry(migrations);
+  const targetVersion = hooks.targetVersion ?? STATION_HOME_SCHEMA_VERSION;
+  validateStationHomeMigrationRegistry(migrations, targetVersion);
   const parentDir = dirname(homeDir);
   // The sibling lock lives in the parent, and the parent identity is pinned
   // below, so both need the parent to exist. On a first install it does not:
@@ -620,16 +627,13 @@ export function ensureStationHomeSchemaSync(
     const markerPath = join(homeDir, STATION_HOME_SCHEMA_FILE);
     if (existsSync(markerPath)) {
       const version = markerVersion(homeDir, markerPath, hooks);
-      if (version === STATION_HOME_SCHEMA_VERSION) return;
+      if (version === targetVersion) return;
       if (version === null) reset(homeDir);
       if (version < MINIMUM_MIGRATABLE_STATION_HOME_SCHEMA_VERSION)
         reset(homeDir);
-      if (version > STATION_HOME_SCHEMA_VERSION)
-        throw new StationHomeSchemaDowngradeError(
-          version,
-          STATION_HOME_SCHEMA_VERSION,
-        );
-      migrateStationHome(homeDir, version, migrations);
+      if (version > targetVersion)
+        throw new StationHomeSchemaDowngradeError(version, targetVersion);
+      migrateStationHome(homeDir, version, migrations, targetVersion);
       return;
     }
     refuseOrphanedMigrationBootstrap(homeDir);

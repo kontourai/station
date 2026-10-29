@@ -1,3 +1,7 @@
+import type { HtmlReplyReference } from '@kontourai/station-contracts/html-reply';
+import { htmlReplyReference } from './html-reply-reference';
+import { transcriptMcpToolRef } from './mcp-app-tool-ref';
+
 /**
  * The STRUCTURAL half of tool-call batching: splitting a message's content
  * parts into runs of consecutive tool-call parts vs. everything else.
@@ -13,6 +17,8 @@
  * putting the whole taxonomy in the eager path was not an option — see
  * `tool-call-groups.ts`'s module doc for the composition.
  */
+
+import { hasStationControlCallRow } from './agent-message/station-control-calls';
 
 /** Minimal duck-typed shape both `ChatMessage['contentParts']` element types
  * (`types.ts` and `contexts/active-chats-state.ts`) already satisfy. */
@@ -32,12 +38,15 @@ export interface ToolCallLike {
   needsApproval?: boolean;
   cancelled?: boolean;
   progressMessage?: string;
+  /** ISO start of the call (`MessagePart.startedAt`). */
+  startedAt?: string;
   purpose?: string;
   approvalStatus?: string;
   [key: string]: unknown;
 }
 
 export interface ContentPartBlock<P> {
+  key?: string;
   type: 'content-part';
   index: number;
   part: P;
@@ -58,7 +67,8 @@ export interface ToolCallRun<P extends ToolCallLike = ToolCallLike> {
 
 export type RunBlock<P extends ToolCallLike = ToolCallLike> =
   | ContentPartBlock<P>
-  | ToolCallRun<P>;
+  | ToolCallRun<P>
+  | { type: 'html-reply'; key: string; reference: HtmlReplyReference };
 
 /** True for any part the transcript renders via `ToolCallDisplay` — the
  * exact predicate `MessageContent.tsx`/`StreamingMessage.tsx` already use. */
@@ -90,6 +100,7 @@ function buildRun<P extends ToolCallLike>(
  */
 export function splitToolCallRuns<P extends ToolCallLike>(
   parts: P[] | undefined | null,
+  appTools: ReadonlySet<string> = new Set(),
 ): RunBlock<P>[] {
   if (!parts || parts.length === 0) return [];
 
@@ -103,8 +114,36 @@ export function splitToolCallRuns<P extends ToolCallLike>(
   };
 
   parts.forEach((part, index) => {
-    if (isToolCallPart(part)) {
+    // #3419: a message sent to another Session is its own row, never one line
+    // of a collapsed "used 3 tools" summary.
+    if (isToolCallPart(part) && hasStationControlCallRow(part)) {
+      flushRun();
+      blocks.push(buildRun([{ part, index }]));
+      return;
+    }
+    if (
+      isToolCallPart(part) &&
+      !appTools.has(transcriptMcpToolRef(part) ?? '')
+    ) {
       pending.push({ part, index });
+      const name = part.toolName ?? part.name ?? part.type;
+      if (
+        /^(?:mcp__station-control__|station-control[_/]|Tool: station-control\/)html_render$/.test(
+          name,
+        )
+      ) {
+        const reference =
+          htmlReplyReference(part) ??
+          htmlReplyReference(part.output ?? part.result);
+        if (reference) {
+          flushRun();
+          blocks.push({
+            type: 'html-reply',
+            key: `html-reply:${part.toolCallId ?? index}:${reference.pageId}`,
+            reference,
+          });
+        }
+      }
       return;
     }
     flushRun();
@@ -141,9 +180,11 @@ function isFoldableProse(part: ToolCallLike): boolean {
  */
 export function foldTurnWork<P extends ToolCallLike>(
   parts: P[] | undefined | null,
+  appTools: ReadonlySet<string> = new Set(),
 ): RunBlock<P>[] {
-  const blocks = splitToolCallRuns(parts);
+  const blocks = splitToolCallRuns(parts, appTools);
   if (!parts) return blocks;
+  if (blocks.some((block) => block.type === 'html-reply')) return blocks;
   const runCount = blocks.filter((b) => b.type === 'tool-call-run').length;
   if (runCount < 2) return blocks;
 
@@ -157,7 +198,7 @@ export function foldTurnWork<P extends ToolCallLike>(
   for (const block of blocks.slice(firstRun, lastRun + 1)) {
     if (block.type === 'tool-call-run') {
       calls.push(...block.calls);
-    } else if (isFoldableProse(block.part)) {
+    } else if (block.type === 'content-part' && isFoldableProse(block.part)) {
       interludes.push({ part: block.part, index: block.index });
     } else {
       kept.push(block);

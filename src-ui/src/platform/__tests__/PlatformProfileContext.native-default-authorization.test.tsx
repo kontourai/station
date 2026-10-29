@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
-import { act, render, screen } from '@testing-library/react';
+import { connectionCandidateProviderCount } from '@kontourai/station-connect';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const lifecycle = vi.hoisted(() => [] as string[]);
@@ -67,6 +68,7 @@ function NativeChild() {
 
 describe('PlatformBootstrap native default authorization', () => {
   afterEach(() => {
+    cleanup();
     lifecycle.length = 0;
     vi.clearAllMocks();
   });
@@ -80,7 +82,7 @@ describe('PlatformBootstrap native default authorization', () => {
           releaseHydration = resolve;
         }),
     );
-    render(
+    const mounted = render(
       <PlatformBootstrap>
         <NativeChild />
       </PlatformBootstrap>,
@@ -97,6 +99,9 @@ describe('PlatformBootstrap native default authorization', () => {
     expect(lifecycle).toEqual(['hydrate', 'authorize', 'child']);
     expect(profileStorage.authorizeRememberedProfile).toHaveBeenCalledOnce();
     expect(profileStorage.authorizeDefaultProfile).not.toHaveBeenCalled();
+    await waitFor(() => expect(connectionCandidateProviderCount()).toBe(1));
+    mounted.unmount();
+    expect(connectionCandidateProviderCount()).toBe(0);
   });
 });
 
@@ -110,8 +115,10 @@ it('publishes refreshed mobile host metadata to the actual ConnectionStore revis
     </PlatformBootstrap>,
   );
   await screen.findByText('revision:0');
+  await waitFor(() => expect(connectionCandidateProviderCount()).toBe(1));
   act(() => metadata.listener?.());
   expect(screen.getByText('revision:1')).toBeDefined();
   mounted.unmount();
   expect(metadata.listener).toBeUndefined();
+  expect(connectionCandidateProviderCount()).toBe(0);
 });

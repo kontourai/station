@@ -79,12 +79,11 @@ describe('chat dock project status segment (station audit F6)', () => {
     // not the accent green a READY badge uses.
     expect(badge).toMatch(/font-family:\s*inherit/);
     expect(badge).not.toMatch(/var\(--font-mono\)/);
-    // Its surviving neighbour, the mismatch lead-in, keeps the monospace family
-    // deliberately: archive#4525 gave it that treatment because it names a
-    // DIVERGENCE between the session's project and the badge's, and it is the
-    // only place in this row that still prints an identifier verbatim.
-    expect(firstRuleFor('.chat-dock__project-session-name')).toMatch(
-      /font-family:\s*var\(--font-mono\)/,
+    // The mismatch lead-in that once kept the monospace family beside it is
+    // gone from the desktop bar (the badge is New's destination now), and so
+    // is its rule.
+    expect(ruleBodiesFor(indexCss, '.chat-dock__project-session-name')).toEqual(
+      [],
     );
   });
 });

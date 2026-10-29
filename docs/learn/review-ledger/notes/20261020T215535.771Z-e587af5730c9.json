@@ -1,0 +1,7 @@
+{
+  "revision": "165e3021074f333eedeb2b30c801f909d2035f26",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed child-card and Agents-row touch-target consolidation: removed the page-local coarse-pointer media rules and applied Stations existing touch-target utility to the same Button controls. Stop/open handlers, data disclosure and roster grouping are unchanged; the shared utility owns the 44px floor without adding responsive exceptions. Routed mobile CSS ratchet passes. Prior UI/browser behavior remains separately recorded.","inputs":["docs/design/placement.md","src-ui/src/components/chat/SubagentTranscriptCard.css","src-ui/src/components/chat/SubagentTranscriptCard.tsx","src-ui/src/workspace-panes/agents/ChildWorkRow.css","src-ui/src/workspace-panes/agents/ChildWorkRow.tsx"]}
+  ]
+}

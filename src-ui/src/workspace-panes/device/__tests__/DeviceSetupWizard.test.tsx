@@ -252,6 +252,29 @@ describe('device setup wizard', () => {
     );
   });
 
+  test('missing user Node/npm gives setup guidance and can be checked again', async () => {
+    const log = stub({
+      status: () =>
+        status({
+          hubEnabled: true,
+          hub: INSTALLED_HUB,
+          hubProcess: {
+            state: 'blocked',
+            detail:
+              'Install Node.js 24 or later with npm and make node available on your PATH to use device tools.',
+          },
+        }),
+    });
+    mountWizard();
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('Install Node.js 24 or later with npm');
+    expect(alert.textContent).not.toContain('missing binary');
+    await click(screen.getByRole('button', { name: 'Check again' }));
+    await waitFor(() =>
+      expect(log.posts).toEqual([{ path: 'toolchain/hub/start', body: {} }]),
+    );
+  });
+
   test('a crashed hub offers Start again', async () => {
     const log = stub({
       status: () =>

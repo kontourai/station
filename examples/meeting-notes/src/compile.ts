@@ -20,8 +20,8 @@ export function buildExtractionPrompt(transcript: string): string {
   return `${EXTRACTION_PROMPT_PREFIX}\n\n${transcript}`;
 }
 
-/** JSON schema requested from the `compile` agent (Q3/AC1a: structured
- * extraction, not free-form chat text). */
+/** JSON schema requested from the `compile` agent: structured extraction,
+ * not free-form chat text. */
 export const COMPILE_RESULT_SCHEMA = {
   type: 'object',
   properties: {

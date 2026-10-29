@@ -256,8 +256,10 @@ describe('shouldRenderSetupLauncher', () => {
     expect(decide({ pathname })).toBe(false);
   });
 
-  test('a path merely CONTAINING "connections" does not suppress it', () => {
-    expect(decide({ pathname: '/projects/connections-demo' })).toBe(true);
+  test('working surfaces and an open chat do not receive a global setup reminder', () => {
+    expect(decide({ pathname: '/projects/connections-demo' })).toBe(false);
+    expect(decide({ pathname: '/projects/demo/layouts/coding' })).toBe(false);
+    expect(decide({ conversationOpen: true })).toBe(false);
   });
 
   test('every remaining combination of the four inputs', () => {

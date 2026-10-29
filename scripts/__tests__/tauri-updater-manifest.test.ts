@@ -1,20 +1,31 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   assertUpdaterManifestNotRegressing,
   createUpdaterManifestForPlatforms,
   readUpdaterSignatureFile,
+  signedUpdaterVersion,
   verifyUpdaterManifestAssets,
 } from '../lib/tauri-updater-manifest.mjs';
+
+const tempDir = trackTempDirs();
+
+/** A Tauri updater signature file body naming `version` in its trusted comment. */
+function signedFor(version: string, label = 'archive'): string {
+  return Buffer.from(
+    `untrusted comment: signature from tauri secret key\nRUQ${label}\ntrusted comment: timestamp:1700000000\tfile:${label}\tversion:${version}\nZ2xvYmFs\n`,
+  ).toString('base64');
+}
 
 const VALID = Object.freeze({
   version: '0.1.2-nightly.2430',
   pubDate: '2026-08-28T09:00:00Z',
   platform: 'darwin-aarch64',
-  signature: 'base64-signature-bytes',
+  signature: signedFor('0.1.2-nightly.2430'),
   releaseTag: 'nightly-desktop',
   url: 'https://github.com/kontourai/station/releases/download/nightly-desktop/station-nightly-desktop-macos-aarch64.app.tar.gz',
 });
@@ -144,12 +155,12 @@ describe('the Tauri updater manifest (station#575)', () => {
       platforms: [
         {
           platform: 'darwin-aarch64',
-          signature: 'mac-signature',
+          signature: signedFor('0.1.3', 'mac'),
           url: 'https://github.com/kontourai/station/releases/download/stable-desktop/station-v0.1.3-macos-aarch64.app.tar.gz',
         },
         {
           platform: 'windows-x86_64',
-          signature: 'windows-signature',
+          signature: signedFor('0.1.3', 'windows'),
           url: 'https://github.com/kontourai/station/releases/download/stable-desktop/station-v0.1.3-windows-x86_64.msi.zip',
         },
       ],
@@ -205,7 +216,7 @@ describe('the Tauri updater manifest (station#575)', () => {
     const asset = join(directory, assetName);
     const manifest = join(directory, 'latest.json');
     writeFileSync(asset, 'archive');
-    writeFileSync(`${asset}.sig`, 'published-signature');
+    writeFileSync(`${asset}.sig`, signedFor('0.1.3', 'published'));
     writeFileSync(
       manifest,
       JSON.stringify(
@@ -213,7 +224,7 @@ describe('the Tauri updater manifest (station#575)', () => {
           ...VALID,
           version: '0.1.3',
           releaseTag: 'stable-desktop',
-          signature: 'crossed-signature',
+          signature: signedFor('0.1.3', 'crossed'),
           url: `https://github.com/kontourai/station/releases/download/stable-desktop/${assetName}`,
         }),
       ),
@@ -336,8 +347,8 @@ describe('the Tauri updater manifest (station#575)', () => {
     const secondSignature = `${secondAsset}.sig`;
     for (const asset of [firstAsset, secondAsset])
       writeFileSync(asset, 'archive');
-    writeFileSync(firstSignature, 'mac-signature');
-    writeFileSync(secondSignature, 'windows-signature');
+    writeFileSync(firstSignature, signedFor('0.1.3', 'mac'));
+    writeFileSync(secondSignature, signedFor('0.1.3', 'windows'));
 
     const argumentsForManifest = [
       'scripts/lib/tauri-updater-manifest.mjs',
@@ -509,5 +520,81 @@ describe('the Tauri updater manifest (station#575)', () => {
         { cwd: join(import.meta.dirname, '../..'), stdio: 'pipe' },
       ),
     ).toThrow(message);
+  });
+
+  describe('signatures bind the manifest version (#3851)', () => {
+    const unversioned = Buffer.from(
+      'untrusted comment: signature from tauri secret key\nRUQx\ntrusted comment: timestamp:1700000000\tfile:station.app.tar.gz\nZ2xvYmFs\n',
+    ).toString('base64');
+
+    test('reads the version from the trusted comment', () => {
+      expect(signedUpdaterVersion(signedFor('0.1.3'))).toBe('0.1.3');
+      expect(signedUpdaterVersion(unversioned)).toBeNull();
+      expect(signedUpdaterVersion('not base64 at all')).toBeNull();
+    });
+
+    test('refuses an unversioned or mismatched signature', () => {
+      expect(() =>
+        singlePlatformManifest({ ...VALID, signature: unversioned }),
+      ).toThrow(/signature names no version; sign the updater archive with/);
+      expect(() =>
+        singlePlatformManifest({
+          ...VALID,
+          signature: signedFor('0.1.2-nightly.2429'),
+        }),
+      ).toThrow(
+        /bound to version "0.1.2-nightly.2429", not the manifest version/,
+      );
+      // A leading v is the same version, as the app compares it.
+      expect(() =>
+        singlePlatformManifest({
+          ...VALID,
+          signature: signedFor(`v${VALID.version}`),
+        }),
+      ).not.toThrow();
+    });
+
+    test('the CLI exits 1 for an unversioned signature and 0 for a bound one', () => {
+      const directory = tempDir('station-updater-version-');
+      const signatureFile = join(
+        directory,
+        'station-nightly-desktop-macos-aarch64.app.tar.gz.sig',
+      );
+      const output = join(directory, 'latest.json');
+      const run = () =>
+        spawnSync(
+          process.execPath,
+          [
+            'scripts/lib/tauri-updater-manifest.mjs',
+            '--version',
+            VALID.version,
+            '--pub-date',
+            VALID.pubDate,
+            '--platform',
+            VALID.platform,
+            '--signature-file',
+            signatureFile,
+            '--url',
+            VALID.url,
+            '--release-tag',
+            VALID.releaseTag,
+            '--output',
+            output,
+          ],
+          {
+            cwd: join(import.meta.dirname, '../..'),
+            encoding: 'utf8',
+            windowsHide: true,
+          },
+        );
+      writeFileSync(signatureFile, `${unversioned}\n`);
+      const refused = run();
+      expect(refused.stderr).toContain('signature names no version');
+      expect(refused.status).toBe(1);
+      writeFileSync(signatureFile, `${VALID.signature}\n`);
+      const accepted = run();
+      expect(accepted.stderr).toBe('');
+      expect(accepted.status).toBe(0);
+    });
   });
 });

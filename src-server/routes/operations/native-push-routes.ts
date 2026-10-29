@@ -3,7 +3,7 @@
  * on iOS), mounted at /api/system
  * beside the Web Push routes (`push-routes.ts`) and held to the same rule:
  * the caller's credential must identify a paired device, and a device can
- * only create or clear its OWN registration. An operator credential alone is
+ * only create, read or clear its OWN registration. An operator credential alone is
  * refused with 403 device_pairing_required.
  *
  * Registration answers the values the phone checks (`registrationId`,
@@ -16,6 +16,7 @@ import type { PairedDevice } from '@kontourai/station-contracts';
 import type {
   NativePushRegistrationRequest,
   NativePushRegistrationResponse,
+  NativePushRegistrationStatus,
 } from '@kontourai/station-contracts/native-push';
 import { Hono } from 'hono';
 import { parseDeviceSessionCookie } from '../../runtime/bootstrap/runtime-http.js';
@@ -34,6 +35,15 @@ interface NativePushRouteDeps {
    */
   deliverable?: boolean;
   identifyDevice: (credential: string) => PairedDevice | null;
+  /**
+   * The relay alias id when the credential is a relay alias of a paired
+   * device, else undefined. An alias is a read-scoped relay bearer for the
+   * same device id that never carries the device's home-possession stamp,
+   * so a registration made with it would be filed under a device whose
+   * other credential may read as the operator: refused, as a personal
+   * access token is.
+   */
+  credentialAliasId: (credential: string) => string | undefined;
   /** Creates the push key on first use; resolves its RFC 7638 thumbprint. */
   loadOrCreateStationKey: () => Promise<string>;
   stationId: () => string;
@@ -43,17 +53,22 @@ interface NativePushRouteDeps {
     stationKey: string,
   ) => { registrationId: string; payloadKey: string };
   clearNativePush: (deviceId: string) => void;
+  /** The device's own registration id, or null; never a token or key. */
+  nativePushRegistrationId: (deviceId: string) => string | null;
   /** Lets the publisher send the current card to a newly registered phone. */
   onRegistered?: () => void;
   logger?: { warn(message: string, meta?: Record<string, unknown>): void };
 }
 
-function extractCredential(req: {
-  header: (name: string) => string | undefined;
-}): string | undefined {
+function extractCredential(
+  req: {
+    header: (name: string) => string | undefined;
+  },
+  identifies: (credential: string) => boolean,
+): string | undefined {
   const bearer = parseStrictBearer(req.header('authorization'));
   if (bearer) return bearer;
-  return parseDeviceSessionCookie(req.header('cookie'));
+  return parseDeviceSessionCookie(req.header('cookie'), identifies);
 }
 
 const UNAVAILABLE = {
@@ -78,9 +93,14 @@ export function createNativePushRoutes(deps: NativePushRouteDeps) {
   app.use('/native-push', hosted);
 
   app.post('/native-push/register', async (c) => {
-    const credential = extractCredential(c.req);
+    const credential = extractCredential(
+      c.req,
+      (candidate) => deps.identifyDevice(candidate) !== null,
+    );
     const device = credential ? deps.identifyDevice(credential) : null;
-    if (!device) return c.json({ error: 'device_pairing_required' }, 403);
+    // A relay alias registers nothing (see `credentialAliasId`).
+    if (!device || deps.credentialAliasId(credential!) !== undefined)
+      return c.json({ error: 'device_pairing_required' }, 403);
     // Only a device that could list the sessions a card shows may register:
     // a person's device (not another Station's delegation grant) with
     // orchestration:read, not bound to a deployment account. The publisher
@@ -170,8 +190,37 @@ export function createNativePushRoutes(deps: NativePushRouteDeps) {
     return c.json(response);
   });
 
+  // Lets the phone notice a registration the Station dropped (a gateway
+  // "unregistered" answer, a re-pair as a new device) and register again.
+  // Not gated on `deliverable`: reading the state promises no push.
+  app.get('/native-push', (c) => {
+    const credential = extractCredential(
+      c.req,
+      (candidate) => deps.identifyDevice(candidate) !== null,
+    );
+    const device = credential ? deps.identifyDevice(credential) : null;
+    if (!device) return c.json({ error: 'device_pairing_required' }, 403);
+    let registrationId: string | null;
+    try {
+      registrationId = deps.nativePushRegistrationId(device.id);
+    } catch (error) {
+      deps.logger?.warn('native push registration status unavailable', {
+        reason: error instanceof Error ? error.name : 'unknown',
+      });
+      return c.json(UNAVAILABLE, 503);
+    }
+    const status: NativePushRegistrationStatus = {
+      registered: registrationId !== null,
+      registrationId,
+    };
+    return c.json(status);
+  });
+
   app.delete('/native-push', (c) => {
-    const credential = extractCredential(c.req);
+    const credential = extractCredential(
+      c.req,
+      (candidate) => deps.identifyDevice(candidate) !== null,
+    );
     const device = credential ? deps.identifyDevice(credential) : null;
     if (!device) return c.json({ error: 'device_pairing_required' }, 403);
     // Scoped to the caller's own identified device only.

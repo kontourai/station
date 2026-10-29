@@ -150,7 +150,7 @@ describe('Session inventory view model', () => {
     expect(screen.getByText(/<script>/).tagName).toBe('BDI');
     expect(screen.queryByRole('link')).toBeNull();
     expect(
-      screen.getByRole('button', { name: 'Select item 1 in Outputs' }),
+      screen.getByRole('button', { name: /<script>/, pressed: true }),
     ).toBeTruthy();
     view.rerender(
       <SessionInventory
@@ -176,7 +176,7 @@ describe('Session inventory view model', () => {
     expect(overview).toBeTruthy();
     expect(screen.queryByText(/confidence|trusted|verified/i)).toBeNull();
     const inputs = screen.getByRole('button', {
-      name: /Inputs.*at least 2 items.*Available/i,
+      name: /^Inputs 2\+ Available, at least 2 items$/,
     });
     fireEvent.click(inputs);
     expect(onSelect).toHaveBeenCalledWith({
@@ -185,7 +185,7 @@ describe('Session inventory view model', () => {
     });
     expect(
       screen.getByRole('button', {
-        name: /Sources.*count unavailable.*Not captured/i,
+        name: /^Sources — Not captured, count unavailable$/,
       }),
     ).toBeTruthy();
     expect(
@@ -286,9 +286,18 @@ describe('Session inventory view model', () => {
       scope: empty.scope,
       groupId: 'attention',
     });
-    expect(model.groups.map((group) => group.id)).toEqual(
-      SESSION_INVENTORY_V1_GROUP_IDS,
-    );
+    expect(model.groups.map((group) => group.id)).toEqual([
+      'inputs',
+      'execution',
+      'decisions',
+      'outputs',
+      'verification-delivery',
+      'sources',
+      'kept',
+      'attention',
+      'resources',
+      'live-now',
+    ]);
     expect(model.groups.every((group) => group.count === '0')).toBe(true);
     expect(
       model.groups.find((group) => group.id === 'work-items'),
@@ -373,7 +382,7 @@ describe('Session inventory view model', () => {
     expect(
       within(screen.getByRole('region', { name: 'At a glance' })).getByRole(
         'button',
-        { name: /Work items: 1 item\. Available\./i },
+        { name: /^Work items 1 Available$/ },
       ),
     ).toBeTruthy();
     rendered.unmount();
@@ -392,7 +401,7 @@ describe('Session inventory view model', () => {
     expect(
       within(screen.getByRole('region', { name: 'At a glance' })).getByRole(
         'button',
-        { name: /Work items: count unavailable\. Available\./i },
+        { name: /^Work items — Available, count unavailable$/ },
       ),
     ).toBeTruthy();
     const root = document.createElement('section');
@@ -477,7 +486,7 @@ describe('Session inventory view model', () => {
     expect(headings).toHaveLength(1);
     expect(document.activeElement).toBe(headings[0]);
     expect(
-      screen.getAllByRole('region', { name: 'Session inventory' }),
+      screen.getAllByRole('region', { name: 'Chat inventory' }),
     ).toHaveLength(2);
   });
 });

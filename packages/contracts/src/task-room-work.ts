@@ -1,4 +1,5 @@
 import type { ExecutionModelRequest } from './execution-target.js';
+import type { TaskRoomAttachment } from './project-task-room.js';
 
 export const TASK_ROOM_WORK_VERSION = 'station.task-room-work/v1' as const;
 
@@ -23,6 +24,7 @@ export interface TaskRoomWorkInput {
   expectedDefinitionFingerprint?: string;
   model?: ExecutionModelRequest;
   prompt: string;
+  attachments?: TaskRoomAttachment[];
   context?: TaskRoomContextReference;
 }
 
@@ -42,6 +44,7 @@ export interface TaskRoomWorkRecord {
   /** SHA-256 of canonical JSON options; option values are never retained. */
   modelOptionsDigest?: string;
   prompt: string;
+  attachments?: TaskRoomAttachment[];
   sessionId: string;
   createdAt: string;
   state: 'starting' | 'dispatched' | 'indeterminate' | 'refused';

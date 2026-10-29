@@ -12,7 +12,9 @@
   "sources": [
     ".veritas/GOVERNANCE.md",
 
-    "AGENTS.md"
+    "AGENTS.md",
+
+    "scripts/agent-instructions-manifest.mjs"
   ],
 
   "checks": [
