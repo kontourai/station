@@ -598,7 +598,7 @@ export class TerminalOutputSession {
       frame.seq !== this.cursor + 1
     )
       throw new TerminalOutputError('protocol');
-    this.armProgressDeadline();
+    if (this.state !== 'ready') this.armProgressDeadline();
     await this.options.onOutput(
       frame.data,
       frame.seq,

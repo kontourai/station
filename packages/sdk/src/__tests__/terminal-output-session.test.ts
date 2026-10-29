@@ -471,6 +471,41 @@ describe('terminal output session', () => {
     expect(socket.sent.filter((item) => item.type === 'ack')).toHaveLength(60);
   });
 
+  test('live rendering applies backpressure beyond the replay deadline and acknowledges only after apply', async () => {
+    vi.useFakeTimers();
+    const applied = deferred<void>();
+    const onError = vi.fn();
+    const f = fixture({ onOutput: () => applied.promise, onError });
+    const connected = f.session.connect();
+    await flush();
+    const socket = f.sockets[0];
+    await authenticate(socket);
+    await ready(socket);
+    await connected;
+    socket.message(
+      encodeTerminalFrame(TERMINAL_OUTPUT, 1, 1, new Uint8Array([65]))
+        .buffer as ArrayBuffer,
+    );
+    await flush();
+    await vi.advanceTimersByTimeAsync(6000);
+    const stateWhileBlocked = f.states.at(-1);
+    const cursorWhileBlocked = f.session.appliedThrough;
+    const prematureAcknowledgements = socket.sent.filter(
+      (item) => item.type === 'ack' && item.seq === 1,
+    );
+    applied.resolve();
+    await flush();
+    expect(stateWhileBlocked).toBe('ready');
+    expect(cursorWhileBlocked).toBe(0);
+    expect(prematureAcknowledgements).toEqual([]);
+    expect(onError).not.toHaveBeenCalled();
+    expect(f.session.appliedThrough).toBe(1);
+    expect(
+      socket.sent.filter((item) => item.type === 'ack' && item.seq === 1),
+    ).toHaveLength(1);
+    await expect(f.session.connect()).resolves.toBeUndefined();
+  });
+
   test('a probe 401 reports only to the captured current credential owner', async () => {
     vi.useFakeTimers();
     const owner = vi.fn();

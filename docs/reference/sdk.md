@@ -34,7 +34,9 @@ Authentication is mandatory on loopback too. Output credit advances only after
 retention reset awaits `onReset` before replay. Three bounded reconnect attempts
 resume that same terminal from the applied sequence after each disconnect;
 probe network failures share that bounded retry budget. Replay can take longer
-than five seconds while output advances, but a stalled renderer is bounded.
+than five seconds while output advances, but a stalled replay renderer is
+bounded. Once ready, slow rendering applies backpressure without a rendering
+deadline; credit is acknowledged only after output is applied.
 Callbacks receive an abort
 signal for disposal or failure. Rejected credentials, expired authority and
 protocol errors settle `connect()` and are reported through `onError`.
