@@ -124,15 +124,43 @@ describe('AdapterRetirement (unit pins)', () => {
     // `exceeded` appears in zero assertions across the whole service suite,
     // and this message is the only diagnostic a bounded-cleanup incident
     // leaves behind.
-    const retirement = new AdapterRetirement(
-      makeDeps({ configuredStopTimeoutMs: () => 5 }),
-    );
+    const deps = makeDeps({ configuredStopTimeoutMs: () => 5 });
+    const retirement = new AdapterRetirement(deps);
     await expect(
       retirement.runOperationWithinDeadline(
         new Promise<void>(() => {}),
         'stuck cleanup',
       ),
     ).rejects.toThrow('stuck cleanup exceeded 5ms.');
+    expect(deps.logger.warn).toHaveBeenCalledWith('Provider cleanup failed', {
+      cleanup: 'stuck cleanup',
+      error: 'stuck cleanup exceeded 5ms.',
+    });
+  });
+
+  it('logs bounded adapter failure causes while preserving the cleanup rejection', async () => {
+    const deps = makeDeps();
+    const retirement = new AdapterRetirement(deps);
+    const failure = new AggregateError(
+      Array.from({ length: 6 }, () => new Error('x'.repeat(3_000))),
+      'adapter failure https://private.example/error?token=private /private/provider/key',
+    );
+    await expect(
+      retirement.runCleanupWithinDeadline(async () => {
+        throw failure;
+      }, 'codex adapter shutdown'),
+    ).rejects.toBe(failure);
+    expect(deps.logger.warn).toHaveBeenCalledExactlyOnceWith(
+      'Provider cleanup failed',
+      {
+        cleanup: 'codex adapter shutdown',
+        error: 'adapter failure [REDACTED_URL] [REDACTED_PATH]',
+        causes: Array.from(
+          { length: 5 },
+          () => `${'x'.repeat(1_988)}…[TRUNCATED]`,
+        ),
+      },
+    );
   });
 
   it('clears the deadline timer when the operation wins the race', async () => {

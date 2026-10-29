@@ -1454,7 +1454,9 @@
 
     "src-server/services/orchestration/child-work-projection.ts",
 
-    "src-server/services/orchestration/__tests__/conversation-native-fork-effect.test.ts"
+    "src-server/services/orchestration/__tests__/conversation-native-fork-effect.test.ts",
+
+    "scripts/lib/heavy-check-slots.mjs"
   ],
 
   "checks": [
