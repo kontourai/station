@@ -65,6 +65,10 @@ async function mutatePersonNotification(
     },
   );
   current(scope);
+  if (response.status === 404)
+    throw new Error(
+      'Notification not found, or this Station does not support person notifications. Update the host if needed.',
+    );
   if (!response.ok)
     throw new Error(
       `Person notification ${operation} failed (HTTP ${response.status})`,

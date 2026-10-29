@@ -131,6 +131,7 @@ test('person mutations use their own encoded routes and old hosts are reported u
     .fn<typeof globalThis.fetch>()
     .mockResolvedValueOnce(response({ outcome: 'read' }))
     .mockResolvedValueOnce(new Response(JSON.stringify({ success: true })))
+    .mockResolvedValueOnce(new Response('Not found', { status: 404 }))
     .mockResolvedValueOnce(new Response('Not found', { status: 404 }));
   vi.stubGlobal('fetch', fetch);
   expect(
@@ -159,4 +160,7 @@ test('person mutations use their own encoded routes and old hosts are reported u
   await expect(fetchPersonNotifications(scope)).rejects.toThrow(
     'does not support person notifications',
   );
+  await expect(
+    dismissPersonNotification(scope, { id: 'missing' }),
+  ).rejects.toThrow('not found, or this Station does not support');
 });
