@@ -90,6 +90,7 @@ type RecoverableRoomHistory = Omit<ProjectTaskRoomAuthority, 'append'> &
   Pick<ProjectTaskRoomHistory, 'append'> &
   Partial<Pick<ProjectTaskRoomHistory, 'findByProposal' | 'readSourceSeal'>>;
 type BrowserCapability = 'discover' | 'history-read' | 'message-write';
+type RequestCapability = BrowserCapability | 'edit-plan' | 'other';
 type RoomCapability =
   | BrowserCapability
   | 'lifecycle-append'
@@ -141,12 +142,20 @@ interface RequestPrincipal {
   readonly deviceId: string;
   readonly policyRevision: string;
   readonly displayName?: string;
+  readonly member?: true;
 }
 export interface ProjectTaskRoomRequestAuthority {
   /** Synchronous grant recheck for SQLite transactions; absent support refuses writes. */
-  isCurrent?(request: Request, principal: RequestPrincipal): boolean;
+  isCurrent?(
+    request: Request,
+    principal: RequestPrincipal,
+    taskId: string,
+    capability: RequestCapability,
+  ): boolean;
   resolve(
     request: Request,
+    taskId: string,
+    capability: RequestCapability,
   ): Promise<RequestPrincipal | { readonly kind: 'revoked' | 'unavailable' }>;
 }
 interface ProjectTaskRoomRuntimeDeps {
@@ -1104,6 +1113,7 @@ export class ProjectTaskRoomRuntime {
     const authorized = await this.#authorizedDocumentWithPrincipal(
       taskId,
       request,
+      'edit-plan',
     );
     const task = this.#deps.taskGraph.readTaskView(taskId);
     const scope = this.#scope(taskId);
@@ -1127,6 +1137,8 @@ export class ProjectTaskRoomRuntime {
               this.#deps.requestAuthority.isCurrent?.(
                 request,
                 authorized.principal,
+                taskId,
+                'edit-plan',
               ) === true &&
               now &&
               now.createdAt === task.createdAt &&
@@ -1883,7 +1895,9 @@ export class ProjectTaskRoomRuntime {
     currentSharedRead?: () => Promise<boolean>;
   }) {
     const scope = await this.#authorizedDocument(input.taskId, input.request);
-    const principal = scope ? await this.#principal(input.request) : undefined;
+    const principal = scope
+      ? await this.#principal(input.request, input.taskId, 'history-read')
+      : undefined;
     if (
       !scope ||
       !principal ||
@@ -1901,7 +1915,11 @@ export class ProjectTaskRoomRuntime {
       input.taskId,
       input.request,
     );
-    const currentPrincipal = await this.#principal(input.request);
+    const currentPrincipal = await this.#principal(
+      input.request,
+      input.taskId,
+      'history-read',
+    );
     if (
       !currentScope ||
       !currentPrincipal ||
@@ -1928,8 +1946,14 @@ export class ProjectTaskRoomRuntime {
      */
     onDurableSettlementForDiagnostic?: () => void;
   }) {
-    const scope = await this.#authorizedDocument(input.taskId, input.request);
-    const principal = scope ? await this.#principal(input.request) : undefined;
+    const scope = await this.#authorizedDocument(
+      input.taskId,
+      input.request,
+      'edit-plan',
+    );
+    const principal = scope
+      ? await this.#principal(input.request, input.taskId, 'edit-plan')
+      : undefined;
     if (!scope || !principal) return { kind: 'not-found' } as const;
     const plan = this.#plans.get(input.intentId);
     if (!plan) {
@@ -1947,6 +1971,7 @@ export class ProjectTaskRoomRuntime {
           input.request,
           scope,
           principal,
+          'edit-plan',
         ))
       )
         return { kind: 'not-found' } as const;
@@ -1995,6 +2020,7 @@ export class ProjectTaskRoomRuntime {
             input.request,
             scope,
             principal,
+            'edit-plan',
           ))
         )
           return { kind: 'not-found' } as const;
@@ -2013,7 +2039,11 @@ export class ProjectTaskRoomRuntime {
       return { kind: 'rejected' as const };
     // The grant is checked immediately before the private atomic commit; a
     // revocation during planning therefore cannot settle a previously-issued plan.
-    const current = await this.#principal(input.request);
+    const current = await this.#principal(
+      input.request,
+      input.taskId,
+      'edit-plan',
+    );
     if (!current || !samePrincipal(current, plan.principal))
       return { kind: 'not-found' as const };
     const settlement = {
@@ -2037,6 +2067,7 @@ export class ProjectTaskRoomRuntime {
           input.request,
           scope,
           plan.principal,
+          'edit-plan',
         ),
     } as const;
     let result = await this.#deps.working.settle(settlement);
@@ -2050,6 +2081,7 @@ export class ProjectTaskRoomRuntime {
           input.request,
           scope,
           plan.principal,
+          'edit-plan',
         ))
       )
         return { kind: 'not-found' } as const;
@@ -2064,6 +2096,7 @@ export class ProjectTaskRoomRuntime {
           input.request,
           scope,
           plan.principal,
+          'edit-plan',
         ))
       )
         return { kind: 'not-found' } as const;
@@ -2077,6 +2110,7 @@ export class ProjectTaskRoomRuntime {
         input.request,
         scope,
         plan.principal,
+        'edit-plan',
       ))
     )
       return { kind: 'not-found' } as const;
@@ -2335,8 +2369,14 @@ export class ProjectTaskRoomRuntime {
     onlyIfEmpty?: boolean;
     selection: { anchor: number; focus: number };
   }) {
-    const scope = await this.#authorizedDocument(input.taskId, input.request);
-    const principal = scope ? await this.#principal(input.request) : undefined;
+    const scope = await this.#authorizedDocument(
+      input.taskId,
+      input.request,
+      'edit-plan',
+    );
+    const principal = scope
+      ? await this.#principal(input.request, input.taskId, 'edit-plan')
+      : undefined;
     if (!scope || !principal) return { kind: 'not-found' } as const;
     const snapshot = await this.#deps.working.privateSnapshot({ scope });
     if (!snapshot) return { kind: 'unavailable' } as const;
@@ -2392,7 +2432,9 @@ export class ProjectTaskRoomRuntime {
 
   async recovery(input: { taskId: string; request: Request }) {
     const scope = await this.#authorizedDocument(input.taskId, input.request);
-    const principal = scope ? await this.#principal(input.request) : undefined;
+    const principal = scope
+      ? await this.#principal(input.request, input.taskId, 'history-read')
+      : undefined;
     if (!scope || !principal) return { kind: 'not-found' } as const;
     const stored = await this.#deps.working.readRecovery({ scope });
     if (
@@ -2445,7 +2487,7 @@ export class ProjectTaskRoomRuntime {
       input.request,
     );
     const principal = document
-      ? await this.#principal(input.request)
+      ? await this.#principal(input.request, input.taskId, 'history-read')
       : undefined;
     if (!document || !principal) return { kind: 'not-found' } as const;
     if (!(await this.#recoverPending(document)))
@@ -2796,7 +2838,7 @@ export class ProjectTaskRoomRuntime {
       input.request,
     );
     const principal = document
-      ? await this.#principal(input.request)
+      ? await this.#principal(input.request, input.taskId, 'history-read')
       : undefined;
     if (!document || !principal) return { kind: 'not-found' } as const;
     const key = documentKey(document);
@@ -2881,7 +2923,7 @@ export class ProjectTaskRoomRuntime {
       input.request,
     );
     const principal = document
-      ? await this.#principal(input.request)
+      ? await this.#principal(input.request, input.taskId, 'history-read')
       : undefined;
     if (!document || !principal) return false;
     const entry = this.#live.get(documentKey(document));
@@ -2969,7 +3011,11 @@ export class ProjectTaskRoomRuntime {
         input.request,
       );
       const principal = document
-        ? await this.#principal(input.request)
+        ? await this.#principal(
+            input.request,
+            entry.room.scope.taskId,
+            'history-read',
+          )
         : undefined;
       if (
         !taskScope ||
@@ -3466,7 +3512,11 @@ export class ProjectTaskRoomRuntime {
     // every live effect mints its grant from a fresh canonical request check.
     const grant = await this.#issue(taskId, request, capability);
     if (!grant) return undefined;
-    const current = await this.#principal(request);
+    const current = await this.#principal(
+      request,
+      taskId,
+      roomRequestCapability(capability),
+    );
     return current && samePrincipal(authority.principal, current)
       ? grant
       : undefined;
@@ -3525,7 +3575,11 @@ export class ProjectTaskRoomRuntime {
     if (this.#closed || this.#deps.hosted?.()) return undefined;
     const scope = this.#scope(taskId);
     if (!scope) return undefined;
-    const principal = await this.#principal(request);
+    const principal = await this.#principal(
+      request,
+      taskId,
+      roomRequestCapability(capability),
+    );
     if (!principal) return undefined;
     const token = randomUUID();
     // Grants span only the one request → history-worker operation. Keep their
@@ -4345,19 +4399,28 @@ export class ProjectTaskRoomRuntime {
   #roomPolicyRevision(scope: ProjectTaskRoomScope): string {
     return `${PROJECT_TASK_ROOM_POLICY_REVISION}:${scope.projectId}:${scope.taskId}`;
   }
-  async #authorizedDocument(taskId: string, request: Request) {
-    return (await this.#authorizedDocumentWithPrincipal(taskId, request))
-      ?.document;
+  async #authorizedDocument(
+    taskId: string,
+    request: Request,
+    capability: RequestCapability = 'history-read',
+  ) {
+    return (
+      await this.#authorizedDocumentWithPrincipal(taskId, request, capability)
+    )?.document;
   }
   /**
    * A content delivery needs both the exact current document scope and its
    * principal. Resolve them once: running the same paired-request authority
    * twice serially turns one required recheck into avoidable delivery latency.
    */
-  async #authorizedDocumentWithPrincipal(taskId: string, request: Request) {
+  async #authorizedDocumentWithPrincipal(
+    taskId: string,
+    request: Request,
+    capability: RequestCapability = 'history-read',
+  ) {
     if (this.#closed || this.#deps.hosted?.() || !this.#scope(taskId))
       return undefined;
-    const principal = await this.#principal(request);
+    const principal = await this.#principal(request, taskId, capability);
     if (!principal) return undefined;
     const scope = this.#scope(taskId)!;
     return {
@@ -4374,10 +4437,11 @@ export class ProjectTaskRoomRuntime {
     request: Request,
     expectedDocument: { projectId: string; taskId: string; documentId: string },
     expectedPrincipal: RequestPrincipal,
+    capability: RequestCapability = 'history-read',
   ) {
     const [document, principal] = await Promise.all([
-      this.#authorizedDocument(taskId, request),
-      this.#principal(request),
+      this.#authorizedDocument(taskId, request, capability),
+      this.#principal(request, taskId, capability),
     ]);
     return Boolean(
       document &&
@@ -4386,9 +4450,17 @@ export class ProjectTaskRoomRuntime {
         samePrincipal(principal, expectedPrincipal),
     );
   }
-  async #principal(request: Request): Promise<RequestPrincipal | undefined> {
+  async #principal(
+    request: Request,
+    taskId: string,
+    capability: RequestCapability,
+  ): Promise<RequestPrincipal | undefined> {
     try {
-      const result = await this.#deps.requestAuthority.resolve(request);
+      const result = await this.#deps.requestAuthority.resolve(
+        request,
+        taskId,
+        capability,
+      );
       if (result.kind !== 'granted') return undefined;
       if (result.displayName)
         this.#displayNames.set(result.operatorId, result.displayName);
@@ -4465,7 +4537,11 @@ export class ProjectTaskRoomRuntime {
     if (!issued.request) return { kind: 'revoked' };
     if (issued.currentSharedRead && !(await issued.currentSharedRead()))
       return { kind: 'revoked' };
-    const currentPrincipal = await this.#principal(issued.request);
+    const currentPrincipal = await this.#principal(
+      issued.request,
+      issued.scope.taskId,
+      roomRequestCapability(issued.capability),
+    );
     const settledScope = this.#scope(issued.scope.taskId);
     if (
       !settledScope ||
@@ -4524,8 +4600,16 @@ function sameScope(a: ProjectTaskRoomScope, b: ProjectTaskRoomScope) {
     a.taskId === b.taskId
   );
 }
+function roomRequestCapability(capability: RoomCapability): RequestCapability {
+  return capability === 'discover' ||
+    capability === 'history-read' ||
+    capability === 'message-write'
+    ? capability
+    : 'other';
+}
 function samePrincipal(a: RequestPrincipal, b: RequestPrincipal) {
   return (
+    a.member === b.member &&
     a.operatorId === b.operatorId &&
     a.deviceId === b.deviceId &&
     a.policyRevision === b.policyRevision

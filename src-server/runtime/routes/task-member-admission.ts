@@ -6,6 +6,26 @@ import type {
 } from '@kontourai/station-contracts/project-membership';
 import type { ProjectSharedTaskAdmission } from '../../services/projects/project-shared-task-store.js';
 
+export type TaskRoomAdmissionCapability =
+  | 'discover'
+  | 'history-read'
+  | 'message-write'
+  | 'edit-plan';
+
+export function taskRoomMemberAction(
+  capability: TaskRoomAdmissionCapability,
+): ProjectMemberAction {
+  switch (capability) {
+    case 'discover':
+    case 'history-read':
+      return 'view';
+    case 'message-write':
+      return 'discuss';
+    case 'edit-plan':
+      return 'edit';
+  }
+}
+
 /** Compose a Task's current share with the resolved person's Project membership. */
 export function createTaskMemberAdmission(deps: {
   task(id: string): { projectId: string; createdAt: string } | null;

@@ -954,7 +954,11 @@ import {
   createRuntimeSystemRouteDeps,
 } from './runtime-route-support.js';
 import { createTaskBasisMcpInitialRead } from './task-basis-mcp-initial-read.js';
-import { createTaskMemberAdmission } from './task-member-admission.js';
+import {
+  createTaskMemberAdmission,
+  type TaskRoomAdmissionCapability,
+  taskRoomMemberAction,
+} from './task-member-admission.js';
 import { createTaskRelationshipAuthority } from './task-relationship-authority.js';
 import {
   createRuntimeWorkspacePaneHostActions,
@@ -5237,7 +5241,11 @@ export function configureRuntimeRoutes(
       },
       logger: context.logger,
     });
-    const resolveRoomPerson = (request: Request) => {
+    const resolveRoomPerson = (
+      request: Request,
+      taskId?: string,
+      capability?: TaskRoomAdmissionCapability | 'other',
+    ) => {
       const authenticated = getRuntimeAuthenticatedRequestPrincipal(request);
       if (!authenticated) return { kind: 'revoked' as const };
       const principal = roomRequestPrincipals.get(request);
@@ -5245,6 +5253,33 @@ export function configureRuntimeRoutes(
       const device = context.environmentSecurityService.identifyDevice(
         authenticated.credential,
       );
+      if (
+        device?.principalBinding &&
+        'kind' in device.principalBinding &&
+        device.principalBinding.kind === 'account'
+      ) {
+        if (
+          !taskId ||
+          !capability ||
+          capability === 'other' ||
+          !isRequestPrincipalCurrent(request)
+        )
+          return { kind: 'revoked' as const };
+        const admission = taskMemberAdmission.admit(
+          request,
+          taskId,
+          taskRoomMemberAction(capability),
+        );
+        if (!admission) return { kind: 'revoked' as const };
+        return {
+          kind: 'granted' as const,
+          member: true as const,
+          operatorId: principal.id,
+          displayName: principal.display,
+          deviceId: device.id,
+          policyRevision: `member:${admission.member.revision}`,
+        };
+      }
       if (device)
         return {
           kind: 'granted' as const,
@@ -5321,12 +5356,14 @@ export function configureRuntimeRoutes(
         // cached principal (resolution never ran, or threw
         // `PrincipalUnresolvedError`) revokes the grant rather than falling
         // back to any default identity.
-        resolve: async (request) => resolveRoomPerson(request),
-        isCurrent: (request, expected) => {
+        resolve: async (request, taskId, capability) =>
+          resolveRoomPerson(request, taskId, capability),
+        isCurrent: (request, expected, taskId, capability) => {
           if (!isRequestPrincipalCurrent(request)) return false;
-          const now = resolveRoomPerson(request);
+          const now = resolveRoomPerson(request, taskId, capability);
           return (
             now.kind === 'granted' &&
+            'member' in now === (expected.member === true) &&
             now.operatorId === expected.operatorId &&
             now.deviceId === expected.deviceId &&
             now.policyRevision === expected.policyRevision
