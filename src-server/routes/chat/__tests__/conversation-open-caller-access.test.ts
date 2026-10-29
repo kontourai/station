@@ -69,7 +69,20 @@ const RESOLUTION: ConversationOpenResolution = {
   recoveryActions: ['retry', 'start-new'],
 };
 
-function createApp(principalSecurity?: typeof PRINCIPAL_SECURITY) {
+/** A saved, authorized fork: the arm whose title the route re-reads. */
+const FORK_READY: ConversationOpenResolution = {
+  status: 'fork-ready',
+  conversation: RESOLUTION.conversation,
+  transcript: { available: true, owner: 'fork-context', messageCount: 2 },
+  canContinue: true,
+  answerability: { answerable: true },
+  recoveryActions: [],
+};
+
+function createApp(
+  principalSecurity?: typeof PRINCIPAL_SECURITY,
+  resolution: ConversationOpenResolution = RESOLUTION,
+) {
   const app = new Hono<{ Bindings: TestBindings }>();
   configureRuntimeHttp({
     app: app as never,
@@ -108,7 +121,16 @@ function createApp(principalSecurity?: typeof PRINCIPAL_SECURITY) {
       } as never,
       undefined,
       {
-        resolveConversationOpen: vi.fn(async () => RESOLUTION),
+        resolveConversationOpen: vi.fn(async () => resolution),
+        readForkConversation: () => ({
+          id: 'conv-1',
+          resourceId: 'codex',
+          userId: 'operator',
+          title: 'Saved fork',
+          createdAt: '2026-08-01T00:00:00.000Z',
+          updatedAt: '2026-08-01T00:02:00.000Z',
+          metadata: {},
+        }),
       } as never,
       () => 'operator',
       undefined,
@@ -150,6 +172,18 @@ describe('GET /api/conversations/:id/open callerAccess', () => {
       startChat: true,
     });
     await expect(readCallerAccess(app, OPERATOR_CREDENTIAL)).resolves.toEqual({
+      continue: true,
+      startChat: true,
+    });
+  });
+
+  it('reports caller access on a saved fork too', async () => {
+    const app = createApp(PRINCIPAL_SECURITY, FORK_READY);
+    await expect(readCallerAccess(app, READ_ONLY_CREDENTIAL)).resolves.toEqual({
+      continue: false,
+      startChat: false,
+    });
+    await expect(readCallerAccess(app, STANDARD_CREDENTIAL)).resolves.toEqual({
       continue: true,
       startChat: true,
     });
