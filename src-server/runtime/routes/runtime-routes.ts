@@ -2269,6 +2269,10 @@ export function configureRuntimeRoutes(
   // `bootstrap/account-bound-device-gate.ts` so tests exercise the real
   // middleware rather than a copy. Behavior is unchanged.
   installAccountBoundDeviceGate(context.app, {
+    localAccountSignOutEnabled:
+      !!context.localAccounts &&
+      context.localAccounts.service ===
+        context.deploymentAuthentication?.service,
     currentRelationshipAccountDevice,
     accountSessionOwnsPerson,
     identifyDevice: (credential) =>

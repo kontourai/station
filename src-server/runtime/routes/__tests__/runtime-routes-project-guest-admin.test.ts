@@ -884,7 +884,7 @@ describe('project guest administration over the production composition', () => {
           people[1]!.cookie,
         )
       ).status,
-    ).toBe(401);
+    ).toBe(403);
     const projectRead = await serveRequest(
       `/api/projects/${project.slug}`,
       people[0]!.paired.credential,
@@ -899,7 +899,7 @@ describe('project guest administration over the production composition', () => {
           people[1]!.cookie,
         )
       ).status,
-    ).toBe(401);
+    ).toBe(403);
     expect(
       (
         await h.request(
@@ -929,7 +929,7 @@ describe('project guest administration over the production composition', () => {
     expect(
       (await serveRequest(url, people[0]!.paired.credential, people[1]!.cookie))
         .status,
-    ).toBe(401);
+    ).toBe(403);
     for (const index of [0, 1]) {
       const response = await read(index);
       expect(response.status, await response.clone().text()).toBe(200);
@@ -972,7 +972,7 @@ describe('project guest administration over the production composition', () => {
         Cookie: people[1]!.cookie,
       },
     });
-    expect(mismatch.status).toBe(401);
+    expect(mismatch.status).toBe(403);
     const denied = await h.request(`/api/tasks/${parent.id}/children`, {
       method: 'POST',
       headers: {
@@ -1018,10 +1018,77 @@ describe('project guest administration over the production composition', () => {
       }),
       serveEnv,
     );
+    const sdk = await import('@kontourai/station-sdk/client');
+    const deviceUnauthorized = vi.fn();
+    const accountUnauthorized = vi.fn();
+    sdk.setClientCredentialResolver(() => ({
+      origin: ORIGIN,
+      credential: h.operatorCredential,
+      onUnauthorized: deviceUnauthorized,
+      onAccountUnauthorized: accountUnauthorized,
+    }));
+    const transport = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementationOnce(async (input, init) => {
+        const request = new Request(input, init);
+        request.headers.set('Cookie', people[1]!.cookie);
+        for (const [name, value] of Object.entries(serveHeaders))
+          request.headers.set(name, value);
+        return h.app.request(request, undefined, serveEnv);
+      });
+    try {
+      const conflict = await sdk.getJson(
+        `${ORIGIN}/api/projects/${project.slug}`,
+      );
+      expect({
+        status: conflict.status,
+        body: await conflict.json(),
+        deviceUnauthorized: deviceUnauthorized.mock.calls.length,
+        accountUnauthorized: accountUnauthorized.mock.calls.length,
+      }).toEqual({
+        status: 403,
+        body: { error: { code: 'account_identity_conflict' } },
+        deviceUnauthorized: 0,
+        accountUnauthorized: 0,
+      });
+    } finally {
+      transport.mockRestore();
+      sdk.setClientCredentialResolver(undefined);
+    }
     expect(
       operatorAccountEdit.status,
       await operatorAccountEdit.clone().text(),
+    ).toBe(403);
+    const logout = await h.request(
+      '/api/account-auth/sign-out',
+      {
+        method: 'POST',
+        headers: {
+          ...serveHeaders,
+          Cookie: people[1]!.cookie,
+          Authorization: `Bearer ${h.operatorCredential}`,
+          Origin: ORIGIN,
+          'Content-Type': 'application/json',
+        },
+        body: '{}',
+      },
+      serveEnv,
+    );
+    expect(logout.status, await logout.clone().text()).toBe(200);
+    expect(
+      (
+        await h.request('/api/account-auth/session', {
+          headers: { Cookie: people[1]!.cookie },
+        })
+      ).status,
     ).toBe(401);
+    const ownerAfterLogout = await h.request(
+      `/api/projects/${project.slug}`,
+      h.operatorHeaders(),
+    );
+    expect(ownerAfterLogout.status, await ownerAfterLogout.clone().text()).toBe(
+      200,
+    );
     h.localAccounts.administration.setDisabled(
       people[1]!.authenticated.session.subject,
       true,
