@@ -98,9 +98,8 @@ test('authorized conversation window carries the coordinator decision', async ()
     '/api/orchestration/conversations/c-1/event-window',
   );
   expect(response.status).toBe(200);
-  expect((await response.json()).data.memoryContinuation).toEqual({
-    eligible: true,
-    turnId: 'turn-1',
+  expect(await response.json()).toMatchObject({
+    data: { memoryContinuation: { eligible: true, turnId: 'turn-1' } },
   });
   expect(eligibility).toHaveBeenCalledWith('c-1');
 });
@@ -132,7 +131,9 @@ test('reader without send authority is not eligible to continue', async () => {
     '/api/orchestration/conversations/c-1/event-window',
   );
   expect(response.status).toBe(200);
-  expect((await response.json()).data.memoryContinuation.eligible).toBe(false);
+  expect(await response.json()).toMatchObject({
+    data: { memoryContinuation: { eligible: false } },
+  });
   expect(mayContinue).toHaveBeenCalledWith('c-1', 'reader');
 });
 
@@ -216,5 +217,7 @@ test('read-only credential cannot be offered continuation through the HTTP scope
   );
   expect(post.status).toBe(403);
   expect(await post.json()).toEqual({ error: { code: 'insufficient_scope' } });
-  expect((await get.json()).data.memoryContinuation.eligible).toBe(false);
+  expect(await get.json()).toMatchObject({
+    data: { memoryContinuation: { eligible: false } },
+  });
 });

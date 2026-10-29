@@ -26,6 +26,14 @@ const device = (
   kind: 'device',
   createdAt: 0,
   revokedAt: null,
+  activityTracking: 'tracked-since-issued',
+  lastSeenFrom: null,
+  usageCount: 0,
+  lastActiveDay: null,
+  revocation:
+    over.revokedAt != null
+      ? { state: 'unobserved-before-revocation-provenance' }
+      : { state: 'not-revoked' },
   ...over,
 });
 const DEVICES: PairedDevice[] = [

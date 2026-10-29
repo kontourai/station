@@ -2606,7 +2606,9 @@ describe('CodexAdapter', () => {
 
     test('a spawned child names its own rollout under the CODEX_HOME the session was spawned with', async () => {
       processHandle = new FakeCodexProcess();
-      const processFactory = vi.fn(() => processHandle!);
+      const processFactory = vi.fn(
+        (_env?: Record<string, string>) => processHandle!,
+      );
       const adapter = new CodexAdapter({
         processFactory,
         getAppHomeEnv: async () => ({

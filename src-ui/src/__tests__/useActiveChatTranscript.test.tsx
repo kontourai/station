@@ -3072,13 +3072,25 @@ describe('useActiveChatTranscript', () => {
       await waitFor(() =>
         expect(result.current.error?.message).toBe('gap6 failed'),
       );
-      expect(result.current.partialTurnStartEventIds.has('e6')).toBe(true);
+      expect(
+        'partialTurnStartEventIds' in result.current
+          ? result.current.partialTurnStartEventIds.has('e6')
+          : undefined,
+      ).toBe(true);
       rerender({ revision: 2 });
       await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(6));
       await waitFor(() =>
-        expect(result.current.partialTurnStartEventIds.has('e9')).toBe(false),
+        expect(
+          'partialTurnStartEventIds' in result.current
+            ? result.current.partialTurnStartEventIds.has('e9')
+            : undefined,
+        ).toBe(false),
       );
-      expect(result.current.partialTurnStartEventIds.has('e6')).toBe(false);
+      expect(
+        'partialTurnStartEventIds' in result.current
+          ? result.current.partialTurnStartEventIds.has('e6')
+          : undefined,
+      ).toBe(false);
     });
 
     test('Load older resumes a failed contiguous reload gap before older history', async () => {
@@ -3235,12 +3247,20 @@ describe('useActiveChatTranscript', () => {
       await waitFor(() =>
         expect(result.current.error?.message).toBe('gap failed'),
       );
-      expect(result.current.partialTurnStartEventIds.has('e6')).toBe(true);
+      expect(
+        'partialTurnStartEventIds' in result.current
+          ? result.current.partialTurnStartEventIds.has('e6')
+          : undefined,
+      ).toBe(true);
       await act(async () => result.current.loadOlder());
       expect(cursorOf(5)).toBe('gap2');
       expect(cursorOf(6)).toBe('gap3');
       expect(sequences(result.current.events)).toContain(15);
-      expect(result.current.partialTurnStartEventIds.has('e6')).toBe(false);
+      expect(
+        'partialTurnStartEventIds' in result.current
+          ? result.current.partialTurnStartEventIds.has('e6')
+          : undefined,
+      ).toBe(false);
     });
 
     test('a newer reload continues an interrupted held gap using its own cursor', async () => {
@@ -3321,7 +3341,11 @@ describe('useActiveChatTranscript', () => {
         expect(sequences(result.current.events)).toContain(15),
       );
       expect(cursorOf(6)).toBe('new-gap');
-      expect(result.current.partialTurnStartEventIds.has('e6')).toBe(false);
+      expect(
+        'partialTurnStartEventIds' in result.current
+          ? result.current.partialTurnStartEventIds.has('e6')
+          : undefined,
+      ).toBe(false);
     });
 
     test('a fresh read fills the gap and leaves Load older after it', async () => {
