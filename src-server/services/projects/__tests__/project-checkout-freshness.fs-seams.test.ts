@@ -14,6 +14,11 @@ const seams = vi.hoisted(() => ({
   swapAfterFirstLstat: undefined as string | undefined,
   /** `realpath` never settles. */
   wedged: false,
+  /**
+   * Path suffix `lstat` always reports with another identity, so every walk
+   * agrees with itself but not with the file actually opened.
+   */
+  substituted: undefined as string | undefined,
 }));
 
 vi.mock('node:fs/promises', async (importOriginal) => {
@@ -28,9 +33,12 @@ vi.mock('node:fs/promises', async (importOriginal) => {
     lstat: (async (...args: Parameters<typeof actual.lstat>) => {
       const stat = await actual.lstat(...args);
       const path = String(args[0]);
+      if (seams.substituted && path.endsWith(seams.substituted))
+        return Object.assign(stat, { ino: Number(stat.ino) + 1 });
       const suffix = seams.swapAfterFirstLstat;
       if (suffix && path.endsWith(suffix)) {
-        if (seen.has(path)) return Object.assign(stat, { ino: Number(stat.ino) + 1 });
+        if (seen.has(path))
+          return Object.assign(stat, { ino: Number(stat.ino) + 1 });
         seen.add(path);
       }
       return stat;
@@ -46,6 +54,7 @@ const roots: string[] = [];
 afterEach(() => {
   seams.swapAfterFirstLstat = undefined;
   seams.wedged = false;
+  seams.substituted = undefined;
   while (roots.length > 0) {
     const dir = roots.pop();
     if (dir) rmSync(dir, { recursive: true, force: true });
@@ -118,6 +127,25 @@ describe('project checkout freshness file-system seams', () => {
       result.status === 'unknown'
         ? Number.NaN
         : Date.parse(result.behindSince ?? '');
+    expect(Date.now() - since).toBeGreaterThan(5.5 * DAY_MS);
+  });
+
+  test('a reflog opened as a different file from the one walked is not believed', async () => {
+    const checkout = behindSinceFiveDays();
+    // Both walks see one file; the descriptor opened is another, as when a
+    // file is swapped in between the walk and the open and back before the
+    // second walk.
+    seams.substituted = join('logs', 'refs', 'remotes', 'origin', 'main');
+    const result = await createProjectCheckoutFreshnessReader().read(checkout, {
+      commits: 50,
+      days: 3,
+    });
+    expect(result).toMatchObject({ behind: 1 });
+    const since =
+      result.status === 'unknown'
+        ? Number.NaN
+        : Date.parse(result.behindSince ?? '');
+    // Only the six-day-old committer date remains without the reflog.
     expect(Date.now() - since).toBeGreaterThan(5.5 * DAY_MS);
   });
 
