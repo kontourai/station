@@ -1,0 +1,7 @@
+{
+  "revision": "4ab488ac0dbdb0a43f291d747e8327a413ba322c",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"Delta review after preserving native activation scaffolding on its feature branch: delivery restores provider.ts to the current main bytes and adds no shared/provider contract export. Existing shared content/event projection ownership remains unchanged; no new native fork dispatch or live delivery proof is claimed.","inputs":["docs/reference/shared.md","packages/contracts/src/provider.ts"]}
+  ]
+}

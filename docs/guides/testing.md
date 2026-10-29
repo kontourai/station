@@ -1950,6 +1950,13 @@ only for protected `main` pushes or reviewed manual dispatches; the same gate
 requires that boundary and `persist-credentials: false` on their checkouts.
 Unreviewed PR code belongs on hosted or genuinely one-job ephemeral runners.
 
+Hosted PR and merge-group Chromium setup can restore a cache keyed by runner
+OS, architecture, and the lockfile. The admitted main Nightly source gate warms
+that cache; untrusted jobs only restore it. A cache miss or cache-service failure
+falls back to the required Playwright installation, which still runs on a hit.
+Browser smoke and test failures remain required. Compare cache restore plus
+installation time with uncached setup before treating the cache as a speedup.
+
 Linux CI, Android, publish, and secret-scan jobs run on GitHub-hosted
 images. A private native Windows host remains for the hardware-reference
 performance lane, the Windows Vitest
