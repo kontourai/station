@@ -21,8 +21,6 @@ The messaging core in
 bindings, refusal and delivery receipts, and the per-app kill switch. Migration
 [025-chat-apps.ts](../../src-server/domain/migrations/025-chat-apps.ts) creates
 append-only tables in the existing `<home>/data/orchestration.sqlite` store.
-This extraction is source preparation: its tests, typechecks and runtime
-behavior have not been validated in this lane (`NOT_RUN (capacity)`).
 
 ## What it does and does not do
 
@@ -230,7 +228,9 @@ include message content.
 
 The core also appends refusal and delivery receipts to SQLite, without the
 token or message text. A busy inbound refusal is linked to its acknowledgement.
-Each reply chunk has its own receipt; the final notice records overflow.
+Each attempted reply chunk has its own receipt; the final notice records overflow.
+If authorization becomes unavailable, Station stops sending and records a refusal
+when the delivery log is available.
 Pending receipts precede external sends; a confirmed
 outbound receipt retains Discord's message ID. A transport that returns no
 message ID leaves delivery pending/unknown. Errors do not cause retries, and
