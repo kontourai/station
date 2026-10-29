@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CANONICAL_COMPLETION_LANE } from '../verification-lanes.mjs';
+import { holdHeavyCheckSlot } from './heavy-check-slots.mjs';
 import { writeReceiptSecurely } from './test-reliability.mjs';
 import {
   createOwnedRunner,
@@ -269,6 +270,23 @@ async function runCompletionPhaseSequence(input) {
       };
     }
     const queuedPhase = getLease().phase ?? {};
+    // This phase is admitted. It takes a heavy-check slot before its
+    // execution clock starts, so the wait spends the lane's deadline rather
+    // than the phase's execution budget, and releases it before the next
+    // phase queues, so no slot is held while waiting on the coordinator.
+    let heavyCheck = null;
+    let heavyCheckRefusal = null;
+    try {
+      heavyCheck = await holdHeavyCheckSlot({
+        label: `verification:${context.lane.id}:${phase.id}`,
+        env: context.env,
+        signal,
+        deadline: context.absoluteDeadline,
+        now: context.now,
+      });
+    } catch (error) {
+      heavyCheckRefusal = error;
+    }
     const executionStartedAt = context.now();
     const executionDeadlineAt = Math.min(
       context.absoluteDeadline,
@@ -291,12 +309,14 @@ async function runCompletionPhaseSequence(input) {
         stage: 'execution',
       });
       const before = context.collectProvenance({ cwd: context.cwd });
+      const env = heavyCheck?.env ?? context.env;
       const execute = context.phaseRunner
         ? ({ signal: phaseSignal }) =>
             context.phaseRunner({
               phase,
               signal: phaseSignal,
               request: context.request,
+              env,
             })
         : createOwnedRunner({
             lane,
@@ -311,38 +331,53 @@ async function runCompletionPhaseSequence(input) {
               seams.privateCommand(phaseLane, context.toolchain),
             processIdentity: seams.processIdentity,
             writeOwnedLease: seams.writeOwnedLease,
-            env: context.env,
+            env,
           });
       const phaseDeadline =
         getLease().phase?.executionDeadlineAt ?? executionDeadlineAt;
       let raw;
       let timedOut = false;
-      try {
-        ({ raw, timedOut } = await runWithinDeadline({
-          execute,
-          lane,
-          request: context.request,
-          signal,
-          canceled: getLease().state === 'canceling',
-          deadline: phaseDeadline,
-          now: context.now,
-          fence: () => {
-            retainOutput = true;
-            return setLease({
-              ...getLease(),
-              state: 'fenced',
-              heartbeatAt: context.now(),
-            });
-          },
-        }));
-      } catch (error) {
+      // A refusal is this phase's failed result. A cancel, or the lane's own
+      // deadline timer, aborts the wait and the lane decides how it ends. The
+      // wait's cap uses the wall clock, which can pass the lane deadline first
+      // (a host waking from sleep): that is still the deadline expiring.
+      if (heavyCheckRefusal)
         raw = {
           status: null,
-          error,
-          deadlineExpired: context.now() >= phaseDeadline,
+          error: heavyCheckRefusal,
+          // A cancel still wins over a deadline, as in admission.
+          ...(heavyCheckRefusal.name !== 'AbortError' &&
+          context.now() >= context.absoluteDeadline
+            ? { deadlineExpired: true }
+            : {}),
         };
-        timedOut = raw.deadlineExpired;
-      }
+      else
+        try {
+          ({ raw, timedOut } = await runWithinDeadline({
+            execute,
+            lane,
+            request: context.request,
+            signal,
+            canceled: getLease().state === 'canceling',
+            deadline: phaseDeadline,
+            now: context.now,
+            fence: () => {
+              retainOutput = true;
+              return setLease({
+                ...getLease(),
+                state: 'fenced',
+                heartbeatAt: context.now(),
+              });
+            },
+          }));
+        } catch (error) {
+          raw = {
+            status: null,
+            error,
+            deadlineExpired: context.now() >= phaseDeadline,
+          };
+          timedOut = raw.deadlineExpired;
+        }
       if (timedOut) raw = { ...raw, deadlineExpired: true };
       raw = {
         ...raw,
@@ -365,6 +400,8 @@ async function runCompletionPhaseSequence(input) {
         outputRetained: retainOutput,
       };
     } finally {
+      // A fenced phase may still have a live child: keep its slot.
+      if (!retainOutput) heavyCheck?.release();
       if (admission.outputOwned && !retainOutput)
         seams.removeOwnedDirectory(outputLock, owner);
     }
