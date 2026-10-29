@@ -85,7 +85,7 @@ bytes for a fresh append. Exact committed retries therefore survive byte evictio
 Uncertain main-composer sends preserve attachment references with the original
 operation/proposal for explicit retries, including after reload. Unsent local
 files are guarded as dirty state but are not restored after reload. An upload
-failure keeps the draft and prevents dispatch. Room records advance to v4 with a permanent old-writer fence; the private request
+failure keeps the draft and prevents dispatch. Attachment-bearing room records advance to at least v4 with a permanent old-writer fence; member records advance the room to v5. The private request
 journal advances to `station.task-room-work-store/v4`. Older binaries reject
 these formats; use matching server/client
 versions when introducing attachment-bearing room records.

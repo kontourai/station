@@ -31,6 +31,16 @@ current canonical Conversation lineage and reader access. Ordinary account membe
 does not authorize relationship mutations. Linking neither publishes a Task or private
 conversation nor grants execution.
 
+Personal Task-room access is a separate, bounded account-bound Device surface.
+Current membership and the exact Task share admit room reads, presence and,
+with `discuss`, messages. `edit` admits planning, but the account-bound gate
+does not yet admit document batch settlement or agent requests. A membership
+change invalidates the captured room admission and wakes the stream to recheck;
+the idle recheck remains as a fallback. See the
+[Task room API](../reference/api.md#account-bound-task-room-access) for the
+exact leaves and independent Device-scope requirements. This does not change
+the read-only shared Task entry described below or qualify real two-person use.
+
 ## Enable local accounts without email
 
 Choose this built-in configuration instead of an authentication module:

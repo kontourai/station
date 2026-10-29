@@ -3087,6 +3087,19 @@ The [route](../../src-server/routes/orchestration/project-task-rooms.ts) emits
 closed browser DTOs; exact-order document events take priority over queued
 presence events without bypassing the final currentness check.
 
+For account-bound Devices, [Task member admission](../../src-server/runtime/routes/task-member-admission.ts)
+requires current transport and account authority, the exact Task/share and
+Project incarnation, and the member action. `view` admits reads and presence,
+`discuss` admits messages, and `edit` admits edit planning. The account-bound
+allowlist does not admit document batch settlement, attachments, review, memory
+or agent-request leaves in this slice. Discovery reports message and document
+write availability. A captured membership revision fences delayed effects and
+stream delivery; post-commit membership notifications close stale streams, with
+the 15-second idle check retained. The `task-collaboration` preview reveals
+member message names and member avatars in the header; it does not grant access.
+Local real-account route tests and fixture-based renders do not establish the
+two-person, two-device acceptance journey.
+
 Personal runtime composition also mounts the
 [TaskRoomWorkModule](../../src-server/services/projects/task-room-work-module.ts),
 a separate Station-wide JSON journal for explicit agent requests. It reserves
@@ -3108,8 +3121,8 @@ binds descriptors to the Project, Task and creation time and keeps bytes in a
 separate content-addressed store. Upload and provider resolution require current
 message-write authority; downloads require history-read authority. Room messages
 and request journals retain descriptors, while dispatch passes resolved bytes to
-the provider attachment contract. Attachment-bearing history advances to v4 with
-a permanent old-writer fence, and the private request journal advances to v4;
+the provider attachment contract. Attachment-bearing history advances to at least
+v4; member records advance to v5, with permanent old-writer fences. The private request journal advances to v4;
 see [images and files](../design/task-room-agent-requests.md#images-and-files)
 for limits and retention. Focused SDK/HTTP/worker tests cover restart and authority;
 they do not qualify native image insertion or real-provider image understanding.
