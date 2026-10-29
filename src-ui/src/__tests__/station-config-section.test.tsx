@@ -70,6 +70,8 @@ const KEYS_THE_DISSOLVED_CARD_RENDERED = [
   'reviewGuidesEnabled',
   'reviewGuideModel',
   'reviewGuideInstructions',
+  // #4266: the model that names a chat after its first reply.
+  'titleModel',
 ] as const;
 
 test('#2182: the split renders every key the one card used to, and no other', () => {

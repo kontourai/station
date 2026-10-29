@@ -263,6 +263,28 @@ function gatedChannelFixture(name: string): Record<string, unknown> {
 }
 
 describe('Event Routes (SSE)', () => {
+  test('principal notifications never enter the shared stream', async () => {
+    const bus = new EventBus();
+    const app = createEventRoutes({
+      eventBus: bus,
+      getACPStatus: () => ({ connected: false, connections: [] }),
+      logger: mockLogger,
+    });
+    const response = await app.request('/');
+    bus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, {
+      id: 'private-notification',
+      metadata: { envelope: { audience: { kind: 'principal' } } },
+    });
+    bus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, {
+      id: 'owner-notification',
+    });
+    bus.emit(SERVER_EVENTS.CONFIG_CHANGED, { marker: 'liveness' });
+    const payload = await readStreamUntil(response.body!, (text) =>
+      text.includes('"marker":"liveness"'),
+    );
+    expect(payload).not.toContain('private-notification');
+    expect(payload).toContain('owner-notification');
+  });
   test('GET / streams initial ACP status event', async () => {
     const bus = new EventBus();
     const app = createEventRoutes({

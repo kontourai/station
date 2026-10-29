@@ -5,7 +5,7 @@
  * failure (`ENGINE_MEMORY_EXHAUSTED_CODE` with its observed workload
  * outcome) and the tool calls of that turn that never reported a result.
  */
-import { ENGINE_MEMORY_EXHAUSTED_CODE } from '@kontourai/station-contracts/provider';
+import { isEngineMemoryExhaustedFailure } from '@kontourai/station-contracts/provider';
 import { memoryExhaustionContinuationNote } from '../infra/workload-budget.js';
 
 interface RecoveryEvent {
@@ -50,7 +50,7 @@ export function memoryExhaustionRecoveryNote(
   const failure = payloads
     .filter((payload) => payload.method === 'runtime.error')
     .at(-1);
-  if (failure?.code !== ENGINE_MEMORY_EXHAUSTED_CODE) return undefined;
+  if (!failure || !isEngineMemoryExhaustedFailure(failure)) return undefined;
   const turnId = failure.turnId;
   const workload = record(record(failure.details)?.workload);
   const unresolved = new Set(

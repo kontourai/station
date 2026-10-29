@@ -306,7 +306,9 @@ export function ChatMarkdownAnchor({ href, children, ...props }: AnchorProps) {
   const scope = fileScope(link);
   const target = classifyMarkdownLink(href, { roots: scope.roots });
   const visualPath = workspaceVisualPath(href);
-  if (link?.projectSlug && visualPath) {
+  // #4266: only a link the reply wrote previews inline. A path named in
+  // prose or inline code stays in its sentence as a mention.
+  if (link?.projectSlug && visualPath && !isMention) {
     return (
       <WorkspaceFileReply path={visualPath}>{children}</WorkspaceFileReply>
     );

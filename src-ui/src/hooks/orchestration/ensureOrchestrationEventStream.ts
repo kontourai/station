@@ -243,15 +243,73 @@ const SESSION_READ_MODEL_FACT_METHODS: ReadonlySet<string> = new Set([
 ]);
 const SESSION_READ_MODEL_REFRESH_WINDOW_MS = 1000;
 
+/**
+ * #4266: events after which a conversation can be at rest. The inventory
+ * carries the finish time Home and the inbox sort finished work by; a copy
+ * read while the work ran holds its start time instead, so it is re-read,
+ * at most once per {@link CONVERSATION_INVENTORY_REFRESH_WINDOW_MS}: the read
+ * refetches every loaded inventory page, and a busy Station ends turns
+ * often. The live row's own finish time covers the wait.
+ */
+const CONVERSATION_INVENTORY_REST_METHODS: ReadonlySet<string> = new Set([
+  'runtime.error',
+  'session.exited',
+  'turn.completed',
+  'turn.aborted',
+]);
+const CONVERSATION_INVENTORY_REFRESH_WINDOW_MS = 5000;
+
+/**
+ * Re-reads the active conversation inventory for `apiBase`: now when the
+ * window has passed, else once at its end, however many turns end inside
+ * it. The client is resolved when it fires, as the session refresh does.
+ */
+function requestConversationInventoryRefresh(apiBase: string): void {
+  const state = sessionReadModelRefreshState(apiBase);
+  if (state.inventoryDeferred !== undefined) return;
+  if (state.inventoryAwaitingSettle !== undefined) return;
+  const run = () => {
+    state.inventoryDeferred = undefined;
+    const client = currentStreamQueryClient(apiBase);
+    if (!client) return;
+    const queryKey = ['conversation-inventory'];
+    if (client.isFetching({ queryKey, type: 'active' }) > 0) {
+      const stop = client.getQueryCache().subscribe(() => {
+        if (client.isFetching({ queryKey, type: 'active' }) > 0) return;
+        stop();
+        state.inventoryAwaitingSettle = undefined;
+        requestConversationInventoryRefresh(apiBase);
+      });
+      state.inventoryAwaitingSettle = stop;
+      return;
+    }
+    state.inventoryLastAt = Date.now();
+    void client.invalidateQueries(
+      { queryKey, type: 'active' },
+      { cancelRefetch: false },
+    );
+  };
+  const elapsed = Date.now() - state.inventoryLastAt;
+  if (elapsed >= CONVERSATION_INVENTORY_REFRESH_WINDOW_MS) run();
+  else
+    state.inventoryDeferred = setTimeout(
+      run,
+      CONVERSATION_INVENTORY_REFRESH_WINDOW_MS - elapsed,
+    );
+}
+
 function refreshSessionReadModelOnFact(
   apiBase: string,
   event: OrchestrationEvent,
 ): void {
   if (!SESSION_READ_MODEL_FACT_METHODS.has(event.method)) return;
-  void currentStreamQueryClient(apiBase)?.invalidateQueries(
+  const client = currentStreamQueryClient(apiBase);
+  void client?.invalidateQueries(
     { queryKey: ['conversation-inbox', apiBase], type: 'active' },
     { cancelRefetch: false },
   );
+  if (CONVERSATION_INVENTORY_REST_METHODS.has(event.method))
+    requestConversationInventoryRefresh(apiBase);
   requestSessionReadModelRefresh(apiBase);
 }
 

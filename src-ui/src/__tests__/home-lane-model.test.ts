@@ -10,7 +10,6 @@ import {
   sortSettledTail,
   sortSnoozedShelf,
   TERMINAL_LINGER_MS,
-  terminalSinceFromRecency,
   withStableIds,
 } from '../views/home/home-lane-model';
 import type { HomeWorkItem } from '../views/home/home-view-model';
@@ -56,7 +55,6 @@ describe('external conversation classification', () => {
       items: [external],
       now: 2000,
       snoozedUntil: new Map(),
-      terminalSince: new Map(),
     });
     expect(live(partition)).toEqual([]);
     expect(partition.external).toEqual([external]);
@@ -179,7 +177,6 @@ describe('partitionHomeWorkItems (AC3 linger + snooze partition)', () => {
       items: [a],
       now,
       snoozedUntil: new Map(),
-      terminalSince: new Map([['a', now]]),
     });
     const { recentlyFinished, settled } = partition;
     expect(live(partition)).toEqual([]);
@@ -188,30 +185,39 @@ describe('partitionHomeWorkItems (AC3 linger + snooze partition)', () => {
   });
 
   it('moves a terminal item to the settled tail once T minutes have elapsed', () => {
-    const a = item({ id: 'a', lifecycleLabel: 'Completed', updatedAt: now });
+    const a = item({
+      id: 'a',
+      lifecycleLabel: 'Completed',
+      updatedAt: now,
+      terminalAt: now - (TERMINAL_LINGER_MS - 1),
+    });
     const justUnder = partitionHomeWorkItems({
       items: [a],
       now,
       snoozedUntil: new Map(),
-      terminalSince: new Map([['a', now - (TERMINAL_LINGER_MS - 1)]]),
     });
     expect(live(justUnder)).toEqual([]);
     expect(justUnder.recentlyFinished).toEqual([a]);
     expect(justUnder.settled).toEqual([]);
 
+    // The recorded finish time decides, not later activity (`updatedAt`).
+    const finishedEarlier = { ...a, terminalAt: now - TERMINAL_LINGER_MS };
     const atOrOver = partitionHomeWorkItems({
-      items: [a],
+      items: [finishedEarlier],
       now,
       snoozedUntil: new Map(),
-      terminalSince: new Map([['a', now - TERMINAL_LINGER_MS]]),
     });
     expect(live(atOrOver)).toEqual([]);
     expect(atOrOver.recentlyFinished).toEqual([]);
-    expect(atOrOver.settled).toEqual([a]);
+    expect(atOrOver.settled).toEqual([finishedEarlier]);
   });
 
   it('treats a failed item as terminal without conflating it with attention work', () => {
-    const failed = item({ id: 'failed', lifecycleLabel: 'Failed' });
+    const failed = item({
+      id: 'failed',
+      lifecycleLabel: 'Failed',
+      terminalAt: now,
+    });
     const attention = item({
       id: 'attention',
       lifecycleLabel: 'Needs attention',
@@ -220,7 +226,6 @@ describe('partitionHomeWorkItems (AC3 linger + snooze partition)', () => {
       items: [failed, attention],
       now,
       snoozedUntil: new Map(),
-      terminalSince: new Map([['failed', now]]),
     });
     expect(partition.recentlyFinished).toEqual([failed]);
     expect(partition.needsYou).toEqual([attention]);
@@ -228,37 +233,76 @@ describe('partitionHomeWorkItems (AC3 linger + snooze partition)', () => {
     expect(partition.idle).toEqual([]);
   });
 
-  it('keeps a completed conversation in Recently finished until its rendered version is acknowledged', () => {
-    const conversation = item({
-      id: 'conversation-1',
-      lifecycleLabel: 'Completed',
-      updatedAt: now - 24 * 60 * 60 * 1000,
-      conversationUpdatedAt: '2026-08-02T20:00:00.000Z',
-    });
-    const unseen = partitionHomeWorkItems({
-      items: [conversation],
-      now,
-      snoozedUntil: new Map(),
-      terminalSince: new Map([['conversation-1', 0]]),
-    });
-    expect(unseen.recentlyFinished).toEqual([conversation]);
-    expect(unseen.settled).toEqual([]);
+  describe('#4266: Just finished = finished in the last 15 minutes, or after the last view, until viewed', () => {
+    const DAY = 24 * 60 * 60 * 1000;
+    const finishedAt = now - 3 * DAY;
+    const finished = (over: Partial<HomeWorkItem> = {}) =>
+      item({
+        id: 'conversation-1',
+        lifecycleLabel: 'Completed',
+        // Later bookkeeping moved `updatedAt`; the finish time did not.
+        updatedAt: now - 60_000,
+        terminalAt: finishedAt,
+        conversationUpdatedAt: '2026-08-02T20:00:00.000Z',
+        ...over,
+      });
+    const laneOf = (entry: HomeLaneItem) => {
+      const partition = partitionHomeWorkItems({
+        items: [entry],
+        now,
+        snoozedUntil: new Map(),
+      });
+      if (partition.recentlyFinished.includes(entry)) return 'just finished';
+      if (partition.settled.includes(entry)) return 'earlier';
+      return 'other';
+    };
 
-    const acknowledged = partitionHomeWorkItems({
-      items: [
-        {
-          ...conversation,
-          acknowledgedAt: Date.parse('2026-08-02T20:00:00.000Z'),
-        },
-      ],
-      now,
-      snoozedUntil: new Map(),
-      terminalSince: new Map(),
+    it('finished after the last view: Just finished, days later', () => {
+      expect(laneOf(finished({ acknowledgedAt: finishedAt - 1 }))).toBe(
+        'just finished',
+      );
     });
-    expect(acknowledged.recentlyFinished).toEqual([]);
-    expect(acknowledged.settled.map((entry) => entry.id)).toEqual([
-      'conversation-1',
-    ]);
+
+    it('viewed at or after it finished: Earlier', () => {
+      expect(laneOf(finished({ acknowledgedAt: finishedAt }))).toBe('earlier');
+      expect(laneOf(finished({ acknowledgedAt: finishedAt + DAY }))).toBe(
+        'earlier',
+      );
+    });
+
+    it('no view on record: only the 15-minute rule, so old history does not flood the lane', () => {
+      expect(laneOf(finished())).toBe('earlier');
+      expect(
+        laneOf(finished({ terminalAt: now - (TERMINAL_LINGER_MS - 1) })),
+      ).toBe('just finished');
+    });
+
+    it('finished within 15 minutes: Just finished even when already viewed', () => {
+      const recent = now - 60_000;
+      expect(
+        laneOf(finished({ terminalAt: recent, acknowledgedAt: recent + 1 })),
+      ).toBe('just finished');
+    });
+
+    it('without a recorded finish time, falls back to updatedAt', () => {
+      expect(
+        laneOf(
+          finished({
+            terminalAt: undefined,
+            updatedAt: now - 2 * TERMINAL_LINGER_MS,
+          }),
+        ),
+      ).toBe('earlier');
+      expect(
+        laneOf(
+          finished({
+            terminalAt: undefined,
+            updatedAt: now - 2 * TERMINAL_LINGER_MS,
+            acknowledgedAt: now - 3 * TERMINAL_LINGER_MS,
+          }),
+        ),
+      ).toBe('just finished');
+    });
   });
 
   it('a live snooze wins over every other classification', () => {
@@ -267,7 +311,6 @@ describe('partitionHomeWorkItems (AC3 linger + snooze partition)', () => {
       items: [a],
       now,
       snoozedUntil: new Map([['a', now + 1000]]),
-      terminalSince: new Map(),
     });
     const { snoozed } = partition;
     expect(live(partition)).toEqual([]);
@@ -297,7 +340,6 @@ describe('partitionHomeWorkItems (AC3 linger + snooze partition)', () => {
       items: [a],
       now,
       snoozedUntil: new Map(),
-      terminalSince: new Map([['a', now]]),
     });
     const lanes: Record<string, readonly HomeLaneItem[]> = {
       needsYou: partition.needsYou,
@@ -339,7 +381,6 @@ describe('partitionHomeWorkItems (AC3 linger + snooze partition)', () => {
       items: [a],
       now,
       snoozedUntil: new Map([['a', now - 1]]),
-      terminalSince: new Map(),
     });
     expect(running).toEqual([a]);
     expect(snoozed).toEqual([]);
@@ -400,6 +441,8 @@ describe('desktop/mobile lane agreement (station#3227 A6)', () => {
       lifecycleLabel: 'Completed',
       updatedAt: now - 24 * HOUR,
       conversationUpdatedAt: '2026-08-02T20:00:00.000Z',
+      // Viewed before it finished: it finished after the last view.
+      acknowledgedAt: now - 25 * HOUR,
     }),
     item({
       id: 'conv-acked',
@@ -418,13 +461,11 @@ describe('desktop/mobile lane agreement (station#3227 A6)', () => {
   const snoozeWake = now + 60_000;
 
   function desktopPartition() {
-    // The same wiring `useHomeWorkLanes` performs, with the store-less
-    // `terminalSince` proxy both surfaces share on a fresh load.
+    // The same wiring `useHomeWorkLanes` performs.
     return partitionHomeWorkItems({
       items: withStableIds(mixed, new Map()),
       now,
       snoozedUntil: new Map([['snoozed-running', snoozeWake]]),
-      terminalSince: terminalSinceFromRecency(mixed),
     });
   }
 
@@ -482,7 +523,6 @@ describe('desktop/mobile lane agreement (station#3227 A6)', () => {
         items: withStableIds([fixture], new Map()),
         now,
         snoozedUntil: new Map(),
-        terminalSince: terminalSinceFromRecency([fixture]),
       });
       const mobile = groupMobileActivity([fixture], now);
       expect(ids(desktop.recentlyFinished)).toEqual(finishedBucket);
@@ -513,15 +553,12 @@ describe('sortSnoozedShelf', () => {
 
 describe('sortSettledTail', () => {
   it('sorts the settled tail by when work ended, most recent first', () => {
-    const a = item({ id: 'a' });
-    const b = item({ id: 'b' });
-    const c = item({ id: 'c' });
-    const terminalSince = new Map([
-      ['a', 1000],
-      ['b', 3000],
-      ['c', 2000],
-    ]);
-    expect(sortSettledTail([a, b, c], terminalSince)).toEqual([b, c, a]);
+    // `c` was active most recently, but `b` finished most recently.
+    const a = item({ id: 'a', terminalAt: 1000, updatedAt: 1000 });
+    const b = item({ id: 'b', terminalAt: 3000, updatedAt: 3000 });
+    const c = item({ id: 'c', terminalAt: 2000, updatedAt: 9000 });
+    const untimed = item({ id: 'untimed', updatedAt: 2500 });
+    expect(sortSettledTail([a, b, c, untimed])).toEqual([b, untimed, c, a]);
   });
 });
 

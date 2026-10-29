@@ -2871,10 +2871,21 @@ export class OrchestrationService {
               environmentId: session.environmentId,
             })
           : undefined;
+        // #4266: the conversation's durable history title (it may be a
+        // generated one) and the session's own display title, for the
+        // conversation read's title.
+        const historyTitle = this.options.eventStore?.conversationTitle([
+          ...(conversationId ? [conversationId] : []),
+          threadId,
+        ]);
         return {
           assignedAgentSlug: session.assignedAgentSlug,
           ...(session.delegation?.title
             ? { delegationTitle: session.delegation.title }
+            : {}),
+          ...(historyTitle ? { historyTitle } : {}),
+          ...(session.displayTitle
+            ? { displayTitle: session.displayTitle }
             : {}),
           ...(conversationId ? { conversationId } : {}),
           ...(session.environmentId
