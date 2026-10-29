@@ -1,12 +1,36 @@
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import {
-  exactProcessIdentity,
   isWindowsRoundTripUtcIso,
+  resolveOwnProcessIdentity,
 } from '../../packages/shared/src/process-identity.mjs';
 import { buildWindowsOwnedGuard } from './windows-owned-guard-build.mjs';
 
 const TERMINATION_FORCE_MS = 5_000;
+
+/** The exact identities this process resolved for itself, by pid. */
+const coordinatorIdentities = new Map();
+
+/**
+ * This coordinator's own exact identity, on the own-process probe schedule
+ * (#2675): a cold Windows PowerShell start can outlast one 1.5s probe, and a
+ * single attempt then refused every owned command. Still exact-or-null; no
+ * PID-only fallback. A process's birth never changes, so an exact result is
+ * kept: commands on this default path cannot start a guard until it is
+ * known, so later ones no longer block while earlier guards wait for their
+ * resume. A miss is not kept and is retried. The first lookup is still
+ * synchronous: an owned process started before it through another path
+ * (`executeOwnedProcess`, or a caller's own `resolveParentIdentity`) can be
+ * delayed by it.
+ */
+export function resolveCoordinatorIdentity(pid, dependencies = {}) {
+  const known = coordinatorIdentities.get(pid);
+  if (known) return known;
+  const probe = resolveOwnProcessIdentity(pid, dependencies);
+  if (probe.state !== 'exact') return null;
+  coordinatorIdentities.set(pid, probe.identity);
+  return probe.identity;
+}
 // Per-stream raw-output cap. Two streams consume at most 6MiB, reserving the
 // remaining 2MiB of the reporter's aggregate 8MiB budget for attachments.
 const DEFAULT_OUTPUT_CAP_BYTES = 3 * 1024 * 1024;
@@ -427,9 +451,9 @@ export function executeOwnedCommand(
     resolveInner = resolveCompletion;
   });
   const callerOnSpawn = spawnOptions.onSpawn;
-  const parent = (spawnOptions.resolveParentIdentity ?? exactProcessIdentity)(
-    process.pid,
-  );
+  const parent = (
+    spawnOptions.resolveParentIdentity ?? resolveCoordinatorIdentity
+  )(process.pid);
   if (!parent)
     return failedExecution(
       new Error(
