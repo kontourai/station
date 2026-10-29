@@ -211,6 +211,8 @@ vi.mock('../contexts/open-chats-store', async () => {
 });
 
 vi.mock('@kontourai/station-sdk', () => ({
+  // Home's start composer reads Feature Previews (the visual-skills ⋯).
+  useFeaturePreviewsQuery: () => ({ data: [] }),
   // The start composer's Enable (a server create); no test here enables.
   useMaterializeEngineAgentMutation: () => ({ mutateAsync: vi.fn() }),
   // archive#3122: Home resolves its Workspace Pane renderer through
