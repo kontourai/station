@@ -1936,6 +1936,7 @@ export function HostDevicePairingPanel({
                   // An account binding confirms the request as asked, so its
                   // list shows everything kept, not an earlier untick.
                   kept={
+                    request.requireAccountBinding ||
                     accountBindingRequests.has(request.requestId)
                       ? new Set(requestedScopeTokens(request.scope))
                       : keptScopeOf(request)
@@ -1943,6 +1944,10 @@ export function HostDevicePairingPanel({
                   disabled={
                     requestActionIds.has(request.requestId) ||
                     accountBindingRequests.has(request.requestId)
+                  }
+                  allowLimit={
+                    !request.requireAccountBinding &&
+                    !accountBindingRequests.has(request.requestId)
                   }
                   onChange={(next) =>
                     setKeptScopes((current) =>
@@ -2279,6 +2284,45 @@ export function HostDevicePairingPanel({
               )}
             </div>
           ))}
+          {accountReview && (
+            <p role="status">
+              Waiting for passkey confirmation.{' '}
+              <a href={accountReview.url} target="_blank" rel="noreferrer">
+                Review access change
+              </a>
+            </p>
+          )}
+          {accountPasskeyRequired && (
+            <p role="status">
+              Approving an invited person’s browser needs an owner passkey.{' '}
+              {accountSignInUrl && (
+                <>
+                  <a href={accountSignInUrl} target="_blank" rel="noreferrer">
+                    Sign in as operator
+                  </a>{' '}
+                  or{' '}
+                  <a
+                    href={accountSignInUrl.replace(
+                      '/operator/sign-in',
+                      '/operator/passkeys/enroll',
+                    )}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    enroll an owner passkey
+                  </a>
+                  , then approve again.{' '}
+                </>
+              )}
+              <a
+                href="https://github.com/kontourai/station/blob/main/docs/guides/operator-passkeys.md"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Passkey setup
+              </a>
+            </p>
+          )}
         </section>
       )}
       {!offer ? (
@@ -2530,45 +2574,6 @@ export function HostDevicePairingPanel({
           onDismiss={() => setRevocation(null)}
           onStopSession={stopSession}
         />
-      )}
-      {accountReview && (
-        <p role="status">
-          Waiting for passkey confirmation.{' '}
-          <a href={accountReview.url} target="_blank" rel="noreferrer">
-            Review access change
-          </a>
-        </p>
-      )}
-      {accountPasskeyRequired && (
-        <p role="status">
-          Approving an invited person’s browser needs an owner passkey.{' '}
-          {accountSignInUrl && (
-            <>
-              <a href={accountSignInUrl} target="_blank" rel="noreferrer">
-                Sign in as operator
-              </a>{' '}
-              or{' '}
-              <a
-                href={accountSignInUrl.replace(
-                  '/operator/sign-in',
-                  '/operator/passkeys/enroll',
-                )}
-                target="_blank"
-                rel="noreferrer"
-              >
-                enroll an owner passkey
-              </a>
-              , then approve again.{' '}
-            </>
-          )}
-          <a
-            href="https://github.com/kontourai/station/blob/main/docs/guides/operator-passkeys.md"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Passkey setup
-          </a>
-        </p>
       )}
       {operatorHandoff && (
         <section

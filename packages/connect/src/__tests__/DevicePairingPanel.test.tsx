@@ -3513,6 +3513,7 @@ describe('explicit verified-person pairing consent', () => {
     fireEvent.click(
       await screen.findByRole('radio', { name: /Use Member’s Project access/ }),
     );
+    expect(screen.queryByText('Limit access')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
     expect(await screen.findByText(/needs an owner passkey/)).toBeTruthy();
     expect(

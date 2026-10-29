@@ -12630,8 +12630,14 @@ export function configureDevicePairingHostRoutes(
         { label: 'Account', detail: account.candidate.displayName },
         { label: 'Issuer', detail: account.candidate.issuer },
         { label: 'Subject', detail: account.candidate.subject },
-        { label: 'Access', detail: request.scope },
+        {
+          label: 'Access',
+          detail: (parsePairingScope(request.scope) ?? [])
+            .map((scope) => PAIRING_SCOPE_DESCRIPTIONS[scope]?.label ?? scope)
+            .join(', '),
+        },
       ],
+      'Account and Project permissions limit this Device’s access.',
     );
   });
   app.post('/api/pairing/requests/:requestId/confirm', async (c) => {
