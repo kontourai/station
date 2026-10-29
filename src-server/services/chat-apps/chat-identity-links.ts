@@ -4,7 +4,6 @@ import {
   type ChatIdentityLink,
   parseChatIdentityLink,
 } from '@kontourai/station-contracts/chat-app';
-import { isDiscordGatewayConfiguration } from '../discord/discord-gateway-config-store.js';
 import { ChatAppStore, readChatRecord } from './chat-app-store.js';
 
 type LinkLookup =
@@ -12,31 +11,10 @@ type LinkLookup =
   | { state: 'revoked'; link: ChatIdentityLink }
   | { state: 'linked'; link: ChatIdentityLink };
 
-/** Native links use the public parser; imported v1 data retains its private grammar. */
 function parseStoredLink(value: ChatIdentityLink): ChatIdentityLink {
   const parsed = parseChatIdentityLink(value);
-  if (parsed) return parsed;
-  if (
-    value?.app === 'discord' &&
-    value.provenance?.source === 'legacy-import' &&
-    value.principalId === undefined &&
-    typeof value.importedAt === 'string' &&
-    Number.isFinite(Date.parse(value.importedAt)) &&
-    isDiscordGatewayConfiguration({
-      schemaVersion: 1,
-      identities: [
-        {
-          discordUserId: value.externalUserId,
-          stationIdentity: value.provenance.stationIdentity,
-          capabilities: value.provenance.capabilities,
-          projectFileProjects: value.provenance.projectFileProjects,
-          ...(value.revokedAt === undefined ? {} : { revokedAt: value.revokedAt }),
-        },
-      ],
-    })
-  )
-    return value;
-  throw new Error('Chat identity link is unavailable');
+  if (!parsed) throw new Error('Chat identity link is unavailable');
+  return parsed;
 }
 
 export class ChatIdentityLinks {
@@ -53,9 +31,11 @@ export class ChatIdentityLinks {
     externalUserId: string,
   ): LinkLookup {
     const record = readChatRecord<ChatIdentityLink>(
-      db.prepare(
-        'SELECT record FROM chat_identity_links WHERE app=? AND external_user_id=? ORDER BY sequence DESC LIMIT 1',
-      ).get(app, externalUserId),
+      db
+        .prepare(
+          'SELECT record FROM chat_identity_links WHERE app=? AND external_user_id=? ORDER BY sequence DESC LIMIT 1',
+        )
+        .get(app, externalUserId),
     );
     if (!record) return { state: 'unlinked' };
     const link = parseStoredLink(record);

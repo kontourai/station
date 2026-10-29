@@ -143,9 +143,9 @@ authorize anything.
 
 The first use imports the validated private configuration once. Each imported
 link retains the exact `stationIdentity`, per-person capabilities, Project
-slugs and any `revokedAt` value as legacy provenance. Duplicate user mappings
+slugs and revocation state as legacy provenance. Non-canonical legacy revocation values are converted to an import-time revocation. Duplicate user mappings
 retain the first mapping's authority, even when that first mapping is revoked.
-The import separately retains the guild/channel allowlist: importing a binding
+Entries with non-snowflake Discord IDs are unreachable and set aside; the import logs counts by kind without the IDs. Other unrepresentable configuration fails closed with a diagnostic. The import separately retains the guild/channel allowlist: importing a binding
 does not allow its channel. Absent grants or channel lists remain empty. The
 bot token is not imported.
 

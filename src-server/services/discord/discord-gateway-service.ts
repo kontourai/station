@@ -11,7 +11,10 @@ import WebSocket from 'ws';
 import { discordGatewayEvents } from '../../telemetry/metrics.js';
 import { isRecord } from '../../utils/is-record.js';
 import type { Logger } from '../../utils/logger.js';
-import { ChatAppCore, renderChatTranscript } from '../chat-apps/chat-app-core.js';
+import {
+  ChatAppCore,
+  renderChatTranscript,
+} from '../chat-apps/chat-app-core.js';
 import type { DiscordAuthorizationResult } from './discord-authorization.js';
 import { DiscordAuthorizationService } from './discord-authorization.js';
 import {
@@ -155,15 +158,22 @@ export class DiscordGatewayService {
     }
     try {
       const snapshot = JSON.stringify(configuration);
-      this.core.importLegacyDiscord(configuration, () =>
-        JSON.stringify(this.configurationStore.read()) === snapshot,
+      this.core.importLegacyDiscord(
+        configuration,
+        () => JSON.stringify(this.configurationStore.read()) === snapshot,
       );
       if (this.core.isDisabled('discord')) {
         recordGatewayEvent('disabled');
         return;
       }
-    } catch {
-      this.options.logger.warn('Discord gateway configuration is unavailable');
+    } catch (error) {
+      this.options.logger.warn(
+        error instanceof Error &&
+          error.message ===
+            'Legacy Discord import contains unrepresentable configuration'
+          ? error.message
+          : 'Discord gateway configuration is unavailable',
+      );
       recordGatewayEvent('policy_unavailable');
       return;
     }
@@ -339,9 +349,11 @@ export class DiscordGatewayService {
         externalChannelId: payload.channel_id,
       });
       if (
-        current && retained?.target.kind === 'conversation' &&
+        current &&
+        retained?.target.kind === 'conversation' &&
         current.sessionId === retained.target.conversationId
-      ) binding = current;
+      )
+        binding = current;
     } catch {
       recordGatewayEvent('policy_unavailable');
       return;
@@ -350,9 +362,12 @@ export class DiscordGatewayService {
       recordGatewayEvent('session_unbound');
       this.core.recordDelivery(
         {
-          app: 'discord', externalWorkspaceId: payload.guild_id,
-          externalChannelId: payload.channel_id, externalUserId: payload.author.id,
-          direction: 'inbound', action: 'continue',
+          app: 'discord',
+          externalWorkspaceId: payload.guild_id,
+          externalChannelId: payload.channel_id,
+          externalUserId: payload.author.id,
+          direction: 'inbound',
+          action: 'continue',
         },
         { state: 'refused', reason: 'channel-unbound' },
       );
@@ -385,21 +400,28 @@ export class DiscordGatewayService {
     try {
       const deliveryId = this.core.recordDelivery(
         {
-          app: 'discord', externalWorkspaceId: payload.guild_id,
-          externalChannelId: payload.channel_id, externalUserId: payload.author.id,
-          conversationId: binding.sessionId, direction: 'inbound', action: 'continue',
+          app: 'discord',
+          externalWorkspaceId: payload.guild_id,
+          externalChannelId: payload.channel_id,
+          externalUserId: payload.author.id,
+          conversationId: binding.sessionId,
+          direction: 'inbound',
+          action: 'continue',
         },
         { state: 'pending' },
       );
       // No await separates the final link/kill-switch recheck from dispatch.
       if (
         !this.authorization.authorize({
-          discordUserId: payload.author.id, guildId: payload.guild_id,
-          channelId: payload.channel_id, capability: 'turn:start',
+          discordUserId: payload.author.id,
+          guildId: payload.guild_id,
+          channelId: payload.channel_id,
+          capability: 'turn:start',
         }).allowed
       ) {
         this.core.settleDelivery(deliveryId, {
-          state: 'refused', reason: 'capability-unavailable',
+          state: 'refused',
+          reason: 'capability-unavailable',
         });
         return;
       }
@@ -426,7 +448,8 @@ export class DiscordGatewayService {
         channelId: payload.channel_id,
       });
       this.core.settleDelivery(deliveryId, {
-        state: 'delivered', externalMessageId: payload.id,
+        state: 'delivered',
+        externalMessageId: payload.id,
       });
       recordGatewayEvent('turn_started');
     } catch {
@@ -492,7 +515,8 @@ export class DiscordGatewayService {
       relay.guildId,
       relay.channelId,
       renderChatTranscript(
-        transcript ?? '', DISCORD_MESSAGE_MAX_CHARS,
+        transcript ?? '',
+        DISCORD_MESSAGE_MAX_CHARS,
         stationSessionPointer(relay.sessionId),
       ),
     );
@@ -516,12 +540,18 @@ export class DiscordGatewayService {
     try {
       await this.core.deliver(
         {
-          app: 'discord', externalWorkspaceId: guildId, externalChannelId: channelId,
-          direction: 'outbound', action: 'notify',
+          app: 'discord',
+          externalWorkspaceId: guildId,
+          externalChannelId: channelId,
+          direction: 'outbound',
+          action: 'notify',
         },
-        () => (this.options.deliverMessage ?? defaultDeliverMessage)({
-          token, channelId, content,
-        }),
+        () =>
+          (this.options.deliverMessage ?? defaultDeliverMessage)({
+            token,
+            channelId,
+            content,
+          }),
       );
     } catch {
       this.options.logger.warn('Discord message delivery failed');
@@ -565,7 +595,8 @@ async function defaultDeliverMessage(input: {
   if (!response.ok) throw new Error('Discord message delivery was rejected');
   const receipt: unknown = await response.json();
   if (
-    !isRecord(receipt) || typeof receipt.id !== 'string' ||
+    !isRecord(receipt) ||
+    typeof receipt.id !== 'string' ||
     !/^[0-9]{17,20}$/u.test(receipt.id)
   )
     throw new Error('Discord delivery receipt is unavailable');
