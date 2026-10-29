@@ -15,8 +15,8 @@ import {
   within,
 } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
-import { TaskOverviewTimeline } from '../TaskOverviewTimeline';
 import { capture, thread } from '../review/__tests__/review-fixtures';
+import { TaskOverviewTimeline } from '../TaskOverviewTimeline';
 
 vi.mock('../../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'https://timeline.test' }),

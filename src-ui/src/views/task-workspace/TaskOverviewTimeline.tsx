@@ -193,7 +193,7 @@ function Timeline({
           ))}
         </ol>
       ) : (
-        !review.error && !unavailable && <Empty title="No Screens yet" />
+        !review.error && !unavailable && <Empty label="No Screens yet" />
       )}
     </section>
   );

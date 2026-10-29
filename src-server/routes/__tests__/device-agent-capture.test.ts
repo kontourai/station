@@ -6,8 +6,8 @@ import type { MobileDeviceInventory } from '@kontourai/station-contracts/mobile-
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { TASK_REVIEW_LIMITS } from '@kontourai/station-contracts/task-review';
 import { Hono } from 'hono';
-import type WebSocket from 'ws';
 import { afterEach, expect, test } from 'vitest';
+import type WebSocket from 'ws';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { resolveStationControlCallerFromToken } from '../../runtime/mcp/station-control-caller.js';
 import {
@@ -165,7 +165,7 @@ async function harness(
       observedAt: new Date().toISOString(),
       devices: [device],
     }),
-    boot: async () => {},
+    boot: async () => ({ deviceId: device.deviceId }),
     attachStream: async () => {},
     shutdown: async () => {},
     screenshot: async () => ({ png: PNG, width: 1, height: 1 }),
@@ -285,6 +285,7 @@ async function harness(
       },
     },
     readPlan: async () => ({ kind: 'unavailable' }),
+    freezePlan: async () => true,
     readAnswers: async () => [],
   });
   app.route(
@@ -321,7 +322,9 @@ async function harness(
     await room.close();
     events.close();
   });
-  const opened = await (await post('open', device)).json();
+  const opened = (await (await post('open', device)).json()) as {
+    session: { sessionId: string };
+  };
   expect(opened).toMatchObject({ ok: true });
   const id: string = opened.session.sessionId;
   const access = await room.sessionTaskReviewAccess('agent-a');
@@ -355,8 +358,10 @@ async function harness(
     lease: () => surfaces.get(sessions.get(id)!.surfaceId)!.lease.snapshot(),
     list: async (taskId: string) =>
       (
-        await (await app.request(`/api/tasks/${taskId}/review`)).json()
-      ).data.items.filter((item: { kind: string }) => item.kind === 'capture'),
+        (await (await app.request(`/api/tasks/${taskId}/review`)).json()) as {
+          data: { items: { kind: string }[] };
+        }
+      ).data.items.filter((item) => item.kind === 'capture'),
     blobFiles: () =>
       existsSync(join(home, 'task-captures', 'sha256'))
         ? readdirSync(join(home, 'task-captures', 'sha256'))
@@ -366,7 +371,9 @@ async function harness(
 
 test('publishes a device Screen on only the bound Task and serves it through the authorized content route', async () => {
   const h = await harness();
-  const result = await (await h.capture({ label: 'Reproduced' })).json();
+  const result = (await (await h.capture({ label: 'Reproduced' })).json()) as {
+    captureId: string;
+  };
   expect(result).toMatchObject({
     ok: true,
     commit: h.commit,

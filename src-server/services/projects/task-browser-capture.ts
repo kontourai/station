@@ -270,7 +270,7 @@ export class TaskBrowserCapture {
       );
       return { capture, screenshot };
     } catch (error) {
-      throw this.failure(error);
+      throw this.failure(error, input.sourceKind);
     }
   }
 
@@ -300,7 +300,10 @@ export class TaskBrowserCapture {
     }
   }
 
-  private failure(error: unknown): Error {
+  private failure(
+    error: unknown,
+    sourceKind: TaskCapture['sourceKind'] = 'browser',
+  ): Error {
     if (error instanceof TaskBrowserCaptureError) return error;
     if (error instanceof WorkspaceCommitPinError)
       return new TaskBrowserCaptureError(
@@ -347,7 +350,9 @@ export class TaskBrowserCapture {
     }
     return new TaskBrowserCaptureError(
       'capture-unavailable',
-      'The Task capture is unavailable.',
+      sourceKind === 'browser'
+        ? 'The browser capture is unavailable.'
+        : 'The device capture is unavailable.',
       { cause: error },
     );
   }
