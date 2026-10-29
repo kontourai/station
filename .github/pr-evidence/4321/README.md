@@ -6,9 +6,7 @@ Captured in headless Chromium from an isolated, supervised Station
 theme is Station's own `data-theme`. These show UI state only, not native shell
 rendering. Builds: `dde260ada73e01fb0154f6d3a837b26ac993876c` for 01–08,
 `b79e239eb1eeccfe30cb69ae2876ab414fcad9f3` for 09 and
-`1cd3c90c366e3b9fd85db0564fac369c461d8aab` for 10. The 01–09 sections are
-unchanged at head apart from the Feature Preview gate (10) and the action row
-primitive.
+`1cd3c90c366e3b9fd85db0564fac369c461d8aab` for 10.
 
 The 01–10 captures are historical: the earlier in-app confirmation was
 replaced by a separate consent page. The four `11-sharing-*` PNGs were

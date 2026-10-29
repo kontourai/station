@@ -377,14 +377,30 @@ test.skipIf(process.platform === 'win32')(
         writeFileSync(file, content, { mode: 0o600 });
         chmodSync(file, 0o644);
       } else if (kind === 'fifo') {
-        execFileSync('mkfifo', [file], { windowsHide: true });
+        execFileSync('mkfifo', [file], { windowsHide: true, timeout: 10_000 });
       } else {
         const other = join(path, 'other');
         writeFileSync(other, content, { mode: 0o600 });
         if (kind === 'symlink') symlinkSync(other, file);
         else linkSync(other, file);
       }
-      expect(readAccountSharingRecord(path).kind, kind).toBe('unreadable');
+      if (kind === 'fifo') {
+        const observed = execFileSync(
+          process.execPath,
+          [
+            '--import',
+            'tsx',
+            '--input-type=module',
+            '-e',
+            "import { readAccountSharingRecord } from './src-server/services/identity/account-sharing-setting.ts'; process.stdout.write(readAccountSharingRecord(process.argv[1]).kind)",
+            path,
+          ],
+          { encoding: 'utf8', windowsHide: true, timeout: 30_000 },
+        );
+        expect(observed, kind).toBe('unreadable');
+      } else {
+        expect(readAccountSharingRecord(path).kind, kind).toBe('unreadable');
+      }
       expect(() => stageAccountSharingChange(path, on), kind).toThrow();
       expect(existsSync(file), kind).toBe(true);
     }
