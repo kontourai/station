@@ -1,8 +1,10 @@
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   copyFileSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -187,6 +189,132 @@ async function shots(page: Page, testInfo: TestInfo, prefix: string) {
       });
       if (directory)
         copyFileSync(testInfo.outputPath(name), join(directory, name));
+    }
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
+}
+
+async function clipShots(page: Page, testInfo: TestInfo, reviewUrl: string) {
+  const directory = process.env.STATION_REVIEW_SHOTS_DIR;
+  if (!directory) return;
+  mkdirSync(directory, { recursive: true });
+  let videoReads = 0;
+  page.on('request', (request) => {
+    if (
+      new URL(request.url()).pathname.endsWith(
+        '/review/walkthroughs/clip-render/video',
+      )
+    )
+      videoReads++;
+  });
+  const settle = async () => {
+    await page.evaluate(async () => {
+      const transitions = document
+        .getAnimations()
+        .filter(
+          (animation) =>
+            animation instanceof CSSTransition &&
+            animation.playState === 'running',
+        );
+      await Promise.all(
+        transitions.map((animation) =>
+          animation.finished.catch(() => undefined),
+        ),
+      );
+    });
+    await page.waitForFunction(() =>
+      document
+        .getAnimations()
+        .every(
+          (animation) =>
+            !(animation instanceof CSSTransition) ||
+            animation.playState !== 'running',
+        ),
+    );
+  };
+  const capture = async (name: string) => {
+    await settle();
+    await page.screenshot({
+      path: testInfo.outputPath(name),
+      fullPage: true,
+      animations: 'disabled',
+    });
+    copyFileSync(testInfo.outputPath(name), join(directory, name));
+  };
+  for (const theme of ['dark', 'light']) {
+    await page.goto(new URL('/appearance', reviewUrl).href);
+    const mode = page.getByRole('radiogroup', { name: 'Mode', exact: true });
+    const label = theme === 'dark' ? 'Dark' : 'Light';
+    if (
+      !(await mode.getByRole('radio', { name: label, exact: true }).isChecked())
+    ) {
+      const [saved] = await Promise.all([
+        page.waitForResponse(
+          (response) =>
+            new URL(response.url()).pathname === '/api/me/preferences' &&
+            response.request().method() === 'PATCH' &&
+            response.request().postDataJSON()?.theme === theme,
+        ),
+        mode.getByText(label, { exact: true }).click(),
+      ]);
+      expect(saved.ok()).toBe(true);
+    }
+    await page.goto(reviewUrl);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    await expect(
+      page.locator('.task-review .review-document__markdown'),
+    ).toBeVisible();
+    await expect(
+      page.locator('.task-review .review-thread__body').first(),
+    ).toBeVisible();
+    for (const width of [390, 1440]) {
+      await page.setViewportSize({ width, height: 1000 });
+      const entry = page.getByRole('button', {
+        name: /Inspect request walkthrough/,
+      });
+      await entry.scrollIntoViewIfNeeded();
+      await expect(entry).toBeVisible();
+      const before = videoReads;
+      await capture(`clip-list-${theme}-${width}.png`);
+      expect(videoReads).toBe(before);
+      await entry.click();
+      const player = page.getByRole('dialog', {
+        name: 'Inspect request walkthrough',
+      });
+      await expect(player).toBeVisible();
+      const video = player.locator('video');
+      await expect(video).toBeVisible();
+      await expect
+        .poll(() =>
+          video.evaluate((element) => (element as HTMLVideoElement).readyState),
+        )
+        .toBeGreaterThanOrEqual(4);
+      await video.press('Space');
+      await expect
+        .poll(() =>
+          video.evaluate(
+            (element) => (element as HTMLVideoElement).currentTime,
+          ),
+        )
+        .toBeGreaterThan(0);
+      await video.press('Space');
+      await expect
+        .poll(() =>
+          video.evaluate((element) => (element as HTMLVideoElement).paused),
+        )
+        .toBe(true);
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+      );
+      expect(videoReads).toBe(before + 1);
+      await capture(`clip-player-${theme}-${width}.png`);
+      await player
+        .getByRole('button', { name: 'Close walkthrough clip' })
+        .click();
+      await expect(player).toHaveCount(0);
     }
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -396,6 +524,99 @@ syncBuiltinESMExports();
       );
       await expect(card.locator('.review-thread__state')).toHaveText('Open');
       await shots(page, info, 'review');
+    });
+
+    test('renders a seeded Task walkthrough in Screens and its player', async ({
+      page,
+    }, info) => {
+      test.skip(
+        !process.env.STATION_REVIEW_SHOTS_DIR,
+        'Render output directory not requested.',
+      );
+      info.setTimeout(180_000);
+      await pairBrowser(page, {
+        root: process.cwd(),
+        instance: live.instance,
+        serverPort: live.serverPort,
+        uiOrigin: live.ui,
+      });
+      expect(
+        await apiJson(page, '/api/feature-previews/walkthroughs', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: true }),
+        }),
+      ).toMatchObject({ success: true });
+      const current = await apiJson<{
+        data: { projectId: string; id: string; createdAt: string };
+      }>(page, `/api/tasks/${taskId}`);
+      const key = createHash('sha256')
+        .update(
+          JSON.stringify([
+            current.data.projectId,
+            taskId,
+            current.data.createdAt,
+          ]),
+        )
+        .digest('hex');
+      const artifact = join(
+        live.home,
+        'projects',
+        'review-demo',
+        'walkthroughs',
+        '.task-clips',
+        key,
+        'clip-render',
+      );
+      mkdirSync(artifact, { recursive: true, mode: 0o700 });
+      const recording = readFileSync('docs/learn/media/inspect-request.webm');
+      writeFileSync(join(artifact, 'recording.webm'), recording, {
+        mode: 0o600,
+      });
+      writeFileSync(
+        join(artifact, 'manifest.json'),
+        JSON.stringify({
+          schema: 'station.walkthrough/v1',
+          id: 'clip-render',
+          createdAt: '2026-10-25T00:00:00Z',
+          title: 'Inspect request walkthrough',
+          source: {
+            adapter: 'browser-screencast',
+            adapterVersion: '1',
+            durationMs: 14200,
+            commit,
+            recording: {
+              file: 'recording.webm',
+              mediaType: 'video/webm',
+              byteLength: recording.length,
+              digest: `sha256:${createHash('sha256').update(recording).digest('hex')}`,
+            },
+          },
+          capture: { platform: 'web' },
+          coverage: {
+            transcript: 'absent',
+            frames: 'absent',
+            marks: 'absent',
+            elements: 'absent',
+            route: 'absent',
+            console: 'absent',
+            network: 'absent',
+          },
+          events: [],
+        }),
+        { mode: 0o600 },
+      );
+      const list = await apiJson<{ data: { items: Array<{ id: string }> } }>(
+        page,
+        `/api/tasks/${taskId}/review/walkthroughs`,
+      );
+      expect(list.data.items.map((item) => item.id)).toContain('clip-render');
+      await clipShots(page, info, `${live.ui}/tasks/${taskId}?taskView=review`);
+      info.annotations.push({
+        type: 'qualification',
+        description:
+          'Seeded local recording and real authorized reads; no live Browser recording or provider run.',
+      });
     });
 
     test('live Claude replies through its bound tool with verified commit evidence', async ({
