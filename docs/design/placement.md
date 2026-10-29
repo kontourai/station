@@ -887,6 +887,8 @@ cards (`components/chat/SubagentTranscriptCard.tsx`). Claude and Muse cards
 sit after their spawning tool-call run, including every child of a workflow.
 When an engine such as Codex reports a child without a tool-call row, the
 card uses the child's parent turn and the spawn event's text position.
+That position counts the narration a settled phone turn folds into its tool
+batch, so the card follows the batch instead of splitting the prose after it.
 A steer binds the card to the assistant row containing its spawn, with text
 offsets local to that row; the live whole-turn shell retains its turn-wide
 offset. If the spawn segment has no content row at the spawn event, the projection

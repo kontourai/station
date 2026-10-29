@@ -226,6 +226,8 @@ export type TaskReviewItem = {
       readonly artifact: TaskReviewArtifactRef;
       readonly text?: string;
       readonly capture?: TaskCapture;
+      /** Save ordinals for the current Plan and returned threads' anchored revisions. */
+      readonly revisionOrdinals?: Readonly<Record<string, number>>;
     }
   | { readonly status: 'unavailable' }
 );
@@ -257,6 +259,49 @@ export type TaskReviewThreadSummary =
       readonly ordinal: number;
       readonly eventCount: number;
     };
+
+/** Bounded event preview without a trailing partial surrogate pair. */
+export function previewTaskReviewEvent<T extends TaskReviewEvent>(event: T): T {
+  return 'body' in event
+    ? {
+        ...event,
+        body: event.body
+          .slice(0, TASK_REVIEW_OPENING_PREVIEW_CHARS)
+          .replace(/[\uD800-\uDBFF]$/, ''),
+      }
+    : event;
+}
+
+/** Project a detail view into the bounded thread-list payload. */
+export function summarizeThreadView({
+  events,
+  ...view
+}: TaskReviewThreadView): Extract<
+  TaskReviewThreadSummary,
+  { status: 'available' }
+> {
+  const openingEvent = events[0];
+  if (openingEvent?.kind !== 'comment')
+    throw new TypeError('Missing opening comment');
+  const lastDeliveryEvent = [...events]
+    .reverse()
+    .find(
+      (event) =>
+        event.kind === 'sent' ||
+        event.kind === 'send-failed' ||
+        event.kind === 'agent-reply',
+    );
+  return {
+    ...view,
+    status: 'available',
+    eventCount: events.length,
+    openingEvent: previewTaskReviewEvent({ ...openingEvent, kind: 'comment' }),
+    lastDeliveryEvent: lastDeliveryEvent
+      ? previewTaskReviewEvent(lastDeliveryEvent)
+      : undefined,
+    lastEvent: previewTaskReviewEvent(events[events.length - 1]),
+  };
+}
 
 export interface TaskReviewAuthorIdentity {
   readonly author: TaskReviewAuthor;

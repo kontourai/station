@@ -855,10 +855,13 @@ envelope malformed, as do a fragment and an `openedNotification` parameter
 links may).
 
 Trusted in-process producers use `parseNotificationEnvelopeForWrite`: exact
-keys, known kinds, no unresolved `principal` audience, and no producer-authored
-read/dismiss markers. Passing that parser is shape validation, not caller
-authorization. The notification service owns the trusted write path and derives
-session metadata from the envelope. See the
+keys, known kinds, and no producer-authored read/dismiss markers. A `principal`
+audience needs a well-formed human principal ID and Project ID; an agent source
+that names a Project must agree with it. Older principal envelopes without a
+Project ID remain readable but cannot be written. Passing the parser is shape
+validation, not caller authorization: the notification service rechecks
+membership before writing the private feed. It also derives session metadata
+from the envelope. See the
 [parser](../../packages/shared/src/notification-envelope.ts),
 [service](../../src-server/services/notifications/notification-service.ts), and
 [UI reader](../../src-ui/src/components/notifications/NotificationEnvelopeControls.tsx).

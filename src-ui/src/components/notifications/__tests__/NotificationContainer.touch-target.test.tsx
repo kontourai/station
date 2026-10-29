@@ -324,3 +324,106 @@ test.runIf(chromiumAvailable && wslQuarantinedHost)(
     ctx.skip(WSL_QUARANTINE_REASON);
   },
 );
+
+/**
+ * A warning or error toast must stand out from the transcript it floats
+ * over, and a one-line toast must not carry the dismiss button's height as
+ * empty space below its message. Measured on the real stylesheets in real
+ * Chromium, at a phone width, in both themes.
+ */
+describe.skipIf(!chromiumAvailable || wslQuarantinedHost)(
+  'NotificationContainer severity toasts (station#4266)',
+  () => {
+    let browser: Awaited<ReturnType<typeof chromium.launch>>;
+
+    beforeAll(async () => {
+      browser = await chromium.launch();
+    });
+
+    afterAll(async () => {
+      await browser?.close();
+    });
+
+    function severityHtml(theme: 'dark' | 'light'): string {
+      const now = Date.now();
+      notifications = [
+        {
+          id: 'severity:info',
+          message: 'Copied the link.',
+          type: 'info',
+          timestamp: now,
+          dismissed: false,
+        },
+        {
+          id: 'severity:warning',
+          message: 'Project config was not loaded.',
+          type: 'warning',
+          timestamp: now,
+          dismissed: false,
+        },
+      ];
+      const { container, unmount } = render(<NotificationContainer />);
+      const markup = container.innerHTML;
+      unmount();
+      return `<!doctype html><html data-theme="${theme}"><head><meta name="viewport" content="width=device-width, initial-scale=1.0" /><style>${buildFixtureCss()}</style></head><body>${markup}</body></html>`;
+    }
+
+    for (const theme of ['dark', 'light'] as const) {
+      test(`a warning toast is toned, labelled and tight at 390px (${theme})`, async () => {
+        const page = await browser.newPage({
+          viewport: { width: 390, height: 844 },
+          hasTouch: true,
+          isMobile: true,
+        });
+        try {
+          await page.setContent(severityHtml(theme));
+          const measured = await page.evaluate(() => {
+            const card = (selector: string) => {
+              const element = document.querySelector<HTMLElement>(selector)!;
+              const message = element
+                .querySelector('.toast-card__message')!
+                .getBoundingClientRect();
+              const style = getComputedStyle(element);
+              return {
+                background: style.backgroundImage + style.backgroundColor,
+                tone: style.borderInlineStartColor,
+                paddingBottom: Number.parseFloat(style.paddingBottom),
+                belowMessage:
+                  element.getBoundingClientRect().bottom - message.bottom,
+              };
+            };
+            const label = document.querySelector(
+              '.toast-card--warning .toast-card__severity',
+            );
+            return {
+              page: getComputedStyle(document.body).backgroundColor,
+              info: card('.toast-card:not(.toast-card--warning)'),
+              warning: card('.toast-card--warning'),
+              label: label?.textContent,
+              labelColor: label ? getComputedStyle(label).color : undefined,
+              labelHasMark: Boolean(label?.querySelector('svg')),
+            };
+          });
+          // Toned: not the page's background, and not a plain toast's.
+          expect(measured.warning.background).not.toContain(measured.page);
+          expect(measured.warning.background).not.toBe(
+            measured.info.background,
+          );
+          // Labelled in the tone, with its mark: color reinforces the text.
+          expect(measured.label).toBe('Warning:');
+          expect(measured.labelHasMark).toBe(true);
+          expect(measured.labelColor).toBe(measured.warning.tone);
+          // Tight: no more below a one-line message than the card's padding.
+          for (const card of [measured.info, measured.warning]) {
+            expect(card.belowMessage).toBeLessThanOrEqual(
+              // The 44px dismiss target overhangs a ~20px line by a pixel or two.
+              card.paddingBottom + 2,
+            );
+          }
+        } finally {
+          await page.close();
+        }
+      });
+    }
+  },
+);

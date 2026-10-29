@@ -119,6 +119,8 @@ export interface ChatDiscordImport {
 
 export const CHAT_DELIVERY_REFUSAL_REASONS = [
   'app-disabled',
+  'policy-unavailable',
+  'busy',
   'not-connected',
   'unlinked-sender',
   'link-revoked',
@@ -144,6 +146,8 @@ export type ChatDeliveryOutcome =
   | { readonly state: 'refused'; readonly reason: ChatDeliveryRefusalReason }
   | { readonly state: 'failed'; readonly reason: string };
 
+export const CHAT_REPLY_MAX_CHUNKS = 10;
+
 /** One attempt per row; retryOf links a later attempt to the retained prior outcome. */
 export interface ChatDeliveryLogEntry {
   readonly id: string;
@@ -165,6 +169,13 @@ export interface ChatDeliveryLogEntry {
   readonly outcome: ChatDeliveryOutcome;
   readonly createdAt: string;
   readonly retryOf?: string;
+  readonly refusalId?: string;
+  readonly replyChunk?: {
+    readonly replyId: string;
+    readonly chunkIndex: number;
+    readonly chunkCount: number;
+    readonly overflow?: true;
+  };
 }
 
 export interface ChatAppKillSwitch {
@@ -535,6 +546,7 @@ export function parseChatDeliveryLogEntry(
     'conversationId',
     'taskId',
     'retryOf',
+    'refusalId',
   ] as const;
   if (
     !closedRecord(value, [
@@ -545,6 +557,7 @@ export function parseChatDeliveryLogEntry(
       'externalThreadId',
       'externalUserId',
       'approval',
+      'replyChunk',
       'direction',
       'action',
       'outcome',
@@ -592,10 +605,44 @@ export function parseChatDeliveryLogEntry(
       requestId: value.approval.requestId,
     };
   }
+  let replyChunk: ChatDeliveryLogEntry['replyChunk'];
+  if (value.replyChunk !== undefined) {
+    const chunk = value.replyChunk;
+    if (
+      !closedRecord(chunk, [
+        'replyId',
+        'chunkIndex',
+        'chunkCount',
+        'overflow',
+      ]) ||
+      !id(chunk.replyId) ||
+      !Number.isSafeInteger(chunk.chunkIndex) ||
+      !Number.isSafeInteger(chunk.chunkCount) ||
+      (chunk.chunkIndex as number) < 0 ||
+      (chunk.chunkCount as number) < 1 ||
+      (chunk.chunkCount as number) > CHAT_REPLY_MAX_CHUNKS ||
+      (chunk.chunkIndex as number) >= (chunk.chunkCount as number) ||
+      (chunk.overflow !== undefined &&
+        (chunk.overflow !== true ||
+          chunk.chunkCount !== CHAT_REPLY_MAX_CHUNKS ||
+          chunk.chunkIndex !== CHAT_REPLY_MAX_CHUNKS - 1))
+    )
+      return null;
+    replyChunk = {
+      replyId: chunk.replyId,
+      chunkIndex: chunk.chunkIndex as number,
+      chunkCount: chunk.chunkCount as number,
+      ...(chunk.overflow === true ? { overflow: true } : {}),
+    };
+  }
   const outcome = parseOutcome(value.app, value.outcome);
   if (
     !outcome ||
     value.retryOf === value.id ||
+    value.refusalId === value.id ||
+    (value.direction !== 'outbound' &&
+      (value.refusalId !== undefined || replyChunk !== undefined)) ||
+    (value.refusalId !== undefined && replyChunk !== undefined) ||
     (outcome.state === 'refused' &&
       outcome.reason === 'unlinked-sender' &&
       value.principalId !== undefined)
@@ -612,6 +659,7 @@ export function parseChatDeliveryLogEntry(
     createdAt: value.createdAt,
     ...optional,
     ...(approval === undefined ? {} : { approval }),
+    ...(replyChunk === undefined ? {} : { replyChunk }),
   };
 }
 
