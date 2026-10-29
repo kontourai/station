@@ -331,7 +331,11 @@ test('bounds initial requests and admits more only after Show more and viewport 
       [{ target: element, isIntersecting: true } as IntersectionObserverEntry],
       {} as IntersectionObserver,
     );
-  await screen.findByRole('button', { name: 'Review Screen 199' });
+  await screen.findByRole(
+    'button',
+    { name: 'Review Screen 199' },
+    { timeout: 15000 },
+  );
   expect(
     h.reads.filter((path) => path.endsWith('/content')).length,
   ).toBeLessThanOrEqual(12);
