@@ -902,9 +902,7 @@ interface ClaudeArtifactsSpawnEnv {
  * to `1` inside the CLI. The engine still offers the tool only to a
  * first-party claude.ai subscription login.
  */
-function claudeArtifactsSpawnEnv(
-  enabled: boolean,
-): ClaudeArtifactsSpawnEnv {
+function claudeArtifactsSpawnEnv(enabled: boolean): ClaudeArtifactsSpawnEnv {
   return { CLAUDE_CODE_ARTIFACT: enabled === true ? '1' : '0' };
 }
 
