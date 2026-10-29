@@ -853,6 +853,52 @@ describe('ChatDockBody marker actions follow callerAccess', () => {
     },
   );
 
+  // A reloaded reply bubble (a runtime-error part rehydrated from the
+  // projection), through the dock's real message list and bubble.
+  test.each([
+    ['full', true],
+    ['readOnly', false],
+  ] as const)(
+    "a reloaded reply bubble's hint follows %s caller's access (names send again: %s)",
+    async (caller, namesSend) => {
+      const base = sessionWith('', CALLERS[caller]);
+      renderDock(
+        {
+          ...base,
+          messages: [
+            {
+              role: 'user',
+              content: 'are you still there?',
+              timestamp: 1,
+            } as any,
+            {
+              role: 'assistant',
+              content: '',
+              contentParts: [
+                {
+                  type: 'text',
+                  content: `⚠️ ${RAW_MESSAGE}`,
+                  runtimeError: true,
+                  runtimeErrorCode: 'engine-session-binding-dead',
+                },
+              ],
+              timestamp: 2,
+            } as any,
+          ],
+        },
+        vi.fn(),
+      );
+      await screen.findByText(
+        /engine session was lost/i,
+        {},
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      );
+      expect(
+        (document.body.textContent ?? '').includes('Send your message again'),
+      ).toBe(namesSend);
+    },
+  );
+
   const UNKNOWN = '[SYSTEM_EVENT] [CHAT_ERROR] Something unexpected went wrong';
   test.each([
     ['full', true],
