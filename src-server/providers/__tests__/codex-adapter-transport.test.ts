@@ -151,9 +151,15 @@ describe('CodexAdapterTransport', () => {
     expect(JSON.stringify(warning)).not.toContain('{not json');
   });
 
-  test('does not persist raw Codex stderr content', async () => {
+  test('keeps stderr diagnostics out of session events without losing subsequent events', async () => {
+    const onStderr = vi.fn();
     const transport = new CodexAdapterTransport(
       () => new Date('2026-04-11T00:00:00Z'),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      onStderr,
     );
     const processHandle = new FakeCodexProcess();
     const record = createCodexSessionRecord({
@@ -168,15 +174,19 @@ describe('CodexAdapterTransport', () => {
     transport.handleProcess(record);
     const iterator = transport.streamEvents()[Symbol.asyncIterator]();
 
-    processHandle.stderr.write('token=must-not-persist\n');
+    processHandle.stderr.write('token=must-not-persist\nsecond diagnostic\n');
+    transport.handleStdoutLine(record, '{not json');
 
-    const warning = await nextEvent(iterator, 'stderr warning');
+    const warning = await nextEvent(iterator, 'protocol warning');
     expect(warning).toMatchObject({
       method: 'runtime.warning',
-      code: 'codex-stderr',
-      message: 'Codex app-server emitted stderr output.',
+      code: 'codex-json-parse',
     });
     expect(JSON.stringify(warning)).not.toContain('must-not-persist');
+    expect(onStderr).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(onStderr.mock.calls)).not.toContain(
+      'must-not-persist',
+    );
   });
 
   test('confirms process-tree cleanup before publishing a natural exit', async () => {
