@@ -5040,6 +5040,51 @@ export class OrchestrationService {
     return this.readLatestSessionStartMetadata(threadId);
   }
 
+  /** Re-resolve the designated Session's Station Control selection at refresh time. */
+  async resolveCoordinatorStationControl(threadId: string) {
+    this.initialize();
+    const store = this.options.eventStore;
+    const resolver = this.options.resolveSessionAgent;
+    const session = store?.readSessionByThread(threadId);
+    const principal = this.resolveSessionActingPrincipal(threadId);
+    if (
+      !store ||
+      !resolver ||
+      !session ||
+      !principal ||
+      principal.source !== 'session-owner'
+    )
+      return undefined;
+    const conversationId =
+      store.conversationForSession(threadId)?.conversationId ?? threadId;
+    const stillDesignated = () => {
+      const current = this.resolveSessionActingPrincipal(threadId);
+      return (
+        store.coordinatorStore().designationForConversation(conversationId)
+          ?.actor.userId === principal.id &&
+        current?.source === 'session-owner' &&
+        current.id === principal.id
+      );
+    };
+    if (!stillDesignated()) return undefined;
+    const metadata = this.readLatestSessionStartMetadata(threadId);
+    if (!metadata) return undefined;
+    const tenantExecutionContext =
+      this.sessionAuthz.tenantContextFor(threadId) ??
+      session.tenantExecutionContext;
+    const resolved = await resolver({
+      threadId,
+      provider: session.provider,
+      metadata,
+      ...(session.cwd ? { cwd: session.cwd } : {}),
+      ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
+    });
+    if (!stillDesignated()) return undefined;
+    return resolved.agent?.toolServers?.find(
+      (server) => server.id === 'station-control',
+    );
+  }
+
   /**
    * #2377 slice C2a: whether Station recorded a start for this session, so a
    * station-control call that names it is a follow-up, not a new session.

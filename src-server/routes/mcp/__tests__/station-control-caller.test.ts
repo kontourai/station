@@ -805,6 +805,26 @@ function sdkSideTransport() {
 }
 
 describe('station-control verified caller (in-process Claude delivery)', () => {
+  test('the coordinator server exposes only the selected Station tools', async () => {
+    const options = claudeInProcessStationControlOptions(() => resolveRecord);
+    const side = sdkSideTransport();
+    const instance = options.createInProcessCoordinatorStationControl(
+      'session-a',
+      undefined,
+      ['read_conversation'],
+    );
+    await instance.connect(side.transport);
+    await side.request(1, 'initialize', {
+      protocolVersion: '2025-06-18',
+      capabilities: {},
+      clientInfo: { name: 'test', version: '1' },
+    });
+    const listed = await side.request(2, 'tools/list');
+    expect(
+      listed.result.tools.map((tool: { name: string }) => tool.name),
+    ).toEqual(['read_conversation']);
+    await instance.close();
+  });
   test('a tool served in-process sees a bound caller for its session, the REST call it makes sees the same, and revoking the session removes both', async () => {
     process.env.STATION_API_BASE = baseUrl;
     const options = claudeInProcessStationControlOptions(

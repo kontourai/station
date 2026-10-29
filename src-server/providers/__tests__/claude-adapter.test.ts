@@ -1136,6 +1136,8 @@ describe('ClaudeAdapter', () => {
     const instance = { connect: vi.fn(), close: vi.fn() };
     const adapter = new ClaudeAdapter({
       isCoordinatorSession: () => designated,
+      resolveCoordinatorStationControl: async () =>
+        GENUINE_STATION_CONTROL_TOOLSERVER,
       createInProcessCoordinatorStationControl: () => instance,
     });
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
@@ -1186,6 +1188,8 @@ describe('ClaudeAdapter', () => {
     mockQuery.mockReturnValue(controlled);
     const adapter = new ClaudeAdapter({
       isCoordinatorSession: () => true,
+      resolveCoordinatorStationControl: async () =>
+        GENUINE_STATION_CONTROL_TOOLSERVER,
       createInProcessCoordinatorStationControl: () => ({
         connect: vi.fn(),
         close: vi.fn(),
@@ -1217,6 +1221,8 @@ describe('ClaudeAdapter', () => {
     mockQuery.mockReturnValue(controlled);
     const adapter = new ClaudeAdapter({
       isCoordinatorSession: () => true,
+      resolveCoordinatorStationControl: async () =>
+        GENUINE_STATION_CONTROL_TOOLSERVER,
       createInProcessCoordinatorStationControl: () => ({
         connect: vi.fn(),
         close: vi.fn(),
@@ -1237,6 +1243,64 @@ describe('ClaudeAdapter', () => {
     await first;
     expect(controlled.setMcpServers).toHaveBeenCalledTimes(1);
     await adapter.stopSession('refresh-concurrent');
+  });
+
+  test('coordinator refresh preserves the Agent tool selection', async () => {
+    const controlled = createControlledMockQuery();
+    controlled.mcpServerStatus.mockResolvedValueOnce([]);
+    controlled.mcpServerStatus.mockResolvedValue([
+      {
+        name: 'station-control',
+        source: 'sdk',
+        status: 'connected',
+        tools: [{ name: 'read_conversation' }],
+      },
+    ]);
+    mockQuery.mockReturnValue(controlled);
+    const createControl = vi.fn(() => ({ connect: vi.fn(), close: vi.fn() }));
+    const adapter = new ClaudeAdapter({
+      isCoordinatorSession: () => true,
+      resolveCoordinatorStationControl: async () => ({
+        id: 'station-control',
+        transport: 'stdio',
+        command: 'node',
+        args: [builtinStationControlServerPath()],
+        toolNames: ['read_conversation', 'delegate_task'],
+        allowedTools: ['read_conversation'],
+      }),
+      createInProcessCoordinatorStationControl: createControl,
+    });
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'refresh-selection',
+    });
+    await adapter.sendTurn({ threadId: 'refresh-selection', input: 'go' });
+    expect(createControl).toHaveBeenCalledWith('refresh-selection', undefined, [
+      'read_conversation',
+    ]);
+    await adapter.stopSession('refresh-selection');
+  });
+
+  test('coordinator refresh refuses when the canonical server is unavailable', async () => {
+    const controlled = createControlledMockQuery();
+    controlled.mcpServerStatus.mockResolvedValueOnce([]);
+    mockQuery.mockReturnValue(controlled);
+    const createControl = vi.fn(() => ({ connect: vi.fn(), close: vi.fn() }));
+    const adapter = new ClaudeAdapter({
+      isCoordinatorSession: () => true,
+      resolveCoordinatorStationControl: async () => undefined,
+      createInProcessCoordinatorStationControl: createControl,
+    });
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'refresh-unavailable',
+    });
+    await expect(
+      adapter.sendTurn({ threadId: 'refresh-unavailable', input: 'go' }),
+    ).rejects.toThrow('could not confirm');
+    expect(createControl).not.toHaveBeenCalled();
+    expect(controlled.setMcpServers).not.toHaveBeenCalled();
+    await adapter.stopSession('refresh-unavailable');
   });
 
   test('a same-named third-party server is not replaced by coordinator refresh', async () => {

@@ -110,6 +110,10 @@ test('a designated Codex conversation starts a tools successor while another con
       loadAgentSpec: async () => ({
         name: 'Writer',
         prompt: 'Help the person.',
+        tools: {
+          mcpServers: [],
+          available: ['station-control_read_conversation'],
+        },
       }),
       resolveToolServer: async (id) =>
         id === 'station-control'
@@ -185,6 +189,12 @@ test('a designated Codex conversation starts a tools successor while another con
     actor: { userId: 'owner' },
     replace: false,
     now: Date.now(),
+  });
+  expect(
+    await service.resolveCoordinatorStationControl('houston'),
+  ).toMatchObject({
+    id: 'station-control',
+    allowedTools: ['read_conversation'],
   });
   const successor = await service.resolveConversationContinuation(
     'houston',

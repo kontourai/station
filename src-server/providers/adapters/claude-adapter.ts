@@ -34,6 +34,7 @@ import type {
   ProviderContinuityCapabilities,
   ProviderSessionSourceAffinity,
   ResolvedAgentDefinition,
+  ResolvedAgentToolServer,
 } from '@kontourai/station-contracts/provider';
 import {
   APPROVAL_ESCALATION_REQUIRES_RESTART_CODE,
@@ -711,6 +712,7 @@ type ClaudeSessionRecord = {
   tenantExecutionContext?: TenantExecutionContext;
   configuredMetadata?: Record<string, unknown>;
   coordinatorControlState?: 'pending' | 'ready' | 'uncertain';
+  coordinatorControlExpected?: readonly string[];
   stationControlBuiltin: boolean;
   pendingRequests: Map<string, PendingRequest>;
   /** Mirrors `ClaudeMessageState.activeTurnId`; derived from `sdkTurns`. */
@@ -1022,10 +1024,15 @@ export interface ClaudeAdapterOptions {
   ) => unknown;
   /** Current designation, resolved from Station's durable ownership. */
   isCoordinatorSession?: (threadId: string) => boolean;
+  /** Re-resolve the designated Agent's selected, canonical Station Control server. */
+  resolveCoordinatorStationControl?: (
+    threadId: string,
+  ) => Promise<ResolvedAgentToolServer | undefined>;
   /** Separate, designation-scoped in-process credential for a live refresh. */
   createInProcessCoordinatorStationControl?: (
     threadId: string,
     tenantExecutionContext?: TenantExecutionContext,
+    allowedTools?: readonly string[],
   ) => unknown;
   createInProcessStationKnowledge?: (
     threadId: string,
@@ -2507,6 +2514,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       );
     if (
       !this.options.createInProcessCoordinatorStationControl ||
+      !this.options.resolveCoordinatorStationControl ||
       typeof record.query.setMcpServers !== 'function' ||
       typeof record.query.mcpServerStatus !== 'function'
     )
@@ -2529,9 +2537,30 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           'A different station-control server is configured. Choose another name before enabling coordinator tools.',
           'provider_error',
         );
+      let control: ResolvedAgentToolServer | undefined;
+      try {
+        control = await coordinatorMcpDeadline(
+          this.options.resolveCoordinatorStationControl(threadId),
+        );
+      } catch {
+        throw refuse();
+      }
+      if (
+        !control ||
+        builtinStationApiServerId(control.id, toPassthroughToolDef(control)) !==
+          'station-control' ||
+        !this.options.isCoordinatorSession?.(threadId)
+      )
+        throw refuse();
+      const selected = control.disabledTools?.length
+        ? (control.allowedTools ?? control.toolNames ?? []).filter(
+            (name) => !control.disabledTools!.includes(name),
+          )
+        : control.allowedTools;
       const instance = this.options.createInProcessCoordinatorStationControl(
         threadId,
         record.tenantExecutionContext,
+        selected,
       );
       const next = {
         ...record.mcpServers,
@@ -2552,6 +2581,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         )
           throw refuse();
         record.mcpServers = next;
+        record.coordinatorControlExpected = selected;
         record.coordinatorControlState = 'pending';
       } catch {
         throw refuse();
@@ -2567,10 +2597,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     if (
       server?.source !== 'sdk' ||
       server.status !== 'connected' ||
-      !server.tools?.some(
-        (tool) =>
-          tool.name === 'delegate_task' ||
-          tool.name.endsWith('__delegate_task'),
+      !(record.coordinatorControlExpected ?? ['delegate_task']).every((name) =>
+        server.tools?.some(
+          (tool) => tool.name === name || tool.name.endsWith(`__${name}`),
+        ),
       )
     )
       throw refuse();

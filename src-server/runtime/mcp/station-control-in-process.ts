@@ -207,6 +207,7 @@ export function claudeInProcessStationControlOptions(
   createInProcessCoordinatorStationControl: (
     threadId: string,
     tenantExecutionContext?: TenantExecutionContext,
+    allowedTools?: readonly string[],
   ) => InProcessStationControlServer;
   createInProcessStationBrowser: (
     threadId: string,
@@ -242,6 +243,7 @@ export function claudeInProcessStationControlOptions(
     createInProcessCoordinatorStationControl: (
       threadId,
       tenantExecutionContext,
+      allowedTools,
     ) =>
       createInProcessServer({
         sessionId: threadId,
@@ -251,7 +253,7 @@ export function claudeInProcessStationControlOptions(
           createServer
             ? createServer()
             : createSelectedStationControlMcpServer(
-                undefined,
+                allowedTools,
                 undefined,
                 'station-control',
                 'bound',

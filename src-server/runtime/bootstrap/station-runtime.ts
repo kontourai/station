@@ -819,6 +819,8 @@ export class StationRuntime {
         principal.id
       );
     },
+    resolveCoordinatorStationControl: async (threadId) =>
+      this.orchestrationService?.resolveCoordinatorStationControl(threadId),
     resolveMcpOAuth: (input) => this.resolveExternalMcpOAuth(input),
     nativeSessionOwnership: {
       assertMutable: (sessionId) =>
