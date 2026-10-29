@@ -363,6 +363,7 @@ import { createSkillRoutes } from '../../routes/agents/skills.js';
 import { createTemplateRoutes } from '../../routes/agents/templates.js';
 import { createToolRoutes } from '../../routes/agents/tools.js';
 import { createUnattendedGrantRoutes } from '../../routes/agents/unattended-grants-routes.js';
+import { createUntrustedContentRoutes } from '../../routes/agents/untrusted-content-routes.js';
 import { createBoardRoutes } from '../../routes/board.js';
 import { createAgentConversationTitleRoutes } from '../../routes/chat/agent-conversation-title.js';
 import { createChatRoutes } from '../../routes/chat/chat.js';
@@ -731,6 +732,7 @@ import type { PluginInstallationHost } from '../../services/plugins/plugin-insta
 import { PluginLifecycleProposalService } from '../../services/plugins/plugin-lifecycle-proposals.js';
 import { PluginVisibilityService } from '../../services/plugins/plugin-visibility-service.js';
 import { createLocalRegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
+import { sharedUntrustedContentLedger } from '../../services/plugins/untrusted-content-policy.js';
 import { FocusPresence } from '../../services/presence/focus-presence.js';
 import type { AttentionProjectionService } from '../../services/projects/attention-projection.js';
 import { readCheckoutRemotes } from '../../services/projects/checkout-remote-reader.js';
@@ -4712,36 +4714,48 @@ export function configureRuntimeRoutes(
     canReadSession: (sessionId, authority) =>
       context.orchestrationService.canUserReadSession(sessionId, authority),
   });
+  const authorizeIntegrationOperator = async (c: Context) => {
+    roomRequestPrincipals.set(
+      c.req.raw,
+      resolveOrchestrationRequestPrincipal(c),
+    );
+    const authority = projectMembershipAuthority(c.req.raw);
+    await authority.operator();
+    if (
+      (await authority.current()).principal.id !== LOCAL_OPERATOR_PRINCIPAL_ID
+    )
+      throw new ProjectMembershipRefusal('forbidden');
+  };
+  const resolveIntegrationRequestPrincipalId = (c: Context) => {
+    try {
+      return resolveOrchestrationRequestPrincipal(c).id;
+    } catch {
+      return undefined;
+    }
+  };
+  // #3483: mounted before the tool routes so their `/:id` leaves never
+  // shadow these paths.
+  context.app.route(
+    '/integrations',
+    createUntrustedContentRoutes({
+      marks: () => sharedUntrustedContentLedger.durableMarks,
+      authorizeOperator: authorizeIntegrationOperator,
+      resolveRequestPrincipalId: resolveIntegrationRequestPrincipalId,
+      onCleared: (id) => sharedUntrustedContentLedger.forgetConversation(id),
+    }),
+  );
   context.app.route(
     '/integrations',
     // Reconnect reloads agents (which rebuilds their MCP connections), NOT a
     // full `initialize()` — re-running init re-binds the HTTP + voice-WS ports
     // (EADDRINUSE → uncaughtException → the server shuts itself down).
     createToolRoutes(context.mcpService, context.reloadAgents, {
-      authorizeOperator: async (c) => {
-        roomRequestPrincipals.set(
-          c.req.raw,
-          resolveOrchestrationRequestPrincipal(c),
-        );
-        const authority = projectMembershipAuthority(c.req.raw);
-        await authority.operator();
-        if (
-          (await authority.current()).principal.id !==
-          LOCAL_OPERATOR_PRINCIPAL_ID
-        )
-          throw new ProjectMembershipRefusal('forbidden');
-      },
+      authorizeOperator: authorizeIntegrationOperator,
       integrationIconAssets: new IntegrationIconAssets(
         context.configLoader.getProjectHomeDir(),
       ),
       resolveAccountPrincipalId: resolveConnectedAccountPrincipalId,
-      resolveRequestPrincipalId: (c) => {
-        try {
-          return resolveOrchestrationRequestPrincipal(c).id;
-        } catch {
-          return undefined;
-        }
-      },
+      resolveRequestPrincipalId: resolveIntegrationRequestPrincipalId,
       // MCP-UI tool calls with `approvalPolicy: 'require'` block on a real inbox
       // approval before executing (the existing managed-approval registry +
       // inbox surface); the spec-compliant tool result is returned only after.

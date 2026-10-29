@@ -179,6 +179,21 @@ can change, not a fixed gate.
   first time the ledger sees it, and a record an active turn depends on is
   never forgotten, so neither later activity nor the memory bound clears a
   question mid-turn.
+- **Later turns.** The mark is also kept for the conversation
+  ([untrusted-conversation-marks.ts](../../src-server/services/plugins/untrusted-conversation-marks.ts)):
+  once any turn reads untrusted content, every later turn of that
+  conversation, and every child it delegates to, is marked, including after
+  a restart. The record sits beside the conversation acknowledgement store
+  in the Station home, keyed by conversation id. A later turn waits for a
+  mark whose classification read has not settled. The record holds 10,000
+  conversations; past that it records saturation instead of forgetting one,
+  and every conversation counts as marked. A record Station cannot read
+  counts as marked. Only the operator, signed in as a person, can clear a
+  mark: `POST /api/integrations/untrusted-content/conversations/:id/clear`
+  (`*` clears every mark and the saturation) records a receipt with the
+  time and the person, and
+  `GET /api/integrations/untrusted-content/conversations/:id` shows the mark
+  and its receipts. There is no button for this yet.
 
 The [staged pre-tool evaluator](../../src-server/runtime/agents/pre-tool-policy.ts)
 answers the permission before tool grants:
@@ -247,17 +262,16 @@ checks newer state and stale grants is follow-up work, not an available command.
   or unreadable. A Station that cannot carry the origin refuses the send.
   Prompt sends to another Station or an external engine, and prompt steering
   into an active turn, are refused rather than sent without the mark.
-- **Delegation memory.** The delegation records live in the server's memory
-  (the most recent 10,000 conversations per record, never forgetting one an
-  active turn depends on) and do not survive a restart. A child that starts
-  after its parent's turn ended and after 10,000 newer records, before its
-  own first tool call, is not marked. A delegated child on an external engine does not report its
-  reads.
+- **Delegation memory.** The parent-to-child direction reads the durable
+  conversation mark, so it survives a restart. The child-to-parent record
+  (a parent turn marked by a child's result) lives in the server's memory
+  (the most recent 10,000 conversations, never forgetting one an active turn
+  depends on); the child's own conversation stays marked durably.
 - **Built-in tools.** Station's bash, file editor and HTTP request use their
   integration's per-tool permission when their loader-owned identity is
   available. An unknown tool without verified identity asks by default.
-- **Earlier turns.** Content read in an earlier turn stays in the
-  conversation history but no longer marks the turn.
+- **Earlier turns.** Covered: a conversation stays marked until a person
+  clears it (above).
 - **Settings UI.** The Content trust settings Feature Preview exposes the
   classification, permissions, hint trust, and receipts in Connections →
   Tools. The operator API remains available independently of the preview.

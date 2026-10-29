@@ -23,6 +23,7 @@ import type {
   UntrustedContentPermission,
 } from '@kontourai/station-contracts/tool';
 import type { InvocationContext } from '../../runtime/types.js';
+import type { UntrustedConversationMarks } from './untrusted-conversation-marks.js';
 
 /** Conversations remembered per lineage set; the oldest is forgotten first. */
 const CONVERSATION_MEMORY_LIMIT = 10_000;
@@ -64,6 +65,12 @@ class BoundedSet {
   has(value: string | undefined): boolean {
     return value !== undefined && this.members.has(value);
   }
+
+  /** `*` forgets every member. */
+  delete(value: string): void {
+    if (value === '*') this.members.clear();
+    else this.members.delete(value);
+  }
 }
 
 interface TurnState {
@@ -89,8 +96,13 @@ interface TurnState {
  * result is marked too. A child latches the inherited mark into its own turn
  * the first time the ledger sees it, and a record an active turn depends on
  * is never forgotten, so neither a later change nor the memory bound can
- * clear the question mid-turn. Both records are memory only and do not
- * survive a restart.
+ * clear the question mid-turn.
+ *
+ * With durable marks (`attachDurableMarks`, wired at runtime start) a
+ * conversation that read untrusted content stays marked for every later
+ * turn and across restarts until a person clears it, and delegation reads
+ * the durable record too. Without them both records are memory only and a
+ * mark ends with its turn.
  */
 export class UntrustedContentLedger {
   private readonly turns = new Map<string, TurnState>();
@@ -103,6 +115,47 @@ export class UntrustedContentLedger {
   private readonly descendantsRead = new BoundedSet(this.pinned);
 
   private saturated = false;
+  private durable: UntrustedConversationMarks | undefined;
+  private warn:
+    | ((message: string, meta?: Record<string, unknown>) => void)
+    | undefined;
+
+  /** The durable marks in use, if any. */
+  get durableMarks(): UntrustedConversationMarks | undefined {
+    return this.durable;
+  }
+
+  /** Conversation-level marks that outlive the turn and the process. */
+  attachDurableMarks(
+    marks: UntrustedConversationMarks | undefined,
+    warn?: (message: string, meta?: Record<string, unknown>) => void,
+  ): void {
+    this.durable = marks;
+    this.warn = warn;
+  }
+
+  /** Whether a conversation, or the one that delegated to it, is marked beyond the turn. */
+  private async conversationMarked(
+    invocation: InvocationContext,
+  ): Promise<boolean> {
+    if (!this.durable) return false;
+    const ids = [
+      invocation.conversationId,
+      invocation.delegation?.parentConversationId,
+      invocation.delegation?.rootConversationId,
+    ];
+    await Promise.all(
+      ids.flatMap((id) => [
+        ...((id && this.pendingConversationMarks.get(id)) || []),
+      ]),
+    );
+    // The in-memory record also answers until restart, so a failed durable
+    // write never clears a mark this process recorded.
+    return (
+      ids.some((id) => this.conversationsRead.has(id)) ||
+      this.durable.isMarked(...ids)
+    );
+  }
 
   /** Number of turns held; for bounds checks. */
   get turnCount(): number {
@@ -158,21 +211,70 @@ export class UntrustedContentLedger {
     state.marks.push(Promise.resolve(true));
   }
 
+  /** Records an untrusted read beyond its turn: in memory and, when wired, durably. */
+  private recordConversationRead(invocation: InvocationContext): void {
+    this.conversationsRead.add(invocation.conversationId);
+    this.descendantsRead.add(invocation.delegation?.parentConversationId);
+    this.descendantsRead.add(invocation.delegation?.rootConversationId);
+    if (!this.durable || !invocation.conversationId) return;
+    try {
+      this.durable.mark(invocation.conversationId);
+    } catch (error) {
+      this.warn?.('Untrusted-content mark was not saved', {
+        conversationId: invocation.conversationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * Conversation marks whose classification read has not settled. A later
+   * turn waits for them, so a turn that ends first cannot let the next one
+   * start unmarked.
+   */
+  private readonly pendingConversationMarks = new Map<
+    string,
+    Set<Promise<unknown>>
+  >();
+
+  private trackPending(
+    conversationId: string | undefined,
+    mark: Promise<unknown>,
+  ) {
+    if (!this.durable || !conversationId) return;
+    const pending =
+      this.pendingConversationMarks.get(conversationId) ??
+      new Set<Promise<unknown>>();
+    this.pendingConversationMarks.set(conversationId, pending);
+    pending.add(mark);
+    void mark.finally(() => {
+      pending.delete(mark);
+      if (
+        pending.size === 0 &&
+        this.pendingConversationMarks.get(conversationId) === pending
+      )
+        this.pendingConversationMarks.delete(conversationId);
+    });
+  }
+
   mark(invocation: InvocationContext, untrusted: Promise<boolean>): void {
     this.latchInherited(invocation);
-    const state = this.turn(invocation);
-    if (!state) {
-      void untrusted.catch(() => true);
-      return;
-    }
     // A failed classification read counts as untrusted: fail toward asking.
     const settled = untrusted.catch(() => true);
+    const state = this.turn(invocation);
+    if (!state) {
+      this.trackPending(
+        invocation.conversationId,
+        settled.then((read) => {
+          if (read) this.recordConversationRead(invocation);
+        }),
+      );
+      return;
+    }
     state.marks.push(settled);
-    void settled.then((read) => {
+    const recorded = settled.then((read) => {
       if (read) {
-        this.conversationsRead.add(invocation.conversationId);
-        this.descendantsRead.add(invocation.delegation?.parentConversationId);
-        this.descendantsRead.add(invocation.delegation?.rootConversationId);
+        this.recordConversationRead(invocation);
         return;
       }
       // Only untrusted reads are kept, so ordinary calls never grow the map
@@ -182,12 +284,14 @@ export class UntrustedContentLedger {
       if (state.marks.length === 0 && this.turns.get(key) === state)
         this.turns.delete(key);
     });
+    this.trackPending(invocation.conversationId, recorded);
   }
 
   async hasRead(invocation: InvocationContext): Promise<boolean> {
     if (this.saturated) return true;
     this.latchInherited(invocation);
     if (this.saturated) return true;
+    if (await this.conversationMarked(invocation)) return true;
     const state = this.turns.get(turnKey(invocation));
     if (!state) return false;
     return (await Promise.all(state.marks)).some(Boolean);
@@ -196,6 +300,15 @@ export class UntrustedContentLedger {
   /** Whether a child this conversation delegated to has read it. */
   hasDescendantRead(conversationId: string | undefined): boolean {
     return this.saturated || this.descendantsRead.has(conversationId);
+  }
+
+  /**
+   * A person cleared a conversation's durable mark; this process forgets
+   * it too. Turns in progress keep their own marks.
+   */
+  forgetConversation(conversationId: string): void {
+    this.conversationsRead.delete(conversationId);
+    this.descendantsRead.delete(conversationId);
   }
 
   /**

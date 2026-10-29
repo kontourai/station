@@ -50,6 +50,8 @@ import {
 } from '../../services/plugins/registry-trust-policy.js';
 import { installCatalogServerAddressPolicy } from '../../services/plugins/remote-mcp-address-policy.js';
 import { ToolLibraryService } from '../../services/plugins/tool-library-service.js';
+import { sharedUntrustedContentLedger } from '../../services/plugins/untrusted-content-policy.js';
+import { UntrustedConversationMarks } from '../../services/plugins/untrusted-conversation-marks.js';
 import { deriveWorkspaceHomeRoleStatus } from '../../services/plugins/workspace-home-role-service.js';
 import { createProjectMembershipRuntime } from '../../services/projects/project-membership-runtime.js';
 import { createProjectNativeToolLoader } from '../../services/projects/project-native-tools.js';
@@ -1357,6 +1359,12 @@ export class StationRuntime {
       // addresses it checked.
       this.uninstallCatalogAddressPolicy = installCatalogServerAddressPolicy(
         () => projectHomeDir,
+      );
+      // #3483: a conversation that read untrusted content stays marked
+      // across turns and restarts until a person clears it.
+      sharedUntrustedContentLedger.attachDurableMarks(
+        new UntrustedConversationMarks(projectHomeDir),
+        (message, meta) => this.logger?.warn(message, meta),
       );
       this.configLoader = openedConfigLoader = new ConfigLoader({
         projectHomeDir,
@@ -5246,6 +5254,7 @@ export class StationRuntime {
   async shutdown(): Promise<void> {
     this.uninstallCatalogAddressPolicy?.();
     this.uninstallCatalogAddressPolicy = undefined;
+    sharedUntrustedContentLedger.attachDurableMarks(undefined);
     // Begin broker retirement without delaying ordinary teardown on its I/O.
     // The aggregate cleanup joins it before this home can be released.
     void this.retireSelfHostedBroker();

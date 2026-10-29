@@ -1588,6 +1588,10 @@ The same per-tool permissions apply to Station's installed built-ins: use the
 integration API for `bash`, `file-editor`, or `http-request`, with tool keys
 `bash`, `fileEditor`, or `http_request` respectively. If a tool's loaded
 identity cannot be verified, Station asks rather than applying its allow entry.
+Once a conversation has read such content, its later turns keep asking, even
+after a restart, until the operator clears the mark with
+`POST /api/integrations/untrusted-content/conversations/:id/clear`, which
+records who cleared it.
 Delegated children share the mark both ways. Station's own engine also marks
 turns sent from untrusted MCP prompts. Prompt steering and prompt sends to
 another Station or an external engine are refused until their origin can be

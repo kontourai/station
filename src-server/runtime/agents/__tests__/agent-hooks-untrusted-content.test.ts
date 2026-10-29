@@ -1,7 +1,16 @@
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
+import { Hono } from 'hono';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { createUntrustedContentRoutes } from '../../../routes/agents/untrusted-content-routes.js';
 import { MCPToolProvenanceGeneration } from '../../../services/orchestration/mcp-tool-provenance.js';
 import { UntrustedContentLedger } from '../../../services/plugins/untrusted-content-policy.js';
+import {
+  MARK_LIMIT,
+  UntrustedConversationMarks,
+} from '../../../services/plugins/untrusted-conversation-marks.js';
 import { runWithAuthorizedTurnCorrelation } from '../../conversation/authorized-turn-correlation.js';
 import {
   type MCPToolNameMappingEntry,
@@ -391,7 +400,7 @@ describe('outbound tools after untrusted content', () => {
     expect(requester).not.toHaveBeenCalled();
   });
 
-  test('the next turn starts without the earlier turn’s content', async () => {
+  test('with memory-only marks, the next turn starts without the earlier turn’s content', async () => {
     const { hooks, invocation, requester, readMail, createIssue } = setup();
     await readMail();
     await hooks.afterInvocation!({ invocation, toolCallCount: 1 } as any);
@@ -765,5 +774,166 @@ describe('ended turns leave nothing behind', () => {
     expect(
       await ledger.hasRead({ agentSlug: 'a', conversationId: 'newest' }),
     ).toBe(true);
+  });
+});
+
+describe('the conversation mark lasts until a person clears it', () => {
+  const makeTempDir = trackTempDirs();
+  const durableLedger = (home: string) => {
+    const ledger = new UntrustedContentLedger();
+    ledger.attachDurableMarks(new UntrustedConversationMarks(home));
+    return ledger;
+  };
+  const routes = (
+    ledger: UntrustedContentLedger,
+    principal: string | undefined,
+    operator = true,
+  ) => {
+    const app = new Hono();
+    app.route(
+      '/integrations',
+      createUntrustedContentRoutes({
+        marks: () => ledger.durableMarks,
+        authorizeOperator: async () => {
+          if (!operator) throw new Error('forbidden');
+        },
+        resolveRequestPrincipalId: () => principal,
+        onCleared: (id) => ledger.forgetConversation(id),
+      }),
+    );
+    const clear = (id = 'conversation-1') =>
+      app.request(`/integrations/untrusted-content/conversations/${id}/clear`, {
+        method: 'POST',
+      });
+    const status = async (id = 'conversation-1') =>
+      (
+        (await (
+          await app.request(
+            `/integrations/untrusted-content/conversations/${id}`,
+          )
+        ).json()) as { data: { marked: boolean; clearances: unknown[] } }
+      ).data;
+    return { clear, status };
+  };
+
+  test('later turns ask, after a restart too, and other conversations do not', async () => {
+    const home = makeTempDir('station-untrusted-marks-');
+    const first = setup({}, { ledger: durableLedger(home) });
+    await first.readMail();
+    await first.hooks.afterInvocation!({
+      invocation: first.invocation,
+      toolCallCount: 1,
+    } as any);
+    first.requester.mockResolvedValueOnce(false);
+    expect(await first.createIssue()).toMatchObject({ allowed: false });
+    expect(first.requester).toHaveBeenCalledTimes(1);
+
+    // A new process: a fresh ledger over the same Station home.
+    const restarted = setup({}, { ledger: durableLedger(home) });
+    restarted.requester.mockResolvedValueOnce(true);
+    expect(await restarted.createIssue()).toBe(true);
+    expect(restarted.requester).toHaveBeenCalledTimes(1);
+
+    const other = setup(
+      {},
+      {
+        ledger: durableLedger(home),
+        invocation: { conversationId: 'conversation-2' },
+      },
+    );
+    other.hooks.registerApprovalRequester('conversation-2', other.requester);
+    expect(await other.createIssue()).toBe(true);
+    expect(other.requester).not.toHaveBeenCalled();
+  });
+
+  test('a child of a marked conversation starts marked after a restart', async () => {
+    const home = makeTempDir('station-untrusted-marks-');
+    const parentLedger = durableLedger(home);
+    const parent = setup({}, { ledger: parentLedger });
+    await parent.readMail();
+    // The earlier process finished recording its read.
+    expect(await parentLedger.hasRead(parent.invocation)).toBe(true);
+    const child = setup(
+      {},
+      {
+        ledger: durableLedger(home),
+        invocation: {
+          conversationId: 'child-1',
+          delegation: {
+            parentConversationId: 'conversation-1',
+            rootConversationId: 'conversation-1',
+          },
+        },
+      },
+    );
+    child.hooks.registerApprovalRequester('child-1', child.requester);
+    child.requester.mockResolvedValueOnce(true);
+    expect(await child.createIssue()).toBe(true);
+    expect(child.requester).toHaveBeenCalledTimes(1);
+  });
+
+  test('only an authenticated person clears it, and the clear leaves a receipt', async () => {
+    const home = makeTempDir('station-untrusted-marks-');
+    const ledger = durableLedger(home);
+    const marked = setup({}, { ledger });
+    await marked.readMail();
+    await marked.hooks.afterInvocation!({
+      invocation: marked.invocation,
+      toolCallCount: 1,
+    } as any);
+
+    expect((await routes(ledger, undefined).clear()).status).toBe(403);
+    expect((await routes(ledger, 'agent:station:worker').clear()).status).toBe(
+      403,
+    );
+    expect(
+      (await routes(ledger, 'human:local:operator', false).clear()).status,
+    ).toBe(403);
+    expect((await routes(ledger, undefined).status()).marked).toBe(true);
+
+    const person = routes(ledger, 'human:local:operator');
+    const cleared = await person.clear();
+    expect(cleared.status).toBe(200);
+    expect(await cleared.json()).toMatchObject({
+      data: { conversationId: 'conversation-1', by: 'human:local:operator' },
+    });
+    expect(await person.status()).toMatchObject({
+      marked: false,
+      clearances: [
+        { conversationId: 'conversation-1', by: 'human:local:operator' },
+      ],
+    });
+
+    const next = setup({}, { ledger: durableLedger(home) });
+    expect(await next.createIssue()).toBe(true);
+    expect(next.requester).not.toHaveBeenCalled();
+  });
+
+  test('past its bound the store marks every conversation instead of forgetting one', async () => {
+    const home = makeTempDir('station-untrusted-marks-');
+    const marks: Record<string, { at: string }> = {};
+    for (let i = 0; i < MARK_LIMIT; i++)
+      marks[`seed-${i}`] = { at: '2026-10-29T00:00:00.000Z' };
+    writeFileSync(
+      join(home, 'untrusted-conversation-marks.json'),
+      JSON.stringify({ version: 1, marks, clearances: [] }),
+    );
+    const store = new UntrustedConversationMarks(home);
+    expect(store.isMarked('unrelated')).toBe(false);
+    store.mark('one-more');
+    expect(store.isMarked('seed-0')).toBe(true);
+    expect(store.isMarked('unrelated')).toBe(true);
+    // Clearing one conversation does not undo saturation.
+    store.clear('seed-0', 'human:local:operator');
+    expect(store.isMarked('unrelated')).toBe(true);
+    store.clear('*', 'human:local:operator');
+    expect(store.isMarked('unrelated')).toBe(false);
+    expect(store.isMarked('seed-1')).toBe(false);
+  });
+
+  test('an unreadable store counts as marked', async () => {
+    const home = makeTempDir('station-untrusted-marks-');
+    writeFileSync(join(home, 'untrusted-conversation-marks.json'), '{not json');
+    expect(new UntrustedConversationMarks(home).isMarked('any')).toBe(true);
   });
 });

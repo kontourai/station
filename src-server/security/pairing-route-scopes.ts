@@ -4048,6 +4048,18 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'POST', path: '/integrations/:id/oauth/authorize' },
     { method: 'POST', path: '/integrations/:id/oauth/callback' },
     { method: 'POST', path: '/integrations/:id/reconnect' },
+    // #3483: a conversation's untrusted-content mark. The read resolves
+    // through the integration detail rule (operate); clearing relaxes a
+    // protection within this Station and inherits integration operate, and
+    // the handler further requires the operator in person.
+    {
+      method: 'GET',
+      path: '/integrations/untrusted-content/conversations/:conversationId',
+    },
+    {
+      method: 'POST',
+      path: '/integrations/untrusted-content/conversations/:conversationId/clear',
+    },
     { method: 'POST', path: '/integrations/:id/tools/apply' },
     { method: 'POST', path: '/integrations/:serverId/ui/call' },
     { method: 'POST', path: '/integrations/:serverId/ui/permissions' },
