@@ -31,7 +31,12 @@
 }
 
 .integration-engine-coverage dd {
+  justify-self: start;
   margin: 0;
+}
+
+.integration-trust-review__status {
+  align-self: flex-start;
 }
 
 .integration-trust-review {

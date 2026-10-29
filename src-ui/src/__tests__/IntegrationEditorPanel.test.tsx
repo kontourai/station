@@ -498,7 +498,7 @@ describe('IntegrationEditorPanel', () => {
     expect(list.textContent).toContain('ACP agentsNot offered');
     expect(
       screen.getByText(
-        /connects to this server directly; Station can.t gate its calls/,
+        /reaches this server itself, so Station can.t gate its calls/,
       ),
     ).toBeTruthy();
   });

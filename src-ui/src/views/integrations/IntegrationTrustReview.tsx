@@ -53,7 +53,11 @@ export function IntegrationTrustReview({
         >
           Trust settings
         </h3>
-        <StatusBadge tone="caution" status="Needs your review" />
+        <StatusBadge
+          className="integration-trust-review__status"
+          tone="caution"
+          status="Needs your review"
+        />
       </div>
       <p className="agent-editor__section-desc">
         These saved settings allow more than Station&rsquo;s defaults. They stay

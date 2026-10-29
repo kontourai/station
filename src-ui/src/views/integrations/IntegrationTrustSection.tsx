@@ -195,8 +195,8 @@ export function IntegrationTrustSection({
             (entry) => entry.coverage === 'engine-direct',
           ) && (
             <p className="editor-field-hint">
-              This engine connects to this server directly; Station can&rsquo;t
-              gate its calls.
+              Direct connection: the engine reaches this server itself, so
+              Station can&rsquo;t gate its calls.
             </p>
           )}
         </div>
