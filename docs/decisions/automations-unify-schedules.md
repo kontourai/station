@@ -89,6 +89,10 @@ that proposed it, so an approved job runs on that chat's own engine.
   existing entry, so a run yields at most one turn. (A crash after the run
   is admitted but before its turn is queued yields none; it is recorded
   indeterminate, not sent.)
+- **Manual retry recovery.** For untargeted jobs, the periodic sweep hands a
+  dead owner's advanced, definitely-not-invoked manual retry to the executor
+  with its original run and attempt budget. Live or unprovable owners remain
+  fenced; a possibly invoked attempt is recorded indeterminate, not replayed.
 - **Settlement.** The run waits for its turn's terminal event, up to 30
   minutes (`AUTOMATION_RUN_POLICY.turnDeadlineMs`). A completed turn is a
   success; an aborted or cancelled one, or one that ended in an engine error

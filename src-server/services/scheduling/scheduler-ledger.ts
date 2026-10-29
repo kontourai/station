@@ -1218,13 +1218,9 @@ class SqliteSchedulerLedger implements SchedulerLedger {
     let quarantined: SchedulerQuarantinedJob[] = [];
     const outcome = this.read(() =>
       this.transaction(() => {
-        // Recovery changes ownership only when this caller will receive and
-        // execute the capability.  In particular, a timer must never make a
-        // dead manual retry look live merely by reassigning its owner.
-        const receipts = this.reconcileDeadClaims(
-          now,
-          (claim) => !claim.manual,
-        );
+        // Return every recovered capability to the tick executor, including
+        // advanced manual retries whose owner died before invocation.
+        const receipts = this.reconcileDeadClaims(now, () => true);
         quarantined = [];
         for (const row of this.db
           .prepare(
