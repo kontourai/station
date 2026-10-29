@@ -885,6 +885,7 @@ import {
 import {
   installAccountBoundDeviceGate,
   isTaskRelationshipHttpLeaf,
+  isTaskRoomHttpLeaf,
 } from '../bootstrap/account-bound-device-gate.js';
 import {
   accountMemberCaller,
@@ -1944,7 +1945,11 @@ export function configureRuntimeRoutes(
       { kind: 'account' }
     >,
   ) =>
-    isTaskRelationshipHttpLeaf(request.method, new URL(request.url).pathname) &&
+    (isTaskRelationshipHttpLeaf(
+      request.method,
+      new URL(request.url).pathname,
+    ) ||
+      isTaskRoomHttpLeaf(request.method, new URL(request.url).pathname)) &&
     context.deploymentAuthentication?.service.current(request)?.kind ===
       'absent' &&
     context.localAccounts?.accountDirectory.issuer === binding.issuer &&
@@ -5258,11 +5263,27 @@ export function configureRuntimeRoutes(
         'kind' in device.principalBinding &&
         device.principalBinding.kind === 'account'
       ) {
+        const account =
+          context.deploymentAuthentication?.service.current(request);
+        const accountCurrent =
+          device.credentialKind === 'personal-token'
+            ? account?.kind === 'absent'
+            : account?.kind === 'authenticated'
+              ? account.principal.id === principal.id &&
+                context.deploymentAuthentication?.service.captureCurrentSession(
+                  request,
+                )() === true
+              : account?.kind === 'absent' &&
+                currentRelationshipAccountDevice(
+                  request,
+                  device.principalBinding,
+                );
         if (
           !taskId ||
           !capability ||
           capability === 'other' ||
-          !isRequestPrincipalCurrent(request)
+          !isRequestPrincipalCurrent(request) ||
+          !accountCurrent
         )
           return { kind: 'revoked' as const };
         const admission = taskMemberAdmission.admit(
