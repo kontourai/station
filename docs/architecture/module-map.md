@@ -1868,7 +1868,12 @@ server set before the next turn. Other supported engines use the normal
 conversation continuation path to start a successor, carrying the native
 cursor or an admitted transcript seed. The successor reservation records the
 tools-restart reason atomically, and a started Session exposes it to the chat.
-The in-process coordinator credential rechecks the designation on every call.
+Station Control and Knowledge credentials added solely by designation recheck
+the designation on every call and are revoked across the conversation's
+Sessions on removal or replacement. A process-local generation fences a late
+provider start; an independently Agent- or Project-authored server retains its
+separate credential. A Claude Session with an earlier coordinator credential
+starts a successor after re-designation.
 An engine that declares tool servers unsupported remains selectable and the
 card and chat show the limitation; no host-wide Codex reload is used.
 
