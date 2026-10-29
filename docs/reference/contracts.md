@@ -394,7 +394,7 @@ and `parseTaskCapture`, return `null` on malformed input or unknown keys.
 Bounds refuse max+1 without truncating: bodies 4000, reasons 500, quotes 2000,
 serialized anchors/evidence 4096, URLs 2048 and labels 120 UTF-16 code units.
 Artifact/operation/reference IDs and delivery keys are bounded at 512, revisions at 256 and author
-IDs at 256. All strings must be well-formed Unicode. Evidence ref lists are
+IDs at 256. Bounded text must be well-formed Unicode and refuses C1 controls. Evidence ref lists are
 capped at 200 each, subject to the tighter serialized evidence bound. Capture
 metadata caps bytes at 16 MiB and each optional image dimension at 32768 pixels
 (`TASK_REVIEW_LIMITS.captureDimension`); metadata parsing grants no capture
@@ -1803,9 +1803,8 @@ explicit schema version and refuse a missing one rather than assuming v5. This s
 Member `principalId` and `deviceId`, mention principal IDs and approval IDs
 must be nonempty, at most 256 UTF-16 code units, well-formed Unicode, unchanged
 by trimming, and free of C0, DEL, C1, Unicode format controls and combining
-grapheme joiners. Review bounded text also refuses C1 controls. Legacy operator
-and agent room IDs retain their existing wire rules. This is the opaque-ID rule for
-#4236 to align with; the clean Agent/engine slug validator has a different
+grapheme joiners. Legacy operator and agent room IDs retain their existing
+wire rules. Chat-app IDs use the same opaque-ID rule; the clean Agent/engine slug validator has a different
 grammar and cannot validate these principal/device IDs.
 
 Human messages may carry 1 to 32 structured
@@ -1841,8 +1840,8 @@ notification only and adds no review-store event.
 
 `TaskApprovalDecision` carries `requestId`, `sessionId`, an `allow` or `deny`
 decision, `decider: {principalId}`, `channel: 'station'|'slack'|'discord'`, and
-canonical ISO UTC `decidedAt`. The chat channels must match `ChatAppId` in
-#4236; `station` names the local channel. `parseTaskApprovalDecision` refuses
+canonical ISO UTC `decidedAt`. The channel type is `'station' | ChatAppId`;
+`station` names the local channel. `parseTaskApprovalDecision` refuses
 extra keys, malformed timestamps and invalid IDs, without truncation.
 `TaskApprovalOutcome` is `decided` with a decision, `already-decided` with the
 winning decision, or `refused` with `invalid-request`, `not-found`, `forbidden`,
