@@ -125,7 +125,10 @@ import {
   createStagedPreToolPolicyEvaluator,
   type StagedPreToolPolicyEvaluator,
 } from '../../runtime/agents/pre-tool-policy.js';
-import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import {
+  builtinStationControlServerPath,
+  builtinStationKnowledgeServerPath,
+} from '../../runtime/bootstrap/station-control-runtime-env.js';
 import {
   __resetStationControlMcpTokensForTests,
   mintStationControlMcpToken,
@@ -9616,6 +9619,14 @@ describe('ClaudeAdapter', () => {
           connect: vi.fn(),
           close: vi.fn(),
         }),
+        createInProcessStationControl: () => ({
+          connect: vi.fn(),
+          close: vi.fn(),
+        }),
+        createInProcessStationKnowledge: () => ({
+          connect: vi.fn(),
+          close: vi.fn(),
+        }),
       });
       await adapter.startSession({
         provider: 'claude',
@@ -9631,6 +9642,24 @@ describe('ClaudeAdapter', () => {
           ],
         },
       });
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'coordinator-knowledge-generation',
+        agent: {
+          slug: 'writer',
+          toolServers: [
+            stationControlToolServers[0]!,
+            {
+              id: 'station-knowledge',
+              transport: 'stdio',
+              command: 'node',
+              args: [builtinStationKnowledgeServerPath()],
+              coordinatorDerived: true,
+              coordinatorGeneration: 7,
+            },
+          ],
+        },
+      });
       expect(
         adapter.coordinatorToolsNeedSuccessor('coordinator-generation'),
       ).toBe(false);
@@ -9638,7 +9667,13 @@ describe('ClaudeAdapter', () => {
       expect(
         adapter.coordinatorToolsNeedSuccessor('coordinator-generation'),
       ).toBe(true);
+      expect(
+        adapter.coordinatorToolsNeedSuccessor(
+          'coordinator-knowledge-generation',
+        ),
+      ).toBe(true);
       await adapter.stopSession('coordinator-generation');
+      await adapter.stopSession('coordinator-knowledge-generation');
     });
 
     test('Station #90 lane D: with in-process delivery wired, the built-in is an sdk server with no command, env or argv credential; the third-party server is untouched', async () => {

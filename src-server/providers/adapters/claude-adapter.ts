@@ -714,6 +714,7 @@ type ClaudeSessionRecord = {
   coordinatorControlState?: 'pending' | 'ready' | 'uncertain';
   coordinatorControlExpected?: readonly string[];
   coordinatorControlGeneration?: number;
+  coordinatorKnowledgeGeneration?: number;
   stationControlBuiltin: boolean;
   pendingRequests: Map<string, PendingRequest>;
   /** Mirrors `ClaudeMessageState.activeTurnId`; derived from `sdkTurns`. */
@@ -1439,12 +1440,14 @@ async function coordinatorMcpDeadline<T>(operation: Promise<T>): Promise<T> {
 export class ClaudeAdapter implements ProviderAdapterShape {
   readonly coordinatorToolsRefresh = true as const;
   coordinatorToolsNeedSuccessor(threadId: string): boolean {
-    const generation =
-      this.sessions.get(threadId)?.coordinatorControlGeneration;
-    if (generation === undefined) return false;
-    return (
-      this.options.coordinatorGenerationForSession?.(threadId) !== generation
-    );
+    const record = this.sessions.get(threadId);
+    const generations = [
+      record?.coordinatorControlGeneration,
+      record?.coordinatorKnowledgeGeneration,
+    ].filter((value): value is number => value !== undefined);
+    if (generations.length === 0) return false;
+    const current = this.options.coordinatorGenerationForSession?.(threadId);
+    return generations.some((generation) => current !== generation);
   }
   readonly provider = 'claude' as const;
   readonly adoptionLifecycle = 'reported' as const;
@@ -2228,6 +2231,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       coordinatorControlGeneration: input.agent?.toolServers?.find(
         (server) =>
           server.id === 'station-control' && server.coordinatorDerived,
+      )?.coordinatorGeneration,
+      coordinatorKnowledgeGeneration: input.agent?.toolServers?.find(
+        (server) =>
+          server.id === 'station-knowledge' && server.coordinatorDerived,
       )?.coordinatorGeneration,
       stationControlBuiltin:
         input.agent?.toolServers?.some(
