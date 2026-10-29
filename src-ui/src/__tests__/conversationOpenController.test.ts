@@ -302,6 +302,31 @@ describe('#749 conversation open controller', () => {
       },
     });
   });
+
+  test.each([
+    ['the open does not take', false, () => 'conversation-tab'],
+    ['the opened tab cannot be found', true, () => undefined],
+  ] as const)(
+    'a resolved open that fails because %s keeps the caller access',
+    async (_case, opened, findTab) => {
+      const outcome = await commitConversationOpen({
+        resolution: {
+          ...resolved(true),
+          callerAccess: { continue: true, startChat: false },
+        },
+        open: vi.fn(async () => opened),
+        projectName: () => 'Station',
+        findTab,
+      });
+      expect(outcome).toMatchObject({
+        kind: 'recovery',
+        recovery: {
+          status: 'unavailable',
+          callerAccess: { continue: true, startChat: false },
+        },
+      });
+    },
+  );
 });
 
 test('restored Codex state adopts the current Claude child without carrying model or permission state', () => {
