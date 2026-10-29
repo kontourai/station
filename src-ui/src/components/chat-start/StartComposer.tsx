@@ -12,6 +12,7 @@ import type { AgentData } from '../../contexts/AgentsContext';
 import { useChatPaneFileDrop } from '../../hooks/useChatPaneFileDrop';
 import { useFileAttachment } from '../../hooks/useFileAttachment';
 import { useDockSlotDevice } from '../../hooks/useIsMobile';
+import type { ApprovalMode } from '../../utils/approvalMode';
 import { filesFromDataTransfer } from '../../utils/attachment-file-transfer';
 import { MODEL_NOT_REPORTED } from '../../utils/modelCapabilities';
 import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
@@ -134,6 +135,12 @@ export type StartAgentChip =
       approvalProjectDefault?: ProjectChatApprovalDefault;
       /** A Project is selected but that layer could not be read. */
       approvalProjectDefaultUnavailable?: boolean;
+      /** This start's own approval pick, if one was made. */
+      approvalPick?: ApprovalMode;
+      /** Present: the Permissions chip is a picker for `approvalPick`. */
+      onApprovalPick?: (mode: ApprovalMode) => void;
+      /** `dialog` when the composer sits in a dialog. */
+      approvalSheetLayer?: 'dialog' | 'popover';
     };
 
 /** The project chip: the context the start runs in. */
@@ -497,6 +504,9 @@ export function StartComposer({
                   projectDefaultUnavailable={
                     agent.approvalProjectDefaultUnavailable
                   }
+                  pick={agent.approvalPick}
+                  onPick={agent.onApprovalPick}
+                  sheetLayer={agent.approvalSheetLayer}
                 />
               )}
             {skill && (

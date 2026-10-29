@@ -400,7 +400,7 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
       });
       expect(
         await roomRuntime.discover({ taskId: taskRecord.id, request }),
-      ).toMatchObject({ kind: 'opened' });
+      ).toMatchObject({ kind: 'existing' });
       await roomRuntime.message({
         taskId: taskRecord.id,
         request,

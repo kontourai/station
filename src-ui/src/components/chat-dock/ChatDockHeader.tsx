@@ -126,7 +126,7 @@ export interface ChatDockWorkspaceControls {
  * it measures; branch and directory facts live in the session context card.
  * See docs/design/placement.md, "What the dock header holds".
  *
- * Inside a region host it renders into the region bar's two slots
+ * Inside a region host it renders into the region bar's slots
  * (`RegionChromeSlots`) so the dock keeps one chrome bar; the region's
  * placement grab, tab strip and visibility chevron are `RegionChromeBar`'s.
  * The full-screen placement has no region bar and renders this as its own
@@ -355,9 +355,60 @@ export function ChatDockHeader({
   // More menu in the actions cluster now. #1529 (#928 C2b) took the occupant
   // picker with the legacy docked-Home path. #2046 2b took the placement grab
   // too: it moved to the region bar with the tab strip, since it moves the
-  // REGION and not this pane. What is left is the pane's own identity.
+  // REGION and not this pane. The inbox toggle sits before that chrome.
+  const inboxToggle =
+    showInboxToggle && workspaceControls ? (
+      <button
+        type="button"
+        className="chat-dock__icon-btn chat-dock__inbox-toggle"
+        aria-label={inboxToggleLabel(
+          workspaceControls.isInboxOpen,
+          workspaceControls.inboxNeedsYouCount,
+          workingCount,
+          unreadCount,
+        )}
+        title={inboxToggleLabel(
+          workspaceControls.isInboxOpen,
+          workspaceControls.inboxNeedsYouCount,
+          workingCount,
+          unreadCount,
+        )}
+        aria-pressed={workspaceControls.isInboxOpen}
+        data-unread={unreadCount > 0 ? '' : undefined}
+        onClick={workspaceControls.onToggleInbox}
+      >
+        <svg
+          aria-hidden="true"
+          width="16"
+          height="16"
+          viewBox="0 0 16 16"
+          fill="none"
+        >
+          <rect
+            x="2"
+            y="2"
+            width="12"
+            height="12"
+            rx="2"
+            stroke="currentColor"
+          />
+          <path d="M6 2v12" stroke="currentColor" />
+          <path
+            d={workspaceControls.isInboxOpen ? 'm10 6-2 2 2 2' : 'm9 6 2 2-2 2'}
+            stroke="currentColor"
+          />
+        </svg>
+        {workingCount > 0 ? (
+          <span className="chat-dock__inbox-working" aria-hidden="true">
+            {workingCount}
+          </span>
+        ) : null}
+      </button>
+    ) : null;
+
   const leading = (
     <>
+      {slots?.start === undefined ? inboxToggle : null}
       {chatIdentity && (!slots?.namesPane || retainIdentityInNamedPane) ? (
         <div
           className={`chat-dock__header-identity${slots?.namesPane ? ' chat-dock__header-identity--pane' : ''}`}
@@ -386,56 +437,6 @@ export function ChatDockHeader({
           }
         >
           Inventory
-        </button>
-      ) : null}
-      {showInboxToggle && workspaceControls ? (
-        <button
-          type="button"
-          className="chat-dock__icon-btn chat-dock__inbox-toggle"
-          aria-label={inboxToggleLabel(
-            workspaceControls.isInboxOpen,
-            workspaceControls.inboxNeedsYouCount,
-            workingCount,
-            unreadCount,
-          )}
-          title={inboxToggleLabel(
-            workspaceControls.isInboxOpen,
-            workspaceControls.inboxNeedsYouCount,
-            workingCount,
-            unreadCount,
-          )}
-          aria-pressed={workspaceControls.isInboxOpen}
-          data-unread={unreadCount > 0 ? '' : undefined}
-          onClick={workspaceControls.onToggleInbox}
-        >
-          <svg
-            aria-hidden="true"
-            width="16"
-            height="16"
-            viewBox="0 0 16 16"
-            fill="none"
-          >
-            <rect
-              x="2"
-              y="2"
-              width="12"
-              height="12"
-              rx="2"
-              stroke="currentColor"
-            />
-            <path d="M6 2v12" stroke="currentColor" />
-            <path
-              d={
-                workspaceControls.isInboxOpen ? 'm10 6-2 2 2 2' : 'm9 6 2 2-2 2'
-              }
-              stroke="currentColor"
-            />
-          </svg>
-          {workingCount > 0 ? (
-            <span className="chat-dock__inbox-working" aria-hidden="true">
-              {workingCount}
-            </span>
-          ) : null}
         </button>
       ) : null}
       {workspaceControls ? (
@@ -519,6 +520,7 @@ export function ChatDockHeader({
   if (slots && (!fullscreen || slots.namesPane)) {
     return (
       <>
+        {slots.start ? createPortal(inboxToggle, slots.start) : null}
         {slots.leading ? createPortal(leading, slots.leading) : null}
         {slots.trailing ? createPortal(trailing, slots.trailing) : null}
       </>
@@ -528,6 +530,7 @@ export function ChatDockHeader({
   return (
     <div className="chat-dock__header">
       <div className="chat-dock__title">
+        {slots?.start !== undefined ? inboxToggle : null}
         {leading}
         {/* The row's growth, on an empty element rather than inside any of the
             labels above: the identity and the project context used to grow

@@ -183,3 +183,63 @@ describe('OrchestrationReviewExecutor', () => {
     });
   });
 });
+
+describe('OrchestrationReviewExecutor with a reply stored out of line', () => {
+  it('parses the exact reply behind the reference, never its preview', async () => {
+    const reply = JSON.stringify({
+      findings: [{ title: 'x'.repeat(40_000) }],
+      deltaAssessments: [],
+    });
+    const ref = `sha256-${'d'.repeat(64)}`;
+    const orchestration = runtime();
+    orchestration.readSessionEventPage.mockImplementation(
+      async (threadId: string) => ({
+        session: { threadId },
+        events: [
+          {
+            sequence: 1,
+            event: {
+              eventId: 'event-1',
+              provider: 'codex',
+              threadId,
+              turnId: 'turn-1',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              method: 'turn.completed',
+              spilledContent: { v: 1, count: 1, bytes: reply.length },
+              outputText: {
+                $stationContent: 1,
+                ref,
+                kind: 'string',
+                bytes: reply.length,
+                length: reply.length,
+                preview: reply.slice(0, 100),
+              },
+            } as never,
+          },
+        ],
+        hasMore: false,
+        nextSequence: 1,
+      }),
+    );
+    const readEventContent = vi.fn(() => ({
+      kind: 'string' as const,
+      body: reply,
+      bytes: reply.length,
+    }));
+    const executor = new OrchestrationReviewExecutor({
+      orchestration: { ...orchestration, readEventContent } as never,
+      supportsReadOnlyReview: () => true,
+      pollMs: 1,
+    });
+    await expect(executor.execute(input())).resolves.toEqual({
+      kind: 'completed',
+      output: JSON.parse(reply),
+      workspaceRelease: 'safe',
+    });
+    expect(readEventContent).toHaveBeenCalledWith(
+      expect.any(String),
+      ref,
+      expect.anything(),
+    );
+  });
+});

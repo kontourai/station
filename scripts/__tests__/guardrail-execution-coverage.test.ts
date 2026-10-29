@@ -151,6 +151,7 @@ const EXECUTED_BY_OWN_TEST: ReadonlyArray<readonly [string, string]> = [
   ],
   ['run-biome.mjs', 'scripts/__tests__/run-biome.process.test.ts'],
   ['cli-doc-parity.mjs', 'scripts/__tests__/cli-doc-parity.test.ts'],
+  ['cli-mcp-parity.mjs', 'scripts/__tests__/cli-mcp-parity.test.ts'],
   [
     'feature-preview-docs-check.mjs',
     'scripts/__tests__/feature-preview-docs-check.test.ts',
@@ -213,6 +214,7 @@ const EXECUTED_BY_OWN_TEST: ReadonlyArray<readonly [string, string]> = [
     'type-laundering-gate.mjs',
     'scripts/__tests__/type-laundering-gate.process.test.ts',
   ],
+  ['ui-copy-length.mjs', 'scripts/__tests__/ui-copy-length.process.test.ts'],
   [
     'ui-glyph-coverage-ratchet.mjs',
     'scripts/__tests__/ui-glyph-coverage-gate.cli.test.ts',

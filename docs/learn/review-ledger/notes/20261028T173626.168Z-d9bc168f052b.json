@@ -1,0 +1,21 @@
+{
+  "revision": "3e8d300827ebabe63bfdce5925062683f148a7f4",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Visual-skills preview fix round: NewChatModal now derives the chosen visual skill from the preview, so turning it off mid-draft also drops it from the chip, the start check and the draft; test mocks updated. No module-map claim names the composer entry points; no edit.","inputs":["docs/architecture/module-map.md","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Visual-skills preview fix round: NewChatModal now derives the chosen visual skill from the preview, so turning it off mid-draft also drops it from the chip, the start check and the draft; test mocks updated. The overflow qualification and frozen-capture note remain accurate.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/NewChatModalSelectDispatch.test.tsx","src-ui/src/__tests__/StartComposerParity.test.tsx","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Visual-skills preview fix round: NewChatModal now derives the chosen visual skill from the preview, so turning it off mid-draft also drops it from the chip, the start check and the draft; test mocks updated. Setup return and repair paths unchanged; no edit.","inputs":["docs/design/connections-onboarding.md","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Visual-skills preview fix round: NewChatModal now derives the chosen visual skill from the preview, so turning it off mid-draft also drops it from the chip, the start check and the draft; test mocks updated. settings.md row now also states unsent next stages in started chats stay available and that turning the preview off drops an unsent New Chat skill. Guide unchanged; UI-entry-only gating follows the task-review precedent and is disclosed in the settings row.","inputs":["docs/guides/feature-previews.md","docs/user/settings.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Visual-skills preview fix round: NewChatModal now derives the chosen visual skill from the preview, so turning it off mid-draft also drops it from the chip, the start check and the draft; test mocks updated. Off, the composers and agent list offer none, and a skill chosen before turning it off is no longer offered or started from New Chat; claims accurate.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/StartComposerParity.test.tsx","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Visual-skills preview fix round: NewChatModal now derives the chosen visual skill from the preview, so turning it off mid-draft also drops it from the chip, the start check and the draft; test mocks updated. Row extended: started chats keep their view and unsent next stage (ChatDock SkillExperiencePanel and restored drafts are not gated); an unsent New Chat skill is dropped when the preview turns off.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"Visual-skills preview fix round: NewChatModal now derives the chosen visual skill from the preview, so turning it off mid-draft also drops it from the chip, the start check and the draft; test mocks updated. Pre-redesign baseline; unaffected.","inputs":["docs/learn/media/new-chat-start-before.png","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"Visual-skills preview fix round: NewChatModal now derives the chosen visual skill from the preview, so turning it off mid-draft also drops it from the chip, the start check and the draft; test mocks updated. Frozen capture still differs only by the default-hidden ⋯, as chat-composer.md states.","inputs":["docs/learn/media/new-chat-start-after.png","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

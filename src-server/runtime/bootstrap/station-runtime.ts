@@ -1,6 +1,7 @@
 import type { DeploymentAuthenticationConfiguration } from '@kontourai/station-contracts/deployment-authentication';
 import { isProjectKnowledgeRoot } from '@kontourai/station-contracts/knowledge-store';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
+import { analyticsHomeExportActivation } from '../../analytics/analytics-activation.js';
 import { getBrandingProvider } from '../../providers/registries/registry.js';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
@@ -173,6 +174,7 @@ import { OperatorPasskeyEnrollmentService } from '../../services/identity/operat
 import { LazyOperatorPasskeyRegistry } from '../../services/identity/operator-passkey-registry.js';
 import { FleetCandidateService } from '../../services/inference/fleet-candidate-service.js';
 import { FleetProbeService } from '../../services/inference/fleet-probe-service.js';
+import { installSessionTmpDirPolicy } from '../../services/infra/session-tmpdir.js';
 import type { KnowledgeService } from '../../services/knowledge/knowledge-service.js';
 import type { NotificationService } from '../../services/notifications/notification-service.js';
 import type { OperationalEventPublisher } from '../../services/operational-events/operational-event-outbox.js';
@@ -1111,8 +1113,12 @@ export class StationRuntime {
   private readonly featurePreviews: FeaturePreviewRegistry;
   /** Bound during composition, then selected at the fleet-routing branch. */
   private fleetConsumerProbesPreview!: FeaturePreviewSelector;
+  private chatHostImagesPreview!: FeaturePreviewSelector;
   private sshEnvironmentService: SshEnvironmentService;
   private timers: NodeJS.Timeout[] = [];
+  private analyticsMaintenance?: (
+    assertRuntime: () => Promise<void>,
+  ) => Promise<void>;
   public readonly eventBus = new EventBus();
   // archive#1225: shared per-user live-`/events`-subscriber presence for
   // `createOrchestrationRoutes` — see
@@ -1381,6 +1387,9 @@ export class StationRuntime {
       this.orchestrationEventStore = openedEventStore = new EventStore(
         orchestrationDatabasePath,
       );
+      this.orchestrationEventStore.bindUsageExportActivation(
+        analyticsHomeExportActivation(projectHomeDir),
+      );
       this.operationalEventPublisher =
         this.orchestrationEventStore.createOperationalEventPublisher({
           appended: ({ journalSequence, event }) => {
@@ -1436,6 +1445,7 @@ export class StationRuntime {
         this.logger,
       );
       this.bindFleetConsumerProbesPreview();
+      this.bindChatHostImagesPreview();
       // Journal consumers wire after the quarantine notice: the runtime must
       // report a recorded corruption before anything asks the store for more
       // than its publisher.
@@ -3976,6 +3986,7 @@ export class StationRuntime {
           // failed-safe on Station's native engine until another config write.
           onACPConnectionsReady: () => this.reloadDefaultAgent(),
           orchestrationEventStore: this.orchestrationEventStore,
+          hostImagesPreview: this.chatHostImagesPreview,
           credentialProfileRecoveryAdapter:
             this.connectionService.createCredentialProfileRecoveryAdapter(
               credentialRecoveryRuntimeConnectionId,
@@ -4610,6 +4621,7 @@ export class StationRuntime {
       agentActivityPublisher,
       notificationDeliveryRouter,
       serverUpdate,
+      analyticsMaintenance,
     } = configureRuntimeRoutes({
       retainProjectRoomRuntime: (runtime) => {
         this.projectRoomRuntime = runtime;
@@ -4745,6 +4757,7 @@ export class StationRuntime {
     this.agentActivityPublisher = agentActivityPublisher;
     this.notificationDeliveryRouter = notificationDeliveryRouter;
     this.serverUpdate = serverUpdate;
+    this.analyticsMaintenance = analyticsMaintenance;
     this.liveSurfaceRegistry = liveSurfaceRegistry;
     this.pluginDraftService = pluginDraftService;
     this.deviceHosts = deviceHosts;
@@ -4859,15 +4872,25 @@ export class StationRuntime {
     await startRuntimeHealthChecks({
       timers: this.timers,
       logger: this.logger,
-      runHealthChecks: async () =>
-        runRuntimeHealthChecks({
+      runHealthChecks: async () => {
+        if (!this.shutdownPromise) {
+          try {
+            await this.analyticsMaintenance?.(async () => {
+              if (this.shutdownPromise) throw new Error('Runtime closing');
+            });
+          } catch {
+            this.logger.warn('Analytics sync outbox expiry did not complete');
+          }
+        }
+        return runRuntimeHealthChecks({
           activeAgents: this.activeAgents,
           agentSpecs: this.agentSpecs,
           memoryAdapters: this.memoryAdapters,
           mcpConnectionStatus: this.mcpConnectionStatus,
           integrationMetadata: this.integrationMetadata,
           monitoringEmitter: this.monitoringEmitter,
-        }),
+        });
+      },
     });
     // archive#3218. The reactive watch (archive#3215) sees corruption a query
     // touches; this sees the pages nothing reads. It runs in a child process
@@ -5091,6 +5114,24 @@ export class StationRuntime {
       description:
         'Probe a peer-contributed model before routing work to it. This can spend a completion on another Station.',
     });
+  }
+
+  /**
+   * The chat-host-images preview: one selector for every consumer — turn
+   * capture and the agent instruction (orchestration), and the per-session
+   * engine TMPDIR, decided when an engine starts (`session-tmpdir.ts`).
+   */
+  private bindChatHostImagesPreview(): void {
+    this.chatHostImagesPreview = this.featurePreviews.bind({
+      id: 'chat-host-images',
+      label: 'Chat images from the host',
+      description:
+        "Show images an agent saves on this Station and names in its reply, on any device. Station copies each one (PNG, JPEG, GIF or WebP, up to 512 KiB, from the chat's working folder or its own temporary folder) into the chat's attachment storage when the reply finishes.",
+    });
+    const preview = this.chatHostImagesPreview;
+    installSessionTmpDirPolicy(() =>
+      preview.select({ enabled: () => true, disabled: () => false }),
+    );
   }
 
   private replaceTemplateVariables(text: string, _agentName?: string): string {

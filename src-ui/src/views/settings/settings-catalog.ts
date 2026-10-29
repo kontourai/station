@@ -39,6 +39,9 @@ export type SettingsSectionId =
   | 'notifications'
   | 'voice'
   | 'pairing'
+  // docs/design/station-routes.md: every address this device reaches the
+  // current Station on. Behind the Station routes preview.
+  | 'station-routes'
   | 'developer-tools'
   // The release-required app facts: version, open source notices, legal.
   | 'about'
@@ -77,7 +80,8 @@ export interface SettingsCatalogEntry {
     | 'desktop'
     | 'operator'
     | 'developer'
-    | 'experimental-trust';
+    | 'experimental-trust'
+    | 'experimental-station-routes';
 }
 
 /**
@@ -151,6 +155,7 @@ export const SETTINGS_SECTIONS = [
   // #2182: reaching this Station from a phone. It was the one non-voice row
   // of "Voice & Features", which is what made "Features" necessary.
   { id: 'pairing', title: 'Pairing', group: 'you' },
+  { id: 'station-routes', title: 'Routes', group: 'you' },
   // archive#3313: gates the Developer surface's sidebar/palette entries on
   // this device (a device setting — see contracts' developerToolsEnabled).
   { id: 'developer-tools', title: 'Developer tools', group: 'you' },
@@ -276,6 +281,14 @@ const SETTINGS_CATALOG_SOURCE = [
     section: 'developer-tools',
     conditional: 'developer',
     configKeys: ['experimentalTrustEnabled'],
+  },
+  {
+    id: 'experimental-station-routes',
+    title: 'Station routes preview',
+    section: 'developer-tools',
+    conditional: 'developer',
+    keywords: ['routes', 'tailscale', 'lan', 'failover', 'connection'],
+    configKeys: ['experimentalStationRoutesEnabled'],
   },
   {
     id: 'experimental-sheet-gestures',
@@ -756,6 +769,13 @@ const SETTINGS_CATALOG_SOURCE = [
     conditional: 'mobile',
   },
   {
+    id: 'station-routes',
+    title: 'Routes',
+    section: 'station-routes',
+    conditional: 'experimental-station-routes',
+    keywords: ['tailscale', 'lan', 'address', 'failover', 'connection'],
+  },
+  {
     id: 'personal-knowledge-store',
     title: 'My knowledge store',
     section: 'knowledge',
@@ -846,6 +866,8 @@ const SETTING_SCOPE_OVERRIDES: Readonly<
   'deployed-build': 'informational',
   'message-context': 'temporary',
   'mobile-pairing': 'informational',
+  // Routes are saved in this device's own connection profile.
+  'station-routes': 'device',
 };
 
 /**
@@ -1032,6 +1054,7 @@ export function matchingSettingsRows(
     isOperator?: boolean;
     developerToolsEnabled?: boolean;
     experimentalTrustEnabled?: boolean;
+    experimentalStationRoutesEnabled?: boolean;
   } = {},
 ): readonly SettingsCatalogEntry[] {
   const needle = query.trim().toLowerCase();
@@ -1045,6 +1068,11 @@ export function matchingSettingsRows(
     if (
       entry.conditional === 'experimental-trust' &&
       options.experimentalTrustEnabled !== true
+    )
+      return false;
+    if (
+      entry.conditional === 'experimental-station-routes' &&
+      options.experimentalStationRoutesEnabled !== true
     )
       return false;
     if (entry.conditional === 'operator' && options.isOperator !== true) {
@@ -1083,6 +1111,7 @@ export function settingsPaletteCommands(options: {
   isDesktop: boolean;
   developerToolsEnabled?: boolean;
   experimentalTrustEnabled?: boolean;
+  experimentalStationRoutesEnabled?: boolean;
 }): readonly SettingsPaletteCommand[] {
   // #2067: deliberately NOT filtered by `conditional: 'operator'` here.
   //
@@ -1101,7 +1130,9 @@ export function settingsPaletteCommands(options: {
       (entry.conditional !== 'developer' ||
         options.developerToolsEnabled === true) &&
       (entry.conditional !== 'experimental-trust' ||
-        options.experimentalTrustEnabled === true),
+        options.experimentalTrustEnabled === true) &&
+      (entry.conditional !== 'experimental-station-routes' ||
+        options.experimentalStationRoutesEnabled === true),
   ).map((entry) => {
     const unavailable =
       entry.conditional === 'mobile' && !options.isMobile

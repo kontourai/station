@@ -488,11 +488,14 @@ export interface NativePlatformAdapter {
    * (archive#3677). The native host fetches the server-authored
    * description with its own local-grant credential, shows an OS dialog the
    * webview cannot script, commits the decision server-side, and returns
-   * only the settled status. Web hosts return `unsupported` — they use the
+   * only the settled status. Requester-session mode requires the matching
+   * host-held session from the originating person request and never falls
+   * back to operator authority. Web hosts return `unsupported` — they use the
    * distinct-origin consent page instead.
    */
   reviewConsentNatively(
     requestId: string,
+    authority?: 'operator' | 'requester-session',
   ): Promise<NativeCommandResult<NativeConsentOutcome>>;
   /**
    * Agent activity on this phone (Android, and iOS builds with the Live

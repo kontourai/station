@@ -1,0 +1,7 @@
+{
+  "revision": "af3e5a84422aca57bfe6b2b91b157b1a2b9e04f0",
+
+  "notes": [
+    {"path":"docs/guides/web-push-notifications.md","note":"App.tsx change mounts NativeContextMenuGuard only; push registration, focus and worker navigation are untouched.","inputs":["docs/guides/web-push-notifications.md","src-ui/src/App.tsx"]}
+  ]
+}

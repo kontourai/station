@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { activeChatsStore } from '../contexts/ActiveChatsContext';
 import type { ChatContentPart } from '../contexts/active-chats-state';
+import {
+  isDocumentVisible,
+  subscribeDocumentVisibility,
+} from '../lib/documentVisibility';
 
 type StreamingState = {
   hasContent: boolean;
@@ -94,7 +98,9 @@ export function useStreamingContent(sessionId: string) {
           throttleTimerRef.current = null;
         }
         lastFlushedRef.current = '';
-      } else if (!throttleTimerRef.current) {
+      } else if (!throttleTimerRef.current && isDocumentVisible()) {
+        // A hidden page renders no Markdown nobody can see: the latest text
+        // waits in the ref and is flushed once when the page is shown.
         throttleTimerRef.current = setTimeout(flushStreamingText, THROTTLE_MS);
       }
 
@@ -125,10 +131,15 @@ export function useStreamingContent(sessionId: string) {
       });
     };
     const unsubscribe = activeChatsStore.subscribe(sync);
+    const stopWatchingVisibility = subscribeDocumentVisibility(() => {
+      if (isDocumentVisible() && !throttleTimerRef.current)
+        flushStreamingText();
+    });
     sync();
 
     return () => {
       unsubscribe();
+      stopWatchingVisibility();
       if (throttleTimerRef.current) clearTimeout(throttleTimerRef.current);
     };
   }, [sessionId, flushStreamingText]);

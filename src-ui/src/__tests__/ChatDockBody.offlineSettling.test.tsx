@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import { ENGINE_CAPABILITY_MATRICES } from '@kontourai/station-contracts/engine-capability-matrix';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import { type ReactNode, useEffect, useState } from 'react';
@@ -572,7 +573,7 @@ describe('ChatDockBody offline settling (station#2605)', () => {
     expect(screen.queryByText(/Saved transcript/)).toBeNull();
   });
 
-  test('canSteer derives from capability AND live execution — idle sessions offer no steer', async () => {
+  test('canSteer requires live execution and native steering fidelity', async () => {
     // Server enforcement (typed refusal) is the backstop, but the issue
     // requires the AFFORDANCE to be absent without an active turn: pin the
     // ChatDockBody derivation, not just the row component's prop handling.
@@ -603,5 +604,25 @@ describe('ChatDockBody offline settling (station#2605)', () => {
         expect.objectContaining({ canSteer: true }),
       ),
     );
+
+    const profile = ENGINE_CAPABILITY_MATRICES.claude.durability;
+    const originalSteering = profile.steerPlacement;
+    try {
+      for (const state of ['emulated', 'none'] as const) {
+        profile.steerPlacement = {
+          state,
+          detail: 'Native steering is unavailable for this connection.',
+        };
+        queuedMessagesProps.mockClear();
+        view.rerender(dock({ ...active }));
+        await waitFor(() =>
+          expect(queuedMessagesProps).toHaveBeenLastCalledWith(
+            expect.objectContaining({ canSteer: false }),
+          ),
+        );
+      }
+    } finally {
+      profile.steerPlacement = originalSteering;
+    }
   });
 });

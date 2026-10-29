@@ -108,6 +108,12 @@ and OTel callback/probe acceptance remain separate from downstream collection
 and personal usage accounting. Unsupported or malformed responses throw;
 refreshing or failed status must not display cached success as current.
 
+`fetchTelemetryCompanionPrerequisites` and
+`useTelemetryCompanionPrerequisitesQuery` read operator-only local container
+capabilities. Pass the captured request authority; a passed host check is not
+installation or ingestion readiness. The hook partitions by Station and
+authority, drops previous data, and does not automatically retry a failed read.
+
 The `/secret-bindings` and `/secret-bindings-query` subpaths expose the separate
 telemetry destination grant operations and hooks. Callers supply the API base,
 captured request authority, exact product/collector address and current binding
@@ -689,6 +695,8 @@ out of the first-paint root barrel.
   (inspection point queries), `/session-output-actions` (keep a Session output
   in a Task), `/session-inventory`, `/task-user-input-references`.
 - Activity: `/live-activity` and `/action-operations` (lazy Activity feeds).
+- Event content: `/runtime-event-content` (the full value behind an
+  out-of-line event content reference, and the approval content gate).
 - Flow gates: `/client/flow-gate-evaluations`.
 - Setup and devices: `/setup-imports` and `/setup-imports-query` (existing-setup
   import), `/mobile-devices-query` (Device pane inventory and sessions),

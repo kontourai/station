@@ -1,4 +1,5 @@
 import { PROVIDER_TURN_IN_PROGRESS_CODE } from '@kontourai/station-contracts/provider';
+import type { SpillableText } from '@kontourai/station-contracts/runtime-event-content';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -201,9 +202,9 @@ interface TurnFact {
   method: string;
   turnId: string;
   trigger?: unknown;
-  outputText?: string;
+  outputText?: SpillableText;
   finishReason?: string;
-  prompt?: string;
+  prompt?: SpillableText;
 }
 
 const turnFacts = (events: CanonicalRuntimeEvent[]): TurnFact[] =>

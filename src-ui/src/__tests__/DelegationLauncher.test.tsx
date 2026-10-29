@@ -1542,7 +1542,7 @@ describe('DelegationLauncher', () => {
       target: { value: 'env-peer-b' },
     });
     expect(
-      screen.getByText(/changed on this Station since its placement/),
+      screen.getByText(/changed since its placement details loaded/),
     ).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Delegate' })).toHaveProperty(
       'disabled',
@@ -1590,7 +1590,7 @@ describe('DelegationLauncher', () => {
       target: { value: 'env-peer-b' },
     });
     expect(
-      screen.getByText(/changed on this Station since its placement/),
+      screen.getByText(/changed since its placement details loaded/),
     ).toBeTruthy();
     // The identity read resolves FRESH data whose association names the
     // recreated incarnation: the mismatch clears and placement works, with
@@ -1619,7 +1619,7 @@ describe('DelegationLauncher', () => {
       />,
     );
     expect(
-      screen.queryByText(/changed on this Station since its placement/),
+      screen.queryByText(/changed since its placement details loaded/),
     ).toBeNull();
     const delegate = screen.getByRole('button', { name: 'Delegate' });
     expect(delegate).toHaveProperty('disabled', false);
@@ -1659,7 +1659,9 @@ describe('DelegationLauncher', () => {
     fireEvent.change(screen.getByLabelText('Station'), {
       target: { value: 'env-peer-b' },
     });
-    expect(screen.getByText(/portable identity before placing/)).toBeTruthy();
+    expect(
+      screen.getByText(/Checking this Project’s portable identity/),
+    ).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Delegate' })).toHaveProperty(
       'disabled',
       true,

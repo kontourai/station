@@ -2,7 +2,10 @@ import {
   MEDIA_UPLOAD_POLICIES,
   mediaUploadPolicy,
 } from '@kontourai/station-contracts/walkthrough';
-import { configureHttpReceive } from '@kontourai/station-shared/http-upload';
+import {
+  configureHttpKeepAlive,
+  configureHttpReceive,
+} from '@kontourai/station-shared/http-upload';
 /**
  * VoltAgent's Hono surface mutates Zod's object helpers while loading its
  * vendored OpenAPI adapter. MCP builds its auth schemas with those helpers, so
@@ -19,6 +22,10 @@ import {
   type HonoServerConfig,
 } from '@voltagent/server-hono';
 import type { LanDiscovery } from '../../services/connections/lan-discovery.js';
+import {
+  type TerminalGateway,
+  terminalGatewayFor,
+} from '../../services/terminal/terminal-gateway.js';
 import {
   closeStableListener,
   type ListenerLink,
@@ -43,6 +50,7 @@ export function stationHonoServer(
   return (deps): IServerProvider => {
     let server: HttpServer | null = null;
     let running = false;
+    let terminalGateway: TerminalGateway<Request> | undefined;
     return {
       isRunning: () => running,
       async start() {
@@ -61,10 +69,20 @@ export function stationHonoServer(
             mediaUploadPolicy(method, path, MEDIA_UPLOAD_POLICIES),
           MEDIA_UPLOAD_POLICIES.walkthrough.totalMs,
         );
-        const { port } = await link().listen('api', next, {
-          port: config.port,
-          host: hostname,
-        });
+        configureHttpKeepAlive(next);
+        terminalGateway = terminalGatewayFor(app);
+        terminalGateway?.mount(next, link());
+        let port: number;
+        try {
+          ({ port } = await link().listen('api', next, {
+            port: config.port,
+            host: hostname,
+          }));
+        } catch (error) {
+          terminalGateway?.stop();
+          terminalGateway = undefined;
+          throw error;
+        }
         server = next;
         running = true;
         await discovery?.bound(next);
@@ -73,6 +91,8 @@ export function stationHonoServer(
       async stop() {
         if (!running) return;
         running = false;
+        terminalGateway?.stop();
+        terminalGateway = undefined;
         await discovery?.stop();
         const stopping = server;
         server = null;

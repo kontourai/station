@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { runInNewContext } from 'node:vm';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { CdpTransport } from '../browser-host.js';
 import { ChromiumScreencastProducer } from '../chromium-screencast-producer.js';
@@ -1096,6 +1097,331 @@ describe('ChromiumServerHost with a fake browser', () => {
 });
 
 describe('effective preview WebRTC policy at browser startup', () => {
+  const committedDocument = (call: SentCall) => {
+    if (call.method === 'Page.getFrameTree')
+      return {
+        frameTree: {
+          frame: {
+            id: 'main',
+            loaderId: 'prefs-loader',
+            url: 'chrome://prefs-internals/',
+          },
+        },
+      };
+    if (call.method === 'Page.createIsolatedWorld')
+      return { executionContextId: 41 };
+    return undefined;
+  };
+
+  test('binds the policy read to the committed document instead of the initial complete blank document', async () => {
+    let committed = false;
+    let h: ReturnType<typeof harness>;
+    h = harness(
+      async (call) => {
+        if (call.sessionId === 'S-T1' && call.method === 'Page.enable') {
+          committed = true;
+          h.emit(
+            'Page.frameNavigated',
+            {
+              frame: {
+                id: 'main',
+                loaderId: 'prefs-loader',
+                url: 'chrome://prefs-internals/',
+              },
+            },
+            call.sessionId,
+          );
+        }
+        if (call.method === 'Page.getFrameTree')
+          return {
+            frameTree: {
+              frame: {
+                id: 'main',
+                loaderId: 'blank-loader',
+                url: 'about:blank',
+              },
+            },
+          };
+        if (call.method === 'Page.createIsolatedWorld')
+          return { executionContextId: 41 };
+        if (call.method === 'Runtime.evaluate') {
+          const params = call.params as {
+            expression: string;
+            contextId?: number;
+            awaitPromise?: boolean;
+          };
+          const prefs = committed && params.contextId === 41;
+          const evaluation: Promise<unknown> = runInNewContext(
+            params.expression,
+            {
+              location: {
+                href: prefs ? 'chrome://prefs-internals/' : 'about:blank',
+              },
+              document: {
+                readyState: 'complete',
+                body: {
+                  innerText: prefs
+                    ? JSON.stringify({
+                        webrtc: {
+                          ip_handling_policy: {
+                            value: 'disable_non_proxied_udp',
+                          },
+                        },
+                      })
+                    : '',
+                },
+              },
+            },
+          );
+          const value = params.awaitPromise ? await evaluation : undefined;
+          return { result: { value } };
+        }
+        return {};
+      },
+      undefined,
+      { requireRestrictedWebRtc: true },
+    );
+    await expect(
+      h.host.openTarget({ profileDir: h.profileDir, viewport: VIEWPORT }),
+    ).resolves.toEqual({ targetId: 'T2', cdpSessionId: 'S-T2' });
+  });
+
+  test.each(['another session', 'subframe'])(
+    'a prefs commit from %s cannot qualify the probe',
+    async (origin) => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      let h: ReturnType<typeof harness>;
+      h = harness(
+        (call) => {
+          if (call.sessionId === 'S-T1' && call.method === 'Page.enable')
+            h.emit(
+              'Page.frameNavigated',
+              {
+                frame: {
+                  id: origin === 'subframe' ? 'child' : 'main',
+                  loaderId: 'prefs-loader',
+                  url: 'chrome://prefs-internals/',
+                  ...(origin === 'subframe' ? { parentId: 'main' } : {}),
+                },
+              },
+              origin === 'another session' ? 'foreign-session' : call.sessionId,
+            );
+          if (call.method === 'Page.getFrameTree')
+            return {
+              frameTree: {
+                frame: {
+                  id: 'main',
+                  loaderId: 'blank-loader',
+                  url: 'about:blank',
+                },
+              },
+            };
+          return {};
+        },
+        undefined,
+        { requireRestrictedWebRtc: true },
+      );
+      try {
+        const opening = h.host.openTarget({
+          profileDir: h.profileDir,
+          viewport: VIEWPORT,
+        });
+        const rejected = expect(opening).rejects.toMatchObject({
+          code: 'webrtc-policy-unverified',
+        });
+        await new Promise(setImmediate);
+        await vi.advanceTimersByTimeAsync(3001);
+        await rejected;
+        expect(
+          h.calls.some((call) => call.method === 'Page.createIsolatedWorld'),
+        ).toBe(false);
+        expect(
+          h.calls.filter((call) => call.method === 'Target.createTarget'),
+        ).toHaveLength(1);
+      } finally {
+        await h.host.shutdown();
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  test.each(['loader replacement', 'context destroyed', 'contexts cleared'])(
+    '%s before the policy answer refuses authored targets',
+    async (change) => {
+      let h: ReturnType<typeof harness>;
+      h = harness(
+        (call) => {
+          if (call.method === 'Page.getFrameTree')
+            return {
+              frameTree: {
+                frame: {
+                  id: 'main',
+                  loaderId: 'prefs-loader',
+                  url: 'chrome://prefs-internals/',
+                },
+              },
+            };
+          if (call.method === 'Page.createIsolatedWorld')
+            return { executionContextId: 41 };
+          if (call.method === 'Runtime.evaluate') {
+            if (change === 'loader replacement')
+              h.emit(
+                'Page.frameNavigated',
+                {
+                  frame: {
+                    id: 'main',
+                    loaderId: 'replacement-loader',
+                    url: 'chrome://prefs-internals/',
+                  },
+                },
+                call.sessionId,
+              );
+            else if (change === 'context destroyed')
+              h.emit(
+                'Runtime.executionContextDestroyed',
+                { executionContextId: 41 },
+                call.sessionId,
+              );
+            else h.emit('Runtime.executionContextsCleared', {}, call.sessionId);
+            return {
+              result: {
+                value: {
+                  policy: 'disable_non_proxied_udp',
+                  urlOverrides: false,
+                },
+              },
+            };
+          }
+          return {};
+        },
+        undefined,
+        { requireRestrictedWebRtc: true },
+      );
+      await expect(
+        h.host.openTarget({ profileDir: h.profileDir, viewport: VIEWPORT }),
+      ).rejects.toMatchObject({ code: 'webrtc-policy-unverified' });
+      expect(
+        h.calls.filter((call) => call.method === 'Target.createTarget'),
+      ).toHaveLength(1);
+      expect(h.terminate).toHaveBeenCalledOnce();
+    },
+  );
+
+  test('cold target startup leaves time to verify policy before admitting authored content', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    let attaches = 0;
+    let h: ReturnType<typeof harness>;
+    h = harness(
+      async (call) => {
+        const document = committedDocument(call);
+        if (document) return document;
+        if (call.sessionId === 'S-T1' && call.method === 'Page.enable')
+          await new Promise((resolve) => setTimeout(resolve, 700));
+        if (call.sessionId === 'S-T1' && call.method === 'Page.navigate')
+          setTimeout(
+            () => h.emit('Page.loadEventFired', {}, call.sessionId),
+            800,
+          );
+        if (call.method === 'Runtime.evaluate') {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          return {
+            result: {
+              value: {
+                policy: 'disable_non_proxied_udp',
+                urlOverrides: false,
+              },
+            },
+          };
+        }
+        return {};
+      },
+      {
+        beforeAttach: async () => {
+          if (attaches++ === 0)
+            await new Promise((resolve) => setTimeout(resolve, 1700));
+        },
+      },
+      { requireRestrictedWebRtc: true },
+    );
+    try {
+      const opening = h.host.openTarget({
+        profileDir: h.profileDir,
+        viewport: VIEWPORT,
+      });
+      const settled = opening.then(
+        (target) => ({ target }),
+        (error: unknown) => ({ error }),
+      );
+      await new Promise(setImmediate);
+      await vi.advanceTimersByTimeAsync(3001);
+      expect(await settled).toEqual({
+        target: { targetId: 'T2', cdpSessionId: 'S-T2' },
+      });
+    } finally {
+      await h.host.shutdown();
+      vi.useRealTimers();
+    }
+  });
+
+  test('a policy read beyond three seconds refuses authored targets and closes its probe', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    let policyRead = false;
+    let h: ReturnType<typeof harness>;
+    h = harness(
+      (call) => {
+        const document = committedDocument(call);
+        if (document) return document;
+        if (call.method === 'Page.navigate')
+          h.emit('Page.loadEventFired', {}, call.sessionId);
+        if (call.method === 'Runtime.evaluate') {
+          policyRead = true;
+          return new Promise((resolve) =>
+            setTimeout(
+              () =>
+                resolve({
+                  result: {
+                    value: {
+                      policy: 'disable_non_proxied_udp',
+                      urlOverrides: false,
+                    },
+                  },
+                }),
+              3001,
+            ),
+          );
+        }
+        return {};
+      },
+      undefined,
+      { requireRestrictedWebRtc: true },
+    );
+    try {
+      const opening = h.host.openTarget({
+        profileDir: h.profileDir,
+        viewport: VIEWPORT,
+      });
+      const rejected = expect(opening).rejects.toMatchObject({
+        code: 'webrtc-policy-unverified',
+      });
+      await new Promise(setImmediate);
+      await vi.advanceTimersByTimeAsync(3001);
+      await rejected;
+      expect(policyRead).toBe(true);
+      expect(
+        h.calls.filter((call) => call.method === 'Target.createTarget'),
+      ).toHaveLength(1);
+      expect(h.calls).toContainEqual({
+        method: 'Target.closeTarget',
+        params: { targetId: 'T1' },
+        sessionId: undefined,
+      });
+      expect(h.terminate).toHaveBeenCalledOnce();
+    } finally {
+      await h.host.shutdown();
+      vi.useRealTimers();
+    }
+  });
+
   test.each([
     [
       'restrictive',
@@ -1119,6 +1445,8 @@ describe('effective preview WebRTC policy at browser startup', () => {
       let h: ReturnType<typeof harness>;
       h = harness(
         (call) => {
+          const document = committedDocument(call);
+          if (document) return document;
           if (call.method === 'Page.navigate')
             h.emit('Page.loadEventFired', {}, call.sessionId);
           if (call.method === 'Runtime.evaluate') return { result: { value } };

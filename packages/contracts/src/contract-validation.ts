@@ -26,7 +26,8 @@ export function boundedText(
     typeof value === 'string' &&
     value.length >= min &&
     value.length <= max &&
-    isWellFormedUnicode(value)
+    isWellFormedUnicode(value) &&
+    !/[\u0080-\u009f]/u.test(value)
   );
 }
 
@@ -48,7 +49,7 @@ export function boundaryText(value: unknown, max: number): value is string {
   return (
     boundedText(value, max) &&
     value.trim() === value &&
-    !/[\p{Cc}\p{Cf}\u034f]/u.test(value)
+    !/(?:\p{Cc}|\p{Cf}|\u034f)/u.test(value)
   );
 }
 

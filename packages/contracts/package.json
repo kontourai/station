@@ -25,6 +25,7 @@
     "LICENSE"
   ],
   "exports": {
+    "./terminal-transport": "./src/terminal-transport.ts",
     "./walkthrough": "./src/walkthrough.ts",
     "./station-control-external-client": "./src/station-control-external-client.ts",
     "./required-slots": "./src/required-slots.ts",
@@ -81,6 +82,7 @@
     "./client-origin": "./src/client-origin.ts",
     "./chat-attachment": "./src/chat-attachment.ts",
     "./chat-app": "./src/chat-app.ts",
+    "./chat-host-images": "./src/chat-host-images.ts",
     "./connection-recovery": "./src/connection-recovery.ts",
     "./connection-quota": "./src/connection-quota.ts",
     "./engine-accounts": "./src/engine-accounts.ts",
@@ -100,6 +102,7 @@
     "./engine-display": "./src/engine-display.ts",
     "./enriched-agent": "./src/enriched-agent.ts",
     "./environment-security": "./src/environment-security.ts",
+    "./station-routes": "./src/station-routes.ts",
     "./external-monitor": "./src/external-monitor.ts",
     "./execution-confinement": "./src/execution-confinement.ts",
     "./execution-preparation": "./src/execution-preparation.ts",
@@ -145,6 +148,7 @@
     "./task-room-work": "./src/task-room-work.ts",
     "./task-memory": "./src/task-memory.ts",
     "./task-review": "./src/task-review.ts",
+    "./task-approval": "./src/task-approval.ts",
     "./project-reference-integrity": "./src/project-reference-integrity.ts",
     "./project-settings-overrides": "./src/project-settings-overrides.ts",
     "./project-chat-defaults": "./src/project-chat-defaults.ts",
@@ -192,6 +196,7 @@
     "./user-profile": "./src/user-profile.ts",
     "./usage-rollup": "./src/usage-rollup.ts",
     "./usage-export": "./src/usage-export.ts",
+    "./analytics-views": "./src/analytics-views.ts",
     "./thread-usage-tree": "./src/thread-usage-tree.ts",
     "./unified-search": "./src/unified-search.ts",
     "./turn-provenance": "./src/turn-provenance.ts",
@@ -239,7 +244,8 @@
     "./mcp-elicitation": "./src/mcp-elicitation.ts",
     "./mcp-prompts": "./src/mcp-prompts.ts",
     "./account-preferences": "./src/account-preferences.ts",
-    "./html-reply": "./src/html-reply.ts"
+    "./html-reply": "./src/html-reply.ts",
+    "./runtime-event-content": "./src/runtime-event-content.ts"
   },
   "dependencies": {
     "@kontourai/datum": "0.8.1",

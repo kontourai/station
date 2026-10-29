@@ -9,7 +9,8 @@ import {
   useProjectIconCandidatesQuery,
   useUpdateProjectMutation,
 } from '@kontourai/station-sdk';
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
+import { Button } from '../components/Button';
 import { DetailHeader } from '../components/DetailHeader';
 import { EnvironmentPicker } from '../components/EnvironmentPicker';
 import {
@@ -193,13 +194,30 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
     refetch: () => void;
   };
 
+  const hydratedProject = useRef<{
+    slug: string;
+    project: ProjectConfig;
+  } | null>(null);
   useEffect(() => {
-    if (project) {
-      const f = buildProjectForm(project);
-      setForm(f);
-      setSavedForm(f);
-    }
-  }, [project]);
+    if (
+      !project ||
+      (hydratedProject.current?.slug === slug &&
+        hydratedProject.current.project === project)
+    )
+      return;
+    const sameProject = hydratedProject.current?.slug === slug;
+    hydratedProject.current = { slug, project };
+    // A query refresh must not replace an unsaved draft.
+    if (
+      sameProject &&
+      form &&
+      JSON.stringify(form) !== JSON.stringify(savedForm)
+    )
+      return;
+    const next = buildProjectForm(project);
+    setForm(next);
+    setSavedForm(next);
+  }, [project, slug, form, savedForm]);
 
   useEffect(() => {
     if (!form) return;
@@ -258,15 +276,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           <ErrorState
             title="Could not load project settings"
             description={userFacingErrorMessage(loadError)}
-            action={
-              <button
-                type="button"
-                className="editor-btn"
-                onClick={() => refetchProject()}
-              >
-                Retry
-              </button>
-            }
+            action={<Button onClick={() => refetchProject()}>Retry</Button>}
           />
         </div>
       </div>
@@ -332,6 +342,11 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
       });
       const savedProjectForm = buildProjectForm(saved);
       setSavedForm(savedProjectForm);
+      setForm((current) =>
+        JSON.stringify(current) === JSON.stringify(form)
+          ? savedProjectForm
+          : current,
+      );
     } catch (saveFailure) {
       setSaveError(userFacingErrorMessage(saveFailure));
     }
@@ -361,21 +376,16 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             : undefined
         }
       >
-        <button
-          type="button"
-          className="editor-btn"
-          onClick={() => navigate(`/projects/${slug}`)}
-        >
-          ← Back
-        </button>
-        <button
-          type="button"
-          className="editor-btn editor-btn--primary"
-          disabled={saveMutation.isPending || !form.name || !!iconProblem}
+        <Button onClick={() => navigate(`/projects/${slug}`)}>← Back</Button>
+        <Button
+          variant="primary"
+          disabled={
+            saveMutation.isPending || !form.name.trim() || !!iconProblem
+          }
           onClick={() => void saveProject()}
         >
           {saveMutation.isPending ? 'Saving…' : 'Save'}
-        </button>
+        </Button>
       </DetailHeader>
 
       <SectionNav
@@ -393,6 +403,9 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
 
       {/* Body */}
       <div className="project-settings__body">
+        <p className="project-settings__save-hint">
+          Save to apply changes to project defaults.
+        </p>
         {saveError && (
           <ErrorState
             variant="compact"
@@ -406,7 +419,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           className="project-settings__section project-settings__section--hero"
           eyebrow="Project home"
           title="Workspace"
-          description="Keep the project pointed at the folder you actually work in. Name and icon stay editable, but the directory is the first thing surfaced here."
+          description="The folder used for work in this project."
           actions={
             <div className="project-settings__identity-preview">
               <ProjectIcon
@@ -464,8 +477,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
                 className="editor-input path-autocomplete__input project-settings__working-dir-input"
               />
               <span className="editor-hint">
-                Use an absolute path or <code>~/…</code>. Folder completion now
-                treats an exact typed directory as a selectable folder state.
+                Use an absolute path or <code>~/…</code>.
               </span>
               {workingDirectory && (
                 <div className="project-settings__path-pills">
@@ -473,7 +485,17 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
                     leaf <code>{workingDirectoryLeaf || 'project'}</code>
                   </span>
                   <span className="project-settings__path-pill">
-                    saved as <code>{workingDirectory}</code>
+                    path{' '}
+                    <code>
+                      {workingDirectory
+                        .split(/(?<=[/\\])/)
+                        .map((part, index) => (
+                          <Fragment key={index}>
+                            {part}
+                            <wbr />
+                          </Fragment>
+                        ))}
+                    </code>
                   </span>
                 </div>
               )}
@@ -486,7 +508,6 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           className="project-settings__section"
           eyebrow="Project identity"
           title="Basic info"
-          description="Set the name and description Station uses throughout the project."
         >
           <div className="project-settings__identity-grid">
             <div className="editor-field">
@@ -509,6 +530,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
                 </button>
                 <input
                   id="project-name"
+                  required
                   className="editor-input project-settings__name-input"
                   type="text"
                   value={form.name}
@@ -552,11 +574,11 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           className="project-settings__section"
           eyebrow="Conversation default"
           title="AI model"
-          description="Choose the starting model for new work in this project. Both a model connection and a model are needed — with only one of them set, this project falls back to the Station default."
+          description="Choose a connection and model, or follow the Station default."
         >
           <PageRow
             label="Model connection"
-            description="Which configured model connection this project's chats run through."
+            description="The connection used for this project’s model."
             control={
               <select
                 id="project-default-provider"
@@ -610,9 +632,9 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             // change exists to remove.
             description={
               !form.defaultProviderId
-                ? 'Choose a model connection first. Without one, chats in this project use the Station default.'
+                ? 'Choose a connection to override the Station default.'
                 : form.defaultModel
-                  ? 'Pre-filled with a model this connection offers. Both the connection and a model are needed; with either missing, this project uses the Station default.'
+                  ? 'Used with the selected connection.'
                   : 'This connection offers no model to pre-fill. Choose one, or this project uses the Station default.'
             }
             control={
@@ -641,7 +663,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           className="project-settings__section"
           eyebrow="New thread default"
           title="Thread execution"
-          description="Choose where new threads for this project begin. A thread-specific selection takes precedence."
+          description="A thread's own selection takes precedence."
         >
           <EnvironmentPicker
             id="project-default-environment"
@@ -650,7 +672,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           />
           <PageRow
             label="Execution environment"
-            description="Fresh worktrees isolate changes; the current checkout shares this project's working directory. Leave it on the Station default and this project follows whatever Settings says."
+            description="A fresh worktree isolates changes. The current checkout shares this project’s working directory."
             control={
               <select
                 id="project-default-workspace-isolation"
@@ -682,6 +704,9 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
         <AgentsSection form={form} setForm={setForm} projectSlug={slug} />
         <ToolsSection slug={slug} form={form} setForm={setForm} />
 
+        <p className="project-settings__save-hint">
+          Layouts, sources, access, and knowledge actions apply immediately.
+        </p>
         <LayoutsSection slug={slug} />
 
         <ProjectSourcesSection slug={slug} projectId={project?.id} />
@@ -699,16 +724,15 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           description="Deleting this project cannot be undone."
           tone="danger"
         >
-          <button
-            type="button"
-            className="editor-btn editor-btn--danger"
+          <Button
+            variant="danger-outline"
             onClick={() => {
               setDeleteError(null);
               setDeleteOpen(true);
             }}
           >
             Delete Project
-          </button>
+          </Button>
         </PageSection>
       </div>
 
