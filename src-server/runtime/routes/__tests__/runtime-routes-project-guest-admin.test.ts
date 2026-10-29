@@ -667,7 +667,7 @@ describe('project guest administration over the production composition', () => {
         enabled.scope,
         {
           email: null,
-          role: 'viewer',
+          role: username === 'relationalice' ? 'admin' : 'viewer',
           expiresAt: new Date(Date.now() + 3600000).toISOString(),
         },
         bootstrap,
@@ -788,6 +788,39 @@ describe('project guest administration over the production composition', () => {
         },
         serveEnv,
       );
+    const room = `/api/projects/${project.slug}/room`;
+    const initialized = await h.request(
+      `${room}/init`,
+      h.guestHeaders(
+        people[0]!.paired.credential,
+        people[0]!.cookie,
+      )({
+        method: 'POST',
+        headers: { Origin: ORIGIN, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expectedProjectId: project.id }),
+      }),
+    );
+    expect(
+      initialized.status,
+      `room init: ${await initialized.clone().text()}`,
+    ).toBe(200);
+    const roomRead = await serveRequest(
+      room,
+      people[1]!.paired.credential,
+      people[1]!.cookie,
+    );
+    expect(roomRead.status, `room read: ${await roomRead.clone().text()}`).toBe(
+      200,
+    );
+    expect(
+      (
+        await serveRequest(
+          room,
+          people[0]!.paired.credential,
+          people[1]!.cookie,
+        )
+      ).status,
+    ).toBe(401);
     const projectRead = await serveRequest(
       `/api/projects/${project.slug}`,
       people[0]!.paired.credential,
