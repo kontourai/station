@@ -1,7 +1,7 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type { HandoffRequestOutcome } from '../../../runtime/bootstrap/supervisor-link.js';
 import { FeaturePreviewRegistry } from '../../../services/feature-previews/feature-preview-registry.js';
 import { accountSharingOriginOptions } from '../../../services/identity/account-sharing-origins.js';
@@ -15,11 +15,7 @@ import {
   createAccountSharingRoutes,
 } from '../account-sharing-routes.js';
 
-const homes: string[] = [];
-afterEach(() => {
-  for (const path of homes.splice(0))
-    rmSync(path, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
 
 const OFFERED = 'https://station.tailnet.ts.net';
 const OPERATOR = 'operator';
@@ -32,8 +28,7 @@ async function harness(
     handoff?: HandoffRequestOutcome;
   } = {},
 ) {
-  const homeDirectory = mkdtempSync(join(tmpdir(), 'station-sharing-route-'));
-  homes.push(homeDirectory);
+  const homeDirectory = makeTempDir('station-sharing-route-');
   // The real registry, persisted in this home, as runtime composition binds it.
   const registry = new FeaturePreviewRegistry(homeDirectory, {
     debug() {},

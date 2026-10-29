@@ -1,13 +1,7 @@
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   accountSharingOriginOptions,
   offeredAccountSharingOrigin,
@@ -23,16 +17,8 @@ import {
   withdrawStagedAccountSharingChange,
 } from '../account-sharing-setting.js';
 
-const homes: string[] = [];
-const home = () => {
-  const path = mkdtempSync(join(tmpdir(), 'station-account-sharing-'));
-  homes.push(path);
-  return path;
-};
-afterEach(() => {
-  for (const path of homes.splice(0))
-    rmSync(path, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
+const home = () => makeTempDir('station-account-sharing-');
 const now = () => new Date('2026-10-28T12:00:00.000Z');
 const on = { enabled: true, publicOrigin: 'https://station.example.test' };
 const stored = (path: string) =>
