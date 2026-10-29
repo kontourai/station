@@ -48,6 +48,7 @@ import {
   useApiBase,
   useHostRequestAuthorityScope,
 } from '../../contexts/ApiBaseContext';
+import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { openApprovalConversation } from '../../lib/openApprovalConversation';
 import {
   attentionKindLabel,
@@ -390,7 +391,11 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
         <NoticeAction
           type="button"
           className="notice-action--primary"
-          onClick={() => setReviewing(true)}
+          onClick={() => {
+            if (item.requiresAccountBinding)
+              openConnectionsModal({ mode: 'pair-host' });
+            else setReviewing(true);
+          }}
         >
           Review
         </NoticeAction>

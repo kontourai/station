@@ -2636,6 +2636,34 @@ describe('device pairing requests need attention (#765 D5)', () => {
     ]);
   });
 
+  test('account-bound requests expose only a generic handoff, not the candidate identity', async () => {
+    const projection = makeService({
+      pairingRequests: [
+        pairingRequest({
+          requireAccountBinding: true,
+          accountCandidate: {
+            issuer: 'private-issuer',
+            subject: 'private-subject',
+            displayName: 'Private Person',
+          },
+        }),
+      ],
+    });
+    const result = await projection.list(undefined, {
+      mayDecidePairingRequests: true,
+    });
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        kind: 'device-pairing',
+        requiresAccountBinding: true,
+        title: 'A browser is asking for access',
+        body: 'A browser is waiting for approval on this Station.',
+      }),
+    ]);
+    expect(JSON.stringify(result)).not.toContain('Private Person');
+    expect(JSON.stringify(result)).not.toContain('private-subject');
+  });
+
   test('a viewer the boundary would admit gets viewerCanDecide: true; one it would refuse gets false (#765 D5)', async () => {
     const projection = makeService({ pairingRequests: [pairingRequest()] });
 
