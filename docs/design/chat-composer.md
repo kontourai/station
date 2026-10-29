@@ -166,11 +166,15 @@ session; loading and failed reads retain their status and recovery.
 The **Runs on <Station>** control names where this start runs: the explicit
 Station choice, else the Project's saved default environment, else the
 answering Station's host projection. When the server reports another Station
-this caller may run on (a verified SSH environment, or a paired Station the
-caller is authorized to list) and the caller's authority observation grants
-`orchestration:operate` (the operator, or a device with that scope), it
-opens a **Where this work runs** list with
-the current Station marked. It only chooses the destination: This Station
+this caller may run on, it opens a **Where this work runs** list with
+the current Station marked. The list offers only what the task launcher
+accepts, through one shared rule set: a verified SSH environment when no
+Project is selected (a Project is never placed over SSH), or a paired Station
+the caller may list whose credential holds `orchestration:operate`. A caller
+whose authority observation reports a grant without `orchestration:operate`
+is offered This Station only; an observation that cannot be read (an older
+Station, or a failed read) hides nothing, since the launcher and the server
+still refuse what is not allowed. It only chooses the destination: This Station
 closes the list, and another Station continues into that Station's Engine &
 model picker, because a remote route needs a verified engine there. **Start**
 then opens the task launcher with the message, Project, Agent and selection,

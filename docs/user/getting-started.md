@@ -486,8 +486,9 @@ first; the controls show what **Start** will use:
   Preview is on; with it off there is no **⋯**.
 
 **Runs on <Station>** says which Station runs the work. When you can run work
-on another Station (a verified SSH environment or a paired Station you are
-allowed to list, with permission to start tasks), it opens **Where this work runs**, with the current one
+on another Station (a verified SSH environment when no Project is chosen,
+or a paired Station you are allowed to list whose pairing can run work, with
+permission to start tasks), it opens **Where this work runs**, with the current one
 checked. Choosing another Station continues to its **Engine & model**, since
 that Station's own engines run the work. **Start** then opens **Run on a
 Station** with your message, Project and choices, and **Run task** starts a
