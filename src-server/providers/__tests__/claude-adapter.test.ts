@@ -1136,8 +1136,11 @@ describe('ClaudeAdapter', () => {
     const instance = { connect: vi.fn(), close: vi.fn() };
     const adapter = new ClaudeAdapter({
       isCoordinatorSession: () => designated,
-      resolveCoordinatorStationControl: async () =>
-        GENUINE_STATION_CONTROL_TOOLSERVER,
+      resolveCoordinatorStationControl: async () => ({
+        ...GENUINE_STATION_CONTROL_TOOLSERVER,
+        coordinatorDerived: true,
+        coordinatorGeneration: 0,
+      }),
       createInProcessCoordinatorStationControl: () => instance,
     });
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
@@ -1188,8 +1191,11 @@ describe('ClaudeAdapter', () => {
     mockQuery.mockReturnValue(controlled);
     const adapter = new ClaudeAdapter({
       isCoordinatorSession: () => true,
-      resolveCoordinatorStationControl: async () =>
-        GENUINE_STATION_CONTROL_TOOLSERVER,
+      resolveCoordinatorStationControl: async () => ({
+        ...GENUINE_STATION_CONTROL_TOOLSERVER,
+        coordinatorDerived: true,
+        coordinatorGeneration: 0,
+      }),
       createInProcessCoordinatorStationControl: () => ({
         connect: vi.fn(),
         close: vi.fn(),
@@ -1221,8 +1227,11 @@ describe('ClaudeAdapter', () => {
     mockQuery.mockReturnValue(controlled);
     const adapter = new ClaudeAdapter({
       isCoordinatorSession: () => true,
-      resolveCoordinatorStationControl: async () =>
-        GENUINE_STATION_CONTROL_TOOLSERVER,
+      resolveCoordinatorStationControl: async () => ({
+        ...GENUINE_STATION_CONTROL_TOOLSERVER,
+        coordinatorDerived: true,
+        coordinatorGeneration: 0,
+      }),
       createInProcessCoordinatorStationControl: () => ({
         connect: vi.fn(),
         close: vi.fn(),
@@ -1267,6 +1276,8 @@ describe('ClaudeAdapter', () => {
         args: [builtinStationControlServerPath()],
         toolNames: ['read_conversation', 'delegate_task'],
         allowedTools: ['read_conversation'],
+        coordinatorDerived: true,
+        coordinatorGeneration: 0,
       }),
       createInProcessCoordinatorStationControl: createControl,
     });
@@ -1275,9 +1286,12 @@ describe('ClaudeAdapter', () => {
       threadId: 'refresh-selection',
     });
     await adapter.sendTurn({ threadId: 'refresh-selection', input: 'go' });
-    expect(createControl).toHaveBeenCalledWith('refresh-selection', undefined, [
-      'read_conversation',
-    ]);
+    expect(createControl).toHaveBeenCalledWith(
+      'refresh-selection',
+      undefined,
+      ['read_conversation'],
+      0,
+    );
     await adapter.stopSession('refresh-selection');
   });
 
@@ -9560,6 +9574,72 @@ describe('ClaudeAdapter', () => {
         args: ['--version'],
       },
     ];
+
+    test('a coordinator-added server uses the designation-scoped factory at Session start', async () => {
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const derived = vi.fn(() => ({ connect: vi.fn(), close: vi.fn() }));
+      const independent = vi.fn();
+      const adapter = new ClaudeAdapter({
+        createInProcessCoordinatorStationControl: derived,
+        createInProcessStationControl: independent,
+      });
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'coordinator-start',
+        agent: {
+          slug: 'writer',
+          toolServers: [
+            {
+              ...stationControlToolServers[0]!,
+              coordinatorDerived: true,
+              coordinatorGeneration: 7,
+            },
+          ],
+        },
+      });
+      expect(derived).toHaveBeenCalledWith(
+        'coordinator-start',
+        undefined,
+        undefined,
+        7,
+      );
+      expect(independent).not.toHaveBeenCalled();
+      await adapter.stopSession('coordinator-start');
+    });
+
+    test('a re-designated chat needs a successor when its coordinator credential is from an earlier generation', async () => {
+      mockQuery.mockReturnValue(createMockQuery([]));
+      let generation = 7;
+      const adapter = new ClaudeAdapter({
+        coordinatorGenerationForSession: () => generation,
+        createInProcessCoordinatorStationControl: () => ({
+          connect: vi.fn(),
+          close: vi.fn(),
+        }),
+      });
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'coordinator-generation',
+        agent: {
+          slug: 'writer',
+          toolServers: [
+            {
+              ...stationControlToolServers[0]!,
+              coordinatorDerived: true,
+              coordinatorGeneration: 7,
+            },
+          ],
+        },
+      });
+      expect(
+        adapter.coordinatorToolsNeedSuccessor('coordinator-generation'),
+      ).toBe(false);
+      generation = 8;
+      expect(
+        adapter.coordinatorToolsNeedSuccessor('coordinator-generation'),
+      ).toBe(true);
+      await adapter.stopSession('coordinator-generation');
+    });
 
     test('Station #90 lane D: with in-process delivery wired, the built-in is an sdk server with no command, env or argv credential; the third-party server is untouched', async () => {
       __resetStationControlMcpTokensForTests();

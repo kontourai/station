@@ -1026,6 +1026,9 @@ export interface AttachedSessionSourceMetadata {
 export interface ResolvedAgentToolServer {
   /** Station tool-server id (`ToolDef.id`, kind 'mcp'). */
   id: string;
+  /** Added solely by the coordinator designation, not authored by the Agent or Project. */
+  coordinatorDerived?: true;
+  coordinatorGeneration?: number;
   displayName?: string;
   transport?: 'stdio' | 'sse' | 'streamable-http';
   command?: string;

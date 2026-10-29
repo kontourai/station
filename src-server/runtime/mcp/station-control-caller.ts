@@ -237,7 +237,8 @@ function resolveVerifiedStationControlCaller(
     !verified ||
     (verified.serverId !== 'station-control' &&
       verified.serverId !== 'station-knowledge' &&
-      verified.serverId !== 'coordinator-control')
+      verified.serverId !== 'coordinator-control' &&
+      verified.serverId !== 'coordinator-knowledge')
   )
     return null;
   let record: StationControlCallerRecord | undefined;
@@ -246,7 +247,8 @@ function resolveVerifiedStationControlCaller(
     assurance = stationControlTokenAssurance(verified.channel);
     record = resolveRecord?.(verified.sessionId);
     if (
-      verified.serverId === 'coordinator-control' &&
+      (verified.serverId === 'coordinator-control' ||
+        verified.serverId === 'coordinator-knowledge') &&
       record?.coordinatorCurrent?.() !== true
     )
       return null;

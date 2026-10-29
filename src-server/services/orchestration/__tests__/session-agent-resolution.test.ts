@@ -502,6 +502,7 @@ describe('createSessionAgentResolver', () => {
           id === 'station-control' ? toolDef : null,
         resolveSkillDir: async () => null,
         isCoordinatorSession: (threadId) => threadId === 'coordinator-thread',
+        coordinatorGenerationForSession: () => 42,
       });
       const coordinator = await resolver(
         baseInput({
@@ -513,6 +514,10 @@ describe('createSessionAgentResolver', () => {
       expect(
         coordinator.agent?.toolServers?.map((server) => server.id),
       ).toEqual(['station-control']);
+      expect(coordinator.agent?.toolServers?.[0]).toMatchObject({
+        coordinatorDerived: true,
+        coordinatorGeneration: 42,
+      });
       // Codex and ACP have no system-prompt channel (receipted unsupported);
       // the tools are what lets the coordinator delegate.
       if (provider === 'claude')
@@ -525,6 +530,39 @@ describe('createSessionAgentResolver', () => {
         }),
       );
       expect(ordinary.agent).toBeUndefined();
+    },
+  );
+
+  test.each(['agent', 'project'] as const)(
+    'an independent %s Station Control grant is not designation-derived',
+    async (source) => {
+      const resolver = createSessionAgentResolver({
+        loadAgentSpec: async () =>
+          agentSpec({
+            tools: {
+              mcpServers: source === 'agent' ? ['station-control'] : [],
+            },
+          }),
+        resolveProjectToolServers: async () =>
+          source === 'project' ? ['station-control'] : [],
+        resolveToolServer: async (id) =>
+          id === 'station-control'
+            ? {
+                id,
+                kind: 'mcp',
+                transport: 'stdio',
+                command: 'node',
+                args: [builtinStationControlServerPath()],
+              }
+            : null,
+        resolveSkillDir: async () => null,
+        isCoordinatorSession: () => true,
+        coordinatorGenerationForSession: () => 42,
+      });
+      const result = await resolver(baseInput({ provider: 'codex' }));
+      expect(result.agent?.toolServers?.[0]).not.toHaveProperty(
+        'coordinatorDerived',
+      );
     },
   );
 

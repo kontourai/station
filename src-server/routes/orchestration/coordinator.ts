@@ -43,6 +43,7 @@ export interface CoordinatorRoutesDeps {
   dispatchActor(c: Context): AgentScheduleActor;
   /** Withdraws queued wakes for a conversation that stopped being the coordinator. */
   readonly wakes?: { retire(userId: string, conversationId: string): number };
+  revokeCoordinatorCredentials?(conversationId: string): void;
   /** Whether Station can reach the conversation as coordinator now. */
   delivery?(conversationId: string): CoordinatorDelivery | undefined;
   now?: () => number;
@@ -283,8 +284,12 @@ export function createCoordinatorRoutes(deps: CoordinatorRoutesDeps): Hono {
     });
     if (result.outcome === 'refused')
       return c.json({ success: false, code: result.code }, 409, NO_STORE);
-    if (previous && previous.conversationId !== conversationId)
+    if (!previous || previous.conversationId !== conversationId)
+      deps.revokeCoordinatorCredentials?.(conversationId);
+    if (previous && previous.conversationId !== conversationId) {
+      deps.revokeCoordinatorCredentials?.(previous.conversationId);
       deps.wakes?.retire(person.userId, previous.conversationId);
+    }
     const delivery = deps.delivery?.(conversationId);
     return c.json(
       {
@@ -305,7 +310,10 @@ export function createCoordinatorRoutes(deps: CoordinatorRoutesDeps): Hono {
     if (!deps.store) return unavailable(c);
     const previous = deps.store.designation(person.userId);
     const undesignated = deps.store.undesignate(person.userId);
-    if (previous) deps.wakes?.retire(person.userId, previous.conversationId);
+    if (previous && undesignated) {
+      deps.revokeCoordinatorCredentials?.(previous.conversationId);
+      deps.wakes?.retire(person.userId, previous.conversationId);
+    }
     return c.json(
       {
         success: true,

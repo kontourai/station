@@ -161,6 +161,14 @@ a host-wide reload. If the engine declares tool servers unsupported, the
 designation remains valid and the card and chat explain the limitation. No
 other restriction or grant is added.
 
+Station Control and Knowledge servers added solely by designation carry
+designation-derived credentials. Each call rechecks the current designation;
+removal or replacement revokes those credentials across the conversation's
+Sessions. A process-local generation fences a late provider start, including
+when the same chat is designated again. An Agent's or Project's independently
+authored server keeps its own credential. A Claude Session with an old
+designation-derived credential uses a successor on a later re-designation.
+
 ## Not in this decision
 
 - Scheduled jobs, PR or CI events and Automations delivering into the

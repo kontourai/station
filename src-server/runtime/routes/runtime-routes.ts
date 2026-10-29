@@ -214,7 +214,10 @@ import { WalkthroughService } from '../../services/walkthroughs/walkthrough-serv
 import { errorMessage } from '../../utils/error-message.js';
 import { canonicalPath } from '../../utils/path-containment.js';
 import { bindLocalMediaPreviews } from '../bootstrap/local-media-runtime.js';
-import { STATION_KNOWLEDGE_MCP_PATH } from '../mcp/station-control-mcp-token.js';
+import {
+  revokeCoordinatorConversationCredentials,
+  STATION_KNOWLEDGE_MCP_PATH,
+} from '../mcp/station-control-mcp-token.js';
 import { createRuntimeFrameworkModel } from '../plugins/runtime-provider-resolution.js';
 import {
   currentRequestReadAuthority,
@@ -6302,6 +6305,16 @@ export function configureRuntimeRoutes(
     '/api/orchestration',
     createCoordinatorRoutes({
       store: coordinatorStore,
+      revokeCoordinatorCredentials: (conversationId) => {
+        const sessions =
+          context.orchestrationEventStore?.conversationSessions(
+            conversationId,
+          ) ?? [];
+        revokeCoordinatorConversationCredentials(
+          conversationId,
+          sessions.map((entry) => entry.sessionId),
+        );
+      },
       picturePreview,
       isInternalRequest: isStationInternalRequest,
       resolvePictureCaller: (request) =>

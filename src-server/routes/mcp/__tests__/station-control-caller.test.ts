@@ -31,7 +31,16 @@ import {
 } from 'vitest';
 import { z } from 'zod';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import {
+  emit as emitCodex,
+  FakeCodexProcess,
+  flushIo,
+} from '../../../providers/__tests__/codex-adapter-wire-harness.js';
+import { FakeAcpProcess } from '../../../providers/__tests__/fake-acp-process.js';
+import { AcpAdapter } from '../../../providers/adapters/acp-adapter.js';
+import { CodexAdapter } from '../../../providers/adapters/codex-adapter.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
+import { builtinStationControlServerPath } from '../../../runtime/bootstrap/station-control-runtime-env.js';
 import {
   createAgentDispatchActorResolver,
   createStationControlCallerRecordResolver,
@@ -42,7 +51,10 @@ import {
 import { claudeInProcessStationControlOptions } from '../../../runtime/mcp/station-control-in-process.js';
 import {
   __resetStationControlMcpTokensForTests,
+  coordinatorGeneration,
+  mintStationControlMcpHeaderAuth,
   mintStationControlMcpToken,
+  revokeCoordinatorConversationCredentials,
   revokeStationControlMcpToken,
   stationControlTokenAssurance,
 } from '../../../runtime/mcp/station-control-mcp-token.js';
@@ -56,6 +68,8 @@ import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principa
 import { WORKLOAD_SESSION_ENV } from '../../../services/infra/workload-budget.js';
 import { __workloadTestHooks } from '../../../services/infra/workload-resources.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
+import { EventStore } from '../../../services/orchestration/event-store.js';
+import { createSessionAgentResolver } from '../../../services/orchestration/session-agent-resolution.js';
 import { SessionAuthorization } from '../../../services/orchestration/session-authorization.js';
 import type { WorkspacePaneHostActionActor } from '../../../services/plugins/workspace-pane-host-actions.js';
 import {
@@ -76,6 +90,7 @@ import {
   INTERNAL_PROXY_CALLER_HEADER,
 } from '../../../utils/internal-api-token.js';
 import type { Logger } from '../../../utils/logger.js';
+import { createCoordinatorRoutes } from '../../orchestration/coordinator.js';
 import { createOrchestrationRoutes } from '../../orchestration/orchestration.js';
 import { createWorkspacePaneHostActionRoutes } from '../../orchestration/workspace-pane-host-actions.js';
 import { createWorkloadRoutes } from '../../system/workload-routes.js';
@@ -101,6 +116,7 @@ vi.mock('../../../tools/station-control-delegation.js', async (original) => ({
 }));
 
 const OPERATOR_CREDENTIAL = 'test-only-operator-credential-caller-suite';
+const coordinatorTemp = trackTempDirs();
 const DELEGATION_BODY = {
   prompt: 'child work',
   target: { environment: { kind: 'current' }, agent: 'planner' },
@@ -316,6 +332,15 @@ beforeAll(async () => {
     }),
   );
   app.route(
+    '',
+    createStationControlMcpRoutes({
+      port,
+      serverId: 'station-knowledge',
+      resolveCallerRecord: resolveRecord,
+      createServer: createProbeServer,
+    }),
+  );
+  app.route(
     '/api/orchestration',
     createStationControlCallerRoutes({ resolveRecord }),
   );
@@ -466,6 +491,397 @@ const internalHeaders = () => ({
 });
 
 describe('station-control verified caller (HTTP MCP)', () => {
+  test('a designation-derived credential cannot be minted without its generation guard', () => {
+    expect(() =>
+      mintStationControlMcpToken(
+        'session-a',
+        'url-token',
+        undefined,
+        undefined,
+        undefined,
+        'coordinator-control',
+      ),
+    ).toThrow('generation guard');
+  });
+  test('designation-derived Station Knowledge access is also withdrawn', async () => {
+    let designated = true;
+    resolveRecord.mockImplementation((id) => ({
+      ...productionResolver(id),
+      coordinatorCurrent: () => designated,
+    }));
+    const generation = coordinatorGeneration('conversation-a');
+    const derived = mintStationControlMcpToken(
+      'session-a',
+      'url-token',
+      undefined,
+      undefined,
+      undefined,
+      'coordinator-knowledge',
+      undefined,
+      () => coordinatorGeneration('conversation-a') === generation,
+    );
+    const call = (id: number, method: string) =>
+      fetch(
+        `${baseUrl}/mcp/station-knowledge?token=${encodeURIComponent(derived.token)}`,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            accept: 'application/json, text/event-stream',
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id,
+            method,
+            params:
+              method === 'initialize'
+                ? {
+                    protocolVersion: '2024-11-05',
+                    capabilities: {},
+                    clientInfo: { name: 'test', version: '0' },
+                  }
+                : { name: 'probe_caller', arguments: {} },
+          }),
+        },
+      );
+    try {
+      const init = await call(1, 'initialize');
+      expect(init.status).toBe(200);
+      await init.text();
+      const active = await call(2, 'tools/call');
+      expect(active.status).toBe(200);
+      expect(
+        JSON.parse((await readJsonRpc(active)).result.content[0].text).rest,
+      ).toMatchObject({ sessionId: 'session-a' });
+      designated = false;
+      expect((await call(3, 'tools/call')).status).toBe(401);
+      revokeCoordinatorConversationCredentials('conversation-a', ['session-a']);
+      designated = true;
+      expect((await call(4, 'tools/call')).status).toBe(401);
+    } finally {
+      resolveRecord.mockImplementation((id) => productionResolver(id));
+    }
+  });
+  test.each([
+    ['codex', 'remove'],
+    ['codex', 'replace'],
+    ['acp', 'remove'],
+    ['acp', 'replace'],
+  ] as const)(
+    '%s successor credential loses HTTP and REST authority after designation %s',
+    async (provider, operation) => {
+      const store = new EventStore(
+        join(coordinatorTemp('coordinator-credential-'), 'events.sqlite'),
+      );
+      const conversationId = 'conversation-a';
+      const routes = new Hono().route(
+        '/api/orchestration',
+        createCoordinatorRoutes({
+          store: store.coordinatorStore(),
+          person: () => ({
+            userId: 'human:test:alice',
+            mayRead: () => true,
+            mayMutate: () => true,
+          }),
+          dispatchActor: () => ({ userId: 'human:test:alice' }),
+          revokeCoordinatorCredentials: (id) =>
+            revokeCoordinatorConversationCredentials(
+              id,
+              id === conversationId ? ['session-a'] : [],
+            ),
+        }),
+      );
+      resolveRecord.mockImplementation((id) => ({
+        ...productionResolver(id),
+        coordinatorCurrent: () =>
+          store.coordinatorStore().designationForConversation(conversationId)
+            ?.actor.userId === 'human:test:alice',
+      }));
+      let token = '';
+      let adapter: CodexAdapter | AcpAdapter | undefined;
+      try {
+        expect(
+          (
+            await routes.request('/api/orchestration/coordinator', {
+              method: 'PUT',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ conversationId }),
+            })
+          ).status,
+        ).toBe(200);
+        const generation = coordinatorGeneration(conversationId);
+        const resolver = createSessionAgentResolver({
+          loadAgentSpec: async () => ({ name: 'Writer', prompt: '' }),
+          resolveToolServer: async (id) =>
+            id === 'station-control'
+              ? {
+                  id,
+                  kind: 'mcp',
+                  transport: 'stdio',
+                  command: 'node',
+                  args: [builtinStationControlServerPath()],
+                }
+              : null,
+          resolveSkillDir: async () => null,
+          isCoordinatorSession: () => true,
+          coordinatorGenerationForSession: () => generation,
+        });
+        const resolved = await resolver({
+          provider,
+          threadId: 'session-a',
+          metadata: { agentSlug: 'writer' },
+        });
+        const agent = resolved.agent!;
+        expect(agent.toolServers?.[0]).toMatchObject({
+          coordinatorDerived: true,
+          coordinatorGeneration: generation,
+        });
+        const guard = (value: number | undefined) => () =>
+          coordinatorGeneration(conversationId) === value;
+        if (provider === 'codex') {
+          const child = new FakeCodexProcess();
+          adapter = new CodexAdapter({
+            processFactory: () => child as never,
+            mintStationControlMcpAuth: (id, tenant, allowed, value) => {
+              expect(value).toBe(generation);
+              const minted = mintStationControlMcpToken(
+                id,
+                'url-token',
+                undefined,
+                tenant,
+                allowed,
+                'coordinator-control',
+                undefined,
+                guard(value),
+              );
+              token = minted.token;
+              return `${baseUrl}${STATION_CONTROL_MCP_PATH}?token=${encodeURIComponent(token)}`;
+            },
+          });
+          const starting = adapter.startSession({
+            provider: 'codex',
+            threadId: 'session-a',
+            cwd: process.env.STATION_HOME!,
+            confinement: 'host',
+            resumeCursor: { codexThreadId: 'native-previous' },
+            agent,
+          });
+          await flushIo();
+          await emitCodex(child, { id: '1', result: { userAgent: 'test' } });
+          await emitCodex(child, {
+            id: '2',
+            result: { thread: { id: 'native-previous' } },
+          });
+          await starting;
+        } else {
+          adapter = new AcpAdapter({
+            getConnections: async () => [
+              {
+                id: 'fake',
+                name: 'Fake',
+                command: 'fake',
+                args: [],
+                enabled: true,
+              },
+            ],
+            logger: { debug() {}, warn() {}, error() {} },
+            processFactory: (opts) => {
+              const child = new FakeAcpProcess(opts);
+              child.initResult!.agentCapabilities.mcpCapabilities = {
+                http: true,
+              };
+              return child as never;
+            },
+            mintStationControlMcpAuth: (id, tenant, value) => {
+              expect(value).toBe(generation);
+              const minted = mintStationControlMcpHeaderAuth(
+                Number(new URL(baseUrl).port),
+                id,
+                tenant,
+                'station-control',
+                true,
+                guard(value),
+              );
+              token = minted.token;
+              return minted;
+            },
+          });
+          await adapter.startSession({
+            provider: 'acp',
+            threadId: 'session-a',
+            cwd: process.env.STATION_HOME!,
+            metadata: { connectionId: 'fake' },
+            agent,
+          });
+        }
+        expect(token).not.toBe('');
+        const request = async (id: number, method: string) =>
+          fetch(
+            `${baseUrl}${STATION_CONTROL_MCP_PATH}${provider === 'codex' ? `?token=${encodeURIComponent(token)}` : ''}`,
+            {
+              method: 'POST',
+              headers: {
+                'content-type': 'application/json',
+                accept: 'application/json, text/event-stream',
+                ...(provider === 'acp'
+                  ? { authorization: `Bearer ${token}` }
+                  : {}),
+              },
+              body: JSON.stringify({
+                jsonrpc: '2.0',
+                id,
+                method,
+                params:
+                  method === 'initialize'
+                    ? {
+                        protocolVersion: '2024-11-05',
+                        capabilities: {},
+                        clientInfo: { name: 'test', version: '0' },
+                      }
+                    : { name: 'probe_caller', arguments: {} },
+              }),
+            },
+          );
+        const init = await request(1, 'initialize');
+        expect(init.status).toBe(200);
+        await init.text();
+        const before = await request(2, 'tools/call');
+        expect(before.status).toBe(200);
+        expect(
+          JSON.parse((await readJsonRpc(before)).result.content[0].text).rest,
+        ).toMatchObject({ sessionId: 'session-a' });
+        const independent = mintStationControlMcpToken(
+          'session-a',
+          'url-token',
+        );
+        expect(
+          (
+            await routes.request('/api/orchestration/coordinator', {
+              method: operation === 'remove' ? 'DELETE' : 'PUT',
+              ...(operation === 'replace'
+                ? {
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({
+                      conversationId: 'conversation-new',
+                      replace: true,
+                    }),
+                  }
+                : {}),
+            })
+          ).status,
+        ).toBe(200);
+        expect((await request(3, 'tools/call')).status).toBe(401);
+        expect(
+          (
+            await callerRoute({
+              ...internalHeaders(),
+              [STATION_CONTROL_CALLER_TOKEN_HEADER]: token,
+            })
+          ).caller,
+        ).toBeNull();
+        expect((await probe(independent.token)).rest).toMatchObject({
+          sessionId: 'session-a',
+        });
+      } finally {
+        await adapter?.stopAll();
+        resolveRecord.mockImplementation((id) => productionResolver(id));
+        store.close();
+      }
+    },
+  );
+  test.each(['url-token', 'http-header-token'] as const)(
+    'designation-derived %s access ends on undesignation while an independent grant remains',
+    async (channel) => {
+      let designated = true;
+      resolveRecord.mockImplementation((id) => ({
+        ...productionResolver(id),
+        coordinatorCurrent: () => designated,
+      }));
+      const generation = coordinatorGeneration('conversation-a');
+      const derived = mintStationControlMcpToken(
+        'session-a',
+        channel,
+        undefined,
+        undefined,
+        undefined,
+        'coordinator-control',
+        undefined,
+        () => coordinatorGeneration('conversation-a') === generation,
+      );
+      const independent = mintStationControlMcpToken('session-a', 'url-token');
+      const call = async (token: string, id: number, method: string) => {
+        const url =
+          channel === 'url-token'
+            ? `${baseUrl}${STATION_CONTROL_MCP_PATH}?token=${encodeURIComponent(token)}`
+            : `${baseUrl}${STATION_CONTROL_MCP_PATH}`;
+        return fetch(url, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            accept: 'application/json, text/event-stream',
+            ...(channel === 'http-header-token'
+              ? { authorization: `Bearer ${token}` }
+              : {}),
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id,
+            method,
+            params:
+              method === 'initialize'
+                ? {
+                    protocolVersion: '2024-11-05',
+                    capabilities: {},
+                    clientInfo: { name: 'test', version: '0' },
+                  }
+                : { name: 'probe_caller', arguments: {} },
+          }),
+        });
+      };
+      try {
+        const init = await call(derived.token, 1, 'initialize');
+        expect(init.status).toBe(200);
+        await init.text();
+        const active = await call(derived.token, 2, 'tools/call');
+        expect(active.status).toBe(200);
+        const result = await readJsonRpc(active);
+        expect(JSON.parse(result.result.content[0].text).rest).toMatchObject({
+          sessionId: 'session-a',
+        });
+        designated = false;
+        expect((await call(derived.token, 3, 'tools/call')).status).toBe(401);
+        expect(
+          (
+            await callerRoute({
+              ...internalHeaders(),
+              [STATION_CONTROL_CALLER_TOKEN_HEADER]: derived.token,
+            })
+          ).caller,
+        ).toBeNull();
+        revokeCoordinatorConversationCredentials('conversation-a', [
+          'session-a',
+        ]);
+        expect((await probe(independent.token)).rest).toMatchObject({
+          sessionId: 'session-a',
+        });
+        designated = true;
+        expect((await call(derived.token, 4, 'tools/call')).status).toBe(401);
+        const late = mintStationControlMcpToken(
+          'session-a',
+          channel,
+          undefined,
+          undefined,
+          undefined,
+          'coordinator-control',
+          undefined,
+          () => coordinatorGeneration('conversation-a') === generation,
+        );
+        expect((await call(late.token, 5, 'initialize')).status).toBe(401);
+      } finally {
+        resolveRecord.mockImplementation((id) => productionResolver(id));
+      }
+    },
+  );
   test('an HTTP-MCP tool call observes the verified caller, and a REST call made from inside it observes the same caller; forged sessionId/userId/principal arguments and identity headers are ignored', async () => {
     const { token } = mintStationControlMcpToken('session-a', 'url-token');
 
@@ -805,6 +1221,99 @@ function sdkSideTransport() {
 }
 
 describe('station-control verified caller (in-process Claude delivery)', () => {
+  test('a designation-derived Claude server loses REST authority on removal while an authored server remains', async () => {
+    process.env.STATION_API_BASE = baseUrl;
+    const store = new EventStore(
+      join(coordinatorTemp('coordinator-claude-'), 'events.sqlite'),
+    );
+    const conversationId = 'conversation-a';
+    const routes = new Hono().route(
+      '/api/orchestration',
+      createCoordinatorRoutes({
+        store: store.coordinatorStore(),
+        person: () => ({
+          userId: 'human:test:alice',
+          mayRead: () => true,
+          mayMutate: () => true,
+        }),
+        dispatchActor: () => ({ userId: 'human:test:alice' }),
+        revokeCoordinatorCredentials: (id) =>
+          revokeCoordinatorConversationCredentials(id, ['session-a']),
+      }),
+    );
+    resolveRecord.mockImplementation((id) => ({
+      ...productionResolver(id),
+      coordinatorCurrent: () =>
+        store.coordinatorStore().designationForConversation(conversationId)
+          ?.actor.userId === 'human:test:alice',
+    }));
+    const options = claudeInProcessStationControlOptions(
+      () => resolveRecord,
+      createProbeServer,
+    );
+    const derived = sdkSideTransport();
+    const independent = sdkSideTransport();
+    try {
+      expect(
+        (
+          await routes.request('/api/orchestration/coordinator', {
+            method: 'PUT',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ conversationId }),
+          })
+        ).status,
+      ).toBe(200);
+      await options
+        .createInProcessCoordinatorStationControl(
+          'session-a',
+          undefined,
+          undefined,
+          coordinatorGeneration(conversationId),
+        )
+        .connect(derived.transport);
+      await options
+        .createInProcessStationControl('session-a')
+        .connect(independent.transport);
+      for (const side of [derived, independent])
+        await side.request(1, 'initialize', {
+          protocolVersion: '2025-06-18',
+          capabilities: {},
+          clientInfo: { name: 'test', version: '1' },
+        });
+      const before = await derived.request(2, 'tools/call', {
+        name: 'probe_caller',
+        arguments: {},
+      });
+      expect(JSON.parse(before.result.content[0].text).rest).toMatchObject({
+        sessionId: 'session-a',
+      });
+      expect(
+        (
+          await routes.request('/api/orchestration/coordinator', {
+            method: 'DELETE',
+          })
+        ).status,
+      ).toBe(200);
+      const after = await derived.request(3, 'tools/call', {
+        name: 'probe_caller',
+        arguments: {},
+      });
+      expect(JSON.parse(after.result.content[0].text)).toMatchObject({
+        inProcess: null,
+        rest: null,
+      });
+      const stillIndependent = await independent.request(2, 'tools/call', {
+        name: 'probe_caller',
+        arguments: {},
+      });
+      expect(
+        JSON.parse(stillIndependent.result.content[0].text).rest,
+      ).toMatchObject({ sessionId: 'session-a' });
+    } finally {
+      resolveRecord.mockImplementation((id) => productionResolver(id));
+      store.close();
+    }
+  });
   test('the coordinator server exposes only the selected Station tools', async () => {
     const options = claudeInProcessStationControlOptions(() => resolveRecord);
     const side = sdkSideTransport();
@@ -812,6 +1321,7 @@ describe('station-control verified caller (in-process Claude delivery)', () => {
       'session-a',
       undefined,
       ['read_conversation'],
+      0,
     );
     await instance.connect(side.transport);
     await side.request(1, 'initialize', {
@@ -879,7 +1389,12 @@ describe('station-control verified caller (in-process Claude delivery)', () => {
         .createInProcessStationBrowser('session-a')
         .connect(browser.transport);
       await options
-        .createInProcessCoordinatorStationControl('session-a')
+        .createInProcessCoordinatorStationControl(
+          'session-a',
+          undefined,
+          undefined,
+          0,
+        )
         .connect(coordinator.transport);
       for (const side of [browser, coordinator])
         await side.request(1, 'initialize', {

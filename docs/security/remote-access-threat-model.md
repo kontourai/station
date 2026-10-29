@@ -275,7 +275,11 @@ It grants no sending, personal-source or service-activation authority.
 The [external-surface table](../../src-server/security/pairing-route-scopes.ts)
 owns the method/path-specific exceptions; a public classification at the Device
 gate does not waive the endpoint's own checks. The station-control HTTP/SSE
-endpoint has a separately minted, scoped MCP query token. That exception does
+endpoint has a separately minted, scoped MCP credential in a query or header.
+Credentials for Station tools added solely by coordinator designation recheck
+that designation and are revoked on removal or replacement; independently
+authored Agent or Project grants are separate. A process-local generation
+fences a provider start that outlives the designation change. That exception does
 not permit an operator or Device credential in a URL. Inbound webhooks verify
 their named HMAC token, timestamp and nonce; an attachment stage grant authorizes
 only its exact short-lived upload.

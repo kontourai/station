@@ -259,4 +259,38 @@ test('a designated Codex conversation starts a tools successor while another con
     { userId: 'owner' },
   );
   expect(sends).toContain('other');
+  for (
+    let i = 0;
+    i < 100 && !store.listEventsByMethods('other', ['turn.completed']).length;
+    i++
+  )
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  store
+    .coordinatorStore()
+    .designate({
+      conversationId: 'other',
+      actor: { userId: 'owner' },
+      replace: true,
+      now: Date.now(),
+    });
+  let stale = false;
+  Object.assign(adapter, {
+    coordinatorToolsRefresh: true,
+    coordinatorToolsNeedSuccessor: (id: string) => id === 'other' && stale,
+  });
+  expect(
+    await service.resolveConversationContinuation(
+      'other',
+      INTERNAL_SESSION_READ_SCOPE,
+      { provider: 'codex' },
+    ),
+  ).toEqual({ sessionId: 'other', startRequired: false });
+  stale = true;
+  expect(
+    await service.resolveConversationContinuation(
+      'other',
+      INTERNAL_SESSION_READ_SCOPE,
+      { provider: 'codex' },
+    ),
+  ).toMatchObject({ startRequired: true, coordinatorToolsRestart: true });
 });

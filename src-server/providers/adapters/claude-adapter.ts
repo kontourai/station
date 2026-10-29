@@ -713,6 +713,7 @@ type ClaudeSessionRecord = {
   configuredMetadata?: Record<string, unknown>;
   coordinatorControlState?: 'pending' | 'ready' | 'uncertain';
   coordinatorControlExpected?: readonly string[];
+  coordinatorControlGeneration?: number;
   stationControlBuiltin: boolean;
   pendingRequests: Map<string, PendingRequest>;
   /** Mirrors `ClaudeMessageState.activeTurnId`; derived from `sdkTurns`. */
@@ -1024,6 +1025,7 @@ export interface ClaudeAdapterOptions {
   ) => unknown;
   /** Current designation, resolved from Station's durable ownership. */
   isCoordinatorSession?: (threadId: string) => boolean;
+  coordinatorGenerationForSession?: (threadId: string) => number;
   /** Re-resolve the designated Agent's selected, canonical Station Control server. */
   resolveCoordinatorStationControl?: (
     threadId: string,
@@ -1033,11 +1035,13 @@ export interface ClaudeAdapterOptions {
     threadId: string,
     tenantExecutionContext?: TenantExecutionContext,
     allowedTools?: readonly string[],
+    generation?: number,
   ) => unknown;
   createInProcessStationKnowledge?: (
     threadId: string,
     tenantExecutionContext?: TenantExecutionContext,
     allowedTools?: readonly string[],
+    generation?: number,
   ) => unknown;
   /**
    * #90 D14: serves the built-in browser tools (`station-browser`) IN-PROCESS
@@ -1434,6 +1438,14 @@ async function coordinatorMcpDeadline<T>(operation: Promise<T>): Promise<T> {
 
 export class ClaudeAdapter implements ProviderAdapterShape {
   readonly coordinatorToolsRefresh = true as const;
+  coordinatorToolsNeedSuccessor(threadId: string): boolean {
+    const generation =
+      this.sessions.get(threadId)?.coordinatorControlGeneration;
+    if (generation === undefined) return false;
+    return (
+      this.options.coordinatorGenerationForSession?.(threadId) !== generation
+    );
+  }
   readonly provider = 'claude' as const;
   readonly adoptionLifecycle = 'reported' as const;
   private readonly continuity: ProviderContinuityCapabilities = {
@@ -2213,6 +2225,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       promptQueue,
       query: sdkQuery,
       mcpServers: { ...toolServers.mcpServers, ...builtinServers },
+      coordinatorControlGeneration: input.agent?.toolServers?.find(
+        (server) =>
+          server.id === 'station-control' && server.coordinatorDerived,
+      )?.coordinatorGeneration,
       stationControlBuiltin:
         input.agent?.toolServers?.some(
           (server) =>
@@ -2513,7 +2529,6 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         'provider_error',
       );
     if (
-      !this.options.createInProcessCoordinatorStationControl ||
       !this.options.resolveCoordinatorStationControl ||
       typeof record.query.setMcpServers !== 'function' ||
       typeof record.query.mcpServerStatus !== 'function'
@@ -2557,11 +2572,24 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             (name) => !control.disabledTools!.includes(name),
           )
         : control.allowedTools;
-      const instance = this.options.createInProcessCoordinatorStationControl(
-        threadId,
-        record.tenantExecutionContext,
-        selected,
-      );
+      if (
+        control.coordinatorDerived &&
+        control.coordinatorGeneration === undefined
+      )
+        throw refuse();
+      const instance = control.coordinatorDerived
+        ? this.options.createInProcessCoordinatorStationControl?.(
+            threadId,
+            record.tenantExecutionContext,
+            selected,
+            control.coordinatorGeneration,
+          )
+        : this.options.createInProcessStationControl?.(
+            threadId,
+            record.tenantExecutionContext,
+            selected,
+          );
+      if (!instance) throw refuse();
       const next = {
         ...record.mcpServers,
         'station-control': {
@@ -2582,6 +2610,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           throw refuse();
         record.mcpServers = next;
         record.coordinatorControlExpected = selected;
+        record.coordinatorControlGeneration = control.coordinatorDerived
+          ? control.coordinatorGeneration
+          : undefined;
         record.coordinatorControlState = 'pending';
       } catch {
         throw refuse();
@@ -3845,6 +3876,25 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           (name) => !control.disabledTools!.includes(name),
         )
       : control?.allowedTools;
+    const knowledge = toolServers.find(
+      (server) => server.id === 'station-knowledge',
+    );
+    if (
+      control?.coordinatorDerived &&
+      (!this.options.createInProcessCoordinatorStationControl ||
+        control.coordinatorGeneration === undefined)
+    )
+      throw new Error(
+        'Coordinator Station Control cannot be delivered safely.',
+      );
+    if (
+      knowledge?.coordinatorDerived &&
+      (!this.options.createInProcessStationKnowledge ||
+        knowledge.coordinatorGeneration === undefined)
+    )
+      throw new Error(
+        'Coordinator Station Knowledge cannot be delivered safely.',
+      );
     const { servers, skipped } = resolveClaudeMcpServers(
       toolServers,
       {
@@ -3861,22 +3911,36 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                   input.threadId,
                   tenantExecutionContext,
                   allowedTools,
+                  ...(knowledge?.coordinatorDerived
+                    ? [knowledge.coordinatorGeneration]
+                    : []),
                 ),
             }
           : {}),
-        ...(this.options.createInProcessStationControl
+        ...((
+          control?.coordinatorDerived
+            ? this.options.createInProcessCoordinatorStationControl
+            : this.options.createInProcessStationControl
+        )
           ? {
               inProcess: () =>
-                selectedControlTools !== undefined
-                  ? this.options.createInProcessStationControl!(
+                control?.coordinatorDerived
+                  ? this.options.createInProcessCoordinatorStationControl!(
                       input.threadId,
                       tenantExecutionContext,
                       selectedControlTools,
+                      control.coordinatorGeneration,
                     )
-                  : this.options.createInProcessStationControl!(
-                      input.threadId,
-                      tenantExecutionContext,
-                    ),
+                  : selectedControlTools !== undefined
+                    ? this.options.createInProcessStationControl!(
+                        input.threadId,
+                        tenantExecutionContext,
+                        selectedControlTools,
+                      )
+                    : this.options.createInProcessStationControl!(
+                        input.threadId,
+                        tenantExecutionContext,
+                      ),
             }
           : {}),
         ...(tenantExecutionContext ? { tenantExecutionContext } : {}),

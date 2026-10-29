@@ -90,6 +90,7 @@ interface SessionAgentResolverOptions {
    * whatever Agent it runs, so it can delegate and read work.
    */
   isCoordinatorSession?: (threadId: string) => boolean;
+  coordinatorGenerationForSession?: (threadId: string) => number;
 }
 
 type ResolveSessionAgent = (
@@ -313,12 +314,19 @@ export function createSessionAgentResolver(
       let spec = captured
         ? authored
         : withBuiltinStationAgentCapabilities(slug, authored);
+      const coordinatorAdded = new Set<string>();
+      let coordinatorGeneration: number | undefined;
       // The reserved Station role already carries them.
       if (
         !builtinStationAgentSpec(slug) &&
         options.isCoordinatorSession?.(input.threadId) === true
-      )
+      ) {
+        coordinatorGeneration =
+          options.coordinatorGenerationForSession?.(input.threadId) ?? 0;
+        for (const id of BUILTIN_STATION_AGENT_MCP_SERVER_IDS)
+          if (!spec?.tools?.mcpServers?.includes(id)) coordinatorAdded.add(id);
         spec = withCoordinatorCapabilities(spec);
+      }
       if (!spec) {
         if (input.metadata?.executionAgentId)
           throw new Error(
@@ -348,10 +356,9 @@ export function createSessionAgentResolver(
 
       try {
         if (options.resolveProjectToolServers) {
-          spec = withProjectToolDefaults(
-            spec,
-            await options.resolveProjectToolServers(input),
-          );
+          const projectServers = await options.resolveProjectToolServers(input);
+          for (const id of projectServers) coordinatorAdded.delete(id);
+          spec = withProjectToolDefaults(spec, projectServers);
         }
         await options.validateProjectTools?.(slug, spec, input);
       } catch (error) {
@@ -503,6 +510,12 @@ export function createSessionAgentResolver(
                 ok: true,
                 value: {
                   id: toolDef.id,
+                  ...(coordinatorAdded.has(id)
+                    ? { coordinatorDerived: true as const }
+                    : {}),
+                  ...(coordinatorAdded.has(id)
+                    ? { coordinatorGeneration }
+                    : {}),
                   displayName: toolDef.displayName,
                   transport: toolDef.transport,
                   command: toolDef.command,

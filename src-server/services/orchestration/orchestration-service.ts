@@ -2988,12 +2988,14 @@ export class OrchestrationService {
         const adapter = options.adapterRegistry.get(provider);
         if (
           !store ||
-          adapter?.coordinatorToolsRefresh ||
           ENGINE_CAPABILITY_MATRICES[provider]?.toolServers.state !==
             'session' ||
           !store.isCoordinatorConversation(conversationId)
         )
           return false;
+        if (adapter?.coordinatorToolsNeedSuccessor?.(detail.session.threadId))
+          return true;
+        if (adapter?.coordinatorToolsRefresh) return false;
         const ports = coordinatorDeliveryPorts({
           eventStore: store,
           service: this,

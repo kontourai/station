@@ -26,6 +26,7 @@ function app(options: {
   userId?: string;
   writable?: (conversationId: string) => boolean;
   store?: 'none';
+  revoke?: (conversationId: string) => void;
 }) {
   const store = new EventStore(
     join(makeTempDir('coordinator-routes-'), 'orchestration.sqlite'),
@@ -40,6 +41,7 @@ function app(options: {
       mayMutate: options.writable ?? (() => true),
     }),
     dispatchActor: () => ({ userId }),
+    revokeCoordinatorCredentials: options.revoke,
   });
   const hono = new Hono();
   hono.route('/api/orchestration', routes);
@@ -62,7 +64,8 @@ function app(options: {
 
 describe('coordinator routes', () => {
   test('designate, read, refuse a second, replace explicitly, undesignate', async () => {
-    const { call } = app({});
+    const revoked: string[] = [];
+    const { call } = app({ revoke: (id) => revoked.push(id) });
     expect(await (await call('GET')).json()).toEqual({
       success: true,
       data: { designation: null },
@@ -91,6 +94,7 @@ describe('coordinator routes', () => {
     expect(await (await call('GET')).json()).toMatchObject({
       data: { designation: null },
     });
+    expect(revoked).toEqual(['chat-a', 'chat-b', 'chat-a', 'chat-b']);
   });
 
   test('a conversation the person cannot send to is not found, and a bad body is refused', async () => {

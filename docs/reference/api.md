@@ -4618,7 +4618,8 @@ turn boundary is still held, so the inbox would hold a wake indefinitely
 `engine` names its provider. A designation whose conversation the person can
 no longer read reads as none, and PUT replaces it without `replace`. Replacing
 or removing a designation withdraws the wakes still queued for the old
-conversation.
+conversation and revokes its designation-derived Station Control and Knowledge
+credentials. Independently authored Agent or Project grants remain separate.
 
 The default-off coordinator-picture preview adds
 `GET /api/orchestration/coordinator/picture` for the person's readable notes.
