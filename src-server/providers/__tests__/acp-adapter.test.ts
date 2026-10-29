@@ -1075,6 +1075,54 @@ describe('AcpAdapter', () => {
       });
     }
 
+    test('a required policy question overrides a previous session grant', async () => {
+      const evaluator = vi
+        .fn()
+        .mockResolvedValueOnce({ behavior: 'defer' })
+        .mockResolvedValueOnce({ behavior: 'ask', required: true });
+      const { adapter, processes } = createAdapter({
+        resolvePreToolPolicy: async () => evaluator,
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      await adapter.startSession({
+        provider: 'acp',
+        threadId: 'required-ask',
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+        agent: { slug: 'engine-lab' },
+      });
+      await nextEvent(iterator, 'session.started');
+      await nextEvent(iterator, 'session.configured');
+      const first = requestPermission(
+        processes[0].client,
+        'first',
+        'mcp__tools__write',
+      );
+      const opened = await nextEvent(iterator, 'request.opened');
+      await adapter.respondToRequest(
+        'required-ask',
+        String(opened.requestId),
+        'acceptForSession',
+      );
+      await first;
+      await nextEvent(iterator, 'request.resolved');
+      const second = requestPermission(
+        processes[0].client,
+        'second',
+        'mcp__tools__write',
+      );
+      const required = await nextEvent(iterator, 'required request.opened');
+      expect(required.method).toBe('request.opened');
+      await adapter.respondToRequest(
+        'required-ask',
+        String(required.requestId),
+        'decline',
+      );
+      await expect(second).resolves.toEqual({
+        outcome: { outcome: 'selected', optionId: 'reject-once' },
+      });
+    });
+
     test('maps shared staged-policy allow/deny/defer without opening a second approval path', async () => {
       const evaluator = vi
         .fn()

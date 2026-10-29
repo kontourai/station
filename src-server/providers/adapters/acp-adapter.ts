@@ -2882,17 +2882,13 @@ export class AcpAdapter implements ProviderAdapterShape {
       const governedEdit =
         record.approvalFloor === 'confined' &&
         isOpenCodeEditShaped(params.toolCall?.kind, params.toolCall?.rawInput);
-      const needsPerson =
+      let needsPerson =
         toolRequestNeedsPerson(toolName, params.toolCall?.kind) ||
         (governedEdit &&
           openCodeEditNeedsPerson(
             params.toolCall?.rawInput,
             record.session.cwd ?? context.cwd,
           ));
-      if (governedEdit && !needsPerson && record.openCodeEditGrant) {
-        const granted = mapAcpDecisionToOutcome('accept', params.options);
-        if (granted.outcome !== 'cancelled') return { outcome: granted };
-      }
       if (toolName && record.preToolPolicy) {
         const decision = await record.preToolPolicy(
           {
@@ -2940,8 +2936,9 @@ export class AcpAdapter implements ProviderAdapterShape {
             outcome: mapAcpDecisionToOutcome('decline', params.options),
           };
         }
-        // `defer` (and defensive `ask`) preserve ACP's one existing approval
-        // flow below; Station never opens a second prompt.
+        if (decision.behavior === 'ask' && decision.required)
+          needsPerson = true;
+        // `defer` and `ask` use ACP's existing approval flow below.
       } else if (
         toolName &&
         !needsPerson &&
@@ -2955,6 +2952,11 @@ export class AcpAdapter implements ProviderAdapterShape {
         return {
           outcome: mapAcpDecisionToOutcome('accept', params.options),
         };
+      }
+
+      if (governedEdit && !needsPerson && record.openCodeEditGrant) {
+        const granted = mapAcpDecisionToOutcome('accept', params.options);
+        if (granted.outcome !== 'cancelled') return { outcome: granted };
       }
 
       // #3290: the chat's approval mode answers what it allows (Auto: a file
