@@ -1,0 +1,7 @@
+{
+  "revision": "ed443a489eedbcd3cdc43ca94c9c36bd0f7288ee",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"ChatDockBody refuses the override reset when no engine change is offered; no configuration key or default changed. Unaffected.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]}
+  ]
+}

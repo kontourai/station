@@ -1872,7 +1872,10 @@ and **Skip approval prompts**. Whoever approves sees "asks for full device
 access" and approves it as asked, or opens **Limit access** to untick
 permissions first; only the operator can approve the two elevated ones. In
 **Needs attention** the request is one line with **Review**, which opens the
-details. (The share prompt's **Request pairing for this browser** still
+details. A paired browser can sign in with an enrolled operator passkey and
+confirm an ordinary pairing request on the consent origin; the request remains
+pending until confirmation. See [operator passkeys](operator-passkeys.md) for
+setup and availability. (The share prompt's **Request pairing for this browser** still
 asks for the full default grant; it says so on screen.) A Device paired by an older Station may still hold
 `access:manage` from the historical default grant; its first access change, in
 either place, removes it for good and says so.
