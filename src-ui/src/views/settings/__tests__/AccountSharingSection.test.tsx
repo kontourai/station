@@ -27,30 +27,6 @@ vi.mock('@kontourai/station-sdk', () => ({
 vi.mock('../../../contexts/ApiBaseContext', () => ({
   useHostRequestAuthorityScope: () => ({ ...host }),
 }));
-vi.mock('../../../components/modals/ConfirmModal', () => ({
-  ConfirmModal: ({
-    isOpen,
-    onConfirm,
-    pending,
-    title,
-    message,
-  }: {
-    isOpen: boolean;
-    onConfirm: () => void;
-    pending: boolean;
-    title: string;
-    message: string;
-  }) =>
-    isOpen ? (
-      <div role="dialog">
-        <h2>{title}</h2>
-        <p>{message}</p>
-        <button type="button" disabled={pending} onClick={onConfirm}>
-          Confirm change
-        </button>
-      </div>
-    ) : null,
-}));
 const clients: QueryClient[] = [];
 beforeEach(() => {
   previews.data = [{ id: 'project-sharing-setting', enabled: true }];
@@ -133,11 +109,43 @@ test('reports an uncertain publication while Station restarts', async () => {
       name: 'Project sharing with local accounts',
     }),
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Apply and restart' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Confirm change' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Review change' }));
   expect(
     await screen.findByText(/durability could not be confirmed/),
   ).toBeTruthy();
+});
+
+test('opens a separate review before any restart is reported', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_url: string, init?: RequestInit) =>
+      init?.method === 'PUT'
+        ? reply({
+            changed: true,
+            confirmation: {
+              id: '12345678-1234-4123-8123-123456789abc',
+              reviewUrl:
+                'http://localhost:3144/consent/12345678-1234-4123-8123-123456789abc',
+              expiresAt: 2000000000000,
+            },
+          })
+        : reply(off),
+    ),
+  );
+  mount();
+  fireEvent.click(
+    await screen.findByRole('switch', {
+      name: 'Project sharing with local accounts',
+    }),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Review change' }));
+  const link = await screen.findByRole('link', {
+    name: 'Open the separate confirmation page',
+  });
+  expect(link.getAttribute('href')).toBe(
+    'http://localhost:3144/consent/12345678-1234-4123-8123-123456789abc',
+  );
+  expect(screen.queryByText(/Station is restarting to apply this/)).toBeNull();
 });
 
 test('the operator picks an offered address, confirms, and Station restarts into it', async () => {
@@ -178,10 +186,7 @@ test('the operator picks an offered address, confirms, and Station restarts into
   expect((tailnet as HTMLInputElement).checked).toBe(true);
   fireEvent.click(screen.getByRole('radio', { name: /localhost:3141/ }));
   fireEvent.click(tailnet);
-  fireEvent.click(screen.getByRole('button', { name: 'Apply and restart' }));
-  expect(writes).toHaveLength(0);
-  expect(screen.getByText(new RegExp(`sign in at ${OFFERED}`))).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Confirm change' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Review change' }));
   await waitFor(() =>
     expect(writes).toEqual([{ enabled: true, publicOrigin: OFFERED }]),
   );
@@ -213,9 +218,7 @@ test('a deployment-set Station shows the lock and offers no control', async () =
     screen.getByText(/STATION_PROJECT_SHARING, STATION_LOCAL_ACCOUNTS/),
   ).toBeTruthy();
   expect(screen.queryByRole('switch')).toBeNull();
-  expect(
-    screen.queryByRole('button', { name: 'Apply and restart' }),
-  ).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Review change' })).toBeNull();
 });
 
 test('an unsupervised Station cannot apply, and a rolled-back change is reported', async () => {
@@ -240,7 +243,7 @@ test('an unsupervised Station cannot apply, and a rolled-back change is reported
       name: 'Project sharing with local accounts',
     }),
   );
-  const apply = screen.getByRole('button', { name: 'Apply and restart' });
+  const apply = screen.getByRole('button', { name: 'Review change' });
   expect((apply as HTMLButtonElement).disabled).toBe(true);
   expect(
     screen.getByText(/only when its process supervisor runs it/),
@@ -288,8 +291,7 @@ test('a caller that is not the operator is told so, and a refused apply shows it
       name: 'Project sharing with local accounts',
     }),
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Apply and restart' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Confirm change' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Review change' }));
   expect(await screen.findByText(/supervisor did not answer/)).toBeTruthy();
 });
 

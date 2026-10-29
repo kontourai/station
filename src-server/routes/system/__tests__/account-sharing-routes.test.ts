@@ -3,6 +3,7 @@ import { syncBuiltinESMExports } from 'node:module';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type { HandoffRequestOutcome } from '../../../runtime/bootstrap/supervisor-link.js';
+import { ConsentChannelService } from '../../../services/consent/consent-channel.js';
 import { FeaturePreviewRegistry } from '../../../services/feature-previews/feature-preview-registry.js';
 import { accountSharingOriginOptions } from '../../../services/identity/account-sharing-origins.js';
 import {
@@ -47,6 +48,8 @@ async function harness(
     async (): Promise<HandoffRequestOutcome> =>
       options.handoff ?? { status: 'draining' },
   );
+  const consentChannel = new ConsentChannelService();
+  consentChannel.markListening(3144);
   const state: AccountSharingRuntimeState = {
     lockedBy: [],
     active: {
@@ -58,6 +61,7 @@ async function harness(
   };
   const app = createAccountSharingRoutes({
     homeDirectory,
+    consentChannel,
     // The production wiring passes `projectMembershipAuthority(...).operator()`;
     // runtime-routes-project-guest-admin covers that seam end to end.
     requireOperator: async (request) => {
@@ -86,6 +90,7 @@ async function harness(
     app.request('/', {
       method,
       headers: {
+        host: 'localhost:3141',
         'x-test-caller': caller,
         ...(body === undefined ? {} : { 'content-type': 'application/json' }),
       },
@@ -94,11 +99,40 @@ async function harness(
         : { body: typeof body === 'string' ? body : JSON.stringify(body) }),
     });
   const file = accountSharingSettingPath(homeDirectory);
-  return { homeDirectory, call, requestHandoff, file };
+  const approve = async (response: Response) => {
+    expect(response.status).toBe(202);
+    const { data } = await response.json();
+    const id = data.confirmation.id;
+    const review = consentChannel.store.renderReview(
+      consentChannel.tenantId,
+      id,
+      'consent-session',
+    );
+    if (!review.ok) throw new Error(`Review failed: ${review.reason}`);
+    return consentChannel.store.decide(
+      consentChannel.tenantId,
+      id,
+      'approved',
+      review.nonce,
+      'consent-session',
+    );
+  };
+  return { homeDirectory, call, approve, requestHandoff, file, state };
 }
 const enable = { enabled: true, publicOrigin: OFFERED };
 
 describe('Project sharing settings route (#4305)', () => {
+  test('refuses approval when deployment authority changes after review was requested', async () => {
+    const h = await harness();
+    const response = await h.call('PUT', enable);
+    h.state.lockedBy = ['STATION_PROJECT_SHARING'];
+    expect(await h.approve(response)).toMatchObject({
+      ok: false,
+      reason: 'target_changed',
+    });
+    expect(existsSync(h.file)).toBe(false);
+    expect(h.requestHandoff).not.toHaveBeenCalled();
+  });
   test('with the Feature Preview off, both routes refuse with the preview envelope and nothing is staged', async () => {
     const h = await harness({ previewOff: true });
     for (const response of [await h.call('GET'), await h.call('PUT', enable)]) {
@@ -227,28 +261,33 @@ describe('Project sharing settings route (#4305)', () => {
       return { status: 'draining' };
     });
     const response = await h.call('PUT', enable);
-    expect(response.status).toBe(200);
-    expect((await response.json()).data).toEqual({
-      changed: true,
-      restarting: true,
+    expect(existsSync(h.file)).toBe(false);
+    expect(await h.approve(response)).toMatchObject({
+      ok: true,
+      status: 'approved',
     });
     expect(h.requestHandoff).toHaveBeenCalledTimes(1);
     expect(resolveAccountSharingAtBoot(h.homeDirectory).choice).toEqual(enable);
     // The draining generation takes no second change.
     const again = await h.call('PUT', { enabled: false });
-    expect((await again.json()).code).toBe('apply_in_flight');
+    expect(await h.approve(again)).toMatchObject({
+      ok: false,
+      reason: 'commit_refused',
+    });
   });
 
   test('a refused or unanswered handoff withdraws the staged change', async () => {
-    for (const [handoff, status] of [
-      [{ status: 'refused', reason: 'busy' }, 409],
-      [{ status: 'rolled-back' }, 409],
-      [{ status: 'unanswered' }, 504],
+    for (const handoff of [
+      { status: 'refused', reason: 'busy' },
+      { status: 'rolled-back' },
+      { status: 'unanswered' },
     ] as const) {
       const h = await harness({ handoff });
       const response = await h.call('PUT', enable);
-      expect(response.status).toBe(status);
-      expect((await response.json()).code).toBe('restart_failed');
+      expect(await h.approve(response)).toMatchObject({
+        ok: false,
+        reason: 'commit_refused',
+      });
       const record = JSON.parse(readFileSync(h.file, 'utf8'));
       expect(record.pending).toBeUndefined();
       expect(record.committed).toEqual({ enabled: false });
@@ -256,7 +295,10 @@ describe('Project sharing settings route (#4305)', () => {
       // The next boot does not try it.
       expect(resolveAccountSharingAtBoot(h.homeDirectory).applying).toBe(false);
       // And the route accepts another attempt.
-      expect((await h.call('PUT', enable)).status).toBe(status);
+      expect(await h.approve(await h.call('PUT', enable))).toMatchObject({
+        ok: false,
+        reason: 'commit_refused',
+      });
     }
   });
 
@@ -281,7 +323,8 @@ describe('Project sharing settings route (#4305)', () => {
 test('a published staging write with failed directory sync is never adopted', async () => {
   const h = await harness();
   const real = fs.fsyncSync;
-  let response: Response;
+  const response = await h.call('PUT', enable);
+  let decision: Awaited<ReturnType<typeof h.approve>>;
   try {
     fs.fsyncSync = (fd) => {
       if (fs.fstatSync(fd).isDirectory())
@@ -289,12 +332,12 @@ test('a published staging write with failed directory sync is never adopted', as
       return real(fd);
     };
     syncBuiltinESMExports();
-    response = await h.call('PUT', enable);
+    decision = await h.approve(response);
   } finally {
     fs.fsyncSync = real;
     syncBuiltinESMExports();
   }
-  expect(response!.status).toBe(503);
+  expect(decision!).toMatchObject({ ok: false, reason: 'commit_refused' });
   expect(h.requestHandoff).not.toHaveBeenCalled();
   expect(resolveAccountSharingAtBoot(h.homeDirectory).choice).toEqual({
     enabled: false,
@@ -305,20 +348,21 @@ test('a failed withdrawal leaves a visible unarmed choice that boot will not ado
   const h = await harness({ handoff: { status: 'refused', reason: 'busy' } });
   const real = fs.renameSync;
   let calls = 0;
-  let response: Response;
+  const response = await h.call('PUT', enable);
+  let decision: Awaited<ReturnType<typeof h.approve>>;
   try {
     fs.renameSync = (...args) => {
       if (++calls === 2) throw new Error('withdrawal failed');
       return real(...args);
     };
     syncBuiltinESMExports();
-    response = await h.call('PUT', enable);
+    decision = await h.approve(response);
   } finally {
     fs.renameSync = real;
     syncBuiltinESMExports();
   }
-  expect(response!.status).toBe(409);
-  expect((await response!.json()).error).toMatch(
+  expect(decision!).toMatchObject({ ok: false, reason: 'commit_refused' });
+  expect(decision!.ok ? '' : decision!.detail).toMatch(
     /pending change needs reconciliation/,
   );
   expect((await (await h.call('GET')).json()).data.pending).toEqual({
@@ -334,7 +378,8 @@ test('an indeterminate arm publication is reported as uncertain rather than fail
   const h = await harness();
   const real = fs.fsyncSync;
   let directories = 0;
-  let response: Response;
+  const response = await h.call('PUT', enable);
+  let decision: Awaited<ReturnType<typeof h.approve>>;
   try {
     fs.fsyncSync = (fd) => {
       if (fs.fstatSync(fd).isDirectory() && ++directories === 2)
@@ -342,16 +387,11 @@ test('an indeterminate arm publication is reported as uncertain rather than fail
       return real(fd);
     };
     syncBuiltinESMExports();
-    response = await h.call('PUT', enable);
+    decision = await h.approve(response);
   } finally {
     fs.fsyncSync = real;
     syncBuiltinESMExports();
   }
-  expect(response!.status).toBe(200);
-  expect((await response!.json()).data).toEqual({
-    changed: true,
-    restarting: true,
-    durabilityUncertain: true,
-  });
+  expect(decision!).toMatchObject({ ok: true, status: 'approved' });
   expect(resolveAccountSharingAtBoot(h.homeDirectory).choice).toEqual(enable);
 });

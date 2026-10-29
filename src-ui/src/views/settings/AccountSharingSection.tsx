@@ -13,7 +13,6 @@ import { Badge } from '@kontourai/ui/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useId, useState } from 'react';
 import { Button } from '../../components/Button';
-import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { PageSection } from '../../components/PageSection';
 import { ResponsiveSurfaceActions } from '../../components/ResponsiveDialogSurface';
 import { ErrorState, SkeletonBlock } from '../../components/state';
@@ -90,6 +89,10 @@ function SharingControls({
     choice: AccountSharingChoice;
     since: string;
   }>();
+  const [confirmation, setConfirmation] = useState<{
+    reviewUrl: string;
+    choice: AccountSharingChoice;
+  }>();
   const query = useQuery({
     queryKey: key,
     queryFn: ({ signal }) =>
@@ -101,7 +104,7 @@ function SharingControls({
     gcTime: 0,
     staleTime: 0,
     refetchOnWindowFocus: true,
-    refetchInterval: restarting ? RESTART_POLL_MS : false,
+    refetchInterval: restarting || confirmation ? RESTART_POLL_MS : false,
   });
   const mutation = useMutation({
     gcTime: 0,
@@ -111,11 +114,16 @@ function SharingControls({
       }),
   });
   const [draft, setDraft] = useState<AccountSharingChoice>();
-  const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string>();
   const [uncertain, setUncertain] = useState(false);
 
   const view = query.data;
+  if (
+    confirmation &&
+    view &&
+    sameChoice(activeChoice(view), confirmation.choice)
+  )
+    setConfirmation(undefined);
   // The restart is over once the Station reports the change, or reports a
   // later apply outcome that is not it.
   if (
@@ -134,9 +142,15 @@ function SharingControls({
     const since = new Date().toISOString();
     try {
       const result = await mutation.mutateAsync(draft);
-      setConfirming(false);
-      setUncertain(result.changed && result.durabilityUncertain === true);
-      if (result.changed) setRestarting({ choice: draft, since });
+      if (result.changed && 'confirmation' in result) {
+        setConfirmation({
+          reviewUrl: result.confirmation.reviewUrl,
+          choice: draft,
+        });
+      } else {
+        setUncertain(result.changed && result.durabilityUncertain === true);
+        if (result.changed) setRestarting({ choice: draft, since });
+      }
       setDraft(undefined);
       await client.invalidateQueries({ queryKey: key });
     } catch (cause) {
@@ -312,11 +326,12 @@ function SharingControls({
                 disabled={
                   !changed ||
                   !canRestart ||
+                  mutation.isPending ||
                   (choice.enabled && !choice.publicOrigin)
                 }
-                onClick={() => setConfirming(true)}
+                onClick={() => void apply()}
               >
-                Apply and restart
+                Review change
               </Button>
               {changed && (
                 <Button onClick={() => setDraft(undefined)}>Cancel</Button>
@@ -345,6 +360,18 @@ function SharingControls({
             : 'A previous change remains pending. Try applying again to reconcile it.'}
         </p>
       )}
+      {confirmation && (
+        <p className="settings__field-hint" role="status">
+          <a
+            href={confirmation.reviewUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Open the separate confirmation page
+          </a>{' '}
+          to review this change.
+        </p>
+      )}
       {uncertain && (
         <p className="settings__field-hint" role="status">
           The change was published, but its durability could not be confirmed.
@@ -357,26 +384,6 @@ function SharingControls({
         </p>
       )}
       {error && <p role="alert">{error}</p>}
-      <ConfirmModal
-        isOpen={confirming}
-        pending={mutation.isPending}
-        error={error}
-        title={
-          choice.enabled
-            ? 'Turn on Project sharing and restart Station?'
-            : 'Turn off Project sharing and restart Station?'
-        }
-        message={
-          choice.enabled
-            ? `People will sign in at ${choice.publicOrigin}. Open chats reconnect after the restart.`
-            : 'Accounts and Project members are kept, but nobody can sign in until it is on again.'
-        }
-        onConfirm={() => void apply()}
-        onCancel={() => {
-          setConfirming(false);
-          setError(undefined);
-        }}
-      />
     </PageSection>
   );
 }

@@ -62,6 +62,7 @@ import { readJson } from '../../../__test-utils__/read-json.js';
 import { readStreamUntil } from '../../../__test-utils__/sse-helpers.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
+import { ConsentChannelService } from '../../../services/consent/consent-channel.js';
 import { FeaturePreviewRegistry } from '../../../services/feature-previews/feature-preview-registry.js';
 import { createApplicationSessionRuntime } from '../../../services/identity/application-session-runtime.js';
 import { loadDeploymentAuthentication } from '../../../services/identity/deployment-authentication-loader.js';
@@ -77,6 +78,7 @@ import { ProjectService } from '../../../services/projects/project-service.js';
 import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
 import { DevicePairingError } from '../../../services/ssh/device-pairing-service.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
+import { createConsentApp } from '../../consent/consent-listener.js';
 import {
   configureRuntimeRoutes as configureRuntimeRoutesProduction,
   isProjectMemberDraftLease,
@@ -379,7 +381,10 @@ describe('project guest administration over the production composition', () => {
     const graph = new TaskGraphService(homeDir, {
       resolveProjectWorkspace: () => undefined,
     });
+    const consentChannel = new ConsentChannelService();
+    consentChannel.markListening(4444);
     const context = deepStub({
+      consentChannel,
       projectMembership: membership.service,
       projectSharedTasks:
         useLocalAccounts || withAgent ? membership.sharedTasks : undefined,
@@ -629,6 +634,7 @@ describe('project guest administration over the production composition', () => {
       sessions,
       request,
       security,
+      consentChannel,
       authentication,
       operatorCredential,
       projectService,
@@ -3486,5 +3492,108 @@ describe('project guest administration over the production composition', () => {
     expect(unsupervised.status).toBe(409);
     expect((await unsupervised.json()).code).toBe('restart_unavailable');
     expect(existsSync(stored)).toBe(false);
+  });
+  test('host browser scripts cannot apply without a separate consent decision', async () => {
+    const h = await setup();
+    const supervisor = await import('../../bootstrap/supervisor-link.js');
+    vi.spyOn(supervisor, 'isSupervisedEnvironment').mockReturnValue(true);
+    const handoff = vi
+      .spyOn(supervisor, 'requestSupervisorHandoff')
+      .mockResolvedValue({ status: 'draining' });
+    const pairing = h.security.devicePairing;
+    const offer = pairing.createOffer({
+      endpoint: ORIGIN,
+      scope: 'orchestration:read access:manage',
+    });
+    const pending = pairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Host browser',
+      requesterPosition: 'unproven',
+      source: 'same-origin',
+    });
+    pairing.confirmRequest(pending.requestId, { kind: 'ui-bootstrap' });
+    const issued = pairing.exchange({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: pending.requestId,
+      locality: 'home-possession',
+      mintKind: 'ui-bootstrap',
+    });
+    const response = await h.request('/api/operator/account-sharing', {
+      method: 'PUT',
+      headers: {
+        Host: 'station.example.test',
+        Origin: ORIGIN,
+        Cookie: '__Host-station-device=' + issued.credential,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        enabled: true,
+        publicOrigin: 'http://localhost:4321',
+      }),
+    });
+    const file = join(h.homeDir, 'config', 'account-sharing.json');
+    expect(response.status, await response.clone().text()).toBe(202);
+    expect(existsSync(file)).toBe(false);
+    expect(handoff).not.toHaveBeenCalled();
+    const { confirmation } = (await response.json()).data;
+    const cookie = response.headers.get('set-cookie')!.split(';')[0];
+    const consent = createConsentApp({
+      channel: h.consentChannel,
+      credentials: {
+        verifyOperatorCredential: () => false,
+        identifyDevice: () => null,
+        resolveGrantedScope: () => undefined,
+      },
+    });
+    const host = 'station.example.test:4444';
+    const rendered = await consent.request('/consent/' + confirmation.id, {
+      headers: {
+        Host: host,
+        Cookie: cookie,
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Dest': 'document',
+      },
+    });
+    expect(rendered.status).toBe(200);
+    const nonce = (await rendered.text()).match(
+      /name="nonce" value="([^"]+)"/,
+    )?.[1];
+    expect(nonce).toBeTruthy();
+    const form = new URLSearchParams({ nonce: nonce!, decision: 'approve' });
+    const headers = {
+      Host: host,
+      Cookie: cookie,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Sec-Fetch-Site': 'same-origin',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Dest': 'document',
+      'Sec-Fetch-User': '?1',
+    };
+    const forged = await consent.request(
+      '/consent/' + confirmation.id + '/decide',
+      {
+        method: 'POST',
+        headers: { ...headers, Origin: ORIGIN },
+        body: form.toString(),
+      },
+    );
+    expect(forged.status).toBe(403);
+    expect(existsSync(file)).toBe(false);
+    const approved = await consent.request(
+      '/consent/' + confirmation.id + '/decide',
+      {
+        method: 'POST',
+        headers: { ...headers, Origin: 'http://' + host },
+        body: form.toString(),
+      },
+    );
+    expect(approved.status, await approved.clone().text()).toBe(200);
+    expect(handoff).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(readFileSync(file, 'utf8')).pending).toMatchObject({
+      choice: { enabled: true, publicOrigin: 'http://localhost:4321' },
+      ready: true,
+    });
   });
 });

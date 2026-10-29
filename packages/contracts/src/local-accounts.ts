@@ -78,4 +78,8 @@ export interface AccountSharingSettingView {
 }
 export type AccountSharingApplyResult =
   | { changed: false }
+  | {
+      changed: true;
+      confirmation: { id: string; reviewUrl: string; expiresAt: number };
+    }
   | { changed: true; restarting: true; durabilityUncertain?: boolean };

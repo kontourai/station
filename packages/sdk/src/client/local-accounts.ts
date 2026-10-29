@@ -169,8 +169,35 @@ export async function applyAccountSharingSetting(
   options: ClientRequestOptions,
 ): Promise<AccountSharingApplyResult> {
   return z
-    .discriminatedUnion('changed', [
+    .union([
       z.object({ changed: z.literal(false) }).strict(),
+      z
+        .object({
+          changed: z.literal(true),
+          confirmation: z
+            .object({
+              id: z.string().uuid(),
+              reviewUrl: z.string().url(),
+              expiresAt: z.number(),
+            })
+            .strict()
+            .refine(({ id, reviewUrl }) => {
+              try {
+                const url = new URL(reviewUrl);
+                return (
+                  ['http:', 'https:'].includes(url.protocol) &&
+                  !url.username &&
+                  !url.password &&
+                  !url.search &&
+                  !url.hash &&
+                  url.pathname === `/consent/${encodeURIComponent(id)}`
+                );
+              } catch {
+                return false;
+              }
+            }),
+        })
+        .strict(),
       z
         .object({
           changed: z.literal(true),

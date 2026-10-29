@@ -6851,6 +6851,7 @@ export function configureRuntimeRoutes(
       '/api/operator/account-sharing',
       createAccountSharingRoutes({
         homeDirectory: context.configLoader.getProjectHomeDir(),
+        consentChannel: context.consentChannel,
         requireOperator: (request) =>
           projectMembershipAuthority(request).operator(),
         state: accountSharingState,

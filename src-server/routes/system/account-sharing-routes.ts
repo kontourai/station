@@ -5,8 +5,18 @@ import type {
   AccountSharingSettingView,
 } from '@kontourai/station-contracts/local-accounts';
 import { type Context, Hono } from 'hono';
+import { setCookie } from 'hono/cookie';
 import { z } from 'zod/v3';
 import type { HandoffRequestOutcome } from '../../runtime/bootstrap/supervisor-link.js';
+import { browserVisibleHost } from '../../security/runtime-request-security.js';
+import {
+  CONSENT_SESSION_COOKIE,
+  type ConsentChannelService,
+} from '../../services/consent/consent-channel.js';
+import {
+  CONSENT_TRANSACTION_TTL_MS,
+  ConsentCommitRefusedError,
+} from '../../services/consent/consent-transactions.js';
 import {
   FeaturePreviewDisabledError,
   requireFeaturePreview,
@@ -31,6 +41,7 @@ export interface AccountSharingRuntimeState {
 
 export interface AccountSharingRouteDependencies {
   homeDirectory: string;
+  consentChannel: ConsentChannelService;
   /** The existing operator check (`projectMembershipAuthority(...).operator()`). */
   requireOperator: (request: Request) => Promise<void>;
   state: () => AccountSharingRuntimeState;
@@ -86,11 +97,15 @@ export function createAccountSharingRoutes(
 ) {
   const app = new Hono();
   let applyInFlight = false;
+  let decisionTail: Promise<void> = Promise.resolve();
 
   const authorize = async (c: Context) => {
     c.header('Cache-Control', 'no-store');
+    return operatorCurrent(c.req.raw);
+  };
+  const operatorCurrent = async (request: Request) => {
     try {
-      await deps.requireOperator(c.req.raw);
+      await deps.requireOperator(request);
       return true;
     } catch {
       return false;
@@ -182,39 +197,151 @@ export function createAccountSharingRoutes(
         );
       choice = { enabled: true, publicOrigin: origin };
     }
-    // Before the no-op check: while a change is restarting this Station,
-    // "matches what is active" says nothing about what comes next.
-    if (applyInFlight)
-      return refuse(
-        c,
-        409,
-        'apply_in_flight',
-        'A change to Project sharing is already restarting this Station.',
-      );
-    const pending = readAccountSharingRecord(deps.homeDirectory).record.pending;
-    if (pending) {
-      if (pending.ready || pending.attempted)
+    const applyConfirmed = async () => {
+      // Before the no-op check: while a change is restarting this Station,
+      // "matches what is active" says nothing about what comes next.
+      if (applyInFlight)
         return refuse(
           c,
           409,
-          'pending_recovery',
-          'A previous change is still pending and needs reconciliation.',
+          'apply_in_flight',
+          'A change to Project sharing is already restarting this Station.',
         );
-      try {
-        withdrawStagedAccountSharingChange(
-          deps.homeDirectory,
-          'A new change replaced an unarmed request.',
-        );
-      } catch {
+      const pending = readAccountSharingRecord(deps.homeDirectory).record
+        .pending;
+      if (pending) {
+        if (pending.ready || pending.attempted)
+          return refuse(
+            c,
+            409,
+            'pending_recovery',
+            'A previous change is still pending and needs reconciliation.',
+          );
+        try {
+          withdrawStagedAccountSharingChange(
+            deps.homeDirectory,
+            'A new change replaced an unarmed request.',
+          );
+        } catch {
+          return refuse(
+            c,
+            503,
+            'pending_recovery',
+            'The previous pending change could not be withdrawn.',
+          );
+        }
+      }
+      if (activeMatches(state.active, choice)) {
+        const result: AccountSharingApplyResult = { changed: false };
+        return c.json({ success: true, data: result });
+      }
+      if (!deps.supervised())
         return refuse(
           c,
-          503,
-          'pending_recovery',
-          'The previous pending change could not be withdrawn.',
+          409,
+          'restart_unavailable',
+          'This Station was not started by the process supervisor, so it cannot restart itself to apply this.',
         );
+      applyInFlight = true;
+      let handedOff = false;
+      try {
+        // Re-check just before the write, as account administration does.
+        if (!(await operatorCurrent(c.req.raw))) return operatorRequired(c);
+        try {
+          stageAccountSharingChange(deps.homeDirectory, choice);
+        } catch {
+          let withdrawn = true;
+          try {
+            withdrawStagedAccountSharingChange(
+              deps.homeDirectory,
+              'Saving the change failed.',
+            );
+          } catch {
+            withdrawn = false;
+          }
+          return refuse(
+            c,
+            503,
+            'setting_unavailable',
+            withdrawn
+              ? 'Station could not save the setting.'
+              : 'Station could not save the setting; its pending state needs reconciliation.',
+          );
+        }
+        const outcome = await deps
+          .requestHandoff()
+          .catch(() => ({ status: 'unanswered' as const }));
+        if (outcome.status === 'draining') {
+          handedOff = true;
+          let durabilityUncertain = false;
+          try {
+            armStagedAccountSharingChange(deps.homeDirectory);
+          } catch (error) {
+            if (!(error instanceof AccountSharingPublishedWriteError)) {
+              try {
+                withdrawStagedAccountSharingChange(
+                  deps.homeDirectory,
+                  'The change could not be armed.',
+                );
+              } catch {}
+              return refuse(
+                c,
+                503,
+                'setting_unavailable',
+                'Station could not prepare the setting for restart.',
+              );
+            }
+            // Published bytes may be adopted. Do not report this request as failed.
+            durabilityUncertain = true;
+            deps.logger?.warn?.(
+              'Project sharing publication durability is uncertain',
+            );
+          }
+          deps.logger?.info?.('Project sharing: restarting to apply setting', {
+            enabled: choice.enabled,
+          });
+          const result: AccountSharingApplyResult = {
+            changed: true,
+            restarting: true,
+            ...(durabilityUncertain ? { durabilityUncertain: true } : {}),
+          };
+          return c.json({ success: true, data: result });
+        }
+        const detail =
+          outcome.status === 'refused'
+            ? `the supervisor refused the restart (${outcome.reason})`
+            : outcome.status === 'rolled-back'
+              ? 'the new Station process failed to start'
+              : outcome.status === 'unanswered'
+                ? 'the supervisor did not answer'
+                : 'no supervisor runs this Station';
+        let withdrawn = true;
+        try {
+          withdrawStagedAccountSharingChange(deps.homeDirectory, detail);
+        } catch {
+          withdrawn = false;
+        }
+        deps.logger?.warn?.('Project sharing: restart did not start', {
+          status: outcome.status,
+        });
+        return refuse(
+          c,
+          outcome.status === 'unanswered' ? 504 : 409,
+          'restart_failed',
+          withdrawn
+            ? `Nothing changed: ${detail}.`
+            : `The restart did not start and the pending change needs reconciliation: ${detail}.`,
+        );
+      } finally {
+        // This generation is draining after a handoff; it accepts no second apply.
+        if (!handedOff) applyInFlight = false;
       }
-    }
-    if (activeMatches(state.active, choice)) {
+    };
+
+    if (
+      activeMatches(state.active, choice) &&
+      !readAccountSharingRecord(deps.homeDirectory).record.pending
+    ) {
       const result: AccountSharingApplyResult = { changed: false };
       return c.json({ success: true, data: result });
     }
@@ -223,102 +350,149 @@ export function createAccountSharingRoutes(
         c,
         409,
         'restart_unavailable',
-        'This Station was not started by the process supervisor, so it cannot restart itself to apply this.',
+        'Station cannot restart itself to apply this.',
       );
-    applyInFlight = true;
-    let handedOff = false;
-    try {
-      // Re-check just before the write, as account administration does.
-      if (!(await authorize(c))) return operatorRequired(c);
-      try {
-        stageAccountSharingChange(deps.homeDirectory, choice);
-      } catch {
-        let withdrawn = true;
-        try {
-          withdrawStagedAccountSharingChange(
-            deps.homeDirectory,
-            'Saving the change failed.',
-          );
-        } catch {
-          withdrawn = false;
-        }
-        return refuse(
-          c,
-          503,
-          'setting_unavailable',
-          withdrawn
-            ? 'Station could not save the setting.'
-            : 'Station could not save the setting; its pending state needs reconciliation.',
-        );
-      }
-      const outcome = await deps
-        .requestHandoff()
-        .catch(() => ({ status: 'unanswered' as const }));
-      if (outcome.status === 'draining') {
-        handedOff = true;
-        let durabilityUncertain = false;
-        try {
-          armStagedAccountSharingChange(deps.homeDirectory);
-        } catch (error) {
-          if (!(error instanceof AccountSharingPublishedWriteError)) {
-            try {
-              withdrawStagedAccountSharingChange(
-                deps.homeDirectory,
-                'The change could not be armed.',
-              );
-            } catch {}
-            return refuse(
-              c,
-              503,
-              'setting_unavailable',
-              'Station could not prepare the setting for restart.',
-            );
-          }
-          // Published bytes may be adopted. Do not report this request as failed.
-          durabilityUncertain = true;
-          deps.logger?.warn?.(
-            'Project sharing publication durability is uncertain',
-          );
-        }
-        deps.logger?.info?.('Project sharing: restarting to apply setting', {
-          enabled: choice.enabled,
-        });
-        const result: AccountSharingApplyResult = {
-          changed: true,
-          restarting: true,
-          ...(durabilityUncertain ? { durabilityUncertain: true } : {}),
-        };
-        return c.json({ success: true, data: result });
-      }
-      const detail =
-        outcome.status === 'refused'
-          ? `the supervisor refused the restart (${outcome.reason})`
-          : outcome.status === 'rolled-back'
-            ? 'the new Station process failed to start'
-            : outcome.status === 'unanswered'
-              ? 'the supervisor did not answer'
-              : 'no supervisor runs this Station';
-      let withdrawn = true;
-      try {
-        withdrawStagedAccountSharingChange(deps.homeDirectory, detail);
-      } catch {
-        withdrawn = false;
-      }
-      deps.logger?.warn?.('Project sharing: restart did not start', {
-        status: outcome.status,
-      });
+    const channel = deps.consentChannel;
+    if (channel.state().status !== 'listening')
       return refuse(
         c,
-        outcome.status === 'unanswered' ? 504 : 409,
-        'restart_failed',
-        withdrawn
-          ? `Nothing changed: ${detail}.`
-          : `The restart did not start and the pending change needs reconciliation: ${detail}.`,
+        503,
+        'consent_unavailable',
+        'The consent page is unavailable.',
       );
-    } finally {
-      // This generation is draining after a handoff; it accepts no second apply.
-      if (!handedOff) applyInFlight = false;
-    }
+    const target = () => ({
+      kind: 'account-sharing-setting',
+      subject: 'station',
+      fingerprint: JSON.stringify({
+        choice,
+        state: deps.state(),
+        stored: readAccountSharingRecord(deps.homeDirectory),
+      }),
+    });
+    const reviewed = target();
+    const created = channel.store.create({
+      tenantId: channel.tenantId,
+      decisionPolicy: 'requester-session',
+      target: reviewed,
+      requester: { kind: 'operator', id: 'account-sharing' },
+      rateKey: 'account-sharing-operator',
+      description: {
+        title: choice.enabled
+          ? 'Turn on Project sharing?'
+          : 'Turn off Project sharing?',
+        summary: 'Station will restart to apply this setting.',
+        items: [
+          {
+            label: 'Sign-in address',
+            detail: choice.enabled ? choice.publicOrigin : 'Off',
+          },
+        ],
+        warning: choice.enabled
+          ? 'People can sign in and be invited to Projects.'
+          : 'People will no longer be able to sign in.',
+        approveLabel: 'Confirm and restart',
+        denyLabel: 'Cancel',
+      },
+      guardDecision: async (fn) => {
+        const previous = decisionTail;
+        let release!: () => void;
+        decisionTail = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        await previous;
+        try {
+          return await fn();
+        } finally {
+          release();
+        }
+      },
+      revalidateTarget: async () => {
+        if (!(await operatorCurrent(c.req.raw)) || !deps.supervised())
+          return null;
+        try {
+          requireFeaturePreview(
+            deps.preview,
+            ACCOUNT_SHARING_PREVIEW_ID,
+            'Project sharing setting',
+          );
+        } catch {
+          return null;
+        }
+        if (
+          choice.enabled &&
+          !offeredAccountSharingOrigin(
+            await deps.origins(),
+            choice.publicOrigin,
+          )
+        )
+          return null;
+        return target();
+      },
+      commitApproval: async () => {
+        const response = await applyConfirmed();
+        const body = (await response.json()) as {
+          success: boolean;
+          error?: string;
+          data?: AccountSharingApplyResult;
+        };
+        if (!response.ok || !body.success)
+          throw new ConsentCommitRefusedError(
+            body.error ?? 'The change could not be applied.',
+            false,
+          );
+        return body.data;
+      },
+    });
+    if (!created.ok)
+      return refuse(
+        c,
+        503,
+        'consent_unavailable',
+        'The consent request could not be created.',
+      );
+    const host = browserVisibleHost({
+      environment: c.env,
+      header: (name) => c.req.header(name),
+    });
+    const reviewUrl = channel.reviewUrlFor(host, created.transaction.id);
+    if (!reviewUrl)
+      return refuse(
+        c,
+        503,
+        'consent_unavailable',
+        'The consent page address is unavailable.',
+      );
+    const secret = channel.store.decisionSessionSecretFor(
+      channel.tenantId,
+      created.transaction.id,
+    );
+    if (!secret)
+      return refuse(
+        c,
+        503,
+        'consent_unavailable',
+        'The consent session is unavailable.',
+      );
+    setCookie(c, CONSENT_SESSION_COOKIE, secret, {
+      httpOnly: true,
+      path: '/consent',
+      sameSite: 'Strict',
+      maxAge: Math.ceil(CONSENT_TRANSACTION_TTL_MS / 1000),
+    });
+    return c.json(
+      {
+        success: true,
+        data: {
+          changed: true,
+          confirmation: {
+            id: created.transaction.id,
+            reviewUrl,
+            expiresAt: created.transaction.expiresAt,
+          },
+        },
+      },
+      202,
+    );
   });
   return app;
 }
