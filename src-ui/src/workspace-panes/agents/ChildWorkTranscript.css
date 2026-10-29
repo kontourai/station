@@ -37,6 +37,19 @@
   white-space: pre-wrap;
 }
 
+.child-work-transcript__markdown {
+  color: var(--k-text);
+  min-width: 0;
+}
+
+.child-work-transcript__markdown > :first-child {
+  margin-top: 0;
+}
+
+.child-work-transcript__markdown > :last-child {
+  margin-bottom: 0;
+}
+
 .child-work-transcript__code {
   display: block;
   max-height: 120px;

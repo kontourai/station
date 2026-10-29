@@ -748,6 +748,11 @@ export class ThreadInboxDelivery {
       );
   }
 
+  /** The same sender authority applied when a continuation is submitted. */
+  mayContinue(conversationId: string, userId: string): boolean {
+    return this.ports.mayContinue(this.inboxOf(conversationId), userId);
+  }
+
   private inspectDelivery(
     conversationId: string,
     clientTurnId: string,

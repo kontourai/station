@@ -1771,21 +1771,43 @@ replaced by a placeholder, then each text cut at 4,000 characters and flagged) a
 `404` means no transcript for a session you can read; `503` means the engine
 no longer has it.
 
-Only Claude subagents have a transcript today. Claude Code keeps it under the
-config home the session's engine was spawned with (its app-home or credential
-profile, a connection's config home, or the global one); the adapter records
-that config home with the reference, so a profile session's transcript is
-read from its own profile. Symbolic links below that config home are refused
-by checks made immediately before the file is opened; the checks are not
-atomic against a concurrent swap by a process running as the same user.
-Codex child threads have no transcript reference.
+Claude subagents and Codex child threads have a transcript; the reference
+is set when the child is first reported, so it can be read while the child
+runs. Claude Code keeps a subagent's transcript under the config home the
+session's engine was spawned with (its app-home or credential profile, a
+connection's config home, or the global one); the adapter records that config
+home with the reference, so a profile session's transcript is read from its
+own profile. Codex writes each child thread to its own rollout file under the
+`CODEX_HOME` the session's app-server ran with,
+`sessions/YYYY/MM/DD/rollout-*-<thread id>.jsonl`; the reference names the
+thread id and that home, the server looks only in the day directories the
+id's own time names (then the most recent 31), and refuses a file whose first
+`session_meta` record names another thread. Symbolic links below either home
+are refused by checks made immediately before the file is opened; the checks
+are not atomic against a concurrent swap by a process running as the same
+user.
 
 The transcript is shown in file order, so it can include what Claude Code's
 own reader hides: a branch abandoned by a retry or an edit, and a compaction
-summary. A single record of any type larger than 4 MiB is skipped and shown
-as one `too-large` entry.
+summary. A Codex transcript shows the parent's task, the child's own input,
+its replies, and its tool calls and their text output; the context Codex
+injects as user messages, developer instructions, reasoning and encrypted
+content are left out. A task whose payload Codex encrypted shows its header
+alone. A forked child's rollout (`forked_from_id` in its `session_meta`)
+begins with a copy of its parent's conversation; only the child's own part
+is shown, from the meta's `subagent_history_start_ordinal`, or after the
+message saying the preceding conversation is inherited parent context when
+no start ordinal is written. A forked rollout with neither shows nothing
+rather than the parent's history. A single record of any type larger than 4 MiB is
+skipped and shown as one `too-large` entry.
 
 ### Live SSE feed (`GET /events`)
+
+Codex app-server stderr is drained without adding its content to session
+history or failure messages. With a server logger configured, Station emits one
+content-free diagnostic per process when it receives nonblank stderr. Codex
+protocol warnings, including `configWarning`, and process or turn failures
+still surface as session events.
 
 ```
 GET /api/orchestration/events              # all sessions the caller can read

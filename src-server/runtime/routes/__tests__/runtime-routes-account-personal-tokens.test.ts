@@ -25,6 +25,7 @@ import {
   type LoadedLocalAccounts,
   loadLocalAccounts,
 } from '../../../services/identity/local-account-runtime.js';
+import { NotificationService } from '../../../services/notifications/notification-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { ProjectManifestStore } from '../../../services/projects/project-manifest-store.js';
 import { createProjectMembershipRuntime } from '../../../services/projects/project-membership-runtime.js';
@@ -42,7 +43,7 @@ vi.mock('../runtime-route-support.js', () => {
   return {
     configureRuntimeSupportServices: () => ({
       schedulerService: runtimeSupportStub,
-      notificationService: runtimeSupportStub,
+      notificationService: notificationServiceForFixture ?? runtimeSupportStub,
       attentionProjection: runtimeSupportStub,
       webPushService: runtimeSupportStub,
       webPushEnabled: false,
@@ -72,6 +73,7 @@ const ORIGIN = 'https://station.example.test';
 const STATION_ID = 'account-token-fixture';
 const GRANT = 'orchestration:read orchestration:operate';
 const operatorApproval = { kind: 'presented-credential' } as const;
+let notificationServiceForFixture: NotificationService | undefined;
 
 describe('account-tied personal access tokens over the production composition', () => {
   // Created first, so its after-hook removes the homes after the account
@@ -93,6 +95,8 @@ describe('account-tied personal access tokens over the production composition', 
     process.env.ALLOWED_ORIGINS = ORIGIN;
   });
   afterEach(async () => {
+    await notificationServiceForFixture?.shutdown();
+    notificationServiceForFixture = undefined;
     for (const accounts of loaded.splice(0)) await accounts.service.close();
     if (ambientHome === undefined) delete process.env.STATION_HOME;
     else process.env.STATION_HOME = ambientHome;
@@ -118,6 +122,11 @@ describe('account-tied personal access tokens over the production composition', 
       STATION_ID,
       storage,
     );
+    const eventBus = new EventBus();
+    const notifications = new NotificationService(eventBus, homeDir, 999_999, {
+      projectMembership: membership.service,
+    });
+    notificationServiceForFixture = notifications;
     const localAccounts = await loadLocalAccounts(
       { publicOrigin: ORIGIN },
       { stationId: STATION_ID, homeDirectory: homeDir },
@@ -189,7 +198,7 @@ describe('account-tied personal access tokens over the production composition', 
           scope: Parameters<typeof usageExportOwnerIds>[1],
         ) => usageExportOwnerIds(authority, scope, () => undefined),
       }),
-      eventBus: new EventBus(),
+      eventBus,
       taskGraphService: { listTasks: () => [] },
     });
     const result = configureRuntimeRoutesProduction(
@@ -380,6 +389,7 @@ describe('account-tied personal access tokens over the production composition', 
         }),
       );
       expect(accepted.status, await accepted.clone().text()).toBe(200);
+      return project;
     };
     const slugs = async (response: Response) => {
       expect(response.status, await response.clone().text()).toBe(200);
@@ -399,8 +409,153 @@ describe('account-tied personal access tokens over the production composition', 
       shareWith,
       slugs,
       projectService,
+      homeDir,
+      notifications,
+      owner,
+      ownerOperator,
     };
   }
+
+  test('person notifications isolate paired accounts and persist their read and dismiss state', async () => {
+    const h = await setup();
+    const alice = await h.person('notificationalice');
+    const bob = await h.person('notificationbob');
+    const aliceProject = await h.shareWith('alice-project', alice, 'viewer');
+    const bobProject = await h.shareWith('bob-project', bob, 'viewer');
+    const send = async (
+      principalId: string,
+      projectId: string,
+      title: string,
+    ) => {
+      const result = await h.notifications.scheduleEnveloped(
+        'review',
+        { category: 'review-request', title },
+        {
+          v: 1,
+          source: { kind: 'system', subsystem: 'review' },
+          audience: { kind: 'principal', principalId, projectId },
+          urgency: 'info',
+          interrupt: 'default',
+        },
+      );
+      expect(result.outcome).toBe('created');
+      if (!result.notification)
+        throw new Error('Expected principal notification');
+      return result.notification;
+    };
+    const aliceNotice = await send(
+      alice.principalId,
+      aliceProject.id,
+      'Alice only',
+    );
+    const bobNotice = await send(bob.principalId, bobProject.id, 'Bob only');
+    const ownerNotice = await send(
+      h.owner.principalId,
+      aliceProject.id,
+      'Owner personally',
+    );
+    const globalNotice = await h.notifications.schedule('fixture', {
+      category: 'test',
+      title: 'Owner global',
+    });
+    const list = async (request: RequestInit, query = '') => {
+      const response = await h.request(
+        `/api/me/notifications${query}`,
+        request,
+      );
+      expect(response.status, await response.clone().text()).toBe(200);
+      expect(response.headers.get('cache-control')).toBe('no-store');
+      return (await readJson<{ data: Array<{ id: string }> }>(response)).data;
+    };
+    expect(
+      await list(
+        alice.device(),
+        `?principalId=${encodeURIComponent(bob.principalId)}`,
+      ),
+    ).toEqual([aliceNotice]);
+    expect(await list(bob.device())).toEqual([bobNotice]);
+    expect(await list(h.ownerOperator())).toEqual([ownerNotice]);
+    const minted = await h.mintToken(alice.device, GRANT);
+    expect(minted.status, await minted.clone().text()).toBe(201);
+    const token = h.bearer((await readJson<{ secret: string }>(minted)).secret);
+    expect(await list(token())).toEqual([aliceNotice]);
+    expect(
+      (
+        await h.request(
+          `/api/me/notifications/${bobNotice.id}/read`,
+          token({ method: 'POST' }),
+        )
+      ).status,
+    ).toBe(404);
+    const ownerFeed = await h.request('/notifications', h.ownerOperator());
+    expect(ownerFeed.status, await ownerFeed.clone().text()).toBe(200);
+    expect(
+      (await readJson<{ data: Array<{ id: string }> }>(ownerFeed)).data,
+    ).toEqual([globalNotice]);
+    expect((await h.request('/notifications', alice.device())).status).toBe(
+      403,
+    );
+
+    for (const [method, suffix] of [
+      ['POST', '/read'],
+      ['DELETE', ''],
+    ] as const) {
+      const forbiddenRow = await h.request(
+        `/api/me/notifications/${bobNotice.id}${suffix}`,
+        alice.device({ method }),
+      );
+      expect(forbiddenRow.status).toBe(404);
+      expect(await readJson(forbiddenRow)).toEqual({
+        success: false,
+        error: 'Notification not found',
+      });
+    }
+    const read = await h.request(
+      `/api/me/notifications/${aliceNotice.id}/read`,
+      alice.device({ method: 'POST' }),
+    );
+    expect(read.status, await read.clone().text()).toBe(200);
+    expect(await readJson(read)).toEqual({
+      success: true,
+      data: { outcome: 'read' },
+    });
+    const readAgain = await h.request(
+      `/api/me/notifications/${aliceNotice.id}/read`,
+      alice.device({ method: 'POST' }),
+    );
+    expect(await readJson(readAgain)).toEqual({
+      success: true,
+      data: { outcome: 'already-read' },
+    });
+    const dismiss = await h.request(
+      `/api/me/notifications/${aliceNotice.id}`,
+      alice.device({ method: 'DELETE' }),
+    );
+    expect(dismiss.status, await dismiss.clone().text()).toBe(200);
+    const aliceAfter = await list(alice.device());
+    expect(aliceAfter[0]).toMatchObject({
+      status: 'dismissed',
+      metadata: {
+        envelope: {
+          readBy: expect.stringMatching(/^device:/),
+          dismissedBy: expect.stringMatching(/^device:/),
+        },
+      },
+    });
+    expect(await list(bob.device())).toEqual([bobNotice]);
+    const reopened = new NotificationService(new EventBus(), h.homeDir);
+    try {
+      expect(await reopened.listForPrincipal(alice.principalId)).toEqual(
+        aliceAfter,
+      );
+      expect(await reopened.listForPrincipal(bob.principalId)).toEqual([
+        bobNotice,
+      ]);
+    } finally {
+      await reopened.shutdown();
+    }
+    expect((await h.request('/api/me/notifications')).status).toBe(401);
+  });
 
   test('telemetry person leaves compose account session, Device scope, principal ownership and operator separation', async () => {
     const h = await setup();
