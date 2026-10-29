@@ -112,6 +112,7 @@ function TaskWriteBackForAuthority({
     requestScope: authority,
     enabled: open,
     cancelWhenInactive: true,
+    keepPreviousData: false,
   });
   const wrongIncarnation = log.data?.entries.some(
     (entry) => entry.taskCreatedAt !== taskCreatedAt,

@@ -137,6 +137,7 @@ function IntegrationStatusForAuthority({
   const status = useIntegrationStatusQuery(authority.apiBase, {
     requestScope: authority,
     enabled: operator.data !== undefined,
+    keepPreviousData: false,
   });
   if (
     !operator.data ||
