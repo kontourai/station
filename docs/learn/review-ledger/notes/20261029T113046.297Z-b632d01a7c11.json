@@ -1,0 +1,7 @@
+{
+  "revision": "8ad6cad0e79834e0e1b371b0539e19e1b8583cee",
+
+  "notes": [
+    {"path":"docs/guides/repository-layout.md","note":"SOURCE-ONLY scoped semantic review at8ad6cad0e79834e0e1b371b0539e19e1b8583cee. Read the complete71-line guide and its own route-source covering notes8842afef and1a29f14. Inspected subsequent orchestration/runtime route composition: Ensemble preparation/session-group and report ownership stay under existing server routes/services/runtime; inherited telemetry analytics, media, walkthrough, external-client and terminal routes retain their named subsystem owners. Caller-bound session-group tools add an internal runtime MCP helper, not a new top-level responsibility. Removing the complete unmounted portable transport unit preserves shared report/session transport, persistence, source and wire ownership and published-contract consumption. No prose correction for these two named inputs; directory/output/experimental-runtime instructions remain accurate. This is not a blanket renewed audit of all directory contents, runtime authority or published delivery. No test/provider/device/hosted evidence or media refresh is claimed; no classification or coverage-baseline change.","inputs":["docs/guides/repository-layout.md","src-server/routes/orchestration/orchestration.ts","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}
