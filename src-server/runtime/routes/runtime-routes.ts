@@ -3688,7 +3688,10 @@ export function configureRuntimeRoutes(
   // getter that resolves the service per request.
   context.app.route(
     '/api/usage-telemetry',
-    createUsageTelemetryDisclosureRoutes(() => context.getUsageTelemetry?.()),
+    createUsageTelemetryDisclosureRoutes(
+      () => context.getUsageTelemetry?.(),
+      context.environmentSecurityService,
+    ),
   );
   context.app.route(
     '/api/diagnostics',
