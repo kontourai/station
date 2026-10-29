@@ -1,0 +1,19 @@
+{
+  "revision": "a36b4e3ece58cb522a2cef7ea9f619c69b60afb2",
+
+  "notes": [
+    {"path":"docs/design/offline-outbound-queue.md","note":"Reviewed recorded source delta and relevant claims: SSE resume and authority, offline reading and bounded history, provider and continuation contracts. Refresh and gap recovery preserve the documented boundaries; raw error selection does not alter these published interfaces. Focused tests and Chromium fixture cover the repaired paths, not live providers or devices.","inputs":["docs/design/offline-outbound-queue.md","src-ui/src/hooks/orchestration/useSessionEventWindow.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed recorded source delta and relevant claims: SSE resume and authority, offline reading and bounded history, provider and continuation contracts. Refresh and gap recovery preserve the documented boundaries; raw error selection does not alter these published interfaces. Focused tests and Chromium fixture cover the repaired paths, not live providers or devices.","inputs":["docs/reference/agent-smoke-confidence.md","packages/contracts/src/provider.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed recorded source delta and relevant claims: SSE resume and authority, offline reading and bounded history, provider and continuation contracts. Refresh and gap recovery preserve the documented boundaries; raw error selection does not alter these published interfaces. Focused tests and Chromium fixture cover the repaired paths, not live providers or devices.","inputs":["docs/reference/api.md","packages/contracts/src/provider.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed recorded source delta and relevant claims: SSE resume and authority, offline reading and bounded history, provider and continuation contracts. Refresh and gap recovery preserve the documented boundaries; raw error selection does not alter these published interfaces. Focused tests and Chromium fixture cover the repaired paths, not live providers or devices.","inputs":["docs/reference/contracts.md","packages/contracts/src/provider.ts","src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed recorded source delta and relevant claims: SSE resume and authority, offline reading and bounded history, provider and continuation contracts. Refresh and gap recovery preserve the documented boundaries; raw error selection does not alter these published interfaces. Focused tests and Chromium fixture cover the repaired paths, not live providers or devices.","inputs":["docs/reference/sdk.md","packages/contracts/src/provider.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Reviewed recorded source delta and relevant claims: SSE resume and authority, offline reading and bounded history, provider and continuation contracts. Refresh and gap recovery preserve the documented boundaries; raw error selection does not alter these published interfaces. Focused tests and Chromium fixture cover the repaired paths, not live providers or devices.","inputs":["docs/reference/shared.md","packages/contracts/src/provider.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed recorded source delta and relevant claims: SSE resume and authority, offline reading and bounded history, provider and continuation contracts. Refresh and gap recovery preserve the documented boundaries; raw error selection does not alter these published interfaces. Focused tests and Chromium fixture cover the repaired paths, not live providers or devices.","inputs":["docs/user/concepts.md","src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts","src-ui/src/hooks/orchestration/useSessionEventWindow.ts"]}
+  ]
+}

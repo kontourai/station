@@ -91,7 +91,7 @@ export const STATION_SETTING_KEYS_BY_SECTION = {
     'reviewGuideInstructions',
   ],
   // The Station default this device's chat-font-size slider falls back to.
-  chat: ['defaultChatFontSize'],
+  chat: ['defaultChatFontSize', 'titleModel'],
 } as const satisfies Partial<Record<SettingsSectionId, readonly string[]>>;
 
 export type StationSettingsSectionId =

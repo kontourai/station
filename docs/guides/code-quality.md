@@ -53,6 +53,12 @@ non-success statics result, and the required `Source verification policy`
 context reconciles that aggregate. Local pushes retain cheap lint/governance and
 commit checks plus scoped transfer, static and SDK checks.
 
+The hook runs the transfer, static and SDK checks through
+`node scripts/heavy-check-slot.mjs <label> <script>`. Each one first waits for a
+[host heavy-check slot](testing.md#host-heavy-check-slots), so pushes from
+several worktrees on one host queue instead of running together. If that wait
+runs out, the push fails and the message names the holder.
+
 Before the first check the hook resolves the bounded host-pressure liveness
 scale once and exports it to every step (see the
 [testing guide](testing.md#host-pressure-liveness-scale-3302)); it never changes

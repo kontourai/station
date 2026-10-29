@@ -422,6 +422,10 @@ interface AgentConfigurationGeneration {
   activationEpoch?: number;
 }
 
+import {
+  generateConversationTitle,
+  resolveTitleModel,
+} from '../../routes/chat/chat-title-generation.js';
 import { getCachedUser } from '../../routes/system/auth.js';
 import { runAsStationServer } from '../../security/station-server-scope.js';
 import type { BrowserService } from '../../services/browser/browser-service.js';
@@ -436,6 +440,10 @@ import {
   FileActionOperationStore,
 } from '../../services/operations/action-operation-service.js';
 import { FleetDispatchActionOperationObserver } from '../../services/operations/fleet-dispatch-action-operation-observer.js';
+import {
+  ConversationTitleGeneration,
+  subscribeConversationTitleGeneration,
+} from '../../services/orchestration/conversation-title-generation.js';
 import { FileDelegationAttemptClaimStore } from '../../services/orchestration/delegation-attempt-claim-store.js';
 import {
   createMCPToolProvenanceGeneration,
@@ -1042,6 +1050,7 @@ export class StationRuntime {
   });
   private ollamaAdapter = new OllamaAdapter();
   private orchestrationService!: OrchestrationService;
+  private nativeForkStoredReadBinder?: import('../../security/native-fork-read-admission.js').NativeForkReadAdmissionDomain['bindAtConversationMount'];
   private projectRoomRuntime?: { close(): Promise<void> };
   private resourcePosture?: import('../../services/infra/resource-posture.js').RuntimeResourcePostureProbe;
   private attachedSessionFollowService?: AttachedSessionFollowService;
@@ -1622,6 +1631,20 @@ export class StationRuntime {
       // EventBus: `releaseClaimForSession` already catches internally, and
       // the `.catch` here is defense-in-depth for the subscription callback
       // itself.
+      // #4266: name a conversation with the title model after its first
+      // completed turn. Off unless `titleModel` is set, and always off on a
+      // hosted Station; detached and best-effort, so it never delays a turn.
+      const conversationTitles = new ConversationTitleGeneration({
+        eventStore: this.orchestrationEventStore,
+        enabled: () => resolveTitleModel(this.appConfig ?? {}) !== undefined,
+        generate: (input) =>
+          generateConversationTitle({
+            ctx: this.buildRuntimeContext(),
+            ...input,
+          }),
+        logger: this.logger,
+      });
+      subscribeConversationTitleGeneration(this.eventBus, conversationTitles);
       const worktreeProvisioningService = new WorktreeProvisioningService();
       this.eventBus.subscribe((serverEvent) => {
         if (serverEvent.event !== SERVER_EVENTS.ORCHESTRATION_EVENT) return;
@@ -4079,6 +4102,8 @@ export class StationRuntime {
           },
           onRouteServicesReady: async (services) => {
             this.orchestrationService = services.orchestrationService;
+            this.nativeForkStoredReadBinder =
+              services.nativeForkStoredReadBinder;
             // Route construction happens inside initializeRuntime before this
             // method returns. Publish the Dispatcher at that composition seam,
             // after its concrete orchestration Adapter exists and before any
@@ -4189,6 +4214,7 @@ export class StationRuntime {
     this.appConfig = initialized.appConfig;
     this.framework = initialized.framework;
     this.orchestrationService = initialized.orchestrationService;
+    this.nativeForkStoredReadBinder = initialized.nativeForkStoredReadBinder;
     this.resourcePosture = initialized.resourcePosture;
     this.attachedSessionFollowService =
       initialized.attachedSessionFollowService;
@@ -4689,6 +4715,7 @@ export class StationRuntime {
       delegationAttemptClaims: this.delegationAttemptClaims,
       orchestrationService: this.orchestrationService,
       resourcePosture: this.resourcePosture,
+      nativeForkStoredReadBinder: this.nativeForkStoredReadBinder,
       orchestrationEventStore: this.orchestrationEventStore,
       operationalEventPublisher: this.operationalEventPublisher,
       pluginInstallationHost: this.pluginInstallationHost,

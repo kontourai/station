@@ -21,6 +21,12 @@ export interface AppConfig {
   reviewGuidesEnabled?: boolean;
   reviewGuideModel?: string;
   reviewGuideInstructions?: string;
+  /**
+   * #4266: the model that writes a conversation's title after its first
+   * exchange. Falls back to `structureModel`; titles stay derived from the
+   * first prompt when neither is set.
+   */
+  titleModel?: string;
   region?: string;
   defaultModel: string;
   invokeModel: string;
