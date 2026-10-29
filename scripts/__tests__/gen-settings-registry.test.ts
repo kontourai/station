@@ -250,6 +250,7 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'default-max-turns': 'station',
   'default-max-output-tokens': 'station',
   'default-chat-font-size': 'station',
+  'chat-title-model': 'station',
   'terminal-shell': 'station',
   'mcp-ui-host': 'station',
   'surface-trust': 'station',

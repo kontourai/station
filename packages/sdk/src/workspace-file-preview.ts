@@ -6,9 +6,15 @@
 import {
   parseWorkspaceVisualFile,
   type WorkspaceVisualFile,
+  type WorkspaceVisualFileUnavailableReason,
+  workspaceVisualFileUnavailableReason,
 } from '@kontourai/station-contracts/workspace-file-preview';
 import { _getApiBase } from './api-core.js';
-import { type ClientRequestOptions, mutateJson } from './client/http.js';
+import {
+  type ClientRequestOptions,
+  mutateJson,
+  rethrowDeadline,
+} from './client/http.js';
 
 export type {
   WorkspaceFileChanges,
@@ -21,6 +27,8 @@ export type {
   WorkspaceFilePreviewRequest,
   WorkspaceFilePreviewStatus,
   WorkspaceOpenFilePreviewIntent,
+  WorkspaceVisualFileRefusal,
+  WorkspaceVisualFileUnavailableReason,
 } from '@kontourai/station-contracts/workspace-file-preview';
 export {
   isWorkspaceFilePreviewImageDataUrl,
@@ -98,11 +106,40 @@ export async function readProjectWorkspaceVisualFile(
     { ...opts, readOnly: true, maxResponseBytes: 10 * 1024 * 1024 },
     { path, ...(thread ? { thread } : {}) },
   );
-  if (!response.ok)
-    throw new Error('This visual file is unavailable in this Project.');
+  if (!response.ok) {
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch (error) {
+      rethrowDeadline(error);
+      // A proxy or auth page: no refusal reason, decided by status alone.
+    }
+    throw new WorkspaceVisualFileError(
+      response.status,
+      workspaceVisualFileUnavailableReason(response.status, body),
+    );
+  }
   const body: { success: boolean; data?: WorkspaceVisualFile } =
     await response.json();
   if (!body.success || !body.data)
-    throw new Error('This visual file is unavailable.');
+    throw new WorkspaceVisualFileError(response.status, 'unavailable');
   return parseWorkspaceVisualFile(body.data);
+}
+
+/**
+ * A visual-file read that failed, with the reason: the server's refusal, or
+ * `unauthorized` (401, or a 403 with no refusal), `server-error` (5xx) or
+ * `unavailable` (anything else, such as an older host's reasonless 404).
+ * Renderers branch on `reason`, never on the message.
+ */
+export class WorkspaceVisualFileError extends Error {
+  readonly status: number;
+  readonly reason: WorkspaceVisualFileUnavailableReason;
+
+  constructor(status: number, reason: WorkspaceVisualFileUnavailableReason) {
+    super(`Visual file unavailable (${reason}, HTTP ${status})`);
+    this.name = 'WorkspaceVisualFileError';
+    this.status = status;
+    this.reason = reason;
+  }
 }

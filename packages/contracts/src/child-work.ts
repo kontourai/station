@@ -42,6 +42,39 @@ export type ChildWorkStatus = (typeof CHILD_WORK_STATUSES)[number];
 export type ChildWorkTerminalStatus = Exclude<ChildWorkStatus, 'running'>;
 
 /**
+ * Why an `unresolved` child ended, when that much was observed.
+ * `engine-exit`: the engine process the child ran in died while the child
+ * ran (a signal, a crash, memory exhaustion). A stop someone requested is
+ * not one: its children end without it.
+ *
+ * Carried beside the status, never as a status of its own, so a client built
+ * before it keeps reading a known status ("No result") instead of an unknown
+ * one: its reducer drops the member it does not know. Unlike a bare
+ * `unresolved`, an interruption is an observed end, so no later report
+ * corrects it.
+ */
+export type ChildWorkEndedBy = 'engine-exit';
+
+/**
+ * What a surface shows for a child: its status, except that an `unresolved`
+ * child its engine's exit ended reads `interrupted`. Derived, never sent.
+ */
+export type ChildWorkDisplayStatus = ChildWorkStatus | 'interrupted';
+export type ChildWorkTerminalDisplayStatus = Exclude<
+  ChildWorkDisplayStatus,
+  'running'
+>;
+
+/** The status a surface shows for `item` (see {@link ChildWorkDisplayStatus}). */
+export function childWorkDisplayStatus(
+  item: Pick<ChildWorkItem, 'status' | 'endedBy'>,
+): ChildWorkDisplayStatus {
+  return item.status === 'unresolved' && item.endedBy === 'engine-exit'
+    ? 'interrupted'
+    : item.status;
+}
+
+/**
  * Who reports the child. `engine-subagent` is a subagent the engine spawned
  * and reports on itself; `station-delegate` is a delegated task Station
  * launched as its own session.
@@ -143,19 +176,35 @@ export interface ChildWorkModel {
  * `claude-subagent`: Claude Code keeps every subagent's transcript under the
  * parent Claude session (`session_id` on `task_started`) by agent id (the
  * `local_agent` task's `task_id`).
+ *
+ * `codex-thread`: Codex writes every thread it runs, a spawned child
+ * included, to its own rollout file under `<CODEX_HOME>/sessions/`, named by
+ * the thread id and opened by a `session_meta` record carrying that id.
  */
-export type ChildWorkTranscriptRef = {
-  kind: 'claude-subagent';
-  sessionId: string;
-  agentId: string;
-  /**
-   * The Claude config home the session ran under (its app-home or
-   * credential profile, a connection's config home, or the global one), as
-   * the adapter applied it at spawn. Absent means the server's own global
-   * config home. Written by the server; no request supplies it.
-   */
-  configHome?: string;
-};
+export type ChildWorkTranscriptRef =
+  | {
+      kind: 'claude-subagent';
+      sessionId: string;
+      agentId: string;
+      /**
+       * The Claude config home the session ran under (its app-home or
+       * credential profile, a connection's config home, or the global one),
+       * as the adapter applied it at spawn. Absent means the server's own
+       * global config home. Written by the server; no request supplies it.
+       */
+      configHome?: string;
+    }
+  | {
+      kind: 'codex-thread';
+      /** The child's own Codex thread id. */
+      threadId: string;
+      /**
+       * The `CODEX_HOME` the parent session's app-server ran under, as the
+       * adapter resolved it at spawn. Absent means the server's own global
+       * Codex home. Written by the server; no request supplies it.
+       */
+      configHome?: string;
+    };
 
 /** Bound on a recorded config home path. */
 const CHILD_WORK_CONFIG_HOME_MAX_CHARS = 4_096;
@@ -210,6 +259,12 @@ const CLAUDE_SESSION_ID_PATTERN =
 /** A Claude agent id: one path-safe segment (`agent-<id>.jsonl`). */
 const CLAUDE_AGENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 
+/**
+ * A Codex thread id: a UUID, as Codex names threads and their rollout files
+ * (`rollout-<time>-<thread id>.jsonl`).
+ */
+const CODEX_THREAD_ID_PATTERN = CLAUDE_SESSION_ID_PATTERN;
+
 /** The ref when it is well-formed, else undefined. Never trusts a path. */
 export function parseChildWorkTranscriptRef(
   value: unknown,
@@ -217,6 +272,26 @@ export function parseChildWorkTranscriptRef(
   if (!value || typeof value !== 'object' || Array.isArray(value))
     return undefined;
   const raw = value as Record<string, unknown>;
+  const configHome =
+    typeof raw.configHome === 'string' && isAbsoluteConfigHome(raw.configHome)
+      ? raw.configHome
+      : undefined;
+  // A config home that is present but not an absolute path is not a ref.
+  if (raw.configHome !== undefined && configHome === undefined)
+    return undefined;
+  if (raw.kind === 'codex-thread') {
+    if (
+      typeof raw.threadId !== 'string' ||
+      !CODEX_THREAD_ID_PATTERN.test(raw.threadId)
+    ) {
+      return undefined;
+    }
+    return {
+      kind: 'codex-thread',
+      threadId: raw.threadId,
+      ...(configHome ? { configHome } : {}),
+    };
+  }
   if (
     raw.kind !== 'claude-subagent' ||
     typeof raw.sessionId !== 'string' ||
@@ -226,13 +301,6 @@ export function parseChildWorkTranscriptRef(
   ) {
     return undefined;
   }
-  const configHome =
-    typeof raw.configHome === 'string' && isAbsoluteConfigHome(raw.configHome)
-      ? raw.configHome
-      : undefined;
-  // A config home that is present but not an absolute path is not a ref.
-  if (raw.configHome !== undefined && configHome === undefined)
-    return undefined;
   return {
     kind: 'claude-subagent',
     sessionId: raw.sessionId,
@@ -297,6 +365,8 @@ export interface ChildWorkResult {
 
 export interface ChildWorkItem extends ChildWorkKey {
   status: ChildWorkStatus;
+  /** Only on an `unresolved` child: what ended it (see {@link ChildWorkEndedBy}). */
+  endedBy?: ChildWorkEndedBy;
   parent?: ChildWorkParent;
   /** 1 for a top-level spawn, N+1 inside a depth-N child. Absent when unreported. */
   depth?: number;
@@ -351,6 +421,8 @@ export type ChildWorkDelta =
   | ({
       kind: 'settle';
       status: ChildWorkTerminalStatus;
+      /** With `unresolved`: what ended the child (see {@link ChildWorkEndedBy}). */
+      endedBy?: ChildWorkEndedBy;
       result?: ChildWorkResult;
       usage?: ChildWorkUsage;
       /**
@@ -372,6 +444,7 @@ export type ChildWorkDelta =
           ChildWorkItem,
           | keyof ChildWorkKey
           | 'status'
+          | 'endedBy'
           | 'result'
           | 'usage'
           | 'usageProvisional'
@@ -435,10 +508,17 @@ export function isChildWorkTerminalStatus(
 
 /**
  * The two terminals that record an ABSENCE of an observed outcome, and so may
- * be corrected by a later real settle. Every other terminal is sticky.
+ * be corrected by a later real settle. Every other terminal is sticky, and so
+ * is an `unresolved` its engine's exit ended: that end was observed.
  */
-function isCorrectableTerminal(status: ChildWorkStatus): boolean {
-  return status === 'unresolved' || status === 'stopped-unconfirmed';
+function isCorrectableTerminal(
+  status: ChildWorkStatus,
+  endedBy: ChildWorkEndedBy | undefined,
+): boolean {
+  return (
+    (status === 'unresolved' && endedBy === undefined) ||
+    status === 'stopped-unconfirmed'
+  );
 }
 
 function finiteCount(value: unknown): number | undefined {
@@ -533,6 +613,9 @@ function normalizeItem(item: ChildWorkItem): ChildWorkItem {
     childId: item.childId,
     status: item.status,
   };
+  // Meaningful only on an `unresolved` child; a known value only.
+  if (item.status === 'unresolved' && item.endedBy === 'engine-exit')
+    next.endedBy = 'engine-exit';
   if (item.parent) next.parent = item.parent;
   if (depth !== undefined) next.depth = depth;
   if (item.title !== undefined) next.title = item.title;
@@ -797,6 +880,10 @@ function applySettle(
   const usage = normalizeUsage(delta.usage);
   const identity = delta.identity ?? {};
   const provisional = delta.usageProvisional === true;
+  const endedBy =
+    delta.status === 'unresolved' && delta.endedBy === 'engine-exit'
+      ? delta.endedBy
+      : undefined;
   // Canonical form, as an item holds it: an empty or unknown-only list
   // means every field is running, never that nothing is.
   const runningFields =
@@ -813,6 +900,7 @@ function applySettle(
       reporterThreadId: delta.reporterThreadId,
       childId: delta.childId,
       status: delta.status,
+      ...(endedBy ? { endedBy } : {}),
       ...(result ? { result } : {}),
       ...settledUsage(undefined, usage, {
         open: true,
@@ -822,8 +910,8 @@ function applySettle(
     });
   } else if (
     existing.status === 'running' ||
-    (isCorrectableTerminal(existing.status) &&
-      !isCorrectableTerminal(delta.status))
+    (isCorrectableTerminal(existing.status, existing.endedBy) &&
+      !isCorrectableTerminal(delta.status, endedBy))
   ) {
     // The settle is the child's latest word: its identity and final usage
     // win over what an earlier listing or progress upsert recorded.
@@ -834,6 +922,7 @@ function applySettle(
       reporterThreadId: delta.reporterThreadId,
       childId: delta.childId,
       status: delta.status,
+      endedBy,
       result: result ?? existing.result,
       ...settledUsage(existing, usage, {
         open: true,
@@ -909,6 +998,7 @@ export function childWorkSettleFromItem(
     reporterThreadId,
     childId,
     status,
+    endedBy,
     result,
     usage,
     usageProvisional,
@@ -922,6 +1012,7 @@ export function childWorkSettleFromItem(
     reporterThreadId,
     childId,
     status,
+    ...(endedBy ? { endedBy } : {}),
     ...(result ? { result } : {}),
     ...(usage ? { usage } : {}),
     ...(usage && usageProvisional ? { usageProvisional: true as const } : {}),
