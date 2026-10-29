@@ -35,6 +35,7 @@ import type { ReactNode, Ref } from 'react';
 import type {
   SharingCounts,
   SharingDisclosure,
+  TelemetryChoiceAuthority,
 } from '../../components/UsageSharingChoices';
 import type { AppConfig } from '../../types';
 import { renderSettingRow } from './registry-row';
@@ -169,6 +170,7 @@ export function StationConfigSection({
   projectOverride,
   telemetryPublishers,
   telemetryDisclosure,
+  telemetryChoiceAuthority,
   savedTelemetryChoices,
   telemetryStatusError,
   onTelemetryFeedback,
@@ -204,6 +206,8 @@ export function StationConfigSection({
   savedTelemetryChoices?: AppConfig['telemetryTier'];
   telemetryStatusError?: boolean;
   telemetryDisclosure?: SharingDisclosure;
+  /** See `TelemetryTierSettings`'s `choiceAuthority`. */
+  telemetryChoiceAuthority?: TelemetryChoiceAuthority;
   telemetryPublishers?: Partial<
     Record<TelemetryPublisherId, TelemetryPublisherStatus>
   >;
@@ -288,6 +292,7 @@ export function StationConfigSection({
         onChange={onChange}
         publishers={telemetryPublishers}
         disclosure={telemetryDisclosure}
+        choiceAuthority={telemetryChoiceAuthority}
         counts={telemetryCounts}
         noticeRef={telemetryNoticeRef}
         noticeError={telemetryNoticeError}

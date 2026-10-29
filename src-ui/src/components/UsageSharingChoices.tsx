@@ -1,6 +1,8 @@
 import type {
   TelemetryChoiceCapabilities,
+  TelemetryPublisherId,
   TelemetryTier,
+  TelemetryTierChoices,
 } from '@kontourai/station-contracts/product-telemetry';
 import { type Ref, useId } from 'react';
 import { PageCallout } from './PageCallout';
@@ -15,41 +17,88 @@ export const SHARING_LABELS: Record<TelemetryTier, string> = {
 const TIER_RANK = { off: 0, lite: 1, full: 2 } as const;
 
 /**
- * Whether this caller may choose `tier` for publishers whose saved choices are
- * `saved`, per the capabilities the server reported. It mirrors the server's
- * own refusals: no telemetry write at all without `lower`; a raise for any
- * publisher without `raise`; Detailed outside DNT without `acknowledge`,
- * because saving it posts the acknowledgement first. Absent capabilities (an
- * older host) allow every tier, as before.
+ * What the server has said this caller may do with the usage-sharing choice.
+ * `'loading'` and `'error'` mean the disclosure has not settled successfully,
+ * so nothing is known yet and nothing is offered; `undefined` means an older
+ * host that settled without reporting capabilities, which keeps the earlier,
+ * ungated behaviour.
+ */
+export type TelemetryChoiceAuthority =
+  | TelemetryChoiceCapabilities
+  | 'loading'
+  | 'error'
+  | undefined;
+
+/**
+ * The tier `PUT /config/app` compares a write for `publisher` against: the
+ * saved choice, else the server-reported default with Do Not Track ignored.
+ * Never the EFFECTIVE tier, which DNT forces to Off without changing the
+ * choice. The last fallback is the config route's own, for an older host.
+ */
+export function telemetryChoiceBaseline(
+  publisher: TelemetryPublisherId,
+  saved: TelemetryTierChoices | undefined,
+  capabilities: TelemetryChoiceCapabilities | undefined,
+): TelemetryTier {
+  return (
+    saved?.[publisher] ??
+    capabilities?.defaults?.[publisher] ??
+    (publisher.startsWith('publisher:') ? 'off' : 'lite')
+  );
+}
+
+/**
+ * Whether this caller may choose `tier` for every one of `publishers`. It
+ * mirrors the server's own refusals: no telemetry write without `lower`; a
+ * raise above any publisher's baseline without `raise`; Detailed outside DNT
+ * without `acknowledge`, because saving it posts the acknowledgement first.
  */
 export function canChooseTelemetryTier(
-  capabilities: TelemetryChoiceCapabilities | undefined,
+  authority: TelemetryChoiceAuthority,
   tier: TelemetryTier,
-  saved: readonly TelemetryTier[],
+  publishers: readonly TelemetryPublisherId[],
+  saved: TelemetryTierChoices | undefined,
   dnt: boolean,
 ): boolean {
-  if (!capabilities) return true;
-  if (!capabilities.lower) return false;
-  if (tier === 'full' && !dnt && !capabilities.acknowledge) return false;
+  if (authority === undefined) return true;
+  if (authority === 'loading' || authority === 'error') return false;
+  if (!authority.lower) return false;
+  if (tier === 'full' && !dnt && !authority.acknowledge) return false;
   return (
-    capabilities.raise ||
-    saved.every((choice) => TIER_RANK[tier] <= TIER_RANK[choice])
+    authority.raise ||
+    publishers.every(
+      (publisher) =>
+        TIER_RANK[tier] <=
+        TIER_RANK[telemetryChoiceBaseline(publisher, saved, authority)],
+    )
   );
+}
+
+/** How a Detailed explanation may end for this caller. */
+export function detailedConfirmation(
+  authority: TelemetryChoiceAuthority,
+): 'save' | 'host' | 'none' {
+  if (authority === undefined) return 'save';
+  if (authority === 'loading' || authority === 'error') return 'none';
+  return authority.acknowledge ? 'save' : 'host';
 }
 
 /** One line saying why some choices are unavailable, or nothing. */
 export function TelemetryChoiceLimit({
-  capabilities,
+  authority,
 }: {
-  capabilities: TelemetryChoiceCapabilities | undefined;
+  authority: TelemetryChoiceAuthority;
 }) {
-  if (!capabilities || (capabilities.raise && capabilities.acknowledge))
+  if (authority === undefined || authority === 'loading') return null;
+  if (authority !== 'error' && authority.raise && authority.acknowledge)
     return null;
   return (
     <p data-testid="usage-sharing-limit">
-      {capabilities.lower
-        ? 'This device can keep or reduce sharing. More sharing is chosen on the host computer.'
-        : 'Usage sharing is chosen on the host computer.'}
+      {authority === 'error'
+        ? "Sharing choices are unavailable: this device's access could not be loaded."
+        : authority.lower
+          ? 'This device can keep or reduce sharing. More sharing is chosen on the host computer.'
+          : 'Usage sharing is chosen on the host computer.'}
     </p>
   );
 }
@@ -100,7 +149,13 @@ function readableSharingFields(text: string): string {
 /** One readable view of the server-owned definitions, for both sharing choices. */
 export function UsageSharingIncluded(
   props:
-    | { data: SharingDisclosure; saveLabel?: string; dnt?: boolean }
+    | {
+        data: SharingDisclosure;
+        saveLabel?: string;
+        dnt?: boolean;
+        /** `host`: this caller cannot confirm Detailed; `none`: not known yet. */
+        confirmation?: 'save' | 'host' | 'none';
+      }
     | { counts: SharingCounts },
 ) {
   const daily = 'counts' in props;
@@ -138,11 +193,17 @@ export function UsageSharingIncluded(
               repository names, hostnames or branches.
             </li>
           </ul>
-          <p>
-            {props.dnt
-              ? `Select ${props.saveLabel ?? 'Save'} to keep this choice for when Do Not Track is off.`
-              : `Review what's included, then select ${props.saveLabel ?? 'Save'} to confirm detailed sharing.`}
-          </p>
+          {props.dnt ? (
+            props.confirmation !== 'none' && (
+              <p>{`Select ${props.saveLabel ?? 'Save'} to keep this choice for when Do Not Track is off.`}</p>
+            )
+          ) : props.confirmation === 'host' ? (
+            <p>Detailed sharing is confirmed on the host computer.</p>
+          ) : (
+            props.confirmation !== 'none' && (
+              <p>{`Review what's included, then select ${props.saveLabel ?? 'Save'} to confirm detailed sharing.`}</p>
+            )
+          )}
         </>
       )}
       <details className="usage-telemetry-disclosure__technical">
@@ -222,7 +283,10 @@ export function UsageSharingChoices({
   firstRun = false,
   initialChoiceRef,
   selectable,
+  confirmation,
 }: {
+  /** See `UsageSharingIncluded`. */
+  confirmation?: 'save' | 'host' | 'none';
   /** Tiers this caller may choose; see `canChooseTelemetryTier`. */
   selectable?: (tier: TelemetryTier) => boolean;
   initialChoiceRef?: Ref<HTMLInputElement>;
@@ -303,6 +367,7 @@ export function UsageSharingChoices({
           data={data}
           saveLabel={firstRun ? 'Save choice' : 'Save'}
           dnt={dnt}
+          confirmation={confirmation}
         />
       )}
     </>

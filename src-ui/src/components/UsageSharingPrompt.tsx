@@ -35,6 +35,7 @@ import { PageCallout } from './PageCallout';
 import { ResponsiveSurfaceActions } from './ResponsiveDialogSurface';
 import {
   canChooseTelemetryTier,
+  detailedConfirmation,
   type SharingDisclosure,
   TelemetryChoiceLimit,
   UsageSharingChoices,
@@ -246,12 +247,14 @@ export function UsageSharingPrompt({
           canChooseTelemetryTier(
             data.capabilities,
             tier,
-            [kontourChoice, additionalChoice],
+            ['kontour', 'operator'],
+            settings?.telemetryTier,
             dnt,
           )
         }
+        confirmation={detailedConfirmation(data.capabilities)}
       />
-      <TelemetryChoiceLimit capabilities={data.capabilities} />
+      <TelemetryChoiceLimit authority={data.capabilities} />
       {initialChoice === undefined && (
         <p>
           Your current choices differ between the two destinations. Choosing an

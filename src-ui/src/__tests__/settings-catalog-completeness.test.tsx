@@ -4,7 +4,10 @@ import {
   DEFAULT_NOTIFICATION_SOUND_PREFERENCES,
   DEVICE_SETTINGS_REGISTRY,
 } from '@kontourai/station-contracts/device-settings';
-import type { TelemetryTierChoices } from '@kontourai/station-contracts/product-telemetry';
+import type {
+  TelemetryChoiceCapabilities,
+  TelemetryTierChoices,
+} from '@kontourai/station-contracts/product-telemetry';
 import type { ModelConnectionConfig } from '@kontourai/station-contracts/tool';
 import { authenticatedFetch } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -325,6 +328,8 @@ let telemetryAuthorDestination: string | undefined;
 /** The read's own state, which the row must not speak ahead of. */
 let telemetryDisclosureSettled = true;
 let telemetryDisclosureIsError = false;
+/** What the disclosure reports this caller may choose; absent = older host. */
+let telemetryCapabilities: TelemetryChoiceCapabilities | undefined;
 let telemetryDnt = false;
 let telemetryStatusFailed = false;
 vi.mock('../hooks/useTelemetryStatus', async (importOriginal) => {
@@ -375,6 +380,9 @@ vi.mock('../components/UsageTelemetryDisclosure', async (importOriginal) => {
           : {
               endpointConfigured: telemetryEndpointConfigured,
               inventoryRevision: telemetryDisclosureRevision,
+              ...(telemetryCapabilities
+                ? { capabilities: telemetryCapabilities }
+                : {}),
               ...(telemetryAuthorDestination
                 ? {
                     authorDisclosure: {
@@ -572,6 +580,7 @@ describe('settings catalog completeness', () => {
     telemetryEndpointConfigured = undefined;
     telemetryDisclosureSettled = true;
     telemetryDisclosureIsError = false;
+    telemetryCapabilities = undefined;
     setDeviceSetting.mockClear();
     resetDeviceSetting.mockClear();
     resetDeviceSettings.mockClear();
@@ -2966,6 +2975,77 @@ describe('settings catalog completeness', () => {
         telemetryTier: { operator: 'full' },
       }),
     );
+  });
+
+  /**
+   * Settings offers a usage-sharing choice only once the disclosure has
+   * settled successfully, because its capabilities say what this caller may
+   * choose. A host that settles WITHOUT capabilities is an older host and
+   * keeps every choice, as before.
+   */
+  describe('usage-sharing choices wait for the disclosure', () => {
+    const radios = () =>
+      [
+        "Don't share",
+        'Anonymous usage counts',
+        'Detailed usage to help improve Station',
+      ].map(
+        (name) =>
+          (screen.getByRole('radio', { name }) as HTMLInputElement).disabled,
+      );
+
+    test.each([
+      {
+        state: 'still loading',
+        settled: false,
+        isError: false,
+        disabled: [true, true, true],
+      },
+      {
+        state: 'errored',
+        settled: true,
+        isError: true,
+        disabled: [true, true, true],
+      },
+      {
+        state: 'settled on an older host',
+        settled: true,
+        isError: false,
+        disabled: [false, false, false],
+      },
+      {
+        state: 'settled for a standard device',
+        settled: true,
+        isError: false,
+        capabilities: {
+          acknowledge: false,
+          recordNotice: false,
+          lower: true,
+          raise: false,
+          defaults: { kontour: 'lite', operator: 'lite' },
+        } satisfies TelemetryChoiceCapabilities,
+        disabled: [false, false, true],
+      },
+    ])('$state', async ({ settled, isError, capabilities, disabled }) => {
+      telemetryEndpointConfigured = false;
+      telemetryDisclosureSettled = settled;
+      telemetryDisclosureIsError = isError;
+      telemetryCapabilities = capabilities;
+      window.history.replaceState({}, '', '/settings?view=telemetry');
+      configSnapshot = {
+        config: {
+          ...INITIAL_CONFIG,
+          telemetryTier: { kontour: 'lite', operator: 'lite' },
+        },
+        dataUpdatedAt: 1,
+      };
+      await renderSettings();
+      expect(radios()).toEqual(disabled);
+      if (isError)
+        expect(screen.getByTestId('usage-sharing-limit').textContent).toBe(
+          "Sharing choices are unavailable: this device's access could not be loaded.",
+        );
+    });
   });
 
   describe('Telemetry destination', () => {

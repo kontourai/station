@@ -1298,6 +1298,15 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       section="telemetry"
                       telemetryPublishers={telemetryStatus.data?.publishers}
                       telemetryDisclosure={telemetryDisclosure.data}
+                      // Nothing is offered until the disclosure has settled:
+                      // its capabilities say what this caller may choose.
+                      telemetryChoiceAuthority={
+                        !telemetryDisclosure.settled
+                          ? 'loading'
+                          : telemetryDisclosure.isError
+                            ? 'error'
+                            : telemetryDisclosure.data?.capabilities
+                      }
                       telemetryCounts={telemetryStatus.data?.liteInventory}
                       telemetryNoticeRef={telemetryNotice.element}
                       telemetryNoticeError={telemetryNotice.isError}

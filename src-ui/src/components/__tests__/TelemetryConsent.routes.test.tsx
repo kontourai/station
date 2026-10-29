@@ -1576,6 +1576,7 @@ test.each([
           savedTelemetryChoices={bridge.config.telemetryTier}
           telemetryPublishers={status.publishers}
           telemetryDisclosure={disclosure}
+          telemetryChoiceAuthority={disclosure.capabilities}
           onChange={() => {}}
         />
       </QueryClientProvider>,
@@ -1600,6 +1601,113 @@ test.each([
       view.unmount();
       client.clear();
       loader.dispose();
+    }
+  },
+);
+
+/** Settings for a paired caller, fed the disclosure the real route served it. */
+async function pairedSettings(
+  callerScope: string,
+  doNotTrack: string | undefined,
+  choices: AppConfig['telemetryTier'],
+) {
+  const fixture = await publisherFixture(doNotTrack, undefined, {
+    choices,
+    callerScope,
+  });
+  const disclosure = (
+    await (
+      await bridge.request('http://station.test/api/usage-telemetry/disclosure')
+    ).json()
+  ).data;
+  const status = await fixture.service.telemetryStatus();
+  const view = render(
+    <QueryClientProvider client={fixture.client}>
+      <StationConfigSection
+        section="telemetry"
+        containerScope="station"
+        config={bridge.config}
+        savedTelemetryChoices={bridge.config.telemetryTier}
+        telemetryPublishers={status.publishers}
+        telemetryDisclosure={disclosure}
+        telemetryChoiceAuthority={disclosure.capabilities}
+        onChange={() => {}}
+      />
+    </QueryClientProvider>,
+  );
+  return {
+    ...fixture,
+    view,
+    cleanup: () => {
+      view.unmount();
+      fixture.client.clear();
+      fixture.loader.dispose();
+    },
+  };
+}
+
+test('under DNT with no saved choice, Settings offers a standard device exactly what the route accepts', async () => {
+  // DNT forces the EFFECTIVE tier to Off, but the route compares against the
+  // saved choice or the DNT-ignored default (Anonymous counts here). Using
+  // the effective tier as the baseline disabled the checked choice.
+  const f = await pairedSettings(STANDARD_SCOPE, '1', {});
+  try {
+    const lite = screen.getByRole('radio', { name: SHARING_LABELS.lite });
+    expect(lite).toHaveProperty('checked', true);
+    expect(lite, 'disabled the choice the device already has').toHaveProperty(
+      'disabled',
+      false,
+    );
+    expect(
+      screen.getByRole('radio', { name: SHARING_LABELS.full }),
+    ).toHaveProperty('disabled', true);
+    expect(
+      screen
+        .getByRole('combobox', { name: 'Kontour telemetry' })
+        .querySelector<HTMLOptionElement>('option[value="lite"]')?.disabled,
+      'Advanced Anonymous counts disabled',
+    ).toBe(false);
+    // The same device's write of that choice is accepted by the real route.
+    const keep = await bridge.request('http://station.test/config/app', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        telemetryTier: { kontour: 'lite', operator: 'lite' },
+      }),
+    });
+    expect(keep.status).toBe(200);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test.each([
+  {
+    caller: 'standard',
+    callerScope: STANDARD_SCOPE,
+    shows: 'Detailed sharing is confirmed on the host computer.',
+    hides:
+      "Review what's included, then select Save to confirm detailed sharing.",
+  },
+  {
+    caller: 'access:manage',
+    callerScope: DEFAULT_GRANT_PAIRING_SCOPE,
+    shows:
+      "Review what's included, then select Save to confirm detailed sharing.",
+    hides: 'Detailed sharing is confirmed on the host computer.',
+  },
+] as const)(
+  'a saved Detailed choice tells a $caller device only what it can do about it',
+  async ({ callerScope, shows, hides }) => {
+    const f = await pairedSettings(callerScope, undefined, {
+      kontour: 'full',
+      operator: 'full',
+    });
+    try {
+      expect(screen.getByText(shows)).toBeTruthy();
+      expect(screen.queryByText(hides)).toBeNull();
+    } finally {
+      f.cleanup();
     }
   },
 );
