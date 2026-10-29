@@ -1874,8 +1874,17 @@ export function assertOrdinaryVitestSelection(
     selected.length !== groups.ordinary.length ||
     selected.some((file, index) => file !== groups.ordinary[index])
   ) {
+    const expected = new Set(groups.ordinary);
+    const actual = new Set(selected);
+    const missing = groups.ordinary.filter((file) => !actual.has(file));
+    const unexpected = selected.filter((file) => !expected.has(file));
+    const describe = (files) =>
+      files
+        .slice(0, 10)
+        .map((file) => file.slice(0, 240))
+        .join(', ') || 'none';
     throw new Error(
-      'compact ordinary Vitest selection does not exactly equal the manifest partition',
+      `compact ordinary Vitest selection does not exactly equal the manifest partition; missing from selection (${missing.length}): ${describe(missing)}; unexpected in selection (${unexpected.length}): ${describe(unexpected)}`,
     );
   }
   return selected;

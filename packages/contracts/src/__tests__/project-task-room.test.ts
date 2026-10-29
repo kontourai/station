@@ -115,6 +115,9 @@ describe('v5 room contract boundaries', () => {
         'a\u001fb',
         'a\u007fb',
         'a\u0085b',
+        'a\u202eb',
+        'a\u200bb',
+        'a\u034fb',
         '\ud800',
       ]) {
         expect(

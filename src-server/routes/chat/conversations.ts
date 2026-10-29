@@ -145,6 +145,19 @@ interface ForkContextPorts {
     scope: SessionReadAuthority,
   ): boolean;
 }
+
+export interface NativeForkStoredRoutePorts {
+  admission?: Extract<
+    ReturnType<
+      import('../../security/native-fork-read-admission.js').NativeForkReadAdmissionDomain['bindAtConversationMount']
+    >,
+    { kind: 'bound' }
+  >;
+  service: Pick<
+    import('../../services/orchestration/orchestration-service.js').OrchestrationService,
+    'nativeForkStoredReadRequired' | 'readNativeForkStoredCreation'
+  >;
+}
 function hasForkContextPorts(
   store: Partial<ForkContextPorts>,
 ): store is ForkContextPorts {
@@ -743,6 +756,7 @@ export function createConversationRoutes(
    * station-control caller's fork is refused; other callers are not decided.
    */
   stationControlDispatchScope?: StationControlDispatchScope,
+  nativeForkStoredRead?: NativeForkStoredRoutePorts,
 ) {
   const app = new Hono();
   const sessionSummaries =
@@ -854,6 +868,49 @@ export function createConversationRoutes(
       },
     });
 
+  const guardSavedNativeFork = (
+    c: Context,
+    snapshot: ConversationForkContextSnapshot,
+    authority: SessionReadAuthority,
+  ): void => {
+    if (!nativeForkStoredRead) return;
+    const required = nativeForkStoredRead.service.nativeForkStoredReadRequired(
+      snapshot.targetConversationId,
+      snapshot.digest,
+      authority,
+    );
+    if (required === 'not-required') return;
+    if (required === 'unavailable' || !nativeForkStoredRead.admission)
+      throw new ConversationForkContextError(
+        'Native fork read authority is unavailable.',
+      );
+    // Runtime HTTP has already buffered/rebound this exact Request. Never
+    // reconstruct it from headers or turn a cached read scope into a handle.
+    const captured = nativeForkStoredRead.admission.capture(c.req.raw);
+    if (captured.kind !== 'captured')
+      throw new ConversationForkContextError(
+        'Native fork request is not current.',
+      );
+    try {
+      const result = nativeForkStoredRead.service.readNativeForkStoredCreation(
+        snapshot.targetConversationId,
+        snapshot.digest,
+        captured.handle,
+      );
+      if (result.kind !== 'stored-creation')
+        throw new ConversationForkContextError(
+          'Native fork stored evidence is unavailable.',
+        );
+      // A verified receipt supplies no current lifecycle/activation proof.
+      // Native intent must never fall through to the replay reply/publisher.
+      throw new ConversationForkContextError(
+        'Native fork activation is not implemented.',
+      );
+    } finally {
+      nativeForkStoredRead.admission.release(captured.handle);
+    }
+  };
+
   const finishSavedFork = async (
     c: Context,
     proposed: ConversationForkContextSnapshot,
@@ -865,6 +922,7 @@ export function createConversationRoutes(
         'Fork context persistence is unavailable.',
       );
     const writer = eventStore;
+    guardSavedNativeFork(c, proposed, authority);
     const actionOperation = await beginActionOperationTracking({
       service: actionOperations,
       actor,
@@ -905,6 +963,7 @@ export function createConversationRoutes(
             throw new ConversationForkContextError(
               'Saved fork context is unavailable.',
             );
+          guardSavedNativeFork(c, snapshot, authority);
           if (reference.state === 'ready')
             return { snapshot, idempotent: true };
           const targetAdapter = getAdapter(
@@ -1138,7 +1197,10 @@ export function createConversationRoutes(
               );
             const replayRefused = refuseOutOfScopeTarget(saved.projectSlug);
             if (replayRefused) return replayRefused;
-            if (previous.state === 'ready') return forkReply(c, saved, true);
+            if (previous.state === 'ready') {
+              guardSavedNativeFork(c, saved, authority);
+              return forkReply(c, saved, true);
+            }
             return await finishSavedFork(
               c,
               saved,

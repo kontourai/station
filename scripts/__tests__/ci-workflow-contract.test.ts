@@ -775,6 +775,64 @@ describe('CI verification workflow contracts', () => {
     );
   });
 
+  it('restores the trusted Chromium cache before each nonempty required CI install', () => {
+    const ci = readWorkflowDocuments().find(
+      ({ file }) => file === '.github/workflows/ci.yml',
+    );
+    if (!ci) throw new Error('Expected the CI workflow');
+    const jobs = (
+      ci.document as {
+        jobs: Record<
+          string,
+          {
+            steps: Array<{
+              name?: string;
+              uses?: string;
+              if?: string;
+              'continue-on-error'?: boolean;
+              with?: Record<string, unknown>;
+              run?: string;
+            }>;
+          }
+        >;
+      }
+    ).jobs;
+    for (const job of [
+      'fast-checks-plan',
+      'fast-checks-shard',
+      'fast-checks-statics',
+    ]) {
+      const steps = jobs[job].steps;
+      const cache = steps.findIndex(
+        (step) => step.name === 'Restore trusted Chromium cache',
+      );
+      const install = steps.findIndex(
+        (step) =>
+          step.name === 'Install Chromium for changed-set touch-target checks',
+      );
+      expect(cache).toBeGreaterThanOrEqual(0);
+      expect(steps[cache].uses).toBe(
+        'actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9',
+      );
+      expect(steps[cache]['continue-on-error']).toBe(true);
+      expect(steps[cache].with).toEqual({
+        path: '~/.cache/ms-playwright',
+        key: `station-playwright-v1-\${{ runner.os }}-\${{ runner.arch }}-\${{ hashFiles('pnpm-lock.yaml') }}`,
+      });
+      expect(steps[cache].if).toBe(
+        job === 'fast-checks-shard'
+          ? `\${{ steps.slice.outputs.empty == 'false' }}`
+          : job === 'fast-checks-plan'
+            ? `\${{ steps.mode.outputs.legacy == 'true' }}`
+            : undefined,
+      );
+      expect(install).toBeGreaterThan(cache);
+      expect(steps[install].if).toBe(steps[cache].if);
+      expect(steps[install]['continue-on-error']).toBeUndefined();
+      expect(steps[install].run).toContain('npx playwright install chromium');
+    }
+  });
+
   // Three lanes build Android from three separate definitions: build-android.yml
   // verifies main, nightly-native-stage.yml signs and ships to Play, release.yml
   // ships a tag. A toolchain revision restated per lane can therefore be right
@@ -2050,8 +2108,8 @@ describe('CI verification workflow contracts', () => {
       .slice(0, laneIndex)
       .filter((step) => step.uses)
       .map((step) => JSON.stringify({ uses: step.uses, with: step.with }));
-    // Checkout, pnpm and Node: a shrinking list would pass vacuously.
-    expect(laneActions).toHaveLength(3);
+    // Checkout, pnpm, Node and the reviewed restore must all remain present.
+    expect(laneActions).toHaveLength(4);
     for (const [jobId, entryName] of [
       ['fast-checks-shard', 'Run fast-checks shard'],
       ['fast-checks-plan', 'Plan the affected-test selection'],
@@ -2210,7 +2268,8 @@ describe('CI verification workflow contracts', () => {
       const source = workflow(name);
       expect(source, name).toContain('if: always()');
       expect(source, name).toContain('if-no-files-found: ignore');
-      expect(source, name).not.toContain('actions/cache');
+      expect(source, name).not.toContain('actions/cache/save@');
+      expect(source, name).not.toContain('actions/cache@');
       for (const artifactPath of coordinatedArtifactPaths)
         expect(source, name).toContain(artifactPath);
     }
