@@ -136,8 +136,8 @@ function resolveWaitMs(env) {
 }
 
 /**
- * The live claim `env`'s marker names (its holder's pid, null when unknown),
- * or null when there is none. The marker names
+ * The live claim `env`'s marker names (its holder's pid), or null when there
+ * is none. The marker names
  * one exact slot claim (directory, index, nonce), so it admits only while
  * that claim is still held by a live process: not after the slot was
  * released, not after its holder died, and not when the pid was recycled.
@@ -160,7 +160,7 @@ function liveMarkedHolder(env, liveness = {}) {
   )
     return null;
   const held = liveSlotClaim(claim.dir, claim.index, claim.nonce, liveness);
-  return held ? { pid: held.pid ?? null } : null;
+  return held ? { pid: held.pid } : null;
 }
 
 /**
@@ -302,7 +302,7 @@ function admittedWithoutSlot({
   const ancestor = liveMarkedHolder(env, liveness);
   if (ancestor === null) return null;
   log(
-    `[heavy-check-slots] ${label || 'check'} runs under the heavy-check slot held by pid ${ancestor.pid ?? 'unknown'}.`,
+    `[heavy-check-slots] ${label || 'check'} runs under the heavy-check slot held by pid ${ancestor.pid}.`,
   );
   return 'reentrant';
 }

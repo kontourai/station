@@ -333,8 +333,9 @@ export function holderIsLive(
 /**
  * The live holder of claim `nonce` on slot `index` in `dir`, or null: the
  * record must still carry that nonce and its process must still be alive. A
- * record that is momentarily unreadable (Windows contention) is not proof the
- * claim ended, so it counts as held, with an unknown pid.
+ * record that is momentarily unreadable (Windows contention) is read again a
+ * few times; one that stays unreadable counts as no claim, so the caller
+ * queues (and its bounded wait reports) rather than running outside the cap.
  *
  * @param {string} dir
  * @param {number} index
@@ -342,11 +343,18 @@ export function holderIsLive(
  * @param {Parameters<typeof holderIsLive>[1]} [liveness]
  */
 export function liveSlotClaim(dir, index, nonce, liveness) {
-  const observed = readSlotRecord(slotPath(dir, index));
-  if (observed.busy) return { pid: null };
+  let observed = readSlotRecord(slotPath(dir, index));
+  for (let retry = 0; observed.busy && retry < CLAIM_READ_RETRIES; retry += 1) {
+    Atomics.wait(CLAIM_READ_PAUSE, 0, 0, CLAIM_READ_PAUSE_MS);
+    observed = readSlotRecord(slotPath(dir, index));
+  }
   if (observed.record?.nonce !== nonce) return null;
   return holderIsLive(observed.record, liveness) ? observed.record : null;
 }
+
+const CLAIM_READ_RETRIES = 10;
+const CLAIM_READ_PAUSE_MS = 50;
+const CLAIM_READ_PAUSE = new Int32Array(new SharedArrayBuffer(4));
 
 function writePrivateFile(path, text) {
   const fd = openSync(path, 'wx', 0o600);
