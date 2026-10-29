@@ -42,6 +42,21 @@ const DOCK_OCCLUSION_AUDIT = `(() => {
     if (visible.right - visible.left <= 1 || visible.bottom - visible.top <= 1) continue;
     for (const dock of docks) {
       const d = dock.getBoundingClientRect();
+      // An independently scrolling pane can bring its below-fold controls
+      // fully into view; the sliver at its clipped edge is not dock coverage.
+      let reachableInPane = false;
+      for (let ancestor = control.parentElement; ancestor && ancestor !== document.body; ancestor = ancestor.parentElement) {
+        const style = getComputedStyle(ancestor), pane = ancestor.getBoundingClientRect();
+        if ((style.overflowY === 'auto' || style.overflowY === 'scroll') &&
+            ancestor.scrollHeight > ancestor.clientHeight && pane.width < d.width - 1 &&
+            pane.bottom <= d.top + 1 && r.height <= pane.height &&
+            r.top < pane.bottom && r.bottom > pane.bottom &&
+            ancestor.scrollHeight - ancestor.clientHeight - ancestor.scrollTop >= r.bottom - pane.bottom) {
+          reachableInPane = true;
+          break;
+        }
+      }
+      if (reachableInPane) continue;
       const left = Math.max(r.left, d.left, 0), right = Math.min(r.right, d.right, innerWidth);
       const top = Math.max(r.top, d.top, 0), bottom = Math.min(r.bottom, d.bottom, innerHeight);
       if (right - left <= 1 || bottom - top <= 1) continue;
@@ -54,7 +69,7 @@ const DOCK_OCCLUSION_AUDIT = `(() => {
           const stack = document.elementsFromPoint(left + (right - left) * x, top + (bottom - top) * y);
           const dockIndex = stack.findIndex((element) => dock.contains(element));
           const controlIndex = stack.findIndex((element) => element === control || control.contains(element) || element.contains(control));
-          return dockIndex >= 0 && controlIndex >= 0 && dockIndex < controlIndex;
+          return dockIndex === 0 && controlIndex >= 0 && dockIndex < controlIndex;
         }),
       );
       if (covered) findings.push({ anchor: stableAnchor(control) });

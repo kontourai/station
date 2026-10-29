@@ -119,6 +119,20 @@ describe('gallery finding identities', { timeout: 60_000 }, () => {
     expect(await page.getByRole('dialog').count()).toBe(0);
   });
 
+  it('ignores background controls while a modal backdrop covers the dock', async () => {
+    await render(
+      `<button aria-label="Background" style="position:fixed;left:10px;bottom:35px;width:100px;height:44px">Background</button><div class="chat-dock is-collapsed" style="position:fixed;left:0;right:0;bottom:0;height:55px;background:#333;z-index:1"></div><div style="position:fixed;inset:0;z-index:10;background:#0008"></div><div role="dialog" style="position:fixed;top:10px;left:10px;z-index:11;background:white">Dialog</div>`,
+    );
+    const audit = await auditGalleryScreen(page, 'fixture');
+    expect(
+      audit.findings.some(
+        (finding) =>
+          finding.identity.startsWith('hit-target:occluded-by-dock:') &&
+          finding.identity.includes('Background'),
+      ),
+    ).toBe(false);
+  });
+
   it('reports a partly visible control extending beyond the content clip into the dock', async () => {
     await render(
       `<div style="position:fixed;left:0;right:0;top:0;bottom:55px;overflow:hidden"><button aria-label="Clipped by dock boundary" style="position:absolute;bottom:-24px;left:10px;width:100px;height:44px">Clipped by dock boundary</button></div><div class="chat-dock is-collapsed" style="position:fixed;left:0;right:0;bottom:0;height:55px;background:#333"></div>`,
@@ -131,6 +145,26 @@ describe('gallery finding identities', { timeout: 60_000 }, () => {
           finding.identity.includes('Clipped by dock boundary'),
       ),
     ).toBe(true);
+  });
+
+  it('does not treat a small glimpse of a below-fold scrolling card as dock occlusion', async () => {
+    await render(
+      `<div style="position:fixed;left:10px;width:200px;top:0;bottom:55px;overflow:auto"><div style="height:900px"></div><button aria-label="Below fold" style="width:100px;height:60px;position:absolute;top:780px" onclick="this.dataset.clicked=1">Below fold</button></div><div class="chat-dock is-collapsed" style="position:fixed;left:0;right:0;bottom:0;height:55px;background:#333"></div>`,
+    );
+    const audit = await auditGalleryScreen(page, 'fixture');
+    expect(
+      audit.findings.some(
+        (finding) =>
+          finding.identity.startsWith('hit-target:occluded-by-dock:') &&
+          finding.identity.includes('Below fold'),
+      ),
+    ).toBe(false);
+    await page.getByRole('button', { name: 'Below fold' }).click();
+    expect(
+      await page
+        .getByRole('button', { name: 'Below fold' })
+        .getAttribute('data-clicked'),
+    ).toBe('1');
   });
 
   it('does not call a control clipped out by its own ancestor a dock occlusion', async () => {
