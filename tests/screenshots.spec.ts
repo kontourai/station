@@ -4059,6 +4059,15 @@ ${tiles}
 }
 
 test('build gallery — capture key screens', async ({ page }) => {
+  const browserErrors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error' && browserErrors.length < 10)
+      browserErrors.push(message.text().slice(0, 1000));
+  });
+  page.on('pageerror', (error) => {
+    if (browserErrors.length < 10)
+      browserErrors.push((error.stack ?? error.message).slice(0, 1000));
+  });
   const requestedScreens = parseRequestedScreens(
     process.env.STATION_E2E_SCREENS,
   );
@@ -4251,6 +4260,7 @@ test('build gallery — capture key screens', async ({ page }) => {
 
   try {
     for (const screen of selectedScreens) {
+      browserErrors.length = 0;
       const file = `${screen.name}.png`;
       let layout: Shot['layout'];
       let rasterDiagnostic: Shot['rasterDiagnostic'];
@@ -4453,6 +4463,15 @@ test('build gallery — capture key screens', async ({ page }) => {
           uiAudit = {
             error: error instanceof Error ? error.message : String(error),
           };
+        }
+        if (screen.name === 'telemetry-feedback-mobile') {
+          const extensionFailure = page
+            .getByTestId('toast-card')
+            .filter({ hasText: 'Extensions unavailable' });
+          if (await extensionFailure.count())
+            throw new Error(
+              `Extension registry failed during capture. Browser errors: ${JSON.stringify(browserErrors)}`,
+            );
         }
         if (
           screen.name === 'desktop-conversation-resync' ||
