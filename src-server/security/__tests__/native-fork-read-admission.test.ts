@@ -1,6 +1,10 @@
 import { pairingScopePresetString } from '@kontourai/station-contracts/environment-security';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
-import { Hono } from 'hono';
+import {
+  AgentRegistry,
+  TriggerRegistry,
+  WorkflowRegistry,
+} from '@voltagent/core';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { configureRuntimeHttp } from '../../runtime/bootstrap/runtime-http.js';
@@ -194,7 +198,15 @@ describe('per-runtime native fork stored-read admission', () => {
         return authority;
       });
       if (mount.kind !== 'bound') throw new Error('mount refused');
-      const app = new Hono();
+      const { createVoltAgentApp } = await import('@voltagent/server-hono');
+      const { app } = await createVoltAgentApp(
+        {
+          agentRegistry: AgentRegistry.getInstance(),
+          workflowRegistry: WorkflowRegistry.getInstance(),
+          triggerRegistry: TriggerRegistry.getInstance(),
+        },
+        { configureFullApp: () => {} },
+      );
       configureRuntimeHttp({
         app,
         logger: createLogger({

@@ -1,8 +1,4 @@
 import type { ACPConfig } from '@kontourai/station-contracts/acp';
-import {
-  createRuntimeNativeForkReadAdmissionDomain,
-  type NativeForkReadAdmissionDomain,
-} from '../../security/native-fork-read-admission.js';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { BuiltinAgentEngineBinding } from '@kontourai/station-contracts/engine-capability-matrix';
@@ -59,6 +55,10 @@ import {
 } from '../../providers/registries/registry.js';
 import type { AttachedSessionSource } from '../../providers/sessions/attached-session-source.js';
 import { attachVoiceWebSocket } from '../../routes/operations/voice.js';
+import {
+  createRuntimeNativeForkReadAdmissionDomain,
+  type NativeForkReadAdmissionDomain,
+} from '../../security/native-fork-read-admission.js';
 import {
   assertRuntimeHttpRouteCoverage,
   credentialAuthorizedForScope,
@@ -189,6 +189,7 @@ export interface InitializeRuntimeDeps {
   environmentSecurityService: Pick<
     EnvironmentSecurityService,
     | 'verifyCredential'
+    | 'authorizeCredential'
     | 'resolveGrantedScope'
     // #3586: the voice WebSocket refuses account-bound devices and tokens.
     | 'identifyDevice'

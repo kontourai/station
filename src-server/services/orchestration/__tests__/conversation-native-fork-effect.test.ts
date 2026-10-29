@@ -7,19 +7,21 @@ import {
   sessionReadAuthorityFromRequest,
   tenantId,
 } from '@kontourai/station-contracts/tenancy';
+import {
+  AgentRegistry,
+  TriggerRegistry,
+  WorkflowRegistry,
+} from '@voltagent/core';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { continuityRegistry } from '../../../__test-utils__/scripted-continuity-adapter.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { createConversationRoutes } from '../../../routes/chat/conversations.js';
+import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import { createRuntimeNativeForkReadAdmissionDomain } from '../../../security/native-fork-read-admission.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
-import { EnvironmentSecurityService } from '../../ssh/environment-security-service.js';
 import { createLogger } from '../../../utils/logger.js';
-import { EventBus } from '../event-bus.js';
-import { OrchestrationService } from '../orchestration-service.js';
+import { EnvironmentSecurityService } from '../../ssh/environment-security-service.js';
 import { ChildWorkProjection } from '../child-work-projection.js';
-import { Hono } from 'hono';
-import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
-import { createConversationRoutes } from '../../../routes/chat/conversations.js';
 import {
   createConversationForkContext,
   decodeCommittedNativeForkCreation,
@@ -29,7 +31,9 @@ import {
   nativeForkHash,
 } from '../conversation-fork-context.js';
 import { ConversationTurnActivityProjection } from '../conversation-turn-activity.js';
+import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
+import { OrchestrationService } from '../orchestration-service.js';
 import { runSessionStartWithBoundary } from '../session-turn-boundary.js';
 
 const NOW = '2030-01-01T00:00:00.000Z';
@@ -705,7 +709,15 @@ describe('native fork SQLite effect and publication ownership', () => {
         name: 'native-stored-route-owner',
         level: 'error',
       });
-      const app = new Hono();
+      const { createVoltAgentApp } = await import('@voltagent/server-hono');
+      const { app } = await createVoltAgentApp(
+        {
+          agentRegistry: AgentRegistry.getInstance(),
+          workflowRegistry: WorkflowRegistry.getInstance(),
+          triggerRegistry: TriggerRegistry.getInstance(),
+        },
+        { configureFullApp: () => {} },
+      );
       configureRuntimeHttp({
         app,
         logger,

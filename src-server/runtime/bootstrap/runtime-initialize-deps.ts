@@ -66,6 +66,7 @@ interface RuntimeInitializationContext {
   environmentSecurityService: Pick<
     EnvironmentSecurityService,
     | 'verifyCredential'
+    | 'authorizeCredential'
     | 'resolveGrantedScope'
     // #3586: the voice WebSocket refuses account-bound devices and tokens.
     | 'identifyDevice'
