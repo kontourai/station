@@ -2943,8 +2943,9 @@ snapshot bound as evidence and the unchanged SQLite CHECK. Each small save adds
 about 180 B of metadata, for roughly 2.5–3k saves per document before explicit
 `document-full`, depending on text and fragmentation. Inserts leave a 16 KiB
 deletion reserve in both snapshot and evidence-record budgets; deletes can
-spend it even when splitting a run grows stored bytes. That reserve is finite
-and does not bypass the Station-wide ledger. Presence and cursors never enter
+spend it even when splitting a run grows stored bytes. That reserve is finite. Ordinary saves coalesce an unclaimed candidate; a
+full Station-wide ledger can still refuse a requested immutable reference.
+Presence and cursors never enter
 the durable document facts. The [design record](../design/shared-working-state.md)
 explains mechanism choices and historical constraints.
 

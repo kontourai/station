@@ -158,8 +158,9 @@ refused: splitting the run and retaining the deletion's digest can increase
 stored bytes despite reducing visible text. Deletions may spend the reserve;
 it is finite, so arbitrarily fragmented bulk deletions or indefinitely repeated
 deletion saves can still reach `document-full`. Refusal rolls back the entire
-batch without leaving a publication pending. This reserve does not bypass the
-separate Station-wide evidence-ledger cap (#4055), whose refusal remains explicit.
+batch without leaving a publication pending. Ordinary saves coalesce an unclaimed candidate even when the Station-wide
+evidence ledger is full. A requested immutable reference can still be refused
+by that separate ledger cap (#4055).
 
 Both retained replay and deferred admission are bounded configuration: replay
 retention, deferred operation count, and deferred UTF-8 payload bytes have
