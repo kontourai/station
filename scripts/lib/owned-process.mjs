@@ -8,15 +8,25 @@ import { buildWindowsOwnedGuard } from './windows-owned-guard-build.mjs';
 
 const TERMINATION_FORCE_MS = 5_000;
 
+/** The exact identities this process resolved for itself, by pid. */
+const coordinatorIdentities = new Map();
+
 /**
  * This coordinator's own exact identity, on the own-process probe schedule
  * (#2675): a cold Windows PowerShell start can outlast one 1.5s probe, and a
  * single attempt then refused every owned command. Still exact-or-null; no
- * PID-only fallback.
+ * PID-only fallback. A process's birth never changes, so an exact result is
+ * kept: the retrying, synchronous lookup is paid once per process, before any
+ * command's guard is waiting on this one, instead of once per command while
+ * earlier commands' guards wait for their resume. A miss is not kept.
  */
 export function resolveCoordinatorIdentity(pid, dependencies = {}) {
+  const known = coordinatorIdentities.get(pid);
+  if (known) return known;
   const probe = resolveOwnProcessIdentity(pid, dependencies);
-  return probe.state === 'exact' ? probe.identity : null;
+  if (probe.state !== 'exact') return null;
+  coordinatorIdentities.set(pid, probe.identity);
+  return probe.identity;
 }
 // Per-stream raw-output cap. Two streams consume at most 6MiB, reserving the
 // remaining 2MiB of the reporter's aggregate 8MiB budget for attachments.
