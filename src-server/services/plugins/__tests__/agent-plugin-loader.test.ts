@@ -660,6 +660,7 @@ describe('AgentPluginLoader', () => {
       mcpServers: {
         local: { type: 'stdio', command: 'node' },
         remote: { type: 'streamable-http', url: 'https://example.com/mcp' },
+        gmail: { type: 'streamable-http', url: 'https://gmailmcp.googleapis.com/mcp/v1' },
       },
     });
     const source = new AgentPluginLoader({ projectHomeDir: stationHome });
@@ -668,7 +669,7 @@ describe('AgentPluginLoader', () => {
       integrationSources: [source],
     });
     const entries = await loader.listIntegrations();
-    expect(entries).toHaveLength(2);
+    expect(entries).toHaveLength(3);
     const definitions = await Promise.all(
       entries.map((entry) => loader.loadIntegration(entry.id)),
     );
@@ -682,6 +683,7 @@ describe('AgentPluginLoader', () => {
           transport: 'streamable-http',
           contentTrust: 'trusted',
         }),
+        expect.objectContaining({ endpoint: 'https://gmailmcp.googleapis.com/mcp/v1', contentTrust: 'untrusted' }),
       ]),
     );
   });

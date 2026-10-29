@@ -3,7 +3,7 @@
 > **Reading status: current design for #3483's first slice.**
 > [Subregistry source](../../src-server/providers/registries/mcp-subregistry.ts),
 > [catalog provider](../../src-server/providers/registries/mcp-subregistry-provider.ts),
-> [curated snapshot](../../src-server/providers/registries/curated/station-mcp-subregistry.json)
+> [curated snapshot](../../packages/shared/src/curated/station-mcp-subregistry.json)
 > and [untrusted-content permission](../../src-server/services/plugins/untrusted-content-policy.ts)
 > own this behavior. This note does not claim a completed signed-in tool call
 > for any curated server, multi-source management under #3139, or coverage on

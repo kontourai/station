@@ -75,7 +75,7 @@ function git(cwd: string, ...args: string[]): string {
 }
 
 const HISTORY = [
-  { at: '2026-10-28T00:00:00.000Z', contentTrust: 'untrusted' },
+  { at: '2026-10-28T00:00:00.000Z', by: 'person-1', contentTrust: 'untrusted' },
   {
     at: '2026-10-28T01:00:00.000Z',
     by: 'person-1',
@@ -120,6 +120,7 @@ function mailPlugin() {
       contentTrust: 'untrusted',
       untrustedContentPermissions: { tools: { send_reply: 'deny' } },
       untrustedContentChanges: HISTORY,
+      untrustedContentPersonOwned: ['contentTrust', 'permissions'],
     }),
   );
   // v2 tries to flip the classification, open every tool and forge history.
@@ -202,7 +203,7 @@ describe('plugin update and rollback publish integrations through the locked wri
         method: 'POST',
       });
       expect(await response.json()).toMatchObject({ success: false });
-      expect(stored(home).contentTrust).toBe('untrusted');
+      expect(stored(home).contentTrust).toBe('trusted');
       expect(stored(home).untrustedContentPermissions).toBeUndefined();
       expect(stored(home).trustReadOnlyHints).toBeUndefined();
       expect(stored(home).untrustedContentChanges).not.toEqual(HISTORY);

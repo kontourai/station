@@ -20,12 +20,10 @@ import type {
   RegistryMcpSourceStatus,
 } from '@kontourai/station-contracts/catalog';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
+import { stationCuratedCatalog as curatedSubregistry } from '@kontourai/station-shared/station-curation';
 import { hasToolServerOAuthCapability } from '../../services/plugins/tool-server-oauth-capabilities.js';
 import { resolveHomeDir } from '../../utils/paths.js';
 import type { IIntegrationRegistryProvider } from '../provider-interfaces.js';
-import curatedSubregistry from './curated/station-mcp-subregistry.json' with {
-  type: 'json',
-};
 import {
   type McpSubregistryServer,
   McpSubregistrySource,

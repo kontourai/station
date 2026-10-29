@@ -309,7 +309,7 @@ describe('Registry Routes', () => {
       expect(readFileSync(path, 'utf8')).toContain('"enabled": false');
       const installed = await loadIntegrationConfig(home, 'filesystem');
       expect(installed.enabled).toBe(false);
-      expect(installed.contentTrust).toBe('untrusted');
+      expect(installed.contentTrust).toBe('trusted');
       expect(installed.trustReadOnlyHints).toBeUndefined();
       expect(installed.untrustedContentPermissions).toBeUndefined();
       expect(readIntegrationOrigin(home, installed)).toEqual(origin);

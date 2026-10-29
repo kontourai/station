@@ -79,12 +79,12 @@ describe('portability commands', () => {
         'utf8',
       ),
     );
-    expect(value.contentTrust).toBe('untrusted');
+    expect(value.contentTrust).toBe('trusted');
     expect(value.trustReadOnlyHints).toBeUndefined();
     expect(value.untrustedContentPermissions).toBeUndefined();
-    expect(value.untrustedContentChanges).toHaveLength(1);
+    expect(value.untrustedContentChanges).toBeUndefined();
     expect(
-      value.untrustedContentChanges.some(
+      (value.untrustedContentChanges ?? []).some(
         (row: { by?: string }) => row.by === 'forged',
       ),
     ).toBe(false);
@@ -98,6 +98,7 @@ describe('portability commands', () => {
       {
         at: '2026-01-01T00:00:00Z',
         by: 'person',
+        contentTrust: 'untrusted',
         permissions: { default: 'deny' },
       },
     ];
@@ -110,7 +111,7 @@ describe('portability commands', () => {
         contentTrust: 'untrusted',
         untrustedContentPermissions: { default: 'deny' },
         untrustedContentChanges: history,
-        untrustedContentPersonOwned: ['permissions'],
+        untrustedContentPersonOwned: ['contentTrust', 'permissions'],
       }),
     );
     await writeIntegration(

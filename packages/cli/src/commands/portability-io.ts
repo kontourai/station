@@ -20,6 +20,7 @@ import {
   withUntrustedContentChange,
 } from '@kontourai/station-contracts/tool';
 import { publishJsonFileWithOwnedLock } from '@kontourai/station-shared/json-file-storage';
+import { stationCuratedContentTrust } from '@kontourai/station-shared/station-curation';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import {
   ToolServerCredentialStore,
@@ -201,7 +202,7 @@ export async function writeIntegration(
       : undefined;
     const persisted = withUntrustedContentChange(
       previous,
-      withStationIntegrationTrustDefaults(def, previous),
+      withStationIntegrationTrustDefaults(def, previous, stationCuratedContentTrust(def)),
       undefined,
       new Date(),
     );

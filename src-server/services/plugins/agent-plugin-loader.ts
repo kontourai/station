@@ -45,6 +45,7 @@ import {
   MCPLocalCustodyError,
 } from '@kontourai/station-shared/mcp';
 import { readValidatedSkillExperiences } from '@kontourai/station-shared/skill-experience-author';
+import { stationCuratedContentTrust } from '@kontourai/station-shared/station-curation';
 import {
   frontmatterToProperties,
   parseFrontmatter,
@@ -1402,7 +1403,9 @@ export class AgentPluginLoader {
           tools.push({
             id,
             kind: 'mcp',
-            contentTrust: DEFAULT_EXTERNAL_CONTENT_TRUST,
+            contentTrust:
+              stationCuratedContentTrust({ endpoint: server.url }) ??
+              DEFAULT_EXTERNAL_CONTENT_TRUST,
             enabled: true,
             displayName: `${serverName} (${manifest.name})`,
             transport: 'streamable-http',

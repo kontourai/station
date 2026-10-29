@@ -1,8 +1,6 @@
+import { stationCuratedCatalog as curated } from '@kontourai/station-shared/station-curation';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
-import curated from '../curated/station-mcp-subregistry.json' with {
-  type: 'json',
-};
 import {
   MCP_SUBREGISTRY_LIMITS,
   McpSubregistrySource,

@@ -22,12 +22,14 @@ import type {
 } from '@kontourai/station-contracts/catalog';
 import {
   isSafeToolServerId,
+  personOwnedUntrustedContentFields,
   type ToolDef,
   type ToolMetadata,
   withStationIntegrationTrustDefaults,
   withUntrustedContentChange,
 } from '@kontourai/station-contracts/tool';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import { stationCuratedContentTrust } from '@kontourai/station-shared/station-curation';
 import { normalizePersistedToolServerReason } from '../security/tool-server-reason.js';
 import { IntegrationIconAssets } from '../services/plugins/integration-icon-assets.js';
 import { readIntegrationOrigin } from '../services/plugins/integration-origin.js';
@@ -145,6 +147,8 @@ export async function loadIntegrationConfig(
   }
 
   const def = JSON.parse(await readFile(path, 'utf-8')) as ToolDef;
+  const curated = stationCuratedContentTrust(def);
+  if (curated && !personOwnedUntrustedContentFields(def).has('contentTrust')) def.contentTrust = curated;
   if (Object.hasOwn(def, 'envCredentialRefs')) {
     throw new Error(
       `Retired tool-server credential format for ${JSON.stringify(id)}: this branch's pre-release envCredentialRefs format changed; clear this developer home and recreate the integration`,
@@ -200,7 +204,7 @@ export async function saveIntegrationConfig(
         ? withStationIntegrationTrustDefaults(
             def,
             current,
-            options.stationCuratedTrust,
+            stationCuratedContentTrust(def) ?? options.stationCuratedTrust,
           )
         : def,
       current,
@@ -455,6 +459,7 @@ async function publishPluginIntegrationsLocked(
         const incoming = withStationIntegrationTrustDefaults(
           rawIncoming,
           current,
+          stationCuratedContentTrust(rawIncoming),
         );
         delete incoming.secretEnvRefs;
         const bindingSource = current ?? (restoring ? rawIncoming : undefined);
