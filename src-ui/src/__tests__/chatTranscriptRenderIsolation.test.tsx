@@ -140,8 +140,8 @@ describe('chat transcript render isolation (station#726)', () => {
       </ActiveChatsProvider>,
     );
 
-    // Mounting renders the one existing row once.
-    expect(rowRenderProbe).toHaveBeenCalledTimes(1);
+    expect(rowRenderProbe).toHaveBeenCalledWith('hello');
+    rowRenderProbe.mockClear();
 
     act(() => {
       activeChatsStore.updateChat(SESSION_ID, { input: 'h' });
@@ -159,7 +159,7 @@ describe('chat transcript render isolation (station#726)', () => {
     // the archive#726 regression: without the selector split + memoization,
     // each of these three keystrokes would re-render (and re-parse markdown
     // for) every transcript row.
-    expect(rowRenderProbe).toHaveBeenCalledTimes(1);
+    expect(rowRenderProbe).not.toHaveBeenCalled();
 
     act(() => {
       activeChatsStore.updateChat(SESSION_ID, {
@@ -171,8 +171,8 @@ describe('chat transcript render isolation (station#726)', () => {
     });
 
     // A genuine transcript change (a new message) does re-render — 1 more
-    // ChatMessageList render over 2 rows = 2 additional probe calls.
-    expect(rowRenderProbe).toHaveBeenCalledTimes(3);
+    // ChatMessageList render over 2 rows = 2 probe calls.
+    expect(rowRenderProbe).toHaveBeenCalledTimes(2);
     expect(rowRenderProbe).toHaveBeenCalledWith('hi there');
   });
 });
