@@ -344,8 +344,9 @@ New identity links require a real `linkedAt`, and revocation cannot predate it.
 Imported Discord links instead carry `importedAt` and legacy provenance, so an
 earlier revocation remains representable. Presence of `revokedAt` revokes the
 link immediately, even when the timestamp is in the future, preserving v1
-semantics. Import canonicalizes a parseable legacy revocation date to ISO; an
-unparseable nonempty revocation becomes `importedAt`, retaining revocation. The
+semantics. Import canonicalizes a parseable legacy revocation date to ISO; a
+value that is unparseable or outside the canonical timestamp range imports as
+revoked at `importedAt`. The
 projection keeps `stationIdentity` in its legacy userId namespace and omits `principalId`; the runtime must resolve
 it against verified principals before access. It must retain first-match order
 for duplicate legacy identity mappings. Imported binding IDs are exactly

@@ -444,6 +444,9 @@ export function importLegacyDiscordConfiguration(
   for (const mapping of configuration.identities ?? []) {
     const revokedTime =
       mapping.revokedAt === undefined ? NaN : Date.parse(mapping.revokedAt);
+    const canonicalRevokedAt = Number.isFinite(revokedTime)
+      ? new Date(revokedTime).toISOString()
+      : undefined;
     const link = parseChatIdentityLink({
       app: 'discord',
       externalUserId: mapping.discordUserId,
@@ -457,8 +460,8 @@ export function importLegacyDiscordConfiguration(
       ...(mapping.revokedAt === undefined
         ? {}
         : {
-            revokedAt: Number.isFinite(revokedTime)
-              ? new Date(revokedTime).toISOString()
+            revokedAt: timestamp(canonicalRevokedAt)
+              ? canonicalRevokedAt
               : importedAt,
           }),
     });

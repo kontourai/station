@@ -188,6 +188,10 @@ test('legacy store keeps permissive extra-key compatibility and refuses unknown 
 test.each([
   ['2026-10-26T12:00:00Z', revokedAt],
   ['invalid-date', importedAt],
+  ['+010000-01-01T00:00:00.000Z', importedAt],
+  ['-000001-01-01T00:00:00.000Z', importedAt],
+  ['+275760-09-13T00:00:00.000Z', importedAt],
+  ['-271821-04-20T00:00:00.000Z', importedAt],
 ])(
   'preserves legacy revocation %s through import',
   (legacyRevokedAt, expectedRevokedAt) => {
