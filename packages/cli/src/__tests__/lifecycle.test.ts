@@ -30,11 +30,18 @@ import {
   readInstanceRegistry,
   upsertInstance,
 } from '@kontourai/station-shared/instance-registry';
-import { readLifecycleEvents } from '@kontourai/station-shared/lifecycle-events';
+import {
+  acquireFileMutationLock,
+  readLifecycleEvents,
+} from '@kontourai/station-shared/lifecycle-events';
 import {
   admitStationRuntimeHome,
   resolveStationRoot,
 } from '@kontourai/station-shared/runtime-path-resolver';
+import {
+  acquireStationHomeMaintenanceLease,
+  acquireStationHomeRuntimeLease,
+} from '@kontourai/station-shared/station-home-lifecycle';
 import {
   ensureStationHomeSchemaSync,
   STATION_HOME_RESET_COMMAND,
@@ -4290,6 +4297,137 @@ describe('homeReset (station#1913)', () => {
     expect(result.archived).toBe(false);
     expect(existsSync(TEST_ALT_HOME)).toBe(false);
   });
+});
+
+describe('home mutation custody', () => {
+  it.each(['clean', 'reset'] as const)(
+    '%s preserves a leased home, then succeeds after the runtime releases it',
+    async (operation) => {
+      ensureDir(TEST_CWD);
+      ensureOwnerControlledStationHome(TEST_ALT_HOME);
+      ensureBuildOutputs('leased-home');
+      const sentinel = join(TEST_ALT_HOME, 'kept.txt');
+      writeFileSync(sentinel, 'retained runtime state');
+      const { lifecycle } = await loadLifecycleModule();
+      const runtime = acquireStationHomeRuntimeLease(TEST_ALT_HOME);
+      const mutate = async () => {
+        const options = {
+          homeSource: '--base' as const,
+          projectHome: TEST_ALT_HOME,
+          instanceName: 'leased-home',
+          serverPort: 3242,
+          uiPort: 5274,
+        };
+        if (operation === 'clean') {
+          await lifecycle.clean({ ...options, force: true });
+          return undefined;
+        }
+        return lifecycle.homeReset({ ...options, confirm: true });
+      };
+      try {
+        await expect(mutate()).rejects.toMatchObject({
+          code: 'STATION_HOME_ACTIVE',
+        });
+        expect(readFileSync(sentinel, 'utf8')).toBe('retained runtime state');
+        expect(existsSync(join(TEST_CWD, 'dist-server-leased-home'))).toBe(
+          true,
+        );
+        runtime.release();
+        const result = await mutate();
+        expect(existsSync(TEST_ALT_HOME)).toBe(false);
+        if (operation === 'reset') {
+          expect(result?.archived).toBe(true);
+          expect(
+            readFileSync(join(result!.archivePath!, 'kept.txt'), 'utf8'),
+          ).toBe('retained runtime state');
+        } else {
+          expect(existsSync(join(TEST_CWD, 'dist-server-leased-home'))).toBe(
+            false,
+          );
+        }
+      } finally {
+        runtime.release();
+      }
+    },
+  );
+
+  it.each([
+    { operation: 'clean', failMutation: false },
+    { operation: 'reset', failMutation: false },
+    { operation: 'clean', failMutation: true },
+    { operation: 'reset', failMutation: true },
+  ] as const)(
+    '$operation excludes other maintenance through mutation and releases afterward (failure=$failMutation)',
+    async ({ operation, failMutation }) => {
+      ensureDir(TEST_CWD);
+      ensureOwnerControlledStationHome(TEST_ALT_HOME);
+      writeFileSync(join(TEST_ALT_HOME, 'kept.txt'), 'retained runtime state');
+      const actualFs = await vi.importActual<FsModule>('node:fs');
+      const mutationError = new Error('home mutation failed');
+      let inspected = false;
+      const inspectOwnership = () => {
+        inspected = true;
+        let competing:
+          | ReturnType<typeof acquireStationHomeMaintenanceLease>
+          | undefined;
+        let refusal: unknown;
+        try {
+          competing = acquireStationHomeMaintenanceLease(TEST_ALT_HOME, {
+            acquireMutationLock: (path) =>
+              acquireFileMutationLock(path, { timeoutMs: 0 }),
+          });
+        } catch (error) {
+          refusal = error;
+        } finally {
+          competing?.release();
+        }
+        expect(refusal).toMatchObject({
+          message: 'lifecycle journal lock is held by a live process',
+        });
+        if (failMutation) throw mutationError;
+      };
+      const { lifecycle } = await loadLifecycleModule({
+        fsOverrides: {
+          rmSync: (path, options) => {
+            if (operation === 'clean' && path === TEST_ALT_HOME)
+              inspectOwnership();
+            return actualFs.rmSync(path, options);
+          },
+          renameSync: (source, destination) => {
+            if (operation === 'reset' && source === TEST_ALT_HOME)
+              inspectOwnership();
+            return actualFs.renameSync(source, destination);
+          },
+        },
+      });
+      const options = {
+        homeSource: '--base' as const,
+        projectHome: TEST_ALT_HOME,
+        instanceName: 'owned-home',
+        serverPort: 3242,
+        uiPort: 5274,
+      };
+      const mutate = async () => {
+        if (operation === 'clean') {
+          await lifecycle.clean({ ...options, force: true });
+        } else {
+          lifecycle.homeReset({ ...options, confirm: true });
+        }
+      };
+      if (failMutation) {
+        await expect(mutate()).rejects.toBe(mutationError);
+      } else {
+        await mutate();
+      }
+      expect(inspected).toBe(true);
+      expect(existsSync(TEST_ALT_HOME)).toBe(failMutation);
+      const maintenance = acquireStationHomeMaintenanceLease(TEST_ALT_HOME, {
+        acquireMutationLock: (path) =>
+          acquireFileMutationLock(path, { timeoutMs: 0 }),
+      });
+      maintenance.release();
+    },
+  );
 });
 
 describe('home verify (station#3218)', () => {

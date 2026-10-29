@@ -2547,7 +2547,10 @@ owners do not retry or fall back to PID-only authority. The lease can represent
 multiple runtime owners, while individual callers can impose stricter same-home policy.
 [StationRuntime](../../src-server/runtime/bootstrap/station-runtime.ts) retains
 its lease through persistence shutdown. CLI wrappers also check lifecycle
-observations for useful offline diagnostics. These checks do not stop an
+observations for useful offline diagnostics. CLI clean and reset hold maintenance
+ownership through their home removal or archive rename; clean also keeps it
+through owned build-output cleanup. A live or unverifiable runtime lease refuses
+these mutations. These checks do not stop an
 unrelated external writer that ignores Station's ownership protocol.
 
 Traversal is sorted and rejects symlinks/non-regular entries. Defaults cap an
