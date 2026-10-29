@@ -730,6 +730,9 @@ origin commits it. The panel opens that review and polls its server-owned status
 without a credential paste field or a reusable step-up window. **Cancel** on the
 review records terminal denial, and the panel shows **Cancelled**. See
 [Operator passkeys](../guides/operator-passkeys.md).
+An operator session can also request a passkey review for an ordinary Device
+pairing approval. The review binds the pending request and selected scope;
+the request stays pending until confirmation.
 A device explicitly granted `access:approve` can list and decide pending requests (a
 device tied to a person only while that person's Station group is Admin); that
 does not grant device-inventory or offer-management access. The native desktop's local grant, minted using proof of Station-home possession, can manage pairing within its current scope. A host-browser `ui-bootstrap` grant has only the exact Device-administration leaves described above; it does not gain the native desktop consent broker's `local-grant` authority.

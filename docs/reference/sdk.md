@@ -916,6 +916,11 @@ Returns a query whose data is the current inbound paired-device registry from
 copy them into session or event records. An authorization or response failure
 is a query error, not an empty device list.
 
+`confirmDevicePairingRequest` throws `StationStepUpRequiredError` when the
+operator must complete a passkey review. Its transaction has an ID, review URL
+and expiry; a 202 response means approval is pending, not completed. The
+caller must review the result before presenting the request as approved.
+
 #### `useStationPeopleQuery(apiBase?)` and personal access tokens
 
 `useStationPeopleQuery` reads `GET /api/pairing/people` (#3557);
