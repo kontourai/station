@@ -530,6 +530,13 @@ idempotency, compatibility and the meaning of reviewer acceptance.
 
 ### Task room attachments
 
+Account-bound Devices admitted to a shared Task room can use the existing room
+reads, messages and presence calls subject to their Device scope and current
+membership. The account-bound allowlist does not admit the attachment routes,
+document batch settlement or agent-request routes in this slice; discovery
+reports document writing unavailable. See the [Task room API](api.md#account-bound-task-room-access)
+for the exact leaves and action mapping.
+
 `@kontourai/station-sdk/project-task-rooms` exports
 `uploadTaskRoomAttachments(apiBase, taskId, taskCreatedAt, attachments, options?)`
 and `fetchTaskRoomAttachment(apiBase, taskId, taskCreatedAt, id, options?)`.

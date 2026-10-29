@@ -3148,9 +3148,12 @@ origin requires a server-recorded admission in the private request journal;
 a client turn prefix alone is insufficient. Abandoned publication holds expire
 after 30 seconds. Each answer pass opens history once and truncates oversized
 text precisely at a code-point boundary within both string and body byte limits.
-Shared Task projection continues to publish human messages and the document;
-it excludes agent answers and private execution metadata. Invited/public agent
-results and actual-provider acceptance remain separate qualification scopes.
+The Project shared-work projection continues to publish human messages and the
+document; it excludes agent answers and private execution metadata. The direct
+personal Task room's admitted members can read its published history, including
+room-published agent answers; private Session access remains separate.
+Invited/public agent execution and actual-provider acceptance remain separate
+qualification scopes.
 
 Immutable output review uses the same room history, rather than a second
 feedback journal. [TaskOutputModule](../../src-server/services/projects/task-output-module.ts)

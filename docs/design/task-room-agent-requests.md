@@ -140,8 +140,11 @@ reconciliation repeats publication idempotently, never provider execution.
 
 Conversation hides brief revision links and presence events; Details retains the raw
 history. Owner history rebuilds display names and run identities from durable
-principal, agent and Session sources. Guest history retains its anonymized
-Participant/Agent labels and filters owner status and thread fragments.
+principal, agent and Session sources. The Project shared-work history projection
+retains anonymized Participant/Agent labels and filters owner status and thread
+fragments. Direct personal Task-room history for an admitted member is a separate
+projection of room-published history; opening a private Session still needs its
+own authority.
 Answers are clamped with Show more, and Keep remains disabled after confirmation.
 The Conversation view groups replies to an agent answer by its Session. The thread replaces
 the desktop rail and fills the room on narrow screens. A reply uses
