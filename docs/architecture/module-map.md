@@ -22,8 +22,8 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 ## Index
 
 | Module | Intent | Primary source |
-| [WalkthroughService](#walkthroughservice) | Import a local recording into an immutable validated manifest and selected frames. | `src-server/services/walkthroughs/walkthrough-service.ts` |
 | --- | --- | --- |
+| [WalkthroughService](#walkthroughservice) | Import a local recording into an immutable validated manifest and selected frames. | `src-server/services/walkthroughs/walkthrough-service.ts` |
 | [AnalyticsSavedViews](#analyticssavedviews) | Persist principal-owned query definitions and render scoped private Insights without granting source access. | `src-server/analytics/saved-views.ts` |
 | [PrivateUsageStorage](#privateusagestorage) | Store canonical private pages and checkpoints atomically under an opaque storage capability; Core owns person/source authority. | `packages/telemetry-broker/src/private-usage-store.ts` |
 | [Local speech and media tools](#local-speech-and-media-tools) | Resolve consented media tools and transcribe bounded local audio/video. | `src-server/services/media-tools/media-tools-resolver.ts` |
