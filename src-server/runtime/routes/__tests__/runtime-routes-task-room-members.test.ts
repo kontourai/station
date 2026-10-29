@@ -285,6 +285,7 @@ async function fixture() {
     app,
     runtime,
     membership,
+    security,
     scope,
     task,
     privateTask,
@@ -357,6 +358,35 @@ test('shared room names both accounts, refuses a viewer post and closes on revoc
       }),
     });
     expect(result.status, await result.clone().text()).toBe(200);
+    for (const command of ['join', 'announce']) {
+      const live = await f.request(person, `${base}/live`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command }),
+      });
+      expect(live.status, await live.clone().text()).toBe(200);
+      const payload = (await live.json()) as {
+        data: {
+          result: { outcome: string };
+          snapshot: { participants: unknown[] };
+        };
+      };
+      expect(payload.data.result.outcome).toBe(
+        command === 'join' ? 'joined' : 'updated',
+      );
+      if (command === 'announce')
+        expect(payload.data.snapshot.participants).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              actor: expect.objectContaining({
+                label: person.name,
+                standing: 'member',
+              }),
+              publication: 'published',
+            }),
+          ]),
+        );
+    }
   }
   const stream = await openStream(f, bob!);
   try {
@@ -395,6 +425,14 @@ test('shared room names both accounts, refuses a viewer post and closes on revoc
     body: JSON.stringify({ proposalId: 'viewer-post', text: 'Not allowed' }),
   });
   expect(refused.status).toBe(404);
+  const viewerRoom = await f.request(bob!, base);
+  const viewerPayload = (await viewerRoom.json()) as {
+    data: { capabilities: Record<string, boolean> };
+  };
+  expect(viewerPayload.data.capabilities).toMatchObject({
+    messageWrite: false,
+    documentWrite: false,
+  });
   expect(
     (await f.request(bob!, `/api/tasks/${f.privateTask.id}/room`)).status,
   ).toBe(404);
@@ -414,6 +452,21 @@ test('shared room names both accounts, refuses a viewer post and closes on revoc
     revokedStream.abort.abort();
     await revokedStream.reader.cancel();
   }
+  const aliceDevice = f.security.identifyDevice(alice!.credential);
+  if (!aliceDevice) throw new Error('expected paired Alice device');
+  f.security.devicePairing.setDeviceScope(
+    aliceDevice.id,
+    ['orchestration:read'],
+    { kind: 'presented-credential' },
+  );
+  const readOnlyRoom = await f.request(alice!, base);
+  const readOnlyPayload = (await readOnlyRoom.json()) as {
+    data: { capabilities: Record<string, boolean> };
+  };
+  expect(readOnlyPayload.data.capabilities).toMatchObject({
+    messageWrite: false,
+    documentWrite: false,
+  });
 }, 60000);
 
 test('idle room recheck closes a revoked reader when membership subscription is absent', async () => {

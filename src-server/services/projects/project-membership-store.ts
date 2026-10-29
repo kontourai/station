@@ -141,6 +141,15 @@ export class ProjectMembershipStore {
     return { ...member, actions: this.actions(member.role) };
   }
 
+  /** Historical attribution within an already-authorized Project scope. */
+  memberDisplayName(
+    scope: ProjectMembershipScope,
+    principalId: string,
+  ): string | undefined {
+    this.assertScope(scope);
+    return this.member(scope, principalId)?.principal.display;
+  }
+
   administration(
     scope: ProjectMembershipScope,
     actor: PrincipalRef,

@@ -5286,6 +5286,24 @@ export function configureRuntimeRoutes(
           !accountCurrent
         )
           return { kind: 'revoked' as const };
+        const writeLeaf =
+          capability === 'message-write'
+            ? 'messages'
+            : capability === 'edit-plan'
+              ? 'edit-plan'
+              : undefined;
+        if (
+          writeLeaf &&
+          !runtimeRequestPrincipalMayAccessHttpRoute(
+            request,
+            context.environmentSecurityService,
+            {
+              method: 'POST',
+              path: `/api/tasks/${encodeURIComponent(taskId)}/room/${writeLeaf}`,
+            },
+          )
+        )
+          return { kind: 'revoked' as const };
         const admission = taskMemberAdmission.admit(
           request,
           taskId,
@@ -5461,13 +5479,28 @@ export function configureRuntimeRoutes(
       // the lead's conversation through its durable inbox. `threadInbox` is
       // composed later in this function and read when a record is written.
       afterTaskRecord: (input) => taskQuestionWake.wake(input),
-      readDisplayName: async (id) =>
-        context.environmentSecurityService.devicePairing
-          .listKnownPrincipals()
-          .find((principal) => principal.id === id)?.display ??
-        (id === LOCAL_OPERATOR_PRINCIPAL_ID
-          ? getCachedUser().alias
-          : undefined),
+      readDisplayName: async (id, taskId) => {
+        const share = context.projectSharedTasks?.admission(taskId);
+        if (share && context.projectMembership) {
+          try {
+            const name = context.projectMembership.memberDisplayName(
+              share.scope,
+              id,
+            );
+            if (name) return name;
+          } catch {
+            // Attribution is optional; room authority is checked separately.
+          }
+        }
+        return (
+          context.environmentSecurityService.devicePairing
+            .listKnownPrincipals()
+            .find((principal) => principal.id === id)?.display ??
+          (id === LOCAL_OPERATOR_PRINCIPAL_ID
+            ? getCachedUser().alias
+            : undefined)
+        );
+      },
       readAgentLabel: async (agentId) => {
         try {
           return (await context.agentService.getAgent(agentId)).name;

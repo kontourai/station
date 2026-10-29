@@ -236,6 +236,14 @@ export class ProjectMembershipService {
     return this.members.readableProjectAdmissionsForPrincipalId(principalId);
   }
 
+  /** Only for attribution after the caller has authorized this exact scope. */
+  memberDisplayName(
+    scope: ProjectMembershipScope,
+    principalId: string,
+  ): string | undefined {
+    return this.members.memberDisplayName(scope, principalId);
+  }
+
   async requireProjectRead(
     slug: string,
     authority: ProjectMembershipAuthority,

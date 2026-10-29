@@ -225,7 +225,10 @@ interface ProjectTaskRoomRuntimeDeps {
     };
     readonly record: TaskMemoryRecord;
   }) => Promise<unknown> | unknown;
-  readonly readDisplayName?: (id: string) => Promise<string | undefined>;
+  readonly readDisplayName?: (
+    id: string,
+    taskId: string,
+  ) => Promise<string | undefined>;
   readonly readAgentLabel?: (agentId: string) => Promise<string | undefined>;
   readonly readAgentAnswers?: (input: {
     sessionId: string;
@@ -470,7 +473,10 @@ export class ProjectTaskRoomRuntime {
             : record.principal.operatorId;
         if (people.has(personId)) continue;
         people.add(personId);
-        const name = await this.#deps.readDisplayName?.(personId);
+        const name = await this.#deps.readDisplayName?.(
+          personId,
+          record.scope.taskId,
+        );
         if (name) this.#displayNames.set(personId, name);
       } else if (record.principal.kind === 'agent') {
         if (!agents.has(record.principal.agentId)) {
@@ -1486,10 +1492,38 @@ export class ProjectTaskRoomRuntime {
         scope: { ...scope, documentId: documentIdFor(scope) },
         historyOpened: true,
       });
+    const viewer = await this.#principal(
+      input.request,
+      input.taskId,
+      'discover',
+    );
+    const writer = await this.#principal(
+      input.request,
+      input.taskId,
+      'message-write',
+    );
+    const current = await this.#principal(
+      input.request,
+      input.taskId,
+      'discover',
+    );
+    if (!viewer || !current || !samePrincipal(viewer, current))
+      return { kind: 'not-found' };
     return {
       ...opened,
       revisionLinksAvailable: this.#deps.revisionEvidence?.available() === true,
-    } as typeof opened & { readonly revisionLinksAvailable: boolean };
+      roomCapabilities: {
+        messageWrite: !!writer && samePrincipal(viewer, writer),
+        // The account-bound allowlist does not admit the batch settlement leaf.
+        documentWrite: !viewer.member,
+      },
+    } as typeof opened & {
+      readonly revisionLinksAvailable: boolean;
+      readonly roomCapabilities: {
+        messageWrite: boolean;
+        documentWrite: boolean;
+      };
+    };
   }
 
   /**
@@ -3744,7 +3778,18 @@ export class ProjectTaskRoomRuntime {
       ? entry.room.snapshotAfterMutation(authorization, now)
       : entry.room.snapshot(authorization, now);
     if (read.outcome !== 'available') return read;
-    const participants = [...read.snapshot.participants];
+    const participants = read.snapshot.participants.map((participant) => {
+      const token = entry.ttlAuthorities.get(participant.actor.actorId);
+      const principal = token
+        ? entry.authorities.get(token)?.principal
+        : undefined;
+      return principal?.member
+        ? {
+            ...participant,
+            actor: { ...participant.actor, standing: 'member' as const },
+          }
+        : participant;
+    });
     for (const participant of entry.agentParticipants.values())
       if (
         !participants.some(
@@ -4648,6 +4693,8 @@ function sameScope(a: ProjectTaskRoomScope, b: ProjectTaskRoomScope) {
   );
 }
 function roomRequestCapability(capability: RoomCapability): RequestCapability {
+  if (capability === 'lifecycle-append') return 'history-read';
+  if (capability === 'revision-link') return 'edit-plan';
   return capability === 'discover' ||
     capability === 'history-read' ||
     capability === 'message-write'
@@ -4949,6 +4996,9 @@ function projectHistory(
         .map((record: any) => ({
           actor: {
             kind: record.principal.kind === 'agent' ? 'agent' : 'human',
+            ...(!guest && record.principal.kind === 'member'
+              ? { standing: 'member' }
+              : {}),
             id:
               record.principal.kind === 'agent'
                 ? agentActorId(

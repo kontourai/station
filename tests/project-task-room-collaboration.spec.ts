@@ -1,5 +1,11 @@
 import { createHash } from 'node:crypto';
-import { copyFileSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseProjectTaskRoomBrowserLiveSnapshot } from '@kontourai/station-contracts/project-task-room-browser';
@@ -329,6 +335,154 @@ test.describe
         expect(refused).toBe(1);
       } finally {
         await page.unroute(pattern);
+      }
+    });
+
+    test('renders Task collaboration member names and avatars', async ({
+      page,
+    }, testInfo) => {
+      await pairBrowser(page, {
+        root: process.cwd(),
+        instance: live.instance,
+        serverPort: live.serverPort,
+        uiOrigin: live.ui,
+      });
+      const credential = readE2EOperatorCredential(live.home);
+      const toggled = await fetch(
+        `${live.api}/api/feature-previews/task-collaboration`,
+        {
+          method: 'PUT',
+          headers: {
+            ...e2eOperatorAuthorizationHeaders(credential),
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ enabled: true }),
+        },
+      );
+      expect(toggled.ok).toBe(true);
+      const repository = join(fixtureRoot, 'collaboration-render');
+      await createRepository(repository, 'collaboration-render');
+      await createProject(page, 'collaboration-render', repository);
+      const taskId = await createTaskFromProject(
+        page,
+        live,
+        'collaboration-render',
+        'Review the shared Task',
+        repository,
+        'collaboration-render',
+      );
+      const participants = ['Alice', 'Bob'].map((name) => ({
+        actor: {
+          actorId: `fixture-${name}`,
+          kind: 'human',
+          label: name,
+          standing: 'member',
+        },
+        work: {
+          sessionId: 'fixture-generation',
+          workName: 'Review',
+          workState: 'working',
+          startedAt: 1,
+        },
+        publication: 'published',
+      }));
+      const liveSnapshot = {
+        generation: 'fixture-generation',
+        viewerActorId: 'fixture-Alice',
+        scope: { projectId: 'collaboration-render', taskId },
+        state: 'active',
+        participants,
+        panes: [],
+        cursors: [],
+      };
+      const revision = `swsr-v1:${'a'.repeat(64)}`;
+      const snapshot = {
+        type: 'snapshot',
+        generation: 'fixture-generation',
+        viewerActorId: 'fixture-Alice',
+        live: liveSnapshot,
+        document: { kind: 'snapshot', revision, floor: revision, text: '' },
+      };
+      await page.route(`**/api/tasks/${taskId}/room/events*`, (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'text/event-stream',
+          body: `event: snapshot\ndata: ${JSON.stringify(snapshot)}\n\n`,
+        }),
+      );
+      await page.route(`**/api/tasks/${taskId}/room/history*`, (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          json: {
+            success: true,
+            data: {
+              kind: 'available',
+              records: ['Alice', 'Bob'].map((name, index) => ({
+                actor: {
+                  kind: 'human',
+                  id: `fixture-${name}`,
+                  label: name,
+                  standing: 'member',
+                },
+                sequence: index + 1,
+                occurredAt: '2026-10-29T10:00:00.000Z',
+                body: {
+                  kind: 'human-message',
+                  text:
+                    index === 0
+                      ? 'I have reviewed the plan.'
+                      : 'I will take the next change.',
+                },
+                digests: {
+                  proposal: 'a'.repeat(64),
+                  checkpoint: 'b'.repeat(64),
+                },
+                integrity: 'L0',
+              })),
+              checkpoint: {
+                throughSeq: 2,
+                checkpointDigest: 'c'.repeat(64),
+                retainedAnchorSeq: 0,
+                retainedAnchorDigest: 'd'.repeat(64),
+              },
+              hasMore: false,
+              integrity: 'L0',
+            },
+          },
+        }),
+      );
+      await page.goto(
+        `${live.ui}/tasks/${encodeURIComponent(taskId)}?taskView=conversation`,
+      );
+      const history = page.getByRole('list', { name: 'Task room history' });
+      await expect(history.getByText('Alice', { exact: true })).toBeVisible();
+      await expect(history.getByText('Bob', { exact: true })).toBeVisible();
+      const avatars = page.getByRole('region', {
+        name: 'Present in this Task',
+      });
+      await expect(avatars.getByText('Alice', { exact: true })).toHaveCount(1);
+      await expect(avatars.getByText('Bob', { exact: true })).toHaveCount(1);
+      const target = process.env.STATION_ROOM_MEMBER_SHOTS_DIR;
+      if (target) mkdirSync(target, { recursive: true });
+      for (const theme of ['light', 'dark']) {
+        await page.evaluate(
+          (value) => document.documentElement.setAttribute('data-theme', value),
+          theme,
+        );
+        for (const width of [390, 1440]) {
+          await page.setViewportSize({ width, height: 900 });
+          await expect(
+            history.getByText('Alice', { exact: true }),
+          ).toBeVisible();
+          const filename = `collaboration-${theme}-${width}.png`;
+          await page.screenshot({
+            path: testInfo.outputPath(filename),
+            fullPage: true,
+          });
+          if (target)
+            copyFileSync(testInfo.outputPath(filename), join(target, filename));
+        }
       }
     });
 
