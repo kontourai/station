@@ -1,0 +1,11 @@
+{
+  "revision": "0345dc0ff40360d7e44065a568d2d5490e861b02",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the Vitest discovery and resource partition failure path: an unequal compact ordinary selection still fails, with bounded missing and unexpected test-file paths added to the error. No selection, group ownership, timeout, or failure verdict changed. Focused owner passed after an intended missing-diagnostic failure; the hosted mismatch cause remains unresolved.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Reviewed the Vitest discovery and resource partition failure path: an unequal compact ordinary selection still fails, with bounded missing and unexpected test-file paths added to the error. No selection, group ownership, timeout, or failure verdict changed. Focused owner passed after an intended missing-diagnostic failure; the hosted mismatch cause remains unresolved.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed the Vitest discovery and resource partition failure path: an unequal compact ordinary selection still fails, with bounded missing and unexpected test-file paths added to the error. No selection, group ownership, timeout, or failure verdict changed. Focused owner passed after an intended missing-diagnostic failure; the hosted mismatch cause remains unresolved.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

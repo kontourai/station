@@ -1,5 +1,128 @@
 [
   {
+    "timestampUtc": "2026-10-29T11:14:05Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2493",
+    "sha": "6c8b8996ea21f29104ed201b2ab277ceaef72f10",
+    "artifactBuiltAt": "2026-10-29T09:38:39.609Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40848380521",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40848380521)"
+    ],
+    "changelog": {
+      "previousSha": "7ab23e351c844bdccf6359c8ba773e11c8ab00ad",
+      "groups": {
+        "feat": [
+          "[#4315](https://github.com/kontourai/station/pull/4315) feat(ui): dismiss every inbox conversation and reveal mobile swipe actions",
+          "[#4298](https://github.com/kontourai/station/pull/4298) feat(cli): fork_conversation tool, conversation fork, delegate list and claims list"
+        ],
+        "fix": [
+          "[#4311](https://github.com/kontourai/station/pull/4311) fix(verification): queue heavy repo checks for a host-wide admission slot",
+          "[#4324](https://github.com/kontourai/station/pull/4324) fix(codex): keep stderr diagnostics out of chat warnings",
+          "[#4323](https://github.com/kontourai/station/pull/4323) fix(orchestration): identify bounded provider cleanup failures",
+          "[#4312](https://github.com/kontourai/station/pull/4312) fix(ui): show turn navigation from the first user turn",
+          "[#4313](https://github.com/kontourai/station/pull/4313) fix(ci): verify pnpm bootstrap for nightly delivery",
+          "[#4232](https://github.com/kontourai/station/pull/4232) fix(cli): hold home maintenance through clean and reset",
+          "[#4301](https://github.com/kontourai/station/pull/4301) fix(ui): stop deselected tabs fading through the active fill; inset approval picker notes",
+          "[#4300](https://github.com/kontourai/station/pull/4300) fix(workloads): keep the control plane resident and first for CPU under workload pressure"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4317](https://github.com/kontourai/station/pull/4317) perf(ci): avoid duplicate documentation base reads"
+        ]
+      },
+      "note": null,
+      "commitCount": 11
+    }
+  },
+  {
+    "timestampUtc": "2026-10-29T11:14:02Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2493",
+    "sha": "6c8b8996ea21f29104ed201b2ab277ceaef72f10",
+    "artifactBuiltAt": "2026-10-29T09:44:00.378Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40848380521",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40848380521)"
+    ],
+    "changelog": {
+      "previousSha": "7ab23e351c844bdccf6359c8ba773e11c8ab00ad",
+      "groups": {
+        "feat": [
+          "[#4315](https://github.com/kontourai/station/pull/4315) feat(ui): dismiss every inbox conversation and reveal mobile swipe actions",
+          "[#4298](https://github.com/kontourai/station/pull/4298) feat(cli): fork_conversation tool, conversation fork, delegate list and claims list"
+        ],
+        "fix": [
+          "[#4311](https://github.com/kontourai/station/pull/4311) fix(verification): queue heavy repo checks for a host-wide admission slot",
+          "[#4324](https://github.com/kontourai/station/pull/4324) fix(codex): keep stderr diagnostics out of chat warnings",
+          "[#4323](https://github.com/kontourai/station/pull/4323) fix(orchestration): identify bounded provider cleanup failures",
+          "[#4312](https://github.com/kontourai/station/pull/4312) fix(ui): show turn navigation from the first user turn",
+          "[#4313](https://github.com/kontourai/station/pull/4313) fix(ci): verify pnpm bootstrap for nightly delivery",
+          "[#4232](https://github.com/kontourai/station/pull/4232) fix(cli): hold home maintenance through clean and reset",
+          "[#4301](https://github.com/kontourai/station/pull/4301) fix(ui): stop deselected tabs fading through the active fill; inset approval picker notes",
+          "[#4300](https://github.com/kontourai/station/pull/4300) fix(workloads): keep the control plane resident and first for CPU under workload pressure"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4317](https://github.com/kontourai/station/pull/4317) perf(ci): avoid duplicate documentation base reads"
+        ]
+      },
+      "note": null,
+      "commitCount": 11
+    }
+  },
+  {
+    "timestampUtc": "2026-10-29T09:32:08Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2493.40848380521",
+    "sha": "6c8b8996ea21f29104ed201b2ab277ceaef72f10",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40848380521",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2493.40848380521 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "7ab23e351c844bdccf6359c8ba773e11c8ab00ad",
+      "groups": {
+        "feat": [
+          "[#4315](https://github.com/kontourai/station/pull/4315) feat(ui): dismiss every inbox conversation and reveal mobile swipe actions",
+          "[#4298](https://github.com/kontourai/station/pull/4298) feat(cli): fork_conversation tool, conversation fork, delegate list and claims list"
+        ],
+        "fix": [
+          "[#4311](https://github.com/kontourai/station/pull/4311) fix(verification): queue heavy repo checks for a host-wide admission slot",
+          "[#4324](https://github.com/kontourai/station/pull/4324) fix(codex): keep stderr diagnostics out of chat warnings",
+          "[#4323](https://github.com/kontourai/station/pull/4323) fix(orchestration): identify bounded provider cleanup failures",
+          "[#4312](https://github.com/kontourai/station/pull/4312) fix(ui): show turn navigation from the first user turn",
+          "[#4313](https://github.com/kontourai/station/pull/4313) fix(ci): verify pnpm bootstrap for nightly delivery",
+          "[#4232](https://github.com/kontourai/station/pull/4232) fix(cli): hold home maintenance through clean and reset",
+          "[#4301](https://github.com/kontourai/station/pull/4301) fix(ui): stop deselected tabs fading through the active fill; inset approval picker notes",
+          "[#4300](https://github.com/kontourai/station/pull/4300) fix(workloads): keep the control plane resident and first for CPU under workload pressure"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4317](https://github.com/kontourai/station/pull/4317) perf(ci): avoid duplicate documentation base reads"
+        ]
+      },
+      "note": null,
+      "commitCount": 11
+    }
+  },
+  {
     "timestampUtc": "2026-10-29T00:54:36Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2492.3",
