@@ -357,6 +357,12 @@ describe('targets the scheduler refuses', () => {
         createdBy: CREATOR,
       });
       await firstScheduler.runJob('dedicated-recovery');
+      expect(
+        (await firstScheduler.getJobLogs('dedicated-recovery'))[0]?.runTarget,
+      ).toEqual({
+        kind: 'dedicated',
+        agent: 'claude',
+      });
       await firstScheduler.stop();
       const restarted = makeScheduler();
       schedulers.push(restarted);

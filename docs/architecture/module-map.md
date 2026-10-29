@@ -4199,8 +4199,9 @@ without one keeps the fence. One unreadable job record is quarantined in place:
 logs an error), and every other due job still claims. Settling a dead claim on
 such a record advances `last_run_ms` without rewriting the unreadable bytes. Exact revision checks let a concurrent job edit/delete win over old
 completion. Each claim snapshots its target; a dedicated target reserves its
-conversation identity before starting and records it against that run, even
-if the job is retargeted. A later run adopts an already-started conversation
+conversation identity before starting and records the observed conversation
+against that run, even if the job is retargeted. An unconfirmed start retains
+the reservation without claiming that the conversation exists. A later run adopts an already-started conversation
 through the inbox; a changed target gets a new reservation.
 Run reads use that target. Pre-change records require the creator and current
 conversation read access, except the local operator can read a creatorless,

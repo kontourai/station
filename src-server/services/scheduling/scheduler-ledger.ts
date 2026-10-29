@@ -1827,19 +1827,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
           | { target_identity: string; conversation_id: string }
           | undefined;
         if (!intent || intent.target_identity !== identity) return undefined;
-        this.db
-          .prepare(
-            'INSERT OR IGNORE INTO scheduler_run_conversations(run_id, conversation_id) VALUES (?, ?)',
-          )
-          .run(claim.run_id, intent.conversation_id);
-        const bound = this.db
-          .prepare(
-            'SELECT conversation_id FROM scheduler_run_conversations WHERE run_id = ?',
-          )
-          .get(claim.run_id) as { conversation_id: string } | undefined;
-        return bound?.conversation_id === intent.conversation_id
-          ? intent.conversation_id
-          : undefined;
+        return intent.conversation_id;
       }),
     );
   }
