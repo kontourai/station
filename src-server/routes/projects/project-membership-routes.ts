@@ -205,9 +205,7 @@ export function createProjectMembershipRoutes(
       }),
       (data) => managementRelease(data.scope, data.actingPrincipal.id),
       (owner, access) =>
-        owner.accessRefusal(
-          c.req.param('slug'),
-          access,
+        owner.accessRefusal(c.req.param('slug'), access, () =>
           mayEnableRoute(c.req.raw, c.req.param('slug')),
         ),
     ),

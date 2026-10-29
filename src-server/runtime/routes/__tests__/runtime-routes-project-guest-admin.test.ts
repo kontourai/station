@@ -1914,6 +1914,74 @@ describe('project guest administration over the production composition', () => {
     ).toBe(200);
   });
 
+  test('access refusal rechecks enable route scope after account revalidation', async () => {
+    const h = await setup();
+    const project = await h.projectService.createProject({
+      name: 'Race',
+      slug: 'race',
+    });
+    const pairing = h.security.devicePairing;
+    const offer = pairing.createOffer({ endpoint: ORIGIN, scope: GUEST_GRANT });
+    const pending = pairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Home operator',
+      requesterPosition: 'off-box',
+    });
+    pairing.confirmRequest(pending.requestId, { kind: 'local-grant' });
+    const device = pairing.exchange({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: pending.requestId,
+      locality: 'home-possession',
+      mintKind: 'local-grant',
+    });
+    const headers = h.guestHeaders(device.credential, 'fixture_account=owner');
+    const authenticate = h.authentication.service.authenticate.bind(
+      h.authentication.service,
+    );
+    let calls = 0;
+    const spy = vi
+      .spyOn(h.authentication.service, 'authenticate')
+      .mockImplementation(async (request) => {
+        const result = await authenticate(request);
+        if (
+          new URL(request.url).pathname === '/api/projects/race/access' &&
+          ++calls === 3
+        )
+          pairing.setDeviceScope(
+            device.device.id,
+            ['orchestration:read'],
+            operatorApproval,
+          );
+        return result;
+      });
+    let response: Response;
+    try {
+      response = await h.request('/api/projects/race/access', headers());
+    } finally {
+      spy.mockRestore();
+    }
+    expect(calls).toBe(3);
+    expect(response.status).toBe(403);
+    expect((await response.json()).details).toEqual({
+      sharing: 'undisclosed',
+      canEnable: false,
+    });
+    expect(h.security.resolveGrantedScope(device.credential)).toBe(
+      'orchestration:read',
+    );
+    const enable = await h.request(
+      '/api/projects/race/access/enable',
+      headers({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ localProjectId: project.id }),
+      }),
+    );
+    expect(enable.status).toBe(403);
+  });
+
   test('a refused access read says sharing is off only to a caller who can enable it (#4302)', async () => {
     const h = await setup();
     const fresh = await h.projectService.createProject({
