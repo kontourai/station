@@ -114,6 +114,7 @@ describe('public handshake capability flags (station#1095)', () => {
       executionPreparation: true,
       delegatedInputAnswers: true,
       connectionRoutes: true,
+      coordinatorSession: true,
     });
   });
 
@@ -152,6 +153,7 @@ describe('public handshake capability flags (station#1095)', () => {
       executionPreparation: true,
       delegatedInputAnswers: true,
       connectionRoutes: true,
+      coordinatorSession: true,
     });
     for (const buildIdentityField of [
       'build',

@@ -99,7 +99,7 @@ export function HomeCoordinatorCard() {
                     {item.status === 'waiting'
                       ? 'Waiting on you'
                       : item.status === 'finished'
-                        ? 'Recently finished'
+                        ? 'Just finished'
                         : 'In flight'}
                   </strong>
                   : <span>{item.summary}</span>

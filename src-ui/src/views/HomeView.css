@@ -264,7 +264,13 @@
   .home-view {
     /* The shell reserves the dock (--dock-bottom-clearance on .content-view,
        station#3902); this is only the page's own bottom gutter. */
-    padding: 24px 16px 32px;
+    padding: 12px 16px 32px;
+  }
+  .home-view__welcome h1 {
+    font-size: clamp(22px, 6vw, 26px);
+  }
+  .home-view__start .start-composer__input {
+    min-height: 56px;
   }
   .home-view__actions {
     grid-template-columns: 1fr;

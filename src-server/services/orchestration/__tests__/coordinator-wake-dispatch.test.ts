@@ -505,6 +505,7 @@ describe('Muse inbox delivery after a completed turn', () => {
       },
       logger: { warn: vi.fn(), info: vi.fn() },
     });
+    vi.spyOn(adapter, 'getPrerequisites').mockResolvedValue([]);
     const world = boot([adapter]);
     await world.service.dispatch(
       {
