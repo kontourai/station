@@ -1255,16 +1255,37 @@ describe('ChatInputArea', () => {
     expect(onModelReset).toHaveBeenCalledOnce();
   });
 
-  test('a refused reset is not offered as a composer chip', () => {
+  test('a reset waiting on the turn stays in place, unavailable, with its reason', () => {
+    const onModelReset = vi.fn();
+    renderChatInputArea({
+      currentModel: 'override-model',
+      currentModelSource: 'session override',
+      onModelReset,
+      modelResetDisabledReason: 'Wait for the current turn to finish.',
+    });
+
+    const reset = screen.getByRole('button', { name: 'Use default model' });
+    expect(reset.getAttribute('aria-disabled')).toBe('true');
+    const describedBy = reset.getAttribute('aria-describedby');
+    expect(
+      describedBy && document.getElementById(describedBy)?.textContent,
+    ).toBe('Wait for the current turn to finish.');
+    fireEvent.click(reset);
+    expect(onModelReset).not.toHaveBeenCalled();
+  });
+
+  test('a reset the conversation cannot take is not offered as a chip', () => {
     renderChatInputArea({
       currentModel: 'override-model',
       currentModelSource: 'session override',
       onModelReset: vi.fn(),
-      modelResetDisabledReason: 'Wait for the current turn to finish.',
+      modelResetDisabledReason:
+        'This conversation can’t change its engine right now.',
+      modelResetOffered: false,
     });
 
-    // The reason has no visible place in the composer row; the picker's own
-    // reset states it (SessionModelPicker "a refused reset is disabled…").
+    // The picker's own reset states the reason as text
+    // (SessionModelPicker "a refused reset is disabled and states why").
     expect(screen.queryByRole('button', { name: 'Use default model' })).toBe(
       null,
     );

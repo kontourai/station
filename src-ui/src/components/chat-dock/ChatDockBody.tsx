@@ -2662,6 +2662,11 @@ export function ChatDockBody({
               }
             }}
             modelResetDisabledReason={engineResetBlockedReason}
+            // The server denied changes (no engine change offered): the
+            // composer offers no reset. A turn or queue wait only disables it.
+            modelResetOffered={
+              !(activeSession.executionAgentId && !onExecutionModelSelect)
+            }
             onModelClose={chatInput.handleModelClose}
             onModelOpen={
               hasExecutionAlternatives

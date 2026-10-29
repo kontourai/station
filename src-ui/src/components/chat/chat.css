@@ -1911,6 +1911,13 @@
   white-space: nowrap;
 }
 
+/* Waiting on the running turn or the queue check: kept in place so the row
+   does not shift, and read as unavailable. */
+.chat-input__meta .chat-input__model-reset[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.6;
+}
+
 /* Fill derived from the same yellow as the text, not the brand mint. Review
    found `--accent-light` (a brand-tinted color-mix) under `--accent-yellow`
    measured 1.60:1 in light theme — olive on mint, and unreadable. This is the

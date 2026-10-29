@@ -324,10 +324,17 @@ interface ChatInputAreaProps {
   onModelSelect: (model: SelectableModel) => void;
   onModelReset: () => void;
   /**
-   * Why the model/engine reset is refused right now. Set, the composer's
-   * reset chip is not offered and the picker's reset is disabled with it.
+   * Why the model/engine reset is refused right now. Set, the picker's reset
+   * is disabled with it shown, and the composer's reset chip stays in place
+   * disabled with it as its description.
    */
   modelResetDisabledReason?: string;
+  /**
+   * False when this conversation cannot take the reset at all (the server's
+   * open resolution denies changes). The composer then offers no reset chip.
+   * Defaults to true.
+   */
+  modelResetOffered?: boolean;
   onModelClose: () => void;
   onModelOpen: () => void;
   onModelRuntimeOptionChange: (
@@ -518,6 +525,7 @@ export function ChatInputArea({
   onModelSelect,
   onModelReset,
   modelResetDisabledReason,
+  modelResetOffered = true,
   onModelClose,
   onModelOpen,
   onModelRuntimeOptionChange,
@@ -789,6 +797,7 @@ export function ChatInputArea({
   const queuedDiscard = useUnconfirmedDiscardDisclosure();
   if (!queuedRetryText && queuedDiscard.open) queuedDiscard.close();
   const queuedRetryDescriptionId = React.useId();
+  const modelResetReasonId = React.useId();
   const composerRootRef = useRef<HTMLDivElement | null>(null);
   // The draft's two-line floor, written by the per-keystroke sizing below and
   // read by the reservation.
@@ -1175,18 +1184,35 @@ export function ChatInputArea({
             </span>
             <ArrowDownGlyph className="choice-caret" />
           </button>
-          {/* A refused reset is not offered here: the composer row has no room
-              for its reason, and a title never reaches a touch user. The
-              picker keeps the same reset, disabled with the reason visible. */}
-          {isOverride && !modelResetDisabledReason && (
-            <button
-              type="button"
-              className="chat-input__model-reset"
-              onClick={onModelReset}
-              title="Reset this chat to its default model"
-            >
-              Use {modelResetSourceLabel(defaultModelSource)}
-            </button>
+          {/* A reset the conversation cannot take at all is not offered. A
+              reset that is only waiting (a turn running, queued messages being
+              checked) stays in place, so the row does not shift every turn,
+              and carries its reason as its description: the composer row has
+              no room for the sentence, the running turn is already visible,
+              and the picker states the same reason as text. */}
+          {isOverride && modelResetOffered && (
+            <>
+              <button
+                type="button"
+                className="chat-input__model-reset"
+                aria-disabled={modelResetDisabledReason ? true : undefined}
+                aria-describedby={
+                  modelResetDisabledReason ? modelResetReasonId : undefined
+                }
+                onClick={modelResetDisabledReason ? undefined : onModelReset}
+                title={
+                  modelResetDisabledReason ??
+                  'Reset this chat to its default model'
+                }
+              >
+                Use {modelResetSourceLabel(defaultModelSource)}
+              </button>
+              {modelResetDisabledReason && (
+                <span id={modelResetReasonId} className="sr-only">
+                  {modelResetDisabledReason}
+                </span>
+              )}
+            </>
           )}
           {contextMeter}
           {modeChoices.length > 0 && onAcpSessionModeChange ? (
