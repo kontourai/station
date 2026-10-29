@@ -40,6 +40,7 @@ import { Dialog } from './Dialog';
 import { ResponsiveSurfaceActions } from './ResponsiveDialogSurface';
 import { SkeletonBlock } from './state';
 import { TelemetryFeedbackPrompt } from './TelemetryFeedbackPrompt';
+import type { TelemetryChoiceAuthority } from './UsageSharingChoices';
 import { UsageSharingPrompt } from './UsageSharingPrompt';
 import './UsageTelemetryDisclosure.css';
 
@@ -531,6 +532,21 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
       actionable &&
       !dismissed,
   };
+}
+
+/**
+ * What Settings may offer this caller, from the disclosure state. Nothing is
+ * offered until the disclosure has settled, because its capabilities say what
+ * this caller may choose. Only the MAIN read decides that; a failed Kontour
+ * author read does not. An answer from an earlier successful read (with or
+ * without capabilities) still holds while a refetch fails.
+ */
+export function usageSharingChoiceAuthority(
+  state: Pick<UsageTelemetryDisclosureState, 'settled' | 'readError' | 'data'>,
+): TelemetryChoiceAuthority {
+  if (!state.settled) return 'loading';
+  if (state.readError && !state.data) return 'error';
+  return state.data?.capabilities;
 }
 
 function useAcknowledgeDisclosure(onAcknowledged?: () => void) {

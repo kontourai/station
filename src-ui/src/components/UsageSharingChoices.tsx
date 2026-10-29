@@ -97,7 +97,8 @@ export function TelemetryChoiceLimit({
   if (authority === 'error')
     return (
       <p data-testid="usage-sharing-limit">
-        Sharing options could not be loaded. You can still turn sharing off.{' '}
+        Sharing options could not be loaded. You can try turning sharing off, or
+        try again.{' '}
         {onRetry && (
           <Button variant="secondary" onClick={onRetry}>
             Try again

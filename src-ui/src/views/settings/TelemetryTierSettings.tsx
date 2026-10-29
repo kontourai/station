@@ -44,8 +44,9 @@ export function TelemetryTierSettings({
 }: {
   onChoiceRetry?: () => void;
   /**
-   * What the server says this caller may choose. `'loading'`/`'error'` offer
-   * nothing; absent is an older host (or a caller that does not gate).
+   * What the server says this caller may choose. `'loading'` offers nothing;
+   * `'error'` offers only Don't share (see `TelemetryChoiceAuthority`); absent
+   * is an older host (or a caller that does not gate).
    */
   choiceAuthority?: TelemetryChoiceAuthority;
   config: AppConfig;

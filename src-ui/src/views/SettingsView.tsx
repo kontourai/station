@@ -43,7 +43,10 @@ import {
   SkeletonBlock,
 } from '../components/state';
 import { Toggle } from '../components/Toggle';
-import { useUsageTelemetryDisclosureState } from '../components/UsageTelemetryDisclosure';
+import {
+  usageSharingChoiceAuthority,
+  useUsageTelemetryDisclosureState,
+} from '../components/UsageTelemetryDisclosure';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import { useConfigActions, useConfigSnapshot } from '../contexts/ConfigContext';
 import {
@@ -1298,19 +1301,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       section="telemetry"
                       telemetryPublishers={telemetryStatus.data?.publishers}
                       telemetryDisclosure={telemetryDisclosure.data}
-                      // Nothing is offered until the disclosure has settled:
-                      // its capabilities say what this caller may choose. Only
-                      // the MAIN read decides that; a failed Kontour author
-                      // read does not. Capabilities from an earlier successful
-                      // read still hold while a refetch fails.
-                      telemetryChoiceAuthority={
-                        !telemetryDisclosure.settled
-                          ? 'loading'
-                          : telemetryDisclosure.readError &&
-                              !telemetryDisclosure.data?.capabilities
-                            ? 'error'
-                            : telemetryDisclosure.data?.capabilities
-                      }
+                      telemetryChoiceAuthority={usageSharingChoiceAuthority(
+                        telemetryDisclosure,
+                      )}
                       onTelemetryChoiceRetry={() =>
                         void invalidate(['usage-telemetry-disclosure'])
                       }
@@ -1353,7 +1346,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                             control={
                               <span className="settings__field-hint">
                                 {telemetryDisclosure.settled
-                                  ? telemetryDisclosure.isError
+                                  ? // The main read reports the destination;
+                                    // a failed Kontour read says nothing here.
+                                    telemetryDisclosure.readError
                                     ? 'Could not read whether a destination is configured.'
                                     : telemetryDisclosure.data
                                           ?.endpointConfigured === false

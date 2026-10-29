@@ -126,6 +126,7 @@ import {
   resetUsageTelemetryDisclosureDismissal,
   UsageTelemetryDisclosure,
   UsageTelemetryDisclosureStep,
+  usageSharingChoiceAuthority,
   useUsageTelemetryDisclosureState,
 } from '../UsageTelemetryDisclosure';
 
@@ -1751,5 +1752,74 @@ test('with an Off destination default and no saved choice, a standard device is 
     expect(raise.status).toBe(403);
   } finally {
     f.cleanup();
+  }
+});
+
+test('a failed Kontour author read alone leaves Settings offering what the capabilities allow (real hook, real routes)', async () => {
+  // With an author destination built in, the disclosure state also reads
+  // `?publisher=kontour`. Only that read fails here; the main read answers
+  // with this standard device's capabilities, which must still decide.
+  build.endpoint = 'https://author.example.test/events';
+  const fixture = await publisherFixture(undefined, undefined, {
+    callerScope: STANDARD_SCOPE,
+  });
+  const routes = bridge.request.getMockImplementation()!;
+  bridge.request.mockImplementation((url: string, init?: RequestInit) =>
+    String(url).includes('/api/usage-telemetry/disclosure?publisher=kontour')
+      ? Promise.resolve(new Response('{}', { status: 500 }))
+      : routes(url, init),
+  );
+  const status = await fixture.service.telemetryStatus();
+  expect(status.authorEndpoint, 'fixture has no author read to fail').toBe(
+    build.endpoint,
+  );
+  const seen: { isError: boolean; readError: boolean }[] = [];
+  function LiveSettings() {
+    const state = useUsageTelemetryDisclosureState();
+    if (state.settled && state.data)
+      seen.push({ isError: state.isError, readError: state.readError });
+    return (
+      <StationConfigSection
+        section="telemetry"
+        containerScope="station"
+        config={bridge.config}
+        savedTelemetryChoices={bridge.config.telemetryTier}
+        telemetryPublishers={status.publishers}
+        telemetryDisclosure={state.data}
+        telemetryChoiceAuthority={usageSharingChoiceAuthority(state)}
+        onChange={() => {}}
+      />
+    );
+  }
+  const view = render(
+    <QueryClientProvider client={fixture.client}>
+      <LiveSettings />
+    </QueryClientProvider>,
+  );
+  try {
+    // The author read has failed and the main read has answered.
+    await waitFor(() =>
+      expect(seen.at(-1)).toEqual({ isError: true, readError: false }),
+    );
+    expect(
+      calls('/api/usage-telemetry/disclosure?publisher=kontour').length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getByRole('radio', { name: SHARING_LABELS.off }),
+    ).toHaveProperty('disabled', false);
+    expect(
+      screen.getByRole('radio', { name: SHARING_LABELS.lite }),
+      'a failed author read limited the choices',
+    ).toHaveProperty('disabled', false);
+    expect(
+      screen.getByRole('radio', { name: SHARING_LABELS.full }),
+    ).toHaveProperty('disabled', true);
+    expect(screen.getByTestId('usage-sharing-limit').textContent).toBe(
+      'This device can keep or reduce sharing. More sharing is chosen on the host computer.',
+    );
+  } finally {
+    view.unmount();
+    fixture.client.clear();
+    fixture.loader.dispose();
   }
 });

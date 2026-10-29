@@ -3006,14 +3006,39 @@ describe('settings catalog completeness', () => {
         disabled: [true, true, true],
       },
       {
-        // Withdrawing must stay possible: the server still enforces.
-        state: 'the main read failed',
+        // Nothing has ever answered. Withdrawing stays possible (the server
+        // still enforces), and nothing else is offered.
+        state: 'the first main read failed',
         settled: true,
         isError: true,
         readError: true,
+        noData: true,
         disabled: [false, true, true],
         limit:
-          'Sharing options could not be loaded. You can still turn sharing off. Try again',
+          'Sharing options could not be loaded. You can try turning sharing off, or try again. Try again',
+      },
+      {
+        // An older host already answered without capabilities; a failed
+        // background refetch keeps that answer.
+        state: 'a refetch failed after an older host answered',
+        settled: true,
+        isError: true,
+        readError: true,
+        disabled: [false, false, false],
+      },
+      {
+        state: 'a refetch failed after capabilities were reported',
+        settled: true,
+        isError: true,
+        readError: true,
+        capabilities: {
+          acknowledge: false,
+          recordNotice: false,
+          lower: true,
+          raise: false,
+          defaults: { kontour: 'lite', operator: 'lite' },
+        } satisfies TelemetryChoiceCapabilities,
+        disabled: [false, false, true],
       },
       {
         // An older host that reports no capabilities keeps every choice even
@@ -3065,6 +3090,7 @@ describe('settings catalog completeness', () => {
       settled: boolean;
       isError: boolean;
       readError?: boolean;
+      noData?: boolean;
       capabilities?: TelemetryChoiceCapabilities;
       disabled: boolean[];
       limit?: string;
@@ -3074,11 +3100,13 @@ describe('settings catalog completeness', () => {
         settled,
         isError,
         readError = false,
+        noData = false,
         capabilities,
         disabled,
         limit,
       }) => {
-        telemetryEndpointConfigured = false;
+        // `undefined` makes the mocked state carry no data at all.
+        telemetryEndpointConfigured = noData ? undefined : false;
         telemetryDisclosureSettled = settled;
         telemetryDisclosureIsError = isError;
         telemetryDisclosureReadError = readError;
@@ -3101,7 +3129,7 @@ describe('settings catalog completeness', () => {
     );
 
     test('after a failed main read, Try again re-reads the disclosure', async () => {
-      telemetryEndpointConfigured = false;
+      telemetryEndpointConfigured = undefined;
       telemetryDisclosureIsError = true;
       telemetryDisclosureReadError = true;
       window.history.replaceState({}, '', '/settings?view=telemetry');
@@ -3119,6 +3147,23 @@ describe('settings catalog completeness', () => {
   });
 
   describe('Telemetry destination', () => {
+    test('a failed Kontour author read alone still reports the destination', async () => {
+      // `isError` also covers the author read; the destination is the main
+      // read's answer, which arrived.
+      telemetryDisclosureIsError = true;
+      telemetryDisclosureReadError = false;
+      telemetryEndpointConfigured = false;
+      await renderSettings();
+      expect(
+        screen.getByText('No additional destination configured.'),
+      ).toBeTruthy();
+      expect(
+        screen.queryByText(
+          'Could not read whether a destination is configured.',
+        ),
+      ).toBeNull();
+    });
+
     test('reports a configured destination without naming it', async () => {
       telemetryEndpointConfigured = true;
       await renderSettings();
@@ -3171,6 +3216,7 @@ describe('settings catalog completeness', () => {
 
     test('a failed read says the read failed, not what the host holds', async () => {
       telemetryDisclosureIsError = true;
+      telemetryDisclosureReadError = true;
       telemetryEndpointConfigured = undefined;
       await renderSettings();
 
