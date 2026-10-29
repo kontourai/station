@@ -1362,6 +1362,12 @@ export async function runCoreCommand(
     return;
   }
 
+  if (command === 'claims') {
+    const { runClaimsCommand } = await import('./claims.js');
+    await runClaimsCommand(apiBase, parsed);
+    return;
+  }
+
   if (command === 'approvals') {
     await runApprovalsCommand(apiBase, parsed);
     return;

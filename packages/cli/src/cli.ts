@@ -412,6 +412,7 @@ const CORE_COMMANDS = [
   'secret-bindings',
   'mcp-clients',
   'conversation',
+  'claims',
   'chat',
 ] as const;
 

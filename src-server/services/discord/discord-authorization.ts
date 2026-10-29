@@ -1,75 +1,55 @@
-import type {
-  DiscordCapability,
-  DiscordGatewayConfiguration,
-} from '@kontourai/station-contracts/discord';
 import {
-  DiscordGatewayConfigurationError,
-  DiscordGatewayConfigurationStore,
-  hasDiscordCapability,
-} from './discord-gateway-config-store.js';
+  ChatAppCore,
+  type LegacyDiscordAuthorization,
+  type LegacyDiscordRequest,
+} from '../chat-apps/chat-app-core.js';
+import { DiscordGatewayConfigurationStore } from './discord-gateway-config-store.js';
 
-export interface DiscordAuthorizationRequest {
-  discordUserId: string;
-  guildId: string;
-  channelId: string;
-  capability: DiscordCapability;
-  projectSlug?: string;
-}
+export type DiscordAuthorizationRequest = LegacyDiscordRequest;
+export type DiscordAuthorizationResult = LegacyDiscordAuthorization;
 
-export type DiscordAuthorizationResult =
-  | { allowed: true; stationIdentity: string }
-  | {
-      allowed: false;
-      reason:
-        | 'outside_allowed_scope'
-        | 'unmapped_identity'
-        | 'not_permitted'
-        | 'policy_unavailable';
-    };
-
-/**
- * The sole identity and authorization seam for a Discord-originated request.
- * It deliberately computes mapping and each capability together from the
- * current policy document; no caller can accidentally treat a name or a
- * cached mapping as authority.
- */
+/** Durable links are authority; the live v1 file remains an additional ceiling. */
 export class DiscordAuthorizationService {
-  constructor(private readonly store: DiscordGatewayConfigurationStore) {}
+  private readonly core: ChatAppCore;
+
+  constructor(
+    private readonly store: DiscordGatewayConfigurationStore,
+    core?: ChatAppCore,
+  ) {
+    this.core = core ?? new ChatAppCore(store.homeDir);
+  }
 
   authorize(request: DiscordAuthorizationRequest): DiscordAuthorizationResult {
-    let configuration: DiscordGatewayConfiguration;
     try {
-      configuration = this.store.read();
-    } catch (error) {
-      if (error instanceof DiscordGatewayConfigurationError) {
-        return { allowed: false, reason: 'policy_unavailable' };
+      const configuration = this.store.read();
+      const snapshot = JSON.stringify(configuration);
+      return this.core.authorizeDiscord(
+        configuration,
+        request,
+        () => JSON.stringify(this.store.read()) === snapshot,
+      );
+    } catch {
+      // Logging may itself be unavailable; never send when authority is uncertain.
+      if (request.replyChunk) {
+        try {
+          this.core.recordDelivery(
+            {
+              app: 'discord',
+              externalWorkspaceId: request.guildId,
+              externalChannelId: request.channelId,
+              externalUserId: request.discordUserId,
+              conversationId: request.expectedSessionId,
+              direction: 'outbound',
+              action: 'notify',
+              replyChunk: request.replyChunk,
+            },
+            { state: 'refused', reason: 'policy-unavailable' },
+          );
+        } catch {
+          /* The delivery log itself is unavailable. */
+        }
       }
-      throw error;
+      return { allowed: false, reason: 'policy_unavailable' };
     }
-
-    const inScope = configuration.guilds?.some(
-      (scope) =>
-        scope.guildId === request.guildId &&
-        scope.channelIds?.includes(request.channelId) === true,
-    );
-    if (!inScope) return { allowed: false, reason: 'outside_allowed_scope' };
-
-    const mapping = configuration.identities?.find(
-      (candidate) => candidate.discordUserId === request.discordUserId,
-    );
-    if (!mapping || mapping.revokedAt !== undefined) {
-      return { allowed: false, reason: 'unmapped_identity' };
-    }
-    if (!hasDiscordCapability(mapping, request.capability)) {
-      return { allowed: false, reason: 'not_permitted' };
-    }
-    if (
-      request.capability === 'project-files:read' &&
-      (!request.projectSlug ||
-        mapping.projectFileProjects?.includes(request.projectSlug) !== true)
-    ) {
-      return { allowed: false, reason: 'not_permitted' };
-    }
-    return { allowed: true, stationIdentity: mapping.stationIdentity };
   }
 }
