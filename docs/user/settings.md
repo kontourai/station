@@ -27,6 +27,7 @@ only when this Station's build can run it; if none is, the section says
 | `local-speech` | Local speech | Offers Station (local) in Voice → Speech-to-text: record a message, then transcribe it on this Station. | One-time consented tool/model download; English batch dictation only; microphone permission; shares one recognizer and a bounded wait queue with Walkthroughs. |
 | `chat-host-images` | Chat images from the host | Shows images an agent saves on this Station and names by absolute path in its reply, on any device, and tells agents where to save them. | Station copies each admitted image (up to 5 per reply, 512 KiB each) into the chat's attachment storage; engines started while it is on get a per-session temporary folder. |
 | `task-review` | Task review | Adds a Review tab to Tasks for anchored comments on plans, outputs, answers and Screens, which can be sent to the lead agent. | Sending starts or queues a lead-agent turn; Screen capture needs a committed workspace. |
+| `visual-skills` | Visual skills | Offers installed visual skills in the start composer (**⋯ → Use a visual skill**) and the New Chat agent list. | Only the entry points are the preview: installing, validating and authoring visual skills work either way, and a chat already started with one keeps its skill view and any unsent next stage. Turning it off mid-draft stops New Chat showing or starting a chosen, unsent visual skill; turning it back on restores that choice. |
 | `workload-budget-settings` | Workload budget settings | Shows a memory budget editor under **Settings → Advanced → Host options**: per-engine and total memory for engine workloads, beside the host's memory and where each value comes from. | Only the editor is the preview; budgets themselves are enforced either way. On a Linux Station service a lower budget kills memory-heavy commands sooner, and a total below current use is refused; an environment variable still overrides the saved value; elsewhere the values are only saved. Turning the preview off keeps saved values in force (save empty fields first to clear them). |
 
 **Task review** (`task-review`): turn this on in **Settings → Advanced →
@@ -82,6 +83,11 @@ between the two heights. Closing this way is the same as choosing the sheet's
 close button. Confirmation prompts and sheets that cannot be dismissed get no
 handle, and the handle can only be dragged with touch or a pointer; the close
 button and Escape still close every sheet.
+
+The same preview lets you swipe a conversation left in the inbox to reveal
+**Snooze** (clock) and **Dismiss** (×), with larger touch targets and labels.
+Swiping reveals the controls; tap one to act. Swipe right to hide them.
+The row’s Details menu offers the same actions with the preview off.
 
 **Station routes preview** adds **Routes** to the Devices page: every address
 this device reaches the current Station on, which one is in use, which failed

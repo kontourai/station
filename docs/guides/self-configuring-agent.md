@@ -45,6 +45,9 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
   and separate explicit fork ancestry. Missing or unavailable provenance means
   unknown. Reads remain scoped and paginated; a native-return request does not
   prove provider identity or delivery of every historical message.
+- `fork_conversation` to fork a conversation in the caller's scope into a new
+  one, as the Station UI's fork does (see
+  [Forking a conversation](#forking-a-conversation))
 - `list_delegation_environments`, `list_delegation_targets`,
   `list_delegated_tasks`, `delegate_task`, `get_task`, `get_task_events`,
   `continue_task`, and `interrupt_task` for resumable work through either a
@@ -369,6 +372,42 @@ in the conversation (stale, or another conversation's) is refused with
 beside `cursor` is `conversation_read_anchor_with_cursor`. The anchor is decided
 after admission, so it never widens what may be read and tells a caller nothing
 about a conversation it may not read.
+
+#### Forking a conversation
+
+`fork_conversation` makes the request the Station UI's fork makes
+(`POST /agents/:slug/conversations/:conversationId/fork`): a new conversation
+that starts from the source's history up to a completed assistant turn
+(`branchPointTurnId`, default the latest), for `targetAgent` (default the
+source Agent) in `targetProjectSlug` (default the source's Project). The source
+is unchanged. The tool returns the new `conversationId` and the seed its first
+turn replays; engine cursor, tool state and approval state do not carry.
+`idempotencyKey` makes a retry return the same fork.
+
+It is a Project `execute` action at the authority table, and the fork route
+holds every caller except a bound operator to the dispatch scope above twice,
+before it writes anything:
+
+- the source must be the caller's own conversation or another of its owner's,
+  in the global space or a Project where the owner holds `view`. A
+  conversation a person only referenced is not enough here, and a
+  conversation with no started Session is refused;
+- the fork must land where the caller could start a Session itself: the
+  global space, or a Project where the owner holds `execute`.
+
+A caller whose credential is not bound is also held to its own Session's
+scope: the source and the fork must both be in its Session's Project, or in
+the global space when its Session has none. Forking from Project 1 into
+Project 2, or from the global space into a Project, is refused. A bound caller
+that is not the operator is held only to its owner's Project actions, as for
+dispatch, so it may fork across those Projects, never another owner's
+conversation. A bound operator caller keeps the operator's reach. Refusals
+carry the scope rule's codes (`station_control_out_of_scope`,
+`station_control_role_required`, `station_control_assurance_insufficient`).
+A person forking through the UI or `station conversation fork` is not held to
+this rule. The
+[mounted tests](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-fork-conversation.test.ts)
+drive each caller kind through the real route.
 
 ### Session control
 
@@ -865,7 +904,9 @@ Open a project chat and choose **Delegate** in its task-context bar. Station
 loads the Project's execution default before discovering workers. **Change
 routing** lets you choose an Agent, a Station and a model override. A configured
 remote stays selected while its inventory loads or its connection fails; Station
-does not replace it with **This Station**. If the Project defaults cannot be
+does not replace it with **This Station**. A paired Station whose stored
+credential lacks `orchestration:operate` is listed as unable to start work and
+cannot be chosen. If the Project defaults cannot be
 loaded, retry that read or make an explicit Station choice.
 
 Remote environments are re-verified and connected to load their available Agents

@@ -1,6 +1,7 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import crypto from 'node:crypto';
 import { createInterface } from 'node:readline';
+import type { ChildWorkEndedBy } from '@kontourai/station-contracts/child-work';
 import {
   ENGINE_MEMORY_EXHAUSTED_CODE,
   WORKLOAD_COMMAND_OOM_KILLED_CODE,
@@ -193,6 +194,7 @@ export class CodexAdapterTransport {
     ) => void,
     private readonly onNotificationError?: (method: string) => void,
     private readonly onSessionExit?: (threadId: string) => void,
+    private readonly onStderr?: () => void,
   ) {}
 
   streamEvents(options?: {
@@ -255,18 +257,11 @@ export class CodexAdapterTransport {
     );
 
     const stderr = createInterface({ input: record.process.stderr });
+    let reportedStderr = false;
     stderr.on('line', (line) => {
-      if (!line.trim()) return;
-      this.publish({
-        eventId: crypto.randomUUID(),
-        provider: 'codex',
-        threadId: record.externalThreadId,
-        createdAt: this.now().toISOString(),
-        method: 'runtime.warning',
-        severity: 'warning',
-        message: 'Codex app-server emitted stderr output.',
-        code: 'codex-stderr',
-      });
+      if (!line.trim() || reportedStderr) return;
+      reportedStderr = true;
+      this.onStderr?.();
     });
 
     const workloadOutcome = childWorkloadOutcome(record.process);
@@ -319,7 +314,7 @@ export class CodexAdapterTransport {
         record,
         () => new Error(`Codex app-server failed to start: ${error.message}`),
       );
-      this.settleUnresolvedToolCalls(record, nowIso);
+      this.settleUnresolvedToolCalls(record, nowIso, undefined);
       this.publishOrphanedTurnFailure(
         record,
         nowIso,
@@ -370,7 +365,7 @@ export class CodexAdapterTransport {
         () =>
           new Error(`Codex app-server stdin write failed: ${error.message}`),
       );
-      this.settleUnresolvedToolCalls(record, nowIso);
+      this.settleUnresolvedToolCalls(record, nowIso, undefined);
       this.publishOrphanedTurnFailure(
         record,
         nowIso,
@@ -875,7 +870,9 @@ export class CodexAdapterTransport {
     // `publishOrphanedTurnFailure`'s `skipSynthesis` doc): that RPC's caller
     // owns the turn's terminal fate and, for the one caller that also calls
     // `stopSession` (the cooperative-stop deadline), already published it.
-    this.settleUnresolvedToolCalls(record, nowIso());
+    // A requested stop is not an interruption: a child still running reads
+    // "No result", as Claude's does, never `engine-exit` (#4266).
+    this.settleUnresolvedToolCalls(record, nowIso(), undefined);
     this.publishOrphanedTurnFailure(
       record,
       nowIso(),
@@ -1223,7 +1220,7 @@ export class CodexAdapterTransport {
       // ordinary path's comment for why that half is defensive rather than a
       // fix for an observed leak.
       if (!record.stopped) {
-        this.settleUnresolvedToolCalls(record, nowIso);
+        this.settleUnresolvedToolCalls(record, nowIso, 'engine-exit');
       }
       return;
     }
@@ -1275,7 +1272,7 @@ export class CodexAdapterTransport {
       // `record.terminalPublishedForTurnId` — the superseded record's own
       // bookkeeping — and the turn it would close is not the one in flight).
       if (!record.stopped) {
-        this.settleUnresolvedToolCalls(record, nowIso);
+        this.settleUnresolvedToolCalls(record, nowIso, 'engine-exit');
       }
       return;
     }
@@ -1290,7 +1287,7 @@ export class CodexAdapterTransport {
     // the turn's terminal fact before the session's, so nothing turnId-keyed
     // (the completion-notification listener, `hasActiveTurn`, the stall
     // watchdog) is left waiting on a turn that is already over.
-    this.settleUnresolvedToolCalls(record, nowIso);
+    this.settleUnresolvedToolCalls(record, nowIso, 'engine-exit');
     this.publishOrphanedTurnFailure(
       record,
       nowIso,
@@ -1339,6 +1336,18 @@ export class CodexAdapterTransport {
   private settleUnresolvedToolCalls(
     record: CodexSessionRecord,
     nowIso: string,
+    /**
+     * What ended a still-running child, when observed. `engine-exit` only
+     * where the app-server process is known to have gone unbidden (it
+     * exited): Codex runs children as threads inside that process. A
+     * deliberate `stopSession` passes none, since a requested stop is not an
+     * interruption, and the process `error` and stdin EPIPE doors cannot
+     * say the process is gone.
+     * Either way the child settles `unresolved`; `engine-exit` is what makes
+     * it read as interrupted. Tool calls stay `unresolved` at every door:
+     * whether the tool ran is unknown however the process ended.
+     */
+    childEndedBy: ChildWorkEndedBy | undefined,
   ): void {
     settleUnresolvedCodexToolCalls({
       record,
@@ -1346,12 +1355,15 @@ export class CodexAdapterTransport {
       publish: (event) => this.publish(event, record),
     });
     // #2458: a subagent still running when its session ends can never
-    // report again, so it settles `unresolved` — same doors, same moment.
-    settleOpenCodexChildren({
-      record,
-      nowIso: () => nowIso,
-      publish: (event) => this.publish(event, record),
-    });
+    // report again, so it settles here — same doors, same moment.
+    settleOpenCodexChildren(
+      {
+        record,
+        nowIso: () => nowIso,
+        publish: (event) => this.publish(event, record),
+      },
+      childEndedBy,
+    );
   }
 
   /**

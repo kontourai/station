@@ -211,8 +211,22 @@ vi.mock('../contexts/open-chats-store', async () => {
 });
 
 vi.mock('@kontourai/station-sdk', () => ({
+  // Home's start composer reads Feature Previews (the visual-skills ⋯).
+  useFeaturePreviewsQuery: () => ({ data: [] }),
   // The start composer's Enable (a server create); no test here enables.
   useMaterializeEngineAgentMutation: () => ({ mutateAsync: vi.fn() }),
+  // The composer's "Runs on" control reads where this caller may run work;
+  // no other Station is listed here, so it stays plain text.
+  useSshEnvironmentsQuery: () => ({
+    data: [],
+    isSuccess: true,
+    isError: false,
+  }),
+  usePeerCredentialsQuery: () => ({
+    data: [],
+    isSuccess: true,
+    isError: false,
+  }),
   // archive#3122: Home resolves its Workspace Pane renderer through
   // the shared selector, which reads the MCP-app host capability from config.
   // Undefined data is the real pre-load shape, and Home's built-in renderer

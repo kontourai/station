@@ -243,6 +243,14 @@ is separate. Missing or unavailable provenance means unknown. Parent references
 do not grant read access. See the [Session API](session-api.md) for continuity
 and authorization limits. This export requires a published version containing it.
 
+`listWorkClaims(apiBase, options?)` reads the active work claims of the
+Sessions the requester may read (`GET /api/orchestration/work-claims`, a
+person's read; agents read claims through Station Control). Each entry is a
+`WorkClaimView` from `@kontourai/station-contracts/work-claims`; an entry the
+contract cannot parse fails the read rather than being dropped. A Station
+older than the route answers 404. This export requires a published version
+containing it.
+
 `fetchSSE` accepts `initialLastEventId` for a replacement stream. It sends that
 cursor as `Last-Event-ID` on the first request and continues updating the cursor
 from accepted SSE frames during transport retries. Callers should provide the
@@ -907,6 +915,11 @@ Returns a query whose data is the current inbound paired-device registry from
 `GET /api/pairing/devices`. Device names are current read-time values; do not
 copy them into session or event records. An authorization or response failure
 is a query error, not an empty device list.
+
+`confirmDevicePairingRequest` throws `StationStepUpRequiredError` when the
+operator must complete a passkey review. Its transaction has an ID, review URL
+and expiry; a 202 response means approval is pending, not completed. The
+caller must review the result before presenting the request as approved.
 
 #### `useStationPeopleQuery(apiBase?)` and personal access tokens
 
@@ -2063,6 +2076,12 @@ the `resolved` arm whether the next ordinary turn starts a new Session
 and so does a server that would refuse that turn (a handoff awaiting its target,
 or a context delivery not yet reconciled). A value that is not a boolean is
 refused as `invalid-response`.
+Every arm may also carry `callerAccess` (`{ continue, startChat }`): whether
+the server's HTTP boundary would let THIS caller post
+`POST /api/orchestration/chat/:conversationId/continue` or
+`POST /api/orchestration/chat`. Older servers, and requests with no
+authenticated principal, omit it; treat absent as unknown. A present value that
+is not that pair of booleans is refused as `invalid-response`.
 Transport, rejection, and invalid wire failures throw a
 typed `ConversationOpenResolutionFailure` rather than degrading to an empty
 chat. Optional `options.signal` cancels the request and `options.timeoutMs`
@@ -3931,6 +3950,20 @@ interface ProviderMetadata {
 ---
 
 ## Notifications API
+
+### Person notification query domain
+
+`fetchPersonNotifications`, `markPersonNotificationRead`,
+`dismissPersonNotification` and their `usePersonNotificationsQuery`,
+`useMarkPersonNotificationReadMutation` and
+`useDismissPersonNotificationMutation` hooks use `/api/me/notifications`.
+They require a captured `{ apiBase, authorityKey, isCurrent }` request scope;
+cache keys include that authority and late responses are refused after it
+changes. Read and dismiss take an id and an optional `clientSessionId`: callers
+without a paired Device identity must supply the session id. A host without the
+list route reports that person notifications are unsupported and suggests an
+update. A mutation's 404 can also mean the notification was not found, so it
+reports both possibilities. See [person notification routes](api.md#person-notifications).
 
 ### `NotificationsAPI`
 
@@ -5835,7 +5868,10 @@ Pass the render-captured request scope and abort signal in `options`. The
 read-only POST returns a validated HTML page plus isolated frame origin, or a
 bounded raster preview. `thread` selects an authorized Session workspace;
 verified Git worktrees of that repository are also eligible. The returned bytes
-are display data, not permission to navigate to a host filesystem URL.
+are display data, not permission to navigate to a host filesystem URL. A failed
+read throws `WorkspaceVisualFileError` with `status` and a `reason`
+(`WorkspaceVisualFileUnavailableReason`): the server's refusal, `unauthorized`,
+`server-error` or `unavailable`. Branch on `reason`, not the message.
 
 ## Walkthroughs
 

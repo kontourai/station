@@ -1,7 +1,10 @@
 import './TaskChatStart.css';
 import type { ProjectRunLocations } from '@kontourai/station-contracts/project';
 import type { InstalledSkillExperienceV1 } from '@kontourai/station-contracts/skill-experience';
-import { useSkillExperienceInventoryQuery } from '@kontourai/station-sdk';
+import {
+  type DelegatedTaskHandle,
+  useSkillExperienceInventoryQuery,
+} from '@kontourai/station-sdk';
 import {
   sameSkillExperienceIdentity,
   skillExperienceInputDefaults,
@@ -32,6 +35,7 @@ import {
   useBindStartProject,
   useStartSelection,
 } from '../../hooks/useStartSelection';
+import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import type {
   NewChatHandoff,
@@ -90,7 +94,10 @@ import {
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
 import { ModelPickerDialogFrame } from '../session/ModelPickerDialogFrame';
-import { SkillExperiencePicker } from '../skill-experiences/SkillExperiencePicker';
+import {
+  SkillExperiencePicker,
+  VISUAL_SKILLS_PREVIEW_ID,
+} from '../skill-experiences/SkillExperiencePicker';
 import { describeReadFailure, Empty, ErrorState, SkeletonList } from '../state';
 import {
   AutomaticEnginePreparation,
@@ -184,7 +191,8 @@ interface NewChatModalProps {
     approvalMode?: ApprovalMode,
   ) => void | Promise<void>;
   onClose: () => void;
-  onTaskStarted?: () => void;
+  /** A remote start's task was accepted on `stationName`. */
+  onTaskStarted?: (task: DelegatedTaskHandle, stationName: string) => void;
   draftContext?: CodingChatContextDraft | null;
   mode?: NewChatModalMode;
   requestAuthority?: NewChatSetupAuthority;
@@ -267,13 +275,20 @@ export function NewChatModal({
     startSelection?.approvalMode,
   );
   const automaticMode = startWithDefault && !mode && !showChatOptions;
+  // Visual skills are a Feature Preview: off, nothing here offers or fetches them.
+  const visualSkillsEnabled = useSurfaceVisibilityFlags().has(
+    VISUAL_SKILLS_PREVIEW_ID,
+  );
   const experienceInventory = useSkillExperienceInventoryQuery({
-    enabled: !mode && !automaticMode,
+    enabled: visualSkillsEnabled && !mode && !automaticMode,
     refetchOnMount: 'always',
   });
   const [skillsOpen, setSkillsOpen] = useState(false);
-  const [experience, setExperience] =
+  const [chosenExperience, setExperience] =
     useState<InstalledSkillExperienceV1 | null>(null);
+  // Turning the preview off mid-draft drops the chosen skill from the chip,
+  // the start check and the draft alike, not only from the pickers.
+  const experience = visualSkillsEnabled ? chosenExperience : null;
   const [experienceInputs, setExperienceInputs] = useState<
     Record<string, string>
   >({});
@@ -304,7 +319,6 @@ export function NewChatModal({
   const startVoice = useStartDictation((text) =>
     setPrompt((current) => appendDictation(current, text)),
   );
-  const [taskNotice, setTaskNotice] = useState<string | null>(null);
   const reportDraft = useEffectEvent((text: string) => onDraftChange?.(text));
   useEffect(() => {
     reportDraft(prompt);
@@ -333,7 +347,7 @@ export function NewChatModal({
   const showStart = composerFirst && !automaticMode;
   // Which chip menu is open, and the control that opened it.
   const [chipMenu, setChipMenu] = useState<{
-    kind: 'agents' | 'project' | 'model';
+    kind: 'agents' | 'project' | 'model' | 'station';
     trigger: HTMLElement | null;
     agentSlug?: string;
   } | null>(null);
@@ -512,7 +526,7 @@ export function NewChatModal({
       // Visual skills can show in the composer (opened there, or handed
       // over from Home with a message), so a Registry round trip refetches
       // them whenever this is not a fork.
-      if (!mode) await experienceInventory.refetch();
+      if (!mode && visualSkillsEnabled) await experienceInventory.refetch();
       if (refreshSetup) await refreshSetup();
       else
         await Promise.all([
@@ -1574,32 +1588,39 @@ export function NewChatModal({
           </div>
         )}
 
-        {!showStart && !mode && !startWithDefault && !initialPrompt && (
-          <SkillExperiencePicker
-            query={experienceInventory}
-            selected={experience}
-            current={Boolean(currentExperience)}
-            inputs={experienceInputs}
-            onChange={setExperienceInputs}
-            onSelect={(entry) => {
-              if (
-                experience &&
-                sameSkillExperienceIdentity(experience.identity, entry.identity)
-              )
-                return;
-              setExperience(entry);
-              setExperienceInputs(
-                skillExperienceInputDefaults(entry.definition),
-              );
-            }}
-            onRemove={() => setExperience(null)}
-            onBrowse={() => {
-              preservedAgentSlug.current = flatList[selectedAgentIndex]?.slug;
-              preserveSetupContext.current = true;
-              setupReturn.begin('/registry');
-            }}
-          />
-        )}
+        {visualSkillsEnabled &&
+          !showStart &&
+          !mode &&
+          !startWithDefault &&
+          !initialPrompt && (
+            <SkillExperiencePicker
+              query={experienceInventory}
+              selected={experience}
+              current={Boolean(currentExperience)}
+              inputs={experienceInputs}
+              onChange={setExperienceInputs}
+              onSelect={(entry) => {
+                if (
+                  experience &&
+                  sameSkillExperienceIdentity(
+                    experience.identity,
+                    entry.identity,
+                  )
+                )
+                  return;
+                setExperience(entry);
+                setExperienceInputs(
+                  skillExperienceInputDefaults(entry.definition),
+                );
+              }}
+              onRemove={() => setExperience(null)}
+              onBrowse={() => {
+                preservedAgentSlug.current = flatList[selectedAgentIndex]?.slug;
+                preserveSetupContext.current = true;
+                setupReturn.begin('/registry');
+              }}
+            />
+          )}
 
         {/* Context picker (the list; the composer has its project chip) */}
         {!showStart && (
@@ -1832,54 +1853,29 @@ export function NewChatModal({
             }
             stationControl={
               <StartStationControl
-                prompt={prompt}
-                projectSlug={viewModel.selectedProject?.slug}
-                projectName={viewModel.selectedProject?.name}
-                defaultEnvironment={
-                  viewModel.selectedProject?.defaultEnvironment
-                }
-                agentSlug={draftAgent?.slug}
-                executionAgentId={
-                  draftAgent
-                    ? start.modelChoiceFor(draftAgent)?.executionAgentId
-                    : undefined
-                }
-                expectedDefinitionFingerprint={
-                  draftAgent
-                    ? start.modelChoiceFor(draftAgent)
-                        ?.expectedDefinitionFingerprint
-                    : undefined
-                }
                 environmentId={
                   draftAgent
                     ? start.modelChoiceFor(draftAgent)?.environmentId
                     : undefined
                 }
-                providerOptions={
-                  draftAgent
-                    ? start.modelChoiceFor(draftAgent)?.providerOptions
-                    : undefined
+                defaultEnvironment={
+                  viewModel.selectedProject?.defaultEnvironment
                 }
-                model={
-                  draftAgent
-                    ? start.modelChoiceFor(draftAgent)?.modelId
-                    : undefined
-                }
+                canChoose={Boolean(draftAgent)}
+                projectSelected={Boolean(viewModel.selectedProject)}
                 disabled={
                   submitting ||
                   Boolean(experience) ||
                   Boolean(draftContext) ||
                   !selectedContextResolved
                 }
-                onPromptChange={setPrompt}
-                onStarted={(_task, station, sentPrompt) => {
-                  setPrompt((current) =>
-                    current === sentPrompt ? '' : current,
-                  );
-                  setTaskNotice(
-                    `Task started on ${station}. Open Activity to follow its progress.`,
-                  );
-                }}
+                onOpen={(trigger) =>
+                  setChipMenu({
+                    kind: 'station',
+                    trigger,
+                    agentSlug: draftAgent?.slug,
+                  })
+                }
               />
             }
             onOpenAgents={(trigger) => {
@@ -1890,14 +1886,18 @@ export function NewChatModal({
             onOpenProject={(trigger) =>
               setChipMenu({ kind: 'project', trigger })
             }
-            overflowActions={[
-              {
-                key: 'skills',
-                label: 'Use a visual skill',
-                checked: skillsOpen || Boolean(experience),
-                onSelect: () => setSkillsOpen((open) => !open),
-              },
-            ]}
+            overflowActions={
+              visualSkillsEnabled
+                ? [
+                    {
+                      key: 'skills',
+                      label: 'Use a visual skill',
+                      checked: skillsOpen || Boolean(experience),
+                      onSelect: () => setSkillsOpen((open) => !open),
+                    },
+                  ]
+                : []
+            }
             skill={
               experience
                 ? {
@@ -1940,8 +1940,7 @@ export function NewChatModal({
                 : undefined
             }
           >
-            {taskNotice && <p role="status">{taskNotice}</p>}
-            {(skillsOpen || experience) && (
+            {visualSkillsEnabled && (skillsOpen || experience) && (
               <SkillExperiencePicker
                 query={experienceInventory}
                 selected={experience}
@@ -2248,12 +2247,12 @@ export function NewChatModal({
               setRemoteLaunch(null);
               setShowChatOptions(true);
             }}
-            onDelegated={(_task, _target, placement) => {
+            onDelegated={(task, _target, placement) => {
               setRemoteLaunch(null);
               setPrompt((current) =>
                 current === placement.prompt ? '' : current,
               );
-              onTaskStarted?.();
+              onTaskStarted?.(task, placement.stationName);
             }}
           />
         </React.Suspense>

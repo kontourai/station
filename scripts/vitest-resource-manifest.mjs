@@ -535,6 +535,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // to prove reclaim, and runs one real `tsc` on a two-file temp project
   // three times to prove a warm incremental run still reports errors.
   'scripts/__tests__/typecheck-host-slots.test.ts',
+  // Host heavy-check slots: runs the slot runner as short-lived children
+  // against a PRIVATE slot directory (never the host's) to prove queueing
+  // order, dead-holder reclaim, the bounded wait and nested admission.
+  'scripts/__tests__/heavy-check-slots.test.ts',
   // Drives verification CLI admission without launching compilers.
   'scripts/__tests__/live-service-verification.process.test.ts',
   // Real loopback file-server CLI with owned child cleanup and artifact replacement.
@@ -641,6 +645,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/dogfood-reconcile-scenario-parity.test.ts',
   // One bounded node child proving the cli-doc parity entry point.
   'scripts/__tests__/cli-doc-parity.test.ts',
+  // Bounded node children run the CLI ↔ Station Control parity entry point
+  // against fixture manifests, and read the ratchet base through git.
+  'scripts/__tests__/cli-mcp-parity.test.ts',
   // Bounded node children prove generation and check failures in disposable roots.
   'scripts/__tests__/metric-reference.test.ts',
   // Regenerate-and-diff plus real-entry-point runs: docs-index --check and
@@ -1354,6 +1361,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // launches a real Chromium via `@playwright/test` to measure real cascade-
   // resolved layout at phone viewports.
   'src-ui/src/components/notifications/__tests__/NotificationContainer.touch-target.test.tsx',
+  // Owns Chromium to measure the chat dock's failed-session banner inset at a
+  // phone viewport, in both stylesheet injection orders.
+  'src-ui/src/components/chat-dock/__tests__/ChatDockFailureStack.geometry.test.tsx',
   // Runs real canvas/React startup handoffs with Chromium's controlled clock.
   'src-ui/src/__tests__/startup-presentation.browser.test.tsx',
   // Mounted Coding tool navigation and sticky controls own a Chromium instance.
@@ -1867,8 +1877,17 @@ export function assertOrdinaryVitestSelection(
     selected.length !== groups.ordinary.length ||
     selected.some((file, index) => file !== groups.ordinary[index])
   ) {
+    const expected = new Set(groups.ordinary);
+    const actual = new Set(selected);
+    const missing = groups.ordinary.filter((file) => !actual.has(file));
+    const unexpected = selected.filter((file) => !expected.has(file));
+    const describe = (files) =>
+      files
+        .slice(0, 10)
+        .map((file) => file.slice(0, 240))
+        .join(', ') || 'none';
     throw new Error(
-      'compact ordinary Vitest selection does not exactly equal the manifest partition',
+      `compact ordinary Vitest selection does not exactly equal the manifest partition; missing from selection (${missing.length}): ${describe(missing)}; unexpected in selection (${unexpected.length}): ${describe(unexpected)}`,
     );
   }
   return selected;

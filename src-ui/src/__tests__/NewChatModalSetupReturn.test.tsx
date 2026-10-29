@@ -7,6 +7,7 @@ import type {
   SkillExperienceDefinitionV1,
   SkillExperienceInventoryV1,
 } from '@kontourai/station-contracts/skill-experience';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
   cleanup,
@@ -49,6 +50,10 @@ vi.mock('../contexts/AuthorityPersistenceContext', () => ({
   }),
 }));
 vi.mock('@kontourai/station-sdk', () => ({
+  // The visual-skills Feature Preview on, so the start composer offers them.
+  useFeaturePreviewsQuery: () => ({
+    data: [{ id: 'visual-skills', enabled: true }],
+  }),
   useAgentsQuery: () => ({ data: [] }),
   useConfigQuery: () => ({ data: {}, dataUpdatedAt: 1, refetch: vi.fn() }),
   useSkillExperienceInventoryQuery: () => ({
@@ -56,6 +61,17 @@ vi.mock('@kontourai/station-sdk', () => ({
     refetch: experienceRead.refetch,
   }),
   useMaterializeEngineAgentMutation: () => ({ mutateAsync: vi.fn() }),
+  // The Station choice's reads; nothing here lists another Station.
+  useSshEnvironmentsQuery: () => ({
+    data: [],
+    isSuccess: true,
+    isError: false,
+  }),
+  usePeerCredentialsQuery: () => ({
+    data: [],
+    isSuccess: true,
+    isError: false,
+  }),
 }));
 const screenSize = vi.hoisted(() => ({ mobile: false }));
 vi.mock('../hooks/useIsMobile', async (importActual) => ({
@@ -207,13 +223,26 @@ function harness(props: Partial<Parameters<typeof NewChatModal>[0]> = {}) {
     requestAuthority: authority,
     projectIconBySlug: new Map<string, string>(),
   };
-  const view = render(<ModalHarness {...defaults} {...props} />);
+  // The start composer's Station control reads this caller's authority, as
+  // in the app, which always mounts it under a QueryClient.
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const view = render(
+    <QueryClientProvider client={client}>
+      <ModalHarness {...defaults} {...props} />
+    </QueryClientProvider>,
+  );
   return {
     ...view,
     onSelect,
     onClose,
     update: (next: Partial<Parameters<typeof NewChatModal>[0]>) =>
-      view.rerender(<ModalHarness {...defaults} {...props} {...next} />),
+      view.rerender(
+        <QueryClientProvider client={client}>
+          <ModalHarness {...defaults} {...props} {...next} />
+        </QueryClientProvider>,
+      ),
   };
 }
 async function openSetup() {

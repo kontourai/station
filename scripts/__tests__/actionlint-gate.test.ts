@@ -3900,6 +3900,52 @@ describe('pull-request and merge-queue workflows restore shared caches only', ()
     ).toEqual([]);
   });
 
+  test.each(['fast-checks-plan', 'fast-checks-shard', 'fast-checks-statics'])(
+    'refuses changed Chromium cache authority in %s',
+    (jobId) => {
+      const file = '.github/workflows/ci.yml';
+      for (const mutate of [
+        (step: Record<string, any>) => {
+          step.with.path = '.';
+        },
+        (step: Record<string, any>) => {
+          step.with.key = 'untrusted';
+        },
+        (step: Record<string, any>) => {
+          step.with['restore-keys'] = 'untrusted-';
+        },
+        (step: Record<string, any>) => {
+          step.env = { NODE_OPTIONS: '--require=./candidate.js' };
+        },
+        (step: Record<string, any>) => {
+          step.if = 'always()';
+        },
+        (step: Record<string, any>) => {
+          step.uses = SAVE_ACTION;
+        },
+      ]) {
+        const document = doc(file);
+        const step = document.jobs[jobId].steps.find(
+          (candidate) => candidate.name === 'Restore trusted Chromium cache',
+        );
+        if (!step) throw new Error('Expected Chromium restore');
+        mutate(step);
+        const findings = persistentRunnerPolicyFindings([{ file, document }]);
+        expect(
+          findings.some(
+            (finding) =>
+              finding.jobId === jobId &&
+              [
+                WRITE,
+                RESTORE,
+                'pull_request_target router jobs must not add unreviewed custom actions',
+              ].includes(finding.message),
+          ),
+        ).toBe(true);
+      }
+    },
+  );
+
   test.each([
     ['a save subaction', { uses: SAVE_ACTION, with: { path: 'x', key: 'k' } }],
     [
@@ -4115,7 +4161,7 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
       uses('kontourai/station/.github/actions/setup-verified-pnpm@').length,
     ).toBeGreaterThan(0);
     expect(uses('github/codeql-action/init@')).toHaveLength(1);
-    expect(uses('actions/cache/restore@')).toHaveLength(1);
+    expect(uses('actions/cache/restore@')).toHaveLength(4);
     // The one live untrusted -> reusable-workflow edge, and the cache it would
     // reach if its guard ever stopped excluding untrusted events.
     expect(docOf(workflows, CI).jobs['full-regression'].uses).toBe(`./${FULL}`);
@@ -4536,6 +4582,24 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
         [],
       ],
       [
+        'reviewed signed pnpm bootstrap with the exact non-Intel condition',
+        {
+          name: 'Setup pinned pnpm',
+          uses: VERIFIED_PNPM_SETUP_ACTION,
+          if: PNPM_SETUP_NATIVE_GUARD,
+        },
+        [],
+      ],
+      [
+        'signed pnpm bootstrap with an unreviewed condition',
+        {
+          name: 'Setup pinned pnpm',
+          uses: VERIFIED_PNPM_SETUP_ACTION,
+          if: 'always()',
+        },
+        [UNREVIEWED],
+      ],
+      [
         'signed pnpm bootstrap at a different source',
         {
           name: 'Setup pinned pnpm',
@@ -4680,10 +4744,12 @@ describe('Intel macOS pnpm provisioning (#2675)', () => {
     return { workflows, job };
   }
   const nativeSetup = (job: Job) => {
-    const step = job.steps.find((candidate) =>
-      String(candidate.uses).startsWith('pnpm/setup@'),
+    const step = job.steps.find(
+      (candidate) =>
+        String(candidate.uses).startsWith('pnpm/setup@') ||
+        candidate.uses === VERIFIED_PNPM_SETUP_ACTION,
     );
-    if (!step) throw new Error('Expected pnpm/setup.');
+    if (!step) throw new Error('Expected a pinned pnpm setup.');
     return step;
   };
   const withoutJsStep = (job: Job) => {
@@ -4824,6 +4890,16 @@ describe('Intel macOS pnpm provisioning (#2675)', () => {
       ).not.toContainEqual(INTEL_MESSAGE);
     },
   );
+
+  test('does not require the native pnpm Intel workaround for verified JS setup in another job', () => {
+    expect(
+      persistentRunnerPolicyFindings(
+        oneJob('macos-15-intel', [
+          { name: 'Setup pinned pnpm', uses: VERIFIED_PNPM_SETUP_ACTION },
+        ]),
+      ).map(({ message }) => message),
+    ).not.toContainEqual(INTEL_MESSAGE);
+  });
 });
 
 describe('landing policy revision and credential binding', () => {

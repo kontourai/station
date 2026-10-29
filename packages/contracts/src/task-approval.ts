@@ -1,3 +1,6 @@
+import { CHAT_APP_IDS, type ChatAppId } from './chat-app.js';
+import { boundaryText, enumValue } from './contract-validation.js';
+
 /** Bounds are UTF-16 code units; max+1 refuses without truncation. */
 export const TASK_APPROVAL_LIMITS = Object.freeze({ idChars: 256 });
 
@@ -6,8 +9,7 @@ export interface TaskApprovalDecision {
   readonly sessionId: string;
   readonly decision: 'allow' | 'deny';
   readonly decider: { readonly principalId: string };
-  /** Chat channels must match ChatAppId in #4236; Station is the local channel. */
-  readonly channel: 'station' | 'slack' | 'discord';
+  readonly channel: 'station' | ChatAppId;
   readonly decidedAt: string;
 }
 
@@ -67,9 +69,7 @@ export function parseTaskApprovalDecision(
     (value.decision !== 'allow' && value.decision !== 'deny') ||
     !closed(value.decider, ['principalId']) ||
     !id(value.decider.principalId) ||
-    (value.channel !== 'station' &&
-      value.channel !== 'slack' &&
-      value.channel !== 'discord') ||
+    (value.channel !== 'station' && !enumValue(value.channel, CHAT_APP_IDS)) ||
     typeof value.decidedAt !== 'string' ||
     value.decidedAt.length !== 24 ||
     !Number.isFinite(Date.parse(value.decidedAt)) ||
@@ -87,23 +87,7 @@ export function parseTaskApprovalDecision(
 }
 
 function id(value: unknown): value is string {
-  if (
-    typeof value !== 'string' ||
-    value.length === 0 ||
-    value.length > TASK_APPROVAL_LIMITS.idChars ||
-    value.trim() !== value
-  )
-    return false;
-  for (const char of value) {
-    const point = char.codePointAt(0) ?? 0;
-    if (
-      point < 32 ||
-      (point >= 0x7f && point <= 0x9f) ||
-      (point >= 0xd800 && point <= 0xdfff)
-    )
-      return false;
-  }
-  return true;
+  return boundaryText(value, TASK_APPROVAL_LIMITS.idChars);
 }
 
 function closed(
