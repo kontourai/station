@@ -10,8 +10,8 @@
  * and docs/guides/code-quality.md both warn against.
  *
  * The one case that is NOT a failure is Station's local single-operator
- * mode with no `VerifiedIdentity` presented — but (station#4075 stage 1
- * review, FINDING 2) that case is gated on a VERIFIED AUTHORITY FACT, never
+ * mode with no `VerifiedIdentity` presented — but (station#4075 stage 1)
+ * that case is gated on a VERIFIED AUTHORITY FACT, never
  * on the `authorityMode` label alone. The mode string is caller-supplied
  * context, not proof; treating it as proof was the defect. The fact this
  * resolver requires is {@link OperatorAuthorityFact} — EITHER the mint-time
@@ -34,7 +34,7 @@
  * throws in BOTH modes — a personal-mode request that cannot evidence the
  * fact is exactly as unresolvable as a hosted request with no identity.
  *
- * station#4075 stage 1 review round 2, N1: the two checks above are the
+ * station#4075 stage 1: the two checks above are the
  * ONLY gate on minting `human:local:operator` — `humanPrincipal()` itself
  * now refuses to build that id for anyone (`LOCAL_OPERATOR_PROVIDER` is
  * reserved), so this resolver constructs the literal `PrincipalRef` object
@@ -54,7 +54,7 @@
  * only ever reaches the `display` field, never `id`.
  *
  * ## The third outcome: hosted, no identity, a bound tenant (station#4075
- * stage 2 review round 3)
+ * stage 2)
  *
  * Stage 2's original hosted branch had only two outcomes — a verified
  * `VerifiedIdentity` resolves a `human` principal, anything else throws —
@@ -126,15 +126,14 @@ export class PrincipalUnresolvedError extends Error {
  *   (`authority === 'operator-credential'`, `runtime-http.ts`'s auth
  *   middleware, never re-checked here), regardless of transport locality.
  *
- *   Fix round (review MED-4): the operator secret did NOT already carry
- *   full API authority everywhere else this request goes — that overstated
- *   the prior state. Before this fix, this principal gate was the SOLE
- *   refusal standing between a remote holder of the operator secret and
- *   chat send, ownership stamping, `/api/orchestration/events`,
+ *   The operator secret did NOT already carry full API authority everywhere
+ *   else this request goes. Before this fix, this principal gate was the SOLE
+ *   refusal standing between a remote holder of the operator secret and chat
+ *   send, ownership stamping, `/api/orchestration/events`,
  *   `/api/orchestration/commands`, attachment staging, and operator-level
  *   Task-room participation — all of those routes reach a principal through
- *   this exact resolver, and all of them threw `PrincipalUnresolvedError`
- *   for this caller.
+ *   this exact resolver, and all of them threw `PrincipalUnresolvedError` for
+ *   this caller.
  *
  *   What WAS already true, and is the actual reason refusing this caller was
  *   incoherent rather than protective: the operator secret carries
@@ -169,7 +168,7 @@ export class PrincipalUnresolvedError extends Error {
  * `resolveCredentialAuthority` for the second) — this resolver only ever
  * reads the fields.
  *
- * Fix round (review MED-3): a plain interface with BOTH fields optional lets
+ * Why a discriminated union: a plain interface with BOTH fields optional lets
  * `{}` typecheck as a fully-formed `OperatorAuthorityFact` — a caller that
  * meant to pass a real fact and instead passed an empty object (a
  * construction bug, not a "no fact" caller) would silently fail closed
@@ -206,7 +205,7 @@ interface ResolvePrincipalOptions {
   resolveOperatorDisplay?: () => string;
   /**
    * Cosmetic display only (never the id) for the hosted-tenant principal
-   * (station#4075 stage 2 review round 3). Optional, defaulting to the
+   * (station#4075 stage 2). Optional, defaulting to the
    * bare tenant id — a real display name belongs to a real individual,
    * which this principal by construction does not have.
    */
@@ -255,7 +254,7 @@ export function resolvePrincipal(
   if (
     authorityMode === 'personal' &&
     operatorAuthority !== undefined &&
-    // `OperatorAuthorityFact` is a discriminated union (review MED-3) — one
+    // `OperatorAuthorityFact` is a discriminated union — one
     // field or the other, never both, never neither — so a plain `.locality`/
     // `.verifiedOperatorCredential` access does not typecheck across it
     // without first narrowing on which one is present.
@@ -263,7 +262,7 @@ export function resolvePrincipal(
       ? operatorAuthority.locality === 'home-possession'
       : operatorAuthority.verifiedOperatorCredential === true)
   ) {
-    // station#4075 stage 1 review round 2, N1: `humanPrincipal` REFUSES to
+    // station#4075 stage 1: `humanPrincipal` REFUSES to
     // mint `LOCAL_OPERATOR_PROVIDER` for any caller — that reservation is
     // exactly what stops an unauthenticated call from forging
     // `human:local:operator` via the public constructor. This resolver is
@@ -291,7 +290,7 @@ export function resolvePrincipal(
     return operatorPrincipal;
   }
   if (authorityMode === 'hosted' && hostedTenant) {
-    // station#4075 stage 2 review round 3: the third hosted outcome — see
+    // station#4075 stage 2: the third hosted outcome — see
     // the module docs' "third outcome" section. `tenantPrincipal()` itself
     // is reserved (always throws), so — exactly like the local-operator
     // literal above — this resolver constructs the literal `PrincipalRef`

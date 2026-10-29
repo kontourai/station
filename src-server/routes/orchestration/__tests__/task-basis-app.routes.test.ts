@@ -8,7 +8,10 @@ import {
   tenantId,
 } from '@kontourai/station-contracts/tenancy';
 import { describe, expect, test, vi } from 'vitest';
-import { basisInteropCollection } from '../../../../tests/helpers/basis-interop-fixture';
+import {
+  BASIS_INTEROP_SESSION_ID,
+  basisInteropCollection,
+} from '../../../../tests/helpers/basis-interop-fixture';
 import { createTaskBasisAppReadModule } from '../../../services/projects/task-basis-app-read-module';
 import type { TaskGraphService } from '../../../services/projects/task-graph-service';
 import { createTaskRoutes } from '../tasks';
@@ -24,7 +27,7 @@ function fixture(hosted = false, keptOnly = false) {
   let scope = { projectId: 'fixture-project' };
   let links = source.answers.map((answer, i) => ({
     id: answer.answerReferenceId,
-    targetId: encodeTaskTurnReference('fixture-session', `turn-${i}`),
+    targetId: encodeTaskTurnReference(BASIS_INTEROP_SESSION_ID, `turn-${i}`),
   }));
   let resultLinks = source.keptToolResults.map((result) => ({
     id: result.referenceId,
@@ -68,7 +71,7 @@ function fixture(hosted = false, keptOnly = false) {
     callerBindingForRequest: () => 'caller_'.padEnd(32, 'a'),
     isRequestPrincipalCurrent: () => credentialCurrent,
     canReadSession: (sessionId) =>
-      sessionCurrent && sessionId === 'fixture-session',
+      sessionCurrent && sessionId === BASIS_INTEROP_SESSION_ID,
   });
   const request = (body: string, method = 'POST') =>
     app.request('/fixture-task/basis/app-read', {

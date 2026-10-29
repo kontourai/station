@@ -41,7 +41,9 @@ function reads(coverageEvents: any[]) {
     isEphemeralSession: () => false,
     sessionAttributionFor: () => null,
     listEventPayloads: () => [],
-    listUsageEventRecords: () => [],
+    listResolvedEventPayloads: () => [],
+    readUsageRevision: () => 'fixture',
+    listUsageEventPayloads: () => [],
     listUsageReceiptEvents: () => [],
     listUsageCoverageEvents: () => coverageEvents,
     searchConversationMessages: () => [],
@@ -166,7 +168,8 @@ describe('SessionTranscriptReads: the fold drop reaches the composition (#464)',
       canReadSession: () => true,
       isEphemeralSession: () => false,
       sessionAttributionFor: () => null,
-      listEventPayloads: () =>
+      readUsageRevision: () => 'fixture',
+      listUsageEventPayloads: () =>
         [
           {
             eventId: 'e1',
@@ -179,7 +182,8 @@ describe('SessionTranscriptReads: the fold drop reaches the composition (#464)',
             completionTokens: 40,
           },
         ] as never,
-      listUsageEventRecords: () => [],
+      listEventPayloads: () => [],
+      listResolvedEventPayloads: () => [],
       listUsageReceiptEvents: () => [],
       listUsageCoverageEvents: () => [],
       searchConversationMessages: () => [],
@@ -207,7 +211,9 @@ describe('SessionTranscriptReads usage owner set (#2568)', () => {
       isEphemeralSession: () => false,
       sessionAttributionFor: () => null,
       listEventPayloads: () => [],
-      listUsageEventRecords: () => [],
+      listResolvedEventPayloads: () => [],
+      readUsageRevision: () => 'fixture',
+      listUsageEventPayloads: () => [],
       listUsageReceiptEvents: (options) => {
         receiptQueries.push(options);
         return [];

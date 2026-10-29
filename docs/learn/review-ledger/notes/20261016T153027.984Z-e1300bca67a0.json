@@ -1,0 +1,9 @@
+{
+  "revision": "66badf626cb0448e868af36e8e732a816992e2ff",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Reviewed final lane trigger wording (hosted feedback / explicit local diagnosis) against evidence owners. Required hosted ci-fast readiness remains enforced; no change to qualification or Protected Standards.","inputs":[".veritas/README.md","scripts/verification-lanes.mjs"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed final ci-fast trigger wording. E2E commands, manifest buckets, scope and evidence requirements are unchanged; no E2E coverage is removed by hosted broad-check ownership.","inputs":["docs/guides/e2e-coverage-matrix.md","scripts/verification-lanes.mjs"]}
+  ]
+}

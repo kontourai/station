@@ -1,3 +1,4 @@
+// UNWIRED(#495): no production caller; operator reconciliation transport will install it.
 import type { EventStore } from './event-store.js';
 import type { PlannedHomeAdmissionReceiptVerifier } from './planned-home-admission-reconciliation.js';
 import {

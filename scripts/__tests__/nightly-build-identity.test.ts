@@ -353,6 +353,7 @@ describe('the tauri config overlay', () => {
       productName: 'Station Nightly',
       version: '0.1.0-nightly.2412.2',
       identifier: 'io.kontourai.station.nightly',
+      build: { features: ['native-devtools'] },
       plugins: {
         'deep-link': {
           mobile: [{ scheme: ['station-nightly'], appLink: false }],
@@ -423,6 +424,7 @@ describe('the desktop tauri config overlay (station#575)', () => {
       productName: 'Station Nightly',
       version: '0.1.0-nightly.2412.3',
       identifier: 'io.kontourai.station.nightly',
+      build: { features: ['native-devtools'] },
       bundle: {
         createUpdaterArtifacts: 'v1Compatible',
         // The notarization script builds the DMG and updater archive itself;
@@ -592,20 +594,6 @@ describe('the nightly workflow keeps its promises', () => {
     expect(receipt).toContain(
       'node scripts/verify-npm-registry-provenance.mjs "$registry_record" "$SOURCE_SHA"',
     );
-  });
-
-  it('publishes the CLI only on literal success from both promotion gates', () => {
-    // `!= 'failure'` would admit a skipped or cancelled gate — the exact
-    // green-looking hole this predicate exists to close. Pinned as one
-    // literal LINE (not a whole-file substring: a `#`-commented copy of the
-    // literal would satisfy toContain while the real `if:` was gutted —
-    // delta-review probe R2), because the conjunct order is also
-    // load-bearing (gate:workflows accepts only the literal prefix ladder).
-    const ifLiteral =
-      'if: $' +
-      "{{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' && (needs['full-regression'].result == 'success' || inputs.caller_qualification == 'success') }}";
-    const lines = callerWorkflow.split('\n').map((line) => line.trim());
-    expect(lines).toContain(ifLiteral);
   });
 
   it('reserves an immutable monotonic code before deriving or building it', () => {

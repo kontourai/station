@@ -58,6 +58,11 @@ export interface MarkdownLinkContextValue {
   sessionDirectory?: string | null;
   /** The session's thread id, through which its own directory is read. */
   threadId?: string | null;
+  /**
+   * What a pane opened from this conversation names as its opener (Up's
+   * label): the conversation's title as the dock shows it.
+   */
+  openerLabel?: string;
 }
 
 export const MarkdownLinkContext =

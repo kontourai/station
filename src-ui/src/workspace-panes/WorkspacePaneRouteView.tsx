@@ -15,6 +15,7 @@ import { LayoutRenderer } from '../layouts';
 import { getBuiltinWorkspacePaneRenderer } from './builtinWorkspacePaneRegistry';
 import { trackMcpAppDisplayModeDecision } from './mcpAppDisplayModeTelemetry';
 import { PluginWorkspacePaneSDKBoundary } from './PluginWorkspacePaneSDKBoundary';
+import { relatedPaneCaller } from './relatedPanesHost';
 import { useResolvedWorkspacePaneCatalog } from './resolvedWorkspacePaneCatalog';
 import { WorkspacePaneAvailabilityList } from './WorkspacePaneAvailabilityList';
 import { WorkspacePaneCatalogRefreshNotice } from './WorkspacePaneCatalogRefreshNotice';
@@ -470,6 +471,19 @@ export function WorkspacePaneRouteView({
                 layout={paneLayout}
                 projectSlug={catalog.projectSlug!}
                 pluginName={owningPluginName!}
+                related={
+                  catalog.projectId
+                    ? relatedPaneCaller({
+                        occurrenceId: String(boundInstance.instanceId),
+                        instance: boundInstance,
+                        projectId: catalog.projectId,
+                        projectSlug: catalog.projectSlug!,
+                        layoutSlug: layoutSlug ?? null,
+                        projectPane: true,
+                        label: entry.descriptor.name,
+                      })
+                    : null
+                }
               >
                 {renderer}
               </PluginWorkspacePaneSDKBoundary>

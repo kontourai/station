@@ -4,7 +4,7 @@ import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type { EngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { MCPLocalConnectionCustody } from '@kontourai/station-shared/mcp';
-import { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
+import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import { FileTerminalHistoryStore } from '../../adapters/file-terminal-history-store.js';
 import { NodePtyAdapter } from '../../adapters/node-pty-adapter.js';
 import {
@@ -26,6 +26,10 @@ import {
   PAIRING_WS_SCOPES,
 } from '../../security/pairing-route-scopes.js';
 import { ACPManager } from '../../services/acp/acp-bridge.js';
+import {
+  EngineCredentials,
+  registerEngineCredentials,
+} from '../../services/acp/engine-credentials.js';
 import { AgentService } from '../../services/agents/agent-service.js';
 import { SkillService } from '../../services/agents/skill-service.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
@@ -86,6 +90,8 @@ interface RuntimeServiceBootstrapContext {
     EnvironmentSecurityService,
     | 'verifyCredential'
     | 'resolveGrantedScope'
+    // #3586: the terminal WebSocket refuses account-bound devices and tokens.
+    | 'identifyDevice'
     | 'authorizeCredential'
     | 'credentialLocality'
   >;
@@ -344,7 +350,18 @@ export function createRuntimeServiceBundle(
       historyStore,
       context.getTerminalShell,
     ) ??
-    new TerminalService(ptyAdapter, historyStore, context.getTerminalShell);
+    new TerminalService(
+      ptyAdapter,
+      historyStore,
+      context.getTerminalShell,
+      (slug) => {
+        try {
+          return storageAdapter.getProject(slug).id;
+        } catch {
+          return undefined;
+        }
+      },
+    );
 
   const terminalAuth = {
     // Scoped pairing (archive#1098): a valid credential must ALSO carry
@@ -394,40 +411,16 @@ export function createRuntimeServiceBundle(
   // beneath Station home. Pass the authority root, not a launch cwd; the
   // probe keeps an explicitly configured connection cwd ahead of this seam.
   const acpManagedWorkspaceHome = context.configLoader.getProjectHomeDir();
+  // Before any engine spawns: every ACP launch reads its stored keys here.
+  registerEngineCredentials(new EngineCredentials(acpManagedWorkspaceHome));
 
   const acpBridge =
     factories.createACPManager?.(
-      context.approvalRegistry,
       context.logger,
       acpManagedWorkspaceHome,
-      context.memoryAdapters,
-      (_slug: string) =>
-        new FileMemoryAdapter({
-          projectHomeDir: context.configLoader.getProjectHomeDir(),
-          usageAggregator: context.usageAggregatorRef.get(),
-        }),
-      context.usageAggregatorRef,
       context.eventBus,
-      context.monitoringEvents,
-      context.persistEvent,
-      monitoringEmitter,
     ) ??
-    new ACPManager(
-      context.approvalRegistry,
-      context.logger,
-      acpManagedWorkspaceHome,
-      context.memoryAdapters,
-      (_slug: string) =>
-        new FileMemoryAdapter({
-          projectHomeDir: context.configLoader.getProjectHomeDir(),
-          usageAggregator: context.usageAggregatorRef.get(),
-        }),
-      context.usageAggregatorRef,
-      context.eventBus,
-      context.monitoringEvents,
-      context.persistEvent,
-      monitoringEmitter,
-    );
+    new ACPManager(context.logger, acpManagedWorkspaceHome, context.eventBus);
 
   connectionService = factories.createConnectionService
     ? factories.createConnectionService(

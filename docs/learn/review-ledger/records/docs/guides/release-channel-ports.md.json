@@ -58,8 +58,6 @@
 
     "packages/shared/src/station-home-schema.ts",
 
-    "pnpm-lock.yaml",
-
     "scripts/__tests__/browser-preview-packaged-fixture.test.ts",
 
     "scripts/apply-android-native-bootstrap.mjs",
@@ -104,8 +102,6 @@
 
     "src-desktop/build.rs",
 
-    "src-desktop/capabilities/desktop-updater.json",
-
     "src-desktop/src/lib.rs",
 
     "src-desktop/src/service_state.rs",
@@ -128,8 +124,6 @@
 
     "src-server/tools/instance-registry-bridge.ts",
 
-    "src-ui/src/components/DesktopUpdateLaunchCheck.tsx",
-
     "src-ui/src/core/PluginRegistry.ts",
 
     "src-ui/src/platform/androidSafeArea.ts",
@@ -144,7 +138,11 @@
 
     "src-ui/src/views/settings/SystemSection.tsx",
 
-    "vite.config.ts"
+    "vite.config.ts",
+
+    "pnpm-lock.yaml#/packages",
+
+    "pnpm-lock.yaml#/snapshots"
   ],
 
   "checks": [

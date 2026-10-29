@@ -14,6 +14,7 @@ import {
   captureLoggerLines,
   stopLoggerCaptures,
 } from '../../../__test-utils__/logger-capture.js';
+import { parsePluginLayoutDeclaration } from '../../layouts/layout-presentation-declaration.js';
 import { readCurrentWorkspacePaneCatalog } from '../../projects/workspace-pane-catalog.js';
 import {
   DistributionProfileService,
@@ -23,6 +24,29 @@ import {
 vi.mock('node:fs', async (original) => {
   const actual = await original<typeof import('node:fs')>();
   return { ...actual, readFileSync: vi.fn(actual.readFileSync) };
+});
+
+/**
+ * Fails the n-th durable write from now (1 = the next), as a full disk or a
+ * lost rename would.
+ */
+const durableWrite = vi.hoisted(() => ({ failAt: 0 }));
+vi.mock('@kontourai/station-shared/durable-json-file', async (original) => {
+  const actual =
+    await original<
+      typeof import('@kontourai/station-shared/durable-json-file')
+    >();
+  return {
+    ...actual,
+    writeJsonDurably: (...args: Parameters<typeof actual.writeJsonDurably>) => {
+      if (durableWrite.failAt > 0) {
+        durableWrite.failAt -= 1;
+        if (durableWrite.failAt === 0)
+          throw new Error('injected durable write failure');
+      }
+      return actual.writeJsonDurably(...args);
+    },
+  };
 });
 // A capture is process-wide, and every use in this file asserts BEFORE its own
 // `stop()`. Without this, one failing assertion leaks the sink — and any raised
@@ -86,6 +110,7 @@ describe('DistributionProfileService', () => {
   }
 
   afterEach(() => {
+    durableWrite.failAt = 0;
     vi.restoreAllMocks();
     homes
       .splice(0)
@@ -200,6 +225,8 @@ describe('DistributionProfileService', () => {
         contribution: {
           id: contribution.id,
           version: '1.2.3',
+          // History was never sealed: no generation a host could admit.
+          lifecycleGeneration: null,
           sourceIdentity: {
             id: 'review-plugin',
             kind: 'local',
@@ -476,6 +503,7 @@ describe('DistributionProfileService', () => {
         name: 'typed-layout',
         slug: 'typed',
         type: 'session-board',
+        workspaceBinding: 'repository',
         tabs: [],
       }),
     );
@@ -488,6 +516,150 @@ describe('DistributionProfileService', () => {
     expect(
       service.resolveForApply('plugin:typed-layout:typed').definition.type,
     ).toBe('session-board');
+    expect(
+      service.resolveForCatalog('plugin:typed-layout:typed').item
+        .workspaceBinding,
+    ).toBe('repository');
+    expect(
+      service
+        .listLayouts()
+        .find((item) => item.id === 'plugin:typed-layout:typed')
+        ?.workspaceBinding,
+    ).toBe('repository');
+  });
+
+  test.each([null, '', 'none', 'terminal', true, {}])(
+    'refuses invalid plugin workspace binding %j at catalog resolution',
+    (workspaceBinding) => {
+      const projectHome = home();
+      const directory = writePlugin(projectHome, 'bad-binding');
+      writeFileSync(
+        join(directory, 'layout.json'),
+        JSON.stringify({
+          name: 'Bad binding',
+          slug: 'bad-binding',
+          workspaceBinding,
+          tabs: [],
+        }),
+      );
+      const service = new DistributionProfileService(projectHome);
+      expect(() =>
+        service.resolveForApply('plugin:bad-binding:bad-binding'),
+      ).toThrow('known installed contribution');
+    },
+  );
+
+  test('a plugin layout carries its declaration, and built-in Coding its own (#2995)', () => {
+    const projectHome = home();
+    const directory = writePlugin(projectHome, 'stl', 'st');
+    const ownPanes = ['pane:plugin%3Astl:st:one', 'pane:plugin%3Astl:st:two'];
+    writeFileSync(
+      join(directory, 'layout.json'),
+      JSON.stringify({
+        name: 'Stack',
+        slug: 'st',
+        primary: 'chat',
+        presentation: 'stack',
+        drillIns: ownPanes,
+        tabs: [
+          { id: 'one', label: 'One', component: 'stack-one' },
+          { id: 'two', label: 'Two', component: 'stack-two' },
+        ],
+      }),
+    );
+    const service = new DistributionProfileService(projectHome);
+    expect(service.resolveForCatalog('plugin:stl:st').definition).toMatchObject(
+      {
+        primary: 'chat',
+        presentation: 'stack',
+        drillIns: ownPanes,
+      },
+    );
+    expect(
+      service.resolveForCatalog('builtin:coding').definition,
+    ).toMatchObject({ primary: 'chat', presentation: 'stack' });
+    expect(
+      service.resolveForCatalog('builtin:tasks').definition.presentation,
+    ).toBe('tabs');
+  });
+
+  test.each([
+    [{ primary: 'terminal', presentation: 'stack' }],
+    [{ presentation: 'grid' }],
+    [{ presentation: 'stack', drillIns: ['pane:builtin:coding:diff'] }],
+    [{ primary: 'chat', presentation: 'tabs' }],
+  ])(
+    'refuses an invalid plugin layout declaration %j at catalog resolution',
+    (declaration) => {
+      const projectHome = home();
+      const directory = writePlugin(projectHome, 'bad-stack');
+      writeFileSync(
+        join(directory, 'layout.json'),
+        JSON.stringify({
+          name: 'Bad stack',
+          slug: 'bad-stack',
+          tabs: [{ id: 'one', label: 'One', component: 'bad-one' }],
+          ...declaration,
+        }),
+      );
+      const service = new DistributionProfileService(projectHome);
+      expect(() =>
+        service.resolveForApply('plugin:bad-stack:bad-stack'),
+      ).toThrow('known installed contribution');
+    },
+  );
+
+  test('refuses a drill-in whose Project occurrence id exceeds the pane host limit (#4130)', () => {
+    // The real names of examples/survey-review-workbench: its one tab's
+    // occurrence id is longer than the 128 characters the pane host and the
+    // navigation store accept, so declaring it a drill-in is refused rather
+    // than silently dropped from the rail.
+    const projectHome = home();
+    const directory = writePlugin(
+      projectHome,
+      'survey-review-workbench',
+      'survey-review',
+    );
+    writeFileSync(
+      join(directory, 'layout.json'),
+      JSON.stringify({
+        name: 'Survey review',
+        slug: 'survey-review',
+        presentation: 'stack',
+        drillIns: [
+          'pane:plugin%3Asurvey-review-workbench:survey-review:workbench',
+        ],
+        tabs: [{ id: 'workbench', label: 'Workbench', component: 'workbench' }],
+      }),
+    );
+    const service = new DistributionProfileService(projectHome);
+    expect(() =>
+      service.resolveForApply('plugin:survey-review-workbench:survey-review'),
+    ).toThrow('known installed contribution');
+    expect(() =>
+      parsePluginLayoutDeclaration(
+        JSON.parse(readFileSync(join(directory, 'layout.json'), 'utf-8')),
+        'survey-review-workbench',
+        'survey-review',
+      ),
+    ).toThrow(
+      /drill-in 'pane:plugin%3Asurvey-review-workbench:survey-review:workbench' gets a Project occurrence id longer than the 128 characters .*#4130/,
+    );
+  });
+
+  test('accepts the short fixture names the browser parity spec installs', () => {
+    expect(
+      parsePluginLayoutDeclaration(
+        {
+          slug: 'fx',
+          presentation: 'stack',
+          drillIns: ['pane:plugin%3Astack-fx:fx:checks'],
+          tabs: [{ id: 'checks', label: 'Checks', component: 'c' }],
+        },
+        'stack-fx',
+        'fx',
+      ).drillIns,
+    ).toEqual(['pane:plugin%3Astack-fx:fx:checks']);
   });
 
   test('reads a disabled installed plugin descriptor without authorizing application', () => {
@@ -743,5 +915,228 @@ describe('DistributionProfileService', () => {
         registrySources: [{ id: 'local', kind: 'local', source: '../escape' }],
       }),
     ).toThrow('safe relative path');
+  });
+
+  describe('a plugin contribution’s lifecycle generation', () => {
+    const LAYOUT = 'plugin:lifecycle-layout:lifecycle';
+    const ISSUED = /^digest:sha256:[a-f0-9]+:[a-f0-9]{32}\.r\d+$/;
+    const generationOf = (service: DistributionProfileService) =>
+      service.resolveForCatalog(LAYOUT).item.contribution.lifecycleGeneration;
+    const lifecyclePath = (projectHome: string) =>
+      join(projectHome, 'config', 'distribution-lifecycle.json');
+    const readDocument = (projectHome: string) =>
+      JSON.parse(readFileSync(lifecyclePath(projectHome), 'utf-8'));
+    const writeDocument = (projectHome: string, value: unknown) =>
+      writeFileSync(lifecyclePath(projectHome), JSON.stringify(value));
+    /** Every generation one test saw issued; none may ever repeat. */
+    const issuedLedger = () => {
+      const issued: string[] = [];
+      return {
+        issued,
+        record(generation: string | null | undefined) {
+          if (generation === null) return;
+          expect(generation).toMatch(ISSUED);
+          expect(issued).not.toContain(generation);
+          issued.push(generation as string);
+        },
+      };
+    };
+    /** Sealed at start, then installed, disabled, enabled again. */
+    const cycled = (projectHome: string) => {
+      writePlugin(projectHome, 'lifecycle-layout', 'lifecycle');
+      const service = new DistributionProfileService(projectHome);
+      expect(service.sealLifecycleHistory()).toBe('sealed');
+      const ledger = issuedLedger();
+      ledger.record(generationOf(service));
+      service.setEnabled(LAYOUT, false);
+      ledger.record(generationOf(service));
+      service.setEnabled(LAYOUT, true);
+      ledger.record(generationOf(service));
+      expect(ledger.issued).toHaveLength(3);
+      return { service, ledger };
+    };
+
+    test('is issued only under sealed history, and a seal is kept', () => {
+      const projectHome = home();
+      writePlugin(projectHome, 'lifecycle-layout', 'lifecycle');
+      const service = new DistributionProfileService(projectHome);
+      // Nothing was sealed: no generation a host could admit.
+      expect(generationOf(service)).toBeNull();
+      expect(service.sealLifecycleHistory()).toBe('sealed');
+      const sealed = generationOf(service);
+      expect(sealed).toMatch(/:[a-f0-9]{32}\.r0$/);
+      expect(service.sealLifecycleHistory()).toBe('already-sealed');
+      expect(generationOf(new DistributionProfileService(projectHome))).toBe(
+        sealed,
+      );
+    });
+
+    test('changes when its enablement changes, and not when the same value is written again', () => {
+      const projectHome = home();
+      const { service, ledger } = cycled(projectHome);
+      const enabledAgain = ledger.issued[2];
+      service.setEnabled(LAYOUT, true);
+      expect(generationOf(service)).toBe(enabledAgain);
+      // A new service reads the same durable generation.
+      expect(generationOf(new DistributionProfileService(projectHome))).toBe(
+        enabledAgain,
+      );
+    });
+
+    test('changes when the installation is replaced at the same version', () => {
+      const projectHome = home();
+      const pluginDir = writePlugin(
+        projectHome,
+        'lifecycle-layout',
+        'lifecycle',
+      );
+      new DistributionProfileService(projectHome).sealLifecycleHistory();
+      const before = generationOf(new DistributionProfileService(projectHome));
+      const manifest = JSON.parse(
+        readFileSync(join(pluginDir, 'plugin.json'), 'utf-8'),
+      );
+      writeFileSync(
+        join(pluginDir, 'plugin.json'),
+        JSON.stringify({ ...manifest, description: 'Reinstalled' }),
+      );
+      const after = generationOf(new DistributionProfileService(projectHome));
+      expect(manifest.version).toBe('1.2.3');
+      expect(after).toMatch(ISSUED);
+      expect(after).not.toBe(before);
+    });
+
+    // Lost history — the document removed, or reset — is no generation until
+    // a new epoch is sealed, so the generation from before the first change
+    // never comes back.
+    test('lost history never brings an earlier generation back, however often it is lost', () => {
+      const projectHome = home();
+      const { service, ledger } = cycled(projectHome);
+      for (let loss = 0; loss < 2; loss += 1) {
+        rmSync(lifecyclePath(projectHome));
+        expect(generationOf(service)).toBeNull();
+        expect(service.sealLifecycleHistory()).toBe('sealed');
+        ledger.record(generationOf(service));
+        service.setEnabled(LAYOUT, false);
+        ledger.record(generationOf(service));
+        service.setEnabled(LAYOUT, true);
+        ledger.record(generationOf(service));
+      }
+      expect(ledger.issued).toHaveLength(9);
+    });
+
+    test('revisions that cannot be read are no generation, refuse changes, are not sealed over, and never repeat one', () => {
+      const projectHome = home();
+      const { service, ledger } = cycled(projectHome);
+      for (let fault = 0; fault < 2; fault += 1) {
+        const healthy = readDocument(projectHome);
+        writeDocument(projectHome, {
+          ...healthy,
+          revisions: { epoch: 'corrupt', items: {} },
+        });
+        expect(generationOf(service)).toBeNull();
+        const document = readFileSync(lifecyclePath(projectHome), 'utf-8');
+        expect(() => service.setEnabled(LAYOUT, false)).toThrow(
+          'Distribution lifecycle revisions are invalid',
+        );
+        expect(service.sealLifecycleHistory()).toBe('invalid');
+        expect(readFileSync(lifecyclePath(projectHome), 'utf-8')).toBe(
+          document,
+        );
+        // Repaired by removing the unreadable member: a new epoch is sealed.
+        const { revisions: _revisions, ...withoutRevisions } = healthy;
+        writeDocument(projectHome, withoutRevisions);
+        expect(generationOf(service)).toBeNull();
+        expect(service.sealLifecycleHistory()).toBe('sealed');
+        ledger.record(generationOf(service));
+        service.setEnabled(LAYOUT, false);
+        ledger.record(generationOf(service));
+        service.setEnabled(LAYOUT, true);
+        ledger.record(generationOf(service));
+      }
+    });
+
+    test('an older server’s rewrite, which drops the revisions, is no generation until a new epoch, however often it happens', () => {
+      const projectHome = home();
+      const { service, ledger } = cycled(projectHome);
+      for (let rewrite = 0; rewrite < 2; rewrite += 1) {
+        const { version, items } = readDocument(projectHome);
+        writeDocument(projectHome, { version, items });
+        expect(generationOf(service)).toBeNull();
+        expect(service.resolveForCatalog(LAYOUT).item.enabled).toBe(true);
+        expect(service.sealLifecycleHistory()).toBe('sealed');
+        ledger.record(generationOf(service));
+        service.setEnabled(LAYOUT, false);
+        ledger.record(generationOf(service));
+        service.setEnabled(LAYOUT, true);
+        ledger.record(generationOf(service));
+      }
+    });
+
+    // Whichever durable write of the change fails, the enablement and the
+    // generation agree afterwards, and the change, retried, is a new
+    // generation: none is left stale by a change that half happened.
+    test.each([1, 2])(
+      'when durable write %i of a change fails, the enablement and the generation still agree, and a retry advances both',
+      (failing) => {
+        const projectHome = home();
+        const { service, ledger } = cycled(projectHome);
+        const enabled = generationOf(service);
+        durableWrite.failAt = failing;
+        try {
+          service.setEnabled(LAYOUT, false);
+        } catch (error) {
+          expect(String(error)).toContain('injected durable write failure');
+        }
+        durableWrite.failAt = 0;
+        const disabledNow = !service.resolveForCatalog(LAYOUT).item.enabled;
+        if (disabledNow) ledger.record(generationOf(service));
+        else expect(generationOf(service)).toBe(enabled);
+        service.setEnabled(LAYOUT, false);
+        expect(service.resolveForCatalog(LAYOUT).item.enabled).toBe(false);
+        const retried = generationOf(service);
+        if (!disabledNow) ledger.record(retried);
+        expect(retried).toMatch(ISSUED);
+        // After a restart, the same.
+        expect(generationOf(new DistributionProfileService(projectHome))).toBe(
+          retried,
+        );
+      },
+    );
+
+    test('keeps the override items in the shape an older server reads', () => {
+      const projectHome = home();
+      const { service } = cycled(projectHome);
+      service.setEnabled(LAYOUT, false);
+      service.setEnabled(LAYOUT, true);
+      const document = readDocument(projectHome);
+      // An older server checks `version` and every `items` entry (only
+      // `installed` and `enabled`, booleans) and ignores other members.
+      expect(Object.keys(document).sort()).toEqual([
+        'items',
+        'revisions',
+        'version',
+      ]);
+      expect(document.version).toBe(1);
+      expect(document.items).toEqual({ [LAYOUT]: { enabled: true } });
+      expect(document.revisions).toEqual({
+        epoch: expect.stringMatching(/^[a-f0-9]{32}$/),
+        items: { [LAYOUT]: 4 },
+      });
+    });
+
+    test('is carried by a pane-only plugin’s contributions', () => {
+      const projectHome = home();
+      writePanePlugin(projectHome, 'review-plugin');
+      const service = new DistributionProfileService(projectHome);
+      expect(
+        service.listPluginWorkspacePaneContributions()[0]?.contribution
+          .lifecycleGeneration,
+      ).toBeNull();
+      service.sealLifecycleHistory();
+      expect(
+        service.listPluginWorkspacePaneContributions()[0]?.contribution
+          .lifecycleGeneration,
+      ).toMatch(/^digest:sha256:[a-f0-9]+:[a-f0-9]{32}\.r0$/);
+    });
   });
 });

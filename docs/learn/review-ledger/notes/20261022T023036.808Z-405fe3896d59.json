@@ -1,0 +1,9 @@
+{
+  "revision": "c17ddea4c7d479acb39be7aac5a5ff4bb909f162",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Edited in #4003 review round 5: the Learning dismiss paragraph now says any version with a recorded promotion is 409 task_learning_promoted, lists the three review states (promoted, pending, promotion-store-gone, the last matched by adapter and directory), and says promoting a promotion-store-gone version is 409 task_learning_store_gone. Checked against readTaskLearning and pinnedRoot in task-learning.ts, dismissLearningCandidate in task-memory-store.ts, and the refusal cases in routes/orchestration/task-learning.ts.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Re-read for #4003 review round 5: api.md changed only in the Task Learning dismiss and review-state paragraph. This guide links the API reference as a whole and describes no Task Learning route or review state, so it still holds.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]}
+  ]
+}

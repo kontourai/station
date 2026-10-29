@@ -235,6 +235,91 @@ describe('useConnectionStatus', () => {
     expect(checkHealth).toHaveBeenCalledTimes(2);
   });
 
+  it.each([true, false])(
+    'pauses hidden health polling and retries, then resumes (initial success: %s)',
+    async (initialSuccess) => {
+      vi.useFakeTimers();
+      const visibility = vi.spyOn(document, 'visibilityState', 'get');
+      visibility.mockReturnValue('visible');
+      let finish!: (ok: boolean) => void;
+      const checkHealth = vi
+        .fn()
+        .mockImplementationOnce(
+          () =>
+            new Promise<boolean>((resolve) => {
+              finish = resolve;
+            }),
+        )
+        .mockResolvedValue(true);
+      const store = storeWithUrl('https://hidden-station.example.test');
+      const { unmount } = renderHook(
+        () => useConnectionStatus({ checkHealth, pollInterval: 10_000 }),
+        { wrapper: wrapper(store) },
+      );
+      try {
+        await act(async () => Promise.resolve());
+        expect(checkHealth).toHaveBeenCalledTimes(1);
+        visibility.mockReturnValue('hidden');
+        await act(async () => {
+          finish(initialSuccess);
+          await Promise.resolve();
+        });
+        await act(async () => vi.advanceTimersByTimeAsync(60_000));
+        expect(checkHealth).toHaveBeenCalledTimes(1);
+        // Neither a previously scheduled timer nor an online signal may probe a hidden document.
+        act(() => window.dispatchEvent(new Event('online')));
+        await act(async () => vi.advanceTimersByTimeAsync(60_000));
+        expect(checkHealth).toHaveBeenCalledTimes(1);
+        visibility.mockReturnValue('visible');
+        act(() => document.dispatchEvent(new Event('visibilitychange')));
+        await act(async () => Promise.resolve());
+        expect(checkHealth).toHaveBeenCalledTimes(2);
+        await act(async () => vi.advanceTimersByTimeAsync(10_000));
+        expect(checkHealth).toHaveBeenCalledTimes(3);
+        visibility.mockReturnValue('hidden');
+        await act(async () => vi.advanceTimersByTimeAsync(60_000));
+        expect(checkHealth).toHaveBeenCalledTimes(3);
+      } finally {
+        unmount();
+        visibility.mockRestore();
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it.each(['focus', 'pageshow'])(
+    'a hidden %s does not suppress the immediately following visibility resume',
+    async (signal) => {
+      vi.useFakeTimers();
+      const visibility = vi
+        .spyOn(document, 'visibilityState', 'get')
+        .mockReturnValue('hidden');
+      const checkHealth = vi.fn().mockResolvedValue(true);
+      const store = storeWithUrl('https://hidden-resume.example.test');
+      const { unmount } = renderHook(
+        () => useConnectionStatus({ checkHealth, pollInterval: 10_000 }),
+        { wrapper: wrapper(store) },
+      );
+      try {
+        await act(async () => Promise.resolve());
+        expect(checkHealth).not.toHaveBeenCalled();
+        act(() => window.dispatchEvent(new Event(signal)));
+        await act(async () => vi.advanceTimersByTimeAsync(50));
+        expect(checkHealth).not.toHaveBeenCalled();
+        visibility.mockReturnValue('visible');
+        act(() => document.dispatchEvent(new Event('visibilitychange')));
+        await act(async () => Promise.resolve());
+        expect(checkHealth).toHaveBeenCalledTimes(1);
+        await act(async () => vi.advanceTimersByTimeAsync(120_000));
+        expect(checkHealth).toHaveBeenCalledTimes(13);
+      } finally {
+        unmount();
+        visibility.mockRestore();
+        vi.useRealTimers();
+      }
+    },
+  );
+
   it('coalesces the focus, pageshow, and visibility events from one resume', async () => {
     const checkHealth = vi.fn().mockResolvedValue(true);
     const store = storeWithUrl('https://tailnet-station.example.test');
@@ -252,6 +337,49 @@ describe('useConnectionStatus', () => {
     });
     await waitFor(() => expect(checkHealth).toHaveBeenCalledTimes(2));
     expect(checkHealth).toHaveBeenCalledTimes(2);
+  });
+
+  it('deduplicates a wake burst that straddles queued probe completions', async () => {
+    vi.useFakeTimers();
+    const visibility = vi
+      .spyOn(document, 'visibilityState', 'get')
+      .mockReturnValue('visible');
+    const pending: Array<(ok: boolean) => void> = [];
+    const checkHealth = vi.fn(
+      () => new Promise<boolean>((resolve) => pending.push(resolve)),
+    );
+    const store = storeWithUrl('https://queued-resume.example.test');
+    const { unmount } = renderHook(
+      () => useConnectionStatus({ checkHealth, pollInterval: 10_000 }),
+      { wrapper: wrapper(store) },
+    );
+    try {
+      await act(async () => Promise.resolve());
+      expect(checkHealth).toHaveBeenCalledTimes(1);
+      act(() => window.dispatchEvent(new Event('focus')));
+      await act(async () => {
+        pending.shift()!(true);
+        await vi.advanceTimersByTimeAsync(10);
+      });
+      expect(checkHealth).toHaveBeenCalledTimes(2);
+      act(() => window.dispatchEvent(new Event('pageshow')));
+      await act(async () => {
+        pending.shift()!(true);
+        await vi.advanceTimersByTimeAsync(10);
+      });
+      act(() => document.dispatchEvent(new Event('visibilitychange')));
+      await act(async () => {
+        pending.shift()?.(true);
+        await vi.advanceTimersByTimeAsync(10);
+      });
+      expect(checkHealth).toHaveBeenCalledTimes(2);
+      await act(async () => vi.advanceTimersByTimeAsync(10_000));
+      expect(checkHealth).toHaveBeenCalledTimes(3);
+    } finally {
+      unmount();
+      visibility.mockRestore();
+      vi.useRealTimers();
+    }
   });
 
   it('suppresses separately scheduled events from one resume but probes a later resume', async () => {

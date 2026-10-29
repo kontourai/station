@@ -1,5 +1,5 @@
 import { useServerLogsQuery } from '@kontourai/station-sdk/developer-runtime';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '../../components/Button';
 import { HostAction } from '../../components/host-action/HostAction';
 import { Empty, ErrorState, Skeleton } from '../../components/state';
@@ -21,6 +21,11 @@ export default function LogsTab() {
   const devicePresentation = useDevicePresentation();
   const [level, setLevel] = useState<(typeof LEVELS)[number]>('');
   const [q, setQuery] = useState('');
+  const [settledQuery, setSettledQuery] = useState(q);
+  useEffect(() => {
+    const timer = setTimeout(() => setSettledQuery(q), 250);
+    return () => clearTimeout(timer);
+  }, [q]);
   const [limit, setLimit] = useState(100);
   const [refresh, setRefresh] = useState(false);
   const [start, setStart] = useState('');
@@ -31,7 +36,7 @@ export default function LogsTab() {
       apiBase,
       {
         ...(level ? { level } : {}),
-        ...(q ? { q } : {}),
+        ...(settledQuery ? { q: settledQuery } : {}),
         limit,
         ...range,
       },

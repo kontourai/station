@@ -1,8 +1,12 @@
 import type { ClientOriginActor } from '@kontourai/station-contracts/client-origin';
+import type { AcpApprovalControl } from '@kontourai/station-contracts/engine-capability-matrix';
+import type { ExecutionConfinementRecord } from '@kontourai/station-contracts/execution-confinement';
 import {
   type ApprovalMode,
   type EngineId,
   isApprovalMode,
+  PROVIDER_ACP,
+  PROVIDER_CLAUDE,
   PROVIDER_CODEX,
   PROVIDER_MODEL_OPTION_SUPPORT,
   type StationConfinement,
@@ -21,20 +25,46 @@ import { isFullAccessGrant } from '../../security/coding-authority.js';
  * it applies only while nothing is recorded, and is never recorded itself.
  */
 
-/** Whether this engine's adapter maps `approvalMode` to a native knob. */
-export function approvalKnobSupported(provider: EngineId): boolean {
+/**
+ * Whether this engine's adapter maps `approvalMode` to a native knob.
+ *
+ * #3290: ACP is one provider for many engines, so its answer is the
+ * connection's (`acpApprovalControl`): only a connection whose approval rules
+ * Station sets at launch has the knob. Without that answer an ACP thread has
+ * none, so a posture is never sent to an engine that decides for itself.
+ */
+export function approvalKnobSupported(
+  provider: EngineId,
+  acpControl?: AcpApprovalControl,
+): boolean {
+  if (provider === PROVIDER_ACP) return acpControl === 'station';
   return (
     PROVIDER_MODEL_OPTION_SUPPORT[provider]?.includes('approvalMode') === true
   );
 }
 
 /**
- * #2493: whether this engine confines `never` to the workspace with a native
- * process sandbox (Codex's `workspace-write`). An engine without one cannot
- * run `never` confined, so a confined session applies `auto` there instead.
+ * #2493/#2494: whether this engine runs `never` confined to the workspace.
+ *
+ * - Codex: always, with its own sandbox (`workspace-write`).
+ * - Claude: inside a Seatbelt profile Station applies around the engine.
+ *   At a START the request passes through: the start resolves its
+ *   confinement (a plan, or a refusal where no mechanism exists), and the
+ *   adapter applies full access only once the provider has observed the
+ *   profile applied, else Auto with the reason recorded. At a TURN it is
+ *   lifted only for a session whose latest start recorded an observed
+ *   `confined` posture (`observedConfined`), never from configuration.
+ * - Every other engine (ACP): never; a confined session applies `auto`.
  */
-function confinesFullAccessNatively(provider: EngineId): boolean {
-  return provider === PROVIDER_CODEX;
+function confinesFullAccess(
+  provider: EngineId,
+  phase: 'start' | 'turn',
+  observedConfined: () => boolean,
+): boolean {
+  if (provider === PROVIDER_CODEX) return true;
+  if (provider === PROVIDER_CLAUDE)
+    return phase === 'start' || observedConfined();
+  return false;
 }
 
 /** #2493: the mode an engine can apply for `mode` under `confinement`. */
@@ -42,12 +72,24 @@ function applicableMode(
   mode: ApprovalMode,
   provider: EngineId,
   confinement: StationConfinement,
+  phase: 'start' | 'turn',
+  observedConfined: () => boolean,
 ): ApprovalMode {
   return mode === 'never' &&
     confinement !== 'host' &&
-    !confinesFullAccessNatively(provider)
+    !confinesFullAccess(provider, phase, observedConfined)
     ? 'auto'
     : mode;
+}
+
+/**
+ * #2494: whether `record` (a session's latest start record) says its engine
+ * runs inside an observed confinement of at least `os-profile`.
+ */
+function observedConfined(
+  record: ExecutionConfinementRecord | undefined,
+): boolean {
+  return record?.posture === 'confined' && record.level !== 'host';
 }
 
 export interface ApprovalPostureStore {
@@ -65,6 +107,8 @@ export interface ApprovalPostureStore {
   conversationSessions(
     conversationId: string,
   ): readonly { sessionId: string }[];
+  /** #3290: an engine on these threads reported a Station-applied mode. */
+  engineReportedApprovalMode?(threadIds: readonly string[]): boolean;
 }
 
 export interface ApprovalPostureDecision {
@@ -139,6 +183,15 @@ function atLeastAsStrict(pick: ApprovalMode, standing: ApprovalMode): boolean {
   return picked !== undefined && stands !== undefined && picked <= stands;
 }
 
+/** The facts a start's Project approval layer is resolved from. */
+export interface ApprovalPostureProjectStart {
+  projectSlug: string;
+  userId?: string;
+  /** A person's interactive chat (`isPersonChatStart`): may inherit `last-used`. */
+  lastUsedApplies: boolean;
+  mayGrantFullAccess: boolean;
+}
+
 export class ApprovalPosture {
   /**
    * Threads to which Station itself passed a concrete posture (a start or a
@@ -166,6 +219,21 @@ export class ApprovalPosture {
       resolveAgentDefault?: (
         agentSlug: string,
       ) => Promise<ApprovalMode | undefined>;
+      /**
+       * The start's Project layer, below the Agent's default and above the
+       * Station's (`ProjectChatDefaultsService.approvalDefault`). Read per
+       * start, like the Station default.
+       */
+      resolveProjectDefault?: (
+        project: ApprovalPostureProjectStart,
+      ) => Promise<ApprovalMode | undefined> | ApprovalMode | undefined;
+      /**
+       * #2494: the confinement record of the thread's latest start, as its
+       * engine's adapter observed it. Absent: no session counts as confined.
+       */
+      observedConfinement?: (
+        threadId: string,
+      ) => ExecutionConfinementRecord | undefined;
     },
   ) {}
 
@@ -288,13 +356,21 @@ export class ApprovalPosture {
   }
 
   /**
-   * The defaults below a decision: the Agent's own, then this Station's.
-   * An engine connection's `config.approvalMode` is not a layer here: no
-   * writer persists it (`sanitizeRuntimeConfig` keeps only named keys).
+   * The defaults below a decision at a session START: the Agent's own, then
+   * the start's Project's, then this Station's. An engine connection's
+   * `config.approvalMode` is not a layer here: no writer persists it
+   * (`sanitizeRuntimeConfig` keeps only named keys).
+   *
+   * The Project layer is start-only on purpose: a recorded Default pick
+   * (`resolveDefaultPick`) and the full-access checks over it keep reading
+   * the Agent and Station defaults, so this change widens nothing they
+   * decide.
    */
   private async defaultPosture(input: {
     agentSlug?: string;
     capturedAgent?: { approvalMode?: ApprovalMode };
+    project?: Omit<ApprovalPostureProjectStart, 'mayGrantFullAccess'>;
+    confinement?: StationConfinement;
   }): Promise<ApprovalMode | undefined> {
     // A foreground invocation admission captured the Agent's definition when
     // it was admitted; the start must consume that, never reread the store
@@ -310,9 +386,50 @@ export class ApprovalPosture {
         ? concrete(await this.deps.resolveAgentDefault?.(input.agentSlug))
         : undefined;
     if (agent) return agent;
+    // A recorded full access is re-applied only to a start that may grant it
+    // itself: at a start with no recorded decision, `host` confinement is
+    // exactly the caller's minted grant (`startConfinement`).
+    const project =
+      input.project && input.confinement
+        ? concrete(
+            await this.deps.resolveProjectDefault?.({
+              ...input.project,
+              mayGrantFullAccess: input.confinement === 'host',
+            }),
+          )
+        : undefined;
+    if (project) return project;
     return effectiveDefaultPosture(
       undefined,
       await this.deps.resolveStationDefault?.(),
+    );
+  }
+
+  /**
+   * Whether a layer above a person's personal per-engine default decides a
+   * new chat's posture: the Agent's own default, then the start's Project
+   * layer. Only when neither does is the personal default recorded
+   * (`OrchestrationService.recordPersonalApprovalDefault`), so the order is
+   * explicit pick, Agent, Project, personal default, Station.
+   */
+  async decidesAbovePersonalDefault(input: {
+    agentSlug?: string;
+    project?: Omit<ApprovalPostureProjectStart, 'mayGrantFullAccess'>;
+    mayGrantFullAccess: boolean;
+  }): Promise<boolean> {
+    if (
+      input.agentSlug &&
+      concrete(await this.deps.resolveAgentDefault?.(input.agentSlug))
+    )
+      return true;
+    if (!input.project) return false;
+    return (
+      concrete(
+        await this.deps.resolveProjectDefault?.({
+          ...input.project,
+          mayGrantFullAccess: input.mayGrantFullAccess,
+        }),
+      ) !== undefined
     );
   }
 
@@ -338,10 +455,11 @@ export class ApprovalPosture {
    *   the engine already runs, never a re-read default, so an edited default
    *   still reconfigures nothing, and an ordinary turn still sends nothing.
    *
-   * #2493: on an engine with no native sandbox, `never` in a `workspace`
-   * session is applied as `auto`, so the engine is never spawned or turned
-   * with its permission checks bypassed on a caller's say-so. Codex keeps
-   * `never` and confines it with its sandbox (codex-approval-mode.ts).
+   * #2493: on an engine with no confinement for it, `never` in a
+   * `workspace` session is applied as `auto`, so the engine is never spawned
+   * or turned with its permission checks bypassed on a caller's say-so.
+   * Codex keeps `never` and confines it with its sandbox
+   * (codex-approval-mode.ts); Claude keeps it as `confinesFullAccess` says.
    */
   async resolve(input: {
     threadId: string;
@@ -350,18 +468,28 @@ export class ApprovalPosture {
     agentSlug?: string;
     /** The Agent execution config a foreground admission captured. */
     capturedAgent?: { approvalMode?: ApprovalMode };
+    /** The start's Project, for its approval layer; see `defaultPosture`. */
+    project?: Omit<ApprovalPostureProjectStart, 'mayGrantFullAccess'>;
     modelOptions?: Record<string, unknown>;
     /** `startConfinement` or `standingConfinement`; required so every caller states it. */
     confinement: StationConfinement;
+    /** #3290: an ACP thread's connection answer (`acpApprovalControl`). */
+    acpControl?: AcpApprovalControl;
   }): Promise<Record<string, unknown> | undefined> {
-    if (!approvalKnobSupported(input.provider)) return input.modelOptions;
+    if (!approvalKnobSupported(input.provider, input.acpControl))
+      return input.modelOptions;
     const decision = this.decision(input.threadId);
     const { approvalMode: carried, ...rest } = input.modelOptions ?? {};
     let mode: ApprovalMode | undefined;
     if (decision) {
       mode =
         decision.approvalMode === 'connection-default'
-          ? await this.resolveDefaultPick(input)
+          ? await this.resolveDefaultPick({
+              ...input,
+              durableTakeover:
+                input.provider === PROVIDER_ACP &&
+                input.acpControl === 'station',
+            })
           : decision.approvalMode;
     } else {
       mode =
@@ -381,7 +509,13 @@ export class ApprovalPosture {
     });
     return {
       ...rest,
-      approvalMode: applicableMode(mode, input.provider, input.confinement),
+      approvalMode: applicableMode(
+        mode,
+        input.provider,
+        input.confinement,
+        input.phase,
+        () => observedConfined(this.deps.observedConfinement?.(input.threadId)),
+      ),
     };
   }
 
@@ -449,10 +583,29 @@ export class ApprovalPosture {
     threadId: string;
     agentSlug?: string;
     capturedAgent?: { approvalMode?: ApprovalMode };
+    /**
+     * #3290: whether Station's takeover must outlive this process's memory.
+     * A Station-governed ACP engine (OpenCode) relaunches on its own
+     * settings when nothing is sent, so after a respawn a Default pick would
+     * silently hand it back while the chip still reads Ask. The engine's own
+     * durable report that it ran a Station mode decides instead.
+     */
+    durableTakeover?: boolean;
   }): Promise<ApprovalMode | undefined> {
-    const configured = await this.defaultPosture(input);
+    // Agent and Station only, never the start's Project layer (see
+    // `defaultPosture`): `resolve` spreads its whole start input in here.
+    const configured = await this.defaultPosture({
+      ...(input.agentSlug ? { agentSlug: input.agentSlug } : {}),
+      ...(input.capturedAgent ? { capturedAgent: input.capturedAgent } : {}),
+    });
     if (configured) return configured;
-    return this.stationApplied.has(input.threadId) ? 'ask' : undefined;
+    if (this.stationApplied.has(input.threadId)) return 'ask';
+    return input.durableTakeover &&
+      this.deps.store?.engineReportedApprovalMode?.(
+        this.conversationThreads(input.threadId),
+      )
+      ? 'ask'
+      : undefined;
   }
 
   /**
@@ -476,6 +629,46 @@ export class ApprovalPosture {
     const applied = this.stationApplied.get(threadId);
     return applied?.startConfinement && applied.startConfinement !== confinement
       ? applied.mode
+      : undefined;
+  }
+
+  /**
+   * #3290: what Station last applied on `threadId`, and putting it back.
+   * `resolve` records a mode before the engine takes it; an engine that
+   * refuses the mode (an OpenCode whose own rules would override it) still
+   * runs what it ran before, and a Default pick must resolve against that,
+   * not against the mode that never applied.
+   */
+  appliedOf(
+    threadId: string,
+  ): { mode: ApprovalMode; startConfinement?: StationConfinement } | undefined {
+    return this.stationApplied.get(threadId);
+  }
+
+  restoreApplied(
+    threadId: string,
+    prior:
+      | { mode: ApprovalMode; startConfinement?: StationConfinement }
+      | undefined,
+  ): void {
+    if (prior) this.stationApplied.set(threadId, prior);
+    else this.stationApplied.delete(threadId);
+  }
+
+  /**
+   * #3290: why a Default pick on a Station-governed ACP thread would still
+   * request a mode, or `undefined` when it requests nothing (the engine's
+   * own settings). Read by the governance refusal, so its advice about
+   * Default is true for this chat.
+   */
+  async defaultPickRequest(input: {
+    threadId: string;
+    agentSlug?: string;
+    capturedAgent?: { approvalMode?: ApprovalMode };
+  }): Promise<'configured' | 'takeover' | undefined> {
+    if (await this.defaultPosture(input)) return 'configured';
+    return (await this.resolveDefaultPick({ ...input, durableTakeover: true }))
+      ? 'takeover'
       : undefined;
   }
 

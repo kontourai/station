@@ -1,14 +1,20 @@
 .sidebar__footer {
   border-top: 1px solid var(--k-line);
-  padding: var(--k-space-1);
+  padding: var(--k-space-2);
   flex-shrink: 0;
+}
+.sidebar__update {
+  display: flex;
+}
+.sidebar--collapsed .sidebar__update {
+  justify-content: center;
 }
 .sidebar__footer-meta {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--k-space-2);
-  padding: var(--k-space-1) var(--k-space-2);
+  gap: var(--k-space-1) var(--k-space-2);
+  padding: 0;
   color: var(--k-text-muted);
 }
 .sidebar__footer-actions {
@@ -16,6 +22,31 @@
   flex-shrink: 0;
   align-items: center;
   gap: var(--k-space-1);
+}
+.sidebar__footer-identity {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-1);
+  margin-left: auto;
+}
+.sidebar__update .updates-control {
+  width: var(--k-space-6);
+  min-width: var(--k-space-6);
+  height: var(--k-space-6);
+  min-height: var(--k-space-6);
+  padding: 0;
+  border: none;
+  background: none;
+}
+.sidebar__update .updates-control:hover {
+  background: var(--k-panel-raised);
+}
+.sidebar--collapsed .sidebar__footer-meta,
+.sidebar--collapsed .sidebar__footer-identity {
+  flex-direction: column;
+}
+.sidebar--collapsed .sidebar__footer-identity {
+  margin-left: 0;
 }
 .sidebar__footer-action {
   display: inline-flex;
@@ -36,24 +67,47 @@
   background: var(--k-panel-raised);
   color: var(--k-text);
 }
-.sidebar--collapsed .sidebar__footer-meta,
-.sidebar--collapsed .sidebar__footer-actions {
-  flex-direction: column;
+/* The account control is the footer action drawn as the signed-in person's
+   initials in a circle; declared after the action it refines so its border
+   and shape are the ones that apply. */
+.sidebar__account {
+  border: 1px solid var(--k-line);
+  border-radius: 50%;
+  font-size: var(--k-text-xs);
+  font-weight: 600;
+}
+.sidebar--collapsed .sidebar__footer-meta {
+  justify-content: center;
   padding-inline: 0;
+}
+.sidebar__utility-label {
+  display: none;
+}
+.sidebar__utility-menu {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding-top: var(--k-space-2);
+}
+.sidebar__footer-popover .sidebar__footer-action {
+  width: 100%;
+  justify-content: flex-start;
+  gap: var(--k-space-2);
+  padding-inline: var(--k-space-2);
+}
+.sidebar__footer-popover .sidebar__utility-label {
+  display: inline;
+  font-size: var(--k-text-sm);
 }
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
   .sidebar__footer {
     padding-bottom: calc(var(--k-space-1) + var(--safe-bottom, 0px));
   }
-  .sidebar__footer-action {
+  .sidebar__footer-action,
+  .sidebar__update .updates-control {
     width: 44px;
     height: 44px;
-  }
-  .sidebar__presence-trigger {
-    min-height: 44px;
-    padding: 0 var(--k-space-2);
-  }
-  .sidebar__presence-action {
+    min-width: 44px;
     min-height: 44px;
   }
 }

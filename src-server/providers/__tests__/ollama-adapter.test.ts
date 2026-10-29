@@ -1,4 +1,5 @@
 import { ReadableStream } from 'node:stream/web';
+import type { ProviderSendTurnInput } from '@kontourai/station-contracts/provider';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { OllamaAdapter } from '../adapters/ollama-adapter.js';
 
@@ -168,68 +169,85 @@ describe('OllamaAdapter', () => {
     });
   });
 
-  test('streams basic chat through Ollama and records multi-turn history', async () => {
-    const fetchMock = vi.fn<
-      (...args: Parameters<typeof fetch>) => Promise<any>
-    >(async (input) =>
-      String(input).endsWith('/api/tags')
-        ? {
-            ok: true,
-            status: 200,
-            headers: new Headers({ 'content-type': 'application/json' }),
-            text: async () =>
-              JSON.stringify({ models: [{ name: 'llama3.2' }] }),
-          }
-        : {
-            ok: true,
-            status: 200,
-            headers: new Headers({ 'content-type': 'text/event-stream' }),
-            body: sseStreamFromContent(['hello', ' there']),
-          },
-    );
-    global.fetch = fetchMock as any;
+  test.each([undefined, 'ollama-origin'])(
+    'streams basic chat through Ollama and records multi-turn history (origin %s)',
+    async (invocationId) => {
+      const fetchMock = vi.fn<
+        (...args: Parameters<typeof fetch>) => Promise<any>
+      >(async (input) =>
+        String(input).endsWith('/api/tags')
+          ? {
+              ok: true,
+              status: 200,
+              headers: new Headers({ 'content-type': 'application/json' }),
+              text: async () =>
+                JSON.stringify({ models: [{ name: 'llama3.2' }] }),
+            }
+          : {
+              ok: true,
+              status: 200,
+              headers: new Headers({ 'content-type': 'text/event-stream' }),
+              body: sseStreamFromContent(['hello', ' there']),
+            },
+      );
+      global.fetch = fetchMock as any;
 
-    const adapter = new OllamaAdapter('http://ollama.test');
-    await adapter.startSession({
-      provider: 'ollama',
-      threadId: 'thread-1',
-      modelId: 'llama3.2',
-      modelOptions: { systemPrompt: 'You are concise.' },
-    });
-    const result = await adapter.sendTurn({
-      threadId: 'thread-1',
-      input: 'Say hi',
-    });
+      const adapter = new OllamaAdapter('http://ollama.test');
+      await adapter.startSession({
+        provider: 'ollama',
+        threadId: 'thread-1',
+        modelId: 'llama3.2',
+        modelOptions: { systemPrompt: 'You are concise.' },
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      const result = await adapter.sendTurn({
+        threadId: 'thread-1',
+        input: 'Say hi',
+        ...(invocationId ? { invocationId } : {}),
+        metadata: { invocationId: 'untrusted-metadata-origin' },
+      });
 
-    expect(result.threadId).toBe('thread-1');
-    // ai-sdk OpenAI-compatible model hits the /v1 chat-completions endpoint.
-    expect(fetchMock.mock.calls[1]?.[0]).toBe(
-      'http://ollama.test/v1/chat/completions',
-    );
-    const requestBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
-    expect(requestBody).toMatchObject({
-      model: 'llama3.2',
-      stream: true,
-      messages: [
+      expect(result.threadId).toBe('thread-1');
+      // ai-sdk OpenAI-compatible model hits the /v1 chat-completions endpoint.
+      expect(fetchMock.mock.calls[1]?.[0]).toBe(
+        'http://ollama.test/v1/chat/completions',
+      );
+      const requestBody = JSON.parse(
+        String(fetchMock.mock.calls[1]?.[1]?.body),
+      );
+      expect(requestBody).toMatchObject({
+        model: 'llama3.2',
+        stream: true,
+        messages: [
+          { role: 'system', content: 'You are concise.' },
+          { role: 'user', content: 'Say hi' },
+        ],
+      });
+
+      const emitted = [];
+      for (let index = 0; index < 8; index++)
+        emitted.push((await iterator.next()).value);
+      for (const event of emitted) {
+        if (event.turnId && invocationId)
+          expect(event).toMatchObject({ invocationId });
+        else expect(event).not.toHaveProperty('invocationId');
+      }
+
+      await adapter.sendTurn({
+        threadId: 'thread-1',
+        input: 'Again',
+      });
+      const secondRequestBody = JSON.parse(
+        String(fetchMock.mock.calls[2]?.[1]?.body),
+      );
+      expect(secondRequestBody.messages).toEqual([
         { role: 'system', content: 'You are concise.' },
         { role: 'user', content: 'Say hi' },
-      ],
-    });
-
-    await adapter.sendTurn({
-      threadId: 'thread-1',
-      input: 'Again',
-    });
-    const secondRequestBody = JSON.parse(
-      String(fetchMock.mock.calls[2]?.[1]?.body),
-    );
-    expect(secondRequestBody.messages).toEqual([
-      { role: 'system', content: 'You are concise.' },
-      { role: 'user', content: 'Say hi' },
-      { role: 'assistant', content: 'hello there' },
-      { role: 'user', content: 'Again' },
-    ]);
-  });
+        { role: 'assistant', content: 'hello there' },
+        { role: 'user', content: 'Again' },
+      ]);
+    },
+  );
 
   test('rejects a model-less session without inventing a default', async () => {
     global.fetch = vi.fn() as any;
@@ -361,6 +379,7 @@ describe('OllamaAdapter', () => {
     const pending = adapter.sendTurn({
       threadId: 'cancel-turn',
       input: 'Run',
+      invocationId: 'interrupt-origin',
     });
     await vi.waitFor(() => expect(streamSignal).toBeDefined());
     await adapter.interruptTurn('cancel-turn');
@@ -376,7 +395,10 @@ describe('OllamaAdapter', () => {
       ),
     ).toEqual([]);
     expect(events.filter((event) => event?.method === 'turn.aborted')).toEqual([
-      expect.objectContaining({ method: 'turn.aborted' }),
+      expect.objectContaining({
+        method: 'turn.aborted',
+        invocationId: 'interrupt-origin',
+      }),
     ]);
   });
 
@@ -466,10 +488,20 @@ describe('OllamaAdapter', () => {
       modelId: 'model-a',
     });
 
-    const first = adapter.sendTurn({ threadId: 'overlap', input: 'first' });
+    const first = adapter.sendTurn({
+      threadId: 'overlap',
+      input: 'first',
+      invocationId: 'origin-A',
+    });
     const firstFailure = expect(first).rejects.toThrow('Superseded');
     await vi.waitFor(() => expect(controls).toHaveLength(1));
-    const second = adapter.sendTurn({ threadId: 'overlap', input: 'second' });
+    const secondInput: ProviderSendTurnInput = {
+      threadId: 'overlap',
+      input: 'second',
+      invocationId: 'origin-B',
+    };
+    const second = adapter.sendTurn(secondInput);
+    secondInput.invocationId = 'mutated-after-entry';
     await vi.waitFor(() => expect(controls).toHaveLength(2));
     const events = [];
     for (let index = 0; index < 7; index += 1) {
@@ -486,7 +518,12 @@ describe('OllamaAdapter', () => {
           (event) =>
             event.method === 'turn.aborted' && event.turnId === turnIds[0],
         ),
-    ).toEqual([expect.objectContaining({ reason: 'superseded' })]);
+    ).toEqual([
+      expect.objectContaining({
+        reason: 'superseded',
+        invocationId: 'origin-A',
+      }),
+    ]);
     // archive#3466 site pin: `sendTurn`'s supersede branch aborts the first
     // turn's controller and THEN, still synchronously (no await between),
     // overwrites `activeTurns` with the second turn -- the abort listener
@@ -519,6 +556,15 @@ describe('OllamaAdapter', () => {
     controls[1]!.resolve();
     await expect(second).resolves.toMatchObject({ threadId: 'overlap' });
     expect((await adapter.listSessions())[0]?.status).toBe('ready');
+    const remaining = [];
+    for (let index = 0; index < 3; index++)
+      remaining.push((await iterator.next()).value);
+    expect(remaining).toMatchObject([
+      { method: 'content.text-delta', invocationId: 'origin-B' },
+      { method: 'turn.completed', invocationId: 'origin-B' },
+      { method: 'session.state-changed' },
+    ]);
+    expect(remaining[2]).not.toHaveProperty('invocationId');
   });
 
   // archive#796: a per-turn model override changes what actually runs, but only
@@ -581,9 +627,10 @@ describe('OllamaAdapter', () => {
       modelId: 'llama3.2',
       cwd: '/work/station',
     });
-    await adapter.sendTurn({
+    const input: ProviderSendTurnInput = {
       threadId: 'thread-override',
       input: 'Say hi',
+      invocationId: 'model-await-origin',
       modelId: 'qwen3:1.7b',
       metadata: {
         modelLaunchPlan: {
@@ -593,8 +640,30 @@ describe('OllamaAdapter', () => {
           evidence: 'catalog-pending',
         },
       },
-    });
+    };
+    const pending = adapter.sendTurn(input);
+    input.invocationId = 'mutated-before-model-lookup';
+    await pending;
     await collect;
+    const [started, content, completed, idle] = await Promise.all([
+      iterator.next(),
+      iterator.next(),
+      iterator.next(),
+      iterator.next(),
+    ]);
+    expect(started.value).toMatchObject({
+      method: 'turn.started',
+      invocationId: 'model-await-origin',
+    });
+    expect(content.value).toMatchObject({
+      method: 'content.text-delta',
+      invocationId: 'model-await-origin',
+    });
+    expect(completed.value).toMatchObject({
+      method: 'turn.completed',
+      invocationId: 'model-await-origin',
+    });
+    expect(idle.value).not.toHaveProperty('invocationId');
 
     expect(models).toEqual(['llama3.2', 'qwen3:1.7b']);
     expect(
@@ -820,7 +889,11 @@ describe('station#1182: runtime-reported model', () => {
     });
 
     await expect(
-      adapter.sendTurn({ threadId: 'thread-stream-failure', input: 'hi' }),
+      adapter.sendTurn({
+        threadId: 'thread-stream-failure',
+        input: 'hi',
+        invocationId: 'failure-origin',
+      }),
     ).rejects.toThrow('Ollama connection reset mid-turn');
 
     const events: any[] = [];
@@ -844,6 +917,7 @@ describe('station#1182: runtime-reported model', () => {
     ).toHaveLength(1);
     expect(terminal).toMatchObject({
       method: 'runtime.error',
+      invocationId: 'failure-origin',
       severity: 'error',
       message: 'Ollama connection reset mid-turn',
     });

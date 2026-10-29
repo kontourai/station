@@ -1,0 +1,7 @@
+{
+  "revision": "68877b07b82325fe6eed23d2d328a7c188d4632f",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Addressed independent exact-head review's nonblocking freshness finding: added the actual Codex request-construction and configured-metadata owner. Reviewed start/resume/fork/turn omission and effective-reviewer reporting gap at 68877b07b82325fe6eed23d2d328a7c188d4632f. This changes freshness routing only; no product or policy change. Reviewer selection and effective-state reporting remain follow-up3741. Negative controls caught removed chip disclosure and accidental reviewer=user forwarding; byte-identical restoration and 70 restored focused tests passed. R2/R3 qualifications unchanged.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/providers/adapters/codex-adapter.ts"]}
+  ]
+}

@@ -11,8 +11,11 @@ not grant any of those permissions.
 Its root and `/health-probe` entries select compiled `dist/` output; other named
 entries, including `/connection-trust`, `/device-pairing`,
 `/application-channel`, `/application-channel-frames`, `/self-hosted-browser`, `/native-diagnostic-echo` and
-`/native-application`, `/native-enrollment` and `/relay-ice`,
-select TypeScript source. The former `/node-storage` entry is no longer exported.
+`/native-application`, `/native-enrollment`, `/relay-ice`,
+`/pairing-deep-link` (encode and parse pairing deep links and browser pairing
+links) and `/local-self-provision` (one or retried local self-provision
+attempts with their outcome) select TypeScript source. The former
+`/node-storage` entry is no longer exported.
 
 From a managed Station checkout, `npm run build --prefix packages/connect`
 runs TypeScript, copies React CSS and writes the distribution freshness stamp.
@@ -50,7 +53,9 @@ and profile owners.
 Pass `activeHealth` with the selected connection's ID, live status and optional
 failure reason. The manager uses that snapshot only for the matching selected
 connection; other unchecked rows remain idle. Opening a row reveals details,
-and **Switch to this Station** performs the selection separately. Supply
+and **Switch to this Station** performs the selection separately. The optional
+`renderConnectionDetails(connection)` host callback adds controls inside that
+expanded row; it supplies no credential or selection authority. Supply
 `guardConnectionChange(proceed)` when the host owns unsaved work, and call
 `proceed` only after its guard allows the switch. Omitting the optional guard
 does not add an unsaved-work decision automatically.
@@ -84,7 +89,7 @@ for the fallback's candidate and deadline conditions.
 
 The library does not enroll or activate a Device, authenticate an account or
 grant Project access. Station now composes it in its native saved-route owner
-for a configured host-owned Device binding. Each peer obtains fresh ICE, and
+for a configured host-owned Device binding. Native peers remain single-request because the host permits one Device proof per handle. Pending answer reads back off from 100 ms to one second. Each peer obtains fresh ICE, and
 a separate account bridge supplies continuation proof for bounded Project
 reads and the closed relay-management/Project access administration leaves,
 using a dedicated fixed native account operation for management POSTs.
@@ -92,9 +97,13 @@ Unsupported resources and writes fail before peer allocation in the
 [Station runtime owner](../../src-ui/src/platform/native/nativeRelayApplicationRuntime.ts).
 The generic library does not choose that policy. Management does not replace
 Project IAM or grant terminal, Agent or Task publication authority. The
-account-bound gate admits only exact native relay-management leaves with
+account-bound relay-management gate admits only its exact native leaves with
 current Device/account proof and separate `relay:manage`; credential-only
-account-bound Devices remain gated. Capabilities grant no management authority.
+account-bound Devices remain gated on those leaves. Independent
+[personal analytics leaves](../../docs/guides/monitoring.md#connect-a-personal-source-in-insights)
+require a person-bound Device, matching current account session,
+`orchestration:read` and per-handler person/grant checks. They grant no generic
+orchestration or native transport authority. Capabilities grant no management authority.
 [ApiBaseContext](../../src-ui/src/contexts/ApiBaseContext.tsx) and the
 [selected connection owner](../../src-ui/src/platform/native/nativeRelayConnectionOwner.ts)
 mount the host transport; the
@@ -221,7 +230,11 @@ account authority or TURN configuration. Keep routing credentials in their
 credential owner, outside saved public profile JSON and ordinary localStorage.
 HTTPS is required except for the explicit loopback HTTP development profile.
 Requests retain the application channel's 16 KiB pilot body limit; responses use
-its bounded, backpressured streaming protocol. This interface is Fetch, not an
+its bounded streaming protocol. A server advertising the versioned
+`credit-window-v1` response extension permits four chunks in flight (64 KiB
+read-ahead); absent that advertisement the client retains one-credit flow.
+Old clients remain compatible with new servers. Both native and browser relay
+paths use this shared core; see the [flow-control contract](../../docs/reference/connect.md#bounded-response-credit-window). This interface is Fetch, not an
 arbitrary WebSocket or terminal proxy.
 
 An admitted channel owner may supply optional `prepareRequest` to add headers
@@ -236,3 +249,28 @@ operator setup. The [free collaboration lab](../../docs/guides/local-collaborati
 exercises real browser, broker, Pion and Station application behavior. Fresh
 relay-only guest enrollment and native credential transport require their own
 supported account/Device flows; a fixture credential is not proof of that journey.
+
+
+### Native nearby discovery and exchange recovery
+
+The host registers native DNS-SD discovery through the candidate provider
+registry. Providers return untrusted address hints and explicit availability,
+permission, timeout and cancellation states. The picker enters the existing
+access-request flow; discovery never navigates to an advertised page, writes a
+profile or grants access. Browser clients have no native LAN provider.
+
+Pairing HTTP requests refuse redirects. Before exchanging a one-time proof,
+Station commits an origin-and-kind scoped IndexedDB claim with strict transaction
+durability. The browser implementation must report support or admission fails
+closed. Completion follows credential/profile custody. Uncertain attempts stay
+held across expiry, reload and ordinary pending-slot cleanup; only exact proven
+unconsumed responses release a claim for retry. Recovery inventory distinguishes
+empty, unavailable and corrupt storage. Terminal receipts are retained through
+the original offer expiry; the server remains the authority for proof expiry.
+These guarantees rely on browser persistence and do not promise recovery after
+site-data deletion or storage/device failure.
+
+`renderPairingEndpointSuggestions` is an optional host-owned render slot on the
+connection modal. Station's UI uses React Query to fetch authenticated endpoint
+suggestions only while hosting pairing, and applies an address only after the
+operator chooses it. The connect package does not depend on React Query.

@@ -1,0 +1,9 @@
+{
+  "revision": "d4ad85a8c0438bc0ac83a776ae8d8ef03987e667",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"REASONED round 1 media-only delta review: read the Starter guide and its captured walkthrough link, then compared media.json to the prior review. Only outside-agent-r2b capture metadata and an isolated loopback approval were changed. Existing Starter/Project/Task/inspection captures, their evidence limits and the actual Starter owners are unchanged, so this guide needs no prose update. No new Starter runtime or provider qualification is claimed.","inputs":["docs/guides/starter-work.md","docs/learn/media.json"]},
+
+    {"path":"docs/design/outside-agent-mcp-r2b-evidence.md","note":"EXECUTED: opened the new loopback approval capture, whose invisible-only client name is visibly (unnamed), comparison code/instruction is prominent and Project scope reads Alpha workspace (alpha). Add this retained image as an explicit evidence source for the round 1 receipt. Preserve the private-store rendering and non-qualification limits already documented.","inputs":["docs/design/outside-agent-mcp-r2b-evidence.md","docs/learn/media/outside-agent-r2b-approve-loopback.png"]}
+  ]
+}

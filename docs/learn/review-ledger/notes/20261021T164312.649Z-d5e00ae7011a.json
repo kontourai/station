@@ -1,0 +1,73 @@
+{
+  "revision": "4a13b89314c54247defc874cc40b777572237b5b",
+
+  "notes": [
+    {"path":"docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","note":"L1 fix round: auth_required classification now requires the ACP SDK's exact authRequired shape (code -32000 and 'Authentication required' message); still an error classification, not extension binding. No prose change.","inputs":["docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/architecture.md","note":"L1 fix round: SDK index gained EngineStillStartingError (additive). Architecture overview unaffected. No prose change.","inputs":["docs/architecture.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"L1 fix round: NewChatModal shows an app still on its first start as its own notice ('Your AI app is still starting') rather than a preparation failure. Module ownership unchanged. No prose change.","inputs":["docs/architecture/module-map.md","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"L1 fix round: acp-adapter auth_required matcher narrowed; tool-policy delivery unaffected. No prose change.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"L1 fix round: historical proposal; acp.md and adapter changes (exact authRequired match, reload keeps a first-start continuation, restart limit) do not touch its retained phases. No prose change.","inputs":["docs/design/acp-chat-architecture.md","docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/design/agent-engine-unification.md","note":"L1 fix round: added that startup probes only registered connections, so the first-contact check does not survive a restart. Matches runtime-background-tasks.ts startRuntimeACPConnections.","inputs":["docs/design/agent-engine-unification.md"]},
+
+    {"path":"docs/design/chat-composer.md","note":"L1 fix round: NewChatModal adds a still-starting empty state for the no-agent branch; composer behaviour described here is unaffected. No prose change.","inputs":["docs/design/chat-composer.md","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"L1 fix round: AutomaticEnginePreparation now reports an app still on its first start as a notice (third onComplete argument), and NewChatModal renders it as 'Your AI app is still starting' instead of 'Could not prepare your chat'. The design's suggestion/readiness semantics are unchanged. No prose change.","inputs":["docs/design/connections-onboarding.md","src-ui/src/components/modals/AutomaticEnginePreparation.tsx","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/knowledge-recall-ui.md","note":"L1 fix round: additive SDK export; unaffected. No prose change.","inputs":["docs/design/knowledge-recall-ui.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/pane-host-contract.md","note":"L1 fix round: additive SDK export; unaffected. No prose change.","inputs":["docs/design/pane-host-contract.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/glossary.md","note":"L1 fix round: contracts.md refined the auth_required wording; no glossary term changed. No prose change.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/acp.md","note":"L1 fix round: auth_required now documented as code -32000 with an 'Authentication required' message (any other -32000 stays generic); added that a registry reload keeps a running first-start continuation and that startup does not re-check never-registered connections after a restart. Matches acp-adapter.ts isAcpAuthRequired and ACPManager.addConnection.","inputs":["docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/agents.md","note":"L1 fix round: setup dialog copy now names the engine; agents guide does not describe it. No prose change.","inputs":["docs/guides/agents.md","src-server/providers/adapters/acp-adapter.ts","src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"L1 fix round: step 3 now says Station keeps checking while it runs and does not resume after a restart, so add the engine again; matches the dialog's bounded-wait copy.","inputs":["docs/guides/connections.md","src-server/providers/adapters/acp-adapter.ts","src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"L1 fix round: contracts.md wording refinement; no integration step changed. No prose change.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"L1 fix round: connections.md change limited to step 3 wording. No prose change.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"L1 fix round: additive SDK export; unaffected. No prose change.","inputs":["docs/guides/responsive-ui.md","packages/sdk/src/index.ts","packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"L1 fix round: unaffected. No prose change.","inputs":["docs/guides/self-configuring-agent.md","src-server/providers/adapters/acp-adapter.ts","src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx"]},
+
+    {"path":"docs/guides/theming.md","note":"L1 fix round: additive SDK export; unaffected. No prose change.","inputs":["docs/guides/theming.md","packages/sdk/src/index.ts","packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"L1 fix round: additive SDK export; unaffected. No prose change.","inputs":["docs/patterns/backend.md","packages/sdk/src/index.ts","packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"L1 fix round: stale-poll guard uses React Query dataUpdatedAt passed from the owning section; consistent with the pattern. No prose change.","inputs":["docs/patterns/frontend.md","packages/sdk/src/index.ts","packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/reference/api.md","note":"L1 fix round: no route change; SDK export additive; auth_required matcher internal. No prose change.","inputs":["docs/reference/api.md","packages/sdk/src/queries.ts","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"L1 fix round: unaffected. No prose change.","inputs":["docs/reference/cli.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"L1 fix round: auth_required paragraph now states the exact shape (code -32000 and 'Authentication required' message). Code table unchanged.","inputs":["docs/reference/contracts.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"L1 fix round: EngineStillStartingError added beside connectAndMaterializeACPRegistryEngine, which this reference does not document; convention kept. No prose change.","inputs":["docs/reference/sdk.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"L1 fix round: auth_required start refusals unchanged in kind; matcher narrower. No prose change.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"L1 fix round: unaffected. No prose change.","inputs":["docs/reference/station-docs.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"L1 fix round: added that a first-run engine starting for the first time can be reported as still starting; its Agent is added if it connects while Station runs, otherwise set it up again. Matches first-run-engines 'starting' outcome.","inputs":["docs/user/getting-started.md","src-ui/src/components/modals/AutomaticEnginePreparation.tsx","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"examples/meeting-transcription/README.md","note":"L1 fix round: additive SDK export; unaffected. No prose change.","inputs":["examples/meeting-transcription/README.md","packages/sdk/src/index.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"L1 fix round: unaffected. No prose change.","inputs":["examples/self-configuring-agent/README.md","src-server/providers/adapters/acp-adapter.ts","src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"L1 fix round: contracts.md wording refinement only. No prose change.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/sdk/README.md","note":"L1 fix round: additive SDK export; unaffected. No prose change.","inputs":["packages/sdk/README.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"L1 fix round: viewed: New chat with an agent already selected; the new still-starting empty state (no-agent branch) is not depicted. Capture remains accurate.","inputs":["docs/learn/media/new-chat-start-before.png","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"L1 fix round: viewed: New chat start surface with Codex selected; the still-starting empty state is not depicted. Capture remains accurate.","inputs":["docs/learn/media/new-chat-start-after.png","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

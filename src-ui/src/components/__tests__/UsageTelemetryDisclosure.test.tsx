@@ -1,4 +1,5 @@
 /** @vitest-environment jsdom */
+import type { TelemetryPublisherStatus } from '@kontourai/station-contracts/product-telemetry';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -70,7 +71,6 @@ import {
   UsageTelemetryDisclosure,
   UsageTelemetryDisclosureStep,
   usageTelemetryDisclosureSummary,
-  useUsageTelemetryDisclosureState,
 } from '../UsageTelemetryDisclosure';
 
 test('DISCLOSURE CONTENT DRIFT DEFECT: Settings renders the server inventory and acknowledges it', async () => {
@@ -291,8 +291,7 @@ function inventoryResponse(
     endpointConfigured?: boolean;
     telemetryEnabled?: boolean;
     enabledSource?: 'config' | 'env' | 'default';
-    canAcknowledge?: boolean;
-    canChangeSetting?: boolean;
+    publishers?: Record<'kontour' | 'operator', TelemetryPublisherStatus>;
   } = {},
 ) {
   return new Response(
@@ -303,13 +302,7 @@ function inventoryResponse(
         endpointConfigured: derived.endpointConfigured ?? false,
         telemetryEnabled: derived.telemetryEnabled ?? true,
         enabledSource: derived.enabledSource ?? 'default',
-        // Omitted unless a case sets them: an older host reports neither.
-        ...(derived.canAcknowledge === undefined
-          ? {}
-          : { canAcknowledge: derived.canAcknowledge }),
-        ...(derived.canChangeSetting === undefined
-          ? {}
-          : { canChangeSetting: derived.canChangeSetting }),
+        publishers: derived.publishers,
         events: {
           station_started: {
             description: 'Station completed startup.',
@@ -332,8 +325,7 @@ function renderStep(
     endpointConfigured?: boolean;
     telemetryEnabled?: boolean;
     enabledSource?: 'config' | 'env' | 'default';
-    canAcknowledge?: boolean;
-    canChangeSetting?: boolean;
+    publishers?: Record<'kontour' | 'operator', TelemetryPublisherStatus>;
   } = {},
   config?: { telemetryEnabled?: boolean },
 ) {
@@ -406,7 +398,7 @@ test('#1582 A3: the step leads with a derived sentence and hides the schema behi
 
   expect(
     await screen.findByText(
-      'Station can send anonymous usage events, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
+      'Pseudonymous usage events (monthly ID, never linked to your account) go only to a set endpoint; none is configured, so nothing is sent.',
     ),
   ).toBeTruthy();
   const details = screen
@@ -429,13 +421,13 @@ test('#1582 A3: the summary is derived from the host, never asserted', () => {
   // "none is configured here" is a claim about THIS Station. A build that
   // cannot see the endpoint says less rather than guessing.
   expect(usageTelemetryDisclosureSummary(false)).toBe(
-    'Station can send anonymous usage events, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
+    'Pseudonymous usage events (monthly ID, never linked to your account) go only to a set endpoint; none is configured, so nothing is sent.',
   );
   expect(usageTelemetryDisclosureSummary(true)).toBe(
-    'Station can send anonymous usage events, only when a telemetry endpoint is configured; one is configured on this Station.',
+    'Pseudonymous usage events (monthly ID, never linked to your account) go only to a set endpoint; one is configured here.',
   );
   expect(usageTelemetryDisclosureSummary(undefined)).toBe(
-    'Station can send anonymous usage events, only when a telemetry endpoint is configured.',
+    'Pseudonymous usage events (monthly ID, never linked to your account) go only to a set endpoint.',
   );
 });
 
@@ -618,8 +610,7 @@ function renderModal(
     endpointConfigured?: boolean;
     telemetryEnabled?: boolean;
     enabledSource?: 'config' | 'env' | 'default';
-    canAcknowledge?: boolean;
-    canChangeSetting?: boolean;
+    publishers?: Record<'kontour' | 'operator', TelemetryPublisherStatus>;
   } = {},
   config?: { telemetryEnabled?: boolean },
 ) {
@@ -649,7 +640,7 @@ test('#1600: the standalone modal leads with the derived sentence, not the inven
   const modal = await screen.findByTestId('usage-telemetry-disclosure-modal');
   expect(
     screen.getByText(
-      'Station can send anonymous usage events, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
+      'Pseudonymous usage events (monthly ID, never linked to your account) go only to a set endpoint; none is configured, so nothing is sent.',
     ),
     'the modal did not lead with the derived summary',
   ).toBeTruthy();
@@ -719,7 +710,11 @@ test('#1600: an already-off host is offered the decision it can make, and keepin
   // labels follow the EFFECTIVE setting, and keeping a state only the
   // environment holds writes it down, because a decision resting on
   // `STATION_TELEMETRY_ENABLED` disappears the day that variable does.
-  const view = renderModal({ telemetryEnabled: false, enabledSource: 'env' });
+  const view = renderModal({
+    telemetryEnabled: false,
+    enabledSource: 'env',
+    endpointConfigured: true,
+  });
 
   expect(
     await screen.findByRole('button', { name: 'Keep usage telemetry off' }),
@@ -888,133 +883,5 @@ test('a lapsed snooze, or a changed inventory, re-offers the disclosure', async 
     await screen.findByRole('dialog'),
     'a snooze for an older inventory suppressed a changed one',
   ).toBeTruthy();
-  resetUsageTelemetryDisclosureDismissal();
-});
-
-/**
- * A device paired through the QR/manual-code flow holds no `access:manage`, so
- * the server refuses its acknowledgement and reports `canAcknowledge: false`.
- * Nothing may prompt that caller for a decision it cannot make.
- */
-test('the standalone modal never mounts for a caller that cannot acknowledge, and leaves no snooze', async () => {
-  // Positive control on the SAME harness: a caller that can acknowledge gets
-  // the modal, so the absence below is the flag's doing, not a harness that
-  // never reaches the dialog.
-  const control = renderModal({ canAcknowledge: true });
-  expect(await screen.findByRole('dialog')).toBeTruthy();
-  control.unmount();
-
-  const view = renderModal({ canAcknowledge: false });
-  await waitFor(() => expect(authenticatedFetch).toHaveBeenCalled());
-  // Let the query settle and any resulting render commit.
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  });
-  expect(
-    screen.queryByRole('dialog'),
-    'the disclosure modal opened on a device that cannot acknowledge',
-  ).toBeNull();
-  expect(screen.queryByTestId('usage-telemetry-disclosure-modal')).toBeNull();
-  expect(
-    localStorage.getItem(USAGE_TELEMETRY_SNOOZE_STORAGE_KEY),
-    'a disclosure that was never shown was snoozed',
-  ).toBeNull();
-  view.unmount();
-  resetUsageTelemetryDisclosureDismissal();
-});
-
-test('a caller that cannot acknowledge has no outstanding disclosure, so the first-run step is skipped', async () => {
-  // `FirstRunHomeChapter` plans its disclosure step from this flag alone
-  // (pinned in FirstRunHomeChapter.test.tsx), so this is the seam that keeps
-  // the step off such a device.
-  const seen: boolean[] = [];
-  function Probe() {
-    const state = useUsageTelemetryDisclosureState();
-    if (state.settled && state.data) seen.push(state.outstanding);
-    return null;
-  }
-  for (const canAcknowledge of [true, false] as const) {
-    resetUsageTelemetryDisclosureDismissal();
-    authenticatedFetch.mockReset();
-    authenticatedFetch.mockImplementation(async () =>
-      inventoryResponse(false, { canAcknowledge }),
-    );
-    seen.length = 0;
-    const view = render(
-      <QueryClientProvider client={new QueryClient()}>
-        <Probe />
-      </QueryClientProvider>,
-    );
-    await waitFor(() => expect(seen.length).toBeGreaterThan(0));
-    expect(seen.at(-1), `canAcknowledge=${canAcknowledge}`).toBe(
-      canAcknowledge,
-    );
-    view.unmount();
-  }
-  resetUsageTelemetryDisclosureDismissal();
-});
-
-test('Settings shows a caller that cannot acknowledge the inventory read-only, with no actions', async () => {
-  resetUsageTelemetryDisclosureDismissal();
-  authenticatedFetch.mockReset();
-  authenticatedFetch.mockImplementation(async () =>
-    inventoryResponse(false, { canAcknowledge: false }),
-  );
-  updateConfig.mockReset();
-  appConfig.current = undefined;
-  const view = render(
-    <QueryClientProvider client={new QueryClient()}>
-      <UsageTelemetryDisclosure />
-    </QueryClientProvider>,
-  );
-  expect(
-    (await screen.findByTestId('usage-telemetry-disclosure-host-decision'))
-      .textContent,
-  ).toBe('Acknowledging this inventory is done on the host computer.');
-  expect(
-    screen.getByText(
-      'Station can send anonymous usage events, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
-    ),
-  ).toBeTruthy();
-  expect(screen.getByText('station_started')).toBeTruthy();
-  expect(
-    screen.queryAllByRole('button'),
-    'Settings offered a decision the caller cannot make',
-  ).toEqual([]);
-  view.unmount();
-  resetUsageTelemetryDisclosureDismissal();
-});
-
-test('a caller that can acknowledge but not write the setting is not offered the change, and keeping writes no setting', async () => {
-  // An env-held state would normally be recorded on "keep"; this caller's
-  // `PUT /config/app` would be refused, so it acknowledges only.
-  const view = renderModal({
-    canAcknowledge: true,
-    canChangeSetting: false,
-    telemetryEnabled: false,
-    enabledSource: 'env',
-  });
-  expect(
-    await screen.findByRole('button', { name: 'Keep usage telemetry off' }),
-  ).toBeTruthy();
-  expect(
-    screen.queryByRole('button', { name: 'Turn it on' }),
-    'offered a setting write the server would refuse',
-  ).toBeNull();
-
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Keep usage telemetry off' }),
-  );
-  await waitFor(() =>
-    expect(authenticatedFetch).toHaveBeenLastCalledWith(
-      ACKNOWLEDGEMENTS_URL,
-      expect.objectContaining({ method: 'POST' }),
-    ),
-  );
-  expect(
-    updateConfig,
-    'wrote a setting the caller cannot write',
-  ).not.toHaveBeenCalled();
-  view.unmount();
   resetUsageTelemetryDisclosureDismissal();
 });

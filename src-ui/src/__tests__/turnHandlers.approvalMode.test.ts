@@ -9,6 +9,7 @@ vi.mock('@kontourai/station-sdk', () => ({
 }));
 
 import { activeChatsStore } from '../contexts/active-chats-store';
+import { toastStore } from '../contexts/ToastContext';
 import { handleOrchestrationEvent } from '../hooks/orchestration/eventHandlers';
 import { sessionApprovalOverride } from '../utils/approvalMode';
 
@@ -300,5 +301,109 @@ describe('lastAppliedApprovalMode tracking from session.configured / turn.starte
       requestedModel: undefined,
       requestedProviderOptions: { effort: 'low' },
     });
+  });
+});
+
+describe('#3290: a pick OpenCode could not be switched to', () => {
+  const OC_THREAD = 'opencode-takeover-thread';
+
+  beforeEach(() => {
+    activeChatsStore.removeChat(OC_THREAD);
+    activeChatsStore.initChat(OC_THREAD, {
+      agentSlug: 'opencode',
+      agentName: 'OpenCode',
+      title: 'OpenCode Chat',
+    });
+    activeChatsStore.updateChat(OC_THREAD, { approvalPosture: 'ask' });
+  });
+
+  const chat = () => activeChatsStore.getSnapshot()[OC_THREAD];
+
+  test('the takeover warning marks the recorded pick not applied and keeps what still runs', () => {
+    handleOrchestrationEvent('http://localhost', {
+      provider: 'acp',
+      threadId: OC_THREAD,
+      createdAt: '2026-10-06T00:00:00.000Z',
+      method: 'runtime.warning',
+      severity: 'warning',
+      message:
+        "Couldn't switch OpenCode to Station's approval rules; it's still using its own settings: x.",
+      code: 'acp-approval-takeover-failed',
+      details: { requestedApprovalMode: 'ask' },
+    });
+    expect(chat().approvalTakeoverFailed).toBe(true);
+    expect(chat().lastAppliedApprovalMode).toBeUndefined();
+    expect(sessionApprovalOverride(chat())).toEqual({
+      mode: 'ask',
+      state: 'not-applied',
+    });
+  });
+
+  test('a turn that kept a stricter mode says so; the next turn that took the pick clears it', () => {
+    activeChatsStore.updateChat(OC_THREAD, { approvalPosture: 'never' });
+    handleOrchestrationEvent('http://localhost', {
+      provider: 'acp',
+      threadId: OC_THREAD,
+      createdAt: '2026-10-06T00:00:01.000Z',
+      method: 'turn.started',
+      turnId: 'turn-kept',
+      metadata: { approvalMode: 'ask', approvalTakeoverFailed: true },
+    });
+    expect(chat()).toMatchObject({
+      approvalTakeoverFailed: true,
+      lastAppliedApprovalMode: 'ask',
+    });
+    expect(sessionApprovalOverride(chat())?.state).toBe('not-applied');
+
+    handleOrchestrationEvent('http://localhost', {
+      provider: 'acp',
+      threadId: OC_THREAD,
+      createdAt: '2026-10-06T00:00:02.000Z',
+      method: 'turn.started',
+      turnId: 'turn-took',
+      metadata: { approvalMode: 'never' },
+    });
+    expect(chat().approvalTakeoverFailed).toBe(false);
+    expect(sessionApprovalOverride(chat())).toEqual({
+      mode: 'never',
+      state: 'confirmed',
+    });
+  });
+});
+
+describe('runtime warning notifications', () => {
+  beforeEach(() => toastStore.clear());
+
+  test('reconnect warnings group within a session without hiding other sessions or causes', () => {
+    const warning = {
+      provider: 'acp' as const,
+      threadId: THREAD_ID,
+      createdAt: '2026-10-24T14:47:00.000Z',
+      method: 'runtime.warning' as const,
+      severity: 'warning' as const,
+      message: 'Agent event observation was interrupted.',
+      code: 'adapter-event-stream-interrupted',
+    };
+    for (let i = 0; i < 3; i++) {
+      handleOrchestrationEvent('http://localhost', warning);
+    }
+    expect(toastStore.getSnapshot()).toMatchObject([
+      { sessionId: THREAD_ID, occurrences: 3, type: 'warning' },
+    ]);
+    activeChatsStore.initChat('another-session', {
+      agentSlug: 'opencode',
+      agentName: 'OpenCode',
+      title: 'Another session',
+    });
+    handleOrchestrationEvent('http://localhost', {
+      ...warning,
+      threadId: 'another-session',
+    });
+    handleOrchestrationEvent('http://localhost', {
+      ...warning,
+      code: 'another-warning',
+      message: 'Another cause.',
+    });
+    expect(toastStore.getSnapshot()).toHaveLength(3);
   });
 });

@@ -9,6 +9,7 @@ export type {
   ConnectionHealthCheckResult,
   ConnectionHealthCoordinatorOptions,
   ConnectionHealthSnapshot,
+  ConnectionRouteResult,
 } from './core/ConnectionHealthCoordinator';
 export { ConnectionHealthCoordinator } from './core/ConnectionHealthCoordinator';
 export { ConnectionStore } from './core/ConnectionStore';
@@ -29,9 +30,12 @@ export type {
   ConnectionCandidateProviderStatus,
 } from './core/connectionCandidates';
 export {
+  ConnectionCandidateProviderError,
   connectionCandidateProviderCount,
+  connectionCandidateProviderRevision,
   discoverConnectionCandidates,
   registerConnectionCandidateProvider,
+  subscribeConnectionCandidateProviders,
 } from './core/connectionCandidates';
 export {
   classifyConnectionFailure,
@@ -46,6 +50,13 @@ export {
   connectionIndicatorLabel,
   connectionIndicatorState,
 } from './core/connectionIndicator';
+export type { ConnectionRouteKind } from './core/connectionRoutes';
+export {
+  CONNECTION_ROUTE_LABELS,
+  connectionAcceptsRoutes,
+  connectionRouteKind,
+  connectionRouteRemovable,
+} from './core/connectionRoutes';
 export type {
   NativePairingExchangeTransport,
   PendingPairingApproval,
@@ -61,6 +72,7 @@ export {
   observePendingPairingApproval,
   requestCurrentStationAccess,
   requestDevicePairing,
+  retirePendingExchangeAfterReview,
   savePendingExchange,
   setNativePairingExchangeTransport,
 } from './core/devicePairing';
@@ -113,6 +125,7 @@ export type {
 } from './core/pendingPairingCompletion';
 export type { CompletePendingPairing } from './core/pendingPairingCompletionLoader';
 export { completePendingPairing } from './core/pendingPairingCompletionLoader';
+export { restoreHeldPairingExchanges } from './core/pendingPairingExchangeJournal';
 // KnownEnvironmentRegistry (station#1096 R2) is intentionally NOT re-exported
 // from this bare entry point — only from the dedicated
 // `@kontourai/station-connect/known-environment` subpath. This entry is
@@ -183,6 +196,7 @@ export type { QRScannerProps } from './react/QRScanner';
 export { QRScanner } from './react/QRScanner';
 export {
   defaultKeptScope,
+  describeDeviceGrant,
   elevatedLabels,
   keptScopeForApproval,
   RequestedScopeChecklist,

@@ -3,6 +3,10 @@
  */
 
 import { MS_PER_DAY } from '@kontourai/station-contracts/time';
+import type {
+  UsageExportPage,
+  UsageExportRequest,
+} from '@kontourai/station-contracts/usage-export';
 import type { UsageStats } from '@kontourai/station-contracts/usage-stats';
 import { Hono } from 'hono';
 import { LocalUsageReceiptSource } from '../../analytics/local-usage-receipt-source.js';
@@ -13,6 +17,7 @@ import {
   type UsageRollupService,
   UsageRollupService as UsageRollupServiceImpl,
 } from '../../analytics/usage-rollup-service.js';
+import type { AuthorityObservationRequestContext } from '../../services/identity/authority-observation.js';
 import type { PeerCredential } from '../../services/peers/peer-credential-store.js';
 import { analyticsOps } from '../../telemetry/metrics.js';
 import {
@@ -32,8 +37,60 @@ export function createAnalyticsRoutes(
   configuredPeers?: () => readonly (PeerCredential & { credential: string })[],
   localStationId = 'local',
   canReadStationUsage?: (request: Request) => boolean,
+  usageExport?: (
+    context: AuthorityObservationRequestContext,
+    request: UsageExportRequest,
+  ) => Promise<{ page: UsageExportPage; assertCurrent(): Promise<void> }>,
 ) {
   const app = new Hono();
+
+  app.get('/usage-export', async (c) => {
+    c.header('Cache-Control', 'no-store');
+    if (!usageExport)
+      return c.json({ error: { code: 'usage_export_unavailable' } }, 503);
+    const query = new URL(c.req.url).searchParams;
+    if (
+      [...query.keys()].some(
+        (key) =>
+          !['from', 'to', 'scope', 'pageSize', 'cursor'].includes(key) ||
+          query.getAll(key).length !== 1,
+      )
+    )
+      return c.json({ error: { code: 'invalid_usage_export' } }, 400);
+    const scope = query.get('scope') ?? 'individual';
+    if (scope !== 'individual' && scope !== 'personal-account')
+      return c.json({ error: { code: 'invalid_usage_export' } }, 400);
+    const { UsageExportRejected } = await import(
+      '../../analytics/usage-export-reader.js'
+    );
+    const { AuthorityObservationRejected, guardAuthorityObservationResponse } =
+      await import('../../services/identity/authority-observation.js');
+    try {
+      const selected = await usageExport(
+        { env: c.env, req: c.req },
+        {
+          from: query.get('from') ?? '',
+          to: query.get('to') ?? '',
+          scope,
+          ...(query.has('pageSize')
+            ? { pageSize: Number(query.get('pageSize')) }
+            : {}),
+          ...(query.has('cursor') ? { cursor: query.get('cursor')! } : {}),
+        },
+      );
+      return await guardAuthorityObservationResponse(
+        c.json({ success: true, data: selected.page }),
+        selected.assertCurrent,
+      );
+    } catch (error) {
+      if (
+        error instanceof UsageExportRejected ||
+        error instanceof AuthorityObservationRejected
+      )
+        return c.json({ error: { code: error.code } }, error.status);
+      return c.json({ error: { code: 'usage_export_unavailable' } }, 503);
+    }
+  });
 
   app.get('/station-usage', async (c) => {
     c.header('Cache-Control', 'no-store');

@@ -95,7 +95,7 @@ export interface FleetServeReceiptSink {
 const moduleLogger = createLogger({ name: 'fleet-inference-routes' });
 
 /**
- * **Which refusals are receipted, and which are not** (security review, L-4).
+ * **Which refusals are receipted, and which are not.**
  *
  * Every refusal the SERVICE decides — `contribution-disabled`,
  * `model-not-contributed`, `model-unavailable`, `capacity-exhausted`,
@@ -132,8 +132,8 @@ export function createFleetInferenceRoutes(
    *
    * A write failure never fails the response: the completion already
    * happened, and turning it into a 500 would hand the peer a retry that
-   * costs this machine a second generation. But it is LOUD (security review,
-   * M-2 — the first cut swallowed it and pointed at a counter that only
+   * costs this machine a second generation. But it is LOUD (the first cut
+   * swallowed it and pointed at a counter that only
    * increments on success, so an unwritten serve receipt was invisible on
    * every channel). An unrecorded completion is the "no artifact" posture
    * this feature exists to differentiate against, so it gets its own failure
@@ -190,8 +190,8 @@ export function createFleetInferenceRoutes(
    * chunk and cancels the reader the moment observed bytes exceed the cap —
    * so a caller that LIES about its length, or sends a chunked body with no
    * length at all, is stopped mid-stream rather than buffered in full and
-   * measured afterwards. That was the residual this route shipped with in
-   * review round 1, and it closed by using the repo's existing reader
+   * measured afterwards. That was the residual this route first shipped
+   * with, and it closed by using the repo's existing reader
    * (`routes/schemas/schema-validation.ts`, which `PUT /config/app` has
    * ridden since it was written) instead of `c.req.text()`. Nothing bespoke:
    * it already works on both the node-server and in-process harness paths,

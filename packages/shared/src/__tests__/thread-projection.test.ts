@@ -505,3 +505,35 @@ describe('conversationToThread', () => {
     ).toBeNull();
   });
 });
+
+// The projection keeps an output-less failure's text in `error` only (it is
+// not duplicated into `result`), so the export must still carry it.
+it('exports an output-less failure with its error text, through the real projection', () => {
+  const messages = projectRuntimeEventsToMessages([
+    ev({ method: 'turn.started', turnId: 'rf', prompt: 'write it' }),
+    ev({
+      method: 'tool.started',
+      turnId: 'rf',
+      toolCallId: 'cf',
+      toolName: 'write',
+      arguments: {},
+    }),
+    ev({
+      method: 'tool.completed',
+      turnId: 'rf',
+      toolCallId: 'cf',
+      toolName: 'write',
+      status: 'error',
+      error: 'permission denied',
+    }),
+    ev({ method: 'turn.completed', turnId: 'rf', finishReason: 'other' }),
+  ]);
+  const thread = conversationToThread(messages, { threadId: 'conv-err' });
+  const tool = thread.messages.find((m) => m.role === 'tool');
+  if (tool?.role !== 'tool') throw new Error('expected a tool message');
+  expect(tool.toolResults[0]).toMatchObject({
+    toolCallId: 'cf',
+    content: [{ type: 'text', text: 'permission denied' }],
+    isError: true,
+  });
+});

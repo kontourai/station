@@ -24,12 +24,14 @@ rather than creating a second Interface reference.
 
 | Area | Disposition | Why it stays this way |
 | --- | --- | --- |
-| TurnDeduplicator | Completed | One opaque owner capability owns `(threadId, clientTurnId)` settlement across restart and contention. |
+| TurnDeduplicator | Completed | One opaque owner capability owns `(threadId, clientTurnId)` settlement across restart and contention. Its claim, resolve, release and retention rules are `@kontourai/monument`'s turn-dedup commands, run over Station's own dedup tables (#3565). |
+| SessionTurnBoundaryAuthority | Boundary writes, listing and event-authoritative polling use Monument | Invocation reads validate the actual current boundary or same-audit witness against the complete canonical scope. Ordinary physical retirement writes that witness before deletion. Cleanup retries existing private transitions before selecting current targets; no target means no canonical payload collection. These steps join the owning transaction and propagate transaction loss before further SQL. Legacy projection and owner reconciliation retain their separate rules. See the [canonical boundary contract](../architecture/module-map.md#sessionturnboundaryauthority). |
+| Steer receipts | Portable Monument commands over the existing host table | Claim/read/confirm and explicit thread deletion retain the original digest and no-reclaim behavior. Host transactions own rollback; the package adds no durable steer placement or automatic resend. |
 | AdoptionLedger | Completed | Reservation, ownership, legal transitions, and atomic commit moved out of EventStore forwarding methods. |
 | RecoveryLedger | Completed | Recovery arm/claim/terminal/compensation and startup reconciliation are one intent-shaped Interface. |
 | CredentialApplicationFactory/Handle | Completed, private | Exact stage/settle/ack evidence is composed with RecoveryLedger; raw attempt identities do not become a caller Interface. |
 | NativeInvocationRuns and VoiceTurnRuns | Completed, private | Direct `/invoke*` provider calls use a pre-effect claim; provider-correlated voice starts are already observed possible effects. EventStore composes both authorities and RunService reads only canonical `invoke:*` and `voice:*` projections. |
-| `/chat` turn dedup | Retained internal facade | Direct `/api/agents/:slug/chat` owns conversation-id replay and a bounded 2,000-row compatibility family over the same SQLite primitive. It is not a second TurnDeduplicator caller family or a generic ledger candidate. |
+| `/chat` turn dedup | Retained internal facade | Direct `/api/agents/:slug/chat` owns conversation-id replay over the shared SQLite primitive, whose resolved-row floor equals the soft cap shared with thread keys (2,000 rows by default). Unresolved rows remain unbounded and do not erode that replay budget. It is not a second TurnDeduplicator caller family or a generic ledger candidate. |
 | Command receipts | Retained internal | Adoption commit still couples receipt persistence atomically with child and Flow facts. A CRUD extraction would split that truth. |
 | Delivery checkpoints | Retained internal | One narrow caller owns monotonic checkpoint advance; a new Seam would add surface without variation. |
 | Session journal | Deferred | Its caller family and retention/query semantics are broader than a bounded ledger slice. |
@@ -54,8 +56,9 @@ must never project success or cleanup completion without `applied`. A thrown or
 ambiguous SQLite operation is `unavailable`, so the caller retains its opaque
 capability for the exact retry rather than guessing durability.
 
-Bulk `reconcilePrepared` is startup-only: it first rejects a prepared row with
-a live durable owner fence, then atomically changes only an abandoned
+Bulk `reconcilePrepared` runs only in startup reconciliation passes (later
+callers retry the credential pass until it reconciles): it first rejects a
+prepared row with a live durable owner fence, then atomically changes only an abandoned
 owner/attempt/correlation tuple and returns its exact winners. Live profile
 completion is restricted to the original process-local claim capability; a
 reconstructed process has no claim and waits for startup reconciliation to
@@ -64,10 +67,14 @@ and guarded compare-and-set updates, preserving due ordering (`due_at`, then
 creation) while keeping transaction coordination and owner-liveness checks
 inside the Implementation.
 
-Both startup reconciliation readers catch scan failures and return an empty
-list. An empty result therefore does not establish that recovery storage was
-read successfully. [#2823](https://github.com/kontourai/station/issues/2823)
-tracks explicit unavailable scan results and the caller's admission policy.
+Both startup reconciliation readers return a typed scan: `available` with the
+rows read, or `unavailable` when the coordinator read failed, so an empty
+result now establishes that recovery storage was read. CredentialRecoveryModule
+reports an unavailable scan as `unavailable` and keeps its startup pass
+eligible for retry instead of latching it.
+[#2823](https://github.com/kontourai/station/issues/2823) still tracks the
+caller's admission policy and the due-path sweep, which has no in-process
+retry.
 
 Ownership pairs an owner UUID with the shared process-identity birth
 fingerprint. A matching live PID is retained; a dead PID or mismatched birth is

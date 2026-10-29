@@ -31,21 +31,33 @@ export function conversationPartToContentParts(
     args: part.args,
     result: part.result,
     output: part.output,
+    ...(part.htmlReply ? { htmlReply: part.htmlReply } : {}),
+    ...(part.stationControlRefusal
+      ? { stationControlRefusal: part.stationControlRefusal }
+      : {}),
+    ...(part.outputTruncated ? { outputTruncated: true } : {}),
     error: part.error,
     cancelled: part.cancelled,
     state: part.state,
     isError: part.isError,
     progressMessage: part.progressMessage,
+    ...(part.startedAt !== undefined ? { startedAt: part.startedAt } : {}),
     runtimeError: part.runtimeError,
     runtimeErrorCode: part.runtimeErrorCode,
     needsApproval: part.needsApproval,
     approvalId: part.approvalId,
     approvalThreadId: part.approvalThreadId,
     approvalEventId: part.approvalEventId,
+    ...(part.approvalContentEvent
+      ? { approvalContentEvent: part.approvalContentEvent }
+      : {}),
+    ...(part.spilledText ? { spilledText: part.spilledText } : {}),
+    ...(part.contentThreadId ? { contentThreadId: part.contentThreadId } : {}),
     ...(part.approvalToolName !== undefined
       ? { approvalToolName: part.approvalToolName }
       : {}),
     approvalSessionGrant: part.approvalSessionGrant,
+    approvalServerGrant: part.approvalServerGrant,
     approvalStatus: part.approvalStatus,
     ...(part.inputRequestRecord
       ? { inputRequestRecord: { ...part.inputRequestRecord } }
@@ -66,7 +78,7 @@ export function conversationPartToContentParts(
 }
 
 /**
- * A durable window read plus the live frames past its watermark, in server
+ * A durable window read plus the live frames it does not hold, in server
  * sequence order: the chat dock's stitching, shared with the session detail.
  * Live frames come from the document-wide sequenced store, which keeps every
  * frame of an open turn (bounded per Station, with a truncation watermark the
@@ -77,19 +89,47 @@ export function stitchWindowWithLiveEvents(input: {
   watermark: number | undefined;
   liveEvents: readonly OrchestrationSequencedEvent[];
   threadIds: ReadonlySet<string | undefined>;
-}): OrchestrationSequencedEvent[] {
+  previous?: readonly OrchestrationSequencedEvent[];
+}): readonly OrchestrationSequencedEvent[] {
   const watermark =
     input.watermark ??
     Math.max(0, ...input.windowEvents.map((item) => item.sequence));
+  // The newest window page is capped by count and bytes: a long turn reads
+  // back as its `turn.started` plus its tail, with nothing between. A live
+  // frame of a turn the page shows, inside the page's range but missing from
+  // it, is that gap rather than a stale duplicate. Anything else at or below
+  // the watermark is left to paging.
+  const oldestRead = input.windowEvents.length
+    ? Math.min(...input.windowEvents.map((item) => item.sequence))
+    : watermark + 1;
+  const windowTurnIds = new Set(
+    input.windowEvents.map((item) => item.event.turnId).filter(Boolean),
+  );
   const events = [...input.windowEvents];
   const persistedIds = new Set(
     input.windowEvents.map((item) => item.event.eventId).filter(Boolean),
   );
+  const persistedSequences = new Set(
+    input.windowEvents.map((item) => item.sequence),
+  );
   for (const item of input.liveEvents) {
-    if (item.sequence <= watermark || !input.threadIds.has(item.event.threadId))
+    if (!input.threadIds.has(item.event.threadId)) continue;
+    if (
+      item.sequence <= watermark &&
+      (item.sequence < oldestRead || !windowTurnIds.has(item.event.turnId))
+    )
       continue;
-    if (persistedIds.has(item.event.eventId)) continue;
+    if (
+      persistedIds.has(item.event.eventId) ||
+      persistedSequences.has(item.sequence)
+    )
+      continue;
     events.push(item);
   }
-  return events.sort((left, right) => left.sequence - right.sequence);
+  events.sort((left, right) => left.sequence - right.sequence);
+  const previous = input.previous ?? input.windowEvents;
+  return events.length === previous.length &&
+    events.every((item, index) => item === previous[index])
+    ? previous
+    : events;
 }

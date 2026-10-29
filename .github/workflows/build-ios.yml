@@ -27,6 +27,11 @@ on:
     branches: [main]
     types: [checks_requested]
   workflow_dispatch:
+    inputs:
+      push_extensions:
+        description: Compile Stable's push plugin and both extensions (unsigned simulator only)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -94,10 +99,9 @@ jobs:
           repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
       - name: Setup pinned pnpm
-        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
-        with: { install: false }
+        uses: kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc, package-manager-cache: false }
       - id: rust
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
@@ -143,14 +147,45 @@ jobs:
       - working-directory: src-desktop
         run: npx tauri ios init --ci --skip-targets-install --config tauri.conf.json
       - run: node scripts/write-ios-build-manifest.mjs
+      - name: Prepare unsigned Stable push extensions
+        if: github.event_name == 'workflow_dispatch' && inputs.push_extensions
+        run: |
+          push_info_plist="$RUNNER_TEMP/station-ios-push-Info.plist"
+          cp src-desktop/gen/apple/station_iOS/Info.plist "$push_info_plist"
+          node scripts/ensure-ios-agent-activity-extension.mjs src-desktop/gen/apple/project.yml --app-bundle-id io.kontourai.station --aps-environment production --info-plist "$push_info_plist" --notification-service
+          xcodegen generate --spec src-desktop/gen/apple/project.yml --project src-desktop/gen/apple
+          cp "$push_info_plist" src-desktop/gen/apple/station_iOS/Info.plist
       - working-directory: src-desktop
+        if: github.event_name != 'workflow_dispatch' || !inputs.push_extensions
         run: rm -rf gen/apple/build && STATION_CLIENT_BUILD_REUSE=1 npx tauri ios build --target aarch64-sim --no-sign --ci --config tauri.conf.json
+      - name: Compile unsigned Stable push package
+        if: github.event_name == 'workflow_dispatch' && inputs.push_extensions
+        working-directory: src-desktop
+        env:
+          PUSH_EXTENSIONS: ${{ github.event_name == 'workflow_dispatch' && inputs.push_extensions }}
+        run: |
+          node --input-type=module -e 'import { writeFileSync } from "node:fs"; import { mobileCargoConfig } from "../scripts/ios-store-signing-config.mjs"; writeFileSync(process.argv[1], mobileCargoConfig({ liveActivity: process.env.PUSH_EXTENSIONS === "true" }), { mode: 0o600 });' "$RUNNER_TEMP/station-ios-mobile-env.toml"
+          rm -rf gen/apple/build
+          STATION_CLIENT_BUILD_REUSE=1 npx tauri ios build --target aarch64-sim --no-sign --ci --config tauri.conf.json -- --config "$RUNNER_TEMP/station-ios-mobile-env.toml"
       - id: simulator_artifact
         name: Verify and package simulator artifact
         run: |
           simulator_app=$(find src-desktop/gen/apple -type d -name '*.app' -print -quit)
           test -n "$simulator_app"
           simulator_app=$(cd "$simulator_app" && pwd -P)
+          if [ '${{ github.event_name == 'workflow_dispatch' && inputs.push_extensions }}' = true ]; then
+            for extension in StationAgentActivity StationNotificationService; do
+              appex="$simulator_app/PlugIns/$extension.appex"
+              test -s "$appex/$extension"
+              suffix="${extension#Station}"
+              test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$appex/Info.plist")" = "io.kontourai.station.$suffix"
+            done
+            test "$(/usr/libexec/PlistBuddy -c 'Print :NSSupportsLiveActivities' "$simulator_app/Info.plist")" = true
+            app_executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$simulator_app/Info.plist")
+            xcrun otool -oV "$simulator_app/$app_executable" > "$RUNNER_TEMP/ios-push-plugin-classes.txt"
+            grep -Fq '19AgentActivityPlugin' "$RUNNER_TEMP/ios-push-plugin-classes.txt"
+          fi
+          node scripts/ios-channel-icons.mjs verify stable --app "$simulator_app" --receipt "$RUNNER_TEMP/ios-simulator-icon-receipt.json"
           packaged_manifest=$(find "$simulator_app" -type f -name station-build.json -print)
           test "$(printf '%s\n' "$packaged_manifest" | sed '/^$/d' | wc -l | tr -d ' ')" = 1
           cmp "src-desktop/station-client-build.json" "$packaged_manifest"
@@ -165,13 +200,13 @@ jobs:
           --source-sha "${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.sha }}"
       - name: Upload iOS runtime evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: station-ios-simulator-runtime
           path: .kontourai/ios-simulator-runtime-smoke
           if-no-files-found: warn
           retention-days: 5
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: station-ios-simulator-debug

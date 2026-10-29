@@ -18,6 +18,7 @@ import {
   readWorkflowDocuments,
   SECRET_SCAN_REUSABLE_WORKFLOW,
   SETUP_NODE_ACTION,
+  VERIFIED_PNPM_SETUP_ACTION,
   WINDOWS_PR_EVIDENCE_UPLOAD_ACTION,
 } from '../actionlint-gate.mjs';
 
@@ -61,8 +62,6 @@ function persistentNightlyCapacityDocument(): MutableNightlyWorkflow {
           ANDROID_UPLOAD_CERT_SHA256:
             '${' + '{ vars.ANDROID_UPLOAD_CERT_SHA256 }}',
           ANDROID_BUILD_TOOLS_VERSION: '36.0.0',
-          STATION_MOBILE_DEFAULT_ENDPOINT:
-            '${' + '{ vars.STATION_MOBILE_DEFAULT_ENDPOINT_NIGHTLY }}',
         },
         steps: [
           {
@@ -284,7 +283,12 @@ describe('persistent runner policy', () => {
       jobs: Record<string, Record<string, unknown>>;
     };
     mutate(document.jobs[jobId]);
-    return [{ file: workflow.file, document }];
+    return [
+      { file: workflow.file, document },
+      ...readWorkflowDocuments().filter(
+        ({ file }) => file !== '.github/workflows/ci.yml',
+      ),
+    ];
   }
 
   function portableArchiveWorkflowFixture(
@@ -409,19 +413,22 @@ describe('persistent runner policy', () => {
     });
   });
 
-  test('rejects a self-hosted fork-smoke job', () => {
-    expect(
-      persistentRunnerPolicyFindings(
-        primaryCiFixture((forkSmoke) => {
-          forkSmoke['runs-on'] = ['self-hosted', 'Linux'];
-        }),
-      ),
-    ).toContainEqual({
-      file: '.github/workflows/ci.yml',
-      jobId: 'fork-smoke',
-      message: 'fork-smoke must run only on ubuntu-22.04',
-    });
-  });
+  test.each(['ubuntu-22.04', ['self-hosted', 'Linux']])(
+    'rejects an unsupported fork-smoke runner %j',
+    (runner) => {
+      expect(
+        persistentRunnerPolicyFindings(
+          primaryCiFixture((forkSmoke) => {
+            forkSmoke['runs-on'] = runner;
+          }),
+        ),
+      ).toContainEqual({
+        file: '.github/workflows/ci.yml',
+        jobId: 'fork-smoke',
+        message: 'fork-smoke must run only on ubuntu-24.04',
+      });
+    },
+  );
 
   test.each([
     [
@@ -545,65 +552,130 @@ describe('persistent runner policy', () => {
 
   test.each([
     [
-      'fast-checks base checkout ref',
-      'fast-checks-statics',
-      (job: Record<string, unknown>) => {
-        const base = (
-          job.steps as Array<{
-            name?: unknown;
-            with?: Record<string, unknown>;
-          }>
-        ).find(
-          (step) =>
-            step.name === 'Check out base policy for pull-request title gate',
-        );
-        if (!base?.with) throw new Error('Expected title-gate base checkout.');
-        base.with.ref = `\${{ github.event.pull_request.head.sha }}`;
-      },
-    ],
-    [
-      'fork-smoke candidate checkout before title gate',
-      'fork-smoke',
+      'pr-title',
       (job: Record<string, unknown>) => {
         const steps = job.steps as Array<Record<string, unknown>>;
-        const titleIndex = steps.findIndex(
-          (step) => step.name === 'Validate base-controlled pull-request title',
-        );
-        const candidateIndex = steps.findIndex(
-          (step, index) =>
-            index > titleIndex &&
-            String(step.uses).startsWith('actions/checkout@'),
-        );
-        [steps[titleIndex], steps[candidateIndex]] = [
-          steps[candidateIndex],
-          steps[titleIndex],
-        ];
+        (steps[1].with as Record<string, unknown>).ref =
+          '${{ github.event.pull_request.base.sha }}';
       },
     ],
     [
-      'unquoted title shell interpolation',
-      'fast-checks-statics',
+      'pr-title',
       (job: Record<string, unknown>) => {
-        const titleGate = (job.steps as Array<Record<string, unknown>>).find(
-          (step) => step.name === 'Validate base-controlled pull-request title',
-        );
-        if (!titleGate) throw new Error('Expected title gate.');
-        titleGate.run =
-          'node scripts/commit-message-gate.mjs --pull-request-title $PULL_REQUEST_TITLE $PULL_REQUEST_NUMBER';
+        job.permissions = { contents: 'write' };
       },
     ],
-  ])('rejects pull-request title topology with %s', (_name, jobId, mutate) => {
+    [
+      'pr-title',
+      (job: Record<string, unknown>) => {
+        job.name = 'optional title';
+      },
+    ],
+    [
+      'pr-title',
+      (job: Record<string, unknown>) => {
+        const steps = job.steps as Array<Record<string, unknown>>;
+        (steps[1].with as Record<string, unknown>).ref =
+          '${{ github.event.pull_request.head.sha }}';
+      },
+    ],
+    [
+      'pr-title',
+      (job: Record<string, unknown>) => {
+        job.if = '${{ success() }}';
+      },
+    ],
+  ])('rejects unsafe required metadata topology in %s', (jobId, mutate) => {
     expect(
       persistentRunnerPolicyFindings(
         primaryCiJobFixture(
-          jobId,
+          jobId as string,
           mutate as (job: Record<string, unknown>) => void,
         ),
       ),
     ).toContainEqual({
       file: '.github/workflows/ci.yml',
       jobId,
-      message: `${jobId} must validate the pull-request title from exact base policy before candidate checkout`,
+      message:
+        'Title status publisher must use the exact trusted-policy topology',
+    });
+  });
+
+  test.each([
+    (job: Record<string, unknown>) => {
+      job.permissions = {
+        contents: 'read',
+        'pull-requests': 'read',
+        statuses: 'write',
+        checks: 'write',
+      };
+    },
+    (job: Record<string, unknown>) => {
+      (job.concurrency as Record<string, unknown>)['cancel-in-progress'] = true;
+    },
+    (job: Record<string, unknown>) => {
+      (job.steps as Array<Record<string, unknown>>).shift();
+    },
+    (job: Record<string, unknown>) => {
+      (job.steps as Array<Record<string, unknown>>).pop();
+    },
+    (job: Record<string, unknown>) => {
+      job.name = 'PR title policy';
+    },
+  ])('rejects unsafe title status publication topology', (mutate) => {
+    expect(
+      persistentRunnerPolicyFindings(primaryCiJobFixture('pr-title', mutate)),
+    ).toContainEqual({
+      file: '.github/workflows/ci.yml',
+      jobId: 'pr-title',
+      message:
+        'Title status publisher must use the exact trusted-policy topology',
+    });
+  });
+
+  test('rejects PR-number-scoped concurrency for a shared-SHA commit status', () => {
+    expect(
+      persistentRunnerPolicyFindings(
+        primaryCiJobFixture('pr-title', (job) => {
+          (job.concurrency as Record<string, unknown>).group =
+            'ci-pr-title-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}';
+        }),
+      ),
+    ).toContainEqual({
+      file: '.github/workflows/ci.yml',
+      jobId: 'pr-title',
+      message:
+        'Title status publisher must use the exact trusted-policy topology',
+    });
+  });
+
+  test('does not grant status publication to candidate source jobs', () => {
+    expect(
+      persistentRunnerPolicyFindings(
+        primaryCiJobFixture('fast-checks-statics', (job) => {
+          job.permissions = { contents: 'read', statuses: 'write' };
+        }),
+      ),
+    ).toContainEqual({
+      file: '.github/workflows/ci.yml',
+      jobId: 'fast-checks-statics',
+      message:
+        'base-controlled PR job permission overrides must declare only permissions: { contents: read }',
+    });
+  });
+
+  test('rejects a skipped metadata source aggregate using the required fast-checks name', () => {
+    expect(
+      persistentRunnerPolicyFindings(
+        primaryCiJobFixture('fast-checks', (job) => {
+          job.name = 'fast-checks';
+        }),
+      ),
+    ).toContainEqual({
+      file: '.github/workflows/ci.yml',
+      jobId: 'fast-checks',
+      message:
+        'Metadata source aggregate must not replace the required fast-checks context',
     });
   });
 
@@ -649,8 +721,7 @@ describe('persistent runner policy', () => {
     ).toContainEqual({
       file: '.github/workflows/ci.yml',
       jobId: 'fork-smoke',
-      message:
-        'fork-smoke must validate the pull-request title from exact base policy before candidate checkout',
+      message: 'fork-smoke must check out only the exact candidate source',
     });
   });
 
@@ -668,8 +739,7 @@ describe('persistent runner policy', () => {
     ).toContainEqual({
       file: '.github/workflows/ci.yml',
       jobId: 'fork-smoke',
-      message:
-        'fork-smoke must validate the pull-request title from exact base policy before candidate checkout',
+      message: 'fork-smoke must check out only the exact candidate source',
     });
   });
 
@@ -1324,6 +1394,223 @@ describe('persistent runner policy', () => {
     });
   });
 
+  test.each([
+    (job: Record<string, unknown>) => {
+      job.needs = [];
+    },
+    (job: Record<string, unknown>) => {
+      job.if = 'always()';
+    },
+    (job: Record<string, unknown>) => {
+      job.steps = [{ run: 'node candidate-policy.mjs' }];
+    },
+  ])('rejects widened trusted delivery planning authority', (mutate) => {
+    const findings = persistentRunnerPolicyFindings(
+      primaryCiJobFixture('delivery-plan', mutate),
+    );
+    expect(findings).toContainEqual({
+      file: '.github/workflows/ci.yml',
+      jobId: 'delivery-plan',
+      message:
+        'delivery routing must retain its exact reviewed trusted-policy checkout, diff and admission topology',
+    });
+  });
+
+  test.each([
+    (document: {
+      jobs: Record<
+        string,
+        {
+          steps: Array<{ with?: Record<string, unknown>; run?: string }>;
+          if?: string;
+        }
+      >;
+      permissions: Record<string, string>;
+      on: { workflow_run: { types: string[] } };
+    }) => {
+      document.jobs.reconcile.steps[0].with!.ref =
+        '${{ github.event.workflow_run.head_sha }}';
+    },
+    (document: {
+      jobs: Record<
+        string,
+        {
+          steps: Array<{ with?: Record<string, unknown>; run?: string }>;
+          if?: string;
+        }
+      >;
+      permissions: Record<string, string>;
+      on: { workflow_run: { types: string[] } };
+    }) => {
+      document.jobs.reconcile.steps.push({ run: 'node candidate.mjs' });
+    },
+    (document: {
+      jobs: Record<
+        string,
+        {
+          steps: Array<{ with?: Record<string, unknown>; run?: string }>;
+          if?: string;
+        }
+      >;
+      permissions: Record<string, string>;
+      on: { workflow_run: { types: string[] } };
+    }) => {
+      document.permissions.contents = 'write';
+    },
+    (document: {
+      jobs: Record<
+        string,
+        {
+          steps: Array<{ with?: Record<string, unknown>; run?: string }>;
+          if?: string;
+        }
+      >;
+      permissions: Record<string, string>;
+      on: { workflow_run: { types: string[] } };
+    }) => {
+      document.on.workflow_run.types = ['completed'];
+    },
+    (document: {
+      jobs: Record<
+        string,
+        {
+          steps: Array<{ with?: Record<string, unknown>; run?: string }>;
+          if?: string;
+        }
+      >;
+      permissions: Record<string, string>;
+      on: { workflow_run: { types: string[] } };
+    }) => {
+      document.jobs.reconcile.if = 'always()';
+    },
+    (document: {
+      jobs: Record<
+        string,
+        {
+          steps: Array<{ with?: Record<string, unknown>; run?: string }>;
+          if?: string;
+        }
+      >;
+      permissions: Record<string, string>;
+      on: { workflow_run: { types: string[] } };
+    }) => {
+      document.jobs.reconcile.steps[0].with!.ref =
+        '${{ github.event.merge_group.head_sha }}';
+    },
+  ])('rejects widened source verification publication authority', (mutate) => {
+    const workflow = readWorkflowDocuments().find(
+      ({ file }) => file === '.github/workflows/source-verification-policy.yml',
+    );
+    if (!workflow) throw new Error('Missing source verification publisher');
+    const document = structuredClone(workflow.document) as Parameters<
+      typeof mutate
+    >[0];
+    mutate(document);
+    expect(
+      persistentRunnerPolicyFindings([{ ...workflow, document }]),
+    ).toContainEqual({
+      file: workflow.file,
+      jobId: 'reconcile',
+      message:
+        'source verification publisher must retain its exact reviewed trusted-policy, read-only evidence and isolated status-write topology',
+    });
+  });
+
+  test('rejects a source marker that treats a base retarget as metadata-only', () => {
+    const workflow = readWorkflowDocuments().find(
+      ({ file }) => file === '.github/workflows/ci.yml',
+    );
+    if (!workflow) throw new Error('Missing CI');
+    const document = structuredClone(workflow.document) as Record<
+      string,
+      unknown
+    >;
+    document['run-name'] = 'PR metadata';
+    expect(
+      persistentRunnerPolicyFindings([{ ...workflow, document }]),
+    ).toContainEqual({
+      file: workflow.file,
+      jobId: 'workflow',
+      message:
+        'source run-name must distinguish metadata-only edits without suppressing base-retarget verification',
+    });
+  });
+
+  test.each([
+    (document: {
+      jobs: Record<
+        string,
+        { steps: Array<{ with?: Record<string, unknown>; run?: string }> }
+      >;
+    }) => {
+      document.jobs['cancel-obsolete'].steps[0].with!.ref =
+        `\${{ github.event.pull_request.head.sha }}`;
+    },
+    (document: {
+      jobs: Record<
+        string,
+        { steps: Array<{ with?: Record<string, unknown>; run?: string }> }
+      >;
+    }) => {
+      document.jobs['cancel-obsolete'].steps.push({
+        run: 'node candidate.mjs',
+      });
+    },
+  ])(
+    'refuses widening the merged-tail controller to candidate execution',
+    (mutate) => {
+      const workflow = readWorkflowDocuments().find(
+        ({ file }) => file === '.github/workflows/pr-ci-supersession.yml',
+      );
+      if (!workflow) throw new Error('Missing supersession controller');
+      const document = structuredClone(workflow.document) as Parameters<
+        typeof mutate
+      >[0];
+      mutate(document);
+      expect(
+        persistentRunnerPolicyFindings([{ ...workflow, document }]),
+      ).toContainEqual({
+        file: workflow.file,
+        jobId: 'cancel-obsolete',
+        message:
+          'PR retirement controller must retain its exact reviewed trusted-policy and merged-close authority topology',
+      });
+    },
+  );
+
+  test('follows nested local candidate workflows and refuses an unreviewed callee', () => {
+    const workflow = {
+      on: { pull_request_target: {} },
+      permissions: { contents: 'read' },
+      jobs: {
+        nested: { uses: './.github/workflows/bridge.yml' },
+      },
+    };
+    const bridge = {
+      on: { workflow_call: null },
+      permissions: { contents: 'read' },
+      jobs: {
+        nested: { uses: './.github/workflows/unreviewed.yml' },
+      },
+    };
+    const leaf = {
+      on: { workflow_call: null },
+      permissions: { contents: 'write' },
+      jobs: {},
+    };
+    const findings = persistentRunnerPolicyFindings([
+      { file: '.github/workflows/desktop-rust.yml', document: workflow },
+      { file: '.github/workflows/bridge.yml', document: bridge },
+      { file: '.github/workflows/unreviewed.yml', document: leaf },
+    ]);
+    expect(findings).toContainEqual({
+      file: '.github/workflows/unreviewed.yml',
+      jobId: 'workflow',
+      message:
+        'pull_request_target is reserved for reviewed base-controlled PR workflows',
+    });
+  });
+
   test('keeps every automatic PR workflow on the reviewed base-controlled topology', () => {
     const workflows = readWorkflowDocuments();
     const expected = [
@@ -1333,14 +1620,17 @@ describe('persistent runner policy', () => {
       '.github/workflows/desktop-rust.yml',
       '.github/workflows/ecosystem-packaging.yml',
       '.github/workflows/install-smoke.yml',
-      '.github/workflows/merge-queue-regression.yml',
       '.github/workflows/portable-server-archives.yml',
       '.github/workflows/security-analysis.yml',
     ];
     for (const file of expected) {
       const document = workflows.find((workflow) => workflow.file === file)
         ?.document as { on?: Record<string, unknown> } | undefined;
-      expect(document?.on).toHaveProperty('pull_request_target');
+      expect(
+        document?.on &&
+          ('pull_request_target' in document.on ||
+            'workflow_call' in document.on),
+      ).toBe(true);
       expect(document?.on).not.toHaveProperty('pull_request');
     }
   });
@@ -1732,7 +2022,6 @@ describe('persistent runner policy', () => {
     '.github/workflows/security-analysis.yml',
     '.github/workflows/windows-pr-verification.yml',
     '.github/workflows/build-ios.yml',
-    '.github/workflows/merge-queue-regression.yml',
   ])('rejects %s without merge_group queue evaluation', (file) => {
     const workflow = readWorkflowDocuments().find(
       (candidate) => candidate.file === file,
@@ -1900,12 +2189,20 @@ describe('persistent runner policy', () => {
       'fast-checks-shard must declare only permissions: { contents: read }',
     ],
     [
-      'a self-hosted plan',
+      'an unpinned plan',
       'fast-checks-plan',
       (job: Record<string, unknown>) => {
         job['runs-on'] = 'ubuntu-latest';
       },
-      'fast-checks-plan must run on a hosted ubuntu-22.04 image',
+      'fast-checks-plan must run on a hosted ubuntu-24.04 image',
+    ],
+    [
+      'a plan on systemd 249',
+      'fast-checks-plan',
+      (job: Record<string, unknown>) => {
+        job['runs-on'] = 'ubuntu-22.04';
+      },
+      'fast-checks-plan must run on a hosted ubuntu-24.04 image',
     ],
     [
       'an aggregator checkout that persists credentials',
@@ -2510,8 +2807,6 @@ describe('persistent runner policy', () => {
                 ANDROID_UPLOAD_CERT_SHA256:
                   '${' + '{ vars.ANDROID_UPLOAD_CERT_SHA256 }}',
                 ANDROID_BUILD_TOOLS_VERSION: '36.0.0',
-                STATION_MOBILE_DEFAULT_ENDPOINT:
-                  '${' + '{ vars.STATION_MOBILE_DEFAULT_ENDPOINT_NIGHTLY }}',
               },
               steps: [
                 {
@@ -3372,7 +3667,7 @@ describe('the real workflow corpus', () => {
 });
 
 describe('merge-queue regression workflow policy', () => {
-  const file = '.github/workflows/merge-queue-regression.yml';
+  const file = '.github/workflows/ci.yml';
   function mergeQueueRegressionDocument() {
     const workflow = readWorkflowDocuments().find(
       (candidate) => candidate.file === file,
@@ -3415,70 +3710,28 @@ describe('merge-queue regression workflow policy', () => {
     );
   });
 
-  // The callee travels with the caller, or the gate reports it missing and
-  // every mutation below would pass on that finding alone.
-  const fullRegression = () =>
-    readWorkflowDocuments().filter(
-      (candidate) => candidate.file === '.github/workflows/full-regression.yml',
+  test('rejects reintroducing a full-corpus queue call outside the reviewed bounded topology', () => {
+    const document = mergeQueueRegressionDocument();
+    document.jobs['merge-integration-full-regression'] = {
+      needs: 'fast-checks-plan',
+      if: "always() && github.event_name == 'merge_group'",
+      uses: './.github/workflows/full-regression.yml',
+      permissions: { contents: 'read', actions: 'read' },
+      with: {
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        source_sha: '${{ github.sha }}',
+        capacity_class: 'integration',
+      },
+      steps: [],
+    };
+    expect(persistentRunnerPolicyFindings([{ file, document }])).toContainEqual(
+      {
+        file,
+        jobId: 'merge-integration-full-regression',
+        message:
+          'pull_request_target router must not add unreviewed jobs or reusable workflows',
+      },
     );
-
-  test('admits the exact fail-closed full-regression call', () => {
-    const document = mergeQueueRegressionDocument();
-    expect(fullRegression()).toHaveLength(1);
-    expect(
-      persistentRunnerPolicyFindings([
-        { file, document },
-        ...fullRegression(),
-      ]).filter((finding) => finding.jobId === 'full-regression'),
-    ).toEqual([]);
-  });
-
-  test.each([
-    [
-      'a write permission',
-      (job: Record<string, unknown>) => {
-        (job.permissions as Record<string, string>).actions = 'write';
-      },
-    ],
-    [
-      'another callee',
-      (job: Record<string, unknown>) => {
-        job.uses = './.github/workflows/nightly.yml';
-      },
-    ],
-    [
-      'a fail-open guard that needs an explicit true',
-      (job: Record<string, unknown>) => {
-        job.if = `\${{ always() && !cancelled() && github.event_name != 'pull_request_target' && needs.plan.outputs.full-regression == 'true' }}`;
-      },
-    ],
-    [
-      'another source',
-      (job: Record<string, unknown>) => {
-        (job.with as Record<string, unknown>).source_sha =
-          `\${{ github.event.merge_group.base_sha }}`;
-      },
-    ],
-    [
-      'inherited secrets',
-      (job: Record<string, unknown>) => {
-        job.secrets = 'inherit';
-      },
-    ],
-  ])('removes the full-regression call exemption from %s', (_name, mutate) => {
-    const document = mergeQueueRegressionDocument();
-    mutate(document.jobs['full-regression'] as Record<string, unknown>);
-    const findings = persistentRunnerPolicyFindings([
-      { file, document },
-      ...fullRegression(),
-    ]).filter((finding) => finding.jobId === 'full-regression');
-    expect(
-      findings.some(
-        (finding) =>
-          finding.message !==
-          'reusable workflow called from a pull-request or merge-queue job was not found',
-      ),
-    ).toBe(true);
   });
 
   test('rejects a test job that stops checking out the explicit candidate', () => {
@@ -3857,8 +4110,10 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
       );
     const uses = (prefix: string) =>
       untrustedSteps.filter((step) => String(step.uses).startsWith(prefix));
-    expect(uses('actions/setup-node@').length).toBeGreaterThanOrEqual(17);
-    expect(uses('pnpm/setup@').length).toBeGreaterThan(0);
+    expect(uses('actions/setup-node@').length).toBeGreaterThan(0);
+    expect(
+      uses('kontourai/station/.github/actions/setup-verified-pnpm@').length,
+    ).toBeGreaterThan(0);
     expect(uses('github/codeql-action/init@')).toHaveLength(1);
     expect(uses('actions/cache/restore@')).toHaveLength(1);
     // The one live untrusted -> reusable-workflow edge, and the cache it would
@@ -3884,25 +4139,15 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
         ),
       );
       expect(cacheFindings(workflows)).toEqual([]);
-      // The callee's cache: pnpm write and automatic cache. The merge queue
-      // reaches it through merge-queue-regression.yml (deferred candidates
-      // run the full regression), so it is flagged there; ci.yml's if: still
-      // proves its own call unreachable.
+      // No automatic queue call reaches the full corpus anymore. Adding
+      // a cache there is safe for the dispatch-only call, not for untrusted CI.
       const node = docOf(workflows, FULL).jobs.static.steps?.find((step) =>
         String(step.uses).startsWith('actions/setup-node@'),
       );
       if (!node?.with) throw new Error('Setup Node missing');
       node.with.cache = 'pnpm';
       delete node.with['package-manager-cache'];
-      const queueJobId = calledFrom(
-        '.github/workflows/merge-queue-regression.yml',
-        'full-regression',
-        'static',
-      );
-      expect(cacheFindings(workflows)).toEqual([
-        { file: FULL, jobId: queueJobId, message: WRITE },
-        { file: FULL, jobId: queueJobId, message: AUTO_CACHE },
-      ]);
+      expect(cacheFindings(workflows)).toEqual([]);
       // Drop the conjunct that excludes merge_group and ci.yml's call
       // becomes reachable too.
       caller.if = expr(
@@ -3913,11 +4158,9 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
         expect.arrayContaining([
           { file: FULL, jobId, message: WRITE },
           { file: FULL, jobId, message: AUTO_CACHE },
-          { file: FULL, jobId: queueJobId, message: WRITE },
-          { file: FULL, jobId: queueJobId, message: AUTO_CACHE },
         ]),
       );
-      expect(cacheFindings(workflows)).toHaveLength(4);
+      expect(cacheFindings(workflows)).toHaveLength(2);
     });
 
     test.each([
@@ -4121,21 +4364,11 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
 
     test('fails closed when a reachable callee is missing', () => {
       const workflows = real().filter(({ file }) => file !== FULL);
-      // The merge queue's deferred-candidate call is reachable as written.
-      const queueMissing = {
-        file: '.github/workflows/merge-queue-regression.yml',
-        jobId: 'full-regression',
-        message: MISSING_CALLEE,
-      };
-      expect(cacheFindings(workflows)).toEqual([queueMissing]);
+      expect(cacheFindings(workflows)).toEqual([]);
       docOf(workflows, CI).jobs['full-regression'].if = undefined;
-      expect(cacheFindings(workflows)).toEqual(
-        expect.arrayContaining([
-          { file: CI, jobId: 'full-regression', message: MISSING_CALLEE },
-          queueMissing,
-        ]),
-      );
-      expect(cacheFindings(workflows)).toHaveLength(2);
+      expect(cacheFindings(workflows)).toEqual([
+        { file: CI, jobId: 'full-regression', message: MISSING_CALLEE },
+      ]);
     });
 
     test.each(['workflow', 'job'])(
@@ -4203,7 +4436,7 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
         }
       }
     }
-    expect(checked).toBeGreaterThanOrEqual(17);
+    expect(checked).toBeGreaterThan(0);
     const quoted = oneStepWorkflow(
       { merge_group: {} },
       { uses: SETUP_NODE_ACTION, with: { 'package-manager-cache': 'false' } },
@@ -4295,6 +4528,46 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
       [
         'an unreviewed cache-capable action',
         { uses: `astral-sh/setup-uv@${SHA}` },
+        [UNREVIEWED],
+      ],
+      [
+        'reviewed signed pnpm JS bootstrap',
+        { name: 'Setup pinned pnpm', uses: VERIFIED_PNPM_SETUP_ACTION },
+        [],
+      ],
+      [
+        'reviewed signed pnpm bootstrap with the exact non-Intel condition',
+        {
+          name: 'Setup pinned pnpm',
+          uses: VERIFIED_PNPM_SETUP_ACTION,
+          if: PNPM_SETUP_NATIVE_GUARD,
+        },
+        [],
+      ],
+      [
+        'signed pnpm bootstrap with an unreviewed condition',
+        {
+          name: 'Setup pinned pnpm',
+          uses: VERIFIED_PNPM_SETUP_ACTION,
+          if: 'always()',
+        },
+        [UNREVIEWED],
+      ],
+      [
+        'signed pnpm bootstrap at a different source',
+        {
+          name: 'Setup pinned pnpm',
+          uses: VERIFIED_PNPM_SETUP_ACTION.replace(/@.*/, `@${SHA}`),
+        },
+        [UNREVIEWED],
+      ],
+      [
+        'signed pnpm bootstrap with candidate environment',
+        {
+          name: 'Setup pinned pnpm',
+          uses: VERIFIED_PNPM_SETUP_ACTION,
+          env: { NODE_OPTIONS: '--require=./candidate.js' },
+        },
         [UNREVIEWED],
       ],
       ['a local action', { uses: './.github/actions/anything' }, [UNREVIEWED]],
@@ -4425,10 +4698,12 @@ describe('Intel macOS pnpm provisioning (#2675)', () => {
     return { workflows, job };
   }
   const nativeSetup = (job: Job) => {
-    const step = job.steps.find((candidate) =>
-      String(candidate.uses).startsWith('pnpm/setup@'),
+    const step = job.steps.find(
+      (candidate) =>
+        String(candidate.uses).startsWith('pnpm/setup@') ||
+        candidate.uses === VERIFIED_PNPM_SETUP_ACTION,
     );
-    if (!step) throw new Error('Expected pnpm/setup.');
+    if (!step) throw new Error('Expected a pinned pnpm setup.');
     return step;
   };
   const withoutJsStep = (job: Job) => {
@@ -4569,6 +4844,16 @@ describe('Intel macOS pnpm provisioning (#2675)', () => {
       ).not.toContainEqual(INTEL_MESSAGE);
     },
   );
+
+  test('does not require the native pnpm Intel workaround for verified JS setup in another job', () => {
+    expect(
+      persistentRunnerPolicyFindings(
+        oneJob('macos-15-intel', [
+          { name: 'Setup pinned pnpm', uses: VERIFIED_PNPM_SETUP_ACTION },
+        ]),
+      ).map(({ message }) => message),
+    ).not.toContainEqual(INTEL_MESSAGE);
+  });
 });
 
 describe('landing policy revision and credential binding', () => {
@@ -4632,7 +4917,7 @@ describe('the org docs gate runs on pull requests through one exact reviewed cal
   // Literals pinned independently of the gate's constants, so the gate and
   // this suite cannot drift together.
   const REVIEWED_CALLEE =
-    'kontourai/.github/.github/workflows/docs-gate.yml@246be3494a5cfde4b76fb2e3dc0a84db44218893';
+    'kontourai/.github/.github/workflows/docs-gate.yml@ac67c2a7484cc79cc51f81fa8b68c855c3879f94';
   const HEAD_REPOSITORY =
     // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
     "${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}";

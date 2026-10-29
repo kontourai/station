@@ -1,0 +1,11 @@
+{
+  "revision": "aced6b80d11d3042e9456c37b37b5a6744b73156",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Delta review at aced6b80d11: the delegate module comment now explicitly excludes receiver-local attempt lookup from --on support. Production behavior and all previously reviewed claims are unchanged. Reviewed prepared-create CLI dispatch through SDK request projection, receiver schemas/capability gating, version checks and grant-bound attempt lookup. Documented all-four flags, exact lowercase commit, no transfer/setup/protection, direct receiver and same-grant limits. CLI HTTP/help tests executed (136 passed); no real peer/provider, AX or packaged-release claim.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/design/remote-execution-preparation.md","note":"Delta review at aced6b80d11: the delegate module comment now explicitly excludes receiver-local attempt lookup from --on support. Production behavior and all previously reviewed claims are unchanged. Updated only the CLI slice: explicit source commit and existing receiver-local lookup are implemented; automatic caller HEAD remains deferred. Existing receiver version-check, race disclosure, result-return and worktree-protection owners remain accurate. This is source and CLI HTTP fixture evidence, not a new live receiver journey.","inputs":["docs/design/remote-execution-preparation.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"Delta review at aced6b80d11: the delegate module comment now explicitly excludes receiver-local attempt lookup from --on support. Production behavior and all previously reviewed claims are unchanged. Reviewed existing execution-preparation subpath and delegated supervision/quota claims against CLI delta. Existing canonical target/preparation/attempt contracts are consumed unchanged; status/event/wait formatting and quota ownership are unchanged. No new public contract shape or contract-reference edit needed.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

@@ -49,11 +49,9 @@ import {
   fetchTasks,
   fetchTaskTurnReferences,
   updateTaskStatus,
-  useCreateTaskReferenceMutation,
   useTaskTurnReferencesQuery,
 } from '../query-domains/taskGraph';
 import { taskQueries } from '../queryFactories';
-import { useAttachTaskUserInputReferenceMutation } from '../task-user-input-references';
 
 function mockJsonResponse(payload: unknown, ok = true) {
   vi.mocked(fetch).mockResolvedValue({
@@ -74,6 +72,25 @@ describe('taskGraph SDK domain', () => {
     vi.unstubAllGlobals();
   });
 
+  it('preserves a proposal refusal status for the accepting UI', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Accepted proposal must match the shaping answer',
+        }),
+        { status: 409 },
+      ),
+    );
+    await expect(
+      createTask({ projectId: 'alpha', title: 'Proposal' }),
+    ).rejects.toMatchObject({
+      name: 'StationHttpError',
+      status: 409,
+      message: 'Accepted proposal must match the shaping answer',
+    });
+  });
+
   it('fetches tasks for a project', async () => {
     mockJsonResponse({ success: true, data: [{ id: 'task-1' }] });
 
@@ -83,7 +100,7 @@ describe('taskGraph SDK domain', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       1,
       'http://example.test/api/tasks?projectId=project-alpha',
-      { headers: { 'X-Station-Client-Protocol': '2' } },
+      { headers: { 'X-Station-Client-Protocol': '4' } },
     );
     expect(fetch).toHaveBeenCalledTimes(1);
   });
@@ -170,6 +187,8 @@ describe('taskGraph SDK domain', () => {
         projectId: 'project-alpha',
         title: 'Create SDK task',
         priority: 'normal',
+        description: 'Approved chat brief',
+        shapingSource: { sessionId: 'shaping-session', turnId: 'shaping-turn' },
       }),
     ).resolves.toEqual({ id: 'task-2' });
     const [createUrl, createInit] = vi.mocked(fetch).mock.calls[0] as [
@@ -183,6 +202,8 @@ describe('taskGraph SDK domain', () => {
         projectId: 'project-alpha',
         title: 'Create SDK task',
         priority: 'normal',
+        description: 'Approved chat brief',
+        shapingSource: { sessionId: 'shaping-session', turnId: 'shaping-turn' },
       }),
     );
     expect(new Headers(createInit.headers).get('Content-Type')).toBe(
@@ -332,48 +353,6 @@ describe('taskGraph SDK domain', () => {
     expectTypeOf<TaskWorkspaceBinding>().toEqualTypeOf<ContractTaskWorkspaceBinding>();
   });
 
-  it.each([
-    ['useCreateTaskReferenceMutation', useCreateTaskReferenceMutation],
-    [
-      'useAttachTaskUserInputReferenceMutation',
-      useAttachTaskUserInputReferenceMutation,
-    ],
-  ])(
-    '%s invalidates only the submitted Task list, detail, graph, and reference projections',
-    async (_name, useReferenceMutation) => {
-      const mutation = (useReferenceMutation as () => unknown)() as {
-        onSuccess?: (
-          data: unknown,
-          variables: { taskId: string },
-        ) => void | Promise<void>;
-      };
-
-      await mutation.onSuccess?.({ id: 'link-1' }, { taskId: 'task-a' });
-
-      expect(reactQueryMocks.invalidateQueries).toHaveBeenNthCalledWith(1, {
-        queryKey: ['tasks', 'all'],
-        exact: true,
-      });
-      expect(reactQueryMocks.invalidateQueries).toHaveBeenNthCalledWith(2, {
-        queryKey: ['task', 'task-a'],
-        exact: true,
-      });
-      expect(reactQueryMocks.invalidateQueries).toHaveBeenNthCalledWith(3, {
-        queryKey: ['task-graph', 'task-a'],
-        exact: true,
-      });
-      expect(reactQueryMocks.invalidateQueries).toHaveBeenNthCalledWith(4, {
-        queryKey: ['task-turn-references', 'task-a'],
-        exact: true,
-      });
-      expect(reactQueryMocks.invalidateQueries).toHaveBeenNthCalledWith(5, {
-        queryKey: ['task-user-input-references', 'task-a'],
-        exact: true,
-      });
-      expect(reactQueryMocks.invalidateQueries).toHaveBeenCalledTimes(5);
-    },
-  );
-
   it('dispatches tasks and reads relation graph surfaces', async () => {
     mockJsonResponse({
       success: true,
@@ -416,7 +395,7 @@ describe('taskGraph SDK domain', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       2,
       'http://example.test/api/tasks/task-3/graph',
-      { headers: { 'X-Station-Client-Protocol': '2' } },
+      { headers: { 'X-Station-Client-Protocol': '4' } },
     );
     expect(fetch).toHaveBeenCalledTimes(2);
 
@@ -431,7 +410,7 @@ describe('taskGraph SDK domain', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       3,
       'http://example.test/api/tasks/sessions/session-1/relations',
-      { headers: { 'X-Station-Client-Protocol': '2' } },
+      { headers: { 'X-Station-Client-Protocol': '4' } },
     );
     expect(fetch).toHaveBeenCalledTimes(3);
   });

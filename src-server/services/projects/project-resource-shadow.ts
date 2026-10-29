@@ -1,139 +1,26 @@
 /**
  * archive#1501 — SHADOW the new resolver at the session-cwd seam.
  *
- * `resolveStartSessionCwd` (`orchestration-service.ts`) is fail-closed by
- * design and EVERY engine family reaches its adapter through it, which is why
- * `docs/design/portable-project-identity.md` §10 names slice 3 "the largest
- * single risk in the arc". Migrating it first would put the biggest blast
- * radius at the moment `resolveProjectResource` has seen the least real
- * traffic — nothing but the unit tests slice 2 shipped with it.
+ * At `resolveStartSessionCwd`, compute both the baseline and the
+ * `resolveProjectResource` answer, record where they disagree, and keep the
+ * baseline authoritative. The numbered decisions this file cites, with their
+ * measurements and rejected alternatives, live in
+ * docs/design/portable-project-identity.md §10.1. The ones that are easy to
+ * undo by accident:
  *
- * So this module does the repo's own `veritas:shadow` posture, applied to a
- * migration: at the seam, compute BOTH resolutions, record where they
- * disagree, and leave the baseline answer authoritative. Nothing about any
- * session changes. What it buys is the only evidence that can justify the
- * flip (slice 3c): an observed divergence record over real traffic, rather
- * than an argument that the two code paths "should" agree.
- *
- * Load-bearing decisions:
- *
- * 1. **The shadow can never change, delay, or fail a session start.**
- *    `resolveStartSessionCwd` is synchronous and `resolveProjectResource` is
- *    not (it shells out to `git` for a git-kind resource), so the comparison
- *    is dispatched fire-and-forget and every throw inside it is swallowed and
- *    counted. A shadow that can break the thing it observes is worse than no
- *    shadow. {@link observeCwdShadow} therefore returns a promise the CALLER
- *    may await (tests do) while the seam deliberately does not.
- *
- *    "Delay" is load-bearing and was nearly false: an async function body runs
- *    SYNCHRONOUSLY up to its first `await`, so simply CALLING this from the
- *    seam put the resolver's `readFileSync`s — and a `git` spawn syscall for a
- *    manifested resource, measured at ~3.4ms — on the session-start stack.
- *    The seam's `dispatchCwdShadow` therefore hands the call to
- *    `setImmediate`. The guarantee is structural, not documentary.
- *
- *    WHAT "NEVER DISTURBS" DOES AND DOES NOT CLAIM (review round 1,
- *    MEDIUM 7). The guarantee is about the session-start STACK, and it is
- *    structural: `setImmediate` means no work here — not the resolver's
- *    reads, not its `git` spawn, not the record write — is on it. It has
- *    never meant the observation is free. In the deferred tick this module
- *    does bounded SYNCHRONOUS filesystem work on the event loop, and while
- *    that runs, every concurrent request waits.
- *
- *    That cost was measured rather than assumed, because decision 6's record
- *    write silently became the largest part of it: at `JsonFileStore`'s
- *    default durability it cost ~15.4ms per session start (four fsyncs at
- *    ~3.6ms each), against the ~3.4ms `git` spawn this very decision cites as
- *    too expensive to leave on the seam. The record is now written
- *    `tear-safe` — atomic rename kept, fsyncs dropped — which takes it to
- *    ~0.4ms; see `project-resource-shadow-record.ts`. The honest statement of
- *    the remaining cost is: one `git` spawn and a handful of small synchronous
- *    reads and one small synchronous write, one tick after a session start.
- *    Not zero, and not on the session's own stack.
- *
- *    What dropping the fsyncs risks is stated where it is implemented, not
- *    here, and it is NOT "losing the last few observations": it is a primary
- *    that exists and is garbage after a power loss. That is survivable only
- *    because `readShadowRecord` recovers from the retained `.previous` and
- *    says so — see that module's durability note (round 2, MEDIUM 2).
- *
- *    SCOPE, so the slice-3c gate is not read as broader than it is: this
- *    shadow observes the seam's `projectSlug -> project directory` sub-step
- *    ONLY. Caller-supplied-cwd precedence and its containment check, the
- *    `$HOME`/ACP/degenerate-host terminus, and the final existence check on
- *    the EFFECTIVE cwd are deliberately unshadowed, because a flip only
- *    replaces the project resolution. "The record is empty" is a statement
- *    about that sub-step and nothing else.
- * 2. **Agreement is defined against what the baseline seam ACTUALLY DOES, not
- *    against the resolver's vocabulary.** The seam's own contract has three
- *    distinct project outcomes — a resolved directory, the deliberate
- *    `$HOME`/`cwdDefaulted` terminus for a directory-less project (archive#1023),
- *    and a fail-closed throw for a directory that does not exist (archive#791) — and
- *    the resolver expresses the last two both as `unbound`. Comparing raw
- *    strings would report a divergence on every directory-less project on the
- *    install, which is exactly the noise that makes a shadow log unreadable
- *    and its emptiness meaningless. {@link compareCwdShadow} maps the baseline
- *    side to the same three-way {@link BaselineCwdOutcome} the resolver can be
- *    projected onto, and compares THAT.
- * 3. **Divergence is reported, never repaired.** This module has no authority
- *    and takes no action on a session, a project, or a binding; it emits a
- *    counter point, one warn line naming the project, both paths and the
- *    resolver's own reason, and (see decision 6) an entry in its own
- *    observation record.
- *
- *    This decision originally also said the record must not be a file, citing
- *    §6 of `docs/strategy/multi-agent-delivery-protocol.md` ("read paths do
- *    not write"). That was the wrong reading and archive#1686 is what it
- *    cost. §6 forbids a PROJECTION mutating the state it reports — a join
- *    that writes back what it just derived, opening a lost-update window on
- *    somebody else's data. An observer appending to its OWN observation
- *    record is not that: it writes nothing about the session, the project or
- *    the binding, and no consumer of any of those reads it. What the old
- *    wording actually bought was a divergence record whose only reader was an
- *    OTLP collector nobody has attached, i.e. no reader at all.
- * 6. **The record must be readable without a collector (archive#1686).** The
- *    counter is a no-op unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set, so
- *    slice 3c's population-coverage evidence has been discarded since 3a
- *    merged, and `CONFLATED_UNBOUND_NOTE`'s fail-open tripwire has had no way
- *    to report that it fired. Every comparison is therefore ALSO written to a
- *    durable per-home record with the same dimensions
- *    (`project-resource-shadow-record.ts`), where a never-observed outcome is
- *    ABSENT rather than zero — so "the observer ran and saw agreement" and
- *    "the observer never ran" can never render as the same number. The
- *    counter is unchanged and still exported; nothing about what this module
- *    OBSERVES changed.
- * 4. **An unresolvable shadow is its own outcome, not an agreement.** If
- *    `resolveProjectResource` throws (an unreadable or unknown-version
- *    manifest fails closed by design, per slice 2 decision 7), the comparison
- *    records `shadow-threw` and names the error. Folding that into "agree"
- *    would let the flip be justified by a log that is empty because the
- *    shadow never ran.
- * 5. **Off by one env var.** `STATION_PROJECT_RESOURCE_SHADOW=off` disables
- *    the dispatch entirely. The shadow spawns `git remote` for a manifested
- *    git resource on a path that previously touched only `existsSync`, so an
- *    operator who sees it cost something must be able to stop it without a
- *    downgrade. `disabled` is a distinct counter outcome, so a quiet log
- *    caused by a kill-switch can never be read as a quiet log caused by
- *    agreement.
- *
- *    THE KILL SWITCH DOES NOT STOP THE RECORD WRITE, ON PURPOSE (review
- *    round 1, LOW 8 — accepted with rationale rather than "fixed", so the
- *    next reader does not re-litigate it). `off` short-circuits the
- *    comparison, but still emits one `disabled` observation. That is the
- *    whole mechanism by which the switch stays honest: it is precisely what
- *    lets a home that was switched off be told apart from a home where the
- *    observer never ran, and a switch that erased its own footprint would
- *    hand slice 3c's gate the emptiness-as-clearance reading that
- *    archive#1686 exists to close — this time with a cause nothing in the
- *    record could name.
- *
- *    The cost objection is answered on its own terms rather than waved away,
- *    since decision 5 is a COST argument. `off` still removes what the
- *    operator turned it off for: the resolver's three `readFileSync`s and the
- *    `git` spawn. What remains is one read and one `tear-safe` write of a
- *    small file, ~0.4ms (decision 1). If that ever needs to reach zero, the
- *    answer is a second, explicit "record nothing either" value — not making
- *    `off` silently indistinguishable from never-installed.
+ * - Decision 1: nothing here may change, delay or fail a session start. The
+ *   seam hands the observation to `setImmediate` through `dispatchCwdShadow`,
+ *   because an async body runs synchronously up to its first `await`. Every
+ *   throw is swallowed and counted.
+ * - Decision 2: agreement is judged against the baseline seam's three
+ *   outcomes, not the resolver's vocabulary.
+ * - Decision 4: a resolver throw is `shadow-threw`, never agreement.
+ * - Decision 5: `STATION_PROJECT_RESOURCE_SHADOW=off` skips the comparison
+ *   but still records a `disabled` observation, on purpose, so a switched-off
+ *   home is distinguishable from one where the observer never ran.
+ * - Decision 6: every comparison is also written to the per-home record
+ *   (`project-resource-shadow-record.ts`), because the counter is a no-op
+ *   without an OTLP collector.
  */
 
 import { existsSync } from 'node:fs';
@@ -148,7 +35,7 @@ import {
 } from './project-resource-shadow-record.js';
 import { projectDirectoryPath } from './project-workspace-path.js';
 
-/** The seam this module observes; see decision 1's SCOPE paragraph. */
+/** The seam this module observes; see decision 1's scope paragraph in the design doc. */
 const SEAM = 'start_session_cwd';
 
 /**
@@ -315,7 +202,7 @@ export type CwdShadowOutcome =
  * project to `$HOME` where the seam fails closed today. A tripwire that is
  * removed once it stops firing cannot tell you when it starts again.
  *
- * It watches TWO causes, not one (review round 1). The obvious one is the
+ * It watches TWO causes, not one. The obvious one is the
  * state split being undone. The other is a DECLARATION-DETECTION mismatch: the
  * resolver trims (`project.workingDirectory?.trim()`) and the seam does not
  * (`resolve(expandTilde(project.workingDirectory))`), and the route schema
@@ -598,12 +485,12 @@ export function compareCwdShadow(
       // deliberate `$HOME` terminus, because `unbound` is the one state slice
       // 3c's mapping sends there.
       //
-      // Review round 1, MEDIUM: this branch used to fold on "did the resolver
+      // This branch used to fold on "did the resolver
       // name a directory", which was right while every no-path state flipped
       // the same way and is wrong now that the mapping is per-state. Baseline
       // `no-directory` defaults to `$HOME`; shadow `missing` would THROW
       // naming the project and `declaredPath`. Recording that as `agree` is
-      // structurally the emptiness trap the 3a review caught, mirrored — the
+      // structurally the slice-3a emptiness trap, mirrored — the
       // record would be empty for a population whose flip behaviour changes.
       // `missing` gets there once slice 4 writes binding rows; `ambiguous` is
       // reachable today through a hand-authored or foreign manifest.

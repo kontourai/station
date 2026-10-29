@@ -16,14 +16,108 @@ server can deduplicate a request that landed immediately before disconnect.
 The queue survives restart and is projected back into the chat dock before a
 reconnect flush begins.
 
-Configuration edits are excluded by default. Station has no single
+The same queue keeps a text send from the composer durable while it is in
+flight. The send is written as `invoking` before its request goes out (a write
+bounded to three seconds; past it the send goes without the row and the
+composer keeps its saved draft), and the composer's saved draft is let go only
+once that row is written, so closing the app mid-send loses nothing and leaves
+no second copy to send under a new key. Station's own answer settles the row:
+a refusal removes it and hands the text back to the composer; Station's
+"may have started" answer keeps it as unconfirmed (never resent, and it no
+longer holds back later messages in the chat); anything else, including a
+proxy's or tunnel's 502/503/504 or no answer at all, releases the row for
+Station's [delivery lookup](../reference/session-api.md#find-out-what-became-of-a-send). A foreground send that
+already has an exact-key `started` answer, or an explicitly keyed turn-start event
+matching its authored bubble, remains delivered if the original response later
+fails. An unkeyed legacy match is not proof for retiring the send, and a weaker
+lookup already in flight cannot erase a witnessed start. Acceptance retires the
+key and removes its overlapping attempts together. Durable flush dispatches
+(`options.dispatch`) retain their separate provider-turn settlement rules.
+If a send had no live row (attachments or a failed pre-request storage write),
+an unanswered request creates an `invoking` row released for that same lookup,
+with its original delivery key, conversation and Station identity. It never
+creates a fresh pending draft. This includes network changes, fetch/proxy
+failures, native resets and response timeouts; Edit and ordinary Discard are
+refused until delivery is settled.
+While it waits, the message reads "No answer yet · sends once Station confirms
+it never arrived" on its bubble and in the outbox list, and its chat notice's and
+the list's Discard… withdraw it only after the shared confirmation, which says
+that a message which already arrived cannot be taken back. Every open window
+re-reads the queue's finished keys on the cross-window change channel and when it
+comes back into view, so a discard in one window removes the bubble in all.
+That channel refreshes what a window shows. It starts a send there only when a
+message the window could not send before, because an earlier message of its chat
+went first, now can (for example, the other window's send that held it back has
+settled, even if that window then closed). A message that could not be sent for
+another reason, such as a turn still running, is not retried on every notice. That
+send only sends: it asks Station about nothing and never re-holds the window's
+queued follow-ups (which would take back a follow-up a duplicated tab also holds,
+and that tab would do the same in turn). A queued message is not sent while a turn is
+running in its chat; it goes when the turn ends. If one is tried anyway, it waits
+without using up an attempt and is not tried again for a moment and a half,
+whatever asks; it is retried once that wait ends. A send another window has claimed reads "Sending", with no Check,
+only while that window is proven running (it holds its renderer lock); a claim
+left by a window that closed or crashed reads "No answer yet" like its bubble,
+with Check and Discard…, and the discard checks again that the window is gone.
+A window's own claim reads "Sending" only while its own send is in progress.
+While any send reads "Sending" this way, or a copy is held by another window
+that may still be open, the list looks again every few seconds, since a window
+that closes says nothing.
+If that lookup fails while released rows remain unresolved, each mounted flush
+hook checks again after 2 seconds, doubling to a 60-second cap. Each renderer
+keeps its own local retry schedule. Hiding the document, a browser offline
+event, lost connection health or `pagehide` cancels the retry and resets its
+backoff. Unmount or an authority change also cancels the old schedule. Returning
+to visible, online and connected starts a check immediately with fresh backoff.
+After `pagehide`, the page waits for `pageshow` and resumes only when it is also
+visible, online and connected; a hidden `pageshow` waits for visibility to return.
+Successful settlement stops the schedule, and a late lookup cannot rearm a
+paused schedule.
+The timer only checks delivery: a resend still requires Station's answer that
+it never received the message.
+The lookup settles released rows, and rows whose app was closed, at the next
+launch or reconnect: never received → sent again with the same key; started →
+done; received → asked again later; possibly started, or the conversation runs
+on another Station → kept as unconfirmed, with a Check that asks Station again
+and never resends, and a Discard… that removes it only after the user confirms
+"I checked, discard it" with the risk stated (its key is retired, so it is never
+sent again). Each row records the Station it was written for and is
+only ever sent to, or settled by, that Station; for another it waits, listed.
+
+Station can also hold a follow-up itself, in the conversation's durable inbox
+([#3568](https://github.com/kontourai/station/issues/3568), `whenBusy: 'queue'`
+in the [Session API](../reference/session-api.md#let-station-hold-a-follow-up)).
+The app does not use it yet; until it does, the rules below apply.
+
+Follow-ups held behind a running turn stay in the tab's session storage, and
+each keeps a durable copy in the queue under the key the queue will send it
+with. Nothing sends that copy automatically: the window's own queue sends it
+when the turn ends, a reload's restored queue takes the copies back (so an
+edit or a delete there is what counts), and a copy another window holds is
+listed first with Send and Discard for the user (it does not hold back later
+messages). While that window runs (it holds its renderer lock) the copy is its
+ordinary follow-up; once the window is proven gone it needs the person. Send on
+a closed window's copy, while a turn runs or this window's queue holds
+follow-ups, puts it in that queue under its own key (the queue's durable copy
+takes it over); otherwise it is released to send now. A discarded or delivered message is never sent
+again from any window. A
+message whose row is already on its way or possibly started is never sent
+again from the composer or the queue. A send refused because the engine is
+busy joins that queue with its own key and copy, and the queue's drain writes
+the same before-the-request row as a composer send. Sends with attachments or
+a visual skill are not written to the queue (their draft is kept until
+Station answers, as before).
+
+Configuration edits are excluded from the outbound chat queue by default. Station has no single
 configuration-mutation protocol: agent, connection, plugin, and system edits
 have different authority and concurrency rules, and the current write routes
 do not accept an idempotency key or a revision precondition. Treating those
 writes as "safe" client-side would allow a stale offline edit to overwrite a
-newer server value. The cached offline UI therefore remains read-only for
-configuration. The one bounded exception is the non-secret app log-level
-setting. Every log-level save, online or offline, first writes a dedicated
+newer server value. The separate offline reader is read-only for configuration.
+Workspace mutations retain their behavior on main; cached reads do not add a
+reachability veto to their dispatch. The non-secret app log-level setting has
+its own bounded offline queue. Every log-level save, online or offline, first
+writes a dedicated
 envelope and then uses `GET/PUT /api/config/app/log-level`; it never passes
 through the broad app-config mutation. The endpoint exposes a field revision and
 requires both `If-Match` and `Idempotency-Key`; the server serializes edits and
@@ -37,12 +131,21 @@ resulting revision. Ambiguous response loss preserves the same operation for
 replay. Conflict retry is an explicit rebase
 with a new operation id. It does not reuse the chat-turn queue.
 
-For every other config family, the SDK's authenticated mutation boundary checks the active
-connection's `lastError` through `mutationAllowed` and throws
-`StationReadOnlyError` before any non-GET request is issued. That is a
-fail-loud prevention rail, not config-edit durability. Any additional family
-must independently add an idempotency key and revision/conflict receipt before
-it can be queued.
+Offline reading adds no reachability veto to mutation dispatch and no foreground
+send deadline. Browser mutations retain their existing transport and authority.
+The app's query clients ([defaults](../../src-ui/src/lib/queryDefaults.ts)) attempt
+a write made while the browser reports offline at once, so it fails visibly
+instead of pausing in memory and firing on a later `online` event; an approval
+or configuration edit is therefore never replayed late. Account preferences,
+which show that they are waiting for the connection, opt into pausing. A browser
+reconnect does not re-read a verified authority observation, so the workspace and
+its mounted views survive a network handoff; a failed observation is re-read on
+reconnect and on the connection health signal's return to connected, which also
+covers a route-only outage that fires no `online` event. The native broker credential owner retains its existing
+non-safe-method guard for the bounded read transport. Successful authenticated
+reads and health probes can still retire stale connection failure evidence.
+Additional queued mutation families must independently add an idempotency key and
+revision/conflict receipt.
 
 The broad `PUT /api/config/app` refuses any payload containing `logLevel`
 before mutating any sibling field. The web settings surface and live CLI both
@@ -67,3 +170,71 @@ applied without issuing another config write.
 Approvals are also excluded. They are live server decisions with expiring
 authority. Station queues the user turn that led to an approval, never the
 approval response itself.
+
+Personal approval defaults are captured for a first interactive send before it
+becomes durable. The pending choice retains the account namespace that selected
+it. Unknown authority holds the choice for verification; a different verified
+account retires it. Replay under the same account retains the original choice.
+Explicit chat picks remain independent of inherited personal defaults.
+
+## Offline reading and the browser shell
+
+The [user guide](../user/getting-started.md#read-recent-conversations-offline)
+owns consent, limits and local-device disclosure. The implementation is separate
+from outbound intent: [offlineReading](../../src-ui/src/lib/offlineReading.ts)
+stores a closed user/assistant text projection from successful history windows.
+It retains one explicitly enabled authority shelf, binds it to the connection,
+origin, credential authority generation and credential state, fences delayed
+writes with an atomic revision,
+and clears it on authority changes and sign-out. The local reader is outside the
+live access gate; it does not hydrate a QueryClient, verify a person, expose live
+approvals, or reuse saved text as current online data. Other tabs hear committed
+changes through BroadcastChannel. IndexedDB failure is reported by the setting
+and reader; a failed best-effort history capture cannot fail the live read.
+
+Raw `orchestration-sessions` remain excluded from query persistence: they inherit
+`resumeCursor`, model routing, runtime diagnostics and prompt-derived titles.
+[OfflineSessionIndex](../../src-ui/src/components/OfflineSessionIndex.tsx) projects
+only identifiers, capped at 1,000 rows, into `offline-session-index`. The existing
+success-only whitelist, 24-hour maxAge, build buster and authority quarantine
+apply. This index is not an offline authority credential.
+
+The web build emits `offline-shell.json` before any listener injection. Its HTML
+contains external scripts only. The [worker](../../src-ui/public/sw.js) fetches
+that shell and its startup assets without credentials, constructs the fallback
+with a CSP admitting no inline scripts, and never stores a navigation response
+or its per-request nonce. A cached live index would replay its nonce and possibly
+its runtime bootstrap; the generated shell avoids both. Navigations use the
+network first, falling back on network failure or a 502/503/504 response. Auth refusals are
+passed through. The fallback marker opens the local reader even when the browser
+link stays online; **Retry connection** loads current server HTML. APIs, SSE, auth routes,
+query-bearing URLs, mutations and authorization-bearing requests are not cached.
+Hashed assets use cache-first storage after anonymous fetches. Which assets are
+hashed, and the fallback's policy, come from
+[ui-document-policy](../../packages/shared/src/ui-document-policy.ts): the
+listener applies the same pattern and policy, with its per-request script nonce,
+and the [build](../../scripts/vite-offline-shell.ts) injects both into the
+worker. The required install set is the entry, `main` and voice chunk graphs,
+each with its own stylesheets. After it, the worker fetches a warm set (the Chat
+dock, transcript and composer graphs) on a best-effort basis that never fails
+the install and is skipped under Save-Data; any other lazy chunk is cached when
+first opened online. New build workers
+activate immediately and remove older shell caches; registration bypasses the
+HTTP worker cache and checks for updates at launch and on returning to the tab.
+An already open page offers **Reload to update** when its controller changes.
+A page loaded from the anonymous fallback reloads on reconnect to obtain the
+current runtime bootstrap. Ordinary navigations always request fresh HTML.
+
+The web build also links a web app manifest, so a phone can install Station.
+Native shells and the dev server load the same document under a policy without
+`manifest-src`, so they do not link it. Enabling offline reading, or a message
+left waiting in the outbox, asks the browser to keep this origin's storage
+(`navigator.storage.persist`); an ordinary live send never asks, because some
+browsers prompt. A refusal leaves both stores best-effort.
+
+Executed tests cover a real Chromium offline reload and IndexedDB bounds, a
+credential-free warm install, a hashed binary served offline, Chromium's
+installability check, a mounted history-reader capture, the safe query projection and survival of a real
+ConnectionStore reachability failure. They do not establish native offline reading, revoked access
+while disconnected, or a guarantee that local plaintext is safe on a shared
+browser profile.

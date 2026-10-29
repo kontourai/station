@@ -110,6 +110,12 @@ export interface InsightsFilters {
   agent?: string;
   tool?: string;
   engine?: string;
+  /**
+   * One external telemetry producer's activity alone. Without it, producer
+   * rows never count toward the figures and are summarized in
+   * `producerActivity`.
+   */
+  producer?: string;
   limit?: number;
 }
 
@@ -118,6 +124,7 @@ function insightsQuery(days: number, filters: InsightsFilters = {}): string {
   if (filters.agent) params.set('agent', filters.agent);
   if (filters.tool) params.set('tool', filters.tool);
   if (filters.engine) params.set('engine', filters.engine);
+  if (filters.producer) params.set('producer', filters.producer);
   if (filters.limit !== undefined) params.set('limit', String(filters.limit));
   return params.toString();
 }

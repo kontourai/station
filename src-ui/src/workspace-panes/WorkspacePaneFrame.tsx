@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { RequiredSlotRecoveryFrame } from './requiredSlotRecovery';
 import {
   WorkspacePaneFailure,
   type WorkspacePaneFailureContext,
@@ -164,19 +165,23 @@ export function WorkspacePaneFrame({
   }, [instanceId, runtime]);
 
   const boundary = (
-    <WorkspacePaneErrorBoundary
-      key={`${instanceId}:${retry}`}
-      paneName={paneName}
-      readFailureContext={readFailureContext}
-      onFailure={(detail, context) => onFailure?.(instanceId, detail, context)}
-      onRetry={async () => {
-        const recovered = (await onRetry?.(instanceId)) ?? true;
-        if (recovered) setRetry((current) => current + 1);
-        return recovered;
-      }}
-    >
-      {children}
-    </WorkspacePaneErrorBoundary>
+    <RequiredSlotRecoveryFrame key={instanceId} instanceId={instanceId}>
+      <WorkspacePaneErrorBoundary
+        key={`${instanceId}:${retry}`}
+        paneName={paneName}
+        readFailureContext={readFailureContext}
+        onFailure={(detail, context) =>
+          onFailure?.(instanceId, detail, context)
+        }
+        onRetry={async () => {
+          const recovered = (await onRetry?.(instanceId)) ?? true;
+          if (recovered) setRetry((current) => current + 1);
+          return recovered;
+        }}
+      >
+        {children}
+      </WorkspacePaneErrorBoundary>
+    </RequiredSlotRecoveryFrame>
   );
 
   if (elementless) return boundary;

@@ -1,0 +1,7 @@
+{
+  "revision": "3a5956111d7cdb3981760d5d7de38757b424ab53",
+
+  "notes": [
+    {"path":"docs/user/settings.md","note":"Reviewed settings-catalog.ts at merged head 3a5956111d7 against this guide. The diff adds the System row Automatic server download and desktop-update search keywords; it does not change the Feature previews, Developer tools, Shared answers, Device hosts rows, section placement, operator gating or stable deep-link behavior documented here. Existing prose remains accurate for its stated four-section scope. Source review only; a rendered Settings session and live device host remain NOT_VERIFIED.","inputs":["docs/user/settings.md","src-ui/src/views/settings/settings-catalog.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "dc20199a5d95d98bc6cacc502a8732ffc0618562",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"Round 3: an open form request still counts as waiting (isApprovalLivePending reads the request reference); composer hidden, Dismiss secondary.","inputs":["docs/design/notification-delivery.md","src-server/services/approvals/approval-inbox.ts"]}
+  ]
+}

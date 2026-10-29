@@ -1,0 +1,7 @@
+{
+  "revision": "3d96ef1053aec36aeae3167b317486c2e4975afd",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Re-checked getting-started.md after the review round on ChatInputArea.tsx and chat.css: reservation ignores out-of-flow siblings, wait rows get the transcript inset. Nothing in the first-run, mention or approval walkthrough describes either. No prose change needed.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/chat.css"]}
+  ]
+}

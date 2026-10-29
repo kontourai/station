@@ -127,8 +127,8 @@ export interface PluginCommandEffectTransport {
   /**
    * `null` means the request never reached or returned from the server —
    * including a `requestScope` authority mismatch the SDK transport turns
-   * into a fail-fast rejection before it ever dispatches (station#1418/#1419
-   * review round 2, HIGH): a settle for a record admitted under a Station
+   * into a fail-fast rejection before it ever dispatches (station#1418/#1419): a
+   * settle for a record admitted under a Station
    * that is no longer the active one must never be sent unauthenticated.
    */
   settle(

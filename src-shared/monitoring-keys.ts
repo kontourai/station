@@ -38,6 +38,13 @@ export const K = {
   AT_SCHEMA_VERSION: 'station.agent_telemetry.schema_version',
   AT_CONTEXT: 'station.agent_telemetry.context',
   AT_ENRICHMENT: 'station.agent_telemetry.enrichment',
+  /** The telemetry producer token name that delivered an ingested row. */
+  TELEMETRY_PRODUCER: 'station.telemetry.producer',
+  /**
+   * The principal who owns that producer token: the only reader of the row.
+   * Written by the ingest receiver from the admitted token, never the body.
+   */
+  TELEMETRY_PRODUCER_OWNER: 'station.telemetry.producer_owner',
   SYSTEM_TYPE: 'station.system.type',
 } as const;
 
@@ -86,4 +93,73 @@ export function monitoringAgentName(
 ): string {
   const slug = event?.[K.AGENT_SLUG];
   return typeof slug === 'string' && slug ? slug : UNNAMED_AGENT;
+}
+
+/**
+ * Prefix of every identity an external telemetry producer reported. Ingest
+ * stores such an id as `producer:<token name>:<reported value>`; token names
+ * never contain `:`, so the first `:` after the prefix ends the name.
+ */
+export const PRODUCER_ID_PREFIX = 'producer:';
+
+/** The producer and its own reported value, for a producer-namespaced id. */
+export function parseProducerScopedId(
+  value: unknown,
+): { producer: string; value: string } | undefined {
+  if (typeof value !== 'string' || !value.startsWith(PRODUCER_ID_PREFIX))
+    return undefined;
+  const rest = value.slice(PRODUCER_ID_PREFIX.length);
+  const separator = rest.indexOf(':');
+  if (separator <= 0 || separator === rest.length - 1) return undefined;
+  return {
+    producer: rest.slice(0, separator),
+    value: rest.slice(separator + 1),
+  };
+}
+
+/**
+ * The producer's own value, only when `value` is namespaced by the producer
+ * that actually delivered the row (`event[K.TELEMETRY_PRODUCER]`). The
+ * prefix is text, so text alone proves nothing.
+ */
+function producerOwnValue(
+  value: string,
+  rowProducer: unknown,
+): string | undefined {
+  const parsed = parseProducerScopedId(value);
+  return parsed &&
+    typeof rowProducer === 'string' &&
+    parsed.producer === rowProducer
+    ? parsed.value
+    : undefined;
+}
+
+/**
+ * What a person sees for a monitoring id: the producer's own value for an id
+ * namespaced by the row's producer (`rowProducer`), the id itself otherwise.
+ * The full id stays the key, filter value and tooltip; this is the label.
+ */
+export function displayMonitoringId(
+  value: string,
+  rowProducer: unknown,
+): string {
+  return producerOwnValue(value, rowProducer) ?? value;
+}
+
+/**
+ * The short form of a monitoring id for a pill. Station's ids are long
+ * random values, so their last `length` characters identify them. A
+ * producer's id is shortened from its own value, never the namespaced form,
+ * and is shown whole when that is at most twice `length`: its ids are often
+ * readable names (`codex-session-2`) that a tail would cut mid-word.
+ */
+export function shortMonitoringId(
+  value: string,
+  length: number,
+  rowProducer: unknown,
+): string {
+  const producerValue = producerOwnValue(value, rowProducer);
+  if (producerValue !== undefined && producerValue.length <= length * 2)
+    return producerValue;
+  return displayMonitoringId(value, rowProducer).slice(-length);
 }

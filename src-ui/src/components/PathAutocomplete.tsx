@@ -417,7 +417,7 @@ export function PathAutocomplete({
   // dismissal (`setUserDismissed(true)`) must stay dismissed for that same
   // value even if the in-flight filesystem browse query for it resolves
   // afterwards; only the user typing something new should re-open the
-  // dropdown. Discovered via s202 Wave 4's full Playwright run: a delayed
+  // dropdown. Found by a full Playwright run: a delayed
   // `useFileSystemBrowseQuery` resolution after Escape was silently
   // re-opening the dropdown over whatever button sat below it.
   // biome-ignore lint/correctness/useExhaustiveDependencies: value is an intentional trigger, not read in the body.

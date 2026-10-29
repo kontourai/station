@@ -1,0 +1,7 @@
+{
+  "revision": "e8a8e03ef739acf4f5aedb537c8514e8c7a044a5",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed against the sdk.md addition that every inventory mount and key switch reads (refetchOnMount forced): this guide does not describe the inventory hooks; no prose change.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]}
+  ]
+}

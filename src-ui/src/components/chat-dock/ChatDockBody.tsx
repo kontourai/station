@@ -1,12 +1,21 @@
 import { useConnections } from '@kontourai/station-connect';
 import type { ToolPolicyDelivery } from '@kontourai/station-contracts/engine-capability-matrix';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
-import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
 import {
+  ENGINE_MEMORY_EXHAUSTED_CODE,
+  ENGINE_SIGN_IN_REQUIRED_CODE,
+} from '@kontourai/station-contracts/provider';
+import { MCP_SIGN_IN_REQUIRED_CODE } from '@kontourai/station-contracts/provider-failure';
+import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
+import { stationControlToolName } from '@kontourai/station-contracts/station-control-refusal';
+import {
+  continueAfterMemoryExhaustion,
   inspectOrchestrationSteerInput,
+  MemoryContinuationUnsupportedError,
   type OrchestrationSessionSummary,
   steerOrchestrationTurn,
 } from '@kontourai/station-sdk';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import React, {
   useCallback,
   useEffect,
@@ -28,6 +37,9 @@ import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import { conversationOpenPhase } from '../../contexts/conversation-open-policy';
 import { useMessageContextContext } from '../../contexts/MessageContextContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
+import { useScopedProjectChatDefaultsQuery } from '../../contexts/ProjectsContext';
+import { useWorkObservation } from '../../contexts/work-observation';
+import { resyncOrchestrationEventStream } from '../../hooks/orchestration/ensureOrchestrationEventStream';
 import { unansweredApprovalRequests } from '../../hooks/orchestration/pendingRequestRows';
 import {
   drainQueuedMessageOnTurnCompleted,
@@ -46,10 +58,16 @@ import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { isWorkspaceRefusedTurn } from '../../lib/workspaceRefusal';
 import type { ChatMessage, ChatSession, FileAttachment } from '../../types';
 import { advertisedAcpSessionModesFromConnection } from '../../utils/acpSessionMode';
-import { sessionApprovalOverride } from '../../utils/approvalMode';
+import type { SavedAnswerQuote } from '../../utils/answer-quotes';
+import {
+  acpApprovalFor,
+  sessionApprovalOverride,
+} from '../../utils/approvalMode';
 import { ambientContextForSend } from '../../utils/chatAmbientContext';
 import {
   formatChatErrorDisplay,
+  MEMORY_EXHAUSTION_CONTINUE_TEXT,
+  MEMORY_EXHAUSTION_CONTINUING_DISPLAY,
   SESSION_START_INDETERMINATE_CODE,
   translateChatError,
 } from '../../utils/chatErrorTranslation';
@@ -57,6 +75,11 @@ import {
   elidedHistoryNoticeText,
   summarizeElidedReasons,
 } from '../../utils/elidedHistory';
+import {
+  chatEngineIdentity,
+  chatExecutionBinding,
+  chatNextTurnStartsSession,
+} from '../../utils/engine';
 import {
   isSessionExecutionActive,
   isTurnStreamLive,
@@ -77,6 +100,8 @@ import {
   transcriptShowsFailureSurface,
 } from '../../utils/sessionFailure';
 import { steerRefusalMessage } from '../../utils/steerTurn';
+import { turnToolsRunning } from '../../utils/turn-tools-running';
+import { requestsWaitingOnUser } from '../../utils/waiting-approvals';
 import { Button } from '../Button';
 import { ChatEmptyState } from '../chat/ChatEmptyState';
 import type { ChatInputArea } from '../chat/ChatInputArea';
@@ -84,13 +109,23 @@ import { ComposerStopButton } from '../chat/ComposerStopButton';
 import { durableMentionAuthority } from '../chat/composer-mentions';
 import { EphemeralMessage } from '../chat/EphemeralMessage';
 import type { ForkTurnSource } from '../chat/fork-turn-source';
+import { preloadMarkdownRenderer } from '../chat/LazyMarkdown';
+import { outboxNeedsReview } from '../chat/pendingMessages';
+import type { OutboxRows } from '../chat/QueuedMessages';
 import { SystemEventMessage } from '../chat/SystemEventMessage';
-import { ConversationStats } from '../conversation-stats/ConversationStats';
+import { preloadToolCallBatch } from '../chat/ToolCallBatchBoundary';
+import { hasActiveToolCall } from '../chat/tool-call-labels';
+import { markTranscriptPhase } from '../chat/transcriptLayoutTrace';
+import {
+  ContextPercentage,
+  ConversationStats,
+} from '../conversation-stats/ConversationStats';
 import ProgressSilenceObservation from '../home/ProgressSilenceObservation';
 import { LazyBoundary } from '../LazyBoundary';
 import { resolveNewChatAgentEnable } from '../modals/new-chat-agent-enable';
 import { SessionFailureAlert } from '../session-failure/SessionFailureAlert';
-import { ErrorState, SkeletonBlock, SkeletonList } from '../state';
+import { ErrorState, SkeletonList } from '../state';
+import { AgentScheduleNotes } from './AgentScheduleNotes';
 import type { ComposerActionsMenuProps } from './ComposerActionsMenu';
 import {
   type RetryAttachment,
@@ -99,6 +134,36 @@ import {
 } from './retry-attachments';
 import { UsageLimitBanner } from './UsageLimitBanner';
 import { useChatStatusPill } from './useChatStatusPill';
+
+/** The station-control tools that change what a chat has scheduled. */
+const SCHEDULE_TOOLS = new Set([
+  'schedule_wake_up',
+  'cancel_wake_up',
+  'propose_job',
+]);
+
+/**
+ * When the chat's schedule may have changed: a turn started or ended (a
+ * check-back sent, a stop), or the running turn finished a scheduling tool
+ * call. Not every streamed event: the summary's event count moves on every
+ * delta, and each move re-read the schedule.
+ */
+export function agentScheduleRefreshKey(
+  openTurnId: string | undefined,
+  parts:
+    | readonly { type?: string; toolName?: string; state?: string }[]
+    | undefined,
+): string {
+  const scheduled = (parts ?? []).filter(
+    (part) =>
+      part.type === 'tool-invocation' &&
+      SCHEDULE_TOOLS.has(stationControlToolName(part.toolName) ?? '') &&
+      part.state !== 'call' &&
+      part.state !== 'running' &&
+      part.state !== 'partial-call',
+  ).length;
+  return `${openTurnId ?? 'idle'}:${scheduled}`;
+}
 
 const loadChatInputArea = () =>
   import('../chat/ChatInputArea').then((module) => ({
@@ -151,10 +216,31 @@ const loadChatMessageList = () =>
     default: ChatMessageList,
   }));
 
+/*
+ * The list chunk's pending state takes the transcript's flex fill, exactly
+ * like the empty-transcript filler below. A bare skeleton list here left the
+ * dock with no filler for the frames between the filler unmounting and the
+ * list chunk resolving, and the composer jumped up under the header and back
+ * (recorded as a layout shift on `.chat-input` by
+ * tests/transcript-load-stability.spec.ts).
+ */
+const CHAT_MESSAGE_LIST_PENDING = (
+  <div className="chat-messages chat-messages--empty">
+    <SkeletonList count={4} label="Loading chat" />
+  </div>
+);
+
 const loadOutboundQueuedMessages = () =>
   import('../chat/OutboundQueuedMessages').then(
     ({ OutboundQueuedMessages }) => ({
       default: OutboundQueuedMessages,
+    }),
+  );
+
+const loadConversationInboxMessages = () =>
+  import('../chat/ConversationInboxMessages').then(
+    ({ ConversationInboxMessages }) => ({
+      default: ConversationInboxMessages,
     }),
   );
 
@@ -182,12 +268,7 @@ const loadSourceQuoteDrafts = () =>
 // floats over the transcript. Its own chunk, loaded only for a Project chat.
 const loadFloatOverChat = () => import('../../float-over-chat/FloatOverChat');
 
-const loadQueuedMessages = () =>
-  import('../chat/QueuedMessages').then(({ QueuedMessages }) => ({
-    default: QueuedMessages,
-  }));
-
-// station#3706: lazy for the same reason as the queue above — most sessions
+// station#3706: lazy because most sessions
 // never hold a refused follow-up, so the chunk loads only when one exists.
 const loadUnsentMessages = () =>
   import('../chat/UnsentMessages').then(({ UnsentMessages }) => ({
@@ -211,6 +292,8 @@ const BANNER_LINK_BUTTON_STYLE: React.CSSProperties = {
 
 /** D3: see `ChatDockBodyProps.loadingEscapeDelayMs`. */
 const LOADING_ESCAPE_DELAY_MS = 6_000;
+const LOADING_LONG_MESSAGE =
+  'This conversation is taking longer to load. Waiting for Station.';
 
 interface ChatDockBodyProps {
   activeSession: ChatSession;
@@ -228,6 +311,8 @@ interface ChatDockBodyProps {
   chatFontSize: number;
   dockHeight: number;
   showStatsPanel: boolean;
+  /** Whether the composer shows this chat's context meter. */
+  showContextMeter?: boolean;
   showReasoning: boolean;
   showToolDetails: boolean;
   modelSupportsAttachments: boolean;
@@ -262,13 +347,14 @@ interface ChatDockBodyProps {
   /** Re-resolves the exact durable conversation identity, never an Agent guess. */
   onRetryConversationOpen?: () => void | Promise<void>;
   /**
-   * D3 (design round 2026-10): how long a load runs before the "Start new
+   * #3239: how long a load runs before the "Start new
    * chat" escape joins the skeleton. One state at a time: a load that is
    * going to land shows a skeleton and nothing else; the escape is for a
    * load that has stopped looking like one. Tests set it to 0.
    */
   loadingEscapeDelayMs?: number;
   onForkFromTurn?: (source: ForkTurnSource) => void;
+  onComposerEnabledChange?: (element: HTMLTextAreaElement | null) => void;
   chatInput: ReturnType<typeof useChatInput>;
   setShowStatsPanel: (show: boolean) => void;
 }
@@ -359,7 +445,12 @@ export function latestQueuedRetryNotice<
     content: string;
     ephemeral?: boolean;
     queuedRetry?: boolean;
-    action?: { label: string; handler: () => void };
+    action?: {
+      label: string;
+      handler: () => void;
+      /** Ask first with the shared unconfirmed-message discard. */
+      confirm?: 'unconfirmed-discard';
+    };
   },
 >(messages: readonly Message[], queued: boolean) {
   if (!queued) return undefined;
@@ -411,6 +502,7 @@ export function ChatDockBody({
   chatFontSize,
   dockHeight,
   showStatsPanel,
+  showContextMeter = false,
   showReasoning,
   showToolDetails,
   modelSupportsAttachments,
@@ -426,6 +518,7 @@ export function ChatDockBody({
   onExecutionModelSelect,
   modelsLoading = false,
   chatInput,
+  onComposerEnabledChange,
   secondaryActions,
   onOpenAgentHandoff,
   agentHandoffTriggerRef,
@@ -446,6 +539,19 @@ export function ChatDockBody({
   const { navigate } = useNavigationActions();
   const { user } = useAuth();
   const { activeConnection, captureCredentialEvidence } = useConnections();
+  const approvalModeIsNewSession =
+    !activeSession?.orchestrationSessionStarted &&
+    !activeSession?.conversationId;
+  // A new chat in a Project starts in that Project's approval layer
+  // (`project-chat-defaults.ts`). Read only while the chat has not started:
+  // a started session reports what its engine applied. The cached answer is
+  // also what the first send consults before queuing a personal default.
+  // `null`: this Station applies no Project layer here; `undefined`: no
+  // answer yet (loading or failed).
+  const { data: projectChatDefaultsAnswer } = useScopedProjectChatDefaultsQuery(
+    approvalModeIsNewSession ? activeSession?.projectSlug : undefined,
+  );
+  const projectChatDefaults = projectChatDefaultsAnswer ?? undefined;
   const mentionCredentialEvidence = captureCredentialEvidence();
   const mentionAuthority = mentionCredentialEvidence
     ? durableMentionAuthority({
@@ -456,14 +562,21 @@ export function ChatDockBody({
       })
     : null;
   const { data: acpConnections = [] } = useACPConnections();
-  const advertisedAcpSession = useMemo(
+  const activeAcpConnection = useMemo(
     () =>
-      advertisedAcpSessionModesFromConnection(
-        acpConnections.find(
-          (connection) => connection.id === activeSession.agentConnectionId,
-        ),
+      acpConnections.find(
+        (connection) => connection.id === activeSession.agentConnectionId,
       ),
     [acpConnections, activeSession.agentConnectionId],
+  );
+  const advertisedAcpSession = useMemo(
+    () => advertisedAcpSessionModesFromConnection(activeAcpConnection),
+    [activeAcpConnection],
+  );
+  // #3290: who decides which of this ACP engine's actions ask.
+  const acpApproval = useMemo(
+    () => acpApprovalFor(activeAcpConnection),
+    [activeAcpConnection],
   );
   // Stable across renders unless the saved Station or accountable display name
   // changes, preserving ChatMessageList's memoization.
@@ -497,6 +610,11 @@ export function ChatDockBody({
   const unverifiedOpen = openPhase === 'unverified';
   const recoveryOpen = openPhase === 'read-only' || unverifiedOpen;
   const busyOpen = openPhase === 'busy';
+  // A chat reopened mid-turn resolves `busy`: it cannot start a continuation,
+  // but its open turn still takes Steer or Queue, as it does in the tab that
+  // started it. Only a busy wait this tab sees no turn for (a missed
+  // terminal) stays draft-only behind its Check again notice.
+  const busyWaitBlocksSend = busyOpen && !isTurnInFlight(activeSession);
   const resolvingOpen = openPhase === 'resolving';
   const transcript = useActiveChatTranscript(apiBase, activeSession);
   const streamStatus = useChatStreamStatus(apiBase, activeSession.replay);
@@ -517,6 +635,69 @@ export function ChatDockBody({
       ),
     [transcript.events],
   );
+  // A history or continuation read failed: what the session record last said
+  // (Running, background work) is no longer current proof.
+  const workObservation = useWorkObservation(
+    activeSession.conversationId ?? activeSession.id,
+  );
+  useEffect(() => {
+    if (
+      unverifiedOpen &&
+      !activeSession.replay &&
+      workObservation?.unavailable(
+        activeSession.conversationId ?? activeSession.id,
+      ) === undefined
+    ) {
+      workObservation?.failed(activeSession.conversationId ?? activeSession.id);
+    }
+  }, [
+    workObservation,
+    unverifiedOpen,
+    activeSession.conversationId,
+    activeSession.id,
+    activeSession.replay,
+  ]);
+  const observationUnavailable =
+    unverifiedOpen ||
+    Boolean(
+      transcript.enabled && (transcript.error || transcript.upgradeRequired),
+    );
+  const transcriptReadFailed = Boolean(transcript.enabled && transcript.error);
+  const reloadTranscript = transcript.reload;
+  const pendingResyncs = useRef(new Set<string>());
+  const [resyncs, setResyncs] = useState<ReadonlySet<string>>(new Set());
+  const resyncKey = JSON.stringify([apiBase, activeSession.id]);
+  const resyncPending = resyncs.has(resyncKey);
+  // One replacement per conversation, including same-tick activations and
+  // switching away and back while its reads are still pending.
+  const resyncConversation = useCallback(async () => {
+    if (pendingResyncs.current.has(resyncKey)) return;
+    pendingResyncs.current.add(resyncKey);
+    setResyncs(new Set(pendingResyncs.current));
+    try {
+      resyncOrchestrationEventStream(apiBase);
+      await Promise.allSettled([
+        ...(transcriptReadFailed ? [reloadTranscript()] : []),
+        ...(unverifiedOpen ? [onRetryConversationOpen?.()] : []),
+      ]);
+    } finally {
+      pendingResyncs.current.delete(resyncKey);
+      setResyncs(new Set(pendingResyncs.current));
+    }
+  }, [
+    apiBase,
+    resyncKey,
+    transcriptReadFailed,
+    reloadTranscript,
+    unverifiedOpen,
+    onRetryConversationOpen,
+  ]);
+  const focusRecoveredComposer = useCallback(() => {
+    const textarea = chatInput.textareaRef.current;
+    const target = textarea?.disabled ? textarea.closest('fieldset') : textarea;
+    target?.focus();
+    return Boolean(target && document.activeElement === target);
+  }, [chatInput.textareaRef]);
   // Live chat status shares the composer rail; replay keeps its recorded rows.
   const { pill: statusPill, statusInPill } = useChatStatusPill({
     activeSession,
@@ -524,11 +705,10 @@ export function ChatDockBody({
     turnLive: isTurnStreamLive(activeSession),
     enabled: !activeSession.replay,
     windowRequests,
-    observationUnavailable:
-      unverifiedOpen ||
-      Boolean(
-        transcript.enabled && (transcript.error || transcript.upgradeRequired),
-      ),
+    observationUnavailable: observationUnavailable || resyncPending,
+    resyncPending,
+    onResync: resyncConversation,
+    onRecoveryFocus: focusRecoveredComposer,
   });
   /*
    * One transitional state for the whole conversation, from the two things
@@ -585,6 +765,32 @@ export function ChatDockBody({
   const transcriptLoaded = stickyTranscriptRef.current.messages.length > 0;
   const conversationLoading =
     resolvingOpen || (transcriptPending && !transcriptLoaded);
+  const transcriptDisplayed = displayedTranscriptMessages.length > 0;
+  // Fetch the Markdown renderer alongside the transcript read rather than
+  // after the rows render: rows painted from their source and then grew when
+  // the renderer arrived.
+  const hasConversation = Boolean(activeSession.conversationId);
+  useEffect(() => {
+    if (!hasConversation) return;
+    preloadMarkdownRenderer();
+    void preloadToolCallBatch().catch(() => undefined);
+  }, [hasConversation]);
+  // Loading-phase boundaries for the opt-in transcript layout tracer.
+  useEffect(() => {
+    markTranscriptPhase('dock-loading', {
+      resolvingOpen,
+      transcriptPending,
+      catchingUp: transcript.catchingUp,
+      conversationLoading,
+      transcriptDisplayed,
+    });
+  }, [
+    resolvingOpen,
+    transcriptPending,
+    transcript.catchingUp,
+    conversationLoading,
+    transcriptDisplayed,
+  ]);
   // D3: the escape joins the skeleton only once a load has run long; a load
   // that lands in the ordinary second or two shows one state, the skeleton.
   const [loadingLong, setLoadingLong] = useState(false);
@@ -606,7 +812,7 @@ export function ChatDockBody({
    * never lands settles into the read-only verdict in at most ~30s rather than
    * hanging. That is long enough that the composer being disabled with no way
    * out would be its own defect, so the control row below keeps "Start new
-   * chat" reachable for the whole window (review L1). Retry deliberately does
+   * chat" reachable for the whole window (#1607). Retry deliberately does
    * not appear: retrying a read that is still in flight is what the resolver is
    * already doing.
    *
@@ -775,6 +981,34 @@ export function ChatDockBody({
       </button>
     </div>
   ) : undefined;
+  // The empty filler's loading wait (the filler names the wait itself).
+  const showLoadingSkeleton = conversationLoading && !historyFailureNotice;
+  const loadingLabel = transcript.catchingUp ? 'Catching up' : 'Loading chat';
+  /*
+   * What assistive tech hears about the wait. Screen readers announce a CHANGE
+   * to a live region that already exists; a region inserted together with its
+   * words, or one that names the wait only through `aria-label`, is mostly
+   * not read. So one region lives for the dock body's whole life, starts
+   * empty, and receives the words in an effect after it has been committed.
+   * It goes quiet when the load ends: the rows arriving are the news, and
+   * "loaded" is not a convention this app announces anywhere else. React
+   * writes the text only when it changes, so re-renders announce nothing.
+   *
+   * The long-wait sentence uses the visible long-wait row's own condition, so
+   * the two cannot disagree (a history failure hides the skeleton, not the
+   * row).
+   */
+  const showLoadingLongRow =
+    conversationLoading && loadingLong && !recoveryOpen;
+  const loadingAnnouncement = showLoadingLongRow
+    ? LOADING_LONG_MESSAGE
+    : showLoadingSkeleton
+      ? loadingLabel
+      : '';
+  const [announcedLoading, setAnnouncedLoading] = useState('');
+  useEffect(() => {
+    setAnnouncedLoading(loadingAnnouncement);
+  }, [loadingAnnouncement]);
 
   // Wire STT transcript into chat input
   const inputRef = useRef(chatInput.input);
@@ -860,7 +1094,7 @@ export function ChatDockBody({
     activeSession.messages,
     settings.ttsReadbackEnabled,
     tts.speak,
-  ]); // eslint-disable-line react-hooks/exhaustive-deps
+  ]);
 
   const [removingMessages, setRemovingMessages] = useState<Set<string>>(
     new Set(),
@@ -874,6 +1108,7 @@ export function ChatDockBody({
   const queuedRetryNotice = queuedRetry
     ? {
         text: queuedRetry.line,
+        confirm: queuedRetry.action.confirm === 'unconfirmed-discard',
         // What the transcript's own action does: run it, then drop the notice.
         onDiscard: () => {
           queuedRetry.action.handler();
@@ -900,6 +1135,20 @@ export function ChatDockBody({
     [activeSession.id, addEphemeralMessage],
   );
 
+  const quoteMessage = useCallback(
+    (quote: SavedAnswerQuote) => {
+      chatDraftsStore.addQuote(activeSession.id, quote);
+    },
+    [activeSession.id],
+  );
+  const newChatFromMessage = useCallback(
+    (text: string) => {
+      if (onNewChat)
+        void Promise.resolve(onNewChat(text)).catch(surfaceRecoveryFailure);
+    },
+    [onNewChat, surfaceRecoveryFailure],
+  );
+
   /**
    * Resolve a recovered turn's attachments, then run the recovery. A turn
    * whose attachment bytes can no longer be fetched is REFUSED with a visible
@@ -923,6 +1172,34 @@ export function ChatDockBody({
     },
     [apiBase, surfaceRecoveryFailure],
   );
+
+  // Continue after a memory kill goes through Station, which sends the
+  // continuation once per dead turn whoever asks first (this device, another
+  // one, or Station's own automatic continuation). An older Station has no
+  // such route: then the short continuation is sent as an ordinary message.
+  const continueAfterMemoryKill = useCallback(async () => {
+    try {
+      await continueAfterMemoryExhaustion(
+        activeSession.conversationId ?? activeSession.id,
+        apiBase,
+      );
+    } catch (error) {
+      if (error instanceof MemoryContinuationUnsupportedError) {
+        await runRecoveredTurn(
+          { text: MEMORY_EXHAUSTION_CONTINUE_TEXT, attachments: [] },
+          (text, attachments) => sendRef.current(text, attachments),
+        );
+        return;
+      }
+      surfaceRecoveryFailure(error);
+    }
+  }, [
+    activeSession.conversationId,
+    activeSession.id,
+    apiBase,
+    runRecoveredTurn,
+    surfaceRecoveryFailure,
+  ]);
 
   const handleDismissEphemeral = useCallback(
     (messageId: string) => {
@@ -968,17 +1245,44 @@ export function ChatDockBody({
         }
       : model,
   );
-  const executionBinding = activeSession.executionAgentId
-    ? agents.find(
-        (candidate) => candidate.slug === activeSession.executionAgentId,
-      )
-    : agent;
-  const executionEngineLabel =
+  // `chatExecutionBinding` and `chatEngineIdentity` (utils/engine.ts) own
+  // which Agent runs this chat and which engine it names; the dock header
+  // reads the same two rules.
+  const executionBinding = chatExecutionBinding(activeSession, agents);
+  const engineIdentity = chatEngineIdentity({
+    orchestrationProvider: activeSession.orchestrationProvider,
+    currentSessionId:
+      activeSession.currentSessionId ?? activeSession.conversationId,
+    sessionConnectionId: activeSession.agentConnectionId,
+    connectionObservedFor: activeSession.agentConnectionObservedFor,
+    binding: executionBinding,
+    acpConnections,
+  });
+  const configuredEngineLabel =
     executionBinding?.engineDisplayName ??
-    engineDisplayLabel(
-      activeSession.orchestrationProvider ?? activeSession.provider ?? '',
-    ) ??
+    engineDisplayLabel(activeSession.provider ?? '') ??
     modelProviderLabel;
+  // Undefined while the Session's engine cannot be named: the chip then reads
+  // its neutral "Engine & model" rather than a guess.
+  const executionEngineLabel = engineIdentity.configurationNamesEngine
+    ? (configuredEngineLabel ?? engineIdentity.sessionEngine)
+    : engineIdentity.sessionEngine;
+  // Set only once a Session exists: the engine that Session runs on.
+  const sessionEngineLabel =
+    engineIdentity.relation === 'no-session' ? undefined : executionEngineLabel;
+  // The Agent now points somewhere else. While the Session can still take a
+  // turn it keeps its engine, so that is said as a fact about the Agent. Once
+  // the next turn starts a successor Session on the Agent's engine
+  // (`chatNextTurnStartsSession`), that is the one case worth saying outright.
+  const agentEngineMove =
+    engineIdentity.relation === 'moved' &&
+    executionBinding?.engineDisplayName &&
+    executionBinding.engineDisplayName !== executionEngineLabel
+      ? {
+          to: executionBinding.engineDisplayName,
+          nextTurn: chatNextTurnStartsSession(activeSession),
+        }
+      : undefined;
 
   const workspaceRefused =
     activeSession.outboundQueuedTurns?.some(isWorkspaceRefusedTurn) ?? false;
@@ -1079,9 +1383,18 @@ export function ChatDockBody({
         const turnInterruptedMatch = eventBody.match(
           /^\[TURN_INTERRUPTED\]\s*([\s\S]*)$/,
         );
-        const displayContent = translation
-          ? formatChatErrorDisplay(translation)
-          : (turnInterruptedMatch?.[1] ?? eventBody);
+        // Station already continued after this memory kill (its own
+        // continuation turn follows): say so, and offer Stop while it runs.
+        const memoryContinued =
+          chatErrorCode === ENGINE_MEMORY_EXHAUSTED_CODE &&
+          renderedSession.messages
+            .slice(idx + 1)
+            .some((message) => message.stationMemoryContinuation === true);
+        const displayContent = memoryContinued
+          ? MEMORY_EXHAUSTION_CONTINUING_DISPLAY
+          : translation
+            ? formatChatErrorDisplay(translation)
+            : (turnInterruptedMatch?.[1] ?? eventBody);
         // #797: the failed turn's own user message now survives the failure,
         // so the marker can offer to send it again — text and attachments
         // both — rather than leaving the user to retype it. station#1827
@@ -1120,33 +1433,61 @@ export function ChatDockBody({
             action={
               activeSession.replay
                 ? undefined
-                : translation?.retryable === false &&
-                    chatErrorCode !== SESSION_START_INDETERMINATE_CODE &&
-                    onNewChat
+                : chatErrorCode === MCP_SIGN_IN_REQUIRED_CODE
                   ? {
-                      label: 'Switch agent',
-                      onClick: () =>
-                        void Promise.resolve(onNewChat()).catch(
-                          surfaceRecoveryFailure,
-                        ),
+                      label: 'Sign in to tool',
+                      onClick: () => navigate('/connections/tools'),
                     }
-                  : translation?.terminalSession && onNewChat && retryTurn
+                  : chatErrorCode === ENGINE_SIGN_IN_REQUIRED_CODE &&
+                      activeSession.agentConnectionId
                     ? {
-                        label: 'New chat',
+                        label: 'Sign in',
                         onClick: () =>
-                          void runRecoveredTurn(retryTurn, onNewChat),
+                          navigate(
+                            `/connections/engines/${encodeURIComponent(activeSession.agentConnectionId ?? '')}`,
+                          ),
                       }
-                    : canRetry && retryTurn
-                      ? {
-                          label: 'Send again',
-                          onClick: () =>
-                            void runRecoveredTurn(
-                              retryTurn,
-                              (text, attachments) =>
-                                sendRef.current(text, attachments),
-                            ),
-                        }
-                      : undefined
+                    : chatErrorCode === ENGINE_MEMORY_EXHAUSTED_CODE
+                      ? memoryContinued
+                        ? isTurnInFlight(activeSession)
+                          ? {
+                              label: 'Stop',
+                              onClick: () => void chatInput.handleCancel(),
+                            }
+                          : undefined
+                        : {
+                            // Not a resend: Station's continuation, whose
+                            // model input carries the recovery note.
+                            label: 'Continue',
+                            onClick: () => void continueAfterMemoryKill(),
+                          }
+                      : translation?.retryable === false &&
+                          chatErrorCode !== SESSION_START_INDETERMINATE_CODE &&
+                          onNewChat
+                        ? {
+                            label: 'Switch agent',
+                            onClick: () =>
+                              void Promise.resolve(onNewChat()).catch(
+                                surfaceRecoveryFailure,
+                              ),
+                          }
+                        : translation?.terminalSession && onNewChat && retryTurn
+                          ? {
+                              label: 'New chat',
+                              onClick: () =>
+                                void runRecoveredTurn(retryTurn, onNewChat),
+                            }
+                          : canRetry && retryTurn
+                            ? {
+                                label: 'Send again',
+                                onClick: () =>
+                                  void runRecoveredTurn(
+                                    retryTurn,
+                                    (text, attachments) =>
+                                      sendRef.current(text, attachments),
+                                  ),
+                              }
+                            : undefined
             }
           />
         );
@@ -1159,6 +1500,8 @@ export function ChatDockBody({
       removingMessages,
       activeSession.id,
       activeSession.replay,
+      activeSession.agentConnectionId,
+      navigate,
       renderedSession.messages,
       chatInput.input,
       clearEphemeralMessages,
@@ -1166,9 +1509,120 @@ export function ChatDockBody({
       onNewChat,
       runRecoveredTurn,
       surfaceRecoveryFailure,
+      continueAfterMemoryKill,
+      activeSession,
+      chatInput.handleCancel,
     ],
   );
 
+  // This browser's outbox: rows in the one pending-message list above the
+  // composer, not a list of its own.
+  const outboundTurns = activeSession.outboundQueuedTurns ?? [];
+  // Send on a copy a closed window held. While a turn runs or this window's
+  // queue holds follow-ups, it joins that queue (whose durable copy then takes
+  // the key over), so it sends in the queue's order and takes its number;
+  // otherwise it goes now. An open window's copy is released as before: that
+  // window's queue holds it too, and one message has one sender.
+  const sendHeldCopy = async (turn: {
+    clientTurnId: string;
+    content: string;
+    heldByClosedWindow?: true;
+  }) => {
+    // The queue as stored, not as this render saw it: a second click lands
+    // before the re-render.
+    const latest: Pick<
+      ChatSession,
+      'queuedMessages' | 'queuedMessageMetadata'
+    > =
+      activeChatsStore.getChatForExecutionSession(activeSession.id) ??
+      activeSession;
+    if (
+      turn.heldByClosedWindow &&
+      (isTurnInFlight(activeSession) || latest.queuedMessages.length)
+    ) {
+      // One key, one queue entry: a repeat click, or a window restored from
+      // the back/forward cache and read as closed, finds it already queued.
+      if (
+        latest.queuedMessageMetadata?.some(
+          (entry) => entry.id === turn.clientTurnId,
+        )
+      )
+        return;
+      updateChat(activeSession.id, {
+        queuedMessages: [...latest.queuedMessages, turn.content],
+        queuedMessageMetadata: [
+          ...(latest.queuedMessageMetadata ??
+            latest.queuedMessages.map(() => ({
+              id: randomCorrelationId(),
+              mode: 'queue' as const,
+            }))),
+          // Its own key: the queue's durable copy takes the held row over.
+          { id: turn.clientTurnId, mode: 'queue' },
+        ],
+      });
+      return;
+    }
+    const { outboundDispatch } = await import('../../lib/outboundQueue');
+    await outboundDispatch.sendHeld(turn.clientTurnId);
+  };
+  const outboxRows: OutboxRows | undefined = outboundTurns.length
+    ? {
+        count: outboundTurns.length,
+        needsReview: outboundTurns.some(outboxNeedsReview),
+        notSent: outboundTurns.some((turn) => turn.status === 'failed'),
+        node: (
+          <LazyBoundary
+            load={loadOutboundQueuedMessages}
+            pending={
+              <SkeletonList
+                count={1}
+                withIcon={false}
+                label="Loading offline messages"
+              />
+            }
+            componentProps={{
+              sessionId: activeSession.id,
+              turns: outboundTurns,
+              onSendHeld: sendHeldCopy,
+              messages: renderedSession.messages,
+              onError: (error: string) => surfaceRecoveryFailure(error),
+              // The "x" discards the same queued turn as the notice's Discard;
+              // once none is left, the notice has nothing to explain.
+              onDiscarded: (remaining: number) => {
+                const kept = ephemeralAfterQueueDiscard(
+                  ephemeralMessages,
+                  remaining,
+                );
+                if (!kept) return;
+                if (kept.length === 0) clearEphemeralMessages(activeSession.id);
+                else updateChat(activeSession.id, { ephemeralMessages: kept });
+              },
+              onRetry: async (clientTurnId: string) => {
+                try {
+                  const { outboundDispatch } = await import(
+                    '../../lib/outboundQueue'
+                  );
+                  await outboundDispatch.retry(clientTurnId);
+                } catch (error) {
+                  surfaceRecoveryFailure(
+                    `Could not retry the durable offline turn: ${error instanceof Error ? error.message : String(error)}`,
+                  );
+                }
+              },
+              onStartNewChat:
+                onNewChat ??
+                (() => {
+                  updateChat(activeSession.id, {
+                    status: 'error',
+                    error:
+                      'New chat is unavailable in this view — open the conversation from the dock and try again.',
+                  });
+                }),
+            }}
+          />
+        ),
+      }
+    : undefined;
   return (
     <>
       {showStatsPanel && (
@@ -1238,10 +1692,20 @@ export function ChatDockBody({
          * and read "No messages yet" instead — a true sentence that is not
          * the reason nothing can be sent.
          */
-        <div className="chat-messages chat-messages--empty" role="status">
+        <div
+          className="chat-messages chat-messages--empty"
+          // One status region for the filler's whole life: it exists before
+          // the empty state or notice it later announces (a region created
+          // together with its text is often not read), and while loading it
+          // carries the wait itself, so the skeleton inside is not a second,
+          // nested region.
+          role="status"
+          aria-busy={showLoadingSkeleton || undefined}
+          aria-label={showLoadingSkeleton ? loadingLabel : undefined}
+        >
           {historyElisionNotice}
           {historyFailureNotice ??
-            (conversationLoading ? (
+            (showLoadingSkeleton ? (
               /*
                * "Start a chat" is a CLAIM that this chat has none, and
                * a transcript read that has not landed has established nothing.
@@ -1249,10 +1713,7 @@ export function ChatDockBody({
                * that had turns in it (#1582 E3/B6). The skeleton keeps the flex
                * fill this slot exists for while saying only what is known.
                */
-              <SkeletonList
-                count={4}
-                label={transcript.catchingUp ? 'Catching up' : 'Loading chat'}
-              />
+              <SkeletonList count={4} label={loadingLabel} announce={false} />
             ) : (
               <ChatEmptyState
                 agentSlug={renderedSession.agentSlug}
@@ -1264,7 +1725,7 @@ export function ChatDockBody({
       {displayedTranscriptMessages.length > 0 && (
         <LazyBoundary
           load={loadChatMessageList}
-          pending={<SkeletonList count={4} label="Loading chat" />}
+          pending={CHAT_MESSAGE_LIST_PENDING}
           componentProps={{
             activeSession: renderedSession,
             suppressStreamingRow: transcript.openTurnProjected,
@@ -1292,18 +1753,16 @@ export function ChatDockBody({
             ),
             onLoadOlder: transcript.loadOlder,
             onOpenBackgroundTasks,
+            liveStatusUnavailable: activeSession.replay
+              ? observationUnavailable
+              : (workObservation?.unavailable(
+                  activeSession.conversationId ?? activeSession.id,
+                ) ?? observationUnavailable),
             owner,
             accountableHuman,
-            onQuote: (quote) =>
-              chatDraftsStore.addQuote(activeSession.id, quote),
+            onQuote: quoteMessage,
             onForkFromTurn: forkFromTurn,
-            onNewChatFromMessage: onNewChat
-              ? (text: string) => {
-                  void Promise.resolve(onNewChat(text)).catch(
-                    surfaceRecoveryFailure,
-                  );
-                }
-              : undefined,
+            onNewChatFromMessage: onNewChat ? newChatFromMessage : undefined,
             // The dock's header gear opens ChatSettingsPanel, which carries the
             // Summarize entry point (#3310).
             hasSettingsEntryPoint: true,
@@ -1371,18 +1830,38 @@ export function ChatDockBody({
           }}
         />
       ) : null}
-      {activeSession.queuedMessages.length ? (
+      {/* One pending-message list: this browser's queue, its outbox and what
+          Station holds for the conversation (#3868). It renders nothing while
+          all are empty, and stays mounted so its rows can animate in and out. */}
+      {activeSession.queuedMessages.length ||
+      outboxRows ||
+      !activeSession.replay ? (
         <LazyBoundary
-          load={loadQueuedMessages}
+          // The chat's own id: a new chat gaining its conversation id is the
+          // same list, not a new one to mount (and replay its rows' entry).
+          key={activeSession.id}
+          load={loadConversationInboxMessages}
           pending={null}
           componentProps={{
+            conversationId: activeSession.replay
+              ? undefined
+              : activeSession.conversationId,
+            conversationActive: isExecutionActive,
             sessionId: activeSession.id,
             messages: activeSession.queuedMessages,
             metadata: activeSession.queuedMessageMetadata,
-            waitingForTools: activeSession.streamingMessage?.contentParts?.some(
-              (part) =>
-                part.type === 'tool-invocation' && part.state === 'running',
-            ),
+            outbox: outboxRows,
+            // The pill's fact when the server's turn record is here (it
+            // survives a reload; the live parts do not), unless the user
+            // owes an approval, which the turn waits on instead. The live
+            // parts only without that record.
+            waitingForTools: activeSession.conversationActivity
+              ? turnToolsRunning(activeSession.conversationActivity) &&
+                requestsWaitingOnUser({
+                  pendingApprovals: activeSession.pendingApprovals ?? [],
+                  answeredApprovals: activeSession.answeredApprovals,
+                }).length === 0
+              : hasActiveToolCall(activeSession.streamingMessage?.contentParts),
             sendNowPending:
               activeSession.queueSendNowPending ||
               activeSession.queueDrainSettling,
@@ -1644,56 +2123,6 @@ export function ChatDockBody({
           }}
         />
       ) : null}
-      {activeSession.outboundQueuedTurns?.length ? (
-        <LazyBoundary
-          load={loadOutboundQueuedMessages}
-          pending={
-            <SkeletonList
-              count={1}
-              withIcon={false}
-              label="Loading offline messages"
-            />
-          }
-          componentProps={{
-            sessionId: activeSession.id,
-            turns: activeSession.outboundQueuedTurns,
-            messages: renderedSession.messages,
-            onError: (error: string) => surfaceRecoveryFailure(error),
-            // The "x" discards the same queued turn as the notice's Discard;
-            // once none is left, the notice has nothing to explain.
-            onDiscarded: (remaining: number) => {
-              const kept = ephemeralAfterQueueDiscard(
-                ephemeralMessages,
-                remaining,
-              );
-              if (!kept) return;
-              if (kept.length === 0) clearEphemeralMessages(activeSession.id);
-              else updateChat(activeSession.id, { ephemeralMessages: kept });
-            },
-            onRetry: async (clientTurnId: string) => {
-              try {
-                const { outboundDispatch } = await import(
-                  '../../lib/outboundQueue'
-                );
-                await outboundDispatch.retry(clientTurnId);
-              } catch (error) {
-                surfaceRecoveryFailure(
-                  `Could not retry the durable offline turn: ${error instanceof Error ? error.message : String(error)}`,
-                );
-              }
-            },
-            onStartNewChat:
-              onNewChat ??
-              (() => {
-                updateChat(activeSession.id, {
-                  status: 'error',
-                  error:
-                    'New chat is unavailable in this view — open the conversation from the dock and try again.',
-                });
-              }),
-          }}
-        />
-      ) : null}
       {/*
         station#3213. The session detail's own failure banner, rendered here
         rather than respelled — same component, same fold, so one failure
@@ -1711,7 +2140,7 @@ export function ChatDockBody({
         second untruth in the opposite direction.
       */}
       <SessionFailureAlert
-        failureText={bannerFailureText}
+        failureText={recoveryOpen || resolvingOpen ? null : bannerFailureText}
         className="chat-dock__session-failure"
         testId="chat-dock-session-failure"
         note={sessionFailureNote(activeOrchestrationSession)}
@@ -1724,7 +2153,19 @@ export function ChatDockBody({
         session={activeSession}
         summary={activeOrchestrationSession}
       />
+      {/* What an agent scheduled here: check-backs and job proposals. */}
+      {activeSession.conversationId && !activeSession.replay ? (
+        <AgentScheduleNotes
+          conversationId={activeSession.conversationId}
+          refreshKey={agentScheduleRefreshKey(
+            activeSession.conversationActivity?.openTurn?.turnId,
+            activeSession.streamingMessage?.contentParts,
+          )}
+        />
+      ) : null}
       {agent?.available === false &&
+        !recoveryOpen &&
+        !resolvingOpen &&
         activeSession.modelSource !== 'session override' && (
           <div
             style={{
@@ -1782,43 +2223,67 @@ export function ChatDockBody({
               </>
             ) : (
               <>
-                <strong>This agent can't launch with its current model.</strong>{' '}
+                <strong>This agent is unavailable.</strong>{' '}
                 {agent.unavailableReason ? `${agent.unavailableReason} ` : ''}
-                Select a model from the picker to start chatting, or{' '}
-                <button
-                  type="button"
-                  onClick={() => navigate(`/agents/${activeSession.agentSlug}`)}
-                  style={BANNER_LINK_BUTTON_STYLE}
-                >
-                  edit the agent's model setting
-                </button>
-                .
+                {agent.unavailableFix?.kind === 'cli-missing' ||
+                agent.unavailableFix?.kind === 'connection-broken' ||
+                agent.unavailableFix?.kind === 'engine-disabled' ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      navigate(
+                        agent.unavailableFix?.target
+                          ? `/connections/engines/${encodeURIComponent(agent.unavailableFix.target)}`
+                          : '/connections/engines',
+                      )
+                    }
+                    style={BANNER_LINK_BUTTON_STYLE}
+                  >
+                    Open engine settings
+                  </button>
+                ) : (
+                  <>
+                    Select a model from the picker to start chatting, or{' '}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        navigate(`/agents/${activeSession.agentSlug}`)
+                      }
+                      style={BANNER_LINK_BUTTON_STYLE}
+                    >
+                      edit the agent's model setting
+                    </button>
+                    .
+                  </>
+                )}
               </>
             )}
           </div>
         )}
       {/*
-        The transitional state, in the repo's one loading vocabulary
-        (`state-primitives-ratchet`: name the wait in a skeleton's `label`,
-        never a new sentence). It replaces the red "is read-only" alert this
+        The transitional state. It replaces the red "is read-only" alert this
         phase used to paint: nothing has gone wrong — `hydrateActiveChats`
         seeds the pending phase on every reload of a chat with a conversation
         id, so this is the ordinary path (#1582 E3/B6).
 
-        It renders only when the transcript already has messages: with an empty
-        transcript the filler above carries the same wait, and two skeletons
-        for one wait is the multiplicity this change exists to remove.
-
-        A SIBLING of the control row below, not a child of it. Inside
-        `.session-history-controls` (`display: flex; justify-content: center`)
-        the skeleton becomes a shrink-to-fit flex item, and `.skeleton--block`
-        is `width: 100%` OF that item — it measured 2px wide in Chrome against
-        600px here, and jsdom, which lays nothing out, called both green
-        (delta-review M1).
+        With messages on screen the wait is shown by the disabled composer,
+        whose placeholder reads "Loading chat…" (`loadingConversation`); with
+        an empty transcript the filler above shows it. Either way it is
+        announced by this one persistent, visually hidden region (see
+        `loadingAnnouncement`). An in-flow block under the newest message used
+        to shrink the transcript while the open read was pending and hand the
+        space back when it landed ("space appears below while the conversation
+        loads").
       */}
-      {conversationLoading && displayedTranscriptMessages.length > 0 ? (
-        <SkeletonBlock count={1} label="Loading chat" />
-      ) : null}
+      <div
+        className="sr-only"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        data-testid="chat-dock-loading-announcement"
+      >
+        {announcedLoading}
+      </div>
       {/*
         The one way out of the wait. `.session-history-controls` is this pane's
         existing control row (archive#3386 already widened it past "buttons
@@ -1828,10 +2293,12 @@ export function ChatDockBody({
         `!recoveryOpen` because the recovery notice below carries its
         own "Start new chat": a reload whose point-read lands `unavailable`
         BEFORE the transcript's first read satisfies both conditions at once,
-        and rendered the control twice (delta-review L1).
+        and rendered the control twice (#1607).
       */}
-      {conversationLoading && loadingLong && !recoveryOpen ? (
+      {showLoadingLongRow ? (
         <div className="session-history-controls">
+          {/* Announced by the persistent region above, not by this span. */}
+          <span>{LOADING_LONG_MESSAGE}</span>
           {onNewChat ? (
             <button
               type="button"
@@ -1933,6 +2400,7 @@ export function ChatDockBody({
             <ProgressSilenceObservation
               observation={turnProgressSilence}
               engineName={
+                sessionEngineLabel ??
                 agent?.engineDisplayName ??
                 acpConnections.find(
                   (connection) =>
@@ -2000,6 +2468,18 @@ export function ChatDockBody({
           )}
           <DeferredChatInputArea
             activity={statusPill}
+            contextMeter={
+              showContextMeter && activeSession.conversationId ? (
+                <ContextPercentage
+                  agentSlug={activeSession.agentSlug}
+                  conversationId={activeSession.conversationId}
+                  apiBase={apiBase}
+                  messageCount={activeSession.messages.length}
+                  liveUsage={activeSession.liveUsage}
+                  onClick={() => setShowStatsPanel(true)}
+                />
+              ) : undefined
+            }
             activityRef={setScrollControlsTarget}
             hasQuotedContext={chatInput.quotes.length > 0}
             draftText={chatInput.quotedDraftText}
@@ -2015,9 +2495,11 @@ export function ChatDockBody({
             mentionAuthority={mentionAuthority}
             attachments={chatInput.attachments}
             textareaRef={chatInput.textareaRef}
-            disabled={!agent || recoveryOpen || resolvingOpen || busyOpen}
-            allowDraftWhileDisabled={busyOpen && !!agent}
-            isSending={isExecutionActive}
+            onEnabledChange={onComposerEnabledChange}
+            disabled={
+              !agent || recoveryOpen || resolvingOpen || busyWaitBlocksSend
+            }
+            allowDraftWhileDisabled={busyWaitBlocksSend && !!agent}
             turnInFlight={isTurnInFlight(activeSession)}
             busyFollowUp={busyFollowUp}
             busySteeringKind={nativeSteering ? 'native' : 'safe-stop'}
@@ -2027,6 +2509,7 @@ export function ChatDockBody({
             fileAttachmentsSupported={fileAttachmentsSupported}
             modelProviderLabel={modelProviderLabel}
             executionEngineLabel={executionEngineLabel}
+            agentEngineMove={agentEngineMove}
             modelProviders={modelProviders}
             currentProviderId={activeSession.providerId}
             fontSize={chatFontSize}
@@ -2062,14 +2545,14 @@ export function ChatDockBody({
                 ? undefined
                 : secondaryActions
             }
-            agentLabel={[
-              agent?.name ?? activeSession.agentName ?? activeSession.agentSlug,
+            agentLabel={
+              agent?.name ?? activeSession.agentName ?? activeSession.agentSlug
+            }
+            agentRoute={
               activeOrchestrationSession?.modelRoute
                 ? `via ${activeOrchestrationSession.modelRoute.label}`
-                : null,
-            ]
-              .filter(Boolean)
-              .join(' · ')}
+                : undefined
+            }
             onOpenAgentHandoff={
               onOpenAgentHandoff ?? secondaryActions?.onOpenHandoff
             }
@@ -2077,12 +2560,22 @@ export function ChatDockBody({
             agentHandoffDisabled={secondaryActions?.handoffDisabled}
             agentHandoffDisabledReason={secondaryActions?.handoffDisabledReason}
             executionMode={activeSession.executionMode}
+            approvalModeIsNewSession={approvalModeIsNewSession}
             approvalModeAgentDefault={agentApprovalModeDefault}
+            approvalModeProjectDefault={
+              projectChatDefaults?.approvalMode.resolved
+            }
+            approvalModeProjectDefaultUnavailable={
+              approvalModeIsNewSession &&
+              !!activeSession?.projectSlug &&
+              projectChatDefaultsAnswer === undefined
+            }
             approvalModeStationDefault={stationApprovalModeDefault}
             toolPolicyDelivery={toolPolicyDelivery}
             lastAppliedApprovalMode={activeSession.lastAppliedApprovalMode}
             approvalModeOverride={sessionApprovalOverride(activeSession)}
             acpSessionModes={advertisedAcpSession.modes}
+            acpApproval={acpApproval}
             acpCurrentModeId={
               activeSession.currentModeId ?? advertisedAcpSession.currentModeId
             }
@@ -2102,7 +2595,7 @@ export function ChatDockBody({
             sendBlockedReason={
               recoveryOpen && !unverifiedOpen
                 ? 'This conversation is available read-only. Retry resolution or start a new chat.'
-                : recoveryOpen || resolvingOpen || busyOpen
+                : recoveryOpen || resolvingOpen || busyWaitBlocksSend
                   ? // The banner above already says this; repeating the SENTENCE
                     // under the composer is what made one ordinary reload read as
                     // three separate problems. `undefined` leaves the composer
@@ -2160,6 +2653,7 @@ export function ChatDockBody({
             onVoiceStart={() => stt.startListening()}
             onVoiceStop={() => stt.stopListening()}
             workspaceRefused={workspaceRefused}
+            loadingConversation={resolvingOpen}
             onStartNewChat={onNewChat}
           />
         </>

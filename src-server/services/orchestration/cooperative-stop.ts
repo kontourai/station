@@ -9,6 +9,10 @@ import type {
 } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
+  FORCED_STOP_REASON,
+  STALL_FORCED_STOP_REASON,
+} from '@kontourai/station-shared/runtime-event-projection';
+import {
   isProviderInterruptTurnResult,
   type ProviderAdapterShape,
 } from '../../providers/adapter-shape.js';
@@ -19,14 +23,14 @@ import { interruptibleTurnIdForEvents } from './session-lifecycle-service.js';
  * The cancel-acknowledgement budget now lives in the orchestration contract
  * (`COOPERATIVE_STOP_BUDGET_MS`) rather than privately here: the browser's
  * Stop control has to outwait it, and a second hand-written copy of the
- * number in the UI would drift (UX audit T1).
+ * number in the UI would drift.
  */
 type StopSettlement = 'acknowledged' | 'completed' | 'deadline';
 
 /**
  * A Stop recorded before its turn existed.
  *
- * `clientTurnId` is what makes this safe (UX audit T1 review): keyed on the
+ * `clientTurnId` is what makes this safe: keyed on the
  * thread alone, a cancel whose intended turn never started stayed armed for
  * the whole TTL and would interrupt whatever turn started next. With the key,
  * the `sendTurn` path binds `turnId` the moment its dispatch resolves, and
@@ -43,7 +47,7 @@ interface PendingTurnInterrupt {
    * Turns whose `turn.started` this record has already seen while it was
    * still waiting for its binding.
    *
-   * UX audit T1 review round 3 (HIGH): Claude and ACP publish `turn.started`
+   * Claude and ACP publish `turn.started`
    * BEFORE `sendTurn` returns the id, so the ordinary ordering is
    * start-then-bind — and the event-driven apply, correctly refusing to guess
    * which dispatch that start belonged to, had to stand down. Nothing then
@@ -141,9 +145,11 @@ export interface CooperativeStopDeps {
  * pending-interrupt map, and their timers all live here, with every write
  * internal to this module.
  *
- * `settleCompletedTurn` is the C2 spine's settle-read and MUST be called in
- * `publishCanonicalEvent` BEFORE the quarantine gate (T5) — pinned by a
- * source invariant in the orchestration suite.
+ * `settleCompletedTurn` is the C2 spine's settle-read. `publishCanonicalEvent`
+ * MUST reach it for every event, including one the quarantine gate declines
+ * (T5), and for a published event only after its append commits and before
+ * the in-memory observers run (#3561) — pinned by a source invariant in the
+ * orchestration suite.
  *
  * The `'stall'` `initiatedBy` arm is DORMANT plumbing (archive#2959): stall
  * detection is observe-only by review decision, and the only live callers
@@ -157,7 +163,7 @@ export class CooperativeStop {
   /** One user-stop protocol per thread; concurrent stop commands join it. */
   private readonly cooperativeStops = new Map<string, CooperativeStopTask>();
   /**
-   * UX audit T1 (live verification): a Stop pressed between "the turn was
+   * A Stop pressed between "the turn was
    * dispatched" and "the engine's provider session exists" was refused with
    * `No provider session found for thread` — and that window covered EVERY
    * real press, because the composer's own Stop control disappeared before the
@@ -174,11 +180,13 @@ export class CooperativeStop {
   constructor(private readonly deps: CooperativeStopDeps) {}
 
   /**
-   * The C2 spine's settle-read (epic archive#4024): MUST be called in
-   * `publishCanonicalEvent` BEFORE the quarantine gate — a stop must settle
-   * even for an event the gate declines, or a stop on a quarantined thread
-   * never settles and rides its full budget into a forced teardown of a
-   * turn that had already completed. Pinned by a source invariant in the
+   * The C2 spine's settle-read (epic archive#4024). `publishCanonicalEvent`
+   * MUST reach it even for an event the quarantine gate declines, or a stop
+   * on a quarantined thread never settles and rides its full budget into a
+   * forced teardown of a turn that had already completed. For a published
+   * event it runs only after that event's append commits (#3561), so a failed
+   * append leaves the stop pending, and before the in-memory observers, so
+   * one that throws cannot strand it. Pinned by a source invariant in the
    * orchestration suite; exactly one dispatch file-wide.
    */
   settleCompletedTurn(
@@ -241,10 +249,10 @@ export class CooperativeStop {
       return;
     }
     if (event.turnId) pending.startedTurnIds.add(event.turnId);
-    // UX audit T1 review: a correlated cancel may only reach the turn its own
+    // A correlated cancel may only reach the turn its own
     // dispatch produced. Until that binding exists the record waits — a turn
     // starting now belongs to some other dispatch, and interrupting it would
-    // stop work the user never asked to stop. Round 3: the wait now ENDS, at
+    // stop work the user never asked to stop. The wait now ENDS, at
     // `bindPendingTurnInterrupt`, using the start just recorded above.
     if (pending.clientTurnId !== undefined && pending.turnId === undefined) {
       return;
@@ -299,7 +307,7 @@ export class CooperativeStop {
    * Binds a pending Stop to the provider turn its own dispatch produced, or
    * drops it when that dispatch produced none. See {@link PendingTurnInterrupt}.
    *
-   * UX audit T1 review round 3 (HIGH): this is also where a held cancel is
+   * This is also where a held cancel is
    * APPLIED, not merely recorded. Claude and ACP publish `turn.started` before
    * `sendTurn` returns its id, so in the ordinary case the event-driven apply
    * has already seen the start and stood down for want of a binding — and no
@@ -365,7 +373,7 @@ export class CooperativeStop {
       // A second Stop for the same thread rides the first one's task rather
       // than starting a second cancel (the pre-existing coalescing), and now
       // reports the SAME derived outcome instead of an untyped void the
-      // caller has to guess at (UX audit T1: a double-click must not produce
+      // caller has to guess at (a double-click must not produce
       // two different labels for one stop).
       return interruptTurnResultFor(
         threadId,
@@ -507,9 +515,7 @@ export class CooperativeStop {
       createdAt: new Date().toISOString(),
       method: 'turn.aborted',
       reason:
-        initiatedBy === 'stall'
-          ? 'Stopped after the turn-stall window elapsed with no observed progress, then the cooperative cancel budget expired.'
-          : 'Stopped after the cooperative cancel budget expired.',
+        initiatedBy === 'stall' ? STALL_FORCED_STOP_REASON : FORCED_STOP_REASON,
     });
     this.persistResumableStoppedSession(adapter.provider, threadId);
     await adapter.stopSession(threadId);

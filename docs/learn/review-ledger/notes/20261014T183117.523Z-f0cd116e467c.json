@@ -1,0 +1,7 @@
+{
+  "revision": "53f1b03828067c53841c70fadbfc4cad33ca7d6d",
+
+  "notes": [
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Searched for client_turn_in_flight, clientTurnId, same-key retry, foreground_message_indeterminate and retain claims. None here describes the retained-claim resend; the SDK's indeterminate-retry and getTurnDelivery text stays accurate. The change only refuses a same-process resend of a retained claim (waiting or new) as foreground_message_indeterminate and clears the marker on a fresh claim.","inputs":["docs/design/approval-posture-server-ordered.md","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

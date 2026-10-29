@@ -14,7 +14,7 @@
  * a read-only credential by the pairing scope.
  */
 
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -27,11 +27,16 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { DevicePairingService } from '../../../services/ssh/device-pairing-service.js';
+import { STATION_CONTROL_CALLER_TOKEN_HEADER } from '../../../tools/station-control-shared.js';
 import {
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_PROXY_CALLER_HEADER,
 } from '../../../utils/internal-api-token.js';
+import {
+  mintStationControlMcpToken,
+  revokeStationControlMcpToken,
+} from '../../mcp/station-control-mcp-token.js';
 import { configureRuntimeRoutes } from '../runtime-routes.js';
 
 /** Every host tool invocation the tools service asked for. */
@@ -233,6 +238,15 @@ describe('device tools lease rule in the runtime composition (S3)', () => {
       monitoringEvents: [],
       // Route composition starts the boot-only dispatch repair; model the
       // empty authority explicitly (same shape as the hosted composition test).
+      orchestrationService: deepStub({
+        resolveSessionActingPrincipal: () => ({
+          id: 'human:local:operator',
+          source: 'session-owner',
+        }),
+        firstStartedMetadataOfThread: () => ({
+          localProjectId: 'device-test-project',
+        }),
+      }),
       orchestrationEventStore: deepStub({
         sessionTurnBoundaryAuthority: () => ({
           reconcile: () => ({ kind: 'available', interrupted: [] }),
@@ -265,7 +279,7 @@ describe('device tools lease rule in the runtime composition (S3)', () => {
       context as unknown as Parameters<typeof configureRuntimeRoutes>[0],
     );
     await result.kitLifecycleReady;
-    return { app, result, device, localDevice, delegation, readOnly };
+    return { app, result, device, localDevice, delegation, readOnly, homeDir };
   }
 
   test('the credential holding the lease acts (200); the same operator on another paired device is 409; agents, off-box and read-only credentials are refused', async () => {
@@ -403,5 +417,56 @@ describe('device tools lease rule in the runtime composition (S3)', () => {
     expect(toolCalls).toEqual([]);
     await result.deviceSessions?.dispose();
     await result.liveSurfaceRegistry!.dispose();
+  });
+  test('device-agent runtime reads the operator Agent access opt-in on each call', async () => {
+    const hub = await fakeHub();
+    servers.push(hub.server);
+    process.env[HUB_ENV] = hub.url;
+    const { app, result, homeDir } = await setup();
+    const sessionId = 'device-agent-opt-in';
+    const { token } = mintStationControlMcpToken(sessionId, 'sdk-in-process');
+    const call = () =>
+      app.request(
+        '/api/device-agent/list',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+            [INTERNAL_PROXY_CALLER_HEADER]: 'local',
+            [STATION_CONTROL_CALLER_TOKEN_HEADER]: token,
+          },
+          body: '{}',
+        },
+        LOOPBACK,
+      );
+    try {
+      expect(await readJson(await call())).toMatchObject({
+        ok: false,
+        code: 'agent-access-disabled',
+      });
+      mkdirSync(join(homeDir, 'devices'), { recursive: true });
+      writeFileSync(
+        join(homeDir, 'devices', 'setup.json'),
+        JSON.stringify({ version: 1, agentAccess: true }),
+      );
+      expect(await readJson(await call())).toMatchObject({
+        ok: true,
+        devices: [{ deviceId: UDID }],
+      });
+      writeFileSync(
+        join(homeDir, 'devices', 'setup.json'),
+        JSON.stringify({ version: 1, agentAccess: false }),
+      );
+      expect(await readJson(await call())).toMatchObject({
+        ok: false,
+        code: 'agent-access-disabled',
+      });
+    } finally {
+      revokeStationControlMcpToken(sessionId);
+      await result.deviceSessions?.dispose();
+      await result.liveSurfaceRegistry?.dispose();
+      await result.deviceToolchainService?.shutdown();
+    }
   });
 });

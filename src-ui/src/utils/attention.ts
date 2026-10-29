@@ -27,8 +27,10 @@ export function attentionKindLabel(kind: AttentionItem['kind']): string {
 
 /**
  * An `approval` item is genuinely still pending exactly when it carries
- * live actions — the agent is waiting on the decision, so dismissal must
- * be the visually-quiet secondary affordance. Whether a session deep link
+ * live actions, or a reference to its still-open request (a form is
+ * answered on its own card, so its notification carries no actions) — the
+ * agent is waiting on the decision, so dismissal must be the visually-quiet
+ * secondary affordance. Whether a session deep link
  * (`openHref`) resolves is orthogonal: ACP tool approvals, for instance,
  * never carry one but are absolutely live (archive#750 finding).
  * Only an action-less item is terminal, where a plain, equally-prominent
@@ -36,7 +38,7 @@ export function attentionKindLabel(kind: AttentionItem['kind']): string {
  * AttentionHistoryItem so the two surfaces can't drift.
  */
 export function isApprovalLivePending(item: ApprovalAttentionItem): boolean {
-  return item.actions.length > 0;
+  return item.actions.length > 0 || item.requestReference !== undefined;
 }
 
 /**
@@ -95,6 +97,37 @@ export function pendingAttentionItems(items: AttentionItem[]): AttentionItem[] {
 /** See `pendingAttentionItems` — the same one predicate, counted. */
 export function countPendingAttention(items: AttentionItem[]): number {
   return pendingAttentionItems(items).length;
+}
+
+/**
+ * Activity notifications that merely restate an attention item already on the
+ * projection, suppressed in ONE place (#765 D5, archive#1780).
+ *
+ * A pending approval and a pending device-pairing request each project as an
+ * attention item AND keep the stored notification they were raised from.
+ * Rendering both shows one fact twice: an actionable row under "Needs
+ * attention" beside a passive copy in "Recent activity". The inbox page and
+ * the bell popover both suppress these mirrors, so the membership lives here
+ * instead of as a kind list in each component — a third projected kind must
+ * not have to be remembered at two call sites.
+ *
+ * Callers apply this BEFORE narrowing (the page's filter bar, the popover's
+ * row budget), so a suppressed row cannot consume a slot the reader was
+ * promised.
+ */
+export function suppressMirroredNotifications<T extends { id: string }>(
+  notifications: T[],
+  items: AttentionItem[],
+): T[] {
+  const mirrored = new Set<string>();
+  for (const item of items) {
+    if (item.kind === 'approval') {
+      mirrored.add(item.source.notificationId);
+    } else if (item.kind === 'device-pairing' && item.source.notificationId) {
+      mirrored.add(item.source.notificationId);
+    }
+  }
+  return notifications.filter((notification) => !mirrored.has(notification.id));
 }
 
 /**

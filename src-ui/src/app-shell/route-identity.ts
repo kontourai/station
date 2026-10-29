@@ -91,6 +91,7 @@ export function routeSurfaceIdentity(view: NavigationView): string {
       return 'connections-models';
     case 'connections-engines':
     case 'connections-engine-edit':
+    case 'connections-engine-new':
       return 'connections-engines';
     case 'connections-tools':
     case 'connections-tool-edit':

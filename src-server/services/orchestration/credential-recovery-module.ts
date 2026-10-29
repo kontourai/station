@@ -95,9 +95,15 @@ type CredentialRecoveryOutcome =
   | { kind: 'rolled-back' }
   | { kind: 'indeterminate' };
 
+/**
+ * `unavailable`: a durable startup obligation scan could not be read, so
+ * recovery readiness is unknown rather than proven empty (#2823). Like
+ * `indeterminate`, it leaves the startup sweep eligible for another attempt.
+ */
 type CredentialRecoveryReconciliationOutcome =
   | { kind: 'reconciled'; recovered: number }
-  | { kind: 'indeterminate'; pending: number };
+  | { kind: 'indeterminate'; pending: number }
+  | { kind: 'unavailable' };
 
 /**
  * Owns automatic credential recovery as one compensation protocol.
@@ -481,7 +487,8 @@ class CredentialRecoveryImplementation implements CredentialRecoveryModule {
       return this.drainScopedCompensation();
     if (this.startupReadiness) return this.startupReadiness;
 
-    // Bulk prepared reconciliation is startup-only. A live terminal must use
+    // Bulk prepared reconciliation runs only in the startup pass, retried by
+    // later callers until it reconciles. A live terminal must use
     // its process-local claim capability; no second connection can take it.
     const operation = this.reconcileStartupPrepared().catch(() => ({
       kind: 'indeterminate' as const,
@@ -489,8 +496,9 @@ class CredentialRecoveryImplementation implements CredentialRecoveryModule {
     }));
     this.startupReadiness = operation.then((outcome) => {
       // A transient inspect/settle/ack failure is itself a durable pending
-      // obligation. Do not consume the startup sweep or permanently latch a
-      // false-ready Module; the next caller must retry the exact snapshot.
+      // obligation, and an unreadable obligation scan proves nothing (#2823).
+      // Do not consume the startup sweep or permanently latch a false-ready
+      // Module; the next caller must retry the exact snapshot.
       if (outcome.kind === 'reconciled') {
         this.startupReconciliationComplete = true;
       } else {
@@ -503,9 +511,11 @@ class CredentialRecoveryImplementation implements CredentialRecoveryModule {
 
   private async reconcileStartupPrepared(): Promise<CredentialRecoveryReconciliationOutcome> {
     let pending = 0;
-    const exactPrepared = this.dependencies.ledger.reconcilePreparedCredentials(
+    const exactScan = this.dependencies.ledger.reconcilePreparedCredentials(
       this.now(),
     );
+    const exactPrepared =
+      exactScan.kind === 'available' ? exactScan.obligations : [];
     for (const prepared of exactPrepared) {
       const { intent } = prepared;
       const state = await prepared.inspect();
@@ -573,13 +583,15 @@ class CredentialRecoveryImplementation implements CredentialRecoveryModule {
     // a candidate safely, so startup quarantines the recovery itself instead
     // of invoking an identity-free cleanup that could disturb a successor.
     let quarantined = 0;
-    const legacyPrepared = this.dependencies.ledger.reconcilePrepared(
+    const legacyScan = this.dependencies.ledger.reconcilePrepared(
       this.now(),
       'profile',
       // A linked exact attempt has its own receipt authority. It must never
       // enter the identity-free legacy sweep, even after an unknown inspect.
       true,
     );
+    const legacyPrepared =
+      legacyScan.kind === 'available' ? legacyScan.obligations : [];
     for (const intent of legacyPrepared) {
       const marked = this.dependencies.ledger.terminal(
         intent.fingerprint,
@@ -597,7 +609,16 @@ class CredentialRecoveryImplementation implements CredentialRecoveryModule {
         });
       } else pending += 1;
     }
-    if (pending > 0 || exactPrepared.length > 0 || legacyPrepared.length > 0) {
+    // An unreadable scan may hide linked receipts, so it must suppress the
+    // identity-free orphan sweep exactly as a visible one does (#2823).
+    const scanUnavailable =
+      exactScan.kind === 'unavailable' || legacyScan.kind === 'unavailable';
+    if (
+      scanUnavailable ||
+      pending > 0 ||
+      exactPrepared.length > 0 ||
+      legacyPrepared.length > 0
+    ) {
       const adapter = this.dependencies.adapter;
       // Exact and legacy preparation are independent of existing compensation
       // markers. A transient receipt inspect/terminal failure must block only
@@ -606,6 +627,7 @@ class CredentialRecoveryImplementation implements CredentialRecoveryModule {
       const scoped = adapter.rollbackPending
         ? await this.reconcileScopedWithLaterMarkers(adapter)
         : ({ kind: 'reconciled', recovered: 0 } as const);
+      if (scanUnavailable) return { kind: 'unavailable' };
       if (pending > 0) {
         return {
           kind: 'indeterminate',

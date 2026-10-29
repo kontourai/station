@@ -34,6 +34,7 @@ import {
 } from '../../telemetry/metrics.js';
 import { raceWithSignal } from '../../utils/bounded-async.js';
 import { detectCliOnPath } from '../../utils/cli-detection.js';
+import type { UnconnectedACPRegistryEntry } from '../connections/acp.js';
 import {
   readBuildProvenance,
   readSystemRuntimeIdentity,
@@ -50,7 +51,7 @@ import type {
 export { readBuildProvenance } from './build-provenance.js';
 
 export const STATUS_PREREQUISITES_CACHE_TTL_MS = 60_000;
-export const STATUS_PREREQUISITES_REFRESH_BUDGET_MS = 2_000;
+const STATUS_PREREQUISITES_REFRESH_BUDGET_MS = 2_000;
 const E2E_BUILD_PROVENANCE: SystemBuildProvenance = {
   fullSha: '0123456789abcdef0123456789abcdef01234567',
   shortSha: '0123456',
@@ -340,7 +341,7 @@ export async function resolveExternalEngineReadiness(
   resolveEngineConnectionId: (
     adapter: ProviderAdapterShape,
   ) => EngineConnectionId | undefined = connectionIdForAdapter,
-  detectedACPRegistryEntries: ReadonlyArray<{ id: string; name: string }> = [],
+  unconnectedACPRegistryEntries: ReadonlyArray<UnconnectedACPRegistryEntry> = [],
 ): Promise<ExternalEngineReadiness> {
   const candidates = adapters.filter(
     (adapter) =>
@@ -470,20 +471,34 @@ export async function resolveExternalEngineReadiness(
   );
   // ACP registry detection is deliberately an observation only: unlike a
   // configured adapter it has no connection identity or readiness evidence.
-  // It becomes actionable through the explicit install route after consent.
+  // A detected entry becomes actionable through the explicit install route
+  // after consent; an undetected one only carries how to install it.
   const adapterEngineIds = new Set(readiness.map((entry) => entry.engineId));
-  const detectedNotConnected = detectedACPRegistryEntries
+  const unconnected = unconnectedACPRegistryEntries
     .filter((entry) => !adapterEngineIds.has(entry.id as EngineId))
-    .map((entry) => ({
-      engineId: entry.id as EngineId,
-      name: entry.name,
-      registryEntryId: entry.id,
-      detected: true,
-      ready: false,
-      source: null,
-      reason: 'not_connected' as const,
-    }));
-  const engines = [...readiness, ...detectedNotConnected];
+    .map(
+      (entry): ExternalEngineReadinessProjection =>
+        entry.detected
+          ? {
+              engineId: entry.id as EngineId,
+              name: entry.name,
+              registryEntryId: entry.id,
+              detected: true,
+              ready: false,
+              source: null,
+              reason: 'not_connected',
+            }
+          : {
+              engineId: entry.id as EngineId,
+              name: entry.name,
+              detected: false,
+              ready: false,
+              source: null,
+              reason: 'not_installed',
+              ...(entry.install ? { install: entry.install } : {}),
+            },
+    );
+  const engines = [...readiness, ...unconnected];
   const ready = engines.find((candidate) => candidate.ready);
   return { ready: !!ready, source: ready?.source ?? null, engines };
 }
@@ -820,8 +835,8 @@ function createStatusDiscoveryCache(deps: SystemStatusDeps) {
         isEnabled: () => false,
         connectionIdFor: () => undefined,
       }));
-      const detectedACPRegistryEntries = await raceWithSignal(
-        deps.listDetectedACPRegistryEntries?.() ?? Promise.resolve([]),
+      const unconnectedACPRegistryEntries = await raceWithSignal(
+        deps.listUnconnectedACPRegistryEntries?.() ?? Promise.resolve([]),
         controller.signal,
       ).catch(() => []);
       const [
@@ -851,7 +866,7 @@ function createStatusDiscoveryCache(deps: SystemStatusDeps) {
                   engineIdForAdapter(adapter),
                 )
               : connectionIdForAdapter(adapter),
-          detectedACPRegistryEntries,
+          unconnectedACPRegistryEntries,
         ),
         getAllPrerequisites({ signal: controller.signal }),
         discoverDeveloperServices(),
@@ -972,6 +987,12 @@ export function createSystemStatusRoutes(deps: SystemStatusDeps) {
         ? { consent: deps.getConsentAvailability() }
         : {}),
     });
+  });
+
+  app.get('/routes', async (c) => {
+    if (!deps.resolveStationRoutes) return c.json({ error: 'not_found' }, 404);
+    systemOps.add(1, { op: 'get_routes' });
+    return c.json(await deps.resolveStationRoutes());
   });
 
   app.get('/identity', (c) => {

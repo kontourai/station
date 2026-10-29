@@ -1,0 +1,7 @@
+{
+  "revision": "c63dfb398931a20006f436b1cbda33866b7b950c",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Narrow delta since b090f8a25b6: traced publishTitlePolicy merge_group branch and request loop, unchanged live PR owner/title reads and terminal publication, plus ci.yml policy step and always failure fallback. Guide correctly limits retry to immutable exact-candidate PR title policy acknowledgment POSTs on explicit500/502/503/504, at most3 attempts with100/200ms backoff under one30-second signal. PR-mode operations, network errors, malformed responses, other statuses and exhausted budget remain failures; no source job/candidate rerun or mutable-title validation reuse. Read primary transport keeper cases for persistent503/fallback, PR no-retry and shared deadline; no tests executed in this review. Existing best-effort fallback remains a failure publication attempt, not a guaranteed successful network write. Other previous15-owner notes remain scoped to prior mapped-selection change; this transport delta changes no selection, qualification, receipt or local-cost contract.","inputs":["docs/guides/testing.md","scripts/pr-title-check.mjs","scripts/__tests__/pr-title-check.test.ts"]}
+  ]
+}

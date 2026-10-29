@@ -8,6 +8,7 @@
  * can appear exactly as it does against a real server.
  */
 import { expect, test } from '@playwright/test';
+import { routeCoreUpdateCheck } from './helpers/core-update-route';
 
 const STATUS_READY = JSON.stringify({
   ready: true,
@@ -119,7 +120,7 @@ test.describe('Core Update Flow', () => {
     await seedRoutes(page);
 
     // Mock the check to return updateAvailable
-    await page.route('**/api/system/core-update', (r) => {
+    await routeCoreUpdateCheck(page, (r) => {
       if (r.request().method() === 'GET') {
         return r.fulfill({
           status: 200,
@@ -172,7 +173,7 @@ test.describe('Core Update Flow', () => {
         body: JSON.stringify({ status: 'pending', ...restart }),
       }),
     );
-    await page.route('**/api/system/core-update', (r) => {
+    await routeCoreUpdateCheck(page, (r) => {
       if (r.request().method() === 'GET') {
         // After update, return up-to-date
         if (postCalled) {
@@ -228,7 +229,7 @@ test.describe('Core Update Flow', () => {
   test('shows the checkout match when no updates', async ({ page }) => {
     await seedRoutes(page);
 
-    await page.route('**/api/system/core-update', (r) => {
+    await routeCoreUpdateCheck(page, (r) => {
       if (r.request().method() === 'GET') {
         return r.fulfill({
           status: 200,
@@ -282,7 +283,7 @@ test.describe('Release archive run by the service launcher (#2675 D3)', () => {
         body: JSON.stringify(progress),
       }),
     );
-    await page.route('**/api/system/core-update', (r) => {
+    await routeCoreUpdateCheck(page, (r) => {
       if (r.request().method() === 'GET') {
         return r.fulfill({
           status: 200,
@@ -318,18 +319,21 @@ test.describe('Release archive run by the service launcher (#2675 D3)', () => {
       .click();
     const serverCard = page.locator('[data-catalog-id="core-app-updates"]');
     const apply = serverCard.getByRole('button', {
-      name: 'Update server to 0.8.0-preview.2',
+      name: 'Update server',
+      exact: true,
     });
     await expect(apply).toBeVisible({ timeout: 10000 });
     // The offer's resting background, compared against its hovered one below.
     const offerBackground = await apply.evaluate(
       (el) => getComputedStyle(el).backgroundColor,
     );
-    await expect(
-      serverCard.getByText(
-        'Station 0.8.0-preview.2 is available. This server runs 0.8.0-preview.1.',
-      ),
-    ).toBeVisible();
+    // The header carries the comparison: one badge, "current → latest".
+    await expect(serverCard.locator('.server-update__badge')).toHaveText(
+      'Update available',
+    );
+    await expect(serverCard.locator('.server-update__version')).toHaveText(
+      /0\.8\.0-preview\.1\s*→\s*to 0\.8\.0-preview\.2/,
+    );
     await expect(serverCard.getByText(/Source update/)).toHaveCount(0);
     // The status names the install, so the connection-only guess is gone,
     // and a prebuilt release has no source installation to disclose.
@@ -369,7 +373,10 @@ test.describe('Release archive run by the service launcher (#2675 D3)', () => {
     ).toBeVisible({ timeout: 10000 });
     // After the outcome the offer is either absent (until the re-check
     // answers) or live again: never a disabled leftover of the accepted POST.
-    const offers = serverCard.getByRole('button', { name: /Update server to/ });
+    const offers = serverCard.getByRole('button', {
+      name: 'Update server',
+      exact: true,
+    });
     await expect(offers).toBeEnabled({ timeout: 10000 });
     // The pointer still rests where it clicked: the hovered offer keeps its
     // accent, not the global button hover's dark background.

@@ -1042,6 +1042,11 @@ fn tray_context(app: &AppHandle) -> TrayContext {
             crate::prove_bundled_startup_identity(&state.supervisor.context.launch, &ticket).is_ok()
         })
     });
+    if matches!(owner, DesktopOwnerSnapshot::Service { .. })
+        && endpoint_health != Some(ServiceHealth::Running)
+    {
+        crate::invalidate_home_ownership(app);
+    }
     let snapshot = tray_backend_snapshot(&status, &owner, trusted_manifest, endpoint_health);
     TrayContext {
         snapshot,
@@ -1790,6 +1795,20 @@ fn run_contextual_service_action(app: &AppHandle) {
     }
 }
 
+fn converge_service_action(
+    mut invalidate: impl FnMut(),
+    mut update: impl FnMut(),
+    mut wait: impl FnMut(Duration),
+) {
+    for attempt in 0..4 {
+        invalidate();
+        update();
+        if attempt < 3 {
+            wait(Duration::from_secs(2));
+        }
+    }
+}
+
 fn run_service_action(app: &AppHandle, action: ServiceAction, service: ResolvedLocalService) {
     let app = app.clone();
     thread::spawn(move || {
@@ -1840,12 +1859,13 @@ fn run_service_action(app: &AppHandle, action: ServiceAction, service: ResolvedL
         }
         // Actions immediately refresh, then use three short convergence polls
         // before returning to the normal state-specific cadence.
-        for attempt in 0..4 {
-            let _ = update_once(&app);
-            if attempt < 3 {
-                thread::sleep(Duration::from_secs(2));
-            }
-        }
+        converge_service_action(
+            || crate::invalidate_home_ownership(&app),
+            || {
+                let _ = update_once(&app);
+            },
+            thread::sleep,
+        );
     });
 }
 
@@ -2029,6 +2049,36 @@ fn record_dispatch_result<E: Display>(result: Result<(), E>) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn service_convergence_invalidates_before_every_bridge_read() {
+        use std::cell::RefCell;
+        let events = RefCell::new(Vec::new());
+        converge_service_action(
+            || events.borrow_mut().push("invalidate"),
+            || events.borrow_mut().push("bridge read"),
+            |delay| {
+                assert_eq!(delay, Duration::from_secs(2));
+                events.borrow_mut().push("wait");
+            },
+        );
+        assert_eq!(
+            *events.borrow(),
+            vec![
+                "invalidate",
+                "bridge read",
+                "wait",
+                "invalidate",
+                "bridge read",
+                "wait",
+                "invalidate",
+                "bridge read",
+                "wait",
+                "invalidate",
+                "bridge read",
+            ]
+        );
+    }
+
     use super::*;
     use std::cell::RefCell;
 

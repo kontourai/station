@@ -45,7 +45,19 @@ if (process.platform !== 'win32') {
 // approach was a Tauri v1 mechanism: the v2 CLI only ever SETS that variable
 // (from its --config arguments, for tauri-build/codegen) and never reads it,
 // so the staged aliases silently never reached either bundler.
-run(['run', 'build:desktop:resources']);
+const targetIndex = process.argv.indexOf('--target');
+const requestedTarget =
+  targetIndex >= 0
+    ? process.argv[targetIndex + 1]
+    : process.argv
+        .find((arg) => arg.startsWith('--target='))
+        ?.slice('--target='.length);
+run(['run', 'build:desktop:resources'], {
+  ...process.env,
+  ...(requestedTarget
+    ? { STATION_DESKTOP_TARGET_TRIPLE: requestedTarget }
+    : {}),
+});
 const configPath = join(
   projectRoot,
   WINDOWS_DESKTOP_RUNTIME_RESOURCE_DIR,

@@ -1,0 +1,7 @@
+{
+  "revision": "a687e68a80fc4627d228d46539ac3dd77566113f",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Re-reviewed the linked API documentation delta: optional recorded/estimated Agent cost components describe retained usage measurements, not customer billing, hosted commercial readiness or new authorization. This guide's integration routes and explicit hosted delivery/cost limits remain unchanged.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]}
+  ]
+}

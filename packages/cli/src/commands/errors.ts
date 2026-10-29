@@ -12,6 +12,7 @@
 
 import {
   APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
+  groupLimitedPeopleSteps,
   parseApprovalFullAccessRefusalDetails,
 } from '@kontourai/station-contracts/orchestration';
 import type { ApiBaseSource, ResolvedApiBase } from './core-api.js';
@@ -126,20 +127,40 @@ export function explainFullAccessRefusal(
       details.requester.kind === 'device'
         ? `device "${safe(details.requester.deviceName)}" (${safe(details.requester.deviceId)})`
         : 'the device you are using';
-    lines.push('', `Ask the operator to allow full access for ${who}:`);
-    if (details.grant.cli)
+    const numbered = (list: readonly string[]) =>
+      list.map((step, index) => `    ${index + 1}. ${safe(step)}`);
+    const steps = numbered(details.grant.uiSteps);
+    const limited = details.grant.groupLimited;
+    if (limited) {
+      // #3557: the group stops it. Making them Admin comes first; a device
+      // grant, when one is still needed, is a second step, not an option.
       lines.push(
-        "  On the Station's host, run:",
-        `    ${safe(details.grant.cli)}`,
+        '',
+        `${who.charAt(0).toUpperCase()}${who.slice(1)} belongs to a person in the Member group, which doesn't allow full access.`,
+        '  Ask the operator to make them Admin on People:',
+        // The command step the Station appended for older clients is shown
+        // as the command below instead.
+        ...numbered(groupLimitedPeopleSteps(details.grant)),
       );
-    lines.push(
-      details.grant.cli
-        ? '  Or, in the Station desktop app:'
-        : '  In the Station desktop app:',
-      ...details.grant.uiSteps.map(
-        (step, index) => `    ${index + 1}. ${safe(step)}`,
-      ),
-    );
+      if (limited.cli)
+        lines.push(
+          "  Then, on the Station's host, run:",
+          `    ${safe(limited.cli)}`,
+        );
+    } else {
+      lines.push('', `Ask the operator to allow full access for ${who}:`);
+      if (details.grant.cli)
+        lines.push(
+          "  On the Station's host, run:",
+          `    ${safe(details.grant.cli)}`,
+        );
+      lines.push(
+        details.grant.cli
+          ? '  Or, in the Station desktop app:'
+          : '  In the Station desktop app:',
+        ...steps,
+      );
+    }
   }
   lines.push('', 'Nothing was sent at another approval mode.');
   return lines.join('\n');

@@ -1,0 +1,11 @@
+{
+  "revision": "4e50d8c3ebb42743acda168e408b4c28e91c6b15",
+
+  "notes": [
+    {"path":"docs/design/agent-interaction-capabilities.md","note":"Status line now reads 'Proposal — unscheduled; no tracking issue as of 2026-10-20' (owner decision not to file issues); the not-implemented sentence is kept.","inputs":["docs/design/agent-interaction-capabilities.md"]},
+
+    {"path":"docs/design/isolated-agent-runs.md","note":"Added 'Status: Proposal — unscheduled; no tracking issue as of 2026-10-20' after the title and removed the redundant 'Status: design note'; the banner is kept. #3757 was checked and covers a different scope.","inputs":["docs/design/isolated-agent-runs.md"]},
+
+    {"path":"docs/plans/issue-class-prevention.md","note":"Added the unscheduled status line and reworded the old status as 'Written on 2026-09-23 as an active execution plan'; the statement that scoped governance routes are implemented and the rest remains open is kept.","inputs":["docs/plans/issue-class-prevention.md"]}
+  ]
+}

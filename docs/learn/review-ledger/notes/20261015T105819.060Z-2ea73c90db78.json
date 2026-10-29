@@ -1,0 +1,7 @@
+{
+  "revision": "719bdf3ead1e62850fb907397e7943cceb9b8dae",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"Re-read the Last-known freshness section after 719bdf3ead1 restored round-9 open controller and added the loadOlder start-watermark regression test (red when the older-history fence reverts to watermarkRef.current). Per-source failures, start-captured sequence, epoch reset and release rules match the code; no hydration-ownership claim.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/conversationOpenController.ts","src-ui/src/__tests__/InboxOpenChatStatusConsistency.test.tsx"]}
+  ]
+}

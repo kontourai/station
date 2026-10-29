@@ -1,0 +1,13 @@
+{
+  "revision": "64fc8e3bb3cc4cf7b8c2c32e19e245551d1fc318",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Fix-round 10 delta: MonitoringWidgets.css adds one layout-only modifier (.pill-badge--single-line: nowrap, ellipsis, max-width) used by the producer pill. No coverage claim here changes.","inputs":["docs/guides/e2e-coverage-matrix.md","src-ui/src/views/MonitoringWidgets.css"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Fix-round 10: monitoring-keys.ts gains PRODUCER_ID_PREFIX plus display helpers (parseProducerScopedId, displayMonitoringId, shortMonitoringId) the Monitoring UI uses to show a producer's own values; otlp-receiver.ts and insights.ts now import the shared prefix instead of a local copy. Stored ids and every documented claim are unchanged.","inputs":["docs/guides/monitoring.md","src-server/monitoring/otlp-receiver.ts","src-server/routes/operations/insights.ts","src-shared/monitoring-keys.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Fix-round 10: the namespaced format producer:<token name>:<value> is unchanged; the prefix now lives in monitoring-keys.ts and the UI only displays the producer's own value. No API claim changes.","inputs":["docs/reference/api.md","src-server/monitoring/otlp-receiver.ts","src-server/routes/operations/insights.ts","src-shared/monitoring-keys.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Fix-round 10 delta: monitoring-keys.ts adds producer id display helpers only; no configuration claim changes.","inputs":["docs/reference/config.md","src-shared/monitoring-keys.ts"]}
+  ]
+}

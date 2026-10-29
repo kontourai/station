@@ -155,40 +155,54 @@ describe('station-control browser tools', () => {
     });
   });
 
-  test('a snapshot screenshot comes back as image content', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(
-        async () =>
-          new Response(
-            JSON.stringify({
-              ok: true,
-              snapshot: '- button "Go" [ref=e1]',
-              screenshot: {
-                mimeType: 'image/jpeg',
-                data: 'AAAA',
-                width: 800,
-                height: 600,
-              },
-            }),
-          ),
-      ),
-    );
-    const result = await run(good, 'browser_snapshot', {
-      browserSessionId: 'bs_x',
-      screenshot: true,
-    });
-    expect(result.content[1]).toEqual({
-      type: 'image',
-      data: 'AAAA',
-      mimeType: 'image/jpeg',
-    });
-    expect(JSON.parse(result.content[0]!.text!)).toMatchObject({
-      snapshot: '- button "Go" [ref=e1]',
-      screenshot: { mimeType: 'image/jpeg', width: 800 },
-    });
-    expect(result.content[0]!.text).not.toContain('AAAA');
-  });
+  test.each(['browser_snapshot', 'browser_capture_to_task'])(
+    '%s returns the screenshot as image content',
+    async (tool) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(
+          async () =>
+            new Response(
+              JSON.stringify({
+                ok: true,
+                snapshot: '- button "Go" [ref=e1]',
+                screenshot: {
+                  mimeType: 'image/jpeg',
+                  data: 'AAAA',
+                  width: 800,
+                  height: 600,
+                },
+              }),
+            ),
+        ),
+      );
+      const result = await run(good, tool, {
+        browserSessionId: 'bs_x',
+        ...(tool === 'browser_snapshot'
+          ? { screenshot: true }
+          : { label: 'After fix' }),
+      });
+      const [url, init] = vi.mocked(fetch).mock.calls[0]!;
+      expect(String(url)).toBe(
+        `http://browser-tools.test/api/browser-agent/${tool === 'browser_snapshot' ? 'snapshot' : 'capture-to-task'}`,
+      );
+      expect(JSON.parse(String(init?.body))).toEqual(
+        tool === 'browser_snapshot'
+          ? { browserSessionId: 'bs_x', screenshot: true }
+          : { browserSessionId: 'bs_x', label: 'After fix' },
+      );
+      expect(result.content[1]).toEqual({
+        type: 'image',
+        data: 'AAAA',
+        mimeType: 'image/jpeg',
+      });
+      expect(JSON.parse(result.content[0]!.text!)).toMatchObject({
+        snapshot: '- button "Go" [ref=e1]',
+        screenshot: { mimeType: 'image/jpeg', width: 800 },
+      });
+      expect(result.content[0]!.text).not.toContain('AAAA');
+    },
+  );
 
   test('a Station without the browser route (hosted) says the browser is unavailable', async () => {
     vi.stubGlobal(
@@ -199,3 +213,47 @@ describe('station-control browser tools', () => {
     expect(result).toMatchObject({ ok: false, code: 'unavailable' });
   });
 });
+
+test.each([
+  ['browser_hover', { ref: 'e1' }, 'hover', { target: { ref: 'e1' } }],
+  [
+    'browser_drag',
+    { source: { x: 1, y: 2 }, target: { locator: '#end' } },
+    'drag',
+    { source: { x: 1, y: 2 }, target: { locator: '#end' } },
+  ],
+  [
+    'browser_select',
+    { ref: 'e2', label: 'Blue' },
+    'select',
+    { target: { ref: 'e2' }, label: 'Blue' },
+  ],
+  [
+    'browser_color_scheme',
+    { scheme: 'dark' },
+    'color-scheme',
+    { scheme: 'dark' },
+  ],
+])(
+  '%s forwards its bounded action to the authenticated browser route',
+  async (name, args, operation, body) => {
+    const fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ ok: true }), {
+          headers: { 'content-type': 'application/json' },
+        }),
+    );
+    vi.stubGlobal('fetch', fetch);
+    expect(
+      parse(await run(good, name, { browserSessionId: 'bs_x', ...args })),
+    ).toEqual({ ok: true });
+    const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe(
+      `http://browser-tools.test/api/browser-agent/${operation}`,
+    );
+    expect(JSON.parse(String(init.body))).toEqual({
+      browserSessionId: 'bs_x',
+      ...body,
+    });
+  },
+);

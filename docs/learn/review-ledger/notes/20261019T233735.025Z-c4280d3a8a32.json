@@ -1,0 +1,31 @@
+{
+  "revision": "44ff21759786d05cbc567d2983798cf705008a90",
+
+  "notes": [
+    {"path":"README.md","note":"Dependency delta: a cited document refined the producer chat-count wording or the CLI's empty --producer refusal. Nothing here depends on it.","inputs":["README.md","docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Dependency delta: a cited document refined the producer chat-count wording or the CLI's empty --producer refusal. Nothing here depends on it.","inputs":["docs/architecture/abstraction-review.md","docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Dependency delta: a cited document refined the producer chat-count wording or the CLI's empty --producer refusal. Nothing here depends on it.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]},
+
+    {"path":"docs/guides/agents.md","note":"Fix-round 9 delta: read_monitoring_events' producer parameter description now lists tools among the Station filters. This document makes no claim about that tool's parameters.","inputs":["docs/guides/agents.md","src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Fix-round 9 delta: read_monitoring_events' producer parameter description now lists tools among the Station filters. This document makes no claim about that tool's parameters.","inputs":["docs/guides/connections.md","src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Dependency delta: a cited document refined the producer chat-count wording or the CLI's empty --producer refusal. Nothing here depends on it.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/cli.md"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Fix-round 9: insights.ts changes only how producer chats are counted inside producerActivity (Station's rule); the guide's Insights paragraph remains accurate.","inputs":["docs/guides/monitoring.md","src-server/routes/operations/insights.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Fix-round 9 delta: read_monitoring_events' producer parameter description now lists tools among the Station filters. This document makes no claim about that tool's parameters.","inputs":["docs/guides/self-configuring-agent.md","src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Fix-round 9: producerActivity chats now follow Station's rule exactly (distinct trace, each END on the namespaced no-session trace one chat, trace-less rows none; insights.ts), pinned by a case where START-counting (2) and sentinel-less distinct counting (3) both disagree with 4. surfaces.ts refuses an empty --producer before any request.","inputs":["docs/reference/api.md","packages/cli/src/commands/surfaces.ts","src-server/routes/operations/insights.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Fix-round 9: empty --producer is a usage error before any request (surfaces.ts); invalid names are refused by the route with 400. insights get --producer forwarding and the empty refusal are pinned in surface-http.test.ts.","inputs":["docs/reference/cli.md","packages/cli/src/__tests__/surface-http.test.ts","packages/cli/src/commands/surfaces.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Fix-round 9 delta: read_monitoring_events' producer parameter description now lists tools among the Station filters. This document makes no claim about that tool's parameters.","inputs":["docs/reference/config.md","src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Fix-round 9 delta: read_monitoring_events' producer parameter description now lists tools among the Station filters. This document makes no claim about that tool's parameters.","inputs":["examples/self-configuring-agent/README.md","src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"packages/cli/README.md","note":"Dependency delta: a cited document refined the producer chat-count wording or the CLI's empty --producer refusal. Nothing here depends on it.","inputs":["packages/cli/README.md","docs/reference/cli.md"]}
+  ]
+}

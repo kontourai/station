@@ -9,14 +9,36 @@
  * bridge is absent or returns garbage.
  */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { installAndroidSafeArea } from '../platform/androidSafeArea';
 
 function readVar(name: string): string {
   return document.documentElement.style.getPropertyValue(name);
 }
 
+let installed: EventListener[] = [];
+beforeEach(() => {
+  vi.useFakeTimers();
+  const add = window.addEventListener.bind(window);
+  vi.spyOn(window, 'addEventListener').mockImplementation(
+    (type, listener, options) => {
+      if (type === 'station-android-insets')
+        installed.push(listener as EventListener);
+      add(type, listener, options);
+    },
+  );
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) =>
+    setTimeout(() => callback(performance.now()), 16),
+  );
+});
+
 afterEach(() => {
+  for (const listener of installed)
+    window.removeEventListener('station-android-insets', listener);
+  installed = [];
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   delete (window as { StationAndroidInsets?: unknown }).StationAndroidInsets;
   for (const side of ['top', 'right', 'bottom', 'left']) {
     document.documentElement.style.removeProperty(`--safe-${side}`);
@@ -47,9 +69,28 @@ describe('installAndroidSafeArea (station#2617)', () => {
     // Rotation: top inset collapses, left gains the cutout.
     json = '{"top":0,"right":0,"bottom":18,"left":32}';
     window.dispatchEvent(new Event('station-android-insets'));
+    vi.advanceTimersByTime(16);
 
     expect(readVar('--safe-top')).toBe('0px');
     expect(readVar('--safe-left')).toBe('32px');
+  });
+
+  it('coalesces native animation events and writes only changed safe-area values', () => {
+    let json = '{"top":32,"right":0,"bottom":18,"left":0}';
+    window.StationAndroidInsets = { safeArea: () => json };
+    installAndroidSafeArea();
+    const writes = vi.spyOn(document.documentElement.style, 'setProperty');
+    for (let index = 0; index < 10; index++) {
+      json = JSON.stringify({ top: index, right: 0, bottom: 18, left: 0 });
+      window.dispatchEvent(new Event('station-android-insets'));
+    }
+    expect(writes).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(16);
+    expect(readVar('--safe-top')).toBe('9px');
+    expect(writes).toHaveBeenCalledTimes(1);
+    window.dispatchEvent(new Event('station-android-insets'));
+    vi.advanceTimersByTime(16);
+    expect(writes).toHaveBeenCalledTimes(1);
   });
 
   it('leaves the env()-derived defaults untouched without the bridge', () => {

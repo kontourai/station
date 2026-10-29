@@ -71,6 +71,228 @@ function workItem(overrides: Record<string, unknown> = {}) {
   };
 }
 describe('SessionInventoryModule', () => {
+  test.each([undefined, 1, 2, 3])(
+    'protocol %s keeps exact-turn lineage separate from support',
+    async (clientProtocol) => {
+      const answer = {
+        ...currentAnswer(),
+        inputs: [],
+        results: [
+          {
+            eventId: 'result-a',
+            toolCallId: 'call-a',
+            result: {
+              resultId: 'result-a',
+              name: 'shell',
+              terminalStatus: 'success' as const,
+              content: [{ type: 'text' as const, text: 'private tool body' }],
+              truncated: false,
+              omittedParts: 0,
+              omittedTextBytes: 0,
+              omittedMetadataBytes: 0,
+            },
+          },
+        ],
+      };
+      const list = vi.fn(async () => ({
+        status: 'found' as const,
+        page: {
+          version: 'session-outputs/v1' as const,
+          items: [output],
+          partial: false,
+        },
+      }));
+      const readAnswerLineage = vi.fn(() => ({
+        status: 'found' as const,
+        decisions: [
+          {
+            eventId: 'decision-a',
+            requestId: 'request-a',
+            status: 'accepted' as const,
+          },
+        ],
+        delegations: [
+          {
+            eventId: 'delegation-a',
+            toolCallId: 'spawn-a',
+            childSessionId: 'child-a',
+          },
+        ],
+        partialDelegations: false,
+      }));
+      const module = createSessionInventoryModule({
+        readAnswerLineage,
+        sessionOutputs: { list } as never,
+        canReadSession: () => true,
+        readExactAnswerBasis: async () => ({
+          status: 'found',
+          answer,
+          projection: composeAuthorizedSessionAnswerBasis(answer),
+        }),
+      });
+      const scope = {
+        kind: 'current-answer' as const,
+        sessionId: 'session-a',
+        turnId: 'turn-a',
+      };
+      const result = await module.read({
+        scope,
+        authority,
+        current: () => true,
+        clientProtocol,
+      });
+      expect(result.status).toBe('found');
+      if (result.status !== 'found')
+        throw new Error('Expected exact inventory');
+      expect(parseSessionInventoryProjection(result.projection)).toEqual(
+        result.projection,
+      );
+      const execution = result.projection.groups.find(
+        (group) => group.id === 'execution',
+      );
+      const outputs = result.projection.groups.find(
+        (group) => group.id === 'outputs',
+      );
+      if (clientProtocol === 3) {
+        expect(execution).toMatchObject({
+          state: 'available',
+          items: [
+            expect.objectContaining({
+              kind: 'station-delegation',
+              childSessionId: 'child-a',
+              turnId: 'turn-a',
+              relations: ['observed-during'],
+            }),
+            expect.objectContaining({
+              eventId: 'result-a',
+              toolCallId: 'call-a',
+              turnId: 'turn-a',
+              relations: ['observed-during'],
+            }),
+          ],
+        });
+        expect(
+          result.projection.groups.find((group) => group.id === 'decisions'),
+        ).toMatchObject({
+          items: [
+            {
+              eventId: 'decision-a',
+              turnId: 'turn-a',
+              status: 'accepted',
+              relations: ['observed-during'],
+            },
+          ],
+        });
+        expect(readAnswerLineage).toHaveBeenCalledWith('session-a', 'turn-a');
+        expect(outputs).toMatchObject({
+          items: [{ output, relations: ['produced-by'] }],
+        });
+        expect(list).toHaveBeenCalledWith(
+          expect.objectContaining({ sessionId: 'session-a', turnId: 'turn-a' }),
+        );
+        const page = await module.page({
+          scope,
+          groupId: 'execution',
+          authority,
+          current: () => true,
+          clientProtocol,
+        });
+        expect(page).toMatchObject({
+          status: 'found',
+          page: { group: execution },
+        });
+      } else {
+        expect(execution).toMatchObject({ state: 'not-captured', items: [] });
+        expect(outputs).toMatchObject({ state: 'not-captured', items: [] });
+        expect(list).not.toHaveBeenCalled();
+        expect(readAnswerLineage).not.toHaveBeenCalled();
+      }
+      expect(JSON.stringify(result.projection.groups)).not.toContain(
+        'private tool body',
+      );
+      expect(result.projection.basis?.standing).toBe('execution-only');
+    },
+  );
+
+  test.each(['tool-result', 'output', 'withheld-tool-descriptor'] as const)(
+    'does not report an exact empty when %s descriptors were withheld',
+    async (withheld) => {
+      const answer = {
+        ...currentAnswer(),
+        partialResults: withheld === 'withheld-tool-descriptor',
+        inputs: [],
+        results:
+          withheld === 'tool-result'
+            ? [
+                {
+                  eventId: 'unknown-result',
+                  toolCallId: 'call-a',
+                  result: {
+                    resultId: 'unknown-result',
+                    name: 'shell',
+                    terminalStatus: 'unknown' as const,
+                    content: [],
+                    truncated: false,
+                    omittedParts: 0,
+                    omittedTextBytes: 0,
+                    omittedMetadataBytes: 0,
+                  },
+                },
+              ]
+            : [],
+      };
+      const module = createSessionInventoryModule({
+        canReadSession: () => true,
+        readAnswerLineage: () => ({
+          status: 'found',
+          decisions: [],
+          delegations: [],
+          partialDelegations: false,
+        }),
+        readExactAnswerBasis: async () => ({
+          status: 'found',
+          answer,
+          projection: composeAuthorizedSessionAnswerBasis(answer),
+        }),
+        sessionOutputs: {
+          list: async () => ({
+            status: 'found',
+            page: {
+              version: 'session-outputs/v1',
+              items: [],
+              partial: withheld === 'output',
+            },
+          }),
+        } as never,
+      });
+      const result = await module.read({
+        scope: {
+          kind: 'current-answer',
+          sessionId: 'session-a',
+          turnId: 'turn-a',
+        },
+        authority,
+        current: () => true,
+        clientProtocol: 3,
+      });
+      if (result.status !== 'found')
+        throw new Error('Expected exact inventory');
+      expect(
+        result.projection.groups.find(
+          (group) =>
+            group.id === (withheld === 'output' ? 'outputs' : 'execution'),
+        ),
+      ).toMatchObject({
+        state: withheld === 'output' ? 'corrupt' : 'not-captured',
+        items: [],
+        gaps: [{ kind: withheld === 'output' ? 'corrupt' : 'not-captured' }],
+      });
+      expect(parseSessionInventoryProjection(result.projection)).toEqual(
+        result.projection,
+      );
+    },
+  );
+
   test('maps the work-item owner projection for the exact session with only trusted facts', async () => {
     const observation = workItem();
     const module = createSessionInventoryModule({
@@ -345,6 +567,82 @@ describe('SessionInventoryModule', () => {
         authority,
       }),
     );
+  });
+  test('reports current-answer resources and attention as owner gaps, never an exact empty', async () => {
+    const sessionId = 'station:1792425046978';
+    const base = currentAnswer('turn-a');
+    const answer = {
+      ...base,
+      sessionId,
+      binding: {
+        ...base.binding,
+        sessionId,
+        answer: { ...base.binding.answer, threadId: sessionId },
+      },
+    };
+    const module = createSessionInventoryModule({
+      sessionOutputs: {
+        list: vi.fn().mockResolvedValue({
+          status: 'found',
+          page: { version: 'session-outputs/v1', items: [], partial: false },
+        }),
+      } as never,
+      canReadSession: () => true,
+      readExactAnswerBasis: (async () => exactFound(answer)) as never,
+      readWholeSessionEvents: () => ({ events: [], highWater: 0 }),
+      readWholeSessionHighWater: () => 0,
+    });
+    const scope = {
+      kind: 'current-answer' as const,
+      sessionId,
+      turnId: 'turn-a',
+    };
+    const found = await module.read({ scope, authority, current: () => true });
+    if (found.status !== 'found') throw new Error('expected projection');
+    const notCaptured = (id: string) => ({
+      id,
+      owner: { owner: 'station.inventory', id: 'v1' },
+      state: 'not-captured',
+      items: [],
+      gaps: [{ kind: 'not-captured' }],
+    });
+    for (const id of ['resources', 'attention'] as const) {
+      expect(found.projection.groups.find((group) => group.id === id)).toEqual(
+        notCaptured(id),
+      );
+      const page = await module.page({
+        scope,
+        groupId: id,
+        authority,
+        current: () => true,
+      });
+      if (page.status !== 'found') throw new Error('expected page');
+      expect(page.page.group).toMatchObject({
+        id,
+        state: 'not-captured',
+        gaps: [{ kind: 'not-captured' }],
+      });
+    }
+    expect(parseSessionInventoryProjection(found.projection)).toEqual(
+      found.projection,
+    );
+    // Whole Session keeps its own owners: resources is the canonical-event
+    // fold and attention stays the inventory's exact empty group.
+    const whole = await module.read({
+      scope: { kind: 'whole-session', sessionId },
+      authority,
+      current: () => true,
+    });
+    if (whole.status !== 'found') throw new Error('expected projection');
+    expect(
+      whole.projection.groups.find((group) => group.id === 'resources'),
+    ).toMatchObject({
+      owner: { owner: 'thread.canonical-events', id: 'v1' },
+      state: 'empty',
+    });
+    expect(
+      whole.projection.groups.find((group) => group.id === 'attention'),
+    ).toMatchObject({ state: 'empty', count: { kind: 'exact', value: 0 } });
   });
   test('returns owner-qualified bounded output metadata and rechecks authority', async () => {
     const module = createSessionInventoryModule({
@@ -925,88 +1223,103 @@ describe('SessionInventoryModule', () => {
     ).toMatchObject({ state: 'unavailable', gaps: [{ kind: 'unavailable' }] });
   });
 
-  test('pages 21 exact current-answer inputs through the answer owner', async () => {
-    const issued = new Map<string, any>();
-    const answer = currentAnswer(
-      'turn-a',
-      Array.from({ length: 21 }, (_, index) => ({
-        eventId: `input-${index}`,
-        kind: 'initial',
-        prompt: 'never exposed',
-        attachments: [],
-      })),
-    );
-    const module = createSessionInventoryModule({
-      sessionOutputs: { list: vi.fn() } as never,
-      canReadSession: () => true,
-      readExactAnswerBasis: vi.fn().mockResolvedValue(exactFound(answer)),
-      issueCursor: (cursor) => {
-        const token = `cursor-${issued.size}`;
-        issued.set(token, cursor);
-        return token;
-      },
-      readCursor: (token) => issued.get(token),
-    });
-    const scope = {
-      kind: 'current-answer' as const,
-      sessionId: 'session-a',
-      turnId: 'turn-a',
-    };
-    const first = await module.page({
-      scope,
-      groupId: 'inputs',
-      authority,
-      current: () => true,
-    });
-    if (first.status !== 'found') throw new Error('expected page');
-    expect(first.page.group.items).toHaveLength(20);
-    expect(
-      parseSessionInventoryProjection({
-        version: 'station.session-inventory/v1',
+  test.each([1, 3])(
+    'protocol %s pages 21 exact inputs and refuses another dialect cursor',
+    async (clientProtocol) => {
+      const issued = new Map<string, any>();
+      const answer = currentAnswer(
+        'turn-a',
+        Array.from({ length: 21 }, (_, index) => ({
+          eventId: `input-${index}`,
+          kind: 'initial',
+          prompt: 'never exposed',
+          attachments: [],
+        })),
+      );
+      const module = createSessionInventoryModule({
+        sessionOutputs: { list: vi.fn() } as never,
+        canReadSession: () => true,
+        readExactAnswerBasis: vi.fn().mockResolvedValue(exactFound(answer)),
+        issueCursor: (cursor) => {
+          const token = `cursor-${issued.size}`;
+          issued.set(token, cursor);
+          return token;
+        },
+        readCursor: (token) => issued.get(token),
+      });
+      const scope = {
+        kind: 'current-answer' as const,
+        sessionId: 'session-a',
+        turnId: 'turn-a',
+      };
+      const first = await module.page({
         scope,
-        basis: first.page.basis,
-        basisBinding: first.page.basisBinding,
-        groups: [
-          'inputs',
-          'sources',
-          'execution',
-          'decisions',
-          'outputs',
-          'verification-delivery',
-          'live-now',
-          'kept',
-          'attention',
-          'resources',
-        ].map((id) =>
-          id === 'inputs'
-            ? {
-                ...first.page.group,
-                items: first.page.group.items.slice(0, 2),
-                count: { kind: 'at-least', value: 21 },
-              }
-            : {
-                id,
-                owner: { owner: 'station.inventory', id: 'v1' },
-                state: 'empty',
-                count: { kind: 'exact', value: 0 },
-                items: [],
-                gaps: [],
-              },
-        ),
-      }),
-    ).not.toBeNull();
-    const second = await module.page({
-      scope,
-      groupId: 'inputs',
-      continuation: first.page.group.continuation,
-      authority,
-      current: () => true,
-    });
-    expect(second).toMatchObject({
-      status: 'found',
-      page: { group: { items: [{ eventId: 'input-20' }] } },
-    });
-  });
+        clientProtocol,
+        groupId: 'inputs',
+        authority,
+        current: () => true,
+      });
+      if (first.status !== 'found') throw new Error('expected page');
+      expect(first.page.group.items).toHaveLength(20);
+      await expect(
+        module.page({
+          scope,
+          groupId: 'inputs',
+          continuation: first.page.group.continuation,
+          clientProtocol: clientProtocol === 3 ? 1 : 3,
+          authority,
+          current: () => true,
+        }),
+      ).resolves.toEqual({ status: 'not-found' });
+      expect(
+        parseSessionInventoryProjection({
+          version: 'station.session-inventory/v1',
+          scope,
+          basis: first.page.basis,
+          basisBinding: first.page.basisBinding,
+          groups: [
+            'inputs',
+            'sources',
+            'execution',
+            'decisions',
+            'outputs',
+            'verification-delivery',
+            'live-now',
+            'kept',
+            'attention',
+            'resources',
+          ].map((id) =>
+            id === 'inputs'
+              ? {
+                  ...first.page.group,
+                  items: first.page.group.items.slice(0, 2),
+                  count: { kind: 'at-least', value: 21 },
+                }
+              : {
+                  id,
+                  owner: { owner: 'station.inventory', id: 'v1' },
+                  state: 'empty',
+                  count: { kind: 'exact', value: 0 },
+                  items: [],
+                  gaps: [],
+                },
+          ),
+        }),
+      ).not.toBeNull();
+      const second = await module.page({
+        scope,
+        clientProtocol,
+        groupId: 'inputs',
+        continuation: first.page.group.continuation,
+        authority,
+        current: () => true,
+      });
+      expect(second).toMatchObject({
+        status: 'found',
+        page: { group: { items: [{ eventId: 'input-20' }] } },
+      });
+    },
+  );
 
   test.each([
     ['inputs', 'found', 'found'],

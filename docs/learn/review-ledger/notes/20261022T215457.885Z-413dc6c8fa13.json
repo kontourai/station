@@ -1,0 +1,7 @@
+{
+  "revision": "62ab037061764944b4807fb509acac55243de789",
+
+  "notes": [
+    {"path":"docs/guides/mobile-release.md","note":"Bounded iOS retained-cost follow-up: inspected visibility re-read through the existing validated revisioned IPC seam. Cost flags still only slow optional polling; credentials, required sends, signing and build configuration are unchanged. EXECUTED: 10/10 mounted inbox baseline; disabled refresh caused both iOS cases to fail on actual polling count; restored 10/10. Physical path/IPC behavior remains NOT_VERIFIED.","inputs":["docs/guides/mobile-release.md","src-ui/src/__tests__/useConversationInbox.test.tsx","src-ui/src/platform/native/iosNetworkCost.ts"]}
+  ]
+}

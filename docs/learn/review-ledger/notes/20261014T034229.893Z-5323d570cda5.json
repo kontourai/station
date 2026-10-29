@@ -1,0 +1,7 @@
+{
+  "revision": "cde26d277b4f48d0a1f4e392a7da7a79caf66d63",
+
+  "notes": [
+    {"path":"src-server/AGENTS.md","note":"Changed input docs/guides/development.md: only the UI transcript-tracing subsection changed. src-server/AGENTS.md's link to the guide for server lifecycle/security conventions is unaffected. No prose change.","inputs":["src-server/AGENTS.md","docs/guides/development.md"]}
+  ]
+}

@@ -1,0 +1,69 @@
+{
+  "revision": "2d742e1f3f13a78f327e7ba31dc22559b214caf0",
+
+  "notes": [
+    {"path":"docs/guides/documentation-review-ledger.md","note":"New guide holding the review-ledger sections moved verbatim from documentation.md (impact and catch-up, keep reviews fresh, ledger layout and merges, generated release records). Checked that its internal #keep-reviews-fresh link and relative script/workflow links resolve from the same directory.","inputs":["docs/guides/documentation-review-ledger.md",".github/workflows/docs-freshness-sweep.yml","scripts/docs-freshness-sweep.mjs","scripts/lib/documentation-freshness.mjs","scripts/lib/review-binding.mjs","scripts/lib/review-history.mjs","scripts/lib/review-ledger-store.mjs","scripts/record-documentation-review.mjs"]},
+
+    {"path":"docs/guides/documentation.md","note":"Moved the review-ledger machinery (impact/catch-up, freshness modes, layout and merges, generated records) to documentation-review-ledger.md and left a summary with section links. Remaining sections (location, decisions, authority, learnability, findings, clear language, comments, integrations, retire/move, verify) are unchanged.","inputs":["docs/guides/documentation.md","scripts/docs-freshness-sweep.mjs","scripts/lib/review-ledger-store.mjs","docs/guides/documentation-review-ledger.md","scripts/migrate-review-ledger.mjs","scripts/lib/review-binding.mjs","scripts/lib/review-history.mjs","scripts/lib/review-git.mjs",".github/workflows/docs-freshness-sweep.yml"]},
+
+    {"path":".agents/skills/documentation-audit/SKILL.md","note":"Repointed the keep-reviews-fresh and ledger-layout links to documentation-review-ledger.md; the skill's instructions are unchanged.","inputs":[".agents/skills/documentation-audit/SKILL.md"]},
+
+    {"path":".veritas/README.md","note":"Repointed keep-reviews-fresh and generated-release-records links to documentation-review-ledger.md; no governance claim changed.","inputs":[".veritas/README.md",".agents/skills/documentation-audit/SKILL.md","docs/guides/documentation.md"]},
+
+    {"path":".veritas/init-plans/documentation-maintenance.md","note":"Repointed the generated-release-records link to documentation-review-ledger.md; the activation record is otherwise unchanged.","inputs":[".veritas/init-plans/documentation-maintenance.md"]},
+
+    {"path":"AGENTS.md","note":"The documentation-audit skill only had anchor links repointed; this file's routing is unchanged.","inputs":["AGENTS.md",".agents/skills/documentation-audit/SKILL.md"]},
+
+    {"path":"CONTEXT-MAP.md","note":"module-map.md gained an index-only table of directories without a module entry and split the OutboundDispatchModule and TurnDeduplicator Behavior paragraphs by concern without changing any rule; routing in this file is unchanged.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"module-map.md gained an index-only table of directories without a module entry and split the OutboundDispatchModule and TurnDeduplicator Behavior paragraphs by concern without changing any rule; the domain context here is unchanged.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"module-map.md gained an index-only table of directories without a module entry and split the OutboundDispatchModule and TurnDeduplicator Behavior paragraphs by concern without changing any rule; README claims are unchanged.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Moved the dangling Cedar bullet into the repository documentation list, added backlog-disposition-policy, linked browser-smoke and the E2E coverage matrix from the Testing entry, pointed the root-level record list at the moved ACP chat and Strands records in design/, and named the pre-public repository audit (docs/repo-audit-2026-06-26.md in the maintainers' archive repository). module-map.md gained an index-only table of directories without a module entry and split the OutboundDispatchModule and TurnDeduplicator Behavior paragraphs by concern without changing any rule;","inputs":["docs/README.md","docs/architecture/module-map.md","docs/guides/documentation.md","docs/learn/README.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Dated audit bound to its baseline; the module-map index table, paragraph restructuring and documentation.md split change none of its findings.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md","docs/guides/documentation.md","docs/learn/README.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Added an index-level table of src-server/services directories without a module entry (access, automation as foundation only for #3439, board, config, discord, feature-previews, kits, presence, relay, session-summary, share, tailscale, webhooks, work-item-providers), src-server/openapi and the basis/board pane packages, each traced from its files' header comments and callers. Regrouped the OutboundDispatchModule and TurnDeduplicator Behavior paragraphs into labelled bullets; every sentence is preserved verbatim and in order within its group.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/README.md","note":"Generated index regenerated with npm run docs:index to list the two records moved into this directory.","inputs":["docs/design/README.md"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"Moved from docs/ to docs/design/. Rewrote the banner as a superseded historical proposal naming ADR 0014 as successor, removed the Implementation Status table that read as live status, and noted ACPSessionPool/AcpSessionManager were never built (grep finds neither in src-server). Fixed relative links for the new depth.","inputs":["docs/design/acp-chat-architecture.md","docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/design/strands-migration.md","note":"Moved from docs/ to docs/design/. Banner names config.md (runtime and --features=strands-runtime) and env-vars.md (STATION_FEATURES) as successors. Corrected file paths to src-server/runtime/frameworks/strands-adapter.ts and src-server/runtime/bootstrap/runtime-initialize.ts (STATION_FEATURES read in initialize).","inputs":["docs/design/strands-migration.md","src-server/runtime/frameworks/strands-adapter.ts","src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"module-map.md gained an index-only table of directories without a module entry and split the OutboundDispatchModule and TurnDeduplicator Behavior paragraphs by concern without changing any rule; none of the sections this record cites changed meaning.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/glossary.md","note":"module-map.md gained an index-only table of directories without a module entry and split the OutboundDispatchModule and TurnDeduplicator Behavior paragraphs by concern without changing any rule; glossary definitions are unchanged.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Repointed the keep-reviews-fresh link to documentation-review-ledger.md; testing.md gained links to the coverage matrix and browser smoke. No code-quality claim changed.","inputs":["docs/guides/code-quality.md",".agents/skills/documentation-audit/SKILL.md","docs/guides/documentation.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/development.md","note":"Added basis-pane and board-pane rows to the Packages table from their package.json (private, source exports) and READMEs. Replaced the duplicated just install commands with a link to CONTRIBUTING.md's just section, which owns them; just-interface.test.ts now pins that split.","inputs":["docs/guides/development.md",".agents/skills/documentation-audit/SKILL.md","docs/guides/documentation.md","packages/basis-pane/package.json","packages/board-pane/package.json"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"documentation.md split moves ledger machinery only; this guide's routing claims are unchanged.","inputs":["docs/guides/integrating-station.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Added deploy/ (gcp-dev, public-ingress, push-gateway recipes), deployment/ (self-hosted broker and telemetry companion configuration), fallow-baselines/ (read from the base revision by scripts/code-health-gate.mjs) and gallery/ (ignored screenshot output; only .gitignore tracked) after listing each directory.","inputs":["docs/guides/repository-layout.md","scripts/code-health-gate.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"Linked the E2E coverage matrix and the PR browser smoke contract next to the e2e manifest paragraph; the smoke wording matches browser-smoke.md (source pull requests and merge-group candidates).","inputs":["docs/guides/testing.md",".agents/skills/documentation-audit/SKILL.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/learn/README.md","note":"Repointed the find-affected and keep-reviews-fresh links to documentation-review-ledger.md; added that guide to the evidence atlas path. Reader claims are unchanged.","inputs":["docs/learn/README.md","docs/learn/atlas.json","scripts/lib/review-ledger-store.mjs"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"module-map.md gained an index-only table of directories without a module entry and split the OutboundDispatchModule and TurnDeduplicator Behavior paragraphs by concern without changing any rule; no Agent identity section changed.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"module-map.md gained an index-only table of directories without a module entry and split the OutboundDispatchModule and TurnDeduplicator Behavior paragraphs by concern without changing any rule; deep-link claims are unchanged.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Regenerated station-docs-content.ts: the module-map topics reflect the regrouped paragraphs and the evidence reading path now lists documentation-review-ledger.md. This manual's claims are unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"module-map.md gained an index-only table of directories without a module entry and split the OutboundDispatchModule and TurnDeduplicator Behavior paragraphs by concern without changing any rule; concepts are unchanged.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"module-map and atlas edits (index table, regrouped paragraphs, one added evidence document) do not change this example's instructions.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md","docs/learn/atlas.json"]},
+
+    {"path":"scripts/AGENTS.md","note":"code-quality.md and testing.md only gained links; routing unchanged.","inputs":["scripts/AGENTS.md","docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"module-map.md gained an index-only table of directories without a module entry and split the OutboundDispatchModule and TurnDeduplicator Behavior paragraphs by concern without changing any rule; development.md and testing.md gained rows/links; routing unchanged.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md","docs/guides/development.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"module-map.md gained an index-only table of directories without a module entry and split the OutboundDispatchModule and TurnDeduplicator Behavior paragraphs by concern without changing any rule; testing.md gained links; routing unchanged.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"testing.md gained links to the coverage matrix and browser smoke; test rules unchanged.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

@@ -59,6 +59,7 @@ function setup(options: { configuredHubUrl?: string } = {}) {
   });
   const spawned: string[][] = [];
   const supervisor = new DeviceHubSupervisor({
+    resolveRuntime: async () => ({ nodePath: '/usr/bin/node' }),
     resolveLaunch: () => {
       const entry = toolchain.installedEntry('expo-device-hub');
       return entry
@@ -156,6 +157,7 @@ describe('device toolchain service', () => {
   test('agent access off installs nothing; on requires consent and installs agent-device', async () => {
     const s = setup();
     await s.service.setAgentAccess(false).completion;
+    expect(s.service.agentAccessEnabled()).toBe(false);
     expect(s.installs).toEqual([]);
     expect(() => s.service.setAgentAccess(true)).toThrow(
       DeviceToolConsentRequiredError,
@@ -163,6 +165,9 @@ describe('device toolchain service', () => {
     await s.service.setAgentAccess(true, { consent: true }).completion;
     expect(s.installs).toEqual(['agent-device']);
     expect((await s.service.status()).agentAccess).toBe(true);
+    expect(s.service.agentAccessEnabled()).toBe(true);
+    await s.service.setAgentAccess(false).completion;
+    expect(s.service.agentAccessEnabled()).toBe(false);
   });
 
   test('an update needs a tool that was set up', () => {

@@ -1,0 +1,7 @@
+{
+  "revision": "312f0ef7b30096938f0cfab4151cc62b14109e27",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Formatting-only follow-up (biome) to tests/cross-runtime-chat-switching.spec.ts after the phone switcher name change; no assertion or behavior changed. Re-checked this doc's phone-header and smoke-spec claims: still accurate.","inputs":["docs/user/getting-started.md","tests/cross-runtime-chat-switching.spec.ts"]}
+  ]
+}

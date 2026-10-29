@@ -82,7 +82,7 @@ export function buildAiSdkLanguageModel(
         // gateways/proxies (OpenRouter, Groq, Azure-style, self-hosted)
         // where some reject unrecognized request params, and a 4xx on
         // stream_options would break previously-working chat turns to fix
-        // a maybe-missing usage figure (delta-review MEDIUM). Ollama's own
+        // a maybe-missing usage figure. Ollama's own
         // compat layer accepts the param.
         ...(opts.type === 'ollama' ? { includeUsage: true } : {}),
         ...(apiKey ? { apiKey } : {}),
@@ -387,7 +387,7 @@ function bedrockRegionFor(options: FrameworkModelOptions): string {
 
 /**
  * Thread the connection's Bedrock auth mode (docs/design/connections-onboarding.md
- * §3.1) into every Station-agent execution path (HIGH-3, review fix round):
+ * §3.1) into every Station-agent execution path:
  * VoltAgent (`createVoltAgentManagedModel`), Strands
  * (`createStrandsManagedModel`), and the ai-sdk/Dispatch path
  * (`createAiSdkManagedModel`, consumed by `dispatch-model-policy.ts`) all

@@ -1,0 +1,136 @@
+{
+  "status": "Historical runtime and regression evidence; live delivery state belongs to GitHub",
+  "sourceRevision": "7eedbecfcb32bc10f741606871530fd51158ee87",
+  "sourceClean": true,
+  "productionDelta": "c7125d67b10f7e79d58e9d28af5dd26093903d0e",
+  "before": {
+    "mode": "Controlled restoration of old production owners from 57edb11 at 1cdd58c; not an untouched branch build",
+    "mutation": {
+      "base": "1cdd58c65707332900d29d80fe4d5457a54f124c",
+      "purpose": "Controlled browser regression using old production owners",
+      "owners": {
+        "src-ui/src/hooks/useActiveChatSessionMessaging.ts": {
+          "restoredSha256": "41ee4e4478f3237ff3567bbabee869410b735006cdc4cdcb00ff5a163c9ceabe",
+          "injectedSha256": "94a5c280f7a15140a52e4598e4e238bbc72b461d77e1f29be5466bbd95c6d452"
+        },
+        "src-ui/src/lib/outboundQueue.ts": {
+          "restoredSha256": "c6df0ad0cae9321722ac7bb0d4948054935395af763e4c289a46f938c5e1533d",
+          "injectedSha256": "e633e366c1a43184966a8584f9ecb8c30e602ba894be70f3cde910ac8a5a2ee9"
+        }
+      },
+      "diffSha256": "c66c82f03a791b2dd7b815c981ad06c7bd467c0eee695fbbeea60e47e9d01d54"
+    },
+    "turnId": "01a142e4-9a11-7793-b650-0ca57b818dd4",
+    "clientTurnId": "80542a09-c51a-4778-a258-9b89fd5d069b",
+    "observed": "Completed real reply and false queued-to-retry warning"
+  },
+  "after": {
+    "mode": "Clean rebuilt application; one real Codex send and one real Station Control call",
+    "fault": "Forward actual POST once, hold its real 200 response, observe real streamed completion, reject held foreground response with TypeError Failed to fetch. No server events or tool results mocked.",
+    "observation": {
+      "observedAt": "2026-10-16T04:27:34.276Z",
+      "audit": {
+        "marker": "RECOVERY_KEYED_FINAL",
+        "matched": 1,
+        "status": 200,
+        "responseReceived": true,
+        "releasedAt": "2026-10-16T04:27:26.081Z"
+      },
+      "tail": "ED_OK. No tools or file changes.\n\nOnboarding Codex\nCodex\nvia Default\nRequested gpt-6.1-sol\n\nINSTRUCTION_ROUTE_7F31 RECOVERY_RACE_INJECTED_OK\n\n\u22ef\nBR\n\u22ef\n\nRECOVERY_KEYED_FINAL: Call Station Control list_projects exactly once, confirm the demo slug, then reply RECOVERY_KEYED_FINAL_OK. No file changes.\n\nOnboarding Codex\nCodex\nvia Default\nRequested gpt-6.1-sol\n\nINSTRUCTION_ROUTE_7F31 I\u2019ll call Station Control list_projects exactly once and confirm the demo slug from the result.\n\nUsed station-control/list projects\n\u203a\n\nINSTRUCTION_ROUTE_7F31 Station Control list_projects succeeded after exactly one call. Confirmed demo slug: station-onboarding-demo-20261015. No files changed. RECOVERY_KEYED_FINAL_OK\n\n\u22ef",
+      "falseWarning": false,
+      "draft": "",
+      "sendDisabled": true
+    },
+    "events": [
+      {
+        "method": "turn.started",
+        "turnId": "01a142f5-9f75-7260-ae4e-0327b1f48d94",
+        "createdAt": "2026-10-16T04:25:55.875Z",
+        "clientTurnId": "bb9b9f3a-1124-4744-b1e4-3cd97ba8dcd2"
+      },
+      {
+        "method": "tool.started",
+        "turnId": "01a142f5-9f75-7260-ae4e-0327b1f48d94",
+        "createdAt": "2026-10-16T04:26:00.025Z",
+        "toolName": "station-control/list_projects",
+        "toolCallId": "exec-86c99da9-9643-469e-8166-7c6afbf6dd89"
+      },
+      {
+        "method": "tool.completed",
+        "turnId": "01a142f5-9f75-7260-ae4e-0327b1f48d94",
+        "createdAt": "2026-10-16T04:26:00.104Z",
+        "status": "success",
+        "toolName": "station-control/list_projects",
+        "toolCallId": "exec-86c99da9-9643-469e-8166-7c6afbf6dd89"
+      },
+      {
+        "method": "turn.completed",
+        "turnId": "01a142f5-9f75-7260-ae4e-0327b1f48d94",
+        "createdAt": "2026-10-16T04:26:05.059Z"
+      }
+    ]
+  },
+  "screenshots": [
+    {
+      "state": "before",
+      "originalCaptureSha256": "2267788be16e43b035bef7d97adec0f5b167772eb60e54e65a14c37abf42c5dd",
+      "path": "docs/strategy/onboarding-20261015/screenshots/delivery-before-chat.png",
+      "sha256": "a51a00bb4d2aea1ebabec99093611e448776e523e65f68db753dd8c295432f16",
+      "crop": [
+        240,
+        40,
+        1236,
+        584
+      ],
+      "note": "Unaltered chat crop; Terminal outside this review is excluded from presentation only. No Gallery mask or comparator change."
+    },
+    {
+      "state": "after",
+      "originalCaptureSha256": "4e8de9f2c76194e10cf51204ec054999bec9c9b7827bbc23d48d97cf43cb95eb",
+      "path": "docs/strategy/onboarding-20261015/screenshots/delivery-after-chat.png",
+      "sha256": "344280bc3000d90d809a0acddff05b4a2b2c8f46d8128baabfb513cea8252af5",
+      "crop": [
+        240,
+        40,
+        1236,
+        584
+      ],
+      "note": "Unaltered chat crop; Terminal outside this review is excluded from presentation only. No Gallery mask or comparator change."
+    }
+  ],
+  "proof": {
+    "baseline": "225 passed",
+    "oldOwners": "8 intended failures /217 passed",
+    "restored": "225 passed",
+    "withoutStartedAbsorption": "3 intended failures /30 passed",
+    "unsafeLegacyFallback": "33 passed ->1 intended unkeyed-event failure/32 passed ->exact restored33 passed"
+  },
+  "logs": [
+    {
+      "path": "/tmp/station-3715-keyed-injected.log",
+      "sha256": "16efdb27852dd93ed9cc3ce8e157155d80424ecb6ac09b6f73989aa4c9617f79"
+    },
+    {
+      "path": "/tmp/station-3715-keyed-restored.log",
+      "sha256": "2418b20e105975202f65b28b98491f348f757bed06e2a7b2545d3c3d52de8f1f"
+    },
+    {
+      "path": "/tmp/station-3715-absorption-injected.log",
+      "sha256": "bd50b61d5f80524cadc308ae3081ce36a746da2bcb8a05ad0fcd6b559266766f"
+    },
+    {
+      "path": "/tmp/station-3715-independent-delivery-injected.log",
+      "sha256": "12680aa467a3ec980b658cc5bf2c1f7f7b0f77b83474757d443224eef2b6f084"
+    },
+    {
+      "path": "/tmp/station-3715-independent-delivery-restored.log",
+      "sha256": "664b83bb57dbf53f94d1850d06c5559c8d2132bf3cdaa4a4af39825eddddd542"
+    }
+  ],
+  "limits": [
+    "The first Codex tool call after this rebuild succeeded; this does not explain older intermittent MCP/history failures in #3713.",
+    "Historical 57ed desktop and Safari restart successes are separate from this rebuilt desktop fault test.",
+    "Physical phones, native shells, fresh-machine installation and release delivery are NOT_VERIFIED by this evidence.",
+    "Browser automation had transient control-transport errors; one exact-text wait timed out because the reply included explanatory words. The real tool result and final reply are preserved independently."
+  ]
+}

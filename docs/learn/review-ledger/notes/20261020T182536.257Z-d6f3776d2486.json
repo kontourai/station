@@ -1,0 +1,7 @@
+{
+  "revision": "cb9eed0d9c948b1e04fdf4706103cd5612734bc6",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Merged main 0.11.0 release into the Basis rollup; packages/basis-pane/package.json now carries main's ^0.11.0 station ranges plus the rollup's @kontourai/surface ^6.2.1. Checked this guide's basis-pane row (private workspace package consumed from source, first-party Basis pane): unchanged and accurate; it states no dependency versions.","inputs":["docs/guides/development.md","packages/basis-pane/package.json"]}
+  ]
+}

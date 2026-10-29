@@ -5,7 +5,7 @@ import {
 } from '@kontourai/station-sdk';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import '@xterm/xterm/css/xterm.css';
 import {
   activeChatsStore,
@@ -14,8 +14,10 @@ import {
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { setShortcutContext } from '../../contexts/KeyboardShortcutsContext';
 import { useNavigation } from '../../contexts/NavigationContext';
-import { useIsMobile } from '../../hooks/useIsMobile';
+import { MOBILE_MEDIA_QUERY, useIsMobile } from '../../hooks/useIsMobile';
+import { copyToClipboard } from '../../lib/clipboard';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
+import { observeRootTheme } from '../../lib/root-theme';
 import {
   BrowserWebSocketAuthGate,
   isRemoteEndpoint,
@@ -26,6 +28,10 @@ import {
   buildTerminalSelectionHandoff,
   selectionContainsCredential,
 } from './terminalSelectionHandoff';
+import { readTerminalTheme } from './terminalTheme';
+
+/** Server events that belong to one terminal session (`TerminalEvent`). */
+const SESSION_EVENT_TYPES = new Set(['data', 'started', 'exited', 'activity']);
 
 export function TerminalPanel({
   projectSlug,
@@ -34,22 +40,41 @@ export function TerminalPanel({
   shell,
   shellArgs,
   isActive = false,
+  attachOnly = false,
 }: {
   projectSlug: string;
   workingDir: string;
   terminalId?: string;
   shell?: string;
   shellArgs?: string[];
+  /** Join a session the server started; never start a shell in its place. */
+  attachOnly?: boolean;
   /** True when this is the visible terminal tab; only then does it accept
    * externally-injected input (e.g. "Send to terminal" from the file tree). */
   isActive?: boolean;
 }) {
-  const { apiBase, connectionId, credentialProvider } = useApiBase();
+  const {
+    apiBase,
+    connectionId,
+    credentialProvider: liveCredentials,
+  } = useApiBase();
+  const credential = liveCredentials.getCredential();
+  const protocolVersion = liveCredentials.getProtocolVersion();
+  const credentialProvider = useMemo(
+    () => ({
+      getCredential: () => credential,
+      getProtocolVersion: () => protocolVersion,
+    }),
+    [credential, protocolVersion],
+  );
   const activeChat = useNavigation((state) => state.activeChat);
   const { getDraft, setDraft, updateChat } = useActiveChatActions();
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
-  const [wsError, setWsError] = useState(false);
+  const [wsError, setWsError] = useState<string | null>(null);
+  const [connectionAttempt, setConnectionAttempt] = useState(0);
+  const [connected, setConnected] = useState(false);
+  const isMobile = useIsMobile();
   // #1244: the server's specific degraded-terminal reason (node-pty failed
   // to load). Distinct from wsError so a dead PTY backend reads as "here is
   // why, and what still works", never as a silent pane or a transport blip.
@@ -62,18 +87,33 @@ export function TerminalPanel({
   const sendTextRef = useRef<((text: string) => boolean) | null>(null);
   const getLiveCwdRef = useRef<(() => Promise<string | null>) | null>(null);
 
+  // The canvas cannot follow the cascade: re-read the terminal variables
+  // after any light/dark, palette, accent or branding change on the root.
+  useEffect(
+    () =>
+      observeRootTheme(() => {
+        const terminal = terminalRef.current;
+        const container = containerRef.current;
+        if (terminal && container)
+          terminal.options.theme = readTerminalTheme(container);
+      }),
+    [],
+  );
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: An explicit reconnect restarts this socket with the same terminal identity.
   useEffect(() => {
     if (!containerRef.current) return;
     setUnavailableReason(null);
-    setWsError(false);
+    setWsError(null);
+    setConnected(false);
 
-    // Bump the glyph size on phone-width viewports — xterm renders to a canvas,
-    // so the readable-text fix has to live in JS, not CSS. Mirrors the 768px
-    // mobile breakpoint used across the stylesheets.
+    // Bump the glyph size on a phone — xterm renders to a canvas, so the
+    // readable-text fix has to live in JS, not CSS. Read once at mount; a
+    // landscape phone counts, as it does for every other mobile affordance.
     const isMobileViewport =
       typeof window !== 'undefined' &&
       typeof window.matchMedia === 'function' &&
-      window.matchMedia('(max-width: 768px)').matches;
+      window.matchMedia(MOBILE_MEDIA_QUERY).matches;
 
     const terminal = new Terminal({
       cursorBlink: true,
@@ -81,28 +121,7 @@ export function TerminalPanel({
       fontSize: isMobileViewport ? 14 : 12,
       fontFamily:
         "'MesloLGS NF', 'MesloLGM Nerd Font', 'Hack Nerd Font', 'FiraCode Nerd Font', 'JetBrainsMono Nerd Font', Menlo, courier-new, courier, monospace",
-      theme: {
-        background: '#1a1a2e',
-        foreground: '#e0e0e0',
-        cursor: '#7ec8e3',
-        selectionBackground: '#3a3a5e',
-        black: '#1a1a2e',
-        brightBlack: '#4a4a6e',
-        red: '#f44336',
-        brightRed: '#ef5350',
-        green: '#4caf50',
-        brightGreen: '#66bb6a',
-        yellow: '#ffeb3b',
-        brightYellow: '#fff176',
-        blue: '#2196f3',
-        brightBlue: '#42a5f5',
-        magenta: '#9c27b0',
-        brightMagenta: '#ab47bc',
-        cyan: '#7ec8e3',
-        brightCyan: '#80deea',
-        white: '#e0e0e0',
-        brightWhite: '#ffffff',
-      },
+      theme: readTerminalTheme(containerRef.current),
     });
     terminalRef.current = terminal;
 
@@ -116,6 +135,8 @@ export function TerminalPanel({
     let disposed = false;
     let exited = false;
     let cwdRequest = 0;
+    let resizeFrame: number | null = null;
+    let lastSize = { cols: terminal.cols, rows: terminal.rows };
     const cwdRequests = new Map<string, (cwd: string | null) => void>();
 
     const ensureTerminalSocketAllowed = (): boolean => {
@@ -140,9 +161,10 @@ export function TerminalPanel({
       try {
         port = await fetchTerminalPort(apiBase);
       } catch {
-        if (!disposed) setWsError(true);
+        if (!disposed) setWsError('Terminal unavailable.');
         return;
       }
+      if (disposed) return;
       // Port discovery may await a routed application request. Recheck the
       // selected binding directly before opening the raw WebSocket.
       if (!ensureTerminalSocketAllowed()) return;
@@ -162,6 +184,7 @@ export function TerminalPanel({
           ws.readyState !== WebSocket.OPEN
         )
           return;
+        lastSize = { cols: terminal.cols, rows: terminal.rows };
         ws.send(
           JSON.stringify({
             type: 'open',
@@ -170,6 +193,7 @@ export function TerminalPanel({
             cwd: workingDir,
             ...(shell && { shell }),
             ...(shellArgs && { shellArgs }),
+            ...(attachOnly && { attachOnly: true }),
             cols: terminal.cols,
             rows: terminal.rows,
           }),
@@ -179,8 +203,8 @@ export function TerminalPanel({
         isRemoteEndpoint(apiBase, window.location.href),
         credentialProvider,
         sendOpen,
-        () => {
-          if (!disposed) setWsError(true);
+        (message) => {
+          if (!disposed) setWsError(message);
           ws?.close();
         },
       );
@@ -191,12 +215,22 @@ export function TerminalPanel({
       };
 
       ws.onmessage = (event) => {
+        if (disposed) return;
         if (!ensureTerminalSocketAllowed()) return;
         if (authGate.consume(event.data as string)) return;
         try {
           const msg = JSON.parse(event.data as string);
+          // Defense in depth: session events for any other session (or before
+          // this panel's snapshot names its own) never reach this terminal.
+          if (
+            SESSION_EVENT_TYPES.has(msg.type) &&
+            (!sessionId || msg.sessionId !== sessionId)
+          )
+            return;
           if (msg.type === 'snapshot') {
             sessionId = msg.sessionId;
+            scheduleResize();
+            setConnected(true);
             if (msg.history) terminal.write(msg.history);
           } else if (msg.type === 'data') {
             terminal.write(msg.data);
@@ -208,6 +242,8 @@ export function TerminalPanel({
             }
           } else if (msg.type === 'exited') {
             exited = true;
+            setConnected(false);
+            setWsError('The shell has exited.');
             terminal.write('\r\n[terminal exited]\r\n');
           } else if (
             msg.type === 'error' &&
@@ -225,12 +261,16 @@ export function TerminalPanel({
       };
 
       ws.onerror = () => {
-        if (!disposed) setWsError(true);
+        if (!disposed) {
+          setConnected(false);
+          setWsError('Terminal disconnected.');
+        }
       };
       ws.onclose = (event) => {
-        if (!disposed && event.code !== 1000) {
+        if (!disposed && !exited) {
           console.warn(`[Terminal] ${websocketCloseError(event.code)}`);
-          setWsError(true);
+          setConnected(false);
+          setWsError(websocketCloseError(event.code));
         }
       };
     };
@@ -291,23 +331,35 @@ export function TerminalPanel({
       setHandoffError(null);
     });
 
-    const observer = new ResizeObserver(() => {
-      fitAddon.fit();
-      if (
-        ensureTerminalSocketAllowed() &&
-        ws?.readyState === WebSocket.OPEN &&
-        sessionId
-      ) {
-        ws.send(
-          JSON.stringify({
-            type: 'resize',
-            sessionId,
-            cols: terminal.cols,
-            rows: terminal.rows,
-          }),
-        );
-      }
-    });
+    const scheduleResize = () => {
+      if (disposed || resizeFrame !== null) return;
+      resizeFrame = requestAnimationFrame(() => {
+        resizeFrame = null;
+        if (disposed) return;
+        const proposed = fitAddon.proposeDimensions();
+        if (!proposed) return;
+        if (proposed.cols !== terminal.cols || proposed.rows !== terminal.rows)
+          fitAddon.fit();
+        if (terminal.cols === lastSize.cols && terminal.rows === lastSize.rows)
+          return;
+        if (
+          ensureTerminalSocketAllowed() &&
+          ws?.readyState === WebSocket.OPEN &&
+          sessionId
+        ) {
+          ws.send(
+            JSON.stringify({
+              type: 'resize',
+              sessionId,
+              cols: terminal.cols,
+              rows: terminal.rows,
+            }),
+          );
+          lastSize = { cols: terminal.cols, rows: terminal.rows };
+        }
+      });
+    };
+    const observer = new ResizeObserver(scheduleResize);
     if (containerRef.current) observer.observe(containerRef.current);
 
     return () => {
@@ -317,6 +369,7 @@ export function TerminalPanel({
       for (const resolve of cwdRequests.values()) resolve(null);
       cwdRequests.clear();
       observer.disconnect();
+      if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
       // Unmounting is presentation lifecycle, not terminal lifecycle. The
       // server retains an unowned session briefly so the same identity can
       // reconnect after a host tab switch, move, or layout navigation.
@@ -335,7 +388,15 @@ export function TerminalPanel({
     terminalId,
     shell,
     shellArgs,
+    connectionAttempt,
   ]);
+
+  useEffect(() => {
+    if (!wsError) return;
+    const reconnect = () => setConnectionAttempt((attempt) => attempt + 1);
+    window.addEventListener('online', reconnect);
+    return () => window.removeEventListener('online', reconnect);
+  }, [wsError]);
 
   const sendSelectionToChat = async () => {
     // Read from xterm at the hand-off, rather than from selection state: this
@@ -381,12 +442,11 @@ export function TerminalPanel({
   const copySelection = async () => {
     const terminalOutput = terminalRef.current?.getSelection() ?? '';
     if (!terminalOutput) return;
-    try {
-      await navigator.clipboard.writeText(terminalOutput);
-      setHandoffError(null);
-    } catch {
-      setHandoffError('Unable to copy the terminal selection.');
-    }
+    setHandoffError(
+      (await copyToClipboard(terminalOutput))
+        ? null
+        : 'Unable to copy the terminal selection.',
+    );
   };
 
   // Register as the active terminal writer only while this tab is visible, so
@@ -410,14 +470,21 @@ export function TerminalPanel({
     );
   }
 
-  if (wsError) {
-    return (
-      <CommandExecutor projectSlug={projectSlug} workingDir={workingDir} />
-    );
-  }
-
   return (
     <div className="coding-terminal-shell">
+      {wsError ? (
+        <div className="coding-terminal-connection" role="alert">
+          <span>{wsError}</span>
+          <button
+            type="button"
+            onClick={() => setConnectionAttempt((attempt) => attempt + 1)}
+          >
+            Reconnect terminal
+          </button>
+        </div>
+      ) : !connected ? (
+        <p role="status">Connecting to the terminal…</p>
+      ) : null}
       {selection && (
         <fieldset className="coding-terminal-selection-actions">
           <legend>Terminal selection actions</legend>
@@ -442,6 +509,34 @@ export function TerminalPanel({
         }}
         onPointerDown={() => terminalRef.current?.focus()}
       />
+      {isMobile && (
+        <div
+          className="coding-terminal-keys"
+          role="toolbar"
+          aria-label="Terminal keys"
+        >
+          {[
+            ['Interrupt (Ctrl+C)', 'Ctrl+C', '\u0003'],
+            ['Tab', 'Tab', '\t'],
+            ['Previous command', '↑', '\u001b[A'],
+            ['Next command', '↓', '\u001b[B'],
+          ].map(([label, text, input]) => (
+            <button
+              key={label}
+              type="button"
+              aria-label={label}
+              disabled={!connected}
+              onPointerDown={(event) => event.preventDefault()}
+              onClick={() => {
+                sendTextRef.current?.(input);
+                terminalRef.current?.focus();
+              }}
+            >
+              {text}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -539,7 +634,7 @@ function CommandExecutor({
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        background: '#1a1a2e',
+        background: 'var(--terminal-background)',
         fontFamily: 'monospace',
         fontSize: '12px',
       }}
@@ -567,10 +662,12 @@ function CommandExecutor({
             style={{
               color:
                 l.type === 'cmd'
-                  ? '#7ec8e3'
+                  ? 'var(--terminal-cyan)'
                   : l.type === 'err'
-                    ? '#f44336'
-                    : '#b0b0b0',
+                    ? 'var(--terminal-red)'
+                    : // Output a step quieter than the input line (#b0b0b0 on
+                      // the dark terminal, as before).
+                      'color-mix(in srgb, var(--terminal-foreground) 75%, var(--terminal-background))',
               lineHeight: '1.5',
             }}
           >
@@ -587,7 +684,7 @@ function CommandExecutor({
           flexShrink: 0,
         }}
       >
-        <span style={{ color: '#7ec8e3' }}>$</span>
+        <span style={{ color: 'var(--terminal-cyan)' }}>$</span>
         <input
           ref={inputRef}
           className="coding-terminal-command-executor__input"
@@ -606,7 +703,7 @@ function CommandExecutor({
             background: 'transparent',
             border: 'none',
             outline: 'none',
-            color: '#e0e0e0',
+            color: 'var(--terminal-foreground)',
             fontFamily: 'inherit',
             fontSize: 'inherit',
           }}

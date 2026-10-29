@@ -1,0 +1,7 @@
+{
+  "revision": "c6fbaa8f3330ffe4393f92f76bd799824c85a2e5",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"RegionToolbarControls.test.tsx changed only its useIsMobile mock to spread the real module (importOriginal) so MOBILE_MEDIA_QUERY and later exports resolve. No region toolbar behaviour or placement claim changed.","inputs":["docs/design/placement.md","src-ui/src/components/header/__tests__/RegionToolbarControls.test.tsx"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "4238f0a905f102a0457bf48fd3ac91673e5e7f46",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"#3994: station-home-store-registry classifies terminal-journals and terminal-sessions.json as rollback state, like terminal-history. This document lists no individual home roots; its rollback and backup claims are unchanged.","inputs":["docs/reference/cli.md","packages/shared/src/station-home-store-registry.ts"]}
+  ]
+}

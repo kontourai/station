@@ -1,0 +1,7 @@
+{
+  "revision": "a506090059cf2a04cb12877ebefffe76538dfc7b",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"Reviewed ChatDockBody round-two delta against config reference: only adds a callback using the existing composer textarea ref to transfer focus after successful Resync. No settings keys, defaults, persistence, API contracts, or configuration reads changed, so the configuration reference remains accurate without a prose edit.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]}
+  ]
+}

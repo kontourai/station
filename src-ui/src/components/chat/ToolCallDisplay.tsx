@@ -1,9 +1,18 @@
+import { runtimeEventContentForDisplay } from '@kontourai/station-contracts/runtime-event-content';
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import {
+  parseStationControlRefusal,
+  type StationControlRefusalView,
+  stationControlRefusalView,
+} from '@kontourai/station-contracts/station-control-refusal';
 import {
   hasHiddenCharacters,
   revealHiddenCharacters,
 } from '@kontourai/station-shared/display-reveal';
 import { approvalDecisionBody } from '@kontourai/station-shared/input-request';
 import {
+  STATION_BROWSER_SERVER_GRANT_LABEL,
+  type ToolRequestServerGrant,
   type ToolRequestSessionGrant,
   toolRequestGrantLabel,
   toolRequestSessionGrant,
@@ -35,26 +44,42 @@ import {
   SearchGlyph,
   TerminalGlyph,
 } from '../icons/Glyph';
+import { LazyBoundary } from '../LazyBoundary';
+import { ErrorState, SkeletonBlock } from '../state';
 import { useApprovalSheet } from './ApprovalSheetContext';
+import { OutgoingSessionMessage } from './agent-message/OutgoingSessionMessage';
+import { hasStationControlCallRow } from './agent-message/station-control-calls';
 import {
   boundedToolResultText,
   formatWithheldBytes,
   fullToolResultText,
 } from './bounded-tool-result';
 import { DecisionActionRow, DecisionButtons } from './InputRequestDecision';
+import { LoadFullContent } from './LoadFullContent';
+import { transcriptMcpToolRef } from './mcp-app-tool-ref';
 import {
   RequestSheet,
   RequestSheetTrigger,
   useRequestSheet,
 } from './RequestSheet';
+import { ToolCallElapsed } from './ToolCallElapsed';
+import { TranscriptAppTools } from './TranscriptAppTools';
 import {
   callLabel,
   classifyToolCall,
+  isToolCallActive,
   isToolCallAwaitingApproval,
   type ToolCallKind,
   toolCallPhase,
 } from './tool-call-labels';
 import { toolDisplayView } from './tool-display-view';
+import {
+  type ApprovalContentGate,
+  useApprovalContent,
+} from './useApprovalContent';
+
+const loadTranscriptMCPApp = () => import('./TranscriptMCPApp');
+
 import './ToolCallDetails.css';
 
 /**
@@ -80,18 +105,27 @@ export interface ToolCallData {
   output?: any;
   error?: string;
   errorText?: string;
+  /** A station-control refusal, kept whole by Station (history reads). */
+  stationControlRefusal?: StationControlRefusalView;
   state?: string;
   progressMessage?: string;
+  /** When the call started (ISO), for a running row's elapsed time. */
+  startedAt?: string;
   outputTruncated?: boolean;
   needsApproval?: boolean;
   approvalId?: string;
   /** #2316: the thread of the request that set `approvalId`. */
   approvalThreadId?: string;
   approvalEventId?: string;
+  /** See `MessagePart.approvalContentEvent`. */
+  approvalContentEvent?: CanonicalRuntimeEvent;
+  /** See `MessagePart.contentThreadId`. */
+  contentThreadId?: string;
   /** See `MessagePart.approvalToolName` — what the session grant names. */
   approvalToolName?: string;
   /** #2915/#2916: what a session answer grants; see `MessagePart`. */
   approvalSessionGrant?: ToolRequestSessionGrant;
+  approvalServerGrant?: ToolRequestServerGrant;
   cancelled?: boolean;
   approvalStatus?:
     | 'auto-approved'
@@ -109,7 +143,7 @@ export interface ToolCallData {
 export type ToolApprovalOutcome = 'answered' | 'already-settled';
 
 type ToolApprovalHandler = (
-  action: 'once' | 'trust' | 'deny',
+  action: 'once' | 'trust' | 'trust-server' | 'deny',
 ) => void | Promise<ToolApprovalOutcome | void>;
 
 interface ToolCallDisplayProps {
@@ -157,11 +191,12 @@ export const KIND_GLYPH: Record<
  *   a flag; success → the past-tense verb alone, with the explicit
  *   "Success" confirmation in the expanded status footer.
  */
-function ToolCallDisplayComponent({
+function ToolCallRow({
   toolCall,
   onApprove,
   showDetails = true,
-}: ToolCallDisplayProps) {
+  appTools,
+}: ToolCallDisplayProps & { appTools: ReadonlySet<string> }) {
   // `null` until the user toggles the row: until then it follows
   // `openByDefault` below, so a pending multi-line command opens and the row
   // closes again once the request settles. A toggle on a pending request is
@@ -171,8 +206,13 @@ function ToolCallDisplayComponent({
     toolCall.needsApproval && toolCall.approvalId
       ? `${toolCall.approvalThreadId ?? ''}:${toolCall.approvalId}`
       : undefined;
+  // Only a request still awaiting its answer restores a remembered toggle:
+  // a call that went on to fail (or settle at all) opens collapsed, like
+  // every other settled row, even if its approval card had been expanded.
   const [userExpanded, setUserExpanded] = useState<boolean | null>(() =>
-    toggleKey ? (approvalToggles.get(toggleKey) ?? null) : null,
+    toggleKey && isToolCallAwaitingApproval(toolCall)
+      ? (approvalToggles.get(toggleKey) ?? null)
+      : null,
   );
 
   const id = toolCall.toolCallId || '';
@@ -182,12 +222,41 @@ function ToolCallDisplayComponent({
   // entrance rather than a replaying one.
   const revealClass = useRevealOnce(id ? `tool:${id}` : undefined);
   const server = toolCall.server;
-  const display = toolDisplayView(toolCall);
+  const candidateRef = transcriptMcpToolRef(toolCall);
+  const appToolRef =
+    candidateRef && appTools.has(candidateRef) ? candidateRef : undefined;
+  // docs/design/event-content-spill.md: an approval whose content was
+  // stored out of line is loaded whole before Allow is offered, and the
+  // loaded arguments are what the details show.
+  const { gate: contentGate, loader: contentLoader } = useApprovalContent(
+    toolCall,
+    isToolCallAwaitingApproval(toolCall) && Boolean(onApprove),
+  );
+  // Until then, any reference shows as its marked preview, never as a
+  // reference object.
+  const display = toolDisplayView(
+    contentGate.args !== undefined
+      ? { ...toolCall, args: contentGate.args }
+      : {
+          ...toolCall,
+          args: runtimeEventContentForDisplay(toolCall.args),
+          output: runtimeEventContentForDisplay(toolCall.output),
+          result: runtimeEventContentForDisplay(toolCall.result),
+          error: runtimeEventContentForDisplay(toolCall.error),
+        },
+  );
   const toolName = display.toolName;
   const originalName = toolCall.originalName;
   const args = display.args;
   const result = display.result;
   const error = display.error;
+  // A station-control refusal: the one Station kept whole on a history
+  // read (where the output is an excerpt), else the live call's own whole
+  // result. Only a station-control tool's result is ever read as one.
+  const refusal =
+    stationControlRefusalView(toolCall.stationControlRefusal) ??
+    parseStationControlRefusal(toolName, error) ??
+    parseStationControlRefusal(toolName, result);
   const cancelled = toolCall.cancelled || toolCall.state === 'cancelled';
   // station#1558: a call whose SESSION ended before any result arrived. Both
   // write paths stamp the same state — `runtime-event-projection.ts` on
@@ -211,7 +280,9 @@ function ToolCallDisplayComponent({
   const denied =
     approvalStatus === 'user-denied' || approvalStatus === 'policy-denied';
   const phase = toolCallPhase(toolCall);
-  const running = phase === 'running';
+  // The one "executing now" rule (`isToolCallActive`): verb, highlight and
+  // live progress line all follow it.
+  const running = isToolCallActive(toolCall);
   // Every other unresolved outcome already carries a badge below (Cancelled,
   // User denied, Blocked by Station; a plain failure is its own `failed`
   // phase with a Failed badge). This is the one that does not: dispatched,
@@ -254,9 +325,16 @@ function ToolCallDisplayComponent({
       </span>
       {/* Right-to-left words isolated, as in the details, so the label and
           the details show the same word order. */}
-      <span className="tool-call__label">{isolateRightToLeft(label, 0)}</span>
+      <span
+        className={
+          running
+            ? 'tool-call__label tool-call__label--active'
+            : 'tool-call__label'
+        }
+      >
+        {isolateRightToLeft(label, 0)}
+      </span>
       {purpose && <span className="tool-call__purpose">Why: {purpose}</span>}
-      {running && <span className="tool-call__pulse" aria-hidden="true" />}
       {failed &&
         approvalStatus !== 'policy-denied' &&
         approvalStatus !== 'user-denied' && (
@@ -303,6 +381,10 @@ function ToolCallDisplayComponent({
           Output truncated
         </span>
       )}
+      {running && !awaitingApproval ? (
+        // The same elapsed time a batch's running rows show.
+        <ToolCallElapsed startedAt={toolCall.startedAt} />
+      ) : null}
       {awaitingApproval && (
         <span
           className="tool-call__awaiting"
@@ -352,42 +434,6 @@ function ToolCallDisplayComponent({
             {lineContent}
           </div>
         )}
-        {awaitingApproval && onApprove && (
-          <div className="tool-call__actions">
-            <ToolApprovalControls
-              request={{
-                requestId: toolCall.approvalId ?? '',
-                threadId: toolCall.approvalThreadId,
-                requestEventId: toolCall.approvalEventId,
-              }}
-              onApprove={onApprove}
-              grantToolName={grantToolName}
-              sessionGrant={
-                // A part without the projected grant (a registry-route
-                // request) is judged by its tool name alone.
-                toolCall.approvalSessionGrant ??
-                toolRequestSessionGrant({ toolName: grantToolName })
-              }
-              summary={label}
-              details={
-                hasDetail ? (
-                  <ToolCallDetails
-                    id={id}
-                    server={server}
-                    toolName={toolName}
-                    originalName={originalName}
-                    args={args}
-                    result={result}
-                    error={error}
-                    cancelled={cancelled}
-                    unresolved={unresolved}
-                    approvalStatus={approvalStatus}
-                  />
-                ) : null
-              }
-            />
-          </div>
-        )}
       </div>
       {/* Collapsed-visible only while genuinely running — a settled row
           repeating its last progress line would read as ongoing activity.
@@ -396,19 +442,96 @@ function ToolCallDisplayComponent({
         <div className="tool-call__progress">{progressMessage}</div>
       )}
       {isExpanded && hasDetail && allowDetails && (
-        <ToolCallDetails
-          id={id}
-          server={server}
-          toolName={toolName}
-          originalName={originalName}
-          args={args}
-          result={result}
-          error={error}
-          cancelled={cancelled}
-          unresolved={unresolved}
-          approvalStatus={approvalStatus}
-          lastProgress={running ? undefined : progressMessage}
+        // docs/design/event-content-spill.md: arguments or output stored out
+        // of line show as previews until the person loads them. An approval
+        // row loads its own content (above) and needs no button.
+        <LoadFullContent
+          threadId={
+            contentGate.status === 'not-needed'
+              ? toolCall.contentThreadId
+              : undefined
+          }
+          value={{
+            args: toolCall.args,
+            output: toolCall.output ?? toolCall.result,
+          }}
+        >
+          {(full) => (
+            <ToolCallDetails
+              id={id}
+              server={server}
+              toolName={toolName}
+              originalName={originalName}
+              args={full ? full.args : args}
+              result={full && full.output !== undefined ? full.output : result}
+              error={error}
+              refusal={refusal}
+              failed={failed}
+              cancelled={cancelled}
+              unresolved={unresolved}
+              approvalStatus={approvalStatus}
+              lastProgress={running ? undefined : progressMessage}
+            />
+          )}
+        </LoadFullContent>
+      )}
+      {appToolRef && (
+        <LazyBoundary
+          key={id}
+          load={loadTranscriptMCPApp}
+          pending={null}
+          componentProps={{
+            toolRef: appToolRef,
+            toolCallId: id,
+            args,
+            result: toolCall.output ?? toolCall.result,
+          }}
         />
+      )}
+      {contentLoader}
+      {awaitingApproval && onApprove && (
+        <div className="tool-call__actions">
+          <ToolApprovalControls
+            request={{
+              requestId: toolCall.approvalId ?? '',
+              threadId: toolCall.approvalThreadId,
+              requestEventId: toolCall.approvalEventId,
+            }}
+            onApprove={onApprove}
+            contentGate={contentGate}
+            grantToolName={grantToolName}
+            serverGrant={
+              contentGate.serverGrant ?? toolCall.approvalServerGrant ?? 'none'
+            }
+            sessionGrant={
+              // Grants derive from the resolved request once it is loaded.
+              // A part without the projected grant (a registry-route
+              // request) is judged by its tool name alone.
+              contentGate.sessionGrant ??
+              toolCall.approvalSessionGrant ??
+              toolRequestSessionGrant({ toolName: grantToolName })
+            }
+            summary={label}
+            details={
+              hasDetail ? (
+                <ToolCallDetails
+                  id={id}
+                  server={server}
+                  toolName={toolName}
+                  originalName={originalName}
+                  args={args}
+                  result={result}
+                  error={error}
+                  refusal={refusal}
+                  failed={failed}
+                  cancelled={cancelled}
+                  unresolved={unresolved}
+                  approvalStatus={approvalStatus}
+                />
+              ) : null
+            }
+          />
+        </div>
       )}
     </div>
   );
@@ -429,6 +552,49 @@ type ApprovalPhase =
   | 'already-settled'
   | 'unconfirmed';
 
+/**
+ * The decision body a gate allows: the full body once the request is loaded
+ * (or needed no loading), Deny alone until then. Declining needs no content.
+ */
+function gatedDecisionBody(
+  gate: ApprovalContentGate | undefined,
+  grantLabel: string | undefined,
+  serverGrant: ToolRequestServerGrant,
+) {
+  const body = approvalDecisionBody(
+    grantLabel,
+    serverGrant === 'server' ? STATION_BROWSER_SERVER_GRANT_LABEL : undefined,
+  );
+  return !gate || gate.allowable
+    ? body
+    : {
+        ...body,
+        options: body.options.filter((option) => option.effect === 'deny'),
+      };
+}
+
+/** Loading and failure of an approval's out-of-line content. */
+function ApprovalContentStatus({ gate }: { gate?: ApprovalContentGate }) {
+  if (!gate || gate.status === 'not-needed' || gate.status === 'ready')
+    return null;
+  if (gate.status === 'loading')
+    return (
+      <div className="tool-call__approval-loading">
+        {/* Why there is no Allow yet; the skeleton is the wait itself. */}
+        <p>Allow is offered once the full request has loaded.</p>
+        <SkeletonBlock count={1} label="Loading the full request" />
+      </div>
+    );
+  return (
+    <ErrorState
+      variant="compact"
+      title="The full request could not be loaded"
+      description="It cannot be allowed until it has loaded. You can still deny it."
+      action={<Button onClick={gate.retry}>Try again</Button>}
+    />
+  );
+}
+
 /** The decision lifecycle above, shared by the inline buttons and the sheet. */
 function useApprovalDecision(
   onApprove: ToolApprovalHandler,
@@ -445,7 +611,9 @@ function useApprovalDecision(
   const previousShared = useRef(shared);
   useEffect(() => {
     const recovered =
-      previousShared.current?.phase === 'unconfirmed' && shared === null;
+      (previousShared.current?.phase === 'unconfirmed' ||
+        previousShared.current?.phase === 'sent') &&
+      shared === null;
     previousShared.current = shared;
     if (
       shared?.phase === 'already-settled' &&
@@ -455,7 +623,10 @@ function useApprovalDecision(
       setPhase('already-settled');
       setFailure(null);
       setChosen(undefined);
-    } else if (recovered && localPhase === 'unconfirmed') {
+    } else if (
+      recovered &&
+      (localPhase === 'unconfirmed' || localPhase === 'sent')
+    ) {
       admission.current = false;
       setPhase('idle');
       setFailure(null);
@@ -467,12 +638,16 @@ function useApprovalDecision(
     summary: string;
     detail?: string;
   } | null>(null);
-  const [localChosen, setChosen] = useState<'once' | 'trust' | 'deny'>();
+  const [localChosen, setChosen] = useState<
+    'once' | 'trust' | 'trust-server' | 'deny'
+  >();
   const chosen = shared
     ? shared.decision === 'decline'
       ? 'deny'
       : shared.decision === 'acceptForSession'
-        ? 'trust'
+        ? shared.sessionGrantScope === 'server'
+          ? 'trust-server'
+          : 'trust'
         : 'once'
     : localChosen;
   const failure =
@@ -487,7 +662,7 @@ function useApprovalDecision(
               : undefined,
         }
       : null);
-  const decide = (action: 'once' | 'trust' | 'deny') => {
+  const decide = (action: 'once' | 'trust' | 'trust-server' | 'deny') => {
     if (phase !== 'idle' || admission.current) return;
     admission.current = true;
     setChosen(action);
@@ -592,6 +767,18 @@ function ApprovalDecisionStatus({
 }) {
   return (
     <>
+      {(phase === 'sending' || phase === 'sent') && (
+        <p className="tool-call__approve-status" role="status">
+          {phase === 'sending'
+            ? 'Sending your decision…'
+            : 'Decision sent. Waiting for the tool to continue.'}
+          {phase === 'sent' && check && (
+            <Button pending={checking} onClick={() => void check()}>
+              Check status
+            </Button>
+          )}
+        </p>
+      )}
       {phase === 'already-settled' && (
         <p className="tool-call__approve-status" role="status">
           This request is no longer open.
@@ -602,7 +789,9 @@ function ApprovalDecisionStatus({
           <p>
             {phase === 'unconfirmed'
               ? 'Delivery is not confirmed.'
-              : 'Your decision was not delivered.'}{' '}
+              : phase === 'sent'
+                ? 'Current status is not confirmed.'
+                : 'Your decision was not delivered.'}{' '}
             {failure.summary}
           </p>
           {phase === 'unconfirmed' && check && (
@@ -624,6 +813,9 @@ function ApprovalDecisionStatus({
 
 interface ToolApprovalControlProps {
   onApprove: ToolApprovalHandler;
+  /** Allow is offered only once `contentGate.allowable` (see useApprovalContent). */
+  contentGate?: ApprovalContentGate;
+  serverGrant: ToolRequestServerGrant;
   reference?: ApprovalAnswerReference;
   onCheck?: () => Promise<'pending' | 'already-settled'>;
   /** The request's reported tool name — never the row's display name. */
@@ -689,6 +881,8 @@ function ToolApprovalControls({
 }
 
 function ToolApprovalSheet({
+  serverGrant,
+  contentGate,
   reference,
   onApprove,
   onCheck,
@@ -721,7 +915,7 @@ function ToolApprovalSheet({
   );
   const actions = (
     <DecisionActionRow
-      body={approvalDecisionBody(grantLabel)}
+      body={gatedDecisionBody(contentGate, grantLabel, serverGrant)}
       busy={busy}
       inFlight={inFlight}
       chosen={chosen}
@@ -731,6 +925,7 @@ function ToolApprovalSheet({
   if (grouped)
     return (
       <>
+        <ApprovalContentStatus gate={contentGate} />
         {actions}
         {status}
       </>
@@ -754,6 +949,7 @@ function ToolApprovalSheet({
           actions={actions}
         >
           {details ?? <p className="request-sheet__status">{summary}</p>}
+          <ApprovalContentStatus gate={contentGate} />
           {status}
         </RequestSheet>
       )}
@@ -763,9 +959,11 @@ function ToolApprovalSheet({
 
 function ToolApprovalButtons({
   reference,
-  onApprove,
   onCheck,
+  onApprove,
+  contentGate,
   grantToolName,
+  serverGrant,
   sessionGrant,
 }: ToolApprovalControlProps) {
   const { phase, failure, decide, check, checking } = useApprovalDecision(
@@ -782,8 +980,9 @@ function ToolApprovalButtons({
   // `toolName`, which can be an ACP title — a whole command line.
   return (
     <>
+      <ApprovalContentStatus gate={contentGate} />
       <DecisionButtons
-        body={approvalDecisionBody(grantLabel)}
+        body={gatedDecisionBody(contentGate, grantLabel, serverGrant)}
         busy={busy}
         onChoose={decide}
       />
@@ -805,6 +1004,8 @@ function ToolCallDetails({
   args,
   result,
   error,
+  refusal,
+  failed,
   cancelled,
   unresolved,
   approvalStatus,
@@ -817,6 +1018,10 @@ function ToolCallDetails({
   args: any;
   result?: any;
   error?: string;
+  refusal?: StationControlRefusalView;
+  /** The call reached a failure terminal (`state: 'error'`), which an engine
+   * can report with its output and no separate error text. */
+  failed?: boolean;
   cancelled?: boolean;
   /** station#1558 — the session ended with this call still open. */
   unresolved?: boolean;
@@ -834,11 +1039,25 @@ function ToolCallDetails({
   const isArgsObject = args && typeof args === 'object';
   const commandValue =
     isArgsObject && typeof args.command === 'string' ? args.command : undefined;
+  // The same holds for any multi-line text argument (a file body, a patch,
+  // a loaded spilled value): inside JSON its line breaks read as `\n`. Each
+  // shows as its own block under its own name; the rest stays JSON.
+  const textArgs: Array<[string, string]> =
+    isArgsObject && !Array.isArray(args)
+      ? Object.entries(args).filter(
+          (entry): entry is [string, string] =>
+            entry[0] !== 'command' &&
+            typeof entry[1] === 'string' &&
+            entry[1].includes('\n'),
+        )
+      : [];
+  const blockKeys = new Set(textArgs.map(([key]) => key));
+  if (commandValue !== undefined) blockKeys.add('command');
   const remainingArgs =
-    commandValue === undefined || !isArgsObject
+    blockKeys.size === 0 || !isArgsObject
       ? args
       : Object.fromEntries(
-          Object.entries(args).filter(([key]) => key !== 'command'),
+          Object.entries(args).filter(([key]) => !blockKeys.has(key)),
         );
   const hasRemainingArgs =
     remainingArgs && typeof remainingArgs === 'object'
@@ -874,58 +1093,40 @@ function ToolCallDetails({
   // The truthful terminal status — claimed only when a terminal outcome was
   // actually observed (a result or an error); an unresolved call gets no
   // status line rather than an invented one.
-  const status = error
-    ? 'Failed'
-    : cancelled
-      ? 'Cancelled'
-      : // station#1558: checked BEFORE the `result` arm — the unresolved
-        // row's `result` is the sentence explaining that there is no
-        // result, and reading it as one would print "Success".
-        unresolved
-        ? 'No result was reported'
-        : result !== undefined
-          ? 'Success'
-          : null;
+  const status =
+    error || failed
+      ? 'Failed'
+      : cancelled
+        ? 'Cancelled'
+        : // station#1558: checked BEFORE the `result` arm — the unresolved
+          // row's `result` is the sentence explaining that there is no
+          // result, and reading it as one would print "Success".
+          unresolved
+          ? 'No result was reported'
+          : result !== undefined
+            ? 'Success'
+            : null;
 
-  const showArgs = commandValue === undefined || hasRemainingArgs;
+  const showArgs = blockKeys.size === 0 || hasRemainingArgs;
   // #3382: the raw views are what an approval is decided from, so a bidi
   // override or zero-width character in them is shown, never applied.
   const hiddenWarning =
     commandValue !== undefined && hasHiddenCharacters(commandValue)
       ? 'This command contains hidden characters, shown below as «U+…».'
-      : showArgs &&
-          typeof argsJson === 'string' &&
-          hasHiddenCharacters(argsJson)
+      : textArgs.some(
+            ([key, text]) =>
+              hasHiddenCharacters(key) || hasHiddenCharacters(text),
+          ) ||
+          (showArgs &&
+            typeof argsJson === 'string' &&
+            hasHiddenCharacters(argsJson))
         ? 'These arguments contain hidden characters, shown below as «U+…».'
         : undefined;
 
-  return (
-    <div className="tool-call__details">
-      {hiddenWarning && (
-        <p className="tool-call__hidden-warning" role="note">
-          {hiddenWarning}
-        </p>
-      )}
-      {commandValue !== undefined && (
-        <div className="tool-call__section">
-          <strong>Command:</strong>
-          <pre className="tool-call__code tool-call__code--command" dir="ltr">
-            <RevealedText text={commandValue} />
-          </pre>
-        </div>
-      )}
-      {showArgs && (
-        <div className="tool-call__section">
-          <strong>Arguments:</strong>
-          <pre className="tool-call__code" dir="ltr">
-            {typeof argsJson === 'string' ? (
-              <RevealedText text={argsJson} />
-            ) : (
-              argsJson
-            )}
-          </pre>
-        </div>
-      )}
+  // A station-control refusal's sentence is written for a person, so that
+  // is what the row shows first.
+  const rawOutcome = (
+    <>
       {result !== undefined && (
         <div className="tool-call__section">
           <strong>Response:</strong>
@@ -960,6 +1161,62 @@ function ToolCallDetails({
           <strong>Error:</strong>
           <pre className="tool-call__code tool-call__code--error">{error}</pre>
         </div>
+      )}
+    </>
+  );
+
+  return (
+    <div className="tool-call__details">
+      {hiddenWarning && (
+        <p className="tool-call__hidden-warning" role="note">
+          {hiddenWarning}
+        </p>
+      )}
+      {commandValue !== undefined && (
+        <div className="tool-call__section">
+          <strong>Command:</strong>
+          <pre className="tool-call__code tool-call__code--command" dir="ltr">
+            <RevealedText text={commandValue} />
+          </pre>
+        </div>
+      )}
+      {showArgs && (
+        <div className="tool-call__section">
+          <strong>Arguments:</strong>
+          <pre className="tool-call__code" dir="ltr">
+            {typeof argsJson === 'string' ? (
+              <RevealedText text={argsJson} />
+            ) : (
+              argsJson
+            )}
+          </pre>
+        </div>
+      )}
+      {/* The short arguments (a path) come first; long text after. */}
+      {textArgs.map(([key, text]) => (
+        <div className="tool-call__section" key={key}>
+          <strong dir="ltr">
+            <RevealedText text={key} />:
+          </strong>
+          <pre className="tool-call__code tool-call__code--text" dir="ltr">
+            <RevealedText text={text} />
+          </pre>
+        </div>
+      ))}
+      {refusal ? (
+        <>
+          <div className="tool-call__section tool-call__section--error">
+            <strong>Refused:</strong>
+            <p className="tool-call__refusal">{refusal.message}</p>
+          </div>
+          {/* The envelope the agent received stays one click away. */}
+          <details className="tool-call__raw">
+            <summary>Raw response</summary>
+            {rawOutcome}
+          </details>
+        </>
+      ) : (
+        rawOutcome
       )}
       {status && (
         <div
@@ -1006,6 +1263,25 @@ function ToolCallDetails({
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * #3419: a call that sends a message to another Session reads as that
+ * message in the sender's transcript ("Sent to <Session>") rather than as a
+ * generic tool row. A call still waiting on a grant keeps the ordinary row,
+ * because that is where its Allow and Deny live.
+ */
+function ToolCallDisplayComponent(
+  props: ToolCallDisplayProps & { appTools: ReadonlySet<string> },
+) {
+  return hasStationControlCallRow(props.toolCall) &&
+    !isToolCallAwaitingApproval(props.toolCall) &&
+    props.toolCall.approvalStatus !== 'user-denied' &&
+    props.toolCall.approvalStatus !== 'policy-denied' ? (
+    <OutgoingSessionMessage toolCall={props.toolCall} />
+  ) : (
+    <ToolCallRow {...props} />
   );
 }
 
@@ -1078,4 +1354,14 @@ function rememberToggle(key: string, expanded: boolean): void {
   }
 }
 
-export const ToolCallDisplay = memo(ToolCallDisplayComponent);
+export const ToolCallDisplay = memo(function ToolCallDisplay(
+  props: ToolCallDisplayProps,
+) {
+  return (
+    <TranscriptAppTools calls={[props.toolCall]}>
+      {(appTools) => (
+        <ToolCallDisplayComponent {...props} appTools={appTools} />
+      )}
+    </TranscriptAppTools>
+  );
+});

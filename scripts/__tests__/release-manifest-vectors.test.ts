@@ -737,6 +737,13 @@ const BASE_URL = `https://github.com/kontourai/station/releases/download/v${PREV
  * An archive descriptor in the shape the portable archive build writes
  * beside each archive (`<archive>.json`, describePortableArchive in #2705).
  */
+// `assemble` takes the bundled Node.js version from the runtime pin itself,
+// so these fixtures follow the pin rather than restating it.
+const PINNED_NODE_VERSION: string = JSON.parse(
+  readFileSync(join(root, 'config/portable-server-node-runtime.json'), 'utf8'),
+).version;
+const OTHER_NODE_VERSION = '1.2.3';
+
 function descriptor(
   os: string,
   arch: string,
@@ -754,8 +761,8 @@ function descriptor(
     root: 'station',
     launcher: `station/bin/station${os === 'win32' ? '.cmd' : ''}`,
     node: {
-      version: '24.21.0',
-      distribution: `node-v24.21.0-${os === 'win32' ? 'win' : os}-${arch}.${format}`,
+      version: PINNED_NODE_VERSION,
+      distribution: `node-v${PINNED_NODE_VERSION}-${os === 'win32' ? 'win' : os}-${arch}.${format}`,
       sha256: 'd'.repeat(64),
     },
     release: {
@@ -813,7 +820,6 @@ function assembleTree(
     '--channel': PREVIEW.channel,
     '--source-sha': PREVIEW.sha,
     '--base-url': BASE_URL,
-    '--node-version': '24.21.0',
     '--launcher-protocol-min': '1',
     '--launcher-protocol-max': '2',
     '--published-at': '2026-09-26T01:00:00.000Z',
@@ -845,6 +851,17 @@ function assembledTargets(output: string): string[] {
 }
 
 describe('release manifest assemble (#2675)', () => {
+  it('accepts --node-version when it names the pinned runtime, as the publish workflows pass it', () => {
+    const dir = makeTempDir('station-release-manifest-assemble-pinned-');
+    const result = assemble(dir, ALL_DESCRIPTORS(), {
+      '--node-version': PINNED_NODE_VERSION,
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(readFileSync(result.output, 'utf8')).nodeVersion).toBe(
+      PINNED_NODE_VERSION,
+    );
+  });
+
   it('builds a signable payload from archive descriptors alone', () => {
     const dir = makeTempDir('station-release-manifest-assemble-');
     // Descriptors in reverse order: the payload is sorted regardless.
@@ -859,7 +876,7 @@ describe('release manifest assemble (#2675)', () => {
       releaseTag: `v${PREVIEW.version}`,
       sourceSha: PREVIEW.sha,
       publishedAt: '2026-09-26T01:00:00.000Z',
-      nodeVersion: '24.21.0',
+      nodeVersion: PINNED_NODE_VERSION,
       launcherProtocol: { min: 1, max: 2 },
       artifacts: [...descriptors].reverse().map((value) => ({
         os: value.target.split('-')[0],
@@ -1029,20 +1046,31 @@ describe('release manifest assemble (#2675)', () => {
     error: string;
   }> = [
     {
-      name: 'a Node.js version other than the pinned one',
+      name: 'a --node-version other than the pinned runtime',
       descriptors: all,
-      options: { '--node-version': '24.20.0' },
-      error: 'archives bundle Node.js 24.21.0, not the pinned 24.20.0',
+      options: { '--node-version': OTHER_NODE_VERSION },
+      error: `--node-version ${OTHER_NODE_VERSION} differs from the pinned ${PINNED_NODE_VERSION} in config/portable-server-node-runtime.json`,
+    },
+    {
+      name: 'archives that bundle a Node.js other than the pinned runtime',
+      descriptors: () =>
+        all().map((value) => ({
+          ...value,
+          node: { ...value.node, version: OTHER_NODE_VERSION },
+        })),
+      error: `archives bundle Node.js ${OTHER_NODE_VERSION}, not the pinned ${PINNED_NODE_VERSION}`,
     },
     {
       name: 'descriptors that disagree on the Node.js version',
       descriptors: () => {
         const list = all();
-        list[2] = { ...list[2], node: { ...list[2].node, version: '24.20.0' } };
+        list[2] = {
+          ...list[2],
+          node: { ...list[2].node, version: OTHER_NODE_VERSION },
+        };
         return list;
       },
-      error:
-        'archive descriptors disagree on the Node.js version: 24.21.0, 24.20.0',
+      error: `archive descriptors disagree on the Node.js version: ${PINNED_NODE_VERSION}, ${OTHER_NODE_VERSION}`,
     },
     {
       name: 'two descriptors for one target',

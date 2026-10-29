@@ -3,12 +3,18 @@ import type {
   SessionInventoryV2GroupId,
 } from '@kontourai/station-contracts/session-inventory';
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { hasCapability } from './capability.js';
 import {
   getSessionInventory,
   getSessionInventoryGroupPage,
+  getSessionInventoryInput,
   SessionInventoryRequestError,
 } from './client/session-inventory';
+import {
+  fetchPublicStationCapabilities,
+  invalidatePublicStationCapabilities,
+} from './publicStationCapabilities.js';
 import {
   type ApiRequestScope,
   isApiRequestScope,
@@ -20,6 +26,7 @@ import {
 export {
   getSessionInventory,
   getSessionInventoryGroupPage,
+  getSessionInventoryInput,
   SessionInventoryRequestError,
 };
 export const sessionInventoryQueries = {
@@ -60,12 +67,18 @@ type ProtectedConfig<T> = QueryConfig<T> & { requestScope?: ApiRequestScope };
 function sameScope(left: SessionInventoryScope, right: SessionInventoryScope) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
+/**
+ * Tombstones (sets to `null`) every cached projection and page for `scope`
+ * under `requestScope`'s authority. It never removes an entry: removing a
+ * query a mounted observer still holds makes that observer re-create and
+ * refetch it, and a read that keeps being refused then loops forever.
+ */
 export function clearSessionInventoryCache(
   client: ReturnType<typeof useQueryClient>,
   scope: SessionInventoryScope,
   requestScope?: ApiRequestScope,
 ) {
-  client.removeQueries({
+  const matching = client.getQueryCache().findAll({
     predicate: (query) => {
       const key = query.queryKey;
       if (!Array.isArray(key)) return false;
@@ -80,6 +93,28 @@ export function clearSessionInventoryCache(
       );
     },
   });
+  for (const query of matching) query.setState({ data: null });
+}
+/**
+ * Only a refusal that means this principal may not (or may no longer) read the
+ * Session revokes what it already holds. The route answers a denied, missing
+ * or stale-principal read alike (404, non-disclosing); 401 and 403 come from
+ * the authentication layer. A 503, a network failure (status 0) or a
+ * projection the contract refuses (the response's own status, usually 200) is
+ * an ordinary failed read: what was already
+ * authorized stays, and the surface reports the failure.
+ *
+ * This deliberately differs from `useAnswerBasisQuery`, which revokes on any
+ * `AnswerBasisRequestError`. The inventory route keeps 503 for a read it could
+ * not perform, so treating 503 as revocation would erase authorized content
+ * over an outage, and (before tombstoning) made the read loop. Aligning
+ * answer-basis with this rule is a separate change.
+ */
+function lostAuthority(error: unknown): boolean {
+  return (
+    error instanceof SessionInventoryRequestError &&
+    (error.status === 401 || error.status === 403 || error.status === 404)
+  );
 }
 function useProtected<T>(
   queryKey: (string | number | object)[],
@@ -100,8 +135,7 @@ function useProtected<T>(
       try {
         return await fetcher(signal);
       } catch (error) {
-        if (!signal?.aborted && error instanceof SessionInventoryRequestError)
-          (onRevoke ?? revoke)();
+        if (!signal?.aborted && lostAuthority(error)) (onRevoke ?? revoke)();
         throw error;
       }
     },
@@ -109,21 +143,60 @@ function useProtected<T>(
       staleTime: config?.staleTime ?? 10_000,
       gcTime: config?.gcTime,
       enabled: config?.enabled ?? true,
-      refetchOnMount: config?.refetchOnMount ?? 'always',
+      // Not the caller's choice: data is released only after a read made
+      // during this mount succeeds (below), so a mount that skipped its read
+      // because the cache was fresh would load forever.
+      refetchOnMount: 'always',
       retry: false,
       cancelWhenInactive: config?.cancelWhenInactive ?? true,
     },
   );
+  // Nothing cached before this mount is shown until a read made during this
+  // mount SUCCEEDS. `isFetchedAfterMount` alone is not enough: it is also true
+  // after a failed read, which would release data an earlier mount was
+  // authorized to see. So the first render that observes a success after
+  // mount (for this key) latches it, and only a latched key releases data.
+  // The latch is by observation, not by time: a success that lands at the same
+  // `dataUpdatedAt` as the entry cached before the mount (a frozen or coarse
+  // clock) still counts. After it, a background refetch keeps what is on
+  // screen: lost authority tombstones it (`null`, above), and a merely failed
+  // refresh leaves it beside `error`, for the surface to mark as not refreshed.
+  const queryHash = JSON.stringify(queryKey);
+  // A key switch, and becoming enabled, are each a new mount for this rule,
+  // but TanStack fetches on either only when the cached entry is stale. So the
+  // hook remembers which key it has read while enabled, and reads whenever it
+  // is enabled on a key it has not (unless that already started a fetch). The
+  // first enabled render's read is TanStack's own `refetchOnMount`.
+  const enabled = config?.enabled ?? true;
+  const readKey = useRef<string | null>(enabled ? queryHash : null);
+  useEffect(() => {
+    if (!enabled) {
+      readKey.current = null;
+      return;
+    }
+    if (readKey.current === queryHash) return;
+    readKey.current = queryHash;
+    const cached = client.getQueryCache().find({ queryKey, exact: true });
+    if (cached?.state.fetchStatus !== 'fetching') void query.refetch();
+  }, [client, enabled, query, queryHash, queryKey]);
+  const succeededFor = useRef<string | null>(null);
+  if (
+    succeededFor.current !== queryHash &&
+    query.isFetchedAfterMount &&
+    query.status === 'success' &&
+    query.data != null
+  )
+    succeededFor.current = queryHash;
+  const data =
+    succeededFor.current === queryHash && query.data != null
+      ? query.data
+      : undefined;
   return {
     ...query,
-    data:
-      query.isFetchedAfterMount &&
-      query.status === 'success' &&
-      !query.isFetching
-        ? (query.data ?? undefined)
-        : undefined,
+    data,
     isLoading:
-      !query.isFetchedAfterMount || query.isLoading || query.isFetching,
+      !query.isFetchedAfterMount ||
+      ((query.isLoading || query.isFetching) && data === undefined),
   };
 }
 export function useSessionInventoryQuery(
@@ -183,17 +256,134 @@ export function useSessionInventoryGroupPage(
     () => clearSessionInventoryCache(client, scope, config?.requestScope),
   );
 }
-export function useInvalidateSessionInventory() {
-  const client = useQueryClient();
-  return useCallback(
-    (sessionId?: string) =>
-      client.invalidateQueries({
-        predicate: (query) =>
-          Array.isArray(query.queryKey) &&
-          (query.queryKey[0] === 'session-inventory' ||
-            query.queryKey[0] === 'session-inventory-page') &&
-          (!sessionId || JSON.stringify(query.queryKey).includes(sessionId)),
-      }),
-    [client],
+
+/**
+ * Whether the host serves exact authored-input reads (#4129). `null` means its
+ * public handshake could not be read, so support is undetermined.
+ */
+export async function fetchSessionInventoryInputCapability(
+  apiBase: string,
+): Promise<boolean | null> {
+  const handshake = await fetchPublicStationCapabilities(apiBase);
+  return handshake
+    ? hasCapability(handshake, 'sessionInventoryInputRead')
+    : null;
+}
+
+/**
+ * - `checking`: the host's handshake has not answered yet; no read is sent.
+ * - `supported`: the host advertises the read.
+ * - `unsupported`: the host answered without it. It predates the read or is
+ *   a deployment that doesn't serve it (hosted, #4177), so every attempt
+ *   would 404 like a denial; none is sent.
+ * - `unknown`: the handshake could not be read. The read is still attempted;
+ *   its own outcome is the only evidence left.
+ */
+export type SessionInventoryInputHostSupport =
+  | 'checking'
+  | 'supported'
+  | 'unsupported'
+  | 'unknown';
+
+/**
+ * The outcome of the latest "check again" on an unsupported host:
+ * - `idle`: not rechecked, or the recheck found the host now serves the read
+ *   (or could not tell, so the read is attempted and reports for itself).
+ * - `checking`: the host is being asked again.
+ * - `still-unsupported`: it answered, and still does not serve the read
+ *   (an older host, or a deployment that never serves it).
+ */
+export type SessionInventoryInputHostRecheck =
+  | 'idle'
+  | 'checking'
+  | 'still-unsupported';
+
+/**
+ * Input bodies are fetched only for the selected item under current
+ * authority, and only from a host that has not said it lacks the read.
+ */
+export function useSessionInventoryInput(
+  sessionId: string,
+  eventId: string,
+  turnId: string,
+  requestScope: ApiRequestScope,
+) {
+  const key = useMemo(
+    () => [
+      'session-inventory-input',
+      sessionId,
+      eventId,
+      turnId,
+      requestScope.apiBase,
+      requestScope.authorityKey,
+    ],
+    [
+      sessionId,
+      eventId,
+      turnId,
+      requestScope.apiBase,
+      requestScope.authorityKey,
+    ],
   );
+  const scoped = isApiRequestScope(requestScope);
+  const capability = useApiQuery(
+    ['session-inventory-input-capability', requestScope.apiBase],
+    () => fetchSessionInventoryInputCapability(requestScope.apiBase),
+    { enabled: scoped, staleTime: 60_000, retry: false },
+  );
+  const hostSupport: SessionInventoryInputHostSupport =
+    capability.data === true
+      ? 'supported'
+      : capability.data === false
+        ? 'unsupported'
+        : capability.data === null || capability.isError
+          ? 'unknown'
+          : 'checking';
+  const query = useProtected(
+    key,
+    (signal) =>
+      getSessionInventoryInput(
+        requestScope.apiBase,
+        sessionId,
+        eventId,
+        turnId,
+        { signal, requestScope },
+      ),
+    {
+      enabled:
+        scoped &&
+        (hostSupport === 'supported' || hostSupport === 'unknown') &&
+        !!sessionId &&
+        !!eventId &&
+        !!turnId,
+      requestScope,
+    },
+  );
+  // The handshake is cached for the page's life once it names this flag's
+  // neighbours, so a host updated while the app stays open would keep reading
+  // as unsupported. Rechecking drops this host's cached handshake and asks
+  // again; a supported answer then enables the read. `hostRecheck` reports
+  // the press itself, so a host that still lacks it says so instead of the
+  // screen staying exactly as it was. It is keyed to the host it asked.
+  const { refetch: refetchCapability } = capability;
+  const [recheck, setRecheck] = useState<{
+    apiBase: string;
+    state: Exclude<SessionInventoryInputHostRecheck, 'idle'>;
+  } | null>(null);
+  const recheckHost = useCallback(async () => {
+    const apiBase = requestScope.apiBase;
+    setRecheck({ apiBase, state: 'checking' });
+    invalidatePublicStationCapabilities(apiBase);
+    const answer = await refetchCapability();
+    setRecheck((current) =>
+      current?.apiBase !== apiBase
+        ? current
+        : answer.data === false
+          ? { apiBase, state: 'still-unsupported' }
+          : null,
+    );
+  }, [refetchCapability, requestScope.apiBase]);
+  const hostRecheck: SessionInventoryInputHostRecheck =
+    recheck?.apiBase === requestScope.apiBase ? recheck.state : 'idle';
+  return { ...query, hostSupport, recheckHost, hostRecheck };
 }

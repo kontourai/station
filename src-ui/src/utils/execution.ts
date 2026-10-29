@@ -3,6 +3,7 @@ import {
   ENGINE_CAPABILITY_MATRICES,
   type ModelImageSupport,
   resolveEngineCapabilityMatrix,
+  UNKNOWN_EXTERNAL_ENGINE_MATRIX,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
@@ -202,6 +203,7 @@ export type ChatExecutionMetadata = {
 
 export type EffectiveModelSource =
   | 'session override'
+  | 'project last used'
   | 'last chosen'
   | 'project default'
   | 'runtime'
@@ -220,6 +222,8 @@ export function modelSourceLabel(source: EffectiveModelSource): string {
   switch (source) {
     case 'runtime':
       return 'reported by app';
+    case 'project last used':
+      return 'last used in project';
     case 'unknown':
       return '';
     default:
@@ -246,6 +250,12 @@ export type EffectiveModel = {
   catalogSource: RuntimeCatalogSource;
   mode: string | null;
   selectableModels: ModelOption[];
+  /**
+   * The Project's last-used model when it could not be used (no longer in
+   * the catalog or not advertised), so a surface can say why the model it
+   * shows came from further down the chain. Absent otherwise.
+   */
+  unavailableProjectLastUsed?: string;
 };
 
 export function resolveEffectiveModel({
@@ -254,14 +264,33 @@ export function resolveEffectiveModel({
   runtimeCurrentModel,
   runtimeCurrentMode,
   projectDefaultModel,
+  projectLastUsedModel,
+  newChat = false,
   sessionOverride,
   lastChosenModel,
+  advertisedModels,
 }: {
   agent?: AgentWithExecution | null;
   runtimeConnection?: AgentConnectionView | ConnectionConfig | null;
   runtimeCurrentModel?: string | null;
   runtimeCurrentMode?: string | null;
   projectDefaultModel?: string | null;
+  /**
+   * The model the person's last chat in this Project started with for this
+   * Agent, when the Project's model selection is `last-used`
+   * (`projectLastUsedModelFor`). Beats every inherited default, loses to a
+   * session override, and is used only while the catalog still offers it
+   * and the engine advertises it, exactly like `lastChosenModel`.
+   */
+  projectLastUsedModel?: string | null;
+  /**
+   * Resolving a NEW chat's starting model. The Project's own default model
+   * then beats this device's last pick and the app-reported model, as a set
+   * default should, but only when the connection's known catalog offers it:
+   * a Project's model is chosen from a Model connection, and an Agent app
+   * that does not list it keeps the chain below.
+   */
+  newChat?: boolean;
   sessionOverride?: string | null;
   /**
    * The user's most-recently-chosen model for this agent app connection
@@ -271,6 +300,16 @@ export function resolveEffectiveModel({
    * selectableModels (when that catalog is known) — otherwise ignored.
    */
   lastChosenModel?: string | null;
+  /**
+   * Models an ACP engine advertised itself (its `model` config option), the
+   * list the adapter holds a session's requested model to. A default the
+   * engine did not advertise is skipped rather than sent for the engine to
+   * refuse at session start. Empty or absent means there is nothing to check
+   * against. The runtime catalog is deliberately not used for this: it is a
+   * different observation (the runtime-reported model may legitimately sit
+   * outside it).
+   */
+  advertisedModels?: ReadonlyArray<{ id: string; originalId?: string }>;
 }): EffectiveModel {
   const catalog = (runtimeConnection as AgentConnectionView | null)
     ?.runtimeCatalog;
@@ -279,25 +318,50 @@ export function resolveEffectiveModel({
     typeof runtimeConnection?.config.defaultModel === 'string'
       ? runtimeConnection.config.defaultModel
       : null;
+  const inCatalog = (candidate: string) =>
+    selectableModels.length === 0 ||
+    selectableModels.some(
+      (model) => model.id === candidate || model.originalId === candidate,
+    );
   const validLastChosenModel =
-    lastChosenModel &&
-    (selectableModels.length === 0 ||
-      selectableModels.some(
-        (model) =>
-          model.id === lastChosenModel || model.originalId === lastChosenModel,
-      ))
-      ? lastChosenModel
+    lastChosenModel && inCatalog(lastChosenModel) ? lastChosenModel : null;
+  // Unknown (nothing advertised) is not "unadvertised": nothing to check.
+  const isAdvertised = (candidate: string) =>
+    !advertisedModels?.length ||
+    advertisedModels.some(
+      (model) => model.id === candidate || model.originalId === candidate,
+    );
+  const projectLastUsed = projectLastUsedModel?.trim() || null;
+  const validProjectLastUsed =
+    projectLastUsed &&
+    inCatalog(projectLastUsed) &&
+    isAdvertised(projectLastUsed)
+      ? projectLastUsed
       : null;
+  const projectDefault = projectDefaultModel?.trim() || null;
+  const projectDefaultLeads =
+    newChat &&
+    !!projectDefault &&
+    selectableModels.length > 0 &&
+    inCatalog(projectDefault) &&
+    isAdvertised(projectDefault);
   const candidates: Array<[string | null | undefined, EffectiveModelSource]> = [
     [sessionOverride, 'session override'],
+    [validProjectLastUsed, 'project last used'],
+    [projectDefaultLeads ? projectDefault : null, 'project default'],
     [validLastChosenModel, 'last chosen'],
     [runtimeCurrentModel, 'runtime'],
     [projectDefaultModel, 'project default'],
     [agent?.model ?? agent?.execution?.modelId, 'agent default'],
     [connectionDefault, 'connection default'],
   ];
+  // An explicit session override is the user's own choice and is checked where
+  // it is made; every inherited default must be one the engine advertises.
   const [id, source] = candidates.find(
-    ([candidate]) => !!candidate?.trim(),
+    ([candidate, candidateSource]) =>
+      !!candidate?.trim() &&
+      (candidateSource === 'session override' ||
+        isAdvertised(candidate.trim())),
   ) ?? [null, 'unknown'];
   return {
     id: id || null,
@@ -309,6 +373,11 @@ export function resolveEffectiveModel({
     catalogSource: catalog?.source ?? 'none',
     mode: runtimeCurrentMode || null,
     selectableModels,
+    ...(projectLastUsed &&
+    !validProjectLastUsed &&
+    source !== 'session override'
+      ? { unavailableProjectLastUsed: projectLastUsed }
+      : {}),
   };
 }
 
@@ -321,6 +390,37 @@ export function resolveEffectiveModel({
  * fallback lives in a thin wrapper applied only at those New Chat call
  * sites rather than inside the shared resolver.
  */
+/**
+ * The models an ACP engine advertised, as the server serves them: its model
+ * config option when it has one, else the session's `models` list (#352), by
+ * the same rule a session start applies. A server too old to send
+ * `advertisedModels` (absent, not empty) is read the way it was before:
+ * from its config option of category "model".
+ */
+export function acpAdvertisedModels(
+  connection:
+    | {
+        advertisedModels?: ReadonlyArray<{ id: string; name: string }>;
+        configOptions?: ReadonlyArray<{
+          category: string;
+          options?: Array<string | { value: string; name?: string }>;
+        }>;
+      }
+    | undefined,
+): Array<{ id: string; name: string }> {
+  const served =
+    connection?.advertisedModels ??
+    (connection?.configOptions ?? [])
+      .filter((option) => option.category === 'model')
+      .flatMap((option) => option.options ?? [])
+      .map((entry) =>
+        typeof entry === 'string'
+          ? { id: entry, name: entry }
+          : { id: entry.value, name: entry.name ?? entry.value },
+      );
+  return served.filter((model) => model.id.length > 0);
+}
+
 export function guaranteeConcreteModel(model: EffectiveModel): EffectiveModel {
   if (model.id || model.selectableModels.length === 0) {
     return model;
@@ -603,9 +703,8 @@ type SessionExecutionActivity = SessionExecutionSummary & {
 /**
  * Whether a running turn can take more user input on the engine's live
  * channel (`steerTurn` / `turn.started` with `inputKind: 'steer'`).
- * Authority is the capability matrix, not a connection `capabilities`
- * string. Claude and Codex expose additive steering. ACP is held because
- * its matrix also admits cancel+reprompt, without a session-native receipt.
+ * Only native steering fidelity permits this action. Emulated steering can
+ * cancel and reprompt, so it cannot promise an additive live input channel.
  */
 export function sessionAdapterSupportsSteering(
   agentConnectionId?: string | null,
@@ -615,22 +714,12 @@ export function sessionAdapterSupportsSteering(
   const connection = agentConnectionId
     ? agentConnections.find((candidate) => candidate.id === agentConnectionId)
     : undefined;
-  // ACP's matrix also permits interruptive cancel-and-reprompt. It is not
-  // evidence of an additive input channel on this particular session.
-  if (orchestrationProvider === 'acp' || connection?.type === 'acp')
-    return false;
-  if (
-    orchestrationProvider &&
-    orchestrationProvider in ENGINE_CAPABILITY_MATRICES
-  ) {
-    return (
-      ENGINE_CAPABILITY_MATRICES[orchestrationProvider].midTurnSteer === true
-    );
-  }
-  return (
-    resolveEngineCapabilityMatrix(agentConnectionId, connection)
-      .midTurnSteer === true
-  );
+  const matrix = orchestrationProvider
+    ? Object.hasOwn(ENGINE_CAPABILITY_MATRICES, orchestrationProvider)
+      ? ENGINE_CAPABILITY_MATRICES[orchestrationProvider]
+      : UNKNOWN_EXTERNAL_ENGINE_MATRIX
+    : resolveEngineCapabilityMatrix(agentConnectionId, connection);
+  return matrix.durability?.steerPlacement.state === 'native';
 }
 
 export function defaultManagedRuntimeConnection(
@@ -670,7 +759,7 @@ export function defaultSelectableManagedRuntimeConnection(
  * One derivation because two surfaces read it for the same session and must
  * not disagree: the composer decides whether to render an approval control
  * from it (`useChatDockViewModel`), and the send path decides whether to put
- * a posture on the wire from it (`useSendMessage`). Round 2 LOW-5 — the
+ * a posture on the wire from it (`useSendMessage`). #2169: the
  * enforcement side read only `chatState.agentConnectionId`, so a chip shown
  * off an OBSERVED binding could sit above a dispatch that carried nothing.
  *
@@ -957,7 +1046,7 @@ export function resolveSessionExecutionSummary(
  * `snapshotHandlers`).
  *
  * The writers of `orchestrationStatus` this derivation has been checked
- * against, because the distinction is the whole point (round 4 N1). The
+ * against, because the distinction is the whole point (#2169). The
  * field is written from three vocabularies, none of which is
  * `SessionLifecycleState`: `session.state-changed` carries a `SessionState`
  * (`packages/contracts/src/runtime-events.ts`), the connect-time snapshot
@@ -976,8 +1065,9 @@ export function resolveSessionExecutionSummary(
  * LIVE here regardless: the server decides continuation on the lifecycle
  * state, not this string, and an errored thread can return to idle. Likewise
  * 'aborted': a user pressing Stop leaves the process alive and
- * `orchestrationSessionStarted` untouched. Both were settled in round 3,
- * which re-requested the posture into a session the server merely continues.
+ * `orchestrationSessionStarted` untouched. Both were settled in #2169:
+ * reading them as ended re-requested the posture into a session the server
+ * merely continues.
  *
  * Known gap, tracked in #2168: the snapshot vocabulary's 'dead' and
  * 'closed' fall through both halves below and read live, so a send against
@@ -1005,7 +1095,7 @@ function orchestrationStatusIsSessionSettled(status: string): boolean {
  *
  * Deliberately NOT `orchestrationSessionStarted || currentSessionId`, which
  * was true on two paths where the server really does call `startSession`
- * (round 3 F1): `currentSessionId` outlives the session it names —
+ * (#2169): `currentSessionId` outlives the session it names —
  * `session.exited` writes `orchestrationSessionStarted: false` and leaves the
  * id in place — and `commitConversationOpen` sets BOTH for any
  * `status: 'resolved'` resolution, which means "continuable", not "running"

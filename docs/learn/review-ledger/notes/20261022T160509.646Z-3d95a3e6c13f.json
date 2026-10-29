@@ -1,0 +1,15 @@
+{
+  "revision": "a2d90fd9853e0cccb4320e44c54819b5981b7f19",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Reviewed TerminalPanel resize batching and unchanged PTY ownership, egress checks and unmount semantics. The overview describes terminal ownership rather than resize frequency; no prose change is needed. Mounted terminal tests cover coalescing, unchanged cells and frame cancellation; native renderer performance is not qualified.","inputs":["docs/architecture.md","src-ui/src/components/coding-layout/TerminalPanel.tsx"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Reviewed current code-block rendering through UIBlockRenderer and the lazy highlight client. Escaped plain text remains visible while pending or failed; superseded results are discarded. The June design and form authority explanation remain accurate, so no prose change is needed. Mounted regression tests and a local browser fallback observation do not qualify all native hosts.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/UIBlockRenderer.tsx"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the SDK boot concurrency explanation against AuthorityQueryProvider captured-origin, activation-scope and destination-client guards. This guide routes public API and deployment ownership without promising sequential startup. Hosting and persistence boundaries remain unchanged; mocked-wire tests are not deployment qualification.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the updated internal boot paragraph against AuthorityQueryProvider and guarded SDK seeding. Module/session preparation overlaps the live authority observation. The authenticated same-origin payload stays outside query caches until verification, preserving scope and destination-client guards and newer individual reads. Boot remains absent from public exports. Mounted tests exercise delayed verification, successful seed and stale-response discard; production boot latency is not qualified.","inputs":["docs/reference/sdk.md","src-ui/src/contexts/AuthorityQueryContext.tsx"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed the SDK reference boot update and provider tests. No public export or SDK contract was added; the app retains its internal lazy boot seam. Existing stable-export and cache-plus-caller race instructions remain accurate. The delayed-payload fixture now carries a valid seedable payload and inspects both retired and active clients.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

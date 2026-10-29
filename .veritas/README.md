@@ -8,23 +8,26 @@ Durable configuration stays under `.veritas/`; generated evidence, feedback,
 and recommendations go under `.kontourai/veritas/`. The
 [0.3-to-0.5 migration record](../docs/strategy/veritas/migration-0.5-record.md)
 is retained as history. Use the current configuration files above for the
-active contract.
+active contract. Repo Standards use the `RepoStandards` resource envelope
+(`metadata.name`, `spec.requirements`); the public Veritas loader normalizes them
+for evaluation and the native `plan` CLI supplies pre-edit guidance.
 
 ## Gate
 
 ```bash
-npm run veritas:shadow          # alias: veritas readiness --working-tree
+npm run veritas:plan -- <paths...> # native read-only policy/check plan
+npm run veritas:shadow          # alias: readiness --working-tree
 npm run veritas:readiness       # same, explicit name
-npm run veritas:readiness:diff  # veritas readiness --changed-from main --changed-to HEAD
-npm run veritas:coverage        # veritas readiness --check coverage --working-tree
+npm run veritas:readiness:diff  # readiness --changed-from main --changed-to HEAD
+npm run veritas:coverage        # readiness --check coverage --working-tree
 ```
 
 For the installed CLI's readiness command, exit 0 means no blocking failures;
 1 means an evidence-check or blocking-policy failure; 2 means a configuration
 or runtime error. Read the report's selected scope, warnings, skipped checks
 and evidence identities as well as the exit code. It is not a deployment or
-all-tests-complete certificate. `veritas explain <ruleId>` or
-`veritas explain --file <path>` prints targeted guidance.
+all-tests-complete certificate. `npx --no @kontourai/veritas explain <ruleId>` or
+`npx --no @kontourai/veritas explain --file <path>` prints targeted guidance.
 
 Readiness reports are generated under `.kontourai/veritas/evidence/`. The
 installed CLI's generated Surface projection uses
@@ -33,9 +36,11 @@ own runtime locations. Neither path is protected policy source.
 
 ## Evidence Checks
 
+- `component-style-hygiene` (required, default): runs `npm run lint:component-style`; prevents new named legacy-token, standard-action/dialog bypass and hand-rolled alert-with-action signatures in shell, SDK and pane-package code. The inherited baseline is per file/signature; rendered usability and clone review remain separate. See [Component and style ownership](../docs/guides/code-hygiene.md#component-and-style-ownership).
+- `code-hygiene` (required, default): runs the published Veritas Oxlint plugin through `npm run lint:hygiene`; explained suppressions across source/tests and deterministic timing in pure contract tests. Comment findings remain a separate advisory scan. See [Code hygiene](../docs/guides/code-hygiene.md).
 - `style-standard` (required, default): runs `npm run lint:check`.
 - `repo-governance` (required, default): Veritas artifacts, AI instruction wiring, CI/report wiring, pinned workflow actions.
-- `documentation-truth` (required, default): runs `npm run docs:truth:gate`, including recorded document/source freshness scoped to the change (see [keep reviews fresh](../docs/guides/documentation.md#keep-reviews-fresh)). Unknown dependencies and semantic accuracy still need review.
+- `documentation-truth` (required, default): runs `npm run docs:truth:gate`, including recorded document/source freshness scoped to the change (see [keep reviews fresh](../docs/guides/documentation-review-ledger.md#keep-reviews-fresh)). Unknown dependencies and semantic accuracy still need review.
 - `verification-policy` (default): runs the executable selector-first verification-policy gate, so public lane wiring and agent guidance cannot drift silently. It is default-enforced, not a required evidence family.
 - `architecture-boundaries` / `ui-data-access` / `runtime-contracts`: candidate or advisory proof-family inventory entries. Their current selection and blocking status must be read from the Repo Map
   and proof-family inventory. Declaration alone does not establish an executed
@@ -51,7 +56,7 @@ own runtime locations. Neither path is protected policy source.
   [fast runner](../scripts/run-ci-fast.mjs) are the command owners.
 - `fallow-advisory`: external-tool advisory evidence; requires the `fallow` CLI and is not a default check.
 
-Check-family dispositions live in `.veritas/proof-families/repo-guardrails.families.json`, declared to Veritas through `evidence.evidenceInventoryManifests` so `veritas readiness --check coverage` reports verification weight and freshness.
+Check-family dispositions live in `.veritas/proof-families/repo-guardrails.families.json`, declared to Veritas through `evidence.evidenceInventoryManifests` so `npm run veritas:coverage` reports verification weight and freshness.
 
 ## Delivery-Conduct Standards (just-in-time guidance)
 
@@ -64,7 +69,7 @@ Check-family dispositions live in `.veritas/proof-families/repo-guardrails.famil
 | `read-paths-join-exactly-and-never-write` | sidecar/trust-bundle joins, freshness and fold modules | exact match or `unavailable` naming candidates; read paths perform no writes; no producer, no claim |
 | `verification-conduct-sentinels-and-fault-injection` | the protocol document and four pinned honesty tests (`guardrail-known-bad-fixtures`, `verification-receipt`, `vitest-worktree-exclusion`, `catch-log`) | sentinel-form exit evidence; commit-first fault injection with byte-identical restore; an uncaught injection is a stop signal |
 
-Read them with `veritas explain --file <path>` (or `--work-area product.src-ui.trust-surfaces` / `product.src-server.evidence-services`, the two work areas added for these surfaces — both routed to the lane their parent area already runs, so naming a surface adds guidance and no evidence command).
+Read them with `npx --no @kontourai/veritas explain --file <path>` (or `--work-area product.src-ui.trust-surfaces` / `product.src-server.evidence-services`, the two work areas added for these surfaces — both routed to the lane their parent area already runs, so naming a surface adds guidance and no evidence command).
 
 These add **no new gate**. These four rules' artifact assertions check the presence of named surfaces and
 pinned tests. Test behavior requires an actual execution selected by its lane;
@@ -83,7 +88,7 @@ one of their named files selects a focused Evidence Check through
 `evidenceCheckIds`, and a missing, skipped, or failed check blocks readiness.
 Their artifact checks still prove only presence. The remaining behavioral work and exit criteria live
 in [the issue-class prevention plan](../docs/plans/issue-class-prevention.md).
-Use `veritas explain --file <path>` before editing a routed seam.
+Use `npx --no @kontourai/veritas explain --file <path>` before editing a routed seam.
 The pre-edit `gate:for` route presents matching guidance. Station's tracked
 `.codex/hooks.json` contains the Veritas Governance Kit's Codex `PreToolUse`
 definition. Tracked `.codex/config.toml` enables the hooks feature. Install the
@@ -94,8 +99,8 @@ The dispatcher uses the shared Git directory, so it covers Station worktrees and
 stays silent in unrelated repositories. The required governance artifact rule
 rejects missing project files; `proof:repo-governance` checks their structure.
 A Conduit receipt proves installed bytes, while a normal Codex edit proves host
-execution. Run readiness for edits outside the hook's coverage. The currently pinned
-Veritas 1.7.4 handles `apply_patch` Add File under routed content rules; the plan records the
+execution. Run readiness for edits outside the hook's coverage. The earlier published
+Veritas 1.7.4 probe exercised `apply_patch` Add File under routed content rules; the plan records the
 published-package host probe. That recorded probe is not proof that every
 agent host or edit mechanism executes the hook today. Installation/trust and
 host execution are separate observations; these instructions do not grant
@@ -112,23 +117,24 @@ The review ledger records document purpose separately from source review.
 
 `docs:truth:gate` already includes the ledger freshness test through
 `docs:foundations:test`. It is selected as required Veritas evidence, including
-through `ci:fast`'s readiness call and the pre-push hook. There, freshness is
+through required hosted `fast-checks-statics` and its `ci:fast` readiness call.
+There, freshness is
 scoped: a stale record blocks when the change's own diff touches its document,
 a recorded source or the record itself. In the merge queue, on `main` and in
-Nightly static verification the same test only reports staleness, so another
+Scheduled full qualification the same test only reports staleness, so another
 PR's change cannot dequeue this one; a Nightly sweep keeps one tracking issue
 for what remains. The separate same-repository PR source-scan job reports
 freshness too and is not a required status check. A normal reader build can
 mark stale reviews `needs-review`; the scoped check refuses the ones the change
-owns. See [keep reviews fresh](../docs/guides/documentation.md#keep-reviews-fresh). The named deploy-ledger contract separately
+owns. See [keep reviews fresh](../docs/guides/documentation-review-ledger.md#keep-reviews-fresh). The named deploy-ledger contract separately
 checks current machine data and its exact projection while preserving the
 historical source review; removed classified changeset notes remain explicitly
 absent. These narrow lifecycle rules do not waive current-guide or generator
-source drift. See [documentation maintenance](../docs/guides/documentation.md#generated-release-records-and-removed-notes).
+source drift. See [documentation maintenance](../docs/guides/documentation-review-ledger.md#generated-release-records-and-removed-notes).
 None of these mechanisms proves the semantics
 of a prose claim or covers source dependencies absent from the ledger.
 
-Hosted `fast-checks` now aggregates an affected-test plan, one to four planned shards, and
+Hosted `fast-checks` now aggregates an affected-test plan, zero to four planned shards, and
 `fast-checks-statics`. The statics job runs `ci:fast` with the explicit statics
 scope and includes its Veritas readiness call. The required documentation
 evidence is unioned with default, routed or explicitly selected checks; it

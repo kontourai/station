@@ -1,0 +1,7 @@
+{
+  "revision": "a6a598b70a19aff627481308f776b944555e4e24",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Fix round 1 changed ChatDock.tsx only in the session context card wiring: the header's sessionProjectMismatchLabel and branch/count badges now stand down on sessionContextCardShown (width answer AND the card's own mounted report), the card's Chat inventory footer is offered only once useSessionInventoryHostRegistered is true, and the card props are useMemo'd behind a handler ref. Re-read the This chat paragraph (phone actions row; desktop card beside the transcript, chip when narrower): still accurate, verified on a live isolated instance. No prose change.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

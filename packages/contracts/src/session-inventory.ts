@@ -135,7 +135,7 @@ export type SurfaceAnswerContributionRow =
     reviewedSource: {
       /** Fieldwork's published opaque reviewed-source identity. */
       exactRef: `fieldwork-reviewed-source:v1:${string}`;
-      review: 'accepted' | 'not-accepted' | 'not-captured';
+      review: 'accepted' | 'not-accepted' | 'not-captured' | 'not-chosen';
       currentness: 'current' | 'drifted' | 'unknown';
       checkedAt: string;
       assessmentRevision: number;
@@ -148,6 +148,7 @@ export type SurfaceAnswerContributionRow =
   };
 export const REVIEWED_SOURCE_CONTRIBUTION_GAP_CODES = [
   'reviewed-source-review-not-accepted',
+  'reviewed-source-review-not-chosen',
   'reviewed-source-review-not-captured',
   'reviewed-source-currentness-unknown',
   'reviewed-source-drifted',
@@ -170,17 +171,15 @@ export type ThreadToolResultRow = RowBase<'thread-tool-result'> & {
   toolCallId: string;
   name: string;
   /**
-   * station#1558 deliberately did NOT add a member for a `tool.completed`
-   * whose status is `unresolved` (the session ended with the call open, so
-   * no outcome was ever observed). This vocabulary is validated exactly, by
-   * version, so a new member would make every consumer built before it
-   * reject the whole ROW rather than degrade — and the three members here
-   * all assert an outcome, so folding an unresolved completion into
-   * `cancelled` would put a fabricated one in an inventory whose value is
-   * that it is believable. The projection omits the row instead
-   * (`session-inventory-module.ts`); the transcript still carries the event.
+   * `unresolved` is a command that started but never reported an outcome
+   * (the session ended with the call open). It claims neither success nor
+   * failure. station#1558 left it out because this vocabulary is validated
+   * exactly, and a consumer built before the member rejects the whole
+   * projection; a host therefore sends `unresolved` rows only to a client that
+   * declared client protocol 4 or later (#4178), and omits them for older
+   * clients exactly as before.
    */
-  terminalStatus: 'succeeded' | 'failed' | 'cancelled';
+  terminalStatus: 'succeeded' | 'failed' | 'cancelled' | 'unresolved';
 };
 export type StationPlanSnapshotRow = RowBase<'station-plan-snapshot'> & {
   sessionId: string;
@@ -190,12 +189,22 @@ export type StationPlanSnapshotRow = RowBase<'station-plan-snapshot'> & {
 export type StationRequestDecisionRow = RowBase<'station-request-decision'> & {
   sessionId: string;
   eventId: string;
+  /**
+   * Optional and additive: the turn the decision was observed in. Required,
+   * and equal to the scope turn, for a lineage-only current-answer row.
+   */
+  turnId?: string;
   requestId: string;
   status: 'accepted' | 'declined' | 'cancelled' | 'pending';
 };
 export type StationDelegationRow = RowBase<'station-delegation'> & {
   sessionId: string;
   eventId: string;
+  /**
+   * Optional and additive: the turn that started the delegation. Required,
+   * and equal to the scope turn, for a lineage-only current-answer row.
+   */
+  turnId?: string;
   toolCallId: string;
   childSessionId: string;
 };
@@ -651,7 +660,7 @@ function rowDetails(value: Record<string, unknown>): boolean {
         Object.keys(value.reviewedSource).length === 5 &&
         string(value.reviewedSource.exactRef, 512) &&
         REVIEWED_SOURCE_EXACT_REF.test(value.reviewedSource.exactRef) &&
-        ['accepted', 'not-accepted', 'not-captured'].includes(
+        ['accepted', 'not-accepted', 'not-captured', 'not-chosen'].includes(
           value.reviewedSource.review as string,
         ) &&
         ['current', 'drifted', 'unknown'].includes(
@@ -687,7 +696,7 @@ function rowDetails(value: Record<string, unknown>): boolean {
         string(value.turnId) &&
         string(value.toolCallId) &&
         string(value.name, 240) &&
-        ['succeeded', 'failed', 'cancelled'].includes(
+        ['succeeded', 'failed', 'cancelled', 'unresolved'].includes(
           value.terminalStatus as string,
         )
       );
@@ -701,6 +710,7 @@ function rowDetails(value: Record<string, unknown>): boolean {
       return (
         string(value.sessionId) &&
         string(value.eventId) &&
+        (value.turnId === undefined || string(value.turnId)) &&
         string(value.requestId) &&
         ['accepted', 'declined', 'cancelled', 'pending'].includes(
           value.status as string,
@@ -710,6 +720,7 @@ function rowDetails(value: Record<string, unknown>): boolean {
       return (
         string(value.sessionId) &&
         string(value.eventId) &&
+        (value.turnId === undefined || string(value.turnId)) &&
         string(value.toolCallId) &&
         string(value.childSessionId)
       );
@@ -873,8 +884,8 @@ function row(value: unknown): value is SessionInventoryV2Row {
     'flow-agents-narrative': [],
     'thread-tool-result': [],
     'station-plan-snapshot': [],
-    'station-request-decision': [],
-    'station-delegation': [],
+    'station-request-decision': ['turnId'],
+    'station-delegation': ['turnId'],
     'station-session-output': [],
     'flow-gate-verdict': [],
     'flow-policy-verdict': [],
@@ -934,11 +945,29 @@ function validGap(value: unknown, requiredKind?: string): boolean {
     ].includes(value.code as string)
   );
 }
-function matchesCurrentAnswerBasis(
+/**
+ * Binds a current-answer projection to its exact Session and turn.
+ *
+ * Decision (#3853, following epic #418's rule that partial owner outages
+ * preserve successfully resolved regions): the projection is admitted
+ * whatever the Surface answer state is, so an unavailable, stale, corrupt,
+ * restricted, unsupported-version, not-captured or observed-empty answer no
+ * longer discards the inputs, execution and other groups resolved for the
+ * same turn. The answer's own state stays in `basis` for the consumer to
+ * render. What is not loosened:
+ * - the binding must still name the scope's exact Session and turn;
+ * - when the answer IS available, its reference must equal the binding's
+ *   answer exactly, as before, so a projection bound to a different answer
+ *   is still rejected;
+ * - when it is not available, nothing can prove which answer a row is bound
+ *   to, so `availableAnswer` is null and `group()` rejects every row that
+ *   carries an answer reference (`surface-answer-contribution`).
+ */
+function matchCurrentAnswerBasis(
   scope: Extract<SessionInventoryScope, { kind: 'current-answer' }>,
   basis: unknown,
   binding: unknown,
-): binding is StationAnswerBinding {
+): { availableAnswer: StationAnswerBinding | null } | null {
   const parsedBinding = parseStationAnswerBinding(binding);
   const parsedBasis = parseStationBasisProjection(basis);
   if (
@@ -946,26 +975,38 @@ function matchesCurrentAnswerBasis(
     !parsedBasis ||
     parsedBinding.sessionId !== scope.sessionId ||
     parsedBinding.turnId !== scope.turnId ||
-    parsedBinding.answer.threadId !== scope.sessionId ||
-    parsedBasis.answer.state !== 'available'
+    parsedBinding.answer.threadId !== scope.sessionId
   )
-    return false;
+    return null;
+  if (parsedBasis.answer.state !== 'available')
+    return { availableAnswer: null };
   const answer = parsedBasis.answer.value.ref;
-  return (
-    answer.authority === '@kontourai/thread' &&
+  return answer.authority === '@kontourai/thread' &&
     answer.schemaVersion === '1.2.0' &&
     answer.kind === 'assistant-message' &&
     answer.standing === 'observed' &&
     answer.threadId === parsedBinding.answer.threadId &&
     answer.messageId === parsedBinding.answer.messageId
-  );
+    ? { availableAnswer: parsedBinding }
+    : null;
+}
+/**
+ * The exact turn a row is bound to, if its kind carries one. Outputs carry
+ * it on the declared output item rather than on the row.
+ */
+function rowTurnId(itemRecord: Record<string, unknown>): unknown {
+  return itemRecord.kind === 'station-session-output' &&
+    plain(itemRecord.output)
+    ? itemRecord.output.turnId
+    : itemRecord.turnId;
 }
 function group(
   value: unknown,
   projectionScope: SessionInventoryScope,
   page: boolean,
   groupIds: readonly SessionInventoryV2GroupId[],
-  basisBinding?: StationAnswerBinding,
+  /** Set only when the current-answer Basis has an available, bound answer. */
+  availableAnswer?: StationAnswerBinding,
 ): value is AnySessionInventoryGroup {
   if (
     !plain(value) ||
@@ -1075,26 +1116,44 @@ function group(
       itemRecord.taskId !== projectionScope.taskId
     )
       return false;
+    // Any row that carries a turn binding, including an output's declared
+    // turn, must name the scope turn whatever its relations. Kinds with no
+    // turn field (for example a Flow narrative) are not turn-checked here.
     if (
       projectionScope.kind === 'current-answer' &&
-      itemRecord.turnId !== undefined &&
-      itemRecord.turnId !== projectionScope.turnId
+      rowTurnId(itemRecord) !== undefined &&
+      rowTurnId(itemRecord) !== projectionScope.turnId
     )
       return false;
     const relations = itemRecord.relations;
     if (!Array.isArray(relations)) return false;
+    // Current-answer rows are either support or lineage, never inferred
+    // support. `contributed-to` stays the only edge meaning a row supported
+    // this answer. A row without it is admitted only as lineage of the exact
+    // turn: every relation is `observed-during` (tool results, decisions,
+    // delegations, work items seen in the turn) or `produced-by` (outputs the
+    // turn produced), each still limited by the per-kind `allowed` table, and
+    // the row carries that turn's id. Kinds with no turn binding (a Session
+    // resource aggregate, plan snapshots, narratives) therefore stay out of
+    // the lineage arm rather than being presented as a fabricated turn slice.
     if (
       projectionScope.kind === 'current-answer' &&
-      !relations.includes('contributed-to')
+      !relations.includes('contributed-to') &&
+      (relations.length === 0 ||
+        relations.some(
+          (relation) =>
+            relation !== 'observed-during' && relation !== 'produced-by',
+        ) ||
+        rowTurnId(itemRecord) !== projectionScope.turnId)
     )
       return false;
     if (itemRecord.kind === 'surface-answer-contribution') {
       if (
         projectionScope.kind !== 'current-answer' ||
-        !basisBinding ||
-        itemRecord.answerReferenceId !== basisBinding.answer.messageId ||
-        itemRecord.sessionId !== basisBinding.sessionId ||
-        itemRecord.turnId !== basisBinding.turnId ||
+        !availableAnswer ||
+        itemRecord.answerReferenceId !== availableAnswer.answer.messageId ||
+        itemRecord.sessionId !== availableAnswer.sessionId ||
+        itemRecord.turnId !== availableAnswer.turnId ||
         itemRecord.key !==
           `reviewed-source:${(itemRecord.reviewedSource as Record<string, unknown>).exactRef}`
       )
@@ -1160,13 +1219,12 @@ export function parseSessionInventoryProjection(
     )
       return null;
     const parsedScope = value.scope;
-    const basisBinding =
-      parsedScope.kind === 'current-answer' &&
-      matchesCurrentAnswerBasis(parsedScope, value.basis, value.basisBinding)
-        ? parseStationAnswerBinding(value.basisBinding)
+    const currentAnswer =
+      parsedScope.kind === 'current-answer'
+        ? matchCurrentAnswerBasis(parsedScope, value.basis, value.basisBinding)
         : null;
     if (
-      (parsedScope.kind === 'current-answer' && !basisBinding) ||
+      (parsedScope.kind === 'current-answer' && !currentAnswer) ||
       (parsedScope.kind !== 'current-answer' &&
         (value.basis !== undefined || value.basisBinding !== undefined)) ||
       value.groups.length !==
@@ -1182,7 +1240,7 @@ export function parseSessionInventoryProjection(
             value.version === SESSION_INVENTORY_V1
               ? SESSION_INVENTORY_V1_GROUP_IDS
               : SESSION_INVENTORY_V2_GROUP_IDS,
-            basisBinding ?? undefined,
+            currentAnswer?.availableAnswer ?? undefined,
           ) ||
           (item as AnySessionInventoryGroup).id !==
             (value.version === SESSION_INVENTORY_V1
@@ -1219,13 +1277,12 @@ export function parseSessionInventoryGroupPage(
       !scope(value.scope)
     )
       return null;
-    const basisBinding =
-      value.scope.kind === 'current-answer' &&
-      matchesCurrentAnswerBasis(value.scope, value.basis, value.basisBinding)
-        ? parseStationAnswerBinding(value.basisBinding)
+    const currentAnswer =
+      value.scope.kind === 'current-answer'
+        ? matchCurrentAnswerBasis(value.scope, value.basis, value.basisBinding)
         : null;
     if (
-      (value.scope.kind === 'current-answer' && !basisBinding) ||
+      (value.scope.kind === 'current-answer' && !currentAnswer) ||
       (value.scope.kind !== 'current-answer' &&
         (value.basis !== undefined || value.basisBinding !== undefined)) ||
       !group(
@@ -1235,7 +1292,7 @@ export function parseSessionInventoryGroupPage(
         value.version === SESSION_INVENTORY_V1
           ? SESSION_INVENTORY_V1_GROUP_IDS
           : SESSION_INVENTORY_V2_GROUP_IDS,
-        basisBinding ?? undefined,
+        currentAnswer?.availableAnswer ?? undefined,
       )
     )
       return null;

@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import {
+  copyFileSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -29,9 +30,10 @@ const root = resolve(import.meta.dirname, '../..');
 const catalog = resolve(root, IOS_APP_ICON_CATALOG);
 const committedFilenames = catalogFilenames(catalog);
 const iosChannels = ['stable', 'beta', 'nightly'] as const;
+const iconChannels = [...iosChannels, 'dev'] as const;
 
-function setDir(channel: (typeof iosChannels)[number], base = root) {
-  return join(base, 'src-desktop', IOS_TESTFLIGHT_CHANNELS[channel].iosIconSet);
+function setDir(channel: (typeof iconChannels)[number], base = root) {
+  return join(base, 'src-desktop/icons', channel, 'ios');
 }
 
 /**
@@ -39,7 +41,13 @@ function setDir(channel: (typeof iosChannels)[number], base = root) {
  * distinct bytes per name (as `tauri ios init` leaves them), and a nightly
  * set whose bytes differ from the template.
  */
-function fixture({ setBytes = (name: string) => `nightly:${name}` } = {}) {
+function fixture({
+  channel = 'nightly',
+  setBytes,
+}: {
+  channel?: (typeof iconChannels)[number];
+  setBytes?: (name: string) => string;
+} = {}) {
   const base = mkdtempSync(join(tmpdir(), 'station-ios-icons-'));
   const fixtureCatalog = join(base, IOS_APP_ICON_CATALOG);
   mkdirSync(fixtureCatalog, { recursive: true });
@@ -49,15 +57,22 @@ function fixture({ setBytes = (name: string) => `nightly:${name}` } = {}) {
   );
   for (const name of committedFilenames)
     writeFileSync(join(fixtureCatalog, name), `template:${name}`);
-  const nightly = setDir('nightly', base);
+  const nightly = setDir(channel, base);
   mkdirSync(nightly, { recursive: true });
   for (const name of committedFilenames)
-    writeFileSync(join(nightly, name), setBytes(name));
+    if (setBytes) writeFileSync(join(nightly, name), setBytes(name));
+    else copyFileSync(join(setDir(channel), name), join(nightly, name));
+  const brand = join(base, 'assets/brand');
+  mkdirSync(brand, { recursive: true });
+  copyFileSync(
+    join(root, 'assets/brand/station-icon-manifest.json'),
+    join(brand, 'station-icon-manifest.json'),
+  );
   return { base, catalog: fixtureCatalog, nightly };
 }
 
 describe('iOS channel icon sets', () => {
-  it.each(iosChannels)(
+  it.each(iconChannels)(
     'commits a %s set carrying every file the catalog Contents.json references',
     (channel) => {
       const dir = setDir(channel);
@@ -70,7 +85,7 @@ describe('iOS channel icon sets', () => {
     },
   );
 
-  it.each(iosChannels)(
+  it.each(iconChannels)(
     'commits a fully opaque %s set (CgBI premultiplication is lossless only at alpha 255)',
     (channel) => {
       expect(translucentIosPngs(setDir(channel))).toEqual([]);
@@ -129,8 +144,8 @@ describe('iOS channel icon sets', () => {
     const applied = applyIosChannelIcons('nightly', { root: base });
     expect(applied.files).toEqual(committedFilenames);
     for (const name of committedFilenames) {
-      expect(readFileSync(join(fixtureCatalog, name), 'utf8')).toBe(
-        `nightly:${name}`,
+      expect(readFileSync(join(fixtureCatalog, name))).toEqual(
+        readFileSync(join(nightly, name)),
       );
     }
     const receipt = verifyIosChannelIcons('nightly', { root: base });
@@ -141,22 +156,17 @@ describe('iOS channel icon sets', () => {
       catalogMatchesChannelSet: true,
     });
     expect(receipt.iconSetSha256).toMatch(/^[0-9a-f]{64}$/);
-    // Apply is bound to a fresh init: a catalog that already holds the set
-    // is indistinguishable from a set that IS the template, so it is refused
-    // rather than accepted, and the catalog is left as it was.
-    expect(() => applyIosChannelIcons('nightly', { root: base })).toThrow(
-      /byte-identical to what the catalog already holds/,
-    );
+    applyIosChannelIcons('nightly', { root: base });
     expect(verifyIosChannelIcons('nightly', { root: base })).toEqual(receipt);
   });
 
-  it('fails closed when the set shares even one file with the template', () => {
+  it('refuses a substituted source even when the catalog shares its bytes', () => {
     const { base } = fixture({
       setBytes: (name) =>
         name === 'AppIcon-512@2x.png' ? `template:${name}` : `nightly:${name}`,
     });
     expect(() => applyIosChannelIcons('nightly', { root: base })).toThrow(
-      /AppIcon-512@2x\.png in .* byte-identical to what the catalog already holds/,
+      /differs from the generated icon manifest/,
     );
   });
 
@@ -178,7 +188,7 @@ describe('iOS channel icon sets', () => {
       setBytes: (name) => `template:${name}`,
     });
     expect(() => applyIosChannelIcons('nightly', { root: base })).toThrow(
-      /byte-identical to what the catalog already holds/,
+      /differs from the generated icon manifest/,
     );
     expect(
       readFileSync(join(fixtureCatalog, committedFilenames[0]), 'utf8'),
@@ -193,6 +203,67 @@ describe('iOS channel icon sets', () => {
       /AppIcon-512@2x\.png/,
     );
   });
+
+  it.each(iconChannels)(
+    'the post-init resource command stages %s icons with a preserved Stable project on first and repeat builds',
+    (channel) => {
+      const {
+        base,
+        catalog: fixtureCatalog,
+        nightly: set,
+      } = fixture({ channel });
+      const identifier =
+        channel === 'dev'
+          ? 'io.kontourai.station.dev.instance'
+          : IOS_TESTFLIGHT_CHANNELS[channel].bundleId;
+      writeFileSync(
+        join(base, 'src-desktop/gen/apple/project.yml'),
+        'settingGroups:\n  app:\n    base:\n      PRODUCT_BUNDLE_IDENTIFIER: io.kontourai.station\n',
+      );
+      writeFileSync(
+        join(base, 'src-desktop/tauri.conf.json'),
+        JSON.stringify({ identifier: 'io.kontourai.station' }),
+      );
+      const overlay = join(base, 'channel.json');
+      writeFileSync(overlay, JSON.stringify({ identifier }));
+      const command = [
+        join(root, 'scripts/write-ios-build-manifest.mjs'),
+        '--config',
+        overlay,
+      ];
+      mkdirSync(join(base, 'src-ui/public'), { recursive: true });
+      mkdirSync(join(base, 'scripts/templates/ios'), { recursive: true });
+      copyFileSync(
+        join(root, 'scripts/templates/ios/LaunchScreen.storyboard'),
+        join(base, 'scripts/templates/ios/LaunchScreen.storyboard'),
+      );
+      const favicon =
+        channel === 'stable' ? 'favicon.png' : `favicon-${channel}.png`;
+      copyFileSync(
+        join(root, 'src-ui/public', favicon),
+        join(base, 'src-ui/public', favicon),
+      );
+      for (let build = 0; build < 2; build++) {
+        execFileSync(process.execPath, command, {
+          cwd: base,
+          stdio: 'pipe',
+          windowsHide: true,
+        });
+        for (const name of committedFilenames)
+          expect(readFileSync(join(fixtureCatalog, name))).toEqual(
+            readFileSync(join(set, name)),
+          );
+      }
+      writeFileSync(join(set, committedFilenames[0]), 'substituted');
+      expect(() =>
+        execFileSync(process.execPath, command, {
+          cwd: base,
+          stdio: 'pipe',
+          windowsHide: true,
+        }),
+      ).toThrow(/differs from the generated icon manifest/);
+    },
+  );
 });
 
 describe.skipIf(process.platform !== 'darwin')(

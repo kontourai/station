@@ -18,7 +18,8 @@ import type {
 } from '@kontourai/station-contracts/workspace-pane';
 import { paneAdaptationFromLayoutTab } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
 import { render, screen } from '@testing-library/react';
-import { afterEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { deviceSettingsStore } from '../../lib/device-settings-store';
 import { FILE_PREVIEW_PANE_DESCRIPTOR } from '../filePreviewPaneInstance';
 
 const mocks = vi.hoisted(() => ({
@@ -100,7 +101,19 @@ function instanceFor(
   } as WorkspacePaneInstance;
 }
 
+const previewSettings = [
+  'developerToolsEnabled',
+  'experimentalFlowEnabled',
+  'experimentalReadinessEnabled',
+  'experimentalTrustEnabled',
+] as const;
+
+beforeEach(() => {
+  for (const key of previewSettings) deviceSettingsStore.set(key, true);
+});
+
 afterEach(() => {
+  deviceSettingsStore.resetMany(previewSettings);
   mocks.identity = { state: 'missing-project-binding' };
 });
 

@@ -7,6 +7,7 @@ import {
   ResponsiveSurfaceActions,
 } from '../../components/ResponsiveDialogSurface';
 import { InstallPluginModal } from './InstallPluginModal';
+import { InstallPreviewExtensionAccess } from './InstallPreviewExtensionAccess';
 import { InstallPreviewModal } from './InstallPreviewModal';
 import { LayoutAssignmentModal } from './LayoutAssignmentModal';
 import type { PluginMessage, PreviewData, ReinstallFromSource } from './types';
@@ -158,6 +159,9 @@ export function PluginModalStack({
       {previewData && (
         <InstallPreviewModal
           previewData={previewData}
+          extensionAccess={
+            <InstallPreviewExtensionAccess preview={previewData} />
+          }
           previewSkips={previewSkips}
           installPending={installPending}
           onClose={onClosePreview}

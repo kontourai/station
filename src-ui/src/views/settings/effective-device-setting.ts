@@ -1,5 +1,5 @@
 /**
- * Epic #2144 slice 2 — the device-scope companion to the server's
+ * The device-scope companion to the server's
  * `settings-effective.ts`: what value a device setting actually has, and
  * whether this device chose it.
  *
@@ -8,7 +8,8 @@
  * and the registry's own declared default can supply a value
  * (docs/design/settings-architecture.md §3 S3).
  *
- * No UI consumer yet — slice 3 renders the badges.
+ * UNWIRED(#2144): no UI consumer yet; the Settings rows' scope and
+ * inheritance badges will call `resolveEffectiveDeviceSetting`.
  */
 
 import type { DeviceSettings } from '@kontourai/station-contracts/device-settings';

@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { countWords } from '../../utils/text-display';
 
 interface ReasoningSectionProps {
   content: string;
@@ -59,36 +60,6 @@ function rememberIntent(key: number, intent: ExplicitIntent): void {
 /** Test seam: the store outlives components by design. */
 export function __resetReasoningDisclosureIntents(): void {
   EXPLICIT_INTENTS.clear();
-}
-
-/**
- * Words, counted so the summary stays honest for scripts without whitespace
- * boundaries. The regex fallback is unreachable in every supported
- * environment (Chromium/WebKit webviews and the Node test runner all ship
- * Intl.Segmenter) — it is a belt, not covered behavior — a 500-character Chinese chain is not "1 word", and that count
- * is the reader's only signal of how much is hidden.
- */
-function countWords(content: string): number {
-  const trimmed = content.trim();
-  if (!trimmed) return 0;
-  const Segmenter = (
-    Intl as typeof Intl & {
-      Segmenter?: new (
-        locale?: string,
-        options?: { granularity?: string },
-      ) => { segment(input: string): Iterable<{ isWordLike?: boolean }> };
-    }
-  ).Segmenter;
-  if (Segmenter) {
-    let count = 0;
-    for (const segment of new Segmenter(undefined, {
-      granularity: 'word',
-    }).segment(trimmed)) {
-      if (segment.isWordLike) count += 1;
-    }
-    return count;
-  }
-  return trimmed.match(/\S+/gu)?.length ?? 0;
 }
 
 export function ReasoningSection({

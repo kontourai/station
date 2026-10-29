@@ -1,0 +1,11 @@
+{
+  "revision": "71cf0ded10af235dc3dc1f72f323bf3e596e7f66",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-read the AccountPreferences and ColorThemes sections. AccountPreferencesProvider now releases the cached account appearance for a refused credential or no connection but not for an unverified authority, and the splash subset rendered by color-theme-css.ts is scoped to the splash element; the module text (account values stay out of origin-wide storage; the renderer writes the splash subset; a signed-in appearance is pre-paint only once rendered on this device) still holds. No prose change.","inputs":["docs/architecture/module-map.md","src-ui/src/contexts/AccountPreferencesProvider.tsx","src-ui/src/lib/color-theme-css.ts"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Updated the appearance-cache sentence: it yields when the account answers or the page resolves to no person, checked against AccountPreferencesProvider's release condition, LocalUiSessionGate's access-required release and their tests.","inputs":["docs/design/settings-architecture.md","src-ui/src/contexts/AccountPreferencesProvider.tsx"]},
+
+    {"path":"docs/guides/theming.md","note":"Re-read the Named color themes section. color-theme-css.ts now scopes the splash subset to the splash element; the guide's statement that gen:color-themes regenerates the splash subset holds, and the pre-paint and slow-sheet rules are owned by the decision record it routes to. No prose change.","inputs":["docs/guides/theming.md","src-ui/src/lib/color-theme-css.ts"]}
+  ]
+}

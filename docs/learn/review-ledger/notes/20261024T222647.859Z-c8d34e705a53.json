@@ -1,0 +1,9 @@
+{
+  "revision": "44147c053cadb5297f223a0e775dd81736f12335",
+
+  "notes": [
+    {"path":"docs/guides/plugins.md","note":"Final round for #2995: the plugin guide now says install refuses a too-long drill-in, and that a plugin copied into plugins/ without installing loses its whole layout from the catalog instead. Checked against parseLayoutDefinition (catalog leaves an invalid definition out) and the install refusal test.","inputs":["docs/guides/plugins.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Final round for #2995: the plugin guide now says install refuses a too-long drill-in, and that a plugin copied into plugins/ without installing loses its whole layout from the catalog instead. This guide routes to the plugin guide without restating it; no change.","inputs":["docs/guides/integrating-station.md","docs/guides/plugins.md"]}
+  ]
+}

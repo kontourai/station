@@ -1,0 +1,9 @@
+{
+  "revision": "12fcf55fa438574273f45480c6c946ed463ff513",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"CI compatibility fix for #3825/#3831 at 12fcf55fa438574273f45480c6c946ed463ff513: inspected the SDK ES2020 tsconfig and both failure-code/kind lookups. Object.prototype.hasOwnProperty.call preserves own-property-only recognition and computed retry eligibility while removing the ES2022 Object.hasOwn dependency; no lib/target or public behavior changed. Existing positive/unknown/inherited-name envelope tests pass. SDK, all examples, Board pane and Basis pane typechecks passed sequentially. Full PR added-line scan found no Object.hasOwn, .at, structuredClone or findLast in package/example/shared consumer sources. No iOS/native build or hosted success is claimed.","inputs":["docs/reference/sdk.md","packages/sdk/src/client/api-error-message.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"CI classification fix for #3825/#3831 at 12fcf55fa438574273f45480c6c946ed463ff513: inspected REPO_SCAN_SUITES, repo-scan runner and path-read-pin-boundary ownership. The existing provider-failure inventory recursively reads real contracts/server trees, so added it to the explicit repo-scan job list rather than exempting its walk. Baseline and post-commit removal fail the exact named walker assertion; restoration passes. Repo-scan runner, selection incident tests and focused feature suites passed (309 tests total). This is additive CI suite coverage, with no workflow, lane threshold, waiver or generated schedule change; existing selector/diagnostic and no-false-completion guidance remains accurate.","inputs":["docs/guides/testing.md","scripts/test-impact-manifest.mjs"]}
+  ]
+}

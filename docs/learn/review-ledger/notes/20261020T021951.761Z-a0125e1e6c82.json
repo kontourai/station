@@ -1,0 +1,7 @@
+{
+  "revision": "db452cd4edde41b1a88e6573a3cf3482e0d903db",
+
+  "notes": [
+    {"path":"AGENTS.md","note":"Checked the Required checks bullet against gh api repos/kontourai/station/rules/branches/main (required_status_checks: Source verification policy, CodeQL JavaScript and TypeScript, Dependency review, Windows PR portable floor, build-ios-verification, Merge-queue regression, PR title policy; fast-checks is not required). The bullet no longer restates the list and names only the two PR-level checks (PR title policy, Source verification policy) an agent must act on, citing the ruleset command as authority. Source-verification statement matches docs/guides/releasing.md (publisher-written status, never written by hand). Other fast-checks mentions in this file describe the hosted job's ownership of readiness and typechecking, not ruleset membership, and remain accurate.","inputs":["AGENTS.md"]}
+  ]
+}

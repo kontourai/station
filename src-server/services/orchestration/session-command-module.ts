@@ -11,8 +11,11 @@ import type {
   ProviderSession,
   ProviderSessionStartInput,
 } from '@kontourai/station-contracts/provider';
+import type { ProviderFailure } from '@kontourai/station-contracts/provider-failure';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
+import { SessionStartRefusedError } from '../../providers/adapter-shape.js';
+import { ProviderRefusalError } from '../../providers/provider-failure.js';
 import type { FullAccessGrant } from '../../security/coding-authority.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { expandTilde } from '../../utils/paths.js';
@@ -81,6 +84,7 @@ export type SessionCommandOutcome =
     }
   | {
       status: 'rejected' | 'failed';
+      failure?: ProviderFailure;
       receipt: OrchestrationCommandReceipt;
       receiptStatus: 'persisted' | 'unavailable';
       message: string;
@@ -146,10 +150,21 @@ export interface ReceiverExecutionEffectAdmission {
 
 /** Service-only recovery choices. They cannot cross the public command seam. */
 export type SessionCommandInternalOptions = {
+  /** Derived from the saved fork owner; retains the actual requester for the spawn recheck. */
+  forkContextRequester?: {
+    userId?: string;
+    tenantExecutionContext?: TenantExecutionContext;
+  };
   /** Borrowed dispatch capability; provider completion cannot release its parent. */
   sessionStartAdmission?: SessionStartBoundaryClaim;
   /** Exact server-owned Task reservation scope; never read from public metadata. */
   roomExecutionBinding?: { projectId: string; taskId: string };
+  /**
+   * Epic #4003: the Task brief built at dispatch. `prepareStart` stamps it as
+   * `TASK_BRIEF_METADATA_KEY` after the reserved-key strip; the first turn
+   * composes it. Never accepted from public JSON.
+   */
+  taskBrief?: { digest: string; text: string };
   /** Captured server-owned action admission; never accepted from public JSON. */
   foregroundInvocationAdmission?: ForegroundInvocationAdmission;
   /** Receiver-owned portable-execution recheck, run inside the effect path. */
@@ -200,6 +215,11 @@ export type SessionCommandInternalOptions = {
   };
   /** Server-derived caller topology; never accepted from a command body. */
   resourceAdmissionIntent?: RuntimeEngineStartIntent;
+  /**
+   * A person's own interactive chat, derived by the `/chat` route
+   * (`ForegroundMessageInput.personChatStart`). Never accepted from a body.
+   */
+  personChatStart?: true;
   /** Opaque controller capability; only the foreground route can carry it. */
 };
 
@@ -377,9 +397,15 @@ interface SessionCommandDependencies {
       context: SessionCommandContext,
       internal: SessionCommandInternalOptions | undefined,
     ): Promise<ProviderSession>;
+    cleanupFailedStart(
+      adapter: ProviderAdapterShape,
+      threadId: string,
+    ): Promise<void>;
     recordStarted(
       adapter: ProviderAdapterShape,
       input: ProviderSessionStartInput,
+      context: SessionCommandContext,
+      internal: SessionCommandInternalOptions | undefined,
     ): void;
     ensureStartedSessionCurrent(
       adapter: ProviderAdapterShape,
@@ -526,6 +552,16 @@ export function createSessionCommandModule(
         receipt: readback ?? terminalReceipt,
         receiptStatus: readback ? 'persisted' : 'unavailable',
         message: errorMessage(error),
+        ...(error instanceof SessionStartRefusedError ||
+        error instanceof ProviderRefusalError
+          ? {
+              failure: {
+                kind: error.kind,
+                retryable: error.retryable,
+                failurePhase: error.failurePhase,
+              },
+            }
+          : {}),
         ...(typeof error === 'object' &&
         error !== null &&
         typeof (error as { code?: unknown }).code === 'string'
@@ -711,30 +747,40 @@ export function createSessionCommandModule(
           context,
           internal,
         );
-        deps.launchPolicy.recordStarted(adapter, startInput);
-        await deps.launchPolicy.ensureStartedSessionCurrent(
-          adapter,
-          session,
-          startInput.signal,
-        );
-        deps.sessionState.attachStarted(
-          session,
-          adapter,
-          context.tenantExecutionContext,
-          startInput,
-        );
-        deps.launchPolicy.logStarted(adapter, startInput);
-        await deps.bindings.bind(startInput, internal);
-        const persisted = persist(receipt, 'persist-accepted');
-        const publicSession = deps.publicSession(session);
-        if (persisted.kind === 'unavailable')
-          return acceptedAfterReceiptFault(persisted.error, publicSession);
-        return {
-          status: 'accepted',
-          receipt,
-          receiptStatus: 'persisted',
-          session: publicSession,
-        };
+        try {
+          deps.launchPolicy.recordStarted(
+            adapter,
+            startInput,
+            context,
+            internal,
+          );
+          await deps.launchPolicy.ensureStartedSessionCurrent(
+            adapter,
+            session,
+            startInput.signal,
+          );
+          deps.sessionState.attachStarted(
+            session,
+            adapter,
+            context.tenantExecutionContext,
+            startInput,
+          );
+          deps.launchPolicy.logStarted(adapter, startInput);
+          await deps.bindings.bind(startInput, internal);
+          const persisted = persist(receipt, 'persist-accepted');
+          const publicSession = deps.publicSession(session);
+          if (persisted.kind === 'unavailable')
+            return acceptedAfterReceiptFault(persisted.error, publicSession);
+          return {
+            status: 'accepted',
+            receipt,
+            receiptStatus: 'persisted',
+            session: publicSession,
+          };
+        } catch (error) {
+          await deps.launchPolicy.cleanupFailedStart(adapter, session.threadId);
+          throw error;
+        }
       } catch (error) {
         if (adapter) deps.launchPolicy.recordGateBlocked(adapter, error);
         throw error;

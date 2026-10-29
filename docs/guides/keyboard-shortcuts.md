@@ -23,6 +23,28 @@ shortcuts are included in Settings export/import; they do not automatically
 synchronize across Devices. The editor is read-only in the mobile layout,
 including narrow desktop windows.
 
+## Command palette
+
+Press **⌘K** on macOS or **Ctrl+K** on Windows and Linux to open the command
+palette from anywhere in Station, including while you are typing in a field. It
+does not open while another dialog is open, and you can rebind it under
+**Settings → Keyboard shortcuts**. There is no on-screen button for it, so a
+phone or tablet without a keyboard cannot open it.
+
+Type to search. Results are grouped into commands, actions (such as opening the
+chat dock, a new Board, the tour or **Report a problem**), places to go,
+plugins, Settings rows, open chats, Projects, workspace panes, Agents and
+skills. After two characters it also searches indexed conversation messages.
+Among close matches, items you use often rank higher; **Reset command history**
+clears that. Choose
+**Workspace search (this Station)** at the top to switch to workspace search.
+
+Use the arrow keys to move, Return to run the highlighted item, and Escape or a
+click outside to close. Running an item usually closes the palette and returns
+focus to where you were. Some items keep it open, such as
+**Reset command history**, which shows whether the reset worked, and a message
+found on another Station, which explains that it cannot be opened here.
+
 ## Return in chat
 
 Choose **Chat settings → Return in chat** on each device. Automatic uses Return
@@ -59,3 +81,29 @@ The [keyboard shortcut module](https://github.com/kontourai/station/blob/main/do
 connects these rules to the editor, registry, device store, import/export owner
 and tests. DOM/storage tests do not qualify every physical keyboard, OS shortcut,
 or native shell.
+
+## Plugin shortcuts
+
+Plugins register shortcuts with the SDK's `useShortcut`. They join the same
+registry under `plugin.<plugin>.<id>`, so they appear in the shortcut list
+(under **Plugins**) and in Settings, and an active modal suppresses them like
+any other. A plugin cannot replace a Station shortcut through the SDK,
+because no Station id starts with `plugin.`. Plugin shortcuts rank below
+Station's own, so a Station shortcut on the same chord wins whichever
+registered first; only Station's "go up a level" Escape fallback yields to a
+plugin. Only a verified plugin's pane can register shortcuts.
+
+The command palette (⌘K), Settings (⌘,) and the shortcut list (⌘/) are
+reserved, so a user can always get back in control of a misbehaving plugin.
+So are the text-editing chords: ⌘C, ⌘V, ⌘X, ⌘Z, ⇧⌘Z and ⌘A, which are Ctrl
+off a Mac, and Ctrl+Y.
+Station refuses a plugin chord that equals one of their defaults or their
+current bindings. If you later move a reserved shortcut onto a plugin's chord,
+or move a plugin shortcut onto a reserved one, the plugin's shortcut stops
+firing. Off a Mac, `cmd` and `ctrl` are the same chord for this check. A
+plugin chord with no Cmd, Ctrl or Alt never fires while focus is in a text
+field.
+
+These rules apply to shortcuts registered through the SDK. A plugin that
+runs inside Station's own page can still listen for keys directly, so they
+are not a sandbox.

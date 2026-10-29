@@ -14,8 +14,6 @@
 
     "packages/shared/src/mcp-ui-csp.ts",
 
-    "pnpm-lock.yaml",
-
     "src-server/routes/agents/tools.ts",
 
     "src-server/runtime/mcp/__tests__/mcp-ui-resolver.test.ts",
@@ -26,7 +24,13 @@
 
     "src-server/runtime/routes/runtime-routes.ts",
 
-    "src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx"
+    "src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx",
+
+    "pnpm-lock.yaml#/packages",
+
+    "pnpm-lock.yaml#/snapshots",
+
+    "src-ui/src/views/agent-editor/AgentToolLibrary.tsx"
   ],
 
   "checks": [

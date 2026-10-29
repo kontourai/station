@@ -1,0 +1,7 @@
+{
+  "revision": "ec26db13aab579375ad1c483260bef9b92b73194",
+
+  "notes": [
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Reviewed the owner-requested consolidation into one feature branch and eventual PR. The historical delivery slices remain separate implementation and acceptance units. No feature is newly declared implemented, qualified or delivered; security review, migration, public SDK and existing terminal/pane ownership requirements remain intact.","inputs":["docs/design/shell-plugins-distributions.md"]}
+  ]
+}

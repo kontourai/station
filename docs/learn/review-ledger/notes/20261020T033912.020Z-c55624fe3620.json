@@ -1,0 +1,11 @@
+{
+  "revision": "cc662ab82cc330a7646750039890b20cf58a7bc5",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Re-reviewed after cc662ab: git writes now build their rejection with apiErrorMessage, so a validation refusal surfaces its details reasons and otherwise the server error sentence. Updated the commit/push paragraph to say so and checked it against projectData.ts postGitWrite and the new validation-refusal case in git-repos-domain.public.test.tsx. Other git/repository claims unchanged.","inputs":["docs/reference/sdk.md","packages/sdk/src/query-domains/projectData.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Re-read after the sdk.md refusal-message wording change: the guide only routes plug-in authors to the SDK reference and makes no claim about git write errors. No prose change.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Re-read after the sdk.md refusal-message wording change: still routes to the SDK reference; nothing here describes git write errors. No prose change.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

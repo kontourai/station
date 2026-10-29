@@ -6,6 +6,7 @@ import {
   ChatHttpError,
   StationRequestTimeoutError,
 } from '@kontourai/station-sdk/client';
+import { bumpContentRefresh } from './contentRefresh';
 
 class ApprovalDeliveryUnconfirmedError extends Error {
   readonly code = 'approval_delivery_unconfirmed';
@@ -20,10 +21,60 @@ export interface ApprovalAnswerReference {
   requestEventId?: string;
 }
 interface ApprovalAnswerState {
-  phase: 'sending' | 'unconfirmed' | 'already-settled';
+  phase: 'sending' | 'sent' | 'unconfirmed' | 'already-settled';
   decision: 'accept' | 'acceptForSession' | 'decline';
+  sessionGrantScope?: 'server';
   error?: Error;
 }
+/**
+ * docs/design/event-content-spill.md: the digest an approval surface
+ * computed after loading every reference of a request whose content was
+ * stored out of line, by (thread, request event). An allow decision for
+ * such a request carries it; the server refuses one without it, so a
+ * surface that never loaded the content cannot allow it.
+ */
+const viewedContentDigests = new Map<string, string>();
+const contentKey = (threadId: string, requestEventId: string) =>
+  JSON.stringify([threadId, requestEventId]);
+export function recordViewedContentDigest(
+  threadId: string,
+  requestEventId: string,
+  digest: string,
+) {
+  if (viewedContentDigests.size >= 256)
+    viewedContentDigests.delete(viewedContentDigests.keys().next().value!);
+  viewedContentDigests.set(contentKey(threadId, requestEventId), digest);
+}
+function viewedContentDigestFor(request: {
+  threadId: string;
+  requestEventId?: string;
+  decision: 'accept' | 'acceptForSession' | 'decline';
+}): string | undefined {
+  if (request.decision === 'decline' || !request.requestEventId)
+    return undefined;
+  return viewedContentDigests.get(
+    contentKey(request.threadId, request.requestEventId),
+  );
+}
+
+// See `contentRefresh.ts`: the 409 marker the card and the toast read.
+export {
+  contentRefreshVersion,
+  subscribeContentRefresh,
+} from './contentRefresh';
+/** Test seam: what a 409 `request_content_not_loaded` triggers. */
+export function requestContentRefreshForTest(
+  threadId: string,
+  requestEventId: string,
+) {
+  requestContentRefresh(threadId, requestEventId);
+}
+
+function requestContentRefresh(threadId: string, requestEventId: string) {
+  viewedContentDigests.delete(contentKey(threadId, requestEventId));
+  bumpContentRefresh(threadId, requestEventId);
+}
+
 const answerListeners = new Set<() => void>();
 export function subscribeApprovalAnswers(listener: () => void) {
   answerListeners.add(listener);
@@ -83,6 +134,9 @@ export async function inspectApprovalAnswer(
       current.state = {
         phase: 'already-settled',
         decision: current.state.decision,
+        ...(current.state.sessionGrantScope
+          ? { sessionGrantScope: current.state.sessionGrantScope }
+          : {}),
       };
       notifyAnswers();
     }
@@ -117,22 +171,33 @@ export function answerOrchestrationRequest(
     requestId: string;
     requestEventId?: string;
     decision: 'accept' | 'acceptForSession' | 'decline';
+    sessionGrantScope?: 'server';
   },
 ): Promise<OrchestrationAnswerOutcome> {
   const key = answerKey(apiBase, request);
   const pending = pendingAnswers.get(key);
+  const scope =
+    request.decision === 'acceptForSession'
+      ? request.sessionGrantScope
+      : undefined;
   if (pending?.state.phase === 'already-settled')
     return Promise.resolve('already-settled');
   if (pending)
     return pending.state.phase === 'unconfirmed' ||
-      pending.state.decision === request.decision
+      (pending.state.decision === request.decision &&
+        pending.state.sessionGrantScope === scope)
       ? pending.result
       : Promise.reject(
           new Error('A decision for this request is still being sent.'),
         );
   if (pendingAnswers.size >= 256) {
     for (const [settledKey, entry] of pendingAnswers) {
-      if (entry.state.phase !== 'already-settled') continue;
+      // Confirmed receipts may age out; uncertain decisions must stay locked.
+      if (
+        entry.state.phase !== 'already-settled' &&
+        entry.state.phase !== 'sent'
+      )
+        continue;
       pendingAnswers.delete(settledKey);
       if (pendingAnswers.size < 256) break;
     }
@@ -146,7 +211,11 @@ export function answerOrchestrationRequest(
     );
   const result = sendAnswer(apiBase, request);
   pendingAnswers.set(key, {
-    state: { phase: 'sending', decision: request.decision },
+    state: {
+      phase: 'sending',
+      decision: request.decision,
+      ...(scope ? { sessionGrantScope: scope } : {}),
+    },
     threadId: request.threadId,
     requestId: request.requestId,
     result,
@@ -160,7 +229,11 @@ export function answerOrchestrationRequest(
   };
   void result.then(
     (outcome) => {
-      if (outcome !== 'already-settled') release();
+      const current = pendingAnswers.get(key);
+      if (current?.result === result && outcome === 'answered') {
+        current.state = { ...current.state, phase: 'sent' };
+        notifyAnswers();
+      }
     },
     (error: unknown) => {
       if (error instanceof ApprovalDeliveryUnconfirmedError) {
@@ -182,11 +255,15 @@ async function sendAnswer(
     requestId: string;
     requestEventId?: string;
     decision: 'accept' | 'acceptForSession' | 'decline';
+    /** With `acceptForSession`: widen the grant to the Station browser server. */
+    sessionGrantScope?: 'server';
   },
 ): Promise<OrchestrationAnswerOutcome> {
+  const viewedContentDigest = viewedContentDigestFor(request);
   try {
     await resolveOrchestrationRequest({
       apiBase,
+      ...(viewedContentDigest ? { viewedContentDigest } : {}),
       threadId: request.threadId,
       requestId: request.requestId,
       // #2316: answer only the exact prompt the user saw.
@@ -194,10 +271,27 @@ async function sendAnswer(
         ? { expectedRequestEventId: request.requestEventId }
         : {}),
       decision: request.decision,
+      ...(request.sessionGrantScope
+        ? { sessionGrantScope: request.sessionGrantScope }
+        : {}),
       timeoutMs: 15_000,
     });
     return 'answered';
   } catch (error) {
+    // The server's binding holds content this card has not loaded (a bound
+    // call that arrived later, or one this surface cannot see): reload it
+    // and let the person allow again. The decision itself was refused.
+    if (
+      request.requestEventId &&
+      error instanceof Error &&
+      'code' in error &&
+      error.code === 'request_content_not_loaded'
+    ) {
+      requestContentRefresh(request.threadId, request.requestEventId);
+      throw new Error(
+        'Station is loading more of this request. Review it, then allow it again.',
+      );
+    }
     let inspected: 'pending' | 'already-settled' | undefined;
     if (request.requestEventId) {
       try {

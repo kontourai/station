@@ -1,10 +1,11 @@
 import { useEffect } from 'react';
+import { PageRow } from '../../components/PageRow';
 import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from '../../contexts/DeviceSettingsContext';
 import { applyAccentColor } from '../../lib/accent-contrast';
-import { settingsRow } from './settings-catalog';
+import './AccentColorPicker.css';
 
 /** Exported so the contrast tests measure the shipped list, not a copy. */
 export const ACCENT_PRESETS = [
@@ -18,7 +19,11 @@ export const ACCENT_PRESETS = [
   '#06b6d4',
 ];
 
-export function AccentColorPicker() {
+export function AccentColorPicker({
+  description = 'Choose an accent color for your interface.',
+}: {
+  description?: string;
+} = {}) {
   const { accentColor } = useDeviceSettings();
   const { setDeviceSetting } = useDeviceSettingsActions();
   const color = accentColor ?? '';
@@ -37,46 +42,46 @@ export function AccentColorPicker() {
     setDeviceSetting('accentColor', nextColor || null);
   };
 
+  // The swatches sit under the copy rather than beside it: the Appearance
+  // page states where the choice is saved once, at the top, so a per-row
+  // scope chip would repeat it and squeeze the row.
   return (
-    <div
-      className="settings__field"
-      {...settingsRow('accent-color')}
-      tabIndex={-1}
-    >
-      <span className="settings__field-label">
-        {settingsRow('accent-color').title}
-      </span>
+    <PageRow title="Accent color" description={description}>
       <div className="settings__accent-row">
         {ACCENT_PRESETS.map((preset) => (
           <button
             key={preset}
             type="button"
             className={`settings__accent-swatch${color === preset ? ' settings__accent-swatch--active' : ''}`}
-            style={{ background: preset }}
+            // backgroundColor, not the `background` shorthand: the shorthand resets
+            // background-clip and would paint the whole 44px target.
+            style={{ backgroundColor: preset }}
             onClick={() => apply(preset)}
             aria-label={`Accent color ${preset}`}
           />
         ))}
-        <input
-          type="color"
-          className="settings__accent-custom"
-          value={color || '#6366f1'}
-          onChange={(event) => apply(event.target.value)}
-          aria-label="Custom accent color"
-        />
+        <label className="settings__accent-custom-hit">
+          <input
+            type="color"
+            className="settings__accent-custom"
+            value={color || '#6366f1'}
+            onChange={(event) => apply(event.target.value)}
+            aria-label="Custom accent color"
+          />
+        </label>
+        {/* Clearing the device value and the account value are the same
+            write here: the store routes `accentColor` to the account when
+            signed in. */}
         {color && (
           <button
             type="button"
             className="settings__accent-reset"
             onClick={() => apply('')}
           >
-            Reset
+            Use default
           </button>
         )}
       </div>
-      <span className="settings__field-hint">
-        Customize the UI accent color. Resets to default on clear.
-      </span>
-    </div>
+    </PageRow>
   );
 }

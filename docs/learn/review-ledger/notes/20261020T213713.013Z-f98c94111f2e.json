@@ -1,0 +1,7 @@
+{
+  "revision": "e9a76230106c598a18a310b814552684a282f36a",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed compact child-work claims against e9a76230106: original content indexes prevent grouped rosters across folded prose; stable child wrapper preserves disclosure/focus as siblings arrive; running progress remains visible. Card model provenance/results and pane/sheet usage stay accessible through expansion; actions retain stop/open targets. Mounted regressions caught the original grouping/progress defects under injected 930acdc5090 source; restored tests passed. Result-notice regression failed on includes(title) and passed with exact redundant-wrapper detection. Browser six journeys passed before cache integration; final combined checks remain separately recorded.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/backgroundTaskRows.tsx","src-ui/src/components/chat-dock/BackgroundTasksSheet.css","src-ui/src/components/chat/BackgroundTaskNoticeCard.tsx"]}
+  ]
+}

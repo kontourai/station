@@ -1,0 +1,9 @@
+{
+  "revision": "cb1c1b8baf0b324b187d46138126fb97c00b6fa9",
+
+  "notes": [
+    {"path":"docs/design/pane-relationships.md","note":"Delta in RegionModelContext.tsx since the last record: one code comment drops an issue tag so the region model is byte-identical with the standalone #3875 repair (fix/related-preview-fold-20261020); no behavior changes. The claims checked in the previous record still hold. No prose changes. Other claims were not re-reviewed.","inputs":["docs/design/pane-relationships.md","src-ui/src/contexts/RegionModelContext.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Delta in RegionModelContext.tsx since the last record: one code comment drops an issue tag so the region model is byte-identical with the standalone #3875 repair; no behavior changes. The openSurfaceInRegion passages checked in the previous record still hold. No prose changes. Other claims were not re-reviewed.","inputs":["docs/design/placement.md","src-ui/src/contexts/RegionModelContext.tsx"]}
+  ]
+}

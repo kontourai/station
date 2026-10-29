@@ -1,0 +1,59 @@
+{
+  "revision": "d17a8842e5d6b3f3e8f5437850732ea9c2800be4",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Re-read the full map. docs/architecture/module-map.md changed only in the ColorThemes interface paragraph (a failed sheet is not claimed and is requested again); the sections this doc links to are unchanged. No prose change.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Re-read the module-map references. docs/architecture/module-map.md changed only in the ColorThemes interface paragraph (a failed sheet is not claimed and is requested again); the sections this doc links to are unchanged. No prose change.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"Re-read the Architecture row. docs/architecture/module-map.md changed only in the ColorThemes interface paragraph (a failed sheet is not claimed and is requested again); the sections this doc links to are unchanged. No prose change.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Re-read the module-map routes. docs/architecture/module-map.md changed only in the ColorThemes interface paragraph (a failed sheet is not claimed and is requested again); the sections this doc links to are unchanged. No prose change.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Re-read the module-map ownership statement. docs/architecture/module-map.md changed only in the ColorThemes interface paragraph (a failed sheet is not claimed and is requested again); the sections this doc links to are unchanged. No prose change.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Changed the ColorThemes interface paragraph: the applier stamps once the sheet has loaded, and a failed sheet is not claimed and is requested again, checked against color-theme-apply.ts and its jsdom and Chromium 404-then-success tests. The selection module change (actionContrast) is described by the existing branding re-rating sentence.","inputs":["docs/architecture/module-map.md","src-ui/src/lib/color-theme-apply.ts","src-ui/src/lib/color-theme-selection.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Re-read section 6 and the L-2 limits. main.tsx now exports its first render as `rendered`, which boot.ts awaits so a themed render that throws reaches the existing recovery; render order, providers, lazy boundaries and the unthemed synchronous render are unchanged. No prose change.","inputs":["docs/design/answer-share-permalinks.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Re-read the module-map citations. docs/architecture/module-map.md changed only in the ColorThemes interface paragraph (a failed sheet is not claimed and is requested again); the sections this doc links to are unchanged. No prose change.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Re-read the branding bullet (line 278). branding-theme.ts now rates --k-action without --k-action-contrast against the theme's text, like the brand; a failing slot group still falls back to the theme; its sentence on falling back still holds. No prose change.","inputs":["docs/design/shell-plugins-distributions.md","docs/guides/theming.md","src-ui/src/lib/branding-theme.ts"]},
+
+    {"path":"docs/glossary.md","note":"Re-read the module-map citation. docs/architecture/module-map.md changed only in the ColorThemes interface paragraph (a failed sheet is not claimed and is requested again); the sections this doc links to are unchanged. No prose change.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Re-read the startup and sidecar interpretation section. main.tsx now exports its first render as `rendered`, which boot.ts awaits so a themed render that throws reaches the existing recovery; render order, providers, lazy boundaries and the unthemed synchronous render are unchanged; the mount commit still follows the first render. No prose change.","inputs":["docs/guides/native-shell-verification.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Re-read the main.tsx publisher claim (line 130). main.tsx now exports its first render as `rendered`, which boot.ts awaits so a themed render that throws reaches the existing recovery; render order, providers, lazy boundaries and the unthemed synchronous render are unchanged. No prose change.","inputs":["docs/guides/responsive-ui.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/guides/theming.md","note":"Added that a first render that throws after the color-theme wait gets the same reload recovery as a failed import, checked against boot.ts and boot-render-recovery.test.ts. branding-theme.ts now rates --k-action without --k-action-contrast against the theme's text, like the brand; a failing slot group still falls back to the theme; the white-label paragraph's group fallback wording still holds. The applier's failed-sheet retry is covered by the decision record this section routes to.","inputs":["docs/guides/theming.md","src-ui/src/lib/branding-theme.ts","src-ui/src/lib/color-theme-apply.ts","src-ui/src/lib/color-theme-selection.ts","src-ui/src/main.tsx"]},
+
+    {"path":"docs/patterns/backend.md","note":"Re-read the composition table. main.tsx now exports its first render as `rendered`, which boot.ts awaits so a themed render that throws reaches the existing recovery; render order, providers, lazy boundaries and the unthemed synchronous render are unchanged. No prose change.","inputs":["docs/patterns/backend.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Re-read the token and theming pointer. main.tsx now exports its first render as `rendered`, which boot.ts awaits so a themed render that throws reaches the existing recovery; render order, providers, lazy boundaries and the unthemed synchronous render are unchanged. No prose change.","inputs":["docs/patterns/frontend.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Re-read the inventory. docs/architecture/module-map.md changed only in the ColorThemes interface paragraph (a failed sheet is not claimed and is requested again); the sections this doc links to are unchanged. No prose change.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/api.md","note":"Re-read the Branding section (lines 2076-2108). branding-theme.ts now rates --k-action without --k-action-contrast against the theme's text, like the brand; a failing slot group still falls back to the theme; its re-rating sentence still holds. No prose change.","inputs":["docs/reference/api.md","src-ui/src/lib/branding-theme.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Re-read the VITE_API_BASE row. main.tsx now exports its first render as `rendered`, which boot.ts awaits so a themed render that throws reaches the existing recovery; render order, providers, lazy boundaries and the unthemed synchronous render are unchanged. No prose change.","inputs":["docs/reference/env-vars.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Re-read the branding and account-preferences sections. main.tsx now exports its first render as `rendered`, which boot.ts awaits so a themed render that throws reaches the existing recovery; render order, providers, lazy boundaries and the unthemed synchronous render are unchanged. No prose change.","inputs":["docs/reference/sdk.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Re-read the section/row claims. docs/architecture/module-map.md changed only in the ColorThemes interface paragraph (a failed sheet is not claimed and is requested again); the sections this doc links to are unchanged. No prose change.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Re-read the topic build description; station-docs-content.ts was regenerated for the updated ColorThemes topic. No prose change.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Re-read the guide. docs/architecture/module-map.md changed only in the ColorThemes interface paragraph (a failed sheet is not claimed and is requested again); the sections this doc links to are unchanged. No prose change.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/native-recovery.md","note":"Re-read the normal packaged start section. main.tsx now exports its first render as `rendered`, which boot.ts awaits so a themed render that throws reaches the existing recovery; render order, providers, lazy boundaries and the unthemed synchronous render are unchanged; reveal still requires the renderer mount. No prose change.","inputs":["docs/user/native-recovery.md","src-ui/src/main.tsx"]},
+
+    {"path":"examples/custom-branding/README.md","note":"Re-read the accepted-values rules and the color-theme bullet. branding-theme.ts now rates --k-action without --k-action-contrast against the theme's text, like the brand; a failing slot group still falls back to the theme; the bullet (slot groups fall back with the same log prefix) still holds. No prose change.","inputs":["examples/custom-branding/README.md","src-ui/src/lib/branding-theme.ts"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Re-read the README. docs/architecture/module-map.md changed only in the ColorThemes interface paragraph (a failed sheet is not claimed and is requested again); the sections this doc links to are unchanged. No prose change.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Re-read the file. docs/architecture/module-map.md changed only in the ColorThemes interface paragraph (a failed sheet is not claimed and is requested again); the sections this doc links to are unchanged. No prose change.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Re-read the file. docs/architecture/module-map.md changed only in the ColorThemes interface paragraph (a failed sheet is not claimed and is requested again); the sections this doc links to are unchanged. No prose change.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}

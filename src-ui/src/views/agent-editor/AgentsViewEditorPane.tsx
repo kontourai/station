@@ -154,9 +154,7 @@ export function AgentsViewEditorPane({
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showOverflow, setShowOverflow] = useState(false);
   const overflowTriggerRef = useRef<HTMLButtonElement>(null);
-  const [addModalType, setAddModalType] = useState<
-    'integrations' | 'skills' | null
-  >(null);
+  const [addModalType, setAddModalType] = useState<'skills' | null>(null);
   const { data: agentConnections = [] } = useEngineConnectionsQuery();
   // archive#4521: the mobile footer is the ONE save affordance on a
   // touch/narrow surface (DetailHeader's own sticky bar below), so the
@@ -641,7 +639,6 @@ export function AgentsViewEditorPane({
       {!editorUnavailable && addModalType && (
         <AgentAddModal
           type={addModalType}
-          availableTools={availableTools}
           availableSkills={availableSkills}
           form={form}
           setForm={setForm}

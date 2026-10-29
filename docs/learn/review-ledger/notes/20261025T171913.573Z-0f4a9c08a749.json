@@ -1,0 +1,7 @@
+{
+  "revision": "f63f6b6a4a9145fca1e62755b046d3b0b170add9",
+
+  "notes": [
+    {"path":"docs/reference/deploy-ledger.md","note":"Reviewed the inherited frozen f711febe9aa deploy-ledger data and generated Markdown after the broad documentation dependency review surfaced its stale input. Executed entry validation and byte-exact deterministic Markdown projection for the checked-in JSON. This checks source shape/projection only; workflow success, current registry/release availability, publication completeness and platform delivery were not reverified. No ledger data or historical qualification was changed.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}

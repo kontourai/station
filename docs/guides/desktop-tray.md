@@ -58,6 +58,11 @@ supervisor phase and no installed-service Start/Stop control. Health alone does
 not grant a service action: [`tray.rs`](../../src-desktop/src/tray.rs) combines it
 with the current Desktop ownership snapshot. All states use the ten-second
 interval from [`service_state.rs`](../../src-desktop/src/service_state.rs).
+The separate home-ownership registry observation is cached for up to a minute;
+a tray health tick does not launch that helper each time. Service control
+admission still checks current ownership before acting. See
+[startup cost](desktop-build.md#startup-cost-and-linux-graphics) for the PATH
+cache, explicit restart refresh, and sidecar exit-check cadence.
 
 The tray reads `/api/system/identity` on the manifest server port and
 `/__station/identity` on the manifest UI port. If API identity requires
@@ -116,8 +121,8 @@ with an explicit PATH; the desktop process never trusts a GUI-launcher PATH.
 The tray resolves only those source-checkout paths. A service installed from a
 prebuilt archive (manifest `kind: "archive"`) runs `bin/station.mjs` instead, or,
 for an installer-owned archive, the fixed service launcher
-at `<install-root>/runtime/station-launcher.mjs` (#2675; on Windows since
-slice W3, with the `node.exe` frozen beside it). Either way
+at `<install-root>/runtime/station-launcher.mjs` (#2675; on Windows too,
+with the `node.exe` frozen beside it). Either way
 the tray finds no command paths, reports it Unhealthy, and refuses its Start
 and Stop actions; use that install's `station service` command.
 For terminal diagnosis, carry the same manifest identity rather than allowing

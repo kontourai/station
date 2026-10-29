@@ -1,14 +1,16 @@
 import type {
-  ConflictInfo,
   PermissionTier,
-  PluginComponent,
   PluginInstallationReadiness,
   PluginInstallationRevision,
+  PluginPreview,
   RejectedInstalledPluginRecord,
 } from '@kontourai/station-contracts/plugin';
+import type { PluginRegistryTrust } from '@kontourai/station-contracts/registry-trust';
 
 export interface ReadyPlugin {
   installationReadiness?: PluginInstallationReadiness;
+  /** Server-persisted registry verification; absent from an older server. */
+  registryTrust?: PluginRegistryTrust;
   retainedOnRemoval?: boolean;
   name: string;
   displayName: string;
@@ -69,24 +71,19 @@ export function isRejectedPlugin(
   return 'status' in plugin && plugin.status === 'rejected';
 }
 
-export type PreviewComponent = PluginComponent;
-
 export interface GitInfo {
   hash: string;
   branch: string;
   remote?: string;
 }
 
-export interface PreviewData {
+export interface PreviewData extends PluginPreview {
   grantRevision?: string;
   registryTrustRevision?: string;
+  /** The verified claim and pin this preview bound; absent from an older server. */
+  registryTrust?: PluginRegistryTrust;
   installationRevision?: PluginInstallationRevision | null;
   existingDataScope?: boolean;
-  valid: boolean;
-  error?: string;
-  manifest?: ReadyPlugin;
-  components: PreviewComponent[];
-  conflicts: ConflictInfo[];
   /**
    * SHA-256 of the staged source the preview inspected (archive#4288).
    * Carried back into `POST /install` so the server can refuse — before it

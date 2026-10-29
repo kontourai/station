@@ -1,0 +1,7 @@
+{
+  "revision": "c6fbaa8f3330ffe4393f92f76bd799824c85a2e5",
+
+  "notes": [
+    {"path":"docs/design/entity-hierarchy.md","note":"AgentEditorForm.test.tsx changed only its station-sdk mock: it now supplies useACPConnectionsQuery (empty), which the approval-default field reads since #3922. No agent-editor behaviour or entity-hierarchy claim changed; the doc's link to the agent editor still holds.","inputs":["docs/design/entity-hierarchy.md","src-ui/src/__tests__/AgentEditorForm.test.tsx"]}
+  ]
+}

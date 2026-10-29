@@ -1,0 +1,7 @@
+{
+  "revision": "b1d73df3238a6461112fbec7f87e95f0efcffbee",
+
+  "notes": [
+    {"path":"packages/monument/README.md","note":"Reviewed the documented compiled-package and scratch-consumer smoke claims against committed b1d73df3238 command-tree ownership repair. Public entrypoints, packaging format, source/declaration/import checks, credentials and CLI options are unchanged. Steps now await existing owned-command lifecycle and bounded capture; timeout, overflow and interruption cannot release scratch while the tree is unproven. The new launcher/descendant regression failed before repair while eighteen controls passed; fixed committed suite passed nineteen, scripts typecheck and lint passed. Launcher-only clean-commit mutation failed the descendant heartbeat assertion while eighteen controls passed, exact restoration is recorded separately. No functional npm release, OIDC or Windows runtime claim is added. README prose remains accurate.","inputs":["packages/monument/README.md","scripts/monument-pack-smoke.mjs","scripts/__tests__/monument-pack-smoke.test.ts"]}
+  ]
+}

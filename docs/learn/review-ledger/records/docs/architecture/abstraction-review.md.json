@@ -82,7 +82,9 @@
 
     "src-server/services/plugins/plugin-installation-generation-fence.ts",
 
-    "src-ui/src/views/settings/KnowledgeStoreSection.tsx"
+    "src-ui/src/views/settings/KnowledgeStoreSection.tsx",
+
+    "packages/telemetry-broker/artifact-manifest.mjs"
   ],
 
   "checks": [

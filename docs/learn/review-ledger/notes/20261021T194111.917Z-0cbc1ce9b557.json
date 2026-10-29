@@ -1,0 +1,7 @@
+{
+  "revision": "58300ad91c42d58ce67d97bcf35946a64f8bd3fb",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed only the canonical formatter's line wrapping of the Build details locator/click chain after the executed Android provenance repair. esbuild transforms before and after formatting produce identical JavaScript. User action, exact summary match, all provenance/geometry assertions and timeouts are unchanged. Prior local full10/10, missing-click mutation failure and exact restoration evidence remain revision-bound to the behaviorally identical source; no new native or live qualification is implied. The coverage matrix's controlled-browser evidence description remains accurate.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/android/mobile-layout.spec.ts"]}
+  ]
+}

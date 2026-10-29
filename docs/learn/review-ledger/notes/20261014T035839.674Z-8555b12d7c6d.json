@@ -1,0 +1,7 @@
+{
+  "revision": "c9cae038abfd9a2420341f8fec6873fc951ee081",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the regenerated station-docs-content.ts: the only change is the shipped module-map/contracts prose for this branch (contended dedup wait ends on release with client_turn_in_flight; ACP start refusal codes). The station-docs reference describes the topic catalog and delivery, which is unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

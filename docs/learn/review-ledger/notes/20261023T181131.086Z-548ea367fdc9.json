@@ -1,0 +1,7 @@
+{
+  "revision": "7dbf7e258ed70493a35713b395e24846f485de4d",
+
+  "notes": [
+    {"path":"deployment/telemetry/README.md","note":"Reviewed clean-source receiver packaging, private exclusive output staging, standalone Compose image selection, bundled Node Dockerfile, digest and inventory rejection, receiver/source/image consistency and explicit build-only authority. Five real-build package/consumer controls passed at 7dbf7e258ed; Docker daemon is unavailable, so no image execution, Compose, install/start/view, release qualification or native claim is made. Existing deployment and credential instructions remain unchanged.","inputs":["deployment/telemetry/README.md","scripts/package-telemetry-companion.mjs","scripts/__tests__/package-telemetry-companion.test.ts"]}
+  ]
+}

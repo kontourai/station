@@ -31,7 +31,11 @@ describe('outbound queue lazy stylesheet boundary (station#2751)', () => {
     expect(component).toContain("import './QueuedMessages.css'");
     expect(localQueue).toContain("import './QueuedMessages.css'");
     expect(chatDock).toContain("import('../chat/OutboundQueuedMessages')");
-    expect(chatDock).toContain("import('../chat/QueuedMessages')");
+    // The local queue loads inside the one pending-message surface's chunk.
+    expect(chatDock).toContain("import('../chat/ConversationInboxMessages')");
+    expect(source('components/chat/ConversationInboxMessages.tsx')).toContain(
+      "from './QueuedMessages'",
+    );
   });
 
   it('keeps the shared queue style authority out of the eager sheet', () => {

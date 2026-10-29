@@ -8,8 +8,12 @@ import type {
 import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { KnowledgeStoreProvider } from '../../knowledge-store/knowledge-store-provider.js';
+import { knowledgeEmbeddingIdentity } from '../embedding-identity.js';
 import { RebuildInProgressError } from '../inflight-guard.js';
-import { SqliteVecIndexProvider } from '../sqlite-vec-index-provider.js';
+import {
+  MAX_KNOWLEDGE_INDEX_SEARCH_K,
+  SqliteVecIndexProvider,
+} from '../sqlite-vec-index-provider.js';
 
 /** In-memory fake mirroring the FileStorageAdapter root-persistence methods —
  * copied from `knowledge-store-provider.test.ts`'s own fixture so this suite has no
@@ -385,5 +389,79 @@ describe('SqliteVecIndexProvider', () => {
     } finally {
       rmSync(storeRoot, { recursive: true, force: true });
     }
+  });
+
+  test('an identity-scoped search admits only chunks of that embedding generation', async () => {
+    await provider.upsert([
+      { ...entry('root:a', 'rec-a', 0, [1, 0, 0]), embeddingIdentity: 'gen-a' },
+      { ...entry('root:a', 'rec-b', 0, [1, 0, 0]), embeddingIdentity: 'gen-b' },
+      entry('root:a', 'rec-unknown', 0, [1, 0, 0]),
+    ]);
+
+    const genA = await provider.search([1, 0, 0], {
+      topK: 5,
+      embeddingIdentity: 'gen-a',
+    });
+    expect(genA.map((h) => h.recordId)).toEqual(['rec-a']);
+
+    // An unscoped search still sees every generation (single-generation callers).
+    const unscoped = await provider.search([1, 0, 0], { topK: 5 });
+    expect(unscoped.map((h) => h.recordId).sort()).toEqual([
+      'rec-a',
+      'rec-b',
+      'rec-unknown',
+    ]);
+
+    expect(
+      (await provider.generations()).sort((x, y) =>
+        String(x.embeddingIdentity).localeCompare(String(y.embeddingIdentity)),
+      ),
+    ).toEqual([
+      { rootId: 'root:a', embeddingIdentity: 'gen-a', chunks: 1 },
+      { rootId: 'root:a', embeddingIdentity: 'gen-b', chunks: 1 },
+      { rootId: 'root:a', embeddingIdentity: null, chunks: 1 },
+    ]);
+    expect(await provider.generations(['root:other'])).toEqual([]);
+  });
+
+  test('rebuildRoot stamps every chunk with the embedder generation', async () => {
+    const persistence = new FakeRootPersistence();
+    const store = new KnowledgeStoreProvider(persistence);
+    const root = await store.createRoot({
+      scope: { kind: 'personal' },
+      adapterId: 'kit-default-store',
+      storeRoot: join(dir, 'store'),
+      displayName: 'Personal knowledge',
+    });
+    const adapter = await store.adapterFor(root.id);
+    await adapter.create({
+      type: 'raw',
+      title: 'Note',
+      body: 'note body',
+      category: 'personal',
+      provenance: { agent: 'test' },
+    });
+    const embedder = new StubEmbedder(4);
+    await provider.rebuildRoot(root.id, { store, embedder });
+
+    expect(await provider.generations([root.id])).toEqual([
+      {
+        rootId: root.id,
+        embeddingIdentity: knowledgeEmbeddingIdentity(embedder),
+        chunks: 1,
+      },
+    ]);
+  });
+
+  test('search refuses a topK sqlite-vec cannot answer instead of truncating it', async () => {
+    await provider.upsert([entry('root:a', 'rec-1', 0, [1, 0, 0])]);
+    await expect(
+      provider.search([1, 0, 0], { topK: MAX_KNOWLEDGE_INDEX_SEARCH_K + 1 }),
+    ).rejects.toThrow(RangeError);
+    await expect(
+      provider.search([1, 0, 0], { topK: MAX_KNOWLEDGE_INDEX_SEARCH_K }),
+    ).resolves.toHaveLength(1);
+    // Pinned next to the constant: sqlite-vec's documented KNN limit.
+    expect(MAX_KNOWLEDGE_INDEX_SEARCH_K).toBe(4096);
   });
 });

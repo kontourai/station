@@ -1,4 +1,6 @@
+import { taskStatusLabel } from '@kontourai/station-contracts/task-graph';
 import type { TaskRecord } from '@kontourai/station-sdk';
+import { StatusBadge } from '@kontourai/ui/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from '../Button';
@@ -36,6 +38,7 @@ interface TaskPickerProps<TTarget> {
   triggerRole?: 'menuitem';
   /** Explicit opener for hosts that mount the dialog after their own trigger. */
   returnFocusTarget?: HTMLElement | null;
+  onNewTask?: (target: TTarget) => void;
   onOpen?: () => void;
   onClose?: () => void;
   onAttached?: (task: TaskPickerTask) => void;
@@ -51,7 +54,7 @@ function sortTasks(tasks: readonly TaskPickerTask[]): TaskPickerTask[] {
 }
 
 function taskDescription(task: TaskPickerTask): string {
-  return task.status ? `${task.id} · ${task.status}` : task.id;
+  return task.status ? taskStatusLabel(task.status) : '';
 }
 
 /** Shared explicit-Task chooser with a captured dialog target. */
@@ -67,6 +70,7 @@ export function TaskPicker<TTarget>({
   hideTrigger = false,
   triggerRole,
   returnFocusTarget,
+  onNewTask,
   onOpen,
   onClose,
   onAttached,
@@ -234,12 +238,16 @@ export function TaskPicker<TTarget>({
                   variant="compact"
                   label={
                     tasks.length === 0
-                      ? 'Tasks are not available'
+                      ? projectId
+                        ? 'No Tasks in this project yet.'
+                        : 'No Tasks yet.'
                       : 'Task search has no matches'
                   }
                   description={
                     tasks.length === 0
-                      ? 'Create a Task before adding this reference.'
+                      ? onNewTask
+                        ? 'Shape this reference into a new Task in chat.'
+                        : 'This project has no Tasks yet.'
                       : 'Try a different Task name or identifier.'
                   }
                 />
@@ -252,6 +260,7 @@ export function TaskPicker<TTarget>({
                         <button
                           type="button"
                           className={`task-picker__task${selected ? ' task-picker__task--selected' : ''}`}
+                          title={task.id}
                           aria-pressed={selected}
                           onClick={() => setSelectedTaskId(task.id)}
                         >
@@ -259,13 +268,29 @@ export function TaskPicker<TTarget>({
                             {task.title}
                           </span>
                           <span className="task-picker__task-meta">
-                            {taskDescription(task)}
+                            {task.status && (
+                              <StatusBadge
+                                tone="neutral"
+                                status={taskDescription(task)}
+                              />
+                            )}
                           </span>
                         </button>
                       </li>
                     );
                   })}
                 </ul>
+              )}
+              {onNewTask && !adapter.isLoading && !adapter.error && (
+                <Button
+                  onClick={() => {
+                    const captured = openTarget;
+                    close();
+                    onNewTask(captured);
+                  }}
+                >
+                  New Task from this
+                </Button>
               )}
               {submissionFailed && (
                 <p className="task-picker__submission-error" role="alert">

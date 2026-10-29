@@ -39,6 +39,7 @@ import {
   type GateEvaluationReadResult,
   readGateEvaluation,
 } from '@kontourai/flow/gate-evaluation-reader';
+import { spawnChildWorkload } from '@kontourai/station-shared/child-workload';
 import { createStationTempDir } from '@kontourai/station-shared/temp-dir';
 import {
   flowEvidenceAttached,
@@ -54,6 +55,7 @@ import { childProcessEnvironment } from '../../utils/child-process-environment.j
 import { errorMessage } from '../../utils/error-message.js';
 import { flowRunDir } from '../evidence/local-artifact-paths.js';
 import { buildSyntheticTrustBundle } from '../evidence/trust-bundle.js';
+import { registerDetachedOwnedChild } from '../infra/process-utils.js';
 
 /**
  * Stable Flow error codes Station branches on. Flow 3 attaches a `code` to its
@@ -68,10 +70,10 @@ export const FLOW_RUN_LOCATION_ALLOCATION_COLLISION =
 export const FLOW_RUN_LOCATION_NO_COMPLETE_CANDIDATE =
   'flow.run_location.no_complete_candidate';
 /** A directory resolved for this run id is not a usable run location. */
-export const FLOW_RUN_LOCATION_RESOLVED_DIR_INVALID =
+const FLOW_RUN_LOCATION_RESOLVED_DIR_INVALID =
   'flow.run_location.resolved_dir_invalid';
 /** Flow could not stat a run artifact for a reason other than absence. */
-export const FLOW_RUN_LOCATION_INSPECTION_FAILED =
+const FLOW_RUN_LOCATION_INSPECTION_FAILED =
   'flow.run_location.inspection_failed';
 
 /** Requested resource (run, definition, workspace) does not exist → 404. */
@@ -350,18 +352,23 @@ function runShellCommand(
 ): Promise<ShellCommandResult> {
   return new Promise((resolvePromise, rejectPromise) => {
     const startedAt = Date.now();
-    const child = spawn(command, {
-      cwd,
-      shell: true,
-      windowsHide: true,
-      env: childProcessEnvironment(),
-      // Own process group (POSIX) so a timeout can kill the whole tree. With
-      // shell:true the command runs as a grandchild of the shell; killing only
-      // the shell leaves the grandchild alive holding the inherited stdio pipes,
-      // so 'close' never fires until it exits on its own — the command appears
-      // to hang far past timeoutMs (a flaky multi-second stall under load).
-      detached: process.platform !== 'win32',
-    });
+    const detached = process.platform !== 'win32';
+    // A POSIX process group lets timeout cleanup reach the command's descendants.
+    const child = spawnChildWorkload(
+      detached ? '/bin/sh' : command,
+      detached ? ['-c', command] : [],
+      {
+        cwd,
+        shell: !detached,
+        windowsHide: true,
+        env: childProcessEnvironment(),
+        detached,
+      },
+    );
+    // #561: the timeout above dies with this process, so register the group
+    // for the startup sweep. The record carries a label, never the command
+    // line, which the sweep would log.
+    if (detached) registerDetachedOwnedChild(child, 'flow shell command');
     let output = '';
     let outputTruncated = false;
     let timedOut = false;

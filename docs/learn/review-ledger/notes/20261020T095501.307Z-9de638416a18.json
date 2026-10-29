@@ -1,0 +1,7 @@
+{
+  "revision": "c6bd77c6e97591d0e98a64f7bef2c24f8db53730",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked the claims citing approvalMode.ts: only the OpenCode full-access description changed, and it now lists questions, plan exits and network-host requests as the requests that may still ask. This document does not describe that copy; no documented claim changes.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/utils/approvalMode.ts"]}
+  ]
+}

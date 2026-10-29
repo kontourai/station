@@ -538,7 +538,7 @@ test('a collapsed batch discloses a cancelled call without being opened', () => 
   expect(screen.getByRole('button').textContent).not.toMatch(/edited/i);
 });
 
-test('a live batch button names the latest running call; the sheet titles the inventory', async () => {
+test('a live batch button keeps the inventory and progress count; the sheet titles the inventory', async () => {
   const run = runFor([
     {
       type: 'tool-invocation',
@@ -568,11 +568,11 @@ test('a live batch button names the latest running call; the sheet titles the in
   expect(
     screen.getByRole('heading', { name: group.aggregateSummary }),
   ).toBeTruthy();
-  expect(group.summary).toBe('Running npm test…');
-  expect(group.aggregateSummary).not.toBe(group.summary);
+  expect(group.summary).toBe('1 file read, 1 command · 1 done');
+  expect(group.aggregateSummary).toBe('1 file read, 1 command');
 });
 
-test('a collapsed in-progress streaming batch shows the call progress on the batch, not a second indicator', async () => {
+test('a collapsed in-progress streaming batch shows the call progress on its live child row, not a second indicator', async () => {
   render(
     <StreamingMessageView
       sessionId="s1"
@@ -605,11 +605,16 @@ test('a collapsed in-progress streaming batch shows the call progress on the bat
     />,
   );
   expect(
-    await screen.findByRole('button', { name: /Running npm test/ }),
+    await screen.findByRole('button', { name: /1 file read, 1 command/ }),
   ).toBeTruthy();
   const progress = screen.getAllByText('still going');
   expect(progress).toHaveLength(1);
-  expect(progress[0].className).toContain('tool-call-batch__progress');
+  expect(progress[0].className).toContain('tool-call-batch__child-progress');
+  expect(
+    progress[0]
+      .closest('.tool-call-batch__child')
+      ?.getAttribute('data-tool-call-id'),
+  ).toBe('b');
   expect(document.querySelector('.streaming-progress')).toBeNull();
 });
 

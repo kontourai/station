@@ -95,7 +95,7 @@ describe('lint scope', () => {
     // If lint:check is rescoped and the ratchet is not, the ratchet silently
     // measures a different tree than the one being enforced.
     const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
-    const lintRoots = pkg.scripts['lint:check'].trim().split(/\s+/).slice(2);
+    const lintRoots = pkg.scripts['lint:check'].trim().split(/\s+/).slice(3);
     expect(lintRoots).toContain('src-ui/');
     expect(biomeLintInvocation().args.slice(3)).toEqual(lintRoots);
   });
@@ -103,6 +103,15 @@ describe('lint scope', () => {
   it('refuses a lint:check it cannot read roots from', () => {
     expect(
       lintCheckRoots('{"scripts":{"lint:check":"biome check src-ui/ tests/"}}'),
+    ).toEqual(['src-ui/', 'tests/']);
+    expect(
+      lintCheckRoots(
+        JSON.stringify({
+          scripts: {
+            'lint:check': 'node scripts/run-biome.mjs check src-ui/ tests/',
+          },
+        }),
+      ),
     ).toEqual(['src-ui/', 'tests/']);
     for (const script of [
       'eslint src-ui/',
@@ -112,6 +121,9 @@ describe('lint scope', () => {
       'biome check --write src-ui/',
       'biome check src-ui/ && tsc',
       'biome check src-ui/ | tee lint.log',
+      'node scripts/unknown.mjs check src-ui/',
+      'node scripts/run-biome.mjs check --write src-ui/',
+      'node scripts/run-biome.mjs check src-ui/ && tsc',
     ]) {
       expect(() =>
         lintCheckRoots(JSON.stringify({ scripts: { 'lint:check': script } })),
@@ -140,12 +152,12 @@ describe('lint scope', () => {
 // #2682: this gate never ran on Windows (its old entry guard never matched a
 // Windows path). Once it did, its `npx.cmd` spawn threw EINVAL there
 // (CVE-2024-27980 hardening). It must reach Biome without any PATH-resolved
-// shim: Biome's own JS launcher under the current Node.
+// shim: the bounded Biome launcher runs under the current Node.
 describe('biome invocation', () => {
-  it("runs Biome's JS launcher under the current Node, not a shim", () => {
+  it('runs the bounded Biome launcher under the current Node', () => {
     const { command, args } = biomeLintInvocation();
     expect(command).toBe(process.execPath);
-    expect(args[0]).toMatch(/[\\/]@biomejs[\\/]biome[\\/]bin[\\/]biome$/);
+    expect(args[0]).toMatch(/[\\/]scripts[\\/]run-biome\.mjs$/);
     expect(existsSync(args[0] ?? '')).toBe(true);
     expect(args[1]).toBe('lint');
   });

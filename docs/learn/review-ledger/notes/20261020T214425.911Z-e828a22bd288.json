@@ -1,0 +1,7 @@
+{
+  "revision": "6e26d568c37c7d6ba5b34553ab63cad46db41a39",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Reviewed the media-manifest formatting delta: parsed docs/learn/media.json matches origin/main exactly, including digests, captions, captured revisions and evidence limits. The guides capture link and its historical qualification remain unchanged; this formatting repair makes no new Starter/runtime claim.","inputs":["docs/guides/starter-work.md","docs/learn/media.json"]}
+  ]
+}

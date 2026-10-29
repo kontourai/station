@@ -1,0 +1,7 @@
+{
+  "revision": "b6cf8936491d03dcb556a963888e353a5edcef62",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked against fix/layout-view-error-flicker: LayoutView, ProjectLayoutRenderer, App and the pane-host action bar now retain a failed layout/catalog read through refetches (useRetainedReadFailure) so the error and dock stop flickering. Only failed-read rendering changed; no claim here about host-action admission, tickets, execution retry, region placement or layout dispatch is affected.","inputs":["docs/architecture/module-map.md","src-ui/src/views/LayoutView.tsx","src-ui/src/workspace-panes/WorkspacePaneHostActions.tsx"]}
+  ]
+}

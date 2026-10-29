@@ -1,0 +1,7 @@
+{
+  "revision": "ac6caf6f3ad28797776b453566378ef6b9c9eeb5",
+
+  "notes": [
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Fix round 4: lock protection rewritten around GitHub's required reviewer rule, checked against the 2026-02-17 changelog and docs.github.com available-rules page (file patterns in .gitignore syntax, teams with write permission, not on user-owned repos, push rulesets for private and internal repos; merge queue behaviour undocumented, marked to confirm) and main's live pull_request rule (required_reviewers []). Dependency table parsed and checked acyclic. d2 and d3 own lock pre-approval and the high-risk exclusion with fixture locks. Keep-after-drop prompt consequences, disclosure on grant growth, and host-owned file-preview import stated. No test executed.","inputs":["docs/design/shell-plugins-distributions.md"]}
+  ]
+}

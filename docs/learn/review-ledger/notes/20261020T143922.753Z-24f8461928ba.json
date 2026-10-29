@@ -1,0 +1,7 @@
+{
+  "revision": "bc1785059a8c588e31dfb5956230ce4babfb848d",
+
+  "notes": [
+    {"path":"docs/reference/env-vars.md","note":"Re-checked after fix round 2 (launcher closes adopted connections a dying generation never took): supervisor.ts still sets STATION_SUPERVISOR_IPC and STATION_SUPERVISOR_GENERATION on each fork and removes STATION_SUPERVISOR_BIRTH and the test switch STATION_SUPERVISOR_TEST_FORCE_CATCHING; no environment behavior changed, so the row stands.","inputs":["docs/reference/env-vars.md","packages/supervisor/src/supervisor.ts"]}
+  ]
+}

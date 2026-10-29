@@ -33,6 +33,18 @@ export type RecoveryTransition =
   | { kind: 'unavailable' };
 
 /**
+ * One startup obligation read. `available` with no obligations proves storage
+ * holds none; `unavailable` proves nothing, so a caller must never treat it as
+ * an empty sweep (#2823). For the two credential scans, rows already fenced
+ * before a mid-scan failure stay durable and are read again by the next scan.
+ * The due scan selects only still-prepared rows, so a due row fenced before
+ * the failure is not returned again.
+ */
+export type RecoveryObligationScan<T> =
+  | { kind: 'available'; obligations: T[] }
+  | { kind: 'unavailable' };
+
+/**
  * The recovery state machine at the orchestration Seam.
  *
  * Callers arm an intent, inspect immutable redacted state, and claim a single
@@ -65,13 +77,15 @@ export interface RecoveryLedger {
     kind?: 'due' | 'profile',
     /** Legacy profile rows have no exact credential receipt authority. */
     unlinkedOnly?: boolean,
-  ): RecoveryIntentSnapshot[];
+  ): RecoveryObligationScan<RecoveryIntentSnapshot>;
   /**
    * Startup-only exact credential settlement work. Prepared rows are changed
    * to indeterminate before returning; accepted rows retain their provider
    * truth so the credential Module can terminalize an adopted receipt.
    */
-  reconcilePreparedCredentials(now: string): RecoveryCredentialStartupHandle[];
+  reconcilePreparedCredentials(
+    now: string,
+  ): RecoveryObligationScan<RecoveryCredentialStartupHandle>;
   terminal(
     fingerprint: string,
     outcome: Extract<
@@ -106,6 +120,14 @@ export interface RecoveryLedger {
   awaitingUser(): RecoveryIntentSnapshot[];
   /** Startup repair: source-terminal events remain authoritative after a canceled write fault. */
   cancelSourceTerminated(now: string): RecoveryTransition;
+  /**
+   * #3563: the startup repair's rule for one intent, checked when its timer
+   * fires. `applied` canceled it; `stale` lets dispatch proceed.
+   */
+  cancelIfSourceTerminated(
+    fingerprint: string,
+    now: string,
+  ): RecoveryTransition;
   cancelShutdownRequested(now: string): RecoveryTransition;
 }
 
@@ -261,6 +283,10 @@ interface RecoveryLedgerCoordinator {
   }): RecoveryTransition;
   awaitingUser(): RecoveryIntentRecord[];
   cancelSourceTerminated(now: string): RecoveryTransition;
+  cancelIfSourceTerminated(
+    fingerprint: string,
+    now: string,
+  ): RecoveryTransition;
   cancelShutdownRequested(now: string): RecoveryTransition;
 }
 
@@ -501,9 +527,9 @@ export function createRecoveryLedger(options: {
           });
           if (intent) reconciled.push(snapshot(intent));
         }
-        return reconciled;
+        return { kind: 'available', obligations: reconciled };
       } catch {
-        return [];
+        return { kind: 'unavailable' };
       }
     },
     reconcilePreparedCredentials: (now) => {
@@ -564,9 +590,9 @@ export function createRecoveryLedger(options: {
             );
           }
         }
-        return reconciled;
+        return { kind: 'available', obligations: reconciled };
       } catch {
-        return [];
+        return { kind: 'unavailable' };
       }
     },
     terminal: (fingerprint, outcome, now) => {
@@ -618,6 +644,13 @@ export function createRecoveryLedger(options: {
     cancelSourceTerminated: (now) => {
       try {
         return options.coordinator.cancelSourceTerminated(now);
+      } catch {
+        return unavailable();
+      }
+    },
+    cancelIfSourceTerminated: (fingerprint, now) => {
+      try {
+        return options.coordinator.cancelIfSourceTerminated(fingerprint, now);
       } catch {
         return unavailable();
       }

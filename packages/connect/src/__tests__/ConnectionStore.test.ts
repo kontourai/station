@@ -994,17 +994,7 @@ describe('ConnectionStore — injected connection', () => {
     expect(reloaded.getAll()[0].name).toBe('Saved');
   });
 
-  it('keeps mobile defaults for different Stations while preserving managed loopback rows', () => {
-    const mobile = new ConnectionStore({ storage: memoryAdapter() });
-    mobile.add('Paired Station', 'https://paired.example.test:8444');
-    mobile.setInjectedConnection({
-      id: 'mobile-default-nightly',
-      name: 'Station Nightly',
-      url: 'https://different.example.test:8444',
-      source: 'mobile-default',
-    });
-    expect(mobile.getAll()).toHaveLength(2);
-
+  it('keeps same-origin paired profiles distinct from a managed loopback without owner identity', () => {
     const desktop = new ConnectionStore({ storage: memoryAdapter() });
     desktop.add('Saved loopback profile', 'http://127.0.0.1:3142');
     desktop.setInjectedConnection(injected);

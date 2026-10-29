@@ -113,9 +113,9 @@ function peerSnapshot(pendingRequest?: Record<string, unknown>) {
 // Created before the cleanup hook below, so it removes the directories
 // after the stores in them have closed (after-hooks run in reverse order).
 const makeTempDir = trackTempDirs();
-const cleanups: Array<() => void> = [];
-afterEach(() => {
-  for (const cleanup of cleanups.splice(0).reverse()) cleanup();
+const cleanups: Array<() => void | Promise<void>> = [];
+afterEach(async () => {
+  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
   vi.unstubAllGlobals();
 });
 
@@ -204,9 +204,7 @@ function fixture() {
     } as never,
     logger: { debug() {}, warn() {} },
   });
-  cleanups.push(() => {
-    service.shutdown();
-  });
+  cleanups.push(() => service.shutdown());
   const threadId = service.recordPeerDelegationActivityDispatch({
     taskId: TASK_ID,
     conversationId: TASK_ID,

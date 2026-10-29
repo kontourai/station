@@ -1,5 +1,14 @@
 # Native relay enrollment
 
+> **Reading status: current contract record for a pilot-gated feature
+> (last changed 2026-10-07).** The
+> [native contract](../../packages/contracts/src/native-relay-enrollment.ts) and
+> the server composition in
+> [`station-runtime.ts`](../../src-server/runtime/bootstrap/station-runtime.ts)
+> own the behaviour; operator setup is in the
+> [self-hosted broker guide](../guides/self-hosted-broker.md). Physical iOS
+> lifecycle and the ordinary UI journey are not qualified (see below).
+
 This page records the native enrollment ceremony and its evidence boundaries.
 Server routes are composed only with `STATION_NATIVE_ENROLLMENT_PILOT=1`, the
 existing native Device-proof pilot, a configured relay and a supported pending
@@ -32,9 +41,13 @@ pending Device. The captured decision retains the actual human actor and
 rechecks Device/account/provider currentness and the target after awaits.
 This does not change the original operator-only pairing routes, enroll an
 account, or grant Project membership. Native Project administration additionally
-requires Project IAM. The account-bound gate now admits only exact native relay
-leaves with current Device/account proof and separate `relay:manage`; ordinary
-credential-only account-bound Devices remain gated. Capabilities grant nothing;
+requires Project IAM. For relay management, the account-bound gate admits only
+exact native leaves with current Device/account proof and separate `relay:manage`;
+ordinary credential-only account-bound Devices remain gated on those leaves.
+The independent [personal analytics leaves](../guides/monitoring.md#connect-a-personal-source-in-insights)
+require a person-bound Device, matching current account session and
+`orchestration:read`; this exception does not qualify native analytics transport.
+Capabilities grant nothing;
 this source addition is not released Nightly, physical-device or two-human proof.
 
 The [connector](../../src-server/services/connections/self-hosted-broker-connector.ts)

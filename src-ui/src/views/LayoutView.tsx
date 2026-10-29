@@ -1,7 +1,6 @@
+import type { AgentQuickPrompt } from '@kontourai/station-contracts/agent';
 import type { AgentId } from '@kontourai/station-contracts/agent-identity';
 import {
-  FullScreenError,
-  FullScreenLoader,
   LayoutNavigationProvider,
   useProjectLayoutQuery,
 } from '@kontourai/station-sdk';
@@ -9,7 +8,14 @@ import { useWorkspacePaneHostActionsQuery } from '@kontourai/station-sdk/workspa
 import { useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { isLayoutRecordAbsent } from '../app-shell/layout-record-absent';
-import { ErrorState } from '../components/state';
+import { Button } from '../components/Button';
+import { ResponsiveSurfaceActions } from '../components/ResponsiveDialogSurface';
+import {
+  describeReadFailure,
+  ErrorState,
+  SkeletonList,
+  useRetainedReadFailure,
+} from '../components/state';
 import { useAgents } from '../contexts/AgentsContext';
 import {
   useApiBase,
@@ -46,16 +52,24 @@ export function LayoutView({
     useNavigation();
 
   const agents = useAgents();
+  const layoutQuery = useProjectLayoutQuery(projectSlug, layoutSlug);
   const {
     data: layoutData,
     isLoading: layoutLoading,
     error: layoutQueryError,
     refetch: refetchLayout,
-  } = useProjectLayoutQuery(projectSlug, layoutSlug);
+  } = layoutQuery;
+  // Held across refetches so a retry (reconnect recovery, SSE resync, the
+  // Retry button) does not drop the failure back to the skeleton and flicker.
+  const layoutFailure = useRetainedReadFailure(layoutQuery);
   // The 404 the API actually answered — shared with `ProjectLayoutRenderer`,
   // which turns on the same answer to substitute an unplaced builtin layout
   // kind (#2065). See `isLayoutRecordAbsent` for why it is one derivation.
-  const layoutMissing = isLayoutRecordAbsent(layoutQueryError, layoutLoading);
+  // Read from the retained failure too, so re-checking a 404 keeps saying so.
+  const layoutMissing = isLayoutRecordAbsent(
+    layoutFailure?.error ?? layoutQueryError,
+    false,
+  );
   // A layout that is gone must not stay the restore target for `/`, or the
   // next cold load routes straight back into this not-found state. Done in an
   // effect, not in render: this is a write, and the render that discovered the
@@ -204,7 +218,7 @@ export function LayoutView({
   const agent = agents.find((a) => a.slug === layout?.defaultAgent);
 
   const handleLaunchPrompt = useCallback(
-    async (prompt: any) => {
+    async (prompt: AgentQuickPrompt) => {
       // Even a stale renderer callback cannot select an unqualified Agent
       // after uninstall, withdrawal, or a catalog/SSE race.
       if (typeof packageId === 'string') {
@@ -297,13 +311,9 @@ export function LayoutView({
   }, [projectSlug, layoutSlug, queryClient]);
 
   const backToProject = (
-    <button
-      type="button"
-      className="editor-btn editor-btn--primary"
-      onClick={() => navigate(`/projects/${projectSlug}`)}
-    >
+    <Button onClick={() => navigate(`/projects/${projectSlug}`)}>
       Back to project
-    </button>
+    </Button>
   );
 
   // 4-HOME-009. A layout that does not exist is a 404 the API already
@@ -314,6 +324,7 @@ export function LayoutView({
   if (layoutMissing) {
     return (
       <ErrorState
+        className="layout-view-state"
         title="Layout not found"
         description={
           <>
@@ -326,22 +337,37 @@ export function LayoutView({
     );
   }
 
-  if (layoutQueryError && !layoutLoading) {
+  // A failure stays on screen while a retry is in flight; only the Retry
+  // button reports the attempt. Dropping to the skeleton on every attempt is
+  // what made an outage flicker.
+  if (layoutFailure) {
     return (
-      <FullScreenError
-        title="Failed to load layout"
-        description="Something went wrong loading this layout. It might be a temporary issue."
-        onRetry={() => refetchLayout()}
-        secondaryAction={{
-          label: 'Back to project',
-          onClick: () => navigate(`/projects/${projectSlug}`),
-        }}
+      <ErrorState
+        className="layout-view-state"
+        title="Couldn't open this layout"
+        description={describeReadFailure(layoutFailure.error)}
+        action={
+          <ResponsiveSurfaceActions>
+            <Button
+              pending={layoutFailure.retrying}
+              onClick={() => void refetchLayout()}
+            >
+              Try again
+            </Button>
+            {backToProject}
+          </ResponsiveSurfaceActions>
+        }
       />
     );
   }
 
   if (layoutLoading) {
-    return <FullScreenLoader label="layout" action={backToProject} />;
+    return (
+      <div className="layout-view-pending">
+        <SkeletonList count={1} label="Opening layout" />
+        {backToProject}
+      </div>
+    );
   }
 
   // The loader's bound: the query has settled, and it did not produce a
@@ -351,19 +377,16 @@ export function LayoutView({
   if (!layout) {
     return (
       <ErrorState
+        className="layout-view-state"
         title="This layout could not be loaded"
         description="Station received an answer for this layout but could not read it."
         action={
-          <>
-            <button
-              type="button"
-              className="editor-btn"
-              onClick={() => void refetchLayout()}
-            >
+          <ResponsiveSurfaceActions>
+            <Button variant="primary" onClick={() => void refetchLayout()}>
               Try again
-            </button>
+            </Button>
             {backToProject}
-          </>
+          </ResponsiveSurfaceActions>
         }
       />
     );
@@ -385,7 +408,7 @@ export function LayoutView({
           activeTab={activeTabObject}
           activeTabId={activeTabId}
           onTabChange={setActiveTabId}
-          agent={agent as any}
+          agent={agent}
           componentId={activeTabObject?.component}
           onLaunchPrompt={handleLaunchPrompt}
           onShowChat={() => setDockState(true)}

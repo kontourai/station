@@ -13,8 +13,13 @@ import React, {
 import { createPortal } from 'react-dom';
 import { useNavigationActions } from '../contexts/NavigationContext';
 import { useIsMobile } from '../hooks/useIsMobile';
+import {
+  afterInitialStartup,
+  initialStartupIsActive,
+} from '../lib/startup-presentation';
 import { activatable } from '../utils/activatable';
 import { Button } from './Button';
+import { Dialog } from './Dialog';
 import { DetailPaneContext } from './detail-pane-context';
 import { DocumentGlyph } from './icons/Glyph';
 import {
@@ -98,6 +103,8 @@ interface SplitPaneItem {
    * `section` text in this layout's own section-header style.
    */
   sectionLabel?: React.ReactNode;
+  /** Controls after the last row; a stable id preserves focus during paging. */
+  sectionFooter?: { id: string; content: React.ReactNode };
   /**
    * Optional presentation-only collapsible group. A group is emitted by a
    * caller as contiguous items; rows outside a group retain the original
@@ -137,6 +144,7 @@ interface SplitPaneLayoutProps {
   emptySections?: readonly string[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  onVisibleItemsChange?: (ids: readonly string[]) => void;
   onDeselect?: () => void;
   onSearch: (query: string) => void;
   searchValue?: string;
@@ -406,6 +414,7 @@ export function SplitPaneLayout({
   emptySections = [],
   selectedId,
   onSelect,
+  onVisibleItemsChange,
   onDeselect,
   onSearch,
   searchValue,
@@ -727,8 +736,12 @@ export function SplitPaneLayout({
       // pending request until the Back control exists; otherwise a commit
       // would clear it before the portal's child has mounted.
       if (!mobileBackButtonRef.current) return;
-      mobileBackButtonRef.current.focus();
-      pendingMobileFocusRef.current = null;
+      const focusBack = () => {
+        mobileBackButtonRef.current?.focus();
+        pendingMobileFocusRef.current = null;
+      };
+      if (initialStartupIsActive()) return afterInitialStartup(focusBack);
+      focusBack();
     } else if (
       pendingFocus === 'return' &&
       isMobile &&
@@ -984,6 +997,13 @@ export function SplitPaneLayout({
       : selectedId !== null && navKeys.includes(`item:${selectedId}`)
         ? `item:${selectedId}`
         : (navKeys[0] ?? null);
+
+  const visibleItemsKey = JSON.stringify(
+    navKeys.filter((key) => key.startsWith('item:')).map((key) => key.slice(5)),
+  );
+  useIsomorphicLayoutEffect(() => {
+    onVisibleItemsChange?.(JSON.parse(visibleItemsKey));
+  }, [onVisibleItemsChange, visibleItemsKey]);
 
   tabStopKeyRef.current = tabStopKey;
 
@@ -1376,7 +1396,7 @@ export function SplitPaneLayout({
             )
           ) : (
             <>
-              {items.map((item, i) => {
+              {items.flatMap((item, i) => {
                 const group = item.group;
                 const previousGroupId = items[i - 1]?.group?.id;
                 const groupStarts = group && group.id !== previousGroupId;
@@ -1399,6 +1419,7 @@ export function SplitPaneLayout({
                     .join(' ') || undefined;
                 const row = (
                   <button
+                    key={`row:${item.id}`}
                     ref={(node) => {
                       if (node) itemButtonRefs.current.set(item.id, node);
                       else itemButtonRefs.current.delete(item.id);
@@ -1460,6 +1481,7 @@ export function SplitPaneLayout({
                 );
                 const rowContent = item.trailing ? (
                   <div
+                    key={`row-content:${item.id}`}
                     className="split-pane__item-row"
                     data-split-pane-line={itemKey}
                   >
@@ -1471,7 +1493,7 @@ export function SplitPaneLayout({
                 ) : (
                   row
                 );
-                return (
+                const entry = (
                   <React.Fragment key={item.id}>
                     {item.section !== undefined &&
                       item.section !== items[i - 1]?.section && (
@@ -1524,6 +1546,18 @@ export function SplitPaneLayout({
                       : rowContent}
                   </React.Fragment>
                 );
+                return item.section &&
+                  item.section !== items[i + 1]?.section &&
+                  item.sectionFooter
+                  ? [
+                      entry,
+                      <React.Fragment
+                        key={`section-footer:${item.sectionFooter.id}`}
+                      >
+                        {item.sectionFooter.content}
+                      </React.Fragment>,
+                    ]
+                  : [entry];
               })}
               {emptySections
                 .filter(
@@ -1582,6 +1616,66 @@ export function SplitPaneLayout({
             ? createPortal(detailContents, detailPortalRootRef.current)
             : null}
       </div>
+    </div>
+  );
+}
+
+/** A supporting rail on desktop, or a focused detail sheet on a phone. */
+export function SplitPaneCompanion({
+  children,
+  companion,
+  sheet,
+  inspection,
+  className,
+}: {
+  children?: React.ReactNode;
+  companion?: React.ReactNode;
+  sheet?: { label: string; onDismiss(): void };
+  className?: string;
+  /** A local supporting inspection slot; its content marks itself with data-companion-content. */
+  inspection?: {
+    containerFit: boolean;
+    rootRef?: React.Ref<HTMLDivElement>;
+    supportRef?: React.Ref<HTMLDivElement>;
+  };
+}) {
+  const mobile = useIsMobile();
+  if (inspection)
+    return (
+      <div
+        ref={inspection.rootRef}
+        className={`split-pane-companion split-pane-companion--inspection${inspection.containerFit ? ' split-pane-companion--container-fit' : ''}${className ? ` ${className}` : ''}`}
+      >
+        <div
+          className="split-pane-companion__support"
+          ref={inspection.supportRef}
+        >
+          {companion}
+        </div>
+        <div className="split-pane-companion__main">{children}</div>
+      </div>
+    );
+  return (
+    <div
+      className={`split-pane-companion${sheet ? ' split-pane-companion--detail' : ''}`}
+    >
+      <div className="split-pane-companion__main">{children}</div>
+      {companion &&
+        (mobile ? (
+          sheet ? (
+            <Dialog
+              title={sheet.label}
+              closeLabel={`Close ${sheet.label.toLowerCase()}`}
+              onClose={sheet.onDismiss}
+              size="lg"
+              panelClassName="split-pane-companion__sheet"
+            >
+              {companion}
+            </Dialog>
+          ) : null
+        ) : (
+          <div className="split-pane-companion__aside">{companion}</div>
+        ))}
     </div>
   );
 }

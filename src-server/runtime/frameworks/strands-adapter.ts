@@ -1,4 +1,5 @@
-import type { UIMessage } from 'ai';
+import { asSchema, type UIMessage } from 'ai';
+import { z } from 'zod';
 import {
   publicAgentIdFromRuntimeKey,
   runtimeAgentKey,
@@ -80,6 +81,8 @@ import {
   loadStrandsTools,
 } from './strands-tool-loader.js';
 import type { CreateAgentOptions } from './voltagent-adapter.js';
+
+const logger = createLogger({ name: 'strands-adapter' });
 
 // ── IAgent wrapper around Strands Agent ────────────────
 
@@ -448,7 +451,13 @@ class StrandsAgentWrapper implements IAgent {
         model: this.strandsAgent.model,
         systemPrompt: (this.strandsAgent as any).systemPrompt,
         tools: [],
-        structuredOutputSchema: schema,
+        structuredOutputSchema: schema._zod
+          ? schema
+          : z.fromJSONSchema(
+              (await asSchema(schema).jsonSchema) as Parameters<
+                typeof z.fromJSONSchema
+              >[0],
+            ),
       });
       const result = await tempAgent.invoke(prompt);
       const text = result.toString();
@@ -470,7 +479,7 @@ class StrandsAgentWrapper implements IAgent {
         .trim();
       object = JSON.parse(cleaned);
     } catch (e) {
-      console.debug('Failed to parse JSON from agent response:', e);
+      logger.debug('Failed to parse JSON from agent response', { error: e });
       object = { raw: text };
     }
     return {

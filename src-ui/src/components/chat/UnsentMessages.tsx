@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { UnsentMessageRecord } from '../../contexts/active-chats-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
+import { copyToClipboard } from '../../lib/clipboard';
 import './UnsentMessages.css';
 
 interface UnsentMessagesProps {
@@ -30,17 +31,16 @@ export function UnsentMessages({ sessionId, messages }: UnsentMessagesProps) {
         (record) => record.id !== id,
       ),
     });
+    // The same message's durable not-sent copy (keyed alike) goes with it.
+    void import('../../lib/outboundQueue')
+      .then(({ outboundDispatch }) => outboundDispatch.discard(id))
+      .catch(() => undefined);
   };
 
   const copy = async (record: UnsentMessageRecord) => {
-    try {
-      await navigator.clipboard.writeText(record.content);
-      setCopiedId(record.id);
-    } catch {
-      // The row itself keeps showing the full text, so a refused clipboard
-      // write costs nothing — and claiming "Copied" here would be false.
-      setCopiedId(null);
-    }
+    // The row itself keeps showing the full text, so a refused clipboard
+    // write costs nothing — and claiming "Copied" here would be false.
+    setCopiedId((await copyToClipboard(record.content)) ? record.id : null);
   };
 
   if (messages.length === 0) return null;

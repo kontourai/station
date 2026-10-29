@@ -1,0 +1,7 @@
+{
+  "revision": "788e3b6b45e9e724dc29ec2f59c5e06b47f4f50d",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Merge of origin/main 1dd83e0f305 (#3991): SessionTurnBoundaryAuthority prose is main's restructure with this branch's graceful-shutdown retention sentences moved into its Projection paragraph; checked against merged session-turn-boundary.ts (SHUTDOWN_RETAINED_BOUNDARY_PREFIXES on session.exited reason orchestration_shutdown), monument decideTurnBoundaryObserveTerminal (prefix skip in main's per-row loop) and event-store SESSION_TURN_TERMINAL_RETIREMENT_PREDICATE. delegation-result-delivery.ts only exports writeTransaction for agent-schedule; the check-backs paragraph's write-transaction claim holds. Source review only.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/delegation-result-delivery.ts"]}
+  ]
+}

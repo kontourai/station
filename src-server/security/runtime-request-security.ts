@@ -9,7 +9,12 @@ import {
   pairingScopeIncludes,
 } from '@kontourai/station-contracts/environment-security';
 import type { SelfHostedBrokerNativeClientSurfaceV2 } from '@kontourai/station-contracts/self-hosted-broker';
+import {
+  MEDIA_UPLOAD_POLICIES,
+  mediaUploadPolicy,
+} from '@kontourai/station-contracts/walkthrough';
 import type { DeploymentAuthenticationService } from '../services/identity/deployment-authentication-service.js';
+import { isOperatorSessionRead } from '../services/identity/operator-sessions.js';
 import type { ClientProtocolPolicy } from './client-protocol-admission.js';
 
 export type RuntimePeerClass = 'loopback' | 'remote' | 'absent';
@@ -21,9 +26,16 @@ export interface RuntimeCredentialActivityContext {
 
 export type RuntimeCredentialAuthority =
   | 'operator-credential'
-  | 'device-credential';
+  | 'device-credential'
+  | 'operator-session';
 export const RUNTIME_CREDENTIAL_AUTHORITY_VAR =
   'stationRuntimeCredentialAuthority';
+
+declare module 'hono' {
+  interface ContextVariableMap {
+    stationRuntimeCredentialAuthority?: RuntimeCredentialAuthority;
+  }
+}
 
 /**
  * The authenticated ingress credential is held only for the lifetime of its
@@ -68,6 +80,15 @@ export interface RuntimeAuthenticatedRequestPrincipal {
   readonly kind?: 'internal' | 'credential';
   readonly credential: string;
   readonly authority: RuntimeCredentialAuthority | undefined;
+  /** Read-only session facts stamped by HTTP admission; no host-locality or device authority. */
+  readonly operatorSession?: {
+    readonly sessionId: string;
+    readonly passkeyId: string;
+    readonly boundDeviceId: string;
+    readonly expiresAt: number;
+    readonly idleExpiresAt: number;
+    readonly isCurrent: () => boolean;
+  };
   /** Server-resolved paired-device identity; never request supplied. */
   readonly deviceId?: string;
   /**
@@ -342,6 +363,7 @@ export interface RuntimeHttpSecurityOptions {
       request: Request,
     ): import('../services/identity/native-enrollment-capability.js').NativeEnrollmentCapability;
   };
+  operatorSessions?: import('../services/identity/operator-sessions.js').OperatorSessionService;
   deploymentAuthentication?: DeploymentAuthenticationService;
   verifyCredential: (
     credential: string,
@@ -466,6 +488,12 @@ export interface RuntimeHttpSecurityOptions {
     import('./native-device-request-authority.js').NativeDeviceRequestAuthority,
     'admit' | 'resolveCurrent'
   >;
+  /**
+   * Telemetry producer tokens, admitted only on the exact ingest leaves
+   * (`isTelemetryIngestRoute`). Absent means a producer token authenticates
+   * nothing.
+   */
+  telemetryProducers?: import('../services/telemetry-producers/telemetry-producer-store.js').TelemetryProducerAuthority;
 }
 
 function isPublicRuntimeRoute(method: string, path: string): boolean {
@@ -1036,7 +1064,7 @@ export type BudgetPrincipalSource =
   | 'loopback'
   | 'native-device';
 
-export const BUDGET_PRINCIPAL_VAR = 'stationBudgetPrincipal';
+const BUDGET_PRINCIPAL_VAR = 'stationBudgetPrincipal';
 
 export interface BudgetPrincipal {
   key: string;
@@ -1200,7 +1228,19 @@ export class RuntimeMutationBudget {
     );
   }
 
-  bodyByteCeiling(mutationClass: RuntimeMutationClass): number {
+  bodyByteCeiling(
+    mutationClass: RuntimeMutationClass,
+    route?: { method: string; path: string },
+  ): number {
+    if (
+      route?.method === 'POST' &&
+      /^\/api\/tasks\/[^/]+\/room\/attachments$/.test(route.path)
+    )
+      return CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES;
+    const upload =
+      route &&
+      mediaUploadPolicy(route.method, route.path, MEDIA_UPLOAD_POLICIES);
+    if (upload) return upload.bytes;
     return mutationClass === 'streaming'
       ? this.#maxStreamingBodyBytes
       : this.#maxStandardBodyBytes;
@@ -1340,6 +1380,12 @@ export function runtimeRequestPrincipalMayAccessHttpRoute(
 ): boolean {
   const principal = getRuntimeAuthenticatedRequestPrincipal(request);
   if (!principal) return false;
+  if (principal.authority === 'operator-session') {
+    return (
+      isOperatorSessionRead(route.method, route.path) &&
+      principal.operatorSession?.isCurrent() === true
+    );
+  }
   if (principal.kind === 'internal')
     return isTrustedInternalApiToken(
       request.headers.get(INTERNAL_API_TOKEN_HEADER) ?? undefined,

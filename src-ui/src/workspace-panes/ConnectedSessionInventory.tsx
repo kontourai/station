@@ -34,6 +34,8 @@ import {
 } from '../components/chat-dock/useSessionInventoryLive';
 import { SkeletonBlock } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
+import { KeepAnswerInTask } from './KeepAnswerInTask';
+import { SessionInventoryItemDetails } from './SessionInventoryItemDetails';
 import {
   clearSessionInventorySelectionsForAuthority,
   commitSessionInventorySelection,
@@ -61,11 +63,16 @@ export function ConnectedSessionInventory({
   sessionId,
   currentProjectId,
   initialScope,
+  onDismiss,
+  titleOwner,
 }: {
   sessionId: string;
   currentProjectId?: string;
   /** A caller-captured occurrence is authoritative over this surface's old whole-session default. */
   initialScope?: SessionInventoryScope;
+  onDismiss?(): void;
+  /** `host` when the caller's chrome already titles this surface (#4176). */
+  titleOwner?: 'pane' | 'host';
 }) {
   const requestScope = useHostRequestAuthorityScope();
   const previousAuthority = useRef(requestScope);
@@ -86,7 +93,7 @@ export function ConnectedSessionInventory({
   if (!requestScope)
     return (
       <section role="alert">
-        Session inventory is unavailable until this Station is authorized.
+        Chat inventory is unavailable until this Station is authorized.
       </section>
     );
   return (
@@ -95,7 +102,9 @@ export function ConnectedSessionInventory({
       sessionId={sessionId}
       currentProjectId={currentProjectId}
       initialScope={initialScope}
+      onDismiss={onDismiss}
       requestScope={requestScope}
+      titleOwner={titleOwner}
     />
   );
 }
@@ -105,11 +114,15 @@ function ConnectedSessionInventorySurface({
   currentProjectId,
   requestScope,
   initialScope,
+  onDismiss,
+  titleOwner,
 }: {
   sessionId: string;
   currentProjectId?: string;
   requestScope: { apiBase: string; authorityKey: string };
   initialScope?: SessionInventoryScope;
+  onDismiss?(): void;
+  titleOwner?: 'pane' | 'host';
 }) {
   const initial = useMemo<SessionInventorySelection>(
     () => ({
@@ -223,23 +236,40 @@ function ConnectedSessionInventorySurface({
   const pageFailed = Boolean(
     page.error && nextPage?.scopeKey === selectedScopeKey,
   );
-  const unavailable = Boolean(inventory.error || pageFailed);
+  // A failed refresh of an inventory already on screen keeps it, marked as
+  // not refreshed; only a read with nothing to show is unavailable. Lost
+  // authority tombstones the data in the SDK, so it lands here too.
+  const unavailable = Boolean(
+    (inventory.error && !inventory.data) || pageFailed,
+  );
   if (unavailable) {
     return (
       <section role="alert">
-        Session inventory is unavailable.
+        Chat inventory is unavailable.
         {pageFailed ? (
           <button type="button" onClick={() => void page.refetch()}>
             Retry page
           </button>
-        ) : null}
+        ) : (
+          <button type="button" onClick={() => void inventory.refetch()}>
+            Retry
+          </button>
+        )}
       </section>
     );
   }
   if (inventory.isLoading || !model)
-    return <SkeletonBlock count={4} label="Loading Session inventory" />;
+    return <SkeletonBlock count={4} label="Loading Chat inventory" />;
   return (
     <>
+      {inventory.error ? (
+        <p role="status">
+          Couldn’t refresh this inventory; showing the last read.{' '}
+          <button type="button" onClick={() => void inventory.refetch()}>
+            Retry
+          </button>
+        </p>
+      ) : null}
       {model.scope.kind === 'current-answer' &&
       projection?.scope.kind === 'current-answer' &&
       projection.basis ? (
@@ -250,8 +280,20 @@ function ConnectedSessionInventorySurface({
           basis={projection.basis}
         />
       ) : null}
+      {model.scope.kind === 'current-answer' &&
+      projection?.scope.kind === 'current-answer' &&
+      projection.basisBinding ? (
+        <KeepAnswerInTask
+          key={JSON.stringify([requestScope, model.scope])}
+          sessionId={model.scope.sessionId}
+          turnId={model.scope.turnId}
+          currentProjectId={currentProjectId}
+          requestScope={requestScope}
+        />
+      ) : null}
       <SessionInventory
         model={model}
+        titleOwner={titleOwner}
         onSelect={(next) => commitSessionInventorySelection(selectionKey, next)}
         scopeOptions={[
           { kind: 'whole-session', sessionId: selection.scope.sessionId },
@@ -282,6 +324,14 @@ function ConnectedSessionInventorySurface({
               });
               setFocusGroupToken((current) => current + 1);
             }}
+          />
+        )}
+        renderDetails={(item) => (
+          <SessionInventoryItemDetails
+            key={item.key}
+            item={item}
+            requestScope={requestScope}
+            onDismiss={onDismiss}
           />
         )}
         repairFocus={model.repairedSelection}

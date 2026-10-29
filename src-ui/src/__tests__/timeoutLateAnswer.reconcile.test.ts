@@ -80,6 +80,11 @@ vi.mock('../lib/outboundQueue', async (importOriginal) => {
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { handleTurnStartedEvent } from '../hooks/orchestration/turnHandlers';
 import { useSendMessage } from '../hooks/useActiveChatSessionMessaging';
+import {
+  _resetOutboundQueueStorage,
+  _setOutboundQueueStorage,
+  outboundDispatch,
+} from '../lib/outboundQueue';
 
 const sessionId = 'timeout-late-answer-chat';
 
@@ -88,7 +93,10 @@ function renderSendMessage() {
   const queryClient = new QueryClient();
   const wrapper = ({ children }: { children: ReactNode }) =>
     createElement(QueryClientProvider, { client: queryClient }, children);
-  return renderHook(() => useSendMessage('http://api.test'), { wrapper });
+  return {
+    ...renderHook(() => useSendMessage('http://api.test'), { wrapper }),
+    queryClient,
+  };
 }
 
 /**
@@ -117,6 +125,16 @@ function retryNotice() {
 describe('transport_timeout followed by the late answer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    const values = new Map<string, unknown>();
+    _setOutboundQueueStorage({
+      getItem: async (key) => values.get(key),
+      setItem: async (key, next) => {
+        values.set(key, next);
+      },
+      updateItem: async (key, updater) => {
+        values.set(key, updater(values.get(key)));
+      },
+    });
     sendExecutionMessageMock.mockRejectedValue(transportTimeoutError());
     activeChatsStore.initChat(sessionId, {
       agentSlug: 'codex',
@@ -129,79 +147,76 @@ describe('transport_timeout followed by the late answer', () => {
   });
 
   afterEach(() => {
+    _resetOutboundQueueStorage();
     activeChatsStore.removeChat(sessionId);
   });
 
-  it('holds the draft with a Retry notice while the turn actually started server-side', async () => {
-    const { result } = renderSendMessage();
-
-    await act(async () => {
-      await result.current(sessionId, 'codex', undefined, 'run the full suite');
-    });
-
-    // The timeout is terminal client-side: failed status, the submitted
-    // draft rolled back into the composer, and a Retry affordance that
-    // reuses the same client turn id.
-    const failed = activeChatsStore.getSnapshot()[sessionId];
-    expect(failed?.status).toBe('error');
-    expect(failed?.input).toBe('run the full suite');
-    expect(retryNotice()?.content).toContain(
-      'Connection to this Station timed out',
-    );
-  });
-
-  it('releases the failed-turn state when the timed-out turn starts late', async () => {
-    const { result } = renderSendMessage();
-
-    await act(async () => {
-      await result.current(sessionId, 'codex', undefined, 'run the full suite');
-    });
-    expect(retryNotice()).toBeDefined();
-
-    // The server kept the turn: its `turn.started` arrives after the
-    // client already failed the send. The failure claim is disproved —
-    // the error, the Retry card, and the held draft must all go.
-    handleTurnStartedEvent({
-      eventId: 'late-turn-started',
-      provider: 'claude',
-      threadId: sessionId,
-      createdAt: '2026-09-22T12:35:00.000Z',
-      method: 'turn.started',
-      turnId: 'provider-turn-late',
-      prompt: 'run the full suite',
-    } as any);
-
-    const reconciled = activeChatsStore.getSnapshot()[sessionId];
-    expect(reconciled?.error).toBeUndefined();
-    expect(retryNotice()).toBeUndefined();
-    expect(reconciled?.input).toBe('');
-    expect(reconciled?.status).toBe('sending');
-    expect(reconciled?.openTurnId).toBe('provider-turn-late');
-  });
-
-  it('never clobbers a composer the user edited after the failure', async () => {
-    const { result } = renderSendMessage();
-
-    await act(async () => {
-      await result.current(sessionId, 'codex', undefined, 'run the full suite');
-    });
-    // The user typed more into the held draft before the late start landed.
-    activeChatsStore.updateChat(sessionId, {
-      input: 'run the full suite plus lint',
-    });
-
-    handleTurnStartedEvent({
-      eventId: 'late-turn-started-edited',
-      provider: 'claude',
-      threadId: sessionId,
-      createdAt: '2026-09-22T12:35:00.000Z',
-      method: 'turn.started',
-      turnId: 'provider-turn-late',
-      prompt: 'run the full suite',
-    } as any);
-
-    expect(activeChatsStore.getSnapshot()[sessionId]?.input).toBe(
-      'run the full suite plus lint',
-    );
-  });
+  it.each([false, true])(
+    'keeps one durable timeout receipt and reconciles a keyed late start (edited composer: %s)',
+    async (edited) => {
+      const { result, queryClient, unmount } = renderSendMessage();
+      try {
+        await act(async () => {
+          await result.current(
+            sessionId,
+            'codex',
+            undefined,
+            'run the full suite',
+          );
+        });
+        expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
+        const { clientTurnId } = sendExecutionMessageMock.mock.calls[0][1];
+        expect(clientTurnId).toEqual(expect.any(String));
+        const waiting = activeChatsStore.getSnapshot()[sessionId];
+        expect(waiting?.status).toBe('queued');
+        expect(waiting?.input).toBe('');
+        expect(retryNotice()).toBeUndefined();
+        expect(await outboundDispatch.snapshot()).toEqual([
+          expect.objectContaining({
+            clientTurnId,
+            content: 'run the full suite',
+            status: 'invoking',
+            awaitingLookup: true,
+          }),
+        ]);
+        const replay = vi.fn();
+        await outboundDispatch.flush(replay, {
+          station: { apiBase: 'http://api.test' },
+        });
+        expect(replay).not.toHaveBeenCalled();
+        if (edited)
+          activeChatsStore.updateChat(sessionId, {
+            input: 'run the full suite plus lint',
+          });
+        act(() =>
+          handleTurnStartedEvent({
+            eventId: 'late-turn-started',
+            provider: 'claude',
+            threadId: sessionId,
+            createdAt: '2026-09-22T12:35:00.000Z',
+            method: 'turn.started',
+            turnId: 'provider-turn-late',
+            clientTurnId,
+            prompt: 'run the full suite',
+          }),
+        );
+        const reconciled = activeChatsStore.getSnapshot()[sessionId];
+        expect(reconciled?.error).toBeUndefined();
+        expect(retryNotice()).toBeUndefined();
+        expect(reconciled?.input).toBe(
+          edited ? 'run the full suite plus lint' : '',
+        );
+        expect(reconciled?.status).toBe('sending');
+        expect(reconciled?.openTurnId).toBe('provider-turn-late');
+        expect(reconciled?.deliveryChecks?.[clientTurnId]).toBe('started');
+        expect(
+          reconciled?.messages?.filter((message) => message.role === 'user'),
+        ).toHaveLength(1);
+        expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
+      } finally {
+        unmount();
+        queryClient.clear();
+      }
+    },
+  );
 });

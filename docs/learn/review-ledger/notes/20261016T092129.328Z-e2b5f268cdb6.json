@@ -1,0 +1,7 @@
+{
+  "revision": "4689cf2c88d62d165ad14de29555ba4f2d4e3ec6",
+
+  "notes": [
+    {"path":"docs/reviews/workspace-map-20261015/README.md","note":"Reviewed merge8dcf4516a96 against both parents, 15 reference conflicts, semantic manifest selection and55 exact image/hash matches. Recorded inherited Gallery advisory policy without upgrading old strict PASS, preserved sidebar/header and upstream fixture fixes, canonical settings generation and285 executed focused tests. New merged render and hosted qualification remain pending.","inputs":["docs/reviews/workspace-map-20261015/README.md"]}
+  ]
+}

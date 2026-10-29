@@ -1,0 +1,28 @@
+{
+  "engine": "auggie",
+  "registry": {
+    "id": "auggie",
+    "version": "0.36.0",
+    "distribution": "npx",
+    "package": "@augmentcode/auggie@0.36.0",
+    "args": ["--acp"],
+    "env": {
+      "AUGMENT_DISABLE_AUTO_UPDATE": "1"
+    }
+  },
+  "initialize": {
+    "protocolVersion": 1,
+    "agentInfo": {
+      "name": "auggie",
+      "title": "Auggie CLI",
+      "version": "0.36.0"
+    },
+    "agentCapabilities": {
+      "loadSession": true,
+      "promptCapabilities": {
+        "image": true
+      }
+    },
+    "authMethods": []
+  }
+}

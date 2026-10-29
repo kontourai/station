@@ -1,0 +1,7 @@
+{
+  "revision": "ecc63fd3f323dae80107925dd25eb7d452d84724",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"#3563: added the SchedulerLedger claims (foreign owner probed before its birth; one unreadable job record quarantined in place, reported once per revision, BuiltinScheduler logs it) and the SessionRecoveryCoordinator startup claim (no timer until the source-terminal repair succeeds; bounded backoff, else next startup). Checked against scheduler-ledger.ts claimIsLive/claimDue/dueOccurrence, builtin-scheduler.ts onQuarantinedJob, session-recovery-coordinator.ts reconcile/retrySourceTerminalRepair.","inputs":["docs/architecture/module-map.md","src-server/services/__tests__/scheduler.test.ts","src-server/services/orchestration/session-recovery-coordinator.ts","src-server/services/scheduling/__tests__/scheduler-ledger.test.ts","src-server/services/scheduling/builtin-scheduler.ts","src-server/services/scheduling/scheduler-ledger.ts"]}
+  ]
+}

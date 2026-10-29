@@ -1,0 +1,7 @@
+{
+  "revision": "40214e0ea87fa57f9ca6e430f21e17d48a4089ed",
+
+  "notes": [
+    {"path":"docs/guides/desktop-build.md","note":"Checked the guide's startup-restore claims against desktop_update.rs after a comment-only change: the guide already says the state reads checking during the restore, matching restore_on_startup and state().","inputs":["docs/guides/desktop-build.md","src-desktop/src/desktop_update.rs"]}
+  ]
+}

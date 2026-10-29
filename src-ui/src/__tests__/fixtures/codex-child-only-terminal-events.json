@@ -1,0 +1,154 @@
+[
+  {
+    "status": "completed",
+    "events": [
+      {
+        "eventId": "writer-start",
+        "provider": "codex",
+        "threadId": "thread-codex",
+        "createdAt": "2026-09-23T00:00:00.000Z",
+        "method": "turn.started",
+        "turnId": "00000000-0000-7000-8000-000000000002",
+        "prompt": "Start"
+      },
+      {
+        "eventId": "5161b1e0-f990-452c-b369-c6184a2c771e",
+        "provider": "codex",
+        "threadId": "thread-codex",
+        "createdAt": "2026-09-24T01:33:09.151Z",
+        "method": "session.state-changed",
+        "sessionId": "thread-codex",
+        "from": "idle",
+        "to": "running"
+      },
+      {
+        "eventId": "836b1b06-f065-49bd-b1de-a30fae021881",
+        "provider": "codex",
+        "threadId": "thread-codex",
+        "createdAt": "2026-09-24T01:33:14.271Z",
+        "method": "token-usage.updated",
+        "turnId": "00000000-0000-7000-8000-000000000002",
+        "promptTokens": 18300,
+        "completionTokens": 75,
+        "totalTokens": 18375,
+        "cacheReadTokens": 1408
+      },
+      {
+        "eventId": "f76321b7-b18c-4dc4-b91a-cdb5680dc3df",
+        "provider": "codex",
+        "threadId": "thread-codex",
+        "createdAt": "2026-09-24T01:33:17.046Z",
+        "method": "child-work.updated",
+        "delta": {
+          "kind": "snapshot",
+          "producer": "engine-subagent",
+          "reporterThreadId": "thread-codex",
+          "running": [
+            {
+              "producer": "engine-subagent",
+              "reporterThreadId": "thread-codex",
+              "childId": "00000000-0000-7000-8000-000000000004",
+              "status": "running",
+              "parent": {
+                "turnId": "00000000-0000-7000-8000-000000000002",
+                "toolCallId": "call_0001"
+              },
+              "depth": 1,
+              "title": "In the current working directory, create a file named hello.txt containing exactly the single word hello. Do not add any other content. Then reply exactly: done",
+              "model": {
+                "id": "gpt-5.5",
+                "source": "spawn-result"
+              },
+              "startedAt": "2026-09-24T01:33:17.046Z"
+            }
+          ]
+        }
+      },
+      {
+        "eventId": "c7b71bf3-2926-4f7b-974b-7e24ed0bbde4",
+        "provider": "codex",
+        "threadId": "thread-codex",
+        "createdAt": "2026-09-24T01:33:17.046Z",
+        "method": "turn.completed",
+        "turnId": "00000000-0000-7000-8000-000000000002",
+        "finishReason": "stop"
+      }
+    ]
+  },
+  {
+    "status": "interrupted",
+    "events": [
+      {
+        "eventId": "writer-start",
+        "provider": "codex",
+        "threadId": "thread-codex",
+        "createdAt": "2026-09-23T00:00:00.000Z",
+        "method": "turn.started",
+        "turnId": "00000000-0000-7000-8000-000000000002",
+        "prompt": "Start"
+      },
+      {
+        "eventId": "59d3731d-15b5-47a6-86fb-67dc33bb1486",
+        "provider": "codex",
+        "threadId": "thread-codex",
+        "createdAt": "2026-09-24T01:33:09.151Z",
+        "method": "session.state-changed",
+        "sessionId": "thread-codex",
+        "from": "idle",
+        "to": "running"
+      },
+      {
+        "eventId": "75dfecdc-e9e2-4a54-87ec-0745ebab62cd",
+        "provider": "codex",
+        "threadId": "thread-codex",
+        "createdAt": "2026-09-24T01:33:14.271Z",
+        "method": "token-usage.updated",
+        "turnId": "00000000-0000-7000-8000-000000000002",
+        "promptTokens": 18300,
+        "completionTokens": 75,
+        "totalTokens": 18375,
+        "cacheReadTokens": 1408
+      },
+      {
+        "eventId": "f63a4e58-404d-4bfb-ac80-b5c997972d9a",
+        "provider": "codex",
+        "threadId": "thread-codex",
+        "createdAt": "2026-09-24T01:33:17.046Z",
+        "method": "child-work.updated",
+        "delta": {
+          "kind": "snapshot",
+          "producer": "engine-subagent",
+          "reporterThreadId": "thread-codex",
+          "running": [
+            {
+              "producer": "engine-subagent",
+              "reporterThreadId": "thread-codex",
+              "childId": "00000000-0000-7000-8000-000000000004",
+              "status": "running",
+              "parent": {
+                "turnId": "00000000-0000-7000-8000-000000000002",
+                "toolCallId": "call_0001"
+              },
+              "depth": 1,
+              "title": "In the current working directory, create a file named hello.txt containing exactly the single word hello. Do not add any other content. Then reply exactly: done",
+              "model": {
+                "id": "gpt-5.5",
+                "source": "spawn-result"
+              },
+              "startedAt": "2026-09-24T01:33:17.046Z"
+            }
+          ]
+        }
+      },
+      {
+        "eventId": "dea0c9e4-07cf-4a30-9277-9780ecf33998",
+        "provider": "codex",
+        "threadId": "thread-codex",
+        "createdAt": "2026-09-24T01:33:17.046Z",
+        "method": "turn.completed",
+        "turnId": "00000000-0000-7000-8000-000000000002",
+        "finishReason": "cancelled"
+      }
+    ]
+  }
+]

@@ -1,0 +1,7 @@
+{
+  "revision": "fa08748729eaaa67830668ab9c34982156ea20b7",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Added turn-jump to the transcript trace phase list; ChatMessageList jumpToTurn emits markTranscriptPhase('turn-jump', { key: traceKey(rowId) }) on the virtualized path, with the key hashed like the other phases. No other claim in the guide changed.","inputs":["docs/guides/development.md"]}
+  ]
+}

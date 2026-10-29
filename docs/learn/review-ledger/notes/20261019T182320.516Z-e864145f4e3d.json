@@ -1,0 +1,7 @@
+{
+  "revision": "c7ea6ff6c65e4f3bbcc2085b8bf605bc283ca797",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"path-read-pin-boundary.test.ts only adds supervised-core.real.test.ts (reads its supervisor control token from an isolated temp home) to UNREPORTED_PATH_READING_SUITES with a reason; the guide makes no claim about that list's members.","inputs":["docs/guides/testing.md","scripts/__tests__/path-read-pin-boundary.test.ts"]}
+  ]
+}

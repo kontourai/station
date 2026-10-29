@@ -1,0 +1,7 @@
+{
+  "revision": "e63c37ad290c6760f56631754489b470d88b6573",
+
+  "notes": [
+    {"path":"docs/guides/web-push-notifications.md","note":"App.tsx change only sources the Settings and shortcut-list chords from the reserved shortcut table (same bindings); push-notification registration in App.tsx is untouched. No prose change.","inputs":["docs/guides/web-push-notifications.md","src-ui/src/App.tsx"]}
+  ]
+}

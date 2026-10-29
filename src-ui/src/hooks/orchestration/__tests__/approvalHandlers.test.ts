@@ -11,9 +11,14 @@ const showToast = vi.fn();
 const getChatForExecutionSession = vi.fn();
 const updateChat = vi.fn();
 const navigate = vi.fn();
+const getSnapshot = vi.fn(() => ({
+  isDockOpen: false,
+  activeChat: null as string | null,
+}));
+const getChatKeyForExecutionSession = vi.fn(() => 'draft-1');
 
 vi.mock('../../../contexts/NavigationContext', () => ({
-  navigationStore: { navigate },
+  navigationStore: { navigate, getSnapshot },
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
@@ -24,7 +29,11 @@ vi.mock('../../../contexts/ToastContext', () => ({
   toastStore: { showToolApproval, show: showToast, dismiss: vi.fn() },
 }));
 vi.mock('../../../contexts/active-chats-store', () => ({
-  activeChatsStore: { getChatForExecutionSession, updateChat },
+  activeChatsStore: {
+    getChatForExecutionSession,
+    getChatKeyForExecutionSession,
+    updateChat,
+  },
 }));
 
 const {
@@ -35,6 +44,8 @@ const {
 const { forgetApprovalAnswer } = await import('../answerRequest');
 beforeEach(() => {
   forgetApprovalAnswer('thread-1', 'req-1');
+  navigate.mockClear();
+  getSnapshot.mockReturnValue({ isDockOpen: false, activeChat: null });
   vi.mocked(resolveOrchestrationRequest)
     .mockReset()
     .mockResolvedValue(undefined);
@@ -398,12 +409,27 @@ describe('#2316: the toast answers the exact prompt it shows', () => {
   });
 
   test.each([
-    [0, 'accept'],
-    [1, 'acceptForSession'],
-    [2, 'decline'],
+    [0, 'accept', false],
+    [1, 'acceptForSession', false],
+    [2, 'decline', false],
+    [0, 'accept', true],
+    [1, 'acceptForSession', true],
+    [2, 'decline', true],
   ] as const)(
-    'action %i sends %s bound to the request event id',
-    async (index, decision) => {
+    'action %i sends %s bound to the request event id (visible draft: %s)',
+    async (index, decision, visibleDraft) => {
+      if (visibleDraft)
+        getChatForExecutionSession.mockReturnValue({
+          title: 'Conversation',
+          agentName: 'Claude',
+          pendingApprovals: [],
+          conversationId: 'conv-1',
+          currentSessionId: 'thread-1',
+        });
+      getSnapshot.mockReturnValue({
+        isDockOpen: visibleDraft,
+        activeChat: visibleDraft ? 'draft-1' : null,
+      });
       handleRequestOpenedEvent(
         'http://localhost:1',
         requestOpened({ toolName: 'Bash', toolInput: { command: 'ls' } }),
@@ -421,12 +447,93 @@ describe('#2316: the toast answers the exact prompt it shows', () => {
         decision,
         timeoutMs: 15_000,
       });
-      expect(navigate).toHaveBeenCalledWith('/', {
-        chat: 'thread-1',
-        dock: 'open',
-      });
+      if (visibleDraft) expect(navigate).not.toHaveBeenCalled();
+      else
+        expect(navigate).toHaveBeenCalledWith('/', {
+          chat: 'thread-1',
+          dock: 'open',
+        });
     },
   );
+});
+
+describe('the Station browser server grant on the toast', () => {
+  const LABEL = 'Allow the Station browser for this session';
+  const browserPayload = {
+    toolName: 'mcp__station-browser__browser_click',
+    toolInput: { ref: 'e1' },
+  };
+
+  beforeEach(() => {
+    showToolApproval.mockClear();
+    vi.mocked(resolveOrchestrationRequest).mockClear();
+    getChatForExecutionSession.mockReturnValue({
+      title: 'Conversation',
+      agentName: 'Claude',
+      pendingApprovals: [],
+    });
+  });
+
+  test('offers the choice beside the per-tool one only when the adapter found the call authentic', () => {
+    handleRequestOpenedEvent(
+      'http://localhost:1',
+      requestOpened({ ...browserPayload, stationBrowserServer: true }),
+    );
+    expect(approvalToast().actions.map((action) => action.label)).toEqual([
+      'Allow Once',
+      'Allow station-browser.browser_click for this session',
+      LABEL,
+      'Deny',
+    ]);
+  });
+
+  test('a call named like the browser tool, without the adapter finding, does not offer it', () => {
+    handleRequestOpenedEvent(
+      'http://localhost:1',
+      requestOpened(browserPayload),
+    );
+    expect(approvalToast().actions.map((action) => action.label)).toEqual([
+      'Allow Once',
+      'Allow station-browser.browser_click for this session',
+      'Deny',
+    ]);
+  });
+
+  test('choosing it sends acceptForSession with the typed server scope', async () => {
+    handleRequestOpenedEvent(
+      'http://localhost:1',
+      requestOpened({ ...browserPayload, stationBrowserServer: true }),
+    );
+    approvalToast()
+      .actions.find((action) => action.label === LABEL)
+      ?.onClick();
+    await vi.waitFor(() =>
+      expect(resolveOrchestrationRequest).toHaveBeenCalled(),
+    );
+    expect(resolveOrchestrationRequest).toHaveBeenCalledWith({
+      apiBase: 'http://localhost:1',
+      threadId: 'thread-1',
+      requestId: 'req-1',
+      expectedRequestEventId: 'evt-1',
+      decision: 'acceptForSession',
+      sessionGrantScope: 'server',
+      timeoutMs: 15_000,
+    });
+  });
+
+  test('the per-tool choice sends no scope', async () => {
+    handleRequestOpenedEvent(
+      'http://localhost:1',
+      requestOpened({ ...browserPayload, stationBrowserServer: true }),
+    );
+    approvalToast().actions[1]?.onClick();
+    await vi.waitFor(() =>
+      expect(resolveOrchestrationRequest).toHaveBeenCalled(),
+    );
+    expect(
+      vi.mocked(resolveOrchestrationRequest).mock.calls[0][0],
+    ).not.toHaveProperty('sessionGrantScope');
+  });
 });
 
 describe('#2344: the toast reports what happened to its answer', () => {
@@ -840,4 +947,105 @@ test('nonblocking question events do not pause or revive chat and do not keep an
   expect(updateChat.mock.lastCall?.[1]).not.toHaveProperty(
     'orchestrationStatus',
   );
+});
+
+describe('docs/design/event-content-spill.md: toasts for requests that need loading', () => {
+  beforeEach(() => {
+    showToolApproval.mockClear();
+  });
+
+  test('a request whose bound call holds spilled arguments offers Review and Deny only', () => {
+    getChatForExecutionSession.mockReturnValue({
+      agentName: 'Codex',
+      approvalToasts: new Map(),
+      pendingApprovals: [],
+      messages: [],
+      streamingMessage: {
+        role: 'assistant',
+        content: '',
+        contentParts: [
+          {
+            type: 'tool-invocation',
+            toolCallId: 'item-fc',
+            toolName: 'apply_patch',
+            contentThreadId: 'thread-1',
+          },
+        ],
+      },
+    });
+    handleRequestOpenedEvent(
+      'http://station.test',
+      requestOpened({ itemId: 'item-fc', threadId: 'codex-thread' }),
+    );
+    expect(approvalToast().actions.map((action) => action.label)).toEqual([
+      'Review',
+      'Deny',
+    ]);
+  });
+
+  test('after the server refuses an allow for unloaded content, the re-shown toast offers Review and Deny', async () => {
+    const chat = {
+      agentName: 'Codex',
+      approvalToasts: new Map(),
+      pendingApprovals: ['req-1'],
+      messages: [],
+      streamingMessage: {
+        role: 'assistant',
+        content: '',
+        contentParts: [
+          {
+            type: 'tool-invocation',
+            toolCallId: 'item-fc',
+            toolName: 'apply_patch',
+          },
+        ],
+      },
+    };
+    getChatForExecutionSession.mockReturnValue(chat);
+    // The toast was built before the spilled bound call reached this chat.
+    const event = {
+      ...requestOpened({ itemId: 'item-fc', threadId: 'codex-thread' }),
+      eventId: 'evt-409',
+    };
+    handleRequestOpenedEvent('http://station.test', event);
+    const first = approvalToast();
+    expect(first.actions.map((action) => action.label)).toContain('Allow Once');
+    vi.mocked(resolveOrchestrationRequest).mockRejectedValueOnce(
+      Object.assign(new Error('Load the full request before allowing it.'), {
+        code: 'request_content_not_loaded',
+      }),
+    );
+    first.actions.find((action) => action.label === 'Allow Once')!.onClick();
+    await vi.waitFor(() => expect(showToolApproval).toHaveBeenCalledTimes(2));
+    expect(
+      showToolApproval.mock.calls[1]![0].actions.map((action) => action.label),
+    ).toEqual(['Review', 'Deny']);
+  });
+
+  test('the same request without spilled content offers Allow', () => {
+    getChatForExecutionSession.mockReturnValue({
+      agentName: 'Codex',
+      approvalToasts: new Map(),
+      pendingApprovals: [],
+      messages: [],
+      streamingMessage: {
+        role: 'assistant',
+        content: '',
+        contentParts: [
+          {
+            type: 'tool-invocation',
+            toolCallId: 'item-fc',
+            toolName: 'apply_patch',
+          },
+        ],
+      },
+    });
+    handleRequestOpenedEvent(
+      'http://station.test',
+      requestOpened({ itemId: 'item-fc', threadId: 'codex-thread' }),
+    );
+    expect(approvalToast().actions.map((action) => action.label)).toContain(
+      'Allow Once',
+    );
+  });
 });

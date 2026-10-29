@@ -36,6 +36,34 @@ export function useMenuFocus<T extends HTMLElement>(
   const ownRef = useRef<T>(null);
   const containerRef = externalRef ?? ownRef;
 
+  // DECLARED FIRST, ahead of focus entry and return. React runs a
+  // component's effect cleanups in declaration order, so this listener is
+  // gone before the return below moves focus back to the trigger. Declared
+  // after it, a cleanup that is not a dismissal — StrictMode replaying the
+  // effects of a menu that MOUNTS open, as a lazily loaded menu does — moved
+  // focus out of the container while this still listened, and the menu
+  // dismissed itself in the task it opened.
+  // Dismiss when focus leaves. `tabIndex={-1}` makes the container focusable
+  // programmatically but does not put it in tab order, and the portal sits at
+  // the end of the document — so without this, Tab walks out of an open menu
+  // and into the app behind it, leaving a popover open over content the user
+  // is now interacting with.
+  useEffect(() => {
+    if (!isOpen || !onClose) return;
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleFocusOut = (event: FocusEvent) => {
+      const next = event.relatedTarget;
+      // Moving between items inside the menu is not leaving it.
+      if (next instanceof Node && container.contains(next)) return;
+      onClose();
+    };
+
+    container.addEventListener('focusout', handleFocusOut);
+    return () => container.removeEventListener('focusout', handleFocusOut);
+  }, [isOpen, onClose, containerRef]);
+
   useEffect(() => {
     if (!isOpen) return;
 
@@ -104,7 +132,13 @@ export function useMenuFocus<T extends HTMLElement>(
     if (!isOpen) return;
     const container = containerRef.current;
     if (!container) return;
-    if (container.getAttribute('role') !== 'menu') return;
+    // A popover whose direct child is the menu (a filter field beside it, as
+    // the Station switcher has) owns the same pattern.
+    if (
+      container.getAttribute('role') !== 'menu' &&
+      !container.querySelector(':scope > [role="menu"]')
+    )
+      return;
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (
@@ -121,7 +155,11 @@ export function useMenuFocus<T extends HTMLElement>(
           /^(input|textarea|select)$/i.test(target.tagName))
       )
         return;
-      const items = [...container.querySelectorAll<HTMLElement>(FOCUSABLE)];
+      // `data-roving-skip` marks a secondary control beside a row (a remove
+      // button) that the row's own keys reach, so arrows step row to row.
+      const items = [
+        ...container.querySelectorAll<HTMLElement>(FOCUSABLE),
+      ].filter((item) => !item.hasAttribute('data-roving-skip'));
       if (items.length === 0) return;
       event.preventDefault();
       event.stopPropagation();
@@ -151,27 +189,6 @@ export function useMenuFocus<T extends HTMLElement>(
     container.addEventListener('keydown', onKeyDown);
     return () => container.removeEventListener('keydown', onKeyDown);
   }, [isOpen, containerRef]);
-
-  // Dismiss when focus leaves. `tabIndex={-1}` makes the container focusable
-  // programmatically but does not put it in tab order, and the portal sits at
-  // the end of the document — so without this, Tab walks out of an open menu
-  // and into the app behind it, leaving a popover open over content the user
-  // is now interacting with.
-  useEffect(() => {
-    if (!isOpen || !onClose) return;
-    const container = containerRef.current;
-    if (!container) return;
-
-    const handleFocusOut = (event: FocusEvent) => {
-      const next = event.relatedTarget;
-      // Moving between items inside the menu is not leaving it.
-      if (next instanceof Node && container.contains(next)) return;
-      onClose();
-    };
-
-    container.addEventListener('focusout', handleFocusOut);
-    return () => container.removeEventListener('focusout', handleFocusOut);
-  }, [isOpen, onClose, containerRef]);
 
   return containerRef;
 }

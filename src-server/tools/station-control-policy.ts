@@ -134,11 +134,17 @@ export type StationControlHttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
  *   under the job's principal) would hand the person's grants to
  *   work they never saw, so it is a person's step (the guard reads the grant
  *   store).
+ * - `wake-up-stays-in-own-conversation`: a wake-up sends a turn into ONE
+ *   conversation, and only the caller's own. A body that names another
+ *   conversation, or a cancel of a wake-up recorded for another (or for
+ *   none Station can read), is refused whoever asks (the guard reads the
+ *   wake-up store, `wakeUpConversation`).
  */
 export type StationControlRouteRule =
   | 'approval-commands-need-bound-operator'
   | 'thread-commands-stay-in-scope'
-  | 'retarget-of-granted-job-is-person-only';
+  | 'retarget-of-granted-job-is-person-only'
+  | 'wake-up-stays-in-own-conversation';
 
 export interface StationControlRoute {
   readonly method: StationControlHttpMethod;
@@ -174,6 +180,11 @@ export interface StationControlToolPolicy {
    * the request reach it rather than answering first with a different body.
    */
   readonly enforcedBy?: 'route';
+  /**
+   * One line appended to an assurance, role or caller refusal of this tool,
+   * naming a tool the agent CAN use instead.
+   */
+  readonly refusalHint?: string;
 }
 
 const get = (path: string): StationControlRoute => ({ method: 'GET', path });
@@ -193,7 +204,14 @@ const put = (
   path,
   ...(rules.length > 0 ? { rules } : {}),
 });
-const del = (path: string): StationControlRoute => ({ method: 'DELETE', path });
+const del = (
+  path: string,
+  ...rules: StationControlRouteRule[]
+): StationControlRoute => ({
+  method: 'DELETE',
+  path,
+  ...(rules.length > 0 ? { rules } : {}),
+});
 
 /**
  * Any verified caller may read; a caller-less request may too (decision 4),
@@ -315,12 +333,32 @@ const DISPATCH: Omit<StationControlToolPolicy, 'routes'> = {
 
 const NAVIGATE_ROUTE = post('/api/ui');
 
+/** What an agent refused `add_job` can do instead. */
+const SCHEDULING_HINT =
+  'To check back in this chat later, use schedule_wake_up. To ask the person for a scheduled job, use propose_job.';
+
+const DEVICE_AGENT = {
+  assurance: 'bound',
+  role: 'project',
+  projectAction: 'edit',
+  toolClass: 'mutating',
+  personOnly: 'never',
+  enforcedBy: 'route',
+  routes: [post('/api/device-agent/:operation')],
+} as const satisfies StationControlToolPolicy;
+
 export const STATION_CONTROL_TOOL_POLICY = {
+  device_list: DEVICE_AGENT,
+  device_open: DEVICE_AGENT,
+  device_screenshot: DEVICE_AGENT,
+  device_snapshot: DEVICE_AGENT,
+  device_input: DEVICE_AGENT,
+  device_close: DEVICE_AGENT,
+
   // ── agents + conversations ─────────────────────────────────────────────
   list_agents: { ...READ, routes: [get('/agents')] },
-  // Reaches `GET /agents/:slug`, which has no handler (404) — recorded as it
-  // is; routing it to `GET /api/agents/:slug` is a separate fix.
-  get_agent: { ...READ, routes: [get('/agents/:slug')] },
+  // Picks one agent out of the bare listing; no route serves `GET /agents/:slug`.
+  get_agent: { ...READ, routes: [get('/agents')] },
   create_agent: { ...OPERATOR_MUTATION, routes: [post('/agents')] },
   update_agent: { ...OPERATOR_MUTATION, routes: [put('/agents/:slug')] },
   delete_agent: { ...OPERATOR_MUTATION, routes: [del('/agents/:slug')] },
@@ -348,6 +386,30 @@ export const STATION_CONTROL_TOOL_POLICY = {
     toolClass: 'mutating',
     personOnly: 'never',
     routes: [del('/agents/:slug/conversations/:conversationId')],
+  },
+
+  // Reads the source as the session's owner and writes a new conversation,
+  // so a Project `execute` action, as starting a Session is. The route holds
+  // the caller to its scope twice (`refuseOutOfScopeDispatch`): the source
+  // must be a conversation its scope admits (`view`), and the fork lands only
+  // where it could start a Session (`execute`). A bound operator keeps the
+  // operator's reach.
+  fork_conversation: {
+    assurance: 'any',
+    role: 'project',
+    projectAction: 'execute',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [post('/agents/:slug/conversations/:conversationId/fork')],
+  },
+
+  search_conversations: {
+    ...SELF_READ,
+    routes: [get('/api/conversations/work/search')],
+  },
+  list_active_work: {
+    ...SELF_READ,
+    routes: [get('/api/orchestration/session-activity/active-work')],
   },
 
   // #176: search reads as the session's owner (`POST /api/search` answers
@@ -391,6 +453,18 @@ export const STATION_CONTROL_TOOL_POLICY = {
     toolClass: 'mutating',
     personOnly: 'never',
     routes: [post('/api/board/move')],
+  },
+  list_personal_boards: { ...SELF_READ, routes: [get('/api/me/layouts')] },
+  get_personal_board: {
+    ...SELF_READ,
+    routes: [get('/api/me/boards/:layoutSlug')],
+  },
+  propose_personal_board: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [post('/api/me/boards/:layoutSlug/proposal')],
   },
   board_read: {
     ...SELF_READ,
@@ -469,7 +543,51 @@ export const STATION_CONTROL_TOOL_POLICY = {
     // Decision 1: a job that runs with every tool trusted runs host code
     // unattended, so asking for it is a person's step.
     personOnly: 'when-trust-all-tools',
+    refusalHint: SCHEDULING_HINT,
     routes: [post('/scheduler/jobs')],
+  },
+  // Self-scoped scheduling for any verified caller: the routes read the
+  // caller's own conversation from the verified credential, never the body
+  // (`routes/orchestration/agent-schedule.ts`), and the route rule refuses a
+  // request that names another conversation. A wake-up sends its turn with
+  // the conversation's existing permissions; a job proposal creates nothing
+  // until a person approves it through the scheduler route.
+  schedule_wake_up: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [
+      post(
+        '/api/orchestration/station-control/wake-ups',
+        'wake-up-stays-in-own-conversation',
+      ),
+    ],
+  },
+  list_wake_ups: {
+    ...SELF_READ,
+    routes: [get('/api/orchestration/station-control/wake-ups')],
+  },
+  cancel_wake_up: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [
+      del(
+        '/api/orchestration/station-control/wake-ups/:wakeUpId',
+        'wake-up-stays-in-own-conversation',
+      ),
+    ],
+  },
+  propose_job: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'mutating',
+    // A job that trusts every tool is a person's own choice; it is never
+    // proposable.
+    personOnly: 'when-trust-all-tools',
+    routes: [post('/api/orchestration/station-control/job-proposals')],
   },
   list_scheduler_providers: { ...READ, routes: [get('/scheduler/providers')] },
   get_scheduler_stats: { ...READ, routes: [get('/scheduler/stats')] },
@@ -640,10 +758,22 @@ export const STATION_CONTROL_TOOL_POLICY = {
 
   // ── operations: Project activity (#3413) ───────────────────────────────
   // Owner-scoped reads (decision 2): each answers with what the caller's owner
-  // may read. The routes then hold every Session to the one scope rule
+  // may read. The routes then hold every other Session to the one scope rule
   // (`stationControlScopeRefusal`, Project `view`): a caller that is not bound
   // stays in its own Project or the global space, and another Project's
-  // Sessions read as absent. Each owns its leaf and shares none.
+  // Sessions read as absent. The caller's own conversation is its own whatever
+  // its scope. Each owns its leaf and shares none.
+  list_walkthroughs: {
+    ...SELF_READ,
+    routes: [get('/api/projects/:projectSlug/walkthroughs')],
+  },
+  get_walkthrough: {
+    ...SELF_READ,
+    routes: [
+      get('/api/projects/:projectSlug/walkthroughs/:id'),
+      get('/api/projects/:projectSlug/walkthroughs/:id/frames/:frameId'),
+    ],
+  },
   list_project_activity: {
     ...SELF_READ,
     routes: [get('/api/orchestration/session-activity')],
@@ -651,6 +781,34 @@ export const STATION_CONTROL_TOOL_POLICY = {
   get_session_digest: {
     ...SELF_READ,
     routes: [get('/api/orchestration/session-activity/:sessionId/digest')],
+  },
+
+  // ── operations: work claims (#3413 part B) ─────────────────────────────
+  // A Session's own declaration of what it is on. Any verified caller with a
+  // recorded owner; the routes take the claimant from the verified caller and
+  // read another Session's claim as absent. Each writes a durable record, so
+  // mutating (as `declare_pull_request`), not a bounded write. Each owns its
+  // leaf and shares none.
+  claim_work: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/work-claims')],
+  },
+  renew_claim: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/work-claims/:claimId/renew')],
+  },
+  release_claim: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/work-claims/:claimId/release')],
   },
 
   // ── operations: SSH environments ───────────────────────────────────────
@@ -717,6 +875,25 @@ export const STATION_CONTROL_TOOL_POLICY = {
     ...SELF_READ,
     serverIds: ['station-knowledge'],
     routes: [get('/api/knowledge/roots')],
+  },
+  list_project_s3_sources: {
+    ...SELF_READ,
+    serverIds: ['station-knowledge'],
+    routes: [get('/api/knowledge/s3-sources/projects/:projectSlug')],
+  },
+  list_project_s3_objects: {
+    ...SELF_READ,
+    serverIds: ['station-knowledge'],
+    routes: [
+      get('/api/knowledge/s3-sources/projects/:projectSlug/:sourceId/objects'),
+    ],
+  },
+  read_project_s3_object: {
+    ...SELF_READ,
+    serverIds: ['station-knowledge'],
+    routes: [
+      get('/api/knowledge/s3-sources/projects/:projectSlug/:sourceId/object'),
+    ],
   },
   list_knowledge_records: {
     serverIds: ['station-knowledge'],
@@ -808,6 +985,28 @@ export const STATION_CONTROL_TOOL_POLICY = {
 
   // ── basis + session inventory (MCP App tools) ──────────────────────────
   // Each reads its sessions and Tasks with the owner's session authority.
+  get_answer_assessment_target: {
+    ...SELF_READ,
+    routes: [
+      get(
+        '/api/orchestration/sessions/:sessionId/turns/:turnId/assessment/target',
+      ),
+    ],
+  },
+  publish_answer_assessment: {
+    ...SELF_READ,
+    toolClass: 'mutating',
+    routes: [
+      put('/api/orchestration/sessions/:sessionId/turns/:turnId/assessment'),
+    ],
+  },
+  remove_answer_assessment: {
+    ...SELF_READ,
+    toolClass: 'mutating',
+    routes: [
+      del('/api/orchestration/sessions/:sessionId/turns/:turnId/assessment'),
+    ],
+  },
   get_basis: {
     ...SELF_READ,
     routes: [
@@ -833,6 +1032,16 @@ export const STATION_CONTROL_TOOL_POLICY = {
   },
 
   // ── declared outputs ───────────────────────────────────────────────────
+  read_pull_request_guide: {
+    ...OPERATOR_READ,
+    routes: [get('/api/pull-requests/:provider/:host/:owner/:repo/:ref/guide')],
+  },
+  write_pull_request_guides: {
+    ...OPERATOR_MUTATION,
+    routes: [
+      post('/api/pull-requests/:provider/:host/:owner/:repo/:ref/guide'),
+    ],
+  },
   // #3161: records a pull request on the caller's OWN session and the turn it
   // is running, in the event store at that turn's completion. The route reads
   // the session from the verified caller, never the body, and holds it to the
@@ -846,8 +1055,70 @@ export const STATION_CONTROL_TOOL_POLICY = {
     personOnly: 'never',
     routes: [post('/api/orchestration/station-control/declare-pull-request')],
   },
+  // Epic #4003: the brief for the caller's OWN Task. The route reads the
+  // session from the verified caller and the Task from that session's
+  // immutable room execution binding; the tool takes no arguments.
+  get_task_brief: {
+    ...SELF_READ,
+    routes: [get('/api/orchestration/station-control/task-brief')],
+  },
+  // #4003: write the Task memory of the caller's OWN Session's Task: one
+  // summary revision, or one keyed record version. The routes read the
+  // Session from the verified caller and the Task from its immutable room
+  // execution binding, never the body, and hold it to the one scope rule.
+  // Bounded writes: every bound is a refusal, every earlier revision or
+  // version is kept, and neither reaches the room document or Task status.
+  task_summary_update: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'bounded-write',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/station-control/task-summary')],
+  },
+  task_record: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'bounded-write',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/station-control/task-record')],
+  },
+
+  task_thread_list: {
+    ...SELF_READ,
+    routes: [get('/api/orchestration/station-control/task-threads')],
+  },
+  task_thread_reply: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'bounded-write',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/station-control/task-thread-reply')],
+  },
+  task_thread_resolve: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'bounded-write',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/station-control/task-thread-resolve')],
+  },
 
   // ── notify ─────────────────────────────────────────────────────────────
+  html_render: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'bounded-write',
+    personOnly: 'never',
+    enforcedBy: 'route',
+    routes: [post('/api/html-replies/render')],
+  },
+  html_preview: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'bounded-write',
+    personOnly: 'never',
+    enforcedBy: 'route',
+    routes: [post('/api/html-replies/preview')],
+  },
   notify_user: {
     assurance: 'any',
     role: 'self',
@@ -855,6 +1126,13 @@ export const STATION_CONTROL_TOOL_POLICY = {
     personOnly: 'never',
     enforcedBy: 'route',
     routes: [post('/api/notifications/agent')],
+  },
+  // The route answers only for the session the forwarded credential names
+  // (its own scope's counters); without one it refuses.
+  workload_status: {
+    ...READ,
+    enforcedBy: 'route',
+    routes: [get('/api/system/workload/session')],
   },
 } as const satisfies Record<string, StationControlToolPolicy>;
 
@@ -902,13 +1180,55 @@ const STATION_CONTROL_REFUSAL_CODES = [
    * from a caller that is not a bound operator.
    */
   'station_control_posture_not_allowed',
+  /**
+   * A caller that is not bound aims a dispatch, steer or follow-up outside
+   * its own scope (another Project, the global space, a Project it cannot
+   * confirm, a Session that runs `host`, another Station). The refusal's
+   * `reason` says which ({@link StationControlOutOfScopeReason}).
+   */
+  'station_control_out_of_scope',
 ] as const;
 export type StationControlRefusalCode =
   (typeof STATION_CONTROL_REFUSAL_CODES)[number];
 
+/**
+ * Why the scope rule refused a caller that is not bound
+ * (`station_control_out_of_scope`). Each has fixed copy; none names a
+ * Project, so a refusal never tells the caller more about a Session than
+ * that it is outside the caller's own scope, and in which direction.
+ */
+export const STATION_CONTROL_OUT_OF_SCOPE_REASONS = [
+  /** The caller runs in a Project; the target is in another Project. */
+  'other-project',
+  /** The caller runs in a Project; the target is in the global space. */
+  'global-space',
+  /** The caller runs in the global space; the target is in a Project. */
+  'project-from-global',
+  /**
+   * The target's Project is not one the caller's owner can use here: Station
+   * cannot confirm it (no such Project, a folder missing, moved or outside
+   * it), or, for a new Session, the owner may not dispatch in the Project
+   * named. One reason for both, so a refusal never tells whether a Project
+   * the owner is not a member of exists.
+   */
+  'target-unavailable',
+  /** Station cannot confirm the caller's own Project. */
+  'unreadable-caller',
+  /** The target, or a Session of its conversation, runs unconfined. */
+  'host',
+  /** The target is on another Station. */
+  'remote',
+  /** A wake-up names, or belongs to, a conversation that is not the caller's own. */
+  'other-conversation',
+] as const;
+export type StationControlOutOfScopeReason =
+  (typeof STATION_CONTROL_OUT_OF_SCOPE_REASONS)[number];
+
 export interface StationControlRefusal {
   readonly code: StationControlRefusalCode;
   readonly message: string;
+  /** Only on `station_control_out_of_scope`, when the rule knows why. */
+  readonly reason?: StationControlOutOfScopeReason;
 }
 
 /** The body both the server guard and the tool-side check return. */
@@ -916,8 +1236,14 @@ export function stationControlRefusalBody(refusal: StationControlRefusal): {
   success: false;
   code: StationControlRefusalCode;
   error: string;
+  reason?: StationControlOutOfScopeReason;
 } {
-  return { success: false, code: refusal.code, error: refusal.message };
+  return {
+    success: false,
+    code: refusal.code,
+    error: refusal.message,
+    ...(refusal.reason ? { reason: refusal.reason } : {}),
+  };
 }
 
 const REFUSAL_MESSAGES: Record<StationControlRefusalCode, string> = {
@@ -933,6 +1259,28 @@ const REFUSAL_MESSAGES: Record<StationControlRefusalCode, string> = {
     'No station-control tool reaches this Station route, so Station refuses it for internal callers.',
   station_control_posture_not_allowed:
     "An agent may not choose the approval mode of a Session it starts or continues. Send the request without one. Without an approval mode, the Session uses the conversation's recorded mode, else the Agent's saved default, else this Station's default. Ask the person to change the mode in Station if it needs to differ.",
+  // The copy when the reason is not known (the spawn-side recheck, whose
+  // refusal crosses the dispatch as a code only).
+  station_control_out_of_scope:
+    'That Session would run outside your own scope, or its folder is no longer the one Station admitted. An agent that Station does not host in-process may start or steer Sessions only in its own Project (or, from the global space, only in the global space), on this Station, and never one that runs unconfined. To start a new Session in your own Project, omit projectSlug and projectPath; otherwise ask the person to do it in Station.',
+};
+
+/** The bound ("Station hosts it in-process") rule, said once for every reason. */
+const SCOPE_RULE =
+  'An agent that Station does not host in-process may start or steer Sessions only in its own scope.';
+
+const OUT_OF_SCOPE_MESSAGES: Record<StationControlOutOfScopeReason, string> = {
+  'other-project': `That Session is outside your Project: it runs in another Project. ${SCOPE_RULE} To start a new Session in your own Project, omit projectSlug and projectPath. Otherwise ask the person to do it in Station.`,
+  'global-space': `That Session is outside your Project: it runs in the global space (no Project). ${SCOPE_RULE} To start a new Session in your own Project, omit projectSlug and projectPath. Otherwise ask the person to do it in Station.`,
+  'project-from-global': `You run in the global space (no Project), and that Session is in a Project. ${SCOPE_RULE} From the global space, name a folder that no Project contains, or omit projectSlug and projectPath. Otherwise ask the person to do it in Station.`,
+  'target-unavailable':
+    "That Session's Project isn't one this Session can use: it doesn't exist on this Station, the person this Session acts for may not do this there, or the folder is missing, moved or outside that Project. Omit projectSlug and projectPath to use your own Project, or ask the person to do it in Station.",
+  'unreadable-caller': `Station cannot confirm which Project your own Session belongs to, so it cannot tell whether that Session is in your scope. ${SCOPE_RULE} Ask the person to do it in Station.`,
+  host: 'That Session runs unconfined (host), so only the person, or an agent Station hosts in-process, can steer it. Ask the person to do it in Station.',
+  'other-conversation':
+    'You can only schedule or cancel check-backs in your own chat.',
+  remote:
+    'That would run on another Station (a saved Environment, or a portable Project another Station offers). Only the person, or an agent Station hosts in-process acting for the operator, may reach another Station. Omit environmentId and name a Project on this Station (or none, for your own Project), or ask the person to do it in Station.',
 };
 
 export function stationControlRefusal(
@@ -941,11 +1289,25 @@ export function stationControlRefusal(
   return { code, message: REFUSAL_MESSAGES[code] };
 }
 
+/** `station_control_out_of_scope` with the fixed copy for its reason. */
+export function stationControlOutOfScopeRefusal(
+  reason: StationControlOutOfScopeReason,
+): StationControlRefusal {
+  return {
+    code: 'station_control_out_of_scope',
+    message: OUT_OF_SCOPE_MESSAGES[reason],
+    reason,
+  };
+}
+
 // ── evaluation ─────────────────────────────────────────────────────────────
 
 /** The verified-caller facts evaluation reads; the rest is irrelevant here. */
 export interface StationControlPolicyCaller {
   readonly assurance: 'bound' | 'delegated-custody' | 'bearer-exposed';
+  /** Its own session, and that session's conversation when it has one. */
+  readonly sessionId?: string;
+  readonly conversationId?: string;
   readonly principal?: {
     readonly id: string;
     readonly elevationEligible: boolean;
@@ -1040,9 +1402,15 @@ export interface StationControlDispatchTarget {
  *   thread that runs `host`.
  *
  * The refusal names what would have admitted it:
- * `station_control_assurance_insufficient` when a bound caller acting for
- * the same person would pass, `station_control_role_required` when no
- * credential would.
+ * `station_control_assurance_insufficient` when only a bound caller acting
+ * for the same person would pass and the rule may not say more (a target it
+ * cannot read, or another owner's, reads the same as one that does not
+ * exist); `station_control_role_required` when no credential would; and
+ * `station_control_out_of_scope`, with its reason, when the caller's own
+ * owner holds the target but it lies outside the caller's scope: another
+ * Station, a Project Station cannot confirm, a Session that runs `host`, or
+ * another Project or the global space. That one the agent can act on: stay
+ * in its own scope, or ask the person.
  */
 export function stationControlScopeRefusal(
   caller: StationControlPolicyCaller | null,
@@ -1058,15 +1426,34 @@ export function stationControlScopeRefusal(
       ? 'station_control_assurance_insufficient'
       : 'station_control_role_required',
   );
-  if (!target || !ownsThread(caller, target) || target.remote)
-    return notOperatorEnough;
+  if (!target || !ownsThread(caller, target)) return notOperatorEnough;
+  // Another Station needs a bound operator (decision 3): a non-operator has
+  // no credential that would reach it.
+  if (target.remote)
+    return operator
+      ? stationControlOutOfScopeRefusal('remote')
+      : notOperatorEnough;
+  // A Project Station cannot confirm holds no action for anyone (bound or
+  // not). A new Session in a named Project the owner may not dispatch in
+  // arrives here as unreadable too (`newTarget`), so the two read alike.
+  if (target.scope.kind === 'unreadable')
+    return stationControlOutOfScopeRefusal('target-unavailable');
   if (target.ownerHoldsAction === false)
     return stationControlRefusal('station_control_role_required');
   if (bound) return undefined;
-  return !target.host &&
-    sameScope(stationControlSessionScope(caller), target.scope)
-    ? undefined
-    : stationControlRefusal('station_control_assurance_insufficient');
+  // `host` is decided before the scope comparison, so a Session that runs
+  // unconfined reads as `host` even in the caller's own scope (and a host
+  // Session in another scope reads as `host`, not as another Project).
+  if (target.host) return stationControlOutOfScopeRefusal('host');
+  const own = stationControlSessionScope(caller);
+  if (sameScope(own, target.scope)) return undefined;
+  if (own.kind === 'unreadable')
+    return stationControlOutOfScopeRefusal('unreadable-caller');
+  if (own.kind === 'global')
+    return stationControlOutOfScopeRefusal('project-from-global');
+  return stationControlOutOfScopeRefusal(
+    target.scope.kind === 'global' ? 'global-space' : 'other-project',
+  );
 }
 
 export interface StationControlPolicyContext {
@@ -1092,6 +1479,12 @@ export interface StationControlPolicyContext {
    * know it; absent means the guard could not read it, which refuses.
    */
   readonly commandThread?: StationControlDispatchTarget;
+  /**
+   * For `wake-up-stays-in-own-conversation`: the conversation the request
+   * names. `undefined` when it names none (the caller's own is used);
+   * `null` when it names a wake-up Station cannot find, which refuses.
+   */
+  readonly wakeUpConversationId?: string | null;
 }
 
 const ASSURANCE_RANK = {
@@ -1120,6 +1513,28 @@ export function personOnlyApplies(
 }
 
 /**
+ * Whether a session whose credential has `assurance` could ever be allowed to
+ * call this tool, judged from the tool's STATIC requirements only: a
+ * person-only action (`personOnly: 'always'`) no agent can take, and an
+ * assurance the credential's channel can never reach (the channel is fixed
+ * when the token is minted). `tools/list` hides a tool this answers `false`
+ * for, so an agent is not offered a tool it can only be refused.
+ *
+ * Deliberately NOT read here: the operator role and anything a target or
+ * body decides. The session's recorded owner can appear after the engine
+ * first lists its tools, and a target-dependent rule is a call-time answer,
+ * so both stay call-time refusals. Hiding only ever removes a tool from the
+ * list; the server guard still decides every request, listed or not.
+ */
+export function stationControlToolListable(
+  policy: Pick<StationControlToolPolicy, 'assurance' | 'personOnly'>,
+  assurance: StationControlPolicyCaller['assurance'],
+): boolean {
+  if (policy.personOnly === 'always') return false;
+  return ASSURANCE_RANK[assurance] >= REQUIREMENT_RANK[policy.assurance];
+}
+
+/**
  * Decide one policy for one request. `undefined` means allowed.
  *
  * Order: a person-only action is refused whoever asks (no agent can take it,
@@ -1129,6 +1544,20 @@ export function personOnlyApplies(
  * for a principal-scoped action; then the operator role.
  */
 export function evaluateStationControlPolicy(
+  policy: StationControlToolPolicy,
+  context: StationControlPolicyContext,
+): StationControlRefusal | undefined {
+  const refusal = evaluatePolicyRequirements(policy, context);
+  if (
+    !refusal ||
+    !policy.refusalHint ||
+    refusal.code === 'station_control_person_only'
+  )
+    return refusal;
+  return { ...refusal, message: `${refusal.message} ${policy.refusalHint}` };
+}
+
+function evaluatePolicyRequirements(
   policy: StationControlToolPolicy,
   context: StationControlPolicyContext,
 ): StationControlRefusal | undefined {
@@ -1169,8 +1598,10 @@ const REFUSAL_STAGE: Record<StationControlRefusalCode, number> = {
   station_control_caller_required: 2,
   station_control_assurance_insufficient: 3,
   station_control_role_required: 4,
-  // Decided at the dispatch routes, never by the table.
+  // Decided at the dispatch routes (and the scope route rule), never by the
+  // table.
   station_control_posture_not_allowed: 5,
+  station_control_out_of_scope: 5,
 };
 
 // ── route matching ─────────────────────────────────────────────────────────
@@ -1417,7 +1848,22 @@ const ROUTE_RULE_REFUSALS: Record<
     context.retargetsGrantedJob
       ? stationControlRefusal('station_control_person_only')
       : undefined,
+  'wake-up-stays-in-own-conversation': wakeUpConversationRefusal,
 };
+
+/** `wake-up-stays-in-own-conversation`. */
+function wakeUpConversationRefusal(
+  context: StationControlPolicyContext,
+): StationControlRefusal | undefined {
+  const named = context.wakeUpConversationId;
+  if (named === undefined) return undefined;
+  const caller = context.caller;
+  if (!caller) return stationControlRefusal('station_control_caller_required');
+  const own = caller.conversationId ?? caller.sessionId;
+  return named === own
+    ? undefined
+    : stationControlOutOfScopeRefusal('other-conversation');
+}
 
 /**
  * The leaf's own body-dependent rules, applied after some tool's policy

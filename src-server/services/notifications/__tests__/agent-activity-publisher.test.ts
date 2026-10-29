@@ -192,6 +192,7 @@ function pairingReader(
 ) {
   return createAgentActivitySessionReader({
     listDevices: () => pairing().listDevices(),
+    deviceLocality: (deviceId) => pairing().deviceLocality(deviceId),
     listSessionReadModel: async () => readSummaries(sessions),
     listProjectionEvents: (ids) =>
       new Map(ids.map((id) => [id, sessions.get(id) ?? []])),

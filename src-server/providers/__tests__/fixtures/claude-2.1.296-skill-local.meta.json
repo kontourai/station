@@ -1,0 +1,25 @@
+{
+  "origin": "Installed Claude Code 2.1.296 / Agent SDK 0.3.300; real CLI tool execution with a loopback fixture inference server, not a live model capture",
+  "positive": "claude-2.1.296-skill-invocation-local.jsonl",
+  "negative": "claude-2.1.296-script-read-local.jsonl",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "skill": {
+        "description": "The name of a skill from the available-skills list. Do not guess names.",
+        "type": "string"
+      },
+      "args": {
+        "description": "Optional arguments for the skill",
+        "type": "string"
+      }
+    },
+    "required": ["skill"],
+    "additionalProperties": false
+  },
+  "verification": "Positive CLI tool_use_result.success=true with commandName=delivery-fixture and loaded skill-body message; negative CLI Read returns the script text without a Skill call. Both captures terminate successfully.",
+  "network": "All inference requests used an ephemeral 127.0.0.1 HTTP endpoint and fixture-only API key with isolated CLAUDE_CONFIG_DIR. No billable provider request. Usage/cost fields are CLI estimates over fixture token counts, not provider billing evidence.",
+  "redactions": "Capture directory paths, project-path slugs, socket process IDs and UUID/session IDs replaced with stable placeholders; remaining message fields preserved.",
+  "captureCommand": "node scripts/fixtures/capture-skill-delivery.mjs <skill|read> /absolute/path/to/claude"
+}

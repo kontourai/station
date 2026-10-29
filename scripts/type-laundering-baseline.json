@@ -513,12 +513,6 @@
       "reason": "legacy-cast"
     },
     {
-      "file": "packages/sdk/src/telemetry.ts",
-      "rule": "as-unknown",
-      "fingerprint": "b062c36701fe35b00a47df64eb27d6da4105e52dfcd7b131922237fa85f73171",
-      "reason": "legacy-cast"
-    },
-    {
       "file": "packages/shared/src/agent-plugin-manifest.ts",
       "rule": "as-unknown",
       "fingerprint": "6fc64790d96588b329dc6f15ea70b63af6cda73dc8829107bd84ac62bdcdc348",
@@ -594,12 +588,6 @@
       "file": "scripts/lib/browser-account-scenario.ts",
       "rule": "as-unknown",
       "fingerprint": "99bb8eb4cd46f35525543d290cebe91d72c9477047e92e0406cc7d9a87210d23",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "scripts/proof-repo-guardrails.mjs",
-      "rule": "as-any",
-      "fingerprint": "380e78d75069e4bb23667ab3ba4102b5f68ebadfe478fe71c45a63ab967e1869",
       "reason": "legacy-cast"
     },
     {
@@ -840,12 +828,6 @@
       "file": "src-server/routes/chat/chat-persistence.ts",
       "rule": "as-any",
       "fingerprint": "638eae37e8c77a695c797b58510596c45e1ba8c8033989f47fe035d2b107c1ee",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-server/routes/chat/conversations.ts",
-      "rule": "as-unknown",
-      "fingerprint": "02f115533e20c57159edff43b075973da57ce30e86ce2def1a13f379f9818e07",
       "reason": "legacy-cast"
     },
     {
@@ -1242,12 +1224,6 @@
       "file": "src-server/runtime/conversation/dispatch-model-policy.ts",
       "rule": "as-unknown",
       "fingerprint": "f3ec4e263485ca69ac771ecc0fbed81e3109ca8feda034aee7e3ca89a8da173b",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-server/runtime/conversation/fleet-routing-receipt-log.ts",
-      "rule": "as-unknown",
-      "fingerprint": "c0ca896fb3bbfd3adc376ec6c1a7afcb08b76caeb1420a1ca06ad3c290121161",
       "reason": "legacy-cast"
     },
     {
@@ -1895,18 +1871,6 @@
     {
       "file": "src-server/services/orchestration/event-store.ts",
       "rule": "as-any",
-      "fingerprint": "728309c7262d4e4832305721932e780b5aaf04a621889c1649975490c9707a56",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-server/services/orchestration/event-store.ts",
-      "rule": "as-any",
-      "fingerprint": "728309c7262d4e4832305721932e780b5aaf04a621889c1649975490c9707a56",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-server/services/orchestration/event-store.ts",
-      "rule": "as-any",
       "fingerprint": "5b2a104434e234f7327b2c65005874176ef24423cae6c5c58a917e06c0900bb1",
       "reason": "legacy-cast"
     },
@@ -2214,54 +2178,6 @@
       "file": "src-server/services/orchestration/sqlite-adoption-persistence.ts",
       "rule": "as-any",
       "fingerprint": "111d9b876ef2f748521af7517707a81b457c9cff981fd657a14774477d518fba",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-server/services/orchestration/sqlite-turn-dedup-persistence.ts",
-      "rule": "as-any",
-      "fingerprint": "9984b4f1add18513822188c7fa07dbb9d3c39cfd23e57f81c77fd44659c1dec1",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-server/services/orchestration/sqlite-turn-dedup-persistence.ts",
-      "rule": "as-any",
-      "fingerprint": "5a65bfd25beeaeda75bd6603375d360532c6a75645ea50b089191bc448839763",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-server/services/orchestration/sqlite-turn-dedup-persistence.ts",
-      "rule": "as-any",
-      "fingerprint": "089f935d8ccfa5a82cb55ceb8a4390b73ea9aeac9320e1d1296a94d26c09678b",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-server/services/orchestration/sqlite-turn-dedup-persistence.ts",
-      "rule": "as-any",
-      "fingerprint": "febc91ba627eea43fd5850ad0ec93bebbb90c833e18e1425e0f9d0b76c6a599f",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-server/services/orchestration/sqlite-turn-dedup-persistence.ts",
-      "rule": "as-any",
-      "fingerprint": "d5efa93824c9c60793bbd5147cbdbd82e27ad6c26f16c81487292eb8ff68bdb5",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-server/services/orchestration/sqlite-turn-dedup-persistence.ts",
-      "rule": "as-any",
-      "fingerprint": "8cf6aab9553cea2bd7df2dbaca388a53c2f3df32399e6af381774341bbba81d5",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-server/services/orchestration/sqlite-turn-dedup-persistence.ts",
-      "rule": "as-any",
-      "fingerprint": "5a49cca59bac49ed6aac56f79bf79923634c3760b981509f4e49c37582a7b776",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-server/services/orchestration/sqlite-turn-dedup-persistence.ts",
-      "rule": "as-any",
-      "fingerprint": "d7bd1b65043bda92189f8a294e0828de0c7a16f85794af76f8d1506828c10e7c",
       "reason": "legacy-cast"
     },
     {
@@ -2727,12 +2643,6 @@
       "reason": "legacy-cast"
     },
     {
-      "file": "src-ui/src/hooks/orchestration/assistantTurn.ts",
-      "rule": "as-any",
-      "fingerprint": "a6582a09fc80b0562335fd257d9ad3d5383884dd1fa8b18be96b49639b0a3d2d",
-      "reason": "legacy-cast"
-    },
-    {
       "file": "src-ui/src/hooks/orchestration/rehydrateChatSession.ts",
       "rule": "as-any",
       "fingerprint": "4e153e8fe0e5282d3016da92f8493ca2978b13e1ef3ab021168c3bfb7100a300",
@@ -2898,24 +2808,6 @@
       "file": "src-ui/src/utils/heif-normalizer-worker.ts",
       "rule": "as-unknown",
       "fingerprint": "26c635bf178667b09ef3d39fbd1e0c5ae6fb519df34d9ecaeca2be4ff82b0ade",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-ui/src/views/LayoutView.tsx",
-      "rule": "as-any",
-      "fingerprint": "fb4afd2b3627a1fd84b01bd3352e5a77b5091bed989a1d6bf79e1f25c0e85222",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-ui/src/views/ProjectPage.tsx",
-      "rule": "as-any",
-      "fingerprint": "48a7c098addcf5179bf2c95c06e4b195b7b33b743107a1d0e17ebf13e73e7189",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-ui/src/views/ProjectPage.tsx",
-      "rule": "as-any",
-      "fingerprint": "41b78178d8c4896c1c370a5d7afaf6bbb44ceaa4c5b6623ae8224647a6b94354",
       "reason": "legacy-cast"
     },
     {

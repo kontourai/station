@@ -1,0 +1,9 @@
+{
+  "revision": "67ea955ef93137c229bf03b062be78e5e623a9c5",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed inherited scripts/vitest-resource-manifest.mjs against L1 a1a74e81dd7b1726d569bc2f28880174a4e9ec6f and current origin/main: byte-identical in this lane (Git blob 95bb951ff091150d8f79a162785d5ef59e0483e7), with no classification delta from the sign-in repair. The existing manifest group ownership and worker limits remain consistent with the resource grouping explanation in testing.md and the explicit child-process classification requirement in scripts/AGENTS.md. No prose change is needed for this inherited input. Local sign-in regression evidence uses a stand-in ACP engine and fixture credentials; this review does not establish real provider authentication or a new resource-policy qualification.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed inherited scripts/vitest-resource-manifest.mjs against L1 a1a74e81dd7b1726d569bc2f28880174a4e9ec6f and current origin/main: byte-identical in this lane (Git blob 95bb951ff091150d8f79a162785d5ef59e0483e7), with no classification delta from the sign-in repair. The existing manifest group ownership and worker limits remain consistent with the resource grouping explanation in testing.md and the explicit child-process classification requirement in scripts/AGENTS.md. No prose change is needed for this inherited input. Local sign-in regression evidence uses a stand-in ACP engine and fixture credentials; this review does not establish real provider authentication or a new resource-policy qualification.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

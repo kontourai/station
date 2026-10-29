@@ -1,4 +1,5 @@
 import { Transform, type TransformCallback } from 'node:stream';
+import { isRecord } from '../../utils/is-record.js';
 
 /**
  * #2932: the structured reason fields the Claude CLI writes on a
@@ -153,10 +154,6 @@ export function noteClaudeHostFrame(
     frame.request.subtype === 'initialize'
   )
     asks.awaitInitializeResponse(frame.request_id);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function optionalString(value: unknown): string | undefined | null {

@@ -1035,8 +1035,8 @@ describe('StationRuntime agent configuration revision', () => {
 
   /**
    * A minimal harness for `observeRuntimeConfigurationSources`'s watched
-   * agent/integration config-file wiring specifically (review round 1
-   * HIGH 2 + MEDIUM 1) — the launchability-revision machinery
+   * agent/integration config-file wiring specifically — the
+   * launchability-revision machinery
    * (`providerService`/`loaded*Revision`/timers) is irrelevant to this
    * path and left out so the deterministic `reloadAgents()` control below
    * is not entangled with fake timers.
@@ -1115,7 +1115,7 @@ describe('StationRuntime agent configuration revision', () => {
     expect(runtime.reloadAgents).toHaveBeenCalledOnce();
 
     // A rejected reload must not emit — and must log rather than silently
-    // swallow the error (review round 1 LOW 1).
+    // swallow the error.
     emit.mockClear();
     fireChange('/home/station/agents/writer/agent.json');
     await vi.waitFor(() =>

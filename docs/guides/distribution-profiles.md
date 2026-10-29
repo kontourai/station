@@ -4,6 +4,12 @@ A distribution profile controls which layout catalog entries Station presents on
 first run and during later catalog reads. It is policy, not proof that a plugin is installed: Station joins the
 profile with installed lifecycle state before it enables an action.
 
+The required Home and shared Inbox/Chat slots are independent of layout
+catalog policy. Their defaults cannot be disabled or marked uninstalled by
+`itemPolicies`. Optional `requiredSlots` preferences reject empty fillers but
+do not select executable code or replace Home-role consent; see
+[required slots](plugins.md#required-home-and-inboxchat-slots).
+
 ## Built-in profiles
 
 `standard` is the default. Coding, Tasks and Session Board have installed and
@@ -64,6 +70,22 @@ or delete their implementation. Installed plugin layouts instead depend on the
 observed package and readiness state. Overrides live separately in
 `config/distribution-lifecycle.json`. A cached catalog is an observation;
 applying a layout resolves it again through the live owner.
+
+Each change of a plugin item's override also advances that item's revision,
+written in the same document and the same atomic write, as a top-level
+`revisions` member (`{ epoch, items }`) that older servers ignore. A failed
+write therefore changes neither, and a retried change is counted again.
+Station seals the history once at start, giving it a random epoch, never
+during a read. A plugin's catalog contribution carries a
+`lifecycleGeneration`: its installation (the admission journal's incarnation,
+which every install mints anew, or the package's content digest), the epoch
+and the item's revision, so no generation ever repeats. History Station
+cannot vouch for — the document or its revisions lost or reset, revisions
+that cannot be read, or a document an older server rewrote without them — is
+`null`, under which no related pane is opened or rendered, until a new epoch
+is sealed at the next start or by the next change. Unreadable revisions
+refuse every change and are never sealed over. It is identity only, never a
+grant, and a Project layout does not record it.
 
 The [profile contract](../../packages/contracts/src/distribution.ts),
 [built-in catalog](../../packages/contracts/src/layout.ts), and

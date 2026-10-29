@@ -15,6 +15,22 @@ Independent-person acceptance is tracked separately in [#497](https://github.com
 Optional configured OIDC choices use the same local account/session owner (see below); the official hosted identity service is tracked in [#489](https://github.com/kontourai/station/issues/489).
 Optional provider integration does not make hosted identity a core prerequisite.
 
+The server provider may implement `isVerifiedSessionCurrent(session)`, a synchronous
+live witness for a previously verified session. It must re-read session existence, exact
+subject and timestamps, expiry and account policy, and reject pending enrollment. It
+does not authenticate a caller-supplied session ID and is not part of the public
+descriptor. The local-account provider implements it; adapters without it fail closed at
+synchronous authority seams. `captureCurrentSession` also pins the verified identity and
+cookie and refuses continuation-only authority.
+
+Task relationship routes compose current transport authority with a live local-account
+session or supported account-bound Device standing witness. Account members may read
+only individually shared Task incarnations in a currently readable Project; a shared
+parent does not reveal private children or their count. Work chats additionally require
+current canonical Conversation lineage and reader access. Ordinary account membership
+does not authorize relationship mutations. Linking neither publishes a Task or private
+conversation nor grants execution.
+
 ## Enable local accounts without email
 
 Choose this built-in configuration instead of an authentication module:
@@ -50,7 +66,8 @@ disable sign-in, revoke account sessions or create a password-recovery link.
 Confirm the person's identity before sharing that recovery link privately. The
 link expires after 20 minutes and can reset the password once; reset revokes old
 account sessions. These controls do not delete Project membership or device
-grants. A Project administrator does not inherit Station operator authority.
+grants. Disabling an account, or revoking its sessions, also stops every
+personal access token made for it before then (#3586). A Project administrator does not inherit Station operator authority.
 
 The authentication secret and account store live in private SQLite files beneath
 this Station home's `authentication` directory. Restart preserves existing
@@ -108,7 +125,8 @@ and implement idempotent resource closure.
 - `displayName` is presentation only.
 - `sessionCookies` names one to four account cookies. Use names unique to this
   Station authority, including when several Stations share a hostname. Existing
-  Station device-cookie names are reserved. Multiple presented account cookies
+  The `station-device` and `__Host-station-device` names and their hyphenated
+  namespaces are reserved. Multiple presented account cookies
   are a conflict; no credential is selected by precedence.
 - `endpoints` lists exact relative paths, GET/POST methods and their login,
   callback, registration, contact-verification, recovery, refresh or revocation
@@ -202,6 +220,12 @@ account identity is carried through the runtime's bounded-body replacement and
 used by its principal-resolution owner. Project sharing still needs the separate
 member/resource authorization implementation.
 
+A verified person can read and patch their own `/api/me/preferences` from an
+account-bound Device. Exact GET/HEAD/PATCH admission does not open other `/api/me`
+paths. Account preferences are partitioned by person and trusted tenant on this
+Station, and grant no Device or execution authority. See
+[account preferences](../design/settings-architecture.md#account-preferences-and-device-settings).
+
 ### Account-bound collaborator Devices
 
 A collaborator Device uses an explicit second pairing ceremony after account
@@ -228,12 +252,27 @@ An existing unbound personal Device is not silently converted by login. The
 operator must explicitly approve and exchange the account-bound replacement,
 then revoke any older broad grant retained for that client.
 
+A personal access token tied to an account is the one credential that acts
+without an account session (#3586), and only with Station's own local
+accounts. The account-bound Device mints it from `/api/access/tokens` while
+its session is current, or the operator mints it on People. The token is then checked against the account's
+standing instead: it stops when the account is disabled, deleted or signed
+out everywhere after the token was made, and re-enabling the account does
+not revive it. It must be presented alone (an account
+cookie, session continuation or ingress identity beside it is `401
+account_identity_conflict`), and it reaches only the collaborator profile
+below, without the account controls, token management, personal analytics or any
+Project access route. With any other deployment provider, account-tied people cannot hold a
+token (`400 account_bound_person`).
+
 The direct request-access endpoint also accepts `requireAccountBinding: true`
 after sign-in. Station attaches the verified account candidate and makes this
 intent immutable: approval and exchange cannot issue a personal or Tailnet-bound
 Device for that request. Existing ordinary pairing requests remain available.
 
-The collaborator profile admits account controls, membership-filtered Project
+The collaborator profile admits account controls, the person's own personal
+access tokens (`GET`/`POST /api/access/tokens`, `DELETE
+/api/access/tokens/:tokenId`), membership-filtered Project
 catalogue/detail reads, and bounded reads of explicitly published shared Tasks:
 the shared-work list, history, document and publication receipt. Shared work is read-only in this
 entry. The [account-bound Device gate](../../src-server/runtime/bootstrap/account-bound-device-gate.ts)
@@ -247,13 +286,41 @@ tell them apart. Only the operator sees the `unshared` review state, and sharing
 and unsharing stay operator-only. Protected reads set
 `Cache-Control: no-store` and bind response delivery to the exact local and
 portable Project incarnation. Membership is rechecked before delivery and each
-streamed chunk. The audited administration endpoints below are the only
-additional Project mutations admitted here. Unrelated personal configuration,
+streamed chunk. The audited administration endpoints below and the scoped
+[Project agent and tool-library routes](../reference/api.md#project-tool-library)
+are additional Project mutations admitted here. Admins and Owners may author
+constrained agents and request permitted tool sources; only Owners change
+Project tool policy. Exact Project Room leaves separately admit discussion,
+presence, note edits and explicit Agent requests under their current membership
+actions and transport permission. A Room Agent request also requires Project
+`view`, host execution permission and a verified Project execution root; its Task
+context contains only already-shared summaries, even for an operator. Direct
+Agent/orchestration HTTP member turns remain refused. Unrelated personal configuration,
 plugin, terminal, coding, secret and orchestration surfaces remain denied even
 if the Device scope is broader. Existing unbound local/operator Devices retain
 their prior behavior. Existing Tailnet person bindings remain a separate
 personal-device mechanism; they do not become Project membership through this
 account contract.
+
+The profile also admits exact personal Layout list/create/detail/update/delete,
+clone and template-open leaves, and exact shared Project Layout reads and
+mutations. Shared mutations and promotion require Project `manage-layouts`
+(owner/admin), while the exact `PUT /api/projects/:slug/layout-policy` leaf
+requires `manage-extensions`. Personal Project records are scoped to the
+request principal and withheld under revoked access or non-conforming policy;
+none of these routes grants terminal, file or execution authority. See the
+[personal Project layout contract](../reference/contracts.md#personal-project-layouts-2996).
+
+Personal analytics is a separate exact-leaf exception for a person-bound Device
+with its matching current account session and `orchestration:read`. It includes
+enrollment, requester approval, receiving custody, private sync/query/outcomes
+and saved views; each owner still checks person, tenant, consent and source
+authority. Account tokens and agents cannot use this exception. Generic
+analytics prefixes, companion management and general orchestration commands
+remain closed; independently authorized Project Room Agent requests retain their
+own execution policy. See [the personal source journey](monitoring.md#connect-a-personal-source-in-insights)
+and the [exact pairing rules](../../src-server/security/pairing-route-scopes.ts).
+This admission description does not qualify real two-Station execution.
 
 #### Native relay-management admission
 
@@ -402,7 +469,8 @@ app is installed or that a device has been approved.
 `station.application-session/v1`. The SDK implementation is
 `@kontourai/station-sdk/application-session`. Ordinary HTTPS keeps native
 HttpOnly cookies. A same-origin HTTPS browser can explicitly adopt its current
-`__Host-station-device` cookie and provider account cookie into a read-only alias
+`__Host-station-device-<station-id-hash>` cookie (or legacy
+`__Host-station-device`) and provider account cookie into a read-only alias
 for that same approved Device plus an exact alias-bound continuation. The SDK's
 `ApplicationSessionClient.adoptCookies()` sends them only through the browser's
 same-origin cookie handling; cookie values are never read by JavaScript or

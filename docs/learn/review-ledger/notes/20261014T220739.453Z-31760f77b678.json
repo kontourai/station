@@ -1,0 +1,7 @@
+{
+  "revision": "068b50b08ba0f501eb3514e12af3fc7d06fd8662",
+
+  "notes": [
+    {"path":"docs/patterns/frontend.md","note":"Only docs/ui/responsive-action-surfaces.txt changed (one added covered row for the subagent transcript card); frontend patterns are unchanged: the card loads its lazy viewer through LazyBoundary and uses the shared Button. No prose change.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

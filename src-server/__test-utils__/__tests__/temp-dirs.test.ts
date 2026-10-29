@@ -11,6 +11,26 @@ import { removeTempDirs, trackTempDirs } from '../temp-dirs.js';
  * declaration order.
  */
 
+describe('custom base', () => {
+  // The base itself is a tracked directory so this case leaves nothing behind.
+  const makeBase = trackTempDirs({ lifetime: 'file' });
+  const base = makeBase('temp-dirs-base-');
+  const makeTempDir = trackTempDirs({ base });
+  let created = '';
+
+  test('creates the directory under the given base', () => {
+    created = makeTempDir('temp-dirs-helper-');
+    expect(existsSync(created)).toBe(true);
+    expect(created.startsWith(join(base, 'temp-dirs-helper-'))).toBe(true);
+  });
+
+  test('removed it after the test that made it', () => {
+    expect(created).not.toBe('');
+    expect(existsSync(created)).toBe(false);
+    expect(existsSync(base)).toBe(true);
+  });
+});
+
 describe('per-test lifetime', () => {
   const makeTempDir = trackTempDirs();
   let passed = '';

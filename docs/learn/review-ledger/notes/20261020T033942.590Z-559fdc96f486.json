@@ -1,0 +1,7 @@
+{
+  "revision": "c7f044bb5e5489f067d3c3728c3948bc071b90c3",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"fallow-ceiling.mjs now also refuses a findings value that is not a list and a nonzero count with no findings list. The guide's statement that a report whose counts disagree with its findings is refused with NOT_VERIFIED covers this; no prose change.","inputs":["docs/guides/code-quality.md","scripts/fallow-ceiling.mjs"]}
+  ]
+}

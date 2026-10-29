@@ -1,0 +1,9 @@
+{
+  "revision": "a4a6dd7b22c2cf38a65812d3d86e79ea8e4b55f1",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Reviewed and updated: plugin entries are refused when their name reads as a built-in's after NFKC, case-folding and the Cyrillic/Greek look-alike map, and providers registered as Station, Kontour or a built-in engine name are refused; checked against nameSkeleton and refusalReasons in acp-engine-descriptors.ts. The recheck paragraph still holds: only an insufficient_scope 403 reads as not permitted.","inputs":["docs/guides/acp.md"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"Checked against this change: only the linked ACP guide's catalogue-refusal paragraph changed; no chat architecture claim depends on it.","inputs":["docs/design/acp-chat-architecture.md","docs/guides/acp.md"]}
+  ]
+}

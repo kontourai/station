@@ -43,6 +43,9 @@ export const COMPOSITE_EDITORS: Readonly<
  * - `agentConnections`: per-agent connection override dictionary — belongs
  *   with the entity it configures (docs/design/settings-architecture.md's
  * "Entity" scope rule), not the global Station scope section.
+ * - `telemetryTier`: StationConfigSection renders TelemetryTierSettings with
+ *   the live per-publisher disclosure state; a generic composite row lacks
+ *   that effective DNT/disclosure context. Only the generic row is deferred.
  * - `templateVariables`: already has a working bespoke editor in
  *   `AgentDefaultsSection.tsx` (not routed through the generic registry-row
  *   path at all) — deferred here only for this completeness classification,
@@ -89,6 +92,7 @@ export const DEFERRED_COMPOSITE_KEYS: readonly string[] = [
   'firstRun',
   'fleetContribution',
   'registryTrust',
+  'telemetryTier',
   'templateVariables',
   'userProfile',
 ];

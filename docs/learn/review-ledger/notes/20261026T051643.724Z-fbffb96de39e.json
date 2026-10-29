@@ -1,0 +1,7 @@
+{
+  "revision": "2bce3ed519987ad8afabc4b9f3930d81bcf4c061",
+
+  "notes": [
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Source delta (#4203 fix round 2): the inventory supersede lookup now seeks the next start/completion of the same call id through a new partial expression index (idx_events_thread_tool_call_sequence, built additively at store open) and supersedes only when that next event is a compatible-turn completion; the descriptor comment on unresolved completions now says protocol 4 emits them. Checked: no claim about the inventory listing, tool-call supersede rule, or event-store index set. No prose change.","inputs":["docs/design/event-store-ledger-migration.md","src-server/services/orchestration/event-store.ts"]}
+  ]
+}

@@ -94,6 +94,9 @@ export const PREPUSH_STATIC_GATES = Object.freeze([
   // #3045: ~2s — it parses every UI .tsx file with the TypeScript compiler
   // rather than matching text, so it sits with the slower gates.
   'button-cap-ratchet',
+  'component-style-hygiene',
+  // ~1s: TypeScript AST over src-ui copy; fails only on growth.
+  'ui-copy-length',
   'a11y-ratchet',
 ]);
 

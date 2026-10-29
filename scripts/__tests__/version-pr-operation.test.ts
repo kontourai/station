@@ -13,6 +13,10 @@ const makeTempDir = trackTempDirs();
 const workflow = load(
   readFileSync(resolve('.github/workflows/publish-packages.yml'), 'utf8'),
 ) as {
+  on: {
+    push: { branches: string[]; 'paths-ignore'?: string[] };
+    workflow_dispatch: unknown;
+  };
   permissions: Record<string, string>;
   jobs: Record<
     string,
@@ -61,6 +65,39 @@ function expression(
 }
 
 describe('version PR credential boundary', () => {
+  test('excludes only the two generated ledger paths and retains deliberate publication', () => {
+    expect(workflow.on.push).toEqual({
+      branches: ['main'],
+      'paths-ignore': [
+        'docs/reference/deploy-ledger.json',
+        'docs/reference/deploy-ledger.md',
+      ],
+    });
+    expect(Object.hasOwn(workflow.on, 'workflow_dispatch')).toBe(true);
+  });
+
+  test.each([
+    [['docs/reference/deploy-ledger.json'], false],
+    [['docs/reference/deploy-ledger.md'], false],
+    [
+      ['docs/reference/deploy-ledger.json', 'docs/reference/deploy-ledger.md'],
+      false,
+    ],
+    [['docs/reference/deploy-ledger.json', 'packages/sdk/src/index.ts'], true],
+    [['docs/reference/deploy-ledger.md', '.changeset/repair.md'], true],
+    [['package.json'], true],
+    [['docs/guides/releasing.md'], true],
+    [['docs/reference/deploy-ledger.json.backup'], true],
+    [['docs/reference/nested/deploy-ledger.json'], true],
+  ] as const)(
+    'admits automatic versioning for changed paths %j: %s',
+    (paths, admitted) => {
+      const ignored = workflow.on.push['paths-ignore'] ?? [];
+      // GitHub skips a push only when every changed file matches an exclusion.
+      expect(paths.some((path) => !ignored.includes(path))).toBe(admitted);
+    },
+  );
+
   test('missing App credentials stop the actual workflow guard before the action', () => {
     const guard = steps.find(
       (step) => step.name === 'Require version PR installation token',

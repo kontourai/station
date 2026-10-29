@@ -1,7 +1,7 @@
 /**
- * Canonical orchestration fetchers (#165/#173 Wave 1, inside the #167 DRY
- * client layer). One HTTP-call implementation per operation, shared by the
- * CLI's `approvals` verb (`packages/cli/src/commands/approvals.ts`) and the
+ * Canonical orchestration fetchers (archive#165, archive#173), inside the
+ * shared client layer (archive#167). One HTTP-call implementation per
+ * operation, shared by the CLI's `approvals` verb (`packages/cli/src/commands/approvals.ts`) and the
  * repointed `acp commands`/`acp command-options` verbs
  * (`packages/cli/src/commands/surfaces.ts`).
  *
@@ -17,7 +17,7 @@
  *   `src-server/routes/orchestration/orchestration.ts:216-231` (route),
  *   `OrchestrationService.readSessionFlowRun`
  *   (`src-server/services/orchestration/orchestration-service.ts:797-809`). Added for
- *   #168 (`station operate`'s gate-verdicts pane); zero new server routes
+ *   archive#168 (`station operate`'s gate-verdicts pane); zero new server routes
  *   (the route already shipped, this is the missing SDK client fetcher).
  *
  * `respondToRequest` deliberately does not use `http.ts`'s
@@ -27,19 +27,20 @@
  * (the CLI prints it) on *both* the success path (returned alongside
  * `result`) and the failure path (server-side
  * `OrchestrationCommandDispatchError` can attach a `receipt` too — preserved
- * as a property on the thrown `Error`, #165 iteration-2 code-review LOW
- * fix) — so this function parses the body itself instead of using the
- * generic helper. All four fetchers here parse-then-check (parse the JSON
- * body before checking `response.ok`) per the #167 iteration-2 H1
- * convention documented in `client/runs.ts`'s `unwrapRunsResponse`, so a
- * non-2xx `{success:false,error}` body's `error` text is preserved instead
- * of being replaced with a generic status message.
+ * as a property on the thrown `Error`, archive#165) — so this function
+ * parses the body itself instead of using the generic helper. All four
+ * fetchers here parse-then-check (parse the JSON body before checking
+ * `response.ok`) per the archive#167 convention documented in
+ * `client/runs.ts`'s `unwrapRunsResponse`, so a non-2xx
+ * `{success:false,error}` body's `error` text is preserved instead of being
+ * replaced with a generic status message.
  */
 import type { ChildWorkTranscriptPage } from '@kontourai/station-contracts/child-work';
 import type { HarnessQuestionAnswers } from '@kontourai/station-contracts/harness-questions';
 import type { InputRequestContent } from '@kontourai/station-contracts/input-request';
 import type {
   AdoptedSessionResult,
+  OrchestrationSessionEventWindow,
   SteerInputInspectionResult,
   SteerTurnResult,
 } from '@kontourai/station-contracts/orchestration';
@@ -106,16 +107,23 @@ export interface RespondToRequestInput {
   requestId: string;
   expectedRequestEventId?: string;
   decision: ApprovalDecision;
+  /** With `acceptForSession`: grant the whole Station browser server. */
+  sessionGrantScope?: 'server';
   /**
    * #3390: accepted content for a form input request, keyed by field name;
    * validated server-side against the exact opened event.
    */
   content?: InputRequestContent;
   /**
-   * @deprecated since 0.9.0; removed in 0.10.0. A pre-#3390 harness answer;
-   * send `content` instead.
+   * @deprecated since 0.9.0; retained for compatibility. A pre-#3390 harness
+   * answer; send `content` instead.
    */
   answers?: HarnessQuestionAnswers;
+  /**
+   * docs/design/event-content-spill.md: required to allow a request whose
+   * content was stored out of line; see `computeViewedContentDigest`.
+   */
+  viewedContentDigest?: string;
 }
 
 export interface RespondToRequestResult {
@@ -158,11 +166,10 @@ export async function respondToRequest(
     // `OrchestrationCommandDispatchError`, `src-server/routes/
     // orchestration.ts:297-314`) — preserved as a property on the thrown
     // error rather than dropped, so a caller that cares (e.g. an
-    // audit/governance-facing surface) can still reach it (#165
-    // iteration-2 code-review LOW fix). The error is the envelope helper's
-    // (#2708): status, `code` and `details` survive, a 2xx `success:false`
-    // included (station#3437 review asked that a parsed JSON error body stay
-    // classifiable by `instanceof StationHttpError`; now every one does).
+    // audit/governance-facing surface) can still reach it (archive#165). The
+    // error is the envelope helper's (#2708): status, `code` and `details`
+    // survive, a 2xx `success:false` included (archive#3437: a parsed JSON
+    // error body stays classifiable by `instanceof StationHttpError`).
     const error: StationHttpError & { receipt?: unknown } = envelopeError(
       response,
       payload,
@@ -189,6 +196,35 @@ export async function getOrchestrationSession<
     opts,
   );
   return unwrapOrchestrationResponse<T>(response);
+}
+
+/** Bounded session detail using the existing newest-turn cursor protocol. */
+export async function getOrchestrationSessionDetailWindow(
+  apiBase: string,
+  threadId: string,
+  input: { cursor?: string; turnLimit?: number } = {},
+  opts?: ClientRequestOptions,
+): Promise<OrchestrationSessionEventWindow> {
+  const query = new URLSearchParams({ view: 'window-v1' });
+  if (input.cursor !== undefined) query.set('cursor', input.cursor);
+  if (input.turnLimit !== undefined)
+    query.set('turnLimit', String(input.turnLimit));
+  const response = await getJson(
+    `${apiBase}/api/orchestration/sessions/${encodeURIComponent(threadId)}?${query}`,
+    opts,
+  );
+  const window =
+    await unwrapOrchestrationResponse<OrchestrationSessionEventWindow>(
+      response,
+    );
+  if (
+    window.protocolVersion !== 1 ||
+    !Array.isArray(window.events) ||
+    typeof window.hasMore !== 'boolean' ||
+    !Number.isSafeInteger(window.watermark)
+  )
+    throw new Error('Station does not support bounded session detail');
+  return window;
 }
 
 /** Read a bounded, stable-sequence page from one orchestration session. */
@@ -334,11 +370,11 @@ export interface SessionFlowRunView {
  * `GET /api/orchestration/sessions/:threadId/flow-run` — the Flow run bound
  * to a session, or `null` when the session is not Flow-bound. Route:
  * `src-server/routes/orchestration/orchestration.ts:216-231`. Consumed by `station
- * operate`'s (#168) gate-verdicts pane (`packages/cli/src/commands/
- * operate/shell.ts`, Wave 2), pulled once on focus-change and on manual
+ * operate`'s (archive#168) gate-verdicts pane (`packages/cli/src/commands/
+ * operate/shell.ts`), pulled once on focus-change and on manual
  * refresh (`r` key) — never polled continuously.
  *
- * Per the #167 iteration-2 H1 convention (parse-then-check, see this file's
+ * Per the archive#167 parse-then-check convention (see this file's
  * module docblock), this checks `response.status === 404` *before* the
  * generic envelope unwrap and returns `null` — mirrors
  * `session-client.ts`'s `readRuntimeSessionOrNull` 404-as-null precedent

@@ -1,0 +1,7 @@
+{
+  "revision": "3d96ef1053aec36aeae3167b317486c2e4975afd",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"Re-checked config.md after the review round on ChatDockBody.tsx (announcement condition now follows the visible long-wait row). No setting, default or config surface changes. No prose change needed.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]}
+  ]
+}

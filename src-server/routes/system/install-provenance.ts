@@ -37,12 +37,6 @@ const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._\-/]*$/;
  */
 const STAMP_WALK_LIMIT = 3;
 
-export type InstallKind =
-  | 'source-checkout'
-  | 'desktop-bundle'
-  | 'archive'
-  | 'unknown';
-
 /**
  * Where the server module legitimately lives inside a real source checkout:
  * `<gitRoot>/dist-server*` (built bundles, incl. per-instance variants like
@@ -59,10 +53,7 @@ const SOURCE_SERVER_ROOT = /^(dist-server[^/\\]*|src-server)$/;
  * rejects the resolveGitInfo cwd/argv fallbacks resolving some OTHER repo
  * than the one containing the module.
  */
-export function isServerOfCheckout(
-  gitRoot: string,
-  moduleDir: string,
-): boolean {
+function isServerOfCheckout(gitRoot: string, moduleDir: string): boolean {
   const rel = relative(gitRoot, moduleDir);
   if (rel === '') return true;
   const first = rel.split(sep)[0] ?? '';

@@ -1,0 +1,7 @@
+{
+  "revision": "65f35f08a40e44255fe807295c061adfbb5df526",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Re-read after scripts/__tests__/changed-verification.test.ts raised its SPAWNED_SCRIPT_EDGES pin from 11 to 12 for the monument pack smoke edge. The guide does not state the edge count or list spawned-script edges; its changed-verification routing description is unchanged. No prose change needed.","inputs":["docs/guides/testing.md","scripts/__tests__/changed-verification.test.ts"]}
+  ]
+}

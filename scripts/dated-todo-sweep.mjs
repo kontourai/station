@@ -127,8 +127,7 @@ export function validateDatedTodoReport(report, { expectedDate }) {
       `report marker date ${match[1]} does not match expected ${expectedDate}`,
     );
   }
-  if (!report.includes('## Due ('))
-    throw new Error('report is missing the Due section');
+  reportDueCount(report);
   return match[1];
 }
 
@@ -139,9 +138,20 @@ function runGh(args) {
   }).trim();
 }
 
+function reportDueCount(report) {
+  const match = /^## Due \((\d+)\)$/m.exec(report);
+  if (!match) throw new Error('report is missing the Due section');
+  return Number(match[1]);
+}
+
+// Only due items warrant an open issue. Upcoming items are not actionable
+// yet, so a sweep with nothing due closes the issue instead of reopening it
+// every week (#2908).
 function upsertIssue({ reportPath, expectedDate }) {
   const report = readFileSync(reportPath, 'utf8');
   validateDatedTodoReport(report, { expectedDate });
+  const due = reportDueCount(report);
+  const repo = process.env.GITHUB_REPOSITORY;
   const listing = runGh([
     'issue',
     'list',
@@ -150,25 +160,41 @@ function upsertIssue({ reportPath, expectedDate }) {
     '--search',
     `"${ISSUE_TITLE}" in:title`,
     '--json',
-    'number,title',
+    'number,title,state',
     '--limit',
     '50',
+    '--repo',
+    repo,
   ]);
   const existing = JSON.parse(listing || '[]').find(
     (issue) => issue.title === ISSUE_TITLE,
   );
-  if (existing) {
+  if (due === 0) {
+    if (existing?.state !== 'OPEN') {
+      console.log('[dated-todo] nothing due; no open issue to update');
+      return;
+    }
+    const number = String(existing.number);
+    runGh(['issue', 'edit', number, '--body-file', reportPath, '--repo', repo]);
     runGh([
       'issue',
-      'edit',
-      String(existing.number),
-      '--body-file',
-      reportPath,
+      'close',
+      number,
+      '--comment',
+      `No dated TODOs are due as of ${expectedDate ?? 'this sweep'}; closing until one is.`,
       '--repo',
-      process.env.GITHUB_REPOSITORY,
+      repo,
     ]);
-    runGh(['issue', 'reopen', String(existing.number)]);
-    console.log(`[dated-todo] updated issue #${existing.number}`);
+    console.log(`[dated-todo] nothing due; closed issue #${number}`);
+    return;
+  }
+  if (existing) {
+    const number = String(existing.number);
+    runGh(['issue', 'edit', number, '--body-file', reportPath, '--repo', repo]);
+    if (existing.state !== 'OPEN') {
+      runGh(['issue', 'reopen', number, '--repo', repo]);
+    }
+    console.log(`[dated-todo] updated issue #${number} (due=${due})`);
     return;
   }
   const created = runGh([
@@ -181,9 +207,9 @@ function upsertIssue({ reportPath, expectedDate }) {
     '--label',
     'P2',
     '--repo',
-    process.env.GITHUB_REPOSITORY,
+    repo,
   ]);
-  console.log(`[dated-todo] created ${created}`);
+  console.log(`[dated-todo] created ${created} (due=${due})`);
 }
 
 function main(argv) {

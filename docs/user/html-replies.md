@@ -1,0 +1,161 @@
+# Visual replies
+
+An Agent can publish a chart, table, diagram, collage or mockup as an HTML page
+inside its chat. The built-in Station Agent already receives these tools. For
+other Agents, configure the `station-control` attachment as described below. The shared registrations
+are available through Claude Code, Codex and capable ACP connections. A
+connection that cannot carry MCP servers reports that delivery limitation.
+
+Ask the Agent to preview its page, inspect the screenshot, and publish the same
+HTML. Preview returns a PNG, the content height at the requested width, and
+console messages with stacks. It uses Station's existing Chromium acquisition
+and a disposable profile. If Chromium is unavailable, install it through the
+Browser workspace; publishing itself does not need Chromium. Preview checks the
+browser's effective WebRTC policy before loading authored content. It refuses an
+unsupported browser or enterprise override that prevents the restrictive policy,
+even when the profile file requests it.
+
+Local HTML and raster-image links in a Project conversation also open inline.
+Station reads the file through that Project's workspace or a verified Git
+worktree of the same repository. HTML uses the same isolated viewer; missing
+or out-of-scope files show an unavailable message rather than navigating away
+from the conversation. These file previews follow the current file bytes and
+are not retained published pages.
+
+## Images saved on the host
+
+With the **Chat images from the host** Feature Preview on (**Settings →
+Advanced → Feature previews**), a Markdown image in a reply whose address is an
+absolute path on the Station host, or a `file:` URL, is shown on every device,
+including the phone app, without a Project. When the reply finishes, Station
+reads each named image once and keeps a copy as a chat attachment, so it is
+served like an image you attached: only to people who can read that chat.
+
+Station reads an image only when, after following every symbolic link, it is
+inside the chat's working folder, a verified Git worktree of it, or the chat's
+own temporary folder, not inside a folder every user can write to, and it has
+no second hard link. Packages that pnpm installs are hard links into its
+shared store, so images inside them are refused; copy one out first. Agents started while the
+preview is on get that temporary folder as `$TMPDIR` (Claude under macOS
+confinement keeps its confinement's own temporary folder, and that exact folder
+is the one read). It is removed when the session ends, including when its
+engine dies on its own (Claude, Codex and ACP engines); a confined Claude's
+folder is removed when the session is stopped, and a `muse serve` host that
+dies keeps its folder until the session is stopped or Station next restarts
+and sweeps it. Station's built-in agent runs inside Station and has no temporary folder of
+its own.
+
+A working folder is not read at all when it is or contains your home folder or
+Station's data (a chat with no Project uses the home folder), or when it is or
+contains a shared temporary directory such as the system temporary folder, is
+writable by every user, or when its path, as written and through any link it
+follows, passes a folder another user owns or that others can write to without
+the sticky bit (they could swap the working folder for a link elsewhere). The
+Station log says which of these applies ("Host images: working folder is not
+read", with the folder and reason). Such a chat reads only its own temporary folder; a
+Project folder inside the system temporary folder is still read. Paths
+elsewhere are not read. The file must really be a PNG, JPEG, GIF or WebP image
+(checked by content, not name), at most 512 KiB and 4,194,304 pixels, and a
+reply keeps at most 5. A file a path names is read when the reply finishes; a
+later change to the file does not change the copy.
+
+An image Station did not keep shows **Image not available on this device** and
+the reason: outside the working and temporary folders, missing, not an image,
+too large, too many pixels, too many images, in a folder every user can write
+to, a file with more than one hard link, unreadable, or the chat's attachment storage is full. While a reply is still streaming the image shows "Image appears
+when the reply finishes". For a path Station has no record of (a reply from
+before the preview was on), a Project conversation falls back to the Project
+file reader described above.
+
+While the preview is on, the agent's first turn includes one line asking it to
+save images where they can render and reference them by absolute path. The line
+names `$TMPDIR` only when that session's agent was started with a temporary
+folder Station reads; a chat with neither a working-folder root nor such a
+folder gets no line, since none of its images could render.
+
+Publishing writes to the conversation and may require engine tool approval.
+For example, Codex configured with approval policy `never` can refuse the write;
+select a session mode that permits approval. Station does not mislabel the
+publishing tool as read-only to avoid that decision.
+
+Pages appear at their tool result, remain outside collapsed tool batches, and
+survive reload. They follow light/dark mode, support 50–200% zoom and an expanded
+view. Expanding recreates the page and resets unsaved interaction state. Links
+require recent interaction with that reply and confirmation before opening
+outside Station. Browsers retain transient activation for roughly five seconds;
+the request need not come from clicking the link itself.
+The Open button waits 500 ms; Cancel mutes further link requests from that reply
+until its viewer is remounted.
+
+Scripts run in an opaque sandbox with no Station session or tool bridge.
+CSP blocks ordinary network loads. Direct WebRTC constructors are disabled,
+but a nested srcdoc frame can obtain a fresh constructor and send ICE UDP
+packets in Chromium and WebKit. Published pages are **not network-isolated**:
+they can disclose the viewer's IP or information entered into the page. Do not
+enter secrets into a visual reply. Headless preview has separate profile-wide RTC routing restrictions and denied DNS/HTTP
+egress; that protection does not extend to a viewer's browser. Preparation embeds quoted absolute PNG, JPEG, GIF and WebP paths inside
+the publishing session's workspace, including HTML `src`, CSS `url()` and JS
+string literals. Captured bytes survive removal of the source image. SVG,
+AVIF, unquoted paths and constructed JS paths are not embedded.
+
+Use `--background`, `--foreground`, `--muted`, `--border`, `--accent`,
+`--destructive`, `--success`, `--warning`, `--chart-1` through `--chart-6`,
+`--radius`, `--font-sans`, and `--font-mono`. The viewer maps these to the current
+Station theme; preview uses a fixed light or dark palette.
+
+Source HTML is limited to 256 KiB, each image to 2 MiB, the expanded HTML to
+8 MiB, and distinct images to 32. Height is 100–2000 pixels; preview width is
+320–1920 pixels. Preview rejects content taller than 2000 pixels, screenshots
+over 8 MiB, or console output over 128 entries or 64 KiB. At most two previews
+run at once, with a 15-second render deadline and bounded process cleanup. V8's
+heap is capped at 128 MiB; this is not a hard cap on the browser's total RSS.
+Over-limit inputs and outputs are rejected rather than shortened.
+
+A conversation can retain at most 32 pages and 32 MiB of serialized page data.
+Pages belong to their publishing execution session. Closing or archiving work
+retains them. Physical deletion of that session deletes its pages in the same
+transaction; deleting every member of a conversation lineage deletes every
+page in it. See the [security and deletion decision](https://github.com/kontourai/station/blob/main/docs/decisions/html-replies.md).
+
+## Which Agents receive the tools
+
+The built-in **Station** Agent receives station-control's full catalog by
+default, including visual replies, when its selected engine supports that MCP
+passthrough. The runtime default Agent also receives the full catalog. Preview
+and render are bounded writes on Station's auto-approved tool list; the engine
+or session's approval mode can still refuse them. Preview runs in a disposable
+browser with profile-wide RTC routing restrictions and denied DNS/HTTP egress. These controls
+are separate from the accepted viewer-side WebRTC limitation above.
+
+Other authored Agents, including direct Claude and Codex Agents, need the
+built-in `station-control` MCP server attached. In the Agent's tool settings,
+attach it and select `html_preview` and `html_render`. For Claude and Codex,
+the equivalent configuration is:
+
+```json
+{
+  "tools": {
+    "mcpServers": ["station-control"],
+    "available": ["station-control_html_preview", "station-control_html_render"]
+  }
+}
+```
+
+For an Agent using an **ACP engine**, attach the server without an `available` filter:
+
+```json
+{
+  "tools": {
+    "mcpServers": ["station-control"]
+  }
+}
+```
+
+ACP passthrough exposes the server's full tool catalog. Station refuses
+per-tool `available` filters or disabled-tool selections on this path with
+`engine-unsupported`; do not copy the Claude/Codex filter into an Agent using an ACP engine.
+An ACP engine without MCP passthrough cannot use these tools. Merge server
+entries into existing arrays rather than removing other tool servers. Start a
+new conversation after saving tool settings. Authored Agents may optionally
+configure auto-approval; otherwise approve the calls when the engine asks.
+Codex policy `never`, for example, can refuse either call.

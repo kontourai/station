@@ -1,0 +1,7 @@
+{
+  "revision": "834759644e7c168d10c6c5cb6125f8f36f36af7c",
+
+  "notes": [
+    {"path":"docs/user/personal-boards.md","note":"Re-reviewed after the fix rounds' final ChatDock.tsx: the header's branch badge and More count badge stand down only once the session context card reports itself mounted (sessionContextCardShown); the \"This chat: <project>\" lead-in is kept beside the badge (restored after it broke the gallery's overlay-dock-project-mismatch capture, per #4525 MED-1); the card's Chat inventory footer appears only after host registration; card props are memoised behind a handler ref. Board draft and Build with chat paths untouched. No prose change.","inputs":["docs/user/personal-boards.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

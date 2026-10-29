@@ -1,3 +1,4 @@
+import { chatHostImageMapFromEvent } from '@kontourai/station-contracts/chat-host-images';
 import type {
   InputRequestOutcome,
   InputRequestRecord,
@@ -6,7 +7,10 @@ import { toolPurposeView } from '../../components/chat/tool-display-view';
 import type { ChatContentPart } from '../../contexts/active-chats-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { serverTurnLive } from '../../utils/conversation-activity';
-import { derivePlanArtifactFromStreamingState } from '../../utils/planArtifacts';
+import {
+  derivePlanArtifactFromStreamingDelta,
+  derivePlanArtifactFromStreamingState,
+} from '../../utils/planArtifacts';
 import { extractUIBlocks } from '../../utils/uiBlocks';
 import {
   createAssistantStreamingMessage,
@@ -111,11 +115,12 @@ export function handleTextDeltaEvent(
     // Real content is flowing — the transient "Thinking…" hint is stale.
     activityHint: undefined,
     streamingMessage: nextStreamingMessage,
-    planArtifact: derivePlanArtifactFromStreamingState(
-      {
-        streamingMessage: nextStreamingMessage,
-        planArtifact: chat.planArtifact,
-      },
+    // The terminal fold also parses the final unterminated line.
+    planArtifact: derivePlanArtifactFromStreamingDelta(
+      chat,
+      nextStreamingMessage,
+      'text',
+      event.delta,
       event.createdAt,
     ),
   });
@@ -144,11 +149,12 @@ export function handleReasoningDeltaEvent(
   activeChatsStore.updateChat(event.threadId, {
     activityHint: undefined,
     streamingMessage: nextStreamingMessage,
-    planArtifact: derivePlanArtifactFromStreamingState(
-      {
-        streamingMessage: nextStreamingMessage,
-        planArtifact: chat.planArtifact,
-      },
+    // The terminal fold also parses the final unterminated line.
+    planArtifact: derivePlanArtifactFromStreamingDelta(
+      chat,
+      nextStreamingMessage,
+      'reasoning',
+      event.delta,
       event.createdAt,
     ),
   });
@@ -212,7 +218,7 @@ function committedMessageIndexForTurn(
  * back to the streaming shell, which is what every pre-turn-id event and
  * every event for the turn actually streaming still gets.
  *
- * The durable side agrees (fix round, A): `runtime-event-projection.ts`'s
+ * The durable side agrees (#1594): `runtime-event-projection.ts`'s
  * `tool.started` case routes a start for an already-emitted turn onto that
  * turn's message and carries it, so a reload reproduces what this shows
  * rather than folding the start by stream position.
@@ -222,7 +228,10 @@ function committedMessageIndexForTurn(
  * (same reasoning the terminal's historical branch already carries).
  */
 function upsertToolPartOnEventTurn(
-  event: { threadId: string; toolCallId: string; turnId?: string },
+  event: Extract<
+    OrchestrationEvent,
+    { method: 'tool.started' | 'tool.progress' }
+  >,
   updates: Parameters<typeof upsertToolPart>[2],
 ): void {
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
@@ -248,6 +257,14 @@ function upsertToolPartOnEventTurn(
   activeChatsStore.updateChat(event.threadId, {
     activityHint: undefined,
     isProcessingStep: true,
+    ...(event.method === 'tool.started'
+      ? {
+          planArtifact: derivePlanArtifactFromStreamingState(
+            chat,
+            event.createdAt,
+          ),
+        }
+      : {}),
     streamingMessage: {
       ...streamingMessage,
       contentParts: upsertToolPart(
@@ -267,8 +284,13 @@ export function handleToolStartedEvent(
     ...(event.toolKind !== undefined ? { toolKind: event.toolKind } : {}),
     purpose: toolPurposeView(event),
     args: event.arguments || {},
+    // docs/design/event-content-spill.md: lets the row load spilled values.
+    ...(event.spilledContent ? { contentThreadId: event.threadId } : {}),
     state: 'running',
     activityAt: event.createdAt,
+    // `activityAt` moves with every progress frame; this is the start the
+    // row's elapsed time counts from (the projection stamps the same value).
+    startedAt: event.createdAt,
   });
 }
 
@@ -346,6 +368,8 @@ export function handleToolCompletedEvent(
             ? 'unresolved'
             : 'error',
     result: event.output,
+    ...(event.spilledContent ? { contentThreadId: event.threadId } : {}),
+    ...(event.htmlReply ? { htmlReply: event.htmlReply } : {}),
     error: event.error,
     ...(event.outputReceipt?.truncated
       ? { outputTruncated: true as const }
@@ -459,7 +483,7 @@ export function handleToolCompletedEvent(
   // anywhere else, so the streaming shell takes it — including when
   // `streamingTurnContradicts`, which is a disclosed gap rather than a
   // decision (station#1586 item 4). Two shapes reach it: a turn this client
-  // never received in its history, and (fix round, L4) a turn this client DID
+  // never received in its history, and (#1594) a turn this client DID
   // stream whose shell was discarded rather than committed —
   // `handleTurnAbortedEvent` (`turnHandlers.ts`) clears `streamingMessage`
   // and `openTurnId` outright, so an aborted turn's late terminal finds no
@@ -537,4 +561,33 @@ export function settleInputRequestRecordPart(
   activeChatsStore.updateChat(event.threadId, {
     streamingMessage: { ...chat.streamingMessage, contentParts: next },
   });
+}
+
+/**
+ * chat-host-images: the images a settled turn's reply named, onto that
+ * turn's committed assistant row. The event follows the turn's terminal, so
+ * the row is normally committed by now; a row this client never received
+ * (another device's history page) gets it from the durable projection.
+ */
+export function handleHostImagesEvent(
+  event: Extract<OrchestrationEvent, { method: 'content.host-images' }>,
+) {
+  const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  if (!chat) return;
+  const messages = chat.messages ?? [];
+  const index = committedMessageIndexForTurn(messages, event.turnId);
+  if (index < 0) return;
+  const next = chatHostImageMapFromEvent(event);
+  const prior = messages[index].hostImages;
+  const nextMessages = [...messages];
+  nextMessages[index] = {
+    ...messages[index],
+    hostImages: prior
+      ? {
+          images: { ...prior.images, ...next.images },
+          refused: { ...prior.refused, ...next.refused },
+        }
+      : next,
+  };
+  activeChatsStore.updateChat(event.threadId, { messages: nextMessages });
 }

@@ -64,17 +64,20 @@ that Project's slug:
 
 ```sh
 node --import tsx --input-type=module <<'JS'
-import { createKnowledgeRoot } from '@kontourai/station-sdk/client';
+import { createKnowledgeRoot, getProject } from '@kontourai/station-sdk/client';
 const api = process.env.STATION_GRAPH_API;
-const root = await createKnowledgeRoot(api, {
-  scope: { kind: 'project', projectSlug: 'repository-graph' },
-  adapterId: 'kit-default-store',
-  displayName: 'Station repository graph dogfood',
-}, {
+const options = {
   credential: process.env.STATION_GRAPH_TOKEN,
   credentialOrigin: api,
   requireCredential: true,
-});
+};
+const project = await getProject(api, 'repository-graph', options);
+const root = await createKnowledgeRoot(api, {
+  scope: { kind: 'project', projectSlug: project.slug },
+  expectedProjectId: project.id,
+  adapterId: 'kit-default-store',
+  displayName: 'Station repository graph dogfood',
+}, options);
 console.log(root.id);
 JS
 ```

@@ -17,19 +17,12 @@
  * files. A process running as this OS user can still read the files;
  * that is the same trust boundary as `~/.station` itself, not a new one.
  *
- * Durability choice: writes go through `fs.writeSync` on a fd opened once
- * per day, rather than pino's own `SonicBoom`/worker-thread transports.
- * SonicBoom's async destination surfaces open/write failures through an
- * `'error'` event on its own tick, which makes "never throw into the caller"
- * and "a fatal line survives a hard crash" both dependent on event-loop
- * timing the caller cannot control. A synchronous `fs.writeSync` call is
- * durable by construction (the write has completed, or thrown, before the
- * call returns) and every failure is caught at the call site — the
- * degrade-to-stdout-only contract falls out of a plain `try/catch` instead
- * of an async listener race. The tradeoff is a blocking write per log line;
- * that is acceptable for a debug/audit sink that is not a high-throughput
- * data path. `flushSync()` is therefore a no-op — every write is already
- * flushed by the time it returns.
+ * Durability: lines are buffered for up to 10 ms (event-loop delays can
+ * extend that), then written in one synchronous batch, or drained at 64 KiB.
+ * This avoids a blocking syscall for each line without an in-flight async
+ * write racing the fatal flush. flushSync(), close(), and day rollover drain
+ * pending bytes. The installed sink also drains on process exit. A hard kill may lose the pending batch; writes reach the OS
+ * page cache, not an fsync guarantee against power loss.
  */
 
 import {
@@ -104,8 +97,7 @@ export interface ServerLogStore {
   readonly directory: string;
   /** Append one already-serialized log line (a trailing newline is added if missing). */
   writeLine(line: string): void;
-  /** Best-effort synchronous drain for the fatal-crash path. Writes are already
-   * synchronous, so this is a no-op kept for interface symmetry with async sinks. */
+  /** Best-effort synchronous drain for exit, crash and read paths. */
   flushSync(): void;
   /** Closes the currently-open day fd, if any. `installServerLogSink` calls
    * this on the store it replaces so a double-install (e.g. a config
@@ -137,6 +129,9 @@ class FsServerLogStore implements ServerLogStore {
   private fd: number | undefined;
   private currentDay: string | undefined;
   private lastRetentionDay: string | undefined;
+  private pending: Buffer[] = [];
+  private pendingBytes = 0;
+  private flushTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(options: CreateServerLogStoreOptions) {
     this.directory = options.directory;
@@ -161,8 +156,17 @@ class FsServerLogStore implements ServerLogStore {
     try {
       this.ensureOpenForToday();
       if (this.fd === undefined) return;
-      const payload = line.endsWith('\n') ? line : `${line}\n`;
-      writeSync(this.fd, payload, null, 'utf8');
+      if (this.pendingBytes >= 64 * 1024) {
+        this.flushSync();
+        if (this.pendingBytes >= 64 * 1024) return;
+      }
+      const payload = Buffer.from(line.endsWith('\n') ? line : `${line}\n`);
+      this.pending.push(payload);
+      this.pendingBytes += payload.length;
+      if (this.pendingBytes >= 64 * 1024) this.flushSync();
+      else if (!this.flushTimer) {
+        this.flushTimer = setTimeout(() => this.flushSync(), 10);
+      }
     } catch {
       countInstrument('serverLogStoreWriteErrors', 1);
       // Degrade to stdout-only: drop the fd so the next write retries a
@@ -179,10 +183,43 @@ class FsServerLogStore implements ServerLogStore {
   }
 
   flushSync(): void {
-    // No-op: fs.writeSync already durably completes each write.
+    clearTimeout(this.flushTimer);
+    this.flushTimer = undefined;
+    if (this.pendingBytes === 0) return;
+    const payload = Buffer.concat(this.pending);
+    let offset = 0;
+    try {
+      if (this.fd === undefined) this.ensureOpenForToday();
+      if (this.fd === undefined) return;
+      while (offset < payload.length) {
+        const written = writeSync(
+          this.fd,
+          payload,
+          offset,
+          payload.length - offset,
+        );
+        if (written === 0) throw new Error('Server log write made no progress');
+        offset += written;
+      }
+    } catch {
+      countInstrument('serverLogStoreWriteErrors', 1);
+      if (this.fd !== undefined) {
+        try {
+          closeSync(this.fd);
+        } catch {
+          /* best-effort close */
+        }
+      }
+      this.fd = undefined;
+    } finally {
+      // Retain only unwritten bytes, including a partial UTF-8 code point.
+      this.pending = offset < payload.length ? [payload.subarray(offset)] : [];
+      this.pendingBytes = payload.length - offset;
+    }
   }
 
   close(): void {
+    this.flushSync();
     if (this.fd === undefined) return;
     try {
       closeSync(this.fd);
@@ -201,6 +238,7 @@ class FsServerLogStore implements ServerLogStore {
     const today = this.dayStamp();
     if (this.fd !== undefined && this.currentDay === today) return;
     if (this.fd !== undefined) {
+      this.flushSync();
       try {
         closeSync(this.fd);
       } catch {
@@ -326,6 +364,9 @@ export function createServerLogStore(
 }
 
 let installedSink: ServerLogStore | undefined;
+const flushOnExit = () => {
+  installedSink?.flushSync();
+};
 
 /** Installs the process-wide server log sink and points the logger seam's
  * durable tee at it (`installLoggerLineSink`), so one call keeps this
@@ -337,9 +378,11 @@ let installedSink: ServerLogStore | undefined;
 export function installServerLogSink(
   options: CreateServerLogStoreOptions,
 ): ServerLogStore {
+  process.removeListener('exit', flushOnExit);
   const previous = installedSink;
   installedSink = createServerLogStore(options);
   installLoggerLineSink(installedSink);
+  process.on('exit', flushOnExit);
   if (previous) {
     try {
       previous.close();
@@ -363,6 +406,7 @@ export function getInstalledServerLogSink(): ServerLogStore | undefined {
  * Clears the logger seam's tee as well, so a later logger write does not
  * reach the store this just closed. */
 export function resetServerLogSinkForTests(): void {
+  process.removeListener('exit', flushOnExit);
   installedSink?.close();
   installedSink = undefined;
   installLoggerLineSink(undefined);

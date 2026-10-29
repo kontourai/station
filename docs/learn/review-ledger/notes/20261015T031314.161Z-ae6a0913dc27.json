@@ -1,0 +1,7 @@
+{
+  "revision": "42a1cf9e2474b50dad7635ee1e5d65ba7a6dc9f5",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"Reviewed the new conversation-status paragraph against authority-scoped observation state, history/open/list failure publication, newer stream activity and snapshot/read recovery, shared Home/sidebar/dock item projection, neutral status tone and omitted elapsed duration, and the transcript background banner. Existing work/session and evidence definitions are unchanged. The unmapped UI observation helpers serve this paragraph; no server or protocol change. At 42a1cf9e247, focused 135/135 across six files passed; five clean-tree owner mutations failed for the intended behavioral reasons and restoration passed. Browser fixtures at 1440px and 390px passed; native remote saturation and hosted Gallery remain unverified.","inputs":["docs/user/concepts.md","src-ui/src/contexts/work-observation.ts","src-ui/src/hooks/orchestration/useSessionEventWindow.ts","src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts","src-ui/src/views/home/useInboxWorkItems.ts","src-ui/src/views/home/useHomeViewModel.ts","src-ui/src/views/home/work-status.ts","src-ui/src/components/chat-dock/ChatDockBody.tsx","src-ui/src/components/chat-dock/ConversationOpenRevalidator.tsx","src-ui/src/__tests__/InboxOpenChatStatusConsistency.test.tsx"]}
+  ]
+}

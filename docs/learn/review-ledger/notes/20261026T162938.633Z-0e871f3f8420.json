@@ -1,0 +1,7 @@
+{
+  "revision": "aa276ae4566814bdc119e9151a78b01d9ad076d1",
+
+  "notes": [
+    {"path":"packages/monument/CONTEXT.md","note":"Re-checked after captureTurnIntent began projecting retained attachments to the five ChatAttachmentInput fields and the retained schema tolerated legacy clientAttachmentId/blobRef: the submission digest (turn-submission-digest.ts) already hashes attachment metadata and content digests without ids, and no claim here describes the retained envelope's attachment keys, so the text stays accurate.","inputs":["packages/monument/CONTEXT.md","src-server/services/orchestration/prepared-turn-intent.ts"]}
+  ]
+}

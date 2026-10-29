@@ -1,0 +1,7 @@
+{
+  "revision": "f95e9c306207da5fef5ec48212487d7f1924f9fc",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Added station.runtime.event_loop_lag histogram row and the Event loop stalled warning fields; checked each field name, the 1s threshold, 10s interval, 250ms report delay, and log path against src-server/runtime/bootstrap/runtime-health.ts and telemetry/metrics.ts.","inputs":["docs/guides/monitoring.md"]}
+  ]
+}

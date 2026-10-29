@@ -23,6 +23,7 @@ import {
   getRuntimeNativeDeviceProofPrincipal,
 } from '../../security/runtime-request-security.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
+import { principalForDeviceBinding } from '../../services/access/device-binding-principal.js';
 import {
   type DeploymentAuthenticationService,
   deploymentAccountPrincipal,
@@ -47,22 +48,6 @@ function isAccountDeviceBinding(
   return 'kind' in binding && binding.kind === 'account';
 }
 
-function principalForDeviceBinding(
-  binding: DevicePrincipalBinding,
-): PrincipalRef {
-  return 'kind' in binding
-    ? deploymentAccountPrincipal(
-        binding.issuer,
-        binding.subject,
-        binding.displayName,
-      )
-    : deploymentHumanPrincipal(
-        binding.provider,
-        binding.subject,
-        binding.subject,
-      );
-}
-
 /** The identity a request carrying this device's own credential presents. */
 function deviceIdentity(
   device: Pick<PairedDevice, 'id' | 'name'>,
@@ -78,15 +63,23 @@ function deviceIdentity(
  * The principal a request authenticated by this paired device's own
  * credential resolves to through the resolver below, when that request
  * carries no ingress (WhoIs) identity and no deployment-account session: the
- * device's person binding when it is a tailnet binding, otherwise the device
+ * device's person binding when it is a tailnet binding; else the operator
+ * when the credential was minted with home-possession (`locality`, the
+ * desktop app's local grant and the local browser UI's bootstrap — the
+ * resolver reads the same stamp from the request); otherwise the device
  * itself. Background work acting for a device (the agent-activity publisher
- * reading what that phone may see) uses this so it reads exactly what the
- * device's own requests read, never a process-wide identity.
+ * reading what that phone may see, notification focus and audience) uses
+ * this so it reads exactly what the device's own requests read, never a
+ * process-wide identity. `locality` is required so no caller can forget it
+ * (`DevicePairingService.deviceLocality`).
  */
 export function pairedDevicePrincipal(
   device: Pick<PairedDevice, 'id' | 'name' | 'principalBinding'>,
+  locality: 'home-possession' | undefined,
 ): PrincipalRef {
   const binding = device.principalBinding;
+  const operatorAuthority =
+    locality === 'home-possession' ? { locality } : undefined;
   return resolveStationPrincipal(
     binding && !('kind' in binding)
       ? {
@@ -94,9 +87,11 @@ export function pairedDevicePrincipal(
           subject: binding.subject,
           displayName: binding.subject,
         }
-      : deviceIdentity(device),
+      : operatorAuthority
+        ? null
+        : deviceIdentity(device),
     'personal',
-    undefined,
+    operatorAuthority,
     undefined,
     { resolveOperatorDisplay: () => getCachedUser().alias },
   );
@@ -112,6 +107,10 @@ export interface OrchestrationRequestPrincipalDeps {
     'resolvePrincipal'
   >;
   hostedTenantRegistry?: unknown;
+  currentRelationshipAccountDevice?(
+    request: Request,
+    binding: Extract<DevicePrincipalBinding, { kind: 'account' }>,
+  ): boolean;
   /**
    * #2893 pilot: the shared native current-Device resolver. A proven native
    * request resolves ONLY to its Device's matching authenticated account
@@ -216,11 +215,11 @@ export function createOrchestrationRequestPrincipalResolver(
           ? ({ verifiedOperatorCredential: true } as const)
           : undefined;
     const ingressIdentity = identifyIngress(c);
-    const binding =
+    const device =
       runtimePrincipal?.authority === 'device-credential'
         ? environmentSecurityService.identifyDevice(runtimePrincipal.credential)
-            ?.principalBinding
         : undefined;
+    const binding = device?.principalBinding;
     if (
       binding &&
       (hostedTenantRegistry !== undefined ||
@@ -248,6 +247,17 @@ export function createOrchestrationRequestPrincipalResolver(
       verifiedPerson ? [verifiedPerson] : [],
     );
     if (account) return account;
+    // #3586: a personal access token tied to an account acts as that
+    // account without a session; the pairing service resolved it only
+    // because the account's standing is current.
+    if (
+      verifiedPerson &&
+      binding &&
+      isAccountDeviceBinding(binding) &&
+      (device?.credentialKind === 'personal-token' ||
+        deps.currentRelationshipAccountDevice?.(c.req.raw, binding) === true)
+    )
+      return verifiedPerson;
     return resolveStationPrincipal(
       (binding && !('kind' in binding)
         ? {

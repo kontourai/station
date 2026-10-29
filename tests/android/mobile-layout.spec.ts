@@ -12,10 +12,11 @@ import { MIN_TOUCH_TARGET_PX } from '../helpers/touch-target';
  * way is a real, uncovered touch target.
  *
  * #2221 removed the phone-only Settings gear from `.app-toolbar`: on a phone
- * the header's `Toggle menu` opens the sidebar drawer, whose footer owns
- * Settings (`ProjectSidebarFooter`). Both taps are asserted rather than only
- * the destination, so a regression that shrinks either control below the
- * touch floor, or lets an overlay (a backdrop, say) sit on top
+ * the header's `Toggle menu` opens the sidebar drawer, whose footer carries
+ * the account control, and its menu's `Open settings` row reaches Settings
+ * (`ProjectSidebarFooter`, `SidebarAccountControl`). Every tap is asserted
+ * rather than only the destination, so a regression that shrinks a control
+ * below the touch floor, or lets an overlay (a backdrop, say) sit on top
  * of it, fails here instead of reaching Settings by some other route.
  */
 async function openSettingsFromMobileDrawer(page: Page): Promise<void> {
@@ -26,12 +27,18 @@ async function openSettingsFromMobileDrawer(page: Page): Promise<void> {
   await expectUncoveredTouchTarget(toggle);
   await toggle.click();
 
-  const settings = page
+  const account = page
     .locator('#mobile-navigation')
-    .getByRole('button', { name: 'Settings', exact: true });
-  await expect(settings).toBeVisible({ timeout: 10_000 });
+    .getByRole('button', { name: /^Profile and settings:/ });
+  await expect(account).toBeVisible({ timeout: 10_000 });
   // The drawer slides in; poll the hit test until the transition settles
   // rather than measuring a mid-animation frame.
+  await expect.poll(() => isTopmostAtCenter(account)).toBe(true);
+  await expectUncoveredTouchTarget(account);
+  await account.click();
+
+  const settings = page.getByRole('menuitem', { name: 'Open settings' });
+  await expect(settings).toBeVisible({ timeout: 10_000 });
   await expect.poll(() => isTopmostAtCenter(settings)).toBe(true);
   await expectUncoveredTouchTarget(settings);
   await settings.click();
@@ -238,6 +245,11 @@ test.describe('Android — Mobile Layout', () => {
     await expect(sections).toBeVisible();
     await sections.selectOption({ label: 'Advanced' });
 
+    await page
+      .locator('summary')
+      .filter({ hasText: /^Build details$/ })
+      .click();
+
     // #1063 renamed the group and renders the timestamp as `date · age` with
     // a separate screen-reader description that repeats the age, so match the
     // visible line whole rather than the age substring.
@@ -342,7 +354,7 @@ test.describe('Android — Mobile Layout', () => {
     await dismissSetupLauncher(page);
     const { candidates, tooSmall } = await page.evaluate((minimumTarget) => {
       const buttons = Array.from(
-        document.querySelectorAll(
+        document.querySelectorAll<HTMLElement>(
           'button, a[href], [role="button"], input, select, textarea',
         ),
       );
@@ -360,6 +372,16 @@ test.describe('Android — Mobile Layout', () => {
           '.sidebar--collapsed, [style*="display: none"]',
         );
         if (parent) return false;
+        // A visually hidden control (clipped to 1px, hidden from assistive
+        // tech, out of the focus order) is not a touch target; a visible
+        // aria-hidden control that can still be tapped is measured.
+        if (
+          el.closest('[aria-hidden="true"]') &&
+          el.tabIndex < 0 &&
+          rect.width <= 1 &&
+          rect.height <= 1
+        )
+          return false;
         if (rect.bottom < 0 || rect.top > window.innerHeight) return false;
         if (rect.right < 0 || rect.left > window.innerWidth) return false;
         return true;

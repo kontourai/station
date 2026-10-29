@@ -1,0 +1,7 @@
+{
+  "revision": "9fd1c1f6aac6ce49ec916d96ccdadec1ee333593",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Validated the populated browser journey at 320/390/620px in light/dark themes, both date endpoints against card and viewport bounds, real Rebuild response/refresh from42 to43, lazy diagnostics request initiation, empty/loading behavior and runtime-error capture. The mobile44px period-control regression failed at28px before the CSS fix and all6 repaired cases passed. Fixtures model retained observations only; provider billing/native/full historical coverage remain outside this proof.","inputs":["docs/guides/monitoring.md","tests/profile.spec.ts","src-ui/src/components/usage-stats/UsageStatsPanel.css"]}
+  ]
+}

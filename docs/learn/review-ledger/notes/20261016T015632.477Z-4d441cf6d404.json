@@ -1,0 +1,7 @@
+{
+  "revision": "3265ca8a43e27c9f20e64c73a8d0f6440927ec64",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the Gallery baseline-only change3265ca8a43e against this guides targeted capture, exact comparator, volatility, renderer binding and hosted artifact refresh instructions. Exactf44f0aef hosted run38835895399/artifact12019054394 completes56/56, all hashes verify and all images match the previously reviewed corrected8757capture. Canonical generator updates27existing references and adds2resyncscreens; no removals, masks, tolerance or newvolatileentries. overlay-dock-project-bound and mismatch retain intended reviewed UI at1440x900. Unmodified comparator55/55unchanged plus1inheritedvolatile exclusion. Screen inventory is deliberately owned by capture/manifest; commands and prose remain accurate. Independent artifact/reference audit clear. New-head hosted qualification, provider recovery and physical-device proof remain separate.","inputs":["docs/guides/testing.md","tests/screenshots.baseline.json","tests/screenshots.baseline/overlay-dock-project-bound.png","tests/screenshots.baseline/overlay-dock-project-mismatch.png"]}
+  ]
+}

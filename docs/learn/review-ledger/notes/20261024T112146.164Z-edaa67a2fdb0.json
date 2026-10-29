@@ -1,0 +1,107 @@
+{
+  "revision": "2bfe1b643841d35a2db1fbb757e84f6f2f4d7eb9",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Diff-scoped review for #4099: Context relationships still point to the same Session and governance owners; the module-map changes refine start failure handling only.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Diff-scoped review for #4099: The context map and module ownership boundary remain accurate; no extraction or subsystem removal occurs.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"Diff-scoped review for #4099: Engine readiness and Connections reading links remain accurate; no onboarding or product availability claim changes.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Diff-scoped review for #4099: The audience and learning navigation still resolves to the existing module-map owners.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Diff-scoped review for #4099: This frozen ADR concerns read-time answerability, not start rollback or cwd selection; preserve its historical conclusions.","inputs":["docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture.md","note":"Diff-scoped review for #4099: Session commands remain owned by the same orchestration module; engine adaptation and durable receipt boundaries remain separate.","inputs":["docs/architecture.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Diff-scoped review for #4099: The Session-command Interface and behavioral evidence row remain valid; cleanup stays at the service composition seam.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md","src-server/services/orchestration/__tests__/session-command-module.test.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/session-command-module.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Diff-scoped review for #4099: Updated SessionCommandModule rollback and Project-session-directory realpath claims against the actual launch and first-turn callers; indeterminate receipts retain reconciliation semantics.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/session-command-module.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Diff-scoped review for #4099: OAuth principal selection, proxy delivery and pre-launch needs-sign-in remain accurate; status forwarding does not expand pre-tool policy guarantees.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/providers/__tests__/engine-oauth-mcp.test.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Diff-scoped review for #4099: The start owner still separates receipts, possible provider effects and events; a late failed start may have executed, even after compensating stop.","inputs":["docs/contexts/agent-runtime/CONTEXT.md","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/session-command-module.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Diff-scoped review for #4099: Explicit Flow binding, evidence scope and receipt uncertainty remain unchanged by cleanup of a newly started engine.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/session-command-module.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Diff-scoped review for #4099: Operations context owners and their relationships remain unchanged; no knowledge, scheduler, notification or telemetry contract changes.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/session-command-module.ts"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Diff-scoped review for #4099: Approval posture and confinement are resolved before the same provider boundary; rollback does not grant or alter permission mode.","inputs":["docs/design/approval-posture-server-ordered.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Diff-scoped review for #4099: Local and cross-host home authority are unaffected by per-session credential revocation and cwd normalization.","inputs":["docs/design/channel-home-authority.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Diff-scoped review for #4099: Detection and readiness remain distinct from execution; startup refusal and account routing continue through existing owners.","inputs":["docs/design/connections-onboarding.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Diff-scoped review for #4099: The retained EventStore and SessionJournal boundaries remain in place; no storage migration, ledger schema or ownership transfer occurs.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Diff-scoped review for #4099: Historical mobile delivery and current push claims are outside this source delta; no notification payload, transport or native lifecycle changes.","inputs":["docs/design/notification-delivery.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"Diff-scoped review for #4099: The historical decomposition map remains historical; SessionCommandModule still owns sequencing and service composition owns provider cleanup.","inputs":["docs/design/orchestration-decomposition-map.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Diff-scoped review for #4099: The current implementation note agrees with canonical start admission and retained-coordinate rechecks; qualified conversations never follow a retargeted canonical directory.","inputs":["docs/design/portable-project-identity.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/glossary.md","note":"Diff-scoped review for #4099: Project, Session, engine and receipt vocabulary remains unchanged; no new user-facing concept or state is introduced.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Diff-scoped review for #4099: Agent policy refusal, engine support and browser grant lifetime remain accurate; rollback retires the same session capabilities.","inputs":["docs/guides/agent-configuration.md","src-server/providers/__tests__/engine-oauth-mcp.test.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/session-command-module.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Diff-scoped review for #4099: Updated remote status classes, optional GET 405, sanitized headers, failed-start revocation and indeterminate-receipt limits against proxy and orchestration callers.","inputs":["docs/guides/connections.md","src-server/providers/__tests__/engine-oauth-mcp.test.ts","src-server/routes/mcp/engine-oauth-proxy-route.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Diff-scoped review for #4099: Device scopes and Session confinement still have distinct authority; this change adds no remote access route or capability.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Diff-scoped review for #4099: Scoped dispatch still refuses directories outside the admitted root; canonicalization preserves whole-segment containment and owned-workspace admission.","inputs":["docs/guides/self-configuring-agent.md","docs/architecture/module-map.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Diff-scoped review for #4099: Starter dispatch and adoption retain their durable owners; no task preparation or supported-surface contract changes.","inputs":["docs/guides/starter-work.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Diff-scoped review for #4099: New real-child regression cases have explicit process-heavy classification; focused, hosted and live-provider evidence remain separate.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Diff-scoped review for #4099: The existing Task and Session walkthrough links still resolve; first-turn realpath normalization changes no navigation or task-state contract.","inputs":["docs/learn/walkthroughs.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Diff-scoped review for #4099: This supported-surface inventory remains a dated plan, not new runtime evidence; Agent identity and UI inventory are unaffected.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Diff-scoped review for #4099: The smoke start-failure cleanup case passes with the shared rollback; confirmed cleanup remains required before diagnostic erasure, and fixtures are not live smoke.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Diff-scoped review for #4099: Public orchestration request schemas and paths are unchanged; the loopback OAuth proxy uses its existing capability-specific route, outside ordinary Device authority.","inputs":["docs/reference/api.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Diff-scoped review for #4099: No configuration keys or defaults change; only resolved runtime paths and failure cleanup change.","inputs":["docs/reference/config.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Diff-scoped review for #4099: No public contract types, exports or schemas change; the new cleanup collaborator remains private server composition.","inputs":["docs/reference/contracts.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Diff-scoped review for #4099: No environment variable, port default or runtime-home selection changes; tests use isolated homes and a non-default proxy URL.","inputs":["docs/reference/env-vars.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Diff-scoped review for #4099: SDK arguments and authority partitioning remain unchanged; OAuth support still routes Claude and Codex through the session proxy.","inputs":["docs/reference/sdk.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Diff-scoped review for #4099: Foreground cwd containment includes symlink resolution as documented; internal start outcomes and accepted-receipt uncertainty retain their existing shape.","inputs":["docs/reference/session-api.md","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/session-command-module.ts"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Diff-scoped review for #4099: Settings deep links and renderer delivery modes are unaffected; no UI control or route changes.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Diff-scoped review for #4099: Generated MCP topics reflect only the reviewed Connections and architecture paragraphs; explicit Flow binding and credential-free docs delivery remain accurate.","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md","src-server/services/orchestration/orchestration-service.ts","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Diff-scoped review for #4099: No usage exporter, pricing snapshot or collector contract changes; cleanup and start timing remain separate from delivery proof.","inputs":["docs/reference/usage-telemetry.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Diff-scoped review for #4099: User concepts and Session receipt distinctions remain accurate; no durable Task or conversation state vocabulary changes.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md","src-server/services/orchestration/session-command-module.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Diff-scoped review for #4099: Getting-started readiness and uncertain-start guidance remain accurate; this change does not establish installed or live-provider qualification.","inputs":["docs/user/getting-started.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Diff-scoped review for #4099: Checkpoint restore authority and physical workspace rollback are unaffected by retiring a failed engine start.","inputs":["docs/user/workspace-checkpoints.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Diff-scoped review for #4099: The graph example derives the same module sections and dependency edges; new paragraphs add no schema or ingestion requirement.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Diff-scoped review for #4099: The attended self-configuring example retains its existing Station Control and Project authority; no tool or example arguments change.","inputs":["examples/self-configuring-agent/README.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Diff-scoped review for #4099: The model-only package is unchanged; the resource manifest adds an orchestration process case without modifying framework request bytes.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Diff-scoped review for #4099: Monument invocation and dedup ownership are unchanged; Station keeps indeterminate accepted starts fenced rather than retrying.","inputs":["packages/monument/CONTEXT.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Diff-scoped review for #4099: The Monument writer protocol, lifecycle and pending-retry semantics are unaffected; no package source or persisted schema changes.","inputs":["packages/monument/README.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"scripts/AGENTS.md","note":"Diff-scoped review for #4099: New real child launches set windowsHide and the suite is explicitly classified; no policy requirement is weakened.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"src-server/AGENTS.md","note":"Diff-scoped review for #4099: Routes retain validation and service ownership; added regressions reach real command dispatch, and no sibling internals are imported.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Diff-scoped review for #4099: No UI source changes; shared styles, query ownership, native evidence and interaction policies remain unaffected.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Diff-scoped review for #4099: The inspect-request still image shows request inspection, not session creation or proxy transport; no UI pixels, route or fixture input changes, so no recapture is needed. No new browser evidence claimed.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Diff-scoped review for #4099: The inspect-request recording concerns request inspection; no rendering or request-inspection flow changed. Source-only no-impact review, not a new recording or provider qualification.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

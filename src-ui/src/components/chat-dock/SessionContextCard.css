@@ -1,0 +1,320 @@
+/* The session context card (lazy chunk with the card and its sheet). Inline,
+   it is a fixed column at the dock's right edge; its width is set from
+   `SESSION_CONTEXT_CARD_WIDTH` on the element so the fit measurement and the
+   column agree. No responsive at-rules: when it shows is the dock's own
+   measured width (sessionContextCardModel.ts), and the phone presentation is
+   the shared sheet's (`data-sheet`). */
+.session-context-card {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-left: var(--k-border-thin, 1px) solid var(--border-primary);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+/* The card comes and goes with the dock's width (and with Chat inventory,
+   which takes its room). It fades and slides in place; its column never
+   animates. The show/hide decision is a measured fit with anti-oscillation
+   (sessionContextCardModel.ts), and a width animation would feed that
+   ResizeObserver mid-flight. Leaving, it gives its column back at once (a
+   negative margin as wide as the card nets it zero room in the row) and
+   fades over the transcript's edge, so the transcript takes its new width
+   in one step rather than narrowing for the fade and widening after. The
+   fit reads the same answer either way (sessionContextCardFits). The exit
+   class is only ever applied with motion on: under reduced motion
+   `useExitTransition` unmounts at once. */
+.session-context-card:not(.session-context-card--sheet) {
+  animation: session-context-card-enter var(--motion-base) var(--ease-standard);
+}
+
+.session-context-card--exiting:not(.session-context-card--sheet) {
+  margin-inline-start: calc(-1 * var(--session-context-card-width));
+  pointer-events: none;
+  animation: session-context-card-exit var(--motion-base) var(--ease-standard)
+    forwards;
+}
+
+/* Its fade covers only the transcript's edge: while it leaves, the composer
+   and the pending list above it paint over it on the dock's own background,
+   so it never hides Send or the composer's pills. */
+.chat-dock__workspace:has(> .session-context-card--exiting)
+  .chat-dock__body
+  > :is(.chat-input, .queued-messages-presence) {
+  position: relative;
+  z-index: 1;
+  background: var(--bg-secondary);
+}
+
+@keyframes session-context-card-enter {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes session-context-card-exit {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+}
+
+.session-context-card--sheet {
+  width: auto;
+  border-left: 0;
+  background: transparent;
+}
+
+.session-context-card__title {
+  margin: 0;
+  padding: var(--k-space-3) var(--k-space-3) var(--k-space-1);
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.session-context-card__rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+  margin: 0;
+  padding: var(--k-space-1) var(--k-space-2);
+  list-style: none;
+}
+
+.session-context-card__action,
+.session-context-card__static {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: var(--k-space-2);
+  border: 0;
+  border-radius: var(--k-radius-md, 6px);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.session-context-card__action {
+  cursor: pointer;
+}
+
+.session-context-card__action:hover {
+  background: var(--bg-tertiary);
+}
+
+.session-context-card__action:focus-visible,
+.session-context-card__link:focus-visible {
+  outline: var(--k-focus-ring-width, 2px) solid var(--accent-primary);
+  outline-offset: -2px;
+}
+
+.session-context-card__label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-1);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.session-context-card__glyph {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+}
+
+.session-context-card__value {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  font-size: var(--text-sm);
+}
+
+.session-context-card__primary,
+.session-context-card__path,
+.session-context-card__pr-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-context-card__primary {
+  font-weight: 600;
+}
+
+.session-context-card__secondary,
+.session-context-card__hint,
+.session-context-card__gap,
+.session-context-card__more {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+
+/* A long worktree path keeps its tail, the part that tells two apart. */
+.session-context-card__path {
+  direction: rtl;
+  text-align: left;
+  font-family: var(--font-mono);
+}
+
+.session-context-card__hint {
+  color: var(--accent-primary);
+}
+
+/* The ladder's colour discipline, as the inbox row draws it. */
+.session-context-card__status[data-tone="attention"] {
+  color: var(--accent-primary);
+}
+.session-context-card__status[data-tone="caution"] {
+  color: var(--warning-text);
+}
+.session-context-card__status[data-tone="active"] {
+  color: var(--success-text);
+}
+.session-context-card__status[data-tone="broken"] {
+  color: var(--status-error);
+}
+
+.session-context-card__prs {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.session-context-card__prs li {
+  display: flex;
+  gap: var(--k-space-1);
+  align-items: baseline;
+  min-width: 0;
+}
+
+.session-context-card__pr-ref {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.session-context-card__pr-title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.session-context-card__pr-state {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.session-context-card__footer {
+  margin-top: auto;
+  padding: var(--k-space-2);
+  border-top: var(--k-border-thin, 1px) solid var(--border-primary);
+}
+
+.session-context-card__link {
+  width: 100%;
+  min-height: 44px;
+  border: 0;
+  border-radius: var(--k-radius-md, 6px);
+  background: transparent;
+  color: var(--accent-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  padding: 0 var(--k-space-2);
+}
+
+.session-context-card__link:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+}
+
+.session-context-card__link:disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+/* Behind the chip on a desktop dock: anchored to the chip, like the dock's
+   other header popovers. It opens on the side with more room, which
+   ResponsiveDialogSurface measures (`data-anchor-side`), and is capped to
+   that room: a bottom dock's chip sits low in the window (#3888). */
+.session-context-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 12px;
+}
+
+.session-context-sheet-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(320px, calc(100vw - 24px));
+  max-height: min(520px, calc(100vh - 24px));
+  overflow-y: auto;
+  border: var(--k-border-thin, 1px) solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  background: var(--bg-primary);
+  box-shadow: var(--shadow-lg);
+  color: var(--text-primary);
+}
+
+.session-context-sheet-overlay[data-anchored] .session-context-sheet-panel {
+  position: fixed;
+  top: calc(var(--responsive-anchor-bottom, 0px) + 8px);
+  left: clamp(
+    12px,
+    var(--responsive-anchor-left, 12px),
+    calc(100vw - min(320px, calc(100vw - 24px)) - 12px)
+  );
+  max-height: min(
+    520px,
+    max(160px, calc(100dvh - var(--responsive-anchor-bottom, 0px) - 20px))
+  );
+}
+
+.session-context-sheet-overlay[data-anchored][data-anchor-side="above"]
+  .session-context-sheet-panel {
+  top: auto;
+  bottom: calc(100dvh - var(--responsive-anchor-top, 100dvh) + 8px);
+  max-height: min(
+    520px,
+    max(160px, calc(var(--responsive-anchor-top, 100dvh) - 20px))
+  );
+}
+
+/* A phone: the shared sheet geometry, docked to the bottom edge. */
+.session-context-sheet-overlay[data-sheet] {
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.session-context-sheet-overlay[data-sheet] .session-context-sheet-panel {
+  width: 100%;
+  max-height: min(80dvh, 640px);
+  border-radius: 14px 14px 0 0;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}

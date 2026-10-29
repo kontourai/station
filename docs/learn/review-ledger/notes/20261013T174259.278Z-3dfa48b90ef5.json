@@ -1,0 +1,67 @@
+{
+  "revision": "6f009132be45aa80058db555971926c36bb27bff",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.png","note":"Capture depends on orchestration-service.ts; the change is server-side shutdown/recovery only and does not alter this capture's UI.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Capture depends on orchestration-service.ts; the change is server-side shutdown/recovery only and does not alter this capture's UI.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Mentions interrupted-turn recovery's request.resolved expired (#3071). Unchanged: retries re-run the same idempotent writes.","inputs":["docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture.md","note":"Links turn boundaries to the module map; no claim about boot recovery retries or shutdown.","inputs":["docs/architecture.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Session lifecycle row only; no recovery-retry or shutdown claim.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Added one sentence on interrupted-turn consumption (in-boot bounded retry, shutdown stop, rows kept for next boot) beside the startup-reconciliation claim; checked the neighbouring shutdown claims (transcript reader, intents, credential scans): they describe other owners and are unchanged by the new OrchestrationService.shutdown() call to interruptedTurns.stop().","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Turn-boundary row points at the coordinator and durable invocation boundary; the change does not alter admission or boundary states.","inputs":["docs/contexts/agent-runtime/CONTEXT.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Dependency is on orchestration-service.ts, whose only change is one interruptedTurns.stop() call at the top of shutdown(). Searched this document for shutdown, interrupted-turn, consume, turn boundary: no claim about boot recovery or shutdown ordering of it, so no prose change.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Dependency is on orchestration-service.ts, whose only change is one interruptedTurns.stop() call at the top of shutdown(). Searched this document for shutdown, interrupted-turn, consume, turn boundary: no claim about boot recovery or shutdown ordering of it, so no prose change.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Dependency is on orchestration-service.ts, whose only change is one interruptedTurns.stop() call at the top of shutdown(). Searched this document for shutdown, interrupted-turn, consume, turn boundary: no claim about boot recovery or shutdown ordering of it, so no prose change.","inputs":["docs/design/approval-posture-server-ordered.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Line ~408 says the interrupted-turn banner consumer excludes session-start and task-dispatch rows. Still true: the change touches retry and stop only, not which rows are taken.","inputs":["docs/design/channel-home-authority.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Dependency is on orchestration-service.ts, whose only change is one interruptedTurns.stop() call at the top of shutdown(). Searched this document for shutdown, interrupted-turn, consume, turn boundary: no claim about boot recovery or shutdown ordering of it, so no prose change.","inputs":["docs/design/connections-onboarding.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Dependency is on orchestration-service.ts, whose only change is one interruptedTurns.stop() call at the top of shutdown(). Searched this document for shutdown, interrupted-turn, consume, turn boundary: no claim about boot recovery or shutdown ordering of it, so no prose change.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Shutdown hits concern the notification timer, not boot recovery. No claim affected by shutdown() now calling interruptedTurns.stop().","inputs":["docs/design/notification-delivery.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"Historical record (marked as such at its head). Its slice-13 claims (four deps, zero owned state, consume() fire-and-forget from initialize()) were true at that revision; InterruptedTurnRecovery now owns a stop AbortController and shutdown() calls stop(). Left unedited because the document says counts and shapes must be re-derived before reuse; the initialize() call site and its .catch are unchanged.","inputs":["docs/design/orchestration-decomposition-map.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Dependency is on orchestration-service.ts, whose only change is one interruptedTurns.stop() call at the top of shutdown(). Searched this document for shutdown, interrupted-turn, consume, turn boundary: no claim about boot recovery or shutdown ordering of it, so no prose change.","inputs":["docs/design/portable-project-identity.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/agents.md","note":"Dependency is on orchestration-service.ts, whose only change is one interruptedTurns.stop() call at the top of shutdown(). Searched this document for shutdown, interrupted-turn, consume, turn boundary: no claim about boot recovery or shutdown ordering of it, so no prose change.","inputs":["docs/guides/agents.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Dependency is on orchestration-service.ts, whose only change is one interruptedTurns.stop() call at the top of shutdown(). Searched this document for shutdown, interrupted-turn, consume, turn boundary: no claim about boot recovery or shutdown ordering of it, so no prose change.","inputs":["docs/guides/connections.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Dependency is on orchestration-service.ts, whose only change is one interruptedTurns.stop() call at the top of shutdown(). Searched this document for shutdown, interrupted-turn, consume, turn boundary: no claim about boot recovery or shutdown ordering of it, so no prose change.","inputs":["docs/guides/self-configuring-agent.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Dependency is on orchestration-service.ts, whose only change is one interruptedTurns.stop() call at the top of shutdown(). Searched this document for shutdown, interrupted-turn, consume, turn boundary: no claim about boot recovery or shutdown ordering of it, so no prose change.","inputs":["docs/guides/starter-work.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Dependency is on orchestration-service.ts, whose only change is one interruptedTurns.stop() call at the top of shutdown(). Searched this document for shutdown, interrupted-turn, consume, turn boundary: no claim about boot recovery or shutdown ordering of it, so no prose change.","inputs":["docs/learn/walkthroughs.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"The one shutdown hit is the review-executor workspace cleanup result. No claim affected.","inputs":["docs/reference/api.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Dependency is on orchestration-service.ts, whose only change is one interruptedTurns.stop() call at the top of shutdown(). Searched this document for shutdown, interrupted-turn, consume, turn boundary: no claim about boot recovery or shutdown ordering of it, so no prose change.","inputs":["docs/reference/config.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Dependency is on orchestration-service.ts, whose only change is one interruptedTurns.stop() call at the top of shutdown(). Searched this document for shutdown, interrupted-turn, consume, turn boundary: no claim about boot recovery or shutdown ordering of it, so no prose change.","inputs":["docs/reference/contracts.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Dependency is on orchestration-service.ts, whose only change is one interruptedTurns.stop() call at the top of shutdown(). Searched this document for shutdown, interrupted-turn, consume, turn boundary: no claim about boot recovery or shutdown ordering of it, so no prose change.","inputs":["docs/reference/env-vars.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Dependency is on orchestration-service.ts, whose only change is one interruptedTurns.stop() call at the top of shutdown(). Searched this document for shutdown, interrupted-turn, consume, turn boundary: no claim about boot recovery or shutdown ordering of it, so no prose change.","inputs":["docs/reference/sdk.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Dependency is on orchestration-service.ts, whose only change is one interruptedTurns.stop() call at the top of shutdown(). Searched this document for shutdown, interrupted-turn, consume, turn boundary: no claim about boot recovery or shutdown ordering of it, so no prose change.","inputs":["docs/reference/station-docs.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Shutdown hits concern telemetry flush. No claim affected.","inputs":["docs/reference/usage-telemetry.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Dependency is on orchestration-service.ts, whose only change is one interruptedTurns.stop() call at the top of shutdown(). Searched this document for shutdown, interrupted-turn, consume, turn boundary: no claim about boot recovery or shutdown ordering of it, so no prose change.","inputs":["docs/user/getting-started.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Dependency is on orchestration-service.ts, whose only change is one interruptedTurns.stop() call at the top of shutdown(). Searched this document for shutdown, interrupted-turn, consume, turn boundary: no claim about boot recovery or shutdown ordering of it, so no prose change.","inputs":["docs/user/workspace-checkpoints.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Dependency is on orchestration-service.ts, whose only change is one interruptedTurns.stop() call at the top of shutdown(). Searched this document for shutdown, interrupted-turn, consume, turn boundary: no claim about boot recovery or shutdown ordering of it, so no prose change.","inputs":["examples/self-configuring-agent/README.md","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

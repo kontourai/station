@@ -22,6 +22,7 @@ import {
 } from './workspace-pane.js';
 
 export const WORKSPACE_BROWSER_PANE_STATE_VERSION = '2.0' as const;
+export const BROWSER_PANE_TAB_LIMIT = 12;
 
 /**
  * The deployment capability the Browser pane requires: the answering Station
@@ -44,6 +45,8 @@ export interface WorkspaceBrowserPaneState {
   version: typeof WORKSPACE_BROWSER_PANE_STATE_VERSION;
   projectId: string;
   browserSessionId: string;
+  /** Ordered target identities; absent in saved single-session panes. */
+  browserSessionIds?: string[];
   updatedAt: string;
 }
 
@@ -88,7 +91,13 @@ export function parseWorkspaceBrowserPaneState(
 ): WorkspaceBrowserPaneState | null {
   const record = plainRecord(value);
   if (!record) return null;
-  const allowed = ['version', 'projectId', 'browserSessionId', 'updatedAt'];
+  const allowed = [
+    'version',
+    'projectId',
+    'browserSessionId',
+    'browserSessionIds',
+    'updatedAt',
+  ];
   if (Object.keys(record).some((key) => !allowed.includes(key))) return null;
   if (
     record.version !== WORKSPACE_BROWSER_PANE_STATE_VERSION ||
@@ -98,10 +107,24 @@ export function parseWorkspaceBrowserPaneState(
     !isCanonicalTimestamp(record.updatedAt)
   )
     return null;
+  const tabs = record.browserSessionIds;
+  if (
+    tabs !== undefined &&
+    (!Array.isArray(tabs) ||
+      tabs.length < 1 ||
+      tabs.length > BROWSER_PANE_TAB_LIMIT ||
+      tabs.some(
+        (id) => typeof id !== 'string' || !BROWSER_SESSION_ID_PATTERN.test(id),
+      ) ||
+      new Set(tabs).size !== tabs.length ||
+      !tabs.includes(record.browserSessionId))
+  )
+    return null;
   return {
     version: WORKSPACE_BROWSER_PANE_STATE_VERSION,
     projectId: record.projectId,
     browserSessionId: record.browserSessionId,
+    ...(Array.isArray(tabs) ? { browserSessionIds: [...tabs] } : {}),
     updatedAt: record.updatedAt,
   };
 }
@@ -301,6 +324,9 @@ export interface BrowserSessionView {
   reach: 'operator' | 'project';
   threadId?: string;
   url: string;
+  /** Observed page title, when available from the host. */
+  title?: string;
+  openerBrowserSessionId?: string;
   viewport: BrowserViewportView;
   generation: number;
   /** Which Station runs the browser (#90 D13); `local` today. */
@@ -325,6 +351,13 @@ export interface BrowserSessionView {
   surfaceId?: string;
   /** Present only while the live page holds a dialog for a person. */
   pendingDialog?: BrowserPendingDialogView;
+}
+
+export interface BrowserNavigationView {
+  generation: number;
+  title: string;
+  canGoBack: boolean;
+  canGoForward: boolean;
 }
 
 export interface BrowserPaneAccessView {

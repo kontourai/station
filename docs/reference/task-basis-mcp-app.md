@@ -12,6 +12,10 @@ requests still have the server's expiry bound. The App replaces bounded pages ra
 accumulating protected data. Missing, stale, revoked, malformed, or failed
 state is generic unavailable, never an inferred empty or partial collection.
 
+Immutable Task Outputs join an answer's outcomes only through their recorded
+producing Session and turn. Names, paths and matching bytes do not establish
+that association. Manual Outputs and other-turn Outputs remain unassociated.
+
 Station owns task collection chrome and selected-answer identity. Surface owns
 all selected answer Basis semantics. Whole Task has no aggregate standing.
 Pages carry separate bounded streams for answers, retained task records, kept
@@ -31,7 +35,7 @@ authority is currently unavailable on this path.
 [BasisMcpWorkspacePane](../../src-ui/src/workspace-panes/BasisMcpWorkspacePane.tsx)
 supplies the narrow host adapter to
 [MCPToolUIFrame](../../src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx).
-The iframe asks that adapter for pages; its CSP blocks direct network access.
+The iframe asks that adapter for pages; its CSP blocks ordinary network loads. The shared [MCP sandbox network limitation](../decisions/html-replies.md#review-amendment-network-and-link-boundaries) applies: nested srcdoc can still send WebRTC ICE UDP.
 Ordinary read-only App calls do not gain this special Task capability. The
 [route](../../src-server/routes/orchestration/tasks.ts) rechecks current
 principal and returned Session identities after owner reads.

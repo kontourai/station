@@ -1,11 +1,15 @@
+import { isDeepStrictEqual } from 'node:util';
 import type { SetProviderRequest } from '@agentclientprotocol/sdk';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
-import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
-import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
-import { MonitoringEmitter } from '../../monitoring/emitter.js';
-import { ApprovalRegistry } from '../approvals/approval-registry.js';
 import {
+  type AcpApprovalControl,
+  acpApprovalControl,
+} from '@kontourai/station-contracts/engine-capability-matrix';
+import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
+import {
+  type ACPFirstHandshakeListener,
   addACPManagerConnection,
+  continueACPFirstContact,
   reconnectACPManagerConnection,
   removeACPManagerConnection,
   runACPManagerProbes,
@@ -24,33 +28,22 @@ export class ACPManager {
   private probes = new Map<string, ACPProbe>();
   private configs = new Map<string, ACPConnectionConfig>();
   private probeTimer: ReturnType<typeof setInterval> | null = null;
+  private firstHandshakeListener?: ACPFirstHandshakeListener;
+  /** Connections whose cold first-contact continuation is still running. */
+  private continuing = new Set<string>();
 
-  // The chat-session substrate that consumed approvalRegistry/memoryAdapters/
-  // usageAggregatorRef/monitoringEvents/persistEvent/monitoringEmitter was
-  // retired (archive#149) — these positional params are kept only so the
-  // runtime-service-bootstrap.ts call site (unchanged in shape per archive#149's
-  // plan) doesn't need edits. Probing/connection-management uses only
-  // logger/managedWorkspaceHomeDir/eventBus.
+  // Chat sessions moved to the orchestration adapter (archive#149), so the
+  // manager needs only what probing and connection management use.
   constructor(
-    // biome-ignore lint/correctness/noUnusedPrivateClassMembers: kept for call-site signature stability, see class-level comment
-    private approvalRegistry: ApprovalRegistry,
     private logger: any,
     private managedWorkspaceHomeDir: string,
-    // biome-ignore lint/correctness/noUnusedPrivateClassMembers: kept for call-site signature stability, see class-level comment
-    private memoryAdapters?: Map<string, FileMemoryAdapter>,
-    // biome-ignore lint/correctness/noUnusedPrivateClassMembers: kept for call-site signature stability, see class-level comment
-    private createMemoryAdapter?: (slug: string) => FileMemoryAdapter,
-    // biome-ignore lint/correctness/noUnusedPrivateClassMembers: kept for call-site signature stability, see class-level comment
-    private usageAggregatorRef?: { get: () => any },
     private eventBus?: {
       emit: (event: ServerEventName, data?: Record<string, unknown>) => void;
     },
-    // biome-ignore lint/correctness/noUnusedPrivateClassMembers: kept for call-site signature stability, see class-level comment
-    private monitoringEvents?: import('node:events').EventEmitter,
-    // biome-ignore lint/correctness/noUnusedPrivateClassMembers: kept for call-site signature stability, see class-level comment
-    private persistEvent?: (event: any) => Promise<void>,
-    // biome-ignore lint/correctness/noUnusedPrivateClassMembers: kept for call-site signature stability, see class-level comment
-    private monitoringEmitter?: MonitoringEmitter,
+    /** Replaces the engine probe; tests drive the manager without spawning. */
+    private readonly createProbe?: Parameters<
+      typeof addACPManagerConnection
+    >[0]['createProbe'],
   ) {}
 
   /**
@@ -73,10 +66,38 @@ export class ACPManager {
     this.probeTimer = setInterval(() => void this.runProbes(), 60_000);
   }
 
+  /**
+   * Who registers a saved connection once a background probe gives it its
+   * first handshake (the ACP routes). One listener; a later call replaces it.
+   */
+  onFirstHandshake(listener: ACPFirstHandshakeListener): void {
+    this.firstHandshakeListener = listener;
+  }
+
+  /** Runs one staleness sweep now (the 60s timer's body). */
+  async sweep(): Promise<void> {
+    await this.runProbes();
+  }
+
+  /** See `continueACPFirstContact`. Returns whether a cold retry started. */
+  continueFirstContact(id: string): boolean {
+    return continueACPFirstContact({
+      id,
+      probes: this.probes,
+      configs: this.configs,
+      eventBus: this.eventBus,
+      logger: this.logger,
+      onFirstHandshake: (config) => this.firstHandshakeListener?.(config),
+      continuing: this.continuing,
+    });
+  }
+
   private async runProbes(): Promise<void> {
     await runACPManagerProbes({
       sessions: new Map(),
       probes: this.probes,
+      configs: this.configs,
+      onFirstHandshake: (config) => this.firstHandshakeListener?.(config),
       eventBus: this.eventBus,
       getAvailableConnectionCount: () =>
         Array.from(this.probes.values()).filter((probe) => probe.isAvailable())
@@ -88,12 +109,23 @@ export class ACPManager {
     config: ACPConnectionConfig,
     initiator: ACPProbeInitiator = 'request',
   ): Promise<boolean> {
+    // A registry reload re-adds every saved connection. Replacing a probe
+    // whose first start is still running would dispose it mid-start and its
+    // success could never register; the same config keeps that probe.
+    if (
+      this.continuing.has(config.id) &&
+      isDeepStrictEqual(this.configs.get(config.id), config)
+    ) {
+      return false;
+    }
+    this.continuing.delete(config.id);
     return addACPManagerConnection({
       config,
       initiator,
       probes: this.probes,
       configs: this.configs,
       logger: this.logger,
+      ...(this.createProbe ? { createProbe: this.createProbe } : {}),
       managedWorkspaceHomeDir: this.managedWorkspaceHomeDir,
       eventBus: this.eventBus,
       removeConnection: (id) => this.removeConnection(id),
@@ -101,6 +133,7 @@ export class ACPManager {
   }
 
   async removeConnection(id: string): Promise<void> {
+    this.continuing.delete(id);
     await removeACPManagerConnection({
       id,
       probes: this.probes,
@@ -166,5 +199,15 @@ export class ACPManager {
    */
   getStatus(): ReturnType<typeof getACPManagerStatus> {
     return getACPManagerStatus(this.probes, this.configs, 0);
+  }
+
+  /**
+   * #3290: who decides which of this connection's actions ask, from the
+   * command it launches. `undefined` for a connection this manager does not
+   * hold (not configured, or disabled).
+   */
+  approvalControl(connectionId: string): AcpApprovalControl | undefined {
+    const config = this.configs.get(connectionId);
+    return config ? acpApprovalControl(config.command) : undefined;
   }
 }

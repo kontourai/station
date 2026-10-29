@@ -48,7 +48,7 @@ export interface SessionFlowBinding {
 }
 
 /** Deterministic Flow run id for a session thread (idempotent re-attach). */
-export function flowSessionRunId(threadId: string): string {
+function flowSessionRunId(threadId: string): string {
   return `session-${threadId.replace(/[\\/]+/g, '-')}`;
 }
 

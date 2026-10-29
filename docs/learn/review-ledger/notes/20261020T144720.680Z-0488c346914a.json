@@ -1,0 +1,9 @@
+{
+  "revision": "10c12ee53963b9d1b9b0e3d43248ac6ad6360546",
+
+  "notes": [
+    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed merge delta in BasisWorkspacePane: upstream loading label now says Chat inventory; retained chromeless presentation still suppresses portable MCP App control and default tabbed behavior remains intact. The Task-room design explicitly describes chromeless Basis opened on demand in Details. No prose change; this is source integration review, not fresh Basis/real-provider acceptance. Merged room/principal/restart and chat-dock owners passed125 tests.","inputs":["docs/design/task-room-agent-requests.md","src-ui/src/workspace-panes/BasisWorkspacePane.tsx"]},
+
+    {"path":"docs/strategy/kontour-integration-surface.md","note":"Reviewed upstream package pin @kontourai/veritas1.11.3 against dated integration snapshot: document explicitly identifies its historical package versions and routes current pins to package.json/lockfile plus .veritas/README. No historical finding rewritten as current readiness or interoperability proof. No prose change needed; successful dependency installation verifies the pinned graph, while final readiness remains a separate pending check.","inputs":["docs/strategy/kontour-integration-surface.md","package.json#/dependencies/@kontourai~1veritas"]}
+  ]
+}

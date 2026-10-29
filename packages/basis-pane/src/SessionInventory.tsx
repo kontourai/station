@@ -1,3 +1,4 @@
+import { StatusBadge } from '@kontourai/ui/react';
 import { type ReactNode, useEffect, useId, useRef } from 'react';
 import type {
   SessionInventoryAction,
@@ -21,6 +22,20 @@ const inventorySections = [
   label: string;
   groups: readonly SessionInventoryViewModel['groups'][number]['id'][];
 }[];
+
+/**
+ * What a screen reader hears after a count whose glyph does not speak for
+ * itself ("—", "2+"). Names here are built from the visible text first and
+ * this second, so the accessible name always contains what is on screen
+ * (WCAG 2.5.3); an exact count needs no clarification.
+ */
+function countClarification(
+  group: SessionInventoryViewModel['groups'][number],
+): string | null {
+  if (group.count === null || group.count.endsWith('+'))
+    return countAnnouncement(group);
+  return null;
+}
 
 function countAnnouncement(
   group: SessionInventoryViewModel['groups'][number],
@@ -97,18 +112,18 @@ function SessionInventoryOverview({
           <button
             key={group.key}
             type="button"
-            aria-label={`${group.label}: ${countAnnouncement(group)}. ${stateLabel(group)}.`}
             aria-current={group.selected ? 'true' : undefined}
             data-state={group.state}
             data-attention={group.gaps.length > 0 || undefined}
             onClick={() => onSelect({ scope, groupId: group.id })}
           >
-            <span>{group.label}</span>
-            <strong aria-hidden="true">{group.count ?? '—'}</strong>
+            <span>{group.label}</span> <strong>{group.count ?? '—'}</strong>{' '}
             <small>{stateLabel(group)}</small>
-            <span className="session-inventory__visually-hidden">
-              {group.label}: {countAnnouncement(group)}. {stateLabel(group)}.
-            </span>
+            {countClarification(group) ? (
+              <span className="session-inventory__visually-hidden">
+                , {countClarification(group)}
+              </span>
+            ) : null}
           </button>
         ))}
       </div>
@@ -132,10 +147,12 @@ export function SessionInventory({
   onSelect,
   onLoadMore,
   renderAction,
+  renderDetails,
   repairFocus = false,
   scopeOptions = [model.scope],
   onScopeChange,
   focusGroupToken,
+  titleOwner = 'pane',
 }: {
   model: SessionInventoryViewModel;
   onSelect(selection: SessionInventorySelection): void;
@@ -147,10 +164,17 @@ export function SessionInventory({
     action: SessionInventoryAction;
     item: SessionInventoryViewItem;
   }): ReactNode;
+  renderDetails?(item: SessionInventoryViewItem): ReactNode;
   repairFocus?: boolean;
   scopeOptions?: readonly SessionInventorySelection['scope'][];
   onScopeChange?(scope: SessionInventorySelection['scope']): void;
   focusGroupToken?: number;
+  /**
+   * Who names this surface. A host whose chrome already titles it (the
+   * Chat inventory dialog) passes `host`, so the pane does not repeat that
+   * title under it (#4176); the pane keeps its description and Scope.
+   */
+  titleOwner?: 'pane' | 'host';
 }) {
   const selected =
     model.groups.find((group) => group.selected) ?? model.groups[0]!;
@@ -165,16 +189,25 @@ export function SessionInventory({
   return (
     <section
       className="session-inventory"
-      aria-labelledby={`${occurrenceId}-session-inventory-heading`}
+      {...(titleOwner === 'host'
+        ? { 'aria-label': 'Chat inventory' }
+        : { 'aria-labelledby': `${occurrenceId}-session-inventory-heading` })}
     >
       <header className="session-inventory__header">
         <div>
-          <p className="session-inventory__eyebrow">Session context</p>
-          <h2 id={`${occurrenceId}-session-inventory-heading`} tabIndex={-1}>
-            Session inventory
-          </h2>
+          {titleOwner === 'pane' ? (
+            <>
+              <p className="session-inventory__eyebrow">Basis</p>
+              <h2
+                id={`${occurrenceId}-session-inventory-heading`}
+                tabIndex={-1}
+              >
+                Chat inventory
+              </h2>
+            </>
+          ) : null}
           <p className="session-inventory__header-copy">
-            A navigable record of the context Station is authorized to show.
+            A navigable record of what Station is authorized to show.
           </p>
         </div>
         <fieldset
@@ -282,7 +315,6 @@ export function SessionInventory({
                     <button
                       key={group.key}
                       type="button"
-                      aria-label={`${group.label}, ${countAnnouncement(group)}`}
                       aria-current={group.selected ? 'true' : undefined}
                       data-state={group.state}
                       data-attention={group.gaps.length > 0 || undefined}
@@ -292,14 +324,14 @@ export function SessionInventory({
                     >
                       <span className="session-inventory__index-label">
                         {group.label}
-                      </span>
+                      </span>{' '}
                       <span className="session-inventory__index-count">
-                        <span aria-hidden="true">
-                          {group.count === null ? '—' : group.count}
-                        </span>
-                        <span className="session-inventory__visually-hidden">
-                          {countAnnouncement(group)}
-                        </span>
+                        {group.count === null ? '—' : group.count}
+                        {countClarification(group) ? (
+                          <span className="session-inventory__visually-hidden">
+                            , {countClarification(group)}
+                          </span>
+                        ) : null}
                       </span>
                     </button>
                   ))}
@@ -369,7 +401,7 @@ export function SessionInventory({
           ) : null}
           {selected.items.length ? (
             <ul className="session-inventory__items">
-              {selected.items.map((item, index) => (
+              {selected.items.map((item) => (
                 <li
                   key={item.key}
                   className={
@@ -385,24 +417,54 @@ export function SessionInventory({
                     <span className="session-inventory__classification">
                       {item.classification === 'kept' ? 'Kept' : 'Current'}
                     </span>
+                    {item.status ? (
+                      // Neutral: an outcome nobody observed is neither a
+                      // success nor a failure.
+                      <StatusBadge
+                        status={item.status}
+                        tone="neutral"
+                        className="session-inventory__item-status"
+                      />
+                    ) : null}
                     <button
                       type="button"
-                      aria-pressed={selected.selectedItemKey === item.key}
-                      aria-label={`Select item ${index + 1} in ${selected.label}`}
+                      aria-pressed={
+                        renderDetails
+                          ? undefined
+                          : selected.selectedItemKey === item.key
+                      }
+                      aria-expanded={
+                        renderDetails
+                          ? selected.selectedItemKey === item.key
+                          : undefined
+                      }
                       onClick={() =>
-                        onSelect({
-                          scope: model.scope,
-                          groupId: selected.id,
-                          itemKey: item.key,
-                        })
+                        // An expanded drill-down closes on a second press,
+                        // so its "Hide details" cue tells the truth.
+                        onSelect(
+                          renderDetails && selected.selectedItemKey === item.key
+                            ? { scope: model.scope, groupId: selected.id }
+                            : {
+                                scope: model.scope,
+                                groupId: selected.id,
+                                itemKey: item.key,
+                              },
+                        )
                       }
                     >
-                      <bdi
-                        className="session-inventory__label"
-                        aria-hidden="true"
-                      >
+                      <bdi className="session-inventory__label">
                         {item.label}
                       </bdi>
+                      {renderDetails ? (
+                        <>
+                          {' '}
+                          <span className="session-inventory__item-cue">
+                            {selected.selectedItemKey === item.key
+                              ? 'Hide details'
+                              : 'View details'}
+                          </span>
+                        </>
+                      ) : null}
                     </button>
                   </div>
                   <p className="session-inventory__relation">
@@ -411,6 +473,9 @@ export function SessionInventory({
                       : 'Current Session'}{' '}
                     · {item.relation}
                   </p>
+                  {selected.selectedItemKey === item.key
+                    ? renderDetails?.(item)
+                    : null}
                   {item.actions.length ? (
                     <div className="session-inventory__item-actions">
                       {item.actions.map((action) => (

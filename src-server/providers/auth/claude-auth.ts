@@ -12,7 +12,7 @@ type ClaudeCredentials = {
   };
 };
 
-function hasOAuthCredential(value: unknown): boolean {
+export function hasOAuthCredential(value: unknown): boolean {
   if (!value || typeof value !== 'object' || !('claudeAiOauth' in value))
     return false;
   const oauth = value.claudeAiOauth;

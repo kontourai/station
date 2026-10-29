@@ -10,8 +10,9 @@ describe('DestinationRegistry', () => {
   test('drives the exact panel and command-palette inventories from one authority', () => {
     // #2059 (design record D3): the left panel lists PLACES only. Activity is
     // the sole `sidebar` row — Home is `hiddenFromNav` and the panel renders
-    // it directly, Notifications and Settings became the footer's bell and
-    // gear, and the configuration destinations moved behind the gear.
+    // it directly, Notifications became the header's bell and Settings the
+    // footer account menu's Open settings row, and the configuration
+    // destinations moved behind the footer's Customize chooser.
     expect(
       APP_DESTINATION_REGISTRY.getSidebar().map(
         (destination) => destination.id,
@@ -42,6 +43,7 @@ describe('DestinationRegistry', () => {
       'activity',
       'schedule',
       'feature-previews',
+      'appearance',
       'settings',
       'settings-station',
       'settings-defaults',
@@ -65,6 +67,7 @@ describe('DestinationRegistry', () => {
       'feature-previews',
       'developer',
       'monitoring',
+      'appearance',
       'settings',
       'settings-station',
       'settings-defaults',
@@ -78,7 +81,7 @@ describe('DestinationRegistry', () => {
   // asserts the ROUTE, not the id, because the Skills page reaches the palette
   // under two entries of its own (`Commands` and `Skills`) rather than its own
   // id — an id-keyed check would have called it unreachable.
-  test('every destination behind the gear is also reachable from the palette', () => {
+  test('every destination behind Customize is also reachable from the palette', () => {
     const flags = new Set([DEVELOPER_TOOLS_FLAG]);
     const paletteRoutes = new Set(
       APP_DESTINATION_REGISTRY.getPalette(flags).map(
@@ -156,9 +159,8 @@ describe('DestinationRegistry', () => {
         id: 'connections',
         group: 'set-up',
         order: 30,
-        // The whole point of the override: the LABEL is not the destination's
-        // own ('Connections') and the ROUTE is not its root ('/connections').
-        label: 'Engines & Models',
+        // Open the engine list directly while keeping the destination's name.
+        label: 'Connections',
         route: '/connections/engines',
       },
       {
@@ -167,6 +169,23 @@ describe('DestinationRegistry', () => {
         order: 40,
         label: 'Plugins',
         route: '/plugins',
+      },
+      // The owner's ask: themes and their gallery live in Customize, and
+      // Settings is listed there too without losing its other doors; its
+      // palette entry is pinned in the inventory test above.
+      {
+        id: 'appearance',
+        group: 'this-station',
+        order: 90,
+        label: 'Appearance',
+        route: '/appearance',
+      },
+      {
+        id: 'settings',
+        group: 'this-station',
+        order: 110,
+        label: 'Settings',
+        route: '/settings',
       },
     ]);
     // Registry is deliberately absent: #2144 decision 4 folds it into Plugins,

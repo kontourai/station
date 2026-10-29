@@ -1,0 +1,7 @@
+{
+  "revision": "c0439d05ccdf5bcaaedcc3ffe925e14e1b814357",
+
+  "notes": [
+    {"path":"docs/design/offline-outbound-queue.md","note":"Reviewed the hook lifetime follow-up: busy flush requests retain the requesting mount callback, and every connected mount joins a busy pass. Old unmounted work cannot consume the replacement mount request. Existing bounded lookup and no-blind-resend prose stays accurate. New StrictMode and unmount/remount behavior passed in the 121-test queue batch; suppressing the busy callback made the named remount assertion fail with the row still invoking, then sources restored and hook suite passed 28 tests. No native source changed.","inputs":["docs/design/offline-outbound-queue.md"]}
+  ]
+}

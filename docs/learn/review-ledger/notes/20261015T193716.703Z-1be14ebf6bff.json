@@ -1,0 +1,9 @@
+{
+  "revision": "b50440f66fa929b3aeb6b69c55069a9c92af21db",
+
+  "notes": [
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Reviewed b50440f66fa: startup presentation uses optional globalThis.document lookups so importing SplitPane without a DOM stays inert. Existing browser/native presentation behavior and timing are unchanged. Added actual Node-environment import regression: pre-fix ReferenceError at document lookup, post-fix 9/9 presentation tests and 79/79 combined with SplitPane; typecheck:e2e passed. Current prose remains accurate; no production SSR caller or device behavior is claimed.","inputs":["docs/design/shell-plugins-distributions.md"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed b50440f66fa: startup presentation uses optional globalThis.document lookups so importing SplitPane without a DOM stays inert. Existing browser/native presentation behavior and timing are unchanged. Added actual Node-environment import regression: pre-fix ReferenceError at document lookup, post-fix 9/9 presentation tests and 79/79 combined with SplitPane; typecheck:e2e passed. Current prose remains accurate; no production SSR caller or device behavior is claimed.","inputs":["docs/guides/theming.md","src-ui/src/__tests__/startup-presentation.browser.test.tsx","src-ui/src/lib/startup-presentation.ts"]}
+  ]
+}

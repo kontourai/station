@@ -1,0 +1,7 @@
+{
+  "revision": "247afef268be24f32a1ad24bfb06094662273bfd",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed the inherited c23edddd native boot delta through AuthorityQueryContext and its nativeBootBatch regression. Boot response cache writes retain the request-scope currency check. The finally path releases the startup gate for the same live query client whenever it has not been cancelled, including a temporary scope-currentness blip; replacement/cancelled clients cannot release it. This preserves the SDK guide's bounded boot/read and authority claims. Existing source review and test bytes were inspected; this lane did not rerun the incoming UI test or claim native/device proof.","inputs":["docs/reference/sdk.md","src-ui/src/contexts/AuthorityQueryContext.tsx"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "40f1b4f972e90262c73cfcb26d48f23ebc4695e1",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Rewrote the server-held follow-up paragraph for the merged pending list: held rows share QueuedMessages via the ConversationInboxMessages wrapper, clientTurnId dedupe, empty renders nothing, silent reads with 2s/15s polling (useConversationInbox), unavailable-after-entries Retry line, remove/dismiss semantics unchanged, presence animation. Checked against QueuedMessages.tsx, useConversationInbox.ts and the e2e journey.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ConversationInboxMessages.tsx","src-ui/src/components/chat/QueuedMessages.css","src-ui/src/components/chat/QueuedMessages.tsx","src-ui/src/hooks/useConversationInbox.ts","tests/message-delivery-recovery.spec.ts"]}
+  ]
+}

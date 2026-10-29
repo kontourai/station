@@ -1,0 +1,11 @@
+{
+  "revision": "4aca1fb5e8da9fa4732f9c8f0d365728e3d1c637",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Engine-default clarity change: ApprovalModeChip now names a Codex connection-default as \"Codex's own settings\" and approvalMode.ts adds a Codex connection-default description. Re-read the reviewer-gap and Ask-chip claims (lines ~128-135, ~298, ~346): the chip's reviewer disclosure, Ask copy, and tool-policy delivery disclosure are unchanged, so the document stays accurate.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/components/badges/ApprovalModeChip.tsx","src-ui/src/utils/approvalMode.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Added the Codex Default description beside the OpenCode one: chip name \"Engine default — Codex's own settings\" (ApprovalModeChip.tsx selectedLabel) and the sheet's Default description (approvalMode.ts ENGINE_MODE_DESCRIPTIONS). The behavior claim was EXECUTED against codex-cli 0.164.0 with an empty CODEX_HOME via codex app-server thread/start: host in an untrusted folder reported on-request plus readOnly; with codexConfinementConfigArgs it reported workspaceWrite, networkAccess false, profile station-workspace. Pinned by ApprovalModeChip.test.tsx and StartApprovalSummary.test.tsx.","inputs":["docs/design/chat-composer.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Approval chip paragraph: added that for Codex the picker says Engine default is your own Codex settings, which, unset, write at most in the chat's folder and ask before network. Traced to approvalModeDescription('connection-default','codex') rendered by ComposerModeSheet's Default row and StartApprovalSummary's title; render inspected at 390 and 1440 in light and dark. Rest of the section unchanged.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

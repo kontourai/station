@@ -1,0 +1,9 @@
+{
+  "revision": "1d8a0e3878e87e0dc82b97faf21203aed407ed40",
+
+  "notes": [
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Reviewed the new link to the implementation evidence record and retained the already-reviewed Quiet tree behavior. Source remains the independently reviewed 7743a040 UI tree; later changes are documentation and fixture maintenance. Screenshots retain exact base and source attribution; no hosted/native/Gallery claim.","inputs":["docs/design/shell-ownership-and-boards.md"]},
+
+    {"path":"docs/reviews/workspace-map-20261015/README.md","note":"Reviewed the complete evidence record against actual source, tests, Chrome captures, source/base SHA, independent reviewer/verifier receipts and baseline/injected/restored outcomes. Preserved the explicit local-only and historical limits. Current panel claim is one empty-region/Files selection path, not full placement or provider qualification.","inputs":["docs/reviews/workspace-map-20261015/README.md","src-ui/src/__tests__/ProjectSidebarFooter.test.tsx","src-ui/src/__tests__/ProjectSidebarReorder.coarseGeometry.test.tsx","src-ui/src/__tests__/ProjectSidebarRow.test.tsx","src-ui/src/components/header/Header.tsx","src-ui/src/components/project-sidebar/ProjectSidebar.tsx","src-ui/src/components/project-sidebar/ProjectSidebarFooter.tsx","src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx","src-ui/src/components/project-sidebar/SidebarPopover.tsx"]}
+  ]
+}

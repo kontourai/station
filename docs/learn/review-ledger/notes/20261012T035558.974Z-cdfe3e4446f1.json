@@ -1,0 +1,7 @@
+{
+  "revision": "83d57ad163de9d6338c0e8d5780924b1595a3419",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"packages/shared/package.json gains one export subpath (./release-version-order, browser-safe TypeScript source); no dependency, script, engine or authoring claim in this document changes.","inputs":["docs/guides/responsive-ui.md","packages/shared/package.json"]}
+  ]
+}

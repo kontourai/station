@@ -3,6 +3,7 @@ import {
   type ConnectionHealthCheckResult,
   ConnectionHealthCoordinator,
   type ConnectionHealthCoordinatorOptions,
+  type ConnectionRouteResult,
 } from '../core/ConnectionHealthCoordinator';
 import type { ConnectionFailureReason, ConnectionStatus } from '../core/types';
 import { useConnections } from './ConnectionsContext';
@@ -45,6 +46,8 @@ export interface ConnectionStatusResult {
     end: string;
     reason: ConnectionFailureReason;
   }>;
+  /** Per-route outcome of the last completed check (Station routes). */
+  routes: ReadonlyArray<ConnectionRouteResult>;
   recheck: () => void;
 }
 
@@ -217,8 +220,7 @@ export function useConnectionStatus({
     const scheduleResumeProbe = () => {
       const now = performance.now();
       if (now - lastResumeProbeAt < resumeSuppressionMs) return;
-      lastResumeProbeAt = now;
-      entry.coordinator.trigger();
+      if (entry.coordinator.trigger() !== 'skipped') lastResumeProbeAt = now;
     };
     const onVisible = () => {
       if (document.visibilityState === 'visible') scheduleResumeProbe();

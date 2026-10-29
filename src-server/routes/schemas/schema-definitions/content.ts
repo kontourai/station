@@ -6,6 +6,10 @@ import {
   projectIconProblem,
 } from '@kontourai/station-contracts/project';
 import {
+  PROJECT_CHAT_APPROVAL_POSTURES,
+  PROJECT_CHAT_DEFAULT_SELECTIONS,
+} from '@kontourai/station-contracts/project-chat-defaults';
+import {
   SKILL_COMMAND_NAME_PATTERN,
   SKILL_COMMAND_NAME_RULE,
 } from '@kontourai/station-contracts/skill-command';
@@ -20,6 +24,8 @@ import {
   AUTHORED_ARTIFACT_MAX_CHARS,
   authoredArtifactBudgetMessage,
 } from '../../../../src-shared/authored-artifact-limits.js';
+import { isSafePathSegment } from '../../../knowledge-index/path-safety.js';
+import { personalBoardDefinitionSchema } from './personal-board.js';
 
 /** Mirrors `SkillSourceContext` in `@kontourai/station-contracts/catalog`. */
 const skillSourceContextSchema = z.object({
@@ -177,12 +183,6 @@ export const setupImportApplySchema = z.object({
   witnessId: z.string().uuid(),
 });
 
-export const guidanceConversionSchema = z
-  .object({
-    name: z.string().min(1).max(200).optional(),
-  })
-  .optional();
-
 // Projects
 const projectEnvironmentRefSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('current') }),
@@ -210,12 +210,30 @@ const projectIconSchema = z
   .nullable()
   .optional();
 
+const layoutSubjectSchema = z
+  .object({
+    kind: z.literal('project'),
+    projectSlug: z.string().refine(isSafePathSegment, 'Invalid Project slug'),
+  })
+  .strict();
+
 export const projectCreateSchema = z
   .object({
     name: z.string().min(1),
     slug: z.string().optional(),
     icon: projectIconSchema,
     workingDirectory: z.string().optional(),
+    repositoryAcquisitionId: z.string().uuid().optional(),
+    creationRequestId: z.string().uuid().optional(),
+    personalLayouts: z
+      .enum(['off', 'project-panes', 'allowed-plugins'])
+      .optional(),
+    personalLayoutAllowedPlugins: z.array(z.string().min(1)).optional(),
+    starterLayoutId: z
+      .string()
+      .regex(LAYOUT_CATALOG_ITEM_ID_PATTERN)
+      .nullable()
+      .optional(),
     description: z.string().optional(),
     defaultEnvironment: projectEnvironmentRefSchema.optional(),
     toolDefaults: z
@@ -246,6 +264,21 @@ export const projectCreateSchema = z
     defaultModel: z.string().nullable().optional(),
     defaultAgent: z.string().regex(CLEAN_ID_PATTERN).nullable().optional(),
     defaultProviderId: z.string().nullable().optional(),
+    // How a new chat's model and approval mode are chosen
+    // (`project-chat-defaults.ts`). `null` drops the stored value, like the
+    // overrides above.
+    defaultModelSelection: z
+      .enum(PROJECT_CHAT_DEFAULT_SELECTIONS)
+      .nullable()
+      .optional(),
+    defaultApprovalMode: z
+      .enum(PROJECT_CHAT_APPROVAL_POSTURES)
+      .nullable()
+      .optional(),
+    defaultApprovalModeSelection: z
+      .enum(PROJECT_CHAT_DEFAULT_SELECTIONS)
+      .nullable()
+      .optional(),
   })
   .passthrough();
 
@@ -290,6 +323,16 @@ const layoutComponentRefSchema = z.union([
 ]);
 
 const layoutConfigSchema = z.record(z.unknown()).superRefine((config, ctx) => {
+  for (const field of ['dashboard', 'dashboardProposal']) {
+    if (config[field] === undefined) continue;
+    const result = personalBoardDefinitionSchema.safeParse(config[field]);
+    if (!result.success)
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [field],
+        message: result.error.issues[0]?.message ?? 'Invalid Board definition',
+      });
+  }
   const tabs = config.tabs;
   if (tabs === undefined) return;
   if (!Array.isArray(tabs)) {
@@ -322,6 +365,7 @@ export const projectLayoutCreateSchema = z
     slug: z.string().min(1),
     name: z.string().min(1),
     type: z.string().optional(),
+    workspaceBinding: z.literal('repository').optional(),
     config: layoutConfigSchema.optional(),
   })
   .passthrough();
@@ -340,6 +384,7 @@ export const projectLayoutUpdateSchema = projectLayoutCreateSchema
  */
 export const personalLayoutCreateSchema = z
   .object({
+    subject: layoutSubjectSchema.optional(),
     slug: z.string().min(1),
     name: z.string().min(1),
     type: z.string().optional(),
@@ -389,6 +434,8 @@ export const projectLayoutFromPluginSchema = z.object({
 
 export const projectLayoutApplySchema = z.object({
   layoutId: z.string().regex(LAYOUT_CATALOG_ITEM_ID_PATTERN),
+  creationRequestId: z.string().uuid().optional(),
+  retryUncertain: z.boolean().optional(),
 });
 
 /**

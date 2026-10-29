@@ -11,6 +11,8 @@ import type {
   HomeViewNavigation,
   useHomeViewModel,
 } from '../../views/home/useHomeViewModel';
+import type { HomeWorkLanes } from '../../views/home/useHomeWorkLanes';
+import { agentRunnability } from '../agent-runnability';
 import { renderHomeWorkRow } from './HomeWorkRow';
 
 type HomeViewModel = ReturnType<typeof useHomeViewModel>;
@@ -96,7 +98,14 @@ export function HomeActionSection({
   showPrimary = true,
 }: HomeActionSectionProps) {
   const profile = usePlatformProfile();
-  const showLocalProject = hasLocalStationForProfile(profile);
+  const canChooseFolder = hasLocalStationForProfile(profile);
+  const firstSession = model.firstSession;
+  const hasRunnableAgent = model.agents.some(
+    (agent) => agentRunnability(agent).runnable,
+  );
+  const projectSources = canChooseFolder
+    ? 'Repository, folder, documents or tools'
+    : 'Repository, documents, tools or blank';
   // The sidebar's colours, from the one project list it shows.
   const accents = useProjectAccents();
   const continuationSlug = continuation
@@ -114,21 +123,40 @@ export function HomeActionSection({
         <HomeContinueCard model={model} />
       )}
       <HomeActionCard
-        label="Agents"
-        title="Explore agents"
-        onClick={() => onNavigate({ type: 'agents' })}
+        label={firstSession ? '1 · Choose your AI' : 'Agents'}
+        title={
+          firstSession
+            ? hasRunnableAgent
+              ? 'View available agents'
+              : 'Set up an agent engine'
+            : 'Explore agents'
+        }
+        detail={
+          firstSession
+            ? hasRunnableAgent
+              ? 'Pick an available agent in the composer above, then send your first message.'
+              : 'Connect an AI app or configure a model in Connections.'
+            : undefined
+        }
+        onClick={() =>
+          onNavigate({
+            type:
+              firstSession && !hasRunnableAgent
+                ? 'connections-engines'
+                : 'agents',
+          })
+        }
       />
-      {showLocalProject ? (
-        <HomeActionCard
-          label="Project"
-          // "This Station", not "this computer": the folder lives on the
-          // Station host, which is a different machine when this UI runs as
-          // a remote client (e.g. the phone app paired to a desktop).
-          title="Open local project"
-          detail="Add a folder on this Station"
-          onClick={() => onNavigate({ type: 'project-new' })}
-        />
-      ) : null}
+      <HomeActionCard
+        label={firstSession ? '2 · Add a Project, if you need one' : 'Project'}
+        title="New Project"
+        detail={
+          firstSession
+            ? `Optional: ordinary chats can start without a Project. ${projectSources}`
+            : projectSources
+        }
+        onClick={() => onNavigate({ type: 'project-new' })}
+      />
       {continuation && (
         <HomeActionCard
           className="home-view__action--quiet"
@@ -159,8 +187,10 @@ export function HomeContinueCard({
   model,
   id,
   onViewActivity,
+  childrenById,
 }: {
   model: HomeViewModel;
+  childrenById?: HomeWorkLanes['childrenById'];
   id?: string;
   /**
    * Given when Recent work is not shown (Continue holds the only item), so
@@ -170,6 +200,9 @@ export function HomeContinueCard({
 }) {
   const coarsePointer = useCoarsePointer();
   const [detailsFor, setDetailsFor] = useState<string | null>(null);
+  const [expandedFamilies, setExpandedFamilies] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
   // The lanes' own row inputs, so the row reads exactly as theirs do.
   const gitLocationByThreadId = useGitLocationByThreadId();
   const projectAccentBySlug = useProjectAccents();
@@ -202,10 +235,14 @@ export function HomeContinueCard({
           task: { ...primary, stableId: `continue:${primary.id}` },
           isWoken: false,
           agents: model.agents,
-          onOpen: () => model.continueWork(primary),
+          onOpen: (item) =>
+            model.continueWork(item.id === primary.id ? primary : item),
           context: {
             now: Date.now(),
             workFacts: model.workFacts,
+            childrenById,
+            expandedFamilies,
+            setExpandedFamilies,
             detailsFor,
             setDetailsFor,
             chrome: coarsePointer ? 'touch' : 'hover',

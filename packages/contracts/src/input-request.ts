@@ -153,6 +153,8 @@ export interface InputRequestDecisionOption {
   label: string;
   effect: 'allow' | 'deny';
   scope: 'once' | 'session';
+  /** With an allow/session option: the separately authorized Station browser grant. */
+  sessionGrantScope?: 'server';
 }
 
 /**

@@ -57,6 +57,7 @@ function buildRecord(
     session,
     rpcRequestCounter: 0,
     pendingRpcRequests: new Map(),
+    turnInvocationIds: new Map(),
     pendingApprovals: new Map(),
     approvedTools: new Set(),
     lastSessionState: 'idle',
@@ -456,6 +457,9 @@ describe('codex-adapter-notifications', () => {
 
     expect(events[0]).toMatchObject({
       method: 'runtime.error',
+      kind: 'quota_exhausted',
+      retryable: false,
+      failurePhase: 'failed',
       retriable: false,
       code: 'usageLimitExceeded',
     });

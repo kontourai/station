@@ -1,0 +1,11 @@
+{
+  "revision": "5a8ef3380f0a4c2767ffe2943b88abc439f31825",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Reviewed the Task vocabulary delta against packages/contracts/src/task-graph.ts and the installed Flow Agents 6.5.1 root workItemStatuses. Both triage and canceled are Station-local. Linked the dated upstream-gap handoff; no live tracker mutation or new sync behavior is claimed.","inputs":["docs/glossary.md"]},
+
+    {"path":"CONTEXT.md","note":"Reviewed the glossary Task vocabulary correction and tracker-sync handoff against this context. Task durability and published-product ownership explanations remain accurate; this context enumerates no shared Task statuses and makes no tracker-write claim. No prose change needed.","inputs":["CONTEXT.md","docs/glossary.md"]},
+
+    {"path":"CONTEXT-MAP.md","note":"Reviewed the glossary Task vocabulary correction and tracker-sync handoff against the context-map responsibilities. No status list or tracker-sync implementation claim exists here, so its routing and relationships remain accurate without a prose edit.","inputs":["CONTEXT-MAP.md","docs/glossary.md"]}
+  ]
+}

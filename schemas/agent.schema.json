@@ -174,6 +174,10 @@
             ]
           }
         },
+        "browser": {
+          "type": "boolean",
+          "description": "Include built-in browser tools. Defaults to true."
+        },
         "mcpMode": { "type": "string", "enum": ["add", "replace"] },
         "mcpLoading": {
           "type": "string",
@@ -190,6 +194,11 @@
           "items": {
             "type": "string"
           }
+        },
+        "askBeforeUse": {
+          "type": "array",
+          "description": "Tools that require explicit approval on Station and Claude, before automatic or session grants.",
+          "items": { "type": "string" }
         },
         "autoApprove": {
           "type": "array",
@@ -245,19 +254,20 @@
     },
     "streaming": {
       "type": ["object", "null"],
-      "description": "Streaming pipeline configuration",
+      "deprecated": true,
+      "description": "Deprecated and ignored: Station reads none of these fields. Accepted so existing agent files still load; removal is tracked in #3879.",
       "properties": {
         "useNewPipeline": {
           "type": "boolean",
-          "description": "Enable new streaming architecture (default: false)"
+          "deprecated": true
         },
         "enableThinking": {
           "type": "boolean",
-          "description": "Send thinking blocks to client (default: true)"
+          "deprecated": true
         },
         "debugStreaming": {
           "type": "boolean",
-          "description": "Enable debug logging (default: false)"
+          "deprecated": true
         }
       },
       "additionalProperties": false

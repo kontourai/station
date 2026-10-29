@@ -1,3 +1,4 @@
+import type { ACPEngineInstallRecipe } from './acp.js';
 import type { EngineConnectionId, EngineId } from './agent-identity.js';
 
 /** Point-in-time resources on the answering Station host, not the viewing device. */
@@ -32,7 +33,14 @@ export interface ExternalEngineReadinessProjection {
     | 'missing_prerequisites'
     | 'cannot_verify'
     | 'disabled'
-    | 'not_connected';
+    | 'not_connected'
+    /** A catalogue Engine whose command was not found on the host. */
+    | 'not_installed';
+  /**
+   * How to install it on the host's platform. Present only on a
+   * `not_installed` row whose catalogue entry carries a recipe.
+   */
+  install?: ACPEngineInstallRecipe;
 }
 
 /**
@@ -113,6 +121,27 @@ export type ServiceUpdatePhase =
   | 'restoring';
 
 /**
+ * What a service-update request asks the service to do (#3851 slice 4):
+ * - `stage`: download and verify the release into the install, then stop.
+ *   The running server keeps running; the outcome is `staged`.
+ * - `apply`: hand an already staged version to the launcher's trial. Never
+ *   downloads; refused when the version is not staged.
+ * - `update`: both, in one request (the #2675 behavior, and what a request
+ *   with no intent means: `station upgrade` and clients older than #3851).
+ */
+export type ServiceUpdateIntent = 'stage' | 'apply' | 'update';
+
+/**
+ * The step of staging the running version's installer reports (#3851). Only
+ * install.sh reports them; install.ps1 does not yet, so a Windows service's
+ * `staging` carries no phase.
+ * - `downloading`: fetching the release archive; byte counts ride beside it.
+ * - `verifying`: checking the archive's size, SHA-256 and contents.
+ * - `installing`: extracting, self-checking and sealing the version.
+ */
+export type ServiceStagePhase = 'downloading' | 'verifying' | 'installing';
+
+/**
  * The service launcher's update progress for a prebuilt-archive install
  * (#2675 slice D), as `GET /api/system/core-update/service-update` reads it
  * from the install's runtime files. Each state names what a file says, never
@@ -120,7 +149,13 @@ export type ServiceUpdatePhase =
  * - `idle`: no request queued and no update ever recorded.
  * - `queued`: the server wrote the request; the service has not claimed it.
  * - `staging`: the running version claimed it and is downloading and
- *   verifying the release (its install.sh, stage-only).
+ *   verifying the release (its install.sh, stage-only). `stagePhase`, and
+ *   while downloading `downloadedBytes` (measured on disk) of `totalBytes`
+ *   (the signed manifest's size), are present when the installer reported
+ *   them (#3851); absent on older servers and on Windows.
+ * - `staged` (#3851): a `stage` request finished; `version` is downloaded,
+ *   verified and complete in the install, and nothing restarted. Reported
+ *   only while that version's completion sentinel is still on disk.
  * - `updating`: the launcher accepted a version and is in `phase`.
  * - `committed`: the launcher now runs `targetVersion`.
  * - `rolled-back` / `failed`: the launcher kept (or returned to)
@@ -135,10 +170,25 @@ export type ServiceUpdatePhase =
  * - `unavailable`: a runtime file exists but cannot be read.
  * `requestId` correlates the outcome with the request an apply (or `station
  * upgrade`) wrote; null when the launcher's record carries none.
+ *
+ * Compatibility (#3851): every addition is optional or a new state. A client
+ * older than #3851 ignores `intent` and the staging fields, and renders no
+ * line for `staged` (its switch has no case for it); it still offers its
+ * one-click update, whose request (no intent) finds the staged version and
+ * trials it without downloading again.
  */
 export type ServiceUpdateProgress =
   | { state: 'idle' | 'unavailable' }
-  | { state: 'queued' | 'staging'; requestId: string }
+  | { state: 'queued'; requestId: string; intent?: ServiceUpdateIntent }
+  | {
+      state: 'staging';
+      requestId: string;
+      intent?: ServiceUpdateIntent;
+      stagePhase?: ServiceStagePhase;
+      downloadedBytes?: number;
+      totalBytes?: number;
+    }
+  | { state: 'staged'; requestId: string; version: string; stagedAt: string }
   | {
       state: 'updating';
       requestId: string | null;
@@ -184,6 +234,88 @@ export type ServiceUpdateProgress =
       finishedAt: string;
     };
 
+/**
+ * When a launcher-run server downloads an available update by itself
+ * (#3851): `never`, once it has been available for 24 hours, or as soon as
+ * a check finds it. Downloading never restarts the server; only an explicit
+ * apply (or apply-when-idle) does.
+ */
+export type ServerUpdateDownloadPolicy = 'never' | 'after-24h' | 'immediately';
+
+export const SERVER_UPDATE_DOWNLOAD_POLICIES: readonly ServerUpdateDownloadPolicy[] =
+  ['never', 'after-24h', 'immediately'];
+
+export const DEFAULT_SERVER_UPDATE_DOWNLOAD_POLICY: ServerUpdateDownloadPolicy =
+  'after-24h';
+
+/**
+ * The server's own view of its update (#3851 slice 4), served by
+ * `GET /api/system/core-update/state` and pushed to every client as the
+ * `server-update:changed` event. Every field is computed by the answering
+ * server:
+ * - `supported`: the fixed service launcher runs this server, so it can
+ *   stage and apply updates to itself. When false, every other field is at
+ *   its empty value and clients use `GET /api/system/core-update`.
+ * - `availability`: the last release check this server made (on boot, when
+ *   a client newer than it connected, or a client's check), null before one.
+ *   `availableSince` is when a check first saw `latestVersion` as newer.
+ * - `progress`: the same record `GET /core-update/service-update` reads.
+ * - `autoDownloadAt`: when `downloadPolicy` will stage `latestVersion` by
+ *   itself; null when it will not (policy `never`, nothing available, or
+ *   already staged or under way). It is evaluated on a check, not by a
+ *   clock: a server checks again when it is due.
+ * - `applyWhenIdle`: a persisted request to apply `version` once no agent
+ *   turn is running; null when none is set. `waitingForTurns` is how many
+ *   running turns its last evaluation found (absent before one ran): a turn
+ *   that never ends keeps it waiting, and this is where that shows.
+ * - `autoDownloadPausedReason`: why the policy is not downloading the
+ *   available release: `update-failed` (its update rolled back or failed;
+ *   until a person's Download or a newer release) or `download-failed` (it
+ *   is retried at `autoDownloadAt`). Optional: absent on servers before it.
+ */
+// A type alias, not an interface: it is an event payload
+// (`Record<string, unknown>`), which an interface is not assignable to.
+export type ServerUpdateState = {
+  supported: boolean;
+  currentVersion: string | null;
+  availability: {
+    checkedAt: string;
+    releaseCheck: 'verified' | 'unreachable' | 'unverified' | 'not-recorded';
+    latestVersion: string | null;
+    updateAvailable: boolean;
+    availableSince: string | null;
+  } | null;
+  progress: ServiceUpdateProgress;
+  downloadPolicy: ServerUpdateDownloadPolicy;
+  autoDownloadAt: string | null;
+  autoDownloadPausedReason?: 'update-failed' | 'download-failed' | null;
+  applyWhenIdle: {
+    version: string;
+    requestedAt: string;
+    waitingForTurns?: number;
+  } | null;
+};
+
+/**
+ * An agent turn running on this server right now: what a restart would
+ * interrupt (#3851). Only sessions the caller may read are listed;
+ * `hiddenCount` counts the running turns it may not. Nothing here says a
+ * turn will resume after a restart: nothing computes that yet.
+ */
+export interface ServerUpdateRunningTurn {
+  sessionId: string;
+  conversationId: string | null;
+  title: string | null;
+  /** The engine (provider) id running the turn. */
+  engine: string;
+  startedAt: string | null;
+}
+
+export interface ServerUpdateRunningTurns {
+  turns: ServerUpdateRunningTurn[];
+  hiddenCount: number;
+}
+
 /** Disclosure from this home, not a certificate of transferred execution authority. */
 export type HomeRecoveryDisclosure =
   | { kind: 'not-restored' | 'unavailable' }
@@ -193,3 +325,66 @@ export type HomeRecoveryDisclosure =
       snapshotCreatedAt: string;
       authorityTransferred: false;
     };
+
+/** Where an effective workload memory budget came from. */
+export type WorkloadBudgetSource = 'environment' | 'settings' | 'default';
+
+/**
+ * `GET /api/system/workload`: this Station's engine workload memory budgets.
+ * `enforcement.state` is `ready` only while a Linux systemd user service
+ * enforces them; `unmanaged` means this host does not enforce budgets at all
+ * (macOS, Windows, Linux outside a Station service) and `unavailable` that
+ * enforcement failed to start (`reason`). `applies` says whether a saved
+ * change reaches new scopes now or only after Station restarts.
+ */
+export interface WorkloadBudgetStatus {
+  enforcement: {
+    state: 'unmanaged' | 'ready' | 'unavailable' | 'stopping';
+    reason?: string;
+    platform: string;
+  };
+  hostMemoryBytes: number;
+  limits?: {
+    memoryMaxBytes: number;
+    totalMemoryMaxBytes: number;
+    swapMaxBytes: number;
+    tasksMax: number;
+  };
+  sources?: { memory: WorkloadBudgetSource; totalMemory: WorkloadBudgetSource };
+  settings: { memoryMiB?: number; totalMemoryMiB?: number };
+  settingsError?: string;
+  settingsWritable: boolean;
+  applies: 'new-scopes' | 'restart';
+  activeScopes: number;
+  /**
+   * Running scopes, each with the per-engine limit it was launched with
+   * (a saved change reaches only scopes launched after it) and the OOM kills
+   * Station has observed inside it. Absent from older hosts.
+   */
+  scopes?: Array<{
+    unit: string;
+    sessionId?: string;
+    memoryMaxBytes?: number;
+    oomKills: number;
+    /** When Station first saw the latest kill (to its 1 s poll interval). */
+    lastOomKillAt?: string;
+    /**
+     * An engine scope's holder: `placed` keeps the scope's own OOM count
+     * readable after the engine dies; `unplaced` means that count will be
+     * unknown. Absent for command scopes.
+     */
+    holder?: 'placed' | 'unplaced';
+    /** Why an engine scope's holder is unplaced. */
+    holderReason?: WorkloadHolderUnplacedReason;
+  }>;
+}
+
+/**
+ * Why an engine scope has no holder in it: the host has no setsid(1) or
+ * sleep(1) to start one, the scope's processes do not include it, or the
+ * holder that was found has since gone.
+ */
+export type WorkloadHolderUnplacedReason =
+  | 'holder-unavailable'
+  | 'not-in-scope'
+  | 'holder-gone';

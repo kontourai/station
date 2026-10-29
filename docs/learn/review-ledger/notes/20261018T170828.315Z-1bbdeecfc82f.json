@@ -1,0 +1,7 @@
+{
+  "revision": "dd9e694f4bfe526d744e2ad39e7d2f8e578e7308",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Integration of #3828 at cc1fcf23116: read every relevant upstream commit diff and inspected the merged runner/CLI/docs against both parents. Preserved allowlists, default 24-turn ceiling, printed reservation enforcement, unresolved-Claude-alias verdicts, exact artifact inspection, loaded-unloaded-loaded recycle observations, session runtime errors and credential refusal. Delivery declares maxTurns 2 once per engine; plan publication/preflight/allowlist tests cover it. Preserved artifact content as send argument five and moved the evaluator to six. Co-located script paths do not prove skill loading, so the skills cell is unverified even with a matching nonce/output; nativeToolPolicy always renders unverified independently of MCP selection. Combined focused suites pass 93/93; clean merged commit dd9e694f4bf mutation checks catch both the unknown-id guard removal and removed turn declaration, then restore 21/21. No live provider or UI evidence.","inputs":["docs/reference/agent-smoke-confidence.md","scripts/__tests__/engine-delivery-probes.test.ts","scripts/engine-delivery-probes.ts"]}
+  ]
+}

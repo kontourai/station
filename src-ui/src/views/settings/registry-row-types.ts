@@ -42,7 +42,7 @@ export interface RegistryRowComponentProps {
    * #2144 slice 3 — the project override context, supplied only by a caller
    * that holds a project override draft (`SettingsView`'s project selector).
    * All four are absent on a Station-only page, which is what makes its rows
-   * render exactly as they did before this slice.
+   * render exactly as they do without a project scope.
    */
   projectName?: string;
   /** The project's override value for this key, when it has one. */

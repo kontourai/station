@@ -1,0 +1,7 @@
+{
+  "revision": "36542aef5847fba7db4b4f439ef63564db88e6f9",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Reviewed the new delivery real-route suite classification and manual capture helper against existing instructions. The suite is in the independent process group, actual services/owned MCP custody own subprocesses, and no new direct spawn/exec call lacks windowsHide. Named manual entrypoint capture-skill-delivery.mjs is documented and executed in both modes; its unused-file advisory is a manual-entrypoint disposition, not an unused export. Existing gate, code-health and mutation instructions remain accurate.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

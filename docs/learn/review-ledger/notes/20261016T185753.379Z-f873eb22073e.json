@@ -1,0 +1,7 @@
+{
+  "revision": "2b6ee762569a5b8133c5159bea706a321650f9da",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed only the Windows portable-floor Tauri caller paragraph against tauri-context.test.ts: 80s scaled caller envelope covers unchanged60s child or two30s children and fixturecompile; production10/30s deadlines unchanged; persistent diagnostics use canonical redaction and64KiB truncation flag. Focused31PASS4platformSKIP; scriptsTS439compiled56existingdeferredPASS. Actual native run pending; no packaging/runtime claim.","inputs":["docs/guides/testing.md"]}
+  ]
+}

@@ -143,6 +143,66 @@ function deadlineRestartRoutes(readiness: string) {
 }
 
 describe('desktop startup readiness static boundary', () => {
+  // These are native composition guards. They do not establish a visible
+  // tray/window result; the packaged-shell checklist remains mandatory.
+  it('source-only wiring: routes the early native cover through launch admission', () => {
+    const lib = read('src-desktop/src/lib.rs');
+    const setup = rustBlock(lib, '.setup(move |app|');
+    const coverGate = rustBlock(
+      setup,
+      'if desktop_companion::initial_cover_requested(',
+    );
+    expect(coverGate).toContain(
+      'cfg!(debug_assertions), desktop_companion::background(app.handle())',
+    );
+    expect(coverGate).toContain('with_native_startup_cover(');
+  });
+
+  it('source-only wiring: connects service convergence and failed-probe invalidation', () => {
+    const tray = read('src-desktop/src/tray.rs');
+    const action = rustBlock(tray, 'fn run_service_action(');
+    expect(shape(action)).toContain(
+      shape(`converge_service_action(
+      || crate::invalidate_home_ownership(&app),
+      || { let _ = update_once(&app); },
+      thread::sleep,
+    );`),
+    );
+    const context = rustBlock(tray, 'fn tray_context(');
+    const failedProbe = rustBlock(
+      context,
+      'if matches!(owner, DesktopOwnerSnapshot::Service { .. })',
+    );
+    expect(failedProbe).toContain(
+      'endpoint_health != Some(ServiceHealth::Running)',
+    );
+    expect(failedProbe).toContain('crate::invalidate_home_ownership(app);');
+  });
+
+  it('refreshes login PATH on restart while running, backing off, or waiting after failure', () => {
+    const lib = read('src-desktop/src/lib.rs');
+    const running = rustBlock(lib, 'fn run_sidecar_supervisor(');
+    const effects = rustBlock(lib, 'fn drive_supervisor_effects(');
+    const restart = shape(`Ok(SupervisorMessage::Restart) => {
+      #[cfg(unix)]
+      login_shell::invalidate_path();`);
+    expect(shape(running).split(restart)).toHaveLength(2);
+    expect(shape(effects).split(restart)).toHaveLength(3);
+  });
+
+  it('keeps supervisor identity refusal distinct in native preparation', () => {
+    const lib = read('src-desktop/src/lib.rs');
+    expect(rustBlock(lib, 'fn registry_bridge_error(')).toContain(
+      'Some("SUPERVISOR_IDENTITY_UNAVAILABLE") => RegistryBridgeFailure::SupervisorIdentity',
+    );
+    const setup = rustBlock(lib, '.setup(move |app|');
+    expect(setup).toContain('RegistryBridgeFailure::SupervisorIdentity =>');
+    expect(setup).toContain('supervisor_identity_failed = true;');
+    expect(setup).toContain(
+      'if supervisor_identity_failed { "Station could not establish supervisor identity" }',
+    );
+  });
+
   it('keeps release main windows hidden in every desktop channel config', () => {
     for (const path of [
       'src-desktop/tauri.conf.json',
@@ -231,10 +291,7 @@ describe('desktop startup readiness static boundary', () => {
       renderApp.indexOf('<PlatformBootstrap>'),
     );
     expect(lib).not.toContain('clear_all_browsing_data');
-    const mountCommit = lib.slice(
-      lib.indexOf('fn commit_renderer_mount'),
-      lib.indexOf('fn commit_startup_recovery_ui'),
-    );
+    const mountCommit = rustBlock(lib, 'fn commit_renderer_mount(');
     expect(mountCommit.indexOf('renderer_mounted.store(true')).toBeLessThan(
       mountCommit.indexOf('try_state::<DesktopServerState>()'),
     );
@@ -259,25 +316,13 @@ describe('desktop startup readiness static boundary', () => {
     expect(lib).not.toContain('NATIVE_STARTUP_BOOTSTRAP_SCRIPT');
     expect(lib).not.toContain("invoke('renderer_startup_ready')");
     expect(platformBootstrap).not.toContain('startStartupReadinessProof');
-    const nativeWake = lib.slice(
-      lib.indexOf('fn notify_startup_readiness_if_waiting'),
-      lib.indexOf('struct PendingMainWindowActivation'),
+    // Native owns the identity proof: a waiting-phase wake and a newly
+    // published sidecar ticket each request the native commit.
+    expect(rustBlock(lib, 'fn notify_startup_readiness_if_waiting(')).toContain(
+      'request_native_startup_commit(app);',
     );
-    expect(
-      nativeWake.indexOf('request_native_startup_commit(app);'),
-    ).toBeLessThan(
-      nativeWake.indexOf('app.emit("station://startup-readiness-retry"'),
-    );
-    const ticketWake = lib.slice(
-      lib.indexOf('fn observe_startup_ticket'),
-      lib.indexOf('fn observe_startup_loss'),
-    );
-    expect(
-      ticketWake.indexOf(
-        'request_native_startup_commit_for_ticket(app, published_ticket);',
-      ),
-    ).toBeLessThan(
-      ticketWake.indexOf('app.emit("station://startup-readiness-retry"'),
+    expect(rustBlock(lib, 'fn observe_startup_ticket(')).toContain(
+      'request_native_startup_commit_for_ticket(app, published_ticket);',
     );
     expect([
       ...lib.matchAll(/\.name\("station-native-cover-dispatcher"\.into\(\)\)/g),
@@ -328,8 +373,6 @@ describe('desktop startup readiness static boundary', () => {
     const methods = {
       isStartupWindowAdmitted: 'startup_window_admitted',
       commitRendererMount: 'commit_renderer_mount',
-      commitStartupReadiness: 'commit_startup_readiness',
-      commitStartupRecoveryUi: 'commit_startup_recovery_ui',
       getBundledServerStatus: 'bundled_server_status',
     };
     for (const [method, command] of Object.entries(methods)) {

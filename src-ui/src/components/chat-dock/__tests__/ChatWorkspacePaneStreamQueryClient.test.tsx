@@ -194,12 +194,27 @@ function sessionReadModelInvalidations(
   ).length;
 }
 
+/**
+ * The session read-model refresh is single-flight: a fact that lands while a
+ * read is in flight is owed until that read settles. These tests are about
+ * WHICH client receives the refresh, so they start from settled reads.
+ */
+const readsSettled = (client: QueryClient) =>
+  act(() =>
+    vi.waitFor(() =>
+      expect(client.isFetching({ queryKey: ['orchestration-sessions'] })).toBe(
+        0,
+      ),
+    ),
+  );
+
 const pastTheThrottleWindow = () =>
   act(() => new Promise((resolve) => setTimeout(resolve, 1100)));
 
 test('a session-ending event invalidates the session read-model on the client the mounted pane registered', async () => {
   const client = authorityClient();
   render(tree({ namespace: 'authority-a', client }));
+  await readsSettled(client);
   const invalidate = vi.spyOn(client, 'invalidateQueries');
   invalidate.mockClear();
 
@@ -215,6 +230,7 @@ test('an authority switch routes later invalidations to the new client and never
   const { rerender } = render(
     tree({ namespace: 'authority-a', client: clientA }),
   );
+  await readsSettled(clientA);
   const invalidateA = vi.spyOn(clientA, 'invalidateQueries');
   const invalidateB = vi.spyOn(clientB, 'invalidateQueries');
   invalidateA.mockClear();
@@ -235,6 +251,7 @@ test('an authority switch routes later invalidations to the new client and never
   expect(sessionReadModelInvalidations(invalidateA)).toBe(1);
 
   rerender(tree({ namespace: 'authority-b', client: clientB }));
+  await readsSettled(clientB);
   invalidateB.mockClear();
   deliverFact('session.exited');
 

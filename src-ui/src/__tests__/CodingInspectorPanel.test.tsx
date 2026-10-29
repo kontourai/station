@@ -169,7 +169,7 @@ describe('ReadinessInspectorContent — copyable setup command', () => {
   test('the copy-command fallback says why it exists', () => {
     renderNoCliCta();
 
-    const note = screen.getByText(/cannot run the setup for you/);
+    const note = screen.getByText(/Veritas CLI isn't installed here/);
     expect(note.textContent).toContain('downloads the CLI');
     expect(note.textContent).toContain('.veritas/');
   });

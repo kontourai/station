@@ -5,6 +5,9 @@ export const enUSCatalog = {
   'route.chunk.description':
     '{product} may have been updated since this tab was opened. Reloading fetches the current version.',
   'route.chunk.action': 'Reload Station',
+  'route.chunk.offlineTitle': 'This view is not saved on this device.',
+  'route.chunk.offlineDescription':
+    'You are offline, and this view has not been opened here since {product} was last updated. You can reload it once you are back online.',
   'route.authority.title': 'This view is not available to you.',
   'route.authority.description':
     'Station refused the request for this view. Review the connection you are using, then try again.',

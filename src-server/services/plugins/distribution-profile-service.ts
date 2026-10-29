@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import {
   existsSync,
   lstatSync,
@@ -25,16 +25,23 @@ import {
   type AvailableProjectLayout,
   assertNoRetiredLayoutKeys,
   BUILTIN_PROJECT_LAYOUTS,
+  builtinLayoutPresentationDeclaration,
   type LayoutCatalogContribution,
+  parseLayoutWorkspaceBinding,
 } from '@kontourai/station-contracts/layout';
 import {
   isCanonicalPluginId,
   type PluginInstallationReadiness,
   type PluginManifest,
 } from '@kontourai/station-contracts/plugin';
+import {
+  assertRequiredSlotDefaultMutable,
+  parseRequiredSlotAssignments,
+} from '@kontourai/station-contracts/required-slots';
 import type { WorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
 import { writeJsonDurably } from '@kontourai/station-shared/durable-json-file';
 import { createLogger } from '../../utils/logger.js';
+import { parsePluginLayoutDeclaration } from '../layouts/layout-presentation-declaration.js';
 import type { PackageMcpAdmissionJournal } from './package-mcp-admission.js';
 import {
   listPluginCatalogIdentities,
@@ -46,6 +53,21 @@ const logger = createLogger({ name: 'distribution-profile-service' });
 
 const SAFE_ID = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const LIFECYCLE_FILE = ['config', 'distribution-lifecycle.json'] as const;
+/**
+ * How many times each catalog item's lifecycle override changed, kept in the
+ * override document itself as a top-level `revisions` member — `{ epoch,
+ * items }` — so one atomic write carries an override and its revision. An
+ * older server's parser checks only `version` and `items` and ignores it; an
+ * older server's write drops it, and the next change then starts a new epoch.
+ */
+type LifecycleRevisions =
+  | {
+      readonly state: 'ok';
+      readonly epoch: string;
+      readonly items: Record<string, number>;
+    }
+  | { readonly state: 'absent' }
+  | { readonly state: 'invalid' };
 const BUILTIN_LAYOUT_CONTRIBUTION_VERSION = '1.0.0';
 
 interface PluginLayoutEntry {
@@ -57,8 +79,21 @@ interface PluginLayoutEntry {
 interface ParsedPluginLayout {
   installationReady?: boolean;
   installationReadiness?: PluginInstallationReadiness;
+  /** The installation identity (`installationIdentity`). */
+  installation: string;
   manifest: PluginManifest;
   definition: ResolvedCatalogLayout['definition'];
+}
+
+/**
+ * Which installation of a plugin this is: the admission journal's
+ * incarnation, which every install — a reinstall of the same version
+ * included — mints anew; without a journal, the package's content digest.
+ */
+function installationIdentity(catalog: {
+  artifact: { generation?: string; digest: string };
+}): string {
+  return catalog.artifact.generation ?? `digest:${catalog.artifact.digest}`;
 }
 
 export interface InstalledPluginWorkspacePaneContribution {
@@ -155,7 +190,12 @@ function parseLayoutDefinition(
   // yields `undefined`, and the profile then resolves cleanly with every
   // global action gone (review M1).
   assertNoRetiredLayoutKeys(value, `Plugin '${pluginName}' layout`);
+  // The layout contract fields (#2995), refused by name when unknown or when
+  // a drill-in is not one of this layout's own panes. A refusal leaves the
+  // plugin's layout out of the catalog, as any other invalid definition is.
+  const declaration = parsePluginLayoutDeclaration(value, pluginName, slug);
   return {
+    ...declaration,
     name:
       typeof value.name === 'string'
         ? value.name
@@ -176,6 +216,7 @@ function parseLayoutDefinition(
     // of the full-viewport Chat placement, and the app suspends its ambient
     // regions for a layout that renders it (#1446).
     type: typeof value.type === 'string' ? value.type : 'custom',
+    workspaceBinding: parseLayoutWorkspaceBinding(value.workspaceBinding),
     tabs: Array.isArray(value.tabs) ? (value.tabs as any[]) : [],
     globalSkills: Array.isArray(value.globalSkills)
       ? (value.globalSkills as any[])
@@ -200,6 +241,7 @@ function readPluginManifestFile(
 ): {
   manifest: PluginManifest;
   pluginDir: string;
+  installation: string;
   installationReady: boolean;
   installationReadiness: PluginInstallationReadiness;
 } {
@@ -212,6 +254,7 @@ function readPluginManifestFile(
   return {
     manifest: catalog.manifest,
     pluginDir: catalog.packageRoot,
+    installation: installationIdentity(catalog),
     installationReady: catalog.readiness.state === 'ready',
     installationReadiness: catalog.readiness,
   };
@@ -221,12 +264,18 @@ function readPluginLayoutFiles(
   observed: ReturnType<typeof readPluginManifestFile>,
   pluginName: string,
 ): ParsedPluginLayout {
-  const { manifest, pluginDir, installationReady, installationReadiness } =
-    observed;
+  const {
+    manifest,
+    pluginDir,
+    installation,
+    installationReady,
+    installationReadiness,
+  } = observed;
   const layoutSource = manifest.layout?.source || 'layout.json';
   const layout = readContainedRegularJson(pluginDir, layoutSource);
   return {
     manifest,
+    installation,
     installationReady,
     installationReadiness,
     definition: parseLayoutDefinition(layout, manifest, pluginName),
@@ -324,6 +373,9 @@ export function resolveDistributionProfile(
         ? MINIMAL_DISTRIBUTION_PROFILE
         : selection,
   );
+  if (Object.hasOwn(profile, 'requiredSlots')) {
+    profile.requiredSlots = parseRequiredSlotAssignments(profile.requiredSlots);
+  }
   assertSafeId(profile.id, 'Distribution profile id');
   const sourceIds = new Set<string>();
   for (const source of profile.registrySources) {
@@ -335,6 +387,10 @@ export function resolveDistributionProfile(
   }
   for (const [itemId, policy] of Object.entries(profile.itemPolicies ?? {})) {
     assertSafeCatalogId(itemId);
+    if (policy?.enabled === false)
+      assertRequiredSlotDefaultMutable(itemId, 'disable');
+    if (policy?.preinstalled === false)
+      assertRequiredSlotDefaultMutable(itemId, 'uninstall');
     if (!policy || typeof policy !== 'object') {
       throw new Error(`Layout policy '${itemId}' must be an object`);
     }
@@ -358,6 +414,8 @@ export class DistributionProfileService {
     string,
     ReturnType<typeof readPluginManifestFile> | Error
   >;
+  /** A snapshot's one read of the lifecycle revisions. */
+  private catalogRevisions?: LifecycleRevisions;
 
   /** Inert request snapshot. Each package is observed once, with no cross-request cache. */
   async captureCatalog(): Promise<DistributionCatalogReadView> {
@@ -383,6 +441,7 @@ export class DistributionProfileService {
         manifests.set(name, {
           manifest: catalog.manifest,
           pluginDir: catalog.packageRoot,
+          installation: installationIdentity(catalog),
           installationReady: catalog.readiness.state === 'ready',
           installationReadiness: catalog.readiness,
         });
@@ -396,6 +455,7 @@ export class DistributionProfileService {
       }
     }
     snapshot.catalogManifests = manifests;
+    snapshot.catalogRevisions = this.readRevisions();
     // Expose only inert readers. Applying layouts or authorizing execution must
     // use the live service and its fresh installation observation.
     return {
@@ -464,8 +524,12 @@ export class DistributionProfileService {
       const entry = { name };
       if (!isCanonicalPluginId(name) || !this.pluginIsAllowed(name)) continue;
       try {
-        const { manifest, installationReady, installationReadiness } =
-          this.readManifest(entry.name);
+        const {
+          manifest,
+          installation,
+          installationReady,
+          installationReadiness,
+        } = this.readManifest(entry.name);
         for (const descriptor of manifest.workspacePanes ?? []) {
           const id = pluginPaneContributionId(entry.name, descriptor.id);
           const policy = this.policyFor(id);
@@ -480,6 +544,7 @@ export class DistributionProfileService {
             contribution: {
               id,
               version: manifest.version,
+              lifecycleGeneration: this.lifecycleGeneration(id, installation),
               sourceIdentity: {
                 id: entry.name,
                 kind: 'local',
@@ -537,6 +602,9 @@ export class DistributionProfileService {
       throw new Error('Layout is not a known installed contribution');
     }
     if (item.source === 'builtin') {
+      const builtin = BUILTIN_PROJECT_LAYOUTS.find(
+        (layout) => layout.slug === item.slug,
+      );
       return {
         item,
         definition: {
@@ -545,6 +613,8 @@ export class DistributionProfileService {
           icon: item.icon,
           description: item.description,
           type: item.type,
+          workspaceBinding: builtin?.workspaceBinding,
+          ...(builtin ? builtinLayoutPresentationDeclaration(builtin) : {}),
           tabs: [],
         },
       };
@@ -570,6 +640,7 @@ export class DistributionProfileService {
   }
 
   setEnabled(id: string, enabled: boolean): LayoutCatalogItem {
+    if (!enabled) assertRequiredSlotDefaultMutable(id, 'disable');
     const item = this.getLayout(id);
     if (!item) throw new Error('Layout not found');
     this.writeOverride(id, { enabled });
@@ -587,6 +658,7 @@ export class DistributionProfileService {
 
   /** Built-ins are removed from catalog use through an override, never deleted. */
   removeBuiltin(id: string): LayoutCatalogItem {
+    assertRequiredSlotDefaultMutable(id, 'uninstall');
     const item = this.getLayout(id);
     if (item?.source !== 'builtin')
       throw new Error('Built-in layout not found');
@@ -708,6 +780,18 @@ export class DistributionProfileService {
       icon: definition.icon,
       description: definition.description,
       type: definition.type,
+      ...(definition.workspaceBinding === undefined
+        ? {}
+        : { workspaceBinding: definition.workspaceBinding }),
+      ...(definition.primary === undefined
+        ? {}
+        : { primary: definition.primary }),
+      ...(definition.presentation === undefined
+        ? {}
+        : { presentation: definition.presentation }),
+      ...(definition.drillIns === undefined
+        ? {}
+        : { drillIns: [...definition.drillIns] }),
       id,
       sourceIdentity: {
         id: pluginName,
@@ -717,6 +801,7 @@ export class DistributionProfileService {
       contribution: {
         id,
         version: parsed.manifest.version,
+        lifecycleGeneration: this.lifecycleGeneration(id, parsed.installation),
         sourceIdentity: {
           id: pluginName,
           kind: 'local',
@@ -740,6 +825,89 @@ export class DistributionProfileService {
 
   private lifecyclePath(): string {
     return join(this.projectHomeDir, ...LIFECYCLE_FILE);
+  }
+
+  /**
+   * A plugin contribution's `lifecycleGeneration`: its installation, the
+   * epoch the lifecycle history was sealed under, and the item's revision
+   * within it. Generations never repeat: an epoch is random, minted once when
+   * history is sealed or first changed, and every change counts within it.
+   * Where the history cannot be vouched for — no sealed epoch (the document
+   * or its revisions were lost, or an older server rewrote it) or revisions
+   * that cannot be read — the generation is `null`, which no host admits, and
+   * it stays `null` until a new epoch is sealed.
+   */
+  private lifecycleGeneration(id: string, installation: string): string | null {
+    const revisions = this.catalogRevisions ?? this.readRevisions();
+    if (revisions.state !== 'ok') return null;
+    return `${installation}:${revisions.epoch}.r${revisions.items[id] ?? 0}`.slice(
+      0,
+      256,
+    );
+  }
+
+  /**
+   * Seal the lifecycle history once, at Station start: an absent `revisions`
+   * member gets a new random epoch, so every plugin item reads a generation
+   * no earlier history issued. Never during a read, and never over revisions
+   * that cannot be read: those stay unsealed (and every plugin generation
+   * `null`) until they are repaired. Returns what it found.
+   */
+  sealLifecycleHistory(): 'sealed' | 'already-sealed' | 'invalid' {
+    const revisions = this.readRevisions();
+    if (revisions.state === 'ok') return 'already-sealed';
+    if (revisions.state === 'invalid') return 'invalid';
+    let items: DistributionLifecycleOverrides['items'];
+    try {
+      items = this.readOverrides().items;
+    } catch {
+      return 'invalid';
+    }
+    mkdirSync(join(this.projectHomeDir, 'config'), { recursive: true });
+    writeJsonDurably(
+      this.lifecyclePath(),
+      {
+        version: 1,
+        items,
+        revisions: { epoch: randomBytes(16).toString('hex'), items: {} },
+      },
+      { trailingNewline: false },
+    );
+    return 'sealed';
+  }
+
+  private readRevisions(): LifecycleRevisions {
+    const path = this.lifecyclePath();
+    if (!existsSync(path)) return { state: 'absent' };
+    let data: unknown;
+    try {
+      data = JSON.parse(readFileSync(path, 'utf-8'));
+    } catch {
+      // The document itself is unreadable: `readOverrides` refuses it.
+      return { state: 'invalid' };
+    }
+    if (!isPlainObject(data) || data.revisions === undefined)
+      return { state: 'absent' };
+    const revisions = data.revisions;
+    if (
+      !isPlainObject(revisions) ||
+      typeof revisions.epoch !== 'string' ||
+      !/^[a-f0-9]{32}$/.test(revisions.epoch) ||
+      !isPlainObject(revisions.items)
+    )
+      return { state: 'invalid' };
+    const items: Record<string, number> = {};
+    for (const [id, value] of Object.entries(revisions.items)) {
+      try {
+        assertSafeCatalogId(id);
+      } catch {
+        return { state: 'invalid' };
+      }
+      if (!Number.isSafeInteger(value) || (value as number) < 1)
+        return { state: 'invalid' };
+      items[id] = value as number;
+    }
+    return { state: 'ok', epoch: revisions.epoch, items };
   }
 
   private readOverrides(): DistributionLifecycleOverrides {
@@ -778,15 +946,52 @@ export class DistributionProfileService {
   ): void {
     assertSafeCatalogId(id);
     const state = this.readOverrides();
-    const next: DistributionLifecycleOverrides = {
-      version: 1,
-      items: { ...state.items, [id]: { ...state.items[id], ...patch } },
+    const before = state.items[id] ?? {};
+    // Writing the same value again is no change of lifecycle: nothing to
+    // write, and no new generation.
+    const changed = (Object.keys(patch) as (keyof typeof patch)[]).some(
+      (key) => before[key] !== patch[key],
+    );
+    if (!changed) return;
+    const next = {
+      version: 1 as const,
+      items: { ...state.items, [id]: { ...before, ...patch } },
+      ...this.revisionsAfterChange(id),
     };
     const path = this.lifecyclePath();
     mkdirSync(join(this.projectHomeDir, 'config'), { recursive: true });
     // Same two-space document; the shared durable writer adds the exclusive
     // temporary, the data fsync and the directory fsync.
     writeJsonDurably(path, next, { trailingNewline: false });
+  }
+
+  /**
+   * The `revisions` member to write with a change to `id`. A plugin item's
+   * change is a new generation, written in the same document as the
+   * override, so a failed write changes neither and a retry is a change
+   * again; history is never reset, and unreadable revisions refuse the
+   * change. Other items carry no lifecycle generation: the member is kept
+   * exactly as it is stored, or left absent.
+   */
+  private revisionsAfterChange(id: string): { revisions?: unknown } {
+    const revisions = this.readRevisions();
+    if (!id.startsWith('plugin:')) {
+      if (revisions.state === 'absent') return {};
+      const stored = JSON.parse(readFileSync(this.lifecyclePath(), 'utf-8'));
+      return { revisions: stored.revisions };
+    }
+    if (revisions.state === 'invalid')
+      throw new Error('Distribution lifecycle revisions are invalid');
+    const current = revisions.state === 'ok' ? revisions : null;
+    const revision = (current?.items[id] ?? 0) + 1;
+    if (!Number.isSafeInteger(revision))
+      throw new Error('Distribution lifecycle revision is exhausted');
+    return {
+      revisions: {
+        epoch: current?.epoch ?? randomBytes(16).toString('hex'),
+        items: { ...(current?.items ?? {}), [id]: revision },
+      },
+    };
   }
 }
 

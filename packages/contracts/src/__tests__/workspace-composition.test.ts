@@ -118,7 +118,7 @@ describe('WorkspaceCompositionSpec', () => {
         optionalCapabilities: [requirement('project.read')],
       }),
     ).toBeNull();
-    expect(parseWorkspaceCompositionSpec(new Date())).toBeNull();
+    expect(parseWorkspaceCompositionSpec(new Date(0))).toBeNull();
   });
 
   test('instantiates the existing Host Document deterministically when required grants exist', () => {
@@ -352,7 +352,7 @@ describe('WorkspaceCompositionSpec', () => {
     expect(
       instantiateWorkspaceCompositionRaw({
         spec: declared,
-        scope: new Date(),
+        scope: new Date(0),
         descriptors: [],
         capabilityStates: [],
         admittedInstances: [],

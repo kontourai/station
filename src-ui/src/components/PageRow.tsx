@@ -7,6 +7,7 @@ interface PageRowProps {
   'data-catalog-id'?: string;
   description?: ReactNode;
   status?: ReactNode;
+  statusPlacement?: 'aside' | 'label';
   control?: ReactNode;
   children?: ReactNode;
   className?: string;
@@ -20,6 +21,7 @@ export function PageRow({
   'data-catalog-id': catalogId,
   description,
   status,
+  statusPlacement = 'aside',
   control,
   children,
   className,
@@ -32,15 +34,22 @@ export function PageRow({
       className={`page-row${className ? ` ${className}` : ''}`}
     >
       <div className="page-row__content">
-        <div className="page-row__label">{title ?? label}</div>
+        <div className="page-row__heading">
+          <div className="page-row__label">{title ?? label}</div>
+          {statusPlacement === 'label' && status && (
+            <div className="page-row__status">{status}</div>
+          )}
+        </div>
         {description && (
           <div className="page-row__description">{description}</div>
         )}
         {children}
       </div>
-      {(status || control) && (
+      {((statusPlacement === 'aside' && status) || control) && (
         <div className="page-row__aside">
-          {status && <div className="page-row__status">{status}</div>}
+          {statusPlacement === 'aside' && status && (
+            <div className="page-row__status">{status}</div>
+          )}
           {control && <div className="page-row__control">{control}</div>}
         </div>
       )}

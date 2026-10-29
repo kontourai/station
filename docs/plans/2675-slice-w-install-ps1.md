@@ -1,9 +1,17 @@
 # #2675 slice W: `install.ps1` for the prebuilt Windows archive (design)
 
-Status: W1, W2 and W3 implemented (see sections 6, 8 and 9). W2 kept the profile-only rule for install roots and added ACLs on top
+> **Reading status: implemented** (#2675 is closed). Current behaviour lives in
+> [`install.ps1`](../../install.ps1), its tests
+> ([`install-ps1.test.ts`](../../scripts/__tests__/install-ps1.test.ts),
+> [`install-ps1-full.test.ts`](../../scripts/__tests__/install-ps1-full.test.ts)),
+> and the [Windows archive installs](../guides/release-channel-ports.md#windows-archive-installs)
+> guide section. This plan is kept for its reasoning and owner decisions; read
+> the guide for how the installer behaves today.
+
+Status when last updated: W1, W2 and W3 implemented (see sections 6, 8 and 9). W2 kept the profile-only rule for install roots and added ACLs on top
 of it (section 8). Base: `origin/main` 8608541b9. Slices A, B1, B2, C, D and E have
-merged. #2954 (installers must not treat bootstrap ports as explicit) is still
-open.
+merged. #2954 (installers must not treat bootstrap ports as explicit) has
+since merged too.
 
 Owner decisions (2026-09-29) are recorded in section 7. Please keep pushing
 back: several premises here contradict the epic's own framing of W as "a

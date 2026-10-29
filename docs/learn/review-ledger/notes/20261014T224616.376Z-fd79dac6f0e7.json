@@ -1,0 +1,7 @@
+{
+  "revision": "226812d12491f499a8fd7640b8e9adee2c7f066b",
+
+  "notes": [
+    {"path":"docs/guides/deployment.md","note":"Re-read --temp-home and home-selection claims. helpers.ts round 2: --temp-home now refuses only a candidate under the tmp/ tree of STATION_HOME or the resolved Station root (where Station gives spawned engines TMPDIR=<home>/tmp/engine-spawn and reaps by age), or one admission refuses; it is removed and retried once under /tmp/station, and a refused retry is appended to the error. Other home selections, ports and channel derivation unchanged. Doc names --temp-home usage, not its location; no prose change.","inputs":["docs/guides/deployment.md","packages/cli/src/commands/helpers.ts"]}
+  ]
+}

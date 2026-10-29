@@ -87,9 +87,7 @@ export function createNotificationRoutes(
   };
 
   const readableNotification = async (id: string, request: Request) => {
-    const notification = (await notificationService.list()).find(
-      (candidate) => candidate.id === id,
-    );
+    const notification = await notificationService.get(id);
     return notification && canReadNotification(notification, request)
       ? notification
       : undefined;

@@ -1,0 +1,9 @@
+{
+  "revision": "30869e6088948345781da3dc2723511d262d72bb",
+
+  "notes": [
+    {"path":"docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","note":"Scoped review at 30869e60889: permission-wait rendering in ProjectKnowledgeStores and ProjectKnowledgeSources now uses shared SkeletonBlock with accessible status labels instead of bespoke paragraphs. Held capabilities still withhold creation/source-management actions and reauthorize after current reads; no query, store, index, receipt or persistence semantics changed. Existing Knowledge source-permission guidance remains accurate; historical ADR authority/index decision is unchanged and its old probes are not renewed. Two mounted suites passed 17 tests, including held-permission action guards; state-primitives ratchet passes. This is a rendering delta review, not whole-document/provider/platform qualification.","inputs":["docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Scoped review at 30869e60889: permission-wait rendering in ProjectKnowledgeStores and ProjectKnowledgeSources now uses shared SkeletonBlock with accessible status labels instead of bespoke paragraphs. Held capabilities still withhold creation/source-management actions and reauthorize after current reads; no query, store, index, receipt or persistence semantics changed. Existing Knowledge source-permission guidance remains accurate; historical ADR authority/index decision is unchanged and its old probes are not renewed. Two mounted suites passed 17 tests, including held-permission action guards; state-primitives ratchet passes. This is a rendering delta review, not whole-document/provider/platform qualification.","inputs":["docs/guides/knowledge.md","src-ui/src/views/project-page/ProjectKnowledgeStores.tsx","src-ui/src/views/project-page/__tests__/ProjectKnowledgeStores.test.tsx"]}
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "revision": "35fa588f8d9e9bb1c1d23512e61e39143e567096",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the updated monitoring, CLI and config references. The telemetry changes preserve the separate canonical accounting and observation boundaries described here. OTel registration, Insights integrity and abstraction-review guidance are unchanged; no prose update is needed.","inputs":["docs/architecture/abstraction-review.md","docs/guides/monitoring.md","docs/reference/cli.md","docs/reference/config.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Reviewed the CLI reference delta: it adds first-start Lite notice behavior. Diagnostic collection, source-only lifecycle injection, redaction, artifact bounds and credential handling in this design are unchanged. No triage claim depends on the new telemetry notice or feedback contract.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed the regenerated privacy inventory working copy. The concepts page still correctly distinguishes local home storage, configured remote integrations, update requests and configured observability. It links to the detailed working copy for settings and evidence limits and makes no obsolete claim about Lite, Off feedback or a permanent Full identity.","inputs":["docs/user/concepts.md","docs/privacy-policy.md"]},
+
+    {"path":"packages/cli/README.md","note":"Reviewed the CLI reference changes for terminal notices and local outbox reporting. This README correctly limits the published CLI to remote commands and service control; repository station start uses the source launcher. Published command dispatch and diagnostic boundaries are unchanged, so no prose change is needed.","inputs":["packages/cli/README.md","docs/reference/cli.md"]}
+  ]
+}

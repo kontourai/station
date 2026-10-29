@@ -17,6 +17,9 @@
  */
 import type { TaskKeptDeclaredPullRequest } from '@kontourai/station-contracts';
 import type { IPullRequestProvider } from '@kontourai/station-contracts/pull-request-provider';
+// Flow Agents 6.5.1 has no public read-only ChangeProvider operation for an
+// arbitrary kept PR (kontourai/flow-agents#1509). Keep exact-identity reads until
+// it ships; createOrRecover can create PRs. See docs/plans/task-tracker-sync-upstream-gaps.md.
 import { readPullRequestByIdentity } from '../pull-requests/pull-request-identity-read.js';
 import type { TaskGraphService } from './task-graph-service.js';
 

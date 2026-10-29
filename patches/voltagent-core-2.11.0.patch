@@ -1,0 +1,54 @@
+diff --git a/dist/index.js b/dist/index.js
+index c27134bb2277fe30a95fb44455092657bf5d2be4..4801069f5a8728350a5aaecf54cd37e22f77a06d 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -13257,7 +13257,12 @@ var MemoryManager = class {
+       });
+     }
+     if (options?.persistInput !== false) {
+-      this.handleSequentialBackgroundOperations(context8, input, userId, conversationId);
++      // Station must not let a fast response overtake its input in durable history.
++      const ensuredConversation = await this.ensureConversationExists(context8, userId, conversationId, input);
++      if (!ensuredConversation) {
++        throw new Error(`Failed to ensure conversation exists before input persistence for conversation ${conversationId}`);
++      }
++      await this.saveCurrentInput(context8, input, userId, conversationId);
+     }
+     return { messages, conversationId };
+   }
+@@ -32374,7 +32379,7 @@ var Agent = class {
+                     oc.logger?.debug?.("Failed to persist deferred messages", { error });
+                   });
+                 }
+-                void flushObservability(
++                await flushObservability(
+                   this.getObservability(),
+                   oc.logger ?? this.logger,
+                   this.observabilityAuthWarningState,
+diff --git a/dist/index.mjs b/dist/index.mjs
+index 0652f237fbf9ae47fa2d312ecfed2ea18cee3b18..07dcf96ca0304ddabb17fdba29def7558e7b3111 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -13075,7 +13075,12 @@ var MemoryManager = class {
+       });
+     }
+     if (options?.persistInput !== false) {
+-      this.handleSequentialBackgroundOperations(context8, input, userId, conversationId);
++      // Station must not let a fast response overtake its input in durable history.
++      const ensuredConversation = await this.ensureConversationExists(context8, userId, conversationId, input);
++      if (!ensuredConversation) {
++        throw new Error(`Failed to ensure conversation exists before input persistence for conversation ${conversationId}`);
++      }
++      await this.saveCurrentInput(context8, input, userId, conversationId);
+     }
+     return { messages, conversationId };
+   }
+@@ -32204,7 +32209,7 @@ var Agent = class {
+                     oc.logger?.debug?.("Failed to persist deferred messages", { error });
+                   });
+                 }
+-                void flushObservability(
++                await flushObservability(
+                   this.getObservability(),
+                   oc.logger ?? this.logger,
+                   this.observabilityAuthWarningState,

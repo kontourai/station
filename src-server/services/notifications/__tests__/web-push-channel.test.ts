@@ -132,7 +132,8 @@ describe('WebPushChannel', () => {
       body: 'An agent wants to use a tool.',
       category: 'approval-request',
       notificationId: 'notification-1',
-      url: '/notifications',
+      // The tap's link names the record it opens.
+      url: '/notifications?openedNotification=notification-1',
     });
     expect(ttl).toBe(24 * 60 * 60); // WAITING_TTL_MS, in seconds
   });
@@ -154,8 +155,8 @@ describe('WebPushChannel', () => {
       metadata: { sessionId: 'thread-1', sessionKind: 'runtime' },
     });
     expect(webPush.mock.calls.map(([, payload]) => payload.url)).toEqual([
-      '/schedule?job=nightly-sync',
-      activityDeepLink({ sessionId: 'thread-1' }),
+      '/schedule?job=nightly-sync&openedNotification=notification-2',
+      `${activityDeepLink({ sessionId: 'thread-1' })}&openedNotification=notification-1`,
     ]);
   });
 

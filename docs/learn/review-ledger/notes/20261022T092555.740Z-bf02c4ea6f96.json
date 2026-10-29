@@ -1,0 +1,77 @@
+{
+  "revision": "3ddbdae479c7edfe3a3c2839f17d25df7f5a7645",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Reviewed Windows workflow delta: one real, scoped Credential Manager test follows relevant Rust compilation. No evidence family, standard, required-check strategy or governance authority changes.","inputs":[".veritas/README.md",".github/workflows/windows-pr-verification.yml"]},
+
+    {"path":"docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","note":"Frozen decision remains historical. Reviewed private-runtime failure presentation and resolver repairs against the no-service-attachment, shared-registry and app-owned-child decisions. No ownership or background-install capability changes; no historical runtime receipt renewed.","inputs":["docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Reviewed desktop-only recovery credential inspection and helper errors. Native routing-grant keyring services are included in Linux history queries; broker protocol, protected transport, mobile enablement and proof authority unchanged.","inputs":["docs/design/connection-broker.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/instance-registry.md","note":"Reviewed typed timeout/Invocation split, foreign-PID uncertainty, supervisor and preparation refusals and release resolver fallback. Registry remains shared-bridge-owned, a live service prevents duplicate backend, and startup failure never fabricates registry ownership.","inputs":["docs/design/instance-registry.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/mobile-credential-authority.md","note":"Reviewed cfg boundaries: new keyring history queries, timeout copy and resolver are desktop-only. Mobile credential broker, OS store selection, Android resolver and backup exclusions unchanged.","inputs":["docs/design/mobile-credential-authority.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Reviewed desktop-only keyring history checks and startup presentation. Platform capability report, native IPC authority, permissions and dated support survey unchanged.","inputs":["docs/design/native-capabilities.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Reviewed lib.rs desktop recovery changes: notification feed registration and mobile push capabilities untouched. No new native notification, approval action or delivery qualification.","inputs":["docs/design/notification-delivery.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Reviewed credential-history search against native Device and proof-service writers. History inspection reads metadata and makes no credential disclosure, deletion, Device grant or operator-authority change.","inputs":["docs/design/operator-device-access.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/ssh-launched-environments.md","note":"Reviewed release Node canonicalization fallback and native startup dialogs. SSH launcher ownership, explicit trust, forward admission and UI composition unchanged.","inputs":["docs/design/ssh-launched-environments.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/android-build.md","note":"Reviewed all new runtime/recovery helpers as not-mobile; Android does not bundle Node, and mobile credential storage and generated project inputs unchanged.","inputs":["docs/guides/android-build.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed Windows CI delta: scoped real Credential Manager test added after relevant Cargo compile. Hook ownership, required merge checks, broad typecheck and code-health expectations unchanged.","inputs":["docs/guides/code-quality.md",".github/workflows/windows-pr-verification.yml","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed recovery history enumeration only: existing native credential service namespaces, remote login, provider quota and saved connection persistence unchanged. Error never becomes empty history.","inputs":["docs/guides/connections.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Reviewed pre-supervisor runtime errors and late backend spawn failure. Service ownership, tray lifecycle controls and app-owned backend teardown unchanged; no automatic service attachment introduced.","inputs":["docs/guides/desktop-tray.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed Windows workflow addition and delivery input route. Focused evidence remains separate from required hosted typecheck/merge qualification; user credential test cleans only its unique fixtures.","inputs":["docs/guides/development.md",".github/workflows/windows-pr-verification.yml"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Reviewed desktop-only startup/keyring errors; lab runtime, private fixture authority and actual local protocol checks unchanged. This repair adds no provider or relay acceptance.","inputs":["docs/guides/local-collaboration-lab.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Reviewed desktop recovery/resolver changes; mobile store/provider delivery, signing and update feed unchanged. No renewed mobile evidence.","inputs":["docs/guides/mobile-release.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Reviewed canonicalized private station-node sibling with fallback when executable removed, preserved PATH, and typed runtime startup errors. Separate JIT-only Node signature and outer-app entitlements unchanged; notarization remains unverified here.","inputs":["docs/guides/native-releases.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed real bridge silent-exit test and distinct timeout copy plus Windows real credential fixture. Focused tests do not establish native dialog or all-platform acceptance; prior dated receipts and NOT_VERIFIED matrix remain unchanged.","inputs":["docs/guides/native-shell-verification.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/nightly.md","note":"Reviewed release resolver platform path handling, distinct errors and keyring recovery correction. Pinned station-node, platform signing and exact-source cohort admission unchanged; Windows final installed proof pending.","inputs":["docs/guides/nightly.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Reviewed runtime path fallback and history checks: channel/home/port maps unchanged. Same-home service still blocks duplicate backend and explicit alternate homes retain isolation.","inputs":["docs/guides/release-channel-ports.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Reviewed native delivery route addition for portable-server-archive helper plus private runtime failures. Ring manifest, authenticated archive install, launcher and signed artifact authority unchanged.","inputs":["docs/guides/release-rings.md","scripts/pr-delivery-paths.json","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/releasing.md","note":"Reviewed native delivery selector: shared portable archive helper now triggers native checks. No change to trusted base planner, qualification/delivery ordering, queue or provider publishing.","inputs":["docs/guides/releasing.md","scripts/pr-delivery-paths.json"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Reviewed native desktop history metadata search only. Self-hosted broker private custody, TURN credential issuance and Windows refusal unchanged; no hosted/TLS acceptance.","inputs":["docs/guides/self-hosted-broker.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/store-entry.md","note":"Reviewed desktop runtime resolver/keyring repair: no store credential, provider entry, signing policy or publishing flow changes. Existing platform/provider proof requirements remain.","inputs":["docs/guides/store-entry.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/store-listing.md","note":"Reviewed startup title/body corrections against listing trust claims. App capability and listing screenshots untouched; native runtime repairs do not renew store acceptance.","inputs":["docs/guides/store-listing.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed workflow invocation and new real Windows credential fixture against updated guide: relevant Cargo compile followed by uniquely named account.service writes/search/history refusal and cleanup. Focused source tests remain distinct from Windows execution and full parity.","inputs":["docs/guides/testing.md",".github/workflows/windows-pr-verification.yml"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed desktop-only runtime bridge and keyring history search. HTTP routes, public response schemas, protected authority and API integration unchanged.","inputs":["docs/reference/api.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed keyring inspection and startup refusals: metadata-only history signals hold recovery, errors fail closed; no bearer disclosure or remote trust/authorization change.","inputs":["docs/security/remote-access-threat-model.md","src-desktop/src/lib.rs"]},
+
+    {"path":"patches/android-native-keyring-store/README.md","note":"Reviewed desktop cfg exclusions; Android patched commit/error propagation and mobile credential writer unchanged. Desktop native searches do not enter Android store.","inputs":["patches/android-native-keyring-store/README.md","src-desktop/src/lib.rs"]},
+
+    {"path":"src-server/services/connections/pion-peer/README.md","note":"Reviewed private Node resolver and helper presentation changes. Pion child private-descriptor custody and Windows admission refusal unchanged; no relay/native connector qualification.","inputs":["src-server/services/connections/pion-peer/README.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/user/native-recovery.md","note":"Correction to earlier 45d review: Windows service decoding was unsound. Reviewed raw account.service namespace query and real Windows fixture, Linux per-service queries with no unrelated unlock, unchanged macOS metadata-only search, fail-closed errors and global credential-history consequence. Node failure dialogs now cover preparation/supervisor/recovery/spawn; timeout has separate retry/log advice. Windows execution pending at recording; c/d owner decisions held.","inputs":["docs/user/native-recovery.md"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Reviewed release-only dunce path normalization with raw-path fallback, debug bypass, real symlink/deleted-file resolver tests, and unchanged absolute station-node launch/PATH. Mac signed exact-head rebuild and Windows final package execution remain separate evidence.","inputs":["docs/guides/desktop-build.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed DesktopStartupReadiness repair: per-platform credential-history queries, native runtime/timeout presentation and private Node path normalization. No changes to module interfaces, builtin persistence, protected route authority or ownership composition.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Reviewed real Windows Credential Manager check added after relevant Cargo compilation and updated testing guide. Scope remains source/native execution evidence; service lifetime and operations authority unchanged.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed testing-guide addition: uniquely named native credential fixtures are cleaned by the owning test. Focused/hosted separation and meaningful negative-control rules unchanged.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Reviewed testing-guide addition against test evidence requirements. Real Credential Manager fixture asserts exact raw target inclusion and history refusal; compile-only and mocked observations remain distinct.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

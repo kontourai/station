@@ -1,0 +1,7 @@
+{
+  "revision": "49830d1ba59776c3e293572c78b657f67f0e5aa0",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Fix round 1 for #3667: reviewed the session read-model explicit 30-second deadline, SDK deadline-bound JSON reader and real SDK stalled-body regression. The browser default remains off. Other SDK reference claims are unchanged.","inputs":["docs/reference/sdk.md","packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]}
+  ]
+}

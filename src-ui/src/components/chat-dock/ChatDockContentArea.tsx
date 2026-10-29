@@ -44,6 +44,8 @@ interface ChatDockContentAreaProps {
   chatFontSize: number;
   dockHeight: number;
   showStatsPanel: boolean;
+  /** Whether the composer shows the context meter for this chat. */
+  showContextMeter?: boolean;
   showReasoning: boolean;
   showToolDetails: boolean;
   modelSupportsAttachments: boolean;
@@ -63,6 +65,7 @@ interface ChatDockContentAreaProps {
     typeof ChatDockBody
   >['onExecutionModelSelect'];
   modelsLoading?: ComponentProps<typeof ChatDockBody>['modelsLoading'];
+  onComposerEnabledChange?: (element: HTMLTextAreaElement | null) => void;
   chatInput: ComponentProps<typeof ChatDockBody>['chatInput'];
   secondaryActions?: ComposerActionsMenuProps;
   onOpenAgentHandoff?: ComponentProps<
@@ -110,6 +113,7 @@ function ChatDockContentAreaImpl({
   chatFontSize,
   dockHeight,
   showStatsPanel,
+  showContextMeter = false,
   showReasoning,
   showToolDetails,
   modelSupportsAttachments,
@@ -125,6 +129,7 @@ function ChatDockContentAreaImpl({
   onExecutionModelSelect,
   modelsLoading,
   chatInput,
+  onComposerEnabledChange,
   secondaryActions,
   onOpenAgentHandoff,
   agentHandoffTriggerRef,
@@ -244,6 +249,7 @@ function ChatDockContentAreaImpl({
               chatFontSize={chatFontSize}
               dockHeight={dockHeight}
               showStatsPanel={showStatsPanel}
+              showContextMeter={showContextMeter}
               showReasoning={showReasoning}
               showToolDetails={showToolDetails}
               modelSupportsAttachments={modelSupportsAttachments}
@@ -259,6 +265,7 @@ function ChatDockContentAreaImpl({
               onExecutionModelSelect={onExecutionModelSelect}
               modelsLoading={modelsLoading}
               chatInput={chatInput}
+              onComposerEnabledChange={onComposerEnabledChange}
               secondaryActions={secondaryActions}
               onOpenAgentHandoff={onOpenAgentHandoff}
               agentHandoffTriggerRef={agentHandoffTriggerRef}

@@ -56,12 +56,30 @@ test.each([undefined, 'codex'])(
       taskCreatedAt: '2026-09-30T12:00:00.000Z',
       requesterId: principal.id,
     };
+    const warn = vi.fn();
+    let enter!: () => void, release!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      enter = resolve;
+    });
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const onRecorded = vi
+      .fn()
+      .mockRejectedValue(new Error('Controlled publication failure'));
+    const continued = vi.fn(async () => {
+      enter();
+      await held;
+    });
+    let pendingFirst: Promise<Response> | undefined;
     const app = createOrchestrationRoutes(service, {
       eventBus,
-      logger: { debug: vi.fn() },
+      logger: { debug: vi.fn(), warn },
       resolvePrincipal: () => principal,
       delegateTask: start,
       taskRoomWork: {
+        onRecorded,
+        continued,
         module,
         authorize: async () => scope,
         resolveContext: async () =>
@@ -119,8 +137,23 @@ test.each([undefined, 'codex'])(
       const staleTask = await send('demo', '2026-09-29T12:00:00.000Z');
       expect(staleTask.status).toBe(403);
       expect(start).not.toHaveBeenCalled();
-      const first = await send('demo');
+      let received: Response | undefined;
+      pendingFirst = Promise.resolve(send('demo')).then((response) => {
+        received = response;
+        return response;
+      });
+      await Promise.race([entered, pendingFirst]);
+      expect(received?.status).toBe(200);
+      await vi.waitFor(() => expect(continued).toHaveBeenCalledOnce());
+      release();
+      const first = await pendingFirst;
       expect(first.status).toBe(200);
+      await vi.waitFor(() =>
+        expect(warn).toHaveBeenCalledWith(
+          'Task room request publication failed',
+          expect.objectContaining({ error: 'Controlled publication failure' }),
+        ),
+      );
       const firstBody = await readJson<{ data: TaskRoomWorkOutcome }>(first);
       if (firstBody.data.kind !== 'recorded')
         throw new Error('expected recorded request');
@@ -198,10 +231,13 @@ test.each([undefined, 'codex'])(
       });
       expect(withContext.status).toBe(200);
       expect(start.mock.calls[1][0].prompt).toContain('Selected shared brief.');
+      expect(start.mock.calls[1][0].title).toBe('Investigate this idea');
       expect(
         (await readJson<{ data: TaskRoomWorkOutcome }>(withContext)).data,
       ).toMatchObject({ kind: 'recorded', record: { context: snapshot } });
     } finally {
+      release();
+      await pendingFirst?.catch(() => undefined);
       await service.shutdown();
       eventStore.close();
     }
@@ -255,6 +291,8 @@ test('real delegation refuses revoked Task authority at provider effects and lea
     readOnly: true,
   });
   let revokedThread: string | undefined;
+  let claimedThread: string | undefined;
+  let observedReserved: { thread_id: string; state: string } | undefined;
   let revokeDuringTurn = false;
   let allowed = true;
   const failures: unknown[] = [];
@@ -310,6 +348,10 @@ test('real delegation refuses revoked Task authority at provider effects and lea
     logger: { debug: vi.fn() },
     resolvePrincipal: () => principal,
     delegateTask: async (input) => {
+      if (revokeDuringTurn) {
+        expect(input.sessionId).toBeDefined();
+        claimedThread = input.sessionId;
+      }
       try {
         return await delegateTask(input, service);
       } catch (error) {
@@ -323,10 +365,14 @@ test('real delegation refuses revoked Task authority at provider effects and lea
         if (revokeDuringTurn) {
           const row = inspector
             .prepare(
-              "SELECT thread_id FROM orchestration_turn_boundaries WHERE purpose = 'turn' AND state = 'invoking'",
+              "SELECT thread_id,state FROM orchestration_turn_boundaries WHERE thread_id = ? AND purpose = 'turn' AND state = 'reserved'",
             )
-            .get();
+            .get(claimedThread ?? '');
           if (row && typeof row.thread_id === 'string') {
+            observedReserved = {
+              thread_id: row.thread_id,
+              state: String(row.state),
+            };
             revokedThread = row.thread_id;
             allowed = false;
           }
@@ -408,6 +454,10 @@ test('real delegation refuses revoked Task authority at provider effects and lea
     const innerRefused = await send('revoked-inside-turn');
     expect(innerRefused.status).toBe(403);
     expect(revokedThread).toBeDefined();
+    expect(observedReserved).toEqual({
+      thread_id: claimedThread,
+      state: 'reserved',
+    });
     expect(started).toHaveBeenCalledTimes(3);
     expect(turned).toHaveBeenCalledOnce();
     expect(
@@ -484,5 +534,82 @@ test('real delegation refuses revoked Task authority at provider effects and lea
     vi.unstubAllEnvs();
     await service.shutdown();
     eventStore.close();
+  }
+});
+
+test('a continued response completes while post-response reconciliation is still held', async () => {
+  const directory = makeTempDir('room-continued-response-');
+  const store = new EventStore(join(directory, 'events.sqlite'));
+  const eventBus = new EventBus();
+  const service = new OrchestrationService({
+    adapterRegistry: createGateTestRegistry(new GateTestAdapter()),
+    eventBus,
+    eventStore: store,
+    logger: { debug: vi.fn(), warn: vi.fn() },
+  });
+  const principal = humanPrincipal('test', 'alice', 'Alice');
+  let enter!: () => void, release!: () => void;
+  const entered = new Promise<void>((resolve) => {
+    enter = resolve;
+  });
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const app = createOrchestrationRoutes(service, {
+    eventBus,
+    logger: { debug: vi.fn() },
+    resolvePrincipal: () => principal,
+    continueDelegatedTask: async () => ({
+      sessionId: 'session',
+      status: 'dispatched',
+    }),
+    taskRoomWork: {
+      module: new TaskRoomWorkModule(join(directory, 'work.json')),
+      authorize: async () => ({
+        projectId: 'project',
+        projectSlug: 'project',
+        roomProjectId: 'project',
+        taskCreatedAt: '2026-10-15T00:00:00.000Z',
+        requesterId: principal.id,
+      }),
+      admitReply: async () => ({
+        expectedSessionId: 'session',
+        roomBinding: { projectId: 'project', taskId: 'task' },
+        recheck: async () => {},
+      }),
+      onReply: async () => true,
+      continued: async () => {
+        enter();
+        await held;
+      },
+    },
+  });
+  let received: Response | undefined;
+  const pending = Promise.resolve(
+    app.request('/delegations/session/continue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: 'Reply',
+        taskRoomReply: {
+          taskId: 'task',
+          taskCreatedAt: '2026-10-15T00:00:00.000Z',
+          operationId: 'reply',
+          attachBrief: false,
+        },
+      }),
+    }),
+  ).then((response) => {
+    received = response;
+    return response;
+  });
+  try {
+    await entered;
+    expect(received?.status).toBe(200);
+  } finally {
+    release();
+    await pending;
+    await service.shutdown();
+    store.close();
   }
 });

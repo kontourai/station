@@ -1,0 +1,9 @@
+{
+  "revision": "65e05bab3cff01385b084ebd52b2e9fbbfa10f25",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Review fix for the dead-code ceiling: added the regeneration paragraph (accepts only the dead-code report kind and schema version 10; refuses with NOT_VERIFIED counts that disagree with their findings, a total that is not the category sum, or a missing recorded category; a renamed or new fallow category is held at zero plus 3 until regeneration). Checked against countsFromReport and compareWithCeiling in scripts/fallow-ceiling.mjs and the new CLI tests.","inputs":["docs/guides/code-quality.md","scripts/fallow-ceiling.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"code-quality.md's dead-code ceiling subsection gained a regeneration paragraph; the code-health route this file names is unchanged.","inputs":["scripts/AGENTS.md","docs/guides/code-quality.md"]}
+  ]
+}

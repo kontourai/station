@@ -1,0 +1,13 @@
+{
+  "revision": "af773fb2783307a4dfb237ca873770899124bd2e",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Round 3: traced UsageTelemetryService build version into the previous-day publisher snapshot, shared version normalization and strict daily parser, atomic daily reservation, HTTP send and outbox. Non-SemVer and oversized versions become custom; valid bounded SemVer is preserved. Replaced the throw-pinning test and added a running dev service regression observing one HTTP ping, durable attempted/reported dates and sent outbox entry. Baseline 66 focused tests passed; bypassing only publisher normalization made both malformed-version cases fail with Invalid station_daily field: version. No deployed receiver claim.","inputs":["docs/reference/usage-telemetry.md","packages/shared/src/product-telemetry.ts","src-server/services/__tests__/telemetry-publishers.test.ts","src-server/services/telemetry-publisher-service.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Round 3 bounded source review: mapRuntimeVersionToTelemetryVersion reuses the existing strict SemVer grammar with the daily 64-character bound, preserving valid values and returning custom otherwise. Sender-mode parseStationDailyPing accepts custom while receiver mode retains explicit release-list admission. Reviewed the publisher caller and parser tests; channel mapping, Full parser, hashes and disclosure revisions are unchanged.","inputs":["docs/reference/shared.md","packages/shared/src/product-telemetry.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Round 3 bounded source review: the daily version domain remains public-release-version-or-custom with maxLength 64, owned by contracts. Shared now normalizes non-SemVer sender values to custom and admits that declared value in sender validation; receiver release-list admission and Full v1 shapes remain unchanged. Rechecked the product telemetry section and shared/public-contract ownership; no prose change needed.","inputs":["docs/reference/contracts.md","packages/shared/src/product-telemetry.ts"]},
+
+    {"path":"packages/telemetry-broker/README.md","note":"Round 3 bounded source review: the shared delta only normalizes Lite daily versions and permits custom in sender validation. Rechecked receiver app.ts: its ingest path still calls parseProductTelemetryBatch for Full v1. The README explicitly requires integrating the separate Lite/feedback receiver lane; no claim of Lite ingestion or deployed acceptance is added. Full batch authentication, receipt and storage claims are unaffected; no prose change needed.","inputs":["packages/telemetry-broker/README.md","packages/shared/src/product-telemetry.ts"]}
+  ]
+}

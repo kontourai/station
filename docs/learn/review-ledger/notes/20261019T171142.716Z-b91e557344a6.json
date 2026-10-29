@@ -1,0 +1,7 @@
+{
+  "revision": "18343ebf076baf5443c35bfe639c21869b97fc65",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"The glossary gained a Session context card entry (a Panel inside the Chat pane) and a This chat label row; this map only links the glossary for vocabulary and names Workspace Surfaces' panels generically. No prose change.","inputs":["CONTEXT-MAP.md","docs/glossary.md"]}
+  ]
+}

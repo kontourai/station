@@ -1,0 +1,7 @@
+{
+  "revision": "464ffaeb2e2a837b28c49f447fb61c56fbacf196",
+
+  "notes": [
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"exported resyncOrchestrationEventStream reuses the existing per-apiBase restart; the dedupe-by-apiBase and connection-budget claims are unchanged","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts"]}
+  ]
+}

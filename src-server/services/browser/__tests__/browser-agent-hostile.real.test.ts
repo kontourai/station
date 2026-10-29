@@ -457,7 +457,19 @@ describe('browser tools against hostile pages in a real Chromium', () => {
       snapshot: string;
       truncated: boolean;
     };
-    expect(snap.ok).toBe(true);
+    process.stdout.write(
+      `S3 snapshot result: ${JSON.stringify(
+        snap.ok
+          ? {
+              ok: snap.ok,
+              truncated: snap.truncated,
+              urlLength: snap.url.length,
+              snapshotLength: snap.snapshot.length,
+            }
+          : snap,
+      )}\n`,
+    );
+    expect(snap.ok, JSON.stringify(snap)).toBe(true);
     expect(snap.truncated).toBe(true);
     expect(snap.url.length).toBeLessThanOrEqual(2_049);
     expect(snap.snapshot.length).toBeLessThanOrEqual(48_000);

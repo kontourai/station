@@ -3,13 +3,12 @@ import { canonicalizeForDigest } from '@kontourai/station-contracts/fleet-routin
 import { sharedWorkingStateOperations } from '../telemetry/metrics.js';
 import { isRecord } from '../utils/is-record.js';
 
-/** Station-owned semantics. A transport never supplies a library wire format. */
+/**
+ * Station-owned semantics. A transport never supplies a library wire format:
+ * this small RGA reference implementation makes ordering and recovery
+ * executable without adopting a vendor CRDT wire format.
+ */
 export const SHARED_WORKING_STATE_SCHEMA_VERSION = 1 as const;
-export const SHARED_WORKING_STATE_MECHANISM = {
-  name: 'station-rga-reference',
-  reason:
-    'A small reference implementation makes ordering and recovery executable without adopting a vendor CRDT wire format.',
-} as const;
 export const DEFAULT_RETAINED_WORKING_STATE_OPERATIONS = 256;
 const DEFAULT_DEFERRED_WORKING_STATE_OPERATIONS = 64;
 const DEFAULT_DEFERRED_WORKING_STATE_BYTES = 65_536;

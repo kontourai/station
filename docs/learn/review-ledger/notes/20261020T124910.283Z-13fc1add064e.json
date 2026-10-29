@@ -1,0 +1,41 @@
+{
+  "revision": "3eee815139ae4b14f12e610de911b28650a560fc",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-read the AccountPreferences and ColorThemes sections. device-settings-store's held appearance now records the account namespace that set it, and a binding for another account releases it; the provider passes the authority namespace; color-theme-apply clears data-color-theme-failed while a retry request is in flight. The sections' claims still hold. No prose change.","inputs":["docs/architecture/module-map.md","src-ui/src/contexts/AccountPreferencesProvider.tsx","src-ui/src/lib/color-theme-apply.ts","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Re-read the credential retirement and profile custody claims (lines 320-340). the account entry's sign-out and the native relay route's sign-out and local retirement now also release the cached account appearance (releaseBootAppearance); revocation, receipts, custody and grants are unchanged. No prose change.","inputs":["docs/design/native-capabilities.md","src-ui/src/views/connections-hub/RelayRouteProfiles.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Re-read the device-envelope claims. device-settings-store's held appearance now records the account namespace that set it, and a binding for another account releases it; region records and envelope are unchanged. No prose change.","inputs":["docs/design/placement.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Changed the hold sentence: the rendered appearance is held for that account until it answers again, a different account binds, or a definite no-person answer, checked against the namespace-keyed hold in device-settings-store and the account-switch test.","inputs":["docs/design/settings-architecture.md","src-ui/src/contexts/AccountPreferencesProvider.tsx","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Added that native sign-out and forgetting the account session also hand the device back its own appearance (lines 417-424), checked against RelayRouteProfiles and its tests; the account entry's sign-out and the native relay route's sign-out and local retirement now also release the cached account appearance (releaseBootAppearance); revocation, receipts, custody and grants are unchanged.","inputs":["docs/guides/connections.md","src-ui/src/index.css","src-ui/src/views/connections-hub/RelayRouteProfiles.tsx"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Re-read the logout operation and account/cache lifetime claims (lines 117, 489, 526). the account entry's sign-out and the native relay route's sign-out and local retirement now also release the cached account appearance (releaseBootAppearance); revocation, receipts, custody and grants are unchanged. No prose change.","inputs":["docs/guides/deployment-authentication.md","src-ui/src/views/account/AccountEntryView.tsx"]},
+
+    {"path":"docs/guides/keyboard-shortcuts.md","note":"Re-read the envelope claims. device-settings-store's held appearance now records the account namespace that set it, and a binding for another account releases it. No prose change.","inputs":["docs/guides/keyboard-shortcuts.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Re-read the account and retirement claims the change could touch. the account entry's sign-out and the native relay route's sign-out and local retirement now also release the cached account appearance (releaseBootAppearance); revocation, receipts, custody and grants are unchanged. No prose change.","inputs":["docs/guides/local-collaboration-lab.md","src-ui/src/views/account/AccountEntryView.tsx"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Re-read the account/Device relationship claims that cite these views. the account entry's sign-out and the native relay route's sign-out and local retirement now also release the cached account appearance (releaseBootAppearance); revocation, receipts, custody and grants are unchanged. No prose change.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md","src-ui/src/views/account/AccountEntryView.tsx","src-ui/src/views/connections-hub/RelayRouteProfiles.tsx"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Re-read the retirement and account claims (lines 79-110, 681). the account entry's sign-out and the native relay route's sign-out and local retirement now also release the cached account appearance (releaseBootAppearance); revocation, receipts, custody and grants are unchanged; the RelayRouteProfiles test change adds a release assertion only. No prose change.","inputs":["docs/guides/native-shell-verification.md","src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Re-read the device-store claims. device-settings-store's held appearance now records the account namespace that set it, and a binding for another account releases it. No prose change.","inputs":["docs/guides/responsive-ui.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Re-read the logout acknowledgment claim (lines 632-633). the account entry's sign-out and the native relay route's sign-out and local retirement now also release the cached account appearance (releaseBootAppearance); revocation, receipts, custody and grants are unchanged; a lost acknowledgment still removes local account scope without claiming remote completion. No prose change.","inputs":["docs/guides/self-hosted-broker.md","src-ui/src/views/connections-hub/RelayRouteProfiles.tsx"]},
+
+    {"path":"docs/guides/theming.md","note":"Re-read the personal preference and named color theme sections. device-settings-store's held appearance now records the account namespace that set it, and a binding for another account releases it; the failure attribute's retrying semantics are owned by the decision record this guide routes to. No prose change.","inputs":["docs/guides/theming.md","src-ui/src/lib/color-theme-apply.ts","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Re-read the composition table; nothing concerns the UI store. No prose change.","inputs":["docs/patterns/backend.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Re-read the token and theming pointer. device-settings-store's held appearance now records the account namespace that set it, and a binding for another account releases it. No prose change.","inputs":["docs/patterns/frontend.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Re-read the claims tied to the RelayRouteProfiles test (lines 120-145); the test only gained releaseBootAppearance assertions. No prose change.","inputs":["docs/reference/connect.md","src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Re-read the native bridge logout/retire paragraph (lines 1800-1860). the account entry's sign-out and the native relay route's sign-out and local retirement now also release the cached account appearance (releaseBootAppearance); revocation, receipts, custody and grants are unchanged. No prose change.","inputs":["docs/reference/sdk.md","src-ui/src/views/connections-hub/RelayRouteProfiles.tsx"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Re-read the native logout and account sign-out claims (lines 300-310, 530-540). the account entry's sign-out and the native relay route's sign-out and local retirement now also release the cached account appearance (releaseBootAppearance); revocation, receipts, custody and grants are unchanged; releasing a local appearance cache adds no authority. No prose change.","inputs":["docs/security/remote-access-threat-model.md","src-ui/src/views/account/AccountEntryView.tsx"]}
+  ]
+}

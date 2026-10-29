@@ -73,11 +73,11 @@ The rejection below is about **device pairing**: using a passkey as the
 credential that makes a device a paired device. It is not a veto on an
 **operator passkey**, a credential for the Station operator as a person,
 created at the one HTTPS origin where it is used and confirmed from the host.
-That is a separate proposal with its own threat model:
+That is a separate operator identity with its own threat model:
 [operator-device-access.md](operator-device-access.md) (#2894). It runs on
 one configured operator origin, so the per-address RP ID problem below does
 not apply to it. A Station reachable only by IP address would get no remote
-operator sign-in (open decision D10 there).
+operator sign-in (owner decision D10 there).
 
 **Passkeys belong in `kontour-account`, not in device pairing.** A WebAuthn
 credential is bound to an RP ID — a single domain. That is a good fit for a

@@ -98,6 +98,7 @@ describe('useChatDockActiveChatSync', () => {
           projectSlug: 'default',
           model: 'engine-reported-model',
           acceptedModel: 'adapter-accepted-model',
+          revealDock: false,
         },
       ),
     );
@@ -274,6 +275,7 @@ describe('useChatDockActiveChatSync', () => {
     await waitFor(() =>
       expect(openConversation).toHaveBeenCalledWith('thread-2', 'claude', {
         projectSlug: undefined,
+        revealDock: false,
       }),
     );
     resolveFirst({

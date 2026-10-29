@@ -5,7 +5,8 @@
  * population-coverage evidence, and it has never been readable from a real
  * Station. `src-server/telemetry.ts` starts the OTel SDK **only** when
  * `OTEL_EXPORTER_OTLP_ENDPOINT` is set; unset — which it is on every install
- * that is not running `monitoring/docker-compose.yml` — `metrics.getMeter`
+ * that does not export to a collector such as the developer profile in
+ * `deployment/telemetry/compose.dev.yaml` — `metrics.getMeter`
  * returns a no-op meter and every `.add()` is discarded. Nothing is buffered,
  * so nothing is recoverable after the fact, and there is no `/metrics`
  * endpoint, in-process reader, or debug route to ask.

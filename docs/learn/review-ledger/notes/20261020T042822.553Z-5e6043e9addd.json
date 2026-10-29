@@ -1,0 +1,31 @@
+{
+  "revision": "71c7cf85d4b3d82140500913969fb3cdb870aed3",
+
+  "notes": [
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"#3800: added the Codex writable-roots pin (spawn -c, non-host sessions, why not untrusted, residual project keys) and the Seatbelt .codex/.claude write denies with breadth check and residual nested dirs; checked against codex-confinement.ts, codex-adapter.ts startReservedSession, seatbelt.ts seatbeltGrants/seatbeltWriteGrantKinds, and EXECUTED probes on codex-cli 0.162.1.","inputs":["docs/design/approval-posture-server-ordered.md","src-server/providers/adapters/codex-confinement.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"#3800: added that a Seatbelt-confined Claude session cannot create or change the folder's .claude/.codex, and that non-host Codex sessions ignore sandbox_workspace_write.writable_roots from project and user config; checked against seatbeltEngineConfigPaths and codexConfinementConfigArgs (host = operator in person or full-access device per #2603).","inputs":["docs/guides/connections.md","src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"#3800: Codex spawn argv now carries a writable-roots pin for non-host sessions; this document's Codex approval/sandbox knob claims (Ask/Auto/workspace no-mode) are unchanged and remain accurate.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/design/automations.md","note":"#3800: only linked confinement design section changed (Codex writable-roots pin, Seatbelt engine-config denies); no automation claim depends on it.","inputs":["docs/design/automations.md","docs/design/approval-posture-server-ordered.md"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"#3800: codex-adapter.ts now appends -c sandbox_workspace_write.writable_roots=[] to the session spawn argv for non-host sessions; the documented spawn env layering, app-home and model-discovery claims are unchanged.","inputs":["docs/design/connections-onboarding.md","src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"#3800: codex-adapter.ts change is limited to the session spawn argv (writable-roots pin); steering mappings and replay claims unaffected.","inputs":["docs/design/session-tape-replay.md","src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/agents.md","note":"#3800: codex-adapter.ts change only adds a writable-roots pin after the MCP -c args for non-host sessions; agent toolServers delivery and approval claims unchanged.","inputs":["docs/guides/agents.md","src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#3800: codex-adapter.ts spawn argv pin for non-host sessions; host/workspace scope claims unchanged.","inputs":["docs/guides/self-configuring-agent.md","src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"#3800: codex-adapter.ts spawn argv pin only; starter work claims unaffected.","inputs":["docs/guides/starter-work.md","src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"#3800: vitest-resource-manifest.mjs gained one PROCESS_HEAVY entry (codex-project-config.process.test.ts, skips loudly without codex); scheduling guidance unchanged.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/reference/session-api.md","note":"#3800: confinement record semantics unchanged; a workspace Codex session with a planted project writable root now reports confined instead of configured-but-failed because the roots are pinned at spawn.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"#3800: codex-adapter.ts spawn argv pin only; example claims unaffected.","inputs":["examples/self-configuring-agent/README.md","src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"scripts/AGENTS.md","note":"#3800: one resource-manifest registration added; script instructions unchanged.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

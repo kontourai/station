@@ -1,0 +1,45 @@
+{
+  "revision": "f05e00b862bfe35c472cb7829679a607fa3679a2",
+
+  "notes": [
+    {"path":"docs/design/pane-relationships.md","note":"Traced Main Activity Quick review through SessionsView, the visible-row publication from SplitPaneLayout, openActivityReview and the shared locked occurrence pipeline, the activity-session identity and immutable Station fence, RegionPaneHost and SessionDetail. Reviewed current filtered adjacency, durable Open, draft guard, Close and Activity Up. Source and focused tests are implemented; browser, independent/native and hosted acceptance remain separate pending evidence.","inputs":["docs/design/pane-relationships.md","src-ui/src/regions/pane-relations.ts","src-ui/src/regions/region-model.ts","src-ui/src/workspace-panes/RelatedPaneStrip.tsx","src-ui/src/views/SessionsView.tsx","src-ui/src/views/activity/openActivityReview.ts","src-ui/src/contexts/ActivityReviewContext.tsx","src-ui/src/workspace-panes/activityReviewPane.ts","src-ui/src/workspace-panes/RegionActivityReviewPane.tsx","src-ui/src/views/activity/__tests__/ActivityReview.test.tsx","tests/activity-related-review.spec.ts"]},
+
+    {"path":"docs/plans/pane-workspace.md","note":"Updated only the quick-review implementation entry for the new slice stacked on the frozen SDK head. Boxes remain unchecked and browser, independent/native and hosted acceptance are pending; no publication or landing claim.","inputs":["docs/plans/pane-workspace.md"]},
+
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"Reviewed the Activity instance-family addition and lazy RegionPaneHost dispatcher. Position remains arrangement-owned, the UI-only review occurrence is projectless at host admission, and its reader gates the exact captured Session/Project behind the Station fence. No new permission or domain relation is inferred. Existing vocabulary and boundaries remain accurate.","inputs":["docs/contexts/workspace-surfaces/CONTEXT.md","src-ui/src/regions/region-model.ts","src-ui/src/regions/region-surface-panes.ts","src-ui/src/workspace-panes/RegionPaneHost.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed the new activity-review dock-only instance family, shared related open, host lazy dispatch, Activity-specific phone return caption and typed Up. Existing arrangement, tab selection, phone layer history and guarded boolean removal own these operations unchanged. The added Activity review behavior is documented in pane-relationships; the placement explanation remains accurate.","inputs":["docs/design/placement.md","src-ui/src/regions/region-model.ts","src-ui/src/regions/region-surface-panes.ts","src-ui/src/workspace-panes/RegionPaneHost.tsx"]},
+
+    {"path":"docs/design/shell-skeletons.md","note":"Reviewed SplitPaneLayout's additive visible-item callback. It publishes the existing keyboard navigation row order after pagination and collapsed-group projection; selection, rendering, focus navigation and skeleton geometry are unchanged. The documented shell and heading ownership still holds.","inputs":["docs/design/shell-skeletons.md","src-ui/src/components/SplitPaneLayout.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the SplitPaneLayout delta against connection list/detail behavior: the new optional visible-item callback has no connection caller and changes no rendering, selection, scroll, connection state, authority or transport. Existing connection guidance remains accurate.","inputs":["docs/guides/connections.md","src-ui/src/components/SplitPaneLayout.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed the sole SplitPaneLayout delta: an optional callback publishes existing visible keyboard row identities. Knowledge and connection walkthrough callers do not supply it; their rendered list/detail geometry and independent scroll behavior are unchanged. Historical capture claims remain historical.","inputs":["docs/learn/walkthroughs.md","src-ui/src/components/SplitPaneLayout.tsx"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed the SplitPaneLayout callback against the documented connection smoke surface. No smoke caller supplies it and no provider, setup, command or permission seam changes. Smoke contracts and previously stated evidence limits remain accurate; no live provider run is claimed.","inputs":["docs/reference/agent-smoke-confidence.md","src-ui/src/components/SplitPaneLayout.tsx"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"The SplitPaneLayout delta only adds an optional visible-row publication callback used by Activity. Connection rendering, geometry, selection and CSS are unchanged, so the dated capture remains an accurate historical illustration; this review does not claim a new runtime capture.","inputs":["docs/learn/media/connections-models.png","src-ui/src/components/SplitPaneLayout.tsx"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Reviewed main.tsx composition delta: ActivityReviewProvider wraps the existing BrandingThemeBridge and App below PaneRelationsProvider. Standalone shared-answer startup, routing, grants and viewer projection are unchanged; the share contract remains accurate.","inputs":["docs/design/answer-share-permalinks.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed the main.tsx context wrapper. Native transport, pairing, bootstrap and artifact configuration do not change. The Activity slice still requires parent-owned native qualification, and no native verification result is inferred from its browser/focused tests.","inputs":["docs/guides/native-shell-verification.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the main.tsx ActivityReviewProvider composition. It adds no DOM or responsive styles and preserves the existing theme/app provider order. New review content is a real Related occurrence through the existing phone layer, with native acceptance still pending.","inputs":["docs/guides/responsive-ui.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed the main.tsx wrapper against the theme startup and BrandingThemeBridge claims. The bridge keeps its position inside the existing theme providers, and ActivityReviewProvider adds no DOM or theme mutation. Existing theming guidance remains accurate.","inputs":["docs/guides/theming.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed main.tsx's only delta: a UI Activity source-registration context wrapper. No backend composition, adapters, Session authorization, lifecycle or command paths change. Backend ownership guidance remains accurate.","inputs":["docs/patterns/backend.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed the ActivityReviewProvider composition, React Query review read and shared region pipeline. The new context publishes the mounted Activity owner's visible rows, while existing query, draft, navigation, guards and region owners retain their responsibilities. No second router or conversation controller is added.","inputs":["docs/patterns/frontend.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed main.tsx's Activity context wrapper. It introduces no environment variable or startup configuration and preserves existing theme, API and runtime provider composition. The environment reference remains accurate.","inputs":["docs/reference/env-vars.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed main.tsx's Activity context wrapper. SDKContext, optional related-pane capability, direct/frame admission and public exports are unchanged from the frozen SDK base. This slice adds only a built-in Activity target; it does not add public plugin authority or imply registry publication.","inputs":["docs/reference/sdk.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/user/native-recovery.md","note":"Reviewed the main.tsx Activity context wrapper. Native startup, profile selection, credential recovery and restart controls are unchanged. This source review does not qualify the new Activity journey on native shells.","inputs":["docs/user/native-recovery.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed the manifest addition: activity-related-review belongs to the extended bucket and names browser-only filtered review, source preservation, Keep/reopen and phone history claims. The coverage matrix remains a routing map rather than a passing-run claim; no required PR smoke membership changes.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/e2e-manifest.mjs"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed the manifest's added Activity review spec in the extended bucket. PR_BROWSER_SMOKE_CONTRACT and its seven deterministic smoke journeys are unchanged. This addition does not widen required smoke coverage or establish native evidence.","inputs":["docs/testing/browser-smoke.md","tests/e2e-manifest.mjs"]}
+  ]
+}

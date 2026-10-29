@@ -1,4 +1,6 @@
 /**
+ * UNWIRED(#3439): no runtime composition yet; intake and dispatch will call it.
+ *
  * Private Station-home storage for Automation sources and rules
  * (`security/automations.json`, mode 0600).
  *

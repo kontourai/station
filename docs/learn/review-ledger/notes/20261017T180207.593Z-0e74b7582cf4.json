@@ -1,0 +1,7 @@
+{
+  "revision": "f9d6e287bcba18bc80845f16082b0b774ef56ef1",
+
+  "notes": [
+    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed the action hierarchy corrections: thread-local Keep/run inspection replaces redundant thread navigation; confirmed discard clears draft and operation, pending delivery holds its thread, selected people remain ordinary messages across whitespace/name collisions, and Results retries failed queries in place. Named focused regression and mutation controls validate the owner boundaries; controlled browser acceptance is separate from real-provider/native/release qualification.","inputs":["docs/design/task-room-agent-requests.md","src-ui/src/__tests__/ProjectTaskRoomConversation.test.tsx","src-ui/src/__tests__/TaskRoomComposer.test.tsx","src-ui/src/__tests__/TaskRoomPage.test.tsx","src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx","src-ui/src/workspace-panes/TaskRoomComposer.tsx"]}
+  ]
+}

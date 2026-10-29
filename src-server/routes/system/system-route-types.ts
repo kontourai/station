@@ -3,15 +3,31 @@ import type {
   EngineId,
 } from '@kontourai/station-contracts/agent-identity';
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
-import type { HomeRecoveryDisclosure } from '@kontourai/station-contracts/system-status';
+import type { StationRoutesResponse } from '@kontourai/station-contracts/station-routes';
+import type {
+  HomeRecoveryDisclosure,
+  ServerUpdateRunningTurns,
+} from '@kontourai/station-contracts/system-status';
 import type { TerminalCapability } from '@kontourai/station-shared/terminal-capability';
+import type { Context } from 'hono';
 import type { DeploymentCapabilities } from '../../capabilities/deployment-capabilities.js';
 import type { ManagedChatBinding } from '../../runtime/plugins/runtime-provider-resolution.js';
 import type { SkillService } from '../../services/agents/skill-service.js';
 import type { RuntimeResourcePostureProbe } from '../../services/infra/resource-posture.js';
+import type { ServerUpdateCoordinator } from '../../services/server-update/server-update-coordinator.js';
+import type { UnconnectedACPRegistryEntry } from '../connections/acp.js';
 import type { BootHistoryRecord } from './boot-history.js';
+import type { WorkloadRouteDeps } from './workload-routes.js';
 
 export interface SystemStatusDeps {
+  /** Workload budget routes; absent leaves them unmounted (404). */
+  workload?: WorkloadRouteDeps;
+  /**
+   * The addresses this Station is reached on (`GET /routes`, Station routes).
+   * Absent where the deployment does not serve them; the route then answers
+   * 404, matching the withdrawn `connectionRoutes` handshake flag.
+   */
+  resolveStationRoutes?: () => Promise<StationRoutesResponse>;
   getHomeRecovery?: () => HomeRecoveryDisclosure;
   getBootHistory?: () => Promise<{
     records: BootHistoryRecord[];
@@ -81,13 +97,23 @@ export interface SystemStatusDeps {
       enabled: boolean;
     }>
   >;
-  /** Detected local-command Engine registry entries not yet connected. */
-  listDetectedACPRegistryEntries?: () => Promise<
-    Array<{ id: string; name: string }>
+  /**
+   * Local-command Engine registry entries not yet connected, found on the
+   * host or not, with the host platform's install recipe.
+   */
+  listUnconnectedACPRegistryEntries?: () => Promise<
+    UnconnectedACPRegistryEntry[]
   >;
   eventBus?: {
     emit: (event: ServerEventName, data?: Record<string, unknown>) => void;
   };
+  /**
+   * #3851: the server's own update coordinator, one per runtime (the
+   * capabilities probe builds these deps again and must not start another).
+   */
+  serverUpdate?: ServerUpdateCoordinator;
+  /** #3851: the running turns a restart would interrupt, as `request` may see them. */
+  listRunningTurnsFor?: (c: Context) => Promise<ServerUpdateRunningTurns>;
   appConfig?: { runtime?: string };
   port?: number;
   /**

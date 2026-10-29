@@ -48,14 +48,6 @@ export const CONNECTION_SECTIONS = [
 
 export type ConnectionSectionId = (typeof CONNECTION_SECTIONS)[number]['id'];
 
-export function connectionSectionForPath(path: string) {
-  return CONNECTION_SECTIONS.find(
-    (section) =>
-      path === section.path ||
-      section.legacyPaths.some((legacy) => path === legacy),
-  );
-}
-
 export function canonicalConnectionPath(path: string): string | null {
   for (const section of CONNECTION_SECTIONS) {
     for (const legacy of section.legacyPaths) {

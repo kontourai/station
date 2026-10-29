@@ -17,10 +17,17 @@ export interface ProjectSharedTaskAuthority {
   operator(): Promise<void>;
   requireProjectRead(scope: ProjectMembershipScope): Promise<void>;
 }
+export type ProjectSharedTaskReference = Pick<
+  ProjectSharedTaskSummary,
+  'project' | 'shareId'
+> & {
+  task: Pick<ProjectSharedTaskSummary['task'], 'id' | 'createdAt'>;
+};
 export class ProjectSharedTaskService {
   constructor(
     private readonly deps: {
       store: ProjectSharedTaskStore;
+      withTaskReadFence?<T>(operation: () => T): Promise<T>;
       readTask(taskId: string): TaskRecord | null;
       projectCandidates(
         identity: string,
@@ -198,6 +205,9 @@ export class ProjectSharedTaskService {
     authority: ProjectSharedTaskAuthority,
   ) {
     await authority.requireProjectRead(summary.project);
+    this.assertSummaryCurrent(summary);
+  }
+  assertSummaryCurrent(summary: ProjectSharedTaskReference): void {
     const current = this.deps.store.admission(summary.task.id);
     if (
       !current ||
@@ -207,6 +217,22 @@ export class ProjectSharedTaskService {
     )
       throw new ProjectSharedTaskRefusal('not-found');
     this.assertCurrent(current);
+  }
+  /** All async authority preparation precedes the owner locks. */
+  async withCurrentSummaries<T>(
+    summaries: readonly ProjectSharedTaskReference[],
+    operation: () => T,
+  ): Promise<T> {
+    if (!summaries.length)
+      return this.deps.store.withPublicationFence(operation);
+    if (!this.deps.withTaskReadFence)
+      throw new ProjectSharedTaskRefusal('unavailable');
+    return this.deps.withTaskReadFence(() =>
+      this.deps.store.withPublicationFence(() => {
+        for (const summary of summaries) this.assertSummaryCurrent(summary);
+        return operation();
+      }),
+    );
   }
   private admission(scope: ProjectMembershipScope, taskId: string) {
     const admission = this.deps.store.admission(taskId);
@@ -258,7 +284,12 @@ export class ProjectSharedTaskService {
     return task;
   }
   private task(scope: ProjectMembershipScope, taskId: string) {
-    const task = this.deps.readTask(taskId);
+    let task: TaskRecord | null;
+    try {
+      task = this.deps.readTask(taskId);
+    } catch {
+      throw new ProjectSharedTaskRefusal('unavailable');
+    }
     if (!task) throw new ProjectSharedTaskRefusal('not-found');
     const candidates = this.deps.projectCandidates(task.projectId);
     if (

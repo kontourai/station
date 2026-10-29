@@ -16,12 +16,14 @@ import { Button } from '../../components/Button';
 import { LazyBoundary } from '../../components/LazyBoundary';
 import { PageFrame } from '../../components/page-frame';
 import { ErrorState, SkeletonList } from '../../components/state';
+import { clearOfflineReading } from '../../lib/offlineReading';
 import { errorText, userFacingErrorMessage } from '../../utils/errorText';
 import {
   clearAccountEntryContinuation,
   readAccountEntryContinuation,
 } from './account-entry-continuation';
 import './account-entry.css';
+import { deviceSettingsStore } from '../../lib/device-settings-store';
 
 // Read once so React StrictMode cannot consume the URL proof twice.
 const browserFlow = readAccountEntryContinuation();
@@ -264,7 +266,11 @@ export function AccountEntryView({
     if (!path) return;
     setError(undefined);
     try {
+      await clearOfflineReading();
       await mutation.mutateAsync({ path, body: {} });
+      // Signed out: a definite "no person", so this device's own appearance
+      // replaces the account's cached one (lib/appearance-cache.ts).
+      deviceSettingsStore.releaseBootAppearance();
       await client.resetQueries({ queryKey: ['account', apiBase, 'session'] });
       setJoined(false);
     } catch (cause) {
@@ -367,7 +373,7 @@ export function AccountEntryView({
           ) : invitation && mode !== 'reset' && preview.isError ? (
             <ErrorState
               title="Invitation unavailable"
-              description="This link may have expired, been accepted or been cancelled. Ask the inviter for a new link, or try again if this Station is unavailable."
+              description="It may have expired, been accepted, or been cancelled. Ask the inviter for a new link."
               action={
                 <Button onClick={() => void preview.refetch()}>
                   Check invitation again

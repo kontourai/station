@@ -1,0 +1,7 @@
+{
+  "revision": "90be0c7b4ed9a6d89f5d1578ab184142b7e79835",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"Re-reviewed after docs/reference/contracts.md gained the current-answer inventory paragraph (#3853). This document only links the contracts reference generally and makes no Session inventory parsing claim; no prose change needed.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

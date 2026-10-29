@@ -1,0 +1,7 @@
+{
+  "revision": "a506090059cf2a04cb12877ebefffe76538dfc7b",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed final recovery capture assertion: both widths now require the recovered composer textarea to own focus, because the narrow status rail hides after the pill leaves. Ordinary Resync and Refresh actions, HTTP fixtures and exact replacement request-count assertions remain intact. The first round-two browser run retained the expected narrow focus failure and its trace; rerun follows the production owner repair.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]}
+  ]
+}

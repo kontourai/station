@@ -1,0 +1,25 @@
+{
+  "revision": "7dbf7e258ed70493a35713b395e24846f485de4d",
+
+  "notes": [
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Reviewed the script-map delta: only explicit companion pack/verify commands were added; managed pnpm, workspaces, lifecycle grants and private receiver publication status are unchanged. The new candidate command does not publish a workspace or enable a destination.","inputs":["docs/design/pnpm-workspace-installation.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/code-hygiene.md","note":"Reviewed hygiene command references against the unchanged hygiene scripts. The two new companion package commands do not alter marker, ownership or retention scans; existing hygiene instructions remain accurate.","inputs":["docs/guides/code-hygiene.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed the pre-push and code-health command descriptions against the unchanged gate scripts. Companion pack/verify adds no bypass or new passing receipt; focused package controls passed and the new-only health gate has no dead-code/duplication blockers.","inputs":["docs/guides/code-quality.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed lifecycle capability and install instructions against the package script delta: no dependency, lockfile, package-manager, patch, hook or lifecycle grant changed. Companion commands consume the existing managed graph and do not run an install.","inputs":["docs/guides/dependency-security.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed setup, script interface and verification guidance: only opt-in companion pack/verify entries were added. Existing build, dependencies, verification and publication commands are unchanged; the companion build-only descriptor is not a release receipt.","inputs":["docs/guides/development.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/repository-knowledge-graph.md","note":"Reviewed script-map export implications: two root command nodes are added, without changing the exporter or its source-versus-history limits. No knowledge-graph completeness or runtime qualification claim is added.","inputs":["docs/guides/repository-knowledge-graph.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed shared-output ownership and receipt distinctions. The new companion suite builds the real receiver dist, so it is explicitly in the existing serial shared-output group; worker counts, phase deadlines and canonical completion command are unchanged. Five focused controls passed; no full-corpus or Docker claim.","inputs":["docs/guides/testing.md","package.json#/scripts","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"Reviewed the sole-completion-lane and script-map claims. The new companion commands are artifact packaging and integrity verification, not verification lanes or promotion receipts; trust-reconcile and full:regression script bytes are unchanged.","inputs":["docs/reference/verification-receipts.md","package.json#/scripts"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Reviewed resource-manifest delta: only the companion package test joined shared-output. No model-runtime group entry, admission, tape, SQLite, projection or framework owner changed; this context makes no companion delivery claim.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed child-process/shared-output instructions against the new real-build test. It uses the bounded capture owner with windowsHide and is classified in shared-output because it writes receiver dist. No script policy, allowlist or gate was weakened.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

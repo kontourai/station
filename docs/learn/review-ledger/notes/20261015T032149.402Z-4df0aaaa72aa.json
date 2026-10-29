@@ -1,0 +1,7 @@
+{
+  "revision": "942391b5b7c770a7433f75f0be24e94f471ecc3c",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"Final ChatDockBody delta selects a focus destination from the existing textarea ref: the textarea when enabled and its labelled fieldset when disabled. This changes no configuration, defaults, attachment handling or write permission; config reference needs no prose change.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]}
+  ]
+}

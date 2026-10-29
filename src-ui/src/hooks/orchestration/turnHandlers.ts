@@ -1,13 +1,20 @@
+import { isStationCheckBackTurn } from '@kontourai/station-contracts/agent-schedule';
 import {
+  ACP_APPROVAL_TAKEOVER_FAILED_CODE,
   APPROVAL_ESCALATION_REQUIRES_RESTART_CODE,
+  ENGINE_MEMORY_EXHAUSTED_CODE,
   ENGINE_SESSION_BINDING_DEAD_CODE,
+  ENGINE_SIGN_IN_REQUIRED_CODE,
   ENGINE_TURN_FAILED_CODE,
   isApprovalMode,
+  isStationMemoryContinuationTurn,
 } from '@kontourai/station-contracts/provider';
+import { runtimeEventContentDisplayText } from '@kontourai/station-contracts/runtime-event-content';
 import {
   isDeferredRetriableTurnError,
   isProviderTriggeredTurn,
 } from '@kontourai/station-contracts/runtime-events';
+import { agentMessageInput } from '@kontourai/station-shared/agent-message-frame';
 import {
   type ActiveChatsStore,
   activeChatsStore,
@@ -17,6 +24,7 @@ import {
   formatChatErrorDisplay,
   translateChatError,
 } from '../../utils/chatErrorTranslation';
+import { withDeliveryCheck } from '../../utils/messageDeliveryState';
 import {
   acknowledgesModelRequest,
   modelControlOptionsMatch,
@@ -30,6 +38,7 @@ import { settlePendingApprovalsOnTurnEnd } from './approvalHandlers';
 import { finalizeAssistantTurn } from './assistantTurn';
 import { createAssistantStreamingMessage } from './messageParts';
 import { drainQueuedMessageOnTurnCompleted } from './queueDrain';
+import { withRecordedAttachments } from './recordedAttachments';
 import { isReplayThread } from './replay/replay-registry';
 import { notifyTurnTerminal } from './turnAttentionNotifications';
 import type { OrchestrationEvent } from './types';
@@ -128,12 +137,18 @@ export function handleTurnStartedEvent(
     // A steer is more user input on the OPEN turn. It must not reset
     // `streamingMessage` the way a fresh `turn.started` does — that wipe is
     // how a Claude course-correction used to blank the in-flight answer.
-    const prompt = event.prompt?.trim();
+    // #3419: another agent's steer is shown as that agent's words.
+    const input = agentMessageInput({
+      ...event,
+      prompt: runtimeEventContentDisplayText(event.prompt),
+    });
+    const prompt = input.prompt?.trim();
     const messages = [...(currentChat?.messages ?? [])];
     if (prompt) {
       messages.push({
         role: 'user',
         content: prompt,
+        ...(input.sender ? { sender: input.sender } : {}),
         timestamp: Date.parse(event.createdAt) || undefined,
         turnId: event.turnId,
         sessionId: event.threadId,
@@ -154,6 +169,10 @@ export function handleTurnStartedEvent(
   }
 
   let userMessages = currentChat?.messages;
+  // A long prompt stored out of line shows its preview, marked partial
+  // (docs/design/event-content-spill.md).
+  const promptText = runtimeEventContentDisplayText(event.prompt);
+  const turnInput = agentMessageInput({ ...event, prompt: promptText });
   if (
     event.prompt &&
     !userMessages?.some(
@@ -161,15 +180,31 @@ export function handleTurnStartedEvent(
     )
   ) {
     userMessages = [...(userMessages ?? [])];
-    const pending = currentChat?.pendingClientTurnId
-      ? [...userMessages]
-          .reverse()
-          .find((message) => message.role === 'user' && message.clientId)
-      : undefined;
+    // Station stamps the send's key on its turn, and this client's bubble
+    // carries the same key: an exact match. A keyed turn whose key names no
+    // bubble here was sent elsewhere (another device), so it is never pinned
+    // on this client's newest message. Only an event from before the key
+    // existed falls back to the newest composer row while a send is pending.
+    const pending = event.clientTurnId
+      ? userMessages.find(
+          (message) =>
+            message.role === 'user' &&
+            message.clientId === event.clientTurnId &&
+            !message.turnId,
+        )
+      : currentChat?.pendingClientTurnId
+        ? [...userMessages]
+            .reverse()
+            .find(
+              (message) =>
+                message.role === 'user' && message.clientId && !message.turnId,
+            )
+        : undefined;
     if (pending) {
       const index = userMessages.indexOf(pending);
       userMessages[index] = {
         ...pending,
+        ...withRecordedAttachments(pending, event.attachments),
         turnId: event.turnId,
         sourceEventId: event.eventId,
       };
@@ -181,10 +216,15 @@ export function handleTurnStartedEvent(
         clientId: `event-input:${event.eventId ?? event.turnId}`,
         sourceEventId: event.eventId,
         role: 'user',
-        content: event.prompt,
+        content: turnInput.prompt ?? promptText ?? '',
+        ...(turnInput.sender ? { sender: turnInput.sender } : {}),
         timestamp: Date.parse(event.createdAt),
         turnId: event.turnId,
         sessionId: event.threadId,
+        ...(isStationCheckBackTurn(event) ? { stationCheckBack: true } : {}),
+        ...(isStationMemoryContinuationTurn(event)
+          ? { stationMemoryContinuation: true }
+          : {}),
       });
     }
   }
@@ -207,6 +247,13 @@ export function handleTurnStartedEvent(
     reconciledEphemerals.length < ephemerals.length &&
     (currentChat?.input ?? '') === event.prompt;
   store.updateChat(event.threadId, {
+    ...(event.clientTurnId &&
+    currentChat?.messages?.some(
+      (message) =>
+        message.role === 'user' && message.clientId === event.clientTurnId,
+    )
+      ? withDeliveryCheck(currentChat, event.clientTurnId, 'started')
+      : {}),
     ...(userMessages !== currentChat?.messages
       ? { messages: userMessages }
       : {}),
@@ -221,7 +268,12 @@ export function handleTurnStartedEvent(
     // window it named is over. #2324: a turn the engine opened on its own
     // came from no dispatch — a send this client still has in flight keeps
     // its pre-start window and its optimistic send window.
-    ...(isProviderTriggeredTurn(event)
+    ...(isProviderTriggeredTurn(event) ||
+    // A keyed turn that is not this client's pending send (another device's)
+    // leaves this send's window open.
+    (event.clientTurnId !== undefined &&
+      currentChat?.pendingClientTurnId !== undefined &&
+      event.clientTurnId !== currentChat.pendingClientTurnId)
       ? {}
       : {
           pendingClientTurnId: undefined,
@@ -262,6 +314,15 @@ export function handleTurnStartedEvent(
       role: 'assistant',
       content: '',
       contentParts: [],
+      ...(isProviderTriggeredTurn(event)
+        ? {
+            sender: {
+              kind: 'provider' as const,
+              sessionId: event.threadId,
+              engine: event.provider,
+            },
+          }
+        : {}),
     },
     ...(approvalMode
       ? {
@@ -272,6 +333,12 @@ export function handleTurnStartedEvent(
           approvalEscalationRejected:
             event.metadata?.approvalEscalationRejected === true,
         }
+      : {}),
+    // #3290: each turn says whether it could take the recorded posture; a
+    // turn that ran on the engine's own settings reports no mode at all.
+    approvalTakeoverFailed: event.metadata?.approvalTakeoverFailed === true,
+    ...(event.metadata?.approvalTakeoverFailed === true && !approvalMode
+      ? { lastAppliedApprovalMode: undefined }
       : {}),
     ...(effectiveModel
       ? { model: effectiveModel, orchestrationModel: effectiveModel }
@@ -332,9 +399,12 @@ export function handleTurnCompletedEvent(
       ?.orchestrationHistoryRevision ?? 0;
   const closesOpenTurn = !openTurnId || openTurnId === event.turnId;
 
+  // A reply stored out of line is not known here; the streamed text stands.
+  const outputText =
+    typeof event.outputText === 'string' ? event.outputText : undefined;
   finalizeAssistantTurn(
     event.threadId,
-    event.outputText,
+    outputText,
     closesOpenTurn
       ? {
           turnId: event.turnId,
@@ -376,8 +446,8 @@ export function handleTurnCompletedEvent(
       cancelled: event.finishReason === 'cancelled',
       providerTurn: isProviderTriggeredTurn(event),
       closedWithoutResult: event.metadata?.closedWithoutResult !== undefined,
-      text: event.outputText?.trim()
-        ? event.outputText
+      text: outputText?.trim()
+        ? outputText
         : activeChatsStore
             .getChatForExecutionSession(event.threadId)
             ?.messages?.slice()
@@ -548,6 +618,8 @@ export function handleRuntimeErrorEvent(
   // `event.message` display — unchanged.
   const translation =
     event.code === ENGINE_SESSION_BINDING_DEAD_CODE ||
+    event.code === ENGINE_MEMORY_EXHAUSTED_CODE ||
+    event.code === ENGINE_SIGN_IN_REQUIRED_CODE ||
     event.code === ENGINE_TURN_FAILED_CODE
       ? translateChatError({ message: event.message, code: event.code })
       : undefined;
@@ -703,7 +775,13 @@ export function handleRuntimeWarningEvent(
   event: Extract<OrchestrationEvent, { method: 'runtime.warning' }>,
 ) {
   if (!isReplayThread(event.threadId)) {
-    toastStore.show(event.message, event.threadId, 5000);
+    toastStore.upsert({
+      message: event.message,
+      sessionId: event.threadId,
+      dedupeKey: `runtime-warning:${event.code}:${event.message}`,
+      tone: 'warning',
+      duration: 5000,
+    });
   }
 
   // archive#727 item 1b (CRITICAL): a mid-session escalation to 'never'
@@ -711,6 +789,18 @@ export function handleRuntimeWarningEvent(
   // at spawn) must not leave the composer chip showing a posture that
   // never actually applied. The adapter reports which mode IS actually in
   // effect.
+  // #3290: the engine kept what it ran before; the chip must not show the
+  // pick as applied (the same turn's `turn.started` also says so).
+  if (event.code === ACP_APPROVAL_TAKEOVER_FAILED_CODE) {
+    const kept = event.details?.appliedApprovalMode;
+    activeChatsStore.updateChat(event.threadId, {
+      approvalTakeoverFailed: true,
+      lastAppliedApprovalMode:
+        isApprovalMode(kept) && kept !== 'connection-default'
+          ? kept
+          : undefined,
+    });
+  }
   if (event.code === APPROVAL_ESCALATION_REQUIRES_RESTART_CODE) {
     // The refusal is the engine's report of what still applies (#2436). The
     // recorded full access stays the conversation's decision — the server

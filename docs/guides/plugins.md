@@ -1,6 +1,21 @@
 # Plugin Development
 
-Plugins are the product — the core provides the foundation. A plugin can contribute layout UIs, agents, MCP tools, provider implementations, and knowledge namespaces. A single plugin can combine any of these.
+Plugins build on Station's core through its public SDK and extension contracts.
+A plugin can contribute layout UIs, agents, MCP tools, provider implementations,
+and knowledge namespaces. A single plugin can combine these into a workspace
+for coding, research, sales, or another workflow.
+
+The SDK connects plugin UI to the same core configuration, model catalog,
+conversation queries, chat state, navigation and host actions used by Station's
+own UI. See [default host bindings](../reference/sdk.md#default-host-bindings-and-custom-hosts)
+for the supported hooks and their limits. Plugins import these public contracts
+rather than internal app modules so the core can change its implementation.
+
+Station currently includes built-in layouts as well as plugin-contributed
+layouts. The [distribution profile](./distribution-profiles.md) controls their
+availability. Moving the remaining built-in experiences into plugin packages
+is an [accepted direction](../design/shell-plugins-distributions.md), not a
+completed migration.
 
 Plugin-contributed Knowledge Kit store roots are not currently supported. The proposed read-only
 root and reader boundary, including lifecycle and filesystem-safety requirements, is documented in
@@ -12,6 +27,213 @@ For the shortest path from scaffold to install, start with [Build Your First Plu
 Distribution owners can control whether a plugin layout is shown, enabled, or
 available for project use without changing the plugin itself; see
 [Distribution Profiles](./distribution-profiles.md).
+
+## Bundle origins and CSP
+
+Installed in-process browser plugins and draft previews load JavaScript by
+same-origin URL, without a shell CSP nonce. Desktop installed plugins use the
+host-authenticated `station-plugin:` protocol (the exact
+`http://station-plugin.localhost` alias only in the Windows configuration). The Rust handler serves
+only `/api/plugins/<name>/bundle.js` and `bundle.css` from this desktop's
+supervised local Station. It attaches the host-held credential, refuses
+redirects and responses over 16 MiB, and revalidates local ownership and active
+authorization before delivering bytes. The server's installed-artifact reader
+checks the recorded content digest when present and rechecks it after reading.
+The credential never crosses into the WebView. Before scheduling work or
+accessing credentials, the registration closure requires an allowed webview
+label (`main` or `workspace-pane-pop-out-<canonical-v4-UUID>`) and a per-launch
+capability. Labels identify webviews, **not frames**: child frames share their
+parent's label. The host installs the capability only in the shell's top realm
+at the exact packaged origin (or configured development origin in debug).
+Origin checks use plain string comparisons; the canonical webview label check
+uses a regular expression.
+An explicit `window === window.top` check matters on Windows, where WebView2
+injects initialization scripts into subframes too. Browser Preview and unknown
+labels, and requests with missing or wrong capabilities, receive an empty 403
+before slot reservation or credentials. A four-request limit **per label**
+includes queued blocking work; excess requests for that label receive 429.
+Other windows retain their own capacity. The UI loads each window's plugins
+sequentially. Outside desktop delivery, the UI starts every installed
+bundle's download together, a stylesheet fetch and a same-origin script
+`preload` for each, then still applies and executes them one at a time in
+registry order, so each registration is read at its own script's load event.
+Each stylesheet's deadline starts at its plugin's turn, not at its download.
+See the [registry](../../src-ui/src/core/PluginRegistry.ts).
+
+The capability is a per-launch 256-bit secret checked in constant time. It
+is derived using HMAC over a fixed message, not bound to label, path or port;
+those admission checks are separate. It authorizes installed assets only and
+is not the native bearer. Script/stylesheet URL queries carry it because these
+elements cannot supply custom request headers. Subresource loads do not update
+navigation history. The handler sends `Cache-Control: no-store` and
+`Referrer-Policy: no-referrer` (including stylesheet subresources), and the UI
+sets `referrerPolicy="no-referrer"` on both elements. Rust forwards only the
+asset path to the server, never the query.
+
+Host load failures omit asset URLs. Pane technical details, Home-role recovery
+and reportable console capture use shared redaction to keep native plugin paths
+(`/api/plugins/<name>/<asset>`) and source coordinates, removing queries and
+fragments. Settings and routes do not store the capability. The complete URL
+can remain in `script.src`, `link.href`, `data-station-plugin` markers and page resource timing entries;
+trusted shell code and developer tools can inspect it for the page's lifetime.
+The original developer console is unchanged. This is not isolation from
+in-process plugins or same-origin shell scripts. Cross-origin and opaque
+sandboxed frames cannot read the top realm's property or DOM. No IPC command
+returns the capability.
+
+The frame boundary relies on the inspected Tauri 2.12.1
+[initialization-script contract](https://docs.rs/tauri/2.12.1/tauri/webview/struct.WebviewBuilder.html#method.initialization_script)
+and its Windows exception. Tauri's
+[IPC handler](https://docs.rs/crate/tauri/2.12.1/source/src/ipc/protocol.rs)
+routes by webview label and validates an invoke key; a label-scoped command is
+not an independent main-frame attestation. The initialization code is in
+[`pluginBundleCapability.js`](../../src-ui/src/platform/native/pluginBundleCapability.js).
+Its realm guards are executed in TS tests; installed platform behavior still
+requires real-shell qualification. Credential-store prompts have no timeout;
+the permit deliberately covers them to keep queued credential work bounded.
+
+Other cross-origin script URLs are refused, including when remote-bundle
+consent is enabled (#3001). There is no fetch-and-inline fallback. The same
+refusal applies when `STATION_API_BASE` or `VITE_API_BASE` points a browser at
+another loopback origin; use the normal same-origin proxy setup.
+Desktop draft execution remains unavailable: draft revisions use a separate
+Project authorization contract and are not exposed through this installed-only
+protocol. A safe Desktop extension needs a separate Project/revision-bound
+path authorized by the draft contract, with a server-side digest check and the
+same webview gate; an isolated frame is preferred. This remains follow-up work.
+Use Station's same-origin browser UI for draft previews.
+Installed bundle failures leave the shell usable and report Extensions
+unavailable. Remote declarations that already use isolated frames keep that
+path; server-side contributions do not use this script loader.
+No stored plugin, grant, or layout record changes in this slice.
+
+Plugins are not handed the shell nonce. In-process code can still read `.nonce`
+from the DOM and reach Tauri internals: that is the existing in-process
+authority model. Same-origin plugin code shares that realm and its session.
+
+## Use the Project repository
+
+A plugin layout can declare `workspaceBinding: 'repository'` at the top level
+of its layout definition. Applying it to a Project retains that declaration.
+The Project layout API derives `config.workingDirectory` from the Project on
+each read; the plugin should not save a separate working-directory path.
+`config.repoId` may name a particular repository in a multi-repository Project.
+If that repository is not bound locally, no working directory is returned.
+
+This declaration only selects where the layout's workspace comes from. File,
+diff and terminal operations retain their own permission and admission checks.
+See [layout management](../reference/api.md#layout-management). It does not
+implement the proposed generic panel-state migration or change the layout's
+presentation.
+
+## Own Chat and push drill-ins
+
+A plugin layout can also declare three presentation fields at the top level of
+its layout definition (#2995):
+
+- `primary: "chat"` puts Chat in the layout's centre. While the layout is
+  mounted, the dock's Chat is suspended and ⌘D focuses the layout's Chat. The
+  plugin must request the `layout.primaryChat` permission; a plugin that
+  claims Chat without requesting it is refused at install, and one whose
+  grant is withheld keeps its layout without the claim.
+- `presentation: "stack"` renders the layout as a navigation stack: the Chat
+  page, a breadcrumb, an icon rail of drill-ins and Back. `"tabs"` (the
+  default) is the tab host. `primary: "chat"` needs `"stack"`.
+- `drillIns` lists, in rail order, the panes the stack pushes: up to 16 pane
+  ids, each one of this layout's own tabs' panes
+  (`pane:plugin%3A<plugin>:<layout slug>:<tab id>`).
+
+```json
+{
+  "name": "Review desk",
+  "slug": "review-desk",
+  "primary": "chat",
+  "presentation": "stack",
+  "drillIns": ["pane:plugin%3Areview-desk:review-desk:queue"],
+  "tabs": [{ "id": "queue", "label": "Queue", "component": "review-desk-queue" }]
+}
+```
+
+An unknown value (`primary: "terminal"`), a drill-in that is not one of the
+layout's own panes, or `drillIns` without `"stack"` is refused by name. So is
+a drill-in whose Project occurrence id would exceed the 128 characters the
+pane host and the navigation store accept; that id embeds the plugin id and
+layout slug twice, so keep them short (#4130). Install refuses such a plugin.
+A plugin copied straight into `plugins/` without installing skips that
+check, and the catalog then leaves its whole layout out, not just the
+drill-in. Each
+drill-in still goes through the ordinary pane availability check, so one the
+Project's catalog does not issue is simply not on the rail. Station states
+the declaration on every layout read; it is not stored in the Project's
+layout record and a request body cannot set it. See
+[layout management](../reference/api.md#layout-management).
+
+## Required Home and Inbox/Chat slots
+
+Home and Inbox/Chat have defaults that cannot be disabled or uninstalled:
+`builtin:workspace-home` and `builtin:workspace-chat`. They are built-in
+surfaces today. The [required-slot contract](../../packages/contracts/src/required-slots.ts)
+models them as defaults so the Home and Chat extraction slices can replace
+their implementation with bundled plugins later. OPEN-1's separate approval
+slot remains undecided; this change does not create one.
+
+The [installation adapter](../../src-server/services/plugins/required-slot-service.ts)
+reads the current Home grant, installation, lifecycle state and installed
+bytes on each request. The existing `workspace-home-role.json` envelope is
+read directly, without rewriting consent or creating another selection store.
+An approved, unchanged Home still holds Home. A missing, disabled, changed or
+broken override falls back to the default, including when the descriptor offers
+an inert standard-data degradation rung. Removing the Home grant removes
+only the override. Inbox and conversations retain their shared built-in Chat
+pane and their existing state.
+
+`requiredSlots` declarations are parsed as an object with optional `home`
+and `chat` filler identifiers. Omission means use the default; explicit
+`null`, empty strings, whitespace and `none` are refused by the manifest
+reader and installer. These declarations are inert preferences, not authority
+or an activation path. Distribution selection remains slice g; Home assignment
+still requires the existing Home-role consent channel, and Chat replacement
+remains slice l. The provider-overrides API refuses slot assignments rather
+than silently accepting an unauthorized configuration change.
+
+Both actual [Home](../../src-ui/src/views/HomeView.tsx) and
+[Inbox/Chat](../../src-ui/src/components/chat-dock/ChatDock.tsx) callers use
+[RequiredSlotHost](../../src-ui/src/workspace-panes/RequiredSlotHost.tsx).
+A failing override renders the default without a recovery signal. The pure
+resolver returns `safeMode: true` when the default is unavailable. Home’s
+production caller reports selection refusal with an explanation and Close Home,
+using the same continuation-or-Settings target as pane recovery. Chat mounts its
+built-in directly; neither caller currently computes a module-load failure.
+Default render errors instead reach
+[WorkspacePaneFrame](../../src-ui/src/workspace-panes/WorkspacePaneFrame.tsx),
+which retains Retry, failure details and the pane's Close/Minimize actions.
+Home's Close returns to its continuation, or Settings when none is available.
+The [renderer diagnostic channel](../../src-ui/src/workspace-panes/requiredSlotRecovery.tsx)
+reports `{ slot, defaultFiller, reason }` for selection refusal and after
+three default boundary catches in the same pane occurrence, including render,
+layout-effect, passive-effect and update failures. Chat’s Close clears the
+conversation and remounts empty Chat; if that remount crashes it counts too.
+Home’s Close navigates away. The third catch emits once per slot and occurrence.
+Healthy renders, elapsed time, and conversation changes do not reset the count.
+Removing an occurrence from the host document, or switching the host to another
+document, prunes its history. A standalone frame retains history until that
+frame unmounts. Chat placements without a pane frame report no repeated-render
+diagnostic.
+Even after that diagnostic, the frame keeps its recovery actions.
+
+There is no `station:required-slot-safe-mode` window event. Module-local
+subscribers reduce accidental forgery/suppression through DOM events, but
+in-page plugins share the renderer realm: **these diagnostics are not recovery
+authority**. Slice f must obtain its signal through a kernel-owned channel,
+never this callback or a window event. Kernel recovery UI, explicit safe-mode
+entry and authoritative retry accounting remain slice f work. The server's
+installation response cannot attest browser load/render health.
+
+Boundary and read-through migration proof lives in
+[`required-slots.test.ts`](../../src-server/routes/plugins/__tests__/required-slots.test.ts).
+Component tests cover fallback, recovery signaling and the actual Home and
+Chat caller wiring. These tests do not qualify bundled-plugin extraction,
+independent security review or hosted release behavior.
 
 ## Directory Structure
 
@@ -132,8 +354,10 @@ Common fields:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `requiredSlots` | object | no | Legacy inert preferences for `home` and `chat`; identifiers must be non-empty and cannot be `none`. Does not assign or grant a role. See [required slots](#required-home-and-inboxchat-slots). |
 | `name` | string | yes | Unique logical plugin identifier; the host owns its storage location |
 | `version` | string | yes | Semver version |
+| `telemetry` | PublisherTelemetryDeclaration | no | Bounded publisher analytics declaration. Agent Plugins puts it in the Station extension; install requires a signed, verified public registry identity. See [Publisher analytics](#publisher-analytics). |
 | `sdkVersion` | string | no | Semver range of `@kontourai/station-sdk` required |
 | `displayName` | string | no | Human-readable name shown in UI |
 | `description` | string | no | Short description |
@@ -203,6 +427,15 @@ define host contracts such as `auth`, `branding`, `userIdentity`, `userDirectory
 `settings`, `scheduler`, `notification`, `acpConnectionRegistry`, `workItem`,
 `pullRequest`, and `providerAdapter`. The `acpConnections` key is consumed by
 runtime connection discovery; consult its caller's shape before contributing it.
+An `acpConnectionRegistry` provider returns engine catalogue entries, which may
+carry the install, launch-variable and sign-in descriptor described in the
+[ACP guide](acp.md#catalogue-descriptors); an entry whose descriptor fails
+validation is left out. An entry cannot present itself as a public agent
+registry listing: its `source` and `publicRegistry` are set by Station.
+An entry is refused when its `name`, `description` or `sourceName` contains a
+character that renders as nothing (a Unicode default-ignorable code point),
+which includes emoji built with a zero-width joiner or a variation selector
+such as `❤️`; use plain text there and put a symbol in `icon` instead.
 The examples below cover selected contracts; registration alone does not make
 an arbitrary object usable by one of these callers.
 
@@ -619,8 +852,11 @@ Use the documented SDK root or owning subpath. Key root hooks:
   contributed that Agent.
 - `useSendMessage()` sends to the active conversation; `useCreateChatSession()`
   and `useOpenConversation()` start or reopen one in the chat dock.
-- `useConversations()`, `useConversation(id)` and
-  `useConversationMessages(id)` read conversations.
+- `useConversations()` reads the default host's captured conversation list; its
+  Agent argument is not forwarded by Station's adapter. `useConversation(id)`
+  and `useConversationMessages(id)` require custom-host slots that Station's
+  default adapter does not supply. Use an explicitly supported query/client
+  operation for a protected read; see the [default host bindings](../reference/sdk.md#default-host-bindings-and-custom-hosts).
 
 <!-- compile-checked: examples/docs-snippets/src/plugins-agents-and-chat.tsx -->
 ```tsx
@@ -722,6 +958,10 @@ message; the host answers on the same channel.
 | `pane-host/confirm` `{ id, title, message }` | `confirm` | `pane-host/confirm-result` `{ id, decision }` |
 | `pane-host/facts` | `facts.subscribe` | `pane-host/facts-changed` `{ facts }`, now and on every change |
 | `pane-host/present-unavailable` `{ reason }` | `presentUnavailable` | none |
+| `pane-host/related-open` `{ id, request }` | `relatedPanes.open` | `pane-host/related-result` `{ id, data }` |
+| `pane-host/related-reveal` `{ id, handle }` | `relatedPanes.reveal` | `pane-host/related-result` `{ id, data }` |
+| `pane-host/related-close` `{ id, handle }` | `relatedPanes.close` | `pane-host/related-result` `{ id, data }` |
+| `pane-host/related-target` `{ id }` | `relatedPanes.target` | `pane-host/related-result` `{ id, data }` |
 
 `target` accepts the documented path string above, or a typed target —
 `{ kind: 'app-surface', surfaceId }`, `{ kind: 'project-layout', projectSlug,
@@ -740,17 +980,28 @@ Three things are worth knowing before writing against it:
   then one every thirty seconds — the same shape as navigation, for the same
   reason: a full-screen dialog you must answer is the most expensive attention
   a pane can spend, and a pane cannot buy more of it by running in a frame.
+- **Related panes answer every request, with a value.** `relatedPanes` is
+  optional: a placement without it answers each related request
+  `{ status: 'unavailable', reason: 'unsupported' }`, and an older host
+  refuses the method by name. Use `createRelatedPanesPaneHost` (see
+  [Related panes](../reference/sdk.md#related-panes)) rather than the raw
+  messages; the frame tier shares the direct tier's budget and refusals.
 - **An unrecognised or malformed `pane-host/*` message is refused, not
   ignored.** The host replies `pane-host/refused` `{ method, reason, id? }`.
   Silence is how two earlier plugin capabilities stayed broken for months.
 
 ### Config
 
-```tsx
-import { useConfig } from '@kontourai/station-sdk';
+Station's default host supplies `useApiBase()` but does not bind the optional
+`useConfig()` slot. For a server configuration read, use `useConfigQuery()` and
+handle its loading, error and authorization result. A custom host may supply
+the compatibility slot explicitly; export presence alone does not enable it.
 
-const config = useConfig();
-// config.region, config.defaultModel, config.invokeModel, ...
+```tsx
+import { useConfigQuery } from '@kontourai/station-sdk';
+
+const config = useConfigQuery();
+// Read config.data only after this query succeeds.
 ```
 
 ### Notifications
@@ -766,12 +1017,11 @@ showToast({ type: 'info', message: 'FYI' });
 
 ### Workflows & Slash Commands
 
-```tsx
-import { useWorkflows, useSlashCommands, useSlashCommandHandler } from '@kontourai/station-sdk';
-
-const workflows = useWorkflows();
-const commands = useSlashCommands();
-```
+`useWorkflows()`, `useSlashCommands()` and `useSlashCommandHandler()` are
+optional custom-host slots. Station's default plugin adapter does not supply
+them, so calling them there throws. For an Agent workflow catalog read, use
+`useAgentWorkflowsQuery(agentSlug)`; this query does not register or execute a
+slash command. See the [SDK hook boundaries](../reference/sdk.md#workflow-hooks).
 
 ### Query Hooks
 
@@ -818,23 +1068,18 @@ operations throw; it does not return the outer `success`/`response` envelope.
 
 ### Server-Side Fetch Proxy
 
-For external HTTP calls from plugin UI (requires `network.fetch` permission):
+`useServerFetch()` is exported but is not a working production proxy in the
+current Station host. Its legacy plugin-name getter is empty, so it calls
+`POST /api/plugins/fetch`, which returns 403. The named
+`POST /api/plugins/:name/fetch` route also refuses after checking grants, until
+plugin execution identity can be verified. Declaring `network.fetch` does not
+enable either route.
 
-```tsx
-import { useServerFetch } from '@kontourai/station-sdk';
-
-const serverFetch = useServerFetch();
-const result = await serverFetch('https://api.example.com/data', {
-  method: 'GET',
-  headers: { Authorization: 'Bearer ...' },
-});
-// result: { status: number, contentType: string, body: string }
-// A proxy response with success: false throws; handle errors at the call site.
-```
-
-The [hook implementation](../../packages/sdk/src/hooks/operations.ts) returns
-the callable directly and strips the proxy's `success` field from a successful
-result.
+The CLI preview server has its own bounded development proxy; its success does
+not establish production support. See the [SDK refusal contract](../reference/sdk.md#utility-hooks),
+[hook](../../packages/sdk/src/hooks/operations.ts),
+[legacy identity getter](../../packages/sdk/src/api-core.ts), and
+[production route](../../src-server/routes/plugins/plugin-public-routes.ts).
 
 ### Layout Providers
 
@@ -965,7 +1210,7 @@ Plugins declare permissions in `plugin.json`. The server enforces them at instal
 | Tier | Behavior | Permissions |
 |------|----------|-------------|
 | `passive` | Auto-granted on install, no prompt | `navigation.dock` |
-| `active` | Requires user consent | `network.fetch`, `agents.invoke`, `tools.invoke`, `ui.confirm` |
+| `active` | Requires user consent | `network.fetch`, `agents.invoke`, `tools.invoke`, `ui.confirm`, `layout.primaryChat` |
 | `trusted` | Requires approval on a separate Station host page | `providers.register`, `system.config`, `plugin.server`, `events.subscribe`, `events.read-payload` |
 
 ### Declaring Permissions
@@ -984,12 +1229,20 @@ Plugins declare permissions in `plugin.json`. The server enforces them at instal
 
 - `network.fetch` — required to use `useServerFetch` / `POST /api/plugins/:name/fetch`
 - `ui.confirm` — required to raise the shell's confirm dialog (`host.confirm`). Without it the request is refused with `permission-required` and resolves `'cancelled'`; no dialog is shown. It is `active` rather than `passive` because the dialog is a focus-trapping, full-viewport overlay rendered in Station's own chrome with body text you supply — interrupting the user is something the user agrees to.
+- `layout.primaryChat` — required for the plugin's layout to keep `primary: "chat"`: without the grant the layout read states the layout without the claim, so the dock keeps Chat. A layout claiming Chat in a plugin that does not request it is refused at install.
 - `providers.register` — required to register server-side providers
 - `system.config` — required to modify app config
 - `events.subscribe` — required for unattended durable operational-event observation
 - `events.read-payload` — additionally required when a subscription requests the full event envelope; metadata subscriptions never receive payload data
 
 Grants are stored in `<STATION_HOME>/plugin-grants.json` and revoked on plugin removal.
+
+Each install also records a trust decision in `<STATION_HOME>/plugin-trust.json`:
+the verified signer, provenance and the tier Station decided. Plugins installed
+before these records existed are recorded as grandfathered at the tier they run
+at today (when more than 1024 were installed, none is, and each is decided
+again). The tier does not yet change how a plugin's panes render. See
+[install trust records](../design/plugin-installation-lifecycle.md#install-trust-records).
 
 Trusted permissions are not granted from plugin-rendered UI. Station opens a
 short-lived, host-owned review page that lists the exact requested capabilities.
@@ -1273,7 +1526,12 @@ has no automatic publisher trust badge.
 
 A profile requires a corresponding package claim even when its signature mode
 is `optional`. Preview exposes an opaque `registryTrustRevision`; install
-consent echoes that observation, including dependency decisions. Verification
+consent echoes that observation, including dependency decisions. Preview and
+the installed plugin's detail and recovery panels also show the persisted
+receipt behind it (`registryTrust`): registry entry, package digest, signer key
+and SPKI fingerprint, the pin, and the policy outcome. A plugin with no verified
+claim says so rather than showing a badge; dependency rows show only their
+pin today. Verification
 binds registry, source, package/version and source-tree digest. The manifest is
 validated separately, and the built artifact has its own digest. A signature
 does not establish harmless code, a sandbox or reproducible builds.
@@ -1778,10 +2036,30 @@ activation, each component, and real action execution must be verified together.
 
 ## Extension loading and recovery in the client
 
-A remote Station's extensions are off until this device explicitly consents.
-That is a normal trust setting, not a workspace-wide failure banner. The
-Extensions screen explains it and offers Enable remote extensions, with the
-existing warning about app-wide authority before consent is stored.
+Native clients require this device's explicit loading consent for a saved
+Station, including one reached over a loopback address. An injected or
+owner-managed profile needs that consent when its API origin is not HTTP
+loopback. A blocked pane or layout offers **Review and enable** in place.
+Plugin previews with a client bundle or declared entrypoint explain that installation
+can proceed while custom code stays off; built-in views still work. The staged
+preview reports bundle presence separately from its manifest. The review names
+the Station and its origin. Code loaded into the app has app-wide authority.
+Saved remote profiles that are neither injected nor owner-managed use separate
+plugin frames in the native app. Their native security boundary is not
+qualified; the review says to treat that code as having access to app data,
+native features and saved credentials. Injected and owner-managed profiles
+load custom code inside the app. This remains an explicit
+opt-in, not a claim that frame isolation is verified. Dependency-only client code
+may first offer review when its blocked view opens; preview bundle metadata
+currently describes the staged root plugin.
+
+Manage access in **Stations → current Station details → Extensions**, or from
+Registry. **Turn off extensions** removes the stored permission, verifies the
+removal, then reloads the window. Failed persistence stays in the review and
+does not report success. A Station switch while review is open cancels admission;
+permission is never rebound to the newly selected Station. Consent remains bound
+to the saved connection and its exact origin. These controls do not install a
+plugin or grant its server-side permissions.
 
 A failed inventory or bundle load produces a notification linking to Extensions.
 The screen retains the failure message and Retry extensions until the registry
@@ -1790,7 +2068,124 @@ with Reload Station; it does not displace unrelated work with a global banner.
 Core shell and connection recovery retain their own failure surfaces.
 
 Owners: [registry bootstrap](../../src-ui/src/components/registry/PluginRegistryGate.tsx),
-[Extensions view](../../src-ui/src/views/RegistryView.tsx), and
+[Extensions view](../../src-ui/src/views/RegistryView.tsx),
+[shared access review](../../src-ui/src/components/registry/StationExtensionsAccess.tsx), and
 [deferred capability boundary](../../src-ui/src/components/DeferredCapabilityBoundary.tsx).
-These presentation changes do not enable bundles or alter consent storage,
-origin binding, plugin permissions or native bridge authority.
+Loading rules, consent storage and origin binding stay unchanged. These
+controls do not grant server-side plugin permissions or narrow the native
+bridge authority explained by the consent dialog.
+
+
+## Publisher analytics
+
+Station owns publisher consent and delivery. Declare analytics only in a signed
+package installed from a public registry. The operator must classify its catalog
+source key in `publicTelemetryRegistries`, and the existing applied registry trust
+policy must verify the package signature. A trusted signature alone does not
+classify a private catalog as public. The declaration's `publisher` must equal the
+verified public registry item ID. Unsigned, private, direct-source and unverified
+installs with telemetry are rejected before activation with an install diagnostic.
+
+Agent Plugins 1.0 puts the declaration in the Station extension:
+
+```json
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "writer",
+  "version": "1.0.0",
+  "extensions": {
+    "io.kontourai.station": {
+      "schemaVersion": "1.0",
+      "telemetry": {
+        "publisher": "writer",
+        "endpoint": "https://publisher.example.test/counts",
+        "events": {
+          "opened": {
+            "properties": {
+              "surface": ["main", "dock"],
+              "items": { "countBuckets": [0, 1, 3, 10] }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+The same `PublisherTelemetryDeclaration` contract can be used by a future
+distribution manifest; distribution manifest loading is still designed, not built.
+Legacy manifests may declare `telemetry` at the root, but the current signed
+registry acquisition path supports Agent Plugins 1.0 only. Prefer that format.
+
+Declarations allow at most 16 events, 8 properties per event, 16 enum values or
+count boundaries per property, and 256 total property-value cells. Event, property
+and enum tokens are lowercase ASCII identifiers up to 48 characters. There are no
+free-text properties. `countBuckets` must start at zero, increase strictly and end
+at or below 65,535; input values are integers from 0 to 65,535. For the example,
+2 becomes `2-3`, 9 becomes `4-10`, and 11 becomes `11+`. The HTTPS destination
+cannot contain credentials, a query or a fragment. Non-public literals (including loopback, private, link-local and metadata addresses) are rejected at parse time. Every DNS answer is checked before each send, and the TLS connection is pinned to a validated address. Redirects are refused. Every count supplies exactly
+the declared properties; undeclared names/values and extra fields are rejected.
+
+In a Pane, `const telemetry = useTelemetry()` provides
+`await telemetry.count('opened', { surface: 'main', items: 2 })`. See the
+[SDK reference](../reference/sdk.md#plugin-publisher-counts) for non-React callers.
+The kernel sends; this API gives the plugin no transport to its endpoint. It does
+not restrict other networking performed by separately trusted plugin code.
+
+Publishers are namespaced as `publisher:<24 hex registry-key digest>/writer` so identical item IDs in different registries have separate state and consent. Third-party plugin publishers default **Off**. The notice prompts the user to choose Lite, Full, or keep Off; a notice receipt alone never enables sending. After an explicit Lite choice and its current notice,
+its receiver gets at most one `plugin_daily` v1 ping for the completed previous
+UTC day. Each declared event has a total count and separate property-value
+histograms, with counts bucketed as `0`, `1`, `2-3`, `4+`. These are marginal
+histograms, never cross-property combinations. Zero cells are included. Pings
+carry a random deduplication event ID, publisher, schema/data and inventory
+revisions. Station adds no installation ID, raw date, timestamp or cross-day key. The content is plugin-chosen within the declared inventory and can encode a stable identifier, so plugin Lite is not identifier-free.
+Days without collection and older offline days are not backfilled. Attempts are
+reserved before network I/O and are not retried, so network loss can reduce totals.
+
+Full additionally requires that publisher's own current inventory/destination
+acknowledgement and an explicit user Full choice. Each flush sends one `plugin_events` batch containing `plugin_event` v1 records
+with the declared event and bucketed properties, random event ID, server timestamp,
+revisions and a publisher-specific monthly hash of the existing random installation
+secret. Full is pseudonymous. Receivers must not treat monthly hashes as people.
+Inventory or destination changes invalidate receipts and discard old accumulators.
+Uninstall retires pending counts and receipts; reinstall does not revive them.
+
+`DO_NOT_TRACK` except empty/0 forces Off. Operator
+`telemetryPublisherPolicy` may lower defaults to Off; Lite/Full policy values never
+raise the plugin Off default. Explicit user choices take precedence. Distributions cannot
+hide, rebrand or restyle kernel consent surfaces. Status, choices, disclosures and
+the 30-day/5-MiB outbox use the same kernel APIs as built-in publishers. An uninstall
+request may carry `?telemetryFeedbackReason=not-useful` (or another fixed reason
+from the [telemetry reference](../reference/usage-telemetry.md)); it sends only to
+that publisher before removal, at most once per publisher per UTC day. Skip or an
+omitted reason sends nothing; Off and DNT suppress plugin feedback. Already transmitted bodies
+cannot be recalled.
+
+The shared [plugin_daily parser](../../packages/shared/src/plugin-telemetry.ts) is
+available for receiver authors. The Station broker does not yet accept this
+contract. A direct HTTPS receiver sees network metadata, including source IP;
+these shapes do not establish network unlinkability or aggregate-only reception.
+
+The mounted Pane receives a kernel-issued five-minute telemetry capability bound to its
+plugin, namespaced publisher, installation and declaration revision. `useTelemetry()`
+uses that capability; `x-station-plugin` cannot authorize counts. Agent principals
+cannot use the count route. Capability-bearing or Pane-marked requests cannot raise a
+tier, acknowledge Full, or write an opt-in/notice receipt.
+
+These Pane-context checks prevent accidental or well-behaved SDK misuse. They recognize
+the explicit `x-station-plugin-capability` and `x-station-plugin` headers and
+iframe navigations (`Sec-Fetch-Dest: iframe`); ordinary browser
+fetch/XHR requests use `Sec-Fetch-Dest: empty`, which provides no Pane identity.
+Same-origin plugin code shares the existing shell trust model: it can omit those
+headers, call shell APIs, raise its telemetry tier, mint Pane tokens, and read the
+shared query cache. It can also mint tokens under another plugin’s name to evict that
+plugin’s live tokens within the 16-token limit. Distinct-origin isolation is tracked
+in [#3826](https://github.com/kontourai/station/issues/3826).
+
+Legacy global `count`/`track` and automatic `instrument()` observations are no-ops; development instrumentation warns. Each publisher is capped at 100 count requests and 100 Full observations per UTC day. Dropped records coalesce by publisher/day/reason, and Full observations are batched once per flush.
+
+Pane telemetry capabilities are limited to 16 live tokens per plugin, with the oldest
+token evicted when another is minted; a global 1024-token limit also applies. An aborted
+uninstall restores persisted telemetry state and permits fresh tokens, while sends
+admitted before withdrawal stay fenced.

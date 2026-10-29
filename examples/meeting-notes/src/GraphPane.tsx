@@ -1,33 +1,25 @@
 /**
- * Recall UI — wikilink graph pane (`s203-knowledge-meeting-notes` plan,
- * Wave 2 Task 4; Neo4j view toggle added in Wave 3 cleanup, plan item 1c).
- * Renders the wikilink graph a root's Kit records form
- * (`useKnowledgeGraphQuery(rootId)`, Wave 1 Task 2's
- * `GET /api/knowledge/roots/:rootId/graph`) and, on node click, a side
- * detail panel (`useKnowledgeRecordQuery`) showing the selected record's
- * title/type/category/body excerpt and its forward links — clicking a
- * linked node re-selects it, so provenance chains are navigable without
- * leaving this pane.
+ * Recall UI: the wikilink graph pane. Renders the wikilink graph a root's Kit
+ * records form (`useKnowledgeGraphQuery(rootId)`, `GET
+ * /api/knowledge/roots/:rootId/graph`) and, on node click, a side detail panel
+ * (`useKnowledgeRecordQuery`) showing the selected record's
+ * title/type/category/body excerpt and its forward links. Clicking a linked
+ * node re-selects it, so provenance chains are navigable without leaving this
+ * pane.
  *
- * Rendering approach (Stop-short risk in the plan: no graph-viz library
- * anywhere in this repo, and this wave should not add one): a minimal,
- * dependency-free SVG renderer with a deterministic radial layout — nodes
- * grouped into concentric rings by `KitRecordType` (`RING_ORDER` below),
- * evenly spaced by angle within their ring. This is not a force-directed
- * layout and does not attempt to minimize edge crossings; it is boring and
- * readable, which is what the plan asks for over a real graph-viz
- * dependency. `examples/knowledge-docs-starter/` was read as prior art per
- * the plan's context note — it is a layout/tab-shape precedent only (static
- * demo rows), not a source of reusable graph-rendering code.
+ * Rendering: the repository has no graph-visualization library and this
+ * example does not add one, so this is a minimal, dependency-free SVG renderer
+ * with a deterministic radial layout. Nodes are grouped into concentric rings
+ * by `KitRecordType` (`RING_ORDER` below) and spaced evenly by angle within
+ * their ring. It is not force-directed and does not minimize edge crossings;
+ * it favours boring and readable over a graph-viz dependency.
  *
- * **Neo4j view toggle** (Wave 3 cleanup, plan item 1c, flagged by the K5
- * Neo4j worker's own `neo4j-graph-routes.ts` doc comment: the file-based
- * `/graph` route "defers wiring a Neo4j-backed root's graph read to
- * whichever task lands the final wiring decision"). This pane now offers two
- * views over the same root: **Files** (unchanged — the file-adapter-derived
- * `useKnowledgeGraphQuery`) and **Neo4j view** (`useKnowledgeGraphNeo4jQuery`,
- * reading whatever `neo4j-graph-sync.ts`'s idempotent sync last projected).
- * The Neo4j view is opt-in — it never fetches until the user actively
+ * **Neo4j view toggle.** The file-based `/graph` route does not read a
+ * Neo4j-backed root's graph, so this pane offers two views over the same
+ * root: **Files** (the file-adapter-derived `useKnowledgeGraphQuery`) and
+ * **Neo4j view** (`useKnowledgeGraphNeo4jQuery`, reading whatever
+ * `neo4j-graph-sync.ts`'s idempotent sync last projected). The Neo4j view is
+ * opt-in — it never fetches until the user actively
  * switches to it (`config.enabled` gated on `view === 'neo4j'`), and when no
  * Neo4j graph-view connection is registered (or the driver failed to load)
  * the route answers an honest `503`, rendered here as "Neo4j graph view

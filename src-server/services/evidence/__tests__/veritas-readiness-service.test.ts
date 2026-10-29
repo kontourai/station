@@ -7,6 +7,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import * as childWorkload from '@kontourai/station-shared/child-workload';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { execGitSync } from '../../../utils/git-exec.js';
 
@@ -617,3 +618,20 @@ describe.skipIf(!process.env.VERITAS_READINESS_E2E_BIN)(
     }, 120_000);
   },
 );
+
+test('readiness refuses its real CLI launch when workload enforcement is unavailable', async () => {
+  const cwd = makeWorkspace();
+  const admission = vi
+    .spyOn(childWorkload, 'spawnChildWorkload')
+    .mockImplementation(() => {
+      throw new Error('workload enforcement unavailable');
+    });
+  try {
+    await expect(
+      new VeritasReadinessService().getReadiness(cwd),
+    ).rejects.toThrow('workload enforcement unavailable');
+    expect(admission).toHaveBeenCalled();
+  } finally {
+    admission.mockRestore();
+  }
+});

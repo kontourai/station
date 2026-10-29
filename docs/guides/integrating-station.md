@@ -15,6 +15,17 @@ of shipped adapters or a current price quote. The
 checks private local home/database ownership and filesystem permissions; it
 does not turn the default local stores into tenant-safe PostgreSQL repositories.
 
+## Project sources
+
+Project **Sources** composes repository bindings, canonical document stores and
+experimental read-only S3 prefixes without turning every source into an
+execution directory. Each source keeps its own admission and readiness state.
+S3 is default-off pending real AWS acceptance; explicit Project sharing of a
+host AWS profile is separate from principal-owned connected-tool credentials.
+See [Knowledge sources](knowledge.md#project-settings--sources) for the current
+workflow and [the source API](../reference/api.md#experimental-project-s3-sources)
+for bounded S3 reads.
+
 ## Start with one useful integration
 
 Choose a concrete outcome, such as presenting a project's agent work in your
@@ -24,10 +35,12 @@ business rules in your application and use a documented Station boundary.
 | Your task | Start here | Evidence to retain |
 | --- | --- | --- |
 | Call Station from another application | [API reference](../reference/api.md), [SDK reference](../reference/sdk.md), [contracts](../reference/contracts.md) | Exact client/server versions, authenticated request, expected result, and a refused unauthorized request |
+| Let an existing local MCP client use selected Station tools | [External-client setup recipe](../reference/session-api.md#external-clients-using-station-tools), [`mcp-clients` CLI](../reference/cli.md#mcp-clients) | File-proven personal-host operator setup, explicit tools and expiry, authorized read or mutation, wrong-Project refusal, and confirmed revocation |
 | Define and execute Agents from code | [Agent development](agent-development.md), [headless example](../../examples/headless-agent/README.md) | Public headless bundle, authorized execution, refused unauthorized request, observed lifecycle and uncertainty |
 | Add a workspace experience or tool | [Build your first plugin](build-your-first-plugin.md), [plugin guide](plugins.md) | Installed example, declared permissions, successful use, revocation, and removal behavior |
 | Automate an operator workflow | [CLI reference](../reference/cli.md) | Exact command, exit status, retry behavior, and redacted output |
 | Supply deployment account authentication | [Authentication adapters](deployment-authentication.md) | Exact provider contract, current session verification, refusal and revocation evidence; Project membership remains separate |
+| Receive disclosed Full product observations | [Usage telemetry](../reference/usage-telemetry.md), [standalone receiver](../../packages/telemetry-broker/README.md) | Exact sender/receiver revisions, explicit disclosure and source provisioning, matching commit/replay receipts, outage and storage boundaries; personal accounting and OTel remain separate |
 | Run a private environment | [Deployment](deployment.md), [private-cloud design](../design/private-cloud-environment.md) | Runtime identity, persistence across replacement, and restore evidence for your environment |
 | Build or extend Station | [Development](development.md), [example catalog](../../examples/README.md), [testing](testing.md) | Focused executable example and relevant checks |
 
@@ -36,6 +49,14 @@ Do not invent a generic API key or infer supported methods from internal code.
 Examples should run with your own project, provider, domain, and credentials;
 Kontour infrastructure must not be an undocumented prerequisite. Keep secrets
 in the documented secret mechanism, never in examples, images, or screenshots.
+
+The external-client recipe exposes only selected Station tools over loopback.
+It does not move the client's execution into Station or give it a bound browser
+identity. It is separate from configuring Station to consume another MCP server.
+The setup surface requires a recorded operator-owned Session and current Project
+identity; that Session need not have a running engine. Its scoped bearer expires
+and is lost on Station restart. The recipe records platform and live-qualification
+limits; source availability does not establish a published client/server pair.
 
 ## Target: a multi-tenant service on your domain
 
@@ -72,10 +93,11 @@ references, and measure recovery time and recoverable data loss.
 
 ## First cloud target: AWS
 
-AWS remains the first planned commercial deployment profile. A [private GCP
-development recipe](../../deploy/gcp-dev/README.md) retains historical testing
-in an existing Google Cloud organization. Its foreground `service run`
-supervisor self-claims a fresh home without policy registration and waits while
+AWS remains the first planned commercial deployment profile. A private GCP
+development recipe once recorded historical testing in an existing Google Cloud
+organization; it was removed, and its last version is at
+[`db816d256f6`](https://github.com/kontourai/station/tree/db816d256f64707a1e1278ad763fc0bc8a54773e/deploy/gcp-dev).
+The foreground `service run` supervisor self-claims a fresh home without policy registration and waits while
 another live owner holds that home. Current image and cloud qualification remain
 separate from that startup contract. Start with one small EC2 instance for a
 persistent private development environment, using the existing local storage

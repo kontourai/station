@@ -1,0 +1,9 @@
+{
+  "revision": "b184b6cf88805466ef1db26319cd6f67b560ed6d",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"settings-registry.ts changes only the Default approval mode row's description (it no longer promises no sandbox for unattended full-access starts). This document makes no claim about that sentence; its registry and scope claims are unchanged.","inputs":["docs/design/settings-architecture.md","packages/contracts/src/settings-registry.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked the defaultApprovalMode row: it says the posture applies at session start and never to a running session, which the reworded settings description still says. It makes no no-sandbox claim, so nothing here changes.","inputs":["docs/reference/config.md","packages/contracts/src/settings-registry.ts"]}
+  ]
+}

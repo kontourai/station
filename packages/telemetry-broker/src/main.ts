@@ -4,41 +4,77 @@ import { createServer } from 'node:http';
 import { getRequestListener } from '@hono/node-server';
 import { Pool } from 'pg';
 import { createProductBroker } from './app.js';
+import { clientAddressPolicy } from './client-address.js';
 import { PgProductRepository } from './store.js';
 
-const databaseUrl = process.env.STATION_TELEMETRY_BROKER_DATABASE_URL;
+const commands = process.argv.slice(2);
+if (
+  commands.length > 1 ||
+  (commands.length === 1 &&
+    commands[0] !== '--fence-product-sources-after-restore' &&
+    commands[0] !== '--fence-managed-restore')
+)
+  throw new Error('Unknown telemetry receiver command');
+
+const addresses = clientAddressPolicy(
+  process.env.STATION_TELEMETRY_BROKER_TRUSTED_PROXY,
+  process.env.STATION_TELEMETRY_BROKER_CLIENT_IP_HEADER,
+);
+let databaseUrl = process.env.STATION_TELEMETRY_BROKER_DATABASE_URL;
+const databaseUrlFile = process.env.STATION_TELEMETRY_BROKER_DATABASE_URL_FILE;
 const operatorKeyFile = process.env.STATION_TELEMETRY_BROKER_OPERATOR_KEY_FILE;
-if (!databaseUrl || !operatorKeyFile)
+if ((!databaseUrl && !databaseUrlFile) || !operatorKeyFile)
   throw new Error('Database and private operator-key file must be configured');
+if (databaseUrl && databaseUrlFile)
+  throw new Error('Select one database credential source');
 if (process.platform === 'win32')
   throw new Error(
     'The receiver secret-file profile requires a qualified Unix host',
   );
-const secretFile = await open(
-  operatorKeyFile,
-  constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
-);
-let operatorKey: string;
-try {
-  const metadata = await secretFile.stat();
-  if (
-    !metadata.isFile() ||
-    metadata.uid !== process.getuid?.() ||
-    (metadata.mode & 0o077) !== 0 ||
-    metadata.size > 256
-  )
-    throw new Error(
-      'Operator credential must be a private, owned regular file',
-    );
-  const bytes = Buffer.alloc(257);
-  const { bytesRead } = await secretFile.read(bytes, 0, bytes.length, 0);
-  if (bytesRead > 256) throw new Error('Operator credential file is too large');
-  operatorKey = bytes.subarray(0, bytesRead).toString('utf8').trim();
-} finally {
-  await secretFile.close();
+async function readPrivateCredential(
+  file: string,
+  limit: number,
+): Promise<string> {
+  const handle = await open(
+    file,
+    constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+  );
+  try {
+    const metadata = await handle.stat();
+    if (
+      !metadata.isFile() ||
+      metadata.uid !== process.getuid?.() ||
+      (metadata.mode & 0o077) !== 0 ||
+      metadata.size > limit
+    )
+      throw new Error('Credential must be a private, owned regular file');
+    const bytes = Buffer.alloc(limit + 1);
+    const { bytesRead } = await handle.read(bytes, 0, bytes.length, 0);
+    if (bytesRead > limit) throw new Error('Credential file is too large');
+    return bytes.subarray(0, bytesRead).toString('utf8').trim();
+  } finally {
+    await handle.close();
+  }
 }
+const operatorKey = await readPrivateCredential(operatorKeyFile, 256);
 if (!/^sto_[A-Za-z0-9_-]{43}$/.test(operatorKey))
   throw new Error('A valid private operator credential is required');
+if (databaseUrlFile) {
+  databaseUrl = await readPrivateCredential(databaseUrlFile, 4096);
+  try {
+    const address = new URL(databaseUrl);
+    if (
+      !['postgres:', 'postgresql:'].includes(address.protocol) ||
+      !address.hostname ||
+      address.pathname.length < 2 ||
+      address.hash
+    )
+      throw new Error();
+  } catch {
+    throw new Error('A valid PostgreSQL connection URL file is required');
+  }
+}
+if (!databaseUrl) throw new Error('A database connection URL is required');
 const port = Number(process.env.STATION_TELEMETRY_BROKER_PORT ?? '43891');
 if (!Number.isInteger(port) || port < 1024 || port > 65535)
   throw new Error('Invalid telemetry receiver port');
@@ -54,37 +90,93 @@ pool.on('error', () =>
   process.stderr.write('Telemetry database connection failed\n'),
 );
 const store = new PgProductRepository(pool);
-await store.migrate();
-await store.retain();
-const app = createProductBroker(store, operatorKey);
-const server = createServer(getRequestListener(app.fetch));
-server.listen(port, process.env.STATION_TELEMETRY_BROKER_HOST ?? '127.0.0.1');
-server.maxConnections = 64;
-server.setTimeout(5000);
-server.requestTimeout = 5000;
-server.headersTimeout = 5000;
-const retention = setInterval(() => {
-  void store
-    .retain()
-    .catch(() =>
-      process.stderr.write('Telemetry retention did not complete\n'),
-    );
-}, 3600000);
-retention.unref();
-let stopping = false;
-const stop = () => {
-  if (stopping) return;
-  stopping = true;
-  clearInterval(retention);
-  const deadline = setTimeout(() => {
-    server.closeAllConnections();
-    process.exitCode = 1;
-  }, 6000);
-  deadline.unref();
-  server.close(() => {
-    void pool.end().finally(() => clearTimeout(deadline));
-  });
-};
-process.once('SIGTERM', stop);
-process.once('SIGINT', stop);
-process.stdout.write(`Telemetry product receiver listening on port ${port}\n`);
+if (commands.length === 1) {
+  let revokedSources: number;
+  try {
+    revokedSources =
+      commands[0] === '--fence-managed-restore'
+        ? await store.fenceManagedRestore()
+        : await store.fenceProductSourcesAfterRestore();
+  } finally {
+    await pool.end();
+  }
+  process.stdout.write(
+    `${JSON.stringify({
+      protocol:
+        commands[0] === '--fence-managed-restore'
+          ? 'station-managed-restore-fence/v1'
+          : 'station-product-restore-fence/v1',
+      scope:
+        commands[0] === '--fence-managed-restore'
+          ? 'product-diagnostic-only'
+          : 'product-sources-only',
+      revokedSources,
+      publisherState:
+        commands[0] === '--fence-managed-restore'
+          ? 'publication permanently suppressed; history unreconciled'
+          : 'unreconciled',
+    })}\n`,
+  );
+} else {
+  await store.migrate();
+  await store.privateUsage.prune();
+  const app = createProductBroker(store, operatorKey, addresses);
+  const server = createServer(getRequestListener(app.fetch));
+  server.listen(port, process.env.STATION_TELEMETRY_BROKER_HOST ?? '127.0.0.1');
+  server.maxConnections = 64;
+  server.setTimeout(5000);
+  server.requestTimeout = 5000;
+  server.headersTimeout = 5000;
+  let stopping = false;
+  const credentialRefresh = setInterval(() => {
+    void store
+      .refreshCredentials()
+      .then(() => (stopping ? undefined : store.privateUsage.prune()))
+      .catch(() =>
+        process.stderr.write(
+          'Telemetry receiver maintenance did not complete\n',
+        ),
+      );
+  }, 30_000);
+  credentialRefresh.unref();
+  const finalizeClosedDays = () => {
+    void store.lite
+      .finalize()
+      .catch(() =>
+        process.stderr.write('Telemetry finalization did not complete\n'),
+      );
+  };
+  const finalization = setInterval(finalizeClosedDays, 3600000);
+  finalization.unref();
+  finalizeClosedDays();
+  const retainExpiredRows = () => {
+    void store
+      .retain()
+      .catch(() =>
+        process.stderr.write('Telemetry retention did not complete\n'),
+      );
+  };
+  const retention = setInterval(retainExpiredRows, 3600000);
+  retention.unref();
+  retainExpiredRows();
+  const stop = () => {
+    if (stopping) return;
+    stopping = true;
+    clearInterval(retention);
+    clearInterval(finalization);
+    clearInterval(credentialRefresh);
+    const deadline = setTimeout(() => {
+      server.closeAllConnections();
+      process.exitCode = 1;
+    }, 6000);
+    deadline.unref();
+    server.close(() => {
+      void pool.end().finally(() => clearTimeout(deadline));
+    });
+  };
+  process.once('SIGTERM', stop);
+  process.once('SIGINT', stop);
+  process.stdout.write(
+    `Telemetry product receiver listening on port ${port}\n`,
+  );
+}

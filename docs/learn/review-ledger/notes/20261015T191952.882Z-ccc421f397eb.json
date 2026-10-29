@@ -1,0 +1,25 @@
+{
+  "revision": "b0bfa2a92800014fccdd483b97b44f563395424b",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Delta review: parent naming index remains a private EventStore read projection used by OrchestrationService usage-tree reads. SessionQueryModule, ConversationSessionLineage and SessionMessageDelivery/delegation-result sections retain their existing authorization and ownership contracts; no new caller interface, exact parent Session, cascade, detached lifetime or second result queue is introduced. Inspected actual changed query/migration and readThreadUsageTree composition; no prose change required.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Delta review of monitoring guide parent discovery wording and EventStore change: indexed parent mentions preserve the existing caller result and remain naming evidence. Existing authoritative-state-transition and evidence-scope guidance still applies; no new abstraction or runtime-performance claim is added. No prose change required.","inputs":["docs/architecture/abstraction-review.md","docs/guides/monitoring.md"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Delta review: EventStore adds naming-only event projection and query indexing. Receipt, evidence, attribution and authorization definitions and governance composition do not change. Matching-start provenance remains lineage evidence rather than cascade authority. No prose change required.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Delta review: indexed usage-tree parent discovery preserves read results and does not change telemetry, jobs, notifications, verification or physical delivery. Existing distinction between stored records and delivery evidence remains accurate. No prose change required.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Delta review: EventStore change is limited to indexed parent naming and startup backfill. Composer launch paths, host selection, result presentation and historical design status are unaffected. No prose change required.","inputs":["docs/design/chat-composer.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Delta review: additive parent-mention schema/query does not extract or replace any ledger owner. TurnDeduplicator, boundary authority, adoption/recovery and retained chat/command/delivery dispositions are unchanged; the sibling boundary-read implementation remains outside this slice. No prose change required.","inputs":["docs/design/event-store-ledger-migration.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"Delta review: naming projection uses the existing orchestration database, append transaction and delete path. Room-history worker composition, record schema, authority, retention and close settlement are unchanged. No prose change required; these room-history behaviors were not newly runtime-qualified.","inputs":["docs/design/project-task-room-history.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"Delta review: session parent mentions are separate from revision causal parents and immutable attribution. Receipt SQLite composition, scope/identity validation and close fencing are untouched. No prose change required; no new revision or provider qualification is claimed.","inputs":["docs/design/revision-bound-evidence.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/shared-working-state.md","note":"Delta review: session parent naming adds no operation to SharedWorkingState and does not alter its causal graph, convergence, persistence adapter or room protocol. Conversation naming is not document causal authority. No prose change required.","inputs":["docs/design/shared-working-state.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Delta review: EventStore schema/query addition is only parent naming; attachment blob bindings, authorized reads, deletion/retention, config, logging and model-selection paths remain unchanged. Source delete trigger removes naming rows with deleted events. No configuration setting or prose change required.","inputs":["docs/reference/config.md","src-server/services/orchestration/event-store.ts"]}
+  ]
+}

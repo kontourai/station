@@ -1,0 +1,21 @@
+{
+  "revision": "c42f5b97a05b73e062cd12d1d6e54fb4dbd8382d",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"device-settings-store changed only to build the held account appearance from the snapshot's four appearance fields instead of a double cast (type-laundering gate); behaviour is unchanged from the reviewed hold, and this doc's claims about the store still hold. No prose change.","inputs":["docs/architecture/module-map.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/design/placement.md","note":"device-settings-store changed only to build the held account appearance from the snapshot's four appearance fields instead of a double cast (type-laundering gate); behaviour is unchanged from the reviewed hold, and this doc's claims about the store still hold. No prose change.","inputs":["docs/design/placement.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"device-settings-store changed only to build the held account appearance from the snapshot's four appearance fields instead of a double cast (type-laundering gate); behaviour is unchanged from the reviewed hold, and this doc's claims about the store still hold. No prose change.","inputs":["docs/design/settings-architecture.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/guides/keyboard-shortcuts.md","note":"device-settings-store changed only to build the held account appearance from the snapshot's four appearance fields instead of a double cast (type-laundering gate); behaviour is unchanged from the reviewed hold, and this doc's claims about the store still hold. No prose change.","inputs":["docs/guides/keyboard-shortcuts.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"device-settings-store changed only to build the held account appearance from the snapshot's four appearance fields instead of a double cast (type-laundering gate); behaviour is unchanged from the reviewed hold, and this doc's claims about the store still hold. No prose change.","inputs":["docs/guides/responsive-ui.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"device-settings-store changed only to build the held account appearance from the snapshot's four appearance fields instead of a double cast (type-laundering gate); behaviour is unchanged from the reviewed hold, and this doc's claims about the store still hold. No prose change.","inputs":["docs/guides/theming.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"device-settings-store changed only to build the held account appearance from the snapshot's four appearance fields instead of a double cast (type-laundering gate); behaviour is unchanged from the reviewed hold, and this doc's claims about the store still hold. No prose change.","inputs":["docs/patterns/backend.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"device-settings-store changed only to build the held account appearance from the snapshot's four appearance fields instead of a double cast (type-laundering gate); behaviour is unchanged from the reviewed hold, and this doc's claims about the store still hold. No prose change.","inputs":["docs/patterns/frontend.md","src-ui/src/lib/device-settings-store.ts"]}
+  ]
+}

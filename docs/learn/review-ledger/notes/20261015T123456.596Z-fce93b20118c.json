@@ -1,0 +1,7 @@
+{
+  "revision": "9f5a729a86fb367ac53830204421943a18dee5ee",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the NewChatModalSelectDispatch.test.tsx change: only the vi.mock factory for ../hooks/useIsMobile changed, from a bare useIsMobile stub to an importActual spread with useIsMobile overridden to false, so the real useDockSlotDevice that StartComposer and ChatInputArea read (added by #3673) is present. No assertion, fixture, composer behavior, send/dispatch path, mobile policy, or product claim in chat-composer.md changed; the document remains accurate. This is a test harness repair that restores the dock-start-composer dispatch coverage, not a behavior change.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/NewChatModalSelectDispatch.test.tsx"]}
+  ]
+}

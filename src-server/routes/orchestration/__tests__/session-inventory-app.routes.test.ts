@@ -18,6 +18,62 @@ const appResult = {
 const body = (value: unknown) => JSON.stringify(value);
 
 describe('Session inventory App read routes', () => {
+  test.each([undefined, '1', '2', '3'])(
+    'HTTP protocol %s reaches the inventory owner on reads and pages',
+    async (protocol) => {
+      const inventory = {
+        read: vi.fn(async () => ({
+          status: 'found' as const,
+          projection: { marker: 'read' },
+        })),
+        page: vi.fn(async () => ({
+          status: 'found' as const,
+          page: { marker: 'page' },
+        })),
+      };
+      const app = createOrchestrationRoutes(
+        { canUserReadSession: () => true } as never,
+        {
+          eventBus: { subscribe: () => () => {} },
+          logger: { debug: vi.fn() },
+          getUserId: () => 'fixture-user',
+          isRequestPrincipalCurrent: () => true,
+          sessionInventory: inventory as never,
+        },
+      );
+      const options = {
+        headers: protocol ? { 'X-Station-Client-Protocol': protocol } : {},
+      };
+      expect(
+        (
+          await app.request(
+            '/sessions/station:1/inventory?scope=current-answer&turnId=turn-a',
+            options,
+          )
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await app.request(
+            '/sessions/station:1/inventory/groups/execution?scope=current-answer&turnId=turn-a',
+            options,
+          )
+        ).status,
+      ).toBe(200);
+      for (const read of [inventory.read, inventory.page])
+        expect(read).toHaveBeenCalledWith(
+          expect.objectContaining({
+            clientProtocol: Number(protocol ?? 1),
+            scope: {
+              kind: 'current-answer',
+              sessionId: 'station:1',
+              turnId: 'turn-a',
+            },
+          }),
+        );
+    },
+  );
+
   test('direct Session open/page/revoke are opaque no-store and preserve only capability metadata', async () => {
     let principalCurrent = true;
     let aclCurrent = true;
@@ -234,4 +290,88 @@ describe('Session inventory App read routes', () => {
       }),
     );
   });
+});
+
+describe('Exact inventory input inspection', () => {
+  test('reads only the selected Session/event/turn and publishes bounded no-store content', async () => {
+    const readUserInput = vi.fn(async () => ({
+      status: 'found',
+      sessionId: 'session-a',
+      eventId: 'input-a',
+      turnId: 'turn-a',
+      input: {
+        prompt: 'Compare the two invoices, including tax.',
+        attachments: [],
+      },
+    }));
+    const app = createOrchestrationRoutes(
+      {
+        canUserReadSession: () => true,
+        sessionQueries: { readUserInput },
+      } as never,
+      {
+        eventBus: { subscribe: () => () => {} },
+        logger: { debug: vi.fn() },
+        getUserId: () => 'owner',
+        isRequestPrincipalCurrent: () => true,
+      },
+    );
+    const response = await app.request(
+      '/sessions/session-a/inputs/input-a?turnId=turn-a',
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+    expect(await response.json()).toMatchObject({
+      data: { input: { prompt: 'Compare the two invoices, including tax.' } },
+    });
+    expect(readUserInput).toHaveBeenCalledWith(
+      { type: 'user-input', threadId: 'session-a', eventId: 'input-a' },
+      expect.anything(),
+    );
+    expect(
+      (
+        await app.request(
+          '/sessions/session-a/inputs/input-a?turnId=another-turn',
+        )
+      ).status,
+    ).toBe(404);
+  });
+
+  test.each(['principal', 'session', 'wrong-event', 'oversized'] as const)(
+    'withholds content after %s changes during the owner read',
+    async (failure) => {
+      let current = true;
+      const readUserInput = vi.fn(async () => {
+        current = false;
+        return {
+          status: 'found',
+          sessionId: 'session-a',
+          eventId: failure === 'wrong-event' ? 'other' : 'input-a',
+          turnId: 'turn-a',
+          input: {
+            prompt:
+              failure === 'oversized' ? 'x'.repeat(262145) : 'Protected input',
+            attachments: [],
+          },
+        };
+      });
+      const app = createOrchestrationRoutes(
+        {
+          canUserReadSession: () => failure !== 'session' || current,
+          sessionQueries: { readUserInput },
+        } as never,
+        {
+          eventBus: { subscribe: () => () => {} },
+          logger: { debug: vi.fn() },
+          getUserId: () => 'owner',
+          isRequestPrincipalCurrent: () => failure !== 'principal' || current,
+        },
+      );
+      const response = await app.request(
+        '/sessions/session-a/inputs/input-a?turnId=turn-a',
+      );
+      expect(response.status).toBe(failure === 'oversized' ? 503 : 404);
+      expect(await response.text()).not.toContain('Protected input');
+    },
+  );
 });

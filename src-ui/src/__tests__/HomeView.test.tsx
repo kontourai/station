@@ -25,12 +25,31 @@ import { openChatsStore } from '../contexts/open-chats-store';
 import { resetStartChoicesForTests } from '../hooks/useStartSelection';
 import { writeSnooze } from '../utils/activity-snooze-store';
 import { TERMINAL_LINGER_MS } from '../views/home/home-lane-model';
+import * as homeLanes from '../views/home/useHomeWorkLanes';
+import { subscribeRequiredSlotFailures } from '../workspace-panes/requiredSlotRecovery';
 import { peerRecordSummary } from './fixtures/peer-delegation-record';
 
 // #928: Activity has no route left, so every Home affordance that used to
 // navigate to `{ type: 'activity' }` now reveals the region surface instead.
 // `useShowSurface` reaches the region model through a provider this file does
 // not mount, so the double is both the stand-in and what the assertions read.
+const platformRef = vi.hoisted(() => ({ mobile: false }));
+beforeEach(() => {
+  platformRef.mobile = false;
+});
+vi.mock('../platform/PlatformProfileContext', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../platform/PlatformProfileContext')>();
+  return {
+    ...actual,
+    usePlatformProfile: () => ({
+      ...actual.usePlatformProfile(),
+      ...(platformRef.mobile
+        ? { isTauri: true, isMobile: true, target: 'android' as const }
+        : {}),
+    }),
+  };
+});
 const showSurface = vi.hoisted(() => vi.fn());
 const showSurfacePage = vi.hoisted(() => vi.fn());
 // Mutable so the authority-switching test can move the mounted Home between
@@ -192,6 +211,8 @@ vi.mock('../contexts/open-chats-store', async () => {
 });
 
 vi.mock('@kontourai/station-sdk', () => ({
+  // Home's start composer reads Feature Previews (the visual-skills ⋯).
+  useFeaturePreviewsQuery: () => ({ data: [] }),
   // The start composer's Enable (a server create); no test here enables.
   useMaterializeEngineAgentMutation: () => ({ mutateAsync: vi.fn() }),
   // archive#3122: Home resolves its Workspace Pane renderer through
@@ -452,6 +473,63 @@ function continueRow(): HTMLElement {
 }
 
 describe('HomeView', () => {
+  test('real Home render errors keep Retry and Close without an initial recovery signal', async () => {
+    const signal = vi.fn();
+    const unsubscribe = subscribeRequiredSlotFailures(signal);
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+    const lanes = vi
+      .spyOn(homeLanes, 'useHomeWorkLanes')
+      .mockImplementation(() => {
+        throw new Error('injected real Home render failure');
+      });
+    const onNavigate = vi.fn();
+    try {
+      renderHomeView({
+        continuation: { type: 'project', slug: 'station' },
+        onNavigate,
+      });
+      const failure = screen.getByRole('region', { name: 'Home unavailable' });
+      expect(
+        within(failure).getByText(/injected real Home render failure/),
+      ).toBeTruthy();
+      expect(
+        within(failure).getByRole('button', { name: 'Close Home' }),
+      ).toBeTruthy();
+      expect(signal).not.toHaveBeenCalled();
+      fireEvent.click(
+        within(failure).getByRole('button', { name: 'Try again' }),
+      );
+      await waitFor(() => expect(lanes.mock.calls.length).toBeGreaterThan(2));
+      expect(signal).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      await waitFor(() =>
+        expect(signal).toHaveBeenCalledExactlyOnceWith({
+          slot: 'home',
+          defaultFiller: 'builtin:workspace-home',
+          reason: 'repeated-render-failure',
+        }),
+      );
+      lanes.mockRestore();
+      fireEvent.click(screen.getByRole('button', { name: 'Close Home' }));
+      expect(onNavigate).toHaveBeenCalledWith({
+        type: 'project',
+        slug: 'station',
+      });
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('region', { name: 'Home unavailable' }),
+        ).toBeNull(),
+      );
+      expect(screen.getByRole('region', { name: 'Home' })).toBeTruthy();
+    } finally {
+      unsubscribe();
+      lanes.mockRestore();
+      consoleError.mockRestore();
+    }
+  });
+
   afterEach(() => {
     vi.useRealTimers();
   });
@@ -558,21 +636,30 @@ describe('HomeView', () => {
       initialPrompt: 'Help me plan my day',
       selection: { context: '__global__', agentSlug: 'codex-agent' },
     });
-    fireEvent.click(
-      screen.getByRole('button', { name: /Open local project/i }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: /New Project/i }));
     expect(onNavigate).toHaveBeenCalledWith({ type: 'project-new' });
   });
 
-  test('the project-folder card names this Station, not this computer', () => {
-    renderHomeView({ continuation: null, onNavigate: vi.fn() });
+  test('Project creation advertises more than a folder and opens the shared flow', () => {
+    const onNavigate = vi.fn();
+    renderHomeView({ continuation: null, onNavigate });
+    const entry = screen.getByRole('button', {
+      name: /New Project.*Repository, folder, documents or tools/i,
+    });
+    fireEvent.click(entry);
+    expect(onNavigate).toHaveBeenCalledWith({ type: 'project-new' });
+  });
 
-    // The folder lives on the Station host, which is a different machine
-    // when this UI runs as a remote client (e.g. the paired phone app).
-    expect(
-      screen.getByRole('button', { name: /Add a folder on this Station/i }),
-    ).toBeTruthy();
-    expect(screen.queryByText(/from this computer/i)).toBeNull();
+  test('a phone can open Project creation without advertising its unavailable folder picker', () => {
+    platformRef.mobile = true;
+    const onNavigate = vi.fn();
+    renderHomeView({ continuation: null, onNavigate });
+    const entry = screen.getByRole('button', {
+      name: /New Project.*Repository, documents, tools or blank/i,
+    });
+    expect(entry.textContent).not.toContain('folder');
+    fireEvent.click(entry);
+    expect(onNavigate).toHaveBeenCalledWith({ type: 'project-new' });
   });
 
   test('renders shimmer cards while Home actions are unresolved instead of claiming an agent is absent', () => {
@@ -1303,6 +1390,50 @@ describe('HomeView', () => {
     ).toBeNull();
   });
 
+  test.each([false, true])(
+    'guides a confirmed empty Station to its first chat and keeps all Project starts available (mobile: %s)',
+    (mobile) => {
+      platformRef.mobile = mobile;
+      fixtures.projects = [];
+      const onNavigate = vi.fn();
+      renderHomeView({ continuation: null, onNavigate });
+      expect(
+        screen.getByRole('heading', { name: 'Start your first conversation' }),
+      ).toBeTruthy();
+      expect(screen.queryByText('Nothing here yet')).toBeNull();
+      expect(
+        screen.getAllByRole('textbox', { name: 'What would you like done?' }),
+      ).toHaveLength(1);
+      fireEvent.click(
+        screen.getByRole('button', { name: /View available agents/ }),
+      );
+      expect(onNavigate).toHaveBeenLastCalledWith({ type: 'agents' });
+      const project = screen.getByRole('button', { name: /New Project/ });
+      expect(project.textContent).toContain(
+        mobile
+          ? 'Repository, documents, tools or blank'
+          : 'Repository, folder, documents or tools',
+      );
+      if (mobile) expect(project.textContent).not.toContain('folder');
+      fireEvent.click(project);
+      expect(onNavigate).toHaveBeenLastCalledWith({ type: 'project-new' });
+      expect(
+        screen.getByText(/ordinary chats can start without a Project/),
+      ).toBeTruthy();
+    },
+  );
+
+  test('routes a confirmed empty Station without agents to engine setup', () => {
+    fixtures.projects = [];
+    fixtures.agents = [];
+    const onNavigate = vi.fn();
+    renderHomeView({ continuation: null, onNavigate });
+    fireEvent.click(
+      screen.getByRole('button', { name: /Set up an agent engine/ }),
+    );
+    expect(onNavigate).toHaveBeenCalledWith({ type: 'connections-engines' });
+  });
+
   test('uses the canonical actionable empty state for first work', () => {
     const { container } = renderHomeView({
       continuation: null,
@@ -1422,10 +1553,11 @@ describe('HomeView', () => {
 
     // Shown once: in the Continue card, not again in the list below it.
     expect(screen.getAllByText('Durable local work')).toHaveLength(1);
-    // The Continue row reads like every work row: the honest agent fallback
-    // and the project, never an invented Agent.
+    // The Continue row reads like every work row: no invented Agent, the
+    // project, and the Task's own status rather than a session lifecycle.
     expect(continueRow().textContent).toContain('Durable local work');
-    expect(continueRow().textContent).toContain('Agent unavailable · station');
+    expect(continueRow().textContent).toContain('No agent assigned · station');
+    expect(continueRow().textContent).toContain('Task · To do');
     fireEvent.click(screen.getByRole('button', { name: 'View Activity' }));
     expect(showSurfacePage).toHaveBeenCalledWith('activity');
     expect(onNavigate).not.toHaveBeenCalled();

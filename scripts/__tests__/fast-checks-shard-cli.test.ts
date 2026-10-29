@@ -126,9 +126,16 @@ function aggregateFixture({
   receipt = (_index: number, value: Record<string, unknown>) => value,
   omit = [] as number[],
   shardCount = 4,
+  deferredLanes = undefined as
+    | Array<{ id: string; reasons: string[] }>
+    | undefined,
 } = {}) {
   const { directory, head } = repository();
-  const plan = { ...planFor(head, files), shardCount };
+  const plan = {
+    ...planFor(head, files, files.length === 0),
+    shardCount,
+    ...(deferredLanes ? { deferredLanes } : {}),
+  };
   const planText = `${JSON.stringify(plan, null, 2)}\n`;
   mkdirSync(join(directory, 'plan'));
   writeFileSync(join(directory, 'plan/fast-checks-plan.json'), planText);
@@ -186,6 +193,123 @@ describe('fast-checks aggregator exit status (child process)', () => {
       expect(result.stdout).toContain('[fast-checks] PASS');
     },
   );
+
+  test.each([0, 1])(
+    'omitted runners require a truly empty plan (%i files)',
+    (count) => {
+      const directory = aggregateFixture({
+        files: count ? ['a/a.test.ts'] : [],
+        omit: [1, 2, 3, 4],
+      });
+      const needs = {
+        ...successNeeds,
+        'fast-checks-plan': { result: 'success', outputs: { empty: 'true' } },
+        'fast-checks-shard': { result: 'skipped' },
+      };
+      const result = aggregate(directory, needs);
+      expect(result.status, result.stderr).toBe(count ? 1 : 0);
+      if (count)
+        expect(result.stderr).toContain(
+          'empty-shard admission requires an empty plan',
+        );
+      else
+        expect(result.stdout).toContain(
+          'no tests selected; no runner allocated',
+        );
+    },
+  );
+
+  // #1706: an escalated diff deferred ci-fast, ran a narrower set (or
+  // nothing), and the required check read exactly like a full run.
+  test.each([
+    { files: [] as string[], label: 'ran nothing' },
+    { files: ['a/a.test.ts', 'a/b.test.ts'], label: 'ran a narrower set' },
+  ])(
+    'a plan deferred to ci-fast that $label passes only as provisional, naming its owner',
+    ({ files }) => {
+      const directory = aggregateFixture({
+        files,
+        deferredLanes: [
+          { id: 'ci-fast', reasons: ['escalation: package.json'] },
+        ],
+        receipt: (_index, value) =>
+          value.status === 'completed'
+            ? { ...value, status: 'provisional' }
+            : value,
+      });
+      writeFileSync(join(directory, 'github-output'), '');
+      const result = cli(
+        ['aggregate', '--plan-dir=plan', '--receipts-dir=receipts'],
+        {
+          cwd: directory,
+          env: {
+            GITHUB_RUN_ID: '4242',
+            GITHUB_ACTIONS: 'true',
+            GITHUB_OUTPUT: join(directory, 'github-output'),
+            NEEDS: JSON.stringify(successNeeds),
+          },
+        },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toContain(
+        '::warning title=fast-checks is provisional::fast-checks deferred ci-fast: the affected suite did not run in this check; full qualification runs on main and before release',
+      );
+      expect(result.stdout).toContain('[fast-checks] PASS (provisional):');
+      expect(result.stdout).not.toContain('[fast-checks] PASS: ');
+      // The marker step the source policy reads keys on this output.
+      expect(readFileSync(join(directory, 'github-output'), 'utf8')).toBe(
+        'provisional=true\n',
+      );
+    },
+  );
+
+  test('a deferral owned outside fast-checks keeps the plain pass', () => {
+    const directory = aggregateFixture({
+      files: ['a/a.test.ts'],
+      deferredLanes: [
+        {
+          id: 'verify-e2e-full',
+          reasons: ['E2E manifest/spec boundary: tests/e2e/x.spec.ts'],
+        },
+      ],
+      receipt: (_index, value) =>
+        value.status === 'completed'
+          ? { ...value, status: 'provisional' }
+          : value,
+    });
+    writeFileSync(join(directory, 'github-output'), '');
+    const result = cli(
+      ['aggregate', '--plan-dir=plan', '--receipts-dir=receipts'],
+      {
+        cwd: directory,
+        env: {
+          GITHUB_RUN_ID: '4242',
+          GITHUB_ACTIONS: 'true',
+          GITHUB_OUTPUT: join(directory, 'github-output'),
+          NEEDS: JSON.stringify(successNeeds),
+        },
+      },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain('[fast-checks] PASS: ');
+    expect(result.stdout).not.toContain('::warning');
+    expect(readFileSync(join(directory, 'github-output'), 'utf8')).toBe('');
+  });
+
+  test('refuses a shard that reports completed for a deferred plan', () => {
+    const result = aggregate(
+      aggregateFixture({
+        files: ['a/a.test.ts'],
+        deferredLanes: [
+          { id: 'ci-fast', reasons: ['escalation: package.json'] },
+        ],
+      }),
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "[fast-checks] FAIL: shard 1/4 reported 'completed' for a plan deferred to ci-fast",
+    );
+  });
 
   test('rejects a plan exceeding the four-runner cap', () => {
     const result = aggregate(aggregateFixture({ shardCount: 5 }));
@@ -489,6 +613,78 @@ describe('fast-checks shard runner (in process)', () => {
     expect(runShard).not.toHaveBeenCalled();
   });
 
+  test('a serial shard can finish after fifteen minutes but still aborts at twenty', async () => {
+    const cwd = inProcessFixture();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      let entered!: () => void;
+      const started = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const runShard = vi.fn(
+        (_plan, _slice, { signal }) =>
+          new Promise((resolvePromise) => {
+            entered();
+            const completed = () =>
+              resolvePromise({
+                status: 'completed',
+                counts: {
+                  executed: 1,
+                  passed: 1,
+                  failed: 0,
+                  infrastructureErrors: 0,
+                },
+              });
+            signal.addEventListener('abort', completed);
+            setTimeout(completed, 16 * 60_000);
+          }),
+      );
+      const result = runFastChecksShardCli(
+        ['run', '--plan=plan.json', '--shard=1/4', '--receipt=receipt.json'],
+        { cwd, env, runShard, ...quiet },
+      );
+      await started;
+      await vi.advanceTimersByTimeAsync(16 * 60_000);
+      expect(await result).toBe(0);
+
+      let enteredStall!: () => void;
+      const stallStarted = new Promise<void>((resolve) => {
+        enteredStall = resolve;
+      });
+      const stalled = vi.fn(
+        (_plan, _slice, { signal }) =>
+          new Promise((resolvePromise) => {
+            enteredStall();
+            signal.addEventListener('abort', () =>
+              resolvePromise({
+                status: 'completed',
+                counts: {
+                  executed: 1,
+                  passed: 1,
+                  failed: 0,
+                  infrastructureErrors: 0,
+                },
+              }),
+            );
+          }),
+      );
+      const expired = runFastChecksShardCli(
+        ['run', '--plan=plan.json', '--shard=1/4', '--receipt=receipt.json'],
+        { cwd, env, runShard: stalled, ...quiet },
+      );
+      await stallStarted;
+      await vi.advanceTimersByTimeAsync(20 * 60_000 - 1);
+      expect(stalled.mock.calls[0][2].signal.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await expired).toBe(1);
+      expect(
+        JSON.parse(readFileSync(join(cwd, 'receipt.json'), 'utf8')).status,
+      ).toBe('infrastructure_error');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test('a shard that outlives its budget is aborted and fails', async () => {
     const cwd = inProcessFixture();
     const status = await runFastChecksShardCli(
@@ -619,14 +815,24 @@ describe('fast-checks shard execution verdicts', () => {
         },
       ],
     });
-    await runChangedVerificationShard({ deferredLanes: [] }, slice, {
-      root,
-      run: fakeRun(1, contents),
-      vitestPath: 'vitest.mjs',
-      prepareExecution: boundExecution,
-      failedReportDir: failing,
-    });
-    const kept = readFileSync(join(failing, 'ordinary-0.json'), 'utf8');
+    const failed = await runChangedVerificationShard(
+      { deferredLanes: [] },
+      slice,
+      {
+        root,
+        run: fakeRun(1, contents),
+        vitestPath: 'vitest.mjs',
+        prepareExecution: boundExecution,
+        failedReportDir: failing,
+      },
+    );
+    const retained = failed.executions[0].retainedReports.find(
+      (artifact: { path: string; sha256: string }) =>
+        !artifact.path.endsWith('.errors.json'),
+    );
+    expect(retained).toBeDefined();
+    const kept = readFileSync(resolve(root, retained!.path), 'utf8');
+    expect(digestText(kept)).toBe(retained!.sha256);
     expect(kept).toContain('numFailedTests');
     expect(kept).toContain('[REDACTED]');
     expect(kept).not.toContain('ghp_');
@@ -914,7 +1120,8 @@ describe('plan-level empty-discovery escalation (#2709 review F2)', () => {
           join(root, 'node_modules', entry),
           join(worktree, 'node_modules', entry),
         );
-      const orphan = 'scripts/lib/fast-checks-orphan-fixture.mjs';
+      // Tooling changes intentionally select supplemental documentation suites.
+      const orphan = 'src-server/fast-checks-orphan-fixture.mjs';
       writeFileSync(join(worktree, orphan), 'export const orphan = 1;\n');
       git(worktree, 'add', orphan);
       git(
@@ -1278,4 +1485,162 @@ describe('the plan records its related-discovery cost (#2803)', () => {
       '[fast-checks] related discovery: 34.2s of its 265.0s timeout\n',
     );
   });
+});
+
+describe('hosted mapped tests beside broad deferred obligations', () => {
+  test.each([false, true])(
+    'keeps mapped caller feedback and defers resolved global triggers, custom=%s',
+    async (custom) => {
+      const directory = makeTempDir('station-hosted-mixed-deferral-');
+      mkdirSync(join(directory, 'src-ui/src/__tests__'), { recursive: true });
+      mkdirSync(join(directory, 'src-ui/src/components'), { recursive: true });
+      mkdirSync(join(directory, 'packages/shared/src'), { recursive: true });
+      mkdirSync(join(directory, 'config'));
+      writeFileSync(
+        join(directory, 'config/product-laws.json'),
+        JSON.stringify({ schemaVersion: 1, laws: [] }),
+      );
+      symlinkSync(join(root, 'node_modules'), join(directory, 'node_modules'));
+      writeFileSync(
+        join(directory, 'vitest.config.mjs'),
+        'export default { test: { environment: "node", include: ["src-ui/src/__tests__/*.test.ts"] } };\n',
+      );
+      const uiPath = 'src-ui/src/components/mixedCaller.ts';
+      const deferredPath = 'packages/shared/src/mixed-global.ts';
+      const globalPath = custom
+        ? 'src-ui/src/components/global-trigger.ts'
+        : 'packages/fixture/package.json';
+      mkdirSync(join(directory, 'packages/fixture'), { recursive: true });
+      writeFileSync(
+        join(directory, globalPath),
+        custom ? 'export const global = true;\n' : '{}\n',
+      );
+      writeFileSync(
+        join(directory, 'vitest.config.mjs'),
+        `export default { test: { environment: "node", include: ["src-ui/src/__tests__/*.test.ts"]${custom ? ', forceRerunTriggers: ["**/global-trigger.ts"]' : ''} } };\n`,
+      );
+      writeFileSync(
+        join(directory, 'src-ui/src/__tests__/unrelated.test.ts'),
+        'import { test, expect } from "vitest"; test("unrelated", () => expect(true).toBe(true));\n',
+      );
+
+      writeFileSync(
+        join(directory, deferredPath),
+        'export const shared = true;\n',
+      );
+      writeFileSync(
+        join(directory, uiPath),
+        'export const label = "broken";\n',
+      );
+      const files = Array.from(
+        { length: 33 },
+        (_, index) => `src-ui/src/__tests__/mixed-${index}.test.ts`,
+      );
+      for (const [index, file] of files.entries())
+        writeFileSync(
+          join(directory, file),
+          index === 0
+            ? 'import { test, expect } from "vitest"; import { label } from "../components/mixedCaller"; test("mapped UI caller", () => expect(label).toBe("expected"));\n'
+            : 'import { test, expect } from "vitest"; test("mapped explicit target", () => expect(true).toBe(true));\n',
+        );
+      const git = (...args: string[]) =>
+        execFileSync('git', args, {
+          cwd: directory,
+          encoding: 'utf8',
+          windowsHide: true,
+        }).trim();
+      git('init', '-q');
+      git(
+        '-c',
+        'user.name=Fixture',
+        '-c',
+        'user.email=fixture@example.invalid',
+        'commit',
+        '--allow-empty',
+        '-qm',
+        'fixture base',
+      );
+      const fixtureBase = git('rev-parse', 'HEAD');
+      const discoveredPaths: string[][] = [];
+      const plan = await planChangedVerificationShards(fixtureBase, {
+        root: directory,
+        headSha: 'a'.repeat(40),
+        shardCount: 1,
+        assertDependencyProvenance: () => {},
+        changedPathsFn: () => ({
+          mergeBase: fixtureBase,
+          paths: [deferredPath, globalPath, uiPath, ...files],
+        }),
+        discoverRelatedFiles: async (cwd, paths, options) => {
+          discoveredPaths.push(paths);
+          return discoverRelatedTestFiles(cwd, paths, {
+            ...options,
+            deadlineAt: Date.now() + FAST_CHECKS_PLAN_BUDGET_MS,
+          });
+        },
+      });
+      const local = prepareChangedSelection(fixtureBase, {
+        root: directory,
+        changedPathsFn: () => ({
+          mergeBase: fixtureBase,
+          paths: [deferredPath, globalPath, uiPath, ...files],
+        }),
+      });
+      expect(local.executionSelection.tests).toEqual([]);
+      expect(local.executionSelection.relatedPaths).toEqual([]);
+      expect(plan.fileCount).toBe(33);
+      expect(
+        plan.deferredLanes.find(
+          (lane: { id: string }) => lane.id === 'test-full',
+        )?.reasons,
+      ).toContain(`configured Vitest global rerun deferred: ${globalPath}`);
+      expect(plan.groups.flatMap((group) => group.files).sort()).toEqual(
+        [...files].sort(),
+      );
+      expect(discoveredPaths).toEqual([[globalPath, uiPath].sort()]);
+      const onlyGlobal = await planChangedVerificationShards(fixtureBase, {
+        root: directory,
+        headSha: 'a'.repeat(40),
+        assertDependencyProvenance: () => {},
+        changedPathsFn: () => ({ mergeBase: fixtureBase, paths: [globalPath] }),
+      });
+      expect(onlyGlobal.fileCount).toBe(0);
+      expect(
+        onlyGlobal.deferredLanes.find(
+          (lane: { id: string }) => lane.id === 'test-full',
+        )?.reasons,
+      ).toContain(`configured Vitest global rerun deferred: ${globalPath}`);
+      const defaultDiscovery = await discoverRelatedTestFiles(directory, [
+        globalPath,
+      ]);
+      expect(defaultDiscovery).toHaveLength(34);
+
+      expect(
+        plan.deferredLanes.some(
+          (lane: { id: string }) => lane.id === 'ci-fast',
+        ),
+      ).toBe(true);
+      const slice = {
+        groups: plan.groups,
+        files: plan.groups.flatMap((group) => group.files),
+      };
+      const options = {
+        root: directory,
+        assertDependencyProvenance: () => {},
+        vitestPath: join(root, 'node_modules/vitest/vitest.mjs'),
+        prepareExecution: () => ({ env: { ...process.env } }),
+      };
+      const failed = await runChangedVerificationShard(plan, slice, options);
+      expect(failed.status).toBe('failed');
+      expect(failed.counts.failed).toBe(1);
+      writeFileSync(
+        join(directory, uiPath),
+        'export const label = "expected";\n',
+      );
+      const repaired = await runChangedVerificationShard(plan, slice, options);
+      expect(repaired.status).toBe('provisional');
+      expect(repaired.counts.executed).toBe(33);
+    },
+    90_000,
+  );
 });

@@ -1233,6 +1233,54 @@ describe('ClaudeTranscriptSessionSource', () => {
     ).toBe(4);
   });
 
+  test('preserves the initial anchor when a discovered file is replaced by a symlink', async () => {
+    const root = fixtureDir();
+    const directory = join(root, 'projects', 'encoded-project');
+    mkdirSync(directory, { recursive: true });
+    const transcript = join(directory, 'session-a.jsonl');
+    const original = record({
+      type: 'user',
+      uuid: 'first',
+      sessionId: 'session-a',
+      cwd: '/workspace/project',
+      timestamp: '2026-10-15T00:00:00.000Z',
+      message: { role: 'user', content: 'retained first prompt' },
+    });
+    writeFileSync(transcript, original);
+    const source = new ClaudeTranscriptSessionSource({
+      configDir: root,
+      maxBytes: 512,
+    });
+    const [session] = (await source.discover()).sessions;
+    const anchor = await source.initialCursor(session);
+    expect(anchor).toMatchObject({ offset: 0 });
+    const moved = join(directory, 'original.jsonl');
+    renameSync(transcript, moved);
+    symlinkSync(moved, transcript);
+    const rejected = await source.read(session, anchor);
+    expect(rejected).toEqual({
+      outcome: 'rejected_candidate',
+      events: [],
+      cursor: anchor,
+    });
+    rmSync(transcript);
+    renameSync(moved, transcript);
+    writeFileSync(
+      transcript,
+      record({ type: 'unknown', padding: 'x'.repeat(1024) }),
+      { flag: 'a' },
+    );
+    const resumed = await source.read(session, rejected.cursor);
+    expect(resumed.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          method: 'turn.started',
+          prompt: 'retained first prompt',
+        }),
+      ]),
+    );
+  });
+
   test('uses a bounded recent window for a large transcript instead of rejecting it', async () => {
     const root = fixtureDir();
     const directory = join(root, 'projects', 'encoded-project');

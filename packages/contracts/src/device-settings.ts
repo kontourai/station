@@ -5,8 +5,8 @@
  *
  * One definition per setting persisted to the single versioned browser
  * store (`station-device-settings-v1`, `src-ui/src/lib/device-settings-store.ts`).
- * Unlike `APP_SETTINGS_REGISTRY`, these settings never round-trip to the
- * server — they are this browser/client's own preferences. Each entry also
+ * Account-portable keys are declared in `account-preferences.ts`; the active
+ * account overlays their legacy device values. Other keys remain client-only. Each entry also
  * names the prior, pre-unification localStorage key it replaces so the
  * store can run a one-time migration and Export/Import can still read old
  * files.
@@ -250,9 +250,54 @@ export const DEFAULT_REGION_ARRANGEMENT_RECORD: RegionArrangementRecord = {
   },
 };
 
+/**
+ * Named color-theme families (docs/decisions/user-color-themes.md). `station`
+ * is today's look and sets nothing; every other id is a family in the UI's
+ * catalog (`src-ui/src/lib/color-theme-catalog.ts`), which owns flavors,
+ * accents and every color value.
+ */
+export const COLOR_THEME_IDS = [
+  'station',
+  'catppuccin',
+  'rose-pine',
+  'gruvbox',
+  'nord',
+  'tokyo-night',
+] as const;
+
+export type ColorThemeId = (typeof COLOR_THEME_IDS)[number];
+
+/**
+ * The shape every stored color-theme family, flavor and accent id must have.
+ * The account server stores ids in this shape rather than today's list (a
+ * newer client may name a family this server has not heard of), and the
+ * device registry imports flavor and accent ids under the same pattern, so an
+ * imported value can never be one the server refuses: a refused field fails
+ * the whole account patch.
+ */
+export const COLOR_THEME_ID_PATTERN = '^[a-z][a-z0-9-]{0,47}$';
+
 export interface DeviceSettings {
   theme: 'light' | 'dark';
   accentColor: string | null;
+  /**
+   * The color-theme family. Values arrive from storage, imports and the
+   * account server, which may be newer or older than this client, so readers
+   * resolve them through the UI's `resolveColorThemeSelection` rather than
+   * trusting this type: an unknown family resolves to `station`.
+   */
+  colorTheme: ColorThemeId;
+  /**
+   * The family's DARK flavor (light mode always uses the family's single
+   * light flavor). `null` is the family default; an id the family does not
+   * have resolves to that default too.
+   */
+  colorThemeFlavor: string | null;
+  /**
+   * A named accent from the family's list. `null` is the family default.
+   * A custom `accentColor` still wins over it on Station's accent.
+   */
+  colorThemeAccent: string | null;
   featureSettings: FeatureSettings;
   sttProvider: string;
   ttsProvider: string;
@@ -261,6 +306,7 @@ export interface DeviceSettings {
   chatDockWidth: number;
   diffStyle: 'unified' | 'split';
   diffWrap: boolean;
+  inboxScope: string;
   inboxOpen: boolean;
   inboxSections: InboxSectionsState;
   /** archive#3314: sidebar "Open chats"/"Drafts" collapse + removal state. */
@@ -319,10 +365,17 @@ export interface DeviceSettings {
   /**
    * archive#3313: show the Developer surface (logs, system, telemetry,
    * memory, archive) in this device's sidebar and command palette. Gates
-   * navigation advertisement only — /developer deep links keep working when
-   * off. Never had a prior key: Developer was previously always visible.
+   * navigation advertisement and access to independently opted-in UI previews;
+   * /developer deep links keep working when off. Never had a prior key: Developer was previously always visible.
    */
   developerToolsEnabled: boolean;
+  /** Developer-only UI previews, independently opted in on this device. */
+  experimentalFlowEnabled?: boolean;
+  experimentalReadinessEnabled?: boolean;
+  experimentalTrustEnabled?: boolean;
+  /** Station routes (docs/design/station-routes.md): learn and show every route to a saved Station. */
+  experimentalStationRoutesEnabled?: boolean;
+  experimentalSheetGesturesEnabled?: boolean;
   /**
    * archive#4525: the chat dock's own remembered project binding. Owned by
    * the persistent `DockShell`/`useDockShellChrome` (archive#4484), not by
@@ -352,65 +405,41 @@ export interface DeviceSettings {
    */
   regionArrangement: RegionArrangementRecord;
   /**
-   * #3051: the Coding layout's panels, per session. Which tool is open
-   * beside Chat and how wide, whether the Terminal's lower panel is open and
-   * how tall — remembered for each conversation and restored on return, so
-   * a review in one session does not reshape another. Bounded to
-   * `CODING_PANELS_SESSION_BOUND` sessions, the entry touched longest ago
-   * evicted. A session with no entry starts closed. Read through the UI's
-   * `coding-panels-record.ts`, whose parser is also the import validation;
-   * a malformed value is dropped, never a crash.
-   * Never had a prior key: the stack had no side panel before it.
+   * Side/lower-panel choices per layout and conversation on this device.
+   * Both layout and session retention are bounded; an unseen pair starts closed.
+   * The UI record parser also validates imported settings.
    */
-  codingPanels: CodingSessionPanelsRecord;
+  layoutPanels: LayoutPanelsRecord;
 }
 
-/**
- * One session's Coding panels. `sideWidth`/`terminalHeight` are `null` until
- * the reader resized them (the layout's default applies); `at` is when the
- * entry was last touched, which decides eviction.
- */
-export interface CodingSessionPanels {
-  /** The pane instance open beside Chat, or null for Chat alone. */
+/** One layout's side/lower-panel state for a conversation on this device. */
+export interface LayoutSessionPanels {
   side: string | null;
   sideWidth: number | null;
-  terminalOpen: boolean;
-  terminalHeight: number | null;
-  /**
-   * The inbox as the reader left it BY HAND while a tool was beside Chat
-   * (#3046 round): `null` means no such choice, and the layout may collapse
-   * the inbox itself to keep the transcript its floor and reopen it when the
-   * tool closes; `true`/`false` is the reader's own choice for this session,
-   * which the layout never overrides; `'layout'` records that the layout
-   * folded it, so a reload or a return restores it when the tool closes.
-   */
+  lowerOpen: boolean;
+  lowerHeight: number | null;
   inbox: boolean | 'layout' | null;
+  /** Last interaction time, used for bounded retention. */
   at: number;
 }
 
-export interface CodingSessionPanelsRecord {
+export interface LayoutPanelsRecord {
   version: 1;
-  sessions: Record<string, CodingSessionPanels>;
+  layouts: Record<string, { sessions: Record<string, LayoutSessionPanels> }>;
 }
 
-/**
- * How many sessions' panels a device remembers. Beyond it the entry touched
- * longest ago is evicted. Thirty-two covers a working week of conversations
- * at well under a kilobyte, inside the one envelope every device setting
- * shares.
- */
-export const CODING_PANELS_SESSION_BOUND = 32;
-
-export const DEFAULT_CODING_PANELS_RECORD: CodingSessionPanelsRecord = {
+export const LAYOUT_PANELS_SESSION_BOUND = 32;
+export const LAYOUT_PANELS_LAYOUT_BOUND = 32;
+export const DEFAULT_LAYOUT_PANELS_RECORD: LayoutPanelsRecord = {
   version: 1,
-  sessions: {},
+  layouts: {},
 };
 
 export interface DeviceSettingDefinition<
   K extends keyof DeviceSettings = keyof DeviceSettings,
 > {
   key: K;
-  scope: 'device';
+  scope: 'device' | 'account';
   descriptor: SettingValueDescriptor;
   label: string;
   /**
@@ -646,10 +675,10 @@ function priorReadModelPickerPreferences(
 export const DEVICE_SETTINGS_REGISTRY = [
   defineDeviceSetting({
     key: 'theme',
-    scope: 'device',
+    scope: 'account',
     descriptor: { kind: 'enum', values: ['light', 'dark'] },
     label: 'Theme',
-    help: 'The interface renders in this color scheme on this device.',
+    help: 'The interface renders in this color scheme in your interface.',
     description: 'Light or dark interface theme.',
     priorStorageKey: 'theme',
     // Confirmed against index.css: no `data-theme` attribute resolves the
@@ -658,12 +687,44 @@ export const DEVICE_SETTINGS_REGISTRY = [
   }),
   defineDeviceSetting({
     key: 'accentColor',
-    scope: 'device',
+    scope: 'account',
     descriptor: { kind: 'string' },
     label: 'Accent color',
-    help: 'Accent-colored interface elements use this color on this device instead of the theme’s own.',
+    help: 'Accent-colored interface elements use this color in your interface instead of the theme’s own.',
     description: 'Custom UI accent color (hex). Unset uses the theme default.',
     priorStorageKey: 'station-accent-color',
+    defaultValue: null,
+  }),
+  // No prior storage keys: color themes are new. `station` renders exactly
+  // what Station rendered before they existed.
+  defineDeviceSetting({
+    key: 'colorTheme',
+    scope: 'account',
+    descriptor: { kind: 'enum', values: COLOR_THEME_IDS },
+    label: 'Color theme',
+    help: 'The interface uses this named palette in light and dark mode instead of Station’s own colors.',
+    description:
+      'Named color theme family. Station keeps the default look; the others apply their own palette.',
+    defaultValue: 'station',
+  }),
+  defineDeviceSetting({
+    key: 'colorThemeFlavor',
+    scope: 'account',
+    descriptor: { kind: 'string', pattern: COLOR_THEME_ID_PATTERN },
+    label: 'Color theme dark flavor',
+    help: 'Dark mode uses this variant of the color theme; light mode always uses the theme’s light variant.',
+    description:
+      'Dark-mode variant of the color theme. Unset uses the theme’s default variant.',
+    defaultValue: null,
+  }),
+  defineDeviceSetting({
+    key: 'colorThemeAccent',
+    scope: 'account',
+    descriptor: { kind: 'string', pattern: COLOR_THEME_ID_PATTERN },
+    label: 'Color theme accent',
+    help: 'Buttons, links and focus rings use this color from the color theme’s palette, unless a custom accent color is set.',
+    description:
+      'Named accent from the color theme’s palette. Unset uses the theme’s default accent.',
     defaultValue: null,
   }),
   defineDeviceSetting({
@@ -708,10 +769,10 @@ export const DEVICE_SETTINGS_REGISTRY = [
   }),
   defineDeviceSetting({
     key: 'chatDockAutoHide',
-    scope: 'device',
+    scope: 'account',
     descriptor: { kind: 'boolean' },
     label: 'Auto-hide chat dock',
-    help: 'An idle, open chat dock collapses to its bar after five seconds on this device.',
+    help: 'An idle, open chat dock collapses to its bar after five seconds in your interface.',
     description: 'Collapse an idle, open chat dock to its bar after 5s.',
     priorStorageKey: 'chatDockAutoHide',
     // Confirmed against useChatDockState.ts: `=== 'true'` (absent → false).
@@ -737,10 +798,10 @@ export const DEVICE_SETTINGS_REGISTRY = [
   }),
   defineDeviceSetting({
     key: 'diffStyle',
-    scope: 'device',
+    scope: 'account',
     descriptor: { kind: 'enum', values: ['unified', 'split'] },
     label: 'Diff view style',
-    help: 'Changed files on this device show as one column or as two side-by-side columns.',
+    help: 'Changed files in your interface show as one column or as two side-by-side columns.',
     description: 'Unified or side-by-side diff rendering.',
     priorStorageKey: 'station.diff.style',
     // Confirmed against DiffPanel.tsx: only 'split' flips it, else 'unified'.
@@ -748,14 +809,23 @@ export const DEVICE_SETTINGS_REGISTRY = [
   }),
   defineDeviceSetting({
     key: 'diffWrap',
-    scope: 'device',
+    scope: 'account',
     descriptor: { kind: 'boolean' },
     label: 'Diff line wrap',
-    help: 'Long diff lines wrap on this device instead of scrolling sideways.',
+    help: 'Long diff lines wrap in your interface instead of scrolling sideways.',
     description: 'Wrap long diff lines instead of horizontal scroll.',
     priorStorageKey: 'station.diff.wrap',
     // Confirmed against DiffPanel.tsx: `=== '1'` (absent → false).
     defaultValue: false,
+  }),
+  defineDeviceSetting({
+    key: 'inboxScope',
+    scope: 'device',
+    descriptor: { kind: 'string' },
+    label: 'Inbox scope',
+    help: 'Limit the inbox to one project or Station on this device.',
+    description: 'Selected project or Station filter for the inbox.',
+    defaultValue: 'all',
   }),
   defineDeviceSetting({
     key: 'inboxOpen',
@@ -853,10 +923,10 @@ export const DEVICE_SETTINGS_REGISTRY = [
   }),
   defineDeviceSetting({
     key: 'modelPickerPreferences',
-    scope: 'device',
+    scope: 'account',
     descriptor: { kind: 'composite' },
     label: 'Model picker preferences',
-    help: 'The model picker on this device orders, hides, and highlights models as you arranged them.',
+    help: 'The model picker in your interface orders, hides, and highlights models as you arranged them.',
     description:
       'Favorite, recent, hidden, and manually ordered models in the model picker.',
     priorStorageKey: SHARED_PRIOR_DEVICE_SETTINGS_KEY,
@@ -871,10 +941,10 @@ export const DEVICE_SETTINGS_REGISTRY = [
   // URL params) — no `priorStorageKey` for any of them.
   defineDeviceSetting({
     key: 'chatShowReasoning',
-    scope: 'device',
+    scope: 'account',
     descriptor: { kind: 'boolean' },
     label: 'Show reasoning',
-    help: 'Chat messages on this device include the model’s reasoning steps.',
+    help: 'Chat messages in your interface include the model’s reasoning steps.',
     description: 'Display model reasoning steps in chat messages.',
     // Matches the prior `useChatDockState.ts` default:
     // `useState(true)`.
@@ -882,10 +952,10 @@ export const DEVICE_SETTINGS_REGISTRY = [
   }),
   defineDeviceSetting({
     key: 'chatShowToolDetails',
-    scope: 'device',
+    scope: 'account',
     descriptor: { kind: 'boolean' },
     label: 'Show tool details',
-    help: 'Tool calls in chat on this device can be expanded to read their arguments and results.',
+    help: 'Tool calls in chat in your interface can be expanded to read their arguments and results.',
     description: 'Allow expanding tool calls to view arguments and results.',
     // Matches the prior `useChatDockState.ts` default:
     // `useState(true)`.
@@ -903,10 +973,10 @@ export const DEVICE_SETTINGS_REGISTRY = [
   }),
   defineDeviceSetting({
     key: 'chatFontSize',
-    scope: 'device',
+    scope: 'account',
     descriptor: { kind: 'number', integer: true, min: 10, max: 24 },
     label: 'Chat font size',
-    help: 'Chat messages render at this size on this device, ahead of the Station-configured default.',
+    help: 'Chat messages render at this size in your interface, ahead of the Station-configured default.',
     description:
       'Font size for chat messages (10-24px). Unset follows the Station-configured default.',
     // `null` (not a number) is the confirmed absent-value behavior: it means
@@ -949,12 +1019,12 @@ export const DEVICE_SETTINGS_REGISTRY = [
   }),
   defineDeviceSetting({
     key: 'confirmConversationDelete',
-    scope: 'device',
+    scope: 'account',
     descriptor: { kind: 'boolean' },
     label: 'Ask before deleting a conversation',
     // Renders beside the control in BOTH states, so it cannot describe only
     // the on state (#2144 slice 6 fix round 1).
-    help: 'When on, deleting a conversation on this device asks for confirmation first; deleting is not undoable either way.',
+    help: 'When on, deleting a conversation in your interface asks for confirmation first; deleting is not undoable either way.',
     description:
       'Show a confirmation before deleting a conversation. Turning this off deletes immediately, which cannot be undone. Clearing all conversations always asks.',
     // #2144 slice 6: default on. The delete is not undoable and the confirm
@@ -964,15 +1034,61 @@ export const DEVICE_SETTINGS_REGISTRY = [
   }),
   defineDeviceSetting({
     key: 'developerToolsEnabled',
-    scope: 'device',
+    scope: 'account',
     descriptor: { kind: 'boolean' },
     label: 'Enable developer tools',
-    help: 'The Developer surface appears in this device’s sidebar and command palette.',
+    help: 'Show Developer navigation and the opt-ins for experimental project tools.',
     description:
-      'Show the Developer surface (logs, system, telemetry, memory, archive) in the sidebar and command palette on this device. Deep links to /developer keep working either way.',
+      'Show Developer navigation and independent opt-ins for experimental Flow delivery, Veritas readiness, and Trust tools on this device. Deep links to /developer keep working either way.',
     // archive#3313: developer surfaces are opt-in; which navigation entries a
-    // device shows is that device's preference, so this never round-trips to
-    // the server.
+    // device shows is that device's preference, with account scope while signed in.
+    defaultValue: false,
+  }),
+  defineDeviceSetting({
+    key: 'experimentalFlowEnabled',
+    scope: 'device',
+    descriptor: { kind: 'boolean' },
+    label: 'Flow delivery preview',
+    help: 'Opt in to experimental Flow delivery plans and setup tools in Coding.',
+    description: 'Track delivery plans, gates, and evidence in Coding.',
+    defaultValue: false,
+  }),
+  defineDeviceSetting({
+    key: 'experimentalReadinessEnabled',
+    scope: 'device',
+    descriptor: { kind: 'boolean' },
+    label: 'Veritas readiness preview',
+    help: 'Opt in to experimental Veritas readiness and setup tools in Coding.',
+    description: 'Show workspace readiness checks and setup tools in Coding.',
+    defaultValue: false,
+  }),
+  defineDeviceSetting({
+    key: 'experimentalTrustEnabled',
+    scope: 'device',
+    descriptor: { kind: 'boolean' },
+    label: 'Trust preview',
+    help: 'Opt in to experimental Trust panels and evidence-import settings.',
+    description: 'Show project evidence panels and Trust settings.',
+    defaultValue: false,
+  }),
+  defineDeviceSetting({
+    key: 'experimentalStationRoutesEnabled',
+    scope: 'device',
+    descriptor: { kind: 'boolean' },
+    label: 'Station routes preview',
+    help: 'Opt in to learning every address a saved Station reports and showing each route in its connection details.',
+    description:
+      'Reach a saved Station over its LAN, Tailscale and Tailscale HTTPS addresses.',
+    defaultValue: false,
+  }),
+  defineDeviceSetting({
+    key: 'experimentalSheetGesturesEnabled',
+    scope: 'device',
+    descriptor: { kind: 'boolean' },
+    label: 'Sheet gestures preview',
+    help: 'Opt in to dragging phone sheets up to expand them and down to close them.',
+    description:
+      'Add a drag handle to phone sheets: drag up to expand, down to close.',
     defaultValue: false,
   }),
   defineDeviceSetting({
@@ -1000,15 +1116,15 @@ export const DEVICE_SETTINGS_REGISTRY = [
     defaultValue: DEFAULT_REGION_ARRANGEMENT_RECORD,
   }),
   defineDeviceSetting({
-    key: 'codingPanels',
+    key: 'layoutPanels',
     scope: 'device',
     descriptor: { kind: 'composite' },
-    label: 'Coding panels',
-    help: 'Each conversation reopens with the tool beside Chat, the Terminal, and their sizes as you left them.',
+    label: 'Panels within a layout',
+    help: 'Each layout and conversation reopens with its side and lower panels and their sizes as you left them.',
     description:
-      'Per session in the Coding layout: the tool open beside Chat and its width, the Terminal’s open state and height.',
-    // #3051: new device setting; nothing remembered panels before it.
-    defaultValue: DEFAULT_CODING_PANELS_RECORD,
+      'Per layout and session: the side pane and its width, the lower panel’s open state and height, and the inbox fold.',
+    // #2993: obsolete pre-release panel preferences reset to generic defaults.
+    defaultValue: DEFAULT_LAYOUT_PANELS_RECORD,
   }),
 ] as const satisfies readonly DeviceSettingDefinition[];
 
@@ -1074,9 +1190,10 @@ export const DIRECT_MANIPULATION_DEVICE_KEYS = [
   'chatDockHeight',
   'chatDockWidth',
   'regionArrangement',
-  'codingPanels',
+  'layoutPanels',
   'dockSlotPlacement',
   'chatDockProjectSlug',
+  'inboxScope',
   'inboxOpen',
   'inboxSections',
   'projectSidebarCollapsed',
@@ -1099,6 +1216,9 @@ export const DIRECT_MANIPULATION_DEVICE_KEYS = [
 export const PREFERENCE_DEVICE_KEYS = [
   'theme',
   'accentColor',
+  'colorTheme',
+  'colorThemeFlavor',
+  'colorThemeAccent',
   'featureSettings',
   'sttProvider',
   'ttsProvider',
@@ -1116,6 +1236,11 @@ export const PREFERENCE_DEVICE_KEYS = [
   'hapticsEnabled',
   'openLastStationOnLaunch',
   'developerToolsEnabled',
+  'experimentalFlowEnabled',
+  'experimentalReadinessEnabled',
+  'experimentalTrustEnabled',
+  'experimentalStationRoutesEnabled',
+  'experimentalSheetGesturesEnabled',
   'confirmConversationDelete',
 ] as const satisfies readonly (keyof DeviceSettings)[];
 

@@ -4,6 +4,7 @@ import {
   parseSavedAnswerQuote,
   type SavedAnswerQuote,
 } from '../utils/answer-quotes';
+import { isRecord } from '../utils/isRecord';
 
 const CHAT_DRAFTS_STORAGE_KEY = 'station:chat-drafts:v1';
 const MAX_DRAFTS = 20;
@@ -62,10 +63,6 @@ function draftsWithText(
 
 function activityDraftKey(apiBase: string, threadId: string): string {
   return JSON.stringify([apiBase, threadId]);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 function isStoredAttachment(value: unknown): value is FileAttachment {

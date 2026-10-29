@@ -1,0 +1,7 @@
+{
+  "revision": "17a0855071a8cbb22e95945f533cddeaeff3ace1",
+
+  "notes": [
+    {"path":"docs/guides/native-shell-verification.md","note":"#3563: process-identity EPERM now attempts a birth lookup. This guide makes no claim about signal-0 or birth-lookup semantics; no prose change.","inputs":["docs/guides/native-shell-verification.md","packages/shared/src/process-identity.mjs"]}
+  ]
+}

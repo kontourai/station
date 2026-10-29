@@ -1,0 +1,23 @@
+{
+  "revision": "7d1826e6db5995af246fbefd695c464f2332f9fa",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Reviewed readiness composition: all aggregate validation lanes and eleven real-repository suites remain; three isolated framework fixture suites moved to affected/full qualification. Ledger/capture freshness and public trust checks still execute; Protected Standards unchanged.","inputs":[".veritas/README.md","scripts/docs-truth-gate-aggregate.mjs"]},
+
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Reviewed package.json scripts-only change removing repeated framework fixtures. Package manager pin, workspace graph, install scripts/allowlists, hooks and dependency lifecycle unchanged.","inputs":["docs/design/pnpm-workspace-installation.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed retained documentation validations and source/hosted required checks. No links, freshness, generated-content or public-contract validation was removed; isolated framework suites remain selected for tooling changes and full qualification.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md","package.json#/scripts","scripts/docs-truth-gate-aggregate.mjs"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed package script-list delta only; no dependency, advisory, lifecycle, credential or workflow security boundary changed.","inputs":["docs/guides/dependency-security.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed docs:foundations command composition versus contributor evidence guidance. Actual repo checks remain required; framework fixtures move to affected/full paths. Source and metadata ownership unchanged.","inputs":["docs/guides/development.md","package.json#/scripts","scripts/docs-truth-gate-aggregate.mjs"]},
+
+    {"path":"docs/guides/repository-knowledge-graph.md","note":"Reviewed package scripts delta against graph export/snapshot and freshness claims. Graph commands, schema, source bindings, and freshness validator remain unchanged.","inputs":["docs/guides/repository-knowledge-graph.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed eleven retained repository validation suites and three isolated framework suites. Actual nightly permission check moved into retained foundations. scripts/schema inputs select framework fixtures, runtime dependency changes defer to full tests, unknown diffs escalate. Delegate timing samples have different load/freshness outcomes; no hosted speedup or qualification claim.","inputs":["docs/guides/testing.md","package.json#/scripts","scripts/__tests__/changed-verification.test.ts","scripts/docs-truth-gate-aggregate.mjs","scripts/test-impact-manifest.mjs"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"Reviewed package scripts change: readiness still validates actual repository freshness, while framework fixture execution is affected/full. Receipt identity, completion classifications, source integrity, and phase evidence unchanged.","inputs":["docs/reference/verification-receipts.md","package.json#/scripts"]},
+
+    {"path":"scripts/__tests__/fixtures/changed-verification/README.md","note":"Reviewed selector test additions against fixture lifecycle: no change to real narrow-diff checkout/cleanup or120-second liveness limit. New tests cover framework routing and retain existing escalation behavior.","inputs":["scripts/__tests__/fixtures/changed-verification/README.md","scripts/__tests__/changed-verification.test.ts"]}
+  ]
+}

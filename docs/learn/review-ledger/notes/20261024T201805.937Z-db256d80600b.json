@@ -1,0 +1,9 @@
+{
+  "revision": "4331214280d5f90564497097dcad0bde7c64b079",
+
+  "notes": [
+    {"path":"packages/monument/README.md","note":"Repair delta694628ed558..3952f4dd98e only, with prior claims and partial limits retained. Reproduced4 failures at the bound SQLite boundary: aliasing NOCASE/RTRIM whole-key constraints and default-column collations with a binary primary key. Reviewed index_xinfo key/collation validation, explicit BINARY read/delete/conflict target and case-insensitive spelling of builtin binary; the guide now states the accepted uniqueness/comparison contract. Case-distinct thread/input and trailing-space controls prove no foreign confirmation/deletion. Two separate guard/comparison mutations each caused2 intended failures/15 controls; byte-exact restoration183PASS, full package636PASS, types and four-entrypoint pack smokePASS. This does not qualify Station/native/provider performance or resolve the retained connected-agent diagnostic warning.","inputs":["packages/monument/README.md","packages/monument/src/sqlite.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Repair delta694628ed558..3952f4dd98e only, with prior claims and partial limits retained. Reviewed the steer receipt identity/no-reclaim row and host binding boundary against the binary collation repair. The same command states, retained digest, explicit forgetting authority, memory semantics and Station BINARY table remain; public bound tables now reject aliasing whole-key uniqueness and override column-default comparison. No new replay, body storage, placement, approval, runtime or release capability. Four baseline alias failures, repaired636 package passes and separate binary guard/comparison mutations establish the bounded API behavior; no live provider or broad performance claim.","inputs":["packages/monument/CONTEXT.md","packages/monument/src/sqlite.ts"]}
+  ]
+}

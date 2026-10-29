@@ -1,0 +1,7 @@
+{
+  "revision": "cfb1fb27f93588f934e746c33612ae20a59ae9ec",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Changed input ChatMessageList.tsx (last fix: a reader still at the end is not 'moving up'; touch release listeners share one AbortController). The doc's ChatMessageList claim (UIBlockActionsContext form submission) is unchanged. No prose change.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

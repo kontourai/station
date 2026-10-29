@@ -1,0 +1,7 @@
+{
+  "revision": "fa08748729eaaa67830668ab9c34982156ea20b7",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Delta: one action inventory row for TranscriptTurnRail.tsx and one selector (.chat-input__activity .transcript-turn-actions__step) added to chat.css's narrow activity row 44px rule. The guide's claims about the inventories, the responsive ratchet's className discovery (the new file is discovered via transcript-turn-actions and recorded as covered) and the shared phone floor for -actions rows remain accurate; responsive-surface-ratchet and mobile-css-ratchet pass with no new at-rule.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt","src-ui/src/components/chat/chat.css"]}
+  ]
+}

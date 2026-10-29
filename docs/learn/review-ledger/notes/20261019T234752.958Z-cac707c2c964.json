@@ -1,0 +1,7 @@
+{
+  "revision": "8c937ca5202f22a61ba4584f8e95909fecd05332",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"The connect-modal spec change only passes the receiver Device's stored locality to pairedDevicePrincipal and models the receiver's GET /notifications (empty list) for the app's turn-notification reader. The spec's coverage (manual connection consent, keyboard focus, saved hosts, phone-sized dialogs) is unchanged; all 14 tests pass locally.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/connect-modal.spec.ts"]}
+  ]
+}

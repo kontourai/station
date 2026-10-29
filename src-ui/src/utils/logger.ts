@@ -1,6 +1,5 @@
 import debug from 'debug';
 
-// Create namespaced loggers
 export const log = {
   context: debug('app:context'),
   api: debug('app:api'),

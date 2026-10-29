@@ -55,7 +55,11 @@ const PRELOAD_LANG_LOADERS: Record<string, LanguageInput> = {
 export function createChatHighlighter(): Promise<HighlighterCore> {
   return createHighlighterCore({
     engine: createJavaScriptRegexEngine({ forgiving: true }),
-    themes: [import('@shikijs/themes/github-dark')],
+    themes: [
+      import('./station-syntax-theme').then((module) =>
+        module.createStationSyntaxTheme(),
+      ),
+    ],
     langs: Object.values(PRELOAD_LANG_LOADERS),
   });
 }

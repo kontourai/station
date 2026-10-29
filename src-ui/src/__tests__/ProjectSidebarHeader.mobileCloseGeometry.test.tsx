@@ -28,11 +28,9 @@ describe('mobile drawer close touch target', () => {
       <ProjectSidebarHeader
         appName="Station"
         homeLabel="Station v0.1.2"
-        collapsed={false}
         isMobile
         onCloseMobile={() => {}}
         onGoHome={() => {}}
-        onToggleCollapse={() => {}}
       />,
     );
     const page = await browser.newPage({

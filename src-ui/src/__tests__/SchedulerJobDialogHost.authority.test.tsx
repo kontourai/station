@@ -102,7 +102,7 @@ afterEach(() => {
   const request = schedulerJobDialogStore.getSnapshot();
   if (request) schedulerJobDialogStore.close(request);
   for (const banner of bannerStore.getSnapshot())
-    bannerStore.dismiss(banner.id, { reason: 'system' });
+    bannerStore.dismiss(banner.id);
 });
 
 test('changing captured authority closes the mounted draft and does not reopen it', async () => {

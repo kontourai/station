@@ -1,0 +1,7 @@
+{
+  "revision": "e5b79f92090b1bfce6144ff26972bf9e48761369",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed Gallery evidence tool and CLI against real runDiff caller, primary/aux byte checks, signature inputs and exact-run failure retention. Inspected three hosted job timing responses (38767328336, 38730257388, 38737332985); ranges are observations only. Renderer/contract provenance remains a caller responsibility. Required-context guidance follows Brian current policy and separates actual product defects from optional pixel verdicts. Focused tests and runtime are not yet executed because current CPU/peer admission is refused; no source/capture reuse or visual cure is claimed.","inputs":["docs/guides/testing.md"]}
+  ]
+}

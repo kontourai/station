@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-
 import { laneManifestDigest, resolveLane } from '../verification-lanes.mjs';
+import { canonicalJson } from './canonical-json.mjs';
 
 // station#3584: adding terminal.indeterminate is not additively compatible.
 // $defs.terminal sets additionalProperties: false, so origin/main's schema
@@ -32,17 +32,6 @@ const TERMINAL_STATUSES = new Set([
 ]);
 
 const DISPOSITIONS = new Set(['executed', 'joined', 'reused', 'forced']);
-
-function stableJson(value) {
-  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
-  if (value && typeof value === 'object') {
-    return `{${Object.keys(value)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`)
-      .join(',')}}`;
-  }
-  return JSON.stringify(value);
-}
 
 function requiredString(value, name) {
   if (typeof value !== 'string' || value.length === 0) {
@@ -167,7 +156,7 @@ export function createVerificationRequest(laneId, provenance) {
   };
   return {
     ...request,
-    key: createHash('sha256').update(stableJson(request)).digest('hex'),
+    key: createHash('sha256').update(canonicalJson(request)).digest('hex'),
   };
 }
 

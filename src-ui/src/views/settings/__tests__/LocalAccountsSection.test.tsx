@@ -202,3 +202,24 @@ test('external account management exposes provider guidance instead of local mut
   ).toBeNull();
   expect(screen.queryByRole('button', { name: 'Disable sign-in' })).toBeNull();
 });
+
+test('a refused connection explains account-management access without exposing raw scope codes or mutation controls', async () => {
+  const requests = vi.fn(async () =>
+    Response.json(
+      { success: false, error: 'insufficient_scope' },
+      { status: 403 },
+    ),
+  );
+  vi.stubGlobal('fetch', requests);
+  mount();
+  await screen.findByText(
+    /This connection does not have operator account-management access/,
+  );
+  expect(screen.getByRole('status').textContent).toContain(
+    'operator session on the Station host',
+  );
+  expect(screen.queryByText('insufficient_scope')).toBeNull();
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Disable sign-in' })).toBeNull();
+  expect(requests).toHaveBeenCalledTimes(1);
+});

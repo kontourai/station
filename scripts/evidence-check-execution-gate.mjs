@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { relative, resolve, sep } from 'node:path';
+import { loadRepoStandards } from '@kontourai/veritas';
 import { loadAll } from 'js-yaml';
 import { spawnSyncBounded } from './lib/bounded-capture.mjs';
 import { npmInvocation } from './lib/npm-cli.mjs';
@@ -244,11 +245,16 @@ function validate(repoRoot) {
     '.veritas/repo-map.json',
     errors,
   );
-  const standards = readJson(
-    resolve(repoRoot, '.veritas/repo-standards/default.repo-standards.json'),
-    '.veritas/repo-standards/default.repo-standards.json',
-    errors,
-  );
+  let standards;
+  try {
+    standards = loadRepoStandards(
+      resolve(repoRoot, '.veritas/repo-standards/default.repo-standards.json'),
+    );
+  } catch (error) {
+    errors.push(
+      `Repo Standards must be readable valid policy: ${error.message}`,
+    );
+  }
   const mapping = readJson(
     resolve(repoRoot, 'scripts/evidence-check-execution.json'),
     'scripts/evidence-check-execution.json',
@@ -353,19 +359,14 @@ function validate(repoRoot) {
   );
   const readinessScript = scripts['veritas:readiness'];
   let fastLaneSource = '';
-  let prePushSource = '';
   try {
     fastLaneSource = readFileSync(
       resolve(repoRoot, 'scripts/run-ci-fast.mjs'),
       'utf8',
     );
-    prePushSource = readFileSync(
-      resolve(repoRoot, '.githooks/pre-push'),
-      'utf8',
-    );
   } catch (error) {
     errors.push(
-      `scoped evidence routing must read the fast lane and pre-push hook: ${error.message}`,
+      `scoped evidence routing must read the fast lane: ${error.message}`,
     );
   }
   const readinessRouted =
@@ -374,8 +375,7 @@ function validate(repoRoot) {
     (fastLaneSource.includes("['run', 'veritas:readiness']") ||
       fastLaneSource.includes(
         "['run', 'veritas:readiness', '--', '--format', 'json']",
-      )) &&
-    prePushSource.includes('npm run --silent veritas:readiness');
+      ));
 
   for (const [id, classification] of mappingEntries) {
     if (!CLASSIFICATIONS.has(classification)) {
@@ -401,7 +401,7 @@ function validate(repoRoot) {
       }
       if (!readinessRouted) {
         errors.push(
-          `evidence check "${id}" is scoped but Veritas readiness is not wired to both ci:fast and pre-push`,
+          `evidence check "${id}" is scoped but Veritas readiness is not wired to ci:fast`,
         );
       }
       if (isReachable) {

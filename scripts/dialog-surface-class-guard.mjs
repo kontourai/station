@@ -13,7 +13,7 @@
 // which assumes it IS fixed/centered, because every sibling dialog family
 // supplies that — overflows the viewport on a phone with no error, no red
 // test locally, and a client only sees it at a width nobody develops at.
-// `acp-add-dialog__overlay` (#1130, ACPAddConnectionModal.tsx) and
+// `acp-add-dialog__overlay` (#1130, the retired add-engine dialog) and
 // `conversation-handoff-dialog__overlay` (found by this gate's own sweep,
 // ConversationHandoffDialog.tsx) were both this exact shape: a fully-styled
 // panel class sitting on an overlay class that had never been given a rule.
@@ -115,7 +115,7 @@ export const EXEMPT = [
  * than reporting green over a smaller tree (station#1559 class).
  */
 export const SCOPE_SENTINELS = [
-  'src-ui/src/components/acp-connections/ACPAddConnectionModal.tsx',
+  'src-ui/src/components/ShortcutsCheatsheet.tsx',
   'src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx',
   'src-ui/src/components/Dialog.tsx',
   'src-ui/src/components/chat-dock/ChatDockInboxRows.tsx',

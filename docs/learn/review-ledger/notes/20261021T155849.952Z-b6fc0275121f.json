@@ -1,0 +1,7 @@
+{
+  "revision": "5c3f12394826145d382fe0749d08dae2bc395e36",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Narrowed the profile-field claim: Station reads agentInfo for steer selection and probe-session keys; the qualification test drives neither.","inputs":["docs/reference/agent-smoke-confidence.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "e4fb04d302dd8905b5b6e18a2771e9b58a0490b5",
+
+  "notes": [
+    {"path":"docs/guides/build-your-first-plugin.md","note":"Reviewed TypeScript-source distribution and owning UI subpath guidance against additive usage-export-query export. No plugin manifest, scaffold, permission/approval or build helper contract changed; tutorial uses unchanged root useNavigation entry. No prose change; installed-plugin/native/publication proof is not implied.","inputs":["docs/guides/build-your-first-plugin.md","packages/sdk/package.json#/exports"]}
+  ]
+}

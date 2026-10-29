@@ -1,0 +1,7 @@
+{
+  "revision": "9f2add07d3e79d073c17b7097302d42f5744f25a",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"PR #3820 round 1 at 9f2add07d3e: Re-reviewed the Lite notice semantic-element correction after the pre-push accessibility ratchet refused the earlier div with role=region. The notice now uses a section with an accessible name, which exposes the implicit region role, and retains aria-live=polite. The live notice geometry, receipt gates, Off action and cache ownership are unchanged. The accessibility ratchet reports zero violations; UI typecheck and all 10 consent tests passed. Re-injecting the hidden-tab guard removal again produced the intended receipt-dispatch assertion failure, then restoration passed all 10 tests. Final-head screenshots remain pending; no screen-reader, native or live receiver execution is asserted.","inputs":["docs/reference/usage-telemetry.md","src-ui/src/components/TelemetryLiteNotice.tsx"]}
+  ]
+}

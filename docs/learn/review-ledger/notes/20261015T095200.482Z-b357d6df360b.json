@@ -1,0 +1,7 @@
+{
+  "revision": "2ba9dfffd31731fc8f6ed80c8b0eddbbace22bf4",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Round 9: traced picker and active retry through controller, epoch generation, observation tokens, real dock hydration and SDK transport. Removed pin/30-second-command claims. Epoch retirement gates imperative patches/focus; record pruning gates only observation publication. 269 focused tests passed; physical/native behavior not qualified.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/conversationOpenController.ts","src-ui/src/contexts/work-observation.ts"]}
+  ]
+}

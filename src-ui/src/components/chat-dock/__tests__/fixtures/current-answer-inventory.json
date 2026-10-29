@@ -1,0 +1,227 @@
+{
+  "version": "station.session-inventory/v2",
+  "scope": {
+    "kind": "current-answer",
+    "sessionId": "muse:1792426448641",
+    "turnId": "527389e6-c183-400c-ae75-3002ee7a4ef4"
+  },
+  "groups": [
+    {
+      "id": "inputs",
+      "owner": {
+        "owner": "thread.answer-basis",
+        "id": "v1"
+      },
+      "state": "available",
+      "count": {
+        "kind": "exact",
+        "value": 1
+      },
+      "items": [
+        {
+          "kind": "thread-authored-input",
+          "key": "input:00651829-786e-4930-9172-49031140448c",
+          "owner": {
+            "owner": "thread.answer-basis",
+            "id": "v1"
+          },
+          "relations": ["contributed-to"],
+          "sessionId": "muse:1792426448641",
+          "eventId": "00651829-786e-4930-9172-49031140448c",
+          "turnId": "527389e6-c183-400c-ae75-3002ee7a4ef4",
+          "inputKind": "message",
+          "attachmentDescriptors": []
+        }
+      ],
+      "gaps": []
+    },
+    {
+      "id": "sources",
+      "owner": {
+        "owner": "surface.sources",
+        "id": "v1"
+      },
+      "state": "not-captured",
+      "items": [],
+      "gaps": [
+        {
+          "kind": "not-captured"
+        }
+      ]
+    },
+    {
+      "id": "work-items",
+      "owner": {
+        "owner": "station.inventory",
+        "id": "v1"
+      },
+      "state": "not-captured",
+      "items": [],
+      "gaps": [
+        {
+          "kind": "not-captured"
+        }
+      ]
+    },
+    {
+      "id": "execution",
+      "owner": {
+        "owner": "station.inventory",
+        "id": "v1"
+      },
+      "state": "not-captured",
+      "items": [],
+      "gaps": [
+        {
+          "kind": "not-captured"
+        }
+      ]
+    },
+    {
+      "id": "decisions",
+      "owner": {
+        "owner": "station.inventory",
+        "id": "v1"
+      },
+      "state": "not-captured",
+      "items": [],
+      "gaps": [
+        {
+          "kind": "not-captured"
+        }
+      ]
+    },
+    {
+      "id": "outputs",
+      "owner": {
+        "owner": "station.inventory",
+        "id": "v1"
+      },
+      "state": "not-captured",
+      "items": [],
+      "gaps": [
+        {
+          "kind": "not-captured"
+        }
+      ]
+    },
+    {
+      "id": "verification-delivery",
+      "owner": {
+        "owner": "station.inventory",
+        "id": "v1"
+      },
+      "state": "not-captured",
+      "items": [],
+      "gaps": [
+        {
+          "kind": "not-captured"
+        }
+      ]
+    },
+    {
+      "id": "live-now",
+      "owner": {
+        "owner": "station.inventory",
+        "id": "v1"
+      },
+      "state": "not-captured",
+      "items": [],
+      "gaps": [
+        {
+          "kind": "not-captured"
+        }
+      ]
+    },
+    {
+      "id": "kept",
+      "owner": {
+        "owner": "station.inventory",
+        "id": "v1"
+      },
+      "state": "empty",
+      "count": {
+        "kind": "exact",
+        "value": 0
+      },
+      "items": [],
+      "gaps": []
+    },
+    {
+      "id": "attention",
+      "owner": {
+        "owner": "station.inventory",
+        "id": "v1"
+      },
+      "state": "empty",
+      "count": {
+        "kind": "exact",
+        "value": 0
+      },
+      "items": [],
+      "gaps": []
+    },
+    {
+      "id": "resources",
+      "owner": {
+        "owner": "station.inventory",
+        "id": "v1"
+      },
+      "state": "empty",
+      "count": {
+        "kind": "exact",
+        "value": 0
+      },
+      "items": [],
+      "gaps": []
+    }
+  ],
+  "basis": {
+    "version": "surface.basis-projection/v1",
+    "answer": {
+      "owner": {
+        "authority": "@kontourai/thread"
+      },
+      "observedAt": "1970-01-01T00:00:00.000Z",
+      "state": "unavailable"
+    },
+    "standing": "unresolved",
+    "unresolvedReason": "answer-unavailable",
+    "assessment": {
+      "owner": {
+        "authority": "@kontourai/surface"
+      },
+      "observedAt": "1970-01-01T00:00:00.000Z",
+      "state": "unavailable"
+    },
+    "regions": {
+      "inputs": [],
+      "execution": [],
+      "process": [],
+      "outcomes": [],
+      "support": [],
+      "sources": [],
+      "live": []
+    },
+    "relationships": [],
+    "gaps": [
+      {
+        "code": "unsupported-owner-version",
+        "message": "Contribution requires a published exact owner contract."
+      }
+    ]
+  },
+  "basisBinding": {
+    "version": "station-answer-binding/v1",
+    "sessionId": "muse:1792426448641",
+    "turnId": "527389e6-c183-400c-ae75-3002ee7a4ef4",
+    "answer": {
+      "authority": "@kontourai/thread",
+      "schemaVersion": "1.2.0",
+      "kind": "assistant-message",
+      "standing": "observed",
+      "threadId": "muse:1792426448641",
+      "messageId": "00651829-786e-4930-9172-49031140448c:assistant"
+    }
+  }
+}

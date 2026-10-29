@@ -1,0 +1,7 @@
+{
+  "revision": "f5066bf6b375873e394d1febd5da8fd419741186",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Fix round: the session-start wait is 15s and runs before the turn-start claim; Stop and request cancellation end it with nothing sent; still-starting refusal is retryable. Checked against acp-adapter.ts whenSessionReady/startWaiters and orchestration-service.ts startTurn.","inputs":["docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

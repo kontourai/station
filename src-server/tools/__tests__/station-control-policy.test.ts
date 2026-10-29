@@ -18,6 +18,8 @@ import {
   type StationControlPolicyCaller,
   type StationControlPolicyContext,
   type StationControlToolPolicy,
+  stationControlOutOfScopeRefusal,
+  stationControlRefusalBody,
   stationControlScopeRefusal,
   stationControlSessionScope,
 } from '../station-control-policy.js';
@@ -55,6 +57,8 @@ const DECISION_1_BOUND_OPERATOR = [
   'list_delegation_targets',
   'reindex_knowledge',
   'migrate_knowledge',
+  // Guides are shared server state; the first slice keeps bound operator authority.
+  'write_pull_request_guides',
 ];
 // Decision 2 (slice B): operator-wide reads — Station-wide data no single
 // person's view contains — need a bound caller acting for the operator.
@@ -67,6 +71,7 @@ const DECISION_2_OPERATOR_READS = [
   'get_usage',
   'check_plugin_updates',
   'list_delegation_environments',
+  'read_pull_request_guide',
 ];
 // Decision 2 (slice B): reads scoped to the principal the caller's session
 // acts for. Transcribed from the slice B brief, independently of the table.
@@ -78,6 +83,7 @@ const DECISION_2_PRINCIPAL_READS = [
   'read_conversation',
   'board_read',
   'get_basis',
+  'get_answer_assessment_target',
   'get_task_basis',
   'get_session_inventory',
   'list_plugins',
@@ -104,7 +110,13 @@ const DECISION_1_PERSON_ONLY = [
   'install_registry_integration',
   'create_provider',
 ];
-const DECISION_1_PERSON_ONLY_WITH_TRUST_ALL_TOOLS = ['add_job', 'update_job'];
+// `propose_job` never proposes a job that trusts every tool: the person
+// chooses that themselves.
+const DECISION_1_PERSON_ONLY_WITH_TRUST_ALL_TOOLS = [
+  'add_job',
+  'update_job',
+  'propose_job',
+];
 // Slice C: dispatch keeps today's effective policy (any verified caller).
 const SLICE_C_DISPATCH = [
   'send_message',
@@ -548,6 +560,37 @@ describe('station-control authority: route matching and refusals', () => {
     ).toBe('station_control_assurance_insufficient');
   });
 
+  test('an out-of-scope refusal carries its reason and copy an agent can act on', () => {
+    // Pinned here, not read from the policy's own list.
+    const reasons = [
+      'other-project',
+      'global-space',
+      'project-from-global',
+      'target-unavailable',
+      'unreadable-caller',
+      'host',
+      'remote',
+    ] as const;
+    const bodies = reasons.map((reason) =>
+      stationControlRefusalBody(stationControlOutOfScopeRefusal(reason)),
+    );
+    expect(bodies.map(({ code, reason }) => [code, reason])).toEqual(
+      reasons.map((reason) => ['station_control_out_of_scope', reason]),
+    );
+    // One sentence per reason, each ending on what to do.
+    expect(new Set(bodies.map(({ error }) => error)).size).toBe(reasons.length);
+    for (const { error } of bodies) expect(error).toMatch(/person/);
+    // Where the agent can stay in its own Project, the copy says how.
+    for (const { reason, error } of bodies)
+      if (reason === 'other-project' || reason === 'global-space')
+        expect(error).toContain('omit projectSlug and projectPath');
+    expect(bodies.find(({ reason }) => reason === 'host')?.error).toContain(
+      'unconfined (host)',
+    );
+    // The old copy blamed the credential; a scope refusal does not.
+    for (const { error } of bodies) expect(error).not.toMatch(/copied/);
+  });
+
   test('slices C1 and C2a: one scope rule for steer, adopt and dispatch', () => {
     const OTHER = 'human:local:someone-else';
     const P = { kind: 'project', id: 'project-a' } as const;
@@ -578,23 +621,40 @@ describe('station-control authority: route matching and refusals', () => {
     const decide = (
       caller: StationControlPolicyCaller | null,
       t: StationControlDispatchTarget | undefined,
-    ) => stationControlScopeRefusal(caller, t, isOperatorPrincipal)?.code;
+    ) => {
+      const refusal = stationControlScopeRefusal(
+        caller,
+        t,
+        isOperatorPrincipal,
+      );
+      return refusal?.reason
+        ? `${refusal.code}:${refusal.reason}`
+        : refusal?.code;
+    };
     const bearer = CALLERS['bearer-operator'];
     const delegated = CALLERS['delegated-operator'];
     const boundOther = CALLERS['bound-other-person'];
     const ASSURANCE = 'station_control_assurance_insufficient';
     const ROLE = 'station_control_role_required';
+    // A scope refusal names why, so the agent can act on it.
+    const OUT = (reason: string) => `station_control_out_of_scope:${reason}`;
 
     for (const caller of [bearer, delegated]) {
       // Project P: only P.
       expect(decide(inP(caller), target(OPERATOR, P))).toBeUndefined();
-      expect(decide(inP(caller), target(OPERATOR, Q))).toBe(ASSURANCE);
-      expect(decide(inP(caller), target(OPERATOR, GLOBAL))).toBe(ASSURANCE);
+      expect(decide(inP(caller), target(OPERATOR, Q))).toBe(
+        OUT('other-project'),
+      );
+      expect(decide(inP(caller), target(OPERATOR, GLOBAL))).toBe(
+        OUT('global-space'),
+      );
       // Global: only global.
       expect(
         decide(inGlobal(caller), target(OPERATOR, GLOBAL)),
       ).toBeUndefined();
-      expect(decide(inGlobal(caller), target(OPERATOR, P))).toBe(ASSURANCE);
+      expect(decide(inGlobal(caller), target(OPERATOR, P))).toBe(
+        OUT('project-from-global'),
+      );
       // Unreadable on either side.
       // (An unreadable Project proves no action held there.)
       expect(
@@ -602,7 +662,7 @@ describe('station-control authority: route matching and refusals', () => {
           inP(caller),
           target(OPERATOR, UNREADABLE, { ownerHoldsAction: false }),
         ),
-      ).toBe(ROLE);
+      ).toBe(OUT('target-unavailable'));
       expect(
         decide(
           {
@@ -612,17 +672,19 @@ describe('station-control authority: route matching and refusals', () => {
           },
           target(OPERATOR, P),
         ),
-      ).toBe(ASSURANCE);
+      ).toBe(OUT('unreadable-caller'));
       expect(
         decide({ ...caller!, projectSlug: 'gone' }, target(OPERATOR, GLOBAL)),
-      ).toBe(ASSURANCE);
+      ).toBe(OUT('unreadable-caller'));
       // Host, remote, another owner, no owner, an unreadable target.
       expect(decide(inP(caller), target(OPERATOR, P, { host: true }))).toBe(
-        ASSURANCE,
+        OUT('host'),
       );
       expect(decide(inP(caller), target(OPERATOR, P, { remote: true }))).toBe(
-        ASSURANCE,
+        OUT('remote'),
       );
+      // Another owner's, an ownerless or an unreadable thread says no more
+      // than a thread that does not exist.
       expect(decide(inP(caller), target(OTHER, P))).toBe(ASSURANCE);
       expect(decide(inP(caller), target(undefined, P))).toBe(ASSURANCE);
       expect(decide(inP(caller), undefined)).toBe(ASSURANCE);
@@ -651,7 +713,7 @@ describe('station-control authority: route matching and refusals', () => {
         inP(boundOther),
         target(OTHER, UNREADABLE, { ownerHoldsAction: false }),
       ),
-    ).toBe(ROLE);
+    ).toBe(OUT('target-unavailable'));
     // An inferred owner owns nothing.
     expect(
       decide(inP(CALLERS['bound-operator-inferred']), target(OPERATOR, P)),
@@ -677,15 +739,24 @@ describe('station-control authority: route matching and refusals', () => {
       { type: 'stopSession', threadId: 't' },
       { type: 'discardDraft', threadId: 't' },
     ]) {
-      const command = (commandThread?: StationControlDispatchTarget) =>
-        authorizeStationControlRequest('POST', '/api/orchestration/commands', {
-          caller: inP(bearer),
-          isOperatorPrincipal,
-          body,
-          ...(commandThread ? { commandThread } : {}),
-        })?.code;
+      const command = (commandThread?: StationControlDispatchTarget) => {
+        const refusal = authorizeStationControlRequest(
+          'POST',
+          '/api/orchestration/commands',
+          {
+            caller: inP(bearer),
+            isOperatorPrincipal,
+            body,
+            ...(commandThread ? { commandThread } : {}),
+          },
+        );
+        return refusal?.reason
+          ? `${refusal.code}:${refusal.reason}`
+          : refusal?.code;
+      };
       expect(command(target(OPERATOR, P))).toBeUndefined();
-      expect(command(target(OPERATOR, Q))).toBe(ASSURANCE);
+      expect(command(target(OPERATOR, Q))).toBe(OUT('other-project'));
+      expect(command(target(OPERATOR, P, { host: true }))).toBe(OUT('host'));
       expect(command()).toBe(ASSURANCE);
     }
   });
@@ -739,12 +810,21 @@ describe('station-control authority table: declare_pull_request and Task close-o
       personOnly: 'never',
     });
     // It writes a durable session record, so it keeps the mutating approval:
-    // only `notify_user` is auto-approved as a bounded write.
+    // visual reply tools, notify_user, task_summary_update and task_record
+    // (#4003) have their own bounded-write policies.
     expect(
       TABLE.filter(([, entry]) => entry.toolClass === 'bounded-write').map(
         ([name]) => name,
       ),
-    ).toEqual(['notify_user']);
+    ).toEqual([
+      'task_summary_update',
+      'task_record',
+      'task_thread_reply',
+      'task_thread_resolve',
+      'html_render',
+      'html_preview',
+      'notify_user',
+    ]);
   });
 
   test('declare_pull_request owns exactly its own leaf, and no other tool reaches it', () => {
@@ -823,5 +903,140 @@ describe('station-control authority table: declare_pull_request and Task close-o
         name,
         policy.routes.some((entry) => entry.path.includes('close-on-merge')),
       ]).toEqual([name, false]);
+  });
+});
+
+// #3413 part B: the work-claim tools. Written out here, independently of the
+// table: a Session's own declaration, any assurance with a recorded owner,
+// mutating (a durable record), each on its own leaf.
+describe('station-control authority table: work claims (#3413 B)', () => {
+  const LEAVES = {
+    claim_work: { method: 'POST', path: '/api/orchestration/work-claims' },
+    renew_claim: {
+      method: 'POST',
+      path: '/api/orchestration/work-claims/:claimId/renew',
+    },
+    release_claim: {
+      method: 'POST',
+      path: '/api/orchestration/work-claims/:claimId/release',
+    },
+  } as const;
+
+  test('each is self-role, any assurance, mutating, never person-only, and owns exactly its own leaf', () => {
+    for (const [name, leaf] of Object.entries(LEAVES)) {
+      const policy = STATION_CONTROL_TOOL_POLICY[
+        name as keyof typeof LEAVES
+      ] as StationControlToolPolicy;
+      expect([
+        name,
+        policy.assurance,
+        policy.role,
+        policy.toolClass,
+        policy.personOnly,
+        policy.routes,
+      ]).toEqual([name, 'any', 'self', 'mutating', 'never', [leaf]]);
+      const concrete = leaf.path.replace(':claimId', 'claim_abc');
+      expect([
+        name,
+        matchStationControlRoute('POST', concrete)?.owners,
+      ]).toEqual([name, [name]]);
+    }
+  });
+
+  test('a caller with a recorded owner reaches each leaf at every assurance; one without, or none, is refused', () => {
+    for (const leaf of Object.values(LEAVES)) {
+      const path = leaf.path.replace(':claimId', 'claim_abc');
+      for (const caller of [
+        CALLERS['bound-operator'],
+        CALLERS['bound-other-person'],
+        CALLERS['delegated-operator'],
+        CALLERS['bearer-operator'],
+      ])
+        expect(
+          authorizeStationControlRequest('POST', path, {
+            caller,
+            isOperatorPrincipal,
+          }),
+        ).toBeUndefined();
+      expect(
+        authorizeStationControlRequest('POST', path, {
+          caller: { assurance: 'bound' },
+          isOperatorPrincipal,
+        })?.code,
+      ).toBe('station_control_role_required');
+      expect(
+        authorizeStationControlRequest('POST', path, {
+          caller: null,
+          isOperatorPrincipal,
+        })?.code,
+      ).toBe('station_control_caller_required');
+    }
+  });
+});
+
+// `fork_conversation`: written out here, independently of the table. It
+// writes a new conversation (mutating) where a Session could start, so a
+// Project `execute` action; the route decides the scope itself.
+describe('station-control authority table: fork_conversation', () => {
+  const LEAF = {
+    method: 'POST',
+    path: '/agents/:slug/conversations/:conversationId/fork',
+  } as const;
+
+  test('is project-role execute, any assurance, mutating, never person-only, and owns exactly its own leaf', () => {
+    const policy = STATION_CONTROL_TOOL_POLICY.fork_conversation;
+    expect([
+      policy.assurance,
+      policy.role,
+      policy.projectAction,
+      policy.toolClass,
+      policy.personOnly,
+      policy.routes,
+    ]).toEqual(['any', 'project', 'execute', 'mutating', 'never', [LEAF]]);
+    expect(
+      matchStationControlRoute('POST', '/agents/terra/conversations/c-1/fork')
+        ?.owners,
+    ).toEqual(['fork_conversation']);
+  });
+
+  test('a caller with a recorded owner reaches the leaf; one without, or none, is refused', () => {
+    const path = '/agents/terra/conversations/c-1/fork';
+    for (const caller of [
+      CALLERS['bound-operator'],
+      CALLERS['bound-other-person'],
+      CALLERS['delegated-operator'],
+      CALLERS['bearer-operator'],
+    ])
+      expect(
+        authorizeStationControlRequest('POST', path, {
+          caller,
+          isOperatorPrincipal,
+        }),
+      ).toBeUndefined();
+    expect(
+      authorizeStationControlRequest('POST', path, {
+        caller: { assurance: 'bound' },
+        isOperatorPrincipal,
+      })?.code,
+    ).toBe('station_control_role_required');
+    expect(
+      authorizeStationControlRequest('POST', path, {
+        caller: null,
+        isOperatorPrincipal,
+      })?.code,
+    ).toBe('station_control_caller_required');
+  });
+
+  test('no tool reaches the UI read of claims', () => {
+    const route = '/api/orchestration/work-claims';
+    expect(matchStationControlRoute('GET', route)).toBeUndefined();
+    for (const [name, caller] of Object.entries(CALLERS))
+      expect([
+        name,
+        authorizeStationControlRequest('GET', route, {
+          caller,
+          isOperatorPrincipal,
+        })?.code,
+      ]).toEqual([name, 'station_control_route_unmapped']);
   });
 });

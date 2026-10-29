@@ -1,0 +1,7 @@
+{
+  "revision": "90be0c7b4ed9a6d89f5d1578ab184142b7e79835",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Added the current-answer inventory rule (#3853): binding to exact Session/turn whatever the Surface answer state, strict answer equality when available, no surface-answer-contribution when not, contributed-to as sole support edge, lineage rows observed-during/produced-by with the scope turnId (output.turnId), optional turnId on decision/delegation rows, resource summary excluded. Checked against packages/contracts/src/session-inventory.ts matchCurrentAnswerBasis/group() and its tests.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

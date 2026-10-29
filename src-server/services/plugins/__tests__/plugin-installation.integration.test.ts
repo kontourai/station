@@ -887,7 +887,7 @@ test('more than 256 sequential updates use paged durable history while retaining
     after = page.nextCursor;
   } while (after !== undefined);
   expect(generations.size).toBe(261);
-}, 20000);
+});
 
 test('failed state replacement restores the prior pointer without copying a mutable data snapshot', async () => {
   const f = fixture();

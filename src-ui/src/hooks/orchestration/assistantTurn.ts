@@ -167,10 +167,17 @@ export function finalizeAssistantTurn(
   );
   activeChatsStore.updateChat(threadId, {
     messages: [...priorMessages, finalizedMessage],
-    planArtifact: deriveLatestPlanArtifactFromMessages([
-      ...priorMessages,
-      finalizedMessage,
-    ] as any),
+    // As while streaming: this turn's own prose plan (its last line is only
+    // parsed now) replaces the plan; otherwise a typed plan (`plan.updated`)
+    // stays, and only without one is the plan re-derived from history.
+    planArtifact:
+      deriveLatestPlanArtifactFromMessages([finalizedMessage]) ??
+      (chat.planArtifact?.source === 'canonical'
+        ? chat.planArtifact
+        : deriveLatestPlanArtifactFromMessages([
+            ...priorMessages,
+            finalizedMessage,
+          ])),
     streamingMessage: undefined,
     status: 'idle',
     orchestrationStatus: 'idle',

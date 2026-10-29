@@ -235,7 +235,7 @@ describe('ensureAppHomeProfile', () => {
   });
 
   test('a symlinked profile marker is refused and its target never written', async () => {
-    // HIGH (security review): a pre-existing marker must be identity-
+    // A pre-existing marker must be identity-
     // checked (lstat, never follows), not treated as a benign race winner
     // just because SOMETHING already exists at that path.
     const dir = join(homeDir, 'app-homes', 'claude');
@@ -254,10 +254,9 @@ describe('ensureAppHomeProfile', () => {
   });
 
   test('a symlink installed between the absent-check and the exclusive write is refused, not adopted', async () => {
-    // Item 1 (security review round 2): the ORIGINAL initial-`lstat` fix
-    // (HIGH, round 1) only ever re-checked identity on the branch where
-    // something ALREADY existed at the first look. This pins the OTHER
-    // branch: nothing existed at the first look, but the exclusive
+    // The ORIGINAL initial-`lstat` fix only ever re-checked identity on the
+    // branch where something ALREADY existed at the first look. This pins
+    // the OTHER branch: nothing existed at the first look, but the exclusive
     // `O_CREAT|O_EXCL` write then reports `'exists'` — simulating
     // something racing into place in that exact gap. The re-check after
     // EEXIST must refuse a non-regular winner exactly the same way.
@@ -320,7 +319,7 @@ describe('readAppHomeProfileStatus', () => {
   });
 
   test('status reading refuses a symlinked marker', async () => {
-    // Item 2b (security review round 3): the status read now goes through
+    // The status read now goes through
     // `openForRead` (O_NOFOLLOW + descriptor `fstat`), same as every other
     // marker touch in this module, instead of a path-based `lstat`+
     // `readFile` pair that could be swapped between the two calls. A
@@ -365,7 +364,7 @@ describe('readAppHomeProfileStatus', () => {
   });
 
   test('status reading refuses a Windows-style post-open identity mismatch (dev/ino cross-check)', async () => {
-    // Item 4 (security review round 4): the status read now threads its
+    // The status read now threads its
     // own dispatch `lstat`'s dev/ino through to `openForRead` as
     // `expectedIdentity` — the same mechanism `readSourceFileGuarded`
     // already uses for import source reads — so on a platform without
@@ -602,7 +601,7 @@ describe('importClaudeGlobalSnapshot', () => {
   });
 
   test('source swapped to a symlink between listing and read is refused', async () => {
-    // MED-2 (security review): the copy loop's `lstat` only ever decided
+    // The copy loop's `lstat` only ever decided
     // DISPATCH (file vs. dir vs. symlink) — the actual read used to trust
     // that same `lstat`'s identity by re-opening the path with a plain
     // `readFile`. Now the read itself is independently TOCTOU-guarded via
@@ -670,7 +669,7 @@ describe('importClaudeGlobalSnapshot', () => {
   });
 
   test('a file growing past the cap after lstat is still refused by the descriptor-side check', async () => {
-    // MED-2: the pre-fix cap check trusted the dispatch `lstat`'s `size` —
+    // The pre-fix cap check trusted the dispatch `lstat`'s `size` —
     // a file that grows past the cap between that `lstat` and the actual
     // read would sail through. The cap is now enforced from the OPENED
     // descriptor's own `fstat`, not the earlier `lstat`.
@@ -709,7 +708,7 @@ describe('importClaudeGlobalSnapshot', () => {
   });
 
   test('a missing global config dir fails the import and leaves provenance untouched', async () => {
-    // MED-3 (security review): an absent/unreadable global config dir used
+    // An absent/unreadable global config dir used
     // to fall through to a bare zero-copy result every caller treated as
     // an ordinary (if empty) success — the route then unconditionally
     // stamped `seededFrom: 'global-import'`. Now an explicit `'failed'`
@@ -754,7 +753,7 @@ describe('importClaudeGlobalSnapshot', () => {
   });
 
   test('a Windows-style post-open identity mismatch is refused (dev/ino cross-check)', async () => {
-    // Item 2 (security review round 2): on a platform without `O_NOFOLLOW`
+    // On a platform without `O_NOFOLLOW`
     // (Windows), the final path component could be swapped between the
     // dispatch `lstat` and the actual open. `openForRead` closes that
     // window by cross-checking the opened descriptor's own `fstat`
@@ -795,11 +794,11 @@ describe('importClaudeGlobalSnapshot', () => {
   });
 
   test('the win32 identity check does not false-positive on an unraced read', async () => {
-    // Positive control for item 2: forces `process.platform` to 'win32'
-    // (so `defaultFsPort`'s real `openForRead` takes its no-O_NOFOLLOW
-    // branch and performs the dev/ino cross-check) and uses the REAL
-    // default fs port (no injected override) against a genuine,
-    // never-swapped file — the new check must not refuse a legitimate,
+    // Positive control for the dev/ino cross-check: forces
+    // `process.platform` to 'win32' (so `defaultFsPort`'s real `openForRead`
+    // takes its no-O_NOFOLLOW branch and performs the dev/ino cross-check)
+    // and uses the REAL default fs port (no injected override) against a
+    // genuine, never-swapped file — the new check must not refuse a legitimate,
     // unraced read just because it's running on the Windows code path.
     const originalPlatform = process.platform;
     Object.defineProperty(process, 'platform', {
@@ -832,8 +831,7 @@ describe('importClaudeGlobalSnapshot', () => {
   });
 
   test('an exception mid-import (copy phase) removes only the stage, leaving the profile untouched', async () => {
-    // Item 4 (security review round 2), updated for item 1's stage-then-
-    // commit redesign (round 3): a THROWN exception during the COPY
+    // Under the stage-then-commit import: a THROWN exception during the COPY
     // PHASE — writing into the stage, never the profile directly — must
     // leave the profile exactly as it was; there is nothing to "clean up"
     // in the profile itself because nothing there was ever touched.
@@ -899,11 +897,11 @@ describe('importClaudeGlobalSnapshot', () => {
   });
 
   test('a copy-phase failure leaves previously imported profile content byte-identical', async () => {
-    // Item 1 (security review round 3): the round-2 tests all started from
-    // an EMPTY profile, so a failed import destroying "what was there"
-    // was invisible — there was nothing there. This seeds a REAL prior
-    // import first, then forces the SECOND import's copy phase to throw,
-    // and proves the first import's content survives byte-identical.
+    // Earlier tests all started from an EMPTY profile, so a failed import
+    // destroying "what was there" was invisible — there was nothing there.
+    // This seeds a REAL prior import first, then forces the SECOND import's
+    // copy phase to throw, and proves the first import's content survives
+    // byte-identical.
     const { dir: profileDir } = await ensureAppHomeProfile('claude', {
       homeDir,
     });
@@ -1073,8 +1071,8 @@ describe('importClaudeGlobalSnapshot', () => {
   });
 
   test('stage and backup directories are created exclusively', async () => {
-    // Item 1 (security review round 4): the stage/backup dirs are now
-    // claimed via `fs.mkdtemp` — OS-random, atomic, exclusive creation
+    // The stage/backup dirs are claimed via `fs.mkdtemp` — OS-random,
+    // atomic, exclusive creation
     // that NEVER adopts a pre-existing directory — rather than a
     // predictable `Date.now()+Math.random()` name handed to a
     // non-exclusive `mkdirRecursive` (which would silently ADOPT
@@ -1107,7 +1105,7 @@ describe('importClaudeGlobalSnapshot', () => {
   });
 
   test('rollback restores a backed-up directory over a committed non-empty directory', async () => {
-    // Item 2 (security review round 4): `rename()` can never replace a
+    // `rename()` can never replace a
     // non-empty directory — the rollback must `rmRecursive` a newly
     // committed non-empty directory BEFORE renaming its backup back into
     // place, or the restore itself fails.
@@ -1184,7 +1182,7 @@ describe('importClaudeGlobalSnapshot', () => {
   });
 
   test('a failed restore preserves the backup and names its path', async () => {
-    // Item 3 (security review round 4): when a restore itself fails, its
+    // When a restore itself fails, its
     // backup must NOT be deleted — it is the only remaining copy of the
     // user's pre-import content — and its path must be named in the
     // failure result, not just logged and lost.
@@ -1243,9 +1241,9 @@ describe('importClaudeGlobalSnapshot', () => {
   });
 });
 
-// archive#896 wave 2: codex counterpart of `importClaudeGlobalSnapshot` — the
+// archive#896: codex counterpart of `importClaudeGlobalSnapshot` — the
 // shared transactional/security machinery is proven by the claude suite
-// above (unchanged by the refactor, run untouched as the regression proof);
+// above (it runs unchanged as the regression proof);
 // these tests only pin the codex-specific allowlist.
 describe('importCodexGlobalSnapshot', () => {
   function writeGlobalDir(files: Record<string, string>): string {
@@ -1378,7 +1376,7 @@ describe('markAppHomeProfileImported', () => {
   });
 
   test('a non-regular marker blocks import provenance updates', async () => {
-    // HIGH (security review): the ORIGINAL bug — a plain `writeFile` to the
+    // The ORIGINAL bug — a plain `writeFile` to the
     // marker path follows a symlink there like any normal open, letting a
     // planted symlink turn "record this import" into an arbitrary-file
     // overwrite. Refused outright now, nothing written anywhere.
@@ -1514,7 +1512,7 @@ describe('symlink dodge on the profile dir itself', () => {
   });
 });
 
-// archive#896 wave 2: bounded, on-request profile GC — usage report + explicit
+// archive#896: bounded, on-request profile GC — usage report + explicit
 // clear (no daemons/watchers/timers).
 describe('readAppHomeProfileUsage', () => {
   test('reports null when the profile does not exist', async () => {
@@ -1663,7 +1661,7 @@ describe('clearAppHomeProfile', () => {
     expect(existsSync(join(elsewhere, 'sentinel.txt'))).toBe(true);
   });
 
-  // HIGH (security review 1a028fde): the containment check above compares
+  // The containment check above compares
   // RESOLVED paths only — when the app-homes ROOT itself is a symlink, both
   // `realRoot` and `realDir` resolve through it consistently and
   // containment still reports true, but a naive `rm` on the UNRESOLVED

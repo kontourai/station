@@ -23,80 +23,71 @@ final class StationRuntimeSmokeTests: XCTestCase {
             app.activate()
         }
 
-        let connect = app.buttons["Connect to a Station"]
+        let scan = app.buttons["Scan pairing QR code"]
         XCTAssertTrue(
-            waitForElement(connect, budget: 90),
-            "Station never left its startup surface for an actionable no-connection shell. Accessibility hierarchy:\n\(app.debugDescription)"
+            waitForElement(scan, budget: 90),
+            "Station never exposed the fresh-phone QR welcome. Accessibility hierarchy:\n\(app.debugDescription)"
         )
-
-        // The notification sheet can arrive after the WKWebView has already
-        // exposed its first actionable control. In that ordering the early
-        // launch-time dismissal sees no alert, while XCTest can still report
-        // the covered WebView button as hittable. Dismiss again only after the
-        // shell exists, then reacquire Station before delivering the tap.
         if dismissSystemAlertIfPresent() {
             app.activate()
         }
-        XCTAssertTrue(
-            connect.waitForExistence(timeout: 5),
-            "Connect to a Station disappeared after dismissing the notification sheet. Accessibility hierarchy:\n\(app.debugDescription)"
-        )
-        XCTAssertTrue(connect.isHittable)
-        // Settings lives in the sidebar drawer's footer, not the header: open
-        // the drawer, prove the route exists, then close it again so the
-        // connection flow below starts from the undrawered shell.
-        //
-        // Interaction model, learned from two red runs: a tap that OPENS the
-        // drawer covers the Toggle menu button behind it, so tapping Toggle
-        // again throws "not hittable" instead of closing anything. The Toggle
-        // therefore stays hittable exactly while the drawer is closed — a
-        // still-hittable Toggle after a tap means the tap was dropped (tap
-        // again); a covered one means it applied (stop tapping, wait for the
-        // footer). The loop below never taps a covered control, which is what
-        // both red runs did. Close with the drawer's own Close navigation
-        // button, which stays hittable while the drawer is open.
-        let toggle = app.buttons["Toggle menu"]
-        let settings = app.buttons["Settings"]
-        let openDeadline = Date().addingTimeInterval(20)
-        while !settings.exists && Date() < openDeadline {
-            if toggle.isHittable {
-                toggle.tap()
-            }
-            _ = settings.waitForExistence(timeout: 2)
-        }
-        XCTAssertTrue(
-            settings.waitForExistence(timeout: 5),
-            "Settings route missing from the drawer. Accessibility hierarchy:\n\(app.debugDescription)"
-        )
-        XCTAssertTrue(settings.isHittable)
-        let closeNav = app.buttons["Close navigation"]
-        XCTAssertTrue(
-            closeNav.waitForExistence(timeout: 5),
-            "Drawer close control missing. Accessibility hierarchy:\n\(app.debugDescription)"
-        )
-        XCTAssertTrue(
-            dismissDrawer(closeNav, untilGone: settings),
-            "Drawer did not close after proving the Settings route. Accessibility hierarchy:\n\(app.debugDescription)"
-        )
-        XCTAssertFalse(app.staticTexts["That doesn't look like a Station address."].exists)
+        XCTAssertTrue(scan.waitForExistence(timeout: 5))
+        XCTAssertTrue(scan.isHittable)
+        let appFrame = app.frame
+        assertVisibleAction(scan, within: appFrame, label: "Scan pairing QR code")
+        let manual = app.buttons["Enter a pairing code"]
+        XCTAssertTrue(manual.isHittable)
+        assertVisibleAction(manual, within: appFrame, label: "Enter a pairing code")
+        XCTAssertFalse(app.buttons["Toggle menu"].exists,
+                       "The protected workspace must not mount before a Station is configured.")
 
-        connect.tap()
-
-        let connectStation = app.buttons["Connect a Station"]
-        if !connectStation.waitForExistence(timeout: 2) {
-            // The notification sheet can still win the final race between the
-            // post-shell dismissal and the first WebView tap. Recover once,
-            // then let the existing bounded manager assertion decide the run.
+        manual.tap()
+        let manualAddress = app.textFields["Station server address"]
+        if !manualAddress.waitForExistence(timeout: 2) {
             if dismissSystemAlertIfPresent() {
                 app.activate()
             }
-            if !connectStation.exists {
-                XCTAssertTrue(
-                    connect.waitForExistence(timeout: 5),
-                    "Neither the connection shell nor the Station manager appeared after notification recovery. Accessibility hierarchy:\n\(app.debugDescription)"
-                )
-                XCTAssertTrue(connect.isHittable)
-                connect.tap()
+        }
+        XCTAssertTrue(
+            tap(manual, until: manualAddress, budget: 20),
+            "Manual pairing did not expose its Station address. Accessibility hierarchy:\n\(app.debugDescription)"
+        )
+        let code = app.textFields["Pairing code"]
+        XCTAssertTrue(code.exists)
+        let manualTitle = app.staticTexts["Enter a pairing code"]
+        XCTAssertTrue(manualTitle.exists)
+        assertContained(manualAddress.frame, within: appFrame, label: "manual Station address")
+        assertContained(code.frame, within: appFrame, label: "Pairing code")
+        let manualTitleFrame = manualTitle.frame
+        manualAddress.tap()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        XCTAssertTrue(manualAddress.isHittable)
+        assertContained(manualTitle.frame, within: appFrame, label: "focused manual title")
+        assertContained(manualAddress.frame, within: appFrame, label: "focused manual Station address")
+        XCTAssertEqual(manualTitle.frame.origin.x, manualTitleFrame.origin.x, accuracy: 1)
+        XCTAssertEqual(manualTitle.frame.width, manualTitleFrame.width, accuracy: 1)
+
+        // No code or request is submitted. Closing returns to the same welcome;
+        // address-based setup is a separate deliberate route through disclosure.
+        let closeManager = app.buttons["Close Station manager"]
+        XCTAssertTrue(closeManager.isHittable)
+        XCTAssertTrue(
+            dismissSurface(closeManager, untilGone: manualAddress),
+            "Manual pairing did not close. Accessibility hierarchy:\n\(app.debugDescription)"
+        )
+        XCTAssertTrue(waitForElement(scan, budget: 10))
+        XCTAssertTrue(scan.isHittable)
+        let otherWays = app.buttons["Other ways to connect"].firstMatch
+        let connect = app.buttons["Open connection manager"]
+        XCTAssertTrue(
+            tap(otherWays, until: connect, budget: 20),
+            "Other ways to connect did not disclose the connection manager. Accessibility hierarchy:\n\(app.debugDescription)"
+        )
+        connect.tap()
+        let connectStation = app.buttons["Connect a Station"]
+        if !connectStation.waitForExistence(timeout: 2) {
+            if dismissSystemAlertIfPresent() {
+                app.activate()
             }
         }
         XCTAssertTrue(
@@ -111,7 +102,6 @@ final class StationRuntimeSmokeTests: XCTestCase {
         )
         XCTAssertTrue(address.exists)
 
-        let appFrame = app.frame
         assertContained(
             address.frame,
             within: appFrame,
@@ -145,18 +135,13 @@ final class StationRuntimeSmokeTests: XCTestCase {
         )
     }
 
-    // UIKit gesture acknowledgement does not prove a WKWebView DOM click.
-    // Match the existing bounded opening-action recovery: at most two taps,
-    // only while the close control is hittable, with the same real outcome.
-    // Attempt activities remain in xcresult; a recovery is not first-tap proof.
-    private func dismissDrawer(
-        _ close: XCUIElement,
-        untilGone target: XCUIElement
-    ) -> Bool {
+    // A native tap acknowledgement is not a WebView dismissal receipt.
+    // Preserve the exact disappearance outcome with at most two hittable taps.
+    private func dismissSurface(_ close: XCUIElement, untilGone target: XCUIElement) -> Bool {
         for attempt in 1...2 {
             if !target.exists { return true }
             guard close.exists && close.isHittable else { return !target.exists }
-            XCTContext.runActivity(named: "Drawer close attempt \(attempt)") { _ in
+            XCTContext.runActivity(named: "Surface close attempt \(attempt)") { _ in
                 close.tap()
             }
             if target.waitForNonExistence(timeout: 5) { return true }
@@ -267,6 +252,13 @@ final class StationRuntimeSmokeTests: XCTestCase {
             return !alert.exists
         }
         return alert.waitForNonExistence(timeout: remaining)
+    }
+
+    private func assertVisibleAction(_ element: XCUIElement, within container: CGRect, label: String) {
+        assertContained(element.frame, within: container, label: label)
+        XCTAssertGreaterThanOrEqual(element.frame.height, 44, "\(label) is below the mobile touch-target floor.")
+        XCTAssertGreaterThanOrEqual(element.frame.minY, container.minY)
+        XCTAssertLessThanOrEqual(element.frame.maxY, container.maxY)
     }
 
     private func assertContained(_ frame: CGRect, within container: CGRect, label: String) {

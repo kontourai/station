@@ -7,12 +7,16 @@ import type {
 } from '@kontourai/station-contracts/fleet-routing-receipt';
 import { HEALTH_PROBE_TIMEOUT_MS } from '@kontourai/station-contracts/http';
 import type {
+  ServerUpdateRunningTurns,
+  ServerUpdateState,
   ServiceUpdateProgress,
   SystemIdentityResponse,
 } from '@kontourai/station-contracts/system-status';
 import { _getApiBase } from '../api';
 import { parseRestartExpectation } from '../core-update-restart-expectation';
 import {
+  parseServerUpdateRunningTurns,
+  parseServerUpdateState,
   parseServiceUpdateProgress,
   parseSystemIdentityResponse,
   parseSystemUpdateStatus,
@@ -171,113 +175,88 @@ export async function fetchMonitoringMetrics(
 }
 
 /**
- * station#1398 slice 4 — this Station's fleet routing receipts.
- *
- * Unlike its siblings above, a failed read THROWS rather than degrading to
- * an empty array. An empty receipt list is a real, meaningful answer ("this
- * Station has never fleet-routed a turn"), so returning it for a failed read
- * would make the surface state that as fact — the silent-degradation shape
- * §4.5 bans, applied to the receipts themselves. The caller renders the
- * error.
+ * A Station's fleet receipts (#98). Unlike the monitoring reads above, a
+ * failed read THROWS rather than degrading to an empty page: an empty receipt
+ * list is a real answer ("this Station has never fleet-routed or served a
+ * turn"), so returning it for a failed read would state that as fact. The
+ * caller renders the error.
  */
-export async function fetchFleetRoutingReceiptsForStation(
+async function fetchFleetReceipts<Page>(
+  route: 'fleet-routing-receipts' | 'fleet-serve-receipts',
+  messages: { rejected: string; unreadable: string },
   limit?: number,
   signal?: AbortSignal,
-): Promise<FleetRoutingReceiptPage> {
+): Promise<Page> {
   const apiBase = await resolveApiBase();
   const query = typeof limit === 'number' ? `?limit=${limit}` : '';
   const response = await authenticatedFetch(
-    `${apiBase}/monitoring/fleet-routing-receipts${query}`,
+    `${apiBase}/monitoring/${route}${query}`,
     ...signalInit(signal),
   );
-  // Read the body BEFORE branching on status (fix-round HIGH-1): a rejected
-  // response still carries a body the route author wrote on purpose — e.g.
-  // `monitoring.ts`'s 503 "This Station cannot locate its receipt log, so
-  // whether it has fleet-routed anything is unknown rather than empty."
-  // Discarding it in favor of a synthesized "rejected with HTTP 503" throws
-  // away the one sentence that told the reader what actually happened.
-  // `.catch` covers a body that fails to parse at all (or is genuinely
-  // empty), which is the only case a synthesized fallback is honest.
+  // Read the body BEFORE branching on status: a rejected response still
+  // carries a sentence the route wrote on purpose (`monitoring.ts`'s 503
+  // "This Station cannot locate its receipt log, ..."), and a synthesized
+  // "rejected with HTTP 503" would discard it. `.catch` covers a body that
+  // does not parse at all, the only case where a synthesized message is honest.
   const result = (await response
     .json()
     .catch(unlessDeadline(() => undefined))) as
-    | { success: boolean; data?: FleetRoutingReceiptPage; error?: string }
+    | { success: boolean; data?: Page; error?: string }
     | undefined;
   if (!response.ok) {
     // Preserve the status so `resolveFleetReceiptsRefetchInterval`
-    // (station#3444) can stop polling a credential failure that cannot
-    // clear. Deliberately NOT prefixed "Failed to fetch" when synthesized:
-    // `isStationTransportFailure` (`utils/stationTransportFailure.ts`)
-    // pattern-matches that exact prefix to mean "the network is
-    // unreachable" — an HTTP status response is the opposite of that (a
-    // reachable server that rejected the request) — so a fallback message
-    // must not collide with it. The server's own `error` text never does.
+    // (archive#3444) can stop polling a credential failure that cannot
+    // clear. The synthesized message is deliberately NOT prefixed "Failed to
+    // fetch": `isStationTransportFailure` (`utils/stationTransportFailure.ts`)
+    // reads that prefix as "the network is unreachable", the opposite of a
+    // reachable server that rejected the request. The server's own `error`
+    // text never collides.
     throw new StationHttpError(
       response.status,
       apiErrorMessage(
         result ?? {},
-        `Fleet routing receipts request rejected with HTTP ${response.status}`,
+        `${messages.rejected} request rejected with HTTP ${response.status}`,
       ),
     );
   }
   if (!result?.success || !result.data) {
-    throw new Error(
-      apiErrorMessage(
-        result ?? {},
-        'This Station could not read its fleet routing receipts. That is unknown, not empty.',
-      ),
-    );
+    throw new Error(apiErrorMessage(result ?? {}, messages.unreadable));
   }
   return result.data;
 }
 
-/**
- * station#1398 slice 3/4 (security review, M-2) — the SERVING side's own
- * receipts. Throws on failure for the same reason its sibling does: an empty
- * serve log is a real answer ("this Station has served nothing"), so
- * returning it for a failed read would state that as fact.
- */
-export async function fetchFleetServeReceiptsForStation(
+/** This Station's fleet routing receipts; see `fetchFleetReceipts`. */
+export function fetchFleetRoutingReceiptsForStation(
+  limit?: number,
+  signal?: AbortSignal,
+): Promise<FleetRoutingReceiptPage> {
+  return fetchFleetReceipts<FleetRoutingReceiptPage>(
+    'fleet-routing-receipts',
+    {
+      rejected: 'Fleet routing receipts',
+      unreadable:
+        'This Station could not read its fleet routing receipts. That is unknown, not empty.',
+    },
+    limit,
+    signal,
+  );
+}
+
+/** The serving side's own receipts; see `fetchFleetReceipts`. */
+export function fetchFleetServeReceiptsForStation(
   limit?: number,
   signal?: AbortSignal,
 ): Promise<FleetServeReceiptPage> {
-  const apiBase = await resolveApiBase();
-  const query = typeof limit === 'number' ? `?limit=${limit}` : '';
-  const response = await authenticatedFetch(
-    `${apiBase}/monitoring/fleet-serve-receipts${query}`,
-    ...signalInit(signal),
-  );
-  // See the routing-receipt sibling above (fix-round HIGH-1): read the body
-  // before branching on status so a route-authored error sentence — e.g.
-  // `monitoring.ts`'s 503 "This Station cannot locate its receipt log, so
-  // what it has served is unknown rather than empty." — survives.
-  const result = (await response
-    .json()
-    .catch(unlessDeadline(() => undefined))) as
-    | { success: boolean; data?: FleetServeReceiptPage; error?: string }
-    | undefined;
-  if (!response.ok) {
-    // Preserve the status so `resolveFleetReceiptsRefetchInterval`
-    // (station#3444) can stop polling a credential failure that cannot
-    // clear. Not "Failed to fetch" when synthesized — see the routing-receipt
-    // sibling above; the server's own `error` text never collides.
-    throw new StationHttpError(
-      response.status,
-      apiErrorMessage(
-        result ?? {},
-        `Fleet serve receipts request rejected with HTTP ${response.status}`,
-      ),
-    );
-  }
-  if (!result?.success || !result.data) {
-    throw new Error(
-      apiErrorMessage(
-        result ?? {},
+  return fetchFleetReceipts<FleetServeReceiptPage>(
+    'fleet-serve-receipts',
+    {
+      rejected: 'Fleet serve receipts',
+      unreadable:
         'This Station could not read what it has served. That is unknown, not empty.',
-      ),
-    );
-  }
-  return result.data;
+    },
+    limit,
+    signal,
+  );
 }
 
 /**
@@ -290,13 +269,18 @@ export interface MonitoringEventFilters {
   tool?: string;
   engine?: string;
   conversation?: string;
+  /**
+   * Only rows this external telemetry producer reported. Without it, the
+   * other filters (including `tools`) never match producer rows.
+   */
+  producer?: string;
   /** Only tool call/result events. */
   tools?: boolean;
   /**
-   * Most recent N by timestamp. Opt-in: omit it and every matching row in
-   * the window comes back — the route deliberately has no default, because
-   * one applied there silently truncated this caller and the Monitoring
-   * view (station#3075 review).
+   * Most recent N by timestamp. Omission keeps no explicit presentation cap;
+   * the server still bounds retained rows, bytes and scan work. Export callers
+   * needing completeness must use fetchMonitoringEventWindow and inspect its
+   * truncation flag (station#3075 review).
    */
   limit?: number;
 }
@@ -330,6 +314,7 @@ export async function fetchMonitoringEventWindow(
   if (filters.tool) params.set('tool', filters.tool);
   if (filters.engine) params.set('engine', filters.engine);
   if (filters.conversation) params.set('conversation', filters.conversation);
+  if (filters.producer) params.set('producer', filters.producer);
   if (filters.tools) params.set('tools', 'true');
   if (filters.limit !== undefined) params.set('limit', String(filters.limit));
   const response = await authenticatedFetch(
@@ -462,8 +447,10 @@ export async function requestCoreUpdateStatus(
   signal?: AbortSignal,
 ): Promise<CoreUpdateStatus> {
   const apiBase = await resolveApiBase(apiBaseOverride);
+  // `staged=1`: this SDK reads the #3851 `staged` progress state; servers
+  // older than it ignore the parameter.
   const response = await authenticatedFetch(
-    `${apiBase}/api/system/core-update`,
+    `${apiBase}/api/system/core-update?staged=1`,
     { signal },
   );
   // HTTP status is checked BEFORE the body can read as success: a 503/401
@@ -514,7 +501,7 @@ export async function requestServiceUpdateProgress(
   signal?: AbortSignal,
 ): Promise<ServiceUpdateProgress> {
   const response = await authenticatedFetch(
-    `${apiBase}/api/system/core-update/service-update`,
+    `${apiBase}/api/system/core-update/service-update?staged=1`,
     { signal },
   );
   if (!response.ok) {
@@ -605,3 +592,90 @@ export async function fetchServerCapabilities(
 import { apiErrorMessage } from '../api-core';
 import { authenticatedFetch, StationHttpError } from '../client/http';
 import { rethrowDeadline, unlessDeadline } from '../client/request-deadline';
+
+/** `GET /api/system/core-update/state` (#3851); see `ServerUpdateState`. */
+export async function requestServerUpdateState(
+  apiBase: string,
+  signal?: AbortSignal,
+): Promise<ServerUpdateState> {
+  const response = await authenticatedFetch(
+    `${apiBase}/api/system/core-update/state`,
+    { signal },
+  );
+  // A server older than #3851 has no such route: unsupported, not an error.
+  if (response.status === 404) return parseServerUpdateState(null);
+  if (!response.ok) {
+    throw new StationHttpError(
+      response.status,
+      `Failed to fetch the server update state: ${response.status}`,
+    );
+  }
+  return parseServerUpdateState(await response.json());
+}
+
+/** The running turns a server restart would interrupt (#3851). */
+export async function requestServerUpdateRunningTurns(
+  apiBase: string,
+  signal?: AbortSignal,
+): Promise<ServerUpdateRunningTurns> {
+  const response = await authenticatedFetch(
+    `${apiBase}/api/system/core-update/running-turns`,
+    { signal },
+  );
+  if (!response.ok) {
+    throw new StationHttpError(
+      response.status,
+      `Failed to fetch the running turns: ${response.status}`,
+    );
+  }
+  return parseServerUpdateRunningTurns(await response.json());
+}
+
+/**
+ * One server update action (#3851): download (`stage`), restart into the
+ * downloaded `version` (`apply`), or set or cancel applying it once no turn
+ * runs. Resolves when the server accepted it; progress arrives as state.
+ */
+export type ServerUpdateAction =
+  | { action: 'stage' }
+  | { action: 'apply'; version: string }
+  | { action: 'apply-when-idle'; version: string }
+  | { action: 'cancel-apply-when-idle' };
+
+export async function requestServerUpdateAction(
+  apiBase: string,
+  request: ServerUpdateAction,
+): Promise<{ requestId: string | null }> {
+  const url =
+    request.action === 'apply-when-idle' ||
+    request.action === 'cancel-apply-when-idle'
+      ? `${apiBase}/api/system/core-update/apply-when-idle`
+      : `${apiBase}/api/system/core-update`;
+  const init: RequestInit =
+    request.action === 'cancel-apply-when-idle'
+      ? { method: 'DELETE' }
+      : {
+          method: request.action === 'apply-when-idle' ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(
+            request.action === 'apply-when-idle'
+              ? { version: request.version }
+              : request,
+          ),
+        };
+  const response = await authenticatedFetch(url, init);
+  const result = (await response.json().catch(unlessDeadline(() => ({})))) as {
+    success?: boolean;
+    error?: string;
+    serviceUpdate?: { requestId?: unknown };
+  };
+  if (!response.ok || result.success === false)
+    throw new Error(
+      apiErrorMessage(result, `The server refused the update request`),
+    );
+  const requestId = result.serviceUpdate?.requestId;
+  return {
+    requestId:
+      typeof requestId === 'string' && requestId.length > 0 ? requestId : null,
+  };
+}

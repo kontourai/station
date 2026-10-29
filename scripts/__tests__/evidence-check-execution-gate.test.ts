@@ -9,6 +9,8 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+// @ts-expect-error -- Veritas publishes ESM without declarations.
+import { loadRepoStandards } from '@kontourai/veritas';
 import { afterEach, describe, expect, test } from 'vitest';
 
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
@@ -19,11 +21,8 @@ const realRepoMap = JSON.parse(
 const realMapping = JSON.parse(
   readFileSync(join(repoRoot, 'scripts/evidence-check-execution.json'), 'utf8'),
 );
-const realStandards = JSON.parse(
-  readFileSync(
-    join(repoRoot, '.veritas/repo-standards/default.repo-standards.json'),
-    'utf8',
-  ),
+const realStandards = loadRepoStandards(
+  join(repoRoot, '.veritas/repo-standards/default.repo-standards.json'),
 );
 const temporaryRoots: string[] = [];
 
@@ -74,7 +73,8 @@ function baseScripts() {
     // Mirrors the real verify:static:bootstrap step that runs
     // `npm run docs:truth:gate` — documentation-truth's reachability.
     'docs:truth:gate': pass,
-    'verify:static:raw': `${pass} && npm run lint:check && npm run docs:truth:gate`,
+    'lint:component-style': pass,
+    'verify:static:raw': `${pass} && npm run lint:check && npm run docs:truth:gate && npm run lint:component-style`,
     'ci:fast': pass,
     'ci:fast:raw': pass,
     'test:prepush': pass,
@@ -92,6 +92,7 @@ function baseScripts() {
     'test:connected-agents': pass,
     'proof:session-transition-contract': pass,
     'proof:bounded-work-contract': pass,
+    'lint:hygiene': pass,
     'veritas:readiness': 'npm exec -- veritas readiness --working-tree',
     'proof:sdk-builds': pass,
     'proof:app-builds': pass,
@@ -137,7 +138,7 @@ function createFixture(
   );
   writeFileSync(
     join(root, '.githooks/pre-push'),
-    'npm run --silent veritas:readiness\n',
+    '# readiness belongs to required hosted fast-checks\n',
   );
   writeFileSync(
     join(root, 'scripts/evidence-check-execution.json'),
@@ -247,7 +248,7 @@ describe('evidence-check execution gate', () => {
     );
   });
 
-  test('scoped checks require readiness in the fast lane and pre-push hook', () => {
+  test('scoped checks require readiness in the fast lane', () => {
     const root = createFixture(() => {});
     writeFileSync(
       join(root, 'scripts/run-ci-fast.mjs'),
@@ -257,7 +258,7 @@ describe('evidence-check execution gate', () => {
     const { status, output } = runGate(root);
     expect(status).toBe(1);
     expect(output).toContain(
-      'evidence check "session-transition-contract" is scoped but Veritas readiness is not wired to both ci:fast and pre-push',
+      'evidence check "session-transition-contract" is scoped but Veritas readiness is not wired to ci:fast',
     );
   });
 

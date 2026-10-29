@@ -44,14 +44,6 @@ function scopeFor(credential: string): string | undefined {
   return undefined;
 }
 
-/** The principal gate `runtimeRequestPrincipalMayAccessHttpRoute` consults. */
-const PRINCIPAL_SECURITY = {
-  authorizeCredential: (candidate: string) => scopeFor(candidate) !== undefined,
-  resolveGrantedScope: (candidate: string) => scopeFor(candidate),
-  verifyOperatorCredential: (candidate: string) =>
-    candidate === OPERATOR_CREDENTIAL,
-};
-
 function createHarness() {
   const app = new Hono<{ Bindings: TestBindings }>();
   configureRuntimeHttp({
@@ -159,17 +151,14 @@ describe('scoped pairing HTTP enforcement (station#1098 AC1, table-driven)', () 
     const acknowledgeDisclosure = vi.fn();
     app.route(
       '/api/usage-telemetry',
-      createUsageTelemetryDisclosureRoutes(
-        {
-          acknowledgeDisclosure,
-          disclosure: vi.fn().mockResolvedValue({
-            acknowledged: false,
-            inventoryRevision: 'inventory',
-            events: {},
-          }),
-        } as never,
-        PRINCIPAL_SECURITY,
-      ),
+      createUsageTelemetryDisclosureRoutes({
+        acknowledgeDisclosure,
+        disclosure: vi.fn().mockResolvedValue({
+          acknowledged: false,
+          inventoryRevision: 'inventory',
+          events: {},
+        }),
+      } as never),
     );
 
     const response = await app.request(
@@ -196,78 +185,6 @@ describe('scoped pairing HTTP enforcement (station#1098 AC1, table-driven)', () 
     ).not.toHaveBeenCalled();
   });
 
-  it('the disclosure read tells each caller whether it may acknowledge or change the setting', async () => {
-    const app = new Hono<{ Bindings: TestBindings }>();
-    configureRuntimeHttp({
-      app: app as never,
-      logger: {
-        info() {},
-        warn() {},
-        error() {},
-        debug() {},
-        trace() {},
-        fatal() {},
-        child() {
-          return this;
-        },
-        setLevel() {},
-        getLevel() {
-          return 'info' as const;
-        },
-      },
-      eventBus: { emit() {} } as unknown as EventBus,
-      security: {
-        verifyCredential: (candidate) => scopeFor(candidate) !== undefined,
-        resolveGrantedScope: (candidate) => scopeFor(candidate),
-        allowedOrigins: [],
-      },
-    } as Parameters<typeof configureRuntimeHttp>[0]);
-    app.route(
-      '/api/usage-telemetry',
-      createUsageTelemetryDisclosureRoutes(
-        {
-          disclosure: vi.fn().mockResolvedValue({
-            acknowledged: false,
-            inventoryRevision: 'inventory',
-            events: {},
-          }),
-        } as never,
-        PRINCIPAL_SECURITY,
-      ),
-    );
-    const read = async (credential: string) => {
-      const response = await app.request(
-        '/api/usage-telemetry/disclosure',
-        { headers: { Authorization: `Bearer ${credential}` } },
-        {
-          incoming: { socket: { remoteAddress: '100.96.12.7' } },
-        } as TestBindings,
-      );
-      expect(response.status, credential).toBe(200);
-      const body = (await response.json()) as {
-        data: { canAcknowledge: boolean; canChangeSetting: boolean };
-      };
-      return {
-        canAcknowledge: body.data.canAcknowledge,
-        canChangeSetting: body.data.canChangeSetting,
-      };
-    };
-
-    // A QR/manual-code paired phone: neither preset carries access:manage.
-    await expect(read(READ_ONLY_CREDENTIAL)).resolves.toEqual({
-      canAcknowledge: false,
-      canChangeSetting: false,
-    });
-    await expect(read(STANDARD_CREDENTIAL)).resolves.toEqual({
-      canAcknowledge: false,
-      canChangeSetting: true,
-    });
-    await expect(read(OPERATOR_CREDENTIAL)).resolves.toEqual({
-      canAcknowledge: true,
-      canChangeSetting: true,
-    });
-  });
-
   it.each(READ_TIER_CASES)(
     'a read-only credential is allowed on $method $path',
     async ({ method, path }) => {
@@ -284,7 +201,7 @@ describe('scoped pairing HTTP enforcement (station#1098 AC1, table-driven)', () 
       const { request } = createHarness();
       const response = await request(path, method, READ_ONLY_CREDENTIAL);
       expect(response.status, `${method} ${path}`).toBe(403);
-      // archive#1097 review round 2: HEAD only entered this operate-tier
+      // archive#1097: HEAD only entered this operate-tier
       // sweep once the /api/environments/ssh/sessions leaf override added
       // the table's first HEAD:orchestration:operate rule — every prior
       // operate-tier case was a POST/PUT/PATCH/DELETE, which all carry a
@@ -384,7 +301,7 @@ describe('scoped pairing HTTP enforcement (station#1098 AC1, table-driven)', () 
     }
   });
 
-  // archive#1097 review round 2 (HIGH): a dedicated, literal-path exercise
+  // archive#1097: a dedicated, literal-path exercise
   // of the cross-station-reads tightening — deliberately NOT via `/probe`
   // like the table-driven sweep above, so this proves the real production
   // route (no trailing segment) resolves the same way, not just its prefix.

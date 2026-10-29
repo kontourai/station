@@ -49,7 +49,12 @@ const analyticsState = vi.hoisted(() => ({
 vi.mock('../contexts/AnalyticsContext', () => ({
   useAnalytics: () => analyticsState,
 }));
-vi.mock('../contexts/AgentsContext', () => ({ useAgents: () => [] }));
+vi.mock('../contexts/AgentsContext', () => ({
+  useAgents: () => [
+    { slug: 'unrelated', name: 'Unrelated configured agent' },
+    { slug: 'default-model', name: 'Current default agent', model: 'model-x' },
+  ],
+}));
 vi.mock('../contexts/ModelsContext', () => ({ useModels: () => [] }));
 vi.mock('../components/modals/ConfirmModal', () => ({
   ConfirmModal: () => null,
@@ -131,6 +136,44 @@ function selectPeriod(label: string) {
 }
 
 describe('UsageStatsPanel period selector', () => {
+  test('does not associate historical model usage with an unconfigured agent', () => {
+    render(<UsageStatsPanel />);
+    expect(screen.queryByText('Unrelated configured agent')).toBeNull();
+    expect(screen.queryByText('Current default agent')).toBeNull();
+    expect(screen.getByRole('button', { name: /model-x/ }).title).not.toContain(
+      'Unrelated configured agent',
+    );
+  });
+
+  test('shows attribution gaps and unknown row costs without a partial-cost average', () => {
+    const stats = buildLifetimeStats();
+    analyticsState.usageStats = {
+      ...stats,
+      snapshot: { projection: 'retained-source-v1' },
+      unallocated: { model: { messages: 300 } },
+      byModel: {
+        'model-x': { messages: 100, inputTokens: 0, outputTokens: 0, cost: 0 },
+      },
+      byAgent: {
+        'agent-a': {
+          conversations: 4,
+          messages: 50,
+          cost: 0,
+          reportedCostUsd: 0,
+        },
+      },
+    };
+    render(<UsageStatsPanel />);
+    expect(
+      screen.getByRole('button', { name: /model-x/ }).textContent,
+    ).toContain('Not reported');
+    expect(
+      screen.getByRole('button', { name: /agent-a/ }).textContent,
+    ).toContain('$0.00');
+    expect(screen.getByText(/300.*without a recorded model/)).toBeTruthy();
+    expect(screen.queryByText('Avg/Message')).toBeNull();
+  });
+
   test.each([undefined, 0])(
     'current cost cards distinguish an absent estimate from reported %s',
     (estimatedCostUsd) => {
@@ -153,11 +196,11 @@ describe('UsageStatsPanel period selector', () => {
       });
       render(<UsageStatsPanel />);
       if (estimatedCostUsd === undefined)
-        expect(screen.getAllByText('Not reported')).toHaveLength(2);
+        expect(screen.getAllByText('Not reported')).toHaveLength(1);
       else expect(screen.getByText('$0.00')).toBeTruthy();
       selectPeriod('30 days');
       if (estimatedCostUsd === undefined)
-        expect(screen.getAllByText('Not reported')).toHaveLength(2);
+        expect(screen.getAllByText('Not reported')).toHaveLength(1);
       else expect(screen.getByText('$0.00')).toBeTruthy();
     },
   );
@@ -201,7 +244,7 @@ describe('UsageStatsPanel period selector', () => {
     expect(screen.getByText('12')).toBeTruthy();
     expect(screen.getByText('$1.23')).toBeTruthy();
     expect(screen.getByText('2/30')).toBeTruthy();
-    expect(screen.getByText('$0.1025')).toBeTruthy(); // 1.23 / 12
+    expect(screen.queryByText('Avg/Message')).toBeNull();
     // The dishonest-completeness case: the lifetime totals — which include
     // engine sessions daily history cannot see — must not appear as period
     // figures.
@@ -304,6 +347,26 @@ describe('UsageStatsPanel period selector', () => {
         expect(title).not.toContain('$');
       }
     }
+  });
+
+  test('daily tooltips distinguish unknown cost from an explicitly reported zero', () => {
+    sdkState.ranged.data = buildRangedData({
+      byDate: {
+        '2026-08-17': { messages: 3, cost: 0 },
+        '2026-08-18': { messages: 9, cost: 0, reportedCostUsd: 0 },
+      },
+    });
+    const { container } = render(<UsageStatsPanel />);
+    selectPeriod('30 days');
+    const titles = Array.from(
+      container.querySelectorAll('.usage-trend__bar'),
+    ).map((bar) => bar.getAttribute('title'));
+    expect(
+      titles.some((title) => title?.includes('Cost not reported · 3 messages')),
+    ).toBe(true);
+    expect(
+      titles.some((title) => title?.includes('$0.0000 · 9 messages')),
+    ).toBe(true);
   });
 
   test('an empty period is an empty state, not $0.00 cards', () => {

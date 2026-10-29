@@ -1,0 +1,7 @@
+{
+  "revision": "246a89a0fe2e1ca6e4f52b86d77fb5a97675648d",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Additional source links for the reviewed Codex mapping, absent settings update handling, and rendered approval descriptions. Same bounded R4 semantic review: effective reviewer remains unknown; no manual guarantee, new provider run, sandbox change, or qualification of R2/R3.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/providers/adapters/codex-approval-mode.ts","src-server/providers/adapters/codex-adapter-notifications.ts","src-ui/src/utils/approvalMode.ts","src-ui/src/components/badges/ComposerModeSheet.tsx"]}
+  ]
+}

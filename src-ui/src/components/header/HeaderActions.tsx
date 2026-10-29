@@ -13,15 +13,21 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { APP_DESTINATION_REGISTRY } from '../../app-shell/destination-registry';
 import { useApiBase } from '../../contexts/ApiBaseContext';
+import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import { useLongPress } from '../../hooks/useLongPress';
 import { useMenuTriggerToggle } from '../../hooks/useMenuTriggerToggle';
+import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { hasRealSavedConnection } from '../../lib/saved-connections';
 import {
   checkServerHealth,
   probeServerConnection,
 } from '../../lib/serverHealth';
+import { recordStationUse } from '../../lib/stationSwitcher';
+import { hasLocalStationForProfile } from '../../platform/client-origin-surface';
+import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { BellGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
+import { useStationConditions } from '../notifications/StationConditions';
 import type { HeaderHelpPrompt } from './utils';
 
 /**
@@ -64,29 +70,15 @@ const loadHelpMenu = () =>
   import('./HelpMenu').then((m) => ({ default: m.HelpMenu }));
 const loadOverflowMenu = () =>
   import('./OverflowMenu').then((m) => ({ default: m.OverflowMenu }));
-/**
- * #1552 D1's avatar menu, deferred on the same grounds as the two above: its
- * first statement is `if (!isOpen) return null` and its only pre-return hook
- * (`useMenuFocus`) already returns early while closed, so mounting it on open
- * leaves the rendered output identical and keeps its markup — and the two
- * glyphs it pulls — out of the first-paint chunk.
- */
-const loadProfileMenu = () =>
-  import('./ProfileMenu').then((m) => ({ default: m.ProfileMenu }));
-
 interface HeaderActionsProps {
-  currentViewType?: string;
   helpPrompts: HeaderHelpPrompt[];
-  settingsShortcut: string;
   showHelp: boolean;
   showNotifications: boolean;
   showOverflow: boolean;
-  showProfileMenu: boolean;
   userInitials: string;
   onCloseHelp: () => void;
   onCloseNotifications: () => void;
   onCloseOverflow: () => void;
-  onCloseProfileMenu: () => void;
   onHelpPrompt: (prompt: string) => void;
   onOpenConnections: () => void;
   onOpenProfile: () => void;
@@ -94,9 +86,7 @@ interface HeaderActionsProps {
   onOpenHelp: () => void;
   /** Opens the notification popover. Never a toggle — see `useMenuTriggerToggle`. */
   onOpenNotifications: () => void;
-  onToggleSettings: () => void;
   onToggleOverflow: () => void;
-  onToggleProfileMenu: () => void;
   onViewAllNotifications: () => void;
 }
 
@@ -159,33 +149,53 @@ function ConnectionNameHint({
   );
 }
 
+/**
+ * Toggles the Station switcher. It opens on the previous Station, or on its
+ * filter once there are enough to need one, so the chord then Enter flips back.
+ */
+function StationSwitchShortcut({ onToggle }: { onToggle: () => void }) {
+  useKeyboardShortcut(
+    'station.switch',
+    's',
+    ['cmd', 'shift'],
+    'Switch Station',
+    onToggle,
+  );
+  return null;
+}
+
 export function HeaderActions({
-  currentViewType,
   helpPrompts,
-  settingsShortcut,
   showHelp,
   showNotifications,
   showOverflow,
-  showProfileMenu,
   userInitials,
   onCloseHelp,
   onCloseNotifications,
   onCloseOverflow,
-  onCloseProfileMenu,
   onHelpPrompt,
   onOpenConnections,
   onOpenProfile,
   onOpenHelp,
   onOpenNotifications,
-  onToggleSettings,
   onToggleOverflow,
-  onToggleProfileMenu,
   onViewAllNotifications,
 }: HeaderActionsProps) {
-  const { activeConnection, connections, setActiveConnection } =
-    useConnections();
+  const profile = usePlatformProfile();
+  const stationConditions = useStationConditions();
+  const {
+    activeConnection,
+    connections,
+    setActiveConnection,
+    forgetConnection,
+    canForgetConnection,
+  } = useConnections();
   const connectionButtonRef = useRef<HTMLButtonElement>(null);
   const [connectionMenuOpen, setConnectionMenuOpen] = useState(false);
+  const activeConnectionId = activeConnection?.id;
+  useEffect(() => {
+    if (activeConnectionId) recordStationUse(activeConnectionId);
+  }, [activeConnectionId]);
   const { apiBase } = useApiBase();
   const {
     status: connStatus,
@@ -241,13 +251,14 @@ export function HeaderActions({
    * a toggle on the open path would shut a popover that a hotkey or deep link
    * had opened in the meantime.
    *
-   * The other two menus in this row are NOT wired this way, and that is a
-   * finding rather than an omission — see #2081. Each renders a full-viewport
-   * dismiss backdrop one layer under itself (`ProfileMenu.tsx:118-132`,
-   * `OverflowMenu.tsx:101-118`, both at `--layer-navigation - 1` = 9349) while
+   * The overflow menu in this row is NOT wired this way, and that is a
+   * finding rather than an omission — see #2081. It renders a full-viewport
+   * dismiss backdrop one layer under itself (`OverflowMenu.tsx`, at
+   * `--layer-navigation - 1` = 9349; the sidebar's account menu,
+   * `ProfileMenu.tsx`, carries the same backdrop) while
    * this toolbar sits at `--layer-sticky` (100) on mobile and at no layer at
-   * all otherwise, so while either of those menus is open its backdrop covers
-   * its own trigger and the press lands on the backdrop, which closes it. The
+   * all otherwise, so while either menu is open its backdrop covers its own
+   * trigger and the press lands on the backdrop, which closes it. The
    * stylesheet states the same invariant for the dock's More menu
    * (`index.css:1944-1950`). This popover is the one with no backdrop.
    *
@@ -360,17 +371,17 @@ export function HeaderActions({
   const [connectionNameAnchor, setConnectionNameAnchor] =
     useState<HTMLElement | null>(null);
   const connectionHintId = useId();
+  const openConnectionMenu = () => {
+    setConnectionNameAnchor(null);
+    onCloseHelp();
+    onCloseNotifications();
+    onCloseOverflow();
+    if (connections.length === 0) onOpenConnections();
+    else setConnectionMenuOpen(true);
+  };
   const connectionToggle = useMenuTriggerToggle(
     connectionMenuOpen,
-    () => {
-      setConnectionNameAnchor(null);
-      onCloseHelp();
-      onCloseNotifications();
-      onCloseOverflow();
-      onCloseProfileMenu();
-      if (connections.length === 0) onOpenConnections();
-      else setConnectionMenuOpen(true);
-    },
+    openConnectionMenu,
     () => setConnectionMenuOpen(false),
   );
   const connectionGesture = useLongPress({
@@ -430,6 +441,14 @@ export function HeaderActions({
         aria-label={connAccessibleName}
       >
         <ConnectionStatusDot status={connState} size={7} />
+        {stationConditions.length > 0 && (
+          <span
+            role="img"
+            aria-label={`${stationConditions.length} Station notices`}
+          >
+            !
+          </span>
+        )}
         {compactConn ? (
           <span className="app-toolbar__conn-label">{connDisplayLabel}</span>
         ) : (
@@ -451,6 +470,14 @@ export function HeaderActions({
           </>
         )}
       </button>
+      {connections.length > 1 && (
+        <StationSwitchShortcut
+          onToggle={() => {
+            if (connectionMenuOpen) setConnectionMenuOpen(false);
+            else openConnectionMenu();
+          }}
+        />
+      )}
       {connectionMenuOpen && connectionButtonRef.current && (
         <LazyBoundary
           load={loadStationSwitcher}
@@ -463,8 +490,13 @@ export function HeaderActions({
             onSelect: async (connection) => {
               await setActiveConnection(connection.id);
             },
+            onForget: (connection) => forgetConnection(connection.id),
+            canForget: (connection) => canForgetConnection(connection.id),
             onClose: () => setConnectionMenuOpen(false),
             onManage: onOpenConnections,
+            onPairPhone: hasLocalStationForProfile(profile)
+              ? () => openConnectionsModal({ mode: 'pair-host' })
+              : undefined,
           }}
           pending={null}
         />
@@ -485,7 +517,9 @@ export function HeaderActions({
           className="app-toolbar__icon-btn"
           {...notificationTrigger}
           title={notificationLabel}
-          aria-label={`${notificationLabel}${notificationBadge ? ` (${notificationBadge.label})` : ''}`}
+          // A comma, not parentheses: the visible count must be a word of
+          // the name for label-in-name (WCAG 2.5.3), and "(3" is not "3".
+          aria-label={`${notificationLabel}${notificationBadge ? `, ${notificationBadge.label}` : ''}`}
         >
           {/* #1552 D1: the shared `Glyph` family, not a hand-rolled `strokeWidth:
               2` SVG. This row's three glyphs were drawn at three weights (2 here
@@ -508,7 +542,7 @@ export function HeaderActions({
                assumption about how many notifications a person has.
 
                The exact count is not lost: it is in this button's accessible
-               name (`${notificationLabel} (${notificationBadge.label})` above,
+               name (`${notificationLabel}, ${notificationBadge.label}` above,
                "N need attention"), and the panel the button opens lists them.
                What the cap does cost: above nine, the visible "9+" is no
                longer a substring of that name, where the uncapped count was.
@@ -531,48 +565,6 @@ export function HeaderActions({
               isOpen: showNotifications,
               onClose: onCloseNotifications,
               onViewAll: onViewAllNotifications,
-            }}
-            pending={null}
-          />
-        )}
-      </div>
-
-      {/* archive#3311: secondary on mobile — the profile moves into the ⋯
-          overflow menu there, freeing the toolbar slot the connection
-          status now occupies.
-
-          #1552 D1: on a fine pointer it is a MENU trigger. "Ask Station for
-          help" and "Open settings" were two more unlabelled glyphs in this row;
-          they are rows of that menu now, and the row is four controls —
-          Layout, the status dot, Notifications, this. Profile itself is the
-          menu's first row, so the destination the button used to navigate to
-          straight away is still one press plus one row away, and is now
-          named. */}
-      <div className="app-toolbar__action--secondary">
-        <button
-          type="button"
-          className={`app-toolbar__icon-btn ${currentViewType === 'profile' || showProfileMenu ? 'is-active' : ''}`}
-          onClick={onToggleProfileMenu}
-          title="Profile and settings"
-          aria-label="Profile and settings"
-          aria-haspopup="menu"
-          aria-expanded={showProfileMenu}
-        >
-          {userInitials}
-        </button>
-        {showProfileMenu && (
-          <LazyBoundary
-            load={loadProfileMenu}
-            componentProps={{
-              isOpen: showProfileMenu,
-              isProfileActive: currentViewType === 'profile',
-              isSettingsActive: currentViewType === 'settings',
-              settingsShortcut,
-              userInitials,
-              onClose: onCloseProfileMenu,
-              onOpenProfile,
-              onOpenHelp,
-              onToggleSettings,
             }}
             pending={null}
           />
@@ -618,12 +610,13 @@ export function HeaderActions({
         )}
       </div>
 
-      {/* No phone-only Settings gear: Settings lives in the sidebar drawer's
-          footer (`ProjectSidebarFooter`), which the hamburger beside the brand
-          opens on every viewport — so a phone reaches it in two taps without
-          spending a permanent slot in the row that runs out of width first.
-          `onToggleSettings` stays a prop because the desktop avatar menu's
-          Settings row still dispatches through it. */}
+      {/* No phone-only Settings gear: Settings is the "Open settings" row of
+          the account menu in the sidebar drawer's footer
+          (`SidebarAccountControl` in `ProjectSidebarFooter`), which the
+          hamburger beside the brand opens on every viewport — so a phone
+          reaches it without spending a permanent slot in the row that runs
+          out of width first. That account menu used to sit at this row's
+          end; the region glyphs took its place. */}
     </div>
   );
 }

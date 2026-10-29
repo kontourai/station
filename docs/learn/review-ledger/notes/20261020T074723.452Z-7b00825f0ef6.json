@@ -1,0 +1,23 @@
+{
+  "revision": "d1c8f87e286c18ef58425e99c9fdd42ace88369f",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Checked this document's claims about the renamed workflow file. The workflow's display name changed from 'Diagnostic: Merge integration' to 'Diagnostic (manual): Merge integration'; the file name, job names, triggers (workflow_dispatch only) and the required check 'Merge-queue regression' (job in ci.yml) are unchanged, and this document makes no claim that depends on the display name.","inputs":[".veritas/README.md",".github/workflows/merge-queue-regression.yml"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Checked this document's claims about the renamed workflow file. The workflow's display name changed from 'Diagnostic: Merge integration' to 'Diagnostic (manual): Merge integration'; the file name, job names, triggers (workflow_dispatch only) and the required check 'Merge-queue regression' (job in ci.yml) are unchanged, and this document makes no claim that depends on the display name.","inputs":["docs/guides/code-quality.md",".github/workflows/merge-queue-regression.yml","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/development.md","note":"Checked this document's claims about the renamed workflow file. The workflow's display name changed from 'Diagnostic: Merge integration' to 'Diagnostic (manual): Merge integration'; the file name, job names, triggers (workflow_dispatch only) and the required check 'Merge-queue regression' (job in ci.yml) are unchanged, and this document makes no claim that depends on the display name.","inputs":["docs/guides/development.md",".github/workflows/merge-queue-regression.yml"]},
+
+    {"path":"docs/guides/releasing.md","note":"Checked this document's claims about the renamed workflow file. The workflow's display name changed from 'Diagnostic: Merge integration' to 'Diagnostic (manual): Merge integration'; the file name, job names, triggers (workflow_dispatch only) and the required check 'Merge-queue regression' (job in ci.yml) are unchanged, and this document makes no claim that depends on the display name.","inputs":["docs/guides/releasing.md",".github/workflows/merge-queue-regression.yml"]},
+
+    {"path":"scripts/AGENTS.md","note":"Re-checked against the one edited row of the testing guide's workflow inventory (merge-queue-regression.yml display name now 'Diagnostic (manual): Merge integration'); this document's routing and rules do not cite that workflow's display name.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Re-checked against the one edited row of the testing guide's workflow inventory (merge-queue-regression.yml display name now 'Diagnostic (manual): Merge integration'); this document's routing and rules do not cite that workflow's display name.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Re-checked against the one edited row of the testing guide's workflow inventory (merge-queue-regression.yml display name now 'Diagnostic (manual): Merge integration'); this document's routing and rules do not cite that workflow's display name.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Re-checked against the one edited row of the testing guide's workflow inventory (merge-queue-regression.yml display name now 'Diagnostic (manual): Merge integration'); this document's routing and rules do not cite that workflow's display name.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Edited one row of the Actions workflow inventory: merge-queue-regression.yml's sidebar name is now 'Diagnostic (manual): Merge integration', matching the workflow file's name field, and the row now says it is never a required check (the required Merge-queue regression check is the job in ci.yml; confirmed against the main ruleset's required_status_checks). The ci-health test fixture string was renamed to match; ci-health matches merge_group runs by the unchanged names.","inputs":["docs/guides/testing.md",".github/workflows/merge-queue-regression.yml","scripts/__tests__/ci-health.test.ts"]}
+  ]
+}

@@ -1,12 +1,9 @@
-import { exec as execCb } from 'node:child_process';
-import { promisify } from 'node:util';
-
-const exec = promisify(execCb);
-
 import { existsSync, realpathSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { basename, join, relative, resolve, sep } from 'node:path';
+import { execFileChildWorkload as execFile } from '@kontourai/station-shared/child-workload';
 import { type Context, Hono, type Next } from 'hono';
+import { z } from 'zod';
 import {
   isOperatorInPersonNotAgent,
   mayRunCommandsOnHost,
@@ -28,7 +25,10 @@ import {
   commitRepository,
   pushRepository,
 } from '../../services/projects/coding-git-actions.js';
-import type { FileTreeService } from '../../services/projects/file-tree-service.js';
+import {
+  FilePreviewError,
+  type FileTreeService,
+} from '../../services/projects/file-tree-service.js';
 import {
   type LiveRepository,
   openLiveRepository,
@@ -37,6 +37,7 @@ import {
   readProjectRepository,
 } from '../../services/projects/git-read-repository.js';
 import { listVerifiedWorktrees } from '../../services/projects/verified-worktrees.js';
+import { readWorkspaceDiff } from '../../services/projects/workspace-diff-service.js';
 import { codingOps } from '../../telemetry/metrics.js';
 import { execGit } from '../../utils/git-exec.js';
 import { expandTilde } from '../../utils/paths.js';
@@ -56,6 +57,21 @@ import {
   gitPushSchema,
   validate,
 } from '../schemas/schemas.js';
+
+const fileTreeQuerySchema = z.object({
+  depth: z
+    .string()
+    .regex(/^\d+$/)
+    .transform(Number)
+    .pipe(z.number().int().min(0).max(10))
+    .optional(),
+  maxEntries: z
+    .string()
+    .regex(/^\d+$/)
+    .transform(Number)
+    .pipe(z.number().int().min(1).max(5000))
+    .optional(),
+});
 
 /**
  * #2412, owner decision: `POST /exec` stays at the operate tier, and a
@@ -89,7 +105,7 @@ function codingExecNotGranted(request: Request) {
 }
 
 /**
- * Bounds on every git call these routes make (#2363 review round 2). A
+ * Bounds on every git call these routes make (#2363). A
  * repository's own config can make git wait forever (an `include.path` of
  * a named pipe blocked status, log and branches indefinitely); on the
  * deadline `execFile` kills the child and the route answers 504 instead of
@@ -98,7 +114,6 @@ function codingExecNotGranted(request: Request) {
  */
 const GIT_QUICK_TIMEOUT_MS = 10_000;
 const GIT_READ_TIMEOUT_MS = 20_000;
-const GIT_DIFF_TIMEOUT_MS = 30_000;
 const GIT_CHECKOUT_TIMEOUT_MS = 60_000;
 
 const GIT_TIMEOUT_MESSAGE =
@@ -165,37 +180,136 @@ const REPO_SCAN_SKIP = new Set([
 ]);
 
 /**
+ * Discovery stops here: a folder picker needs the first handful of
+ * repositories, not every checkout under a broad root. A workspace such as
+ * `~/dev/github` can hold hundreds of worktrees, and `/repos` used to start
+ * one git process per discovered root all at once — minutes of answer time
+ * and an event loop too starved to serve anything else on the server.
+ */
+export const DISCOVER_MAX_ROOTS = 24;
+/** Defensive stop for a tree that keeps yielding directories without repos. */
+const DISCOVER_MAX_VISITED_DIRS = 4_000;
+/** Distinct git processes repository enrichment may run at once. */
+const ENRICH_CONCURRENCY = 4;
+
+/**
  * Discover the git repos within a workspace. Handles the multi-root case where
  * the folder a user opens is not itself a repo but contains several (e.g.
  * `~/dev/github/org` holding `repo-a`, `repo-b`). Stops descending at a repo
- * boundary and skips heavy directories so the scan stays cheap.
+ * boundary, skips heavy directories, and stops entirely at
+ * {@link DISCOVER_MAX_ROOTS} roots or {@link DISCOVER_MAX_VISITED_DIRS}
+ * visited directories so the scan stays cheap.
  */
 async function discoverRepos(
   workspace: string,
   maxDepth = 4,
 ): Promise<string[]> {
   const roots: string[] = [];
-  async function walk(dir: string, depth: number): Promise<void> {
+  let visited = 0;
+  // Resolves `false` once a bound was reached and the walk must stop.
+  async function walk(dir: string, depth: number): Promise<boolean> {
+    if (roots.length >= DISCOVER_MAX_ROOTS) return false;
+    if (visited >= DISCOVER_MAX_VISITED_DIRS) return false;
+    visited += 1;
     if (existsSync(join(dir, '.git'))) {
       roots.push(dir);
-      return; // a repo owns its whole subtree; don't descend further
+      return roots.length < DISCOVER_MAX_ROOTS;
     }
-    if (depth >= maxDepth) return;
+    if (depth >= maxDepth) return true;
     const entries = await readdir(dir, { withFileTypes: true }).then(
       (e) => e,
       () => null,
     );
-    if (!entries) return;
+    if (!entries) return true;
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
       if (entry.name.startsWith('.') || REPO_SCAN_SKIP.has(entry.name))
         continue;
-      await walk(join(dir, entry.name), depth + 1);
+      if (!(await walk(join(dir, entry.name), depth + 1))) return false;
     }
+    return true;
   }
   await walk(workspace, 0);
   return roots;
 }
+
+/** `fn` over `items`, at most `limit` calls in flight, results in order. */
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (next < items.length) {
+        const index = next;
+        next += 1;
+        results[index] = await fn(items[index] as T);
+      }
+    }),
+  );
+  return results;
+}
+
+/** The `/repos` answer body for one workspace. */
+async function scanWorkspaceRepos(
+  projectRoot: string,
+  workspace: string,
+  worktrees: ProjectRepositoryReadOptions['registeredWorktrees'],
+) {
+  const roots = await discoverRepos(workspace);
+  const repos = await mapWithConcurrency(
+    roots,
+    ENRICH_CONCURRENCY,
+    async (root) => {
+      // A root whose `.git` is not the Project's own still lists (its
+      // status then says why it is not read), but its branch is another
+      // repository's, so it stays ''.
+      const read = await readProjectRepository(
+        projectRoot,
+        root,
+        { registeredWorktrees: worktrees, timeoutMs: GIT_QUICK_TIMEOUT_MS },
+        (repository) =>
+          execGit(
+            [...repository.repoArgs, 'rev-parse', '--abbrev-ref', 'HEAD'],
+            {
+              cwd: repository.top,
+              encoding: 'utf-8',
+              timeout: GIT_QUICK_TIMEOUT_MS,
+            },
+          ).then(
+            ({ stdout }) => stdout.trim(),
+            // Detached HEAD / mid-rebase repos still list; branch stays ''.
+            () => '',
+          ),
+      );
+      return {
+        root,
+        name: basename(root),
+        relativePath: relative(workspace, root) || '.',
+        branch: read.ok ? read.value : '',
+      };
+    },
+  );
+  return {
+    workspace,
+    workspaceIsRepo: existsSync(join(workspace, '.git')),
+    repos,
+  };
+}
+
+/**
+ * Scans currently running for `/repos`. The New Project form asks once per
+ * typed path prefix and a retry lands while the first scan still runs;
+ * concurrent identical asks share one walk instead of multiplying it. Entries
+ * remove themselves as they settle, so the map only ever holds live work.
+ */
+const inFlightRepoScans = new Map<
+  string,
+  ReturnType<typeof scanWorkspaceRepos>
+>();
 
 /** Letters, digits, `.`, `_`, `-` and `/`, not starting with `-` or `.`,
  * and a valid ref by git's own rules (no `..`, no `.lock`, …). */
@@ -611,13 +725,17 @@ export function createCodingRoutes(
       );
       if (location instanceof Response) return location;
       const dir = location.target;
-      const depth = c.req.query('depth')
-        ? Number(c.req.query('depth'))
-        : undefined;
-      const maxEntries = c.req.query('maxEntries')
-        ? Number(c.req.query('maxEntries'))
-        : undefined;
-      const data = fileTreeService.listDirectory(dir, { depth, maxEntries });
+      const options = fileTreeQuerySchema.safeParse(c.req.query());
+      if (!options.success)
+        return c.json(
+          {
+            success: false,
+            error:
+              'depth must be an integer from 0 to 10; maxEntries must be an integer from 1 to 5000.',
+          },
+          400,
+        );
+      const data = await fileTreeService.listDirectory(dir, options.data);
       return c.json({ success: true, data });
     } catch (e: unknown) {
       return c.json({ success: false, error: errorMessage(e) }, 400);
@@ -667,9 +785,21 @@ export function createCodingRoutes(
         c.req.query('path'),
       );
       if (location instanceof Response) return location;
-      const content = fileTreeService.readFileWithin(location.target, file);
+      const content = await fileTreeService.readFilePreviewWithin(
+        location.target,
+        file,
+      );
       return c.json({ success: true, data: { path: file, content } });
     } catch (e: unknown) {
+      if (e instanceof FilePreviewError)
+        return c.json(
+          { success: false, code: e.code, error: errorMessage(e) },
+          e.code === 'file-too-large'
+            ? 413
+            : e.code === 'not-found'
+              ? 500
+              : 400,
+        );
       return c.json({ success: false, error: errorMessage(e) }, 500);
     }
   });
@@ -886,15 +1016,8 @@ export function createCodingRoutes(
       if (location instanceof Response) return location;
       // A multi-repo workspace root isn't itself a repo; return an empty diff
       // instead of letting `git diff` fail with "not a git repository".
-      // #2363: `diff` runs repository-defined filters and diff drivers.
       return await gitRead(c, location, { diff: '' }, async (repository) => ({
-        diff: (
-          await execGit([...repository.repoArgs, 'diff'], {
-            cwd: repository.top,
-            encoding: 'utf-8',
-            timeout: GIT_DIFF_TIMEOUT_MS,
-          })
-        ).stdout,
+        diff: await readWorkspaceDiff(repository),
       }));
     } catch (e: unknown) {
       return gitFailure(c, e);
@@ -985,46 +1108,22 @@ export function createCodingRoutes(
         projectRoot = location.projectRoot;
         worktrees = () => registeredWorktrees(c, location.projectRoot);
       }
-      const roots = await discoverRepos(workspace);
-      const repos = await Promise.all(
-        roots.map(async (root) => {
-          // A root whose `.git` is not the Project's own still lists (its
-          // status then says why it is not read), but its branch is another
-          // repository's, so it stays ''.
-          const read = await readProjectRepository(
-            projectRoot,
-            root,
-            { registeredWorktrees: worktrees, timeoutMs: GIT_QUICK_TIMEOUT_MS },
-            (repository) =>
-              execGit(
-                [...repository.repoArgs, 'rev-parse', '--abbrev-ref', 'HEAD'],
-                {
-                  cwd: repository.top,
-                  encoding: 'utf-8',
-                  timeout: GIT_QUICK_TIMEOUT_MS,
-                },
-              ).then(
-                ({ stdout }) => stdout.trim(),
-                // Detached HEAD / mid-rebase repos still list; branch stays ''.
-                () => '',
-              ),
-          );
-          return {
-            root,
-            name: basename(root),
-            relativePath: relative(workspace, root) || '.',
-            branch: read.ok ? read.value : '',
-          };
-        }),
-      );
-      return c.json({
-        success: true,
-        data: {
-          workspace,
-          workspaceIsRepo: existsSync(join(workspace, '.git')),
-          repos,
-        },
-      });
+      // Concurrent identical asks (per-prefix typing, double submits) share
+      // one scan; the key carries the Project slug because the form path and
+      // the Project path answer through different authority.
+      const scanKey = `${slug ?? '\u0000form'}\u0000${projectRoot}\u0000${workspace}`;
+      let scan = inFlightRepoScans.get(scanKey);
+      if (!scan) {
+        scan = scanWorkspaceRepos(projectRoot, workspace, worktrees).finally(
+          () => {
+            inFlightRepoScans.delete(scanKey);
+          },
+        );
+        inFlightRepoScans.set(scanKey, scan);
+      }
+      // A rejected shared scan reaches every waiter here, inside the
+      // handler's try, so each request still gets its own gitFailure answer.
+      return c.json({ success: true, data: await scan });
     } catch (e: unknown) {
       return gitFailure(c, e);
     }
@@ -1229,12 +1328,21 @@ export function createCodingRoutes(
       const location = await writeLocation(c, projectSlug, cwd);
       if (location instanceof Response) return location;
       const dir = location.target;
-      const result = await exec(command, {
+      const shell =
+        process.platform === 'win32'
+          ? (process.env.comspec ?? process.env.ComSpec ?? 'cmd.exe')
+          : '/bin/sh';
+      const args =
+        process.platform === 'win32'
+          ? ['/d', '/s', '/c', `"${command}"`]
+          : ['-c', command];
+      const result = await execFile(shell, args, {
         cwd: dir,
         encoding: 'utf-8',
         timeout: 30000,
         maxBuffer: 1024 * 1024,
         windowsHide: true,
+        windowsVerbatimArguments: process.platform === 'win32',
       });
       return c.json({
         success: true,

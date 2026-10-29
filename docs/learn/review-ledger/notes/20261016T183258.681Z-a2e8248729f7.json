@@ -1,0 +1,7 @@
+{
+  "revision": "93c7e2f0e7083ee6088a0d54dd4dd181dc0f363c",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed Profile-only reference acceptance at93c7e2f0e70 from hosted sourcedbb80658b520, run38938948939/job117120222325, artifact12067590259 (ZIP SHA256 b7de546cc52d9dc05364b6c1edc0ad4ca77a94c9d1a0d50b646f6c84fe80f349). All56 captures and recovery assertions passed. Independent review approved only Profile:1440x900 decoded digest d3c7bc018211aa801fe6380ca0331fab827a6efc1f8b6365630a892491d243f9, preserving My access with main Quiet tree navigation. Canonical baseline command consumed an explicit Profile selection and retained original capture provenance; only its PNG/hash changed, strict Profile replay1/1unchanged. All20 changed images inspected; remaining19 references intentionally unchanged and advisory, including unresolved mobile Settings title/search viewport shift. Modal/banner foreground comparisons were exact; no source, fixture, comparator, mask or exception changed. Guide renderer and partial-baseline contracts remain accurate; successor hosted qualification and actual merge remain pending.","inputs":["docs/guides/testing.md","tests/screenshots.baseline.json"]}
+  ]
+}

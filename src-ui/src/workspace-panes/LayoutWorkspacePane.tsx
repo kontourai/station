@@ -40,8 +40,7 @@ import { WorkspacePaneBindingUnavailable } from './WorkspacePaneBindingUnavailab
  * second one in a dock region would fight the main region's for the one
  * hash. A layout component that calls `useLayoutNavigation` therefore
  * throws here (`LazyBoundary` reports it); no built-in tab component does,
- * and a plugin tab that does is a known gap of this slice, not a supported
- * placement.
+ * and a plugin tab that does is a known gap, not a supported placement.
  *
  * ## The id is the identity, so the id resolves everything
  *
@@ -126,7 +125,8 @@ import { WorkspacePaneBindingUnavailable } from './WorkspacePaneBindingUnavailab
  * whose action navigates to the layout (`setLayout`). Two of those are
  * refused by design and the rest by scope:
  *
- * - `coding` is a whole `WorkspacePaneHost` (`BuiltinCodingLayoutHost`)
+ * - `stack` (built-in Coding, or any layout declaring `presentation:
+ *   'stack'`) is a whole `WorkspacePaneHost` (`LayoutStackHost`)
  *   whose storage key, `?pane=` scope and DOM ids derive from
  *   `(projectId, layoutId)`; a docked copy would share the main region's
  *   persisted document and duplicate element ids.
@@ -134,8 +134,8 @@ import { WorkspacePaneBindingUnavailable } from './WorkspacePaneBindingUnavailab
  *   so a docked copy would have nowhere to live.
  * - `tasks`, `session-board` and `review` are route-shaped pages
  *   (`layoutTypeRegistry`) that take a project and layout SLUG and own
- *   their own chrome; docking them is a separate decision and this slice
- *   does not make it.
+ *   their own chrome; docking them is a separate decision this pane does
+ *   not make.
  */
 export function LayoutWorkspacePane({
   instance,
@@ -315,8 +315,8 @@ function mainOnlyReason(
   kind: ReturnType<typeof resolveProjectLayoutRendererKind>,
 ): string {
   switch (kind) {
-    case 'coding':
-      return 'A Coding layout is a pane host of its own; a docked copy would share the main region’s saved panes.';
+    case 'stack':
+      return 'This layout is a pane host of its own; a docked copy would share the main region’s saved panes.';
     case 'chat':
       return 'A Chat layout takes the whole viewport, including the region this tab is in.';
     default:

@@ -1,0 +1,15 @@
+{
+  "revision": "861e183c7140339de53f227e6c9025bbeb610f97",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Review-round fixes: color-theme-apply.ts now exports selectionKey (the Appearance page reuses it) and its marker comment names the Appearance page as reader; SettingsView's two Open Appearance buttons got row-specific names. The ColorThemes and DestinationRegistry sections' claims (picker is the lazy Appearance page, applier stamps after load and marks failure) still hold. No prose change.","inputs":["docs/architecture/module-map.md","src-ui/src/lib/color-theme-apply.ts","src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Re-read against the review fixes: Settings' Appearance topic still holds the mode toggle, phone haptics, and Theme/Accent color link rows (now named 'Open Appearance for <row>'); the Theme and Accent rows' catalog keys are now only the key each writes, so Use default resets what the row shows (settings-appearance-link-rows.test.tsx, executed). AccentColorPicker still writes accentColor immediately, so the immediate-save list holds. No prose change.","inputs":["docs/design/settings-architecture.md","src-ui/src/views/SettingsView.tsx","src-ui/src/views/settings/AccentColorPicker.tsx","src-ui/src/views/settings/settings-catalog.ts"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"SettingsView change is the accessible names of the two Open Appearance buttons; theme and accent-color ids and highlight= reveal behavior unchanged (completeness test, executed). No prose change.","inputs":["docs/reference/settings-deep-links.md","src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"docs/guides/theming.md","note":"Changed 'colour' to 'color' in the Appearance page paragraph; color-theme-apply.ts change is the selectionKey export and a comment. Failed-state, retry and loading claims re-checked against AppearancePage and its tests (executed). No other prose change.","inputs":["docs/guides/theming.md","src-ui/src/lib/color-theme-apply.ts"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"theming.md changed only by one spelling fix in the Appearance page paragraph; this document cites its white-label section, unchanged. No prose change.","inputs":["docs/design/shell-plugins-distributions.md","docs/guides/theming.md"]}
+  ]
+}

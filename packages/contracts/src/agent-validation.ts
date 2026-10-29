@@ -1,6 +1,7 @@
 import type { AgentSpec } from './agent';
 import { type EngineId, isStationAgentIdentity } from './agent-identity.js';
 import {
+  type CapabilityDelivery,
   type EngineCapabilityMatrix,
   resolveEngineCapabilityMatrix,
 } from './engine-capability-matrix.js';
@@ -102,11 +103,20 @@ const MESSAGE_BUILDERS: Record<
   AgentCapabilitySurface,
   (engineDisplayName: string) => string
 > = {
-  prompt: (name) => `${name} can't receive a system prompt from Station`,
+  prompt: (name) => `${name} can't receive instructions from Station`,
   skills: (name) => `${name} can't receive skills from Station`,
   tools: (name) => `${name} can't receive tool servers from Station`,
   commands: (name) => `${name} can't run Station-defined slash commands`,
 };
+
+/** Authored instructions may use a system field or ordinary first-turn text. */
+export function agentPromptDelivery(
+  matrix: EngineCapabilityMatrix,
+): CapabilityDelivery {
+  return matrix.systemPrompt.state !== 'unsupported'
+    ? matrix.systemPrompt
+    : matrix.instructionsInFirstTurn;
+}
 
 export function agentEngineValidationFindings(
   matrix: EngineCapabilityMatrix,
@@ -116,7 +126,10 @@ export function agentEngineValidationFindings(
   const findings: AgentEngineValidationFinding[] = [];
   for (const surface of SURFACE_ORDER) {
     if (!authored[surface]) continue;
-    const delivery = matrix[SURFACE_TO_MATRIX_KEY[surface]];
+    const delivery =
+      surface === 'prompt'
+        ? agentPromptDelivery(matrix)
+        : matrix[SURFACE_TO_MATRIX_KEY[surface]];
     if (delivery.state === 'unsupported') {
       findings.push({
         capability: surface,

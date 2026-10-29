@@ -4,7 +4,10 @@ import {
   snoozesVersion,
   subscribeSnoozes,
 } from '../../utils/activity-snooze-store';
+import { workAttentionCount } from '../../views/home/home-lane-model';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
+import type { WorkFactsById } from '../../views/home/work-facts';
+import { useInboxScope } from './InboxScopeFilter';
 import {
   groupMobileActivity,
   type MobileActivityGroup,
@@ -22,6 +25,7 @@ import { useHeldLifecycles } from './useHeldLifecycles';
 export function useInboxGroups(
   items: HomeWorkItem[],
   now: number,
+  workFacts?: WorkFactsById,
 ): MobileActivityGroup[] {
   const heldItems = useHeldLifecycles(items);
   const version = useSyncExternalStore(
@@ -33,8 +37,8 @@ export function useInboxGroups(
   // biome-ignore lint/correctness/useExhaustiveDependencies: version is the change signal for readSnoozes
   const snoozed = useMemo(() => readSnoozes(now), [now, version]);
   return useMemo(
-    () => groupMobileActivity(heldItems, now, snoozed),
-    [heldItems, now, snoozed],
+    () => groupMobileActivity(heldItems, now, snoozed, workFacts),
+    [heldItems, now, snoozed, workFacts],
   );
 }
 
@@ -44,5 +48,23 @@ export function useInboxNeedsYouCount(
   now: number,
 ): number {
   const groups = useInboxGroups(items, now);
-  return groups.find((group) => group.id === 'needsYou')?.items.length ?? 0;
+  const group = groups.find((group) => group.id === 'needsYou');
+  return group ? workAttentionCount(group.items, now, group.childrenById) : 0;
+}
+
+/**
+ * How many rows the inbox shows as Running: its own scope filter, then its
+ * own groups (held lifecycles included), so the toggle's "N working" badge
+ * is a count of exactly the rows that say Running. Not the dock's open chat
+ * tabs, which miss chats running elsewhere and, after a reload, every chat
+ * whose local state has not caught up yet.
+ */
+export function useInboxWorkingCount(
+  items: HomeWorkItem[],
+  now: number,
+  workFacts?: WorkFactsById,
+): number {
+  const scope = useInboxScope(items, now, workFacts);
+  const groups = useInboxGroups(scope.items, now, workFacts);
+  return groups.find((group) => group.id === 'running')?.items.length ?? 0;
 }

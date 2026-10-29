@@ -2,6 +2,7 @@ import type { ConversationTurnActivity } from '@kontourai/station-contracts/orch
 import { migrateSnoozeKey } from '../utils/activity-snooze-store';
 import { newerConversationActivity } from '../utils/conversation-activity';
 import { log } from '../utils/logger';
+import { derivePlanArtifactFromStreamingState } from '../utils/planArtifacts';
 import {
   type ActiveChatMetadata,
   type ActiveChatsMap,
@@ -9,6 +10,7 @@ import {
   appendInputHistory,
   assignConversationIdState,
   type BackendTimestampMessage,
+  type BackgroundTaskNotice,
   type ChatUIState,
   clearEphemeralMessagesState,
   clearInputState,
@@ -27,6 +29,8 @@ import {
   serializeActiveChats,
 } from './active-chats-state';
 
+import { conversationsStore } from './conversations-store';
+
 export type {
   ActiveChatMetadata,
   ActiveChatsMap,
@@ -39,7 +43,7 @@ export type {
 export class ActiveChatsStore {
   private chats: ActiveChatsMap = {};
   private listeners = new Set<() => void>();
-  private snapshot = this.chats;
+  private snapshot = { ...this.chats };
   /** Ephemeral draft occurrence tokens; never persisted or reused after removal. */
   private draftRevisions = new Map<string, object>();
   private readonly storageKey: string;
@@ -90,7 +94,7 @@ export class ActiveChatsStore {
         typeof hydrateActiveChats
       >[0];
       this.chats = hydrateActiveChats(minimal);
-      this.snapshot = this.chats;
+      this.snapshot = { ...this.chats };
     } catch (error) {
       log.api('Failed to load active chats from sessionStorage:', error);
     }
@@ -347,6 +351,23 @@ export class ActiveChatsStore {
     if (!current) {
       return;
     }
+    const replacesStream =
+      Object.hasOwn(updates, 'streamingMessage') &&
+      (updates.streamingMessage === undefined ||
+        (updates.streamingMessage.content === '' &&
+          updates.streamingMessage.contentParts?.length === 0));
+    // Flush the last unterminated line before any lifecycle path drops its
+    // stream. An explicit artifact from a transcript/terminal fold wins.
+    if (
+      current.streamingMessage &&
+      (replacesStream || updates.orchestrationTurnOpen === false) &&
+      !Object.hasOwn(updates, 'planArtifact')
+    ) {
+      updates = {
+        ...updates,
+        planArtifact: derivePlanArtifactFromStreamingState(current),
+      };
+    }
     const { chat, shouldPersist, droppedQueuedMessages } = mergeChatUpdates(
       current,
       updates,
@@ -413,11 +434,25 @@ export class ActiveChatsStore {
   }
 
   removeChat(sessionId: string) {
+    const removed = this.chats[sessionId];
     delete this.chats[sessionId];
     this.draftRevisions.delete(sessionId);
     // A chat re-created under the same id is a different chat, and is owed its
     // own storage-refusal notice.
     this.storageFailureReportedFor.delete(sessionId);
+    if (
+      removed?.agentSlug &&
+      removed.conversationId &&
+      !Object.values(this.chats).some(
+        (chat) =>
+          chat.agentSlug === removed.agentSlug &&
+          chat.conversationId === removed.conversationId,
+      )
+    )
+      conversationsStore.forgetConversation(
+        removed.agentSlug,
+        removed.conversationId,
+      );
     for (const listener of this.chatRemovedListeners) listener(sessionId);
     this.notify(true);
   }
@@ -478,9 +513,16 @@ export class ActiveChatsStore {
       role: 'user' | 'assistant' | 'system';
       content: string;
       attachments?: any[];
-      action?: { label: string; handler: () => void };
+      action?: {
+        label: string;
+        handler: () => void;
+        /** Ask first with the shared unconfirmed-message discard. */
+        confirm?: 'unconfirmed-discard';
+      };
       sendFailure?: boolean;
       queuedRetry?: boolean;
+      childWorkKey?: string;
+      backgroundTaskNotice?: BackgroundTaskNotice;
     },
   ) {
     const chat = this.chats[sessionId];
@@ -598,6 +640,14 @@ export class ActiveChatsStore {
 }
 
 export const activeChatsStore = new ActiveChatsStore();
+conversationsStore.setActiveConversationReader((key) =>
+  Object.values(activeChatsStore.getSnapshot()).some(
+    (chat) =>
+      chat.agentSlug &&
+      chat.conversationId &&
+      key === `messages:${chat.agentSlug}:${chat.conversationId}`,
+  ),
+);
 if (typeof window !== 'undefined' && typeof document !== 'undefined') {
   activeChatsStore.flushOnPageHide(window, document);
 }

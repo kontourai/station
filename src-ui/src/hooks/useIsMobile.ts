@@ -67,8 +67,7 @@ export function availablePlacements({
  * inside the region layer still write `available.length === 1` inline
  * (`useRegionSurfaceMenu`, `RegionShells`). Routing them here is correct and
  * was measured — it reds five suites that mock this module wholesale, one of
- * them a browser-mode suite — so it belongs in its own change rather than in
- * a fix round.
+ * them a browser-mode suite — so it belongs in a change of its own.
  */
 export function dockFoldsToOneRegion(available: readonly DockMode[]): boolean {
   return available.length === 1;

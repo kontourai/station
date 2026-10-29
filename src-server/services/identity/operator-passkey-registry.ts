@@ -11,7 +11,7 @@
  * An operator may hold several passkeys (D5); a revoked row stays for the
  * audit trail but never matches a lookup or an `excludeCredentials` list.
  */
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
@@ -33,7 +33,7 @@ export interface OperatorPasskey {
 
 export interface NewOperatorPasskey {
   readonly credentialId: string;
-  readonly publicKey: Uint8Array;
+  readonly publicKey: Uint8Array<ArrayBuffer>;
   readonly counter: number;
   readonly transports: readonly string[];
   readonly deviceType: 'singleDevice' | 'multiDevice';
@@ -70,6 +70,15 @@ export class OperatorPasskeyRegistry {
         created_at INTEGER NOT NULL,
         last_used_at INTEGER,
         revoked_at INTEGER
+      );
+      CREATE TABLE IF NOT EXISTS operator_sessions (
+        hash TEXT PRIMARY KEY,
+        passkey_id TEXT NOT NULL,
+        device_id TEXT NOT NULL,
+        epoch TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        last_used_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL
       );
       CREATE TABLE IF NOT EXISTS operator_meta (
         key TEXT PRIMARY KEY,
@@ -183,7 +192,106 @@ export class OperatorPasskeyRegistry {
         'UPDATE operator_passkeys SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL',
       )
       .run(this.#now(), id);
+    this.#db
+      .prepare('DELETE FROM operator_sessions WHERE passkey_id = ?')
+      .run(id);
     return Number(result.changes) === 1;
+  }
+
+  authenticationCredential(credentialId: string): {
+    passkey: OperatorPasskey;
+    credential: {
+      id: string;
+      publicKey: Uint8Array<ArrayBuffer>;
+      counter: number;
+    };
+  } | null {
+    const row = this.#db
+      .prepare(
+        'SELECT * FROM operator_passkeys WHERE credential_id = ? AND revoked_at IS NULL',
+      )
+      .get(credentialId);
+    return row
+      ? {
+          passkey: toPasskey(row),
+          credential: {
+            id: credentialId,
+            publicKey: new Uint8Array(row.public_key as Uint8Array),
+            counter: Number(row.counter),
+          },
+        }
+      : null;
+  }
+
+  /** Counter CAS fences concurrent assertions and revocation during verification. */
+  recordAuthentication(
+    id: string,
+    previousCounter: number,
+    nextCounter: number,
+  ): boolean {
+    return (
+      Number(
+        this.#db
+          .prepare(
+            'UPDATE operator_passkeys SET counter = ?, last_used_at = ? WHERE id = ? AND counter = ? AND revoked_at IS NULL',
+          )
+          .run(nextCounter, this.#now(), id, previousCounter).changes,
+      ) === 1
+    );
+  }
+
+  createSession(input: Omit<OperatorSessionRecord, 'sessionId'>): string {
+    const secret = randomBytes(32).toString('base64url');
+    this.#db
+      .prepare(
+        'DELETE FROM operator_sessions WHERE expires_at <= ? OR epoch != ?',
+      )
+      .run(this.#now(), input.epoch);
+    const count = this.#db
+      .prepare('SELECT count(*) AS n FROM operator_sessions')
+      .get();
+    if (Number(count?.n) >= 1000) throw new Error('operator_session_capacity');
+    this.#db
+      .prepare('INSERT INTO operator_sessions VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(
+        sessionHash(secret),
+        input.passkeyId,
+        input.boundDeviceId,
+        input.epoch,
+        input.createdAt,
+        input.lastUsedAt,
+        input.expiresAt,
+      );
+    return secret;
+  }
+
+  session(secret: string): OperatorSessionRecord | null {
+    const row = this.#db
+      .prepare('SELECT * FROM operator_sessions WHERE hash = ?')
+      .get(sessionHash(secret));
+    return row
+      ? {
+          sessionId: String(row.hash),
+          passkeyId: String(row.passkey_id),
+          boundDeviceId: String(row.device_id),
+          epoch: String(row.epoch),
+          createdAt: Number(row.created_at),
+          lastUsedAt: Number(row.last_used_at),
+          expiresAt: Number(row.expires_at),
+        }
+      : null;
+  }
+
+  touchSession(sessionId: string, at: number): void {
+    this.#db
+      .prepare('UPDATE operator_sessions SET last_used_at = ? WHERE hash = ?')
+      .run(at, sessionId);
+  }
+
+  removeSession(sessionId: string): void {
+    this.#db
+      .prepare('DELETE FROM operator_sessions WHERE hash = ?')
+      .run(sessionId);
   }
 
   close(): void {
@@ -264,4 +372,18 @@ export class LazyOperatorPasskeyRegistry {
     this.#registry?.close();
     this.#registry = null;
   }
+}
+
+export interface OperatorSessionRecord {
+  readonly sessionId: string;
+  readonly passkeyId: string;
+  readonly boundDeviceId: string;
+  readonly epoch: string;
+  readonly createdAt: number;
+  readonly lastUsedAt: number;
+  readonly expiresAt: number;
+}
+
+function sessionHash(secret: string): string {
+  return createHash('sha256').update(secret).digest('base64url');
 }

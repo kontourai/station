@@ -1,0 +1,7 @@
+{
+  "revision": "7c104d7d9247539436187599f2e38a3e81ada7ee",
+
+  "notes": [
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"#3800 round 6: sessionConfinementRoot compares Project directories and the cwd canonically (realpathSync.native) and stamps the canonical root, so an adopted (canonical) place inside a Project configured through a symlink or another case is rooted at the Project; findUnaccountedCodexConfig maps the root back onto a linked cwd. Traced to session-project-identity.ts canonicalDirectory and codex-project-config-provenance.ts lexicalRoot.","inputs":["docs/design/approval-posture-server-ordered.md"]}
+  ]
+}

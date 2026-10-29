@@ -96,14 +96,10 @@ export async function listLaunchableAdapterModels(
   );
   try {
     throwIfAborted(controller.signal);
-    // archive#1430 review, H-2 enumeration: every caller of this helper
-    // (`getProviderModels` — the model picker, and the CLI-model
-    // launch/turn selector validators) projects the result down to
-    // `{id, name, originalId}` (`boundedAdapterModels`,
-    // `ProviderAdapterModelCatalog['models']`) — no capability field
-    // survives to any of them. Skip enrichment unconditionally so this
-    // shared discovery/validation path never pays for `/api/show` work it
-    // structurally cannot use, on session launch and picker open alike.
+    // Preserve adapter entries, including optional resolvedModel, after validating
+    // selector fields. Picker and launch/turn selector callers use catalog
+    // identities, not enriched capabilities. Skip enrichment so this shared path
+    // does not pay for /api/show work those callers do not use (archive#1430).
     const pending = adapter.listModelCatalog
       ? adapter.listModelCatalog({
           signal: controller.signal,

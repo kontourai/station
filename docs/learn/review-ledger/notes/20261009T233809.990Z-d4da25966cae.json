@@ -1,0 +1,7 @@
+{
+  "revision": "76d65f7c36dbe0f552865bea0ac600dfe2bff408",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed generated reader delta at 76d65f7c36: current topic inputs and qualified allowance-policy explanations produce the new digest and inherited local module-map linkage. Station Docs remains a read-only discovery/documentation server; no grant, tool execution, dynamic source authority or provider qualification is created by regenerating content. Actual quota/recovery owners and runtime limits are in the canonical Connections/contracts/SDK guides; broader documentation/publication/native claims remain separate.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

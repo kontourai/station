@@ -73,10 +73,12 @@ time the recording was played.
 
 Record a live conversation from chat developer settings to include committed
 history reads, runtime events, transport transitions, snapshots, and the
-initial visible state. Capture is opt-in and stops explicitly at 16 MiB or
-20,000 frames. A server-event tape cannot reconstruct the original client's
-history responses or network timing; `coverage` distinguishes it from a
-client capture. Imported captures use the production history projector with
+initial visible state. The initial state, history reads and frames keep
+attachment names, types and references but never inline attachment bytes: a
+recorded `dataUrl` and a file part's `data:` URL are dropped. Capture is
+opt-in and stops explicitly at 16 MiB or 20,000 frames. A server-event tape
+cannot reconstruct the original client's history responses or network
+timing; `coverage` distinguishes it from a client capture. Imported captures use the production history projector with
 recorded reader responses and cannot issue live history requests.
 
 Archive loading reads the selected execution session in 100-event pages,
@@ -169,11 +171,12 @@ Adapter mappings, same Station event:
 | --- | --- |
 | Claude | `Query.streamInput` (additive) |
 | Codex | app-server `turn/steer` `{ threadId, input, expectedTurnId }` (additive; does not emit a Codex `turn/started`) |
-| Kiro | ACP extension **method** `_session/steer` when the command, arguments or reported agent name match Kiro (additive; not a notification) |
-| Grok | ACP extension **method** `_x.ai/interject` (then `x.ai/interject`). `_x.ai/queue/changed` is the engine's prompt **queue**, host→agent interject is steer. |
+| Any ACP declaring a native method | The declared ACP extension **method** (`_session/steer` or `_x.ai/interject`) named in its `initialize` capability `_meta` `extensionMethods` list |
+| Kiro | ACP extension **method** `_session/steer` (additive; not a notification). Kiro does not declare it; matched on its handshake's `agentInfo.name` `Kiro CLI Agent` or its `_meta.kiro` capability namespace, never on the command |
+| Grok | ACP extension **method** `_x.ai/interject` (then `x.ai/interject`), undeclared; matched on the handshake's `_meta.grokShell` flag. `_x.ai/queue/changed` is the engine's prompt **queue**, host→agent interject is steer. |
 | Any other ACP | Cancel + re-prompt fallback: `session/cancel` + `session/prompt` on the same Station `turnId` (interruptive: it also cancels any tool the prompt was running). Also the fallback when the native method returns JSON-RPC -32601. Its steer `turn.started` carries `steerInterruptedRun: true`, and the steer row says it was sent by stopping the running step. |
 
-Muse still binds one prompt to one process — no live input channel. That is a separate backlog item, not invented here.
+Muse can run one `muse serve` host per Session, with `muse exec` per-turn fallback where configured. Neither process mode establishes native mid-turn steering in the dock; supported input and control capabilities remain owned by the Muse adapter and capability matrix.
 
 The pending-message section starts collapsed. Expanding it reveals each mode,
 status and its explicit Send now action. Send remains separate from Stop. The
@@ -199,7 +202,10 @@ click, pointer drag, previous/next controls, and ordinary button keyboard
 activation seek by destroy-and-refold. The ordinary transcript renderer stays
 in use, while the debugger transport is replaced by a small historical-state
 bar. Forms, sends, approvals, feedback, Task actions, and live queue draining
-remain fenced by replay membership.
+remain fenced by replay membership. History has no live turn rail: the
+live transcript's rail (see [chat controls](chat-composer.md#turn-navigation))
+is hidden while a replay is shown, and the two share only the turn-text
+compaction (`compactTurnText`).
 
 The conversation event window supplies the authoritative execution lineage.
 The timeline loads each selected execution through its bounded archive and

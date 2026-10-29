@@ -1,0 +1,9 @@
+{
+  "revision": "4c13f39a7bb85b9fb05467415b2e3982241a7cd5",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"R1 registry delta review: authentication/outside-agent-oauth.sqlite is added to the authoritative SQLite home-store inventory, under the existing state-classified authentication root. The home archive consumes this inventory for checkpoint/integrity handling before copying databases and omitting WAL/shared-memory sidecars. Existing home-backup and update-rollback documentation remains accurate; this inert private store adds no CLI command, public token admission or encrypted export. The registry source-scan regression was observed failing before the entry and passed after it. No live backup/restore, installed update, power-loss or release qualification is claimed.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"R1 registry delta review: authentication/outside-agent-oauth.sqlite is added to the authoritative SQLite home-store inventory, under the existing state-classified authentication root. The home archive consumes this inventory for checkpoint/integrity handling before copying databases and omitting WAL/shared-memory sidecars. Existing home-backup and update-rollback documentation remains accurate; this inert private store adds no CLI command, public token admission or encrypted export. The registry source-scan regression was observed failing before the entry and passed after it. No live backup/restore, installed update, power-loss or release qualification is claimed.","inputs":["docs/reference/cli.md","packages/shared/src/station-home-store-registry.ts"]}
+  ]
+}

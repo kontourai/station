@@ -1,3 +1,4 @@
+import './TaskChatStart.css';
 import type { ProjectRunLocations } from '@kontourai/station-contracts/project';
 import type { InstalledSkillExperienceV1 } from '@kontourai/station-contracts/skill-experience';
 import { useSkillExperienceInventoryQuery } from '@kontourai/station-sdk';
@@ -31,12 +32,15 @@ import {
   useBindStartProject,
   useStartSelection,
 } from '../../hooks/useStartSelection';
+import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import type {
   NewChatHandoff,
   NewChatStartSelection,
 } from '../../lib/newChatIntent';
 import type { SkillExperienceDraft } from '../../lib/skill-experience-draft';
+import { TASK_SHAPING_INSTRUCTION } from '../../lib/task-shaping';
+import type { ApprovalMode } from '../../utils/approvalMode';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import {
   type EffectiveModelSource,
@@ -70,6 +74,10 @@ import {
 import { StartStationControl } from '../chat-start/StartStationControl';
 import { useAgentEnable } from '../chat-start/useAgentEnable';
 import {
+  appendDictation,
+  useStartDictation,
+} from '../chat-start/useStartDictation';
+import {
   buildCodingChatInitialMessage,
   type CodingChatContextDraft,
   composeStartMessage,
@@ -83,14 +91,21 @@ import {
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
 import { ModelPickerDialogFrame } from '../session/ModelPickerDialogFrame';
-import { SkillExperiencePicker } from '../skill-experiences/SkillExperiencePicker';
+import {
+  SkillExperiencePicker,
+  VISUAL_SKILLS_PREVIEW_ID,
+} from '../skill-experiences/SkillExperiencePicker';
 import { describeReadFailure, Empty, ErrorState, SkeletonList } from '../state';
-import { AutomaticEnginePreparation } from './AutomaticEnginePreparation';
+import {
+  AutomaticEnginePreparation,
+  preparationFeedbackText,
+} from './AutomaticEnginePreparation';
 import {
   GLOBAL_CONTEXT,
   modelPickerProviders,
   NEW_CHAT_AGENT_UNAVAILABLE_FALLBACK,
   NO_PROJECT_LABEL,
+  newChatProjectModelNote,
   resolveNewChatAgentEnable,
   resolveNewChatInitialContext,
   resolveNewChatWorkspaceHint,
@@ -166,6 +181,11 @@ interface NewChatModalProps {
     executionAgentId?: string,
     expectedDefinitionFingerprint?: string,
     executionOnCurrentStation?: boolean,
+    /** Files for the first message (passed only when there are some). */
+    initialFiles?: File[],
+    ambientContext?: string,
+    /** The Permissions chip's pick, queued on the chat that opens. */
+    approvalMode?: ApprovalMode,
   ) => void | Promise<void>;
   onClose: () => void;
   onTaskStarted?: () => void;
@@ -174,7 +194,10 @@ interface NewChatModalProps {
   requestAuthority?: NewChatSetupAuthority;
   startWithDefault?: boolean;
   initialPrompt?: string;
+  /** Files Home's composer attached with its prompt. */
+  initialFiles?: File[];
   startSurface?: boolean;
+  taskShaping?: boolean;
   recentChats?: Omit<ComponentProps<typeof RecentList>, 'context' | 'agents'>;
   /**
    * What Home's composer chose (its chips), carried with a start or a
@@ -226,7 +249,9 @@ export function NewChatModal({
   requestAuthority,
   startWithDefault = false,
   initialPrompt,
+  initialFiles,
   startSurface = false,
+  taskShaping = false,
   recentChats,
   startSelection,
   handoff,
@@ -242,14 +267,24 @@ export function NewChatModal({
   // In the automatic start, "Chat options" (or a start that cannot use
   // Home's choice) drops back to the composer, prompt and all.
   const [showChatOptions, setShowChatOptions] = useState(false);
+  const [approvalPick, setApprovalPick] = useState<ApprovalMode | undefined>(
+    startSelection?.approvalMode,
+  );
   const automaticMode = startWithDefault && !mode && !showChatOptions;
+  // Visual skills are a Feature Preview: off, nothing here offers or fetches them.
+  const visualSkillsEnabled = useSurfaceVisibilityFlags().has(
+    VISUAL_SKILLS_PREVIEW_ID,
+  );
   const experienceInventory = useSkillExperienceInventoryQuery({
-    enabled: !mode && !automaticMode,
+    enabled: visualSkillsEnabled && !mode && !automaticMode,
     refetchOnMount: 'always',
   });
   const [skillsOpen, setSkillsOpen] = useState(false);
-  const [experience, setExperience] =
+  const [chosenExperience, setExperience] =
     useState<InstalledSkillExperienceV1 | null>(null);
+  // Turning the preview off mid-draft drops the chosen skill from the chip,
+  // the start check and the draft alike, not only from the pickers.
+  const experience = visualSkillsEnabled ? chosenExperience : null;
   const [experienceInputs, setExperienceInputs] = useState<
     Record<string, string>
   >({});
@@ -275,6 +310,11 @@ export function NewChatModal({
     string | undefined
   >();
   const [prompt, setPrompt] = useState(initialPrompt ?? '');
+  const [shaping, setShaping] = useState(taskShaping);
+  const [startFiles, setStartFiles] = useState<File[]>(initialFiles ?? []);
+  const startVoice = useStartDictation((text) =>
+    setPrompt((current) => appendDictation(current, text)),
+  );
   const [taskNotice, setTaskNotice] = useState<string | null>(null);
   const reportDraft = useEffectEvent((text: string) => onDraftChange?.(text));
   useEffect(() => {
@@ -348,6 +388,8 @@ export function NewChatModal({
   // useCallback so the setter is referentially stable and can be an honest
   // effect dependency (archive#3021) — the previous render-scoped arrow forced a
   // reasoned lint suppression on the effect below.
+  // An app whose first start is still running (not a failure to prepare).
+  const [startingNotice, setStartingNotice] = useState<string | null>(null);
   const setSelectFeedback = useCallback(
     (text: string | null) =>
       setSelectFeedbackState((current) =>
@@ -481,7 +523,7 @@ export function NewChatModal({
       // Visual skills can show in the composer (opened there, or handed
       // over from Home with a message), so a Registry round trip refetches
       // them whenever this is not a fork.
-      if (!mode) await experienceInventory.refetch();
+      if (!mode && visualSkillsEnabled) await experienceInventory.refetch();
       if (refreshSetup) await refreshSetup();
       else
         await Promise.all([
@@ -781,6 +823,13 @@ export function NewChatModal({
         ? start.modelChoiceFor(agent)
         : modelChoices[modelChoiceKey(agent)]);
     if (choice?.environmentId && choice.environmentId !== 'current') {
+      if (startFiles.length > 0) {
+        setSelectFeedback(
+          'A task on another Station takes text only. Remove the files, or choose an engine on this Station to send them.',
+        );
+        setShowChatOptions(true);
+        return;
+      }
       if (
         experience ||
         !choice.executionAgentId ||
@@ -798,19 +847,23 @@ export function NewChatModal({
       return;
     }
     // A Model chosen before this dialog (Home's chip, or before a setup
-    // journey) can have gone meanwhile: check it before starting on it.
+    // journey) can have gone meanwhile: check it before starting on it. A
+    // choice kept from earlier in this tab goes the same way when the engine
+    // reconnects with another catalog, so it is refused when the catalog is
+    // known and no longer lists it. Availability is not checked there: an
+    // engine that is merely not ready is reported by its own setup repair.
+    const startModels = selectionModel.executionModelsForAgent(agent);
+    const isChosen = (model: (typeof startModels)[number]) =>
+      model.id === choice?.modelId &&
+      (!choice?.providerId || model.providerId === choice.providerId) &&
+      model.executionAgentId === choice?.executionAgentId;
     if (
-      (returnedFromSetup || options.choice !== undefined) &&
       choice?.modelId &&
-      !selectionModel
-        .executionModelsForAgent(agent)
-        .some(
-          (model) =>
-            model.id === choice.modelId &&
-            model.available !== false &&
-            (!choice.providerId || model.providerId === choice.providerId) &&
-            model.executionAgentId === choice.executionAgentId,
-        )
+      (returnedFromSetup || options.choice !== undefined
+        ? !startModels.some(
+            (model) => isChosen(model) && model.available !== false,
+          )
+        : startModels.length > 0 && !startModels.some(isChosen))
     ) {
       setSelectFeedback(
         'The Model you selected is no longer available. Choose a Model to continue.',
@@ -907,6 +960,21 @@ export function NewChatModal({
               : experienceDraft
                 ? [experienceDraft]
                 : [];
+      // Files ride after every positional option, so those are padded only
+      // when there are files to place (callers compare exact arguments).
+      const selectTail: [
+        SkillExperienceDraft?,
+        boolean?,
+        string?,
+        string?,
+        boolean?,
+        File[]?,
+        string?,
+        ApprovalMode?,
+      ] = [...startOptions];
+      if (startFiles.length) selectTail[5] = startFiles;
+      if (shaping) selectTail[6] = TASK_SHAPING_INSTRUCTION;
+      if (approvalPick) selectTail[7] = approvalPick;
       try {
         if (composer && submitInFlight.current) return;
         if (composer) {
@@ -929,7 +997,7 @@ export function NewChatModal({
             choice?.providerOptions,
             choice?.providerId,
             choice?.providerType,
-            ...startOptions,
+            ...selectTail,
           ),
         )
           .then(() => {
@@ -1241,9 +1309,31 @@ export function NewChatModal({
           status: 'ready',
           agent: draftAgent,
           modelLabel: draftModelLabel,
+          executionAgentId: draftAgent
+            ? start.modelChoiceFor(draftAgent)?.executionAgentId
+            : undefined,
+          environmentId: draftAgent
+            ? start.modelChoiceFor(draftAgent)?.environmentId
+            : undefined,
           needsSetup: draftAgent
             ? !agentRunnability(draftAgent).runnable
             : false,
+          modelNote: draftAgent
+            ? newChatProjectModelNote({
+                projectChatDefaults: selectionModel.projectChatDefaults,
+                agentSlug: draftAgent.slug,
+                effectiveModel:
+                  selectionModel.defaultEffectiveModelForAgent(draftAgent),
+                chosen: !!start.modelChoiceFor(draftAgent),
+              })
+            : undefined,
+          approvalProjectDefault:
+            selectionModel.projectChatDefaults?.approvalMode.resolved,
+          approvalProjectDefaultUnavailable:
+            selectionModel.projectChatDefaultsUnavailable,
+          approvalPick,
+          onApprovalPick: setApprovalPick,
+          approvalSheetLayer: 'dialog',
         };
   const projectChip: StartProjectChip = contextPending
     ? { status: 'loading' }
@@ -1310,6 +1400,12 @@ export function NewChatModal({
         : undefined) ??
       flatList.find((agent) => agentFixRoute(agent)) ??
       flatList[0];
+    // The prepared app is still on its first start and has no Agent yet, so
+    // nothing in the list stands for it; its notice outranks whichever agent
+    // (often the built-in Station agent) the list falls back to.
+    const preparedStillStarting =
+      Boolean(startingNotice) &&
+      !flatList.some((agent) => agent.engineId === preparedEngineId);
     const canEnableAgent = flatList.some(
       (agent) =>
         resolveNewChatAgentEnable(agent) && agentFixRoute(agent) === 'enable',
@@ -1375,11 +1471,13 @@ export function NewChatModal({
                 (!initialAuthority.current ||
                   initialAuthority.current.isCurrent())
               }
-              onComplete={(engineId, failure) => {
+              onComplete={(engineId, failure, notice) => {
                 setDiscoveryInProgress(false);
                 setPreparedEngineId(engineId);
                 setDiscoveryCompleted(true);
-                if (failure) setSelectFeedback(failure);
+                if (failure)
+                  setSelectFeedback(preparationFeedbackText(failure, notice));
+                else setStartingNotice(notice ?? null);
               }}
             />
           ) : preparing ||
@@ -1390,6 +1488,17 @@ export function NewChatModal({
               count={1}
               label={
                 enableInFlight ? 'Preparing your AI app' : 'Opening your chat'
+              }
+            />
+          ) : preparedStillStarting ? (
+            <Empty
+              variant="compact"
+              label="Your AI app is still starting"
+              description={startingNotice}
+              action={
+                <Button onClick={() => beginSetup('/connections/engines')}>
+                  Open engines
+                </Button>
               }
             />
           ) : needsAttention ? (
@@ -1424,27 +1533,46 @@ export function NewChatModal({
     );
   }
 
+  const StartSurface = taskShaping
+    ? TaskChatStartSurface
+    : ResponsiveDialogSurface;
   return (
-    <ResponsiveDialogSurface
+    <StartSurface
       layer="dialog"
       ariaLabel={
         mode?.kind === 'fork'
           ? 'Fork from here'
           : showStart
-            ? 'New chat'
+            ? shaping
+              ? 'New Task'
+              : 'New chat'
             : 'New Chat'
       }
       overlayClassName="new-chat-modal__overlay"
       panelClassName="new-chat-modal"
       initialFocusRef={showStart ? promptRef : agentInputRef}
-      initialFocusPolicy="desktop"
+      initialFocusPolicy={taskShaping ? 'always' : 'desktop'}
       onClose={closeChatRequest}
     >
       <div className="new-chat-modal__header">
         <div className="new-chat-modal__title-row">
           <h3 className="new-chat-modal__title">
-            {mode?.kind === 'fork' ? 'Fork from here' : 'New chat'}
+            {mode?.kind === 'fork'
+              ? 'Fork from here'
+              : shaping
+                ? 'New Task'
+                : 'New chat'}
           </h3>
+          {shaping && (
+            <Button
+              className="task-chat-start__chip"
+              size="sm"
+              onClick={() => setShaping(false)}
+              aria-label="Remove Shaping a Task mode"
+            >
+              Shaping a Task ×
+            </Button>
+          )}
           <ResponsiveDialogCloseButton
             label={mode?.kind === 'fork' ? 'Cancel fork' : 'Close new chat'}
             onClick={closeChatRequest}
@@ -1457,32 +1585,39 @@ export function NewChatModal({
           </div>
         )}
 
-        {!showStart && !mode && !startWithDefault && !initialPrompt && (
-          <SkillExperiencePicker
-            query={experienceInventory}
-            selected={experience}
-            current={Boolean(currentExperience)}
-            inputs={experienceInputs}
-            onChange={setExperienceInputs}
-            onSelect={(entry) => {
-              if (
-                experience &&
-                sameSkillExperienceIdentity(experience.identity, entry.identity)
-              )
-                return;
-              setExperience(entry);
-              setExperienceInputs(
-                skillExperienceInputDefaults(entry.definition),
-              );
-            }}
-            onRemove={() => setExperience(null)}
-            onBrowse={() => {
-              preservedAgentSlug.current = flatList[selectedAgentIndex]?.slug;
-              preserveSetupContext.current = true;
-              setupReturn.begin('/registry');
-            }}
-          />
-        )}
+        {visualSkillsEnabled &&
+          !showStart &&
+          !mode &&
+          !startWithDefault &&
+          !initialPrompt && (
+            <SkillExperiencePicker
+              query={experienceInventory}
+              selected={experience}
+              current={Boolean(currentExperience)}
+              inputs={experienceInputs}
+              onChange={setExperienceInputs}
+              onSelect={(entry) => {
+                if (
+                  experience &&
+                  sameSkillExperienceIdentity(
+                    experience.identity,
+                    entry.identity,
+                  )
+                )
+                  return;
+                setExperience(entry);
+                setExperienceInputs(
+                  skillExperienceInputDefaults(entry.definition),
+                );
+              }}
+              onRemove={() => setExperience(null)}
+              onBrowse={() => {
+                preservedAgentSlug.current = flatList[selectedAgentIndex]?.slug;
+                preserveSetupContext.current = true;
+                setupReturn.begin('/registry');
+              }}
+            />
+          )}
 
         {/* Context picker (the list; the composer has its project chip) */}
         {!showStart && (
@@ -1699,6 +1834,9 @@ export function NewChatModal({
             </p>
           )}
           <StartComposer
+            compact={taskShaping}
+            heading={shaping ? 'Shape a Task' : undefined}
+            placeholder={shaping ? 'Describe the idea…' : undefined}
             prompt={prompt}
             onPromptChange={setPrompt}
             textareaRef={promptRef}
@@ -1770,14 +1908,18 @@ export function NewChatModal({
             onOpenProject={(trigger) =>
               setChipMenu({ kind: 'project', trigger })
             }
-            overflowActions={[
-              {
-                key: 'skills',
-                label: 'Use a visual skill',
-                checked: skillsOpen || Boolean(experience),
-                onSelect: () => setSkillsOpen((open) => !open),
-              },
-            ]}
+            overflowActions={
+              visualSkillsEnabled
+                ? [
+                    {
+                      key: 'skills',
+                      label: 'Use a visual skill',
+                      checked: skillsOpen || Boolean(experience),
+                      onSelect: () => setSkillsOpen((open) => !open),
+                    },
+                  ]
+                : []
+            }
             skill={
               experience
                 ? {
@@ -1804,6 +1946,16 @@ export function NewChatModal({
             onStart={() => {
               if (draftAgent) handleSelect(draftAgent, { composer: true });
             }}
+            files={{
+              list: startFiles,
+              onAdd: (files) =>
+                setStartFiles((current) => [...current, ...files]),
+              onRemove: (index) =>
+                setStartFiles((current) =>
+                  current.filter((_, position) => position !== index),
+                ),
+            }}
+            voice={startVoice}
             note={
               !prompt.trim() && contextSelected && !experience
                 ? 'With no message, Start puts this context in the new chat’s composer for you to send.'
@@ -1811,7 +1963,7 @@ export function NewChatModal({
             }
           >
             {taskNotice && <p role="status">{taskNotice}</p>}
-            {(skillsOpen || experience) && (
+            {visualSkillsEnabled && (skillsOpen || experience) && (
               <SkillExperiencePicker
                 query={experienceInventory}
                 selected={experience}
@@ -1916,7 +2068,7 @@ export function NewChatModal({
               />
             </React.Suspense>
           ) : null}
-          {recentChats && (
+          {recentChats && !taskShaping && (
             <React.Suspense
               fallback={<SkeletonList count={1} label="Loading recent chats" />}
             >
@@ -1994,7 +2146,7 @@ export function NewChatModal({
               <Empty
                 variant="compact"
                 label="Nothing to chat with yet"
-                description="Connect an engine (Claude Code, Codex, OpenCode…) or add a Model connection, and new chats appear here automatically."
+                description="Connect an engine (Claude Code, Codex, OpenCode…) or add a Model connection."
                 action={
                   <button
                     type="button"
@@ -2221,6 +2373,31 @@ export function NewChatModal({
           </div>
         </div>
       )}
-    </ResponsiveDialogSurface>
+    </StartSurface>
+  );
+}
+
+function TaskChatStartSurface({
+  children,
+  initialFocusRef,
+  ariaLabel,
+  onClose,
+}: ComponentProps<typeof ResponsiveDialogSurface>) {
+  useEffect(() => {
+    initialFocusRef?.current?.focus();
+  }, [initialFocusRef]);
+  return (
+    <section
+      className="new-chat-modal task-chat-start"
+      aria-label={ariaLabel}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') {
+          event.stopPropagation();
+          onClose?.();
+        }
+      }}
+    >
+      {children}
+    </section>
   );
 }

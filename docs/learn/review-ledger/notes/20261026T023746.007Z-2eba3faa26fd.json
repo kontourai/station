@@ -1,0 +1,7 @@
+{
+  "revision": "8f13861967f13e22c7799724ab724c2f7b89b181",
+
+  "notes": [
+    {"path":"docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","note":"#4196 delta only: its linked design doc instance-registry.md gained one sentence that status reads the installed unit's home when this home's manifest is stale. The ADR's sidecar/registry decisions and its link remain accurate; no prose change.","inputs":["docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","docs/design/instance-registry.md"]}
+  ]
+}

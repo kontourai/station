@@ -9,6 +9,7 @@ export function inspectWindowsInstalledTree(directory) {
   const records = [];
   const runtimeRoots = [
     'station-nightly.exe',
+    'station-node.exe',
     'dist-server',
     'node_modules',
     'schemas',

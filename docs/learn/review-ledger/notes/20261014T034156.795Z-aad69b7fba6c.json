@@ -1,0 +1,7 @@
+{
+  "revision": "cde26d277b4f48d0a1f4e392a7da7a79caf66d63",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Changed input ChatInputArea.tsx: only the placeholder while a reopened conversation's open read is pending ('Loading chat…'). The guide's composer and chip claims (project chips placeholders, drafts, Send) are unchanged. No prose change.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/ChatInputArea.tsx"]}
+  ]
+}

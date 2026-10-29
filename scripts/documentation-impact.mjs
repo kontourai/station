@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -6,6 +5,7 @@ import {
   compileStationDocs,
   STATION_DOCS_INPUT_PATHS,
 } from './generate-station-docs.mjs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { evaluateDocumentationReview } from './lib/documentation-review.mjs';
 import {
   createLearningSourceReader,
@@ -24,10 +24,9 @@ import {
 const sorted = (values) => [...new Set(values)].sort();
 
 function git(root, args) {
-  return execFileSync('git', args, {
+  return execFileSyncBounded('git', args, {
     cwd: root,
     encoding: 'utf8',
-    windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],
     maxBuffer: 16 * 1024 * 1024,
   });
@@ -178,8 +177,11 @@ function ledgerRevisionsSince(root, base) {
   ];
 }
 
-/** Compiled ledgers at each ref, in either storage layout. */
-function historicalLedgers(root, refs) {
+/**
+ * Compiled ledgers at each ref, in either storage layout, reduced to the
+ * fields their callers read: record path, state, summary and source paths.
+ */
+export function historicalLedgers(root, refs) {
   return [...new Set(refs)].flatMap((ref) => {
     // Historical records supply dependency leads, not current review approval.
     // Their semantic bindings remain strict even if an intermediate commit was
@@ -189,7 +191,20 @@ function historicalLedgers(root, refs) {
     });
     if (!ledger) return [];
     validateLedger(ledger);
-    return [ledger];
+    // A compiled record carries every review note that ever covered it; one
+    // ledger per ledger-touching commit since the baseline kept them all alive
+    // at once and exhausted a 4 GiB heap (~170 refs x ~25 MiB of notes).
+    return [
+      {
+        version: ledger.version,
+        records: ledger.records.map(({ path, state, summary, sources }) => ({
+          path,
+          state,
+          summary,
+          sources: sources.map((source) => ({ path: source.path })),
+        })),
+      },
+    ];
   });
 }
 

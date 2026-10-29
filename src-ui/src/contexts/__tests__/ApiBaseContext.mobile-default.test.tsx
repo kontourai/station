@@ -54,33 +54,21 @@ vi.mock('../../platform/useBundledServerStatus', () => ({
 
 import { ApiBaseProvider } from '../ApiBaseContext';
 
-describe('ApiBaseContext native-mobile build default', () => {
+describe('ApiBaseContext native-mobile connection setup', () => {
   beforeEach(() => {
     captured.props = null;
-    captured.profile.mobileDefaultEndpoint =
-      'https://station.example.test:8442';
     delete (window as Window & { __API_BASE__?: string }).__API_BASE__;
   });
 
-  it('injects the trusted channel endpoint instead of the Tauri shell origin', () => {
-    render(<ApiBaseProvider>unused</ApiBaseProvider>);
+  it.each([undefined, 'https://station.example.test:8442'])(
+    'starts without an injected backend even with legacy build metadata: %s',
+    (legacyEndpoint) => {
+      captured.profile.mobileDefaultEndpoint = legacyEndpoint;
+      render(<ApiBaseProvider>unused</ApiBaseProvider>);
 
-    expect(captured.props?.seedDefault).toBe(false);
-    expect(captured.props?.injectedConnection).toEqual({
-      id: 'mobile-default-beta',
-      name: 'Station beta',
-      url: 'https://station.example.test:8442',
-      source: 'mobile-default',
-    });
-    expect(captured.props?.defaultUrl).not.toBe('tauri://localhost');
-  });
-
-  it('publishes no API base on a clean native install with no trusted host', () => {
-    delete captured.profile.mobileDefaultEndpoint;
-    render(<ApiBaseProvider>unused</ApiBaseProvider>);
-
-    expect(captured.props?.seedDefault).toBe(false);
-    expect(captured.props?.injectedConnection).toBeNull();
-    expect(captured.props?.defaultUrl).toBe('');
-  });
+      expect(captured.props?.seedDefault).toBe(false);
+      expect(captured.props?.injectedConnection).toBeNull();
+      expect(captured.props?.defaultUrl).toBe('');
+    },
+  );
 });

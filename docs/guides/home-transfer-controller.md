@@ -318,7 +318,7 @@ flags, so it is not a place those flags could be true. A malformed body is
 refused with 400 before this route's control-session authority runs, so a payload that can never
 succeed is distinguishable from a 409 the caller can act on. There is no
 admission begin/finish endpoint, room writer, Agent launch or target
-activation in this slice.
+activation yet.
 
 ## Private room-write adapter
 

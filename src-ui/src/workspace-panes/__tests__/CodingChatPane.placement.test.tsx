@@ -7,7 +7,8 @@ import { navigationStore } from '../../contexts/navigation-store';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import { CodingChatPane } from '../CodingChatPane';
 
-vi.mock('../../hooks/useIsMobile', () => ({
+vi.mock('../../hooks/useIsMobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../hooks/useIsMobile')>()),
   useIsMobile: () => false,
 }));
 

@@ -885,3 +885,9 @@ mod macos_keychain_tests {
             .is_none());
     }
 }
+
+#[cfg(all(test, not(mobile)))]
+#[test]
+fn keyring_service_is_registered() {
+    crate::native_secure_entry::assert_registered_service(METADATA_SERVICE);
+}

@@ -27,6 +27,7 @@ import type { AuthorityObservation } from '@kontourai/station-contracts/authorit
 import { useUserLookup } from '@kontourai/station-sdk';
 import { StationHttpError } from '@kontourai/station-sdk/client';
 import {
+  onlineManager,
   QueryClient,
   QueryClientProvider,
   useQuery,
@@ -243,7 +244,8 @@ function createHarness(): Harness {
 }
 
 function Probe() {
-  const { status, namespace } = useAuthorityPersistence();
+  const { status, namespace, refused, reobserve } = useAuthorityPersistence();
+  (Probe as unknown as { reobserve?: () => void }).reobserve = reobserve;
   const client = useQueryClient();
   const harness = (Probe as unknown as { harness: Harness }).harness;
   harness.activeClient = client;
@@ -287,6 +289,7 @@ function Probe() {
     <div
       data-testid="probe"
       data-status={status}
+      data-refused={String(refused === true)}
       data-namespace={namespace ?? ''}
       data-projects={
         projects.data ? JSON.stringify(projects.data) : projects.status
@@ -1023,6 +1026,86 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
     unmount();
   });
 
+  it.each(['access-first', 'identity-first'] as const)(
+    'waits for local access before fetching boot data and identity before publishing it (%s)',
+    async (order) => {
+      const urlA = homeUrl('parallel-boot');
+      const harness = createHarness();
+      harness.observationPlan.set('default', async () => OBS_DEFAULT);
+      const observation = deferred<AuthorityObservation>();
+      const payloadFetched = vi.fn();
+      const storageRead = vi.spyOn(harness.asyncStorage.storage, 'getItem');
+      stubFetch(async (url) => {
+        if (url === `${urlA}/api/boot`) {
+          payloadFetched();
+          return new Response(
+            JSON.stringify({
+              version: 1,
+              sections: {
+                branding: {
+                  data: {
+                    success: true,
+                    data: { name: 'parallel-boot-marker' },
+                  },
+                },
+              },
+            }),
+          );
+        }
+        return new Response('not found', { status: 404 });
+      });
+      const localAccess =
+        deferred<Awaited<ReturnType<typeof resolveLocalUiSession>>>();
+      vi.mocked(resolveLocalUiSession).mockImplementation((apiBase) =>
+        apiBase === urlA
+          ? localAccess.promise
+          : Promise.resolve({ kind: 'host-unavailable' }),
+      );
+      const mounted = renderTree(harness, { localUiApiBase: urlA });
+      const { id } = await addHome('parallel-boot', urlA);
+      harness.observationPlan.set(urlA, () => observation.promise);
+      try {
+        await switchTo(id);
+        await waitFor(() =>
+          expect(resolveLocalUiSession).toHaveBeenCalledWith(urlA),
+        );
+        if (order === 'identity-first') {
+          await act(async () => observation.resolve(OBS_A));
+          await waitFor(() =>
+            expect(probe().getAttribute('data-namespace')).toBe(NS_A),
+          );
+        }
+        expect(payloadFetched).not.toHaveBeenCalled();
+        await act(async () => localAccess.resolve({ kind: 'authenticated' }));
+        await waitFor(() => expect(payloadFetched).toHaveBeenCalled());
+        if (order === 'access-first') {
+          expect(screen.queryByTestId('probe')).toBeNull();
+          expect(
+            harness.asyncStorage.data.has(authorityPersistenceKey(NS_A)),
+          ).toBe(false);
+          expect(
+            storageRead.mock.calls.some(
+              ([key]) => key === authorityPersistenceKey(NS_A),
+            ),
+          ).toBe(false);
+          await act(async () => observation.resolve(OBS_A));
+          await waitFor(() =>
+            expect(probe().getAttribute('data-namespace')).toBe(NS_A),
+          );
+        }
+        await waitFor(() =>
+          expect(harness.activeClient?.getQueryData(['branding'])).toEqual(
+            expect.objectContaining({ appName: 'parallel-boot-marker' }),
+          ),
+        );
+      } finally {
+        localAccess.resolve({ kind: 'host-unavailable' });
+        observation.resolve(OBS_A);
+        mounted.unmount();
+      }
+    },
+  );
+
   it("a delayed boot payload never seeds another identity's shelf", async () => {
     const urlA = homeUrl('homea');
     const harness = createHarness();
@@ -1031,10 +1114,7 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
     const bootPayload = {
       version: 1,
       sections: {
-        projects: {
-          data: [{ id: 'p1', home: 'boot-A-marker' }],
-          success: true,
-        },
+        branding: { data: { success: true, data: { name: 'boot-A-marker' } } },
       },
     };
     stubFetch(async (url) => {
@@ -1056,6 +1136,7 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
     await waitFor(() =>
       expect(probe().getAttribute('data-namespace')).toBe(NS_A),
     );
+    const heldClient = harness.activeClient!;
     // A's seed holds its boot fetch (at A's captured origin) open…
     await waitFor(() => {
       const calls = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>)
@@ -1076,6 +1157,8 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
       bootGate.resolve(null);
     });
     await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(heldClient.getQueryData(['branding'])).toBeUndefined();
+    expect(harness.activeClient?.getQueryData(['branding'])).toBeUndefined();
     expect(probe().getAttribute('data-projects')).toContain(idB);
     expect(probe().getAttribute('data-projects')).not.toContain(
       'boot-A-marker',
@@ -1225,6 +1308,9 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
       await waitFor(() =>
         expect(probe().getAttribute('data-status')).toBe('unavailable'),
       );
+      // A refusal, as distinct from the 'unavailable' of a pending scope
+      // (the account-appearance release keys on this).
+      expect(probe().getAttribute('data-refused')).toBe('true');
       expect(harness.observationCalls.length).toBeGreaterThan(
         observationCallsBefore,
       );
@@ -1240,6 +1326,89 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
       unmount();
     },
   );
+
+  it('a browser reconnect keeps the verified workspace: no re-read, same client', async () => {
+    const harness = createHarness();
+    harness.observationPlan.set('default', async () => OBS_DEFAULT);
+    renderTree(harness);
+    await waitFor(() =>
+      expect(probe().getAttribute('data-status')).toBe('verified'),
+    );
+    const client = harness.activeClient;
+    const reads = harness.observationCalls.length;
+    try {
+      // A Wi-Fi/cellular handoff: the browser goes offline, then online.
+      act(() => onlineManager.setOnline(false));
+      act(() => onlineManager.setOnline(true));
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+      expect(probe().getAttribute('data-status')).toBe('verified');
+      expect(harness.activeClient).toBe(client);
+      expect(harness.observationCalls).toHaveLength(reads);
+    } finally {
+      onlineManager.setOnline(true);
+    }
+  });
+
+  it('a failed observation is read again when the browser reconnects', async () => {
+    const harness = createHarness();
+    let networkUp = false;
+    harness.observationPlan.set('default', async () => {
+      if (!networkUp) throw new TypeError('fetch failed');
+      return OBS_DEFAULT;
+    });
+    renderTree(harness);
+    await waitFor(() =>
+      expect(probe().getAttribute('data-status')).toBe('unverified'),
+    );
+    try {
+      act(() => onlineManager.setOnline(false));
+      networkUp = true;
+      act(() => onlineManager.setOnline(true));
+      await waitFor(() =>
+        expect(probe().getAttribute('data-status')).toBe('verified'),
+      );
+    } finally {
+      onlineManager.setOnline(true);
+    }
+  });
+
+  it('a failed observation offers a re-read that verifies; a refused one does not', async () => {
+    const harness = createHarness();
+    let networkUp = false;
+    harness.observationPlan.set('default', async () => {
+      if (!networkUp) throw new TypeError('fetch failed');
+      return OBS_DEFAULT;
+    });
+    const first = renderTree(harness);
+    await waitFor(() =>
+      expect(probe().getAttribute('data-status')).toBe('unverified'),
+    );
+    const reobserve = (Probe as unknown as { reobserve?: () => void })
+      .reobserve;
+    expect(reobserve).toBeTypeOf('function');
+    networkUp = true;
+    act(() => reobserve?.());
+    await waitFor(() =>
+      expect(probe().getAttribute('data-status')).toBe('verified'),
+    );
+    expect(
+      (Probe as unknown as { reobserve?: () => void }).reobserve,
+    ).toBeUndefined();
+    first.unmount();
+
+    harness.observationPlan.set('default', async () => {
+      throw UNAUTHORIZED;
+    });
+    renderTree(harness);
+    await waitFor(() =>
+      expect(probe().getAttribute('data-refused')).toBe('true'),
+    );
+    expect(
+      (Probe as unknown as { reobserve?: () => void }).reobserve,
+    ).toBeUndefined();
+  });
 
   it('offline with no observation shows zero A rows and retains the blob byte-identical', async () => {
     const harness = createHarness();
@@ -1278,6 +1447,8 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
     await waitFor(() =>
       expect(probe().getAttribute('data-status')).toBe('unverified'),
     );
+    // Observation loss is not a refusal.
+    expect(probe().getAttribute('data-refused')).toBe('false');
     expect(probe().getAttribute('data-namespace')).toBe('');
     // The read fails honestly (no silent stale rows)…
     await waitFor(() =>

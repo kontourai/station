@@ -1,13 +1,17 @@
-import { useAvailableProjectLayoutsQuery } from '@kontourai/station-sdk';
-import { useEffect, useState } from 'react';
+import {
+  useAvailableProjectLayoutsQuery,
+  useReposQuery,
+} from '@kontourai/station-sdk';
+import { useEffect } from 'react';
 import { looksLikeWorkspacePath } from '../components/modals/project-form-utils';
 import { mergeAvailableProjectLayouts } from '../components/registry/ProjectLayoutCatalog';
-import { useReposQuery } from './useGitActions';
+import { useProjectDraftState } from './useProjectDraftState';
 import { getRecentLayouts } from './useRecentLayouts';
 
 interface UseNewProjectStarterOptions {
   isOpen: boolean;
   normalizedDirectory: string;
+  partition?: string;
 }
 
 /** How long typing has to stop before the directory becomes a repo question. */
@@ -22,13 +26,17 @@ const REPO_DISCOVERY_IDLE_MS = 400;
  * This changes only WHEN the question is asked, never the answer: the value it
  * settles on is the value the field holds.
  */
-function useSettledDirectory(value: string, delayMs: number): string {
-  const [settled, setSettled] = useState(value);
+function useSettledDirectory(
+  value: string,
+  delayMs: number,
+  partition?: string,
+): string {
+  const [settled, setSettled] = useProjectDraftState(value, partition);
   useEffect(() => {
     if (value === settled) return;
     const timer = window.setTimeout(() => setSettled(value), delayMs);
     return () => window.clearTimeout(timer);
-  }, [delayMs, settled, value]);
+  }, [delayMs, settled, value, setSettled]);
   return settled;
 }
 
@@ -49,10 +57,19 @@ function useSettledDirectory(value: string, delayMs: number): string {
 export function useNewProjectStarter({
   isOpen,
   normalizedDirectory,
+  partition,
 }: UseNewProjectStarterOptions) {
-  const [selectedLayoutId, setSelectedLayoutId] = useState<string | null>(null);
-  const [layoutChoiceExplicit, setLayoutChoiceExplicit] = useState(false);
-  const [showLayoutBrowser, setShowLayoutBrowser] = useState(false);
+  const [selectedLayoutId, setSelectedLayoutId] = useProjectDraftState<
+    string | null
+  >(null, partition);
+  const [layoutChoiceExplicit, setLayoutChoiceExplicit] = useProjectDraftState(
+    false,
+    partition,
+  );
+  const [showLayoutBrowser, setShowLayoutBrowser] = useProjectDraftState(
+    false,
+    partition,
+  );
   const {
     data: availableLayouts = [],
     isLoading: layoutsLoading,
@@ -74,10 +91,14 @@ export function useNewProjectStarter({
   const settledDirectory = useSettledDirectory(
     normalizedDirectory,
     REPO_DISCOVERY_IDLE_MS,
+    partition,
   );
-  const repoDiscovery = useReposQuery(settledDirectory || null, {
-    enabled: isOpen && looksLikeWorkspacePath(settledDirectory),
-  });
+  const repoDiscovery = useReposQuery(
+    settledDirectory ? { workingDir: settledDirectory } : null,
+    {
+      enabled: isOpen && looksLikeWorkspacePath(settledDirectory),
+    },
+  );
   // The settle means the query can be describing a path the field no longer
   // holds — during the idle window after a paste-over, and indefinitely once
   // the new value fails `looksLikeWorkspacePath` (the query is then disabled,
@@ -94,7 +115,12 @@ export function useNewProjectStarter({
       setLayoutChoiceExplicit(false);
       setShowLayoutBrowser(false);
     }
-  }, [isOpen]);
+  }, [
+    isOpen,
+    setSelectedLayoutId,
+    setLayoutChoiceExplicit,
+    setShowLayoutBrowser,
+  ]);
 
   // A DERIVATION IN BOTH DIRECTIONS, deliberately. This used to only ever
   // SET, which made the recommendation survive its own reason: settle on a git
@@ -121,6 +147,7 @@ export function useNewProjectStarter({
     isOpen,
     layoutChoiceExplicit,
     normalizedDirectory,
+    setSelectedLayoutId,
   ]);
 
   function selectLayout(id: string | null) {

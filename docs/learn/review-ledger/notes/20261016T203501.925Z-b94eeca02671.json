@@ -1,0 +1,7 @@
+{
+  "revision": "1af78880a6a8e975940669bbc8d25e114ea2ae41",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Scoped generated-documentation review: unmodified docs:mcp:generate at1af78880 changes only content digest and SessionTurnBoundaryAuthority/TurnDeduplicator topic bodies from their canonical module-map sections. Verified the generated topics retain source/evidence limits, passive-settlement and legacy-binding qualification, typed client_turn_settled disposition/refusal and authorization semantics. Existing manual/static-topic/navigation claims remain accurate; no live runtime or publication proof inferred. Runtime algorithms and all tests remain identical6d3d63; only generated documentation TS is excepted. Learning build at1af78880 succeeded:10 branches88 module sections492 Markdown documents. Historical932 CI remains failed5246/2 and telemetrycauseNOT_VERIFIED.","inputs":["docs/reference/station-docs.md","src-server/services/orchestration/orchestration-service.ts","src-server/tools/station-docs-content.ts"]}
+  ]
+}

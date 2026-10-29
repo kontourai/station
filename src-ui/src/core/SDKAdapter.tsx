@@ -1,8 +1,10 @@
 import type { LayoutDefinition } from '@kontourai/station-contracts/layout';
+import type { PaneRelatedPanesHost } from '@kontourai/station-contracts/workspace-pane-host-contract';
 import {
   _setApiBase,
   _setProviderFunctions,
   type SDKContextValue,
+  type SDKHost,
   SDKProvider,
   type SDKToast,
   type ToastAction,
@@ -10,15 +12,29 @@ import {
   type ToastType,
   useProjectLayoutQuery,
   useProjectLayoutsQuery,
+  useSDK,
+  useNavigation as useSDKNavigation,
 } from '@kontourai/station-sdk';
-import { getPluginHeaders } from '@kontourai/station-sdk/client';
-import { type ReactNode, useEffect, useMemo } from 'react';
-import { useActiveChatActions } from '../contexts/ActiveChatsContext';
+import {
+  getPluginHeaders,
+  mountPluginTelemetryPane,
+} from '@kontourai/station-sdk/client';
+import { useQuery } from '@tanstack/react-query';
+import { type ReactNode, useEffect, useId, useMemo } from 'react';
+import {
+  useActiveChatActions,
+  useActiveChatState,
+} from '../contexts/ActiveChatsContext';
 import { useAgents } from '../contexts/AgentsContext';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useConfig } from '../contexts/ConfigContext';
 import { useConversations } from '../contexts/ConversationsContext';
-import { useNavigation } from '../contexts/NavigationContext';
+import { useModels } from '../contexts/ModelsContext';
+import {
+  useNavigation,
+  useNavigationActions,
+} from '../contexts/NavigationContext';
 import { useToast } from '../contexts/ToastContext';
 import {
   useCreateChatSession,
@@ -26,6 +42,15 @@ import {
   useOpenConversation,
   useSendMessage,
 } from '../hooks/useActiveChatSessions';
+import { useSlashCommandHandler } from '../hooks/useSlashCommandHandler';
+import { useToolApproval } from '../hooks/useToolApproval';
+import { copyToClipboard } from '../lib/clipboard';
+import { openPluginExternalLink } from '../platform/openExternalLink';
+import {
+  usePaneConfirmChrome,
+  usePaneHostFacts,
+  usePanePromptChrome,
+} from '../workspace-panes/paneHostShellChrome';
 import {
   configureProvider,
   getActiveProviderId,
@@ -33,6 +58,19 @@ import {
   hasProvider,
   registerProvider,
 } from './layoutProviders';
+import { useSDKShortcutsHost } from './sdkShortcutsHost';
+
+const EMPTY_LAYOUTS: never[] = [];
+
+function usePluginConversations(agentSlug?: string) {
+  const navigation = useSDKNavigation();
+  return useConversations(agentSlug ?? navigation.selectedAgent ?? '');
+}
+
+function usePluginToolApproval() {
+  const { apiBase } = useSDK();
+  return useToolApproval(apiBase);
+}
 
 /** Every button a toast request names, `action` first; none is `undefined`. */
 function toastActions(request: ToastRequest): ToastAction[] | undefined {
@@ -54,6 +92,8 @@ interface SDKAdapterProps {
   boundProjectSlug?: string;
   /** Owning installed plugin, distinct from this Pane occurrence/layout id. */
   boundPluginName?: string;
+  /** The occurrence's related-pane capability, when its placement offers one. */
+  relatedPanes?: PaneRelatedPanesHost;
 }
 
 /**
@@ -65,21 +105,38 @@ export function SDKAdapter({
   layout,
   boundProjectSlug,
   boundPluginName,
+  relatedPanes,
 }: SDKAdapterProps) {
   // Get API base from the single source of truth
   const { apiBase } = useApiBase();
 
   _setApiBase(apiBase);
+  const paneId = useId();
+  const paneTelemetry = useQuery({
+    queryKey: ['plugin-telemetry-pane', apiBase, boundPluginName, paneId],
+    enabled: !!boundPluginName,
+    staleTime: 240000,
+    gcTime: 0,
+    refetchInterval: 240000,
+    retry: false,
+    queryFn: ({ signal }) =>
+      mountPluginTelemetryPane(apiBase, boundPluginName!, signal),
+  });
   const pluginApiIdentity = useMemo(
     () =>
       boundPluginName
         ? Object.freeze({
             pluginName: boundPluginName,
+            telemetryCapability: () =>
+              paneTelemetry.data &&
+              Date.parse(paneTelemetry.data.expiresAt) > Date.now()
+                ? paneTelemetry.data.token
+                : undefined,
             getHeaders: (extraHeaders?: Record<string, string>) =>
               getPluginHeaders(extraHeaders, boundPluginName),
           })
         : undefined,
-    [boundPluginName],
+    [boundPluginName, paneTelemetry.data],
   );
 
   // Configure process-wide host functions only. Plugin request identity stays
@@ -96,25 +153,32 @@ export function SDKAdapter({
 
   // Get all the core contexts
   const agents = useAgents();
-  const navigation = useNavigation();
-  const selectedProject = boundProjectSlug ?? navigation.selectedProject;
-  // A direct Pane occurrence is not a persisted legacy Layout selection. Do
-  // not let the last ambient layout from another route leak into its SDK
-  // `useLayout` result or query identity; the explicit Pane layout below is
-  // the only layout-shaped context it owns.
-  const selectedProjectLayout = boundProjectSlug
-    ? null
-    : navigation.selectedProjectLayout;
-  const sdkNavigation = boundProjectSlug
-    ? {
-        ...navigation,
-        selectedProject: boundProjectSlug,
-        selectedProjectLayout: null,
-      }
-    : navigation;
-  const { data: layouts = [] } = useProjectLayoutsQuery(selectedProject || '', {
-    enabled: !!selectedProject,
-  });
+  const navigation = useNavigation((state) => ({
+    pathname: state.pathname,
+    selectedAgent: state.selectedAgent,
+    selectedProject: boundProjectSlug ?? state.selectedProject,
+    // Direct Panes own their layout; an ambient layout must not leak in.
+    selectedProjectLayout: boundProjectSlug
+      ? null
+      : state.selectedProjectLayout,
+    activeConversation: state.activeConversation,
+    activeChat: state.activeChat,
+    activeTab: state.activeTab,
+    isDockOpen: state.isDockOpen,
+    isDockMaximized: state.isDockMaximized,
+  }));
+  const navigationActions = useNavigationActions();
+  const sdkNavigation = useMemo(
+    () => ({ ...navigation, ...navigationActions }),
+    [navigation, navigationActions],
+  );
+  const { selectedProject, selectedProjectLayout } = navigation;
+  const { data: layouts = EMPTY_LAYOUTS } = useProjectLayoutsQuery(
+    selectedProject || '',
+    {
+      enabled: !!selectedProject,
+    },
+  );
   const { data: activeLayout } = useProjectLayoutQuery(
     selectedProject || '',
     selectedProjectLayout || '',
@@ -122,7 +186,6 @@ export function SDKAdapter({
       enabled: !!selectedProject && !!selectedProjectLayout,
     },
   );
-  const conversations = useConversations(layout?.slug || '');
   const toast = useToast();
   // The public SDK has shipped both `showToast(message, type, duration)` and
   // the object form used by the first-party starters. The shell context's
@@ -130,23 +193,26 @@ export function SDKAdapter({
   // silently turns a public toast type into attribution and renders an object
   // as `[object Object]`. Normalize both public spellings at the ONE adapter
   // seam instead of teaching plugin panes about shell storage.
-  const sdkToast: SDKToast = {
-    ...toast,
-    showToast: (
-      request: string | ToastRequest,
-      type: ToastType = 'info',
-      duration?: number,
-    ) =>
-      typeof request === 'string'
-        ? toast.showToast(request, undefined, duration, undefined, type)
-        : toast.showToast(
-            request.message,
-            undefined,
-            request.duration,
-            toastActions(request),
-            request.type ?? 'info',
-          ),
-  };
+  const sdkToast = useMemo<SDKToast>(
+    () => ({
+      ...toast,
+      showToast: (
+        request: string | ToastRequest,
+        type: ToastType = 'info',
+        duration?: number,
+      ) =>
+        typeof request === 'string'
+          ? toast.showToast(request, undefined, duration, undefined, type)
+          : toast.showToast(
+              request.message,
+              undefined,
+              request.duration,
+              toastActions(request),
+              request.type ?? 'info',
+            ),
+    }),
+    [toast],
+  );
   const sendMessage = useSendMessage(apiBase);
   const createChatSession = useCreateChatSession();
   const activeChatActions = useActiveChatActions();
@@ -154,43 +220,101 @@ export function SDKAdapter({
   const launchChat = useLaunchChat(apiBase);
   const auth = useAuth();
 
+  // The installed plugin this pane belongs to, as the host admitted it. Only
+  // `PluginWorkspacePaneSDKBoundary` passes one; the layout routes
+  // (LayoutView, PersonalBoardView, LayoutWorkspacePane) mount layouts whose
+  // `plugin` field is editable config, so they have no verified identity.
+  const verifiedPlugin = boundPluginName;
+
+  // Host services. The dialogs are the shell's own chrome, rendered here
+  // beside the plugin: this adapter is mounted exactly while it renders its
+  // children, so `active` is constant and unmount settles an open request.
+  // They name who asked, so a plugin's dialog cannot pass as Station's.
+  const requester = verifiedPlugin ?? 'an unverified layout';
+  const { confirm, confirmChrome } = usePaneConfirmChrome(
+    true,
+    undefined,
+    requester,
+  );
+  const { prompt, promptChrome } = usePanePromptChrome(true, requester);
+  const facts = usePaneHostFacts();
+  const sdkHost = useMemo<SDKHost>(
+    () => ({
+      clipboard: { writeText: copyToClipboard },
+      openExternal: openPluginExternalLink,
+      prompt,
+      confirm,
+    }),
+    [prompt, confirm],
+  );
+  const shortcuts = useSDKShortcutsHost(verifiedPlugin);
+
   // Create SDK context value with injected contexts. The agents, navigation,
   // toast and auth slots are the SDK's published contracts (#2399), so this
   // object is where the host is checked against them.
-  const sdkValue = {
-    apiBase,
-    ...(pluginApiIdentity ? { pluginApiIdentity } : {}),
-    contexts: {
-      agents: { useAgents: () => agents },
-      layouts: { useLayouts: () => layouts } as {
-        useLayouts: () => typeof layouts;
-        useLayout?: () => { data: unknown };
-      },
-      conversations: { useConversations: () => conversations },
-      navigation: { useNavigation: () => sdkNavigation },
-      toast: { useToast: () => sdkToast },
-      config: { useApiBase: () => ({ apiBase }) },
-      auth: { useAuth: () => auth },
-      activeChats: {
-        useSendMessage: () => sendMessage,
-        useCreateChatSession: () => createChatSession,
-        useActiveChatActions: () => activeChatActions,
-        useOpenConversation: () => openConversation,
-        useLaunchChat: () => launchChat,
-      },
-    },
-    hooks: {
-      // Add other hooks as needed
-    },
-  };
-
-  sdkValue.contexts.layouts.useLayout = () => ({
-    data: activeLayout?.config ?? layout,
-  });
+  const sdkValue = useMemo(
+    () =>
+      ({
+        apiBase,
+        ...(pluginApiIdentity ? { pluginApiIdentity } : {}),
+        ...(relatedPanes ? { relatedPanes } : {}),
+        contexts: {
+          agents: { useAgents: () => agents },
+          layouts: {
+            useLayouts: () => layouts,
+            useLayout: () => ({ data: activeLayout?.config ?? layout }),
+          },
+          conversations: {
+            useConversations: usePluginConversations,
+          },
+          models: { useModels, useAvailableModels: useModels },
+          navigation: { useNavigation: () => sdkNavigation },
+          toast: { useToast: () => sdkToast },
+          config: { useApiBase: () => ({ apiBase }), useConfig },
+          auth: { useAuth: () => auth },
+          host: { useHost: () => sdkHost, facts },
+          ...(shortcuts ? { shortcuts } : {}),
+          activeChats: {
+            useSendMessage: () => sendMessage,
+            useCreateChatSession: () => createChatSession,
+            useActiveChatActions: () => activeChatActions,
+            useActiveChatState,
+            useOpenConversation: () => openConversation,
+            useLaunchChat: () => launchChat,
+          },
+        },
+        hooks: {
+          slashCommandHandler: useSlashCommandHandler,
+          toolApproval: usePluginToolApproval,
+        },
+      }) satisfies SDKContextValue,
+    [
+      apiBase,
+      pluginApiIdentity,
+      relatedPanes,
+      agents,
+      layouts,
+      activeLayout?.config,
+      layout,
+      sdkNavigation,
+      sdkToast,
+      sendMessage,
+      createChatSession,
+      activeChatActions,
+      openConversation,
+      launchChat,
+      auth,
+      sdkHost,
+      facts,
+      shortcuts,
+    ],
+  );
 
   return (
-    <SDKProvider value={sdkValue satisfies SDKContextValue}>
+    <SDKProvider value={sdkValue}>
       {children}
+      {confirmChrome}
+      {promptChrome}
     </SDKProvider>
   );
 }

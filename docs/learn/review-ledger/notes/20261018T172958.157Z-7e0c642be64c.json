@@ -1,0 +1,7 @@
+{
+  "revision": "412063a7f8ab42f7c044c5129995e7a273bc04f5",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Round 2 final alias review: regional profiles now use the requested vendor namespace rather than a fixed vendor registry. Added cohere, arbitrary future namespace, cross-vendor, and malformed bare-model regional controls; known model-version dots are not vendor separators. All 243 runner/smoke/server-route tests pass. Transport forwarding and terminal error cursor behavior are unchanged. No provider or browser execution.","inputs":["docs/reference/agent-smoke-confidence.md","scripts/__tests__/station-engine-matrix.test.ts","scripts/lib/engine-matrix.mjs"]}
+  ]
+}

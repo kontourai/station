@@ -1,0 +1,7 @@
+{
+  "revision": "ba80db9cdc89551d2591059b04eacd9633607745",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Scoped review of deliverable hierarchy/work-chat ownership addition: dedicated routes, TaskGraph shared lock, durable receipts, authority state module and local owner tests traced. Runtime mount and canonical Conversation resolution remain parent-owned integration. Existing imported onboarding modules and other architecture sections are outside this lane.","inputs":["docs/architecture/module-map.md","packages/contracts/src/task-graph.ts","src-server/security/coding-authority.ts","src-server/services/projects/project-membership-service.ts","src-server/services/projects/task-graph-service.ts"]}
+  ]
+}

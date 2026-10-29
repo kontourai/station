@@ -1,0 +1,13 @@
+{
+  "revision": "f6bec8f242be568bfb63318a1c7a48055766cf55",
+
+  "notes": [
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Added a link to the personal-boards-20261016 review beside the existing workspace-map review link; the review covers the Board templates and editor (its README sections: setup, saved dashboard, editor). No other change.","inputs":["docs/design/shell-ownership-and-boards.md"]},
+
+    {"path":"docs/reviews/personal-boards-20261016/README.md","note":"Added 'Retention: until 2027-01-14' (90 days after the round) and a paragraph saying the work landed in #3742, squash commit d345a6b32fb on main. Confirmed with the GitHub pull request commits API that e6def2c9942... and 7c40cda25c8 are commits of #3742 and git merge-base shows neither is an ancestor of origin/main.","inputs":["docs/reviews/personal-boards-20261016/README.md"]},
+
+    {"path":"docs/reviews/workspace-map-20261015/README.md","note":"Added 'Retention: until 2027-01-13' and replaced the reviewed-source anchor with #3714 (squash commit 64c3b8ced63). Confirmed all 16 branch commit IDs cited in the record are in #3714's commit list and none is an ancestor of origin/main; the base 777d9502ad8 is on main. Merge group b1e846f29eb6 and run/artifact IDs are left as recorded.","inputs":["docs/reviews/workspace-map-20261015/README.md"]},
+
+    {"path":"docs/strategy/catches/README.md","note":"Added the permanent Retention line (catch-log.test.ts validates the log and this README's class table; repo-guardrails.families.json consumes it) and a sentence that the counts cover the 55 records dated 2026-06-12 to 2026-08-03 (computed from catches.jsonl; no later record). Class table unchanged; catch-log.test.ts passes.","inputs":["docs/strategy/catches/README.md"]}
+  ]
+}

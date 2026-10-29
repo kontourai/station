@@ -1,7 +1,16 @@
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 
 /**
  * `docs/strategy/dogfood/<run>/report.md` commits a SHA-256 digest for every
@@ -320,5 +329,59 @@ describe('dogfood evidence retention', () => {
       }
     }
     expect(missing, missing.join('\n')).toEqual([]);
+  });
+});
+
+describe('evidence archive generator', () => {
+  const makeTempDir = trackTempDirs();
+
+  // The receipts release lives on kontourai/station-archive (the pre-reset
+  // repository), not on this one. The generator writes the manifest note
+  // verbatim, so a rebuild must keep naming the repository that holds the
+  // asset; otherwise a reader looks for a release that does not exist here.
+  it('writes a manifest note that names the archive repository holding the release', () => {
+    const repo = makeTempDir('evidence-archive-generator-');
+    mkdirSync(join(repo, 'scripts', 'lib'), { recursive: true });
+    copyFileSync(
+      'scripts/build-evidence-archive.mjs',
+      join(repo, 'scripts', 'build-evidence-archive.mjs'),
+    );
+    copyFileSync(
+      'scripts/lib/module-entry.mjs',
+      join(repo, 'scripts', 'lib', 'module-entry.mjs'),
+    );
+    const run = join(repo, DOGFOOD_ROOT, 'dogfood-999-fixture');
+    mkdirSync(join(run, 'evidence'), { recursive: true });
+    const bytes = 'fixture evidence\n';
+    writeFileSync(join(run, 'evidence', 'ev.1.1.txt'), bytes);
+    const digest = createHash('sha256').update(bytes).digest('hex');
+    writeFileSync(
+      join(run, 'report.md'),
+      `# Flow Report: dogfood-999-fixture\n\n- ev.1.1: surface.claim for readiness (${digest})\n`,
+    );
+
+    execFileSync(
+      process.execPath,
+      [
+        join(repo, 'scripts', 'build-evidence-archive.mjs'),
+        `--out=${join(repo, 'out')}`,
+      ],
+      { cwd: repo, stdio: 'pipe', windowsHide: true },
+    );
+
+    const generated = JSON.parse(
+      readFileSync(join(repo, DOGFOOD_ROOT, 'evidence-archive.json'), 'utf8'),
+    ) as { note: string; archive: { releaseTag: string } };
+    expect(generated.note).toContain(
+      'The release lives on kontourai/station-archive, not on kontourai/station',
+    );
+    expect(generated.archive.releaseTag).toBe('dogfood-evidence-archive-v1');
+
+    // The committed manifest is the generator's output, so its note must be
+    // the same text the generator writes today.
+    const committed = JSON.parse(
+      readFileSync(ARCHIVE_MANIFEST_PATH, 'utf8'),
+    ) as { note: string };
+    expect(committed.note).toBe(generated.note);
   });
 });

@@ -1,0 +1,43 @@
+{
+  "revision": "0529ffb151b19d7bda8afa6329bdbcde1ce039af",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Reviewed title merge delta: Veritas routing and authority are unchanged; trusted title-only status publication does not create source or readiness evidence.","inputs":[".veritas/README.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed only the upstream title-policy merge and action-pin conflict resolution against this document’s recorded CI/testing relationships: trusted title publication and reviewed setup-node 7.1.0 are preserved; source verification, product behavior, fixtures, runtime authority, transfer controls and evidence ownership are unchanged. No product/runtime or hosted execution proof is inferred from the 451 passing title/workflow tests.","inputs":["docs/guides/code-quality.md"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed only the upstream title-policy merge and action-pin conflict resolution against this document’s recorded CI/testing relationships: trusted title publication and reviewed setup-node 7.1.0 are preserved; source verification, product behavior, fixtures, runtime authority, transfer controls and evidence ownership are unchanged. No product/runtime or hosted execution proof is inferred from the 451 passing title/workflow tests.","inputs":["docs/guides/delegation-attempt-claims.md"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed merged title job and publisher against Title policy publication: pending-before-setup, restricted statuses write, trusted workflow/base checkout, exact event SHA, live shared-head validation and best-effort fallback remain as documented. setup-node retains reviewed 7.1.0 pin. No hosted authorization/failure observation claimed.","inputs":["docs/guides/dependency-security.md"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed merged title publisher and contributor grammar: main’s live shared-head title status, trusted checkout and metadata-only routing are preserved with setup-node 7.1.0. No source status is manufactured.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed only the upstream title-policy merge and action-pin conflict resolution against this document’s recorded CI/testing relationships: trusted title publication and reviewed setup-node 7.1.0 are preserved; source verification, product behavior, fixtures, runtime authority, transfer controls and evidence ownership are unchanged. No product/runtime or hosted execution proof is inferred from the 451 passing title/workflow tests.","inputs":["docs/guides/home-transfer-controller.md"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Reviewed title-merge delta against conditional runner plan: title job remains ubuntu-22.04; no persistent labels, capacity owners or listener partition changed. No fleet run claimed.","inputs":["docs/guides/private-runner-partition.md"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Reviewed only the upstream title-policy merge and action-pin conflict resolution against this document’s recorded CI/testing relationships: trusted title publication and reviewed setup-node 7.1.0 are preserved; source verification, product behavior, fixtures, runtime authority, transfer controls and evidence ownership are unchanged. No product/runtime or hosted execution proof is inferred from the 451 passing title/workflow tests.","inputs":["docs/guides/product-law-authoring.md"]},
+
+    {"path":"docs/guides/releasing.md","note":"Reviewed merged workflow/publisher and policy oracle: mutable PR title policy remains separate from six source requirements; workflow-trusted checkout and queue-admission acknowledgement are preserved. Ruleset transition instructions are operational, not a claim this branch has landed.","inputs":["docs/guides/releasing.md"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Reviewed only the upstream title-policy merge and action-pin conflict resolution against this document’s recorded CI/testing relationships: trusted title publication and reviewed setup-node 7.1.0 are preserved; source verification, product behavior, fixtures, runtime authority, transfer controls and evidence ownership are unchanged. No product/runtime or hosted execution proof is inferred from the 451 passing title/workflow tests.","inputs":["docs/guides/repository-layout.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed merged workflow topology, actionlint oracle and 451 passing title/workflow tests: SHA serialization, no cancellation, metadata-only routing, pending/terminal status and merge-group acknowledgement remain documented. Source checks, shards and regression evidence ownership are unchanged.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Reviewed only the upstream title-policy merge and action-pin conflict resolution against this document’s recorded CI/testing relationships: trusted title publication and reviewed setup-node 7.1.0 are preserved; source verification, product behavior, fixtures, runtime authority, transfer controls and evidence ownership are unchanged. No product/runtime or hosted execution proof is inferred from the 451 passing title/workflow tests.","inputs":["docs/guides/work-board-security.md"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Reviewed only the upstream title-policy merge and action-pin conflict resolution against this document’s recorded CI/testing relationships: trusted title publication and reviewed setup-node 7.1.0 are preserved; source verification, product behavior, fixtures, runtime authority, transfer controls and evidence ownership are unchanged. No product/runtime or hosted execution proof is inferred from the 451 passing title/workflow tests.","inputs":["docs/guides/workspace-packages.md"]},
+
+    {"path":"docs/reference/interactive-workspace-performance.md","note":"Reviewed title-merge delta: no capture job, fixture, budget or workflow performance path changes; only title-status topology and reviewed setup-node pin reconciliation. No measurement or physical reference run claimed.","inputs":["docs/reference/interactive-workspace-performance.md"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed title-merge delta: browser smoke manifest, fixtures, fast-checks admission and timeout remain unchanged; metadata-only title status cannot replace source checks. No browser execution inferred from workflow tests.","inputs":["docs/testing/browser-smoke.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed only the upstream title-policy merge and action-pin conflict resolution against this document’s recorded CI/testing relationships: trusted title publication and reviewed setup-node 7.1.0 are preserved; source verification, product behavior, fixtures, runtime authority, transfer controls and evidence ownership are unchanged. No product/runtime or hosted execution proof is inferred from the 451 passing title/workflow tests.","inputs":["scripts/AGENTS.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed only the upstream title-policy merge and action-pin conflict resolution against this document’s recorded CI/testing relationships: trusted title publication and reviewed setup-node 7.1.0 are preserved; source verification, product behavior, fixtures, runtime authority, transfer controls and evidence ownership are unchanged. No product/runtime or hosted execution proof is inferred from the 451 passing title/workflow tests.","inputs":["src-server/AGENTS.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed only the upstream title-policy merge and action-pin conflict resolution against this document’s recorded CI/testing relationships: trusted title publication and reviewed setup-node 7.1.0 are preserved; source verification, product behavior, fixtures, runtime authority, transfer controls and evidence ownership are unchanged. No product/runtime or hosted execution proof is inferred from the 451 passing title/workflow tests.","inputs":["src-ui/AGENTS.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Reviewed only the upstream title-policy merge and action-pin conflict resolution against this document’s recorded CI/testing relationships: trusted title publication and reviewed setup-node 7.1.0 are preserved; source verification, product behavior, fixtures, runtime authority, transfer controls and evidence ownership are unchanged. No product/runtime or hosted execution proof is inferred from the 451 passing title/workflow tests.","inputs":["tests/AGENTS.md"]}
+  ]
+}

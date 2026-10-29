@@ -11,8 +11,8 @@
  * losing a directory, the directory itself being deleted and recreated, and a
  * process restart over the same home.
  *
- * Seam S2 (`runtime-routes.ts`) was migrated in this slice's first round and
- * reverted after review; see §2.2.1's S2 note. Nothing here depends on it.
+ * Seam S2 (`runtime-routes.ts`) was migrated in an early version of this
+ * slice and reverted; see §2.2.1's S2 note. Nothing here depends on it.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -638,7 +638,7 @@ describe('resolveProjectDirectoryOutcome — against the real resolver', () => {
     // package. `isWellFormedResolution` is the runtime backstop; this is what
     // the adapter does if one slips past it.
     //
-    // The STATE is the load-bearing assertion (review round 1, HIGH-2), not
+    // The STATE is the load-bearing assertion, not
     // just the reason prose. Slice 3c maps `unbound` to `$HOME` +
     // `cwdDefaulted: true`; reporting it for a result that CLAIMED a directory
     // would start a project-bound chat in $HOME — the archive#1011 fail-open class.
@@ -679,9 +679,9 @@ describe('resolveProjectDirectoryOutcome — against the real resolver', () => {
 
 describe('BOTH questions survive an untyped producer (review round 1 HIGH-1, delta HIGH-1)', () => {
   test('a NULL path — the shape `JSON.parse` produces — is a named gap, not a TypeError, in the DIRECTORY-question', async () => {
-    // Delta review, HIGH: round 1 restored the `typeof` guard on the sibling
+    // An earlier fix restored the `typeof` guard on the sibling
     // repo-question and missed this one — the function slice 3c's flip and
-    // S2's re-migration actually call. The round-1 tests used ABSENT fields,
+    // S2's re-migration actually call. The earlier tests used ABSENT fields,
     // which take the safe `undefined` path; a result read off disk yields
     // `null`, and `null.length` throws past `resolveResource`'s catch out of a
     // function whose docblock promises it never throws.
@@ -699,7 +699,7 @@ describe('BOTH questions survive an untyped producer (review round 1 HIGH-1, del
   });
 
   test('a `missing` that cannot name its own record degrades to `error` — #791 must never throw a blank', async () => {
-    // Delta review, MEDIUM: the `missing` variant exists so slice 3c's throw
+    // The `missing` variant exists so slice 3c's throw
     // cannot COMPILE without the path. An untyped producer can still omit it
     // at runtime, and `new Error(undefined)` naming no path is exactly the
     // blank-cell failure the honesty bar forbids.

@@ -1,5 +1,8 @@
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import { getCachedUser } from '../../routes/system/auth.js';
+import { createLogger } from '../../utils/logger.js';
+
+const logger = createLogger({ name: 'runtime-template-variables' });
 
 export function replaceRuntimeTemplateVariables(
   text: string,
@@ -41,7 +44,7 @@ function getRuntimeUserVariables(): Record<string, string> {
       '{{user_title}}': user.title || '',
     };
   } catch (error) {
-    console.debug('Auth module not loaded yet:', error);
+    logger.debug('Auth module not loaded yet', { error });
     return {};
   }
 }

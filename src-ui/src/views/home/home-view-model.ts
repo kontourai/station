@@ -2,12 +2,18 @@ import {
   type EngineId,
   parseEngineId,
 } from '@kontourai/station-contracts/agent-identity';
+import { clientOriginSender } from '@kontourai/station-contracts/client-origin';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { unanswerableRequestNotice } from '@kontourai/station-contracts/orchestration';
-import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
+import {
+  isFirstSendFailure,
+  SESSION_STATUS_WORDS,
+} from '@kontourai/station-contracts/session-attention';
+import { taskAwaitsAnswer } from '@kontourai/station-contracts/task-memory';
 import type {
   OrchestrationSessionSummary,
   SessionControlMode,
+  TaskListRecord,
   TaskRecord,
 } from '@kontourai/station-sdk';
 import {
@@ -35,12 +41,15 @@ import { chatWaitsOnUser } from '../../utils/waiting-approvals';
 import { isPeerDelegationRecord } from './work-item-open-policy';
 
 export interface HomeWorkItem {
+  receivedAgentMessage?: true;
   id: string;
   /** Durable conversation identity when this row represents one. */
   conversationId?: string;
   kind: 'task' | 'chat' | 'orchestration' | 'remote-session';
   kindLabel:
     | 'Durable Task'
+    | `Task · ${(typeof TASK_STATUS_LABELS)[TaskRecord['status']]}`
+    | typeof TASK_AWAITS_ANSWER_LABEL
     | 'Direct chat'
     | 'Session'
     | 'Remote session'
@@ -164,9 +173,6 @@ export interface HomeWorkItem {
   environmentLabel?: string;
 }
 
-/** @deprecated Use HomeWorkItem for new Home surfaces. */
-export type HomeTaskItem = HomeWorkItem;
-
 export function chatTaskSessionId(task: HomeWorkItem): string {
   return task.chatSessionId ?? task.id;
 }
@@ -256,7 +262,7 @@ function safeAgentLabel({
  * sessions, as returned by the server's `/api/environments/ssh/sessions`
  * aggregation endpoint (`useRemoteSessionsQuery`, `@kontourai/station-sdk`).
  */
-interface RemoteHomeEnvironmentSessions {
+export interface RemoteHomeEnvironmentSessions {
   environmentId: string;
   environmentName: string;
   sessions: OrchestrationSessionSummary[];
@@ -278,6 +284,7 @@ export function buildHomeWorkItems({
   chats,
   sessions,
   tasks = [],
+  retainTaskChildren = false,
   agents,
   remoteEnvironments = [],
   chatItems: suppliedChatItems,
@@ -286,7 +293,8 @@ export function buildHomeWorkItems({
 }: {
   chats: Record<string, ChatUIState>;
   sessions: OrchestrationSessionSummary[];
-  tasks?: TaskRecord[];
+  tasks?: TaskListRecord[];
+  retainTaskChildren?: boolean;
   agents: AgentSummary[];
   /**
    * archive#1097: optional remote-session read augmentation, never a
@@ -319,6 +327,7 @@ export function buildHomeWorkItems({
     orchestrationItems,
     tasks,
     currentSessionIdByConversation,
+    retainTaskChildren,
   );
   if (remoteEnvironments.length === 0) return localItems;
   // Remote items never participate in `mergeHomeWorkItems`'s chat/task/
@@ -397,6 +406,9 @@ function buildSessionWorkItem(
     // "Worker task · delegated review") and fell back to `${agentLabel} task`
     // so one attached Claude session read "Claude Code task" on Home and
     // "Claude Code session" one click away in the list.
+    ...(clientOriginSender(session.turnOrigin?.latest)
+      ? { receivedAgentMessage: true as const }
+      : {}),
     title: sessionTitle(session),
     // archive#3227 A3: `session.projectSlug || 'No project'` DROPPED
     // `delegation.projectSlug` entirely and, worse, rendered the literal
@@ -531,8 +543,9 @@ function mergeHomeWorkItems(
   taskItems: HomeWorkItem[],
   chatItems: HomeWorkItem[],
   orchestrationItems: HomeWorkItem[],
-  tasks: TaskRecord[],
+  tasks: TaskListRecord[],
   currentSessionIdByConversation: ReadonlyMap<string, string>,
+  retainTaskChildren: boolean,
 ): HomeWorkItem[] {
   const taskIdBySessionId = new Map(
     tasks
@@ -548,7 +561,10 @@ function mergeHomeWorkItems(
   // stamps local activity newer than every persisted Session; merging that
   // timestamp into a predecessor first would make it defeat its own child.
   for (const item of [...orchestrationItems, ...chatItems]) {
-    if (isPersistedTaskCorrelation(item, taskIdBySessionId)) {
+    if (
+      !retainTaskChildren &&
+      isPersistedTaskCorrelation(item, taskIdBySessionId)
+    ) {
       continue;
     }
     const key = localConversationIdentity(item);
@@ -826,9 +842,6 @@ function mergeSingleExecutionAgentSlug(
     : undefined;
 }
 
-/** @deprecated Use buildHomeWorkItems for new Home surfaces. */
-export const buildHomeTaskItems = buildHomeWorkItems;
-
 function isPersistedTaskCorrelation(
   item: HomeWorkItem,
   taskIdBySessionId: Map<string, string>,
@@ -845,14 +858,37 @@ function isPersistedTaskCorrelation(
   );
 }
 
-function buildDurableTaskItem(task: TaskRecord): HomeWorkItem {
+const TASK_STATUS_LABELS = {
+  todo: 'To do',
+  ready: 'To do',
+  triage: 'To do',
+  in_progress: 'In progress',
+  blocked: 'Blocked',
+  review: 'In review',
+  verification: 'In review',
+  done: SESSION_STATUS_WORDS.done,
+  canceled: 'Canceled',
+} as const satisfies Record<TaskRecord['status'], string>;
+
+/**
+ * #4003: a live Task with an open Task-memory question. Its word is the
+ * question's, whatever its status says, because the answer is what a person
+ * can act on; the status returns once the question is answered.
+ */
+export const TASK_AWAITS_ANSWER_LABEL =
+  `Task · ${SESSION_STATUS_WORDS.answer}` as const;
+
+function buildDurableTaskItem(task: TaskListRecord): HomeWorkItem {
   return {
     id: task.id,
     kind: 'task',
-    kindLabel: 'Durable Task',
+    kindLabel: taskAwaitsAnswer(task)
+      ? TASK_AWAITS_ANSWER_LABEL
+      : `Task · ${TASK_STATUS_LABELS[task.status]}`,
     title: task.title,
     projectLabel: task.projectId || 'Project unavailable',
-    agentLabel: task.agentId || 'Agent unavailable',
+    projectSlug: task.projectId || undefined,
+    agentLabel: task.agentId || 'No agent assigned',
     modelLabel: 'Model unavailable',
     updatedAt: timestamp(task.updatedAt),
     lifecycleLabel: taskLifecycleLabel(task),
@@ -860,8 +896,15 @@ function buildDurableTaskItem(task: TaskRecord): HomeWorkItem {
   };
 }
 
-function taskLifecycleLabel(task: TaskRecord): HomeWorkItem['lifecycleLabel'] {
-  if (task.status === 'blocked') return 'Needs attention';
+function taskLifecycleLabel(
+  task: TaskListRecord,
+): HomeWorkItem['lifecycleLabel'] {
+  // #4003: an open Task-memory question waits on a person as review does.
+  if (
+    ['blocked', 'review', 'verification'].includes(task.status) ||
+    taskAwaitsAnswer(task)
+  )
+    return 'Needs attention';
   if (task.status === 'in_progress') return 'Running';
   if (task.status === 'done') return 'Completed';
   if (task.status === 'canceled') return 'Stopped';
@@ -967,7 +1010,7 @@ function chatLifecycleLabel(
   if (correlated?.failed) return 'Failed';
   // #2310: the server says nothing was ever sent, and this chat holds no
   // transcript message to contradict it. A chat WITH one has sent a turn the
-  // cached summary predates (review H1), so it falls through to its own
+  // cached summary predates (#2338), so it falls through to its own
   // idle/running reading instead — and `mergeHomeWorkItems` lets that win.
   if (correlated?.draft && (chat.messages?.length ?? 0) === 0) return 'Draft';
   if (serverLive === false) return 'Recent';

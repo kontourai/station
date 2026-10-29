@@ -1,6 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
-import { agentId } from '@kontourai/station-contracts/agent-identity';
+import {
+  agentId,
+  engineConnectionId,
+} from '@kontourai/station-contracts/agent-identity';
 import {
   parseStationAnswerNarrativePublishInput,
   parseStationAnswerNarrativeRemoveInput,
@@ -24,7 +27,12 @@ import type {
   ConversationContextBoundaryRequest,
 } from '@kontourai/station-contracts/conversation-context-boundary';
 import {
+  CLIENT_PROTOCOL_HEADER,
+  readClientProtocolHeader,
+} from '@kontourai/station-contracts/environment-security';
+import {
   type EnvironmentRef,
+  EXECUTION_ENGINE_CHANGED_CODE,
   type ExecutionModelRequest,
   type ExecutionTarget,
   environmentId,
@@ -33,8 +41,10 @@ import {
 import type {
   TerminalProcessDetail,
   TerminalProcessSummary,
+  TurnDeliveryInspection,
 } from '@kontourai/station-contracts/orchestration';
 import {
+  type ConversationInboxQueuedReceipt,
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   type OrchestrationQuoteSource,
   QUOTE_SOURCE_MAX_BYTES,
@@ -43,12 +53,18 @@ import {
   humanPrincipal,
   type PrincipalRef,
 } from '@kontourai/station-contracts/principal';
+import type { TaskRoomAttachment } from '@kontourai/station-contracts/project-task-room';
 import {
   APPROVAL_MODES,
   type ApprovalMode,
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
+  CLIENT_TURN_IN_FLIGHT_CODE,
   type DelegationProvenance,
+  MEMORY_CONTINUATION_CLIENT_TURN_PREFIX,
+  PROVIDER_SESSION_STARTING_CODE,
+  PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
+import { isRuntimeEventContentDigest } from '@kontourai/station-contracts/runtime-event-content';
 import {
   ORCHESTRATION_STREAM_ACTIVITY_EVENT,
   ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
@@ -69,21 +85,34 @@ import {
   type HostedTenantRegistry,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
+import {
+  assertDelegationFileSizes,
+  DelegationFileRefusal,
+} from '@kontourai/station-shared/delegation-files';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
 import { CHAT_INPUT_MAX_CHARS } from '../../../src-shared/chat-input-limits.js';
+import { servesSessionInventoryInputRead } from '../../capabilities/station-capability-flags.js';
 import {
   ORCHESTRATION_STREAM_REPLAY_MAX_SERIALIZED_BYTES,
   ORCHESTRATION_STREAM_RESUME_GAP_THRESHOLD,
 } from '../../constants.js';
-import type { RequestDelegationResolver } from '../../runtime/agents/request-delegation.js';
+import { providerFailure } from '../../providers/provider-failure.js';
+import type {
+  RequestDelegationResolver,
+  ResolvedRequestDelegation,
+} from '../../runtime/agents/request-delegation.js';
 import {
   getTenantRequestContext,
   tenantExecutionContextForRequest,
 } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import type { StationControlDispatchScope } from '../../runtime/mcp/station-control-dispatch-scope.js';
-import type { FullAccessGrant } from '../../security/coding-authority.js';
+import {
+  type FullAccessGrant,
+  requestMayBeAnAgent,
+} from '../../security/coding-authority.js';
 import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
+import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
 import {
   AnswerAssessmentConflictError,
   AnswerAssessmentModule,
@@ -108,6 +137,7 @@ import {
   handoffActionOperationId,
 } from '../../services/operations/action-operation-tracker.js';
 import { ContinuationPlaceRefusedError } from '../../services/orchestration/attached-session-continuation-place.js';
+import { AttachmentStageError } from '../../services/orchestration/attachment-staging-service.js';
 import { ConversationContextBoundaryNotFoundError } from '../../services/orchestration/conversation-lineage.js';
 import {
   DelegationAttemptCapacityError,
@@ -117,7 +147,13 @@ import {
   DelegationAttemptPendingError,
   type DelegationAttemptProjection,
 } from '../../services/orchestration/delegation-attempt-claim-store.js';
+import type { DelegationStagedFiles } from '../../services/orchestration/delegation-files.js';
+import type {
+  DelegationResultCanceller,
+  DelegationResultDelivery,
+} from '../../services/orchestration/delegation-result-delivery.js';
 import type { DispatchCwdAdmission } from '../../services/orchestration/dispatch-cwd-admission.js';
+import type { MemoryExhaustionContinuation } from '../../services/orchestration/memory-exhaustion-continuation.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import {
   AdoptionContinuationInProgressError,
@@ -135,14 +171,24 @@ import {
   UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION,
 } from '../../services/orchestration/session-owner-attribution.js';
 import { parseExperienceIdentity } from '../../services/orchestration/skill-experience-model.js';
+import {
+  ConversationTurnQueuedError,
+  type ThreadInboxDelivery,
+} from '../../services/orchestration/thread-inbox.js';
 import { MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES } from '../../services/orchestration/thread-tool-result-adapter.js';
+import { foregroundTurnSubmissionDigest } from '../../services/orchestration/turn-submission-digest.js';
+import { isPersonChatRequest } from '../../services/projects/project-chat-defaults.js';
 import type { ReceiverExecutionAdmission } from '../../services/projects/project-contribution-service.js';
 import {
   RECEIVER_EXECUTION_REFUSAL_COPY,
   ReceiverExecutionRefusal,
 } from '../../services/projects/project-contribution-service.js';
 import { ProjectWorktreeDirectoryError } from '../../services/projects/project-service.js';
-import { composeAuthorizedSessionAnswerBasis } from '../../services/projects/task-basis-module.js';
+import {
+  composeAuthorizedSessionAnswerBasis,
+  StationBasisCompositionInvariantError,
+} from '../../services/projects/task-basis-module.js';
+import { formatTaskRoomPrompt } from '../../services/projects/task-room-context.js';
 import {
   type TaskRoomInvocationAdmission,
   TaskRoomWorkAuthorityChangedError,
@@ -150,6 +196,7 @@ import {
   type TaskRoomWorkScope,
 } from '../../services/projects/task-room-work-module.js';
 import { CLIENT_SESSION_ID_PATTERN } from '../../services/ssh/client-connection-presence.js';
+import { TurnIdempotencySettledError } from '../../services/turn-idempotency.js';
 import {
   orchestrationStreamDuration,
   orchestrationStreamPresenceOps,
@@ -157,7 +204,11 @@ import {
   orchestrationStreamResumeGap,
   sseOps,
 } from '../../telemetry/metrics.js';
-import { PeerDelegationAttemptDuplicateError } from '../../tools/station-control-delegation.js';
+import {
+  type DelegatedTaskInterruptResult,
+  followUpTargetMatchesBinding,
+  PeerDelegationAttemptDuplicateError,
+} from '../../tools/station-control-delegation.js';
 import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
 import { assertBoundedJsonResponse } from '../chat/bounded-response.js';
 import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
@@ -174,14 +225,22 @@ import {
 import {
   dispatchCwdRefusalFor,
   foregroundDispatchTarget,
+  foregroundStartsSession,
   namesAnotherStation,
   newSessionFacts,
   refuseCarriedPosture,
   refuseOutOfScopeDispatch,
   refuseRemoteForStationControlCaller,
   scopeDispatch,
+  withCallerProjectWorkspace,
   withCanonicalCwd,
 } from './dispatch-scope.js';
+import {
+  FOREGROUND_DELIVERY_CAPACITY_MESSAGE,
+  ForegroundDeliveryReceiptCapacityError,
+  ForegroundDeliveryReceipts,
+} from './foreground-delivery-receipts.js';
+import { taskRoomAttachmentsSchema } from './task-room-attachment-http.js';
 
 // These are intentional public projections. The typed code/outcome and, when
 // available, the receipt/session below give callers evidence to observe; a
@@ -454,8 +513,20 @@ const respondToRequestCommandSchema = z.object({
     .max(ATTENTION_REQUEST_ID_MAX_CHARS)
     .optional(),
   decision: z.enum(['accept', 'acceptForSession', 'decline', 'cancel']),
+  // Typed, optional: an older client omits it and keeps the per-tool grant.
+  // Only an `acceptForSession` answer reads it, and only an authentic
+  // Station browser request honours it (the adapter's grant computation).
+  sessionGrantScope: z.literal('server').optional(),
+  // docs/design/event-content-spill.md: proof the client loaded a spilled
+  // request's full content before allowing it. Checked by the service.
+  viewedContentDigest: z
+    .string()
+    // 'sha256-' plus 64 hex digits; the regex fixes the exact shape.
+    .max(71)
+    .regex(/^sha256-[0-9a-f]{64}$/)
+    .optional(),
   // Deprecated (#3390): a pre-0.9 client's harness answer; translated to
-  // `content` by the service. Removed in 0.10.0.
+  // `content` by the service. Retained for compatibility; new callers use `content`.
   answers: z
     .record(
       z.string().min(1).max(256),
@@ -617,6 +688,19 @@ const executionTargetSchema = z.object({
     })
     .optional(),
   workspace: workspaceTargetSchema.optional(),
+  // A precondition the resolver can only refuse on (never a selector). The
+  // inner objects are strict so a field that would read as one is rejected.
+  expectedEngine: z
+    .discriminatedUnion('kind', [
+      z.object({ kind: z.literal('station') }).strict(),
+      z
+        .object({
+          kind: z.literal('connection'),
+          connectionId: z.string().min(1).max(256),
+        })
+        .strict(),
+    ])
+    .optional(),
 });
 
 function normalizeExecutionTarget(
@@ -624,8 +708,20 @@ function normalizeExecutionTarget(
   defaultEnvironment: EnvironmentRef = { kind: 'current' },
 ): ExecutionTarget {
   const selectedEnvironment = target.environment ?? defaultEnvironment;
+  const { expectedEngine, ...rest } = target;
   return {
-    ...target,
+    ...rest,
+    ...(expectedEngine
+      ? {
+          expectedEngine:
+            expectedEngine.kind === 'station'
+              ? { kind: 'station' as const }
+              : {
+                  kind: 'connection' as const,
+                  connectionId: engineConnectionId(expectedEngine.connectionId),
+                },
+        }
+      : {}),
     environment:
       selectedEnvironment.kind === 'saved'
         ? { kind: 'saved', id: environmentId(selectedEnvironment.id) }
@@ -663,7 +759,61 @@ const agentDelegationContextSchema = z.object({
   denyApprovals: z.boolean().optional(),
 });
 
+function delegationAttachmentValidationRefusal(
+  issues: z.ZodIssue[],
+): { code: string; error: string } | undefined {
+  const issue = issues.find(
+    ({ path }) => path.includes('attachmentRefs') || path[0] === 'attachments',
+  );
+  if (!issue) return undefined;
+  const code =
+    issue.code === 'too_big' && issue.type === 'array'
+      ? 'delegation_files_count'
+      : issue.code === 'invalid_type' && issue.expected === 'never'
+        ? 'delegation_files_unsupported'
+        : 'delegation_files_ref_invalid';
+  const refusal = new DelegationFileRefusal(code);
+  return { code, error: errorMessage(refusal) };
+}
+
+function validateFiles<T>(schema: z.ZodSchema<T>) {
+  return validate(schema, { refusal: delegationAttachmentValidationRefusal });
+}
+
+const stagedAttachmentReferencesSchema = z
+  .array(
+    z.object({
+      stageId: z.string().min(1).max(128),
+      clientAttachmentId: z.string().min(1).max(128),
+      source: z.literal('current-composer'),
+      kind: z.enum(['image', 'file']),
+      name: z.string().max(CHAT_ATTACHMENT_MAX_NAME_LENGTH),
+      mimeType: z.enum([
+        'image/gif',
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+        'application/json',
+        'application/pdf',
+        'text/csv',
+        'text/markdown',
+        'text/plain',
+      ]),
+      size: z.number().int(),
+      digest: z
+        .string()
+        .max(71)
+        .regex(/^sha256-[0-9a-f]{64}$/),
+      expiresAt: z.string().max(40).datetime(),
+    }),
+  )
+  .max(CHAT_ATTACHMENT_MAX_COUNT)
+  .optional();
+
 export const delegateTaskSchema = z.object({
+  attachmentRefs: stagedAttachmentReferencesSchema,
+  // Inline bytes are not a delegation transport; never silently discard them.
+  attachments: z.never().optional(),
   prompt: z.string().trim().min(1).max(CHAT_INPUT_MAX_CHARS),
   target: executionTargetSchema,
   parentTaskId: z.string().min(1).max(512).optional(),
@@ -672,6 +822,7 @@ export const delegateTaskSchema = z.object({
       taskId: z.string().min(1).max(160),
       taskCreatedAt: z.string().min(1).max(40),
       operationId: z.string().min(1).max(160),
+      attachments: taskRoomAttachmentsSchema.optional(),
       context: z
         .object({
           version: z.literal(TASK_ROOM_CONTEXT_VERSION),
@@ -763,41 +914,82 @@ export const foregroundMessageObjectSchema = z.object({
       }
     })
     .optional(),
-  attachmentRefs: z
-    .array(
-      z.object({
-        stageId: z.string().min(1).max(128),
-        clientAttachmentId: z.string().min(1).max(128),
-        source: z.literal('current-composer'),
-        kind: z.enum(['image', 'file']),
-        name: z.string().max(CHAT_ATTACHMENT_MAX_NAME_LENGTH),
-        mimeType: z.enum([
-          'image/gif',
-          'image/jpeg',
-          'image/png',
-          'image/webp',
-          'application/json',
-          'application/pdf',
-          'text/csv',
-          'text/markdown',
-          'text/plain',
-        ]),
-        size: z.number().int(),
-        digest: z
-          .string()
-          .max(71)
-          .regex(/^sha256-[0-9a-f]{64}$/),
-        expiresAt: z.string().max(40).datetime(),
-      }),
+  attachmentRefs: stagedAttachmentReferencesSchema,
+  // Station's own continuation after a memory kill owns its key prefix; a
+  // client claiming one could pre-empt that continuation.
+  clientTurnId: z
+    .string()
+    .min(1)
+    .max(200)
+    .refine(
+      (key) => !key.startsWith(MEMORY_CONTINUATION_CLIENT_TURN_PREFIX),
+      'This clientTurnId prefix is reserved for Station.',
     )
-    .max(CHAT_ATTACHMENT_MAX_COUNT)
     .optional(),
-  clientTurnId: z.string().min(1).max(200).optional(),
   // #2436: a posture decision this send carries (a pick made before the chat
   // had a session, or while offline). Recorded on receipt, before the turn.
   setApprovalMode: approvalModeSchema.optional(),
   setApprovalModeBasedOn: z.number().int().nonnegative().nullable().optional(),
+  // The person's personal per-engine default, a hint below the Agent's and
+  // the Project's defaults (`recordPersonalApprovalDefault`), never a pick.
+  personalApprovalDefault: z.enum(['ask', 'auto', 'never']).optional(),
 });
+
+/**
+ * #3568: the follow-up a `/chat` send hands to its conversation's inbox when
+ * the conversation is busy, or undefined when this send cannot be held there.
+ * Only a plain continuation can: the inbox replays it through the
+ * conversation's persisted binding later, without this request. Attachments,
+ * a visual skill start, an input reply, an approval pick, a delegated or
+ * background send and another Station's target all need this request's own
+ * authority or bytes, so they are refused when busy, as before.
+ */
+function inboxFollowUpOf(
+  body: z.infer<typeof foregroundMessageObjectSchema> & {
+    whenBusy?: 'queue';
+    automaticBackground?: true;
+  },
+  options: { delegated: boolean; remote: boolean },
+):
+  | {
+      conversationId: string;
+      clientTurnId: string;
+      message: string;
+      ambientContext?: string;
+      model?: ExecutionModelRequest;
+    }
+  | undefined {
+  if (
+    body.whenBusy !== 'queue' ||
+    !body.conversationId ||
+    !body.clientTurnId ||
+    options.delegated ||
+    options.remote ||
+    body.automaticBackground ||
+    body.attachments?.length ||
+    body.attachmentRefs?.length ||
+    body.skillExperience ||
+    body.expectedInputRequest ||
+    body.setApprovalMode !== undefined ||
+    requestedApprovalMode(body.target.model?.options) !== undefined
+  )
+    return undefined;
+  return {
+    conversationId: body.conversationId,
+    clientTurnId: body.clientTurnId,
+    message: body.message,
+    ...(body.ambientContext ? { ambientContext: body.ambientContext } : {}),
+    ...(body.target.model
+      ? { model: body.target.model as ExecutionModelRequest }
+      : {}),
+  };
+}
+
+/** A refusal that only says the conversation is busy: the inbox can hold it. */
+const INBOX_BUSY_REFUSAL_CODES: ReadonlySet<string> = new Set([
+  PROVIDER_TURN_IN_PROGRESS_CODE,
+  PROVIDER_SESSION_STARTING_CODE,
+]);
 
 function requireMessageOrAttachment(
   value: {
@@ -861,9 +1053,12 @@ function requireForegroundBody(
   requireMessageOrAttachment(value, ctx);
 }
 
-const foregroundMessageSchema = foregroundMessageObjectSchema.superRefine(
-  requireForegroundBody,
-);
+// #3568: only POST /chat (and its /background sibling, which never queues)
+// takes `whenBusy`. An older Station strips the unknown key and refuses a busy
+// send as it always did, so the client keeps holding the message.
+const foregroundMessageSchema = foregroundMessageObjectSchema
+  .extend({ whenBusy: z.literal('queue').optional() })
+  .superRefine(requireForegroundBody);
 const delegatedForegroundMessageSchema = foregroundMessageObjectSchema
   .extend({
     delegation: agentDelegationContextSchema,
@@ -910,12 +1105,16 @@ export const conversationHandoffSchema = foregroundMessageObjectSchema
   .superRefine(requireApprovalPickBasis);
 
 const conversationContextBoundarySchema = z.object({
+  attachmentRefs: z.never().optional(),
+  attachments: z.never().optional(),
   policy: z.enum(['continue-from-history', 'empty-next-cold-start']),
   idempotencyKey: z.string().min(1).max(200),
   expectedCurrentSessionId: z.string().min(1).max(512),
 });
 
 const delegationOptionsSchema = z.object({
+  attachmentRefs: z.never().optional(),
+  attachments: z.never().optional(),
   environmentId: z.string().min(1).max(512).optional(),
   projectSlug: z.string().min(1).max(512).optional(),
   projectPath: z.string().min(1).max(4_096).optional(),
@@ -937,6 +1136,18 @@ const delegatedTaskEventsQuerySchema = z.object({
 });
 
 export const continueDelegatedTaskBodySchema = z.object({
+  taskRoomReply: z
+    .object({
+      taskId: z.string().min(1).max(256),
+      taskCreatedAt: z.string().max(40).datetime(),
+      operationId: z.string().min(1).max(128),
+      attachments: taskRoomAttachmentsSchema.optional(),
+      attachBrief: z.boolean().optional(),
+    })
+    .strict()
+    .optional(),
+  attachmentRefs: z.never().optional(),
+  attachments: z.never().optional(),
   message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
   // `delegatedInputAnswers`: deliver `message` only as the answer to this
   // exact open input request on the task's current Session.
@@ -973,12 +1184,16 @@ function withCallerCanRespond(
 }
 
 const respondToDelegatedTaskBodySchema = z.object({
+  attachmentRefs: z.never().optional(),
+  attachments: z.never().optional(),
   requestId: z.string().min(1).max(512),
   decision: z.enum(['accept', 'acceptForSession', 'decline', 'cancel']),
   environmentId: z.string().min(1).max(512).optional(),
 });
 
 const interruptDelegatedTaskBodySchema = z.object({
+  attachmentRefs: z.never().optional(),
+  attachments: z.never().optional(),
   environmentId: z.string().min(1).max(512).optional(),
   turnId: z.string().min(1).max(512).optional(),
 });
@@ -995,7 +1210,10 @@ const sessionEventWindowQuerySchema = z.object({
 });
 
 interface DelegateTaskRequest {
+  stagedFiles?: DelegationStagedFiles;
   prompt: string;
+  /** Human-authored room title, before the provider brief is appended. */
+  title?: string;
   target: ExecutionTarget;
   parentTaskId?: string;
   sessionId?: string;
@@ -1068,6 +1286,8 @@ interface ForegroundMessageRequest {
   }) => ChatAttachmentInput[];
   ambientContext?: string;
   clientTurnId?: string;
+  /** #3568: stops only a same-key retry's join wait (`ForegroundMessageInput.joinWaitSignal`). */
+  joinWaitSignal?: AbortSignal;
   /** #2436: see `ForegroundMessageInput.setApprovalMode`. */
   setApprovalMode?: ApprovalMode;
   setApprovalModeBasedOn?: number | null;
@@ -1093,10 +1313,16 @@ interface ForegroundMessageRequest {
   clientOrigin?: ClientOrigin;
   /** #3323: how the route came by the stamped delegation; never body JSON. */
   delegationProvenance?: DelegationProvenance;
+  /** See `ForegroundMessageInput.personChatStart`; derived here, never body JSON. */
+  personChatStart?: true;
+  /** See `ForegroundMessageInput.personalApprovalDefault`. */
+  personalApprovalDefault?: ApprovalMode;
 }
 
 interface ContinueForegroundMessageRequest {
   conversationId: string;
+  /** #3568: stops only a same-key retry's join wait (`ForegroundMessageInput.joinWaitSignal`). */
+  joinWaitSignal?: AbortSignal;
   environment?: EnvironmentRef;
   model?: ExecutionModelRequest;
   /** #2436: see `ForegroundMessageInput.setApprovalMode`. */
@@ -1174,6 +1400,7 @@ type DelegatedTaskEventsRequest = z.infer<
 type ContinueDelegatedTaskRequest = z.infer<
   typeof continueDelegatedTaskBodySchema
 > & {
+  taskRoomInvocationAdmission?: TaskRoomInvocationAdmission;
   taskId: string;
   userId: string;
   principal?: PrincipalRef;
@@ -1195,9 +1422,11 @@ type RespondToDelegatedTaskRequest = z.infer<
   clientOrigin?: ClientOrigin;
 };
 
-type InterruptDelegatedTaskRequest = z.infer<
+type InterruptDelegatedTaskBody = z.infer<
   typeof interruptDelegatedTaskBodySchema
-> & {
+>;
+
+type InterruptDelegatedTaskRequest = InterruptDelegatedTaskBody & {
   taskId: string;
   userId: string;
   principal?: PrincipalRef;
@@ -1486,6 +1715,151 @@ export function resolveDispatchActor(
   };
 }
 
+/**
+ * #3158: record that the calling agent's conversation receives this child's
+ * results. Only a context Station DERIVED from the station-control caller
+ * (`caller-derived`) arms delivery, and only for a child this Station runs:
+ * the parent is the caller's own conversation, never an id the body or the
+ * model named. Delivery acts exactly as this dispatch did: its user, its
+ * owner attribution (`verified-bound` for a bound caller only, otherwise
+ * `unattributed-agent`) and its principal. A request with no owner
+ * attribution (not an agent dispatch) arms nothing.
+ */
+function armDelegationResult(
+  c: Context,
+  delivery: Pick<DelegationResultDelivery, 'arm'> | undefined,
+  resolved: ResolvedRequestDelegation | undefined,
+  dispatched: {
+    handle: unknown;
+    actor: {
+      userId: string;
+      principal: PrincipalRef | undefined;
+      ownerAttribution: StartOwnerAttribution | undefined;
+    };
+  },
+): void {
+  if (!delivery || resolved?.provenance !== 'caller-derived') return;
+  const authority = stationControlRequestAuthority(c.req.raw);
+  if (authority?.kind !== 'caller') return;
+  const callerConversationId =
+    authority.caller.conversationId ?? authority.caller.sessionId;
+  if (resolved.context.parentConversationId !== callerConversationId) return;
+  const { actor } = dispatched;
+  const child = localDelegatedChild(dispatched.handle);
+  if (!child || !actor.ownerAttribution) return;
+  delivery.arm({
+    ...child,
+    parentConversationId: callerConversationId,
+    actor: {
+      userId: actor.userId,
+      attribution: actor.ownerAttribution,
+      ...(actor.principal ? { principal: actor.principal } : {}),
+    },
+  });
+}
+
+/**
+ * The child a dispatch started on THIS Station, read from the route's
+ * dispatch result. `delegateTask` is typed `unknown` at this seam because its
+ * Task-room callers return only `{ sessionId }`; anything that is not a
+ * current-environment handle with string identities is not armed.
+ */
+function localDelegatedChild(
+  handle: unknown,
+):
+  | { childConversationId: string; taskId: string; childAgent?: string }
+  | undefined {
+  if (!handle || typeof handle !== 'object') return undefined;
+  const { conversationId, taskId, environment, target } = handle as Record<
+    string,
+    unknown
+  >;
+  const environmentKind =
+    environment && typeof environment === 'object'
+      ? (environment as { kind?: unknown }).kind
+      : undefined;
+  if (
+    environmentKind !== 'current' ||
+    typeof conversationId !== 'string' ||
+    typeof taskId !== 'string'
+  )
+    return undefined;
+  const agent =
+    target && typeof target === 'object'
+      ? (target as { id?: unknown }).id
+      : undefined;
+  return {
+    childConversationId: conversationId,
+    taskId,
+    ...(typeof agent === 'string' ? { childAgent: agent } : {}),
+  };
+}
+
+/**
+ * #3158: delivery bookkeeping never fails the request it rides on. The child
+ * is already started, the read already answered, the interrupt still owed:
+ * an error here is logged, and at worst a result is delivered that a read
+ * already showed, or not delivered automatically at all.
+ */
+function bestEffortDelegationResult<T>(
+  logger: { warn?(message: string, meta?: Record<string, unknown>): void },
+  step: 'arm' | 'read' | 'cancel' | 'settle' | 'reopen',
+  run: () => T,
+): T | undefined {
+  try {
+    return run();
+  } catch (error) {
+    logger.warn?.('delegation result bookkeeping failed', {
+      step,
+      error: errorMessage(error),
+    });
+    return undefined;
+  }
+}
+
+/**
+ * #3158: who an `interrupt_task` request cancels a pending result for: an
+ * agent caller only as its own conversation (the recorded parent is checked
+ * by `beginCancel`), a person or device credential as its user. Station's
+ * own server code and caller-less internal requests cancel nothing.
+ */
+function delegationResultCanceller(
+  c: Context,
+  userId: string,
+): DelegationResultCanceller | undefined {
+  const authority = stationControlRequestAuthority(c.req.raw);
+  if (authority?.kind === 'caller')
+    return {
+      kind: 'conversation',
+      conversationId:
+        authority.caller.conversationId ?? authority.caller.sessionId,
+    };
+  return authority === undefined ? { kind: 'person', userId } : undefined;
+}
+
+/** #3158: a verified caller's `get_task` read of a child; see `recordRead`. */
+function recordDelegationResultRead(
+  c: Context,
+  delivery: Pick<DelegationResultDelivery, 'recordRead'> | undefined,
+  snapshot: unknown,
+): void {
+  if (!delivery) return;
+  const authority = stationControlRequestAuthority(c.req.raw);
+  if (authority?.kind !== 'caller') return;
+  const read = snapshot as { conversationId?: unknown; status?: unknown };
+  if (
+    typeof read?.conversationId !== 'string' ||
+    typeof read.status !== 'string'
+  )
+    return;
+  delivery.recordRead({
+    taskReference: read.conversationId,
+    readerConversationId:
+      authority.caller.conversationId ?? authority.caller.sessionId,
+    status: read.status,
+  });
+}
+
 export function createOrchestrationRoutes(
   orchestrationService: OrchestrationService,
   deps: {
@@ -1540,7 +1914,43 @@ export function createOrchestrationRoutes(
     stationControlDispatchScope?: StationControlDispatchScope;
     delegateTask?: (input: DelegateTaskRequest) => Promise<unknown>;
     taskRoomWork?: {
+      resolveAttachments?(input: {
+        taskId: string;
+        taskCreatedAt: string;
+        request: Request;
+        attachments: TaskRoomAttachment[];
+      }): Promise<ChatAttachmentInput[] | undefined>;
+      holdPublication?(taskId: string): () => void;
+      beforeInvocation?(taskId: string): Promise<void>;
+      continued?(taskId: string): Promise<void>;
+      admitReply?(
+        input: {
+          taskId: string;
+          taskCreatedAt: string;
+          sessionId: string;
+          operationId: string;
+        },
+        request: Request,
+        principal: PrincipalRef,
+      ): Promise<TaskRoomInvocationAdmission | undefined>;
       module: TaskRoomWorkModule;
+      onRecorded?(
+        record: import('@kontourai/station-contracts/task-room-work').TaskRoomWorkRecord,
+        request: Request,
+        principal: PrincipalRef,
+      ): Promise<void>;
+      onReply?(
+        input: {
+          taskId: string;
+          sessionId: string;
+          taskCreatedAt: string;
+          operationId: string;
+          message: string;
+          attachments?: TaskRoomAttachment[];
+        },
+        request: Request,
+        principal: PrincipalRef,
+      ): Promise<boolean>;
       resolveContext?(
         taskId: string,
         request: Request,
@@ -1611,6 +2021,7 @@ export function createOrchestrationRoutes(
       owner: PrincipalRef,
       references: readonly StagedAttachmentReference[],
       binding: { threadId: string; clientTurnId: string },
+      options?: { inspectOnly?: true },
     ) => ChatAttachmentInput[];
     acceptStagedAttachments?: (
       owner: PrincipalRef,
@@ -1691,7 +2102,45 @@ export function createOrchestrationRoutes(
     ) => Promise<unknown>;
     interruptDelegatedTask?: (
       input: InterruptDelegatedTaskRequest,
-    ) => Promise<unknown>;
+    ) => Promise<DelegatedTaskInterruptResult>;
+    /**
+     * #3158: automatic delivery of a delegated child's results to its parent
+     * conversation (`delegation-result-delivery.ts`). The routes only report
+     * what they verified: a dispatch's caller-derived ownership, a parent's
+     * read of its own child at rest, an interrupt.
+     */
+    /**
+     * #3568: the durable inbox of follow-ups a busy conversation holds
+     * (`thread-inbox.ts`). Absent on a hosted Station: `/chat` then refuses a
+     * busy send as before.
+     */
+    threadInbox?: Pick<
+      ThreadInboxDelivery,
+      | 'mustQueue'
+      | 'submit'
+      | 'list'
+      | 'entry'
+      | 'cancel'
+      | 'deliveryOutcome'
+      | 'heldByOther'
+      | 'inFlight'
+    >;
+    /**
+     * Continuing a conversation whose engine was killed for memory
+     * (`memory-exhaustion-continuation.ts`). Absent without an inbox.
+     */
+    memoryContinuation?: Pick<
+      MemoryExhaustionContinuation,
+      'continueOnRequest'
+    >;
+    delegationResults?: Pick<
+      DelegationResultDelivery,
+      | 'arm'
+      | 'recordRead'
+      | 'beginCancel'
+      | 'settleCancellation'
+      | 'reopenCancellation'
+    >;
     /**
      * archive#4075 stage 2: DEPRECATED legacy test-only escape hatch. Never
      * wired by production runtime composition (production sets
@@ -1730,9 +2179,9 @@ export function createOrchestrationRoutes(
     hostedTenantRegistry?: HostedTenantRegistry;
     /**
      * archive#1225: per-user live-subscriber presence for the `/events`
-     * stream, shared with the push-on-completion gate
-     * (`turn-completion-notifications.ts`) so it knows whether the owning
-     * user is actually watching before scheduling a push. Optional and
+     * stream, read back by `/presence/summary` below (the runtime shares
+     * one instance). Turn-completion notifications no longer consult it:
+     * the delivery router decides per surface. Optional and
      * defaulted to a private, route-local instance so every existing test
      * that constructs this route without one keeps working unchanged — a
      * route-local fallback still tracks connect/disconnect correctly within
@@ -1772,7 +2221,55 @@ export function createOrchestrationRoutes(
   },
 ): Hono {
   const app = new Hono();
+  type StreamFrame = {
+    event: string;
+    data: string;
+    id?: string;
+    threadId?: string;
+    isAuthorized?: () => boolean;
+  };
+  // EventBus hands the same envelope to every subscriber synchronously.
+  const liveFrames = new WeakMap<
+    object,
+    { frame: StreamFrame; hasBinding: boolean; bytes: number }
+  >();
+  const prepareLiveFrame = (evt: { data?: Record<string, unknown> }) => {
+    const cached = liveFrames.get(evt);
+    if (cached) return cached;
+    const event = evt.data?.event as {
+      threadId: string;
+      eventId?: string;
+      method?: string;
+      namespace?: string;
+      type?: string;
+    };
+    const globalSequence =
+      typeof evt.data?.globalSequence === 'number'
+        ? evt.data.globalSequence
+        : event.eventId
+          ? orchestrationService.readEventGlobalSequence(event.eventId)
+          : undefined;
+    const conversation = orchestrationService.conversationStreamBinding(event);
+    const { globalSequence: _sequence, ...payload } = evt.data ?? {};
+    const frame: StreamFrame = {
+      event: SERVER_EVENTS.ORCHESTRATION_EVENT,
+      data: JSON.stringify({ ...payload, conversation }),
+      threadId: event.threadId,
+      ...(globalSequence !== undefined ? { id: String(globalSequence) } : {}),
+    };
+    const prepared = {
+      frame,
+      hasBinding: conversation !== undefined,
+      bytes: Buffer.byteLength(frame.data),
+    };
+    liveFrames.set(evt, prepared);
+    return prepared;
+  };
+
   const presence = deps.presence ?? new OrchestrationStreamPresence();
+  // The keyed /chat requests this route is handling now: the `received`
+  // answer of the delivery lookup below.
+  const deliveryReceipts = new ForegroundDeliveryReceipts();
   const readAuthorityFor = (c: PrincipalResolutionContext) =>
     sessionReadAuthorityFromRequest(
       resolveActorPrincipal(deps, c).userId,
@@ -1999,6 +2496,115 @@ export function createOrchestrationRoutes(
     }
   });
 
+  /**
+   * #3568: a key the conversation's inbox holds for someone else, in a state
+   * it may still send, is theirs. A send under it would take the turn claim
+   * their message waits for, so `/chat` and `/chat/:id/continue` refuse it,
+   * whether or not the send asks to be queued, and however the key was
+   * learned. Only a caller who may read the conversation is told; anyone else
+   * goes on to the dispatch, which refuses a conversation they may not read.
+   */
+  const inboxKeyHeldRefusal = async (
+    c: Context,
+    conversationId: string | undefined,
+    clientTurnId: string | undefined,
+    userId: string,
+  ): Promise<Response | undefined> => {
+    if (
+      !conversationId ||
+      !clientTurnId ||
+      !deps.threadInbox?.heldByOther(conversationId, clientTurnId, userId) ||
+      !(await orchestrationService.hasReadableSession(
+        conversationId,
+        readAuthorityFor(c),
+      ))
+    )
+      return undefined;
+    return c.json(
+      {
+        success: false,
+        error:
+          "This message key belongs to someone else's queued message. Send under a new key.",
+        code: 'inbox_key_held',
+      },
+      409,
+    );
+  };
+
+  /**
+   * #3568: a key the inbox is starting in this process now, from before its
+   * start begins until it answers, including past its deadline (`inFlight`).
+   * No Session's ledger may hold the key yet (a cold start claims it once its
+   * Session exists, and a live send may continue in a new Session), so a live
+   * send under it would be a second send. It is refused with the retryable
+   * `client_turn_in_flight`. Another sender meets `inboxKeyHeldRefusal` first
+   * while the entry may still be sent, so this reaches the entry's own
+   * sender, or anyone once the entry is dismissed (a dismissal does not end
+   * the start). Once the start answers, a retry under the key is answered
+   * from the conversation-wide ledger. The same read gate applies.
+   */
+  const inboxKeyInFlightRefusal = async (
+    c: Context,
+    conversationId: string | undefined,
+    clientTurnId: string | undefined,
+  ): Promise<Response | undefined> => {
+    if (
+      !conversationId ||
+      !clientTurnId ||
+      !deps.threadInbox?.inFlight(conversationId, clientTurnId) ||
+      !(await orchestrationService.hasReadableSession(
+        conversationId,
+        readAuthorityFor(c),
+      ))
+    )
+      return undefined;
+    return c.json(
+      {
+        success: false,
+        error:
+          'Station is still sending this queued message. Nothing new was sent; try again in a moment.',
+        code: CLIENT_TURN_IN_FLIGHT_CODE,
+        retryable: true,
+      },
+      409,
+    );
+  };
+
+  /** #3568: what `/chat` answers for a follow-up it handed to the inbox. */
+  const queuedFollowUpResponse = (
+    c: Context,
+    submitted: ReturnType<ThreadInboxDelivery['submit']>,
+    followUp: { conversationId: string; clientTurnId: string },
+  ): Response | undefined => {
+    if (submitted.outcome === 'not-permitted') return undefined;
+    if (submitted.outcome === 'conflict')
+      return c.json(
+        {
+          success: false,
+          error:
+            'This message key was already used for a different queued message.',
+          code: 'inbox_key_conflict',
+        },
+        409,
+      );
+    if (submitted.outcome === 'capacity')
+      return c.json(
+        {
+          success: false,
+          error: `This conversation already holds ${submitted.limit} queued messages. Nothing was queued; send it after some of them go.`,
+          code: 'conversation_inbox_full',
+        },
+        409,
+      );
+    const data: ConversationInboxQueuedReceipt = {
+      outcome: 'queued',
+      conversationId: submitted.entry.conversationId,
+      clientTurnId: followUp.clientTurnId,
+      entry: submitted.entry,
+    };
+    return c.json({ success: true, data }, 202);
+  };
+
   const handleForegroundMessage = async (c: Context) => {
     if (!deps.executeForegroundMessage) {
       return c.json(
@@ -2015,6 +2621,23 @@ export function createOrchestrationRoutes(
       | { threadId: string; clientTurnId: string }
       | undefined;
     let releasePrincipal: PrincipalRef | undefined;
+    let releaseDeliveryReceipt: (() => void) | undefined;
+    // #3568: set once this send may wait in its conversation's inbox; a
+    // busy refusal from the dispatch below then queues it instead.
+    let queueOnBusyRefusal: (() => Response | undefined) | undefined;
+    let inspectBusySettlement: (() => unknown) | undefined;
+    const settledRefusal = (error: unknown) =>
+      error instanceof TurnIdempotencySettledError
+        ? c.json(
+            {
+              success: false,
+              error: errorMessage(error),
+              code: error.code,
+              disposition: error.disposition,
+            },
+            409,
+          )
+        : undefined;
     try {
       const {
         delegation: claimedDelegation,
@@ -2024,10 +2647,17 @@ export function createOrchestrationRoutes(
         delegation?: z.infer<typeof agentDelegationContextSchema>;
         delegationAttestation?: string;
         automaticBackground?: true;
+        whenBusy?: 'queue';
       };
       // #2377 slice C3b: an agent sends without an approval posture.
       const postureRefused = refuseCarriedPosture(c, [
         { path: 'setApprovalMode', value: body.setApprovalMode, kind: 'pick' },
+        // A person's approval hint is theirs to send; an agent sends none.
+        {
+          path: 'personalApprovalDefault',
+          value: body.personalApprovalDefault,
+          kind: 'pick',
+        },
         {
           path: 'target.model.options',
           value: body.target.model?.options,
@@ -2059,34 +2689,54 @@ export function createOrchestrationRoutes(
           },
           400,
         );
+      const conversation = {
+        ...(body.conversationId ? { conversationId: body.conversationId } : {}),
+        ...(body.expectedInputRequest
+          ? { inputReplyThreadId: body.expectedInputRequest.threadId }
+          : {}),
+      };
+      // A station-control caller's new session with no workspace starts in
+      // its own Project (owner decision 2026-10-13).
+      const target = withCallerProjectWorkspace(
+        c,
+        deps.stationControlDispatchScope,
+        body.target,
+        foregroundStartsSession(deps.stationControlDispatchScope, conversation),
+      );
       const projectSlug =
-        body.target.workspace?.kind === 'project'
-          ? body.target.workspace.projectSlug
+        target.workspace?.kind === 'project'
+          ? target.workspace.projectSlug
           : undefined;
       // #2377 slice C2a: a station-control caller stays in its scope. An
       // input reply names its thread, a known conversation is a follow-up,
       // anything else starts a session in the Project the body names.
+      const facts = newSessionFacts(target, deps.projectDefaultEnvironment);
       const scoped = scopeDispatch(
         c,
         deps.stationControlDispatchScope,
         (ownerId) =>
           foregroundDispatchTarget(deps.stationControlDispatchScope, {
             ownerId,
-            ...newSessionFacts(body.target, deps.projectDefaultEnvironment),
-            ...(body.conversationId
-              ? { conversationId: body.conversationId }
-              : {}),
-            ...(body.expectedInputRequest
-              ? { inputReplyThreadId: body.expectedInputRequest.threadId }
-              : {}),
+            ...facts,
+            ...conversation,
           }),
       );
       if ('refused' in scoped) return scoped.refused;
-      const resolvedTarget = normalizeExecutionTarget(
-        withCanonicalCwd(body.target, scoped.canonicalCwd),
-        !body.target.environment && projectSlug
+      const projectDefault =
+        !target.environment && projectSlug
           ? deps.projectDefaultEnvironment?.(projectSlug)
-          : undefined,
+          : undefined;
+      // The scope decision read this default without failing on a missing
+      // Project (`newSessionFacts`). A default it could not read then that
+      // names another Station now was never decided: refuse it as the rule
+      // refuses another Station.
+      if (!facts.remote && namesAnotherStation(projectDefault)) {
+        const remoteRefused = refuseRemoteForStationControlCaller(c, true);
+        if (remoteRefused) return remoteRefused;
+      }
+      const resolvedTarget = normalizeExecutionTarget(
+        withCanonicalCwd(target, scoped.canonicalCwd),
+        projectDefault,
       );
       if (body.skillExperience && resolvedTarget.environment.kind !== 'current')
         return c.json(
@@ -2100,6 +2750,13 @@ export function createOrchestrationRoutes(
 
       const { principal, userId, ownerAttribution, fullAccessGrant } =
         resolveDispatchActor(deps, c);
+      const keyHeld = await inboxKeyHeldRefusal(
+        c,
+        body.conversationId,
+        body.clientTurnId,
+        userId,
+      );
+      if (keyHeld) return keyHeld;
       if (body.expectedInputRequest) {
         const context = orchestrationService.inspectInputReplyContext(
           body.expectedInputRequest,
@@ -2184,8 +2841,18 @@ export function createOrchestrationRoutes(
         delegationProvenance: resolvedDelegation?.provenance,
         ...(stagedAttachments?.length
           ? {
-              resolveAttachments: (binding) =>
+              resolveAttachments: (
+                binding: { threadId: string; clientTurnId: string },
+                options?: { inspectOnly?: true },
+              ) =>
                 (() => {
+                  if (options?.inspectOnly)
+                    return deps.hydrateStagedAttachments!(
+                      principal!,
+                      stagedAttachments,
+                      binding,
+                      options,
+                    );
                   stagedBinding = binding;
                   stagedBindingForRelease = binding;
                   stagedAttachmentsForRelease = stagedAttachments;
@@ -2212,13 +2879,121 @@ export function createOrchestrationRoutes(
         // #2873: the scope decision above, run again where the engine spawns.
         ...(scoped.spawn ? { dispatchCwdAdmission: scoped.spawn } : {}),
         clientOrigin: resolveClientOriginForRequest(c.req.raw),
+        // A person's own interactive chat, which alone records and inherits
+        // a Project's last-used values (`project-chat-defaults.ts`).
+        ...(isPersonChatRequest({
+          mayBeAnAgent: requestMayBeAnAgent(c.req.raw),
+          inboundDeviceKind: deps.resolveInboundDeviceKind?.(c),
+          automaticBackground: body.automaticBackground === true,
+          delegated: Boolean(claimedDelegation || delegation),
+          ownerAttributed: ownerAttribution !== undefined,
+        })
+          ? { personChatStart: true as const }
+          : {}),
+        // Only the join wait a same-key retry may spend; never the send.
+        joinWaitSignal: c.req.raw.signal,
       } as ForegroundMessageRequest;
+      const inputDigest = foregroundTurnSubmissionDigest(foregroundRequest);
+      if (body.conversationId && body.clientTurnId) {
+        const conversationId = body.conversationId;
+        const clientTurnId = body.clientTurnId;
+        inspectBusySettlement = () =>
+          orchestrationService.inspectTurnDelivery(
+            conversationId,
+            clientTurnId,
+            readAuthorityFor(c),
+            inputDigest,
+          );
+      }
+      // #3568: a follow-up to a busy conversation waits in its inbox rather
+      // than being refused. Only for a caller that may read the conversation,
+      // whose body names exactly the binding the inbox will continue through,
+      // and whom placement would accept (`submit` refuses anyone else); any
+      // other send goes on to the dispatch, which answers it as before.
+      const followUp = deps.threadInbox
+        ? inboxFollowUpOf(body, {
+            delegated: Boolean(claimedDelegation || delegation),
+            remote: resolvedTarget.environment.kind !== 'current',
+          })
+        : undefined;
+      if (
+        followUp &&
+        (await orchestrationService.hasReadableSession(
+          followUp.conversationId,
+          readAuthorityFor(c),
+        )) &&
+        (await followUpTargetMatchesBinding(
+          orchestrationService,
+          followUp.conversationId,
+          body.target as ExecutionTarget,
+          readAuthorityFor(c),
+        ))
+      ) {
+        const inbox = deps.threadInbox!;
+        if (
+          orchestrationService.inspectTurnDelivery(
+            followUp.conversationId,
+            followUp.clientTurnId,
+            readAuthorityFor(c),
+            inputDigest,
+          ) === null
+        )
+          throw new Error('The requested conversation is unavailable.');
+        queueOnBusyRefusal = () =>
+          queuedFollowUpResponse(
+            c,
+            inbox.submit({
+              conversationId: followUp.conversationId,
+              clientTurnId: followUp.clientTurnId,
+              payload: {
+                message: followUp.message,
+                inputDigest,
+                ...(followUp.ambientContext
+                  ? { ambientContext: followUp.ambientContext }
+                  : {}),
+                ...(followUp.model ? { model: followUp.model } : {}),
+                actor: {
+                  userId,
+                  ...(principal ? { principal } : {}),
+                  ...(ownerAttribution ? { ownerAttribution } : {}),
+                },
+                clientOrigin: foregroundRequest.clientOrigin,
+              },
+            }),
+            followUp,
+          );
+        if (inbox.mustQueue(followUp.conversationId)) {
+          const held = queueOnBusyRefusal();
+          if (held) return held;
+          // Placement would refuse this sender: the live send answers it.
+          queueOnBusyRefusal = undefined;
+        }
+      }
+      // Not held, so this send takes the live path: never under a key the
+      // inbox is still sending.
+      const keyInFlight = await inboxKeyInFlightRefusal(
+        c,
+        body.conversationId,
+        body.clientTurnId,
+      );
+      if (keyInFlight) return keyInFlight;
+      // Admitted: from here until the route answers, the delivery lookup says
+      // Station has this send (a cold session start can take a long time
+      // before the turn ledger holds anything).
+      if (body.conversationId && body.clientTurnId)
+        releaseDeliveryReceipt = deliveryReceipts.begin({
+          callerKey: mutationIdentity(c).ownerKey,
+          conversationId: body.conversationId,
+          clientTurnId: body.clientTurnId,
+          forwarded: resolvedTarget.environment.kind !== 'current',
+        });
       const data = await deps.executeForegroundMessage(foregroundRequest);
       if (!isForegroundDispatchHandle(data)) {
         // The foreground Interface cannot honestly call this accepted without
         // the exact provider turn identity needed for terminal settlement.
         return c.json(
           {
+            ...providerFailure('indeterminate', 'indeterminate'),
             success: false,
             error:
               'Foreground Agent execution may have started but did not return a provider turn id',
@@ -2255,14 +3030,52 @@ export function createOrchestrationRoutes(
       }
       return c.json({ success: true, data });
     } catch (error) {
+      if (error instanceof ConversationTurnQueuedError)
+        return queuedFollowUpResponse(
+          c,
+          { outcome: 'queued', entry: error.entry },
+          error.entry,
+        );
+      const settled = settledRefusal(error);
+      if (settled) return settled;
+      const busyCode = errorCode(error);
+      if (busyCode && INBOX_BUSY_REFUSAL_CODES.has(busyCode)) {
+        try {
+          inspectBusySettlement?.();
+        } catch (inspectionError) {
+          const closed = settledRefusal(inspectionError);
+          if (closed) return closed;
+          // An unavailable or unauthorized inspection supplies no settlement.
+        }
+        if (queueOnBusyRefusal) {
+          try {
+            const held = queueOnBusyRefusal();
+            if (held) return held;
+          } catch (queueError) {
+            const closed = settledRefusal(queueError);
+            if (closed) return closed;
+            throw queueError;
+          }
+        }
+      }
       const refused =
         delegationRefusal(c, error) ??
         fullAccessRefusalFor(c, error) ??
         dispatchCwdRefusalFor(c, error);
       if (refused) return refused;
+      if (error instanceof ForegroundDeliveryReceiptCapacityError)
+        return c.json(
+          {
+            success: false,
+            error: FOREGROUND_DELIVERY_CAPACITY_MESSAGE,
+            code: 'foreground_delivery_capacity',
+          },
+          503,
+        );
       if (error instanceof ForegroundMessageIndeterminateError) {
         return c.json(
           {
+            ...providerFailure('indeterminate', 'indeterminate'),
             success: false,
             error: FOREGROUND_MESSAGE_INDETERMINATE_ERROR,
             code: error.code,
@@ -2277,6 +3090,7 @@ export function createOrchestrationRoutes(
       if (error instanceof ForegroundMessageTurnIdentityUnavailableError) {
         return c.json(
           {
+            ...providerFailure('indeterminate', 'indeterminate'),
             success: false,
             error: FOREGROUND_MESSAGE_INDETERMINATE_ERROR,
             code: error.code,
@@ -2288,6 +3102,7 @@ export function createOrchestrationRoutes(
       if (isForegroundIndeterminateShape(error)) {
         return c.json(
           {
+            ...providerFailure('indeterminate', 'indeterminate'),
             success: false,
             error: FOREGROUND_MESSAGE_INDETERMINATE_ERROR,
             code: FOREGROUND_MESSAGE_INDETERMINATE_CODE,
@@ -2333,9 +3148,30 @@ export function createOrchestrationRoutes(
           success: false,
           error: errorMessage(error),
           ...(errorCode(error) ? { code: errorCode(error) } : {}),
+          ...(error instanceof OrchestrationCommandDispatchError &&
+          error.kind !== undefined
+            ? {
+                kind: error.kind,
+                retryable: error.retryable,
+                failurePhase: error.failurePhase,
+              }
+            : {}),
         },
-        unreachableWorkspace ? 503 : 400,
+        unreachableWorkspace
+          ? 503
+          : // The caller's view of the Agent is stale: a conflict with the
+            // current binding, not malformed input.
+            errorCode(error) === EXECUTION_ENGINE_CHANGED_CODE ||
+              // Another attempt still holds the key: a conflict to retry,
+              // as the inbox's own in-flight refusal answers it.
+              errorCode(error) === CLIENT_TURN_IN_FLIGHT_CODE ||
+              errorCode(error) === 'client_turn_input_conflict' ||
+              errorCode(error) === 'inbox_key_held'
+            ? 409
+            : 400,
       );
+    } finally {
+      releaseDeliveryReceipt?.();
     }
   };
   app.post('/chat', validate(foregroundMessageSchema), handleForegroundMessage);
@@ -2352,7 +3188,7 @@ export function createOrchestrationRoutes(
 
   app.post(
     '/conversations/:conversationId/handoff',
-    validate(conversationHandoffSchema),
+    validateFiles(conversationHandoffSchema),
     async (c) => {
       if (!deps.handoffConversation) {
         return c.json(
@@ -2368,6 +3204,12 @@ export function createOrchestrationRoutes(
           {
             path: 'setApprovalMode',
             value: (body as { setApprovalMode?: unknown }).setApprovalMode,
+            kind: 'pick',
+          },
+          {
+            path: 'personalApprovalDefault',
+            value: (body as { personalApprovalDefault?: unknown })
+              .personalApprovalDefault,
             kind: 'pick',
           },
           {
@@ -2410,6 +3252,7 @@ export function createOrchestrationRoutes(
         if (!isForegroundDispatchHandle(data)) {
           return c.json(
             {
+              ...providerFailure('indeterminate', 'indeterminate'),
               success: false,
               error:
                 'Agent/engine handoff may have started but did not return a provider turn id',
@@ -2426,6 +3269,7 @@ export function createOrchestrationRoutes(
         if (error instanceof ForegroundMessageIndeterminateError) {
           return c.json(
             {
+              ...providerFailure('indeterminate', 'indeterminate'),
               success: false,
               error: FOREGROUND_MESSAGE_INDETERMINATE_ERROR,
               code: error.code,
@@ -2443,6 +3287,7 @@ export function createOrchestrationRoutes(
         ) {
           return c.json(
             {
+              ...providerFailure('indeterminate', 'indeterminate'),
               success: false,
               error: FOREGROUND_MESSAGE_INDETERMINATE_ERROR,
               code: FOREGROUND_MESSAGE_INDETERMINATE_CODE,
@@ -2456,10 +3301,294 @@ export function createOrchestrationRoutes(
             success: false,
             error: errorMessage(error),
             ...(errorCode(error) ? { code: errorCode(error) } : {}),
+            ...(error instanceof OrchestrationCommandDispatchError &&
+            error.kind !== undefined
+              ? {
+                  kind: error.kind,
+                  retryable: error.retryable,
+                  failurePhase: error.failurePhase,
+                }
+              : {}),
           },
           409,
         );
       }
+    },
+  );
+
+  /**
+   * Foreground delivery lookup (`TurnDeliveryInspection`): what this Station
+   * knows about the send that carried `clientTurnId` into the conversation.
+   * Read-only. A conversation the caller may not read answers `not-received`
+   * like a key nothing holds, never 404, so the lookup reveals nothing about
+   * other callers' conversations. Not on any Station Control tool's route
+   * table: it is a device's recovery read, not an agent capability.
+   */
+  app.get(
+    '/conversations/:conversationId/turn-deliveries/:clientTurnId',
+    (c) => {
+      const conversationId = param(c, 'conversationId');
+      const clientTurnId = param(c, 'clientTurnId');
+      // The same bounds the send schemas put on these ids.
+      if (
+        conversationId.length === 0 ||
+        conversationId.length > 512 ||
+        clientTurnId.length === 0 ||
+        clientTurnId.length > 200
+      )
+        return c.json(
+          { success: false, error: 'Invalid conversation or turn key' },
+          400,
+        );
+      const answer = (data: TurnDeliveryInspection) =>
+        c.json({ success: true, data });
+      let durable: ReturnType<OrchestrationService['inspectTurnDelivery']>;
+      try {
+        durable = orchestrationService.inspectTurnDelivery(
+          conversationId,
+          clientTurnId,
+          readAuthorityFor(c),
+        );
+      } catch (error) {
+        if (error instanceof TurnIdempotencySettledError)
+          return c.json(
+            {
+              success: false,
+              error: errorMessage(error),
+              code: error.code,
+              disposition: error.disposition,
+            },
+            409,
+          );
+        throw error;
+      }
+      // A turn the ledger settled outranks the request still being answered.
+      // Only the public fields: the ledger also names the Session a live
+      // claim is on (for a resend to join), which this answer never shows.
+      if (durable && durable.outcome !== 'not-received')
+        return answer(
+          durable.outcome === 'started'
+            ? {
+                outcome: 'started',
+                sessionId: durable.sessionId,
+                turnId: durable.turnId,
+                conversationId,
+                clientTurnId,
+              }
+            : { outcome: durable.outcome, conversationId, clientTurnId },
+        );
+      // #3568: a follow-up the conversation's inbox holds for this caller.
+      const held = deps.threadInbox?.deliveryOutcome(
+        conversationId,
+        clientTurnId,
+        resolveDispatchActor(deps, c).userId,
+      );
+      if (held) return answer({ outcome: held, conversationId, clientTurnId });
+      const inFlight = deliveryReceipts.has({
+        callerKey: mutationIdentity(c).ownerKey,
+        conversationId,
+        clientTurnId,
+      });
+      if (inFlight)
+        return answer({ outcome: 'received', conversationId, clientTurnId });
+      // Nothing here holds the key. That proves the send never reached the
+      // engine only when the conversation runs on THIS Station: one this
+      // Station forwards elsewhere (its Project's default Environment is
+      // another one, or a send was forwarded while this process ran) keeps
+      // its turn ledger there, out of sight.
+      const projectSlug = c.req.query('projectSlug');
+      // Reached with no ledger record here (`durable` null or not-received):
+      // a conversation that started on this Station can still have its later
+      // sends forwarded elsewhere.
+      const projectEnvironment =
+        projectSlug && projectSlug.length <= 512
+          ? deps.projectDefaultEnvironment?.(projectSlug)
+          : undefined;
+      const forwarded =
+        (projectEnvironment !== undefined &&
+          projectEnvironment.kind !== 'current') ||
+        deliveryReceipts.forwarded({
+          callerKey: mutationIdentity(c).ownerKey,
+          conversationId,
+        });
+      return answer({
+        outcome: forwarded ? 'unknown' : 'not-received',
+        conversationId,
+        clientTurnId,
+      });
+    },
+  );
+
+  /**
+   * #3568: a conversation's inbox, the follow-ups Station holds for it and
+   * sends when its turn ends. Every client of the conversation reads the
+   * same list. A conversation the caller may not read answers 404, like one
+   * that does not exist.
+   */
+  app.get('/conversations/:conversationId/inbox', async (c) => {
+    const conversationId = param(c, 'conversationId');
+    if (!deps.threadInbox)
+      return c.json(
+        { success: false, error: 'This Station keeps no conversation inbox.' },
+        404,
+      );
+    if (
+      conversationId.length > 512 ||
+      !(await orchestrationService.hasReadableSession(
+        conversationId,
+        readAuthorityFor(c),
+      ))
+    )
+      return c.json({ success: false, error: 'Conversation not found' }, 404);
+    return c.json({
+      success: true,
+      data: {
+        entries: deps.threadInbox.list(
+          conversationId,
+          resolveDispatchActor(deps, c).userId,
+        ),
+      },
+    });
+  });
+
+  /**
+   * A person's Continue after the conversation's engine was killed for
+   * memory: the same Station-authored turn, under the same key derived from
+   * the dead turn, as Station's automatic continuation. Whichever arrives
+   * second is the same entry (same sender) or a 409 (another sender), never a
+   * second continuation. An older Station answers 404; the client then sends
+   * an ordinary message.
+   */
+  app.post('/conversations/:conversationId/memory-continuation', async (c) => {
+    const conversationId = param(c, 'conversationId');
+    if (!deps.memoryContinuation)
+      return c.json(
+        { success: false, error: 'This Station has no memory continuation.' },
+        404,
+      );
+    if (
+      conversationId.length > 512 ||
+      !(await orchestrationService.hasReadableSession(
+        conversationId,
+        readAuthorityFor(c),
+      ))
+    )
+      return c.json({ success: false, error: 'Conversation not found' }, 404);
+    const actor = resolveDispatchActor(deps, c);
+    const outcome = deps.memoryContinuation.continueOnRequest({
+      conversationId,
+      actor: {
+        userId: actor.userId,
+        ...(actor.principal ? { principal: actor.principal } : {}),
+        ...(actor.ownerAttribution
+          ? { ownerAttribution: actor.ownerAttribution }
+          : {}),
+      },
+    });
+    if (outcome.kind === 'queued')
+      return c.json(
+        { success: true, data: { clientTurnId: outcome.clientTurnId } },
+        202,
+      );
+    if (
+      (outcome.kind === 'skipped' && outcome.reason === 'already-claimed') ||
+      (outcome.kind === 'failed' && outcome.reason === 'conflict')
+    )
+      return c.json(
+        {
+          success: false,
+          code: 'memory_continuation_already_started',
+          error: 'This conversation is already being continued.',
+        },
+        409,
+      );
+    if (outcome.kind === 'skipped' && outcome.reason === 'withdrawn')
+      return c.json(
+        {
+          success: false,
+          code: 'memory_continuation_retries_exhausted',
+          error:
+            "This turn's continuation was cancelled or refused too many times. Send a message to continue the conversation.",
+        },
+        409,
+      );
+    if (outcome.kind === 'skipped')
+      return c.json(
+        {
+          success: false,
+          code: 'memory_continuation_not_applicable',
+          error:
+            "The conversation's latest turn did not end because its engine ran out of memory.",
+        },
+        409,
+      );
+    if (outcome.reason === 'not-permitted')
+      return c.json(
+        {
+          success: false,
+          code: 'memory_continuation_not_permitted',
+          error: 'You cannot continue this conversation.',
+        },
+        403,
+      );
+    return c.json(
+      { success: false, error: 'Station could not continue the conversation.' },
+      503,
+    );
+  });
+
+  /**
+   * #3568: withdraw a held follow-up (its sender only), or dismiss one that
+   * is unconfirmed or refused (anyone who may send to the conversation, so
+   * one person's possibly-sent message cannot hold everyone's). Anyone else,
+   * like a key the inbox does not hold, gets 404. One being sent right now
+   * cannot be withdrawn.
+   */
+  app.delete(
+    '/conversations/:conversationId/inbox/:clientTurnId',
+    async (c) => {
+      const conversationId = param(c, 'conversationId');
+      const clientTurnId = param(c, 'clientTurnId');
+      const notFound = () =>
+        c.json({ success: false, error: 'Queued message not found' }, 404);
+      if (
+        !deps.threadInbox ||
+        conversationId.length > 512 ||
+        clientTurnId.length > 200 ||
+        !(await orchestrationService.hasReadableSession(
+          conversationId,
+          readAuthorityFor(c),
+        ))
+      )
+        return notFound();
+      const result = deps.threadInbox.cancel(
+        conversationId,
+        clientTurnId,
+        resolveDispatchActor(deps, c).userId,
+      );
+      if (result.kind === 'missing' || result.kind === 'forbidden')
+        return notFound();
+      if (result.kind === 'in-flight')
+        return c.json(
+          {
+            success: false,
+            error:
+              'Station is sending this message now; it cannot be withdrawn.',
+            code: 'inbox_entry_sending',
+          },
+          409,
+        );
+      if (result.kind === 'placed')
+        return c.json(
+          {
+            success: false,
+            error: 'This message was already sent.',
+            code: 'inbox_entry_sent',
+          },
+          409,
+        );
+      const entry = deps.threadInbox.entry(conversationId, clientTurnId);
+      return entry ? c.json({ success: true, data: { entry } }) : notFound();
     },
   );
 
@@ -2483,7 +3612,7 @@ export function createOrchestrationRoutes(
 
   app.post(
     '/conversations/:conversationId/context-boundary',
-    validate(conversationContextBoundarySchema),
+    validateFiles(conversationContextBoundarySchema),
     async (c) => {
       if (!deps.reserveConversationContextBoundary)
         return c.json(
@@ -2559,7 +3688,7 @@ export function createOrchestrationRoutes(
 
   app.post(
     '/chat/:conversationId/continue',
-    validate(continueForegroundMessageSchema),
+    validateFiles(continueForegroundMessageSchema),
     async (c) => {
       if (!deps.continueForegroundMessage) {
         return c.json(
@@ -2577,6 +3706,12 @@ export function createOrchestrationRoutes(
           {
             path: 'setApprovalMode',
             value: body.setApprovalMode,
+            kind: 'pick',
+          },
+          {
+            path: 'personalApprovalDefault',
+            value: (body as { personalApprovalDefault?: unknown })
+              .personalApprovalDefault,
             kind: 'pick',
           },
           {
@@ -2604,6 +3739,19 @@ export function createOrchestrationRoutes(
         if (scopeRefused) return scopeRefused;
         const { principal, userId, ownerAttribution, fullAccessGrant } =
           resolveDispatchActor(deps, c);
+        const keyHeld = await inboxKeyHeldRefusal(
+          c,
+          param(c, 'conversationId'),
+          body.clientTurnId,
+          userId,
+        );
+        if (keyHeld) return keyHeld;
+        const keyInFlight = await inboxKeyInFlightRefusal(
+          c,
+          param(c, 'conversationId'),
+          body.clientTurnId,
+        );
+        if (keyInFlight) return keyInFlight;
         const data = await deps.continueForegroundMessage({
           ...body,
           ...(body.environment
@@ -2632,10 +3780,13 @@ export function createOrchestrationRoutes(
           ownerAttribution,
           fullAccessGrant,
           clientOrigin: resolveClientOriginForRequest(c.req.raw),
+          // Only the join wait a same-key retry may spend; never the send.
+          joinWaitSignal: c.req.raw.signal,
         });
         if (!isForegroundDispatchHandle(data)) {
           return c.json(
             {
+              ...providerFailure('indeterminate', 'indeterminate'),
               success: false,
               error:
                 'Foreground Agent continuation may have started but did not return a provider turn id',
@@ -2647,11 +3798,18 @@ export function createOrchestrationRoutes(
         }
         return c.json({ success: true, data });
       } catch (error) {
+        if (error instanceof ConversationTurnQueuedError)
+          return queuedFollowUpResponse(
+            c,
+            { outcome: 'queued', entry: error.entry },
+            error.entry,
+          );
         const fullAccessRefused = fullAccessRefusalFor(c, error);
         if (fullAccessRefused) return fullAccessRefused;
         if (error instanceof ForegroundMessageIndeterminateError) {
           return c.json(
             {
+              ...providerFailure('indeterminate', 'indeterminate'),
               success: false,
               error: FOREGROUND_CONTINUATION_INDETERMINATE_ERROR,
               code: error.code,
@@ -2666,6 +3824,7 @@ export function createOrchestrationRoutes(
         if (error instanceof ForegroundMessageTurnIdentityUnavailableError) {
           return c.json(
             {
+              ...providerFailure('indeterminate', 'indeterminate'),
               success: false,
               error: FOREGROUND_CONTINUATION_INDETERMINATE_ERROR,
               code: error.code,
@@ -2677,6 +3836,7 @@ export function createOrchestrationRoutes(
         if (isForegroundIndeterminateShape(error)) {
           return c.json(
             {
+              ...providerFailure('indeterminate', 'indeterminate'),
               success: false,
               error: FOREGROUND_CONTINUATION_INDETERMINATE_ERROR,
               code: FOREGROUND_MESSAGE_INDETERMINATE_CODE,
@@ -2690,14 +3850,28 @@ export function createOrchestrationRoutes(
             success: false,
             error: errorMessage(error),
             ...(errorCode(error) ? { code: errorCode(error) } : {}),
+            ...(error instanceof OrchestrationCommandDispatchError &&
+            error.kind !== undefined
+              ? {
+                  kind: error.kind,
+                  retryable: error.retryable,
+                  failurePhase: error.failurePhase,
+                }
+              : {}),
           },
-          400,
+          // Another attempt still holds the key: a conflict to retry, as
+          // the inbox's own in-flight refusal answers it.
+          errorCode(error) === CLIENT_TURN_IN_FLIGHT_CODE ||
+            errorCode(error) === 'client_turn_input_conflict' ||
+            errorCode(error) === 'inbox_key_held'
+            ? 409
+            : 400,
         );
       }
     },
   );
 
-  app.post('/delegations', validate(delegateTaskSchema), async (c) => {
+  app.post('/delegations', validateFiles(delegateTaskSchema), async (c) => {
     if (!deps.delegateTask) {
       return c.json(
         { success: false, error: 'Task delegation is unavailable' },
@@ -2705,7 +3879,19 @@ export function createOrchestrationRoutes(
       );
     }
     try {
-      const body = getBody(c);
+      const sent = getBody(c);
+      // A station-control caller's new task with no workspace starts in its
+      // own Project (owner decision 2026-10-13): decided before every check
+      // below, so each one reads the target that is dispatched.
+      const body = {
+        ...sent,
+        target: withCallerProjectWorkspace(
+          c,
+          deps.stationControlDispatchScope,
+          sent.target,
+          true,
+        ),
+      };
       // #2377 slice C3b: an agent delegates without an approval posture.
       const postureRefused = refuseCarriedPosture(c, [
         {
@@ -2740,6 +3926,31 @@ export function createOrchestrationRoutes(
       if ('refused' in scoped) return scoped.refused;
       const { principal, userId, ownerAttribution, fullAccessGrant } =
         resolveDispatchActor(deps, c);
+      const references = body.attachmentRefs;
+      if (
+        references?.length &&
+        (!principal ||
+          !deps.hydrateStagedAttachments ||
+          !deps.acceptStagedAttachments ||
+          !deps.releaseStagedAttachments ||
+          body.target.environment.kind !== 'current' ||
+          body.target.workspace?.kind === 'project-portable' ||
+          body.target.workspace?.kind === 'project-portable-prepared' ||
+          body.attemptId ||
+          body.taskRoomRequest)
+      )
+        throw new DelegationFileRefusal('delegation_files_unsupported');
+      if (references?.length) assertDelegationFileSizes(references);
+      const stagedFiles: DelegationStagedFiles | undefined = references?.length
+        ? {
+            resolve: (binding) =>
+              deps.hydrateStagedAttachments!(principal!, references, binding),
+            accept: (binding) =>
+              deps.acceptStagedAttachments!(principal!, references, binding),
+            release: (binding) =>
+              deps.releaseStagedAttachments!(principal!, references, binding),
+          }
+        : undefined;
       const clientOrigin = resolveClientOriginForRequest(c.req.raw);
       // #484 controller/receiver split: this route NEVER mints the
       // receiver admission itself — minting here, before `delegateTask`
@@ -2820,17 +4031,27 @@ export function createOrchestrationRoutes(
       const delegation = resolvedDelegation?.context;
       const delegate = deps.delegateTask;
       const roomRequest = body.taskRoomRequest;
-      const dispatch = (
+      let roomAttachments: ChatAttachmentInput[] | undefined;
+      let releaseRoomRequestPublication: (() => void) | undefined;
+      const dispatch = async (
         sessionId?: string,
         recheck?: () => Promise<void>,
         roomBinding?: TaskRoomInvocationAdmission['roomBinding'],
         contextSnapshot?: TaskRoomContextSnapshot,
-      ) =>
-        delegate({
+      ) => {
+        if (roomRequest) {
+          releaseRoomRequestPublication ??=
+            deps.taskRoomWork?.holdPublication?.(roomRequest.taskId);
+          await deps.taskRoomWork?.beforeInvocation?.(roomRequest.taskId);
+        }
+        return delegate({
           ...request,
+          ...(stagedFiles ? { stagedFiles } : {}),
+          ...(roomAttachments ? { taskRoomAttachments: roomAttachments } : {}),
           ...(contextSnapshot
             ? {
-                prompt: `${body.prompt}\n\nSelected Task brief snapshot:\n${JSON.stringify(contextSnapshot)}`,
+                prompt: formatTaskRoomPrompt(body.prompt, contextSnapshot),
+                title: body.prompt.trim(),
               }
             : {}),
           ...(delegation ? { delegation } : {}),
@@ -2882,7 +4103,9 @@ export function createOrchestrationRoutes(
               }
             : {}),
           ...(deps.delegationAttemptClaimStore
-            ? { delegationAttemptClaimStore: deps.delegationAttemptClaimStore }
+            ? {
+                delegationAttemptClaimStore: deps.delegationAttemptClaimStore,
+              }
             : {}),
           ...(portableIntent
             ? {
@@ -2893,6 +4116,7 @@ export function createOrchestrationRoutes(
               }
             : {}),
         });
+      };
       if (roomRequest) {
         const work = deps.taskRoomWork;
         if (
@@ -2922,65 +4146,147 @@ export function createOrchestrationRoutes(
             ? scope
             : undefined;
         };
-        const outcome = await work.module.submit(
-          roomRequest.taskId,
-          userId,
-          {
-            operationId: roomRequest.operationId,
-            ...(body.target.model ? { model: body.target.model } : {}),
-            agentId: executionProfileAgentId(
-              normalizeExecutionTarget(body.target).agent,
-            ),
-            ...(typeof body.target.agent !== 'string'
-              ? {
-                  executionAgentId: body.target.agent.executionAgent,
-                  ...(body.target.agent.expectedDefinitionFingerprint
-                    ? {
-                        expectedDefinitionFingerprint:
-                          body.target.agent.expectedDefinitionFingerprint,
-                      }
-                    : {}),
-                }
-              : {}),
-            prompt: body.prompt,
-            ...(roomRequest.context ? { context: roomRequest.context } : {}),
-          },
-          authorize,
-          async (sessionId, scope, recheck, contextSnapshot) => {
-            const handle = await dispatch(
-              sessionId,
-              recheck,
+        class AttachmentsUnavailable extends Error {}
+        try {
+          const outcome = await work.module.submit(
+            roomRequest.taskId,
+            userId,
+            {
+              operationId: roomRequest.operationId,
+              ...(body.target.model ? { model: body.target.model } : {}),
+              agentId: executionProfileAgentId(
+                normalizeExecutionTarget(body.target).agent,
+              ),
+              ...(typeof body.target.agent !== 'string'
+                ? {
+                    executionAgentId: body.target.agent.executionAgent,
+                    ...(body.target.agent.expectedDefinitionFingerprint
+                      ? {
+                          expectedDefinitionFingerprint:
+                            body.target.agent.expectedDefinitionFingerprint,
+                        }
+                      : {}),
+                  }
+                : {}),
+              prompt: body.prompt,
+              ...(roomRequest.attachments?.length
+                ? { attachments: roomRequest.attachments }
+                : {}),
+              ...(roomRequest.context ? { context: roomRequest.context } : {}),
+            },
+            authorize,
+            async (sessionId, scope, recheck, contextSnapshot) => {
+              const handle = await dispatch(
+                sessionId,
+                recheck,
+                {
+                  projectId: scope.roomProjectId,
+                  taskId: roomRequest.taskId,
+                },
+                contextSnapshot,
+              );
+              if (
+                !handle ||
+                typeof handle !== 'object' ||
+                !('sessionId' in handle) ||
+                typeof handle.sessionId !== 'string'
+              )
+                throw new Error('Agent execution identity was not returned.');
+              return { sessionId: handle.sessionId };
+            },
+            () =>
+              work.resolveContext?.(roomRequest.taskId, c.req.raw, principal) ??
+              Promise.resolve(undefined),
+            async () => {
+              if (!roomRequest.attachments?.length) return;
+              try {
+                roomAttachments = await work.resolveAttachments?.({
+                  ...roomRequest,
+                  request: c.req.raw,
+                  attachments: roomRequest.attachments,
+                });
+                if (!roomAttachments)
+                  throw new Error('Attachments unavailable');
+              } catch {
+                throw new AttachmentsUnavailable();
+              }
+            },
+          );
+          if (
+            outcome.kind === 'recorded' &&
+            outcome.record.state !== 'refused'
+          ) {
+            try {
+              await work.onRecorded?.(outcome.record, c.req.raw, principal);
+            } catch (error) {
+              deps.logger.warn?.('Task room request publication failed', {
+                error: errorMessage(error),
+              });
+            }
+            const release = releaseRoomRequestPublication;
+            releaseRoomRequestPublication = undefined;
+            setTimeout(() => {
+              release?.();
+              void Promise.resolve()
+                .then(() => work.continued?.(roomRequest.taskId))
+                .catch((error) =>
+                  deps.logger.warn?.('Task room reconciliation failed', {
+                    error: errorMessage(error),
+                  }),
+                );
+            }, 0);
+          }
+          return c.json(
+            { success: outcome.kind === 'recorded', data: outcome },
+            outcome.kind === 'recorded'
+              ? 200
+              : outcome.reason === 'access'
+                ? 403
+                : 409,
+          );
+        } catch (error) {
+          if (error instanceof AttachmentsUnavailable)
+            return c.json(
               {
-                projectId: scope.roomProjectId,
-                taskId: roomRequest.taskId,
+                success: false,
+                code: 'task_room_attachments_unavailable',
+                error:
+                  'Task attachments are unavailable. Choose the files again. Nothing was sent.',
               },
-              contextSnapshot,
+              409,
             );
-            if (
-              !handle ||
-              typeof handle !== 'object' ||
-              !('sessionId' in handle) ||
-              typeof handle.sessionId !== 'string'
-            )
-              throw new Error('Agent execution identity was not returned.');
-            return { sessionId: handle.sessionId };
-          },
-          () =>
-            work.resolveContext?.(roomRequest.taskId, c.req.raw, principal) ??
-            Promise.resolve(undefined),
-        );
-        return c.json(
-          { success: outcome.kind === 'recorded', data: outcome },
-          outcome.kind === 'recorded'
-            ? 200
-            : outcome.reason === 'access'
-              ? 403
-              : 409,
-        );
+          throw error;
+        } finally {
+          releaseRoomRequestPublication?.();
+        }
       }
       const data = await dispatch();
+      bestEffortDelegationResult(deps.logger, 'arm', () =>
+        armDelegationResult(c, deps.delegationResults, resolvedDelegation, {
+          handle: data,
+          actor: { userId, principal, ownerAttribution },
+        }),
+      );
       return c.json({ success: true, data });
     } catch (error) {
+      if (
+        error instanceof DelegationFileRefusal ||
+        error instanceof AttachmentStageError
+      )
+        return c.json(
+          {
+            success: false,
+            error:
+              error instanceof AttachmentStageError
+                ? 'Attachment staging refused these delegation files.'
+                : errorMessage(error),
+            code: error.code,
+          },
+          error instanceof DelegationFileRefusal &&
+            error.code === 'delegation_files_outcome_unknown'
+            ? 409
+            : 400,
+        );
       const refused =
         delegationRefusal(c, error) ?? dispatchCwdRefusalFor(c, error);
       if (refused) return refused;
@@ -3073,6 +4379,14 @@ export function createOrchestrationRoutes(
           },
           403,
         );
+      // The caller's stated engine no longer holds: a conflict with the
+      // current binding, carrying its code so a delegating caller can tell it
+      // from malformed input. Nothing was started.
+      if (wrappedCode === EXECUTION_ENGINE_CHANGED_CODE)
+        return c.json(
+          { success: false, error: errorMessage(error), code: wrappedCode },
+          409,
+        );
       return c.json(
         {
           success: false,
@@ -3085,7 +4399,7 @@ export function createOrchestrationRoutes(
 
   app.post(
     '/delegations/options',
-    validate(delegationOptionsSchema),
+    validateFiles(delegationOptionsSchema),
     async (c) => {
       if (!deps.discoverDelegationOptions) {
         return c.json(
@@ -3241,6 +4555,12 @@ export function createOrchestrationRoutes(
         taskId: param(c, 'taskId'),
         userId: resolveActorPrincipal(deps, c).userId,
       });
+      // #3158: the parent read its own child at rest; that result is not
+      // delivered to it again. Only for a task this Station serves.
+      if (parsed.data.environmentId === undefined)
+        bestEffortDelegationResult(deps.logger, 'read', () =>
+          recordDelegationResultRead(c, deps.delegationResults, data),
+        );
       // Only for a task this Station serves: a forwarded read carries the
       // serving Station's own answer about this Station's credential.
       return c.json({
@@ -3301,7 +4621,7 @@ export function createOrchestrationRoutes(
 
   app.post(
     '/delegations/:taskId/continue',
-    validate(continueDelegatedTaskBodySchema),
+    validateFiles(continueDelegatedTaskBodySchema),
     async (c) => {
       if (!deps.continueDelegatedTask) {
         return c.json(
@@ -3313,6 +4633,18 @@ export function createOrchestrationRoutes(
         );
       }
       try {
+        const replyBody = getBody(c);
+        if (
+          replyBody.taskRoomReply &&
+          (replyBody.environmentId || replyBody.model || replyBody.modelOptions)
+        )
+          return c.json(
+            {
+              success: false,
+              error: 'A room thread uses its existing agent Session and model.',
+            },
+            400,
+          );
         // #2377 slice C3b: an agent's follow-up carries no approval posture.
         const postureRefused = refuseCarriedPosture(c, [
           {
@@ -3361,25 +4693,142 @@ export function createOrchestrationRoutes(
                 () => deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
               )
           : undefined;
-        const data = await deps.continueDelegatedTask({
-          ...getBody(c),
-          taskId: param(c, 'taskId'),
-          userId,
-          principal,
-          ownerAttribution,
-          fullAccessGrant,
-          clientOrigin: resolveClientOriginForRequest(c.req.raw),
-          ...(authorizeReceiverExecution ? { authorizeReceiverExecution } : {}),
-          // No-onward-hop + sender authority, from the verified
-          // credential — never body/userId. The follow-up body carries
-          // no portable signal, so both ride every follow-up: the tool
-          // enforces the hop guard and the post-resolution currency
-          // probe before any outbound forward.
-          inboundDeviceKind: deps.resolveInboundDeviceKind?.(c),
-          isRequestAuthorityCurrent: () =>
-            deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
-        });
-        return c.json({ success: true, data });
+        const roomReply = getBody(c).taskRoomReply;
+        let continuationMessage = getBody(c).message;
+        if (roomReply && roomReply.attachBrief !== false && principal) {
+          const context = await deps.taskRoomWork?.resolveContext?.(
+            roomReply.taskId,
+            c.req.raw,
+            principal,
+          );
+          if (!context)
+            return c.json(
+              {
+                success: false,
+                code: 'task_room_context_unavailable',
+                error:
+                  'The latest saved brief is unavailable. Retry or turn off the brief attachment.',
+              },
+              409,
+            );
+          continuationMessage = formatTaskRoomPrompt(
+            continuationMessage,
+            context,
+          );
+        }
+        const roomAdmission =
+          roomReply && principal
+            ? await deps.taskRoomWork?.admitReply?.(
+                {
+                  taskId: roomReply.taskId,
+                  taskCreatedAt: roomReply.taskCreatedAt,
+                  operationId: roomReply.operationId,
+                  sessionId: param(c, 'taskId'),
+                },
+                c.req.raw,
+                principal,
+              )
+            : undefined;
+        if (roomReply && !roomAdmission)
+          return c.json(
+            {
+              success: false,
+              code: 'task_room_reply_refused',
+              error:
+                'This agent thread can no longer continue in the same Session.',
+            },
+            403,
+          );
+        try {
+          const roomAttachments = roomReply?.attachments?.length
+            ? await deps.taskRoomWork?.resolveAttachments?.({
+                ...roomReply,
+                request: c.req.raw,
+                attachments: roomReply.attachments,
+              })
+            : undefined;
+          if (roomReply?.attachments?.length && !roomAttachments)
+            return c.json(
+              {
+                success: false,
+                error: 'Task attachments are unavailable.',
+                code: 'task_room_reply_refused',
+              },
+              409,
+            );
+          const data = await deps.continueDelegatedTask({
+            ...(roomAttachments
+              ? { taskRoomAttachments: roomAttachments }
+              : {}),
+            ...(roomAdmission
+              ? { taskRoomInvocationAdmission: roomAdmission }
+              : {}),
+            ...getBody(c),
+            message: continuationMessage,
+            taskId: param(c, 'taskId'),
+            userId,
+            principal,
+            ownerAttribution,
+            fullAccessGrant,
+            clientOrigin: resolveClientOriginForRequest(c.req.raw),
+            ...(authorizeReceiverExecution
+              ? { authorizeReceiverExecution }
+              : {}),
+            // No-onward-hop + sender authority, from the verified
+            // credential — never body/userId. The follow-up body carries
+            // no portable signal, so both ride every follow-up: the tool
+            // enforces the hop guard and the post-resolution currency
+            // probe before any outbound forward.
+            inboundDeviceKind: deps.resolveInboundDeviceKind?.(c),
+            isRequestAuthorityCurrent: () =>
+              deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
+          });
+          let roomReplyDelivery: 'posted' | 'unpublished' | undefined;
+          if (roomReply && principal) {
+            roomReplyDelivery = 'unpublished';
+            try {
+              const posted = await deps.taskRoomWork?.onReply?.(
+                {
+                  ...roomReply,
+                  sessionId: param(c, 'taskId'),
+                  message: getBody(c).message,
+                },
+                c.req.raw,
+                principal,
+              );
+              if (posted) roomReplyDelivery = 'posted';
+              if (!posted)
+                deps.logger.warn?.('Task room reply publication refused', {
+                  taskId: roomReply.taskId,
+                });
+            } catch (error) {
+              deps.logger.warn?.('Task room reply publication failed', {
+                error: errorMessage(error),
+              });
+            }
+            setTimeout(
+              () =>
+                void deps.taskRoomWork
+                  ?.continued?.(roomReply.taskId)
+                  .catch((error) => {
+                    deps.logger.warn?.('Task room reconciliation failed', {
+                      error: errorMessage(error),
+                    });
+                  }),
+              0,
+            );
+          }
+          return c.json({
+            success: true,
+            data:
+              roomReplyDelivery && data && typeof data === 'object'
+                ? { ...data, taskRoomReplyDelivery: roomReplyDelivery }
+                : data,
+          });
+        } finally {
+          if (roomAdmission?.releasePublication)
+            setTimeout(roomAdmission.releasePublication, 0);
+        }
       } catch (error) {
         // #484 phase A: a portable continuation refused for lack of a
         // current offer admission is a 403, like the create-path refusal.
@@ -3434,7 +4883,7 @@ export function createOrchestrationRoutes(
 
   app.post(
     '/delegations/:taskId/respond',
-    validate(respondToDelegatedTaskBodySchema),
+    validateFiles(respondToDelegatedTaskBodySchema),
     async (c) => {
       if (!deps.respondToDelegatedTaskRequest) {
         return c.json(
@@ -3515,7 +4964,7 @@ export function createOrchestrationRoutes(
 
   app.post(
     '/delegations/:taskId/interrupt',
-    validate(interruptDelegatedTaskBodySchema),
+    validateFiles(interruptDelegatedTaskBodySchema),
     async (c) => {
       if (!deps.interruptDelegatedTask) {
         return c.json(
@@ -3542,14 +4991,50 @@ export function createOrchestrationRoutes(
           deps,
           c,
         );
-        const data = await deps.interruptDelegatedTask({
-          ...getBody(c),
-          taskId: param(c, 'taskId'),
-          userId,
-          principal,
-          ownerAttribution,
-          clientOrigin: resolveClientOriginForRequest(c.req.raw),
-        });
+        // #3158: the recorded parent's interrupt fences the turn it stops and
+        // cancels results not yet delivered. Fenced before the effect (the
+        // stopped turn's settlement is delivered synchronously from the
+        // event), and undone below if the interrupt is refused or the
+        // service reports it stopped nothing. A named turn is the only turn
+        // the service will stop, so it is the only one fenced.
+        const body = getBody(c) as InterruptDelegatedTaskBody;
+        const canceller =
+          body.environmentId === undefined
+            ? delegationResultCanceller(c, userId)
+            : undefined;
+        const cancellation = canceller
+          ? bestEffortDelegationResult(deps.logger, 'cancel', () =>
+              deps.delegationResults?.beginCancel(
+                param(c, 'taskId'),
+                canceller,
+                body.turnId,
+              ),
+            )
+          : undefined;
+        let data: DelegatedTaskInterruptResult;
+        try {
+          data = await deps.interruptDelegatedTask({
+            ...getBody(c),
+            taskId: param(c, 'taskId'),
+            userId,
+            principal,
+            ownerAttribution,
+            clientOrigin: resolveClientOriginForRequest(c.req.raw),
+          });
+        } catch (error) {
+          if (cancellation)
+            bestEffortDelegationResult(deps.logger, 'reopen', () =>
+              deps.delegationResults?.reopenCancellation(cancellation),
+            );
+          throw error;
+        }
+        if (cancellation)
+          bestEffortDelegationResult(deps.logger, 'settle', () =>
+            deps.delegationResults?.settleCancellation(
+              cancellation,
+              data.interruptOutcome,
+            ),
+          );
         return c.json({ success: true, data });
       } catch (error) {
         return c.json({ success: false, error: errorMessage(error) }, 400);
@@ -3854,7 +5339,15 @@ export function createOrchestrationRoutes(
     });
   });
 
-  for (const action of ['resume', 'cancel'] as const) {
+  // `resume-at-reset` and `hold`: the person's choice, on this one stop, of
+  // what happens at the reset ("Resume at <reset>" / "Don't resume"), in
+  // place of the auto-resume setting. They send nothing now.
+  for (const action of [
+    'resume',
+    'cancel',
+    'resume-at-reset',
+    'hold',
+  ] as const) {
     app.post(`/sessions/:threadId/usage-limit/${action}`, async (c) => {
       const threadId = param(c, 'threadId');
       if (deps.isRequestPrincipalCurrent?.(c.req.raw) !== true)
@@ -3951,6 +5444,71 @@ export function createOrchestrationRoutes(
     if (!data)
       return c.json({ success: false, error: 'Session not found' }, 404);
     return c.json({ success: true, data });
+  });
+
+  /**
+   * docs/design/event-content-spill.md: the full value behind a runtime
+   * event's out-of-line content reference, as its raw body (a string as
+   * text, a subtree as JSON) with no JSON-in-JSON escaping. Authorized like
+   * the window read that delivered the reference, so it works in hosted
+   * mode under the same tenant scope and for paired devices. `maxChars`
+   * returns a prefix for bounded readers, marked incomplete.
+   */
+  app.get('/sessions/:threadId/content/:ref', (c) => {
+    c.header('Cache-Control', 'private, no-store');
+    const threadId = param(c, 'threadId');
+    const digest = param(c, 'ref');
+    const maxCharsQuery = c.req.query('maxChars');
+    const maxChars =
+      maxCharsQuery === undefined ? undefined : Number(maxCharsQuery);
+    if (
+      !isRuntimeEventContentDigest(digest) ||
+      (maxChars !== undefined &&
+        (!Number.isSafeInteger(maxChars) || maxChars < 1))
+    )
+      return c.json(
+        { success: false, error: 'Invalid content reference' },
+        400,
+      );
+    const found = orchestrationService.readEventContent(
+      threadId,
+      digest,
+      readAuthorityFor(c),
+    );
+    if (!found)
+      return c.json({ success: false, error: 'Content not found' }, 404);
+    const complete = maxChars === undefined || found.body.length <= maxChars;
+    c.header('X-Station-Content-Kind', found.kind);
+    c.header('X-Station-Content-Bytes', String(found.bytes));
+    c.header('X-Station-Content-Complete', complete ? 'true' : 'false');
+    c.header(
+      'Content-Type',
+      found.kind === 'string' || !complete
+        ? 'text/plain; charset=utf-8'
+        : 'application/json; charset=utf-8',
+    );
+    const prefix = complete
+      ? found.body
+      : found.body.slice(0, maxChars).replace(/[\uD800-\uDBFF]$/u, '');
+    return c.body(prefix);
+  });
+
+  /**
+   * docs/design/event-content-spill.md: what an allow of this request must
+   * load and the viewed-content digest the gate will check, as the server
+   * defines them (the request and the tool calls bound to it). Authorized
+   * like the window read.
+   */
+  app.get('/sessions/:threadId/requests/:requestId/content-binding', (c) => {
+    c.header('Cache-Control', 'private, no-store');
+    const binding = orchestrationService.readApprovalContentBinding(
+      param(c, 'threadId'),
+      param(c, 'requestId'),
+      readAuthorityFor(c),
+    );
+    if (!binding)
+      return c.json({ success: false, error: 'Request not found' }, 404);
+    return c.json({ success: true, data: binding });
   });
 
   app.get('/conversations/:conversationId/event-window', async (c) => {
@@ -4135,6 +5693,12 @@ export function createOrchestrationRoutes(
         : { kind: 'whole-session' as const, sessionId };
     const outcome = await deps.sessionInventory?.read({
       scope,
+      clientProtocol: (() => {
+        const value = readClientProtocolHeader(
+          c.req.header(CLIENT_PROTOCOL_HEADER),
+        );
+        return value.kind === 'declared' ? value.protocol : 1;
+      })(),
       authority,
       current: () =>
         deps.isRequestPrincipalCurrent?.(c.req.raw) === true &&
@@ -4289,6 +5853,12 @@ export function createOrchestrationRoutes(
         : { kind: 'whole-session' as const, sessionId };
     const outcome = await deps.sessionInventory?.page({
       scope,
+      clientProtocol: (() => {
+        const value = readClientProtocolHeader(
+          c.req.header(CLIENT_PROTOCOL_HEADER),
+        );
+        return value.kind === 'declared' ? value.protocol : 1;
+      })(),
       groupId:
         groupId as import('@kontourai/station-contracts/session-inventory').SessionInventoryV2GroupId,
       continuation: parsed.data.continuation,
@@ -4395,6 +5965,56 @@ export function createOrchestrationRoutes(
     return c.json({ success: true, data: outcome });
   });
 
+  app.get('/sessions/:threadId/inputs/:eventId', async (c) => {
+    c.header('Cache-Control', 'private, no-store');
+    const threadId = param(c, 'threadId');
+    const eventId = param(c, 'eventId');
+    const turnId = c.req.query('turnId');
+    const unavailable = (status: 404 | 503 = 404) =>
+      c.json({ success: false, error: 'Input unavailable' }, status);
+    if (
+      !servesSessionInventoryInputRead({
+        hosted: deps.hostedTenantRegistry !== undefined,
+      }) ||
+      !boundedToolResultId(threadId) ||
+      !boundedToolResultId(eventId) ||
+      !turnId ||
+      !boundedToolResultId(turnId) ||
+      deps.isRequestPrincipalCurrent?.(c.req.raw) !== true
+    )
+      return unavailable();
+    const authority = readAuthorityFor(c);
+    if (!orchestrationService.canUserReadSession(threadId, authority))
+      return unavailable();
+    try {
+      const outcome = await orchestrationService.sessionQueries.readUserInput(
+        { type: 'user-input', threadId, eventId },
+        authority,
+      );
+      if (outcome.status === 'unavailable') return unavailable(503);
+      if (
+        outcome.status !== 'found' ||
+        outcome.sessionId !== threadId ||
+        outcome.eventId !== eventId ||
+        outcome.turnId !== turnId ||
+        deps.isRequestPrincipalCurrent?.(c.req.raw) !== true ||
+        !orchestrationService.canUserReadSession(threadId, authority)
+      )
+        return unavailable();
+      const data = {
+        sessionId: threadId,
+        eventId,
+        turnId,
+        input: outcome.input,
+      };
+      if (Buffer.byteLength(JSON.stringify(data)) > 262_144)
+        return unavailable(503);
+      return c.json({ success: true, data });
+    } catch {
+      return unavailable(503);
+    }
+  });
+
   app.get('/sessions/:threadId/tool-results/:eventId', async (c) => {
     const threadId = param(c, 'threadId');
     const eventId = param(c, 'eventId');
@@ -4483,6 +6103,9 @@ export function createOrchestrationRoutes(
     }
   });
 
+  // UNWIRED(#418): nothing in this repository publishes or removes a
+  // narrative binding, and the SDK publisher has no consumer (#3895);
+  // Flow Agents narrative publication under #418 will call these routes.
   app.put(
     '/sessions/:threadId/turns/:turnId/narrative',
     validate(answerNarrativePutSchema),
@@ -4714,15 +6337,29 @@ export function createOrchestrationRoutes(
         : undefined;
       if (!current())
         return c.json({ success: false, error: 'Basis not found' }, 404);
-      return c.json({
-        success: true,
-        data: composeAuthorizedSessionAnswerBasis(
-          answer,
-          assessed?.assessment,
-          narrative,
-          reviewedSource,
-        ),
-      });
+      try {
+        return c.json({
+          success: true,
+          data: composeAuthorizedSessionAnswerBasis(
+            answer,
+            assessed?.assessment,
+            narrative,
+            reviewedSource,
+          ),
+        });
+      } catch (error) {
+        // Station's own projection failed Surface's contract: unavailable,
+        // never an owner gap published as if it were Basis data.
+        if (error instanceof StationBasisCompositionInvariantError) {
+          deps.logger.warn?.('Station Basis composition invariant failed', {
+            ...error.identity,
+            surfaceGapCode: error.surfaceGap.code,
+            surfaceGapMessage: error.surfaceGap.message,
+          });
+          return c.json({ success: false, error: 'Basis unavailable' }, 503);
+        }
+        throw error;
+      }
     }
     if (
       deps.isRequestPrincipalCurrent?.(c.req.raw) !== true ||
@@ -4736,6 +6373,28 @@ export function createOrchestrationRoutes(
   });
 
   app.get('/sessions/:threadId', async (c) => {
+    const view = c.req.query('view');
+    if (view !== undefined) {
+      if (view !== 'window-v1')
+        return c.json(
+          { success: false, error: 'Invalid session detail view' },
+          400,
+        );
+      const parsed = sessionEventWindowQuerySchema.safeParse({
+        direction: 'newest',
+        cursor: c.req.query('cursor'),
+        turnLimit: c.req.query('turnLimit'),
+      });
+      if (!parsed.success)
+        return c.json({ success: false, error: 'Invalid event window' }, 400);
+      const data = await orchestrationService.readSessionEventWindow(
+        param(c, 'threadId'),
+        { ...parsed.data, authority: readAuthorityFor(c) },
+      );
+      if (!data)
+        return c.json({ success: false, error: 'Session not found' }, 404);
+      return c.json({ success: true, data });
+    }
     const data = await orchestrationService.readSession(
       param(c, 'threadId'),
       readAuthorityFor(c),
@@ -4994,7 +6653,12 @@ export function createOrchestrationRoutes(
                 }
               : {}),
             ...(error instanceof AdoptionContinuationInProgressError
-              ? { code: error.code, retryable: error.retryable }
+              ? {
+                  code: error.code,
+                  kind: error.kind,
+                  retryable: error.retryable,
+                  failurePhase: error.failurePhase,
+                }
               : {}),
             // #3386: a folder Station will not continue in; the same
             // request is refused again, so clients offer no retry.
@@ -5004,15 +6668,27 @@ export function createOrchestrationRoutes(
             // #3429: the engine was not ready and nothing was created; the
             // reason is shown and the same request may be retried.
             ...(error instanceof AdoptionEngineNotReadyError
-              ? { code: error.code, retryable: error.retryable }
+              ? {
+                  code: error.code,
+                  kind: error.kind,
+                  retryable: error.retryable,
+                  failurePhase: error.failurePhase,
+                }
               : {}),
             ...(error instanceof OrchestrationCommandDispatchError
               ? {
                   receipt: error.receipt,
                   receiptStatus: error.receiptStatus,
-                  ...(error.code
-                    ? { code: error.code, retryable: error.retryable }
-                    : {}),
+                  ...(error.kind === undefined
+                    ? {}
+                    : {
+                        kind: error.kind,
+                        failurePhase: error.failurePhase,
+                      }),
+                  ...(error.code ? { code: error.code } : {}),
+                  ...(error.retryable === undefined
+                    ? {}
+                    : { retryable: error.retryable }),
                   ...(error.indeterminateSession
                     ? {
                         outcome: 'indeterminate',
@@ -5026,7 +6702,8 @@ export function createOrchestrationRoutes(
             indeterminate ||
             (error instanceof OrchestrationCommandDispatchError &&
               (error.code === 'request_event_changed' ||
-                error.code === 'request_verification_unavailable'))
+                error.code === 'request_verification_unavailable' ||
+                error.code === 'request_content_not_loaded'))
             ? 409
             : 400,
         );
@@ -5086,14 +6763,19 @@ export function createOrchestrationRoutes(
       const client = describeOrchestrationStreamClient(c.req.raw);
       const rawLastEventId = c.req.header('Last-Event-ID');
       let framesWritten = 0;
-      let closeReason: 'client-abort' | 'authorization-expired' | undefined;
+      let closeReason:
+        | 'client-abort'
+        | 'authorization-expired'
+        | 'write-error'
+        | undefined;
       let setupError: string | undefined;
       // archive#1225: register this connection with the presence tracker
-      // BEFORE anything else can `await` — the push-on-completion gate
-      // (`turn-completion-notifications.ts`) must never see a window where
-      // a client that is in fact connecting is reported as absent.
+      // BEFORE anything else can `await`, so the `/presence/summary` roster
+      // never misses a client that is in fact connecting.
       const presenceSubject =
         orchestrationStreamPresenceSubjectFromAuthority(authority);
+      const releaseDeletionReader =
+        orchestrationService.retainSessionDeletionReader(authority);
       const releasePresence = presenceSubject
         ? presence.connect(presenceSubject, principal)
         : () => {};
@@ -5110,12 +6792,13 @@ export function createOrchestrationRoutes(
       // `stream.close()` in its own outer `finally` on an uncaught throw; it
       // has no idea this route registered presence/eventBus state that also
       // needs releasing. Without this, a setup-time throw would leak this
-      // user's presence count forever — `isConnected(userId)` would stay
-      // `true` and silently disable push-on-completion for that user for
-      // the rest of the process lifetime.
+      // user's presence count forever — `isConnected(userId)` and the
+      // `/presence/summary` roster would report them connected for the rest
+      // of the process lifetime.
       let unsub: (() => void) | undefined;
       let stopKeepAlive: (() => void) | undefined;
       let stopActivityFlush: (() => void) | undefined;
+      let clearPending: (() => void) | undefined;
       try {
         // station#2301 review (M2): register for the client going away
         // BEFORE anything below can await. Hono notifies only subscribers
@@ -5128,12 +6811,14 @@ export function createOrchestrationRoutes(
             closeReason ??= 'client-abort';
             // Release what the connection holds NOW, not in `finally`: a store
             // read that never settles would otherwise keep this user counted
-            // as present (suppressing push-on-completion) and subscribed. All
+            // as present (in the roster) and subscribed. All
             // three are idempotent; `finally` repeats them harmlessly.
             stopKeepAlive?.();
             stopActivityFlush?.();
+            clearPending?.();
             unsub?.();
             releasePresence();
+            releaseDeletionReader();
             resolve();
           };
           if (stream.aborted) onGone();
@@ -5150,38 +6835,148 @@ export function createOrchestrationRoutes(
         // emitted concurrently. Nothing buffered here is written until after
         // the historical (replay-or-snapshot) frames and the caught-up marker
         // are flushed, so a live event can never overtake buffered history.
-        const writeAuthorized = async (frame: {
-          event: string;
-          data: string;
-          id?: string;
-        }) => {
+        let deliveredSequence = 0;
+        const writeAuthorized = async (frame: StreamFrame) => {
+          if (stream.aborted) throw new Error('stream_closed');
           if (deps.isRequestPrincipalCurrent?.(c.req.raw) === false) {
             closeReason ??= 'authorization-expired';
             stream.abort();
             throw new Error('Orchestration stream authorization expired');
           }
-          await stream.writeSSE(frame);
-          framesWritten++;
+          // Queued frames cannot carry yesterday's authorization into a later write.
+          if (
+            frame.isAuthorized
+              ? frame.isAuthorized()
+              : !frame.threadId ||
+                orchestrationService.canUserReadSession(
+                  frame.threadId,
+                  authority,
+                )
+          ) {
+            const {
+              threadId: _threadId,
+              isAuthorized: _isAuthorized,
+              ...wire
+            } = frame;
+            await stream.writeSSE(wire);
+            framesWritten++;
+          }
+          if (frame.id !== undefined)
+            deliveredSequence = Math.max(deliveredSequence, Number(frame.id));
         };
         let caughtUp = false;
-        const pending: Array<{ event: string; data: string; id?: string }> = [];
+        const pending: StreamFrame[] = [];
+        let pendingBytes = 0;
+        clearPending = () => {
+          pending.length = 0;
+          pendingBytes = 0;
+        };
+        let pendingFrameLimit = 16_384;
+        let projectionRevision = 0;
         let draining = false;
+        let replaying = false;
+        let replayTarget = 0;
         const drainPending = async () => {
-          if (draining) return;
+          if (draining || stream.aborted) return;
           draining = true;
           try {
-            while (pending.length > 0) await writeAuthorized(pending.shift()!);
+            for (;;) {
+              if (stream.aborted) return;
+              if (replaying) {
+                let reconciledRevision = -1;
+                // CLI observers treat EOF as completion. Recover on this socket,
+                // one bounded durable page at a time, without rebuilding history.
+                while (
+                  deliveredSequence < replayTarget ||
+                  reconciledRevision !== projectionRevision
+                ) {
+                  while (deliveredSequence < replayTarget) {
+                    const page = orchestrationService.readEventStreamReplayPage(
+                      deliveredSequence,
+                      {
+                        ...(threadId ? { threadId } : {}),
+                        through: replayTarget,
+                      },
+                      authority,
+                    );
+                    for (const persisted of page.events)
+                      await writeAuthorized({
+                        event: SERVER_EVENTS.ORCHESTRATION_EVENT,
+                        data: JSON.stringify({
+                          event: persisted.payload,
+                          ...orchestrationService.replayTurnProvenanceSidecar(
+                            persisted.payload,
+                          ),
+                        }),
+                        id: String(persisted.globalSequence),
+                        threadId: persisted.threadId,
+                      });
+                    deliveredSequence = Math.max(
+                      deliveredSequence,
+                      page.scannedThrough,
+                    );
+                    await new Promise<void>((resolve) => setImmediate(resolve));
+                  }
+                  if (reconciledRevision !== projectionRevision) {
+                    // Compacted non-durable notifications require current state.
+                    reconciledRevision = projectionRevision;
+                    const sessions =
+                      await orchestrationService.listSessionReadModel(
+                        authority,
+                        threadId ? { threadIds: [threadId] } : undefined,
+                      );
+                    await writeAuthorized({
+                      event: 'orchestration:snapshot',
+                      data: JSON.stringify({
+                        sessions,
+                        ...(epoch ? { epoch } : {}),
+                      }),
+                      id: String(deliveredSequence),
+                    });
+                  }
+                }
+                replaying = false;
+              }
+              const frame = pending.shift();
+              if (!frame) break;
+              pendingBytes -= Buffer.byteLength(frame.data);
+              await writeAuthorized(frame);
+            }
+          } catch {
+            closeReason ??= 'write-error';
+            stream.abort();
           } finally {
             draining = false;
           }
         };
-        const forward = (frame: {
-          event: string;
-          data: string;
-          id?: string;
-        }) => {
-          pending.push(frame);
-          if (caughtUp) void drainPending().catch(() => {});
+        const forward = (
+          frame: StreamFrame,
+          bytes = Buffer.byteLength(frame.data),
+        ) => {
+          if (stream.aborted) return;
+          if (frame.id !== undefined)
+            replayTarget = Math.max(replayTarget, Number(frame.id));
+          else projectionRevision++;
+          if (!replaying) {
+            // A byte cap before caught-up preserves large healthy snapshot backlogs;
+            // excess durable frames are represented by a cursor, never an array.
+            if (
+              pendingBytes + bytes > 8 * 1024 * 1024 ||
+              pending.length >= pendingFrameLimit
+            ) {
+              replaying = true;
+              replayTarget = Math.max(
+                replayTarget,
+                orchestrationService.readEventStreamHead(),
+              );
+              pending.length = 0;
+              pendingBytes = 0;
+            } else {
+              pending.push(frame);
+              pendingBytes += bytes;
+            }
+          }
+          if (caughtUp) void drainPending();
         };
         const dirtyActivityThreads = new Set<string>();
         let activityFlushTimer: ReturnType<typeof setTimeout> | undefined;
@@ -5213,6 +7008,7 @@ export function createOrchestrationRoutes(
             if (conversation)
               forward({
                 event: ORCHESTRATION_STREAM_ACTIVITY_EVENT,
+                threadId: updatedThreadId,
                 data: JSON.stringify({ conversation }),
               });
           }
@@ -5222,6 +7018,10 @@ export function createOrchestrationRoutes(
           else dirtyActivityThreads.add(updatedThreadId);
           if (activityFlushTimer !== undefined)
             clearTimeout(activityFlushTimer);
+          if (dirtyActivityThreads.size >= 1024) {
+            flushActivity();
+            return;
+          }
           activityFlushTimer =
             dirtyActivityThreads.size > 0
               ? setTimeout(flushActivity, 100)
@@ -5231,6 +7031,43 @@ export function createOrchestrationRoutes(
           if (deps.isRequestPrincipalCurrent?.(c.req.raw) === false) {
             closeReason ??= 'authorization-expired';
             stream.abort();
+            return;
+          }
+          if (evt.event === SERVER_EVENTS.ORCHESTRATION_SESSIONS_CHANGED) {
+            const deletedThreadId = evt.data?.threadId;
+            const canRead = evt.data?.canRead;
+            if (
+              typeof deletedThreadId !== 'string' ||
+              typeof canRead !== 'function' ||
+              (threadId !== undefined && threadId !== deletedThreadId)
+            )
+              return;
+            const isAuthorized = () => canRead(authority) === true;
+            if (isAuthorized())
+              forward({ event: evt.event, data: '{}', isAuthorized });
+            return;
+          }
+          if (evt.event === SERVER_EVENTS.ORCHESTRATION_INBOX_CHANGED) {
+            const conversationId = evt.data?.conversationId;
+            if (typeof conversationId !== 'string') return;
+            const isAuthorized = () =>
+              orchestrationService.canUserReadConversation(
+                conversationId,
+                authority,
+              ) &&
+              (threadId === undefined ||
+                threadId === conversationId ||
+                orchestrationService.conversationStreamBinding({
+                  threadId,
+                  method: 'content.text-delta',
+                  force: true,
+                })?.conversationId === conversationId);
+            if (isAuthorized())
+              forward({
+                event: evt.event,
+                data: JSON.stringify({ conversationId }),
+                isAuthorized,
+              });
             return;
           }
           if (
@@ -5254,6 +7091,7 @@ export function createOrchestrationRoutes(
             // next watchdog progress event without polling or re-deriving.
             forward({
               event: SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED,
+              threadId: updatedThreadId,
               data: JSON.stringify({ threadId: updatedThreadId }),
             });
             return;
@@ -5279,27 +7117,10 @@ export function createOrchestrationRoutes(
             !orchestrationService.canUserReadSession(eventThreadId, authority)
           )
             return;
-          const globalSequence = eventPayload?.eventId
-            ? orchestrationService.readEventGlobalSequence(eventPayload.eventId)
-            : undefined;
-          const conversation = orchestrationService.conversationStreamBinding({
-            threadId: eventThreadId,
-            method: eventPayload?.method,
-            namespace: eventPayload?.namespace,
-            type: eventPayload?.type,
-          });
-          if (globalSequence !== undefined && eventPayload?.method)
-            noteActivity(eventThreadId, conversation !== undefined);
-          forward({
-            event: SERVER_EVENTS.ORCHESTRATION_EVENT,
-            data: JSON.stringify({
-              ...(evt.data ?? {}),
-              conversation,
-            }),
-            ...(globalSequence !== undefined
-              ? { id: String(globalSequence) }
-              : {}),
-          });
+          const prepared = prepareLiveFrame(evt);
+          if (prepared.frame.id !== undefined && eventPayload?.method)
+            noteActivity(eventThreadId, prepared.hasBinding);
+          forward(prepared.frame, prepared.bytes);
         });
 
         const head = orchestrationService.readEventStreamHead();
@@ -5392,8 +7213,10 @@ export function createOrchestrationRoutes(
             authority,
           );
           if (!replayBudget.fitsBudget) {
-            const sessions =
-              await orchestrationService.listSessionReadModel(authority);
+            const sessions = await orchestrationService.listSessionReadModel(
+              authority,
+              threadId !== undefined ? { threadIds: [threadId] } : undefined,
+            );
             // #2456 D1: `resolvedHead` stays `head` — see its declaration.
             await writeAuthorized({
               event: 'orchestration:snapshot',
@@ -5431,12 +7254,16 @@ export function createOrchestrationRoutes(
             // The replay carries historical events only. A binding computed
             // now would attach today's child and activity to an old frame.
             // Reconcile present-tense side effects once, after the replay.
-            replaySessions =
-              await orchestrationService.listSessionReadModel(authority);
+            replaySessions = await orchestrationService.listSessionReadModel(
+              authority,
+              threadId !== undefined ? { threadIds: [threadId] } : undefined,
+            );
           }
         } else {
-          const sessions =
-            await orchestrationService.listSessionReadModel(authority);
+          const sessions = await orchestrationService.listSessionReadModel(
+            authority,
+            threadId !== undefined ? { threadIds: [threadId] } : undefined,
+          );
           // #2456 D1: the head is NOT re-read here. An earlier review
           // ("LOW") re-read it to make the cursor "exact", but an exact
           // cursor is unsafe: events appended during the `await` above can
@@ -5464,6 +7291,7 @@ export function createOrchestrationRoutes(
         });
         // The one queue owns both buffered and subsequent live writes. This
         // switch has no await, so a new frame cannot overtake the buffer.
+        pendingFrameLimit = pending.length + 1024;
         caughtUp = true;
         void drainPending().catch(() => {});
 
@@ -5485,8 +7313,10 @@ export function createOrchestrationRoutes(
         // `clearInterval(undefined)`/calling an unset function.
         stopKeepAlive?.();
         stopActivityFlush?.();
+        clearPending?.();
         unsub?.();
         releasePresence();
+        releaseDeletionReader();
         orchestrationStreamPresenceOps.add(1, { op: 'disconnect' });
         orchestrationStreamDuration.record(Date.now() - connectedAt, {
           scope: threadId ? 'thread' : 'all',

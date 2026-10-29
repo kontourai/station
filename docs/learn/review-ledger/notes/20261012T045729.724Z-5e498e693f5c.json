@@ -1,0 +1,9 @@
+{
+  "revision": "147fde2f2346b0ff4df17ee0dbac5fcfe216be00",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.png","note":"UI capture of request inspection. #3559 only maps the turn deduplicator's new expired claim (an evicted client-turn key) onto the existing SessionTurnStartIndeterminateError refusal in sendTurn; no UI, request-inspection route or wire shape changed, so the capture is unaffected.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"UI capture of request inspection. #3559 only maps the turn deduplicator's new expired claim (an evicted client-turn key) onto the existing SessionTurnStartIndeterminateError refusal in sendTurn; no UI, request-inspection route or wire shape changed, so the capture is unaffected.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

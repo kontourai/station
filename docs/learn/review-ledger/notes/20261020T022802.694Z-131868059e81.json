@@ -1,0 +1,7 @@
+{
+  "revision": "91cf4d73dd3fad24274118cb16c345644792007f",
+
+  "notes": [
+    {"path":"docs/reference/env-vars.md","note":"STATION_FEATURES source now names runtime-initialize.ts, where initialize() reads the flag and applies strands-runtime; station-runtime.ts does not read it.","inputs":["docs/reference/env-vars.md"]}
+  ]
+}

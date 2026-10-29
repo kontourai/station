@@ -1,4 +1,9 @@
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
+import {
+  externalMcpToolApprovalIdentity,
+  mcpToolApprovalKey,
+  resolveAuthoredToolApproval,
+} from '@kontourai/station-shared/mcp-tool-selection';
 import type { AgentPolicyService } from '../../services/agents/agent-policy-service.js';
 import type { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
 import { toolDenials } from '../../telemetry/metrics.js';
@@ -22,7 +27,8 @@ type ToolDenialReason =
   | 'delegation_deny_approvals'
   | 'unattended_grant_denied'
   | 'no_approval_channel'
-  | 'policy_evaluation_failed';
+  | 'policy_evaluation_failed'
+  | 'project_tool_policy';
 
 /**
  * `defer` means "Station's policy is not deciding this call; the engine's own
@@ -53,7 +59,7 @@ export type PreToolPolicyDecision =
       toolGrant?: true;
     }
   | { behavior: 'deny'; denial: ToolCallDenial }
-  | { behavior: 'ask' }
+  | { behavior: 'ask'; required?: true }
   | { behavior: 'defer' };
 
 /**
@@ -78,6 +84,10 @@ export type StagedPreToolPolicyEvaluator = (
 ) => Promise<PreToolPolicyDecision>;
 
 interface StagedPreToolPolicyDeps {
+  projectToolPolicy?: (
+    invocation: InvocationContext,
+    tool: ToolCallContext,
+  ) => void;
   spec: AgentSpec;
   agentPolicyService?: AgentPolicyService;
   approvalGuardian?: ApprovalGuardianService;
@@ -443,6 +453,54 @@ export function createStagedPreToolPolicyEvaluator(
           policyBlockQuotation(verdict),
         );
       }
+    }
+
+    try {
+      deps.projectToolPolicy?.(invocation, tool);
+    } catch {
+      return deny(
+        'project_tool_policy',
+        tool.toolName,
+        'is no longer permitted by this Project.',
+      );
+    }
+
+    const approvalName = options.identity?.delegationToolName ?? tool.toolName;
+    const mapping = deps.toolNameMapping.get(approvalName);
+    const external =
+      options.interaction === 'external'
+        ? externalMcpToolApprovalIdentity(tool.toolName)
+        : { ambiguous: false, key: undefined };
+    const sourceKey =
+      options.interaction === 'external'
+        ? external.key
+        : mapping?.provenance
+          ? mcpToolApprovalKey(
+              mapping.provenance.integrationId,
+              mapping.provenance.originalToolName,
+            )
+          : external.key;
+    const explicitAsk =
+      (external.ambiguous && !!deps.spec.tools?.askBeforeUse?.length) ||
+      resolveAuthoredToolApproval(
+        [tool.toolName, approvalName, mapping?.original ?? approvalName],
+        deps.spec.tools?.autoApprove,
+        deps.spec.tools?.askBeforeUse,
+        sourceKey,
+      ) === 'ask';
+    if (explicitAsk) {
+      const review = await reviewWithGuardian(deps, tool, invocation);
+      if (review.kind === 'decided' && review.decision.behavior === 'deny')
+        return review.decision;
+      if (invocation.delegation?.denyApprovals)
+        return delegatedApprovalDenial(tool.toolName, options.interaction);
+      if (options.interaction === 'managed' && !options.hasInteractiveApproval)
+        return deny(
+          'no_approval_channel',
+          tool.toolName,
+          'requires a person to approve this call.',
+        );
+      return { behavior: 'ask', required: true };
     }
 
     if (deps.isGranted(tool)) return { behavior: 'allow', toolGrant: true };

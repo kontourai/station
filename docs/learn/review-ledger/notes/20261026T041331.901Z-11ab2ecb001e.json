@@ -1,0 +1,7 @@
+{
+  "revision": "c2e2157d9347c4023d33f685b180da67ce5a66bc",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Merge of origin/main into feat/walkthroughs: the branch's runtime-routes.ts change composes Walkthrough, media-tools and transcription routes behind Feature Previews and does not alter terminal routes; api.md gains Walkthrough/transcription/media-tools sections beside the terminal-session entries, both preserved. On the combined tree, terminal-service, terminal-sessions.process, pairing-route-scopes and walkthroughs route suites passed (4 files, 254 tests).","inputs":["docs/design/terminal.md","src-server/runtime/routes/runtime-routes.ts","docs/reference/api.md"]}
+  ]
+}

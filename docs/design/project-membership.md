@@ -26,10 +26,12 @@
 
 > Status: initial verified-tailnet identity and explicit device binding approved
 > by the owner on 2026-09-12 for [#1513](https://github.com/kontourai/station/issues/1513).
-> This document specifies the contract; it does not claim implemented API or
-> membership capability. [#488](https://github.com/kontourai/station/issues/488)
-> owns implementation and [#497](https://github.com/kontourai/station/issues/497)
-> owns the two-human acceptance journey.
+> When approved, this document specified the contract and claimed no
+> implemented API. The membership service, routes and runtime composition
+> named in the banner above have since shipped under
+> [#488](https://github.com/kontourai/station/issues/488) (closed);
+> [#497](https://github.com/kontourai/station/issues/497) still owns the
+> two-human acceptance journey.
 
 ## Outcome and vocabulary
 
@@ -38,6 +40,10 @@ Project-shared work, contribute where permitted, and start independently
 attributed work on separately approved compute. Joining does not offer the
 collaborator's files, credentials or computer. A viewing device needs neither
 an agent engine nor a checkout.
+
+Project roles are not Station groups. A Station group (Admin or Member, #3557)
+caps what any device tied to a person may do across the Station; a Project role
+says what that person may do in one Project. Neither grants the other.
 
 Use **Device** for what connects and **Station** for what it connects to, as
 [the glossary](../glossary.md#station-device-client) requires. In this document,
@@ -152,7 +158,12 @@ Do not auto-join from a link preview, email match or broker account listing.
 
 The initial action model distinguishes viewing shared work, discussion,
 document editing, starting work, approving work, managing members, managing
-extensions and managing compute contributions. Friendly role presets select
+extensions, managing layouts and managing compute contributions. The
+`manage-layouts` action is held by owners and admins; contributors and viewers
+cannot mutate shared layouts or promote a personal Board. Personal Project
+layouts retain principal ownership and require current Project `view` plus
+[Project policy](../reference/contracts.md#personal-project-layouts-2996); they
+never grant access to another Project. Friendly role presets select
 these actions; they are not tokens appended to device pairing scopes.
 Only an authorized owner/admin may grant actions within their grant authority.
 Reject removal of the last active owner unless ownership transfer commits first.
@@ -203,6 +214,38 @@ Missing, stale and unavailable authorization fail closed with distinguishable
 outcomes. Recheck after asynchronous preparation and immediately before the
 commit or external effect; record the actual membership/grant revision used.
 
+The service's `withProjectAction` leases the exact Project incarnation,
+checks the expected actor and requested action, and supplies a synchronous
+currentness check to the domain mutation. `currentActionAdmission` repeats
+that admission for delayed responses and stream delivery. These helpers do
+not grant device, source, or compute access. Their caller must compose those
+independent checks; the Room access adapter does so through its runtime ports.
+The focused access test exercises contributor writes, viewer reads with writes
+refused, stale-actor refusal, and revoked transport. It does not establish a
+production two-person browser journey.
+
+## Project agent authoring and tool acquisition
+
+The scoped `/api/tool-library` surface permits current Admins and Owners to
+create/edit constrained agents bound to the exact local Project ID. Owners can
+narrow the default all-shared-sources policy. Operators install sources;
+Project admins request missing permitted sources through a durable Inbox item.
+Operator installation approval does not widen a selected Project policy.
+Personal OAuth remains owned by the requesting principal and Project.
+
+**My access** projects Station authority and current Project roles without
+promoting an account merely because its browser also presents an operator
+credential. These authoring leaves are separately admitted for account-bound
+Devices; the legacy Agent mutation and direct Agent/orchestration HTTP turn
+gates remain unchanged. Project Room Agent requests use a separate admission
+path: current Project `execute` and `view` actions, independent transport and
+host execution permission, and a verified Project execution root. Their captured
+Task evidence includes only summaries already shared to that exact Project;
+authoring or Room participation grants no operator authority. See
+[Shared Projects](../guides/agent-configuration.md#shared-projects),
+[route authority](../../src-server/runtime/routes/tool-library-runtime.ts) and
+[Project transaction owner](../../src-server/services/projects/project-membership-service.ts).
+
 ## Agent audience
 
 > Status: the declaration and the list/read/turn refusal are implemented for
@@ -219,11 +262,15 @@ owning Project. Absent means operator only, so every existing Agent stays hidden
 from members.
 
 **Who is a member caller.** A member caller is a request that resolves to a
-deployment account: an account session on a credential that is not
-account-bound, or a station-control tool call whose session that account owns
-(#2377 slice B). This uses the same rule as the Project routes'
-`authenticatedProjectMember`. A station-control call that resolves to no
-principal is admitted to no Agent. The operator, personal and peer Devices, and
+deployment account: an authenticated account session, a personal access token
+tied to an account whose standing is current (#3586), or a station-control
+tool call whose session that account owns (#2377 slice B). One rule,
+[`accountMemberCaller`](../../src-server/runtime/bootstrap/account-member-caller.ts),
+decides this for the Project routes, the Project catalogue, `/events` Project
+frames and the Agent audience gate. An account credential that does not
+authenticate, a token that no longer resolves, and a station-control call that
+resolves to no principal are no caller at all: they read no Project and are
+admitted to no Agent. The operator, personal and peer Devices, and
 Tailnet persons keep the operator's rules. Device and Station identities are
 not Project members. Account-bound collaborator Devices are refused every Agent
 path by their own gate before audience is consulted.
@@ -315,10 +362,11 @@ be resolved from the intersection before the engine starts. Leaving a tool out
 of the prompt does not remove it. An engine that cannot enforce the
 intersection per tool must not run member turns.
 
-Until that path exists, Station refuses member turns rather than running them
-with the operator's authority. This removes one earlier capability: an account
-member's station-control dispatch into a Project where it holds `execute`
-(#2377 slice C2a).
+The direct Agent and orchestration HTTP surfaces listed above continue to
+refuse member turns pending that intersection-authority path. This restriction
+includes an account member's station-control dispatch into a Project where it
+holds `execute` (#2377 slice C2a). It does not describe the separately admitted
+Project Room Agent request path documented above.
 
 ## Revocation and concurrent work
 

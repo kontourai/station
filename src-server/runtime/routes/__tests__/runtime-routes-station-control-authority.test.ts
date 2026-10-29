@@ -279,16 +279,20 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     const text = await response.text();
-    let code: unknown;
+    let parsed: { code?: unknown; reason?: unknown } = {};
     try {
-      code = (JSON.parse(text) as { code?: unknown }).code;
+      parsed = JSON.parse(text) as typeof parsed;
     } catch {
-      code = undefined;
+      parsed = {};
     }
+    const { code, reason } = parsed;
+    // A scope refusal names its reason beside the code: `code:reason`.
     return response.status === 403 &&
       typeof code === 'string' &&
       code.startsWith('station_control_')
-      ? code
+      ? typeof reason === 'string'
+        ? `${code}:${reason}`
+        : code
       : 'passed-guard';
   }
 
@@ -445,36 +449,37 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
           'bearer other Project',
           bearer,
           'op-thread-b',
-          'station_control_assurance_insufficient',
+          'station_control_out_of_scope:other-project',
         ],
         [
           'bearer no Project',
           bearer,
           'op-thread-none',
-          'station_control_assurance_insufficient',
+          'station_control_out_of_scope:global-space',
         ],
         // Its slug names the caller's Project now, but a slug lookup is not
         // the record Station stamped at its start.
         // Slice C2a: an unreadable Project proves no `execute` held there,
-        // so no credential would admit it.
+        // so only a bound operator passes; the refusal says Station cannot
+        // confirm its Project.
         [
           'bearer slug-lookup Project',
           bearer,
           'op-thread-slug',
-          'station_control_role_required',
+          'station_control_out_of_scope:target-unavailable',
         ],
         // A host thread needs a bound caller.
         [
           'bearer host',
           bearer,
           'op-thread-host',
-          'station_control_assurance_insufficient',
+          'station_control_out_of_scope:host',
         ],
         [
           'delegated host',
           delegated,
           'op-thread-host',
-          'station_control_assurance_insufficient',
+          'station_control_out_of_scope:host',
         ],
         [
           'bound person host',
@@ -599,7 +604,14 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
           callerFor('op-codex', 'url-token'),
           { type, ...thread('op-thread-b') },
         ),
-      ]).toEqual([type, 'station_control_assurance_insufficient']);
+      ]).toEqual([
+        type,
+        // A thread command says why; an approval command needs a bound
+        // operator whatever the thread (an assurance gate).
+        ['respondToRequest', 'setApprovalMode'].includes(type)
+          ? 'station_control_assurance_insufficient'
+          : 'station_control_out_of_scope:other-project',
+      ]);
     }
   });
 

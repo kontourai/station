@@ -9,11 +9,19 @@ import {
 } from '../stream-orchestrator.js';
 
 describe('createElicitationCallback', () => {
-  test('binds a managed approval to its conversation for canonical task routing', async () => {
+  test('explicit Ask me still publishes a conversation-bound approval despite an automatic grant', async () => {
     const register = vi.fn().mockResolvedValue(true);
     const inject = vi.fn();
     const callback = createElicitationCallback(
-      { name: 'Reviewer', tools: { autoApprove: [] } } as any,
+      {
+        name: 'Reviewer',
+        prompt: 'Review tool calls',
+        tools: {
+          mcpServers: [],
+          autoApprove: ['*'],
+          askBeforeUse: ['repo_write'],
+        },
+      },
       new Map(),
       { register } as any,
       { inject } as any,
@@ -202,6 +210,7 @@ describe('writeSSEError', () => {
       type: 'error',
       errorText: 'The response stream failed.',
       statusCode: 429,
+      failureKind: 'rate_limited',
     });
     expect(writes[0]).not.toContain('sk-live-SECRET');
     expect(writes[0]).not.toContain('provider.example.test');
@@ -267,7 +276,7 @@ describe('writeSSEError', () => {
   });
 });
 
-// archive#1207 review round 2, item 3: the keepalive producer's cadence
+// archive#1207: the keepalive producer's cadence
 // and cleanup were previously proven only by inspection (the two watchdog
 // suites at the client and adapter layers only ever verify the CONSUMER
 // side — that keepalives reset a stall timer). This exercises the

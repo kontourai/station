@@ -94,6 +94,18 @@ describe('revocation provenance', () => {
       describeDeviceRevocation(
         device({
           revokedAt: NOW - HOUR,
+          revocation: {
+            state: 'recorded',
+            actor: 'device-access',
+            reason: 'owner-request',
+          },
+        }),
+      ),
+    ).toBe('Revoked by a device administrator · Owner request');
+    expect(
+      describeDeviceRevocation(
+        device({
+          revokedAt: NOW - HOUR,
           revocation: { state: 'unobserved-before-revocation-provenance' },
         }),
       ),
@@ -219,6 +231,8 @@ describe('describeDeviceScope', () => {
     // home:transfer brought the set to eight tokens, and home:control and
     // engine:login (#2035) to ten, coding:exec (#2412) to eleven, and
     // approval:full-access (#2436) to twelve, and relay:manage to thirteen.
+    // The current vocabulary also includes terminal:observe, access:devices,
+    // and operator-promoted telemetry:manage; Full access requires all of them.
     // Each earlier full set is now
     // Custom.
     expect(
@@ -243,7 +257,9 @@ describe('describeDeviceScope', () => {
       ),
     ).toBe('Custom access');
     const fullAccessScope = [
+      'access:devices',
       'relay:manage',
+      'telemetry:manage',
       'approval:full-access',
       'coding:exec',
       'engine:login',
@@ -253,6 +269,7 @@ describe('describeDeviceScope', () => {
       'access:approve',
       'inference:invoke',
       'access:manage',
+      'terminal:observe',
       'terminal:operate',
       'orchestration:operate',
       'orchestration:read',
@@ -266,6 +283,13 @@ describe('describeDeviceScope', () => {
     expect(
       describeDeviceScope(
         fullAccessScope.filter((token) => token !== 'consent:decide').join(' '),
+      ),
+    ).toBe('Custom access');
+    expect(
+      describeDeviceScope(
+        fullAccessScope
+          .filter((token) => token !== 'telemetry:manage')
+          .join(' '),
       ),
     ).toBe('Custom access');
   });

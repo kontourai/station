@@ -178,7 +178,7 @@ export interface InjectedConnection {
   name: string;
   /** Present only when reachable: a `running` bundled server, or a CLI base. */
   url?: string;
-  source: 'managed-loopback' | 'cli-base' | 'mobile-default';
+  source: 'managed-loopback' | 'cli-base';
   /** Bundled-server lifecycle state; set for `managed-loopback` only. */
   status?: InjectedConnectionStatus;
   /** Current host-reported local-service identity, when one is available. */
@@ -192,6 +192,14 @@ export interface AccessEndpoint {
   kind: AccessEndpointKind;
   priority: number;
   verifiedAt?: number;
+  /**
+   * `advertised`: the Station reported this address itself
+   * (`GET /api/system/routes`, docs/design/station-routes.md). Absent for a
+   * route the user added or pairing created. The source changes only how the
+   * route is listed and pruned, never whether it is trusted: every route is
+   * checked against the handshake's `environmentId` before use.
+   */
+  source?: 'advertised';
 }
 
 /** A lookup reference only. Bearer material is held by a separate adapter. */

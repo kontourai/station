@@ -10,8 +10,8 @@ import { ghAttestationArgs } from '../verify-release-cohort.mjs';
  * These tests derive the property from the workflow graph rather than naming
  * jobs: a job "publishes" if any of its steps carries a provider or authority
  * effect, and the rule is that no publishing job may run before the exact-SHA
- * full-regression receipt. Adding a Play upload to the staging phase, or
- * dropping the regression dependency from a publisher, fails here without
+ * source usability gate. Adding a Play upload to the staging phase, or
+ * dropping the source-gate dependency from a publisher, fails here without
  * anyone having to remember to update a job list.
  *
  * The effect vocabulary below is hand-maintained: a new way of publishing
@@ -189,7 +189,7 @@ describe('two-phase native Nightly', () => {
     ).toBe(false);
   });
 
-  test('no job with a provider or authority effect runs before the exact-SHA full-regression receipt', () => {
+  test('no job with a provider or authority effect runs before the exact-SHA usability gate', () => {
     const nightly = workflow('nightly.yml');
     const publishers: string[] = [];
     for (const [id, job] of Object.entries(nightly.jobs ?? {})) {
@@ -198,12 +198,12 @@ describe('two-phase native Nightly', () => {
       publishers.push(id);
       expect(
         needsOf(job),
-        `${id} publishes (${effects.join('; ')}) so it must need full-regression`,
-      ).toContain('full-regression');
+        `${id} publishes (${effects.join('; ')}) so it must need the source gate`,
+      ).toContain('test-gate');
       expect(
         job.if,
-        `${id} must refuse anything but a literal regression success`,
-      ).toContain("needs['full-regression'].result == 'success'");
+        `${id} must refuse anything but a literal source-gate success`,
+      ).toContain("needs['test-gate'].result == 'success'");
     }
     // The rule must have found the real publishers, or it proves nothing.
     expect(publishers.sort()).toEqual([

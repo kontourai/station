@@ -1,4 +1,6 @@
 import type { StartTaskStarterLaunchResult } from '@kontourai/station-contracts/starter-work';
+import { taskStatusLabel } from '@kontourai/station-contracts/task-graph';
+import { workItemRefKey } from '@kontourai/station-contracts/work-item-provider';
 import { resolveWorkflowTaskMatch } from '@kontourai/station-contracts/workflow';
 import {
   type GitStatusResult,
@@ -10,6 +12,7 @@ import {
   useDispatchTaskMutation,
   useLaunchStartTaskStarterMutation,
   useQueryClient,
+  useStartTaskFromWorkItemMutation,
   useTaskClaimQuery,
   useTaskGraphQuery,
   useTasksQuery,
@@ -17,8 +20,9 @@ import {
   useWorkItemClaimQuery,
   useWorkItemsQuery,
 } from '@kontourai/station-sdk';
+import { StatusBadge } from '@kontourai/ui/react';
 import type { FormEvent } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { WorkflowStatusLine } from '../../components/flow/WorkflowStatusLine';
 import { ProjectTaskBoard } from '../../components/ProjectTaskBoard';
@@ -26,8 +30,11 @@ import { describeReadFailure, Empty, ErrorState } from '../../components/state';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { toastStore } from '../../contexts/ToastContext';
 import { browserStarterWorkOperationStore } from '../../lib/starter-work-operation-store';
+import { requestTaskShaping } from '../../lib/task-shaping';
+import { isPlainLeftClick } from '../../utils/attentionOpen';
 import { ProjectTaskSharingControl } from './ProjectTaskSharingControl';
 import '../ProjectPage.css';
+import './ProjectTasksSection.css';
 
 /** Human-readable label for a claim actor (roadmap archive#584, part of epic
  * archive#580, S4) — used by both the local-task guard and the provider-item badge. */
@@ -72,10 +79,11 @@ function isNamespacedWorkItemRef(ref: string): boolean {
  * Provider-backed work items to render alongside local tasks (archive#583, part of
  * epic archive#580, S3). Local-kind provider results are excluded — the local task
  * list above already renders those TaskRecords directly — and any item
- * whose (namespaced) `workItemRef` already matches a local task's
+ * whose (namespaced) `workItemRef` already matches an open local task's
  * `workItemRef` is excluded too, so a task that has already joined its
- * upstream work item doesn't render twice. Read-only this slice: no
- * dispatch/write for these rows (S4/FA2-post-bump territory).
+ * upstream work item doesn't render twice. A done or canceled Task no longer
+ * holds its item (#4003 cardinality), so that item shows again and can start
+ * a new Task. The tracker item itself stays read-only.
  */
 function externalProviderItems(
   providers: Array<{ identity: { kind: string }; items: ProviderWorkItem[] }>,
@@ -83,8 +91,11 @@ function externalProviderItems(
 ): ProviderWorkItem[] {
   const localWorkItemRefs = new Set(
     localTasks.flatMap((task) =>
-      task.workItemRef && isNamespacedWorkItemRef(task.workItemRef)
-        ? [task.workItemRef]
+      task.workItemRef &&
+      isNamespacedWorkItemRef(task.workItemRef) &&
+      task.status !== 'done' &&
+      task.status !== 'canceled'
+        ? [workItemRefKey(task.workItemRef)]
         : [],
     ),
   );
@@ -95,7 +106,8 @@ function externalProviderItems(
       (item) =>
         !item.workItemRef ||
         !isNamespacedWorkItemRef(item.workItemRef) ||
-        !localWorkItemRefs.has(item.workItemRef),
+        // GitHub refs compare case-insensitively (#4003 review F5).
+        !localWorkItemRefs.has(workItemRefKey(item.workItemRef)),
     );
 }
 
@@ -115,6 +127,7 @@ export function ProjectTasksSection({
   presentation?: 'list' | 'board';
 }) {
   const { navigate } = useNavigation();
+  const dispatchReasonId = useId();
   const starterId =
     typeof window !== 'undefined'
       ? new URLSearchParams(window.location.search).get('starter')
@@ -141,12 +154,32 @@ export function ProjectTasksSection({
     refetch: refetchTasks,
   } = useTasksQuery(slug);
   const sortedTasks = sortTasks(tasks as TaskRecord[]);
+  const [collection, setCollection] = useState<'now' | 'backlog' | 'history'>(
+    'now',
+  );
+  const collections = {
+    now: sortedTasks.filter((task) =>
+      ['ready', 'in_progress', 'blocked', 'review', 'verification'].includes(
+        task.status,
+      ),
+    ),
+    backlog: sortedTasks.filter((task) =>
+      ['todo', 'triage'].includes(task.status),
+    ),
+    history: sortedTasks.filter((task) =>
+      ['done', 'canceled'].includes(task.status),
+    ),
+  };
+  const visibleTasks = collections[collection];
   const [title, setTitle] = useState('');
   const [selectedTaskId, setSelectedTaskId] = useState('');
+  const [showRecordDetails, setShowRecordDetails] = useState(false);
   const [selectedProviderItemId, setSelectedProviderItemId] = useState('');
   const createTaskMutation = useCreateTaskMutation();
   const dispatchTaskMutation = useDispatchTaskMutation();
   const launchStarterMutation = useLaunchStartTaskStarterMutation();
+  const startFromWorkItemMutation = useStartTaskFromWorkItemMutation();
+  const [startFromWorkItemError, setStartFromWorkItemError] = useState('');
   const starterOperationId = useRef<string | null>(null);
   const selectedTask = sortedTasks.find((task) => task.id === selectedTaskId);
   const { data: taskGraph } = useTaskGraphQuery(selectedTaskId, {
@@ -341,7 +374,7 @@ export function ProjectTasksSection({
   }
 
   async function dispatchSelectedTask() {
-    if (!selectedTask) return;
+    if (!selectedTask?.agentId?.trim()) return;
     const result = await dispatchTaskMutation.mutateAsync({
       taskId: selectedTask.id,
       dispatch: {
@@ -357,12 +390,61 @@ export function ProjectTasksSection({
     await invalidateTasks(result.task.id);
   }
 
+  /**
+   * Start Task on a board item (#4003): the server observes the item, creates
+   * the Task with the item's body and latest comments as its brief, or answers
+   * with the item's open Task, which this opens instead.
+   */
+  async function startTaskFromProviderItem(item: ProviderWorkItem) {
+    if (!item.workItemRef) return;
+    setStartFromWorkItemError('');
+    let result: Awaited<
+      ReturnType<typeof startFromWorkItemMutation.mutateAsync>
+    >;
+    try {
+      result = await startFromWorkItemMutation.mutateAsync({
+        projectId: slug,
+        workItemRef: item.workItemRef,
+        agentId: agents?.[0],
+        workspaceBinding: {
+          workingDirectory: projectWorkingDirectory,
+          repoRoot: gitStatus?.isRepo ? gitStatus.repoRoot : undefined,
+          worktreePath: gitStatus?.isRepo ? gitStatus.repoRoot : undefined,
+          branch: gitStatus?.isRepo ? gitStatus.branch : undefined,
+          sourceSurface: 'ui',
+        },
+      });
+    } catch (error) {
+      setStartFromWorkItemError(describeReadFailure(error));
+      return;
+    }
+    // The item's open Task is in another Project: say so here, and stay on
+    // this board rather than open a Task this Project does not hold.
+    if ('elsewhere' in result && result.elsewhere) {
+      setStartFromWorkItemError(
+        'This item already has an open Task in another Project.',
+      );
+      return;
+    }
+    if (result.existing)
+      toastStore.show('This item already has an open Task. Opening it.');
+    else if (!result.briefSaved)
+      toastStore.show(
+        'The Task was created, but the item’s description could not be copied into it. Open the item to read it.',
+        undefined,
+        12_000,
+      );
+    await invalidateTasks(result.task.id);
+    navigate(`/tasks/${encodeURIComponent(result.task.id)}`);
+  }
+
   function selectLocalTask(taskId: string) {
     setSelectedProviderItemId('');
     setSelectedTaskId(taskId);
   }
 
   function selectProviderItem(itemId: string) {
+    setStartFromWorkItemError('');
     setSelectedTaskId('');
     setSelectedProviderItemId(itemId);
   }
@@ -371,46 +453,68 @@ export function ProjectTasksSection({
   const binding = selectedTask?.workspaceBinding;
 
   return (
-    <section className="project-page__tasks">
+    <section className="project-page__tasks project-tasks-section">
       <div className="project-page__section-header">
         <span className="project-page__section-label">Tasks</span>
         <Button size="sm" onClick={() => void refetchTasks()}>
-          Refresh tasks
+          Refresh Tasks
         </Button>
       </div>
-      {presentation === 'board' ? (
-        <p>
-          Follow the work by its recorded status. Open a task to discuss it,
-          inspect contributions, and keep results.
-        </p>
-      ) : null}
+      {presentation === 'list' && (
+        <nav
+          className="project-tasks-section__collections"
+          aria-label="Task collection"
+        >
+          {(['now', 'backlog', 'history'] as const).map((id) => (
+            <Button
+              key={id}
+              active={collection === id}
+              aria-pressed={collection === id}
+              onClick={() => {
+                setCollection(id);
+                setShowRecordDetails(false);
+              }}
+            >
+              {{ now: 'Now', backlog: 'Backlog', history: 'History' }[id]} ·{' '}
+              {collections[id].length}
+            </Button>
+          ))}
+        </nav>
+      )}
 
-      <form className="project-page__task-form" onSubmit={createTask}>
-        {starterId === 'start-task' && (
+      {starterId !== 'start-task' ? (
+        <Button
+          variant="primary"
+          onClick={() => requestTaskShaping({ projectSlug: slug })}
+        >
+          New Task
+        </Button>
+      ) : (
+        <form className="project-page__task-form" onSubmit={createTask}>
           <p role="status">
             Create a focused starter task. Station will link the exact task
             after it is created.
           </p>
-        )}
-        <input
-          className="project-page__task-input"
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-          placeholder="Create a task"
-          aria-label="Task title"
-        />
-        <button
-          className="project-page__add-btn project-page__add-btn--primary"
-          type="submit"
-          disabled={
-            !title.trim() ||
-            createTaskMutation.isPending ||
-            launchStarterMutation.isPending
-          }
-        >
-          Add task
-        </button>
-      </form>
+          <input
+            className="project-page__task-input"
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder="Create a task"
+            aria-label="Task title"
+          />
+          <button
+            className="project-page__add-btn project-page__add-btn--primary"
+            type="submit"
+            disabled={
+              !title.trim() ||
+              createTaskMutation.isPending ||
+              launchStarterMutation.isPending
+            }
+          >
+            Add task
+          </button>
+        </form>
+      )}
       {/*
         station#3965: these six sentences are what a person reads after
         pressing "Add task", and every one of them used to name the mechanism
@@ -466,7 +570,7 @@ export function ProjectTasksSection({
         )}
 
       <div
-        className={`project-page__task-grid${presentation === 'board' ? ' project-page__task-grid--board' : ''}`}
+        className={`project-page__task-grid${presentation === 'board' ? ' project-page__task-grid--board' : ' project-tasks-section__list-layout'}`}
       >
         <div className="project-page__task-list">
           {tasksError ? (
@@ -482,7 +586,11 @@ export function ProjectTasksSection({
             />
           ) : sortedTasks.length === 0 && providerItems.length === 0 ? (
             /* empty-state action: task creation form is adjacent */
-            <Empty variant="compact" label="No tasks yet." />
+            <Empty
+              variant="compact"
+              label="Start a Task"
+              description="Describe a goal and work through it here."
+            />
           ) : (
             <>
               {presentation === 'board' ? (
@@ -492,25 +600,62 @@ export function ProjectTasksSection({
                   onSelect={selectLocalTask}
                 />
               ) : (
-                sortedTasks.map((task) => (
-                  <button
-                    className={`project-page__task-row ${
-                      task.id === selectedTaskId
-                        ? 'project-page__task-row--active'
-                        : ''
-                    }`}
-                    key={task.id}
-                    type="button"
-                    onClick={() => selectLocalTask(task.id)}
-                  >
-                    <span className="project-page__task-row-title">
-                      {task.title}
-                    </span>
-                    <span className="project-page__task-row-meta">
-                      {task.status} · {task.priority}
-                    </span>
-                  </button>
+                visibleTasks.map((task) => (
+                  <div className="project-tasks-section__outcome" key={task.id}>
+                    <a
+                      className="project-tasks-section__open"
+                      href={`/tasks/${encodeURIComponent(task.id)}`}
+                      onClick={(event) => {
+                        if (!isPlainLeftClick(event)) return;
+                        event.preventDefault();
+                        navigate(`/tasks/${encodeURIComponent(task.id)}`);
+                      }}
+                    >
+                      <span className="project-tasks-section__title">
+                        {task.title}
+                      </span>
+                      <span className="project-page__task-row-meta">
+                        <StatusBadge
+                          tone="neutral"
+                          status={taskStatusLabel(task.status)}
+                        />
+                        {task.agentId?.trim() && (
+                          <span>Agent: {task.agentId}</span>
+                        )}
+                        {task.priority !== 'normal' && (
+                          <span>{task.priority}</span>
+                        )}
+                      </span>
+                      <span className="project-tasks-section__next">
+                        Open Task
+                      </span>
+                    </a>
+                    <Button
+                      size="sm"
+                      aria-label={`Details for ${task.title}`}
+                      aria-expanded={
+                        showRecordDetails && selectedTaskId === task.id
+                      }
+                      onClick={() => {
+                        selectLocalTask(task.id);
+                        setShowRecordDetails(true);
+                      }}
+                    >
+                      Details
+                    </Button>
+                  </div>
                 ))
+              )}
+              {presentation === 'list' && visibleTasks.length === 0 && (
+                <p className="project-tasks-section__collection-empty">
+                  {
+                    {
+                      now: 'Nothing active right now.',
+                      backlog: 'The backlog is clear.',
+                      history: 'Completed and canceled Tasks appear here.',
+                    }[collection]
+                  }
+                </p>
               )}
               {providerItems.map((item) => (
                 <button
@@ -541,7 +686,21 @@ export function ProjectTasksSection({
           )}
         </div>
 
-        <div className="project-page__task-detail">
+        <div
+          className="project-page__task-detail"
+          hidden={
+            presentation === 'list' &&
+            !showRecordDetails &&
+            !selectedProviderItem
+          }
+        >
+          {presentation === 'list' &&
+            showRecordDetails &&
+            !selectedProviderItem && (
+              <Button size="sm" onClick={() => setShowRecordDetails(false)}>
+                Close details
+              </Button>
+            )}
           {selectedProviderItem ? (
             <>
               <div className="project-page__task-detail-header">
@@ -579,10 +738,33 @@ export function ProjectTasksSection({
                       </div>
                     )}
                 </div>
+                {selectedProviderItem.workItemRef ? (
+                  <div className="project-page__task-detail-actions project-page__task-detail-actions--start">
+                    <Button
+                      className="project-page__start-task"
+                      variant="primary"
+                      pending={startFromWorkItemMutation.isPending}
+                      pendingLabel="Starting…"
+                      onClick={() =>
+                        void startTaskFromProviderItem(selectedProviderItem)
+                      }
+                    >
+                      Start Task
+                    </Button>
+                  </div>
+                ) : null}
               </div>
-              <div className="project-page__task-empty">
-                Linked work item — dispatch is not available for this item yet.
-              </div>
+              {startFromWorkItemError ? (
+                <p className="project-page__task-detail-meta" role="alert">
+                  Couldn’t start a Task from this item. {startFromWorkItemError}
+                </p>
+              ) : (
+                <div className="project-page__task-empty">
+                  {selectedProviderItem.workItemRef
+                    ? 'Start Task copies this item’s description and latest comments into a new Task, or opens the item’s open Task.'
+                    : 'This item has no tracker reference, so a Task can’t be started from it.'}
+                </div>
+              )}
             </>
           ) : selectedTask ? (
             <>
@@ -592,9 +774,7 @@ export function ProjectTasksSection({
                     {selectedTask.title}
                   </div>
                   <div className="project-page__task-detail-meta">
-                    {selectedTask.sessionId
-                      ? `Session ${selectedTask.sessionId}`
-                      : 'No session yet'}
+                    {selectedTask.sessionId ? 'Run linked' : 'No session yet'}
                   </div>
                   {taskClaim?.state === 'claimed-by-me' && (
                     <div
@@ -613,6 +793,31 @@ export function ProjectTasksSection({
                         Claimed by {actorLabel(taskClaim.actor)}
                       </div>
                     )}
+                  {!selectedTask.agentId?.trim() && (
+                    <div
+                      className="project-page__task-detail-meta"
+                      role="status"
+                      id={dispatchReasonId}
+                    >
+                      Dispatch needs an agent, and this Task has none. See{' '}
+                      <a
+                        href={`/projects/${encodeURIComponent(slug)}/edit?section=agents`}
+                        onClick={(event) => {
+                          if (!isPlainLeftClick(event)) return;
+                          event.preventDefault();
+                          navigate(
+                            `/projects/${encodeURIComponent(slug)}/edit`,
+                            {
+                              section: 'agents',
+                            },
+                          );
+                        }}
+                      >
+                        Project settings › Agents
+                      </a>
+                      .
+                    </div>
+                  )}
                   {workflowMatch && (
                     <WorkflowStatusLine
                       entry={{
@@ -639,12 +844,13 @@ export function ProjectTasksSection({
                   <button
                     className="project-page__add-btn"
                     type="button"
-                    title={
-                      taskClaim?.state === 'claimed-by-other' && taskClaim.actor
-                        ? `Claimed by ${actorLabel(taskClaim.actor)}`
+                    aria-describedby={
+                      !selectedTask.agentId?.trim()
+                        ? dispatchReasonId
                         : undefined
                     }
                     disabled={
+                      !selectedTask.agentId?.trim() ||
                       dispatchTaskMutation.isPending ||
                       selectedTask.status === 'done' ||
                       selectedTask.status === 'canceled' ||
@@ -658,28 +864,37 @@ export function ProjectTasksSection({
                   </button>
                 </div>
               </div>
-              <dl className="project-page__task-binding">
-                <div>
-                  <dt>Working directory</dt>
-                  <dd>{binding?.workingDirectory ?? 'Unavailable'}</dd>
-                </div>
-                <div>
-                  <dt>Git top-level</dt>
-                  <dd>{binding?.repoRoot ?? 'Unavailable'}</dd>
-                </div>
-                <div>
-                  <dt>Worktree</dt>
-                  <dd>{binding?.worktreePath ?? 'Unavailable'}</dd>
-                </div>
-                <div>
-                  <dt>Branch</dt>
-                  <dd>{binding?.branch ?? 'Unavailable'}</dd>
-                </div>
-                <div>
-                  <dt>Agent</dt>
-                  <dd>{selectedTask.agentId ?? 'Unavailable'}</dd>
-                </div>
-              </dl>
+              <details className="project-page__task-record-details">
+                <summary>Details</summary>
+                <dl className="project-page__task-binding">
+                  {selectedTask.sessionId && (
+                    <div>
+                      <dt>Session</dt>
+                      <dd>{selectedTask.sessionId}</dd>
+                    </div>
+                  )}
+                  <div>
+                    <dt>Working directory</dt>
+                    <dd>{binding?.workingDirectory ?? 'Unavailable'}</dd>
+                  </div>
+                  <div>
+                    <dt>Git top-level</dt>
+                    <dd>{binding?.repoRoot ?? 'Unavailable'}</dd>
+                  </div>
+                  <div>
+                    <dt>Worktree</dt>
+                    <dd>{binding?.worktreePath ?? 'Unavailable'}</dd>
+                  </div>
+                  <div>
+                    <dt>Branch</dt>
+                    <dd>{binding?.branch ?? 'Unavailable'}</dd>
+                  </div>
+                  <div>
+                    <dt>Agent</dt>
+                    <dd>{selectedTask.agentId ?? 'Unavailable'}</dd>
+                  </div>
+                </dl>
+              </details>
               <ProjectTaskSharingControl
                 slug={slug}
                 projectId={projectId}
@@ -688,20 +903,23 @@ export function ProjectTasksSection({
                   createdAt: selectedTask.createdAt,
                 }}
               />
-              <div className="project-page__relation-timeline">
-                {links.length === 0 ? (
-                  <div className="project-page__task-empty">
-                    No relations recorded.
-                  </div>
-                ) : (
-                  links.map((link) => (
-                    <div className="project-page__relation-row" key={link.id}>
-                      <span className="project-page__relation-dot" />
-                      <span>{relationLabel(link)}</span>
+              <details className="project-page__task-record-details">
+                <summary>References</summary>
+                <div className="project-page__relation-timeline">
+                  {links.length === 0 ? (
+                    <div className="project-page__task-empty">
+                      No relations recorded.
                     </div>
-                  ))
-                )}
-              </div>
+                  ) : (
+                    links.map((link) => (
+                      <div className="project-page__relation-row" key={link.id}>
+                        <span className="project-page__relation-dot" />
+                        <span>{relationLabel(link)}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </details>
             </>
           ) : (
             /* empty-state action: task selection list is adjacent */

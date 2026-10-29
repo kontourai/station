@@ -1,0 +1,7 @@
+{
+  "revision": "3a71d62a3fa80c4c8fc697acde28e70aa0aa15d7",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Spill paragraph re-checked: 'readers that owe exact content opt in to EventStore.resolveEventContent' covers the new seed-only reader; catch-up refusal claim unchanged. No prose change.","inputs":["docs/architecture/module-map.md","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/conversation-lineage.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

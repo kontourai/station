@@ -3,7 +3,7 @@
  *
  * The individual storage, SDK, and coordinator contracts have smaller unit
  * suites. This proves the real path a mobile build takes: a hydrated
- * host-owned profile folds the channel default, the public compatibility
+ * host-owned profile supplies the connection, the public compatibility
  * handshake leads to an authenticated identity probe, and only that current
  * native response may retire a stale native failure. The bridge and transport
  * are the two process/host boundaries; no bearer exists in this renderer test.
@@ -48,7 +48,6 @@ vi.mock('../../platform/PlatformProfileContext', () => ({
     supervisesBundledServer: false,
     isDevBuild: false,
     channel: 'nightly',
-    mobileDefaultEndpoint: 'https://station.example.test:8444',
   }),
 }));
 
@@ -184,7 +183,7 @@ describe('ApiBaseContext native health integration', () => {
     vi.unstubAllGlobals();
   });
 
-  it('folds the channel default into its saved identity and recovers health only from a current authenticated identity response', async () => {
+  it('restores the selected saved profile and recovers health only from a current authenticated identity response', async () => {
     render(
       <ApiBaseProvider>
         <NativeHealthProbe />
@@ -200,8 +199,8 @@ describe('ApiBaseContext native health integration', () => {
       hostOwnedCredential: true,
       credentialState: 'saved',
     });
-    // A different saved endpoint stays distinct and the saved CLI default wins
-    // over the injected mobile routing hint.
+    // A different saved endpoint stays distinct and the saved default owns
+    // selection without a build-supplied connection.
     expect(connections?.connections.map((connection) => connection.id)).toEqual(
       ['station-profile:nightly-owner', 'station-profile:another-station'],
     );

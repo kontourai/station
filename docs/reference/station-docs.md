@@ -63,6 +63,18 @@ because its documentation was retrieved.
 
 A Project is Station's unit of working context and durable work identity. It can organize Tasks, layouts, Agents, knowledge, and settings, with explicit resources and machine-local workspace bindings where needed. An organizational Project need not have a checkout; a Task or Session that requires files must resolve an authorized available workspace instead of inferring one from a similar name.
 
+Walkthroughs turn a local video into a versioned transcript and selected frames.
+Use `station walkthrough import <file> --project <slug>`, then list/show, or
+`list_walkthroughs` and `get_walkthrough` on station-control. Reads need Project
+view authority; imports need drive. MCP returns images in pages of at most four.
+Missing media tools or speech models refuse the import and list the consented
+downloads. Walkthroughs is a default-off Feature Preview: enable it in
+Settings → Advanced → Feature previews, then consent with
+`station media-tools download --yes`. CLI and MCP calls preserve the typed
+`feature_preview_disabled` refusal while off. MCP tools remain advertised and
+recheck through the live server routes at call time. The personal-host runtime
+shares one downloader and recognizer; hosted and published behavior remain unverified. See [Walkthrough imports](../guides/walkthroughs.md).
+
 Projects scope Agent selection. A Project can filter global Agents, and an
 Agent may name an owning Project. Project-owned Agents are excluded from global
 selection. A missing owner can be surfaced as an orphan finding instead of
@@ -70,6 +82,14 @@ deleting the Agent; if the Project inventory could not be read, the catalog
 omits that finding rather than treating an unknown inventory as empty.
 
 Projects present themselves as layouts — arrangements of panels for a particular way of working. Layouts can come from Station or from plugins, so a project page can be a chat surface, a review workbench, a readiness console, or a domain-specific vertical.
+
+Open a Project's **Room** for shared discussion, notes, presence and explicit Agent requests. It is separate from a Task's Conversation and private Agent chats. Reading, discussion, note editing and execution require their respective current Project permissions and transport grants; Agent execution also needs host execution permission.
+
+**Recap Project** prepares a prompt to review in the Room. Choose an Agent and
+explicitly **Ask in room** to request a cited recap with freshness and coverage
+limits. Preparing it does not execute work or replace an existing draft.
+
+Use **Sources** to manage repository/folder bindings, Knowledge registrations, document imports and connections. Source registration does not grant execution or expose connector credentials. Project Knowledge registrations bind to the durable Project ID; an older unbound registration needs explicit operator attachment. Experimental S3 sources remain disabled by default pending AWS acceptance. See the [Knowledge guide](../guides/knowledge.md) and [Project membership](../design/project-membership.md).
 
 Project resource resolution and a Task's captured workspace are different
 records. The Task topic below describes the latter. See the
@@ -95,12 +115,13 @@ its selected execution engine determines the available delivery mechanisms.
 Each engine has a capability matrix for system prompts, tool servers, skills,
 commands, and model selection. Requested authored content without a supported
 delivery channel is reported as undelivered on the ordinary saved-binding path;
-an absent request is not a failed delivery. An explicit conversation engine
+an absent request is not a failed delivery. Explicit `askBeforeUse` tool rules
+are an exception: unsupported engines refuse the saved Agent as well. An explicit conversation engine
 override must preserve required profile delivery and refuses unsupported or
 undelivered content instead of starting a reduced profile. See
 [execution overrides](session-api.md#preserve-an-agent-profile-with-an-execution-override).
 
-Use the [Agent guide](../guides/agents.md) and [Session API](session-api.md) for
+Use the [Agent guide](../guides/agent-configuration.md) and [Session API](session-api.md) for
 current setup, capability, turn, idle, terminal, and recovery behavior. A matrix
 entry describes a supported mechanism; it is not proof that a live engine
 accepted a particular request.
@@ -173,9 +194,27 @@ be inferred from ordinary execution completion.
 
 A Task is a durable, user-addressable work identity belonging to a Project. It survives restarts and can span execution episodes. Sessions also retain persisted history; their purpose is to record an execution episode rather than own the durable work identity. A Task may correlate an exact Session, or none at all.
 
+**New Task** on a Project, its Tasks layout, or Activity starts a shaping
+chat in the normal composer, with a compact, removable **Shaping a Task** chip and the existing Project and Agent choices. Describe a rough idea or a clear one-liner. The
+Agent can ask questions or return a proposal with a title, goal, **Done when**
+checklist and suggested first step. Only **Create Task** on that card accepts
+it: Station saves the Goal sentence as the description, seeds the complete brief into the shared Task document with the accepting person's document authority, and links the shaping Session without assigning an Agent or execution Session. After Start, the conversation keeps the full chat height; **Stop shaping this Task** in More removes the mode. Shaping mode persists through clarifying questions until acceptance or mode removal. A reloaded accepted card offers **Open Task**. A failed seed shows a recovery error; retrying acceptance reuses the same Task and preserves subsequent document edits. Ordinary direct chat creates no Task.
+
+Choose **New Task from this** in a chat's More menu to shape that conversation immediately. Add any focus as your next chat message.
+**Add to Task** offers **New Task from this** even when no Tasks exist;
+it shapes the selected answer or input in the same conversation. The chat and
+its existing answers remain available. An unavailable engine or malformed
+proposal remains a chat, without an accepted Task.
+
+This path currently uses Station's prompt/proposal format. It does not claim
+to invoke Builder Kit, pass its breakdown gate, or file a provider work item.
+Builder skills are discoverable from the installed Flow Agents package;
+selected-agent delivery and a published structured shaping-result contract
+are separate integration requirements.
+
 A task carries typed references — to files, artifacts, receipts, sessions, runs, or external work items — and those references preserve exact identity. Similar titles or paths are not treated as correlation.
 
-The task workspace is the surface that reopens one task with its identity, workspace binding, changed files, artifacts, receipts, and session correlation in one place, so you can pick work back up without reconstructing context.
+The Task workspace opens on **Overview**, with status, completion criteria, subtasks and kept deliverables. **Conversation** is the shared Task discussion, **Plan** holds the autosaved document, and **Work chats** opens separately authorized Agent conversations. **Details** retains workspace bindings, changed files, on-demand Basis, receipts and exact Session correlation. Opening the Task makes the viewer present. Explicit Agent requests can publish answers into the personal Task conversation; shared-member Task projection includes human messages and the document, not private Agent execution or answers. Linking a child Task or work chat does not publish it, grant access or complete its parent.
 
 A Task's captured workspace is re-evaluated as `available`, `ambiguous`, or
 `unavailable` when reopened. Available bindings permit the relevant local
@@ -185,7 +224,7 @@ readiness, ownership, admission, and durable reservation checks; an uncertain
 remote start is not automatically safe to retry. See the
 [work board](../user/work-board.md) and [Session API](session-api.md).
 
-A task can also be dispatched: assign an agent or a skill to it and send it into a session. Task statuses follow a neutral work-item vocabulary (todo, ready, triage, in progress, blocked, review, verification, done), plus a canceled state for work abandoned before completion.
+A task can also be dispatched: assign an agent or a skill to it and send it into a session. A Session dispatched for a Task receives a Task brief with its first turn: the Task, its linked tracker item, the Task summary, standing decisions, open questions, recent dead ends and a line per Session of the Task that its owner may read, with what it has claimed, pinned by a digest. What agents, people or the tracker wrote is quoted, as data rather than instructions. It re-reads the brief with the Station Control `get_task_brief` tool. While it leads the Task, or was requested from the Task room, it rewrites the Task summary with `task_summary_update` and records a keyed decision, question or dead end with `task_record`. Every earlier revision is kept, and neither tool changes Task status or the Task document. An open question puts the Task in Needs you until a person answers it. Opening a question as a non-lead Session, or answering one, also sends one message to the Task's lead Session through its conversation inbox: a new turn when it is idle, after its turn when it is busy, and nothing when the lead asked or answered it itself or has stopped. A person can also start a Task from a GitHub issue on the Project's board; Station copies the issue's description and latest comments into the Task document. Task statuses follow a neutral work-item vocabulary (todo, ready, triage, in progress, blocked, review, verification, done), plus a canceled state for work abandoned before completion.
 
 An agent on any engine can declare a pull request it opened with the Station Control `declare_pull_request` tool; a person keeps the declared pull request onto a Task. A person can also opt a Task in to closing when its pull requests merge: with that opt-in, the Task moves to done once every pull request kept on it is merged at its provider. A pull request closed without merging does not complete the Task, a Task in todo, ready, triage or blocked never closes by itself, and no agent tool sets the opt-in. Station checks when someone with permission to change Task status refreshes the conversation's pull request links; nothing polls. A declaration is recorded when the turn completes and is lost if Station restarts first.
 
@@ -223,25 +262,49 @@ A skill can also declare itself runnable as a slash command, which is how a reus
 
 Station speaks the Model Context Protocol for tools. An integration is an MCP server that exposes tools; a tool is one callable function from that server.
 
+The built-in Station Agent receives visual replies through its default
+station-control attachment. For an authored Claude/Codex Agent, attach
+station-control and select `html_preview` and `html_render`; ACP must attach the
+whole server without an `available` filter. Preview self-contained HTML, inspect the returned screenshot,
+height and console output, then publish the same HTML. Pages appear at the tool
+result and survive reload. Use the host theme CSS variables. App/session access
+and ordinary network loads are blocked. In the published viewer, WebRTC isolation is incomplete: nested
+srcdoc can send ICE UDP, exposing viewer IP or data entered into the page. Do not
+ask viewers for secrets. Preview and publishing are bounded writes and respect
+engine tool approval. Chromium is needed only for
+preview. See the [visual replies guide](../user/html-replies.md) for byte,
+image, viewport, time and retention limits.
+
 Two built-in servers serve different purposes here. `station-control` exposes
 Station operations as tools; `station-docs` serves static shipped prose without
 credentials or live state. This is not an exhaustive server inventory: the
 [Station Browser MCP server](../../src-server/tools/station-browser-mcp-server.ts)
 has its own delivery and authorization boundary.
 
+Before starting work, use Station Control's `search_conversations` to find
+related titles and messages, then `list_active_work` to check for running or
+recently active conversations in your Project. Follow up with
+`read_conversation` or `get_session_digest`. Filters never grant access, and
+partial search results are not proof of no related work. See
+[work discovery](../guides/self-configuring-agent.md#find-related-work-before-starting)
+for bounds, scope and recorded workspace fields.
+
 Third-party MCP servers are configured as integrations and can be attached to an Agent. Delivery to an external engine follows that engine's transport and credential-custody policy; an empty environment does not grant a server arbitrary authority. The built-in Station Docs server has a verified runtime identity and no credential requirement. Station Control is a separate capability with its own authorization and delivery requirements.
 
-Open an Agent's Tools section and choose **Station** or **Add**.
-Expand an integration to search and choose Read only, All, None, or individual
-tools. Choose a tool group to narrow the checklist; Read only, All, and None
-apply to that group and preserve choices elsewhere. Station additions start
-read-only where individual selection is supported.
-The shield opens approvals; the gear opens harness settings. Browser and workflow
-options are under Advanced. Changes apply to new chats.
+Open an Agent's **Tools → Add tools** list. Each source shows where it came
+from. Choose **Add**, or open a source to select individual actions. Click an
+action name for its description; approvals sit beside selected actions.
+**About this source** holds provenance and **Share with Projects**, which
+controls source availability across all Projects on this Station. External sources
+also offer **Check for new tools** and **Edit connection**; built-in sources do not. Station-classified reads
+default to Always allow; changes and unknown actions default to Ask me on
+Station and Claude. **Tool settings** holds harness options. **Browser access** is separate;
+**Workflow files** holds workflow editing. Browser delivery currently connects
+Claude Code to Station's Project browser; other engines show its unavailability. Changes apply to new chats.
 Claude and Codex can keep their configured harness MCP integrations while adding
 Station's selections. Claude also offers native on-demand tool loading. Generic
 connected engines receive whole integrations and disclose unsupported restrictions.
-The [Agent guide](../guides/agents.md#mcp-tool-configuration) owns setup and limits.
+The [Agent guide](../guides/agent-configuration.md#mcp-tool-configuration) owns setup and limits.
 
 Mutating tools remain subject to their authorization and approval rules.
 Inspect the specific tool result and the approval or execution evidence
@@ -288,7 +351,7 @@ Reaching another Station is a relationship you set up deliberately — pairing a
 
 Station's core owns durable product and authorization behavior as well as runtime composition, streaming, routing, and provider registration. Plugins add capabilities and work surfaces at the published extension boundaries.
 
-A plugin is manifest-driven and can declare layouts, Agents, MCP integrations, providers, knowledge namespaces, engine connections, branding, and settings. Declaring a contribution is not authority to activate it: validation, permissions, grants, and host admission apply. Plugin authors use the published SDK and contracts; private core capabilities are not automatically available to a plugin.
+A plugin is manifest-driven and can declare layouts, Agents, MCP integrations, providers, knowledge namespaces, engine connections, branding, and settings. Declaring a contribution is not authority to activate it: validation, permissions, grants, and host admission apply. Plugin authors build on core capabilities through the public SDK and extension contracts. The default in-process host connects configuration, models, conversation lists and chat state to their core owners; host bindings do not grant extra authority. See the SDK reference for exact bindings, remaining gaps and isolated-frame limits.
 
 The registry is the unified place to browse and install agents, skills, integrations, and plugins (a plugin only with a person’s approval of its preview), with an install lifecycle that includes updates and removal. Installs can route through approval, because installing something is a platform mutation like any other.
 
@@ -434,11 +497,14 @@ SDK HOOKS A PANE CAN USE (all imported from "@kontourai/station-sdk"):
 - useToast() → `{ showToast }`; call `showToast({ type: "info" | "success" | "warning" | "error", message })`.
 - useAuth() → the signed-in person and auth status.
 - useServerFetch() → a function that fetches a URL through Station's server; it needs the "network.fetch" permission.
+- useHost() → `clipboard.writeText(text)`, `openExternal(url)` (http and https only), and Station's `prompt({ title, label, initial })` and `confirm({ title, message })` dialogs. Each returns a promise that resolves with the outcome and never rejects.
+- useHostFacts() → `{ device: { isMobile } }`, re-rendering when it changes.
+- useShortcut({ id, keys: { key, modifiers }, description, when?, run }) → registers a shortcut in Station's shortcut list and returns `{ ok: true, registryId }` or `{ ok: false, reason, message }`. Station refuses the command palette, Settings and shortcut-list chords (⌘K, ⌘, and ⌘/) and the text-editing chords (⌘C, ⌘V, ⌘X, ⌘Z, ⇧⌘Z, ⌘A, Ctrl+Y), and registers shortcuts only for a verified plugin's pane. useShortcutScope(name, active) turns on a scope that `when` can name.
 Query hooks follow @tanstack/react-query: read `data`, `isLoading` and `error`, and render a loading and an empty state.
 
 PERMISSIONS. Declare only what the plugin uses. The complete list, by what granting it takes:
 - passive (granted automatically at install): "navigation.dock"
-- active (the person consents at install): "ui.confirm", "network.fetch", "agents.invoke", "tools.invoke"
+- active (the person consents at install): "ui.confirm", "layout.primaryChat", "network.fetch", "agents.invoke", "tools.invoke"
 - trusted (a separate host approval after install): "events.subscribe", "events.read-payload", "providers.register", "plugin.server", "system.config"
 A permission Station does not recognise is treated as trusted, the strictest tier.
 

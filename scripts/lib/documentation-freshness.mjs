@@ -1,9 +1,9 @@
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { collectDocumentationChanges } from '../documentation-impact.mjs';
+import { execFileSyncBounded } from './bounded-capture.mjs';
 import {
   compileDocumentationReviews,
   reviewInputs,
@@ -12,8 +12,8 @@ import { captureInputs, compileLearningMedia } from './learning-media.mjs';
 import { createLearningSourceReader } from './learning-source-reader.mjs';
 import { bindingFile } from './review-binding.mjs';
 import {
+  createReviewInputComparator,
   reviewDecisionChanged,
-  touchedReviewInputs,
 } from './review-history.mjs';
 import {
   isNoteArchiveFile,
@@ -28,6 +28,7 @@ import {
   readReviewState,
   readReviewStateAt,
 } from './review-ledger-store.mjs';
+import { redactReviewNoteHosts } from './review-note-privacy.mjs';
 
 /**
  * One owner decides when a stale recorded review or capture blocks (#2923).
@@ -87,12 +88,10 @@ export function isPullRequestContext(env) {
 }
 
 function git(root, args) {
-  return execFileSync('git', args, {
+  return execFileSyncBounded('git', args, {
     cwd: root,
     encoding: 'utf8',
-    windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],
-    maxBuffer: 64 * 1024 * 1024,
   });
 }
 
@@ -300,6 +299,22 @@ export function appendOnlyNoteProblems(root, mergeBase, { from, to }) {
     }
     for (const file of files) moved.add(file);
   }
+  // Privacy redactions retain the original review context and every byte
+  // outside recognized private hostnames. Reworded claims and removed inputs
+  // cannot satisfy this exact transformation, nor can an edited archive.
+  const removedNotes = baseNotes.filter(
+    (file) => !reader.exists(file) && !moved.has(file),
+  );
+  const atBase = blobs(mergeBase, removedNotes);
+  for (const [index, file] of removedNotes.entries()) {
+    const redacted = redactReviewNoteHosts(file, atBase[index]);
+    if (
+      redacted &&
+      reader.exists(redacted.file) &&
+      reader.read(redacted.file).toString('utf8') === redacted.text
+    )
+      moved.add(file);
+  }
   const currentNotes = new Set(listReviewNoteFilesAt(root, 'HEAD'));
   for (const file of baseNotes)
     if (
@@ -384,6 +399,7 @@ export function resolveDocumentationFreshness({
     ? { ledger, media }
     : readReviewState(root, { history: false });
   const previous = readReviewStateAt(root, selection.mergeBase);
+  const touchedReviewInputs = createReviewInputComparator(root);
   const reader = createLearningSourceReader(root);
   const changedPaths = new Set(selection.paths);
   const entries = {
@@ -401,6 +417,31 @@ export function resolveDocumentationFreshness({
       .filter(Boolean),
   );
   const noteIntroductions = new Map();
+  let noteIntroductionsLoaded = false;
+  const noteIntroduction = (file) => {
+    if (!noteIntroductionsLoaded) {
+      let commit;
+      for (const token of git(root, [
+        'log',
+        '--diff-merges=first-parent',
+        '--no-renames',
+        '--diff-filter=A',
+        '-z',
+        '--format=\u0001%H',
+        '--name-only',
+        `${selection.mergeBase}..HEAD`,
+        '--',
+        NOTES_DIR,
+      ]).split('\0')) {
+        const line = token.startsWith('\n') ? token.slice(1) : token;
+        if (line.startsWith('\u0001')) commit = line.slice(1);
+        else if (line && commit && !noteIntroductions.has(line))
+          noteIntroductions.set(line, commit);
+      }
+      noteIntroductionsLoaded = true;
+    }
+    return noteIntroductions.get(file) ?? '';
+  };
   const rangeCommits = new Set(
     git(root, ['rev-list', `${selection.mergeBase}..HEAD`])
       .trim()
@@ -455,7 +496,16 @@ export function resolveDocumentationFreshness({
   const appendOnlyProblems = [];
   const layoutV3 = current.ledger?.layoutVersion === 3;
   if (layoutV3) {
-    const baseState = readReviewStateAt(root, base);
+    // Resolve a mutable base at the point it would be read; never cache the
+    // result across resolver calls. Equal commits already share `previous`.
+    const baseCommit =
+      base === selection.mergeBase
+        ? base
+        : git(root, ['rev-parse', '--verify', `${base}^{commit}`]).trim();
+    const baseState =
+      baseCommit === selection.mergeBase
+        ? previous
+        : readReviewStateAt(root, base);
     appendOnlyProblems.push(
       ...appendOnlyNoteProblems(root, selection.mergeBase, {
         from: previous.ledger?.coverageBaseline,
@@ -475,11 +525,10 @@ export function resolveDocumentationFreshness({
           ...new Set([...inputsFor(old), ...inputsFor(entry)]),
         ];
         const touched = touchedReviewInputs(
-          root,
           dependencies,
           changedPaths,
           selection.mergeBase,
-          'HEAD',
+          head,
         );
         // Working-tree edits are included even when HEAD still holds the old value.
         if (reviewDecisionChanged(old, entry) && !touched.includes(path))
@@ -506,22 +555,7 @@ export function resolveDocumentationFreshness({
                 return false;
               // Do not let an old note approve a later edit on this PR. Excluding
               // the base branch keeps another landed PR from invalidating this note.
-              if (!noteIntroductions.has(note.file))
-                noteIntroductions.set(
-                  note.file,
-                  git(root, [
-                    'log',
-                    '--diff-merges=first-parent',
-                    '--no-patch',
-                    '--diff-filter=A',
-                    '--format=%H',
-                    '-1',
-                    `${selection.mergeBase}..HEAD`,
-                    '--',
-                    note.file,
-                  ]).trim(),
-                );
-              const introduced = noteIntroductions.get(note.file);
+              const introduced = noteIntroduction(note.file);
               const validRevision = introduced
                 ? rangeCommits.has(note.revision)
                 : note.revision === head;
@@ -533,7 +567,6 @@ export function resolveDocumentationFreshness({
               const changedLater = later.some(
                 (commit) =>
                   touchedReviewInputs(
-                    root,
                     [input],
                     new Set([bindingFile(input)]),
                     `${commit}^`,

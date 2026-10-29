@@ -1,0 +1,7 @@
+{
+  "revision": "17a0855071a8cbb22e95945f533cddeaeff3ace1",
+
+  "notes": [
+    {"path":"docs/design/instance-registry.md","note":"#3563: process-identity now reads the birth when signal 0 answers EPERM. Re-read the liveness claims: 'Unknown liveness or a failed birth lookup retains the record' and 'pid + birth prove it gone' stay true (EPERM with an unreadable birth is still unavailable). No prose change.","inputs":["docs/design/instance-registry.md","packages/shared/src/process-identity.mjs"]}
+  ]
+}

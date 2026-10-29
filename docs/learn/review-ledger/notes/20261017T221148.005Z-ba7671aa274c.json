@@ -1,0 +1,7 @@
+{
+  "revision": "8022273e312dc7cf86d2d803135804741c7bc56d",
+
+  "notes": [
+    {"path":"docs/guides/release-rings.md","note":"Reviewed the author telemetry producer boundary against tagged desktop, Nightly desktop, reusable portable builds, npm CLI publishers, server and CLI banners, native UI-only mobile builds, Docker build context and source archives. Added owner-only repo-variable activation and explicit absent preview npm publisher. Existing release signing and promotion contracts are unchanged. Executed focused real-bundle and workflow rejection tests; signed native builds, publication and receiver data flow are not verified.","inputs":["docs/guides/release-rings.md",".github/workflows/nightly-native-stage.yml",".github/workflows/nightly.yml",".github/workflows/portable-server-archives.yml",".github/workflows/release.yml","esbuild.config.mjs","packages/cli/esbuild.config.mjs",".github/workflows/publish-packages.yml","scripts/lib/author-telemetry-build.mjs","scripts/check-author-telemetry-workflows.mjs","scripts/check-author-telemetry-build.mjs","scripts/__tests__/author-telemetry-build.test.ts","scripts/actionlint-gate.mjs"]}
+  ]
+}

@@ -11,11 +11,11 @@ const INJECTED_CONNECTION_IDS = new Set(['cli-base', 'managed-loopback']);
  * connected before. Injected (host-supplied) connections are excluded.
  *
  * Shared rather than local to `OnboardingGate` (archive#3311): this predicate
- * is what decides whether the mobile "No Station connected" banner appears, so
+ * is what decides whether the mobile connection welcome appears, so
  * the toolbar's connection chip has to key its own copy and its mobile
  * suppression on the SAME condition. A second reader that re-derived
  * "unconnected" from the health status instead announced "Reconnecting" on a
- * device that had never connected to anything, beside a banner saying the
+ * device that had never connected to anything, beside a welcome saying the
  * opposite.
  */
 export function hasRealSavedConnection(

@@ -1,0 +1,7 @@
+{
+  "revision": "e8a8e03ef739acf4f5aedb537c8514e8c7a044a5",
+
+  "notes": [
+    {"path":"docs/user/workspace-checkpoints.md","note":"Reviewed against MessageBubble.tsx (Retry accessible name only): no checkpoint or changed-files claim is affected.","inputs":["docs/user/workspace-checkpoints.md","src-ui/src/components/chat/MessageBubble.tsx"]}
+  ]
+}

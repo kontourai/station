@@ -9,7 +9,6 @@ describe('dependency lifecycle bootstrap guidance', () => {
     const desktop = read('docs/guides/desktop-build.md');
     const quality = read('docs/guides/code-quality.md');
     const testing = read('docs/guides/testing.md');
-    const development = read('docs/guides/development.md');
 
     expect(desktop).toContain('npm run dependencies:ci');
     expect(desktop).not.toContain(
@@ -19,7 +18,5 @@ describe('dependency lifecycle bootstrap guidance', () => {
       expect(guide).toContain('npm run dependencies:ci');
       expect(guide).toContain('npm run dependencies:install');
     }
-    expect(quality).toContain('npm run hooks:install');
-    expect(development).toContain('cd my-plugin npm install');
   });
 });

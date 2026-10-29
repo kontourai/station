@@ -1,0 +1,9 @@
+{
+  "revision": "c18278ff67da5d0b02f86b6ccdbc4b0cf76f2cec",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.png","note":"Capture bytes unchanged. The orchestration-service.ts delta only adds SessionStartRefusedError to the rejected-start classification; the inspect-request view this capture shows is not altered.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Capture bytes unchanged. The orchestration-service.ts delta only adds SessionStartRefusedError to the rejected-start classification; the inspect-request flow this recording shows is not altered.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

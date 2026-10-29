@@ -177,6 +177,25 @@ describe('usability feedback coverage and reviewer failures', () => {
     ).toBe('FAIL');
     expect(summarizeGallery(null, []).status).toBe('NOT_VERIFIED');
   });
+  test('gallery coverage failure names unlisted and missing images (#3508)', () => {
+    const result = summarizeGallery(
+      {
+        schemaVersion: 1,
+        expected: 2,
+        selection: null,
+        screens: [
+          { name: 'home', file: 'home.png', ok: true },
+          { name: 'settings', file: 'settings.png', ok: true },
+        ],
+      },
+      ['home.png', 'home.retired-effects-diagnostic.png'],
+    );
+    expect(result.status).toBe('FAIL');
+    expect(result.detail).toContain(
+      'unlisted images: home.retired-effects-diagnostic.png',
+    );
+    expect(result.detail).toContain('missing images: settings.png');
+  });
   test('missing credentials never call a provider or imply review', async () => {
     const fetchImpl = vi.fn();
     expect((await reviewScreens([], { fetchImpl, model: 'test' })).status).toBe(

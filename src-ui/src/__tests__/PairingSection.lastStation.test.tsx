@@ -16,6 +16,11 @@ vi.mock('../hooks/useFeatureSettings', () => ({
   }),
 }));
 
+// #3557: tested on its own (PeopleSection.test); it needs a query client.
+vi.mock('../views/settings/OwnAccessTokensPanel', () => ({
+  OwnAccessTokensPanel: () => null,
+}));
+
 afterEach(() => {
   deviceSettingsStore.reset('openLastStationOnLaunch');
 });
@@ -34,3 +39,7 @@ test('the phone can choose its next-launch Station in device settings', () => {
   expect(deviceSettingsStore.get('openLastStationOnLaunch')).toBe(false);
   expect(toggle.getAttribute('aria-checked')).toBe('false');
 });
+
+vi.mock('../views/settings/LanDiscoveryControl', () => ({
+  LanDiscoveryControl: () => null,
+}));

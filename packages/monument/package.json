@@ -1,0 +1,65 @@
+{
+  "name": "@kontourai/monument",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Experimental engine-neutral durability kernel: a command-shaped storage port, pure decision functions, in-memory and node:sqlite adapters, and an exported conformance suite",
+  "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./sqlite": "./src/sqlite.ts",
+    "./adapter": "./src/adapter.ts",
+    "./testing": "./src/testing/index.ts"
+  },
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json"
+  },
+  "files": [
+    "dist",
+    "!dist/__tests__",
+    "!dist/**/*.test.*",
+    "README.md",
+    "CONTEXT.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "durability",
+    "idempotency",
+    "crash-consistency",
+    "kontour"
+  ],
+  "author": "Kontour",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kontourai/station.git",
+    "directory": "packages/monument"
+  },
+  "publishConfig": {
+    "access": "public",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./sqlite": {
+        "types": "./dist/sqlite.d.ts",
+        "default": "./dist/sqlite.js"
+      },
+      "./adapter": {
+        "types": "./dist/adapter.d.ts",
+        "default": "./dist/adapter.js"
+      },
+      "./testing": {
+        "types": "./dist/testing/index.d.ts",
+        "default": "./dist/testing/index.js"
+      }
+    }
+  }
+}

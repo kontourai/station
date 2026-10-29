@@ -75,6 +75,9 @@ test('the simulator command prepares after generation and verifies the final bui
     script.indexOf('write-ios-build-manifest'),
   );
   expect(script).toContain(
+    'write-ios-build-manifest.mjs --config src-desktop/tauri.ios.dev.conf.json',
+  );
+  expect(script).toContain(
     '--target aarch64-sim --debug --no-sign --archive-only',
   );
   expect(script.indexOf('ios-simulator-build.mjs verify')).toBeGreaterThan(

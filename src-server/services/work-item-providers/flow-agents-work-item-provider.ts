@@ -38,12 +38,14 @@ import type {
   WorkItemProviderIdentity,
   WorkItemProviderListResult,
 } from '@kontourai/station-contracts/work-item-provider';
+import { spawnChildWorkload } from '@kontourai/station-shared/child-workload';
 import type {
   IWorkItemProvider,
   WorkItemProjectContext,
 } from '../../providers/provider-interfaces.js';
 import { guardChildStdin } from '../../utils/child-stdin.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { registerDetachedOwnedChild } from '../infra/process-utils.js';
 
 const require = createRequire(import.meta.url);
 
@@ -164,14 +166,18 @@ export function createDefaultFlowAgentsCliRunner(
     runnerOptions.hardDeadlineSlackMs ?? DEFAULT_HARD_DEADLINE_SLACK_MS;
   return (binPath, args, options) =>
     new Promise<FlowAgentsCliResult>((resolvePromise) => {
-      const child = spawn(process.execPath, [binPath, ...args], {
+      const detached = process.platform !== 'win32';
+      const child = spawnChildWorkload(process.execPath, [binPath, ...args], {
         cwd: options.cwd,
         windowsHide: true,
         stdio: ['pipe', 'pipe', 'pipe'],
         // Own process group (POSIX) so a timeout can terminate the whole
         // tree — see killProcessTree above.
-        detached: process.platform !== 'win32',
+        detached,
       });
+      // #561: the timeout lives in this process, so register the group for
+      // the startup sweep.
+      if (detached) registerDetachedOwnedChild(child, 'flow-agents CLI');
       let stdout = '';
       let stderr = '';
       let timedOut = false;

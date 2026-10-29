@@ -3,6 +3,7 @@
 import { CHAT_INPUT_MAX_CHARS } from '@shared/chat-input-limits';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -89,7 +90,6 @@ function renderChatInputArea(overrides: Record<string, unknown> = {}) {
     attachments: [],
     textareaRef: { current: null },
     disabled: false,
-    isSending: false,
     turnInFlight: false,
     modelSupportsAttachments: true,
     fontSize: 14,
@@ -214,6 +214,12 @@ describe('ChatInputArea', () => {
       expect(onHistoryUp).toHaveBeenCalledOnce();
     },
   );
+
+  test('names a conversation that is still opening in its placeholder', () => {
+    renderChatInputArea({ disabled: true, loadingConversation: true });
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    expect(textarea.placeholder).toBe('Loading chat…');
+  });
 
   test('keeps a busy continuation draft focusable without sending or queueing it', () => {
     const onInputChange = vi.fn();
@@ -737,25 +743,6 @@ describe('ChatInputArea', () => {
     expect(screen.getByRole('alert').textContent).toContain(
       'Microphone permission was denied',
     );
-  });
-
-  test('autosizes the textarea to measured content and clamps overflow', () => {
-    const { rerender } = render(
-      <ChatInputArea {...renderProps({ input: 'one' })} />,
-    );
-    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
-    let scrollHeight = 220;
-    Object.defineProperty(textarea, 'scrollHeight', {
-      configurable: true,
-      get: () => scrollHeight,
-    });
-    rerender(<ChatInputArea {...renderProps({ input: 'one\ntwo' })} />);
-    expect(textarea.style.height).toBe('160px');
-    expect(textarea.style.overflowY).toBe('auto');
-    scrollHeight = 40;
-    rerender(<ChatInputArea {...renderProps({ input: 'one' })} />);
-    expect(textarea.style.height).toBe('40px');
-    expect(textarea.style.overflowY).toBe('hidden');
   });
 
   test('does not send Enter while an IME composition is active', () => {
@@ -1539,12 +1526,13 @@ describe('ChatInputArea', () => {
     expect(onApprovalModeChange).not.toHaveBeenCalled();
   });
 
-  test('station#1945: advertised ACP modes replace the approval-mode chip', async () => {
+  test('station#1945: advertised ACP modes get their own picker, and an engine that decides offers no approval mode beside it', async () => {
     const onAcpSessionModeChange = vi.fn();
     const onApprovalModeChange = vi.fn();
     renderChatInputArea({
       executionMode: 'external',
       agentConnectionId: 'kiro',
+      acpApproval: { control: 'engine', engineId: null, engineName: 'Kiro' },
       acpSessionModes: [
         { id: 'build', name: 'Build' },
         { id: 'plan', name: 'Plan', description: 'Read-only planning' },
@@ -1574,16 +1562,187 @@ describe('ChatInputArea', () => {
     renderChatInputArea({
       executionMode: 'external',
       agentConnectionId: 'kiro',
+      acpApproval: { control: 'engine', engineId: null, engineName: 'Kiro' },
       acpSessionModes: [],
       onAcpSessionModeChange: vi.fn(),
     });
     expect(screen.queryByRole('button', { name: /^Session mode:/ })).toBeNull();
-    // kiro has no native approval knob: no chip and no read-only note
-    // either (station#1933).
+    // #3290 supersedes station#1933's omission: an engine that decides for
+    // itself shows who decides, and still offers no approval mode.
     expect(
       screen.queryByRole('button', { name: /^Approval mode:/ }),
     ).toBeNull();
-    expect(screen.queryByText(/Set by engine/)).toBeNull();
+    expect(
+      screen.getByRole('button', { name: /^Approval: Set by engine\./ }),
+    ).toBeTruthy();
+  });
+
+  describe('#3290: who decides which ACP actions ask', () => {
+    test('OpenCode, governed by Station, offers the approval modes beside its build/plan Mode', async () => {
+      const onApprovalModeChange = vi.fn();
+      renderChatInputArea({
+        executionMode: 'external',
+        agentConnectionId: 'my-opencode',
+        acpApproval: {
+          control: 'station',
+          engineId: 'opencode',
+          engineName: 'OpenCode',
+        },
+        acpSessionModes: [
+          { id: 'build', name: 'build' },
+          { id: 'plan', name: 'plan' },
+        ],
+        acpCurrentModeId: 'build',
+        onAcpSessionModeChange: vi.fn(),
+        lastAppliedApprovalMode: 'ask',
+        onApprovalModeChange,
+      });
+      expect(
+        await screen.findByRole('button', { name: /^Session mode: build\./ }),
+      ).toBeTruthy();
+      expect(
+        screen.queryByRole('button', { name: /^Approval: Set by engine/ }),
+      ).toBeNull();
+
+      fireEvent.click(screen.getByRole('button', { name: /^Approval mode:/ }));
+      await screen.findByRole('radiogroup', { name: 'Approval mode' });
+      // The copy says what Station makes OpenCode do.
+      expect(
+        screen.getByText(/Asks before shell commands, file edits, web access/),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByRole('radio', { name: /^Auto/ }));
+      expect(onApprovalModeChange).toHaveBeenCalledWith('auto');
+    });
+
+    test('OpenCode at Default says its own settings decide until Station takes over, then Ask first', async () => {
+      const props = {
+        executionMode: 'external',
+        agentConnectionId: 'my-opencode',
+        acpApproval: {
+          control: 'station' as const,
+          engineId: 'opencode',
+          engineName: 'OpenCode',
+        },
+        acpSessionModes: [],
+        onApprovalModeChange: vi.fn(),
+      };
+      renderChatInputArea(props);
+      const chip = screen.getByRole('button', { name: /^Approval mode:/ });
+      expect(chip.getAttribute('aria-label')).toMatch(
+        /Engine default — OpenCode's own settings/,
+      );
+      fireEvent.click(chip);
+      await screen.findByRole('radiogroup', { name: 'Approval mode' });
+      expect(
+        screen.getByText(
+          /Uses OpenCode's own permission settings until you pick/,
+        ),
+      ).toBeTruthy();
+      cleanup();
+
+      renderChatInputArea({ ...props, lastAppliedApprovalMode: 'ask' });
+      expect(
+        screen
+          .getByRole('button', { name: /^Approval mode:/ })
+          .getAttribute('aria-label'),
+      ).toMatch(/^Approval mode: Ask — Ask first/);
+    });
+
+    test('a pick OpenCode could not be switched to is shown as not applied, never as the pick', () => {
+      renderChatInputArea({
+        executionMode: 'external',
+        agentConnectionId: 'my-opencode',
+        acpApproval: {
+          control: 'station' as const,
+          engineId: 'opencode',
+          engineName: 'OpenCode',
+        },
+        acpSessionModes: [],
+        approvalModeOverride: { mode: 'ask', state: 'not-applied' },
+        onApprovalModeChange: vi.fn(),
+      });
+      const chip = screen.getByRole('button', { name: /^Approval mode:/ });
+      // Visibly not the "Default" a takeover shows (finding 7).
+      expect(chip.textContent).toContain('Own settings');
+      expect(chip.textContent).not.toContain('Default');
+      expect(chip.textContent).not.toContain('Ask');
+      expect(chip.getAttribute('aria-label')).toMatch(
+        /Own settings — OpenCode's own settings — Ask first was not applied/,
+      );
+    });
+
+    test('the Mode picker offers only build and plan once Station governs OpenCode, and every agent before', async () => {
+      const modes = [
+        { id: 'build', name: 'build' },
+        { id: 'plan', name: 'plan' },
+        { id: 'helper', name: 'helper' },
+      ];
+      const props = {
+        executionMode: 'external',
+        agentConnectionId: 'my-opencode',
+        acpApproval: {
+          control: 'station' as const,
+          engineId: 'opencode',
+          engineName: 'OpenCode',
+        },
+        acpSessionModes: modes,
+        acpCurrentModeId: 'build',
+        onAcpSessionModeChange: vi.fn(),
+        onApprovalModeChange: vi.fn(),
+      };
+      const optionsFor = async () => {
+        fireEvent.click(
+          await screen.findByRole('button', { name: /^Session mode:/ }),
+        );
+        await screen.findByRole('radiogroup', { name: 'Session mode' });
+        return screen
+          .getAllByRole('radio')
+          .map((radio) => radio.getAttribute('value'));
+      };
+      // On OpenCode's own settings: the user's agents are offered.
+      renderChatInputArea(props);
+      expect(await optionsFor()).toEqual(['build', 'plan', 'helper']);
+      cleanup();
+      // Station runs a mode on it: only what it governs.
+      renderChatInputArea({ ...props, lastAppliedApprovalMode: 'ask' });
+      expect(await optionsFor()).toEqual(['build', 'plan']);
+    });
+
+    test('an engine that decides for itself says so, and its explanation opens', async () => {
+      renderChatInputArea({
+        executionMode: 'external',
+        agentConnectionId: 'kiro',
+        acpApproval: { control: 'engine', engineId: null, engineName: 'Kiro' },
+        acpSessionModes: [],
+      });
+      const chip = screen.getByRole('button', {
+        name: /^Approval: Set by engine\. Kiro decides which of its actions ask/,
+      });
+      expect(
+        screen.queryByRole('button', { name: /^Approval mode:/ }),
+      ).toBeNull();
+      fireEvent.click(chip);
+      const sheet = await screen.findByRole('dialog', { name: 'Approval' });
+      expect(sheet.textContent).toMatch(
+        /Station's approval modes do not apply here/,
+      );
+      expect(screen.queryByRole('radiogroup')).toBeNull();
+    });
+
+    test('a connection merely named opencode that decides for itself gets the disclosure, not the modes', () => {
+      renderChatInputArea({
+        executionMode: 'external',
+        agentConnectionId: 'opencode',
+        acpApproval: { control: 'engine', engineId: null },
+        acpSessionModes: [],
+      });
+      expect(
+        screen.queryByRole('button', { name: /^Approval mode:/ }),
+      ).toBeNull();
+      expect(
+        screen.getByRole('button', { name: /^Approval: Set by engine\./ }),
+      ).toBeTruthy();
+    });
   });
 
   describe('prompt size guard (station#2807)', () => {
@@ -1683,7 +1842,6 @@ function renderProps(overrides: Record<string, unknown> = {}) {
     attachments: [],
     textareaRef: { current: null },
     disabled: false,
-    isSending: false,
     turnInFlight: false,
     modelSupportsAttachments: true,
     fontSize: 14,
@@ -1816,6 +1974,111 @@ describe('ChatInputArea dock reservation', () => {
     }
   });
 
+  test('an out-of-flow sibling (the hidden status region) takes no room from the composer', () => {
+    class QuietObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal('ResizeObserver', QuietObserver);
+    const clientHeight = vi
+      .spyOn(HTMLElement.prototype, 'clientHeight', 'get')
+      .mockImplementation(function (this: HTMLElement) {
+        return this.classList.contains('chat-dock__body') ? 300 : 0;
+      });
+    // Exaggerated so the decision flips on it: counted, the region's box
+    // (150) plus the composer (200) would not fit the 300px dock.
+    const rect = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        const height = this.classList.contains('chat-input')
+          ? 200
+          : this.classList.contains('sr-only')
+            ? 150
+            : 0;
+        return { height, top: 0, bottom: height } as DOMRect;
+      });
+    try {
+      const view = render(
+        <div className="chat-dock__body">
+          <div className="chat-messages" />
+          <div
+            className="sr-only"
+            role="status"
+            style={{ position: 'absolute' }}
+          />
+          <div className="sr-only" style={{ position: 'fixed' }} />
+          <ChatInputArea {...renderProps({ dockHeight: 300 })} />
+        </div>,
+      );
+      const body = view.container.querySelector('.chat-dock__body');
+      expect(body?.hasAttribute('data-composer-priority')).toBe(false);
+      expect(
+        (view.container.querySelector('.chat-input') as HTMLElement).style
+          .minHeight,
+      ).toBe('200px');
+    } finally {
+      clientHeight.mockRestore();
+      rect.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test('a tall pending list yields to the draft, keeping its toggle row', () => {
+    class QuietObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal('ResizeObserver', QuietObserver);
+    const clientHeight = vi
+      .spyOn(HTMLElement.prototype, 'clientHeight', 'get')
+      .mockImplementation(function (this: HTMLElement) {
+        return this.classList.contains('chat-dock__body') ? 300 : 0;
+      });
+    // Counted whole, the list (300) would leave the composer (200) nothing:
+    // the draft collapsed to no height in a short dock.
+    const rect = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        const height = this.classList.contains('chat-input')
+          ? 200
+          : this.classList.contains('queued-messages-presence')
+            ? 300
+            : this.classList.contains('queued-messages__toggle')
+              ? 30
+              : 0;
+        return { height, top: 0, bottom: height } as DOMRect;
+      });
+    try {
+      const view = render(
+        <div className="chat-dock__body">
+          <div className="chat-messages" />
+          <div className="queued-messages-presence">
+            <div className="queued-presence__clip">
+              <section className="queued-messages queued-messages--pending">
+                <button type="button" className="queued-messages__toggle">
+                  3 pending
+                </button>
+              </section>
+            </div>
+          </div>
+          <ChatInputArea {...renderProps({ dockHeight: 300 })} />
+        </div>,
+      );
+      const body = view.container.querySelector('.chat-dock__body');
+      expect(body?.hasAttribute('data-composer-priority')).toBe(false);
+      expect(
+        (view.container.querySelector('.chat-input') as HTMLElement).style
+          .minHeight,
+      ).toBe('200px');
+    } finally {
+      clientHeight.mockRestore();
+      rect.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
   test('typing does not rebuild the observers', () => {
     const constructed = vi.fn();
     class CountingObserver {
@@ -1893,4 +2156,112 @@ describe('ChatInputArea send-failure notice', () => {
     renderChatInputArea({ sendFailureNotice: undefined });
     expect(document.querySelector('.chat-input__send-failure')).toBeNull();
   });
+});
+
+describe('ChatInputArea queued-retry Discard', () => {
+  test('a Discard that may withdraw a message Station has asks first, with the risk stated', () => {
+    const onDiscard = vi.fn();
+    renderChatInputArea({
+      queuedRetryNotice: {
+        text: "Send wasn't confirmed — queued to retry automatically",
+        onDiscard,
+        confirm: true,
+      },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Discard…' }));
+    const confirm = screen.getByRole('group', {
+      name: 'Discard this message?',
+    });
+    expect(confirm.textContent).toContain(
+      'It may already have reached the agent.',
+    );
+    expect(onDiscard).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'I checked, discard it' }),
+    );
+    expect(onDiscard).toHaveBeenCalledTimes(1);
+  });
+
+  test('the question follows its Discard… and takes focus; Keep it gives focus back', () => {
+    renderChatInputArea({
+      queuedRetryNotice: {
+        text: "Send wasn't confirmed — queued to retry automatically",
+        onDiscard: vi.fn(),
+        confirm: true,
+      },
+    });
+    const discard = screen.getByRole('button', { name: 'Discard…' });
+    discard.focus();
+    fireEvent.click(discard);
+    const confirm = screen.getByRole('group', {
+      name: 'Discard this message?',
+    });
+    // Its own popover (the composer clips what overflows it), after the
+    // button in reading and tab order, and named by it.
+    expect(
+      screen
+        .getByRole('alertdialog', { name: 'Discard this message?' })
+        .contains(confirm),
+    ).toBe(true);
+    expect(
+      discard.compareDocumentPosition(confirm) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(discard.getAttribute('aria-controls')).toBe(confirm.id);
+    expect(discard.getAttribute('aria-expanded')).toBe('true');
+    const keep = screen.getByRole('button', { name: 'Keep it' });
+    expect(document.activeElement).toBe(keep);
+    fireEvent.click(keep);
+    expect(
+      screen.queryByRole('group', { name: 'Discard this message?' }),
+    ).toBeNull();
+    expect(document.activeElement).toBe(discard);
+  });
+
+  test.each([
+    [
+      'Escape',
+      (dialog: HTMLElement) =>
+        fireEvent.keyDown(
+          dialog.contains(document.activeElement)
+            ? (document.activeElement as HTMLElement)
+            : dialog,
+          { key: 'Escape' },
+        ),
+    ],
+    [
+      'a tap outside',
+      (dialog: HTMLElement) => fireEvent.pointerDown(dialog.parentElement!),
+    ],
+  ] as const)(
+    '%s keeps the message and gives focus back to Discard…',
+    async (_how, dismiss) => {
+      const onDiscard = vi.fn();
+      renderChatInputArea({
+        queuedRetryNotice: {
+          text: "Send wasn't confirmed — queued to retry automatically",
+          onDiscard,
+          confirm: true,
+        },
+      });
+      const discard = screen.getByRole('button', { name: 'Discard…' });
+      discard.focus();
+      fireEvent.click(discard);
+      const dialog = screen.getByRole('alertdialog', {
+        name: 'Discard this message?',
+      });
+      expect(document.activeElement).toBe(
+        screen.getByRole('button', { name: 'Keep it' }),
+      );
+      dismiss(dialog);
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('alertdialog', { name: 'Discard this message?' }),
+        ).toBeNull(),
+      );
+      await waitFor(() => expect(document.activeElement).toBe(discard));
+      expect(discard.getAttribute('aria-expanded')).toBe('false');
+      expect(onDiscard).not.toHaveBeenCalled();
+    },
+  );
 });

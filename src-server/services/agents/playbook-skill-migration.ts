@@ -1,4 +1,6 @@
 /**
+ * SUNSET(#3878): delete with `station doctor --migrate-playbooks` after 2027-01-31.
+ *
  * Playbooks → Skills: the one-way pass that folds `<home>/prompts` into
  * `<home>/skills` (UX audit slice 2, `docs/adr/0016-*`).
  *
@@ -203,7 +205,7 @@ function loadPlaybooksFrom(homeDir: string): LegacyPlaybookRecord[] {
 }
 
 /** The file whose presence means "this home has already been migrated". */
-export const PLAYBOOK_MIGRATION_MARKER = '.migrated.json';
+const PLAYBOOK_MIGRATION_MARKER = '.migrated.json';
 
 /**
  * The `origin` this pass stamps on every skill it writes. It is what makes a

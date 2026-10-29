@@ -28,6 +28,7 @@ import {
   FAST_CHECKS_PLAN_FILE,
   FAST_CHECKS_RECEIPT_FILE,
   FAST_CHECKS_RECEIPT_KIND,
+  FAST_CHECKS_SHARD_BUDGET_MS,
   FAST_CHECKS_SHARD_COUNT,
   fastChecksShardCount,
   isPassingFastChecksStatus,
@@ -185,7 +186,7 @@ async function planCommand({ out }, { cwd, env, report, planShards, now }) {
   if (env.GITHUB_OUTPUT)
     appendFileSync(
       env.GITHUB_OUTPUT,
-      `shards=${JSON.stringify(Array.from({ length: plan.shardCount }, (_, index) => index + 1))}\nshard-count=${plan.shardCount}\n`,
+      `shards=${JSON.stringify(Array.from({ length: plan.shardCount }, (_, index) => index + 1))}\nshard-count=${plan.shardCount}\nempty=${env.STATION_FAST_CHECKS_SKIP_EMPTY_SHARDS === 'true' && plan.fileCount === 0 ? 'true' : 'false'}\n`,
     );
   report(
     `[fast-checks] plan: ${plan.fileCount} test file(s) over ${plan.groups.length} resource group(s), ${plan.shardCount} shard(s)` +
@@ -270,8 +271,7 @@ async function runCommand(
     const controller = new AbortController();
     const timer = setTimeout(
       () => controller.abort('exceeded its fast-checks shard budget'),
-      deadlineMs ??
-        (await import('./verification-lanes.mjs')).CI_FAST_TIMEOUT_MS,
+      deadlineMs ?? FAST_CHECKS_SHARD_BUDGET_MS,
     );
     timer.unref?.();
     // A cancelled job signals the runner; abort so the owned Vitest trees are
@@ -330,7 +330,7 @@ async function runCommand(
   );
   if (receipt.status === 'provisional')
     report(
-      `[fast-checks] selection deferred to ${base.deferredLanes.join(', ') || 'test-full'}; full-regression remains the required completion gate\n`,
+      `[fast-checks] selection deferred to ${base.deferredLanes.join(', ') || 'test-full'}; full-regression remains required for full qualification and release\n`,
     );
   return receipt.passed ? 0 : 1;
 }
@@ -356,7 +356,11 @@ function aggregateCommand(
     needs = undefined;
   }
   const planPath = resolve(cwd, planDir, FAST_CHECKS_PLAN_FILE);
-  const { findings, notes } = verifyFastChecks({
+  const {
+    findings,
+    notes,
+    suiteDeferrals = [],
+  } = verifyFastChecks({
     needs,
     planText: existsSync(planPath) ? readFileSync(planPath, 'utf8') : undefined,
     receipts: receiptFiles(resolve(cwd, receiptsDir)).map((path) => ({
@@ -370,6 +374,19 @@ function aggregateCommand(
   if (findings.length) {
     for (const finding of findings) error(`[fast-checks] FAIL: ${finding}\n`);
     return 1;
+  }
+  if (suiteDeferrals.length) {
+    // #1706: this green is not a full run's green. Say so on the check run
+    // itself, and name who runs the deferred suite.
+    const message = `fast-checks deferred ${suiteDeferrals.join(', ')}: the affected suite did not run in this check; full qualification runs on main and before release`;
+    if (env.GITHUB_ACTIONS === 'true')
+      report(`::warning title=fast-checks is provisional::${message}\n`);
+    if (env.GITHUB_OUTPUT)
+      appendFileSync(env.GITHUB_OUTPUT, 'provisional=true\n');
+    report(
+      `[fast-checks] PASS (provisional): every part job succeeded and every shard ran its slice of the plan; ${message}\n`,
+    );
+    return 0;
   }
   report(
     '[fast-checks] PASS: every part job succeeded and every shard ran its slice of the plan\n',

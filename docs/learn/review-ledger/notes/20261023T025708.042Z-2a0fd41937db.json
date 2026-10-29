@@ -1,0 +1,35 @@
+{
+  "revision": "64f5940d690983b405a4b5ebfc86106ce81ed3f9",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Reviewed required repo-governance, readiness and hosted fast-checks-statics wiring against the four runner-image edits. Evidence commands, action pins, policy and protected standards remain unchanged; Ubuntu24 changes the execution platform, not governance authority.","inputs":[".veritas/README.md",".github/workflows/ci.yml",".github/workflows/full-regression.yml"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed core fast-checks plan/shard/statics parity and hosted full-qualification process-heavy ownership. The three fast jobs move together to Ubuntu24; hook lists, required aggregate/publisher, command budgets and source qualification rules are unchanged.","inputs":["docs/guides/code-quality.md",".github/workflows/ci.yml",".github/workflows/full-regression.yml"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed the ci.yml dependency against runner-only edits: no attempt-claim check command, scope, receipt semantics or source-admission behavior changes. Existing delegation claims remain bounded by their own evidence.","inputs":["docs/guides/delegation-attempt-claims.md",".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed dependency review and source-policy publication contracts. Core fast jobs move to Ubuntu24, while the separate dependency-review job remains Ubuntu22 and read-only. Publisher permissions, trusted-source checkout, exact-head proof and artifact rules are unchanged.","inputs":["docs/guides/dependency-security.md",".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed local focused verification and base-owned PR/merge-queue landing routes. Core fast jobs move together to Ubuntu24 and full-qualification process-heavy follows; canonical commands and admission/merge rules remain unchanged. The current PR must land before a later PR can use its base-owned runner.","inputs":["docs/guides/development.md",".github/workflows/ci.yml",".github/workflows/full-regression.yml"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed the ci.yml citation for home-transfer evidence. Only core hosted runner images change; controller authority, network boundaries, local versus independent-host qualification and its owning tests are unchanged. No cross-host execution claimed.","inputs":["docs/guides/home-transfer-controller.md",".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Reviewed current hosted Linux routing versus proposed private listener partition. Ubuntu24 remains GitHub-hosted; native Windows/container fleet labels, leases, queue limits and proposal status are unchanged.","inputs":["docs/guides/private-runner-partition.md",".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Reviewed product-law observation and fault-evidence routing against runner image edits. The commands, canonical observation/fault requirements, counts and non-passing infrastructure outcomes are unchanged; no product law is qualified merely by the new image.","inputs":["docs/guides/product-law-authoring.md",".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/releasing.md","note":"Reviewed PR/merge-queue/full-qualification boundaries and exact-source reuse against runner changes. Core fast jobs share Ubuntu24 and full process-heavy uses Ubuntu24; phases, fanout, command budgets, publisher admission, reuse lifetime and native artifact gates remain unchanged. No hosted completion claimed.","inputs":["docs/guides/releasing.md",".github/workflows/ci.yml",".github/workflows/full-regression.yml"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Reviewed .github workflow ownership route. Runner image edits do not move files, change package interfaces or alter the documented repository layout.","inputs":["docs/guides/repository-layout.md",".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed fast plan/shard/statics environment parity, full process-heavy slices and deterministic workflow contracts. Core fast jobs and full process-heavy move to Ubuntu24 for systemd253+ scope OOM semantics. Existing selection, resource classes, timeouts, fanout, source receipts and qualification rules remain unchanged. Focused138 tests passed; injected Ubuntu22 produced the two intended platform-contract failures, restoration pending.","inputs":["docs/guides/testing.md",".github/workflows/ci.yml",".github/workflows/full-regression.yml","scripts/__tests__/ci-workflow-contract.test.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Reviewed the ci.yml-linked Work Board evidence boundary. Runner-only changes leave authorization, browser/reference scope and required test commands unchanged; no security or device qualification inferred from workflow routing.","inputs":["docs/guides/work-board-security.md",".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Reviewed workflow-linked package integration evidence. Target-only fixtures, package resource budgets, source removal and supported published-contract boundaries are unchanged by the hosted image selection; no independent-host transfer proof added.","inputs":["docs/guides/workspace-packages.md",".github/workflows/ci.yml"]},
+
+    {"path":"docs/reference/interactive-workspace-performance.md","note":"Reviewed PR smoke in fast-checks-statics versus separately dispatched reference performance qualification. Ubuntu24 PR smoke does not become reference hardware evidence; reference workflow, budgets and NOT_VERIFIED semantics are unchanged.","inputs":["docs/reference/interactive-workspace-performance.md",".github/workflows/ci.yml"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed statics smoke composition, isolated home/ports, one-worker/no-retry contract, deadline and artifact retention. Runner moves to Ubuntu24 with the other core fast jobs; smoke commands, selected specs, health boundaries and verdicts remain unchanged. No browser journey executed locally for this runner-only change.","inputs":["docs/testing/browser-smoke.md",".github/workflows/ci.yml"]}
+  ]
+}

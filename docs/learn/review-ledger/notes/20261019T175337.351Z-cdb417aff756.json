@@ -1,0 +1,7 @@
+{
+  "revision": "adf004f0ada42e32aeb4b6b1cb0a5f644ad259a6",
+
+  "notes": [
+    {"path":"README.md","note":"docs/guides/nightly.md only added that cohort updater signatures name the cohort version; README's links into the nightly guide and its claims about signed Nightly archives remain accurate.","inputs":["README.md","docs/guides/nightly.md"]}
+  ]
+}

@@ -21,6 +21,7 @@ import {
 import type { OrchestrationEvent } from '../../hooks/orchestration/types';
 import type { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import { useMutableSessionDetailState } from '../../hooks/useMutableSessionDetailState';
+import { requestTaskShaping } from '../../lib/task-shaping';
 import {
   clientOriginDetail,
   clientOriginSummary,
@@ -99,8 +100,12 @@ export function MutableSessionDetail({
   visualViewport,
   evidenceReveal,
   historyNotices,
+  draftScope,
+  onOpenConversation,
 }: {
   apiBase: string;
+  draftScope?: string;
+  onOpenConversation?: () => void;
   session: OrchestrationSessionSummary;
   onTaskChanged: () => void;
   events: OrchestrationEvent[];
@@ -147,6 +152,7 @@ export function MutableSessionDetail({
     workflowMoreCount,
   } = useMutableSessionDetailState({
     apiBase,
+    draftScope,
     session,
     onTaskChanged,
     events,
@@ -196,7 +202,7 @@ export function MutableSessionDetail({
   const isPeerRecord = isPeerDelegationRecord(session);
   const chatOpenTarget = isPeerRecord ? null : sessionChatOpenTarget(session);
   const openInChat = chatOpenTarget
-    ? () => openChatsStore.focus(chatOpenTarget)
+    ? (onOpenConversation ?? (() => openChatsStore.focus(chatOpenTarget)))
     : undefined;
 
   // The evidence region lives inside the collapsed Details disclosure. A
@@ -221,9 +227,8 @@ export function MutableSessionDetail({
     // Uncontrolled on purpose: React never writes `open`, so opening it here
     // is synchronous and the reader's own later toggles are left alone.
     if (detailsRef.current) detailsRef.current.open = true;
-    // Same shape as `revealHomeRegion` (views/home/home-reveal.ts): a plain
-    // positioned scroll — jsdom implements none of it, hence the guard —
-    // then focus, so a keyboard or screen-reader user lands IN the region
+    // A plain positioned scroll — jsdom implements none of it, hence the
+    // guard — then focus, so a keyboard or screen-reader user lands IN the region
     // rather than having it painted behind a still-parked focus ring.
     if (typeof region.scrollIntoView === 'function') {
       region.scrollIntoView({ block: 'start' });
@@ -336,6 +341,24 @@ export function MutableSessionDetail({
   const delegationProjectSlug =
     session.delegation?.projectSlug ?? session.projectSlug;
   const menuActions = [
+    ...(chatOpenTarget
+      ? [
+          {
+            key: 'turn-into-task',
+            label: 'New Task from this',
+            onSelect: () =>
+              requestTaskShaping({
+                projectSlug: session.projectSlug,
+                source: {
+                  sessionId: session.threadId,
+                  conversationId: session.conversationId,
+                  agentSlug: session.assignedAgentSlug,
+                  agentName: agentLabel,
+                },
+              }),
+          },
+        ]
+      : []),
     { key: 'copy-id', label: 'Copy session ID', onSelect: copySessionId },
     ...(isDelegated && !isPeerRecord
       ? [
@@ -688,7 +711,7 @@ export function MutableSessionDetail({
       <ConfirmModal
         isOpen={confirmStop}
         title="Stop this task?"
-        message="Station interrupts the turn that is running now. The session stays open, so you can send it another message afterward."
+        message="Stops the running turn. The session stays open."
         confirmLabel="Stop task"
         cancelLabel="Keep running"
         variant="danger"

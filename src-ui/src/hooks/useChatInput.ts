@@ -5,6 +5,7 @@ import {
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import { setOrchestrationApprovalMode } from '@kontourai/station-sdk';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { CHAT_INPUT_MAX_CHARS } from '@shared/chat-input-limits';
 import {
   useCallback,
@@ -226,7 +227,6 @@ export function useChatInput({
   // History navigation index
   const [, setHistoryIndex] = useState<Map<string, number>>(new Map());
 
-  // Get actions from context
   const {
     updateChat,
     clearInput,
@@ -254,7 +254,6 @@ export function useChatInput({
   );
   const handleSlashCommand = useSlashCommandHandler();
 
-  // Wrap slash command handler
   const slashCommandHandler = useCallback(
     async (sid: string, command: string) => {
       return handleSlashCommand(sid, command, {
@@ -478,6 +477,11 @@ export function useChatInput({
     [sessionId, updateChat, flushDraft],
   );
 
+  // Assigned below, once the attachment scheduler exists.
+  const stageFilesRef = useRef<
+    (files: readonly FileAttachment[]) => Promise<boolean>
+  >(async () => false);
+
   const handleSend = useCallback(
     async (
       overrideText?: string,
@@ -545,7 +549,7 @@ export function useChatInput({
         );
         return;
       }
-      const selectedAttachments = overrideAttachments ?? attachments;
+      let selectedAttachments = overrideAttachments ?? attachments;
       if (
         !text.trim() &&
         selectedAttachments.length === 0 &&
@@ -556,11 +560,84 @@ export function useChatInput({
         (stage) => stage.state !== 'complete',
       );
       if (incomplete) return;
+      // Supplied attachments (Send again's recovered turn) were never staged;
+      // a turn's earlier stage was released when that turn was accepted. Send
+      // refuses unstaged files, so stage them first, as composer chips.
+      if (overrideAttachments?.length) {
+        const staged =
+          activeChatsStore.getSnapshot()[sessionId]?.attachmentStages ?? [];
+        const isStaged = (attachment: FileAttachment) =>
+          staged.some(
+            (stage) =>
+              stage.clientAttachmentId === attachment.id &&
+              stage.state === 'complete',
+          );
+        // Each staging takes a fresh identity: the server keeps a used
+        // clientAttachmentId (per login, across chats) as a completed stage or
+        // accepted tombstone and refuses to stage it again, and recovered ids
+        // (`retry-<index>-<n>`) repeat across chats and repeated clicks.
+        selectedAttachments = overrideAttachments.map((attachment) =>
+          isStaged(attachment)
+            ? attachment
+            : { ...attachment, id: randomCorrelationId() },
+        );
+        const unstaged = selectedAttachments.filter(
+          (attachment) => !isStaged(attachment),
+        );
+        if (unstaged.length > 0 && !(await stageFilesRef.current(unstaged))) {
+          // The files stay as chips showing their error. The recovered text
+          // fills an empty composer; a draft already there is kept. Send again
+          // stays blocked by the failed chip until it is retried or removed.
+          if (
+            overrideText !== undefined &&
+            !activeChatsStore.getSnapshot()[sessionId]?.input
+          )
+            updateChat(sessionId, { input: canonicalDraft });
+          else if (overrideText)
+            showToast(
+              'An attachment did not upload. Your draft was kept with the attachment; retry it in the composer, then send.',
+              'error',
+            );
+          return;
+        }
+      }
 
       if (text.trim()) {
         addToInputHistory(sessionId, text.trim());
         setHistoryIndex((prev) => new Map(prev).set(sessionId, -1));
       }
+      // The composer's text is saved before the send clears it: a debounced
+      // keystroke still pending would otherwise exist only in memory until
+      // the outbox row is written.
+      if (overrideText === undefined && input) {
+        pendingDraftRef.current = null;
+        if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+        draftTimerRef.current = null;
+        setDraft(sessionId, input);
+      }
+      // The saved draft is let go the moment the outbox holds the message
+      // durably — before its request — so the text is never in both places
+      // after a crash (a relaunch would otherwise offer it for a second send
+      // under a new key) and never in neither.
+      let draftHandedOff = false;
+      const handOffDraft = () => {
+        draftHandedOff = true;
+        const now = activeChatsStore.getSnapshot()[sessionId];
+        if (
+          (now?.input && now.input !== input) ||
+          chatDraftsStore
+            .getQuotes(sessionId)
+            .some((quote) => !submittedQuotes.includes(quote))
+        ) {
+          // The user is already writing the next message: keep that.
+          chatDraftsStore.consumeQuotes(sessionId, submittedQuotes);
+          return;
+        }
+        pendingDraftRef.current = null;
+        if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+        draftTimerRef.current = null;
+        clearDraft(sessionId);
+      };
       const sent = await sendMessageAction(
         sessionId,
         agentSlug,
@@ -569,16 +646,22 @@ export function useChatInput({
         selectedAttachments,
         options?.ambientContext,
         undefined,
-        submittedExperienceDraft
-          ? {
-              skillExperienceDraft: submittedExperienceDraft,
-              experienceRequestScope: mentionRequestScope,
-              ...(options?.queueOnBusy ? { queueOnBusy: true } : {}),
-            }
-          : options?.queueOnBusy
-            ? { queueOnBusy: true }
-            : undefined,
+        {
+          ...(submittedExperienceDraft
+            ? {
+                skillExperienceDraft: submittedExperienceDraft,
+                experienceRequestScope: mentionRequestScope,
+              }
+            : {}),
+          ...(options?.queueOnBusy ? { queueOnBusy: true } : {}),
+          onDurable: handOffDraft,
+        },
       );
+      // Refused after the handoff: the composer has the text back, so its
+      // saved draft does too.
+      const restored = activeChatsStore.getSnapshot()[sessionId]?.input;
+      if (sent === false && draftHandedOff && restored)
+        setDraft(sessionId, restored);
       // A durable offline row owns queued text. Clearing its draft prevents
       // the composer from rendering a second editable copy after a resume.
       //
@@ -618,9 +701,11 @@ export function useChatInput({
       attachments,
       attachmentStages,
       sendMessageAction,
+      updateChat,
       activeChatState?.skillExperienceDraft,
       addToInputHistory,
       clearDraft,
+      setDraft,
       showToast,
       workingDirectory,
       mentionRequestScope,
@@ -690,6 +775,7 @@ export function useChatInput({
     error: attachmentError,
     selectFiles: selectAttachmentFiles,
     selectFilesWithResult,
+    stageFiles,
     replaceFile: replaceAttachmentFile,
     setError: setAttachmentError,
     retry: retryAttachmentStage,
@@ -733,6 +819,8 @@ export function useChatInput({
       if (sessionId) updateChat(sessionId, { attachmentStages: nextStages });
     },
   });
+
+  stageFilesRef.current = stageFiles;
 
   const intakeOwner = useRef({ apiBase, sessionId, isChatVisible });
   intakeOwner.current = { apiBase, sessionId, isChatVisible };

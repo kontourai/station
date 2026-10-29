@@ -360,7 +360,7 @@ reliability fix; the repository's dependency-age policy refused it at the time
 of evaluation. The older eligible release is not production approval.
 
 An independent **Pion peer profile** is available under `--peer=pion`. Build the
-[pinned Go fixture](../../experiments/browser-transport-peer/README.md) first,
+[pinned Go fixture](../../src-server/services/connections/pion-peer/README.md) first,
 then run `npm run lab:browser-transport -- --peer=pion --browser-turn=tcp`.
 Pion uses TURN/TCP; both TCP and UDP browser control paths must qualify
 individually. The report includes the actual linked Pion/Go versions and binary
@@ -413,7 +413,10 @@ separately, and the full account/Device/Project profile follows below.
 The initial wire profile has one request per reliable ordered DataChannel,
 48 KiB JSON frames, at most 64 headers/16 KiB header text, and a **16 KiB request
 body limit**. Larger uploads are unsupported in this pilot. Response chunks are
-at most 16 KiB; consumer reads grant the next chunk. A producer chunk larger
+at most 16 KiB. With the versioned credit-window advertisement, the client
+buffers at most four chunks (64 KiB) and replenishes credits as the response is
+consumed; without it, each read grants one chunk. Older clients continue to use
+one credit with newer servers. See the [flow-control contract](../reference/connect.md#bounded-response-credit-window). A producer chunk larger
 than 1 MiB is refused. Browser and Node fixture send queues are bounded at
 96 KiB. Opening a channel is bounded to 15 seconds and cancellation closes a
 late opener before dispatch. The connection owner still bounds channel counts

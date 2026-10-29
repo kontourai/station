@@ -1,0 +1,31 @@
+{
+  "revision": "5bb50a6e07999f461451eda53fd32e519f0b1e5a",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Reviewed the module-map MobileDeviceHost delta: explicit user Node/npm prerequisites and blocked setup add no context or relationship. The five-area routes and authority/evidence distinctions remain accurate.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Reviewed the module-map delta for optional device helper runtime ownership. No Project/Task/Session, principal, execution, transport or context boundary changes. The module map remains the detailed implementation owner; existing broad context and evidence limits remain accurate.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"Reviewed the new MobileDeviceHost prerequisite paragraph against the README installation and navigation claims. Core desktop private Node and signed portable Node remain bundled; phone app prerequisites are separate. Optional managed device tools are explained in their guide. Product vocabulary and links are unchanged.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Scoped review of the module-map MobileDeviceHost paragraph: it now names the runtime resolver and prerequisite-blocked state, without changing this historical abstraction investigation or its named Session, plugin, knowledge and CLI boundaries. Existing evidence qualifications and module-map routing remain accurate.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Reviewed only the MobileDeviceHost addition to the module map. It changes no ledger migration, Monument ownership, turn-boundary, recovery ledger or credential application factory described here. Historical disposition and canonical boundary links remain accurate; no ledger execution claim added.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the module-map MobileDeviceHost runtime paragraph. It does not change station-control authorization, actor derivation, physical-delivery limits or the linked SessionTurnBoundaryAuthority. Existing guide claims remain accurate; device prerequisites are owned by the device guide.","inputs":["docs/guides/self-configuring-agent.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Scoped review: module-map delta only describes optional managed device runtime selection and blocked setup. It does not expand agent identity, engine support, authored prompt delivery, capabilities or physical-device acceptance. Existing inventory status and evidence limits remain accurate.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Reviewed MobileDeviceHost paragraph addition: no settings target, section, route, canonical navigation or deep-link contract changed. Existing reference remains accurate; blocked setup is rendered in the device wizard.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed MobileDeviceHost runtime-prerequisite paragraph against this docs-kit reference. No public docs tool, glossary noun, supported SDK, cross-Station relationship, or docs source contract changed. Runtime prerequisites remain in the canonical device guide rather than duplicated here.","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed module-map device helper runtime ownership. User Node/npm prerequisites add no Project/Task/Session, Agent, Model, Station, Device or evidence concept. Existing explanations and Connections guide pointer remain accurate.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Reviewed module-map MobileDeviceHost paragraph and its new resolver link. The graph exporter still derives attributed canonical sections/references and records hashes; a new reference does not imply call graph, test success or runtime acceptance. Export/import authority, resume, retention and isolated-root guidance are unchanged; no real graph ingestion claimed.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed module-map MobileDeviceHost paragraph: runtime resolution remains a server service, pure contract variant remains in contracts, UI renders guidance, and process launches retain windowsHide. Existing scoped source/test/authority guidance remains accurate.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed module-map MobileDeviceHost paragraph: blocked state comes from the typed device-toolchain contract and setup wizard; no navigation or layout authority changes. Existing shared control, mounted behavior and visual-verification rules remain accurate; mounted packaged guidance is not claimed.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}

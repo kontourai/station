@@ -1,0 +1,7 @@
+{
+  "revision": "7a0661dc4fdb3542f52dd85f029559a61276f169",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Re-checked after the shared discard confirmation moved its 44px targets from a media query to an always-on hit area (chat.css draws them 44px in a phone bubble) and its inventory entry was reworded; no claim in this document changes.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

@@ -17,12 +17,13 @@ import type {
   TaskUserInputReferenceProjection,
   TaskWorkspaceBinding,
 } from '@kontourai/station-contracts';
+import type { TaskMemoryAttention } from '@kontourai/station-contracts/task-memory';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getTaskAnswerSupportCards,
   type TaskAnswerSupportStandingWithCard,
 } from '../client/answer-support';
-import { getJson } from '../client/http';
+import { getJson, StationHttpError } from '../client/http';
 import {
   type AttachTaskUserInputReferenceInput,
   attachTaskUserInputReference as attachTaskUserInputReferenceClient,
@@ -107,7 +108,10 @@ interface ApiResult<T> {
 async function readApiResult<T>(response: Response): Promise<T> {
   const result = (await response.json()) as ApiResult<T>;
   if (!response.ok || !result.success || result.data === undefined) {
-    throw new Error(apiErrorMessage(result, `HTTP ${response.status}`));
+    throw new StationHttpError(
+      response.status,
+      apiErrorMessage(result, `HTTP ${response.status}`),
+    );
   }
   return result.data;
 }
@@ -119,7 +123,7 @@ export async function fetchTasks(
     requestScope?: ApiRequestScope;
     signal?: AbortSignal;
   } = {},
-): Promise<TaskRecord[]> {
+): Promise<TaskListRecord[]> {
   const params = new URLSearchParams();
   if (input.projectId) params.set('projectId', input.projectId);
   const query = params.toString();
@@ -131,7 +135,7 @@ export async function fetchTasks(
         `${input.requestScope.apiBase}/api/tasks${query ? `?${query}` : ''}`,
         { signal: input.signal, requestScope: input.requestScope },
       );
-      return await readApiResult<TaskRecord[]>(response);
+      return await readApiResult<TaskListRecord[]>(response);
     } catch (error) {
       if (input.signal?.aborted) throw error;
       throw new TaskDestinationRequestError();
@@ -141,8 +145,14 @@ export async function fetchTasks(
   const response = await authenticatedFetch(
     `${resolvedApiBase}/api/tasks${query ? `?${query}` : ''}`,
   );
-  return readApiResult<TaskRecord[]>(response);
+  return readApiResult<TaskListRecord[]>(response);
 }
+
+/**
+ * A Tasks-list row: the Task, and (#4003) its open Task-memory question
+ * count when it has any, which Home and the inbox read for "Needs you".
+ */
+export type TaskListRecord = TaskRecord & Partial<TaskMemoryAttention>;
 
 export async function fetchTask(
   taskId: string,
@@ -320,6 +330,7 @@ export function useTasksQuery(
         config?.staleTime ??
         taskQueries.list(projectId, config?.requestScope).staleTime,
       gcTime: config?.gcTime,
+      refetchInterval: config?.refetchInterval,
       enabled: config?.requestScope
         ? scoped && (config.enabled ?? true)
         : config?.enabled,
@@ -421,10 +432,11 @@ function invalidateTaskReferenceScope(
   client: ReturnType<typeof useQueryClient>,
   taskId: string,
 ): void {
+  client.invalidateQueries({ queryKey: ['tasks'] });
   for (const queryKey of [
-    taskQueries.list().queryKey,
     taskQueries.task(taskId).queryKey,
     taskQueries.graph(taskId).queryKey,
+    taskQueries.claim(taskId).queryKey,
     taskQueries.turnReferences(taskId).queryKey,
     taskQueries.userInputReferences(taskId).queryKey,
   ]) {
@@ -465,7 +477,7 @@ export function useTaskClaimQuery(
 
 export function useCreateTaskMutation() {
   return useApiMutation(createTask, {
-    invalidateKeys: [taskQueries.list().queryKey],
+    invalidateKeys: [['tasks']],
   });
 }
 
@@ -486,14 +498,32 @@ export function useCreateTaskReferenceMutation(
 }
 
 export function useUpdateTaskStatusMutation() {
+  const client = useQueryClient();
   return useApiMutation(updateTaskStatus, {
-    invalidateKeys: [taskQueries.list().queryKey],
+    invalidateKeys: [['tasks']],
+    onSuccess: (_data, { taskId }) => {
+      for (const queryKey of [
+        taskQueries.task(taskId).queryKey,
+        taskQueries.graph(taskId).queryKey,
+        taskQueries.claim(taskId).queryKey,
+      ])
+        client.invalidateQueries({ queryKey, exact: true });
+    },
   });
 }
 
 export function useDispatchTaskMutation() {
+  const client = useQueryClient();
   return useApiMutation(dispatchTask, {
-    invalidateKeys: [taskQueries.list().queryKey],
+    invalidateKeys: [['tasks']],
+    onSuccess: (_data, { taskId }) => {
+      for (const queryKey of [
+        taskQueries.task(taskId).queryKey,
+        taskQueries.graph(taskId).queryKey,
+        taskQueries.claim(taskId).queryKey,
+      ])
+        client.invalidateQueries({ queryKey, exact: true });
+    },
   });
 }
 

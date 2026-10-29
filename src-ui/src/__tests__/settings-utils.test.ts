@@ -184,7 +184,10 @@ describe('settings utils', () => {
       const futureFile = {
         version: 2,
         station: { region: 'us-west-2' },
-        device: { version: 3, values: { theme: 'light' } },
+        device: {
+          version: deviceSettingsStore.getEnvelope().version + 1,
+          values: { theme: 'light' },
+        },
       };
 
       await expect(

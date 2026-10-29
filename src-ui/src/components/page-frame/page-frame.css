@@ -150,6 +150,13 @@
   padding: 0;
 }
 
+/* Section tabs above flush content (Connections) are page navigation, not
+   the content's chrome: they keep the header's inset so they line up with
+   the title above them. */
+.page-frame--flush > .page-frame__body .page__tabs--frame-inset {
+  padding-inline: 1.5rem;
+}
+
 @media (max-width: 640px) {
   .page-frame__header {
     padding: 1.5rem 1rem 0;
@@ -161,6 +168,10 @@
 
   .page-frame--flush > .page-frame__body {
     padding: 0;
+  }
+
+  .page-frame--flush > .page-frame__body .page__tabs--frame-inset {
+    padding-inline: 1rem;
   }
 
   /* station#541 (moved from index.css, review round 2): mirrors the
@@ -256,4 +267,27 @@
 .page__btn-secondary:hover {
   border-color: var(--accent-primary);
   background: var(--bg-tertiary);
+}
+
+/* Workspace pages keep the shared heading and slots in compact tool chrome. */
+.page-frame--workspace .page-frame__header {
+  padding: var(--k-space-3) var(--k-space-4);
+  border-bottom: var(--k-border-thin) solid var(--k-line);
+}
+.page-frame--workspace .page__header {
+  margin: 0;
+  gap: var(--k-space-3);
+}
+.page-frame--workspace .page__title {
+  font: 600 var(--k-text-lg) / var(--k-leading-normal) var(--k-font-ui);
+}
+.page-frame--workspace .page__actions {
+  gap: var(--k-space-2);
+}
+
+.page-frame--workspace {
+  background: var(--k-panel);
+}
+.page-frame--workspace .page__header-text {
+  min-width: 0;
 }

@@ -1,0 +1,7 @@
+{
+  "revision": "445010deb6c0a56b39a2a6428ac79b89e912cd4a",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"#3557: reviewed the people/personal-token hooks entry against packages/sdk/src/query-domains/stationPeople.ts (StationAccessError status/code, isOperatorCredentialRequired, isStationAccessUnavailable, mint reset() requirement, setStationPersonGroup {person, revocations}) and the People/access-token routes those functions call in runtime-routes.ts and personal-token-routes.ts. Other sections of sdk.md and unrelated changes in runtime-routes.ts/pairing-route-scopes.ts were not re-reviewed.","inputs":["docs/reference/sdk.md","packages/sdk/src/index.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts"]}
+  ]
+}

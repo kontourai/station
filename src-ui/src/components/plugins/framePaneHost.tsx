@@ -2,8 +2,10 @@ import type {
   PaneHostFacts,
   PaneHostNotice,
   PaneNavigationTarget,
+  PaneRelatedPanesHost,
   PaneSkillExperienceHost,
   PaneUnavailableReason,
+  RelatedPaneOpenRequest,
   WorkspacePaneHostContract,
 } from '@kontourai/station-contracts/workspace-pane-host-contract';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef } from 'react';
@@ -16,6 +18,7 @@ import {
   usePaneConfirmChrome,
   usePaneHostFacts,
 } from '../../workspace-panes/paneHostShellChrome';
+import { scopeRelatedPanes } from '../../workspace-panes/relatedPanesScope';
 import {
   type PluginBudget,
   pluginConfirmBudget,
@@ -77,7 +80,26 @@ const PANE_HOST_OUTBOUND = {
   confirmResult: 'pane-host/confirm-result',
   factsChanged: 'pane-host/facts-changed',
   refused: 'pane-host/refused',
+  relatedResult: 'pane-host/related-result',
 } as const;
+
+/**
+ * The related-pane requests (`PaneRelatedPanesHost`), each answered with one
+ * `pane-host/related-result` carrying the request's id. The keys each may
+ * carry besides `id` are exact: anything else is an invalid request.
+ */
+const RELATED_PANE_METHODS: Readonly<
+  Record<
+    string,
+    { member: 'open' | 'reveal' | 'close' | 'target'; keys: readonly string[] }
+  >
+> = {
+  'pane-host/related-open': { member: 'open', keys: ['id', 'request'] },
+  'pane-host/related-reveal': { member: 'reveal', keys: ['id', 'handle'] },
+  'pane-host/related-close': { member: 'close', keys: ['id', 'handle'] },
+  'pane-host/related-target': { member: 'target', keys: ['id'] },
+};
+const MAX_PENDING_RELATED_REQUESTS = 16;
 
 /**
  * The frame's two ORIGINAL capability messages, which are contract members
@@ -104,6 +126,11 @@ type PaneHostNavigate = (
 
 interface FramePaneHostOptions {
   skillExperience?: PaneSkillExperienceHost;
+  /**
+   * The occurrence's related-pane capability — the same host object a direct
+   * pane reaches through the SDK — or absent where the placement offers none.
+   */
+  relatedPanes?: PaneRelatedPanesHost;
   authorizeExperience?: () => boolean;
   /**
    * Increments when the plugin frame's document is replaced. An outstanding
@@ -204,6 +231,23 @@ export function useFramePaneHost(options: FramePaneHostOptions): FramePaneHost {
     };
     return () => {
       experienceGeneration.current.active = false;
+    };
+  }, [options.generation, active]);
+  // Related-pane answers belong to the frame document that asked: one that
+  // was replaced (or a placement that stopped rendering) gets none.
+  const relatedLifetime = useRef({
+    generation: options.generation,
+    active,
+    pending: 0,
+  });
+  useEffect(() => {
+    relatedLifetime.current = {
+      generation: options.generation,
+      active,
+      pending: 0,
+    };
+    return () => {
+      relatedLifetime.current.active = false;
     };
   }, [options.generation, active]);
 
@@ -383,6 +427,7 @@ export function useFramePaneHost(options: FramePaneHostOptions): FramePaneHost {
       ...(options.skillExperience
         ? { skillExperience: options.skillExperience }
         : {}),
+      ...(options.relatedPanes ? { relatedPanes: options.relatedPanes } : {}),
     }),
     [
       navigateTo,
@@ -391,6 +436,7 @@ export function useFramePaneHost(options: FramePaneHostOptions): FramePaneHost {
       confirm,
       facts,
       options.skillExperience,
+      options.relatedPanes,
     ],
   );
 
@@ -434,6 +480,77 @@ export function useFramePaneHost(options: FramePaneHostOptions): FramePaneHost {
       const params = readParams(message);
       if (!params) {
         refuse(method, 'params must be an object');
+        return true;
+      }
+
+      const related = RELATED_PANE_METHODS[method];
+      if (related) {
+        const id = params.id;
+        if (typeof id !== 'string' || id.length === 0 || id.length > 128) {
+          refuse(method, 'related-pane request needs an id to answer');
+          return true;
+        }
+        const lifetime = relatedLifetime.current;
+        const answer = (data: unknown) => {
+          if (lifetime === relatedLifetime.current && lifetime.active)
+            post({
+              method: PANE_HOST_OUTBOUND.relatedResult,
+              params: { id, data },
+            });
+        };
+        const refusedWith = (reason: string) =>
+          answer(
+            related.member === 'target'
+              ? null
+              : { status: 'unavailable', reason },
+          );
+        const host = options.relatedPanes;
+        if (!host || !lifetime.active) {
+          refusedWith('unsupported');
+          return true;
+        }
+        if (lifetime.pending >= MAX_PENDING_RELATED_REQUESTS) {
+          refusedWith('rate-limited');
+          return true;
+        }
+        const handle = params.handle;
+        if (
+          !Object.keys(params).every((key) => related.keys.includes(key)) ||
+          ((related.member === 'reveal' || related.member === 'close') &&
+            (typeof handle !== 'string' || handle.length > 128))
+        ) {
+          refusedWith('invalid-request');
+          return true;
+        }
+        // The host decodes and bounds the open request itself: the same
+        // admission a direct pane's call meets. Narrowed to THIS document: a
+        // request whose document was replaced or retired before its guard
+        // answered changes nothing, rather than only losing its answer.
+        const scoped = scopeRelatedPanes(
+          host,
+          () => lifetime === relatedLifetime.current && lifetime.active,
+        );
+        const operation: Promise<unknown> =
+          related.member === 'open'
+            ? scoped.open(params.request as RelatedPaneOpenRequest)
+            : related.member === 'reveal'
+              ? scoped.reveal(handle as string)
+              : related.member === 'close'
+                ? scoped.close(handle as string)
+                : scoped.target();
+        lifetime.pending += 1;
+        void operation.then(
+          (data) => {
+            lifetime.pending -= 1;
+            answer(data);
+          },
+          // Unreachable by contract — no member rejects — but a frame must
+          // not be left waiting on one that did.
+          () => {
+            lifetime.pending -= 1;
+            refusedWith('refused');
+          },
+        );
         return true;
       }
 
@@ -642,6 +759,7 @@ export function useFramePaneHost(options: FramePaneHostOptions): FramePaneHost {
       subscribeFacts,
       options.skillExperience,
       options.authorizeExperience,
+      options.relatedPanes,
       active,
       granted,
     ],

@@ -1,0 +1,7 @@
+{
+  "revision": "20c07e31369eef541ced83674df604ee7ba90250",
+
+  "notes": [
+    {"path":"docs/user/native-recovery.md","note":"Reviewed before-supervisor missing-profile dialog, bounded filesystem history inspection, keyring enumeration errors and nonempty history refusing Create, revalidation under genesis/profile locks, preserved existing metadata/runtime, regular OS metadata allowance and packaged-Node repair guidance. Rust recovery test exercised real CLI read/upsert/read; native dialog interaction pending.","inputs":["docs/user/native-recovery.md","src-desktop/src/lib.rs"]}
+  ]
+}

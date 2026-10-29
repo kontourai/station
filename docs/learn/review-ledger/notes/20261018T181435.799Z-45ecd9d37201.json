@@ -1,0 +1,7 @@
+{
+  "revision": "ee2561705e5e064f64c88c6721ee40bae3b432b4",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Rechecked the worker-environment paragraph after STATION_AUTHOR_TELEMETRY_ENDPOINT joined EVENT_SCOPED_STATION_VARIABLES: the guide describes the scrubbed set by rule (Station variables workflows derive from the event), which still matches ci-event-environment.mjs; release workflows derive the endpoint from event/ref and tests set it explicitly. ci-event-environment and author-telemetry-build focused tests passed.","inputs":["docs/guides/testing.md","scripts/lib/ci-event-environment.mjs"]}
+  ]
+}

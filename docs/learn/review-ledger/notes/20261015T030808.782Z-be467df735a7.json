@@ -1,0 +1,7 @@
+{
+  "revision": "eb485f5b6df80776d14494a37cd7d24ec1a69dbd",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"#3667 Fix round 3: reviewed progress and total timeout helpers, Request-input and init-signal cancellation, and five-minute progress-read cap. A cap permits over seven times the observed healthy 41-second slow-tailnet read. Regressions exercise already-aborted Request inputs, body-reader settlement and caller reasons, and a one-byte-per-29999ms trickle. All three clean-commit mutations fail for their intended assertions; unrelated request paths retain their existing timeout policy.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

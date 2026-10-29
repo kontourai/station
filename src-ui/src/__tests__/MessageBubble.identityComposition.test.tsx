@@ -126,7 +126,7 @@ async function openProvenanceDialog() {
   fireEvent.click(
     await screen.findByRole('button', { name: 'More answer actions' }),
   );
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Turn provenance' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Answer details' }));
   await screen.findByLabelText(/^Answer provenance/);
 }
 
@@ -364,7 +364,7 @@ describe('assistant row identity composition (station#1434)', () => {
     // reading nothing (#2211: from the overflow menu's dialog).
     await openProvenanceDialog();
     expect(
-      screen.getByText(/cannot read\. Nothing about this answer is being/),
+      screen.getByText(/format this version of Station cannot read\.$/),
     ).toBeTruthy();
   });
 
@@ -397,7 +397,7 @@ describe('assistant row identity composition (station#1434)', () => {
     const copy =
       container.querySelector<HTMLButtonElement>('.message__copy-btn');
     expect(copy?.type).toBe('button');
-    expect(copy?.getAttribute('aria-label')).toBe('Copy message');
+    expect(copy?.getAttribute('aria-label')).toBe('Copy answer');
     expect(copy?.querySelector('svg')?.getAttribute('aria-hidden')).toBe(
       'true',
     );

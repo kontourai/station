@@ -1,0 +1,7 @@
+{
+  "revision": "4215fd0e955b34fd7102c206095640d66d3ea1e8",
+
+  "notes": [
+    {"path":"docs/pages/README.md","note":"Reviewed only the rendered-heading/publication paragraphs and new Corpus pin. Both trusted advisory gate and Pages bundle invocation now use reviewed b8ec source; reusable gate identity ac67 and isolated content-read inputs unchanged. Station customHTML/CSS stays authoritative, bundle-only manual stays unpublished, and failure-open behavior is unchanged.103focusedPASS, workflowgatePASS, Pages12builtPASS, exactpinnedbundle/currentcustomURLmapPASS. Publicdeployment and currentheadhosted qualification pending.","inputs":["docs/pages/README.md",".github/workflows/pages.yml"]}
+  ]
+}

@@ -5,6 +5,7 @@ import { interpolate } from '../../i18n/LocaleContext';
 import { pseudoLocalize } from '../../i18n/pseudo';
 
 export type SettingsSectionId =
+  | 'account-preferences'
   // #2182 dissolved 'station-config'. It was a card named after a FILE
   // FORMAT that had collected sixteen unrelated controls — a permission
   // screener beside a shell path beside a telemetry switch — and nobody
@@ -17,6 +18,8 @@ export type SettingsSectionId =
   | 'plugin-visibility'
   // #1973: machines this Station runs simulators and emulators on over SSH.
   | 'device-hosts'
+  // #3557: people with devices tied to them, their Station group and tokens.
+  | 'people'
   | 'host-runtime'
   | 'sources'
   | 'telemetry'
@@ -36,7 +39,12 @@ export type SettingsSectionId =
   | 'notifications'
   | 'voice'
   | 'pairing'
+  // docs/design/station-routes.md: every address this device reaches the
+  // current Station on. Behind the Station routes preview.
+  | 'station-routes'
   | 'developer-tools'
+  // The release-required app facts: version, open source notices, legal.
+  | 'about'
   | 'knowledge';
 
 export interface SettingsCatalogEntry {
@@ -50,6 +58,7 @@ export interface SettingsCatalogEntry {
   configKeys?: readonly string[];
   /** The persistence authority that owns an edit, when this is editable. */
   scope?:
+    | 'account'
     | 'station'
     | 'defaults'
     | 'device'
@@ -66,7 +75,13 @@ export interface SettingsCatalogEntry {
    * search cannot offer a jump to a section that will not be there. A caller
    * that does know may pass it and get the entry back.
    */
-  conditional?: 'mobile' | 'desktop' | 'operator';
+  conditional?:
+    | 'mobile'
+    | 'desktop'
+    | 'operator'
+    | 'developer'
+    | 'experimental-trust'
+    | 'experimental-station-routes';
 }
 
 /**
@@ -85,6 +100,7 @@ export interface SettingsCatalogEntry {
 export type SettingsNavGroup = 'this-station' | 'control' | 'you' | 'knowledge';
 
 export const SETTINGS_SECTIONS = [
+  { id: 'account-preferences', title: 'Your account', group: 'you' },
   { id: 'system', title: 'System', group: 'this-station' },
   // archive#3313 (IA option A): the retired standalone Feature Previews view,
   // as a Station-scope section (previews persist on the Station).
@@ -101,7 +117,10 @@ export const SETTINGS_SECTIONS = [
   // #1973: operator-only, like plugin visibility: the hosts are machines
   // Station reaches with the operator's own ssh keys.
   { id: 'device-hosts', title: 'Device hosts', group: 'this-station' },
-  { id: 'host-runtime', title: 'Station host', group: 'this-station' },
+  // #3557: operator-only, like device hosts: the groups and every person's
+  // tokens live on this Station, and only its operator changes them.
+  { id: 'people', title: 'People', group: 'this-station' },
+  { id: 'host-runtime', title: 'Host options', group: 'this-station' },
   // #2182: where this Station gets agents, skills, plugins and layouts from.
   { id: 'sources', title: 'Sources', group: 'this-station' },
   // #2182: whether anything is sent, and whether there is anywhere to send
@@ -111,7 +130,7 @@ export const SETTINGS_SECTIONS = [
   // the two were the same words, so the nav offered a destination whose only
   // apparent content was itself, and the card's heading restated its first
   // row. The id stays `telemetry`.
-  { id: 'telemetry', title: 'Telemetry', group: 'this-station' },
+  { id: 'telemetry', title: 'Privacy & sharing', group: 'this-station' },
   { id: 'diagnostics', title: 'Diagnostics', group: 'this-station' },
   // #2182: what agents may do without asking. Two rows, and that is the
   // whole of it today — the epic's other permissions ideas have no consumer
@@ -136,10 +155,13 @@ export const SETTINGS_SECTIONS = [
   // #2182: reaching this Station from a phone. It was the one non-voice row
   // of "Voice & Features", which is what made "Features" necessary.
   { id: 'pairing', title: 'Pairing', group: 'you' },
+  { id: 'station-routes', title: 'Routes', group: 'you' },
   // archive#3313: gates the Developer surface's sidebar/palette entries on
   // this device (a device setting — see contracts' developerToolsEnabled).
   { id: 'developer-tools', title: 'Developer tools', group: 'you' },
   // #2144 decision 5: Knowledge keeps a group of its own this slice.
+  // What this installed app is, and the notices a store release must carry.
+  { id: 'about', title: 'About Station', group: 'you' },
   { id: 'knowledge', title: 'My knowledge store', group: 'knowledge' },
 ] as const satisfies readonly {
   id: SettingsSectionId;
@@ -149,10 +171,37 @@ export const SETTINGS_SECTIONS = [
 
 const SETTINGS_CATALOG_SOURCE = [
   {
+    id: 'account-preference-sync',
+    title: 'Import previous preferences',
+    section: 'account-preferences',
+    keywords: ['account', 'sync', 'device', 'migration', 'preferences'],
+  },
+  {
+    id: 'personal-codex-approval',
+    title: 'New Codex chats',
+    section: 'account-preferences',
+    keywords: ['codex', 'approval', 'full access', 'personal', 'default'],
+  },
+  {
+    id: 'personal-claude-approval',
+    title: 'New Claude chats',
+    section: 'account-preferences',
+    keywords: ['claude', 'approval', 'full access', 'personal', 'default'],
+  },
+  {
+    id: 'personal-muse-approval',
+    title: 'New Muse chats',
+    section: 'account-preferences',
+    keywords: ['muse', 'approval', 'full access', 'personal', 'default'],
+  },
+
+  {
     id: 'desktop-app-updates',
     title: 'Desktop app updates',
     section: 'system',
-    keywords: ['desktop app updater signed release channel'],
+    keywords: [
+      'desktop app updater signed release channel automatic download restart',
+    ],
     conditional: 'desktop',
   },
   {
@@ -162,8 +211,15 @@ const SETTINGS_CATALOG_SOURCE = [
     keywords: ['update channel'],
   },
   {
+    id: 'server-update-download-policy',
+    title: 'Automatic server download',
+    section: 'system',
+    keywords: ['update download automatic server service'],
+    configKeys: ['serverUpdateDownloadPolicy'],
+  },
+  {
     id: 'deployed-build',
-    title: 'Deployed Build',
+    title: 'Build details',
     section: 'system',
     keywords: ['version provenance'],
   },
@@ -202,6 +258,44 @@ const SETTINGS_CATALOG_SOURCE = [
     title: 'Enable developer tools',
     section: 'developer-tools',
     keywords: ['developer', 'logs', 'telemetry', 'debug', 'advanced'],
+
+    configKeys: ['developerToolsEnabled'],
+  },
+  {
+    id: 'experimental-flow',
+    title: 'Flow delivery preview',
+    section: 'developer-tools',
+    conditional: 'developer',
+    configKeys: ['experimentalFlowEnabled'],
+  },
+  {
+    id: 'experimental-readiness',
+    title: 'Veritas readiness preview',
+    section: 'developer-tools',
+    conditional: 'developer',
+    configKeys: ['experimentalReadinessEnabled'],
+  },
+  {
+    id: 'experimental-trust',
+    title: 'Trust preview',
+    section: 'developer-tools',
+    conditional: 'developer',
+    configKeys: ['experimentalTrustEnabled'],
+  },
+  {
+    id: 'experimental-station-routes',
+    title: 'Station routes preview',
+    section: 'developer-tools',
+    conditional: 'developer',
+    keywords: ['routes', 'tailscale', 'lan', 'failover', 'connection'],
+    configKeys: ['experimentalStationRoutesEnabled'],
+  },
+  {
+    id: 'experimental-sheet-gestures',
+    title: 'Sheet gestures preview',
+    section: 'developer-tools',
+    conditional: 'developer',
+    configKeys: ['experimentalSheetGesturesEnabled'],
   },
   {
     id: 'shared-answers',
@@ -224,8 +318,15 @@ const SETTINGS_CATALOG_SOURCE = [
     conditional: 'operator',
   },
   {
+    id: 'people',
+    title: 'People',
+    section: 'people',
+    keywords: ['groups admin member tokens access people personal'],
+    conditional: 'operator',
+  },
+  {
     id: 'host-runtime',
-    title: 'Station host',
+    title: 'Host diagnostics',
     section: 'host-runtime',
     keywords: ['environment prerequisites detected software'],
   },
@@ -250,6 +351,7 @@ const SETTINGS_CATALOG_SOURCE = [
   },
   {
     id: 'surface-trust',
+    conditional: 'experimental-trust',
     title: 'Surface trust from Veritas evidence',
     section: 'host-runtime',
     configKeys: ['surfaceTrustFromVeritasEvidence'],
@@ -294,15 +396,61 @@ const SETTINGS_CATALOG_SOURCE = [
   // Whether anything is sent, and whether there is anywhere to send it.
   {
     id: 'usage-telemetry',
-    title: 'Usage telemetry',
+    title: 'Usage sharing',
     section: 'telemetry',
-    configKeys: ['telemetryEnabled'],
+    configKeys: ['telemetryTier'],
   },
   {
     id: 'telemetry-destination',
     title: 'Telemetry destination',
     section: 'telemetry',
     keywords: ['endpoint', 'where telemetry goes', 'otel'],
+  },
+  {
+    id: 'product-telemetry-delivery',
+    title: 'Product delivery',
+    section: 'telemetry',
+    keywords: [
+      'receiver',
+      'acknowledgement',
+      'queue',
+      'dropped',
+      'connection check',
+    ],
+  },
+  {
+    id: 'productTelemetryEndpoint',
+    title: 'Product receiver address',
+    section: 'telemetry',
+    configKeys: ['productTelemetryEndpoint'],
+    keywords: ['product', 'receiver', 'destination', 'endpoint'],
+  },
+  {
+    id: 'productTelemetryKeyRef',
+    title: 'Product receiver key reference',
+    section: 'telemetry',
+    configKeys: ['productTelemetryKeyRef'],
+    keywords: ['receiver', 'secret binding', 'credential', 'key'],
+  },
+  {
+    id: 'otel-delivery',
+    title: 'Metrics and traces',
+    section: 'telemetry',
+    keywords: ['collector', 'otel', 'export', 'connection check'],
+  },
+  {
+    id: 'otelTelemetryEndpoint',
+    title: 'Collector address',
+    section: 'telemetry',
+    configKeys: ['otelTelemetryEndpoint'],
+    keywords: ['collector', 'OTLP', 'destination', 'restart'],
+  },
+  {
+    id: 'otelTelemetryKeyRef',
+    title: 'Collector key reference',
+    section: 'telemetry',
+    configKeys: ['otelTelemetryKeyRef'],
+    keywords: ['collector', 'secret binding', 'credential', 'restart'],
   },
   {
     id: 'diagnostics-bundle',
@@ -393,6 +541,24 @@ const SETTINGS_CATALOG_SOURCE = [
     title: 'Resume after usage limits',
     section: 'agent-runs',
     configKeys: ['usageLimitAutoResume'],
+  },
+  {
+    id: 'review-guides',
+    title: 'Review guides',
+    section: 'agent-runs',
+    configKeys: ['reviewGuidesEnabled'],
+  },
+  {
+    id: 'review-guide-model',
+    title: 'Review guide model',
+    section: 'agent-runs',
+    configKeys: ['reviewGuideModel'],
+  },
+  {
+    id: 'review-guide-instructions',
+    title: 'Review guide instructions',
+    section: 'agent-runs',
+    configKeys: ['reviewGuideInstructions'],
   },
   // ── Chat (#2144 decision 2) ──────────────────────────────────────────────
   // These two MOVED here from 'appearance'. Their ids are unchanged, so every
@@ -498,13 +664,24 @@ const SETTINGS_CATALOG_SOURCE = [
     keywords: ['confirm', 'confirmation', 'delete', 'undo', 'destructive'],
     configKeys: ['confirmConversationDelete'],
   },
-  { id: 'theme', title: 'Theme', section: 'appearance', configKeys: ['theme'] },
+  // The theme and accent controls moved to the Appearance page. These two rows
+  // stay, as links there, so Settings search, the palette's Settings targets
+  // and recorded `highlight=theme` / `highlight=accent-color` links still land
+  // on a row that answers them. Each row's `configKeys` is only the key that
+  // row itself writes (Theme's mode toggle, the custom accent). "Use default"
+  // already reset only a row's first account key, so this changes what the
+  // rows claim (scope, search corpus, the key-to-row lookup), not what the
+  // button does. The color-theme keys are found through `searchKeywords`;
+  // nothing looks them up by key (only Station registry rows call
+  // `settingsCatalogEntryForConfigKey`), and they are reset on the Appearance
+  // page by choosing Station.
   {
-    id: 'sidebar-sections',
-    title: 'Sidebar sections',
+    id: 'theme',
+    title: 'Theme',
     section: 'appearance',
-    keywords: ['open chats', 'drafts', 'sidebar', 'hide', 'remove'],
-    configKeys: ['sidebarSections'],
+    configKeys: ['theme'],
+    keywords: ['mode', 'dark', 'light', 'catppuccin'],
+    searchKeywords: ['color theme', 'flavor', 'palette', 'appearance'],
   },
   {
     id: 'haptic-feedback',
@@ -518,6 +695,7 @@ const SETTINGS_CATALOG_SOURCE = [
     title: 'Accent color',
     section: 'appearance',
     configKeys: ['accentColor'],
+    searchKeywords: ['named accent', 'theme accent', 'appearance'],
   },
   {
     id: 'keyboard-shortcuts',
@@ -571,7 +749,16 @@ const SETTINGS_CATALOG_SOURCE = [
     id: 'mobile-pairing',
     title: 'Device pairing',
     section: 'pairing',
+    // #3557: a person's own access tokens render in this section.
+    searchKeywords: ['access tokens', 'personal access tokens'],
     configKeys: [],
+  },
+  {
+    id: 'lan-discovery',
+    title: 'Discover this Station nearby',
+    section: 'pairing',
+    searchKeywords: ['LAN', 'nearby', 'discovery', 'Bonjour'],
+    configKeys: ['lanDiscoveryEnabled'],
   },
   {
     id: 'open-last-station',
@@ -582,10 +769,36 @@ const SETTINGS_CATALOG_SOURCE = [
     conditional: 'mobile',
   },
   {
+    id: 'station-routes',
+    title: 'Routes',
+    section: 'station-routes',
+    conditional: 'experimental-station-routes',
+    keywords: ['tailscale', 'lan', 'address', 'failover', 'connection'],
+  },
+  {
     id: 'personal-knowledge-store',
     title: 'My knowledge store',
     section: 'knowledge',
     keywords: ['personal project obsidian adapter root vault'],
+  },
+  // ── About ── appended last so earlier rows keep their order.
+  {
+    id: 'app-version',
+    title: 'Version',
+    section: 'about',
+    keywords: ['build', 'release', 'channel', 'commit'],
+  },
+  {
+    id: 'open-source-licenses',
+    title: 'Open source licenses',
+    section: 'about',
+    keywords: ['third party', 'notices', 'attribution', 'oss'],
+  },
+  {
+    id: 'legal',
+    title: 'Legal',
+    section: 'about',
+    keywords: ['privacy policy', 'license', 'support', 'terms'],
   },
 ] as const satisfies readonly Omit<SettingsCatalogEntry, 'scope'>[];
 
@@ -596,6 +809,8 @@ const SETTINGS_MESSAGES = {
   paletteGroup: 'Settings',
   scopeStation: 'Saved to this Station.',
   scopeDefaults: 'Saved as Station defaults.',
+  scopeAccount:
+    'Saved to your account on this Station when signed in; otherwise saved on this device.',
   scopeDevice: 'Saved to this device.',
   scopeMixed: 'Exports and imports include this Station and this device.',
   scopeTemporary: 'Available only for this browser session.',
@@ -651,6 +866,8 @@ const SETTING_SCOPE_OVERRIDES: Readonly<
   'deployed-build': 'informational',
   'message-context': 'temporary',
   'mobile-pairing': 'informational',
+  // Routes are saved in this device's own connection profile.
+  'station-routes': 'device',
 };
 
 /**
@@ -700,7 +917,11 @@ function scopeForKeylessSection(
     section === 'developer-tools'
   )
     return 'device';
-  if (section === 'host-runtime' || section === 'diagnostics')
+  if (
+    section === 'host-runtime' ||
+    section === 'diagnostics' ||
+    section === 'about'
+  )
     return 'informational';
   return 'station';
 }
@@ -732,6 +953,8 @@ function scopeForEntry(
   section: SettingsSectionId,
   configKeys: readonly string[] | undefined,
 ): NonNullable<SettingsCatalogEntry['scope']> {
+  if (section === 'account-preferences' || id === 'smooth-answer-reveal')
+    return 'account';
   const override = SETTING_SCOPE_OVERRIDES[id];
   if (override) return override;
   const declaredKey = configKeys?.[0];
@@ -827,11 +1050,31 @@ export function matchingSettingsRows(
    * collaborator's Settings search cannot offer a jump to a section the
    * server will refuse to populate.
    */
-  options: { isOperator?: boolean } = {},
+  options: {
+    isOperator?: boolean;
+    developerToolsEnabled?: boolean;
+    experimentalTrustEnabled?: boolean;
+    experimentalStationRoutesEnabled?: boolean;
+  } = {},
 ): readonly SettingsCatalogEntry[] {
   const needle = query.trim().toLowerCase();
   if (!needle) return [];
   return SETTINGS_CATALOG.filter((entry) => {
+    if (
+      entry.conditional === 'developer' &&
+      options.developerToolsEnabled !== true
+    )
+      return false;
+    if (
+      entry.conditional === 'experimental-trust' &&
+      options.experimentalTrustEnabled !== true
+    )
+      return false;
+    if (
+      entry.conditional === 'experimental-station-routes' &&
+      options.experimentalStationRoutesEnabled !== true
+    )
+      return false;
     if (entry.conditional === 'operator' && options.isOperator !== true) {
       return false;
     }
@@ -866,6 +1109,9 @@ export function matchingSettingsRows(
 export function settingsPaletteCommands(options: {
   isMobile: boolean;
   isDesktop: boolean;
+  developerToolsEnabled?: boolean;
+  experimentalTrustEnabled?: boolean;
+  experimentalStationRoutesEnabled?: boolean;
 }): readonly SettingsPaletteCommand[] {
   // #2067: deliberately NOT filtered by `conditional: 'operator'` here.
   //
@@ -879,7 +1125,15 @@ export function settingsPaletteCommands(options: {
   // reaches it through the PALETTE (not the Settings search, which IS
   // filtered — `matchingSettingsRows`) lands on Settings with a highlight
   // that finds nothing. A cosmetic no-op carrying no plugin data.
-  return SETTINGS_CATALOG.map((entry) => {
+  return SETTINGS_CATALOG.filter(
+    (entry) =>
+      (entry.conditional !== 'developer' ||
+        options.developerToolsEnabled === true) &&
+      (entry.conditional !== 'experimental-trust' ||
+        options.experimentalTrustEnabled === true) &&
+      (entry.conditional !== 'experimental-station-routes' ||
+        options.experimentalStationRoutesEnabled === true),
+  ).map((entry) => {
     const unavailable =
       entry.conditional === 'mobile' && !options.isMobile
         ? ('mobile' as const)

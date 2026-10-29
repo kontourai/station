@@ -1,7 +1,9 @@
+import type { ProviderSendTurnInput } from '@kontourai/station-contracts/provider';
 import {
   type CanonicalRuntimeEvent,
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
+import { APICallError } from 'ai';
 import { describe, expect, test, vi } from 'vitest';
 import {
   INTERNAL_TURN_CORRELATION_HEADER,
@@ -9,6 +11,10 @@ import {
   readSkillExperienceRelayContext,
   runWithAuthorizedTurnCorrelation,
 } from '../../runtime/conversation/authorized-turn-correlation.js';
+import {
+  outwardTurnFailureText,
+  writeSSEError,
+} from '../../runtime/conversation/stream-orchestrator.js';
 import { rememberToolPurpose } from '../../runtime/frameworks/tool-purpose.js';
 import { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
 import { EventBus } from '../../services/orchestration/event-bus.js';
@@ -943,99 +949,112 @@ describe('StationAgentAdapter', () => {
     expect(configured.metadata).not.toHaveProperty('capabilityDelivery');
   });
 
-  test('runs a configured Station agent through the canonical resumable task stream', async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      sseResponse([
-        { type: 'text-delta', id: 'text-1', text: 'Reviewed ' },
-        {
-          type: 'tool-call',
-          toolCallId: 'tool-1',
-          toolName: 'repo_read',
-          input: { path: 'README.md' },
-        },
-        {
-          type: 'tool-result',
-          toolCallId: 'tool-1',
-          toolName: 'repo_read',
-          output: 'ok',
-        },
-        { type: 'text-delta', id: 'text-2', text: 'successfully.' },
-        { type: 'finish', finishReason: 'stop' },
-        '[DONE]',
-      ]),
-    );
-    const adapter = new StationAgentAdapter({
-      apiBase: 'http://127.0.0.1:3141',
-      hasAgent: (agentId) => agentId === 'reviewer',
-      ...approvalDeps(),
-      fetch: fetchMock,
-      now: () => new Date('2026-07-19T00:00:00.000Z'),
-    });
-    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+  test.each([undefined, 'station-origin'])(
+    'runs a configured Station agent through the canonical resumable task stream (origin %s)',
+    async (invocationId) => {
+      const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+        sseResponse([
+          { type: 'text-delta', id: 'text-1', text: 'Reviewed ' },
+          {
+            type: 'tool-call',
+            toolCallId: 'tool-1',
+            toolName: 'repo_read',
+            input: { path: 'README.md' },
+          },
+          {
+            type: 'tool-result',
+            toolCallId: 'tool-1',
+            toolName: 'repo_read',
+            output: 'ok',
+          },
+          { type: 'text-delta', id: 'text-2', text: 'successfully.' },
+          { type: 'finish', finishReason: 'stop' },
+          '[DONE]',
+        ]),
+      );
+      const adapter = new StationAgentAdapter({
+        apiBase: 'http://127.0.0.1:3141',
+        hasAgent: (agentId) => agentId === 'reviewer',
+        ...approvalDeps(),
+        fetch: fetchMock,
+        now: () => new Date('2026-07-19T00:00:00.000Z'),
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
 
-    const session = await adapter.startSession({
-      threadId: 'task-1',
-      provider: 'station-agent',
-      cwd: '/work/station',
-      modelId: 'sonnet',
-      metadata: {
+      const session = await adapter.startSession({
+        threadId: 'task-1',
+        provider: 'station-agent',
+        cwd: '/work/station',
+        modelId: 'sonnet',
+        metadata: {
+          agentId: 'reviewer',
+          projectSlug: 'station',
+          userId: 'user-1',
+          taskId: 'task-1',
+        },
+      });
+      const input: ProviderSendTurnInput = {
+        threadId: 'task-1',
+        input: 'Review this change',
+        modelId: 'sonnet',
+        ...(invocationId ? { invocationId } : {}),
+        metadata: { invocationId: 'untrusted-metadata-origin' },
+      };
+      const pending = adapter.sendTurn(input);
+      input.invocationId = 'mutated-before-agent-check';
+      const turn = await pending;
+      const events = await nextEvents(iterator, 10);
+
+      for (const event of events) {
+        if (event.turnId && invocationId)
+          expect(event).toMatchObject({ invocationId });
+        else expect(event).not.toHaveProperty('invocationId');
+      }
+      expect(session.resumeCursor).toEqual({
         agentId: 'reviewer',
         projectSlug: 'station',
         userId: 'user-1',
-        taskId: 'task-1',
-      },
-    });
-    const turn = await adapter.sendTurn({
-      threadId: 'task-1',
-      input: 'Review this change',
-      modelId: 'sonnet',
-    });
-    const events = await nextEvents(iterator, 10);
-
-    expect(session.resumeCursor).toEqual({
-      agentId: 'reviewer',
-      projectSlug: 'station',
-      userId: 'user-1',
-    });
-    expect(turn.threadId).toBe('task-1');
-    expect(events.map((event) => event.method)).toEqual([
-      'session.started',
-      'session.configured',
-      'session.state-changed',
-      'turn.started',
-      'content.text-delta',
-      'tool.started',
-      'tool.completed',
-      'content.text-delta',
-      'turn.completed',
-      'session.state-changed',
-    ]);
-    expect(events[8]).toMatchObject({
-      method: 'turn.completed',
-      outputText: 'Reviewed successfully.',
-      finishReason: 'stop',
-    });
-    expect(fetchMock).toHaveBeenCalledWith(
-      'http://127.0.0.1:3141/api/agents/reviewer/chat',
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({
-          input: 'Review this change',
-          options: {
-            conversationId: 'task-1',
-            userId: 'user-1',
-            model: 'sonnet',
-            // archive#1288: a modelId turn must carry the provider-fallback
-            // carrier or /chat's model-override guard 400s (no resolved
-            // provider connection).
-            providerManagedFallback: true,
-            providerModel: 'sonnet',
-          },
-          projectSlug: 'station',
+      });
+      expect(turn.threadId).toBe('task-1');
+      expect(events.map((event) => event.method)).toEqual([
+        'session.started',
+        'session.configured',
+        'session.state-changed',
+        'turn.started',
+        'content.text-delta',
+        'tool.started',
+        'tool.completed',
+        'content.text-delta',
+        'turn.completed',
+        'session.state-changed',
+      ]);
+      expect(events[8]).toMatchObject({
+        method: 'turn.completed',
+        outputText: 'Reviewed successfully.',
+        finishReason: 'stop',
+      });
+      expect(fetchMock).toHaveBeenCalledWith(
+        'http://127.0.0.1:3141/api/agents/reviewer/chat',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            input: 'Review this change',
+            options: {
+              conversationId: 'task-1',
+              userId: 'user-1',
+              model: 'sonnet',
+              // archive#1288: a modelId turn must carry the provider-fallback
+              // carrier or /chat's model-override guard 400s (no resolved
+              // provider connection).
+              providerManagedFallback: true,
+              providerModel: 'sonnet',
+            },
+            projectSlug: 'station',
+          }),
         }),
-      }),
-    );
-  });
+      );
+    },
+  );
 
   describe('effectiveModel metadata (station#1455)', () => {
     test('stamps effectiveModel on both turn.started and the turn.completed terminal event, and never a reportedModel', async () => {
@@ -1282,10 +1301,15 @@ describe('StationAgentAdapter', () => {
     const turn = await adapter.sendTurn({
       threadId: 'task-interrupt',
       input: 'Keep working',
+      invocationId: 'interrupt-origin',
     });
     await adapter.interruptTurn('task-interrupt', turn.turnId);
     const events = await nextEvents(iterator, 6);
 
+    expect(events[4]).toMatchObject({
+      method: 'turn.aborted',
+      invocationId: 'interrupt-origin',
+    });
     expect(requestSignal?.aborted).toBe(true);
     expect(events.map((event) => event.method)).toEqual([
       'session.started',
@@ -1406,6 +1430,7 @@ describe('StationAgentAdapter', () => {
       const turn = await adapter.sendTurn({
         threadId,
         input: 'Use the repository tool',
+        invocationId: 'tool-owner',
       });
       streamController.enqueue(
         encoder.encode(
@@ -1441,6 +1466,7 @@ describe('StationAgentAdapter', () => {
         toolName: 'repo_write',
         status: 'unresolved',
         turnId: turn.turnId,
+        invocationId: 'tool-owner',
         output:
           'No result was reported before the session ended; whether the tool ran is unknown.',
       });
@@ -1831,6 +1857,7 @@ describe('StationAgentAdapter', () => {
     await adapter.sendTurn({
       threadId: 'task-approval',
       input: 'Use the repository tool',
+      invocationId: 'approval-owner',
     });
 
     const firstApproval = approvalRegistry.register('approval-1', {
@@ -1855,6 +1882,7 @@ describe('StationAgentAdapter', () => {
 
     expect(opened.at(-1)).toMatchObject({
       method: 'request.opened',
+      invocationId: 'approval-owner',
       threadId: 'task-approval',
       requestId: 'approval-1',
       requestType: 'approval',
@@ -1868,6 +1896,27 @@ describe('StationAgentAdapter', () => {
     await expect(
       adapter.respondToRequest('task-other', 'approval-1', 'acceptForSession'),
     ).rejects.toThrow('Unknown Station agent approval request: approval-1');
+    streamController.close();
+    expect(await nextEvents(iterator, 2)).toMatchObject([
+      { method: 'turn.completed', invocationId: 'approval-owner' },
+      { method: 'session.state-changed' },
+    ]);
+    fetchMock.mockResolvedValue(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            streamController = controller;
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+    await adapter.sendTurn({
+      threadId: 'task-approval',
+      input: 'Replacement',
+      invocationId: 'replacement-owner',
+    });
+    await nextEvents(iterator, 2);
     await adapter.respondToRequest(
       'task-approval',
       'approval-1',
@@ -1877,6 +1926,7 @@ describe('StationAgentAdapter', () => {
     expect(await nextEvents(iterator, 1)).toMatchObject([
       {
         method: 'request.resolved',
+        invocationId: 'approval-owner',
         requestId: 'approval-1',
         status: 'approved',
         // #2880: Station's own engine consumed the decision in-process.
@@ -1902,9 +1952,14 @@ describe('StationAgentAdapter', () => {
     );
     await expect(rememberedApproval).resolves.toBe(true);
     expect(await nextEvents(iterator, 2)).toMatchObject([
-      { method: 'request.opened', requestId: 'approval-2' },
+      {
+        method: 'request.opened',
+        invocationId: 'replacement-owner',
+        requestId: 'approval-2',
+      },
       {
         method: 'request.resolved',
+        invocationId: 'replacement-owner',
         requestId: 'approval-2',
         status: 'approved',
       },
@@ -1929,9 +1984,14 @@ describe('StationAgentAdapter', () => {
       ),
     );
     expect(await nextEvents(iterator, 2)).toMatchObject([
-      { method: 'request.opened', requestId: 'approval-3' },
+      {
+        method: 'request.opened',
+        invocationId: 'replacement-owner',
+        requestId: 'approval-3',
+      },
       {
         method: 'request.resolved',
+        invocationId: 'replacement-owner',
         requestId: 'approval-3',
         status: 'denied',
       },
@@ -1944,53 +2004,152 @@ describe('StationAgentAdapter', () => {
     ]);
   });
 
-  test('does not let an interrupted stream clear or abort its replacement turn', async () => {
-    const signals: AbortSignal[] = [];
-    const streamControllers: ReadableStreamDefaultController[] = [];
-    const fetchMock = vi.fn<typeof fetch>().mockImplementation(
-      async (_input, init) =>
-        new Response(
-          new ReadableStream({
-            start(controller) {
-              streamControllers.push(controller);
-              signals.push(init?.signal as AbortSignal);
-            },
-          }),
-          { status: 200 },
+  test.each([
+    { lateOpen: false, lateResult: true },
+    { lateOpen: true, lateResult: false },
+    { lateOpen: true, lateResult: true },
+  ])(
+    'does not let an interrupted stream clear or abort its replacement turn (late open $lateOpen, result $lateResult)',
+    async ({ lateOpen, lateResult }) => {
+      const signals: AbortSignal[] = [];
+      const streamControllers: ReadableStreamDefaultController<Uint8Array>[] =
+        [];
+      const fetchMock = vi.fn<typeof fetch>().mockImplementation(
+        async (_input, init) =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                streamControllers.push(controller);
+                if (init?.signal) signals.push(init.signal);
+              },
+            }),
+            { status: 200 },
+          ),
+      );
+      const adapter = new StationAgentAdapter({
+        apiBase: 'http://127.0.0.1:3141',
+        hasAgent: () => true,
+        ...approvalDeps(),
+        fetch: fetchMock,
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      await adapter.startSession({
+        threadId: 'task-replace',
+        provider: 'station-agent',
+        metadata: { agentId: 'reviewer' },
+      });
+
+      const first = await adapter.sendTurn({
+        threadId: 'task-replace',
+        input: 'First turn',
+        invocationId: 'origin-A',
+      });
+      const encoder = new TextEncoder();
+      const frame = (index: number, event: Record<string, unknown>) =>
+        streamControllers[index]!.enqueue(
+          encoder.encode(`data: ${JSON.stringify(event)}\n\n`),
+        );
+      frame(0, {
+        type: 'tool-call',
+        toolCallId: 'reused-call',
+        toolName: 'repo_write',
+        input: {},
+      });
+      const openedA = await nextEvents(iterator, 5);
+      expect(openedA.at(-1)).toMatchObject({
+        method: 'tool.started',
+        invocationId: 'origin-A',
+      });
+      await adapter.interruptTurn('task-replace', first.turnId);
+      const second = await adapter.sendTurn({
+        threadId: 'task-replace',
+        input: 'Replacement turn',
+        invocationId: 'origin-B',
+      });
+      frame(1, {
+        type: 'tool-call',
+        toolCallId: 'reused-call',
+        toolName: 'repo_write',
+        input: {},
+      });
+      const openedB = await nextEvents(iterator, 5);
+      expect(openedB.at(-1)).toMatchObject({
+        method: 'tool.started',
+        invocationId: 'origin-B',
+      });
+      const delayedFrames: Record<string, unknown>[] = [];
+      if (lateOpen)
+        delayedFrames.push({
+          type: 'tool-call',
+          toolCallId: 'reused-call',
+          toolName: 'repo_write',
+          input: {},
+        });
+      if (lateResult)
+        delayedFrames.push({
+          type: 'tool-result',
+          toolCallId: 'reused-call',
+          toolName: 'repo_write',
+          output: 'late-A-result',
+        });
+      delayedFrames.push({ type: 'text-delta', text: 'late-A' });
+      streamControllers[0]!.enqueue(
+        encoder.encode(
+          delayedFrames
+            .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+            .join(''),
         ),
-    );
-    const adapter = new StationAgentAdapter({
-      apiBase: 'http://127.0.0.1:3141',
-      hasAgent: () => true,
-      ...approvalDeps(),
-      fetch: fetchMock,
-    });
-    await adapter.startSession({
-      threadId: 'task-replace',
-      provider: 'station-agent',
-      metadata: { agentId: 'reviewer' },
-    });
+      );
+      streamControllers[0]?.error(new Error('interrupted stream closed'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const first = await adapter.sendTurn({
-      threadId: 'task-replace',
-      input: 'First turn',
-    });
-    await adapter.interruptTurn('task-replace', first.turnId);
-    const second = await adapter.sendTurn({
-      threadId: 'task-replace',
-      input: 'Replacement turn',
-    });
-    streamControllers[0]?.error(new Error('interrupted stream closed'));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    expect(signals[0]?.aborted).toBe(true);
-    expect(signals[1]?.aborted).toBe(false);
-    expect((await adapter.listSessions())[0]?.status).toBe('running');
-    await adapter.interruptTurn('task-replace', first.turnId);
-    expect(signals[1]?.aborted).toBe(false);
-    await adapter.interruptTurn('task-replace', second.turnId);
-    expect(signals[1]?.aborted).toBe(true);
-  });
+      expect(signals[0]?.aborted).toBe(true);
+      expect(signals[1]?.aborted).toBe(false);
+      expect((await adapter.listSessions())[0]?.status).toBe('running');
+      await adapter.interruptTurn('task-replace', first.turnId);
+      expect(signals[1]?.aborted).toBe(false);
+      streamControllers[1]?.enqueue(
+        new TextEncoder().encode(
+          'data: {"type":"text-delta","text":"current-B"}\n\n',
+        ),
+      );
+      streamControllers[1]?.close();
+      const lateEvents = await nextEvents(iterator, delayedFrames.length + 3);
+      const events = [...openedA, ...openedB, ...lateEvents];
+      expect(lateEvents.slice(0, delayedFrames.length)).toMatchObject(
+        delayedFrames.map(() => ({
+          turnId: first.turnId,
+          invocationId: 'origin-A',
+        })),
+      );
+      expect(
+        events.filter((event) => event.method === 'turn.aborted'),
+      ).toMatchObject([{ turnId: first.turnId, invocationId: 'origin-A' }]);
+      expect(
+        events.filter((event) => event.method === 'turn.completed'),
+      ).toMatchObject([{ turnId: second.turnId, invocationId: 'origin-B' }]);
+      expect(
+        events.filter((event) => event.method === 'content.text-delta'),
+      ).toMatchObject([
+        { delta: 'late-A', invocationId: 'origin-A' },
+        { delta: 'current-B', invocationId: 'origin-B' },
+      ]);
+      expect(
+        events.filter((event) => event.method === 'runtime.error'),
+      ).toEqual([]);
+      await adapter.stopSession('task-replace');
+      const [unresolved] = await nextEvents(iterator, 1);
+      expect(unresolved).toMatchObject({
+        method: 'tool.completed',
+        toolCallId: 'reused-call',
+        status: 'unresolved',
+        turnId: second.turnId,
+        invocationId: 'origin-B',
+      });
+      const [exited] = await nextEvents(iterator, 1);
+      expect(exited).not.toHaveProperty('invocationId');
+    },
+  );
 
   test('recovers the Station agent binding from the persisted resume cursor', async () => {
     const adapter = new StationAgentAdapter({
@@ -2189,6 +2348,7 @@ describe('StationAgentAdapter', () => {
       .sendTurn({
         threadId: 'task-413-sized',
         input: 'describe this image',
+        invocationId: 'rejection-origin',
       })
       .then(() => null)
       .catch((error: unknown) => error);
@@ -2205,14 +2365,15 @@ describe('StationAgentAdapter', () => {
     expect(runtimeErrors[0]).toMatchObject({
       method: 'runtime.error',
       code: 'station_agent_turn_unavailable',
+      invocationId: 'rejection-origin',
       message:
         'Station agent did not accept the task turn: request body too large (limit 5242880 bytes)',
     });
   });
 
-  // Review round 1 (Codex MED-1/MED-2): the rejection-body read is bounded
+  // #1071: the rejection-body read is bounded
   // and abort-aware, and the republished reason is a normalized single line.
-  describe('readChatRejectionReason bounds (#1071 review round 1)', () => {
+  describe('readChatRejectionReason bounds (#1071)', () => {
     test('an oversized body falls back to the generic message', async () => {
       const huge = JSON.stringify({ error: 'x'.repeat(64 * 1024) });
       await expect(
@@ -2455,8 +2616,8 @@ describe('StationAgentAdapter', () => {
     ]);
   });
 
-  // archive#1207 review round 1, HIGH 2 — the actual production trigger
-  // under `managed-chat-orchestration`: before this fix, a silent stall on
+  // archive#1207 — the production trigger is managed chat, which runs
+  // through orchestration: before this fix, a silent stall on
   // the inner /chat bridge stream (server crash, dropped connection, no
   // error event) meant `reader.read()` inside `consumeChatStream` never
   // resolved, no terminal event was ever published, and the client's own
@@ -2527,7 +2688,7 @@ describe('StationAgentAdapter', () => {
       );
     });
 
-    // archive#1207 review round 2, item 2: the sibling case to the stall
+    // archive#1207: the sibling case to the stall
     // test above — a HEALTHY long-running tool call (delegateTask sub-agent
     // or a slow MCP/shell tool) that legitimately produces zero `data:`
     // frames for well over the stall timeout, with only server-emitted
@@ -2695,10 +2856,59 @@ describe('StationAgentAdapter — inner /chat error frame becomes a classified r
         retriable: true,
         details: { httpStatus: statusCode },
       });
+      if (statusCode === 401 || statusCode === 403) {
+        expect(error).toMatchObject({
+          kind: 'auth',
+          retryable: false,
+          failurePhase: 'failed',
+        });
+      }
       const serialized = JSON.stringify(events);
       expect(serialized).not.toContain('sk-live-SECRET');
       expect(serialized).not.toContain('api.example.test');
       expect(serialized).not.toContain('The response stream failed.');
+    },
+  );
+
+  test.each([
+    ['code', 'insufficient_quota', 'quota_exhausted', false],
+    ['type', 'insufficient_quota', 'quota_exhausted', false],
+    ['code', 'rate_limit_exceeded', 'rate_limited', true],
+    ['message', 'insufficient_quota', 'rate_limited', true],
+  ] as const)(
+    'upstream 429 %s=%s survives the production SSE writer and relay',
+    async (field, value, kind, retryable) => {
+      const upstream = new APICallError({
+        message: SECRET,
+        url: 'https://api.example.test/v1/responses',
+        requestBodyValues: {},
+        statusCode: 429,
+        responseBody: JSON.stringify({
+          error: { message: SECRET, [field]: value },
+        }),
+      });
+      let wire = '';
+      await writeSSEError(
+        {
+          write: async (text: string) => {
+            wire += text;
+          },
+        },
+        upstream,
+      );
+      expect(wire).not.toContain(SECRET);
+      const frame: Record<string, unknown> = JSON.parse(
+        wire.slice('data: '.length).trim(),
+      );
+      const { error, events } = await runFailedTurn(frame);
+      expect(error).toMatchObject({
+        kind,
+        retryable,
+        failurePhase: 'failed',
+        details: { httpStatus: 429 },
+      });
+      expect(error?.message).toBe(outwardTurnFailureText(upstream));
+      expect(JSON.stringify(events)).not.toContain(SECRET);
     },
   );
 

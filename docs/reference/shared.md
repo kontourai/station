@@ -11,14 +11,22 @@ If you need a server-only provider interface such as `IBrandingProvider`, `IAuth
 
 For runtime helpers, use explicit subpaths:
 
+- `@kontourai/station-shared/agent-message-frame` — agent-message framing and its read-side inverse; every message line is quoted under a fixed header. The server-recorded `clientOrigin.sender`, rather than framed text, identifies the sender. This grants no Session read, invocation or person authority.
 - `@kontourai/station-shared/parsers`
+- `@kontourai/station-shared/delegation-files` — coded file-delivery refusals and batch name/size/data checks for CLI preflight and server materialization; validation supplies no staging or execution authority
 - `@kontourai/station-shared/build`
+- `@kontourai/station-shared/http-upload` — Node HTTP receive deadlines shared by the API and serialized CLI listener; takes the media route policy as an argument and preserves socket keep-alive timeouts; `configureHttpKeepAlive` holds an idle connection for 65 seconds instead of Node's 5, so a polling client reuses it rather than opening a new one, and a reverse proxy with a 60-second idle limit closes its upstream connection before Node does; also owns the typed `UploadBodyLimitError` used by streamed body budgets and routes
+- `@kontourai/station-shared/ui-document-policy` — the content-hashed build-asset pattern and the document Content-Security-Policy; the serialized CLI UI listener applies both (with its per-request script nonce), and the web build injects them into the service worker so offline caching and the offline shell follow the same rules
+- `@kontourai/station-shared/visual-viewport` — browser-safe visual viewport geometry (height, page offset and the inset above the keyboard or Android system bars, intersected with the Android shell's reported visible height) as one subscription per window; the app's surfaces and the SDK and Connect modals read the same snapshot through `useSyncExternalStore`
+- `@kontourai/station-shared/strict-indexeddb` — one transaction against a single-store IndexedDB database that refuses a `readwrite` the browser would not commit with strict durability, closes on a version change and rejects with the caller's own errors; the browser relay authority and TURN credential custody and Connect's broker routing grants use it
 - `@kontourai/station-shared/git`
 - `@kontourai/station-shared/mcp`
 - `@kontourai/station-shared/mcp-tool-selection` — browser-safe original/qualified/runtime MCP identities and selection matching
 - `@kontourai/station-shared/thread-usage-tree` — the conversation usage tree fold and the per-engine rules for how a subagent's usage relates to its parent's
 - `@kontourai/station-shared/display-text` — browser-safe display form for untrusted text on a one-line surface: bidi controls removed, control characters as spaces, the line split approval surfaces share, and code-point truncation
 - `@kontourai/station-shared/display-reveal` — for raw views: `revealHiddenCharacters` and friends show hidden characters as visible `«U+XXXX»` tokens (a separate subpath so the one-line display form can ship in an entry bundle without it)
+- `@kontourai/station-shared/release-version-order` — browser-safe Station release order (`compareStationReleaseVersions`), plus `clientVersionInHostOrder`, which writes a client build's version in the host stream's shape so a client can compare itself with the server it reaches
+- `@kontourai/station-shared/authored-input` — browser-safe `isAuthoredInputContent(prompt, attachmentCount)`, the one rule for whether a turn start carries authored input (non-whitespace prompt or an attachment); the event store applies it inside its one input readability rule, which the Session inventory listing runs as a SQLite function and the exact input read applies, and the SDK applies it to that read's response
 - `@kontourai/station-shared/usage-semantics` — provider usage scope, context validation and cache-inclusive token helpers; `usage-fold` retains the same exports alongside event accounting
 
 The [export map](../../packages/shared/package.json) selects source files, mostly
@@ -27,10 +35,30 @@ The [export map](../../packages/shared/package.json) selects source files, mostl
 requirements. The type excerpts below are not exhaustive replacements for their
 owning declarations; import the canonical type rather than copying an interface.
 
+The browser-safe `@kontourai/station-shared/html-reply-document` subpath builds
+the restrictive page document and page-only proxy bootstrap used by the
+[HTML reply sandbox](../decisions/html-replies.md). It also validates bounded page references for event-window projection. It
+carries no MCP tool or session bridge and does not publish or store pages.
+
+## Recorded MCP app results
+
+`@kontourai/station-shared/mcp-app-result` exports
+`isSuccessfulMcpResult`. This browser-safe predicate accepts a content-array
+result whose `isError` is absent or false. It is only a cheap candidate filter:
+the UI separately requires membership in a connected or shipped in-process tool-definition catalog,
+and history retention requires a Station-owned completion stamp. Result metadata
+cannot authorize either behavior or a resource read.
+See [transcript previews](../design/mcp-ui-host.md#transcript-previews).
+
 ## Product telemetry
 
 `@kontourai/station-shared/product-telemetry` is a Node-only leaf. It renders and
-fingerprints the canonical event/envelope inventory and provides
+exports `PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION` for the canonical data
+inventory and `FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION` for that inventory plus
+the Full disclosure wording revision. `USAGE_TELEMETRY_INVENTORY_REVISION`
+is the deprecated acknowledgement compatibility export; use the explicit
+acknowledgement name. Wording changes leave batch
+and probe compatibility unchanged. It provides
 `parseProductTelemetryBatch` for strict v1 receiver validation. It rejects
 unsupported versions, stale inventory revisions, unexpected fields, invalid
 timestamps, unclassified properties and invalid build provenance. It accepts
@@ -39,6 +67,37 @@ commit, deduplication and namespace isolation belong to the receiver.
 The contract shape and event constants live in
 `@kontourai/station-contracts/product-telemetry`. Validation alone proves no
 collection, consent, durable storage or deployed service.
+`parseStationDailyPing` validates the declared Lite fields with the receiver's
+public registry/release catalogs, or with `semver` version admission using the
+same `mapRuntimeVersionToTelemetryVersion` validator as the sender. The broker's
+source configuration chooses the policy; publication still uses a fixed catalog.
+`custom` versions and `unknown` channel,
+distribution and layouts values are explicit sentinels; unknown object keys
+remain errors. The Lite inventory revision changes with these domain changes.
+`parseTelemetryFeedback` accepts exactly publisher, fixed action and fixed reason
+fields from the shared feedback contract, rejecting unknown fields and enums
+and the local-only `skip` dismissal.
+It adds no IDs, content or sender time. Receiver source binding, daily dedupe,
+retention and operator-only counts belong to the
+[Lite receiver](../../packages/telemetry-broker/README.md#lite-observations).
+
+
+`mapRuntimeChannelToTelemetryChannel` maps runtime `beta` to `preview` and
+returns undefined for unmapped labels. Full omits that field; Lite supplies
+`unknown` at its sender. `parseStationDailyPing` uses the receiver's configured
+release list by default; the sender selects `semver` to admit valid versions
+or `custom` without claiming catalog membership.
+`mapRuntimeVersionToTelemetryVersion` preserves SemVer within the 64-character
+bound and maps other running versions to `custom` before daily validation.
+Source/fork versions can reuse a release version.
+
+`parseProductTelemetryCommitReceipt` additionally requires the exact requested
+event-ID set, valid timestamp and matching inserted/duplicate counts before a
+sender can remove that batch. `parseProductTelemetryProbeRequest` and
+`parseProductTelemetryProbeReceipt` validate the separate content-free
+source/schema check. A compatible probe does not acknowledge disclosure,
+create an installation identity or establish an accepted observation. These
+parsers remain Node-only; the browser status SDK uses its own response boundary.
 
 ## Native relay link codec
 
@@ -101,8 +160,7 @@ person a structured question" source maps into. Types come from
   SDK normalization, for legacy push requests and modern input-required results.
 - `inputRequestFromRequestEvent` reads a `request.opened` event's
   `payload.inputRequest`, or a pre-#3390 stored `payload.questionnaire` or
-  `payload.mcpElicitation`, adapted to a validated form. The public legacy
-  `mcp-elicitation-form` reader delegates to this same admission owner.
+  `payload.mcpElicitation`, adapted to a validated form.
 - `validateInputRequestContent` validates accepted content against the form
   that was opened and throws the first problem, worded for the person. It
   returns a detached, null-prototype snapshot of exactly what it checked
@@ -141,8 +199,9 @@ source is implemented.
 `inputRequestFromMcpElicitation` maps a form-mode request into a form,
 refusing URL mode and anything outside the schema or over a bound.
 
-`@kontourai/station-shared/harness-questions` is deprecated since 0.9.0 and is
-removed in 0.10.0. `readHarnessQuestionnaire`,
+`@kontourai/station-shared/harness-questions` is deprecated since 0.9.0 and
+remains exported in 0.10.0 for compatibility. Use the `input-request` helpers
+for new callers. `readHarnessQuestionnaire`,
 `validateHarnessQuestionAnswers`, `harnessAnswerTexts` and
 `harnessQuestionnaireFromInputRequest` keep the pre-#3390 shape working by
 translating to and from a form; answers are validated only by
@@ -178,6 +237,7 @@ JSON reader. See [plugin contracts](../../packages/contracts/src/plugin.ts).
 
 ```ts
 interface PluginManifest {
+  requiredSlots?: Partial<Record<'home' | 'chat', string>>; // inert preferences
   name: string;
   version: string;
   sdkVersion?: string;
@@ -233,6 +293,7 @@ interface PluginPreview {
   valid: boolean;
   error?: string;
   manifest?: PluginManifest;
+  hasBundle?: boolean;
   components: PluginComponent[];
   conflicts: ConflictInfo[];
 }
@@ -253,6 +314,10 @@ interface ConflictInfo {
 }
 ```
 
+`hasBundle` reports whether the staged root plugin already contains
+`dist/bundle.js`. Installation may build client code from `manifest.entrypoint`
+even when this field is false; it does not establish runtime readiness.
+
 ## agent types
 
 ### `AgentSpec`
@@ -272,6 +337,7 @@ interface AgentSpec {
   delegation?: AgentDelegationPolicy;
   maxSteps?: number;
   guardrails?: AgentGuardrails;
+  /** @deprecated Ignored; accepted so existing agent files load (#3879). */
   streaming?: {
     useNewPipeline?: boolean;
     enableThinking?: boolean;
@@ -294,6 +360,7 @@ interface AgentTools {
   mcpServers: string[];
   available?: string[];
   autoApprove?: string[];
+  askBeforeUse?: string[];
   unattendedAutoApprove?: string[];
   browser?: boolean;
 }
@@ -415,10 +482,11 @@ interface ToolMetadata {
 
 ### `LayoutConfig`
 
-Full layout definition for project-scoped layouts.
+Stored layout definition with Project, principal, or instance ownership.
 
 ```ts
 interface LayoutConfig {
+  workspaceBinding?: 'repository';
   id: string;
   projectSlug?: string;
   owner?: LayoutOwner;
@@ -439,6 +507,10 @@ File-based layout definition (not project-scoped). Used by plugins.
 
 ```ts
 interface LayoutDefinition {
+  workspaceBinding?: 'repository';
+  primary?: 'chat';
+  presentation?: 'stack' | 'tabs';
+  drillIns?: readonly string[];
   name: string;
   slug: string;
   icon?: string;
@@ -452,6 +524,17 @@ interface LayoutDefinition {
   globalSkills?: LayoutSkill[];
 }
 ```
+
+`workspaceBinding` selects Project-derived repository resolution. It grants no
+file access and does not supply a Project subject to personal layouts. See
+[layout management](api.md#layout-management) for write admission and legacy
+Coding behavior.
+
+`primary`, `presentation` and `drillIns` are the layout contract fields
+(#2995): a Chat centre, the stack host, and the panes the stack pushes. They
+are parsed and refused by `parseLayoutPresentationDeclaration` in
+`@kontourai/station-contracts/layout`. A stored `LayoutConfig` never carries
+them; a layout read states them (see [layout management](api.md#layout-management)).
 
 ### `LayoutTab`
 
@@ -764,7 +847,12 @@ legacy top-level fields. Read it with `readNotificationEnvelope` from
 `@kontourai/station-shared/notification-envelope`. Missing, unknown-version or
 malformed envelopes return `undefined`. Valid v1 reads ignore unknown keys;
 an unknown source or audience kind forces silent presentation, and an unknown
-target kind drops that target.
+target kind drops that target. A `path` target must be a same-origin Station
+path (`isRelativeStationPath`) whose normalized form also stays on Station:
+dot segments that collapse to `//host` (`/..//host`, `/%2e%2e//host`) make the
+envelope malformed, as do a fragment and an `openedNotification` parameter
+(opening a link that names a record marks it read; only the server's OS-alert
+links may).
 
 Trusted in-process producers use `parseNotificationEnvelopeForWrite`: exact
 keys, known kinds, no unresolved `principal` audience, and no producer-authored
@@ -1206,7 +1294,10 @@ or explicitly configured integrations.
 The browser-safe `@kontourai/station-shared/mcp-ui-csp` leaf constructs resource
 policy separately from these Node transports. It filters URL schemes and emits
 directives; that alone is not complete CSP source-expression validation or
-browser network-containment proof. See the [MCP host boundary](../design/mcp-ui-host.md#resource-loading-and-policy).
+browser network-containment proof. `MCP_UI_NETWORK_BOOTSTRAP_TAG` disables direct
+peer/ICE constructors before authored code in the shared wrappers. Nested srcdoc
+can obtain fresh constructors, so this does not guarantee network isolation.
+Frame source declarations are refused. See the [MCP host boundary](../design/mcp-ui-host.md#resource-loading-and-policy).
 
 ### types
 
@@ -1345,3 +1436,14 @@ See the [connection factory](../../packages/shared/src/mcp-connection.ts),
 [custody owner](../../packages/shared/src/mcp-local-custody.ts),
 [CLI caller](../../packages/cli/src/dev/mcp.ts), and
 [Station MCP composition](../../src-server/runtime/mcp/mcp-manager.ts).
+
+
+## Plugin publisher telemetry
+
+`@kontourai/station-shared/plugin-telemetry` is a Node-only leaf for strict
+`parsePublisherTelemetryDeclaration`, `parsePluginDailyPing(payload, declaration, namespacedPublisher)`,
+count bucketing, namespaced publisher IDs and inventory fingerprints. The Node-only `public-network` subpath shares the development proxy public-address validator and pinned lookup with plugin telemetry; it validates every resolved DNS answer. It exports
+`PLUGIN_TELEMETRY_DATA_REVISION` separately from Station's built-in data revision.
+The parser is reusable by a future broker lane; importing it does not enable
+broker acceptance. See [Publisher analytics](../guides/plugins.md#publisher-analytics)
+and the [owning source](../../packages/shared/src/plugin-telemetry.ts).

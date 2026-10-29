@@ -138,7 +138,10 @@ vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
   useHostRequestAuthorityScope: () => undefined,
 }));
 
-vi.mock('../hooks/useIsMobile', () => ({ useIsMobile: () => false }));
+vi.mock('../hooks/useIsMobile', async (importActual) => ({
+  ...(await importActual<typeof import('../hooks/useIsMobile')>()),
+  useIsMobile: () => false,
+}));
 vi.mock('../hooks/useDevicePresentation', () => ({
   useDevicePresentation: () => undefined,
 }));
@@ -158,8 +161,16 @@ vi.mock('../hooks/useSystemStatus', () => ({
     isFetching: false,
   }),
 }));
+const featurePreviews = vi.hoisted(() => ({
+  current: [{ id: 'visual-skills', enabled: true }] as Array<{
+    id: string;
+    enabled: boolean;
+  }>,
+}));
 const experienceInventory = vi.hoisted(() => ({
   current: { experiences: [], diagnostics: [] } as SkillExperienceInventoryV1,
+  /** The `enabled` the modal last asked the inventory query for. */
+  queried: undefined as boolean | undefined,
 }));
 vi.mock('../contexts/AuthorityPersistenceContext', () => ({
   useAuthorityPersistence: () => ({
@@ -168,10 +179,16 @@ vi.mock('../contexts/AuthorityPersistenceContext', () => ({
   }),
 }));
 vi.mock('@kontourai/station-sdk', () => ({
-  useSkillExperienceInventoryQuery: () => ({
-    data: experienceInventory.current,
-    refetch: vi.fn(),
-  }),
+  useFeaturePreviewsQuery: () => ({ data: featurePreviews.current }),
+  useAgentsQuery: () => ({ data: selectionModelState.agents }),
+  useConfigQuery: () => ({ data: {}, dataUpdatedAt: 1, refetch: vi.fn() }),
+  useSkillExperienceInventoryQuery: (config?: { enabled?: boolean }) => {
+    experienceInventory.queried = config?.enabled;
+    return {
+      data: experienceInventory.current,
+      refetch: vi.fn(),
+    };
+  },
   useMaterializeEngineAgentMutation: () => ({ mutateAsync: materializeMock }),
   useConnectAndMaterializeEngineMutation: () => ({ mutateAsync: connectMock }),
 }));
@@ -245,6 +262,7 @@ afterEach(() => {
   // Chip choices are remembered in storage; no test may inherit another's.
   localStorage.clear();
   experienceInventory.current = { experiences: [], diagnostics: [] };
+  featurePreviews.current = [{ id: 'visual-skills', enabled: true }];
   selectionModelState.isGlobal = true;
   selectionModelState.selectedProject = undefined;
   selectionModelState.agents = [AGENT];
@@ -1195,6 +1213,7 @@ describe('visual skill selection through the New Chat picker', () => {
         name: new RegExp(experience.definition.title),
       }),
     );
+    expect(experienceInventory.queried).toBe(true);
     fireEvent.change(
       screen.getByRole('textbox', { name: /What would you like to build/ }),
       { target: { value: 'My edited proposal' } },
@@ -1214,6 +1233,73 @@ describe('visual skill selection through the New Chat picker', () => {
         inputs: { idea: 'My edited proposal' },
       },
     });
+  });
+  test('with the visual-skills preview off, an installed visual skill is neither fetched nor offered', () => {
+    const experience = installedExperience();
+    experienceInventory.current = {
+      executionContract: '1.0',
+      experiences: [experience],
+      diagnostics: [],
+    } as SkillExperienceInventoryV1;
+    featurePreviews.current = [{ id: 'visual-skills', enabled: false }];
+    render(
+      <NewChatModal
+        projectIconBySlug={new Map()}
+        agents={[AGENT]}
+        projects={[]}
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+        requestAuthority={authority}
+      />,
+    );
+    expect(experienceInventory.queried).toBe(false);
+    expect(screen.queryByRole('region', { name: 'Visual skills' })).toBeNull();
+    expect(
+      screen.queryByRole('button', {
+        name: new RegExp(experience.definition.title),
+      }),
+    ).toBeNull();
+  });
+  test('turning the visual-skills preview off after choosing a skill starts without it', () => {
+    const experience = installedExperience();
+    experienceInventory.current = {
+      executionContract: '1.0',
+      experiences: [experience],
+      diagnostics: [],
+    } as SkillExperienceInventoryV1;
+    const onSelect = vi.fn();
+    // A fresh element each time, so React re-renders with the new flags.
+    const modal = () => (
+      <NewChatModal
+        projectIconBySlug={new Map()}
+        agents={[AGENT]}
+        projects={[]}
+        onSelect={onSelect}
+        onClose={vi.fn()}
+        requestAuthority={authority}
+      />
+    );
+    const view = render(modal());
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: new RegExp(experience.definition.title),
+      }),
+    );
+    featurePreviews.current = [{ id: 'visual-skills', enabled: false }];
+    view.rerender(modal());
+    fireEvent.click(
+      document.querySelector(
+        'button[data-agent-slug="assistant"]',
+      ) as HTMLButtonElement,
+    );
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    const carriesSkill = onSelect.mock.calls[0].some(
+      (argument: unknown) =>
+        typeof argument === 'object' &&
+        argument !== null &&
+        'start' in argument,
+    );
+    expect(carriesSkill).toBe(false);
   });
   test('inventory-only hosts retain the inputs and visibly refuse preparing a start', () => {
     const experience = installedExperience();
@@ -1740,6 +1826,23 @@ describe('the start composer in the dock', () => {
       handoff: { kind: 'skills' },
     });
     expect(screen.getByRole('region', { name: 'Visual skills' })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'More start options' }),
+    ).toBeTruthy();
+    expect(message().value).toBe('From Home');
+  });
+
+  test('with the visual-skills preview off, the composer offers no visual skills, even on a skills hand-off', () => {
+    featurePreviews.current = [];
+    start(vi.fn(), {
+      initialPrompt: 'From Home',
+      handoff: { kind: 'skills' },
+    });
+    expect(screen.queryByRole('region', { name: 'Visual skills' })).toBeNull();
+    // "Use a visual skill" is the menu's only action, so no menu at all.
+    expect(
+      screen.queryByRole('button', { name: 'More start options' }),
+    ).toBeNull();
     expect(message().value).toBe('From Home');
   });
 
@@ -1775,6 +1878,44 @@ describe('the start composer in the dock', () => {
     ).toBeTruthy();
     expect(message().value).toBe('From Home');
     expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  // A Model the composer's chip still holds from earlier in the tab, no longer
+  // in the engine's catalog, is refused at Start rather than sent for the
+  // engine to reject after it has half-created the session.
+  test('Start on a chip Model the catalog no longer lists is refused, not started', async () => {
+    selectionModelState.models = [{ id: 'kept-model' }];
+    const onSelect = start(vi.fn(), {
+      initialPrompt: 'From Home',
+      startSelection: {
+        context: '__global__',
+        agentSlug: 'assistant',
+        model: { modelId: 'gone-model', providerOptions: {} },
+      },
+    });
+    await waitFor(() => expect(startButton().disabled).toBe(false));
+    fireEvent.click(startButton());
+    expect(
+      await screen.findByText(/Model you selected is no longer available/),
+    ).toBeTruthy();
+    expect(message().value).toBe('From Home');
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  test('Start on a chip Model the catalog still lists starts', async () => {
+    selectionModelState.models = [{ id: 'kept-model' }];
+    const onSelect = start(vi.fn(), {
+      initialPrompt: 'From Home',
+      startSelection: {
+        context: '__global__',
+        agentSlug: 'assistant',
+        model: { modelId: 'kept-model', providerOptions: {} },
+      },
+    });
+    await waitFor(() => expect(startButton().disabled).toBe(false));
+    fireEvent.click(startButton());
+    await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText(/no longer available/)).toBeNull();
   });
 
   // Review finding: the dock builds a new draft object every render; a chip
@@ -1824,4 +1965,57 @@ describe('the start composer in the dock', () => {
     fireEvent.click(startButton());
     expect(onSelect.mock.calls[0][3]).toBe('Just this');
   });
+});
+
+test.each([false, true])(
+  'New Task uses the shared composer and the first send carries shaping context unless removed (%s)',
+  async (remove) => {
+    const onSelect = vi.fn();
+    render(
+      <NewChatModal
+        projectIconBySlug={new Map()}
+        agents={[AGENT]}
+        projects={[]}
+        onSelect={onSelect}
+        onClose={vi.fn()}
+        startSurface
+        taskShaping
+      />,
+    );
+    const input = screen.getByPlaceholderText('Describe the idea…');
+    expect(document.activeElement).toBe(input);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.change(input, { target: { value: 'Show installer progress' } });
+    if (remove)
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Remove Shaping a Task mode' }),
+      );
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
+    expect(onSelect.mock.calls[0][3]).toBe('Show installer progress');
+    expect(onSelect.mock.calls[0][17]).toEqual(
+      remove ? undefined : expect.stringContaining('station-task-proposal'),
+    );
+  },
+);
+
+test('New Task start surface retains its label and Escape closes it', () => {
+  const onClose = vi.fn();
+  render(
+    <NewChatModal
+      projectIconBySlug={new Map()}
+      agents={[AGENT]}
+      projects={[]}
+      onSelect={vi.fn()}
+      onClose={onClose}
+      startSurface
+      taskShaping
+    />,
+  );
+  expect(screen.getByRole('region', { name: 'New Task' })).toBeTruthy();
+  expect(screen.getByRole('heading', { name: 'Shape a Task' })).toBeTruthy();
+  fireEvent.keyDown(screen.getByPlaceholderText('Describe the idea…'), {
+    key: 'Escape',
+  });
+  expect(onClose).toHaveBeenCalledTimes(1);
 });

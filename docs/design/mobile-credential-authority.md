@@ -16,7 +16,9 @@
 
 ## Retained blocker record
 
-Status: blocked on Station #2043; #898 remains open.
+Status when written: blocked on archive#2043, with archive#898 open. Both
+archive issues are now closed; the banner above names the implementation that
+replaced this blocker.
 
 Station must not persist a renderer-owned bearer map in Android Keystore or
 iOS Keychain and then hydrate that map into the WebView. Secure-at-rest storage
@@ -35,6 +37,6 @@ hosts.
 Until a supported Android/iOS host networking implementation is selected and
 device-verified, mobile keeps its existing session-scoped web credential path;
 it does not claim restart persistence. The rejected renderer-hydrated vault was
-removed. #2043 must also land explicit Android backup/data-extraction exclusion
+removed. archive#2043 must also land explicit Android backup/data-extraction exclusion
 and iOS ThisDeviceOnly accessibility ratchets with the host vault, so a restored
 application backup cannot clone a paired-device bearer.

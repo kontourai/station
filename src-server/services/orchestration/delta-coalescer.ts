@@ -1,6 +1,7 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
+import { jsonStringBodyBytes } from './event-content-spill.js';
 
 const logger = createLogger({ name: 'delta-coalescer' });
 
@@ -38,6 +39,8 @@ const logger = createLogger({ name: 'delta-coalescer' });
 
 /** Methods whose payloads accumulate by concatenation, and so may merge. */
 const COALESCABLE = new Set(['content.text-delta', 'content.reasoning-delta']);
+/** Default merged-delta cap; equal to the adapter-stream split size. */
+const DELTA_COALESCER_MAX_BYTES = 8 * 1024;
 
 /**
  * How many convergence passes `flushAll` will make before giving up. A flush
@@ -62,7 +65,10 @@ interface DeltaCoalescerOptions {
    */
   windowMs?: number;
   /**
-   * The largest a merged delta may grow. A buffer is flushed BEFORE a delta
+   * The largest a merged delta may grow, in bytes of its JSON string body
+   * (UTF-8, escapes included), so a merged event always stays well inside
+   * EventStore's stored-event target whatever the script: 8,000 characters
+   * of CJK text would have been about 24 KB. A buffer is flushed BEFORE a delta
    * that would take it to this size joins it (#3560), and that delta then
    * starts a new buffer that waits for the window. Only a single delta at or
    * over the cap is flushed at once on its own. It bounds event SIZE and
@@ -70,7 +76,7 @@ interface DeltaCoalescerOptions {
    * >130k chars/sec to reach the cap first, and time-to-first-token is
    * governed by the first-delta pass-through below, not by this.
    */
-  maxChars?: number;
+  maxBytes?: number;
   /** Injected in tests; real callers use the module default. */
   setTimer?: (fn: () => void, ms: number) => unknown;
   clearTimer?: (handle: unknown) => void;
@@ -81,11 +87,9 @@ interface DeltaCoalescerOptions {
    */
   logger?: CoalescerLogger;
   /**
-   * #3560: asked when a flush `offer` makes ahead of the offered event fails
-   * (before a different event, before a different stream, or before a delta
-   * that would reach the size cap). Returning true puts the buffered text
-   * back untimed, so a retry of the offered event delivers it first; the
-   * owner calls `resumeRetained` when no retry is in flight. The owner
+   * Asked when a buffered flush fails. Returning true retains its event and
+   * text. Synchronous offer flushes leave it untimed for the owner's retry;
+   * timer/shutdown flushes rearm the window themselves. The owner
    * decides, because only it knows whether the failure is transient and
    * whether the delivery committed before it threw. Omitted, the buffer is
    * dropped as before.
@@ -104,6 +108,8 @@ type DeliveryFailureMode = 'propagate' | 'warn';
 interface Pending {
   event: CanonicalRuntimeEvent;
   text: string;
+  /** JSON-escaped UTF-8 bytes of `text`. */
+  bytes: number;
   /** Undefined only while retained for an owner retry (see `flushPending`). */
   timer: unknown;
 }
@@ -150,7 +156,7 @@ export class DeltaCoalescer {
   /** threadId -> the stream whose first delta has already been delivered. */
   private readonly streamStarts = new Map<string, string>();
   private readonly windowMs: number;
-  private readonly maxChars: number;
+  private readonly maxBytes: number;
   private readonly setTimer: (fn: () => void, ms: number) => unknown;
   private readonly clearTimer: (handle: unknown) => void;
   private readonly logger: CoalescerLogger;
@@ -160,13 +166,14 @@ export class DeltaCoalescer {
   ) => boolean;
   private lastDeliveryWarningAt = 0;
   private suppressedDeliveryFailures = 0;
+  private disposed = false;
 
   constructor(
     private readonly emit: (event: CanonicalRuntimeEvent) => void,
     options: DeltaCoalescerOptions = {},
   ) {
     this.windowMs = options.windowMs ?? 60;
-    this.maxChars = options.maxChars ?? 8_000;
+    this.maxBytes = options.maxBytes ?? DELTA_COALESCER_MAX_BYTES;
     this.setTimer =
       options.setTimer ??
       ((fn, ms) => {
@@ -193,6 +200,7 @@ export class DeltaCoalescer {
    * that thread.
    */
   offer(event: CanonicalRuntimeEvent): boolean {
+    if (this.disposed) throw new Error('Delta coalescer is disposed');
     const text = COALESCABLE.has(event.method) ? deltaTextOf(event) : undefined;
 
     if (text === undefined) {
@@ -231,7 +239,8 @@ export class DeltaCoalescer {
     // retained and the retry delivers it first. A merged event now stays
     // under the cap; only a single delta at or over it is emitted that large.
     const buffered = this.pending.get(event.threadId);
-    if (buffered && buffered.text.length + text.length >= this.maxChars) {
+    const textBytes = jsonStringBodyBytes(text);
+    if (buffered && buffered.bytes + textBytes >= this.maxBytes) {
       this.flushPending(event.threadId, 'propagate', true);
       // That flush fans out synchronously, so a listener may have buffered a
       // LATER delta for this thread. Appending the offered delta to it would
@@ -248,6 +257,7 @@ export class DeltaCoalescer {
       this.pending.set(event.threadId, {
         event,
         text,
+        bytes: textBytes,
         timer: this.setTimer(
           () => this.flushThread(event.threadId),
           this.windowMs,
@@ -255,6 +265,7 @@ export class DeltaCoalescer {
       });
     } else {
       existing.text += text;
+      existing.bytes += textBytes;
       // Retained text is untimed (see `flushPending`); text merging into it
       // means the retry is over, so the window applies again.
       if (existing.timer === undefined)
@@ -267,7 +278,7 @@ export class DeltaCoalescer {
     // Normally only a single delta at or over the cap reaches this. Its event
     // is the offered one, so the caller's committed-event check covers it.
     const held = this.pending.get(event.threadId);
-    if (held && held.text.length >= this.maxChars)
+    if (held && held.bytes >= this.maxBytes)
       this.flushPending(event.threadId, 'propagate');
     return true;
   }
@@ -279,6 +290,7 @@ export class DeltaCoalescer {
    * shutdown, even after the store recovered.
    */
   resumeRetained(threadId: string): void {
+    if (this.disposed) return;
     const held = this.pending.get(threadId);
     if (held && held.timer === undefined)
       held.timer = this.setTimer(
@@ -294,8 +306,18 @@ export class DeltaCoalescer {
    * on its own synchronous path deliberately do not come through here; see
    * `deliver`.
    */
-  flushThread(threadId: string): void {
-    this.flushPending(threadId, 'warn');
+  flushThread(threadId: string): boolean {
+    if (this.disposed) return false;
+    const event = this.pending.get(threadId)?.event;
+    try {
+      this.flushPending(threadId, 'propagate', true);
+      return true;
+    } catch (error) {
+      const held = this.pending.get(threadId);
+      if (event) this.warnDeliveryFailure(event, error);
+      if (held) this.resumeRetained(threadId);
+      return false;
+    }
   }
 
   /**
@@ -330,17 +352,11 @@ export class DeltaCoalescer {
   }
 
   /**
-   * `retain` is set only by `offer`'s flushes AHEAD of the offered event
-   * (a different event, a different stream, or a delta that would take the
-   * buffer to the cap), none of which contains the offered event (#3560). A
-   * failed delivery the owner agrees to keep is put back, so a retry of the
-   * offered event delivers it first.
-   *
-   * Retained text gets NO window timer: an owner retry may be asleep, and a
-   * timer firing then would take the warn path and drop the text it was
-   * retained to keep. The owner calls `resumeRetained` once no retry is in
-   * flight; `offer` also re-times it when later text merges in, and
-   * `flushAll`/`forgetThread` flush it regardless.
+   * Retaining a failed flush is safe only when the owner confirms it did not
+   * commit. The event keeps its identity so this check also prevents replay
+   * after a post-commit failure. Synchronous offer flushes retain earlier text
+   * untimed until the offered event's retry ends; timer/shutdown flushes rearm
+   * the window themselves.
    */
   private flushPending(
     threadId: string,
@@ -370,6 +386,7 @@ export class DeltaCoalescer {
         this.pending.set(threadId, {
           event: held.event,
           text: held.text,
+          bytes: held.bytes,
           timer: undefined,
         });
       }
@@ -388,16 +405,20 @@ export class DeltaCoalescer {
    * exists to prevent.
    */
   flushAll(): void {
+    const failed = new Set<string>();
     try {
       for (let pass = 0; this.pending.size > 0; pass += 1) {
+        const threads = [...this.pending.keys()].filter(
+          (threadId) => !failed.has(threadId),
+        );
+        if (threads.length === 0) return;
         if (pass >= FLUSH_ALL_MAX_PASSES) {
           // Giving up with buffers still held would make this the lost text it
           // exists to prevent, so make one final best-effort emit over a
           // snapshot of the keys. It is bounded because it never revisits what
           // that pass re-buffers — and the warning below then reports what
           // genuinely remains rather than what was about to be dropped.
-          for (const threadId of [...this.pending.keys()])
-            this.flushThread(threadId);
+          for (const threadId of threads) this.flushThread(threadId);
           try {
             this.logger.warn(
               'Delta coalescing flush did not converge; buffered content deltas remain unpublished',
@@ -411,8 +432,8 @@ export class DeltaCoalescer {
           }
           return;
         }
-        for (const threadId of [...this.pending.keys()])
-          this.flushThread(threadId);
+        for (const threadId of threads)
+          if (!this.flushThread(threadId)) failed.add(threadId);
       }
     } finally {
       // A thread with nothing buffered has no run of text in progress, and
@@ -423,6 +444,21 @@ export class DeltaCoalescer {
       for (const threadId of [...this.streamStarts.keys()])
         this.dropMarkerIfIdle(threadId);
     }
+  }
+
+  /** Final delivery is attempted before timers are retired and storage closes. */
+  dispose(): void {
+    try {
+      if (!this.disposed) this.flushAll();
+    } finally {
+      this.disposed = true;
+      for (const held of this.pending.values()) {
+        this.clearTimer(held.timer);
+        held.timer = undefined;
+      }
+    }
+    if (this.pending.size > 0)
+      throw new Error('Content deltas remain unpublished at shutdown');
   }
 
   /** Threads currently holding buffered text. Read only by the unit suite. */

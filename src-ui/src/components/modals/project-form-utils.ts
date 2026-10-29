@@ -1,8 +1,3 @@
-interface ProjectDirectoryEntry {
-  name: string;
-  isDirectory: boolean;
-}
-
 function titleCaseSegment(segment: string): string {
   if (!segment) return segment;
   return segment.charAt(0).toUpperCase() + segment.slice(1);
@@ -82,59 +77,4 @@ export function inferProjectNameFromPath(value: string): string {
     .filter(Boolean)
     .map(titleCaseSegment)
     .join(' ');
-}
-
-export function inferProjectIconFromPath(
-  value: string,
-  entries: ProjectDirectoryEntry[] = [],
-): string {
-  const leaf = getWorkingDirectoryLeaf(value).toLowerCase();
-  const pathTokens = leaf.split(/[-_.\s]+/g).filter(Boolean);
-  const entryTokens = entries.map((entry) => entry.name.toLowerCase());
-  const tokens = new Set([...pathTokens, ...entryTokens]);
-
-  const hasAny = (...candidates: string[]) =>
-    candidates.some((candidate) => tokens.has(candidate));
-
-  if (hasAny('agent', 'agents', 'ai', 'llm', 'model', 'models', 'prompt')) {
-    return '🤖';
-  }
-  if (
-    hasAny(
-      'web',
-      'site',
-      'frontend',
-      'ui',
-      'public',
-      'app',
-      'apps',
-      'components',
-      'pages',
-    )
-  ) {
-    return '🌐';
-  }
-  if (hasAny('mobile', 'ios', 'android', 'expo')) {
-    return '📱';
-  }
-  if (hasAny('api', 'backend', 'server', 'service', 'services')) {
-    return '🧩';
-  }
-  if (hasAny('docs', 'doc', 'wiki', 'knowledge', 'notes', 'blog')) {
-    return '📚';
-  }
-  if (hasAny('design', 'brand', 'assets')) {
-    return '🎨';
-  }
-  if (hasAny('data', 'analytics', 'metrics', 'dashboard')) {
-    return '📊';
-  }
-  if (hasAny('cli', 'tool', 'tools', 'scripts', 'bin', 'infra')) {
-    return '🛠️';
-  }
-  if (hasAny('test', 'tests', 'spec', 'demo', 'sandbox')) {
-    return '🧪';
-  }
-
-  return '📁';
 }

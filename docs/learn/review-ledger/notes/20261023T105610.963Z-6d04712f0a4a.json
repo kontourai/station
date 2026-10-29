@@ -1,0 +1,7 @@
+{
+  "revision": "7832de3f0c081f563a5f91d8bc1cfc4cd05e941b",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Bounded parent review at7832de3f0c0 of runtime-routes-device-session-chat-principal.test.ts delta only: peer deletion of protected conversation root now expects concealed404 rather than403, while asserting root remains registered. Operator Neo4j sync succeeds under fresh root/operator authority and response guard; existing per-caller projection remains. This assertion change does not touch monitoring events, metrics, token/cost attribution, spans, usage populations or exporter contracts described in this guide. No prose change needed; historical measurements and exporter/provider/platform receipts are not renewed. Parent mounted/route/lock125tests and server-testtypecheck pass; separate fault/restoration proof remains attributed to route seams.","inputs":["docs/guides/monitoring.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots","src-server/runtime/routes/__tests__/runtime-routes-device-session-chat-principal.test.ts"]}
+  ]
+}

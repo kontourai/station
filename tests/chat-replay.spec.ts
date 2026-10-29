@@ -176,9 +176,16 @@ test.describe('replay state coverage', () => {
         );
       if ('tools' in scenario) {
         expect(observation?.streaming.toolCallCount).toBe(scenario.tools);
-        await expect(transcript.locator('.tool-call-batch__count')).toHaveText(
-          `${scenario.tools} tools`,
+        // The summary stays an inventory; each running call (up to two,
+        // then "+N more") has its own highlighted row under it.
+        await expect(transcript.locator('.tool-call-batch__label')).toHaveText(
+          `${scenario.tools} file reads`,
         );
+        await expect(
+          transcript.locator(
+            '.tool-call-batch__slot[data-open="true"] .tool-call__label--active',
+          ),
+        ).toHaveCount(Math.min(scenario.tools!, 2));
         await expect(transcript.locator('.streaming-activity')).toHaveCount(0);
       }
       if (scenario.name === 'partial answer still running')

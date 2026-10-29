@@ -49,6 +49,8 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => ({
   useConnections: () => ({
     activeConnection: savedConnections[0] ?? null,
     connections: savedConnections,
+    forgetConnection: vi.fn(async () => {}),
+    canForgetConnection: () => true,
   }),
   usePendingPairingApproval: () => pendingApprovalRecord,
 }));
@@ -84,6 +86,73 @@ vi.mock('../components/header/OverflowMenu', () => ({
 }));
 
 import { HeaderActions } from '../components/header/HeaderActions';
+import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
+import {
+  consumePendingConnectionsModal,
+  OPEN_CONNECTIONS_MODAL_EVENT,
+} from '../lib/connectionModalEvents';
+import { readRecentStations } from '../lib/stationSwitcher';
+
+test('Pair phone opens the existing host invitation flow directly from the Station chooser', async () => {
+  const opened = vi.fn();
+  window.addEventListener(OPEN_CONNECTIONS_MODAL_EVENT, opened);
+  try {
+    renderHeader();
+    fireEvent.click(screen.getByRole('button', { name: /^Choose Station/ }));
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: 'Pair phone' }),
+    );
+    expect(opened).toHaveBeenCalledTimes(1);
+    expect(opened.mock.calls[0]?.[0]?.detail).toEqual({
+      mode: 'pair-host',
+    });
+    expect(screen.queryByRole('menu', { name: 'Choose Station' })).toBeNull();
+  } finally {
+    window.removeEventListener(OPEN_CONNECTIONS_MODAL_EVENT, opened);
+    consumePendingConnectionsModal();
+    cleanup();
+  }
+});
+
+test('the Switch Station shortcut opens the chooser on the previous Station, once there are two', async () => {
+  const laptop = {
+    ...SAVED_STATION,
+    id: 'c2',
+    name: 'Laptop',
+    url: 'https://laptop.example.test',
+  };
+  try {
+    renderHeader();
+    // jsdom is not a Mac, so the primary modifier is Control.
+    const chord = { key: 'S', code: 'KeyS', shiftKey: true, ctrlKey: true };
+    fireEvent.keyDown(window, chord);
+    expect(screen.queryByRole('menu', { name: 'Choose Station' })).toBeNull();
+    cleanup();
+
+    savedConnections = [SAVED_STATION, laptop];
+    renderHeader();
+    fireEvent.keyDown(window, chord);
+    await screen.findByRole('menu', { name: 'Choose Station' });
+    expect(document.activeElement).toBe(
+      screen.getByRole('menuitemradio', { name: /^Laptop/ }),
+    );
+    fireEvent.keyDown(window, chord);
+    expect(screen.queryByRole('menu', { name: 'Choose Station' })).toBeNull();
+  } finally {
+    savedConnections = [SAVED_STATION];
+    cleanup();
+  }
+});
+
+test('records the active Station as most recently used', () => {
+  window.localStorage.removeItem('station.switcher.recent');
+  try {
+    renderHeader();
+    expect(readRecentStations()[0]).toBe('c1');
+  } finally {
+    cleanup();
+  }
+});
 
 function renderHeader(
   onOpenNotifications = vi.fn(),
@@ -92,13 +161,9 @@ function renderHeader(
   render(
     <HeaderActions
       helpPrompts={[]}
-      settingsShortcut="⌘,"
       showHelp={false}
       showNotifications={false}
       showOverflow={false}
-      showProfileMenu={false}
-      onCloseProfileMenu={vi.fn()}
-      onToggleProfileMenu={vi.fn()}
       userInitials="ST"
       onCloseHelp={vi.fn()}
       onCloseNotifications={vi.fn()}
@@ -108,10 +173,10 @@ function renderHeader(
       onOpenProfile={vi.fn()}
       onOpenHelp={vi.fn()}
       onOpenNotifications={onOpenNotifications}
-      onToggleSettings={vi.fn()}
       onToggleOverflow={vi.fn()}
       onViewAllNotifications={vi.fn()}
     />,
+    { wrapper: KeyboardShortcutsProvider },
   );
   return onOpenNotifications;
 }
@@ -138,7 +203,7 @@ describe('HeaderActions attention badge', () => {
     const onOpenNotifications = renderHeader();
 
     const notifications = screen.getByRole('button', {
-      name: 'Notifications (3 need attention)',
+      name: 'Notifications, 3 need attention',
     });
     expect(notifications.textContent).toContain('3');
 

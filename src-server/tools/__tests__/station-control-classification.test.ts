@@ -8,7 +8,7 @@
  * the fail-safe default, and refused by the server guard, until it has one).
  */
 
-import { describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import {
   bareControlToolName,
@@ -37,7 +37,16 @@ function registeredToolNames(): string[] {
   ];
 }
 
+beforeEach(() => vi.stubEnv('STATION_EXPERIMENTAL_S3_SOURCES', '1'));
+afterEach(() => vi.unstubAllEnvs());
+
 describe('station-control tool classification', () => {
+  test('default-off S3 tools are not advertised to Agents', () => {
+    vi.stubEnv('STATION_EXPERIMENTAL_S3_SOURCES', '');
+    expect(
+      stationKnowledgeToolCatalog().some((tool) => tool.name.includes('_s3_')),
+    ).toBe(false);
+  });
   test('every registered tool is explicitly classified', () => {
     const names = registeredToolNames();
     expect(names.length).toBeGreaterThan(30);
@@ -55,7 +64,7 @@ describe('station-control tool classification', () => {
       expect(classifyControlTool(read)).toBe('read-only');
   });
 
-  test('bounded-write is exactly notify_user and spot-checked tools keep their class', () => {
+  test('bounded-write includes publishing and notify_user and spot-checked tools keep their class', () => {
     const names = registeredToolNames();
     const readOnly = names.filter(
       (name) => classifyControlTool(name) === 'read-only',
@@ -68,9 +77,27 @@ describe('station-control tool classification', () => {
     );
     // #2584: notify_user writes (one bounded inbox record), so it is not
     // labelled a reader; it is auto-approved as a bounded write.
-    expect(boundedWrite).toEqual(['notify_user']);
+    // #4003: task_summary_update and task_record write one bounded revision
+    // or record version of the caller's own Task's memory.
+    // #4138: task_thread_reply and task_thread_resolve append one review event
+    // to a thread on the caller's own Task; they never delete or reopen.
+    expect(boundedWrite).toEqual([
+      'notify_user',
+      'html_render',
+      'html_preview',
+      'task_summary_update',
+      'task_record',
+      'task_thread_reply',
+      'task_thread_resolve',
+    ]);
     expect(SC_AUTO_APPROVED_TOOLS).toEqual([
       ...SC_READ_ONLY_TOOLS,
+      'station-control_task_summary_update',
+      'station-control_task_record',
+      'station-control_task_thread_reply',
+      'station-control_task_thread_resolve',
+      'station-control_html_render',
+      'station-control_html_preview',
       'station-control_notify_user',
     ]);
     // Skill listing is a read, so it stays on the auto-approved list.

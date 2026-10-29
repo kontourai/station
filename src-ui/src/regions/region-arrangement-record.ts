@@ -29,6 +29,7 @@ import {
   type RegionArrangementRecordRegion,
   type RegionOccupantRecord,
 } from '@kontourai/station-contracts/device-settings';
+import { isPlainRecord } from '../utils/isRecord';
 import {
   DEFAULT_DEVICE_REGION_ARRANGEMENT,
   isInstanceSurface,
@@ -65,15 +66,6 @@ export const REGION_ARRANGEMENT_RECORD_VERSION = 1 as const;
  */
 export const REGION_SIZE_MIN = 200;
 export const REGION_SIZE_MAX = 8192;
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    !Array.isArray(value) &&
-    Object.getPrototypeOf(value) === Object.prototype
-  );
-}
 
 function toOccupantRecord(state: RegionState): RegionOccupantRecord | null {
   const [first] = state.panes;
@@ -143,7 +135,7 @@ function parseSurfaceEntry(
   id: RegionId,
   registry: ReadonlyMap<string, RegisteredSurface>,
 ): string | null {
-  if (!isPlainObject(value)) return null;
+  if (!isPlainRecord(value)) return null;
   if (value.kind !== 'surface' || typeof value.id !== 'string') return null;
   if (!resolveRegionSurface(value.id, registry)?.regions.includes(id))
     return null;
@@ -166,14 +158,14 @@ function parseOccupant(
   id: RegionId,
   registry: ReadonlyMap<string, RegisteredSurface>,
 ): Pick<RegionState, 'panes' | 'occupant'> {
-  const entries: unknown[] = !isPlainObject(value)
+  const entries: unknown[] = !isPlainRecord(value)
     ? []
     : value.kind === 'surface'
       ? [value]
       : value.kind === 'pane-host' && Array.isArray(value.panes)
         ? value.panes
         : [];
-  const selected = isPlainObject(value) ? value.selected : undefined;
+  const selected = isPlainRecord(value) ? value.selected : undefined;
   return normalizeRegionPanes(
     id,
     entries.flatMap((entry) => {
@@ -212,9 +204,9 @@ export function parseRegionArrangementRecord(
   value: unknown,
   registry: ReadonlyMap<string, RegisteredSurface> = REGION_SURFACE_REGISTRY,
 ): RegionArrangement | null {
-  if (!isPlainObject(value)) return null;
+  if (!isPlainRecord(value)) return null;
   if (value.version !== REGION_ARRANGEMENT_RECORD_VERSION) return null;
-  const storedRegions = isPlainObject(value.regions) ? value.regions : {};
+  const storedRegions = isPlainRecord(value.regions) ? value.regions : {};
   const seen = new Set<string>();
   const arrangement = {} as RegionArrangement;
   for (const id of REGION_IDS) {
@@ -224,7 +216,7 @@ export function parseRegionArrangementRecord(
     // occupant included; a region it does describe is read field by field,
     // and an unreadable occupant there is an EMPTY region, not the default
     // one — the record said something about it, just nothing usable.
-    const state: RegionState = isPlainObject(stored)
+    const state: RegionState = isPlainRecord(stored)
       ? {
           visible: parseVisible(stored.visible, id, fallback.visible),
           size: parseSize(stored.size, id, fallback.size),

@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
+import { STATION_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 import {
   acceptModelLaunchPlan,
   type EngineId,
@@ -9,7 +10,8 @@ import {
   modelSelectionReceipt,
 } from '@kontourai/station-contracts/provider';
 import type {
-  CanonicalRuntimeEvent,
+  ProviderRuntimeEvent as CanonicalRuntimeEvent,
+  ProviderRuntimeErrorEvent,
   RequestResolvedEvent,
 } from '@kontourai/station-contracts/runtime-events';
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
@@ -28,6 +30,7 @@ import type {
   LLMMessage,
   LLMStreamChunk,
 } from '../llm/model-provider-types.js';
+import { providerFailure } from '../provider-failure.js';
 import { AsyncEventQueue } from '../sessions/async-event-queue.js';
 import { bedrockReportedUsage } from './ai-sdk-reported-usage.js';
 
@@ -55,6 +58,8 @@ interface BedrockSession extends ProviderSession {
   history: LLMMessage[];
 }
 
+type TurnOrigin = Readonly<Pick<ProviderSendTurnInput, 'invocationId'>>;
+
 export class BedrockAdapter implements ProviderAdapterShape {
   readonly provider: EngineId = 'bedrock';
   readonly metadata = {
@@ -67,6 +72,7 @@ export class BedrockAdapter implements ProviderAdapterShape {
       'tool-calls',
       'interrupt',
     ],
+    durability: STATION_ENGINE_DURABILITY,
     continuity: { resume: 'same-session', fork: 'replay-seed', rewind: 'none' },
     builtin: true,
     engineId: engineId('station'),
@@ -84,7 +90,7 @@ export class BedrockAdapter implements ProviderAdapterShape {
   private sessions = new Map<string, BedrockSession>();
   private readonly activeTurns = new Map<
     string,
-    { turnId: string; controller: AbortController }
+    { turnId: string; controller: AbortController; origin: TurnOrigin }
   >();
   private readonly events = new AsyncEventQueue<CanonicalRuntimeEvent>();
   private llm?: BedrockLLMProvider;
@@ -232,6 +238,9 @@ export class BedrockAdapter implements ProviderAdapterShape {
   async sendTurn(
     input: ProviderSendTurnInput,
   ): Promise<ProviderTurnStartResult> {
+    const invocationId = input.invocationId;
+    const origin: TurnOrigin =
+      invocationId === undefined ? {} : { invocationId };
     const session = this.sessions.get(input.threadId);
     if (!session) {
       throw new Error(
@@ -266,12 +275,13 @@ export class BedrockAdapter implements ProviderAdapterShape {
         threadId: input.threadId,
         createdAt: now,
         turnId: superseded.turnId,
+        ...superseded.origin,
         method: 'turn.aborted',
         reason: 'superseded',
       });
       superseded.controller.abort(new Error('Superseded by a newer turn.'));
     }
-    this.activeTurns.set(input.threadId, { turnId, controller });
+    this.activeTurns.set(input.threadId, { turnId, controller, origin });
 
     // archive#903: a per-turn model change must reach the read model and the
     // persisted row, and `session.configured` is the only event that carries a
@@ -329,6 +339,7 @@ export class BedrockAdapter implements ProviderAdapterShape {
       threadId: input.threadId,
       createdAt: now,
       turnId,
+      ...origin,
       method: 'turn.started',
       // Transcript-facing: the typed text, never the composed model input.
       prompt: input.displayInput ?? input.input,
@@ -345,6 +356,7 @@ export class BedrockAdapter implements ProviderAdapterShape {
             threadId: input.threadId,
             createdAt: new Date().toISOString(),
             turnId,
+            ...origin,
             itemId: crypto.randomUUID(),
             method: 'content.text-delta',
             delta: callbackResult.outputText,
@@ -353,6 +365,7 @@ export class BedrockAdapter implements ProviderAdapterShape {
 
         this.publishCompletion({
           input: resolvedInput,
+          origin,
           turnId,
           outputText: callbackResult.outputText,
           finishReason: callbackResult.outputText ? 'stop' : 'other',
@@ -405,6 +418,7 @@ export class BedrockAdapter implements ProviderAdapterShape {
             threadId: input.threadId,
             createdAt: new Date().toISOString(),
             turnId,
+            ...origin,
             itemId: contentItemId,
             method: 'content.text-delta',
             delta: chunk.content,
@@ -456,6 +470,7 @@ export class BedrockAdapter implements ProviderAdapterShape {
       // this is no longer a purely inert distinction.
       this.publishCompletion({
         input: resolvedInput,
+        origin,
         turnId,
         outputText: assistantText,
         finishReason: finishReason ?? 'stop',
@@ -498,6 +513,7 @@ export class BedrockAdapter implements ProviderAdapterShape {
         // the session to 'completed'.
         this.publishTurnFailure({
           input: resolvedInput,
+          origin,
           turnId,
           message: errorMessage(error),
           resumeCursor: session.resumeCursor,
@@ -535,6 +551,7 @@ export class BedrockAdapter implements ProviderAdapterShape {
           threadId,
           createdAt: new Date().toISOString(),
           turnId: interruptedTurnId,
+          ...activeTurn.origin,
           method: 'turn.aborted',
           reason: 'interrupted',
         });
@@ -664,6 +681,7 @@ export class BedrockAdapter implements ProviderAdapterShape {
 
   private publishCompletion(options: {
     input: ProviderSendTurnInput;
+    origin: TurnOrigin;
     turnId: string;
     outputText?: string;
     finishReason: 'stop' | 'tool-calls' | 'max-tokens' | 'cancelled' | 'other';
@@ -686,6 +704,7 @@ export class BedrockAdapter implements ProviderAdapterShape {
         threadId: options.input.threadId,
         createdAt: completedAt,
         turnId: options.turnId,
+        ...options.origin,
         method: 'token-usage.updated',
         ...reportedUsage,
       });
@@ -696,6 +715,7 @@ export class BedrockAdapter implements ProviderAdapterShape {
       threadId: options.input.threadId,
       createdAt: completedAt,
       turnId: options.turnId,
+      ...options.origin,
       method: 'turn.completed',
       finishReason: options.finishReason,
       outputText: options.outputText,
@@ -727,6 +747,7 @@ export class BedrockAdapter implements ProviderAdapterShape {
    */
   private publishTurnFailure(options: {
     input: ProviderSendTurnInput;
+    origin: TurnOrigin;
     turnId: string;
     message: string;
     resumeCursor?: unknown;
@@ -739,10 +760,12 @@ export class BedrockAdapter implements ProviderAdapterShape {
       threadId: options.input.threadId,
       createdAt: completedAt,
       turnId: options.turnId,
+      ...options.origin,
       method: 'runtime.error',
+      ...providerFailure('provider_error'),
       severity: 'error',
       message: options.message,
-    });
+    } satisfies ProviderRuntimeErrorEvent);
     this.updateSession(options.input.threadId, {
       status: 'ready',
       updatedAt: completedAt,

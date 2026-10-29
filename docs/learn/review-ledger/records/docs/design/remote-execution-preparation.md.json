@@ -32,7 +32,11 @@
 
     "src-server/tools/__tests__/station-control-delegation-preparation.test.ts",
 
-    "tests/portable-receiver-live-proof.spec.ts"
+    "tests/portable-receiver-live-proof.spec.ts",
+
+    "packages/cli/src/commands/delegate.ts",
+
+    "packages/cli/src/__tests__/delegate.test.ts"
   ],
 
   "checks": []

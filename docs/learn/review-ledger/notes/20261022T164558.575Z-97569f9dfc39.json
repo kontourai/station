@@ -1,0 +1,7 @@
+{
+  "revision": "f30c655f503e9cdad16c500af5bf10cccf474d27",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Reviewed direct typed Hono context access for the engine-login scope accessor against neighboring authority routes. Only redundant assertion/import removed; operator/agent refusal and engine:login, coding:exec, terminal:operate checks remain identical. Nine route tests, server-tests typecheck and type-laundering policy pass; no new provider/runtime claim.","inputs":["docs/guides/connections.md","src-server/routes/connections/acp-sign-in.ts"]}
+  ]
+}

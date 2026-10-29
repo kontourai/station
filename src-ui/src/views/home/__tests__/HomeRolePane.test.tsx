@@ -1,3 +1,4 @@
+import { ConnectionsProvider } from '@kontourai/station-connect';
 /** @vitest-environment jsdom */
 
 import { createWorkspaceHomeRoleGrant } from '@kontourai/station-contracts/workspace-home-role';
@@ -160,34 +161,52 @@ describe('a granted Home that renders', () => {
 });
 
 describe('recovery: a granted Home that throws (station#3122 constraint 3)', () => {
-  test('a renderer that throws on mount lands on the built-in Home with the actual failure text', () => {
+  function renderMountFailure(message: string) {
     registry.trustedLayout = () => {
-      throw new Error('exploded during mount');
+      throw new Error(message);
     };
     const consoleError = vi
       .spyOn(console, 'error')
       .mockImplementation(() => undefined);
-    render(
-      <HomeRolePane
-        grant={grantFor()}
-        builtinHome={builtinHome}
-        onRevoke={() => undefined}
-      />,
-    );
-    consoleError.mockRestore();
-    // Never a blank root: the floor renders...
+    try {
+      render(
+        <HomeRolePane
+          grant={grantFor()}
+          builtinHome={builtinHome}
+          onRevoke={() => undefined}
+        />,
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
+    return screen.getByRole('status');
+  }
+
+  test('a renderer that throws on mount lands on the built-in Home with the actual failure text', () => {
+    const notice = renderMountFailure('exploded during mount');
     expect(screen.getByTestId('builtin-home')).toBeTruthy();
-    //.with a truthful reason derived from the actual error...
-    const notice = screen.getByRole('status');
     expect(notice.textContent).toContain('Third-party Home');
     expect(notice.textContent).toContain('exploded during mount');
-    //.and a way to retry or step off the grant, instead of a reload that
-    // re-enters the same failure.
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
     expect(
       screen.getByRole('button', { name: 'Keep the built-in Home' }),
     ).toBeTruthy();
   });
+
+  test.each(['station-plugin://localhost', 'http://station-plugin.localhost'])(
+    'redacts %s asset locations from the granted Home recovery reason',
+    (origin) => {
+      const notice = renderMountFailure(
+        `asset failed at ${origin}/api/plugins/demo/bundle.js?port=43123&capability=${'C'.repeat(43)}#private`,
+      );
+      expect(notice.textContent).toContain(
+        'Error: asset failed at /api/plugins/demo/bundle.js',
+      );
+      expect(notice.textContent).not.toContain(origin);
+      expect(notice.textContent).not.toContain('capability');
+      expect(notice.textContent).not.toContain('#private');
+    },
+  );
 
   test('a renderer that throws on a LATER render lands the same way, and can retry back', () => {
     let throwNow = false;
@@ -316,24 +335,6 @@ describe('a granted Home whose renderer is unavailable', () => {
     );
   });
 
-  test('while the plugin inventory is still loading, the floor renders with no claim at all', () => {
-    registry.loadStatus = {
-      state: 'loading',
-      failedPluginNames: [],
-      failure: undefined,
-    };
-    render(
-      <HomeRolePane
-        grant={grantFor()}
-        builtinHome={builtinHome}
-        onRevoke={() => undefined}
-      />,
-    );
-    expect(screen.getByTestId('builtin-home')).toBeTruthy();
-    // "Missing" is a claim nothing has derived yet — no notice.
-    expect(screen.queryByRole('status')).toBeNull();
-  });
-
   const withStandardData = {
     ...contributedHome,
     alternativeRenderer: {
@@ -353,11 +354,28 @@ describe('a granted Home whose renderer is unavailable', () => {
     },
   };
 
-  test('falls to the declared standard-data rung when the installed plugin’s CODE failed to load', () => {
-    // The case the rung exists for: the plugin is still installed (this
-    // registry generation listed it and tried to load it), only its bundle
-    // failed. Inert declared data renders, with the same provenance bar and
-    // way back.
+  test.each([contributedHome, withStandardData])(
+    'while the plugin inventory is still loading, the floor stays quiet (%#)',
+    (descriptor) => {
+      registry.loadStatus = {
+        state: 'loading',
+        failedPluginNames: [],
+        failure: undefined,
+      };
+      render(
+        <HomeRolePane
+          grant={grantFor(descriptor)}
+          builtinHome={builtinHome}
+          onRevoke={() => undefined}
+        />,
+      );
+      expect(screen.getByTestId('builtin-home')).toBeTruthy();
+      // "Missing" is a claim nothing has derived yet — no notice.
+      expect(screen.queryByRole('status')).toBeNull();
+    },
+  );
+
+  test('a broken Home override returns to the required default even with a standard-data rung', () => {
     registry.trustedLayout = null;
     registry.manifest = null; // a failed bundle registers no manifest
     registry.loadStatus = {
@@ -372,10 +390,13 @@ describe('a granted Home whose renderer is unavailable', () => {
         onRevoke={() => undefined}
       />,
     );
-    expect(screen.queryByTestId('builtin-home')).toBeNull();
-    expect(screen.getByText('Recent work summary')).toBeTruthy();
+    expect(screen.getByTestId('builtin-home')).toBeTruthy();
+    expect(screen.queryByText('Recent work summary')).toBeNull();
+    expect(screen.getByRole('status').textContent).toContain(
+      'code failed to load',
+    );
     expect(
-      screen.getByRole('button', { name: 'Use built-in Home' }),
+      screen.getByRole('button', { name: 'Keep the built-in Home' }),
     ).toBeTruthy();
   });
 
@@ -513,4 +534,29 @@ describe('a widened projection is a new grant', () => {
     // Derived from the projection type's own description of the field.
     expect(notice.textContent).toContain('Session, chat, and task titles');
   });
+});
+
+test('a blocked Home extension offers review while preserving the built-in Home', () => {
+  registry.loadStatus = {
+    state: 'degraded',
+    failure: 'remote-isolation',
+    failedPluginNames: [],
+  };
+  registry.trustedLayout = null;
+  render(
+    <ConnectionsProvider>
+      <HomeRolePane
+        grant={grantFor()}
+        builtinHome={builtinHome}
+        onRevoke={vi.fn()}
+      />
+    </ConnectionsProvider>,
+  );
+  expect(screen.getByTestId('builtin-home')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Review and enable' }));
+  expect(
+    screen.getByRole('dialog', { name: /Allow extensions from/ }),
+  ).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+  expect(screen.getByTestId('builtin-home')).toBeTruthy();
 });

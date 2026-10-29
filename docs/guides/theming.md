@@ -53,32 +53,61 @@ sits on, including the raised panel rows and the sidebar hover fill.
 Do not copy the package's theme or primitive styles into a feature; propose a
 shared value upstream when it belongs to the public design system.
 
-## Device preference and accents
+## Personal preference and device startup
 
 [startup-theme.js](../../src-ui/public/startup-theme.js) selects the saved
 light/dark preference before the entry HTML paints, reading the device-settings
 envelope before the legacy theme key and falling back to dark if storage is
-unavailable. [main.tsx](../../src-ui/src/main.tsx) applies the canonical theme,
-accent and cached branding before React renders. The initial HTML and
+unavailable. A signed-in person's last rendered appearance, cached in
+`station-appearance-v1`, wins over both until the account answers. The script
+also stamps the named color theme, requests its stylesheet and sets
+`theme-color` (see [Named color themes](#named-color-themes)).
+[main.tsx](../../src-ui/src/main.tsx) applies the canonical theme, accent and
+cached branding before React renders, binds the color theme to the settings
+store, and waits for a still-loading color-theme stylesheet before its first
+render. The initial HTML and
 [StartupScreen](../../src-ui/src/components/StartupScreen.tsx) share the same
-startup surface through platform and authority resolution. The lightweight
+startup artwork through platform and authority resolution. One launch presentation
+survives React bootstrap handoffs outside the application root. The lightweight
 [boot entry](../../src-ui/src/boot.ts) starts painting before it imports the full
-app. A failed app import releases animation and provides a reload action. The initial HTML loads only splash styles and the published font/token foundations; full app styles retain their original main-entry import order, so mobile layout overrides continue to win. The
+app. A failed app import, or a first render deferred behind a color-theme
+stylesheet whose React root cannot be created or rendered, releases animation
+and provides a reload action. The initial HTML loads only splash styles and the published font/token foundations; full app styles retain their original main-entry import order, so mobile layout overrides continue to win. The
 bundle budget still counts the immediately loaded app's static JS/CSS closure
 through its Vite manifest, in addition to the visible boot assets. The mark begins centered,
 then moves left while Fraunces reveals `tation`, using the river as the S. The
 selected wordmark uses the Original spacing from the reviewed motion study.
 Water falls into a track and spreads across it, then remains an indeterminate
-activity signal. It does not claim a percentage or delay a ready app.
+activity signal. It does not claim a percentage. If the intro has visibly
+started, a ready application finishes the mark/name reveal (950 ms of visible
+animation time), then fades through to the app over 150 ms. Readiness never
+waits for the water or loading activity to complete a cycle. If the app is
+ready before the first animation frame, the intro is skipped.
 
 [startup-animation.ts](../../src-ui/src/lib/startup-animation.ts) keeps the
-intro clock for the document, so a loader remount does not replay it. Pending
+visible intro time for the one launch presentation, so bootstrap handoffs do
+not replay it. Pending
 platform setup, shared-Project entry and authority observation supply their own
 current stage text; labels use Hanken Grotesk and a small entrance transition.
 There is no timer-driven sequence of invented loading stages. Reduced motion
-uses the completed static lockup and track; hidden windows pause painting, and
-unmount removes the frame and observers. Route-level waits still use the state
-primitives. The imagery remains the committed Station mark; this splash choice
+uses the completed static lockup and track without waiting or fading. Hidden
+documents pause the intro clock. Desktop observation starts the animation only
+after the native startup window is admitted; time behind the native cover does
+not count. A ready hidden or covered app skips the unseen intro. Native readiness
+continues to own window reveal and its Restart/Quit recovery.
+Startup failures dismiss branding immediately. While the intro covers the app,
+the modal top layer covers dock/dialog stacking and makes body portals inert;
+the underlying root is also hidden from assistive technology. Handoff
+restores access and removes the animation and observers.
+The mobile detail view retains its initial Back-button focus request until
+handoff restores interaction; unmounting the view cancels that request.
+Later connection, authority and route waits use state primitives and do not replay the launch
+intro. Warm resume of the same document does not recreate it. Route-level waits still use the state
+primitives. The imagery remains the committed Station mark, in the install's channel
+colours: the host reports the channel only after the app loads, so
+[startup-theme.js](../../src-ui/public/startup-theme.js) applies the mark the
+install last reported before first paint (a first launch shows the stable
+mark until the report arrives); this splash choice
 does not finalize the broader Kontour wordmark decision.
 
 The native OS launch surface follows OS appearance; it cannot read the
@@ -88,8 +117,10 @@ background in night mode, plus a centered native window mark behind the
 initially transparent WebView. A different OS and saved app preference can still
 produce a background change at that boundary.
 [ThemeToggle](../../src-ui/src/components/header/ThemeToggle.tsx) keeps it in
-sync with the device-settings store. The selected light/dark preference belongs
-to the Device; changing a server or Project is not a separate theme choice.
+sync with the settings facade. After account verification, the account preference
+on this Station replaces the device startup theme. Without a person, the theme
+remains local. Different accounts or Stations can have different themes; Project
+selection does not change it. See [account preferences](../design/settings-architecture.md#account-preferences-and-device-settings).
 
 The [accent helper](../../src-ui/src/lib/accent-contrast.ts) applies a custom
 accent together with its foreground contrast partner and hover treatment.
@@ -97,6 +128,47 @@ Use that owner rather than setting only `--accent-primary`; clearing the
 preference must clear its companion overrides too. It refuses a value that is
 not `#rgb`/`#rrggbb` and clears the override instead. Do not infer legibility
 for every tinted background from a foreground-on-solid-accent calculation.
+
+## Named color themes
+
+A person can choose a named palette (Catppuccin, Rosé Pine, Gruvbox, Nord,
+Tokyo Night) on top of light and dark; the default `station` sets nothing,
+loads no theme stylesheet and renders as above. The
+[decision record](../decisions/user-color-themes.md) owns the settings,
+compatibility, pre-paint and precedence rules. The
+[catalog](../../src-ui/src/lib/color-theme-catalog.ts) is the single source of
+every value. After changing it, run `npm run gen:color-themes`: it regenerates
+one stylesheet per family under `src-ui/public/color-themes/`, the splash
+subset, the runtime index and the index in
+[startup-theme.js](../../src-ui/public/startup-theme.js), and
+[color-theme-artifacts.test.ts](../../src-ui/src/__tests__/color-theme-artifacts.test.ts)
+fails until you do; it also fails if the startup path starts bundling the full
+catalog. [color-theme-contrast.test.ts](../../src-ui/src/__tests__/color-theme-contrast.test.ts)
+rates every family, flavor and accent;
+[color-theme-cascade.test.ts](../../src-ui/src/__tests__/color-theme-cascade.test.ts)
+measures, in Chromium, the startup path (including the appearance cache and a
+slow family sheet), the live applier, every family and flavor through
+`index.css`, Station's unchanged default, and the precedence against channels,
+white-label branding, a custom accent and islands. A picker lists
+`COLOR_THEME_OPTIONS` from [color-themes.ts](../../src-ui/src/lib/color-themes.ts)
+(load it lazily: it carries the full catalog) and writes the `colorTheme`,
+`colorThemeFlavor` and `colorThemeAccent` device settings.
+
+The picker is the Appearance page (`/appearance`, listed in Customize and the
+command palette): [AppearancePage](../../src-ui/src/pages/AppearancePage.tsx)
+holds the light/dark mode, a gallery of every theme drawn from the catalog
+swatches for the current mode, the family's dark flavors, and its named
+accents (Station's own presets and custom color when Station is selected).
+Choosing a family resets flavor and accent to that family's defaults, and
+choosing a named accent clears a custom `accentColor`, which would otherwise
+win. A different family's sheet loads first, so until the applier names it
+on the root the chosen card reads "Loading…" with no tick. A sheet that fails
+leaves the card reading "Not loaded" under a warning with Try again, which
+applies the selection once more; rapid choices end on the last one ([AppearancePage.test.tsx](../../src-ui/src/__tests__/AppearancePage.test.tsx),
+and with real delayed sheets in
+[appearance-page-keyboard.test.ts](../../src-ui/src/__tests__/appearance-page-keyboard.test.ts)).
+Settings keeps its Theme and Accent color rows as links to the page, so
+their search terms and `highlight=` links still land.
 
 ## White-label branding theme
 
@@ -108,7 +180,12 @@ all or nothing: an unknown key, a non-hex value or a failed contrast check in
 either mode keeps the defaults. The check is `validateBrandOverride` from
 `@kontourai/ui/contrast`, which rates the brand as text at 4.5:1 on the page,
 the panel and the raised panel; Station adds the flat-key input shape and one
-stricter text-contrast rule for the action fill. The raised-panel check came
+stricter text-contrast rule for the action fill. Under a named color theme an
+accepted override is rated again on that theme's page, panel and raised panel;
+a slot group that fails there (brand and its text, action and its text, or
+focus) is not written, so the theme's value shows, and the rejection is logged
+with the same prefix. The rating reruns on a mode, theme or channel change.
+The raised-panel check came
 with `@kontourai/ui` 1.18, so an upgrade can reject a theme that was applied
 before: a stored theme whose dark brand is under 4.5:1 on the dark raised panel
 `#16202d` (relative luminance from about 0.2155 up to 0.2377, such as
@@ -124,11 +201,35 @@ replaces it once the branding query answers. A device accent still sets
 `--accent-primary` above the theme's action role. The accepted shape and
 thresholds are in [examples/custom-branding](../../examples/custom-branding/README.md).
 
+## Highlighted code, diffs, terminals and frames
+
+Syntax highlighting does not carry its own palette. Chat code blocks, the File
+Preview and the diff viewer share one Shiki theme,
+[station-syntax-theme.ts](../../src-ui/src/highlight/station-syntax-theme.ts):
+github-dark's scope rules with every colour replaced by a Station variable
+(`--syntax-*` for tokens and the block surface, `--diff-*` for the diff surface
+and its added, removed and modified tones). Highlighted output is therefore the
+same in every mode and follows a mode, accent or branding change through the
+cascade without re-highlighting. The `@pierre/diffs` viewer renders in a shadow
+root, which custom properties cross.
+
+Two consumers cannot read the cascade directly: xterm paints a canvas, and MCP
+App and HTML-reply frames receive resolved token values by message. They re-read
+on [`observeRootTheme`/`useRootThemeVersion`](../../src-ui/src/lib/root-theme.ts),
+which reports changes to `data-theme`, the `data-color-theme*` attributes,
+`data-app-channel`, `data-brand-focus`, `class` and the non-geometry inline style
+on `<html>`. The terminal's colours are the `--terminal-*` variables, one set
+per mode in [index.css](../../src-ui/src/index.css); the light mode has a light
+terminal. Monitoring's agent and conversation accents use the `--series-*`
+palette.
+
 ## Components and evidence
 
 Shared package primitives are used in surfaces such as Trust, Readiness and
-Flow views. Other components remain local: Station's `Button`, `Toggle`,
-`Dialog` and responsive shell are not all replaced by package components.
+Flow views. Shell `Button` and SDK `Button` now share the SDK's focused
+`action-control` export and canonical token-based stylesheet. This is a Station
+contract: the published UI Button does not supply its pending and sizing API.
+`Toggle`, `Dialog` and the responsive shell retain their Station owners.
 Follow [responsive UI contracts](responsive-ui.md) for local dialog composition,
 focus and viewport behavior; never mix the package's `.dialog` classes with
 Station's `station-dialog__*` chrome.

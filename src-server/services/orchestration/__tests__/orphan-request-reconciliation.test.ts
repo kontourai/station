@@ -5,7 +5,7 @@
  * archive#1284 fixed a stranded "Tool call awaiting approval" card by
  * WRITING, at boot, a synthetic `request.resolved{status:'cancelled'}` for
  * every open request on a session that was provably not live. That write was
- * irreversible, and every artifact the four review rounds added existed only
+ * irreversible, and every artifact later added around it existed only
  * to service the irreversibility: a `providerRegistrationSettled` barrier so
  * the registry read could not be taken too early, a resting-state guard so
  * the synthetic event could not erase a recorded `failed`, and an ordering
@@ -158,7 +158,7 @@ class FakeAdapter implements ProviderAdapterShape {
   constructor(
     readonly provider: 'claude' | 'codex',
     /**
-     * archive#1284 review finding 1(b): lets a test simulate the archive#1090
+     * archive#1284: lets a test simulate the archive#1090
      * recovery-failure shape -- an adapter genuinely registered for the
      * provider whose `startSession` throws for a SPECIFIC thread this boot
      * (`orchestration-session-state.ts`'s recovery catch block then marks
@@ -610,7 +610,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
 
   /**
    * THE PROPERTY THE `providerRegistrationSettled` BARRIER WAS BOUGHT TO
-   * PROTECT (archive#1284 HIGH 4), now held without it.
+   * PROTECT (archive#1284), now held without it.
    *
    * The barrier existed because `adapterRegistry.get(provider) === undefined`
    * means "registration has not finished" before plugin loading settles and
@@ -754,8 +754,8 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
   });
 
   /**
-   * THE LIVENESS GUARD, PINNED AS A CONJUNCT (round-3 verification: probe 3;
-   * carried forward to the projection).
+   * THE LIVENESS GUARD, PINNED AS A CONJUNCT (carried forward to the
+   * projection).
    *
    * AC2 above proves only a DISJUNCTION — its fixture is also answerable
    * through the resumable-with-registered-provider arm, so deleting the
@@ -852,7 +852,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
   });
 
   /**
-   * Review finding 1(b) (MERGE-BLOCKING, round 2 of archive#1338): "no adapter
+   * archive#1338: "no adapter
    * record for this thread" alone is not proof a session is provably ended.
    * A session whose OWN recovery attempt genuinely fails THIS boot (an
    * adapter IS registered for its provider — archive#1090's shape) is marked
@@ -1232,14 +1232,14 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
   });
 
   /**
-   * THE RUNS FOLD (archive#1284 HIGH 1, carried forward).
+   * THE RUNS FOLD (archive#1284, carried forward).
    *
-   * HIGH 1 was: a synthetic `request.resolved` folding to `running` put a
-   * dead thread on `listAgentRuns` as the freshest ACTIVE work with no
+   * The original defect: a synthetic `request.resolved` folding to `running`
+   * put a dead thread on `listAgentRuns` as the freshest ACTIVE work with no
    * `completedAt`. There is no synthetic event now, so that fold cannot be
-   * reached at all from this path — but the symptom is what mattered, so it
-   * is pinned directly: a failed session holding an open request must not
-   * report as `running`.
+   * reached at all from this path — but the symptom is what mattered, so it is
+   * pinned directly: a failed session holding an open request must not report
+   * as `running`.
    *
    * It also pins, in the same test, the DISCLOSED consequence of writing
    * nothing: a session that merely stopped — no terminal event of any kind —
@@ -1294,7 +1294,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
     // board. archive#1338's boot pass changed that incidentally, by writing a
     // cancellation whose `completedAt` was the moment the pass ran rather
     // than the moment the session ended. Removing the write returns the runs
-    // board to what the log actually says. It is NOT the HIGH-1 symptom
+    // board to what the log actually says. It is NOT the runs-fold symptom
     // (`running`, sorted as the freshest active work) and it is not a claim
     // that anything is in progress.
     const stoppedThreadId = 'thread-stopped-no-terminal-event';
@@ -1366,7 +1366,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
   });
 
   /**
-   * archive#1779 delta review, MEDIUM — THE FAIL-OPEN WINDOW MUST CLOSE EVEN
+   * archive#1779 — THE FAIL-OPEN WINDOW MUST CLOSE EVEN
    * WHEN THE STARTUP CHAIN REJECTS.
    *
    * `sessionAttachmentSettled` used to be set on the SUCCESS path of an
@@ -1531,8 +1531,8 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
   });
 
   /**
-   * CROSS-BOOT CONVERGENCE, WITH NO LIVE EVENT AT ALL (archive#1284,
-   * HIGH 2). The strongest form of the proof: `initialize()` is never
+   * CROSS-BOOT CONVERGENCE, WITH NO LIVE EVENT AT ALL (archive#1284).
+   * The strongest form of the proof: `initialize()` is never
    * called, so no reconciliation pass runs and nothing is ever emitted on
    * the bus. The event store simply already contains what a PREVIOUS boot
    * wrote, and the notification store still says `delivered` — the two
@@ -1655,8 +1655,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
   });
 
   /**
-   * `readRequestOutcome` IS TOTAL OVER ITS OWN RETURN TYPE (round-3 review,
-   * MEDIUM 1).
+   * `readRequestOutcome` IS TOTAL OVER ITS OWN RETURN TYPE.
    *
    * It documents four states and computed each from something — except that
    * a failing `listEvents` propagated out, so the ONE state whose own
@@ -1714,11 +1713,11 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
   });
 
   /**
-   * DELEGATION PRECEDENCE (round-3 verification: injection 7).
+   * DELEGATION PRECEDENCE.
    *
    * `resolveSessionProjectSlug` returns `summary.delegation?.projectSlug ??
    * summary.projectSlug`, and that precedence is the stated reason the
-   * review's performance MEDIUM was DECLINED: the cheaper reads it proposed
+   * proposed performance change was DECLINED: the cheaper reads it proposed
    * cannot express "delegation-scoped binding first, exactly as
    * `sessionOpenHref`/`resolveNotificationOpenHref` do". The argument is
    * sound and the ruling stands — but every existing test of this method
