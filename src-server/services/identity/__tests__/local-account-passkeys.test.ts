@@ -65,6 +65,8 @@ async function station(
     invitations?: Set<string>;
     /** The member-passkeys Feature Preview choice; on unless a test says off. */
     preview?: boolean;
+    /** Other approved application origins (ALLOWED_ORIGINS). */
+    allowedBrowserOrigins?: string[];
   } = {},
 ) {
   const origin = input.origin ?? ORIGIN;
@@ -84,7 +86,12 @@ async function station(
   if (input.preview !== false)
     await previews.setEnabled(MEMBER_PASSKEYS_PREVIEW_ID, true);
   const accounts = await loadLocalAccounts(
-    { publicOrigin: origin },
+    {
+      publicOrigin: origin,
+      ...(input.allowedBrowserOrigins
+        ? { allowedBrowserOrigins: [origin, ...input.allowedBrowserOrigins] }
+        : {}),
+    },
     { stationId: input.stationId ?? 'passkey-station', homeDirectory },
     { mayRegister: async ({ invitation }) => invitations.has(invitation) },
     { memberPasskeys: preview },
@@ -754,15 +761,36 @@ describe('member passkeys over the production account routes', () => {
       });
       expect(await home.session(browser)).toBeUndefined();
     }
-    // A ceremony from a non-WebAuthn browser origin is refused at the seam.
-    const foreign = await home.call(
-      new Browser('https://evil.example.test'),
-      '/passkey/sign-in',
-      {
-        step: 'options',
-      },
-    );
-    expect(foreign.status).toBe(403);
     expect((await signIn(home, new Browser(ORIGIN), device)).status).toBe(200);
+  });
+
+  test('an approved application origin that is not the authentication origin starts no passkey ceremony', async () => {
+    const app = 'https://app.example.test';
+    const target = await station({ allowedBrowserOrigins: [app] });
+    const device = new Device();
+    await signUp(target, new Browser(ORIGIN), device, 'other-origin');
+    const browser = new Browser(app);
+    // The route admits this origin for accounts; WebAuthn here would bind to
+    // the wrong origin, so no challenge is minted.
+    for (const [path, body] of [
+      ['/passkey/sign-in', { step: 'options' }],
+      ['/passkey/sign-up', { step: 'options', username: 'from-app' }],
+    ] as const)
+      expect(
+        await target.call(browser, path, body, {
+          'x-station-invitation': INVITATION,
+        }),
+      ).toMatchObject({
+        status: 403,
+        error: { code: 'passkey_origin_unsupported' },
+      });
+    expect(browser.cookies.size).toBe(0);
+    expect(
+      target.accounts.administration.list().map((entry) => entry.username),
+    ).toEqual(['other-origin']);
+    // The same passkey still works at the authentication origin.
+    expect((await signIn(target, new Browser(ORIGIN), device)).status).toBe(
+      200,
+    );
   });
 });
