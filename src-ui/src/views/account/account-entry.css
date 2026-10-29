@@ -291,7 +291,7 @@
   gap: 0.75rem;
   margin-block: 1rem;
   padding-block-start: 1rem;
-  border-block-start: 1px solid var(--border-primary);
+  border-block-start: 1px solid var(--k-line);
 }
 .account-entry__passkeys > *,
 .account-entry__passkeys h3 {
