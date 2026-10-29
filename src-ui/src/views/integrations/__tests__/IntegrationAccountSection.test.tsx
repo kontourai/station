@@ -353,3 +353,53 @@ test('the person chooses the scopes requested at sign-in, starting from the defa
   await waitFor(() => expect(authorizeBodies).toHaveLength(2));
   expect(authorizeBodies[1]).toEqual({ mode: 'remote', scopes: [] });
 });
+
+test('the scopes field starts from the choice remembered at the last sign-in, ahead of the default', async () => {
+  const authorizeBodies: unknown[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/oauth/authorize')) {
+        authorizeBodies.push(JSON.parse(String(init?.body)));
+        return Response.json({
+          success: true,
+          data: { authorizationUrl: 'https://signin.example.test/consent' },
+        });
+      }
+      return Response.json({
+        success: true,
+        data: {
+          ownership: 'principal',
+          connectedAs: 'you',
+          personal: { connected: true },
+          shared: { usable: false, connected: false },
+          rememberedScopes: ['mail.readonly', 'mail.compose'],
+        },
+      });
+    }),
+  );
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  clients.push(client);
+  render(
+    <QueryClientProvider client={client}>
+      <IntegrationAccountSection
+        integrationId="gmail"
+        defaultScopes={['mail.readonly']}
+      />
+    </QueryClientProvider>,
+  );
+  const scopes = (await screen.findByLabelText(
+    'Scopes',
+  )) as HTMLTextAreaElement;
+  await waitFor(() => expect(scopes.value).toBe('mail.readonly\nmail.compose'));
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Reconnect your account' }),
+  );
+  await waitFor(() => expect(authorizeBodies).toHaveLength(1));
+  expect(authorizeBodies[0]).toEqual({
+    mode: 'remote',
+    scopes: ['mail.readonly', 'mail.compose'],
+  });
+});

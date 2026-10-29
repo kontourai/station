@@ -141,6 +141,7 @@ const KEYS = {
   verifier: 'oauth.pkce-verifier',
   state: 'oauth.state',
   discovery: 'oauth.discovery',
+  scopeChoice: 'oauth.scope-choice',
 } as const;
 
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
@@ -555,6 +556,11 @@ export interface ToolServerOAuthClientConfig {
   issuer?: string;
   clientMetadataUrl?: string;
   scopes?: readonly string[];
+  /**
+   * The person's explicit scope choice for this sign-in (empty: the server's
+   * own), remembered with their tokens when the consent completes.
+   */
+  rememberScopes?: readonly string[];
   clientSecret?: () => Promise<string>;
   /**
    * Without a declared issuer: the authorization server this integration's
@@ -897,6 +903,15 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
       issuer: ctx.issuer,
     } as StoredOAuthClientInformation;
     return registered;
+  }
+  /** The scopes chosen at this account's last completed sign-in. */
+  async rememberedScopes(): Promise<string[] | undefined> {
+    const choice = await this.readBound<{ scopes?: unknown }>(KEYS.scopeChoice);
+    const scopes = choice?.scopes;
+    return Array.isArray(scopes) &&
+      scopes.every((scope) => typeof scope === 'string')
+      ? [...scopes]
+      : undefined;
   }
   async tokens(ctx?: OAuthClientInformationContext) {
     const tokens = await this.readBound<StoredOAuthTokens>(KEYS.tokens, ctx);
@@ -1244,6 +1259,10 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
     const entries: Record<string, string> = {
       [KEYS.tokens]: JSON.stringify(this.tokenRecord(value, issuer, clientId)),
     };
+    if (this.client?.rememberScopes)
+      entries[KEYS.scopeChoice] = JSON.stringify(
+        this.boundRecord({ scopes: [...this.client.rememberScopes] }),
+      );
     if (!this.client?.clientId && flow.client && flow.registered)
       entries[KEYS.client] = JSON.stringify(
         this.boundRecord(flow.client, this.resolveIssuer(flow.client, ctx)),

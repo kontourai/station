@@ -1433,7 +1433,9 @@ integration's shared `probe.authorization`. A successful first connection record
 the tool catalog Agents load that integration's tools from.
 
 `GET /integrations/:id/account[?projectSlug=]` returns the caller's own state:
-`{ownership, connectedAs, personal, project?, shared, catalogAvailable}`. It shows
+`{ownership, connectedAs, personal, project?, shared, catalogAvailable,
+rememberedScopes?}`. `rememberedScopes` is the caller's scope choice from
+their last completed sign-in for that account (empty: the server's own). It shows
 owner and availability only, never a token. `DELETE /integrations/:id/account`
 removes the caller's own credential; the next call that needs it refuses.
 

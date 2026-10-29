@@ -34,6 +34,7 @@ export const TOOL_SERVER_OAUTH_CREDENTIAL_KEYS = [
   'oauth.pkce-verifier',
   'oauth.state',
   'oauth.discovery',
+  'oauth.scope-choice',
 ] as const;
 const TOOL_SERVER_OAUTH_CREDENTIAL_KEY_SET = new Set<string>(
   TOOL_SERVER_OAUTH_CREDENTIAL_KEYS,

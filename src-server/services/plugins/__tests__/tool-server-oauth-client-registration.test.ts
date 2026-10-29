@@ -1282,6 +1282,53 @@ describe('dynamic registration without a declared issuer pins its server', () =>
   });
 });
 
+describe("a person's scope choice is remembered between sign-ins", () => {
+  test('remembered for their own account after a completed sign-in, never for someone else, and cleared by disconnect', async () => {
+    const as = startAuthorizationServer({ dcr: false, authMethods: ['none'] });
+    const env = setup();
+    try {
+      await createIntegration(env, {
+        credentialOwnership: { owner: 'principal' },
+        oauthClient: {
+          clientId: CLIENT_ID,
+          issuer: ORIGIN,
+          scopes: ['mail.readonly'],
+        },
+      });
+      const alice = { principalId: ALICE };
+      const bob = { principalId: BOB };
+      // Started but not completed: nothing is remembered.
+      await env.service.startOAuth(SERVER, 'remote', alice, {
+        scopes: ['mail.compose'],
+      });
+      expect(
+        (await env.service.getAccountStatus(SERVER, alice)).rememberedScopes,
+      ).toBeUndefined();
+
+      await consent(env, alice, { scopes: ['mail.readonly', 'mail.compose'] });
+      expect(
+        (await env.service.getAccountStatus(SERVER, alice)).rememberedScopes,
+      ).toEqual(['mail.readonly', 'mail.compose']);
+      expect(
+        (await env.service.getAccountStatus(SERVER, bob)).rememberedScopes,
+      ).toBeUndefined();
+
+      // Choosing the server's own scopes is a choice too.
+      await consent(env, alice, { scopes: [] });
+      expect(
+        (await env.service.getAccountStatus(SERVER, alice)).rememberedScopes,
+      ).toEqual([]);
+
+      await env.service.disconnectAccount(SERVER, alice);
+      expect(
+        (await env.service.getAccountStatus(SERVER, alice)).rememberedScopes,
+      ).toBeUndefined();
+    } finally {
+      await as.close();
+    }
+  });
+});
+
 describe('no client and no registration', () => {
   test('consent stops with an actionable client-id-required state, not a registration attempt', async () => {
     const as = startAuthorizationServer({ dcr: false });

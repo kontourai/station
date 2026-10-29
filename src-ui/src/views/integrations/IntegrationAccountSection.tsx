@@ -64,7 +64,9 @@ function IntegrationAccountControls({
   const [error, setError] = useState<string | null>(null);
   const callbackId = useId();
   const scopesId = useId();
-  const [scopes, setScopes] = useState<string[]>(() => defaultScopes ?? []);
+  // Undefined until the person edits: then the choice remembered from their
+  // last completed sign-in, else the integration default.
+  const [edited, setEdited] = useState<string[] | undefined>();
   const pending = start.isPending || finish.isPending || disconnect.isPending;
   const input = { id: integrationId, projectSlug, requestScope };
 
@@ -108,6 +110,7 @@ function IntegrationAccountControls({
   }
 
   const status = account.data;
+  const scopes = edited ?? status?.rememberedScopes ?? defaultScopes ?? [];
   const sharedAccount = status?.ownership === 'instance';
   const ownAccountConnected = projectSlug
     ? status?.project?.connected
@@ -157,7 +160,7 @@ function IntegrationAccountControls({
             hint="One per line. Access you grant at sign-in; empty uses the server's."
             scopes={scopes}
             disabled={pending}
-            onChange={setScopes}
+            onChange={setEdited}
           />
           <Button onClick={() => void begin()} disabled={pending}>
             {start.isPending

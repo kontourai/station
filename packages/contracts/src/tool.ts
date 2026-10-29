@@ -238,6 +238,12 @@ export interface ToolAccountStatus {
   project?: { slug: string; connected: boolean };
   shared: { usable: boolean; connected: boolean };
   catalogAvailable?: boolean;
+  /**
+   * The scopes this caller chose at their last completed sign-in for the
+   * account they would sign in as (empty: the server's own). Absent when
+   * they have not chosen; the integration default then applies.
+   */
+  rememberedScopes?: string[];
 }
 
 export interface Prerequisite {

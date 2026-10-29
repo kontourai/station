@@ -102,6 +102,8 @@ export interface ToolServerAccountStatus {
   shared: { usable: boolean; connected: boolean };
   /** Whether a person-owned integration has a recorded tool catalog yet. */
   catalogAvailable?: boolean;
+  /** The caller's scope choice at their last completed sign-in. */
+  rememberedScopes?: string[];
 }
 
 class ConnectedAccountActorRequiredError extends StationOwnedToolServerError {
@@ -897,11 +899,19 @@ export class MCPService {
         ? Boolean(await this.createOAuthProvider(def, owner).tokens())
         : false;
     const shared = await connected(INSTANCE_CREDENTIAL_OWNER);
+    // The choice remembered for the account this caller would sign in as.
+    const remembered = async (owner: CredentialOwner) => {
+      const scopes = resourceIdentity
+        ? await this.createOAuthProvider(def, owner).rememberedScopes()
+        : undefined;
+      return scopes ? { rememberedScopes: scopes } : {};
+    };
     if (!def.credentialOwnership)
       return {
         ownership: 'instance',
         connectedAs: shared ? 'shared' : null,
         shared: { usable: true, connected: shared },
+        ...(await remembered(INSTANCE_CREDENTIAL_OWNER)),
       };
     if (!actor) throw new ConnectedAccountActorRequiredError();
     const fallback = def.credentialOwnership.allowInstanceFallback === true;
@@ -935,6 +945,9 @@ export class MCPService {
             resourceIdentity,
           )
         : false,
+      ...(await remembered(
+        principalCredentialOwner(actor.principalId, actor.projectSlug),
+      )),
     };
   }
 
@@ -1893,10 +1906,9 @@ function withRequestedScopes(
   scopes: readonly string[] | undefined,
 ): ToolServerOAuthClientConfig | undefined {
   if (scopes === undefined) return client;
-  if (scopes.length > 0) return { ...client, scopes };
-  if (!client) return undefined;
-  const { scopes: _default, ...rest } = client;
-  return rest;
+  if (scopes.length > 0) return { ...client, scopes, rememberScopes: scopes };
+  const { scopes: _default, ...rest } = client ?? {};
+  return { ...rest, rememberScopes: [] };
 }
 
 /**

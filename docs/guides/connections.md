@@ -1666,7 +1666,11 @@ scopes; add or remove scopes there before **Sign in** or **Connect your
 account**. Station requests exactly that list for that sign-in, including when
 it registers a client dynamically, and does not write it back as the default.
 Clearing the field requests the server's advertised scopes instead of the
-default. Station checks only that each scope is a well-formed OAuth scope (at
+default. When that sign-in completes, Station remembers the choice for your
+own account (for a Project-scoped account, that Project's), and the field
+starts from it next time instead of the default. An abandoned sign-in
+remembers nothing, another person never sees your choice, and disconnecting
+forgets it. Station checks only that each scope is a well-formed OAuth scope (at
 most 32 distinct values); the provider decides what each scope allows.
 
 #### Authorization server binding
