@@ -265,14 +265,12 @@ test('a designated Codex conversation starts a tools successor while another con
     i++
   )
     await new Promise((resolve) => setTimeout(resolve, 10));
-  store
-    .coordinatorStore()
-    .designate({
-      conversationId: 'other',
-      actor: { userId: 'owner' },
-      replace: true,
-      now: Date.now(),
-    });
+  store.coordinatorStore().designate({
+    conversationId: 'other',
+    actor: { userId: 'owner' },
+    replace: true,
+    now: Date.now(),
+  });
   let stale = false;
   Object.assign(adapter, {
     coordinatorToolsRefresh: true,

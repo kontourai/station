@@ -171,7 +171,7 @@ const coordinatorGenerations = new Map<string, number>();
 export function coordinatorGeneration(conversationId: string): number {
   return coordinatorGenerations.get(conversationId) ?? 0;
 }
-export function advanceCoordinatorGeneration(conversationId: string): void {
+function advanceCoordinatorGeneration(conversationId: string): void {
   coordinatorGenerations.set(
     conversationId,
     coordinatorGeneration(conversationId) + 1,
