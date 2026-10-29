@@ -144,7 +144,7 @@
     {
       "id": "experimental-sheet-gestures",
       "label": "Sheet gestures preview",
-      "help": "Opt in to dragging phone sheets up to expand them and down to close them.",
+      "help": "Opt in to phone sheet handles and swipe-to-reveal Snooze and Dismiss in the inbox.",
       "scope": "device",
       "section": "developer-tools",
       "route": "/settings?view=developer-tools&highlight=experimental-sheet-gestures",
@@ -482,6 +482,15 @@
       "section": "chat",
       "route": "/settings?view=chat&highlight=default-chat-font-size",
       "configKey": "defaultChatFontSize"
+    },
+    {
+      "id": "chat-title-model",
+      "label": "Chat title model",
+      "help": "Choose the model that names a chat after its first reply.",
+      "scope": "station",
+      "section": "chat",
+      "route": "/settings?view=chat&highlight=chat-title-model",
+      "configKey": "titleModel"
     },
     {
       "id": "smooth-answer-reveal",

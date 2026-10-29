@@ -82,10 +82,18 @@ authority.
 4. Choose **Sign out**, then confirm on the consent-origin page to end the
    session. Closing the browser window alone does not sign out.
 
+To approve an ordinary pending Device pairing, open its review in **Needs
+attention** or the pairing panel. If asked, sign in as operator and return to
+the request. Choose **Approve**, then open **Review and confirm with passkey**
+and confirm the requested access. The request remains pending until the
+passkey confirmation succeeds; a denied, expired or changed request cannot be
+approved by an earlier review. Account-bound and delegation requests still
+require the host approval path.
+
 The session uses `__Host-station-operator`, a Secure, HttpOnly,
 SameSite=Strict cookie with Path=/ and no Domain. Cookies are scoped by hostname,
 not port: the same-host app origin receives it too. While signed in, app-origin
-plugin code can read the device inventory and the operator's passkey/session
+plugin code can read the device inventory, pending pairing requests, and the operator's passkey/session
 metadata. It cannot run a passkey ceremony or mutate with operator-session
 authority directly: a write only requests a transaction and cannot approve it. Do not treat HttpOnly as isolation from same-origin code using the
 session to make allowed requests.

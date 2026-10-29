@@ -1184,6 +1184,14 @@ export interface OrchestrationSessionSummary extends ProviderSession {
   blockingOpenRequestIds?: string[];
   lifecycleState?: SessionLifecycleState;
   previousLifecycleState?: SessionLifecycleState;
+  /**
+   * When the event that produced the current `lifecycleState` was recorded.
+   * For a finished session this is the real finish time, which `updatedAt`
+   * and `lastEventAt` are not (later bookkeeping events move them). Absent
+   * when no event in the folded window changed the state; consumers then
+   * fall back to `updatedAt`.
+   */
+  lifecycleChangedAt?: string;
   transitionReason?: SessionTransitionReason;
   transitionSource?: SessionTransitionSource;
   pendingReview?: boolean;
@@ -1447,6 +1455,8 @@ export interface OrchestrationConversationEventWindow
   extends OrchestrationSessionEventWindow {
   conversationId: string;
   currentSessionId: string;
+  /** Server's current person-continuation decision; absent on older hosts. */
+  memoryContinuation?: { eligible: boolean; turnId?: string };
   /**
    * Immutable execution-session lineage for this transcript.  A conversation
    * may replace its current Session during a handoff, so a historical turn
@@ -1878,8 +1888,10 @@ export interface ConversationListItem {
   /** False when the transcript is owned by an external runtime event store. */
   mutable: boolean;
   /**
-   * Durable title provenance for mutable store conversations. A UI must ask
-   * before replacing a human-owned title; runtime conversations have none.
+   * Durable title provenance. A UI must ask before replacing a human-owned
+   * title on a mutable store conversation. A runtime conversation carries
+   * `prompt`, `provider` (supplied with its start) or `generated` (the title
+   * model's, #4266), and none for a title recorded before #4266.
    * `agent` is a title a station-control agent set with `rename_session`: it
    * is not a person's, so any later rename replaces it without asking.
    */
@@ -1897,8 +1909,16 @@ export interface ConversationListItem {
   answerability: RequestAnswerability;
   controlMode?: SessionControlMode;
   lifecycleState?: SessionLifecycleState;
+  /** The current execution's `OrchestrationSessionSummary.lifecycleChangedAt`. */
+  lifecycleChangedAt?: string;
   pendingReview?: boolean;
   provider?: string;
+  /**
+   * The engines this conversation actually ran on, distinct, in the order
+   * they first ran (one per execution session, so a handoff between engines
+   * lists both). Absent from older hosts and for file-store conversations.
+   */
+  executionProviders?: string[];
   /** Engine-reported identity preferred for a resumed conversation header. */
   model?: string;
   /** Adapter-accepted model identity, distinct from a reported model claim. */
@@ -1948,7 +1968,21 @@ export interface ConversationOpenExecution {
   acceptedModel?: string;
 }
 
-export type ConversationOpenResolution =
+/**
+ * What THIS caller may write next, as the server's own HTTP boundary answers
+ * it for the exact routes a client would post to: `continue` for sending a
+ * turn into this conversation, `startChat` for starting a new chat. Computed
+ * per request, so a paired device without the needed scope learns it from
+ * the server instead of re-deriving the route table. Absent on older servers
+ * and when the request carries no authenticated principal; absent means
+ * unknown, and the server still enforces either way.
+ */
+export interface ConversationOpenCallerAccess {
+  continue: boolean;
+  startChat: boolean;
+}
+
+export type ConversationOpenResolution = (
   | {
       /** A saved, authorized fork with no provider Session until first send. */
       status: 'fork-ready';
@@ -2016,7 +2050,8 @@ export type ConversationOpenResolution =
       canContinue: false;
       answerability: RequestAnswerability;
       recoveryActions: readonly ('retry' | 'start-new')[];
-    };
+    }
+) & { callerAccess?: ConversationOpenCallerAccess };
 
 export interface ConversationForkProvenance {
   sourceConversationId: string;

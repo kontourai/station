@@ -60,7 +60,6 @@ import { StreamingMessage } from './StreamingMessage';
 import { SubagentTranscriptCard } from './SubagentTranscriptCard';
 import { ToolCallDisplay } from './ToolCallDisplay';
 import {
-  TRANSCRIPT_TURN_NAVIGATION_MIN_TURNS,
   TranscriptTurnActions,
   TranscriptTurnRail,
   turnLabel,
@@ -567,9 +566,7 @@ function ChatMessageListComponent({
     [transcriptRows],
   );
   // History replay keeps its own timeline; the live transcript gets the rail.
-  const turnNavigation =
-    !activeSession.replay &&
-    turnLandmarks.length >= TRANSCRIPT_TURN_NAVIGATION_MIN_TURNS;
+  const turnNavigation = !activeSession.replay && turnLandmarks.length > 0;
   const turnRailRef = useRef<HTMLElement>(null);
   // Reported by the rail; until it measures, assume the wide layout.
   const [turnRailAvailable, setTurnRailAvailable] = useState(true);
@@ -1387,6 +1384,10 @@ function ChatMessageListComponent({
       }).length,
     [activeSession.pendingApprovals, activeSession.answeredApprovals],
   );
+  const callerContinue =
+    activeSession.conversationOpenState?.callerAccess?.continue;
+  const callerStartChat =
+    activeSession.conversationOpenState?.callerAccess?.startChat;
   const bubbleSession: MessageBubbleSession = useMemo(
     () => ({
       id: activeSession.id,
@@ -1394,6 +1395,12 @@ function ChatMessageListComponent({
       agentName: activeSession.agentName,
       projectSlug: activeSession.projectSlug,
       conversationId: activeSession.conversationId,
+      // Rebuilt from its two values (see the deps): each open read returns a
+      // new object, and identity would re-render every bubble on every read.
+      callerAccess:
+        callerContinue === undefined || callerStartChat === undefined
+          ? undefined
+          : { continue: callerContinue, startChat: callerStartChat },
       messageCount: messages.length,
       isThinking: activeSession.isThinking,
       pendingApprovalCount: waitingApprovalCount,
@@ -1417,6 +1424,8 @@ function ChatMessageListComponent({
       activeSession.agentName,
       activeSession.projectSlug,
       activeSession.conversationId,
+      callerContinue,
+      callerStartChat,
       activeSession.isThinking,
       waitingApprovalCount,
       statusShownElsewhere,

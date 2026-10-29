@@ -1,0 +1,7 @@
+{
+  "revision": "f4587f12fdc8a2f36cb84ba308d92ddfa24fb08a",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Rewrote the start composer Station paragraph to Runs on Station, the Where this work runs list, and Start opening Run on a Station; plain text when no other Station is listable. The project control and compact Project page composer claims are unchanged by this diff.","inputs":["docs/user/getting-started.md","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

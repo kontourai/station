@@ -1,0 +1,7 @@
+{
+  "revision": "4ab488ac0dbdb0a43f291d747e8327a413ba322c",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed native intent/outer-commit publication, paired Request admission and warm singleton child-work/activity code with their actual owner tests. Added explicit sources for the new private domain and cached reporter read. The documented boundary remains persistence/read-only; activation, hosted affected facts, general successors and live provider/account proof stay unsupported. Current delivery types and focused owners passed; this note is not a production or physical qualification receipt.","inputs":["docs/architecture/module-map.md","src-server/security/native-fork-read-admission.ts","src-server/services/orchestration/child-work-projection.ts","src-server/services/orchestration/__tests__/conversation-native-fork-effect.test.ts"]}
+  ]
+}

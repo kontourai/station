@@ -589,6 +589,13 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['defaultChatFontSize'],
   },
   {
+    id: 'chat-title-model',
+    title: 'Chat title model',
+    section: 'chat',
+    keywords: ['conversation title', 'generated title'],
+    configKeys: ['titleModel'],
+  },
+  {
     // The id is the stable URL/palette identity and stays as minted even
     // though the title no longer matches it (#2144 slice 6 item B) — a
     // rename would break every deep link and every recorded highlight.

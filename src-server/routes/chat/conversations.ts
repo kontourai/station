@@ -41,6 +41,7 @@ import {
 import * as ConversationManager from '../../runtime/conversation/conversation-manager.js';
 import type { StationControlDispatchScope } from '../../runtime/mcp/station-control-dispatch-scope.js';
 import type { RuntimeContext } from '../../runtime/types.js';
+import type { CurrentRuntimeRequestPrincipalSecurity } from '../../security/runtime-request-security.js';
 import { isPrincipalScopedAgentRequest } from '../../security/station-control-request-authority.js';
 import {
   publicAgentIdFromRuntimeKey,
@@ -51,7 +52,10 @@ import {
   type ActionOperationTrackingService,
   beginActionOperationTracking,
 } from '../../services/operations/action-operation-tracker.js';
-import type { ConversationAcknowledgementStore } from '../../services/orchestration/conversation-acknowledgement-store.js';
+import {
+  type ConversationAcknowledgementStore,
+  conversationAcknowledgementKey,
+} from '../../services/orchestration/conversation-acknowledgement-store.js';
 import {
   FORK_REPLAY_DISCLOSURE,
   selectForkTranscriptSlice,
@@ -102,6 +106,7 @@ import {
   ConversationLineageTooLongError,
   createConversationMessageReader,
 } from './conversation-message-reader.js';
+import { conversationOpenCallerAccess } from './conversation-open-caller-access.js';
 
 export { CONVERSATION_READ_MAX_SESSIONS } from './conversation-message-reader.js';
 
@@ -144,6 +149,19 @@ interface ForkContextPorts {
     digest: string,
     scope: SessionReadAuthority,
   ): boolean;
+}
+
+export interface NativeForkStoredRoutePorts {
+  admission?: Extract<
+    ReturnType<
+      import('../../security/native-fork-read-admission.js').NativeForkReadAdmissionDomain['bindAtConversationMount']
+    >,
+    { kind: 'bound' }
+  >;
+  service: Pick<
+    import('../../services/orchestration/orchestration-service.js').OrchestrationService,
+    'nativeForkStoredReadRequired' | 'readNativeForkStoredCreation'
+  >;
 }
 function hasForkContextPorts(
   store: Partial<ForkContextPorts>,
@@ -743,6 +761,7 @@ export function createConversationRoutes(
    * station-control caller's fork is refused; other callers are not decided.
    */
   stationControlDispatchScope?: StationControlDispatchScope,
+  nativeForkStoredRead?: NativeForkStoredRoutePorts,
 ) {
   const app = new Hono();
   const sessionSummaries =
@@ -854,6 +873,49 @@ export function createConversationRoutes(
       },
     });
 
+  const guardSavedNativeFork = (
+    c: Context,
+    snapshot: ConversationForkContextSnapshot,
+    authority: SessionReadAuthority,
+  ): void => {
+    if (!nativeForkStoredRead) return;
+    const required = nativeForkStoredRead.service.nativeForkStoredReadRequired(
+      snapshot.targetConversationId,
+      snapshot.digest,
+      authority,
+    );
+    if (required === 'not-required') return;
+    if (required === 'unavailable' || !nativeForkStoredRead.admission)
+      throw new ConversationForkContextError(
+        'Native fork read authority is unavailable.',
+      );
+    // Runtime HTTP has already buffered/rebound this exact Request. Never
+    // reconstruct it from headers or turn a cached read scope into a handle.
+    const captured = nativeForkStoredRead.admission.capture(c.req.raw);
+    if (captured.kind !== 'captured')
+      throw new ConversationForkContextError(
+        'Native fork request is not current.',
+      );
+    try {
+      const result = nativeForkStoredRead.service.readNativeForkStoredCreation(
+        snapshot.targetConversationId,
+        snapshot.digest,
+        captured.handle,
+      );
+      if (result.kind !== 'stored-creation')
+        throw new ConversationForkContextError(
+          'Native fork stored evidence is unavailable.',
+        );
+      // A verified receipt supplies no current lifecycle/activation proof.
+      // Native intent must never fall through to the replay reply/publisher.
+      throw new ConversationForkContextError(
+        'Native fork activation is not implemented.',
+      );
+    } finally {
+      nativeForkStoredRead.admission.release(captured.handle);
+    }
+  };
+
   const finishSavedFork = async (
     c: Context,
     proposed: ConversationForkContextSnapshot,
@@ -865,6 +927,7 @@ export function createConversationRoutes(
         'Fork context persistence is unavailable.',
       );
     const writer = eventStore;
+    guardSavedNativeFork(c, proposed, authority);
     const actionOperation = await beginActionOperationTracking({
       service: actionOperations,
       actor,
@@ -905,6 +968,7 @@ export function createConversationRoutes(
             throw new ConversationForkContextError(
               'Saved fork context is unavailable.',
             );
+          guardSavedNativeFork(c, snapshot, authority);
           if (reference.state === 'ready')
             return { snapshot, idempotent: true };
           const targetAdapter = getAdapter(
@@ -1138,7 +1202,10 @@ export function createConversationRoutes(
               );
             const replayRefused = refuseOutOfScopeTarget(saved.projectSlug);
             if (replayRefused) return replayRefused;
-            if (previous.state === 'ready') return forkReply(c, saved, true);
+            if (previous.state === 'ready') {
+              guardSavedNativeFork(c, saved, authority);
+              return forkReply(c, saved, true);
+            }
             return await finishSavedFork(
               c,
               saved,
@@ -2484,6 +2551,13 @@ export function createGlobalConversationRoutes(
     }>;
     deferredInstanceCount: number;
   }>,
+  /**
+   * The runtime principal gate. When wired, the open read also reports
+   * whether this caller may continue the conversation or start a chat
+   * (`callerAccess`); unwired, the field is omitted and clients treat it as
+   * unknown.
+   */
+  principalSecurity?: CurrentRuntimeRequestPrincipalSecurity,
 ) {
   const app = new Hono();
   const authorityFor =
@@ -2593,7 +2667,6 @@ export function createGlobalConversationRoutes(
   app.get('/', async (c) => {
     try {
       const authority = authorityFor(c.req.raw);
-      const userId = authority.userId;
       const hosted = isHostedSessionReadAuthority(authority);
       const pageQuery = conversationHistoryPageQuerySchema.safeParse({
         cursor: c.req.query('cursor'),
@@ -2644,10 +2717,16 @@ export function createGlobalConversationRoutes(
       const provenanceById = eventStore?.readConversationForkProvenanceBatch?.(
         combined.map((item) => item.id),
       );
-      const acknowledgements = acknowledgementStore?.getMany(
-        userId,
-        combined.map((item) => item.id),
+      const acknowledgementKey = conversationAcknowledgementKey(
+        authority,
+        acknowledgementStore?.isOwnerDevice,
       );
+      const acknowledgements = acknowledgementKey
+        ? acknowledgementStore?.getMany(
+            acknowledgementKey,
+            combined.map((item) => item.id),
+          )
+        : undefined;
       const data = combined.map((item) => {
         const acknowledgedAt = acknowledgements?.get(item.id);
         const forkProvenance =
@@ -2741,8 +2820,23 @@ export function createGlobalConversationRoutes(
         400,
       );
     }
+    // The same key the inventory GET reads (`conversationAcknowledgementKey`):
+    // what a person viewed on one device clears it on all of theirs.
+    const acknowledgementKey = conversationAcknowledgementKey(
+      authority,
+      acknowledgementStore?.isOwnerDevice,
+    );
+    if (!acknowledgementKey) {
+      return c.json(
+        {
+          success: false,
+          error: 'Only a person can acknowledge a conversation',
+        },
+        403,
+      );
+    }
     acknowledgementStore.acknowledge({
-      userId: getUserId(),
+      userId: acknowledgementKey,
       conversationId,
       updatedAt: new Date(parsedUpdatedAt).toISOString(),
     });
@@ -2768,6 +2862,9 @@ export function createGlobalConversationRoutes(
           authority,
         );
       if (resolved) {
+        const callerAccess = principalSecurity
+          ? conversationOpenCallerAccess(c.req.raw, principalSecurity, id)
+          : undefined;
         if (resolved.status === 'fork-ready') {
           const saved = await readSavedForkMetadata(id, authority);
           if (!saved)
@@ -2785,12 +2882,13 @@ export function createGlobalConversationRoutes(
                 updatedAt: saved.updatedAt,
                 titleSource: saved.titleSource,
               },
+              ...(callerAccess ? { callerAccess } : {}),
             },
           });
         }
         return c.json({
           success: true,
-          data: resolved,
+          data: callerAccess ? { ...resolved, callerAccess } : resolved,
         });
       }
       // File-store ownership is not a request principal.  Until it has a

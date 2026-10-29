@@ -1,0 +1,7 @@
+{
+  "revision": "ced2f38d1aca296073db086265ce61a6e955bd58",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed inbox row interaction claims against ChatDockInboxRows, both inbox hosts, useInboxSwipe and inbox-dismissals. Added the shared desktop Dismiss/mobile swipe contract and recovery, keeping Home/sidebar actions separate. Chromium touch, picker hit testing and hover journey passed; no physical-device claim.","inputs":["docs/design/chat-composer.md","packages/contracts/src/device-settings.ts","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx"]}
+  ]
+}

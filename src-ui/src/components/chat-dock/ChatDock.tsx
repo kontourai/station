@@ -122,6 +122,7 @@ import {
   isSessionWorkActive,
 } from '../../utils/execution';
 import { displayProvider, sessionTitle } from '../../utils/sessionDisplay';
+import { withConversationInventory } from '../../views/home/conversation-inventory-facts';
 import { chatTaskSessionId } from '../../views/home/home-view-model';
 import {
   openChatInboxRows,
@@ -164,6 +165,7 @@ import {
   isChatPaneFileDropEnabled,
 } from './ChatPaneFileDropBoundary';
 import type { ComposerActionsMenuProps } from './ComposerActionsMenu';
+import { ConversationPickerRecovery } from './ConversationPickerRecovery';
 import {
   chatModelLabel,
   effectiveChatModelId,
@@ -197,6 +199,7 @@ import {
   useSessionInventoryHostRegistered,
   useSessionInventoryHostRegistration,
 } from './sessionInventoryOccurrence';
+import { useAcknowledgeVisibleConversation } from './useAcknowledgeVisibleConversation';
 import { useChatDockActiveChatSync } from './useChatDockActiveChatSync';
 import { useChatDockOverlays } from './useChatDockOverlays';
 import { useChatDockViewModel } from './useChatDockViewModel';
@@ -204,6 +207,7 @@ import { useConversationBoundaryDialogs } from './useConversationBoundaryDialogs
 import { useDockCopyActions } from './useDockCopyActions';
 import { useFirstRunDockNudge } from './useFirstRunDockNudge';
 import { useInboxNeedsYouCount, useInboxWorkingCount } from './useInboxGroups';
+import { useTaskStartedNotice } from './useTaskStartedNotice';
 
 /**
  * Re-open an offline queued turn from what its owning session persistently
@@ -362,10 +366,6 @@ const loadConversationBoundaryDialogs = () =>
   }));
 
 const loadImportedConversationPane = () => import('./ImportedConversationPane');
-const loadConversationOpenRecoveryNotice = () =>
-  import('./ConversationOpenRecoveryNotice').then((module) => ({
-    default: module.ConversationOpenRecoveryNotice,
-  }));
 const loadConversationOpenController = () =>
   import('./conversationOpenController');
 const loadConversationOpenRevalidator = () =>
@@ -777,23 +777,11 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     () => openChatInboxRows(inboxItems),
     [inboxItems],
   );
-  // The inventory's acknowledgement stamps are presentation (which finished
-  // rows are "Just finished"), layered on the shared items; no status word
-  // reads them.
+  // The inventory's per-conversation facts (last view, finish time, engines
+  // run) are presentation layered on the shared items; no status word reads
+  // them.
   const taskItems = useMemo(
-    () =>
-      inboxItems.map((item) => {
-        const conversation = inventoryById.get(item.id);
-        if (!conversation) return item;
-        const acknowledgedAt = conversation.acknowledgedAt
-          ? Date.parse(conversation.acknowledgedAt)
-          : Number.NaN;
-        return {
-          ...item,
-          conversationUpdatedAt: conversation.updatedAt,
-          ...(Number.isFinite(acknowledgedAt) ? { acknowledgedAt } : {}),
-        };
-      }),
+    () => withConversationInventory(inboxItems, inventoryById),
     [inboxItems, inventoryById],
   );
   const acknowledgeTaskConversation = useCallback(
@@ -877,6 +865,10 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // tab; once a tab exists its `conversationOpenState` is the canonical copy.
   const [conversationOpenRecovery, setConversationOpenRecovery] =
     useState<ConversationOpenRecovery | null>(null);
+  // Read by a failed picker retry, which keeps the server's last answer on
+  // what this caller may do; a ref so the open callback stays stable.
+  const conversationOpenRecoveryRef = useRef(conversationOpenRecovery);
+  conversationOpenRecoveryRef.current = conversationOpenRecovery;
 
   // station#1301 slice 1: the active session's running-background-task count,
   // for the tab bar's badge and the Background tasks rows' labels.
@@ -903,6 +895,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const collapseDockForNavigation = useCallback(() => {
     if (!isFullscreenPlacement && isDockMaximized) restoreDockToDocked();
   }, [isDockMaximized, isFullscreenPlacement, restoreDockToDocked]);
+  const notifyTaskStarted = useTaskStartedNotice(collapseDockForNavigation);
 
   const { setDeviceSetting } = useDeviceSettingsActions();
   const {
@@ -1339,6 +1332,13 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const activeTaskItem = activeSession
     ? taskItems.find((item) => chatTaskSessionId(item) === activeSession.id)
     : undefined;
+  // #4266: the chat on screen is viewed. Watching a thread finish clears it
+  // from "Just finished" on every device; the phone's task switcher covers
+  // the transcript, so it does not count as viewing it.
+  useAcknowledgeVisibleConversation(
+    activeTaskItem,
+    isPaneOpen && !(isMobile && isTaskSwitcherOpen),
+  );
   const activeWorkStatus = useOptionalObservedWorkStatus(
     activeTaskItem,
     inboxClock,
@@ -1970,6 +1970,12 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
         readChat: (tabId) => activeChatsStore.getSnapshot()[tabId],
         agentName: (id) => agents.find((agent) => agent.slug === id)?.name,
         setRecovery: setConversationOpenRecovery,
+        lastCallerAccess: (conversationId) => {
+          const last = conversationOpenRecoveryRef.current;
+          return last?.conversation.id === conversationId
+            ? last.callerAccess
+            : undefined;
+        },
         isCurrent,
       });
       if (keepReader && opened) setImportedSessionId(null);
@@ -3165,21 +3171,10 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   }}
                 >
                   {conversationOpenRecovery && !importedSessionId ? (
-                    <LazyBoundary
-                      load={loadConversationOpenRecoveryNotice}
-                      componentProps={{
-                        title: conversationOpenRecovery.conversation.title,
-                        // #2424: passed through unmapped; the notice decides
-                        // which statuses are verdicts.
-                        state: conversationOpenRecovery.status,
-                        onRetry: () => void retryConversationOpenRecovery(),
-                        onStartNew: startNewFromConversationRecovery,
-                      }}
-                      pending={
-                        <div className="session-history-error" role="status">
-                          Conversation recovery is loading. Sending is paused.
-                        </div>
-                      }
+                    <ConversationPickerRecovery
+                      recovery={conversationOpenRecovery}
+                      onRetry={() => void retryConversationOpenRecovery()}
+                      onStartNew={startNewFromConversationRecovery}
                     />
                   ) : null}
                   {importedSessionId ? (
@@ -3253,8 +3248,13 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       toolPolicyDelivery={toolPolicyDelivery}
                       availableModels={effectiveModels}
                       executionModels={executionRoutes}
+                      // The same server-derived gate as the composer menu's
+                      // handoff: a conversation this caller may not change
+                      // offers no engine switch at all.
                       onExecutionModelSelect={
-                        conversationBoundaryDialogs.openExecutionHandoff
+                        conversationCanMutate
+                          ? conversationBoundaryDialogs.openExecutionHandoff
+                          : undefined
                       }
                       modelsLoading={modelsLoading}
                       chatInput={chatInput}
@@ -3878,10 +3878,12 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 forkAbortRef.current = null;
             }
           },
-          onNewTaskStarted: () => {
+          onNewTaskStarted: (task, stationName) => {
             setShowNewChatModal(false, undefined, 'started');
             setNewChatProjectOverride(null);
             setHandoffSource(null);
+            invalidate(orchestrationQueries.sessions().queryKey);
+            notifyTaskStarted(task, stationName);
           },
           onCloseNewChat: () => {
             setShowNewChatModal(false);

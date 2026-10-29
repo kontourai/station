@@ -21,6 +21,7 @@ import {
   FAST_CHECKS_SHARD_RUN,
   FAST_CHECKS_SLICE_RUN,
   findNamedWorkflowStep,
+  findVerdictBearingContinueOnError,
   REQUIRED_FAST_CHECKS_AGGREGATE_CONDITION,
   REQUIRED_FAST_CHECKS_CONDITION,
 } from '../ci-workflow-governance.mjs';
@@ -628,6 +629,26 @@ describe('required browser evidence cannot silently disappear', () => {
         readFileSync('.github/workflows/ci.yml', 'utf8'),
       ),
     ).toEqual([]);
+  });
+  test('only the exact restore may fail softly; Chromium installation stays required', () => {
+    const workflow = readFileSync('.github/workflows/ci.yml', 'utf8');
+    expect(findVerdictBearingContinueOnError(workflow)).toEqual([]);
+    const changedKey = workflow.replace(
+      'key: station-playwright-v1-',
+      'key: untrusted-playwright-v1-',
+    );
+    expect(changedKey).not.toBe(workflow);
+    expect(findVerdictBearingContinueOnError(changedKey)).toContain(
+      'Restore trusted Chromium cache',
+    );
+    const optionalInstall = workflow.replace(
+      '- name: Install Chromium for changed-set touch-target checks\n',
+      '- name: Install Chromium for changed-set touch-target checks\n        continue-on-error: true\n',
+    );
+    expect(optionalInstall).not.toBe(workflow);
+    expect(findVerdictBearingContinueOnError(optionalInstall)).toContain(
+      'Install Chromium for changed-set touch-target checks',
+    );
   });
   const executesOnce =
     'Required browser smoke must execute once, unconditionally, with its real exit status inside fast-checks-statics.';
