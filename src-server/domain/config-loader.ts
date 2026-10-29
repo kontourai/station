@@ -22,6 +22,7 @@ import {
 } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import type { ACPConfig } from '@kontourai/station-contracts/acp';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { PluginOverrides } from '@kontourai/station-contracts/plugin';
@@ -32,7 +33,13 @@ import {
   withStationIntegrationTrustDefaults,
   withUntrustedContentChange,
 } from '@kontourai/station-contracts/tool';
-import { applyIntegrationTrustOverlay, readIntegrationTrustOverlay } from '@kontourai/station-shared/integration-trust-overlay';
+import {
+  applyIntegrationTrustOverlay,
+  readIntegrationTrustOverlay,
+  writeIntegrationTrustOverlay,
+} from '@kontourai/station-shared/integration-trust-overlay';
+import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import { toolServerIntegrationMutationLockPath } from '@kontourai/station-shared/tool-server-credential-store';
 import { type FSWatcher, watch } from 'chokidar';
 import {
   type AppConfigLaunchabilitySnapshot,
@@ -881,7 +888,14 @@ export class ConfigLoader {
     if (!integrationConfigExists(this.projectHomeDir, id)) {
       for (const source of this.integrationSources) {
         const projected = source.loadIntegration(id, composition);
-        if (projected) return { definition: projected, contributed: true };
+        if (projected)
+          return {
+            definition: applyIntegrationTrustOverlay(
+              projected,
+              readIntegrationTrustOverlay(this.projectHomeDir, id),
+            ),
+            contributed: true,
+          };
       }
     }
     const def = await loadIntegrationConfig(this.projectHomeDir, id);
@@ -898,7 +912,11 @@ export class ConfigLoader {
       if (!integrationConfigExists(this.projectHomeDir, id)) {
         for (const owner of this.integrationSources) {
           const definition = owner.loadIntegration(id);
-          if (definition) return definition;
+          if (definition)
+            return applyIntegrationTrustOverlay(
+              definition,
+              readIntegrationTrustOverlay(this.projectHomeDir, id),
+            );
         }
         return undefined;
       }
@@ -909,7 +927,13 @@ export class ConfigLoader {
       );
       const value: unknown = JSON.parse(source);
       validator.validateToolDef(value);
-      return this.withBuiltinIntegrationRuntimeIdentity(id, applyIntegrationTrustOverlay(value as ToolDef, readIntegrationTrustOverlay(this.projectHomeDir, id)));
+      return this.withBuiltinIntegrationRuntimeIdentity(
+        id,
+        applyIntegrationTrustOverlay(
+          value as ToolDef,
+          readIntegrationTrustOverlay(this.projectHomeDir, id),
+        ),
+      );
     } catch {
       return undefined;
     }
@@ -990,8 +1014,70 @@ export class ConfigLoader {
       )[];
       externalDefaults?: boolean;
       stationCuratedTrust?: 'trusted' | 'untrusted';
+      requireContributed?: boolean;
     } = {},
   ): Promise<void> {
+    if (options.requireContributed || this.isLiveContributedIntegration(id)) {
+      if (!options.personChange && !options.changedBy)
+        throw new Error(
+          `Integration '${id}' is supplied by an installed package and its definition is read-only; uninstall or update the owning package instead`,
+        );
+      if (options.explicitFields && !options.explicitFields.length)
+        throw new Error(
+          `Integration '${id}' is supplied by an installed package and its definition is read-only; uninstall or update the owning package instead`,
+        );
+      await mkdir(join(this.projectHomeDir, 'integrations'), {
+        recursive: true,
+      });
+      const release = await acquireFileMutationLockAsync(
+        toolServerIntegrationMutationLockPath(this.projectHomeDir, id),
+      );
+      try {
+        if (integrationConfigExists(this.projectHomeDir, id))
+          throw new Error('Integration ownership changed during the edit');
+        const source = this.integrationSources
+          .map((owner) => owner.loadIntegration(id))
+          .find(Boolean);
+        if (!source)
+          throw new Error('Package integration is no longer available');
+        const current = applyIntegrationTrustOverlay(
+          source,
+          readIntegrationTrustOverlay(this.projectHomeDir, id),
+        );
+        const nonTrust = (value: ToolDef) =>
+          Object.fromEntries(
+            Object.entries(value).filter(
+              ([name]) =>
+                ![
+                  'contentTrust',
+                  'untrustedContentPermissions',
+                  'trustReadOnlyHints',
+                  'untrustedContentChanges',
+                  'untrustedContentPersonOwned',
+                ].includes(name),
+            ),
+          );
+        if (!isDeepStrictEqual(nonTrust(def), nonTrust(current)))
+          throw new Error(
+            'Package-supplied integration definitions are read-only; only person trust settings may be changed',
+          );
+        const next = withUntrustedContentChange(
+          current,
+          def,
+          options.changedBy,
+          new Date(),
+          {
+            personChange: options.personChange,
+            explicitFields: options.explicitFields,
+          },
+        );
+        validator.validateToolDef(next);
+        writeIntegrationTrustOverlay(this.projectHomeDir, id, next);
+      } finally {
+        await release();
+      }
+      return;
+    }
     this.assertIntegrationDefinitionWritable(id);
     // #3483: the storage writer owns untrusted-content receipts under its
     // lock. Applying them here too, against an unlocked read, only lets the

@@ -456,11 +456,20 @@ export class MCPService {
   ): Promise<void> {
     if (
       (def as OwnershipTaggedToolDef)[CONTRIBUTED_INTEGRATION_DEFINITION] ===
-      true
+        true ||
+      this.isLiveContributedIntegration(def.id)
     ) {
-      throw new Error(
-        'Package-supplied integration definitions are read-only; uninstall or update the owning package instead',
+      if (!options?.personChange && !options?.changedBy)
+        throw new Error(
+          'Package-supplied integration definitions are read-only',
+        );
+      await this.mcpCustody.mutate(def.id, () =>
+        this.configLoader.saveIntegration(def.id, def, {
+          ...options,
+          requireContributed: true,
+        }),
       );
+      return;
     }
     this.assertMutableIntegration(def.id);
     let existing: ToolDef | undefined;

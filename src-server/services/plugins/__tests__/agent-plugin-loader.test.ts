@@ -660,7 +660,10 @@ describe('AgentPluginLoader', () => {
       mcpServers: {
         local: { type: 'stdio', command: 'node' },
         remote: { type: 'streamable-http', url: 'https://example.com/mcp' },
-        gmail: { type: 'streamable-http', url: 'https://gmailmcp.googleapis.com/mcp/v1' },
+        gmail: {
+          type: 'streamable-http',
+          url: 'https://gmailmcp.googleapis.com/mcp/v1',
+        },
       },
     });
     const source = new AgentPluginLoader({ projectHomeDir: stationHome });
@@ -683,9 +686,78 @@ describe('AgentPluginLoader', () => {
           transport: 'streamable-http',
           contentTrust: 'trusted',
         }),
-        expect.objectContaining({ endpoint: 'https://gmailmcp.googleapis.com/mcp/v1', contentTrust: 'untrusted' }),
+        expect.objectContaining({
+          endpoint: 'https://gmailmcp.googleapis.com/mcp/v1',
+          contentTrust: 'untrusted',
+        }),
       ]),
     );
+  });
+
+  test('the integration API saves person trust for package HTTP and stdio without changing package definitions', async () => {
+    const stationHome = home();
+    const root = plugin(stationHome);
+    writeJson(join(root, 'mcp.json'), {
+      $schema: MCP_SCHEMA,
+      mcpServers: {
+        local: { type: 'stdio', command: 'node' },
+        remote: { type: 'streamable-http', url: 'https://example.com/mcp' },
+      },
+    });
+    const bytes = readFileSync(join(root, 'mcp.json'), 'utf8');
+    const source = new AgentPluginLoader({ projectHomeDir: stationHome });
+    const loader = new ConfigLoader({
+      projectHomeDir: stationHome,
+      integrationSources: [source],
+    });
+    const { MCPService } = await import('../mcp-service.js');
+    const { createToolRoutes } = await import(
+      '../../../routes/agents/tools.js'
+    );
+    const service = new MCPService(
+      loader,
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      { warn: vi.fn() },
+    );
+    const app = createToolRoutes(service, vi.fn(), {
+      resolveRequestPrincipalId: () => 'person',
+    });
+    for (const item of await loader.listIntegrations()) {
+      const response = await app.request(`/${encodeURIComponent(item.id)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contentTrust: 'untrusted',
+          untrustedContentPermissions: { default: 'deny' },
+        }),
+      });
+      expect(response.status).toBe(200);
+      const changed = await loader.loadIntegration(item.id);
+      expect(changed.contentTrust).toBe('untrusted');
+      expect(changed.untrustedContentPermissions?.default).toBe('deny');
+      expect(changed.untrustedContentChanges?.at(-1)).toMatchObject({
+        by: 'person',
+        contentTrust: 'untrusted',
+      });
+      const attempted = await app.request(`/${encodeURIComponent(item.id)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contentTrust: 'untrusted',
+          displayName: 'changed by caller',
+        }),
+      });
+      expect(attempted.status).toBe(400);
+      expect(await attempted.json()).toMatchObject({
+        success: false,
+        error: expect.stringMatching(/read-only/),
+      });
+    }
+    expect(readFileSync(join(root, 'mcp.json'), 'utf8')).toBe(bytes);
   });
 
   test('launches stdio with the projected root, data, cwd, and literal expansion', async () => {

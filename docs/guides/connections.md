@@ -1563,8 +1563,8 @@ save its definition with `contentTrust: "untrusted"` through the operator-gated
 the change. Integration JSON can also be edited locally, without a receipt.
 An unrecorded local edit is not protected from a later plugin publication;
 use the API for a persistent person choice.
-Live Agent Plugin contributions are read-only and cannot currently be changed
-through the API; their default remains trusted. For example:
+Live Agent Plugin contributions accept these trust fields through the same API;
+their command and endpoint remain package-owned. For example:
 
 ```json
 {
