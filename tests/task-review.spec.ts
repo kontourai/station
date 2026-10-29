@@ -192,7 +192,7 @@ async function shots(page: Page, testInfo: TestInfo, prefix: string) {
   await page.setViewportSize({ width: 1440, height: 1000 });
 }
 
-async function timelineShots(page: Page, empty = false) {
+async function timelineShots(page: Page, testInfo: TestInfo, empty = false) {
   const directory = process.env.STATION_REVIEW_SHOTS_DIR;
   if (!directory) return;
   mkdirSync(directory, { recursive: true });
@@ -231,7 +231,11 @@ async function timelineShots(page: Page, empty = false) {
       const name = empty
         ? 'timeline-empty.png'
         : `timeline-${theme}-${width}.png`;
-      await page.screenshot({ path: join(directory, name), fullPage: true });
+      await page.screenshot({
+        path: testInfo.outputPath(name),
+        fullPage: true,
+      });
+      copyFileSync(testInfo.outputPath(name), join(directory, name));
     }
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -337,7 +341,7 @@ syncBuiltinESMExports();
         'review-demo',
       );
       await page.reload();
-      await timelineShots(page, true);
+      await timelineShots(page, info, true);
       await page.getByRole('tab', { name: 'Review', exact: true }).click();
       await expect(
         page.getByRole('tabpanel', { name: 'Review', exact: true }),
@@ -643,7 +647,7 @@ syncBuiltinESMExports();
         await page
           .getByRole('button', { name: 'Capture Screen', exact: true })
           .click();
-        await timelineShots(page);
+        await timelineShots(page, info);
       }
     });
   });
