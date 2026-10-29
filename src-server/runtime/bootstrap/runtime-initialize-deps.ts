@@ -66,6 +66,7 @@ interface RuntimeInitializationContext {
   environmentSecurityService: Pick<
     EnvironmentSecurityService,
     | 'verifyCredential'
+    | 'authorizeCredential'
     | 'resolveGrantedScope'
     // #3586: the voice WebSocket refuses account-bound devices and tokens.
     | 'identifyDevice'
@@ -170,6 +171,7 @@ interface RuntimeInitializationContext {
   }) => void;
   onRouteServicesReady: (services: {
     orchestrationService: OrchestrationService;
+    nativeForkStoredReadBinder?: import('../../security/native-fork-read-admission.js').NativeForkReadAdmissionDomain['bindAtConversationMount'];
     usageAggregator?: UsageAggregator;
   }) => void | Promise<void>;
   onVoltAgentCreated: (voltAgent: import('@voltagent/core').VoltAgent) => void;
