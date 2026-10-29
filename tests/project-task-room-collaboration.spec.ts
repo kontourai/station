@@ -463,6 +463,9 @@ test.describe
       });
       await expect(avatars.getByText('Alice', { exact: true })).toHaveCount(1);
       await expect(avatars.getByText('Bob', { exact: true })).toHaveCount(1);
+      await expect(
+        page.getByRole('button', { name: 'Ask an agent' }),
+      ).toBeEnabled();
       const target = process.env.STATION_ROOM_MEMBER_SHOTS_DIR;
       if (target) mkdirSync(target, { recursive: true });
       await page.emulateMedia({ reducedMotion: 'reduce' });
