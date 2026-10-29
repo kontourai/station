@@ -1737,9 +1737,13 @@ kept beside the integration where no definition, registry, plugin or import
 can set it (a plugin file with the same name in any letter case or Unicode
 form is refused), and it is shared by everyone who signs in. After that, any other
 server is refused before Station registers a client or redirects anyone, for
-every person, after disconnects and across overlapping sign-ins. A sign-in
-that was already open when the pin was set is checked again at its code
-exchange and refused before its code or verifier is sent. A sign-in
+every person, after disconnects and across overlapping sign-ins. Every request
+that carries client or grant material to an authorization server (client
+registration, code exchange, refresh) is checked immediately before it is
+sent, under a per-integration lock that establishing the pin also takes. A
+sign-in that was already open when the pin was set is therefore refused
+before its registration, code or verifier is sent, whatever point it had
+reached. A sign-in
 pins only when its code exchange succeeds, so a hostile first attempt that
 fails the `iss` check pins nothing. The first completed sign-in is still
 trust-on-first-use: if the resource is already compromised then, and the

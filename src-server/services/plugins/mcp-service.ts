@@ -20,6 +20,7 @@ import {
 import { mcpToolDisabled } from '@kontourai/station-shared/mcp-tool-selection';
 import { DEFAULT_SERVER_PORT } from '@kontourai/station-shared/ports';
 import type {
+  FetchLike,
   GetPromptResult,
   Prompt,
   Transport,
@@ -643,6 +644,7 @@ export class MCPService {
         const connection = await this.establishChild(def, async (child) =>
           claim.connect(child, {
             authProvider: provider.forAuthorization(),
+            authorizationFetch: (fetch) => provider.authorizationFetch(fetch),
             onTransport: (value) => {
               transport = value;
             },
@@ -861,7 +863,10 @@ export class MCPService {
     let failed = false;
     try {
       const connection = await this.establishChild(def, async (child) =>
-        claim.connect(child, { authProvider: await provider.forTransport() }),
+        claim.connect(child, {
+          authProvider: await provider.forTransport(),
+          authorizationFetch: (fetch) => provider.authorizationFetch(fetch),
+        }),
       );
       await this.requireCurrentDefinition(claim, def);
       return await writePrincipalToolCatalog(
@@ -1051,6 +1056,18 @@ export class MCPService {
     return principalCredentialOwner(actor.principalId, actor.projectSlug);
   }
 
+  /** Connect options for a remote integration: its provider and fetch guard. */
+  private async oauthConnectOptions(def: ToolDef) {
+    if (def.transport !== 'sse' && def.transport !== 'streamable-http')
+      return {};
+    const provider = this.createOAuthProvider(def);
+    return {
+      authProvider: await provider.forTransport(),
+      authorizationFetch: (fetch: FetchLike) =>
+        provider.authorizationFetch(fetch),
+    };
+  }
+
   private createOAuthProvider(
     def: ToolDef,
     owner: CredentialOwner = INSTANCE_CREDENTIAL_OWNER,
@@ -1159,6 +1176,12 @@ export class MCPService {
         const connection = await this.establishChild(existing, async (child) =>
           claim.connect(child, {
             authProvider: await oauthProvider?.forTransport(),
+            ...(oauthProvider
+              ? {
+                  authorizationFetch: (fetch) =>
+                    oauthProvider.authorizationFetch(fetch),
+                }
+              : {}),
             onTransport: (value) => {
               oauthTransport = value;
             },
@@ -1310,6 +1333,7 @@ export class MCPService {
       const connection = await this.establishChild(existing, async (child) =>
         claim.connect(child, {
           authProvider: await provider.forTransport(),
+          authorizationFetch: (fetch) => provider.authorizationFetch(fetch),
           onTransport: (value) => {
             transport = value;
           },
@@ -1459,12 +1483,7 @@ export class MCPService {
       let conn: MCPConnection;
       try {
         conn = await this.establishChild(def, async (child) =>
-          claim.connect(child, {
-            authProvider:
-              def.transport === 'sse' || def.transport === 'streamable-http'
-                ? await this.createOAuthProvider(def).forTransport()
-                : undefined,
-          }),
+          claim.connect(child, await this.oauthConnectOptions(def)),
         );
         await this.requireCurrentDefinition(claim, def);
       } catch (error) {

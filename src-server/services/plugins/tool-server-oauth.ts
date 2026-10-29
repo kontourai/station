@@ -9,6 +9,7 @@ import {
 } from '@kontourai/station-contracts/tool';
 import type {
   AuthProvider,
+  FetchLike,
   OAuthClientInformationContext,
   OAuthClientMetadata,
   OAuthClientProvider,
@@ -25,6 +26,7 @@ import {
 import {
   claimIntegrationOAuthIssuerPin,
   readIntegrationOAuthIssuerPin,
+  withIntegrationOAuthPinLock,
 } from '../../domain/config-loader-storage.js';
 import {
   principalToolServerCredentialBucket,
@@ -571,6 +573,8 @@ export interface ToolServerOAuthClientConfig {
     read(): string | undefined;
     /** Pins `issuer` if none is pinned; returns the pinned issuer. */
     claim(issuer: string): Promise<string>;
+    /** Runs `action` under the integration's OAuth pin lock. */
+    withLock<T>(action: () => Promise<T>): Promise<T>;
   };
 }
 
@@ -640,6 +644,8 @@ export function toolServerOAuthClientConfig(
               pinResource,
               issuer,
             ),
+          withLock: <T>(action: () => Promise<T>) =>
+            withIntegrationOAuthPinLock(homeDir, def.id, action),
         }
       : undefined;
   if (!def.oauthClient && !issuerPin && !deploymentMetadataUrl)
@@ -833,6 +839,78 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
    * verifier leaves Station, so concurrent sign-ins and account resets cannot
    * move it.
    */
+  /**
+   * The fetch every authorization-server request goes through: Station's own
+   * registration and refresh, and the SDK's registration and code exchange
+   * (the transport's fetch). A request that carries client or grant material
+   * (a POST to the flow's token or registration endpoint, or any POST to
+   * another origin than the MCP server's) is checked immediately before it is
+   * sent, under the integration's OAuth pin lock: the flow's issuer must match
+   * the declared issuer or the current pin. Pinning takes the same lock, so no
+   * SDK await between an earlier check and the send can let another sign-in
+   * pin a different server unseen. A POST to another origin that is not one of
+   * the flow's discovered endpoints is refused outright.
+   */
+  authorizationFetch(base: FetchLike): FetchLike {
+    return async (input, init) => {
+      const issuer = await this.authorizationRequestIssuer(input, init);
+      if (issuer === undefined) return base(input, init);
+      const send = async () => {
+        if (issuer === null)
+          throw new OAuthClientIssuerMismatchError(this.serverId);
+        this.requireDeclaredIssuer(issuer);
+        return base(input, {
+          ...init,
+          signal: init?.signal ?? AbortSignal.timeout(15_000),
+        });
+      };
+      const pin = this.client?.issuerPin;
+      return pin ? pin.withLock(send) : send();
+    };
+  }
+
+  /**
+   * The issuer a request to an authorization server is made for: undefined
+   * when it carries nothing (discovery and MCP traffic), null when it cannot
+   * be attributed to the flow's discovered authorization server.
+   */
+  private async authorizationRequestIssuer(
+    input: string | URL | Request,
+    init: RequestInit | undefined,
+  ): Promise<string | null | undefined> {
+    const request = input instanceof Request ? input : undefined;
+    const target = new URL(request ? request.url : String(input));
+    target.hash = '';
+    const method = (init?.method ?? request?.method ?? 'GET').toUpperCase();
+    const discovery = await this.discoveryState();
+    const metadata = discovery?.authorizationServerMetadata;
+    const endpoints = (
+      metadata
+        ? [metadata.token_endpoint, metadata.registration_endpoint]
+        : discovery
+          ? [
+              new URL('/token', discovery.authorizationServerUrl).href,
+              new URL('/register', discovery.authorizationServerUrl).href,
+            ]
+          : []
+    ).filter((value): value is string => typeof value === 'string');
+    const isEndpoint = endpoints.some((endpoint) => {
+      try {
+        const url = new URL(endpoint);
+        url.hash = '';
+        return url.href === target.href;
+      } catch {
+        return false;
+      }
+    });
+    const foreignPost =
+      method === 'POST' &&
+      target.origin !== new URL(this.resourceIdentity).origin;
+    if (!isEndpoint && !foreignPost) return undefined;
+    if (!isEndpoint || !discovery) return null;
+    return metadata?.issuer ?? String(discovery.authorizationServerUrl);
+  }
+
   private requireDeclaredIssuer(issuer: string): void {
     const anchor = this.client?.issuer ?? this.client?.issuerPin?.read();
     if (anchor !== undefined && anchor !== issuer)
@@ -922,8 +1000,7 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
       metadata,
       clientMetadata: this.clientMetadata,
       scope,
-      fetchFn: (url, init) =>
-        fetch(url, { ...init, signal: AbortSignal.timeout(15_000) }),
+      fetchFn: this.authorizationFetch(fetch),
     });
     // Record what the client was registered for (the server's echo, else
     // what was asked) and what was asked, so a later scope change can tell
@@ -1161,8 +1238,7 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
           refreshToken: expected.refresh_token,
           resource:
             discovery.resourceMetadata?.resource ?? this.resourceIdentity,
-          fetchFn: (url, init) =>
-            fetch(url, { ...init, signal: AbortSignal.timeout(15_000) }),
+          fetchFn: this.authorizationFetch(fetch),
         },
       );
       const saved = await this.saveTokensIfCurrent(

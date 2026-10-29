@@ -461,16 +461,58 @@ export function readIntegrationOAuthIssuerPin(
  * `issuer` when another server was pinned first. An integration that no
  * longer exists pins nothing.
  */
+const oauthPinQueues = new Map<string, Promise<void>>();
+
+/**
+ * One integration's OAuth pin lock. Establishing the pin and every outbound
+ * authorization-server request (registration, code exchange, refresh) hold
+ * it, so a request's issuer check and its send cannot be split by another
+ * sign-in pinning a different server. In-process callers queue in order; the
+ * file lock covers other processes sharing the home. A request held under it
+ * is bounded by its caller.
+ */
+export async function withIntegrationOAuthPinLock<T>(
+  projectHomeDir: string,
+  id: string,
+  action: () => Promise<T>,
+): Promise<T> {
+  assertSafeIntegrationId(id);
+  const path = join(
+    projectHomeDir,
+    'integrations',
+    `.${id}.oauth-pin.mutation`,
+  );
+  const previous = oauthPinQueues.get(path) ?? Promise.resolve();
+  let releaseQueue!: () => void;
+  const turn = new Promise<void>((resolve) => {
+    releaseQueue = resolve;
+  });
+  const tail = previous.then(() => turn);
+  oauthPinQueues.set(path, tail);
+  await previous;
+  try {
+    await mkdir(join(projectHomeDir, 'integrations'), { recursive: true });
+    const unlock = await acquireFileMutationLockAsync(path, {
+      timeoutMs: 45_000,
+    });
+    try {
+      return await action();
+    } finally {
+      await unlock();
+    }
+  } finally {
+    releaseQueue();
+    if (oauthPinQueues.get(path) === tail) oauthPinQueues.delete(path);
+  }
+}
+
 export async function claimIntegrationOAuthIssuerPin(
   projectHomeDir: string,
   id: string,
   resource: string,
   issuer: string,
 ): Promise<string> {
-  const release = await acquireFileMutationLockAsync(
-    toolServerIntegrationMutationLockPath(projectHomeDir, id),
-  );
-  try {
+  return withIntegrationOAuthPinLock(projectHomeDir, id, async () => {
     const existing = readIntegrationOAuthIssuerPin(
       projectHomeDir,
       id,
@@ -485,9 +527,7 @@ export async function claimIntegrationOAuthIssuerPin(
       { mode: 0o600 },
     );
     return issuer;
-  } finally {
-    await release();
-  }
+  });
 }
 
 export async function deleteIntegrationConfig(

@@ -19,6 +19,7 @@ import {
   originalMcpToolName,
 } from '@kontourai/station-shared/mcp-tool-selection';
 import { DEFAULT_SERVER_PORT } from '@kontourai/station-shared/ports';
+import type { FetchLike } from '@modelcontextprotocol/client';
 import type { Tool } from '@voltagent/core';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { wrapPlatformMutationGatedTools } from '../../services/evidence/platform-mutation-gate.js';
@@ -278,14 +279,14 @@ async function createMCPTools(
                 ? { ...toolDef.env, ...resolvedSecrets }
                 : toolDef.env,
             ),
-            {
-              authProvider: await createRuntimeOAuthProvider(
+            await runtimeOAuthConnectOptions(
+              createRuntimeOAuthProvider(
                 configLoader,
                 toolDef,
                 serverPort,
                 integrationSecretResolver,
-              )?.forTransport(),
-            },
+              ),
+            ),
           ),
       );
       const currentDefinition = await configLoader.loadIntegration(toolId);
@@ -993,6 +994,18 @@ function createPrincipalScopedMCPTools(
     toolCount: normalized.length,
   });
   return normalized;
+}
+
+/** A remote integration's provider and the fetch guard its OAuth requests use. */
+async function runtimeOAuthConnectOptions(
+  provider: StationToolServerOAuthProvider | undefined,
+) {
+  if (!provider) return {};
+  return {
+    authProvider: await provider.forTransport(),
+    authorizationFetch: (fetch: FetchLike) =>
+      provider.authorizationFetch(fetch),
+  };
 }
 
 function createRuntimeOAuthProvider(

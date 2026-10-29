@@ -15,6 +15,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import {
+  claimIntegrationOAuthIssuerPin,
   INTEGRATION_INSTANCE_FILE,
   INTEGRATION_OAUTH_ISSUER_FILE,
 } from '../../../domain/config-loader-storage.js';
@@ -1438,6 +1439,173 @@ describe('deployment-wide Client ID Metadata Document default', () => {
       ).toThrow(OAUTH_CLIENT_METADATA_URL_ENV);
     expect(deploymentClientMetadataUrl({})).toBeUndefined();
   });
+});
+
+/**
+ * Pause the next call of a real provider method whose stack passes through
+ * `through` (when given), until released. Deterministic interleaving at the
+ * await points the SDK and provider already have.
+ */
+function gate(method: 'codeVerifier' | 'discoveryState', through?: string) {
+  const original = StationToolServerOAuthProvider.prototype[method];
+  let armed = true;
+  let entered!: () => void;
+  let release!: () => void;
+  const reached = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const spy = vi
+    .spyOn(StationToolServerOAuthProvider.prototype, method)
+    // biome-ignore lint/suspicious/noExplicitAny: one spy for both signatures
+    .mockImplementation(async function (this: any) {
+      if (armed && (!through || new Error().stack?.includes(through))) {
+        armed = false;
+        entered();
+        await released;
+      }
+      // biome-ignore lint/suspicious/noExplicitAny: forwards the real call
+      return (original as any).apply(this, arguments);
+    });
+  return { reached, release, restore: () => spy.mockRestore() };
+}
+
+describe('round 6: no check-then-send gap around the issuer pin', () => {
+  const pinFile = (env: ReturnType<typeof setup>) =>
+    join(env.home, 'integrations', SERVER, INTEGRATION_OAUTH_ISSUER_FILE);
+
+  async function bobStartsAgainstTheAttacker(
+    env: ReturnType<typeof setup>,
+    as: ReturnType<typeof startAuthorizationServer>,
+    requested?: { scopes?: string[] },
+  ) {
+    as.nameAuthorizationServer(ATTACKER);
+    const started = await env.service.startOAuth(
+      SERVER,
+      'remote',
+      { principalId: BOB },
+      requested,
+    );
+    const url = new URL(started.authorizationUrl);
+    const callback = new URL(url.searchParams.get('redirect_uri') ?? '');
+    callback.searchParams.set('code', 'honest-server-code');
+    callback.searchParams.set('state', url.searchParams.get('state') ?? '');
+    return callback.href;
+  }
+
+  test('pinning waits while an authorization-server request is in flight, and vice versa', async () => {
+    const as = startAuthorizationServer({ dcr: true });
+    const env = setup();
+    try {
+      await createIntegration(env, {
+        credentialOwnership: { owner: 'principal' },
+      });
+      const alice = { principalId: ALICE };
+      const started = await env.service.startOAuth(SERVER, 'remote', alice);
+      const url = new URL(started.authorizationUrl);
+      const callback = new URL(url.searchParams.get('redirect_uri') ?? '');
+      callback.searchParams.set('code', 'fixture-code');
+      callback.searchParams.set('state', url.searchParams.get('state') ?? '');
+      const releaseExchange = as.holdNextTokenRequest();
+      const finish = env.service.finishOAuth(SERVER, callback.href, alice);
+      await vi.waitFor(() => expect(as.contacted.has(ORIGIN)).toBe(true));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      let claimed = false;
+      const claim = claimIntegrationOAuthIssuerPin(
+        env.home,
+        SERVER,
+        `${ORIGIN}/mcp`,
+        ORIGIN,
+      ).then((issuer) => {
+        claimed = true;
+        return issuer;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(claimed).toBe(false);
+      releaseExchange();
+      await finish;
+      expect(await claim).toBe(ORIGIN);
+    } finally {
+      await as.close();
+    }
+  });
+
+  test("Alice pins the honest server while Bob's exchange awaits its verifier: his code and verifier never leave", async () => {
+    const as = startAuthorizationServer({ dcr: true, mixUp: true });
+    const env = setup();
+    const paused = gate('codeVerifier');
+    try {
+      await createIntegration(env, {
+        credentialOwnership: { owner: 'principal' },
+      });
+      const callback = await bobStartsAgainstTheAttacker(env, as);
+      const finish = env.service.finishOAuth(SERVER, callback, {
+        principalId: BOB,
+      });
+      await paused.reached;
+      as.nameAuthorizationServer(ORIGIN);
+      await consent(env, { principalId: ALICE });
+      expect(existsSync(pinFile(env))).toBe(true);
+      paused.release();
+      await expect(finish).rejects.toThrow('OAuth authorization failed');
+      expect(
+        as.tokenRequests.filter((request) => request.origin === ATTACKER),
+      ).toEqual([]);
+    } finally {
+      paused.restore();
+      await as.close();
+    }
+  });
+
+  test.each([
+    {
+      label: "Station's registration (configured scopes)",
+      requested: { scopes: ['mail.readonly'] },
+      through: 'requireClientRegistration',
+    },
+    {
+      label: "the SDK's registration",
+      requested: undefined,
+      through: 'authorizationRequestIssuer',
+    },
+  ])(
+    'a pin established while $label is in flight stops it before it is sent',
+    async ({ requested, through }) => {
+      const as = startAuthorizationServer({ dcr: true, mixUp: true });
+      const env = setup();
+      const paused = gate('discoveryState', through);
+      try {
+        await createIntegration(env, {
+          credentialOwnership: { owner: 'principal' },
+        });
+        as.nameAuthorizationServer(ATTACKER);
+        const bob = env.service.startOAuth(
+          SERVER,
+          'remote',
+          { principalId: BOB },
+          requested,
+        );
+        await paused.reached;
+        await claimIntegrationOAuthIssuerPin(
+          env.home,
+          SERVER,
+          `${ORIGIN}/mcp`,
+          ORIGIN,
+        );
+        paused.release();
+        await expect(bob).rejects.toThrow();
+        expect(as.registrations.filter((r) => r.origin === ATTACKER)).toEqual(
+          [],
+        );
+      } finally {
+        paused.restore();
+        await as.close();
+      }
+    },
+  );
 });
 
 describe('no client and no registration', () => {
