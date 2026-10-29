@@ -9,6 +9,10 @@ import { useQuery } from '@tanstack/react-query';
 import type { AgentData } from '../contexts/AgentsContext';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import {
+  peerPlacementRefusals,
+  sshPlacementRefusals,
+} from '../utils/executionPlacement';
+import {
   profileCompatibilityReason,
   type SelectableModel,
 } from '../utils/modelCapabilities';
@@ -26,19 +30,30 @@ export type ExecutionStation = {
 
 /**
  * The Stations this caller may choose to run work on, as the server reports
- * them: This Station, every SSH environment with a verified Project path, and
- * every paired Station. Each list joins only when its read SUCCEEDS for this
- * caller — a scoped Device whose `GET /api/environments/peers` is refused
- * (`access:manage`) never sees a paired choice, and an unverified SSH
- * environment (which the task launcher refuses) is never offered. Another
- * Station runs the work as a task, and starting one
- * (`POST /api/orchestration/delegations`) needs `orchestration:operate`, so
- * a caller whose server-reported grant (the authority observation) lacks it
- * is offered This Station only, even when it may read the lists. `settled`
- * is false until every read has answered, so a caller can avoid offering a
- * choice before it knows there is one.
+ * them. Each list joins only when its read SUCCEEDS for this caller: a
+ * scoped Device whose `GET /api/environments/peers` is refused
+ * (`access:manage`) never sees a paired choice. A listed Station is offered
+ * only when the task launcher would accept it (`executionPlacement.ts`, the
+ * rules both read): no unverified SSH environment, no SSH environment while a
+ * Project is selected, no paired Station whose credential cannot operate.
+ *
+ * Another Station runs the work as a task, which needs
+ * `orchestration:operate` here, so a caller whose authority observation
+ * reports a grant without it is offered This Station only. An observation
+ * that cannot be read (an older Station without it, or a failed read) hides
+ * nothing: the launcher and the server still refuse what is not allowed.
+ * `settled` is false until every read has answered, so nothing is offered
+ * before it is known.
+ *
+ * A paired Station whose id is also a saved SSH profile is that SSH profile:
+ * the server resolves a saved id to its SSH profile first and the launcher
+ * selects it the same way, so it is listed (or refused) once, as SSH.
  */
-export function useExecutionStations() {
+export function useExecutionStations({
+  projectSelected = false,
+}: {
+  projectSelected?: boolean;
+} = {}) {
   const scope = useHostRequestAuthorityScope();
   const device = useDevicePresentation();
   const enabled = Boolean(scope?.isCurrent());
@@ -63,45 +78,52 @@ export function useExecutionStations() {
     },
   });
   const grant = authority.data?.grant;
-  // An unread or refused observation proves nothing: no remote choice.
-  const canStartTasks =
-    grant?.kind === 'operator' ||
-    (grant?.kind === 'device' &&
-      grant.grantedScopes.includes('orchestration:operate'));
-  const saved =
-    canStartTasks && environments.isSuccess ? (environments.data ?? []) : [];
-  const paired =
-    canStartTasks && peers.isSuccess
-      ? selectablePeerStations(peers.data, saved)
-      : [];
-  const stations: ExecutionStation[] = [
-    {
-      id: 'current',
-      name: device?.hostName ?? 'This Station',
-      kind: 'current',
-    },
-    ...saved.flatMap((entry): ExecutionStation[] =>
-      entry.profile.environmentId && entry.profile.verifiedProjectPath
+  const canStartTasks = authority.isError
+    ? true
+    : grant?.kind === 'operator' ||
+      (grant?.kind === 'device' &&
+        grant.grantedScopes.includes('orchestration:operate'));
+  const saved = environments.isSuccess ? (environments.data ?? []) : [];
+  const paired = peers.isSuccess
+    ? selectablePeerStations(peers.data, saved)
+    : [];
+  const current: ExecutionStation = {
+    id: 'current',
+    name: device?.hostName ?? 'This Station',
+    kind: 'current',
+  };
+  const listed: Array<ExecutionStation & { offered: boolean }> = [
+    { ...current, offered: true },
+    ...saved.flatMap((entry) =>
+      entry.profile.environmentId
         ? [
             {
               id: entry.profile.environmentId,
               name: entry.profile.name,
-              kind: 'ssh',
+              kind: 'ssh' as const,
+              offered:
+                canStartTasks &&
+                sshPlacementRefusals(entry.profile, projectSelected).length ===
+                  0,
             },
           ]
         : [],
     ),
-    ...paired.map(
-      (entry): ExecutionStation => ({
-        id: entry.environmentId,
-        name: peerStationLabel(entry),
-        kind: 'paired',
-      }),
-    ),
+    ...paired.map((entry) => ({
+      id: entry.environmentId,
+      name: peerStationLabel(entry),
+      kind: 'paired' as const,
+      offered: canStartTasks && peerPlacementRefusals(entry).length === 0,
+    })),
   ];
+  const stations: ExecutionStation[] = listed
+    .filter((station) => station.offered)
+    .map(({ offered: _offered, ...station }) => station);
   return {
     enabled,
     stations,
+    /** A listed Station's name, offered or not (a remembered choice). */
+    nameFor: (id: string) => listed.find((station) => station.id === id)?.name,
     settled:
       enabled &&
       (environments.isSuccess || environments.isError) &&
@@ -114,9 +136,11 @@ export function useExecutionStations() {
 export function useExecutionStationCatalog(
   profile: AgentData,
   environmentId: string,
+  projectSelected = false,
 ) {
   const scope = useHostRequestAuthorityScope();
-  const { enabled, stations, stationsUnavailable } = useExecutionStations();
+  const { enabled, stations, nameFor, stationsUnavailable } =
+    useExecutionStations({ projectSelected });
   const query = useQuery({
     queryKey: [
       'execution-station-catalog',
@@ -151,9 +175,7 @@ export function useExecutionStationCatalog(
           entry.definitionFingerprint === profile.definitionFingerprint,
       )
     : undefined;
-  const stationName =
-    stations.find((entry) => entry.id === environmentId)?.name ??
-    'Selected Station';
+  const stationName = nameFor(environmentId) ?? 'Selected Station';
   const models: SelectableModel[] = counterpart
     ? catalog!.targets.flatMap((binding) => {
         if (!binding.executionDefault) return [];

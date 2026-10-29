@@ -542,6 +542,7 @@ export function HomeStartComposer({
             }
             defaultEnvironment={viewModel.selectedProject?.defaultEnvironment}
             canChoose={Boolean(agent)}
+            projectSelected={Boolean(viewModel.selectedProject)}
             disabled={
               pending ||
               contextPending ||

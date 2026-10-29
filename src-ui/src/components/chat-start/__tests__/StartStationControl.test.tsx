@@ -32,33 +32,56 @@ const READ_ONLY_DEVICE: AuthorityObservationGrant = {
   deviceId: 'phone-1',
   grantedScopes: ['orchestration:read', 'access:manage'],
 };
-/** The caller's grant, as `GET` of the authority observation reports it. */
+/**
+ * The caller's authority observation read: answered with a grant, still
+ * pending, failed (a 5xx), or missing on an older Station (a 404). The SDK
+ * rejects both failures with an Error that keeps the HTTP status.
+ */
 const caller = vi.hoisted(() => ({
   grant: { kind: 'operator' } as AuthorityObservationGrant,
+  read: 'answered' as 'answered' | 'pending' | 'failed' | 'older-host',
 }));
 vi.mock('@kontourai/station-sdk/authority-observation', () => ({
-  getAuthorityObservation: async () => ({
-    schemaVersion: 'station.authority-observation/v1',
-    environmentId: 'env-kontour',
-    principal: { kind: 'human', id: 'brian' },
-    grant: caller.grant,
-  }),
-}));
-
-/** Renders with the caller's grant already answered, as after its read. */
-function render(ui: ReactElement) {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
-  client.setQueryData(
-    ['execution-station-authority', 'http://station.test', 'authority-1'],
-    {
+  getAuthorityObservation: () => {
+    if (caller.read === 'pending') return new Promise(() => {});
+    if (caller.read !== 'answered') {
+      const status = caller.read === 'older-host' ? 404 : 503;
+      return Promise.reject(
+        Object.assign(
+          new Error(
+            `This Station refused the authority observation (HTTP ${status}).`,
+          ),
+          { status },
+        ),
+      );
+    }
+    return Promise.resolve({
       schemaVersion: 'station.authority-observation/v1',
       environmentId: 'env-kontour',
       principal: { kind: 'human', id: 'brian' },
       grant: caller.grant,
-    },
-  );
+    });
+  },
+}));
+
+/**
+ * Renders under a QueryClient. An answered grant is in place before the
+ * first render, as after its read; other reads go through the mock above.
+ */
+function render(ui: ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  if (caller.read === 'answered')
+    client.setQueryData(
+      ['execution-station-authority', 'http://station.test', 'authority-1'],
+      {
+        schemaVersion: 'station.authority-observation/v1',
+        environmentId: 'env-kontour',
+        principal: { kind: 'human', id: 'brian' },
+        grant: caller.grant,
+      },
+    );
   return renderView(
     <QueryClientProvider client={client}>{ui}</QueryClientProvider>,
   );
@@ -110,6 +133,7 @@ beforeEach(() => {
   reads.ssh = { isSuccess: true, isError: false, data: [] };
   reads.peers = { isSuccess: true, isError: false, data: [] };
   caller.grant = OPERATOR;
+  caller.read = 'answered';
 });
 afterEach(cleanup);
 
@@ -208,6 +232,82 @@ describe('StartStationControl', () => {
     render(<StartStationControl canChoose onOpen={vi.fn()} />);
     expect(
       screen.getByRole('button', { name: /^Runs on kontour\./ }),
+    ).toBeTruthy();
+  });
+
+  test('inside a Project, an SSH Station is not offered (the launcher refuses it there)', () => {
+    reads.ssh = {
+      isSuccess: true,
+      isError: false,
+      data: [sshEnvironment('/srv/project')],
+    };
+    const { container } = render(
+      <StartStationControl canChoose projectSelected onOpen={vi.fn()} />,
+    );
+    expect(screen.getByText('Runs on kontour')).toBeTruthy();
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(container.querySelector('.choice-caret')).toBeNull();
+    cleanup();
+    render(
+      <StartStationControl
+        canChoose
+        projectSelected={false}
+        onOpen={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole('button', { name: /^Runs on kontour\./ }),
+    ).toBeTruthy();
+  });
+
+  test('a paired Station whose credential cannot operate there is not offered', () => {
+    reads.peers = {
+      isSuccess: true,
+      isError: false,
+      data: [{ ...PAIRED, scope: 'orchestration:read' }],
+    };
+    render(<StartStationControl canChoose onOpen={vi.fn()} />);
+    expect(screen.queryByRole('button')).toBeNull();
+    cleanup();
+    reads.peers = { isSuccess: true, isError: false, data: [PAIRED] };
+    render(<StartStationControl canChoose onOpen={vi.fn()} />);
+    expect(
+      screen.getByRole('button', { name: /^Runs on kontour\./ }),
+    ).toBeTruthy();
+  });
+
+  test('offers nothing while the caller\u2019s authority is still being read', () => {
+    caller.read = 'pending';
+    reads.peers = { isSuccess: true, isError: false, data: [PAIRED] };
+    render(<StartStationControl canChoose onOpen={vi.fn()} />);
+    expect(screen.getByText('Runs on kontour')).toBeTruthy();
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  test.each(['failed', 'older-host'] as const)(
+    'an authority read that %s still offers the listed Stations; the launcher and server enforce',
+    async (read) => {
+      caller.read = read;
+      reads.peers = { isSuccess: true, isError: false, data: [PAIRED] };
+      render(<StartStationControl canChoose onOpen={vi.fn()} />);
+      expect(
+        await screen.findByRole('button', { name: /^Runs on kontour\./ }),
+      ).toBeTruthy();
+    },
+  );
+
+  test('a remembered Station keeps its name when it is not offered to this caller', () => {
+    caller.grant = READ_ONLY_DEVICE;
+    reads.peers = { isSuccess: true, isError: false, data: [PAIRED] };
+    render(
+      <StartStationControl
+        canChoose
+        environmentId="env-brian-media"
+        onOpen={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole('button', { name: /^Runs on brian-media\./ }),
     ).toBeTruthy();
   });
 

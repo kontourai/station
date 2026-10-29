@@ -1862,6 +1862,7 @@ export function NewChatModal({
                   viewModel.selectedProject?.defaultEnvironment
                 }
                 canChoose={Boolean(draftAgent)}
+                projectSelected={Boolean(viewModel.selectedProject)}
                 disabled={
                   submitting ||
                   Boolean(experience) ||

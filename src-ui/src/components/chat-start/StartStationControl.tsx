@@ -17,6 +17,7 @@ export function StartStationControl({
   environmentId,
   defaultEnvironment,
   canChoose,
+  projectSelected = false,
   disabled,
   onOpen,
 }: {
@@ -26,17 +27,23 @@ export function StartStationControl({
   defaultEnvironment?: EnvironmentRef;
   /** False when there is no Agent whose Station choice could change. */
   canChoose: boolean;
+  /** A Project is selected, so SSH Stations are not offered. */
+  projectSelected?: boolean;
   disabled?: boolean;
   onOpen: (trigger: HTMLElement) => void;
 }) {
-  const { stations, settled } = useExecutionStations();
+  const { stations, nameFor, settled } = useExecutionStations({
+    projectSelected,
+  });
   const selectedId = effectiveExecutionStationId(
     environmentId,
     defaultEnvironment,
   );
   const selected = stations.find((station) => station.id === selectedId);
+  // A remembered choice keeps its real name even when it is no longer
+  // offered (or the lists that offer it could not be read).
   const name =
-    selected?.name ??
+    nameFor(selectedId) ??
     (environmentId ? 'the selected Station' : 'the Project default');
   const label = `Runs on ${name}`;
   // An unlisted current choice stays changeable, so a Station this caller

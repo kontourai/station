@@ -156,6 +156,7 @@ export function StartPickerMenus({
           start.modelChoiceFor(agent)?.environmentId,
           viewModel.selectedProject?.defaultEnvironment,
         )}
+        projectSelected={Boolean(viewModel.selectedProject)}
         onChoose={(environmentId) => {
           start.setExecutionEnvironment(agent, environmentId);
           // Another Station runs its own engines: choosing one continues
@@ -174,6 +175,7 @@ export function StartPickerMenus({
   return (
     <StartModelPicker
       profile={agent}
+      projectSelected={Boolean(viewModel.selectedProject)}
       onEnvironmentChange={(environmentId) =>
         start.setExecutionEnvironment(agent, environmentId)
       }
@@ -198,16 +200,20 @@ function StationMenu({
   anchor,
   layer,
   selectedId,
+  projectSelected,
   onChoose,
   onClose,
 }: {
   anchor: HTMLElement | null;
   layer: 'popover' | 'dialog';
   selectedId: string;
+  projectSelected: boolean;
   onChoose: (environmentId: string) => void;
   onClose: () => void;
 }) {
-  const { stations, stationsUnavailable } = useExecutionStations();
+  const { stations, stationsUnavailable } = useExecutionStations({
+    projectSelected,
+  });
   return (
     <StartStationMenu
       anchor={anchor}

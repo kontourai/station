@@ -429,9 +429,12 @@ export function StartModelPicker({
   onClose,
   profile,
   onEnvironmentChange,
+  projectSelected,
 }: {
   profile?: AgentData;
   onEnvironmentChange?: (environmentId: string) => void;
+  /** A Project is selected: SSH Stations are not offered (see executionPlacement). */
+  projectSelected?: boolean;
   anchor: HTMLElement | null;
   layer: MenuLayer;
   models: SelectableModel[];
@@ -465,6 +468,7 @@ export function StartModelPicker({
         onClose={onClose}
         profile={profile}
         onEnvironmentChange={onEnvironmentChange}
+        projectSelected={projectSelected}
       />
     );
   const loadingFrame = (
@@ -526,7 +530,11 @@ function StationScopedModelPicker(
   },
 ) {
   const environmentId = props.choice?.environmentId ?? 'current';
-  const catalog = useExecutionStationCatalog(props.profile, environmentId);
+  const catalog = useExecutionStationCatalog(
+    props.profile,
+    environmentId,
+    props.projectSelected,
+  );
   const remote = environmentId !== 'current';
   const models = remote
     ? catalog.models
