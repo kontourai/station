@@ -372,6 +372,83 @@ export async function ensureIntegrationInstanceId(
   }
 }
 
+/**
+ * #4279: the authorization server an integration without a declared issuer
+ * was first registered with, for one MCP resource. Kept beside
+ * `integration.json` (no writer, registry, plugin or import can set it),
+ * shared by every person's sign-in, and removed with the integration.
+ * Changing the endpoint changes the resource, which starts a new pin.
+ */
+export const INTEGRATION_OAUTH_ISSUER_FILE = '.station-oauth-issuer';
+
+function integrationOAuthIssuerPath(projectHomeDir: string, id: string) {
+  assertSafeIntegrationId(id);
+  return join(
+    projectHomeDir,
+    'integrations',
+    id,
+    INTEGRATION_OAUTH_ISSUER_FILE,
+  );
+}
+
+/** The pinned issuer for this resource, or undefined. */
+export function readIntegrationOAuthIssuerPin(
+  projectHomeDir: string,
+  id: string,
+  resource: string,
+): string | undefined {
+  const path = integrationOAuthIssuerPath(projectHomeDir, id);
+  if (!existsSync(path) || lstatSync(path).isSymbolicLink()) return undefined;
+  try {
+    const pin = JSON.parse(readFileSync(path, 'utf8')) as {
+      schemaVersion?: unknown;
+      resource?: unknown;
+      issuer?: unknown;
+    };
+    return pin.schemaVersion === 1 &&
+      pin.resource === resource &&
+      typeof pin.issuer === 'string'
+      ? pin.issuer
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Pin `issuer` for this resource unless one is already pinned, under the
+ * integration's mutation lock. Returns the pinned issuer, which differs from
+ * `issuer` when another server was pinned first. An integration that no
+ * longer exists pins nothing.
+ */
+export async function claimIntegrationOAuthIssuerPin(
+  projectHomeDir: string,
+  id: string,
+  resource: string,
+  issuer: string,
+): Promise<string> {
+  const release = await acquireFileMutationLockAsync(
+    toolServerIntegrationMutationLockPath(projectHomeDir, id),
+  );
+  try {
+    const existing = readIntegrationOAuthIssuerPin(
+      projectHomeDir,
+      id,
+      resource,
+    );
+    if (existing) return existing;
+    if (!existsSync(integrationConfigPath(projectHomeDir, id))) return issuer;
+    writeFileSync(
+      integrationOAuthIssuerPath(projectHomeDir, id),
+      JSON.stringify({ schemaVersion: 1, resource, issuer }),
+      { mode: 0o600 },
+    );
+    return issuer;
+  } finally {
+    await release();
+  }
+}
+
 export async function deleteIntegrationConfig(
   projectHomeDir: string,
   id: string,
@@ -685,10 +762,12 @@ export function assertPluginIntegrationsWritable(
   for (const entry of readdirSync(bundled, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     assertSafeIntegrationId(entry.name);
-    // A bundle cannot bring an instance identity; the copy would carry it.
+    // A bundle cannot bring Station's own sidecars; the copy would carry them.
     if (
       readdirSync(join(bundled, entry.name)).some(
-        (name) => String(name) === INTEGRATION_INSTANCE_FILE,
+        (name) =>
+          String(name) === INTEGRATION_INSTANCE_FILE ||
+          String(name) === INTEGRATION_OAUTH_ISSUER_FILE,
       )
     )
       throw new Error(

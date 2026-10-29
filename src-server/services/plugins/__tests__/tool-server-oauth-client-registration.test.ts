@@ -1,4 +1,5 @@
 import {
+  existsSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -13,7 +14,10 @@ import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
-import { INTEGRATION_INSTANCE_FILE } from '../../../domain/config-loader-storage.js';
+import {
+  INTEGRATION_INSTANCE_FILE,
+  INTEGRATION_OAUTH_ISSUER_FILE,
+} from '../../../domain/config-loader-storage.js';
 import { OAUTH_CLIENT_ID_REQUIRED_REASON } from '../../../security/tool-server-reason.js';
 import {
   FileSecretBindingAdministration,
@@ -1216,6 +1220,62 @@ describe('round 4: a recreated integration is a new instance', () => {
         'The OAuth client secret is unavailable',
       );
       expect(as.tokenRequests.length).toBe(before);
+    } finally {
+      await as.close();
+    }
+  });
+});
+
+describe('dynamic registration without a declared issuer pins its server', () => {
+  const pinFile = (env: ReturnType<typeof setup>) =>
+    join(env.home, 'integrations', SERVER, INTEGRATION_OAUTH_ISSUER_FILE);
+
+  test("after Alice's consent pins the server, metadata naming another one cannot redirect Bob, even after Alice disconnects", async () => {
+    const as = startAuthorizationServer({ dcr: true, mixUp: true });
+    const env = setup();
+    try {
+      await createIntegration(env, {
+        credentialOwnership: { owner: 'principal' },
+      });
+      await consent(env, { principalId: ALICE });
+      expect(JSON.parse(readFileSync(pinFile(env), 'utf8'))).toMatchObject({
+        resource: `${ORIGIN}/mcp`,
+        issuer: ORIGIN,
+      });
+
+      as.nameAuthorizationServer(ATTACKER);
+      for (const principalId of [BOB, ALICE]) {
+        if (principalId === ALICE)
+          await env.service.disconnectAccount(SERVER, { principalId });
+        await expect(
+          env.service.startOAuth(SERVER, 'remote', { principalId }),
+        ).rejects.toBeInstanceOf(OAuthClientIssuerMismatchError);
+      }
+      expect(as.registrations.filter((r) => r.origin === ATTACKER)).toEqual([]);
+      expect(as.tokenRequests.filter((r) => r.origin === ATTACKER)).toEqual([]);
+    } finally {
+      await as.close();
+    }
+  });
+
+  test('a hostile first sign-in refused by its iss check pins nothing; the honest one then pins its server', async () => {
+    const as = startAuthorizationServer({ dcr: true, mixUp: true });
+    const env = setup();
+    try {
+      await createIntegration(env, {
+        credentialOwnership: { owner: 'principal' },
+      });
+      as.nameAuthorizationServer(ATTACKER);
+      await expect(
+        consent(env, { principalId: BOB }, undefined, ORIGIN),
+      ).rejects.toThrow('OAuth authorization failed');
+      expect(existsSync(pinFile(env))).toBe(false);
+
+      as.nameAuthorizationServer(ORIGIN);
+      await consent(env, { principalId: ALICE });
+      expect(JSON.parse(readFileSync(pinFile(env), 'utf8')).issuer).toBe(
+        ORIGIN,
+      );
     } finally {
       await as.close();
     }

@@ -1645,7 +1645,7 @@ settings:
   signs in only with that server. It is required with a client ID, public or
   confidential; see [Authorization server binding](#authorization-server-binding).
   Without a client ID it pins dynamic registration and the metadata document
-  to that server, which closes the known limit below.
+  to that server from the first sign-in on (see below).
 - **Client secret**: a confidential client's secret, chosen from a shared secret
   binding (keychain, 1Password or environment). Create the binding under
   **Advanced: Secret bindings** first, declare the authorization server and save
@@ -1723,13 +1723,19 @@ before the code is sent anywhere, and when that server advertises
 `authorization_response_iss_parameter_supported`, a response without `iss`
 is refused.
 
-**Known limit (Dynamic Client Registration without a declared server).** With
-no client ID and no declared **Authorization server**, each person's first
-sign-in follows the authorization server the resource metadata names. If that
-resource is compromised and the honest authorization server omits `iss`, a
-mix-up can still deliver the person's code and PKCE verifier to the
-attacker's token endpoint. Declaring the **Authorization server** removes this:
-Station then refuses any other server before registering or redirecting.
+**Dynamic Client Registration without a declared server.** With no client ID
+and no declared **Authorization server**, the first sign-in that completes
+pins the authorization server it used, for that MCP server URL. The pin is
+kept beside the integration where no definition, registry, plugin or import
+can set it, and it is shared by everyone who signs in. After that, any other
+server is refused before Station registers a client or redirects anyone, for
+every person, after disconnects and across overlapping sign-ins. A sign-in
+pins only when its code exchange succeeds, so a hostile first attempt that
+fails the `iss` check pins nothing. The first completed sign-in is still
+trust-on-first-use: if the resource is already compromised then, and the
+honest server omits `iss`, that one sign-in can be misdirected. Declaring the
+**Authorization server** removes even that. Changing the MCP server URL starts
+a new pin, and deleting the integration removes it.
 
 Changing the client ID, authorization server or metadata URL clears the
 integration's tokens, because they belong to the client that obtained them;

@@ -310,9 +310,9 @@ authority also releases the secret only for the issuer, endpoint and
 integration instance its grant recorded, checked at every token request, so
 no integration writer can redirect it and a recreated integration cannot
 inherit it.
-Dynamic registration without a declared issuer keeps a narrower mix-up
-exposure when the honest server omits RFC 9207 `iss`; the connections guide
-states it.
+Dynamic registration without a declared issuer pins the server of its first
+completed sign-in for that resource and refuses others afterwards; only that
+first sign-in is trust-on-first-use, as the connections guide states.
 
 The earlier local audit and hosted receipts retain their observation times:
 these newly disclosed findings do not rewrite those results. Current audit,

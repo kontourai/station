@@ -2296,7 +2296,10 @@ request and never caches it in a consent flow. A definition rewritten by any
 path cannot redirect the secret, and an integration deleted and recreated
 under the same tuple cannot reuse its grant, so grants are not tied to the
 delete paths. A leftover grant stays visible as binding metadata until
-unbound. Unbind
+unbound. Without a declared issuer, `claimIntegrationOAuthIssuerPin` records
+the authorization server of the first completed consent for the resource
+(`.station-oauth-issuer`, under the integration lock); the provider then
+refuses any other issuer before registration or redirect. Unbind
 removes every client-secret grant the binding holds for the integration. The
 issuer/endpoint pin and the no-foreign-reference rule
 (`assertToolOAuthClientWritable` in [the tool contract](../../packages/contracts/src/tool.ts))

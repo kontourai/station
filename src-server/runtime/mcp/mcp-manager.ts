@@ -903,6 +903,7 @@ function createPrincipalScopedMCPTools(
   const oauthClient = toolServerOAuthClientConfig(
     toolDef,
     integrationSecretResolver,
+    { homeDir },
   );
   const selectProvider = async (): Promise<StationToolServerOAuthProvider> => {
     // The session owner's `PrincipalRef.id`, only when it can own an account.
@@ -1015,7 +1016,9 @@ function createRuntimeOAuthProvider(
     toolServerOAuthRedirectUrl(serverPort, def.id),
     undefined,
     undefined,
-    toolServerOAuthClientConfig(def, integrationSecretResolver),
+    toolServerOAuthClientConfig(def, integrationSecretResolver, {
+      homeDir: configLoader.getProjectHomeDir(),
+    }),
   );
 }
 

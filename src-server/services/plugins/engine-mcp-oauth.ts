@@ -137,6 +137,7 @@ export function createEngineMcpOAuthResolver(options: {
         const oauthClient = toolServerOAuthClientConfig(
           def,
           options.oauthClientSecrets,
+          { homeDir: options.homeDir() },
         );
         for (const owner of toolServerCredentialCandidates(
           def,

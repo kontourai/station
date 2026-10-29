@@ -1046,6 +1046,7 @@ export class MCPService {
     const client = toolServerOAuthClientConfig(
       def,
       this.integrationSecretResolver,
+      { homeDir: this.configLoader.getProjectHomeDir() },
     );
     const resourceIdentity = toolServerOAuthResourceIdentity(def);
     if (!resourceIdentity)

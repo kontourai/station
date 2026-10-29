@@ -22,6 +22,10 @@ import {
 } from '@modelcontextprotocol/client';
 
 import {
+  claimIntegrationOAuthIssuerPin,
+  readIntegrationOAuthIssuerPin,
+} from '../../domain/config-loader-storage.js';
+import {
   principalToolServerCredentialBucket,
   TOOL_SERVER_OAUTH_CREDENTIAL_KEYS,
   ToolServerCredentialStore,
@@ -552,6 +556,15 @@ export interface ToolServerOAuthClientConfig {
   clientMetadataUrl?: string;
   scopes?: readonly string[];
   clientSecret?: () => Promise<string>;
+  /**
+   * Without a declared issuer: the authorization server this integration's
+   * resource was first registered with, shared by every person's sign-in.
+   */
+  issuerPin?: {
+    read(): string | undefined;
+    /** Pins `issuer` if none is pinned; returns the pinned issuer. */
+    claim(issuer: string): Promise<string>;
+  };
 }
 
 /** The narrow secret-binding capability an OAuth client needs. */
@@ -592,9 +605,28 @@ export function parseRequestedOAuthScopes(value: unknown): string[] {
 export function toolServerOAuthClientConfig(
   def: Pick<ToolDef, 'id' | 'oauthClient' | 'transport' | 'endpoint'>,
   secrets?: ToolServerOAuthClientSecretSource,
+  context: { homeDir?: string } = {},
 ): ToolServerOAuthClientConfig | undefined {
-  const client = def.oauthClient;
-  if (!client) return undefined;
+  const client = def.oauthClient ?? {};
+  const { homeDir } = context;
+  const pinResource = toolServerOAuthResourceIdentity(def);
+  // A declared issuer is the operator's anchor; otherwise the first server
+  // registered with for this resource becomes it.
+  const issuerPin =
+    homeDir && pinResource && !client.issuer
+      ? {
+          read: () =>
+            readIntegrationOAuthIssuerPin(homeDir, def.id, pinResource),
+          claim: (issuer: string) =>
+            claimIntegrationOAuthIssuerPin(
+              homeDir,
+              def.id,
+              pinResource,
+              issuer,
+            ),
+        }
+      : undefined;
+  if (!def.oauthClient && !issuerPin) return undefined;
   const bindingId = client.clientSecretRef;
   // The binding authority releases the secret only for the issuer and
   // resource its grant was made at, so a definition rewritten to name
@@ -608,6 +640,7 @@ export function toolServerOAuthClientConfig(
       ? { clientMetadataUrl: client.clientMetadataUrl }
       : {}),
     ...(client.scopes?.length ? { scopes: [...client.scopes] } : {}),
+    ...(issuerPin ? { issuerPin } : {}),
     ...(bindingId
       ? {
           clientSecret: async () => {
@@ -763,8 +796,23 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
    * move it.
    */
   private requireDeclaredIssuer(issuer: string): void {
-    const declared = this.client?.issuer;
-    if (declared !== undefined && declared !== issuer)
+    const anchor = this.client?.issuer ?? this.client?.issuerPin?.read();
+    if (anchor !== undefined && anchor !== issuer)
+      throw new OAuthClientIssuerMismatchError(this.serverId);
+  }
+
+  /**
+   * A registration is published only when its consent succeeds (the code
+   * exchange passed, with RFC 9207 `iss` checked), and that publication pins
+   * the authorization server for everyone when no issuer is declared. Pinning
+   * earlier would let a hostile first sign-in that then fails its exchange
+   * pin the wrong server. A server pinned first by a concurrent sign-in wins
+   * and this one is refused.
+   */
+  private async pinIssuer(issuer: string | undefined): Promise<void> {
+    const pin = this.client?.issuerPin;
+    if (!pin || !issuer) return;
+    if ((await pin.claim(issuer)) !== issuer)
       throw new OAuthClientIssuerMismatchError(this.serverId);
   }
   async saveClientInformation(
@@ -955,10 +1003,8 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
             ctx?: OAuthClientInformationContext,
           ) => {
             if (target.client?.clientId) return;
-            flowClient = {
-              ...value,
-              issuer: target.resolveIssuer(value, ctx),
-            } as StoredOAuthClientInformation;
+            const issuer = target.resolveIssuer(value, ctx);
+            flowClient = { ...value, issuer } as StoredOAuthClientInformation;
             flowRegistered = true;
           };
         if (key === 'saveTokens')
@@ -1193,6 +1239,7 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
   ): Promise<void> {
     const refresh = Boolean((await this.tokens())?.refresh_token);
     const issuer = this.resolveIssuer(value, ctx);
+    await this.pinIssuer(issuer);
     const clientId = this.client?.clientId ?? flow.client?.client_id;
     const entries: Record<string, string> = {
       [KEYS.tokens]: JSON.stringify(this.tokenRecord(value, issuer, clientId)),

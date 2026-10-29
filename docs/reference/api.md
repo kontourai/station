@@ -1467,7 +1467,10 @@ binding. At every token request the secret is released only for a definition
 matching all three, so a deleted and recreated integration needs a new
 binding. A declared `issuer` refuses any
 other authorization server before a secret is read, a client is registered
-or a person is redirected. The callback's `iss` is checked per RFC 9207, and a
+or a person is redirected. Without a declared `issuer`, the first completed
+sign-in pins its authorization server for the resource (`.station-oauth-issuer`
+beside the definition, shared by every person), and later sign-ins naming
+another server are refused the same way. The callback's `iss` is checked per RFC 9207, and a
 callback with more than one `iss` returns 400. A server without client registration records
 `probe.authorization.state: "client-id-required"`. See
 [Use your own OAuth client](../guides/connections.md#use-your-own-oauth-client).
