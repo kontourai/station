@@ -47,11 +47,15 @@ const DOCK_OCCLUSION_AUDIT = `(() => {
       let reachableInPane = false;
       for (let ancestor = control.parentElement; ancestor && ancestor !== document.body; ancestor = ancestor.parentElement) {
         const style = getComputedStyle(ancestor), pane = ancestor.getBoundingClientRect();
+        const listBoundary = Math.min(pane.bottom, d.top);
+        const independentlyScrollingPane = pane.width < d.width - 1 && pane.bottom <= d.top + 1;
+        const settingsList = control.closest('.settings__section') !== null;
         if ((style.overflowY === 'auto' || style.overflowY === 'scroll') &&
-            ancestor.scrollHeight > ancestor.clientHeight && pane.width < d.width - 1 &&
-            pane.bottom <= d.top + 1 && r.height <= pane.height &&
-            r.top < pane.bottom && r.bottom > pane.bottom &&
-            ancestor.scrollHeight - ancestor.clientHeight - ancestor.scrollTop >= r.bottom - pane.bottom) {
+            ancestor.scrollHeight > ancestor.clientHeight &&
+            (independentlyScrollingPane || settingsList) &&
+            r.height <= listBoundary - pane.top &&
+            r.top < pane.bottom && r.bottom > listBoundary &&
+            ancestor.scrollHeight - ancestor.clientHeight - ancestor.scrollTop >= r.bottom - listBoundary) {
           reachableInPane = true;
           break;
         }

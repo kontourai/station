@@ -1289,7 +1289,8 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
         await page.getByRole('button', { name: /^Chats and tasks/ }).click();
         const picker = page.getByRole('dialog', { name: 'Chats and tasks' });
         await expect(picker.getByTestId('inbox-row-status')).toBeInViewport();
-        await expect(picker.getByTestId('inbox-row-status')).not.toContainText(
+        // History recovery cannot clear the independent failed inventory.
+        await expect(picker.getByTestId('inbox-row-status')).toContainText(
           'Last known:',
         );
         await page.screenshot({
