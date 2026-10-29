@@ -1,7 +1,0 @@
-{
-  "revision": "ced2f38d1aca296073db086265ce61a6e955bd58",
-
-  "notes": [
-    {"path":"docs/design/placement.md","note":"Reviewed the changed device-settings diff: only Sheet gestures preview help/description changed. Region arrangement, layout panel memory, placement and routing fields and defaults are unchanged; the placement explanation needs no prose change. Inbox visibility does not remove or move Chat panes.","inputs":["docs/design/placement.md","packages/contracts/src/device-settings.ts"]}
-  ]
-}
