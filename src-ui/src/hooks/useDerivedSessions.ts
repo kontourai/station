@@ -2,6 +2,7 @@ import {
   agentId,
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
+import { isLowContentPrompt } from '@kontourai/station-contracts/conversation-title';
 
 import { useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
 import { activeChatsStore } from '../contexts/ActiveChatsContext';
@@ -198,6 +199,48 @@ function relevantChatStateFieldsEqual(
   return true;
 }
 
+/**
+ * A chat's title (#4266): the server's durable title or a rename, when it
+ * names something; otherwise the first user message that does, but only from
+ * a transcript known to start at the conversation's beginning. An
+ * orchestration session's local messages are the bounded event window or
+ * this connection's streaming shell, which can start mid-conversation (a
+ * reopened chat's first loaded message was "Continue"), so they never title
+ * it: the dock header and Home fall back to the server's `displayTitle` for
+ * a chat still called "New chat". A low-content prompt keeps the previous
+ * title, and for an orchestration chat a low-content title reads as untitled
+ * so the server's title can take its place.
+ */
+export function deriveSessionTitle(
+  chatState: Pick<ChatUIState, 'title' | 'orchestrationSessionStarted'>,
+  conversationMeta: { title?: string } | undefined,
+  messages: readonly { role?: string; content?: unknown }[],
+): string {
+  const savedTitle = conversationMeta?.title || chatState.title;
+  if (
+    savedTitle &&
+    savedTitle !== 'New chat' &&
+    !isLowContentPrompt(savedTitle)
+  )
+    return savedTitle;
+  if (!chatState.orchestrationSessionStarted) {
+    for (const message of messages) {
+      if (message.role !== 'user' || typeof message.content !== 'string')
+        continue;
+      const title = displayTitleFromPrompt(message.content);
+      if (title && !isLowContentPrompt(title)) return title;
+    }
+    return savedTitle || 'New chat';
+  }
+  // An orchestration chat holding only a low-content title (one persisted
+  // before #4266, or the server's for a conversation that has said nothing
+  // else yet) reads as untitled, so the dock header substitutes the server's
+  // `displayTitle` for it (ChatDock's "New chat" fallback) and Home merges
+  // in the execution's title. The live issue: the header read "Continue"
+  // while the conversation's root prompt named it.
+  return 'New chat';
+}
+
 function deriveSession(
   chatId: string,
   chatState: ChatUIState,
@@ -233,14 +276,7 @@ function deriveSession(
 
   // Derive agent name and title reactively
   const agentName = agent?.name || chatState.agentSlug || 'Unknown Agent';
-  const savedTitle = conversationMeta?.title || chatState.title;
-  const firstPrompt = allMessages.find(
-    (message) => message.role === 'user' && typeof message.content === 'string',
-  )?.content;
-  const title =
-    savedTitle && savedTitle !== 'New chat'
-      ? savedTitle
-      : (firstPrompt && displayTitleFromPrompt(firstPrompt)) || 'New chat';
+  const title = deriveSessionTitle(chatState, conversationMeta, allMessages);
 
   return {
     id: chatId,

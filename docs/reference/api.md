@@ -2021,6 +2021,11 @@ there is no author confirmation to review. `GET /api/usage-telemetry/disclosure`
 `additionalHost` for an additional destination, including an environment-derived
 address. `GET /api/usage-telemetry/disclosure?publisher=kontour` returns the exact
 build destination for its separate, revision-bound acknowledgement.
+Each disclosure response, and the acknowledgement response, also carries
+`capabilities: { acknowledge, recordNotice, lower, raise, defaults }` for the
+calling credential, decided by the same gates as those writes (`defaults` is
+the DNT-ignored baseline a tier write is compared against); see
+[Usage telemetry](usage-telemetry.md).
 The two Lite sinks send independently after notice; the default Full receipt
 covers operator only; author Full uses a separate destination-bound receipt. `GET /api/usage-telemetry/outbox[?publisher=operator]`
 returns the bounded local payload ledger with `orchestration:read` authority. The optional `limit` is an integer from 1 to 200, defaults to 50, and selects the newest records after publisher filtering; invalid values return 400.
@@ -4720,8 +4725,15 @@ Hosted deployments mount only the session read; the first two answer 404 there.
 
 ### Continue after a memory kill
 
+An authorized `GET /api/orchestration/conversations/:conversationId/event-window`
+may include `memoryContinuation: { eligible, turnId? }`. This is the current
+server decision for a person's Continue, independent of the page's event cap.
+An absent field does not authorize a stored-event action. The POST checks
+current state and sender permission again.
+
 `POST /api/orchestration/conversations/:conversationId/memory-continuation`
 continues a conversation whose latest turn ended with `engine-memory-exhausted`
+(or a Codex memory kill stored before that code, as `isEngineMemoryExhaustedFailure` recognises)
 ([continuation module](../../src-server/services/orchestration/memory-exhaustion-continuation.ts)).
 It sends one Station-authored turn through the conversation inbox as the caller,
 under a key derived from the dead Session and turn, and answers 202 with that

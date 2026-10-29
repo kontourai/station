@@ -1,5 +1,6 @@
 import {
   PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL,
+  type TelemetryChoiceCapabilities,
   type TelemetryFeedbackReason,
   type TelemetryPublisherId,
   type TelemetryPublisherStatus,
@@ -39,6 +40,7 @@ import { Dialog } from './Dialog';
 import { ResponsiveSurfaceActions } from './ResponsiveDialogSurface';
 import { SkeletonBlock } from './state';
 import { TelemetryFeedbackPrompt } from './TelemetryFeedbackPrompt';
+import type { TelemetryChoiceAuthority } from './UsageSharingChoices';
 import { UsageSharingPrompt } from './UsageSharingPrompt';
 import './UsageTelemetryDisclosure.css';
 
@@ -79,6 +81,11 @@ type Disclosure = {
    * down or the choice evaporates when the variable does.
    */
   enabledSource?: 'config' | 'env' | 'default';
+  /**
+   * What THIS caller may do with the choice, as the server's own gates will
+   * decide it. Absent on older hosts, which keep the behaviour they had.
+   */
+  capabilities?: TelemetryChoiceCapabilities;
 };
 
 /**
@@ -314,7 +321,13 @@ async function acknowledgementData(response: Response): Promise<Disclosure> {
  */
 export interface UsageTelemetryDisclosureState {
   data: Disclosure | undefined;
+  /** The main read OR the Kontour author read failed. */
   isError: boolean;
+  /**
+   * The main disclosure read failed. The author read can fail on its own; it
+   * says nothing about what this caller may choose.
+   */
+  readError: boolean;
   /** The query has answered — with an inventory or with a failure. */
   settled: boolean;
   /** There is an unacknowledged inventory this page has not dismissed. */
@@ -468,6 +481,16 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
           (state) => state?.tier === 'off',
         )
       : query.data.telemetryEnabled === false);
+  // Never prompt a caller for a decision it cannot complete. Outside DNT,
+  // every way the prompt resolves (Save choice, Not now) records the shown
+  // notice, which needs `recordNotice`; under DNT a kept or lowered choice
+  // resolves it locally, which needs `lower`. A QR-paired phone has neither
+  // outside DNT, so neither the standalone dialog nor the first-run step
+  // mounts for it, and no snooze is written. Settings still shows the choice.
+  const capabilities = query.data?.capabilities;
+  const actionable =
+    !capabilities ||
+    (capabilities.lower && (dntActive || capabilities.recordNotice));
   const dismissalRevision = query.data?.publishers
     ? `${query.data.inventoryRevision}:${status.data?.liteInventoryRevision ?? ''}:${status.data?.authorEndpoint ?? ''}:${dntActive}`
     : query.data?.inventoryRevision;
@@ -491,6 +514,7 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
       : undefined,
     dismissalRevision,
     isError: query.isError || author.isError,
+    readError: query.isError,
     settled:
       !query.isLoading &&
       (!query.data?.publishers || !status.isLoading) &&
@@ -505,8 +529,41 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
         ? eligibility.current?.target === target &&
           eligibility.current.outstanding
         : !query.data.acknowledged) &&
+      actionable &&
       !dismissed,
   };
+}
+
+/**
+ * What Settings may offer this caller, from the disclosure state. Nothing is
+ * offered until the disclosure has settled, because its capabilities say what
+ * this caller may choose. Only the MAIN read decides that; a failed Kontour
+ * author read does not. An answer from an earlier successful read (with or
+ * without capabilities) still holds while a refetch fails.
+ */
+export function usageSharingChoiceAuthority(
+  state: Pick<UsageTelemetryDisclosureState, 'settled' | 'readError' | 'data'>,
+): TelemetryChoiceAuthority {
+  if (!state.settled) return 'loading';
+  if (state.readError && !state.data) return 'error';
+  return state.data?.capabilities;
+}
+
+/**
+ * The destination line in Settings. The main read reports the destination; a
+ * failed Kontour author read says nothing about it. `null` while unsettled.
+ */
+export function telemetryDestinationHint(
+  state: Pick<UsageTelemetryDisclosureState, 'settled' | 'readError' | 'data'>,
+): string | null {
+  if (!state.settled) return null;
+  if (state.readError)
+    return 'Could not read whether a destination is configured.';
+  if (state.data?.endpointConfigured === false)
+    return 'No additional destination configured.';
+  if (state.data?.endpointConfigured === true)
+    return 'Additional destination configured.';
+  return 'This Station has not reported whether a destination is configured.';
 }
 
 function useAcknowledgeDisclosure(onAcknowledged?: () => void) {
