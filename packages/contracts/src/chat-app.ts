@@ -184,6 +184,7 @@ export interface ChatAppKillSwitch {
  */
 export type ChatLinkCode = {
   readonly app: ChatAppId;
+  readonly challengeId: string;
   readonly codeHash: string;
   readonly externalUserId: string;
   readonly failedAttempts: number;
@@ -200,6 +201,7 @@ export type ChatLinkCode = {
  */
 export interface ChatLinkConfirmRequest {
   readonly app: ChatAppId;
+  readonly challengeId: string;
   readonly code: string;
 }
 
@@ -440,6 +442,8 @@ export function importLegacyDiscordConfiguration(
   if (configuration.schemaVersion !== 1 || !timestamp(importedAt)) return null;
   const links: ChatIdentityLink[] = [];
   for (const mapping of configuration.identities ?? []) {
+    const revokedTime =
+      mapping.revokedAt === undefined ? NaN : Date.parse(mapping.revokedAt);
     const link = parseChatIdentityLink({
       app: 'discord',
       externalUserId: mapping.discordUserId,
@@ -452,7 +456,11 @@ export function importLegacyDiscordConfiguration(
       },
       ...(mapping.revokedAt === undefined
         ? {}
-        : { revokedAt: mapping.revokedAt }),
+        : {
+            revokedAt: Number.isFinite(revokedTime)
+              ? new Date(revokedTime).toISOString()
+              : importedAt,
+          }),
     });
     if (!link) return null;
     links.push(link);
@@ -636,6 +644,7 @@ export function parseChatLinkCode(value: unknown): ChatLinkCode | null {
   if (
     !closedRecord(value, [
       'app',
+      'challengeId',
       'codeHash',
       'externalUserId',
       'principalId',
@@ -645,6 +654,7 @@ export function parseChatLinkCode(value: unknown): ChatLinkCode | null {
       'consumedAt',
     ]) ||
     !enumValue(value.app, CHAT_APP_IDS) ||
+    !id(value.challengeId) ||
     !sha256(value.codeHash) ||
     !externalId(value.app, 'user', value.externalUserId) ||
     typeof value.failedAttempts !== 'number' ||
@@ -660,6 +670,7 @@ export function parseChatLinkCode(value: unknown): ChatLinkCode | null {
     return null;
   const issued = {
     app: value.app,
+    challengeId: value.challengeId,
     codeHash: value.codeHash,
     externalUserId: value.externalUserId,
     failedAttempts: value.failedAttempts,
@@ -688,10 +699,11 @@ export function parseChatLinkConfirmRequest(
   value: unknown,
 ): ChatLinkConfirmRequest | null {
   if (
-    !closedRecord(value, ['app', 'code']) ||
+    !closedRecord(value, ['app', 'challengeId', 'code']) ||
     !enumValue(value.app, CHAT_APP_IDS) ||
+    !id(value.challengeId) ||
     !code(value.code)
   )
     return null;
-  return { app: value.app, code: value.code };
+  return { app: value.app, challengeId: value.challengeId, code: value.code };
 }

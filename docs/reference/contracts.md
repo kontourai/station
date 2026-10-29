@@ -344,8 +344,9 @@ New identity links require a real `linkedAt`, and revocation cannot predate it.
 Imported Discord links instead carry `importedAt` and legacy provenance, so an
 earlier revocation remains representable. Presence of `revokedAt` revokes the
 link immediately, even when the timestamp is in the future, preserving v1
-semantics. The projection keeps `stationIdentity`
-in its legacy userId namespace and omits `principalId`; the runtime must resolve
+semantics. Import canonicalizes a parseable legacy revocation date to ISO; an
+unparseable nonempty revocation becomes `importedAt`, retaining revocation. The
+projection keeps `stationIdentity` in its legacy userId namespace and omits `principalId`; the runtime must resolve
 it against verified principals before access. It must retain first-match order
 for duplicate legacy identity mappings. Imported binding IDs are exactly
 `legacy-discord:<guildId>:<channelId>`, independent of the selected conversation.
@@ -367,17 +368,20 @@ Raw confirmation codes use 10–128 symbols from
 `23456789ABCDEFGHJKLMNPQRSTUVWXYZ` (32 unambiguous symbols). The runtime must use
 uniform cryptographic randomness with at least 50 bits of entropy; format
 validation alone cannot establish randomness. The private `ChatLinkCode` stores
-only a lowercase SHA-256 `codeHash`, app, external user, issue/expiry times and
+a non-secret bounded `challengeId`, a lowercase SHA-256 `codeHash` of only the
+secret code, app, external user, issue/expiry times and
 `failedAttempts` in 0–5. At 5 failures the record is locked. Issue precedes
 principal resolution, so an unconsumed record has no principal. A consumed
 record requires both `principalId` and `consumedAt` in the issue/expiry window,
 with fewer than 5 failures. Lifetime is at most ten minutes. Parsing retained
 expired, locked or consumed records does not grant redemption.
 
-The confirm request carries only app and raw code. Its principal comes from
-the authenticated caller. The runtime must compare digests, recheck expiry,
-attempt budget and single use, atomically increment failed attempts, and
-atomically bind the caller principal with consumption. It must never accept a
+The confirm request carries app, `challengeId` and raw code. Its principal comes
+from the authenticated caller. The runtime must look up the challenge by
+`challengeId`, compare the code digest in constant time, recheck expiry,
+attempt budget and single use, atomically increment that challenge’s failed
+attempts on mismatch and lock it at the bound. An unknown `challengeId` changes
+nothing. On success it must atomically bind the caller principal with consumption. It must never accept a
 client-supplied principal. Channel binding writes and kill switches require
 operator authorization. A binding or identity link grants no Project membership.
 Slack tokens stay in secret bindings, outside these shapes; one Slack workspace

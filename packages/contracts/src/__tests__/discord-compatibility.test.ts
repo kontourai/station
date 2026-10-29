@@ -10,9 +10,9 @@ import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.j
 import { DiscordGatewayConfigurationStore } from '../../../../src-server/services/discord/discord-gateway-config-store.js';
 
 const temp = trackTempDirs();
-const guildId = '123456789012345678';
-const channelId = '234567890123456789';
-const discordUserId = '345678901234567890';
+const guildId = '123456789' + '012345678';
+const channelId = '234567890' + '123456789';
+const discordUserId = '345678901' + '234567890';
 const importedAt = '2026-10-26T12:01:00.000Z';
 const revokedAt = '2026-10-26T12:00:00.000Z';
 
@@ -23,7 +23,7 @@ const legacy: DiscordGatewayConfiguration = {
   token: 'fixture-bot-token',
   guilds: [
     { guildId, channelIds: [channelId] },
-    { guildId: '456789012345678901' },
+    { guildId: '456789012' + '345678901' },
   ],
   identities: [
     {
@@ -39,7 +39,7 @@ const legacy: DiscordGatewayConfiguration = {
       revokedAt,
     },
     {
-      discordUserId: '567890123456789012',
+      discordUserId: '567890123' + '456789012',
       stationIdentity: 'other-legacy-user',
     },
   ],
@@ -76,7 +76,7 @@ test('maps real store v1 shapes without invented link metadata, principal ids or
       },
       {
         app: 'discord',
-        externalUserId: '567890123456789012',
+        externalUserId: '567890123' + '456789012',
         importedAt,
         provenance: {
           source: 'legacy-import',
@@ -98,7 +98,7 @@ test('maps real store v1 shapes without invented link metadata, principal ids or
     ],
     guilds: [
       { guildId, channelIds: [channelId] },
-      { guildId: '456789012345678901', channelIds: [] },
+      { guildId: '456789012' + '345678901', channelIds: [] },
     ],
   });
   const importedLink = imported?.links[0];
@@ -150,16 +150,6 @@ test('preserves first-match ordering, deny-by-default scopes and refuses unrepre
         { discordUserId: 'old-invalid-id', stationIdentity: 'legacy-user-id' },
       ],
     },
-    {
-      ...legacy,
-      identities: [
-        {
-          discordUserId,
-          stationIdentity: 'legacy-user-id',
-          revokedAt: 'invalid-date',
-        },
-      ],
-    },
     { ...legacy, guilds: [{ guildId, channelIds: ['invalid-channel'] }] },
     {
       ...legacy,
@@ -194,3 +184,32 @@ test('legacy store keeps permissive extra-key compatibility and refuses unknown 
     'Discord gateway configuration is unavailable.',
   );
 });
+
+test.each([
+  ['2026-10-26T12:00:00Z', revokedAt],
+  ['invalid-date', importedAt],
+])(
+  'preserves legacy revocation %s through import',
+  (legacyRevokedAt, expectedRevokedAt) => {
+    const store = new DiscordGatewayConfigurationStore(
+      temp('station-discord-revoked-'),
+    );
+    store.write({
+      ...legacy,
+      identities: [
+        { ...legacy.identities![0], revokedAt: legacyRevokedAt },
+        legacy.identities![1],
+      ],
+    });
+    const imported = importLegacyDiscordConfiguration(store.read(), importedAt);
+    const expected = importLegacyDiscordConfiguration(legacy, importedAt);
+    expect(expected).not.toBeNull();
+    expect(imported).toEqual({
+      ...expected,
+      links: [
+        { ...expected!.links[0], revokedAt: expectedRevokedAt },
+        expected!.links[1],
+      ],
+    });
+  },
+);

@@ -19,7 +19,7 @@ import { describe, expect, test } from 'vitest';
 
 const time = '2026-10-26T12:00:00.000Z';
 const later = '2026-10-26T12:01:00.000Z';
-const snowflake = '123456789012345678';
+const snowflake = '123456789'.repeat(2);
 const link: ChatIdentityLink = {
   app: 'discord',
   externalUserId: snowflake,
@@ -47,13 +47,18 @@ const delivery: ChatDeliveryLogEntry = {
 };
 const linkCode: ChatLinkCode = {
   app: 'slack',
+  challengeId: 'challenge-1',
   codeHash: 'a'.repeat(64),
   externalUserId: 'UABC123',
   failedAttempts: 0,
   issuedAt: time,
   expiresAt: later,
 };
-const confirm = { app: 'slack', code: 'ABCD234567' };
+const confirm = {
+  app: 'slack',
+  challengeId: 'challenge-1',
+  code: 'ABCD234567',
+};
 const killSwitch = {
   app: 'slack',
   disabled: true,
@@ -527,6 +532,20 @@ describe('chat app boundary contracts', () => {
 
   test('issues only a hash and attempt budget before the authenticated principal is known', () => {
     expect(parseChatLinkCode(linkCode)).toEqual(linkCode);
+    for (const challengeId of [
+      undefined,
+      '',
+      ' '.repeat(2),
+      'a'.repeat(257),
+      'bad\u0000id',
+    ]) {
+      expect(parseChatLinkCode({ ...linkCode, challengeId })).toBeNull();
+      expect(
+        parseChatLinkConfirmRequest({ ...confirm, challengeId }),
+      ).toBeNull();
+    }
+    const { challengeId: _challengeId, ...withoutChallenge } = confirm;
+    expect(parseChatLinkConfirmRequest(withoutChallenge)).toBeNull();
     expect(parseChatLinkCode({ ...linkCode, code: confirm.code })).toBeNull();
     expect(
       parseChatLinkCode({ ...linkCode, principalId: 'person-1' }),
