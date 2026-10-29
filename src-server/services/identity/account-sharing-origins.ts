@@ -24,7 +24,9 @@ export interface AccountSharingOriginInput {
   /** The UI listener, when its launcher reported one. */
   uiPort?: number;
   host?: string;
-  /** `STATION_TRUSTED_TAILSCALE_SERVE_ORIGIN` and daemon-detected Serve origins. */
+  /** Host authority attested by the Station UI proxy for this request. */
+  uiIngressAuthority?: string;
+  /** Daemon-detected Serve origins that target the UI listener. */
   tailscaleServeOrigins: readonly string[];
 }
 
@@ -57,7 +59,22 @@ export function accountSharingOriginOptions(
   };
   for (const origin of input.tailscaleServeOrigins)
     add(origin, 'tailscale-serve');
-  for (const origin of input.allowedOrigins) add(origin, 'allowed-origin');
+  for (const value of input.allowedOrigins) {
+    const origin = bareOrigin(value);
+    if (!origin) continue;
+    const url = new URL(origin);
+    const directUi =
+      url.protocol === 'http:' &&
+      input.uiPort !== undefined &&
+      Number(url.port) === input.uiPort &&
+      (url.hostname === 'localhost' || url.hostname === input.host);
+    if (
+      directUi ||
+      url.host === input.uiIngressAuthority ||
+      input.tailscaleServeOrigins.includes(origin)
+    )
+      add(origin, 'allowed-origin');
+  }
   if (
     input.uiPort &&
     input.host &&

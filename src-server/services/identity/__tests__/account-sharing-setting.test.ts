@@ -195,6 +195,7 @@ describe('offered sign-in origins (#4305)', () => {
   const base = {
     apiPort: 3141,
     uiPort: 3000,
+    uiIngressAuthority: '192.168.1.20:3000',
     browserOrigins: [
       'http://localhost:3141',
       'http://127.0.0.1:3141',
@@ -257,6 +258,7 @@ describe('offered sign-in origins (#4305)', () => {
     const options = accountSharingOriginOptions({
       ...base,
       host: '100.64.0.7',
+      uiIngressAuthority: 'station.tailnet.ts.net',
       allowedOrigins: ['https://station.tailnet.ts.net/'],
       browserOrigins: ['https://station.tailnet.ts.net/'],
       tailscaleServeOrigins: [],
@@ -303,6 +305,29 @@ describe('offered sign-in origins (#4305)', () => {
     expect(options.map((option) => option.origin)).not.toContain(
       'http://[::1]:3000',
     );
+  });
+
+  test('does not treat an unobserved allowed origin as UI ingress', () => {
+    const options = accountSharingOriginOptions({
+      ...base,
+      allowedOrigins: [...base.allowedOrigins, 'https://api.example.test'],
+    });
+    expect(options.map((option) => option.origin)).not.toContain(
+      'https://api.example.test',
+    );
+    const observed = accountSharingOriginOptions({
+      ...base,
+      uiIngressAuthority: 'api.example.test',
+      allowedOrigins: ['https://api.example.test'],
+    });
+    expect(options.map((option) => option.origin)).not.toContain(
+      'https://api.example.test',
+    );
+    expect(observed).toContainEqual({
+      origin: 'https://api.example.test',
+      sources: ['allowed-origin'],
+      unavailable: 'not-a-browser-origin',
+    });
   });
 });
 

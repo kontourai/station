@@ -6856,7 +6856,7 @@ export function configureRuntimeRoutes(
           projectMembershipAuthority(request).operator(),
         state: accountSharingState,
         preview: context.accountSharingPreview,
-        origins: async () => {
+        origins: async (c) => {
           const configuredUiPort = Number(process.env.STATION_UI_PORT);
           const uiPort =
             Number.isInteger(configuredUiPort) &&
@@ -6879,6 +6879,10 @@ export function configureRuntimeRoutes(
             apiPort: context.port,
             uiPort,
             host: context.host,
+            uiIngressAuthority: attestedBrowserVisibleHost({
+              environment: c.env,
+              header: (name) => c.req.header(name),
+            }),
             tailscaleServeOrigins: detected ?? [],
           });
         },

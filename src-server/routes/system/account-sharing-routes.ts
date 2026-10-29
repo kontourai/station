@@ -47,7 +47,7 @@ export interface AccountSharingRouteDependencies {
   state: () => AccountSharingRuntimeState;
   /** The `project-sharing-setting` Feature Preview; off refuses both routes. */
   preview: FeaturePreviewSelector;
-  origins: () => Promise<AccountSharingOriginOption[]>;
+  origins: (context: Context) => Promise<AccountSharingOriginOption[]>;
   supervised: () => boolean;
   requestHandoff: () => Promise<HandoffRequestOutcome>;
   logger?: {
@@ -144,7 +144,7 @@ export function createAccountSharingRoutes(
       source: locked ? 'deployment' : 'setting',
       lockedBy: [...state.lockedBy],
       active: state.active,
-      origins: locked ? [] : await deps.origins(),
+      origins: locked ? [] : await deps.origins(c),
       restart: deps.supervised() ? 'supervised' : 'unavailable',
       ...(state.startupFailure ? { startupFailure: state.startupFailure } : {}),
     };
@@ -185,7 +185,7 @@ export function createAccountSharingRoutes(
       );
     if (choice.enabled) {
       const origin = offeredAccountSharingOrigin(
-        await deps.origins(),
+        await deps.origins(c),
         choice.publicOrigin,
       );
       if (!origin)
@@ -421,7 +421,7 @@ export function createAccountSharingRoutes(
         if (
           choice.enabled &&
           !offeredAccountSharingOrigin(
-            await deps.origins(),
+            await deps.origins(c),
             choice.publicOrigin,
           )
         )
