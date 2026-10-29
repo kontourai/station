@@ -256,9 +256,10 @@ export function createAddressPinnedFetch(
                     ? createInflate(decodingOptions)
                     : createGunzip(decodingOptions);
                 });
-          const decoded = decoders.length
-            ? compose(incoming, ...decoders)
-            : incoming;
+          const decoded = decoders.reduce<Readable>(
+            (source, decoder) => compose(source, decoder),
+            incoming,
+          );
           settle(
             new Response(
               empty
