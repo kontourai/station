@@ -10,7 +10,11 @@ import {
   workspaceVisualFileUnavailableReason,
 } from '@kontourai/station-contracts/workspace-file-preview';
 import { _getApiBase } from './api-core.js';
-import { type ClientRequestOptions, mutateJson } from './client/http.js';
+import {
+  type ClientRequestOptions,
+  mutateJson,
+  rethrowDeadline,
+} from './client/http.js';
 
 export type {
   WorkspaceFileChanges,
@@ -106,7 +110,8 @@ export async function readProjectWorkspaceVisualFile(
     let body: unknown;
     try {
       body = await response.json();
-    } catch {
+    } catch (error) {
+      rethrowDeadline(error);
       // A proxy or auth page: no refusal reason, decided by status alone.
     }
     throw new WorkspaceVisualFileError(

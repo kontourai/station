@@ -1,3 +1,4 @@
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { ConversationListItem } from '@kontourai/station-contracts/orchestration';
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import { describe, expect, it } from 'vitest';
@@ -27,7 +28,7 @@ function conversation(
 ): ConversationListItem {
   return {
     source: 'runtime',
-    agentSlug: 'station' as ConversationListItem['agentSlug'],
+    agentSlug: agentId('station'),
     title: 'Row',
     createdAt: '2026-10-28T09:00:00.000Z',
     updatedAt: '2026-10-28T12:00:00.000Z',
@@ -158,15 +159,10 @@ describe('session rows carry the recorded finish time', () => {
       isLoaded: false,
       isPersisted: true,
       eventCount: 3,
-      pid: null,
-      exitCode: null,
-      hasRunningSubprocess: false,
-      cols: 80,
-      rows: 24,
       createdAt: '2026-10-25T09:00:00.000Z',
       updatedAt: '2026-10-28T12:00:00.000Z',
       ...over,
-    }) as OrchestrationSessionSummary;
+    });
 
   it('takes terminalAt from lifecycleChangedAt for finished work only', () => {
     const [finished] = buildOrchestrationItems(
