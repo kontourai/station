@@ -6901,6 +6901,17 @@ export class OrchestrationService {
     return this.internalStops.consume(turnId);
   }
 
+  isRuntimeConversation(conversationId: string): boolean {
+    this.initialize();
+    const store = this.options.eventStore;
+    if (!store) return true;
+    return Boolean(
+      store.readSessionByThread(conversationId) ||
+        store.conversationForSession(conversationId) ||
+        store.conversationSessions(conversationId).length,
+    );
+  }
+
   async readSessionConversation(
     threadId: string,
     authority: SessionReadScope,

@@ -3,12 +3,11 @@
  * (archive#1566). Follows `ApprovalGuardianService`'s cheap-side-model
  * pattern: a one-shot temp agent bound to the title model
  * (`resolveTitleModel`: `appConfig.titleModel`, set explicitly),
- * `generateObject` against a tiny schema, and a fully non-fatal failure
+ * `generateText` for a bounded plain title, and a fully non-fatal failure
  * mode — the caller (`finalizeChatRequest`) fires this off in the
  * background, so nothing here may ever throw or hang the turn.
  */
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
-import { jsonSchema } from 'ai';
 import { isHostedTenantExecutionRequired } from '../../runtime/bootstrap/hosted-tenant-mode.js';
 import { createRuntimeFrameworkModel } from '../../runtime/plugins/runtime-provider-resolution.js';
 import type { RuntimeContext } from '../../runtime/types.js';
@@ -66,8 +65,8 @@ export async function generateConversationTitle({
   }
 
   // archive#1566 review (MEDIUM, accepted with disclosure): this timeout
-  // only stops US from WAITING on `run()` — the underlying `generateObject`
-  // call is abandoned, not cancelled. `createTempAgent`/`generateObject`
+  // only stops US from WAITING on `run()` — the underlying `generateText`
+  // call is abandoned, not cancelled. `createTempAgent`/`generateText`
   // have no `AbortSignal` plumbing to cancel an in-flight provider call
   // (`ApprovalGuardianService` follows the same no-AbortSignal convention,
   // though it awaits its call directly with no timeout at all — the
@@ -103,29 +102,16 @@ export async function generateConversationTitle({
         maxSteps: 1,
       });
 
-      if (!agent.generateObject) {
-        return null;
-      }
-
-      const objectResult = await agent.generateObject(
+      const result = await agent.generateText(
         buildTitlePrompt(firstUserText, assistantText),
         {
-          structuredOutputSchema: jsonSchema({
-            type: 'object',
-            additionalProperties: false,
-            required: ['title'],
-            properties: {
-              title: { type: 'string', minLength: 1 },
-            },
-          }),
+          maxOutputTokens: 64,
           conversationId: `chat-title-${Date.now()}`,
           userId: CHAT_TITLE_SERVICE_PRINCIPAL.id,
         },
       );
 
-      return normalizeGeneratedTitle(
-        (objectResult?.object as { title?: unknown } | undefined)?.title,
-      );
+      return normalizeGeneratedTitle(result.text);
     };
 
     const timeout = new Promise<null>((resolve) => {
@@ -163,6 +149,7 @@ function normalizeGeneratedTitle(raw: unknown): string | null {
   }
 
   let title = raw.trim();
+  if (/[\r\n]/.test(title) || /[`{}<>]/.test(title)) return null;
   const wrappedInQuotes =
     title.length >= 2 &&
     ((title.startsWith('"') && title.endsWith('"')) ||
@@ -172,6 +159,7 @@ function normalizeGeneratedTitle(raw: unknown): string | null {
   }
 
   title = title.replace(/\s+/g, ' ').trim();
+  if (!/^[\p{L}\p{N} '’&-]+$/u.test(title)) return null;
   if (title.length > MAX_TITLE_CHARS) {
     title = title.slice(0, MAX_TITLE_CHARS).trim();
   }

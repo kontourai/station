@@ -60,13 +60,13 @@ describe('generateConversationTitle (station#1566)', () => {
   });
 
   test('returns a post-processed title on the success path', async () => {
-    const generateObject = vi.fn().mockResolvedValue({
-      object: { title: '  "Deploying the app to production"  ' },
+    const generateText = vi.fn().mockResolvedValue({
+      text: '  "Deploying the app to production"  ',
     });
     const ctx = createCtx({
       framework: {
         createModel: vi.fn().mockResolvedValue({ kind: 'model' }),
-        createTempAgent: vi.fn().mockResolvedValue({ generateObject }),
+        createTempAgent: vi.fn().mockResolvedValue({ generateText }),
       },
     });
 
@@ -78,17 +78,17 @@ describe('generateConversationTitle (station#1566)', () => {
 
     expect(title).toBe('Deploying the app to production');
     expect(ctx.framework.createTempAgent).toHaveBeenCalledOnce();
-    expect(generateObject).toHaveBeenCalledOnce();
+    expect(generateText).toHaveBeenCalledOnce();
   });
 
   test('strips single-quote wrapping and collapses internal whitespace', async () => {
-    const generateObject = vi.fn().mockResolvedValue({
-      object: { title: "'Fixing   the   login   bug'" },
+    const generateText = vi.fn().mockResolvedValue({
+      text: "'Fixing   the   login   bug'",
     });
     const ctx = createCtx({
       framework: {
         createModel: vi.fn().mockResolvedValue({ kind: 'model' }),
-        createTempAgent: vi.fn().mockResolvedValue({ generateObject }),
+        createTempAgent: vi.fn().mockResolvedValue({ generateText }),
       },
     });
 
@@ -103,13 +103,13 @@ describe('generateConversationTitle (station#1566)', () => {
 
   test('caps the generated title at 60 characters', async () => {
     const longTitle = 'A'.repeat(80);
-    const generateObject = vi.fn().mockResolvedValue({
-      object: { title: longTitle },
+    const generateText = vi.fn().mockResolvedValue({
+      text: longTitle,
     });
     const ctx = createCtx({
       framework: {
         createModel: vi.fn().mockResolvedValue({ kind: 'model' }),
-        createTempAgent: vi.fn().mockResolvedValue({ generateObject }),
+        createTempAgent: vi.fn().mockResolvedValue({ generateText }),
       },
     });
 
@@ -124,13 +124,13 @@ describe('generateConversationTitle (station#1566)', () => {
   });
 
   test('returns null when the model produces an empty title after trimming', async () => {
-    const generateObject = vi.fn().mockResolvedValue({
-      object: { title: '   ' },
+    const generateText = vi.fn().mockResolvedValue({
+      text: '   ',
     });
     const ctx = createCtx({
       framework: {
         createModel: vi.fn().mockResolvedValue({ kind: 'model' }),
-        createTempAgent: vi.fn().mockResolvedValue({ generateObject }),
+        createTempAgent: vi.fn().mockResolvedValue({ generateText }),
       },
     });
 
@@ -169,13 +169,13 @@ describe('generateConversationTitle (station#1566)', () => {
   test('returns null when generation exceeds the timeout', async () => {
     vi.useFakeTimers();
     try {
-      const generateObject = vi.fn(
+      const generateText = vi.fn(
         () => new Promise(() => {}), // never resolves
       );
       const ctx = createCtx({
         framework: {
           createModel: vi.fn().mockResolvedValue({ kind: 'model' }),
-          createTempAgent: vi.fn().mockResolvedValue({ generateObject }),
+          createTempAgent: vi.fn().mockResolvedValue({ generateText }),
         },
       });
 
@@ -194,10 +194,10 @@ describe('generateConversationTitle (station#1566)', () => {
   });
 });
 
-test('generates through the real VoltAgent adapter with JSON output', async () => {
+test('generates through the real VoltAgent adapter with text output', async () => {
   const model = new MockLanguageModelV3({
     doGenerate: async () => ({
-      content: [{ type: 'text', text: '{"title": "Deploying the app"}' }],
+      content: [{ type: 'text', text: 'Deploying the app' }],
       finishReason: { unified: 'stop', raw: 'stop' },
       usage: {
         inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
@@ -215,7 +215,32 @@ test('generates through the real VoltAgent adapter with JSON output', async () =
     assistantText: 'Use the script.',
   });
   expect(result).toBe('Deploying the app');
-  expect(model.doGenerateCalls[0]?.responseFormat).toMatchObject({
-    type: 'json',
+  expect(model.doGenerateCalls[0]?.responseFormat?.type).not.toBe('json');
+});
+
+test('generates a title through a text-only provider without a structured response format', async () => {
+  const model = new MockLanguageModelV3({
+    doGenerate: async ({ responseFormat }) => {
+      if (responseFormat?.type === 'json')
+        throw new Error('structured output unsupported');
+      return {
+        content: [{ type: 'text', text: 'Botanical Journal Storage' }],
+        finishReason: { unified: 'stop', raw: 'stop' },
+        usage: {
+          inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+          outputTokens: { total: 1, text: 1, reasoning: 0 },
+        },
+        warnings: [],
+      };
+    },
   });
+  const framework = new VoltAgentFramework();
+  vi.spyOn(framework, 'createModel').mockResolvedValue(model);
+  expect(
+    await generateConversationTitle({
+      ctx: createCtx({ framework }),
+      firstUserText: 'Store botanical journals?',
+      assistantText: 'Keep them dry.',
+    }),
+  ).toBe('Botanical Journal Storage');
 });
