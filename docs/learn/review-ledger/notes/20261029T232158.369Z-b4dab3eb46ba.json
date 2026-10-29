@@ -1,0 +1,7 @@
+{
+  "revision": "b63db9876d1a3dfa6e02b208a28de1954f331c89",
+
+  "notes": [
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Scoped runtime-composition impact review at b63db9876d1. Read the complete ADR, including its explicit historical/superseded reading notice and ADR0019 successor. Inspected the pending runtime-routes diff for BrowserService, Browser routes and LiveSurfaceRegistry, and the current personal-host composition: createBrowserService retains the Station-home host, project authorization, live-surface registry and separate human/operator and agent-tool boundaries; createBrowserRoutes retains current-principal checks. New unrelated group, analytics and media mounts do not select a native desktop webview, change the historical spike into production adoption, or change persisted Browser pane identity. The top notice already says 2.0 state has an implementation and directs current operation to the Browser guide; the dated later not-implemented statement remains historical. No ADR prose change required for this named source impact. SOURCE/REASONED only: no browser, Tauri, platform, frame-stream capacity, release, security acceptance or historical experiment re-execution; no baseline or classification change.","inputs":["docs/adr/0017-browser-preview-host.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}
