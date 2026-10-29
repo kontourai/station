@@ -18,6 +18,7 @@
  * resolvers are table-tested in `chat-dock-utils.test.ts`; these tests pin
  * that the pane hands their results to the right surfaces.
  */
+import { orchestrationQueries } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -40,7 +41,7 @@ import {
   usePaneRelations,
 } from '../../../contexts/PaneRelationsContext';
 import { RegionModelProvider } from '../../../contexts/RegionModelContext';
-import { ToastProvider } from '../../../contexts/ToastContext';
+import { ToastProvider, toastStore } from '../../../contexts/ToastContext';
 import { useShowSurface } from '../../../contexts/useShowSurface';
 import { deviceSettingsStore } from '../../../lib/device-settings-store';
 import { dispatchNewChatIntent } from '../../../lib/newChatIntent';
@@ -217,6 +218,8 @@ beforeAll(() => {
 
 afterEach(() => {
   cleanup();
+  act(() => toastStore.clear());
+  paneQueryClient = undefined;
   pickerProps.length = 0;
   runLocationReads.length = 0;
   createChatSession.mockClear();
@@ -271,10 +274,13 @@ function CaptureRelations() {
   return null;
 }
 
+/** The pane's QueryClient, so a test can see what it invalidates. */
+let paneQueryClient: QueryClient | undefined;
 function renderInProviders(pane: ReactNode) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  paneQueryClient = queryClient;
   render(
     <QueryClientProvider client={queryClient}>
       <KeyboardShortcutsProvider>
@@ -297,6 +303,39 @@ function renderInProviders(pane: ReactNode) {
     </QueryClientProvider>,
   );
 }
+
+test('a remote start from the picker closes it, refreshes sessions, and names its Station with Open task', async () => {
+  renderPane('pulse');
+  act(() => {
+    requestProjectChat({
+      projectSlug: 'pulse',
+      projectName: 'Pulse',
+      source: 'new-plugin',
+      composerDraft: draft,
+    });
+  });
+  await screen.findByRole('dialog', { name: 'New chat picker' });
+  const props = pickerProps.at(-1)!;
+  const invalidate = vi.spyOn(paneQueryClient!, 'invalidateQueries');
+
+  act(() =>
+    props.onTaskStarted({ sessionId: 'session:remote' }, 'brian-media'),
+  );
+
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('dialog', { name: 'New chat picker' }),
+    ).toBeNull(),
+  );
+  expect(invalidate).toHaveBeenCalledWith({
+    queryKey: orchestrationQueries.sessions().queryKey,
+  });
+  const toast = toastStore
+    .getSnapshot()
+    .find((entry) => entry.message === 'Task started on brian-media.');
+  expect(toast?.sessionId).toBe('session:remote');
+  expect(toast?.actions?.map((action) => action.label)).toEqual(['Open task']);
+});
 
 test('a fullscreen pane for the requested Project opens its picker with the draft, creates nothing, and sends nothing', async () => {
   renderPane('pulse');
