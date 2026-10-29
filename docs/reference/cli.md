@@ -1208,11 +1208,15 @@ station sessions interrupt codex runtime-thread --turn=turn-1
 
 ### `conversation`
 
-Export a conversation as a portable thread, or in a provider-native format.
+Export a conversation as a portable thread, or in a provider-native format,
+or fork it into a new conversation.
 
 ```
 station conversation export <agent> <conversationId>
+station conversation fork <agent> <conversationId> [--target-agent=<slug>] [--project=<slug>] [--turn=<id>] [--idempotency-key=<key>] [--json]
 ```
+
+`export`:
 
 - `--format=<fmt>` — `thread` (default), `anthropic-messages`, `openai-chat`, `gemini`, `markdown`
 - `--output=<path>` — write to a file instead of stdout
@@ -1220,6 +1224,49 @@ station conversation export <agent> <conversationId>
 Accepts the shared target flags (`--api-base`, saved Stations); the exported
 `thread` format is the portable conversation envelope, and the provider
 formats are one-way projections of it.
+
+`fork` makes the same request as the web app's fork
+(`POST /agents/:slug/conversations/:conversationId/fork`, SDK
+`forkConversation`), as you: a new conversation that starts from the source's
+history up to a completed assistant turn. The source is unchanged. It prints
+the new conversation id; `--json` prints `{ok, kind: "conversation.fork", data}`
+with the route's reply.
+
+- `--target-agent=<slug>` — the Agent for the fork (default: the source Agent)
+- `--project=<slug>` — the fork's Project (default: the source's)
+- `--turn=<id>` — branch at this completed assistant turn (default: the latest)
+- `--idempotency-key=<key>` — retrying with the same key returns the same fork
+  instead of a second one
+
+The engine replays text from the selected history; engine cursor, tool state
+and approval state do not carry. Exit codes: 0 forked, 1 usage error, 2 Station
+unreachable, 3 refused (for example, not found, no completed turn at the branch
+point, or a target Agent not available in the Project). An agent forks through
+Station Control's `fork_conversation`, which the route holds to the agent's
+scope; a person's fork is not.
+
+### `claims`
+
+List the work claims in the Sessions you can read.
+
+```
+station claims list [--json]
+```
+
+A claim is what a Session says it is working on (a work item, paths and a
+note), made with Station Control's `claim_work`. It is information, not a lock.
+`list` reads `GET /api/orchestration/work-claims` (SDK `listWorkClaims`), the
+read behind the Station UI's claim chips: the active claims (unreleased,
+unexpired, Session not ended) of the Sessions you can read. Agents read the
+same claims through `list_project_activity`. `--json` prints
+`{ok, kind: "claims.list", data: {claims}}` with each claim as the route
+answers it. A claim the contract cannot read fails the command instead of
+being left out.
+
+A claimant is always a Session today, so there is no `claim`, `release` or
+`supersede` verb for a person yet. Exit codes: 0 success, 1 usage error,
+2 Station unreachable, 3 refused (including a Station too old to answer work
+claims).
 
 ### `delegate`
 
@@ -1242,7 +1289,14 @@ station delegate respond <task-id> <request-id> <accept|acceptForSession|decline
 station delegate interrupt <task-id> [--on=<environment>] [--json]
 station delegate wait <task-id> [--on=<environment>] [--timeout=<seconds>] [--interval=<seconds>] [--json]
 station delegate targets [--on=<environment>] [--project=<slug>|--project-path=<path>] [--json]
+station delegate list [--on=<environment>] [--limit=<1-100>] [--json]
 ```
+
+`list` reads your delegated tasks on one Environment (the current one, or
+`--on`): the inventory Station Control's `list_delegated_tasks` returns, from
+`GET /delegations` (SDK `listDelegatedTasks`). `--limit` bounds it (default 50,
+at most 100; anything else is a usage error before any request). When more tasks
+exist, the human output says so and `--json` carries `truncated: true`.
 
 `--session=<conversation-id>` is the one continuation selector across
 foreground chat and delegation. It resolves the Conversation's current child
@@ -1703,7 +1757,8 @@ List and resolve orchestration approval requests (`request.opened` events awaiti
 a `request.resolved`) for an external-engine Agent, without raw `curl` against
 `/api/orchestration/commands`. Adds no new server routes: `list` reads
 `GET /api/orchestration/sessions/:threadId` (or `.../sessions/read-model` to scan
-every thread for `--agent`'s provider when `--thread` is omitted) and derives
+every thread when `--thread` is omitted, narrowed to `--agent`'s provider
+when `--agent` is given) and derives
 "pending" the way the server does; `respond` calls the existing
 `POST /api/orchestration/commands {type:'respondToRequest'}` route.
 
@@ -1721,11 +1776,12 @@ not find is posted without the id and the server decides; nothing is refused
 client-side.
 
 ```
-station approvals list --agent=<slug> [--thread=<id>] [--watch] [--json] [--api-base=<url>]
+station approvals list [--agent=<slug>] [--thread=<id>] [--watch] [--json] [--api-base=<url>]
 station approvals respond <thread-id> <request-id> <accept|acceptForSession|decline|cancel> [--json] [--api-base=<url>]
 ```
 
-`--agent` must be a persisted Agent ID whose execution binds to an external
+Without `--agent`, `list` reads every session on the Station. `--agent`
+must be a persisted Agent ID whose execution binds to an external
 engine (for example `codex` or `kiro`) — approvals are an
 orchestration-session concept, and the provider is resolved from that binding.
 Station#979 AC5: resolution reads the connection's own
@@ -1745,6 +1801,7 @@ repo-wide default change.
 Examples:
 
 ```bash
+station approvals list --json
 station approvals list --agent=codex --thread=runtime-thread
 station approvals list --agent=codex --json
 station approvals list --agent=kiro --thread=kiro-thread
@@ -3220,6 +3277,9 @@ station upgrade
 ### `fresh`
 
 Clean the selected Station home without starting the app.
+After stopping the selected instance, the command takes the home maintenance
+lease before removing the home and its owned build outputs. Another live or
+unverifiable runtime lease on that home refuses cleanup, even with `--force`.
 
 ```
 station fresh [--force] [--allow-default-home-clean] [--home=<dir>] [--base=<dir>] [--temp-home] [--instance=<name>] [--port=<n>] [--ui-port=<n>]
@@ -3389,10 +3449,11 @@ station home reset --confirm [--if-incompatible] [--home=<dir>] [--base=<dir>] [
 | `--json` | Print the result (`{"archived":..., "archivePath"?:..., "projectHome":...}`) as JSON |
 
 Without `--if-incompatible`, this can archive a compatible home too. It checks
-the lifecycle instance records for that home before renaming it. Unlike backup
-and restore, this path does not acquire the home maintenance lease or separately
-consult the home-scoped service registry. Stop every process using the home
-first; use `station service stop` for a supervised service. A successful reset
+the lifecycle instance records, then holds the home maintenance lease while
+rechecking inactivity and renaming the home. Live or unverifiable runtime
+leases refuse reset. This path does not separately consult the home-scoped
+service registry. Stop every process using the home first; use
+`station service stop` for a supervised service. A successful reset
 preserves the old directory but does not itself start or scaffold the new home.
 
 ```bash
