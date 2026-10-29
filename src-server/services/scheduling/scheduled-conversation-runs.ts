@@ -50,6 +50,8 @@ export interface ScheduledConversationRunInput {
   readonly createdBy: SchedulerAutomationCreator | undefined;
   /** ISO completion time of the job's last successful run, if any. */
   readonly lastSuccessAt: string | undefined;
+  /** Persist the dedicated conversation identity before any engine start. */
+  readonly reserveDedicatedConversation?: () => string | undefined;
   /** Record the conversation a dedicated target's first run started. */
   readonly onConversationStarted: (conversationId: string) => void;
   /**
@@ -74,6 +76,8 @@ export type ScheduledTurnTerminal =
 
 export interface ScheduledConversationRunsPorts {
   submit: StationFramedTurnSubmit;
+  /** The reserved conversation has a durable execution lineage. */
+  conversationExists?(conversationId: string): boolean;
   /** The inbox entry under a key, as `ThreadInboxDelivery.entry` shows it. */
   entry(
     conversationId: string,
@@ -90,6 +94,7 @@ export interface ScheduledConversationRunsPorts {
    * throw an error `isIndeterminateStart` recognizes.
    */
   startDedicated(input: {
+    conversationId: string;
     agent: string;
     workspace?: Readonly<{ kind: 'project'; projectSlug: string }>;
     message: string;
@@ -149,6 +154,20 @@ export class ScheduledConversationRuns implements ScheduledConversationRunner {
         };
       return this.startDedicated(input, clientTurnId, message);
     }
+    return this.queueExisting(input, conversationId, clientTurnId, message);
+  }
+
+  private async queueExisting(
+    input: ScheduledConversationRunInput,
+    conversationId: string,
+    clientTurnId: string,
+    message: string,
+  ): Promise<ScheduledConversationRunOutcome> {
+    if (!input.createdBy)
+      return {
+        kind: 'definitely-not-invoked',
+        error: 'The automation has no recorded creator.',
+      };
     let submitted: ReturnType<StationFramedTurnSubmit>;
     try {
       submitted = submitStationFramedTurn(this.ports.submit, {
@@ -206,8 +225,25 @@ export class ScheduledConversationRuns implements ScheduledConversationRunner {
     let started: Awaited<
       ReturnType<ScheduledConversationRunsPorts['startDedicated']>
     >;
+    let conversationId: string | undefined;
     try {
+      conversationId = input.reserveDedicatedConversation?.();
+      if (!conversationId)
+        return {
+          kind: 'definitely-not-invoked',
+          error: 'Could not reserve the automation conversation.',
+        };
+      if (!this.ports.conversationExists)
+        return {
+          kind: 'definitely-not-invoked',
+          error: 'Could not verify the automation conversation.',
+        };
+      if (this.ports.conversationExists(conversationId)) {
+        input.onConversationStarted(conversationId);
+        return this.queueExisting(input, conversationId, clientTurnId, message);
+      }
       started = await this.ports.startDedicated({
+        conversationId,
         agent: target.agent,
         ...(target.workspace ? { workspace: target.workspace } : {}),
         message,
@@ -225,11 +261,16 @@ export class ScheduledConversationRuns implements ScheduledConversationRunner {
         error: `Could not start the automation’s conversation: ${errorText(error)}`,
       };
     }
+    if (started.conversationId !== conversationId)
+      return {
+        kind: 'indeterminate',
+        error: 'The started conversation did not match its reserved identity.',
+        conversationId: started.conversationId,
+      };
     try {
       input.onConversationStarted(started.conversationId);
     } catch {
-      // The turn is running either way; an unrecorded id only means the next
-      // run starts another conversation, which the run row still links.
+      // The durable reservation keeps later runs on this conversation.
     }
     input.onHandedOff();
     return this.awaitTurn(

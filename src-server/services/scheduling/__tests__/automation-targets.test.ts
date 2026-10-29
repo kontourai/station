@@ -296,6 +296,84 @@ describe('targets the scheduler refuses', () => {
     });
   });
 
+  test.each([false, true])(
+    'a lost dedicated start is recovered after restart (retarget: %s)',
+    async (retarget) => {
+      const root = makeTempDir('dedicated-start-recovery-');
+      const conversations = new Set<string>();
+      let first = true;
+      let queued = 0;
+      let placed:
+        | import('@kontourai/station-contracts/orchestration').ConversationInboxEntry
+        | undefined;
+      const runner = new ScheduledConversationRuns({
+        conversationExists: (id) => conversations.has(id),
+        submit: ({ conversationId, clientTurnId, payload }) => {
+          queued++;
+          placed = {
+            conversationId,
+            clientTurnId,
+            kind: 'follow-up',
+            state: 'sent',
+            message: payload.message,
+            createdAt: '2026-01-01T00:00:00Z',
+            updatedAt: '2026-01-01T00:00:00Z',
+            sessionId: conversationId,
+            turnId: 'turn-2',
+          };
+          return { outcome: 'queued', entry: placed };
+        },
+        entry: () => placed,
+        turnTerminal: () => ({ kind: 'completed' }),
+        isIndeterminateStart: () => true,
+        startDedicated: async (input) => {
+          const planned = (input as typeof input & { conversationId?: string })
+            .conversationId;
+          const conversationId = planned ?? `unplanned-${conversations.size}`;
+          conversations.add(conversationId);
+          if (first) {
+            first = false;
+            throw new Error('response lost after conversation start');
+          }
+          return {
+            conversationId,
+            sessionId: conversationId,
+            turnId: 'turn-2',
+          };
+        },
+      });
+      const makeScheduler = () =>
+        new BuiltinScheduler({
+          ledger: createSchedulerLedger({ directory: root }),
+          turnAdapter: { invoke: vi.fn() },
+          conversationRuns: runner,
+        });
+      const firstScheduler = makeScheduler();
+      await firstScheduler.addJob({
+        name: 'dedicated-recovery',
+        schedule: { kind: 'every', everyMs: 60_000 },
+        prompt: 'Summarize',
+        target: { kind: 'dedicated', agent: 'claude' },
+        createdBy: CREATOR,
+      });
+      await firstScheduler.runJob('dedicated-recovery');
+      await firstScheduler.stop();
+      const restarted = makeScheduler();
+      schedulers.push(restarted);
+      if (retarget)
+        await restarted.editJob('dedicated-recovery', {
+          target: { kind: 'dedicated', agent: 'codex' },
+        });
+      await restarted.runJob('dedicated-recovery');
+      expect(conversations.size).toBe(retarget ? 2 : 1);
+      expect(queued).toBe(retarget ? 0 : 1);
+      expect((await restarted.listJobs())[0]?.target).toMatchObject({
+        kind: 'dedicated',
+        conversationId: [...conversations].at(-1),
+      });
+    },
+  );
+
   test('without a runner, a targeted job fails without invoking anything', async () => {
     const root = makeTempDir('station-automation-hosted-');
     const invoke = vi.fn();

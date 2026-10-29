@@ -89,6 +89,9 @@ that proposed it, so an approved job runs on that chat's own engine.
   existing entry, so a run yields at most one turn. (A crash after the run
   is admitted but before its turn is queued yields none; it is recorded
   indeterminate, not sent.)
+  A dedicated target reserves its conversation identity durably before its
+  first start. If the start succeeds but its response is lost, a later run
+  uses the same identity; changing the dedicated target creates a new intent.
 - **Manual retry recovery.** For untargeted jobs, the periodic sweep hands a
   dead owner's advanced, definitely-not-invoked manual retry to the executor
   with its original run and attempt budget. Live or unprovable owners remain

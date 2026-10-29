@@ -6027,12 +6027,21 @@ export function configureRuntimeRoutes(
   ): ScheduledConversationRuns {
     return new ScheduledConversationRuns({
       submit: (input) => inbox.submit(input),
+      conversationExists: (conversationId) =>
+        eventStore.conversationSessions(conversationId).length > 0,
       entry: (conversationId, clientTurnId) =>
         inbox.entry(conversationId, clientTurnId),
       turnTerminal: (sessionId, turnId) =>
         readStoredScheduledTurnTerminal(eventStore, sessionId, turnId),
       startDedicated: stationServerEntry(
-        async ({ agent, workspace, message, clientTurnId, actor }) => {
+        async ({
+          agent,
+          workspace,
+          message,
+          clientTurnId,
+          conversationId,
+          actor,
+        }) => {
           const handle = await executeExecutionTargetMessage(
             {
               target: {
@@ -6042,6 +6051,7 @@ export function configureRuntimeRoutes(
               },
               message,
               clientTurnId,
+              conversationId,
               userId: actor.userId,
               ...(actor.principal ? { principal: actor.principal } : {}),
               ...(actor.ownerAttribution

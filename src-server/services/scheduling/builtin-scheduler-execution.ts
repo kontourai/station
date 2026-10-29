@@ -641,6 +641,10 @@ async function invokeConversationTarget(input: {
     target: input.job.target!,
     createdBy: input.job.createdBy,
     lastSuccessAt: input.lastSuccessAt,
+    reserveDedicatedConversation: () => {
+      const reserved = input.receipt.reserveDedicatedConversation?.();
+      return reserved?.kind === 'available' ? reserved.value : undefined;
+    },
     onConversationStarted: (conversationId) =>
       input.onConversationStarted?.(conversationId),
     onHandedOff: () => input.onHandedOff?.(),

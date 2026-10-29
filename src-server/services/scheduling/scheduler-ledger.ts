@@ -170,6 +170,7 @@ export interface SchedulerDispatchReceipt {
   readonly missedCount: number;
   readonly attempt: number;
   readonly maxAttempts: number;
+  reserveDedicatedConversation?(): SchedulerReadOutcome<string | undefined>;
   outputPath(): string;
   /** Releases a pre-invocation claim without consuming an attempt or a run. */
   releaseDeferred(): SchedulerDeferredOutcome;
@@ -1095,9 +1096,15 @@ class SqliteSchedulerLedger implements SchedulerLedger {
         )
           return { kind: 'busy' } as const;
         const job = parseStoredJob(current.data);
+        const previousTarget = dedicatedTargetIdentity(job.target);
         for (const [key, value] of Object.entries(update)) {
           if (key === 'name' || key === 'createdAt') continue;
           (job as unknown as Record<string, unknown>)[key] = value;
+        }
+        if (previousTarget !== dedicatedTargetIdentity(job.target)) {
+          this.db
+            .prepare('DELETE FROM scheduler_dedicated_intents WHERE job_id = ?')
+            .run(current.job_id);
         }
         this.db
           .prepare(
@@ -1153,6 +1160,10 @@ class SqliteSchedulerLedger implements SchedulerLedger {
         const changed = this.db
           .prepare('DELETE FROM scheduler_jobs WHERE name = ?')
           .run(name) as { changes?: number };
+        if (changed.changes === 1)
+          this.db
+            .prepare('DELETE FROM scheduler_dedicated_intents WHERE job_id = ?')
+            .run(current.job_id);
         return changed.changes === 1
           ? { kind: 'removed' }
           : { kind: 'not-found' };
@@ -1779,6 +1790,58 @@ class SqliteSchedulerLedger implements SchedulerLedger {
     } catch (error) {
       return unavailableFrom(error);
     }
+  }
+
+  private reserveDedicatedConversation(
+    claim: ClaimRow,
+    attempt: number,
+    target: SchedulerAutomationTarget | undefined,
+  ): SchedulerReadOutcome<string | undefined> {
+    return this.read(() =>
+      this.transaction(() => {
+        const identity = dedicatedTargetIdentity(target);
+        const currentClaim = this.claimRow(claim.job_id);
+        const row = this.rowForJobId(claim.job_id);
+        if (
+          !identity ||
+          !currentClaim ||
+          !row ||
+          currentClaim.run_id !== claim.run_id ||
+          currentClaim.owner_id !== this.owner.id ||
+          currentClaim.attempt !== attempt ||
+          !currentClaim.invocation_started ||
+          row.revision !== claim.revision ||
+          dedicatedTargetIdentity(parseStoredJob(row.data).target) !== identity
+        )
+          return undefined;
+        this.db
+          .prepare(
+            'INSERT OR IGNORE INTO scheduler_dedicated_intents(job_id, target_identity, conversation_id) VALUES (?, ?, ?)',
+          )
+          .run(claim.job_id, identity, `conversation:${randomUUID()}`);
+        const intent = this.db
+          .prepare(
+            'SELECT target_identity, conversation_id FROM scheduler_dedicated_intents WHERE job_id = ?',
+          )
+          .get(claim.job_id) as
+          | { target_identity: string; conversation_id: string }
+          | undefined;
+        if (!intent || intent.target_identity !== identity) return undefined;
+        this.db
+          .prepare(
+            'INSERT OR IGNORE INTO scheduler_run_conversations(run_id, conversation_id) VALUES (?, ?)',
+          )
+          .run(claim.run_id, intent.conversation_id);
+        const bound = this.db
+          .prepare(
+            'SELECT conversation_id FROM scheduler_run_conversations WHERE run_id = ?',
+          )
+          .get(claim.run_id) as { conversation_id: string } | undefined;
+        return bound?.conversation_id === intent.conversation_id
+          ? intent.conversation_id
+          : undefined;
+      }),
+    );
   }
 
   private targetForClaim(claim: ClaimRow): {
@@ -3182,6 +3245,8 @@ class SqliteSchedulerLedger implements SchedulerLedger {
       missedCount: row.missed_count,
       attempt,
       maxAttempts: row.max_attempts,
+      reserveDedicatedConversation: () =>
+        this.reserveDedicatedConversation(row, attempt, job.target),
       outputPath: () => this.outputPath(row.run_id, attempt),
       releaseDeferred: () => this.releaseDeferred(row, attempt),
       beginInvocation: () => this.beginInvocation(row, attempt),
@@ -4415,6 +4480,11 @@ const SCHEDULER_LEDGER_SCHEMA = `
   );
   CREATE TABLE IF NOT EXISTS scheduler_run_conversations (
     run_id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS scheduler_dedicated_intents (
+    job_id TEXT PRIMARY KEY,
+    target_identity TEXT NOT NULL,
     conversation_id TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS scheduler_starter_manual_intents (
