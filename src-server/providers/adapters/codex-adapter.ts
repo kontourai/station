@@ -877,6 +877,11 @@ export class CodexAdapter implements ProviderAdapterShape {
           method,
         }),
       (threadId) => this.options.revokeStationControlMcpAuth?.(threadId),
+      () =>
+        this.options.logger?.warn?.(
+          'Codex app-server emitted stderr; details are withheld',
+          { provider: 'codex' },
+        ),
     );
   }
 
