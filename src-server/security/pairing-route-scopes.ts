@@ -4985,6 +4985,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // sensitive than the rest of the family — plain family inheritance.
     // Two got individual scrutiny rather than a rubber stamp:
     { method: 'GET', path: '/api/plugins' },
+    // Retained plugin recovery backups (Feature Preview). The handler answers
+    // only the operator credential, so a paired device that reaches it with
+    // the family read scope is refused there; the scope is the floor.
+    { method: 'GET', path: '/api/plugins/recovery-backups' },
     // archive#3677 PR 3: locality-gated in-handler (see the family comment
     // on PAIRING_SCOPE_DOMAIN_PREFIXES) — the scope tier is deliberately the
     // family default, and the home-possession check is the authority.
