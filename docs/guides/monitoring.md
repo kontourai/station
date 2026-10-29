@@ -1361,7 +1361,7 @@ modules. Provider registration runs before the initializer's first await;
 installation identity and export readiness remain asynchronous. A failure
 warns and Station continues. Alternate entry points must preserve registration
 before instrument creation. The configured SDK includes:
-- `HttpInstrumentation` — auto-instruments HTTP requests, rewriting long hexadecimal, colon-bearing, and encoded-colon path segments to `:id` (not every route parameter)
+- `HttpInstrumentation` — auto-instruments HTTP requests, rewriting long hexadecimal, colon-bearing, and encoded-colon path segments to `:id` (not every route parameter). Scheduler job paths use `:target` and omit query values in trace URL attributes, so job names do not become span names or URL attributes.
 - `AwsInstrumentation` — auto-instruments AWS SDK calls
 - A `PeriodicExportingMetricReader` with a 30-second export interval and delta temporality
 - No SDK log exporter: Station's durable logger remains a separate local path.

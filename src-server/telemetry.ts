@@ -169,7 +169,27 @@ function createSdk(
       new HttpInstrumentation({
         requestHook: (span, request) => {
           const method = ('method' in request ? request.method : '') || 'GET';
-          const url = 'url' in request ? request.url || '/' : '/';
+          const url =
+            ('url' in request ? request.url : undefined) ||
+            ('path' in request ? request.path : undefined) ||
+            '/';
+          const pathname = new URL(url, 'http://station.invalid').pathname;
+          if (pathname.startsWith('/scheduler/jobs/')) {
+            const suffix = pathname.match(
+              /\/(logs|run|enable|disable)\/?$/,
+            )?.[1];
+            const route = `/scheduler/jobs/:target${suffix ? `/${suffix}` : ''}`;
+            span.updateName(`${method} ${route}`);
+            span.setAttributes({
+              'http.route': route,
+              'http.target': route,
+              'http.url': route,
+              'url.path': route,
+              'url.query': '',
+              'url.full': route,
+            });
+            return;
+          }
           const route = url
             .split('?')[0]
             .replace(/\/[0-9a-f]{8,}|\/[^/]*:[^/]+|\/[^/]+%3A[^/]*/gi, '/:id');
