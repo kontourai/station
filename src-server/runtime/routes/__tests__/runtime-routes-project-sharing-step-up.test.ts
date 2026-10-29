@@ -633,6 +633,7 @@ describe('remote Project sharing enable with operator passkey step-up (#4306)', 
     });
     const h = await setup({ publicOrigin: APP, service });
     const signed = await h.signIn();
+    const approving = await h.signIn();
     signed.cookie += '; review_account=valid';
     const transaction = await h.requestStepUp(signed);
     const rendered = await h.review(signed, transaction.id);
@@ -644,7 +645,11 @@ describe('remote Project sharing enable with operator passkey step-up (#4306)', 
         revoked = h.registry.existing()!.revoke(signed.passkey.id);
       }
     };
-    const result = await h.decide(signed, transaction.id, rendered);
+    const result = await h.decide(
+      { ...signed, authenticator: approving.authenticator },
+      transaction.id,
+      rendered,
+    );
     expect(calls).toBe(3);
     expect(revoked).toBe(true);
     expect(result.status, await result.clone().text()).toBe(409);
