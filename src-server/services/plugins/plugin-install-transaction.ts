@@ -2722,7 +2722,9 @@ async function installRequiredPluginTools(
         ? await registry.getToolDef(toolId)
         : null;
       if (toolDef) {
-        await saveIntegrationConfig(projectHomeDir, toolId, toolDef);
+        await saveIntegrationConfig(projectHomeDir, toolId, toolDef, {
+          externalDefaults: true,
+        });
       }
       toolResults.push({
         id: toolId,
@@ -3238,6 +3240,7 @@ async function installPluginFromSourceUnderContext(
   const { tempDir, tempName } = result;
   let grantScope: PluginGrantMutationScope | undefined;
   let backupRoot: string | null = null;
+  let retainBackup = false;
   // Destructive rollback (delete the live plugin dir, restore from backup) is
   // gated on this flag, never on backupRoot existence: the root is created
   // before the backup finishes (archive#1835 delta review).
@@ -4662,9 +4665,10 @@ async function installPluginFromSourceUnderContext(
             await deps.settleProviderAdapterRetirements?.();
             await rollbackOwnershipHandoffs(ownershipHandoffs);
           } catch (rollbackError) {
+            retainBackup = true;
             throw new AggregateError(
               [error, rollbackError],
-              'Plugin install and rollback both failed.',
+              `Plugin install and rollback both failed; recovery required at ${backupRoot}`,
             );
           }
         } else {
@@ -4713,9 +4717,10 @@ async function installPluginFromSourceUnderContext(
             });
             await rollbackOwnershipHandoffs(ownershipHandoffs);
           } catch (rollbackError) {
+            retainBackup = true;
             throw new AggregateError(
               [error, rollbackError],
-              'Plugin install and rollback both failed.',
+              `Plugin install and rollback both failed; recovery required at ${backupRoot}`,
             );
           }
         }
@@ -4727,7 +4732,7 @@ async function installPluginFromSourceUnderContext(
     await releaseInstallPublication?.();
     serverQuiescence?.release();
     eventSubscriptionQuiescence?.release();
-    if (backupRoot) {
+    if (backupRoot && !retainBackup) {
       rmSync(backupRoot, { recursive: true, force: true });
     }
     if (

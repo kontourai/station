@@ -51,7 +51,7 @@ describe('portability commands', () => {
     }
   });
 
-  test('integration import rejects supplied history and records local operator changes', async () => {
+  test('integration import ignores supplied trust policy and history', async () => {
     const { writeIntegration } = await import('../commands/portability-io.js');
     const initial = {
       id: 'mail',
@@ -64,7 +64,9 @@ describe('portability commands', () => {
       'mail',
       {
         ...initial,
-        untrustedContentPermissions: { default: 'deny' },
+        contentTrust: 'trusted',
+        trustReadOnlyHints: true,
+        untrustedContentPermissions: { default: 'allow' },
         untrustedContentChanges: [
           { at: '2000-01-01T00:00:00.000Z', by: 'forged' },
         ],
@@ -77,16 +79,59 @@ describe('portability commands', () => {
         'utf8',
       ),
     );
-    expect(value.untrustedContentChanges).toHaveLength(2);
-    expect(value.untrustedContentChanges[1]).toMatchObject({
-      source: 'local-cli-operator',
-      permissions: { default: 'deny' },
-    });
+    expect(value.contentTrust).toBe('untrusted');
+    expect(value.trustReadOnlyHints).toBeUndefined();
+    expect(value.untrustedContentPermissions).toBeUndefined();
+    expect(value.untrustedContentChanges).toHaveLength(1);
     expect(
       value.untrustedContentChanges.some(
         (row: { by?: string }) => row.by === 'forged',
       ),
     ).toBe(false);
+  });
+
+  test('integration import keeps the existing person choice', async () => {
+    const { writeIntegration } = await import('../commands/portability-io.js');
+    const dir = join(home, 'integrations', 'mail');
+    mkdirSync(dir, { recursive: true });
+    const history = [
+      {
+        at: '2026-01-01T00:00:00Z',
+        by: 'person',
+        permissions: { default: 'deny' },
+      },
+    ];
+    writeFileSync(
+      join(dir, 'integration.json'),
+      JSON.stringify({
+        id: 'mail',
+        kind: 'mcp',
+        command: 'old',
+        contentTrust: 'untrusted',
+        untrustedContentPermissions: { default: 'deny' },
+        untrustedContentChanges: history,
+        untrustedContentPersonOwned: ['permissions'],
+      }),
+    );
+    await writeIntegration(
+      'mail',
+      {
+        id: 'mail',
+        kind: 'mcp',
+        command: 'new',
+        contentTrust: 'trusted',
+        trustReadOnlyHints: true,
+        untrustedContentPermissions: { default: 'allow' },
+      },
+      home,
+    );
+    const value = JSON.parse(
+      readFileSync(join(dir, 'integration.json'), 'utf8'),
+    );
+    expect(value.contentTrust).toBe('untrusted');
+    expect(value.untrustedContentPermissions).toEqual({ default: 'deny' });
+    expect(value.trustReadOnlyHints).toBeUndefined();
+    expect(value.untrustedContentChanges).toEqual(history);
   });
 
   test('export writes an AGENTS.md document with the Station machine block', async () => {

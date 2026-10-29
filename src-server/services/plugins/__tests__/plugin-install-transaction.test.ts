@@ -121,6 +121,27 @@ const getPluginRegistryProviders = vi.hoisted(() =>
 );
 const installIntegration = vi.hoisted(() => vi.fn());
 const installIntegrationByCommand = vi.hoisted(() => vi.fn());
+const integrationRestoreFault = vi.hoisted(() => ({ enabled: false }));
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const original = await importOriginal<typeof import('node:fs/promises')>();
+  return {
+    ...original,
+    rename: async (
+      from: Parameters<typeof original.rename>[0],
+      to: Parameters<typeof original.rename>[1],
+    ) => {
+      if (
+        integrationRestoreFault.enabled &&
+        String(to).endsWith('/integrations/mail')
+      ) {
+        throw Object.assign(new Error('injected restore EACCES'), {
+          code: 'EACCES',
+        });
+      }
+      return original.rename(from, to);
+    },
+  };
+});
 
 vi.mock('../../../providers/registries/registry.js', () => ({
   getAgentRegistryProvider: vi.fn().mockReturnValue({
@@ -4840,7 +4861,7 @@ describe('installPluginFromSource', () => {
     );
   });
 
-  test('failed install-over restores a retired integration with the latest receipt', async () => {
+  test('failed install-over restores a retired integration at safe defaults', async () => {
     const root = trackedTempDir('station-plugin-retired-receipts-');
     const source = join(root, 'source');
     writePlugin(source, { name: 'mail-plugin', version: '2.0.0', agents: [] });
@@ -4885,14 +4906,80 @@ describe('installPluginFromSource', () => {
         'utf8',
       ),
     );
-    expect(restored.untrustedContentChanges).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          by: 'person',
-          permissions: { default: 'deny' },
+    expect(restored.contentTrust).toBe('untrusted');
+    expect(restored.untrustedContentPermissions).toBeUndefined();
+    expect(restored.trustReadOnlyHints).toBeUndefined();
+    expect(
+      restored.untrustedContentChanges.some(
+        (change: { by?: string }) => change.by === 'person',
+      ),
+    ).toBe(false);
+  });
+
+  test('failed install-over compensation retains its backup for recovery', async () => {
+    const root = trackedTempDir('station-plugin-compensation-');
+    const previousTempRoot = process.env.STATION_TEMP_ROOT;
+    process.env.STATION_TEMP_ROOT = join(root, 'station-temp');
+    try {
+      const source = join(root, 'source');
+      writePlugin(source, {
+        name: 'mail-plugin',
+        version: '2.0.0',
+        agents: [],
+      });
+      writePlugin(join(root, 'plugins', 'mail-plugin'), {
+        name: 'mail-plugin',
+        version: '1.0.0',
+        agents: [],
+      });
+      await saveIntegrationConfig(
+        root,
+        'mail',
+        {
+          id: 'mail',
+          command: 'old',
+          plugin: 'mail-plugin',
+          contentTrust: 'untrusted',
+        } as any,
+        { changedBy: 'person' },
+      );
+      const failing = {
+        ...deps(root),
+        reconcileEngineConnections: vi.fn(async () => {
+          integrationRestoreFault.enabled = true;
+          throw new Error('late reconcile failure');
         }),
-      ]),
-    );
+      };
+      await expect(
+        installPluginFromSource(source, [], failing),
+      ).rejects.toThrow(/recovery required at/);
+      const backups = readdirSync(join(root, 'station-temp')).filter((name) =>
+        name.startsWith('plugin-install-'),
+      );
+      expect(backups).toHaveLength(1);
+      const restored = JSON.parse(
+        readFileSync(
+          join(
+            root,
+            'station-temp',
+            backups[0],
+            'integrations',
+            'mail',
+            'integration.json',
+          ),
+          'utf8',
+        ),
+      );
+      expect(restored).toMatchObject({
+        id: 'mail',
+        command: 'old',
+        plugin: 'mail-plugin',
+      });
+    } finally {
+      integrationRestoreFault.enabled = false;
+      if (previousTempRoot === undefined) delete process.env.STATION_TEMP_ROOT;
+      else process.env.STATION_TEMP_ROOT = previousTempRoot;
+    }
   });
 
   test('does not overwrite an existing user integration during first install', async () => {

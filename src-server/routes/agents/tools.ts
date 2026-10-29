@@ -225,11 +225,24 @@ export function createToolRoutes(
 ) {
   const app = new Hono();
   // #3483: who a definition write is attributed to, when known.
-  const attribution = (
-    c: Context,
-  ): [{ changedBy?: string; personChange: true }] => {
+  const attribution = (c: Context, input: Partial<ToolDef>) => {
     const changedBy = mcpUiCallDeps.resolveRequestPrincipalId?.(c);
-    return [{ ...(changedBy ? { changedBy } : {}), personChange: true }];
+    const explicitFields: Array<
+      'contentTrust' | 'permissions' | 'trustReadOnlyHints'
+    > = [];
+    if (Object.hasOwn(input, 'contentTrust'))
+      explicitFields.push('contentTrust');
+    if (Object.hasOwn(input, 'untrustedContentPermissions'))
+      explicitFields.push('permissions');
+    if (Object.hasOwn(input, 'trustReadOnlyHints'))
+      explicitFields.push('trustReadOnlyHints');
+    return [
+      {
+        ...(changedBy ? { changedBy } : {}),
+        personChange: true as const,
+        explicitFields,
+      },
+    ] as const;
   };
   app.use('*', async (c, next) => {
     const path = c.req.path.replace(/^\/integrations/, '') || '/';
@@ -466,7 +479,7 @@ export function createToolRoutes(
           ...(env ? { secretEnv: env } : {}),
           enabled: false,
         } as ToolDef,
-        ...attribution(c),
+        ...attribution(c, input),
       );
       return c.json({ success: true });
     } catch (error: unknown) {
@@ -903,7 +916,7 @@ export function createToolRoutes(
       }
       // #3483: the config writer records untrusted-content permission
       // changes; the authenticated request principal is who made them.
-      await mcpService.saveIntegration(merged, ...attribution(c));
+      await mcpService.saveIntegration(merged, ...attribution(c, update));
       return c.json({ success: true });
     } catch (error: unknown) {
       return c.json({ success: false, error: errorMessage(error) }, 400);

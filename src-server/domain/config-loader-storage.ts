@@ -22,9 +22,9 @@ import type {
 } from '@kontourai/station-contracts/catalog';
 import {
   isSafeToolServerId,
-  personOwnedUntrustedContentFields,
   type ToolDef,
   type ToolMetadata,
+  withStationIntegrationTrustDefaults,
   withUntrustedContentChange,
 } from '@kontourai/station-contracts/tool';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
@@ -169,7 +169,17 @@ export async function saveIntegrationConfig(
   id: string,
   def: ToolDef,
   /** #3483: who an untrusted-content permission change is attributed to. */
-  options: { changedBy?: string; personChange?: boolean } = {},
+  options: {
+    changedBy?: string;
+    personChange?: boolean;
+    explicitFields?: readonly (
+      | 'contentTrust'
+      | 'permissions'
+      | 'trustReadOnlyHints'
+    )[];
+    externalDefaults?: boolean;
+    stationCuratedTrust?: 'trusted' | 'untrusted';
+  } = {},
 ): Promise<void> {
   assertSafeIntegrationId(id);
   await mkdir(join(projectHomeDir, 'integrations'), { recursive: true });
@@ -186,10 +196,17 @@ export async function saveIntegrationConfig(
       projectHomeDir,
       id,
       integrationPath,
-      def,
+      options.externalDefaults
+        ? withStationIntegrationTrustDefaults(
+            def,
+            current,
+            options.stationCuratedTrust,
+          )
+        : def,
       current,
       options.changedBy,
       options.personChange,
+      options.explicitFields,
     );
   } finally {
     await release();
@@ -261,31 +278,6 @@ const pluginIntegrationValidators: readonly PluginIntegrationValidator[] = [
  * over a plugin's: a plugin update cannot downgrade a classification or
  * reopen a tool the person closed.
  */
-function carryPersonIntegrationFields(stored: ToolDef, next: ToolDef): void {
-  const owned = personOwnedUntrustedContentFields(stored);
-  if (owned.has('contentTrust') || Object.hasOwn(stored, 'contentTrust')) {
-    if (Object.hasOwn(stored, 'contentTrust'))
-      next.contentTrust = stored.contentTrust;
-    else delete next.contentTrust;
-  }
-  if (
-    owned.has('permissions') ||
-    Object.hasOwn(stored, 'untrustedContentPermissions')
-  ) {
-    if (Object.hasOwn(stored, 'untrustedContentPermissions'))
-      next.untrustedContentPermissions = stored.untrustedContentPermissions;
-    else delete next.untrustedContentPermissions;
-  }
-  if (
-    owned.has('trustReadOnlyHints') ||
-    Object.hasOwn(stored, 'trustReadOnlyHints')
-  ) {
-    if (Object.hasOwn(stored, 'trustReadOnlyHints'))
-      next.trustReadOnlyHints = stored.trustReadOnlyHints;
-    else delete next.trustReadOnlyHints;
-  }
-}
-
 function storedIntegration(path: string): ToolDef | undefined {
   try {
     return JSON.parse(readFileSync(path, 'utf8')) as ToolDef;
@@ -456,19 +448,20 @@ async function publishPluginIntegrationsLocked(
         }
         // Staged ids exist only when a staging directory does.
         const stagedPath = join(stagingDir!, id, 'integration.json');
-        const incoming = JSON.parse(
+        const rawIncoming = JSON.parse(
           readFileSync(stagedPath, 'utf8'),
         ) as ToolDef;
         // A plugin cannot author secret bindings.
-        const person = current ?? (restoring ? { ...incoming } : undefined);
+        const incoming = withStationIntegrationTrustDefaults(
+          rawIncoming,
+          current,
+        );
         delete incoming.secretEnvRefs;
-        if (person) {
-          carryPersonIntegrationFields(person, incoming);
-          if (restoring && person.secretEnvRefs)
-            incoming.secretEnvRefs = person.secretEnvRefs;
-        }
+        const bindingSource = current ?? (restoring ? rawIncoming : undefined);
+        if (restoring && bindingSource?.secretEnvRefs)
+          incoming.secretEnvRefs = bindingSource.secretEnvRefs;
         const next = withUntrustedContentChange(
-          person,
+          current,
           incoming,
           undefined,
           now,
@@ -562,6 +555,11 @@ async function writeIntegrationConfigLocked(
   current: ToolDef | undefined,
   changedBy: string | undefined,
   personChange?: boolean,
+  explicitFields?: readonly (
+    | 'contentTrust'
+    | 'permissions'
+    | 'trustReadOnlyHints'
+  )[],
 ): Promise<ToolDef> {
   rejectRetiredIntegrationCredentialFormat(current, id);
   // The spread inside keeps the enumerable in-memory enabled marker read
@@ -571,7 +569,7 @@ async function writeIntegrationConfigLocked(
     incoming,
     changedBy,
     new Date(),
-    { personChange },
+    { personChange, explicitFields },
   );
   const persisted = { ...def };
   delete persisted.secretEnv;

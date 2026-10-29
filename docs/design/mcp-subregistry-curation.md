@@ -131,8 +131,9 @@ The rule reuses Station's tool permission model. It is a default the person
 can change, not a fixed gate.
 
 - **Classification.** `ToolDef.contentTrust: "untrusted"` marks a server that
-  returns content written by others. A curated entry provides it as the
-  default when added; the person can set `trusted` for a server they trust.
+  returns content written by others. Station defaults plugin, external registry
+  and CLI imports to untrusted; its bundled curated catalog may supply its
+  reviewed classification. The person can set `trusted` for a server they trust.
 - **Permission.** `ToolDef.untrustedContentPermissions` holds a `default`
   and per-tool entries, each `ask`, `allow` or `deny`. Absent means `ask`.
 - **Order.** The called tool's own entry, then its integration's `default`,
@@ -181,29 +182,31 @@ The locked storage writer (`saveIntegrationConfig` and
 install use) keeps the stored receipts (`untrustedContentChanges`) read
 under its mutation lock, ignores receipts in the incoming definition, and
 appends one (time, the authenticated request principal when known, new
-value) whenever the classification, a permission or `trustReadOnlyHints`
-changes. A plugin's install, update and rollback publish its integrations
+value) for a person change or explicit reset of the classification, a
+permission or `trustReadOnlyHints`. A plugin's install, update and rollback publish its integrations
 through one locked operation, `publishPluginIntegrations`: the plugin's
 trees are staged privately, then every affected integration's lock is held
 from reading the stored definitions through renaming sanitized trees into
-place. Plugin-authored binding references are dropped, the person's
-classification, permissions, hint setting and receipts come from the stored
-copy (a plugin update cannot downgrade or reopen them), and a list of
+place. External definitions and backups cannot supply classification,
+permissions, hint settings, receipts or ownership. Station supplies the
+untrusted default; a person's stored choices win for a still-present
+integration. A list of
 validators runs on each definition under the lock; other owners, such as
 tool-server OAuth client rules, add theirs there. A reader sees the old
 definition, briefly none, or the sanitized one, never the plugin's raw
 bytes. Install and uninstall recovery also restore backups through the locked
-writer: current stored person settings and receipts win over the backup. Before
-retiring an integration, the writer refreshes its recovery backup under the
-same lock, retaining edits made since the earlier backup. A whole-definition
-replacement or a concurrent save cannot erase or drop a receipt. The last 50 are kept. The
-rule itself is `withUntrustedContentChange` in the tool contract.
+writer. If an integration was retired, its person settings and history no
+longer exist in the current definition; restoration or later reintroduction
+uses Station's untrusted and ask defaults. This is a known limitation until a
+durable person overlay is available. For a still-present integration, a
+concurrent save keeps its receipts. The last 50 are kept. The rule itself is
+`withUntrustedContentChange` in the tool contract.
 
 Person ownership is recorded per field, so a reset to an absent default stays
-authoritative even after older receipts leave the 50-entry history. CLI imports
-write through the same receipt rule at their own filesystem writer, under the
-integration lock. Their receipt identifies a local CLI operator action; it does
-not assert a verified Station principal.
+authoritative even after older receipts leave the 50-entry history, while the
+integration remains present. CLI imports strip the supplied trust fields and
+history at their own filesystem writer under the integration lock; they do not
+assert a verified Station principal.
 
 ### Coverage and gaps
 

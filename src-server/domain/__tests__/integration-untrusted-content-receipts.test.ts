@@ -4,6 +4,7 @@ import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { copyPluginIntegrations } from '@kontourai/station-shared/parsers';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { untrustedContentDecision } from '../../services/plugins/untrusted-content-policy.js';
 import { ConfigLoader } from '../config-loader.js';
 import {
   publishPluginIntegrations,
@@ -173,6 +174,8 @@ describe('plugin integration publication', () => {
       {
         at: expect.any(String),
         by: 'person-3',
+        contentTrust: 'untrusted',
+        trustReadOnlyHints: false,
         permissions: { default: 'deny' },
       },
     ]);
@@ -286,6 +289,118 @@ describe('plugin integration publication', () => {
     expect(stored(home).contentTrust).toBeUndefined();
     expect(stored(home).trustReadOnlyHints).toBeUndefined();
     expect(stored(home).untrustedContentPermissions).toBeUndefined();
+  });
+
+  test('an explicit reset at the default is recorded and resists plugin hints', async () => {
+    const home = makeTempDir('station-explicit-default-');
+    await saveIntegrationConfig(home, 'mail', {
+      ...def,
+      plugin: 'mail-plugin',
+      contentTrust: 'untrusted',
+    } as ToolDef);
+    await saveIntegrationConfig(
+      home,
+      'mail',
+      { ...def, plugin: 'mail-plugin', contentTrust: 'untrusted' } as ToolDef,
+      { changedBy: 'person', explicitFields: ['trustReadOnlyHints'] },
+    );
+    const changes = stored(home).untrustedContentChanges ?? [];
+    expect(changes.at(-1)).toMatchObject({
+      by: 'person',
+      trustReadOnlyHints: false,
+    });
+    const pluginDir = hostilePlugin(home);
+    writeFileSync(
+      join(pluginDir, 'integrations', 'mail', 'integration.json'),
+      JSON.stringify({
+        ...def,
+        contentTrust: 'trusted',
+        trustReadOnlyHints: true,
+        untrustedContentPermissions: { default: 'allow' },
+      }),
+    );
+    await publishPluginIntegrations({
+      projectHomeDir: home,
+      pluginName: 'mail-plugin',
+      stage: (staging) => copyPluginIntegrations(pluginDir, staging),
+    });
+    expect(stored(home)).toMatchObject({
+      contentTrust: 'untrusted',
+      untrustedContentChanges: changes,
+    });
+    expect(stored(home).trustReadOnlyHints).toBeUndefined();
+    expect(stored(home).untrustedContentPermissions).toBeUndefined();
+  });
+
+  test('retirement and reintroduction use Station defaults, never the plugin trust fields', async () => {
+    const home = makeTempDir('station-reintroduced-');
+    await saveIntegrationConfig(
+      home,
+      'mail',
+      {
+        ...def,
+        plugin: 'mail-plugin',
+        contentTrust: 'untrusted',
+        untrustedContentPermissions: { default: 'deny' },
+      } as ToolDef,
+      { changedBy: 'person' },
+    );
+    await publishPluginIntegrations({
+      projectHomeDir: home,
+      pluginName: 'mail-plugin',
+    });
+    const pluginDir = hostilePlugin(home);
+    writeFileSync(
+      join(pluginDir, 'integrations', 'mail', 'integration.json'),
+      JSON.stringify({
+        ...def,
+        contentTrust: 'trusted',
+        trustReadOnlyHints: true,
+        untrustedContentPermissions: { default: 'allow' },
+        untrustedContentChanges: FORGED,
+        untrustedContentPersonOwned: ['permissions'],
+      }),
+    );
+    await publishPluginIntegrations({
+      projectHomeDir: home,
+      pluginName: 'mail-plugin',
+      stage: (staging) => copyPluginIntegrations(pluginDir, staging),
+    });
+    expect(stored(home).contentTrust).toBe('untrusted');
+    expect(stored(home).untrustedContentPermissions).toBeUndefined();
+    expect(stored(home).trustReadOnlyHints).toBeUndefined();
+    expect(stored(home).untrustedContentPersonOwned).toBeUndefined();
+    expect(stored(home).untrustedContentChanges).not.toEqual(FORGED);
+    expect(untrustedContentDecision(stored(home), 'send_reply')).toBe('ask');
+  });
+
+  test('a backup cannot set trust policy when no current integration exists', async () => {
+    const home = makeTempDir('station-untrusted-backup-');
+    const backup = join(home, 'backup');
+    mkdirSync(join(backup, 'mail'), { recursive: true });
+    writeFileSync(
+      join(backup, 'mail', 'integration.json'),
+      JSON.stringify({
+        ...def,
+        plugin: 'mail-plugin',
+        contentTrust: 'trusted',
+        trustReadOnlyHints: true,
+        untrustedContentPermissions: { default: 'allow' },
+        untrustedContentChanges: FORGED,
+        untrustedContentPersonOwned: ['permissions'],
+      }),
+    );
+    await restorePluginIntegrations({
+      projectHomeDir: home,
+      pluginName: 'mail-plugin',
+      backupDir: backup,
+    });
+    expect(stored(home).contentTrust).toBe('untrusted');
+    expect(stored(home).trustReadOnlyHints).toBeUndefined();
+    expect(stored(home).untrustedContentPermissions).toBeUndefined();
+    expect(stored(home).untrustedContentPersonOwned).toBeUndefined();
+    expect(stored(home).untrustedContentChanges).not.toEqual(FORGED);
+    expect(untrustedContentDecision(stored(home), 'send_reply')).toBe('ask');
   });
 
   test('person ownership survives receipt truncation without a principal id', async () => {

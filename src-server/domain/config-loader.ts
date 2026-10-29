@@ -29,6 +29,7 @@ import {
   isSafeToolServerId,
   type ToolDef,
   type ToolMetadata,
+  withStationIntegrationTrustDefaults,
   withUntrustedContentChange,
 } from '@kontourai/station-contracts/tool';
 import { type FSWatcher, watch } from 'chokidar';
@@ -978,7 +979,17 @@ export class ConfigLoader {
   async saveIntegration(
     id: string,
     def: ToolDef,
-    options: { changedBy?: string; personChange?: boolean } = {},
+    options: {
+      changedBy?: string;
+      personChange?: boolean;
+      explicitFields?: readonly (
+        | 'contentTrust'
+        | 'permissions'
+        | 'trustReadOnlyHints'
+      )[];
+      externalDefaults?: boolean;
+      stationCuratedTrust?: 'trusted' | 'untrusted';
+    } = {},
   ): Promise<void> {
     this.assertIntegrationDefinitionWritable(id);
     // #3483: the storage writer owns untrusted-content receipts under its
@@ -990,12 +1001,21 @@ export class ConfigLoader {
     } catch {
       /* First write. */
     }
+    if (options.externalDefaults)
+      def = withStationIntegrationTrustDefaults(
+        def,
+        stored,
+        options.stationCuratedTrust,
+      );
     def = withUntrustedContentChange(
       stored,
       def,
       options.changedBy,
       new Date(),
-      { personChange: options.personChange },
+      {
+        personChange: options.personChange,
+        explicitFields: options.explicitFields,
+      },
     );
     // archive#3063: a registered built-in's spawn identity never reaches
     // disk — projected out BEFORE the byte comparison so the compare runs

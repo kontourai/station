@@ -444,7 +444,15 @@ export class MCPService {
 
   async saveIntegration(
     def: ToolDef,
-    options?: { changedBy?: string; personChange?: boolean },
+    options?: {
+      changedBy?: string;
+      personChange?: boolean;
+      explicitFields?: readonly (
+        | 'contentTrust'
+        | 'permissions'
+        | 'trustReadOnlyHints'
+      )[];
+    },
   ): Promise<void> {
     if (
       (def as OwnershipTaggedToolDef)[CONTRIBUTED_INTEGRATION_DEFINITION] ===

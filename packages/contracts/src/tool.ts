@@ -189,6 +189,40 @@ export function personOwnedUntrustedContentFields(stored: ToolDef | undefined) {
   return owned;
 }
 
+/** Ignore external trust policy and apply only Station defaults and person choices. */
+export function withStationIntegrationTrustDefaults(
+  incoming: ToolDef,
+  stored?: ToolDef,
+  stationCuratedTrust?: 'trusted' | 'untrusted',
+): ToolDef {
+  const result = { ...incoming };
+  delete result.contentTrust;
+  delete result.untrustedContentPermissions;
+  delete result.trustReadOnlyHints;
+  delete result.untrustedContentChanges;
+  delete result.untrustedContentPersonOwned;
+  // External integrations are untrusted until the person decides otherwise.
+  result.contentTrust = stationCuratedTrust ?? 'untrusted';
+  if (!stored) return result;
+  const owned = personOwnedUntrustedContentFields(stored);
+  if (owned.has('contentTrust')) {
+    if (Object.hasOwn(stored, 'contentTrust'))
+      result.contentTrust = stored.contentTrust;
+    else delete result.contentTrust;
+  }
+  if (owned.has('permissions')) {
+    if (Object.hasOwn(stored, 'untrustedContentPermissions'))
+      result.untrustedContentPermissions = stored.untrustedContentPermissions;
+    else delete result.untrustedContentPermissions;
+  }
+  if (owned.has('trustReadOnlyHints')) {
+    if (Object.hasOwn(stored, 'trustReadOnlyHints'))
+      result.trustReadOnlyHints = stored.trustReadOnlyHints;
+    else delete result.trustReadOnlyHints;
+  }
+  return result;
+}
+
 function sameValue(a: unknown, b: unknown): boolean {
   return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 }
@@ -205,7 +239,14 @@ export function withUntrustedContentChange(
   next: ToolDef,
   by: string | undefined,
   now: Date,
-  options?: { localCliImport?: boolean; personChange?: boolean },
+  options?: {
+    personChange?: boolean;
+    explicitFields?: readonly (
+      | 'contentTrust'
+      | 'permissions'
+      | 'trustReadOnlyHints'
+    )[];
+  },
 ): ToolDef {
   const result: ToolDef = { ...next };
   delete result.untrustedContentChanges;
@@ -222,10 +263,21 @@ export function withUntrustedContentChange(
   const hintsChanged =
     (stored?.trustReadOnlyHints ?? false) !==
     (next.trustReadOnlyHints ?? false);
-  if (by || options?.personChange || options?.localCliImport) {
-    if (trustChanged || options?.localCliImport) owned.add('contentTrust');
-    if (permissionsChanged || options?.localCliImport) owned.add('permissions');
-    if (hintsChanged || options?.localCliImport)
+  const person = Boolean(by || options?.personChange);
+  const explicit = new Set(
+    person
+      ? (options?.explicitFields ?? [
+          'contentTrust',
+          'permissions',
+          'trustReadOnlyHints',
+        ])
+      : [],
+  );
+  if (person) {
+    if (trustChanged || explicit.has('contentTrust')) owned.add('contentTrust');
+    if (permissionsChanged || explicit.has('permissions'))
+      owned.add('permissions');
+    if (hintsChanged || explicit.has('trustReadOnlyHints'))
       owned.add('trustReadOnlyHints');
   }
   if (owned.size) result.untrustedContentPersonOwned = [...owned];
@@ -233,23 +285,20 @@ export function withUntrustedContentChange(
     !trustChanged &&
     !permissionsChanged &&
     !hintsChanged &&
-    !options?.localCliImport
+    explicit.size === 0
   )
     return result;
   const change: UntrustedContentChange = {
     at: now.toISOString(),
     ...(by ? { by } : {}),
-    ...(options?.localCliImport
-      ? { source: 'local-cli-operator' as const }
-      : {}),
     // Absent classification means trusted, so a removal records `trusted`.
-    ...(trustChanged || options?.localCliImport
+    ...(trustChanged || explicit.has('contentTrust')
       ? { contentTrust: next.contentTrust ?? 'trusted' }
       : {}),
-    ...(permissionsChanged || options?.localCliImport
+    ...(permissionsChanged || explicit.has('permissions')
       ? { permissions: next.untrustedContentPermissions ?? {} }
       : {}),
-    ...(hintsChanged || options?.localCliImport
+    ...(hintsChanged || explicit.has('trustReadOnlyHints')
       ? { trustReadOnlyHints: next.trustReadOnlyHints ?? false }
       : {}),
   };

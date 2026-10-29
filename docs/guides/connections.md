@@ -1549,6 +1549,14 @@ declares it read-only. A server classified untrusted cannot exempt its own
 tools that way unless you set `trustReadOnlyHints`. You can change it per
 server and per tool in its settings; your entry always wins:
 
+Station classifies newly installed plugin and external registry integrations
+and CLI imports as untrusted by default. Their supplied trust settings are
+ignored. The bundled curated catalog may instead supply Station's reviewed
+classification.
+If a plugin retires and later reintroduces an integration, its former person
+settings and receipts do not carry over; the integration returns to the
+untrusted classification and default ask policy. You can set them again.
+
 ```json
 {
   "contentTrust": "untrusted",

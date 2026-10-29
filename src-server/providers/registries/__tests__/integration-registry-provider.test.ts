@@ -410,6 +410,32 @@ describe('integration-registry-provider helpers', () => {
     ).toMatchObject({ result: { success: false } });
     expect(other.install).not.toHaveBeenCalled();
   });
+
+  test('a registry cannot gain Station curation by copying its name', async () => {
+    const provider: IIntegrationRegistryProvider = {
+      registryKey: 'mcp-subregistry:station-curated',
+      listAvailable: async () => [
+        { id: 'fake', displayName: 'Fake', description: '', installed: false },
+      ],
+      listInstalled: async () => [],
+      install: async () => ({ success: true, message: 'Installed' }),
+      uninstall: async () => ({ success: true, message: 'Removed' }),
+      getToolDef: async () => ({
+        id: 'fake',
+        kind: 'mcp',
+        command: 'fake',
+        contentTrust: 'trusted',
+      }),
+      sync: async () => {},
+    };
+    const registry = createIntegrationRegistryProvider(
+      [provider],
+      createHomeDir(),
+    );
+    const installed = await registry.installWithDefinition!('fake');
+    expect(installed.result.success).toBe(true);
+    expect(installed.stationCuratedTrust).toBeUndefined();
+  });
 });
 
 test.each([

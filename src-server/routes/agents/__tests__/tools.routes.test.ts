@@ -269,7 +269,7 @@ describe('Tool Routes', () => {
     expect(body.success).toBe(true);
     expect(svc.saveIntegration).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'new', enabled: false }),
-      { personChange: true },
+      { personChange: true, explicitFields: [] },
     );
   });
 
@@ -314,7 +314,7 @@ describe('Tool Routes', () => {
         secretEnv: { API_TOKEN: 'write-boundary-canary' },
         enabled: false,
       },
-      { personChange: true },
+      { personChange: true, explicitFields: [] },
     );
     expect(svc.saveIntegration.mock.calls[0]?.[0]).not.toHaveProperty('env');
   });
@@ -735,7 +735,7 @@ describe('Tool Routes', () => {
         description: 'After',
         env: { API_TOKEN: 'secret-value' },
       },
-      { personChange: true },
+      { personChange: true, explicitFields: [] },
     );
   });
 
@@ -774,7 +774,7 @@ describe('Tool Routes', () => {
         description: 'After',
         probe: serviceProbe,
       }),
-      { personChange: true },
+      { personChange: true, explicitFields: [] },
     );
   });
 
@@ -838,7 +838,7 @@ describe('Tool Routes', () => {
         kind: 'mcp',
         secretEnv: { API_TOKEN: 'replacement-secret' },
       },
-      { personChange: true },
+      { personChange: true, explicitFields: [] },
     );
   });
 
@@ -862,7 +862,7 @@ describe('Tool Routes', () => {
         kind: 'mcp',
         secretEnv: {},
       },
-      { personChange: true },
+      { personChange: true, explicitFields: [] },
     );
   });
 
@@ -886,7 +886,7 @@ describe('Tool Routes', () => {
         env: { TOKEN_A: 'a', TOKEN_B: 'b' },
         removeSecretEnvKeys: ['TOKEN_A'],
       },
-      { personChange: true },
+      { personChange: true, explicitFields: [] },
     );
   });
 
@@ -1492,6 +1492,7 @@ describe('untrusted-content permission changes (#3483)', () => {
     expect(svc.saveIntegration.mock.calls[0][1]).toEqual({
       changedBy: 'person-1',
       personChange: true,
+      explicitFields: ['contentTrust'],
     });
     expect(
       (
@@ -1507,6 +1508,7 @@ describe('untrusted-content permission changes (#3483)', () => {
     expect(svc.saveIntegration.mock.calls[1][1]).toEqual({
       changedBy: 'person-1',
       personChange: true,
+      explicitFields: ['contentTrust'],
     });
   });
 
@@ -1516,6 +1518,32 @@ describe('untrusted-content permission changes (#3483)', () => {
     transport: 'streamable-http' as const,
     endpoint: 'https://mail.example.test/mcp',
   };
+
+  test('a person explicitly resetting an already-default hint records a receipt', async () => {
+    const home = makeTempDir('station-explicit-reset-route-');
+    const loader = new ConfigLoader({ projectHomeDir: home });
+    await loader.saveIntegration('mail', { ...def, contentTrust: 'untrusted' });
+    const service = new MCPService(
+      loader,
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      { warn: vi.fn() } as any,
+    );
+    const app = createToolRoutes(service, vi.fn(), {
+      resolveRequestPrincipalId: () => 'person-1',
+    });
+    expect(
+      (await request(app, 'PUT', { trustReadOnlyHints: false })).status,
+    ).toBe(200);
+    const stored = await loader.loadIntegration('mail');
+    expect(stored.untrustedContentChanges?.at(-1)).toMatchObject({
+      by: 'person-1',
+      trustReadOnlyHints: false,
+    });
+  });
 
   test('the config writer records changes, keeps history across replacement and ignores caller receipts', async () => {
     const loader = new ConfigLoader({
@@ -1549,6 +1577,8 @@ describe('untrusted-content permission changes (#3483)', () => {
       {
         at: expect.any(String),
         by: 'person-1',
+        contentTrust: 'untrusted',
+        trustReadOnlyHints: false,
         permissions: { tools: { send_draft: 'deny' } },
       },
       {
@@ -1556,6 +1586,7 @@ describe('untrusted-content permission changes (#3483)', () => {
         by: 'person-2',
         contentTrust: 'trusted',
         permissions: {},
+        trustReadOnlyHints: false,
       },
     ]);
   });

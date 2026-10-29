@@ -810,7 +810,13 @@ export function createRegistryRoutes(
         // Registry/provider metadata is untrusted relative to the operator
         // binding authority. It can never author a reference.
         delete persisted.secretEnvRefs;
-        await configLoader.saveIntegration(toolDef.id, persisted);
+        await configLoader.saveIntegration(toolDef.id, persisted, {
+          externalDefaults: true,
+          ...('stationCuratedTrust' in installed &&
+          installed.stationCuratedTrust
+            ? { stationCuratedTrust: installed.stationCuratedTrust }
+            : {}),
+        });
         if ('origin' in installed && installed.origin)
           recordIntegrationOrigin(
             configLoader.getProjectHomeDir(),

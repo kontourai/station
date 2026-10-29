@@ -1412,12 +1412,13 @@ values; clients use the returned metadata when editing. A failed lookup returns
 `{success: true}`. Environment updates are merged by key: omission preserves
 stored values, `{env: {}}` clears nothing, and removal uses
 `removeSecretEnvKeys`. Package-supplied definitions are read-only; the MCP
-service refuses changes that would create a shadow copy. A change to
+service refuses changes that would create a shadow copy. An explicit person edit or reset of
 `contentTrust`, `untrustedContentPermissions` or `trustReadOnlyHints`, through
 this route or `POST /integrations`, appends a receipt to
 `untrustedContentChanges` (time, the authenticated request principal when
-known, the new value; last 50 kept); receipts in the request are ignored and
-the stored history survives a replacement
+known, the new value; last 50 kept), even when the value already equals the default.
+Receipts in the request are ignored and the stored history survives a replacement
+while the integration remains present
 ([design](../design/mcp-subregistry-curation.md#untrusted-content-and-outbound-tools)).
 
 ### Connected accounts (#3279)

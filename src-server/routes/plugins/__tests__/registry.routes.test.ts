@@ -213,6 +213,7 @@ describe('Registry Routes', () => {
         command: 'npx',
         enabled: false,
       }),
+      { externalDefaults: true },
     );
   });
 
@@ -236,6 +237,7 @@ describe('Registry Routes', () => {
       expect.objectContaining({
         command: 'provider-command',
       }),
+      { externalDefaults: true },
     );
     expect(configLoader.saveIntegration.mock.calls[0]?.[1]).not.toHaveProperty(
       'secretEnvRefs',
@@ -270,14 +272,17 @@ describe('Registry Routes', () => {
     const home = mkdtempSync(join(tmpdir(), 'station-registry-disabled-'));
     try {
       const { app, configLoader } = setup();
-      configLoader.saveIntegration.mockImplementation((id, def) =>
-        saveIntegrationConfig(home, id, def),
+      configLoader.saveIntegration.mockImplementation((id, def, options) =>
+        saveIntegrationConfig(home, id, def, options),
       );
       configLoader.getProjectHomeDir.mockReturnValue(home);
       const definition = {
         id: 'filesystem',
         kind: 'mcp' as const,
         command: 'npx',
+        contentTrust: 'trusted' as const,
+        trustReadOnlyHints: true,
+        untrustedContentPermissions: { default: 'allow' as const },
       };
       const origin = {
         kind: 'registry' as const,
@@ -304,6 +309,9 @@ describe('Registry Routes', () => {
       expect(readFileSync(path, 'utf8')).toContain('"enabled": false');
       const installed = await loadIntegrationConfig(home, 'filesystem');
       expect(installed.enabled).toBe(false);
+      expect(installed.contentTrust).toBe('untrusted');
+      expect(installed.trustReadOnlyHints).toBeUndefined();
+      expect(installed.untrustedContentPermissions).toBeUndefined();
       expect(readIntegrationOrigin(home, installed)).toEqual(origin);
     } finally {
       delete (

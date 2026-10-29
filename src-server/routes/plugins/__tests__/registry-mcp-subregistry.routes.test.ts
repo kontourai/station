@@ -108,8 +108,10 @@ describe('Registry routes over the curated MCP subregistry', () => {
         credentialOwnership: { owner: 'principal' },
         enabled: false,
       }),
+      { externalDefaults: true, stationCuratedTrust: 'trusted' },
     );
     const saved = await configLoader.loadIntegration('app-linear--linear');
+    expect(saved.contentTrust).toBe('trusted');
     expect(saved.command).toBeUndefined();
     expect(readIntegrationOrigin(home, saved)).toMatchObject({
       kind: 'registry',
