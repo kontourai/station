@@ -292,6 +292,13 @@ const BANNER_LINK_BUTTON_STYLE: React.CSSProperties = {
 
 /** D3: see `ChatDockBodyProps.loadingEscapeDelayMs`. */
 const LOADING_ESCAPE_DELAY_MS = 6_000;
+/**
+ * The composer's reason when the open read refused this caller a send. Says
+ * "you", not "this device": the server answers per credential, and the caller
+ * may be a relay member rather than a paired device.
+ */
+const CALLER_CANNOT_SEND_REASON =
+  "You can read this chat but can't send to it.";
 const LOADING_LONG_MESSAGE =
   'This conversation is taking longer to load. Waiting for Station.';
 
@@ -523,7 +530,7 @@ export function ChatDockBody({
   onOpenAgentHandoff,
   agentHandoffTriggerRef,
   onOpenBackgroundTasks,
-  onNewChat,
+  onNewChat: onNewChatProp,
   onRetryConversationOpen,
   loadingEscapeDelayMs = LOADING_ESCAPE_DELAY_MS,
   onForkFromTurn,
@@ -618,12 +625,17 @@ export function ChatDockBody({
   const resolvingOpen = openPhase === 'resolving';
   // Whether THIS caller may send into this conversation or start a chat, as
   // the server's own boundary answered it on the open read (`callerAccess`).
-  // Actions it refuses are withheld rather than offered to fail. Absent
-  // (an older server, an unauthenticated request, or no successful open read
-  // yet) means unknown, and unknown shows: the server still enforces.
+  // A refused send disables the composer with its reason and drops the send
+  // invitations; a refused new chat drops every new-chat offer, because each
+  // one ends in `POST /api/orchestration/chat`. Absent (an older server, a
+  // request with no authenticated principal, or no successful open read yet)
+  // means unknown, and unknown shows. The answer is as of the last open read:
+  // a scope changed mid-session shows on the next one, and until then the
+  // server's own refusal still stands.
   const callerAccess = activeSession.conversationOpenState?.callerAccess;
   const callerMayContinue = callerAccess?.continue !== false;
   const callerMayStartChat = callerAccess?.startChat !== false;
+  const onNewChat = callerMayStartChat ? onNewChatProp : undefined;
   const transcript = useActiveChatTranscript(apiBase, activeSession);
   const streamStatus = useChatStreamStatus(apiBase, activeSession.replay);
   const windowRequests = useMemo(
@@ -1294,6 +1306,10 @@ export function ChatDockBody({
 
   const workspaceRefused =
     activeSession.outboundQueuedTurns?.some(isWorkspaceRefusedTurn) ?? false;
+  // A refused workspace turns Send into "Start new chat". A caller who may not
+  // start one gets neither: the composer is disabled and says why.
+  const workspaceRefusedWithoutNewChat =
+    workspaceRefused && !callerMayStartChat;
 
   // `handleSend`'s identity changes on every keystroke (its deps include the
   // composer `input`). Reading it through a ref keeps `renderOverride` stable,
@@ -1617,15 +1633,18 @@ export function ChatDockBody({
                   );
                 }
               },
-              onStartNewChat:
-                onNewChat ??
-                (() => {
-                  updateChat(activeSession.id, {
-                    status: 'error',
-                    error:
-                      'New chat is unavailable in this view — open the conversation from the dock and try again.',
-                  });
-                }),
+              // No offer at all when the server refused this caller a new
+              // chat; the fallback below is for a view without the handler.
+              onStartNewChat: !callerMayStartChat
+                ? undefined
+                : (onNewChat ??
+                  (() => {
+                    updateChat(activeSession.id, {
+                      status: 'error',
+                      error:
+                        'New chat is unavailable in this view — open the conversation from the dock and try again.',
+                    });
+                  })),
             }}
           />
         ),
@@ -1726,6 +1745,7 @@ export function ChatDockBody({
               <ChatEmptyState
                 agentSlug={renderedSession.agentSlug}
                 agentName={renderedSession.agentName}
+                canSend={callerMayContinue}
               />
             ))}
         </div>
@@ -2317,7 +2337,7 @@ export function ChatDockBody({
         <div className="session-history-controls">
           {/* Announced by the persistent region above, not by this span. */}
           <span>{LOADING_LONG_MESSAGE}</span>
-          {onNewChat && callerMayStartChat ? (
+          {onNewChat ? (
             <button
               type="button"
               className="button button--secondary"
@@ -2342,17 +2362,17 @@ export function ChatDockBody({
               : activeSession.conversationOpenState?.status,
             // Retry re-reads the open (`GET /api/conversations/:id/open`),
             // the read this client already makes to see the chat. Start new
-            // chat follows the server's `callerAccess.startChat`.
+            // chat follows the server's `callerAccess.startChat` (`onNewChat`
+            // is already withheld when it refused).
             onRetry: onRetryConversationOpen
               ? () => void onRetryConversationOpen()
               : undefined,
-            onStartNew:
-              onNewChat && callerMayStartChat
-                ? () =>
-                    void Promise.resolve(onNewChat()).catch(
-                      surfaceRecoveryFailure,
-                    )
-                : undefined,
+            onStartNew: onNewChat
+              ? () =>
+                  void Promise.resolve(onNewChat()).catch(
+                    surfaceRecoveryFailure,
+                  )
+              : undefined,
           }}
           pending={
             <div className="session-history-error" role="status">
@@ -2519,7 +2539,12 @@ export function ChatDockBody({
             textareaRef={chatInput.textareaRef}
             onEnabledChange={onComposerEnabledChange}
             disabled={
-              !agent || recoveryOpen || resolvingOpen || busyWaitBlocksSend
+              !agent ||
+              recoveryOpen ||
+              resolvingOpen ||
+              busyWaitBlocksSend ||
+              !callerMayContinue ||
+              workspaceRefusedWithoutNewChat
             }
             allowDraftWhileDisabled={busyWaitBlocksSend && !!agent}
             turnInFlight={isTurnInFlight(activeSession)}
@@ -2616,15 +2641,23 @@ export function ChatDockBody({
             removalUnblocksSend={chatInput.removalUnblocksSend}
             sendBlockedReason={
               recoveryOpen && !unverifiedOpen
-                ? 'This conversation is available read-only. Retry resolution or start a new chat.'
-                : recoveryOpen || resolvingOpen || busyWaitBlocksSend
-                  ? // The banner above already says this; repeating the SENTENCE
-                    // under the composer is what made one ordinary reload read as
-                    // three separate problems. `undefined` leaves the composer
-                    // quietly disabled. An `unverified` check (#2424) is the same:
-                    // its notice says what failed and carries the Retry.
-                    undefined
-                  : chatInput.sendBlockedReason
+                ? callerMayStartChat
+                  ? 'This conversation is available read-only. Retry resolution or start a new chat.'
+                  : 'This conversation is available read-only. Retry resolution to check again.'
+                : !callerMayContinue
+                  ? // The server's open read refused this caller the send;
+                    // say so instead of leaving Send to fail with a 403.
+                    CALLER_CANNOT_SEND_REASON
+                  : workspaceRefusedWithoutNewChat
+                    ? 'This conversation continues from its original workspace.'
+                    : recoveryOpen || resolvingOpen || busyWaitBlocksSend
+                      ? // The banner above already says this; repeating the SENTENCE
+                        // under the composer is what made one ordinary reload read as
+                        // three separate problems. `undefined` leaves the composer
+                        // quietly disabled. An `unverified` check (#2424) is the same:
+                        // its notice says what failed and carries the Retry.
+                        undefined
+                      : chatInput.sendBlockedReason
             }
             onRetryAttachmentStage={chatInput.retryAttachmentStage}
             onCancelAttachmentStage={chatInput.cancelAttachmentStage}
@@ -2674,7 +2707,9 @@ export function ChatDockBody({
             voiceError={stt.errorMessage}
             onVoiceStart={() => stt.startListening()}
             onVoiceStop={() => stt.stopListening()}
-            workspaceRefused={workspaceRefused}
+            workspaceRefused={
+              workspaceRefused && !workspaceRefusedWithoutNewChat
+            }
             loadingConversation={resolvingOpen}
             onStartNewChat={onNewChat}
           />

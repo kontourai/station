@@ -28,6 +28,13 @@ interface ConversationOpenDockEffects {
   agentName?: (agentId: string) => string | undefined;
   updateChat: (tabId: string, patch: Partial<ChatUIState>) => void;
   setRecovery: (recovery: ConversationOpenRecovery | null) => void;
+  /**
+   * The caller access last reported for this conversation, if any. A failed
+   * read keeps it rather than forgetting it (see the error path below).
+   */
+  lastCallerAccess?: (
+    conversationId: string,
+  ) => ConversationOpenRecovery['callerAccess'];
   isCurrent?: () => boolean;
 }
 
@@ -342,7 +349,15 @@ export async function openConversationForDock(
   } catch {
     if (!isCurrent()) return false;
     if (typeof conversation === 'string') return false;
-    effects.setRecovery({ conversation, status: 'error' });
+    // A failed read says nothing new about this caller's access, so the last
+    // answer for the same conversation stands: a retry that fails must not
+    // bring back a Start new chat the server already refused.
+    const lastKnown = effects.lastCallerAccess?.(conversation.id);
+    effects.setRecovery({
+      conversation,
+      status: 'error',
+      ...(lastKnown ? { callerAccess: lastKnown } : {}),
+    });
     return true;
   }
 }

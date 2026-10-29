@@ -316,12 +316,20 @@ inbox footer offers Refresh, which reconnects the same stream and re-reads the
 session list and conversation inventory; when the last read failed, the footer
 says the rows are the last known list.
 
-The recovery notice and the failure banner offer only what this caller can
-do: the banner's "send a message" note is withheld when the server's open read
-says this caller may not continue the conversation (`callerAccess.continue`),
-and Start new chat is withheld when it says this caller may not start one
-(`callerAccess.startChat`). The client does not re-derive scopes; when the
-server sent no answer, both show and the server still enforces. The agent-turn
+The chat pane offers only what this caller can do, as the server's open read
+reports it. When it says this caller may not continue the conversation
+(`callerAccess.continue`), the composer is disabled with "You can read this
+chat but can't send to it.", the failure banner drops its "send a message"
+note, and an empty chat shows "No messages yet" instead of inviting typing.
+When it says this caller may not start a chat (`callerAccess.startChat`),
+every new-chat offer is withheld: the recovery notices' Start new chat, the
+terminal-session and recovery-row New chat and Switch agent actions, the
+refused queued turn's New chat, the workspace-refused composer's Start new
+chat, and Enable it in a new chat; a read-only verdict then says only "Retry
+resolution to check again." A failed retry from the picker keeps the last
+answer. The client does not re-derive scopes; when the server sent no answer,
+everything shows and the server still enforces. The answer is as of the last
+open read, so a scope changed mid-session shows on the next one. The agent-turn
 toast's session chord (⌘1/Ctrl+1) and the composer menu's command-launcher
 chord are not shown on a coarse primary pointer. A touch tablet with a hardware
 keyboard loses them too; Station has no keyboard-presence signal, and that

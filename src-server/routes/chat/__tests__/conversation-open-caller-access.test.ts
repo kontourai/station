@@ -21,6 +21,11 @@ import { Hono } from 'hono';
 import { describe, expect, it, vi } from 'vitest';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
+import {
+  getInternalApiToken,
+  INTERNAL_API_TOKEN_HEADER,
+  INTERNAL_PROXY_CALLER_HEADER,
+} from '../../../utils/internal-api-token.js';
 import { createGlobalConversationRoutes } from '../conversations.js';
 
 const OPERATOR_CREDENTIAL = 'operator-credential-full-authority';
@@ -140,8 +145,30 @@ function createApp(
       principalSecurity,
     ),
   );
+  // Stand-ins for the two routes callerAccess speaks about, so a request
+  // ingress admits is seen to reach them (200) and a refused one is not.
+  app.post('/api/orchestration/chat', (c) => c.json({ reached: true }));
+  app.post('/api/orchestration/chat/:id/continue', (c) =>
+    c.json({ reached: true }),
+  );
   return app;
 }
+
+/** A request from Station's own attested loopback proxy hop: no bearer. */
+const INTERNAL_LOOPBACK = {
+  headers: {
+    [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+    [INTERNAL_PROXY_CALLER_HEADER]: 'local',
+  },
+  env: {
+    incoming: { socket: { remoteAddress: '127.0.0.1' } },
+  } as TestBindings,
+};
+
+const BOUNDARY_PATHS = [
+  '/api/orchestration/chat',
+  '/api/orchestration/chat/conv-1/continue',
+] as const;
 
 async function readCallerAccess(
   app: ReturnType<typeof createApp>,
@@ -189,23 +216,46 @@ describe('GET /api/conversations/:id/open callerAccess', () => {
     });
   });
 
-  it('agrees with the boundary: the read-only caller is refused the post it was told it may not make', async () => {
+  it.each([
+    [READ_ONLY_CREDENTIAL, 403],
+    [STANDARD_CREDENTIAL, 200],
+  ] as const)(
+    'agrees with the boundary: %s posts get %i, matching what it was told',
+    async (credential, status) => {
+      const app = createApp(PRINCIPAL_SECURITY);
+      for (const path of BOUNDARY_PATHS) {
+        const response = await app.request(
+          path,
+          {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${credential}` },
+          },
+          {
+            incoming: { socket: { remoteAddress: '100.96.12.7' } },
+          } as TestBindings,
+        );
+        expect(response.status, path).toBe(status);
+      }
+    },
+  );
+
+  it("Station's own loopback proxy (the internal principal) is told it may post, and is admitted", async () => {
     const app = createApp(PRINCIPAL_SECURITY);
-    for (const path of [
-      '/api/orchestration/chat',
-      '/api/orchestration/chat/conv-1/continue',
-    ]) {
+    const read = await app.request(
+      '/api/conversations/conv-1/open',
+      { headers: INTERNAL_LOOPBACK.headers },
+      INTERNAL_LOOPBACK.env,
+    );
+    expect(read.status).toBe(200);
+    const body = (await read.json()) as { data: ConversationOpenResolution };
+    expect(body.data.callerAccess).toEqual({ continue: true, startChat: true });
+    for (const path of BOUNDARY_PATHS) {
       const response = await app.request(
         path,
-        {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${READ_ONLY_CREDENTIAL}` },
-        },
-        {
-          incoming: { socket: { remoteAddress: '100.96.12.7' } },
-        } as TestBindings,
+        { method: 'POST', headers: INTERNAL_LOOPBACK.headers },
+        INTERNAL_LOOPBACK.env,
       );
-      expect(response.status, path).toBe(403);
+      expect(response.status, path).toBe(200);
     }
   });
 

@@ -113,3 +113,42 @@ describe('#3429: Continue in Station opens the continuation in the dock', () => 
     expect(dock.updateChat).not.toHaveBeenCalled();
   });
 });
+
+describe('a failed picker retry keeps what the server said about this caller', () => {
+  const conversation = adoptedChildResolution().conversation as never;
+
+  test('the error recovery carries the last caller access for the same conversation', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
+    const dock = effects();
+    const lastCallerAccess = vi.fn(() => ({
+      continue: false,
+      startChat: false,
+    }));
+
+    await expect(
+      openConversationForDock(conversation, { ...dock, lastCallerAccess }),
+    ).resolves.toBe(true);
+
+    expect(lastCallerAccess).toHaveBeenCalledWith(CHILD);
+    expect(dock.setRecovery).toHaveBeenCalledWith({
+      conversation,
+      status: 'error',
+      callerAccess: { continue: false, startChat: false },
+    });
+  });
+
+  test('with no earlier answer the error recovery carries none (unknown shows)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
+    const dock = effects();
+
+    await openConversationForDock(conversation, {
+      ...dock,
+      lastCallerAccess: () => undefined,
+    });
+
+    expect(dock.setRecovery).toHaveBeenCalledWith({
+      conversation,
+      status: 'error',
+    });
+  });
+});

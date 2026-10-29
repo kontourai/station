@@ -173,10 +173,18 @@ describe('conversation-open callerAccess', () => {
 
   test('rejects a malformed access value rather than reading it as unknown', async () => {
     _setApiBase('https://station.example.test');
-    respond(unavailable({ continue: 'yes', startChat: true }));
-    await expect(resolveConversationOpen('c')).rejects.toMatchObject({
-      kind: 'invalid-response',
-    });
+    for (const callerAccess of [
+      { continue: 'yes', startChat: true },
+      { continue: true, startChat: 'yes' },
+      { continue: true },
+      null,
+    ]) {
+      respond(unavailable(callerAccess));
+      await expect(
+        resolveConversationOpen('c'),
+        JSON.stringify(callerAccess),
+      ).rejects.toMatchObject({ kind: 'invalid-response' });
+    }
   });
 });
 

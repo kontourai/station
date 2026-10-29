@@ -1060,7 +1060,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     expect(screen.queryByRole('button', { name: 'Start new chat' })).toBeNull();
   });
 
-  test('a caller the server says may not continue gets no send invitation on a writable chat', async () => {
+  test('a caller the server says may not continue is offered no send: composer disabled with its reason, no invitation', async () => {
     renderDock({
       orchestrationSession: buildOrchestrationSession({
         blockedReason: 'Engine crashed',
@@ -1070,13 +1070,128 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
         conversationOpenState: openState({ continue: false, startChat: false }),
       }),
     });
-    // The conversation itself is writable; only this caller may not post.
+    // The conversation itself is writable; only this caller may not post,
+    // so Send would 403. It is disabled, and the composer says why.
     await waitFor(() =>
-      expect(chatInputPropsMock.current?.disabled).toBe(false),
+      expect(chatInputPropsMock.current?.disabled).toBe(true),
+    );
+    expect(chatInputPropsMock.current?.sendBlockedReason).toBe(
+      "You can read this chat but can't send to it.",
     );
     expect(
       screen.getByTestId('chat-dock-session-failure').textContent,
     ).not.toMatch(/send a message|send again/i);
+  });
+
+  test('an empty chat invites no typing for a caller who may not send', async () => {
+    renderDock({
+      orchestrationSession: null,
+      read: 'absent',
+      session: buildSession({
+        conversationId: 'cool',
+        messages: [],
+        conversationOpenState: openState({ continue: false, startChat: false }),
+      }),
+    });
+    expect(await screen.findByText('No messages yet')).toBeTruthy();
+    expect(screen.queryByText(/Type a message below/)).toBeNull();
+  });
+
+  test('an empty chat still invites typing when the caller may send', async () => {
+    // Mirror, so an invitation dropped unconditionally fails.
+    renderDock({
+      orchestrationSession: null,
+      read: 'absent',
+      session: buildSession({
+        conversationId: 'cool',
+        messages: [],
+        conversationOpenState: openState({ continue: true, startChat: true }),
+      }),
+    });
+    expect(await screen.findByText(/Type a message below/)).toBeTruthy();
+  });
+
+  test.each([
+    [false, undefined],
+    [true, 'function'],
+  ] as const)(
+    'every new-chat offer follows callerAccess.startChat (startChat=%s)',
+    async (startChat, expected) => {
+      renderDock({
+        orchestrationSession: buildOrchestrationSession({
+          blockedReason: 'Engine crashed',
+        }),
+        session: buildSession({
+          conversationId: 'cool',
+          conversationOpenState: openState({ continue: true, startChat }),
+        }),
+        onNewChat: vi.fn(),
+      });
+      await screen.findByTestId('chat-input-area');
+      // The composer's workspace-refused "Start new chat" (it posts the
+      // draft to POST /api/orchestration/chat).
+      expect(typeof chatInputPropsMock.current?.onStartNewChat).toBe(
+        expected ?? 'undefined',
+      );
+    },
+  );
+
+  test.each([
+    [true, false, undefined],
+    [false, true, 'This conversation continues from its original workspace.'],
+  ] as const)(
+    'a refused workspace offers Start new chat only to a caller allowed one (startChat=%s)',
+    async (startChat, disabled, reason) => {
+      renderDock({
+        orchestrationSession: buildOrchestrationSession({
+          status: 'idle',
+          lifecycleState: 'idle',
+        }),
+        session: buildSession({
+          conversationId: 'cool',
+          conversationOpenState: openState({ continue: true, startChat }),
+          outboundQueuedTurns: [
+            {
+              clientTurnId: 'turn-1',
+              content: 'move this message',
+              status: 'failed',
+              lastError: 'Workspace refusal: worktree is gone',
+            },
+          ] as never,
+        }),
+        onNewChat: vi.fn(),
+      });
+      await screen.findByTestId('chat-input-area');
+      await waitFor(() =>
+        expect(chatInputPropsMock.current?.disabled).toBe(disabled),
+      );
+      // The composer's Send becomes "Start new chat" only when it is allowed.
+      expect(chatInputPropsMock.current?.workspaceRefused).toBe(startChat);
+      expect(chatInputPropsMock.current?.sendBlockedReason).toBe(reason);
+    },
+  );
+
+  test('a read-only verdict names "start a new chat" only to a caller allowed to', async () => {
+    const denied = {
+      ...openState({ continue: false, startChat: false }, false),
+    };
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'idle',
+        lifecycleState: 'idle',
+      }),
+      session: buildSession({
+        conversationId: 'cool',
+        conversationOpenState: denied,
+      }),
+      onNewChat: vi.fn(),
+      onRetryConversationOpen: vi.fn(),
+    });
+    await waitFor(() =>
+      expect(chatInputPropsMock.current?.sendBlockedReason).toBe(
+        'This conversation is available read-only. Retry resolution to check again.',
+      ),
+    );
   });
 
   test('a caller the server says may continue keeps the send invitation', () => {
