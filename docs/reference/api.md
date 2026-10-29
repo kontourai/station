@@ -5992,6 +5992,14 @@ approved without a body and remain device-only. Account/relay enrollment that
 requires an account binding cannot use that ordinary path. The separate
 `bindAccountIdentity` option is mutually exclusive with `bindVerifiedIdentity`.
 
+For browser account binding, `POST /api/pairing/requests/:requestId/account-consent`
+accepts an empty object and requires a current Device-bound operator session.
+It returns `202 step_up_required` with a transaction and consent review URL;
+the POST itself grants nothing. A fresh user-verified passkey on the consent
+origin commits the pinned request and account only after rechecking their state
+and the operator session. The existing `confirm` endpoint remains the host CLI
+path for `bindAccountIdentity`; ordinary unbound approvals are unchanged.
+
 A successful binding response includes `personBindingApproved: true`; callers
 must require that acknowledgement. The subsequent one-time exchange persists
 the binding with the Device credential, including provider/subject and approval

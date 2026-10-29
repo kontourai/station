@@ -234,12 +234,18 @@ entry sends `requireAccountBinding: true` with a fresh client-instance
 correlation; Station attaches an optional
 `accountCandidate` containing the provider-verified `issuer`, opaque `subject`
 and display name. A client cannot nominate or replace that candidate. The
-operator reviews it and confirms with `{ "bindAccountIdentity": true }`.
-This flag is mutually exclusive with the existing
+operator reviews it in pairing management and confirms the account-bound
+request with a fresh operator passkey on the consent origin. The host CLI
+continues to confirm with `{ "bindAccountIdentity": true }`. This flag is mutually exclusive with the existing
 `bindVerifiedIdentity` Tailnet-person approval. Confirmation returns the
 bounded `principalBinding` receipt, including its account kind, issuer,
 subject, display name, approval ID, approver and time. Station rechecks the
-provider session and operator credential after reading the confirmation body.
+provider session and operator credential after reading the CLI confirmation body.
+For the browser transaction, Station rechecks the pending request, candidate,
+provider session and operator session at commit. A browser without an operator
+session must [enroll and sign in with an owner passkey](operator-passkeys.md).
+Notifications hand account-bound requests to pairing management without
+projecting the account identity into the attention item.
 
 The exchanged Device must present a current account for that exact
 issuer/subject on protected resource requests, apart from the narrowly scoped

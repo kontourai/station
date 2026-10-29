@@ -147,6 +147,9 @@ accepted read disclosure: app-origin plugin code can read
 stamps `operator-session`, never `operator-credential`. Ordinary bearer/Device
 admission runs first; an operator cookie cannot block that authority. The
 session path verifies the binding Device and enforces alias/account policy.
+The account-binding consent leaf explicitly selects the operator session even
+when the Device could otherwise approve pairing, and does not accept the Device
+credential as a substitute for the session or the consent-origin assertion.
 S4 admits exact scope/revoke/removal, group, token and passkey-revocation requests
 only to create a transaction: 202, with no mutation. The owning session alone can
 read or review it. Its canonical fingerprint and one-use render nonce bind a
@@ -156,7 +159,8 @@ native consent cannot substitute. The initiating live session may deny through
 the same exact consent-origin and one-use nonce checks without a passkey. Denial
 is terminal and cannot commit a write; a later approval is refused.
 Commit rechecks expected target state and live
-session authority. There is no step-up window. Step-up and automatic status or
+session authority. Account-bound approval also rechecks the provider session,
+issuer and subject before committing the still-pending request. There is no step-up window. Step-up and automatic status or
 inventory refreshes never extend the operator session. Token secrets exist only
 in the initiating commit response, never in the transaction record or later reads.
 
