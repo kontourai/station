@@ -5836,13 +5836,20 @@ nightly build, otherwise `npx @kontourai/station-cli@latest`).
 a non-empty subset of the request's scope, for an ordinary device request only
 (not a delegation, relay or account binding). Omitted, it keeps everything
 requested. Keeping `coding:exec` or `approval:full-access` needs the operator
-credential, a qualifying local-grant credential or that host-issued browser
-session; an `access:approve` Device or
+credential, a qualifying local-grant credential, that host-issued browser
+session, or an operator passkey session followed by per-action review; an `access:approve` Device or
 an unauthenticated approval is refused with 403
 `{ "error": "approval_requires_operator", "operatorCli": "…" }` and may approve
 the rest with them left out. Every such 403 carries `operatorCli`. A device
 pairing **Needs attention** item carries `requestedScope` for an ordinary,
 non-account-bound device request.
+
+A live operator passkey session approving an ordinary Device request receives
+202 `step_up_required` and a transaction review URL. No pairing approval is
+committed until a fresh passkey assertion on the consent origin. The request
+and kept scope are rechecked at commit; delegation, relay, and identity-binding
+requests cannot use this path. A refusal may include `signInUrl` when remote
+operator sign-in is configured.
 
 Sender-side Station peer enrollment is a separate operator-only workflow under
 `/api/environments/peers/enrollments`. Its safe status response never returns the
