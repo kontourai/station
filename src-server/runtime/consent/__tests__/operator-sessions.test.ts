@@ -66,7 +66,7 @@ async function build(
   });
   const operator = await security.initialize();
   const pairing = security.devicePairing;
-  const account = { disabled: false };
+  const account = { disabled: false, subject: 'operator' };
   const issuer = 'urn:station:operator-session-test';
   pairing.setAccountDirectory({
     issuer,
@@ -179,6 +179,25 @@ async function build(
                 contacts: [],
               },
             },
+      sessionReferences: {
+        verify: async (sessionId) =>
+          account.disabled || sessionId !== 'account-session'
+            ? { kind: 'invalid', reason: 'revoked' }
+            : {
+                kind: 'authenticated',
+                session: {
+                  subject: account.subject,
+                  displayName: 'Operator',
+                  sessionId,
+                  authenticatedAt: new Date(clock.now - 1000).toISOString(),
+                  expiresAt: new Date(clock.now + 60_000).toISOString(),
+                  contacts: [],
+                },
+              },
+        revoke: async () => {
+          account.disabled = true;
+        },
+      },
       handle: async () => new Response(null, { status: 404 }),
     },
     () => clock.now,
@@ -251,6 +270,7 @@ async function build(
       isRuntimeRequestPrincipalCurrent(request, security),
     operatorPasskeys: options.hosted ? undefined : enrollment,
     operatorSessions: options.hosted ? undefined : sessionService,
+    accountAuthentication,
   });
   api.get('/api/operator/accounts', (c) =>
     c.json({
@@ -1713,6 +1733,100 @@ describe('per-action operator passkey step-up (#3257 S4)', () => {
       expect(
         h.channel.store.get(h.channel.tenantId, transaction.id)?.status,
       ).toBe('pending');
+    },
+  );
+
+  test('account binding requires a passkey decision for the exact pending request', async () => {
+    const h = await build();
+    const signed = await h.signIn();
+    const offer = h.pairing.createOffer({ endpoint: APP });
+    const pending = h.pairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Member browser',
+      requesterPosition: 'unproven',
+      accountCandidate: {
+        issuer: 'urn:station:operator-session-test',
+        subject: 'operator',
+        displayName: 'Operator',
+      },
+      accountCandidateSessionId: 'account-session',
+      requireAccountBinding: true,
+    });
+    const transaction = await requestChange(
+      h,
+      signed,
+      'POST',
+      `/api/pairing/requests/${pending.requestId}/account-consent`,
+      {},
+    );
+    expect(
+      h.pairing
+        .listRequests()
+        .find((item) => item.requestId === pending.requestId)?.status,
+    ).toBe('pending');
+    const review = await reviewChange(h, signed, transaction.id);
+    expect(review.html).toContain('Member browser');
+    const fromApp = await h.consent.request(
+      `/consent/${transaction.id}/decide`,
+      {
+        method: 'POST',
+        headers: { ...h.headers(), cookie: signed.cookie, origin: APP },
+        body: JSON.stringify({ nonce: review.nonce, decision: 'approve' }),
+      },
+    );
+    expect(fromApp.status).toBe(403);
+    expect(
+      h.pairing.approvedAccountBindingForRequest(pending.requestId),
+    ).toBeUndefined();
+    expect((await commitChange(h, signed, transaction.id, review)).status).toBe(
+      200,
+    );
+    expect(
+      h.pairing.approvedAccountBindingForRequest(pending.requestId)?.candidate
+        .subject,
+    ).toBe('operator');
+    expect((await commitChange(h, signed, transaction.id, review)).status).toBe(
+      409,
+    );
+  });
+
+  test.each(['request denied', 'account changed', 'account revoked'] as const)(
+    'account approval refuses at commit when %s',
+    async (change) => {
+      const h = await build();
+      const signed = await h.signIn();
+      const offer = h.pairing.createOffer({ endpoint: APP });
+      const pending = h.pairing.requestPairing({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        deviceName: 'Member browser',
+        requesterPosition: 'unproven',
+        accountCandidate: {
+          issuer: 'urn:station:operator-session-test',
+          subject: 'operator',
+          displayName: 'Operator',
+        },
+        accountCandidateSessionId: 'account-session',
+        requireAccountBinding: true,
+      });
+      const transaction = await requestChange(
+        h,
+        signed,
+        'POST',
+        `/api/pairing/requests/${pending.requestId}/account-consent`,
+        {},
+      );
+      const review = await reviewChange(h, signed, transaction.id);
+      if (change === 'request denied') h.pairing.denyRequest(pending.requestId);
+      if (change === 'account changed') h.account.subject = 'other';
+      if (change === 'account revoked') h.account.disabled = true;
+      expect(
+        (await commitChange(h, signed, transaction.id, review)).status,
+      ).toBe(409);
+      expect(
+        h.pairing.approvedAccountBindingForRequest(pending.requestId),
+      ).toBeUndefined();
     },
   );
 

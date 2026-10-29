@@ -1323,6 +1323,12 @@ export function HostDevicePairingPanel({
   // device's own access (401 class) — the state `onReconnect` addresses.
   const [authBlocked, setAuthBlocked] = useState(false);
   const [operatorHandoff, setOperatorHandoff] = useState(false);
+  const [accountReview, setAccountReview] = useState<{
+    requestId: string;
+    url: string;
+  } | null>(null);
+  const [accountSignInUrl, setAccountSignInUrl] = useState<string | null>(null);
+  const [accountPasskeyRequired, setAccountPasskeyRequired] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
   // #2228 slice 3: a remembered reachable address (the tailnet or LAN URL the
   // operator last created an offer with for this Station) outranks the active
@@ -1461,7 +1467,19 @@ export function HostDevicePairingPanel({
           setAuthBlocked(false);
           setOperatorHandoff(false);
         }
-        if (requestBody) setRequests(requestBody.requests ?? []);
+        if (requestBody) {
+          setRequests(requestBody.requests ?? []);
+          setAccountReview((review) =>
+            review &&
+            (requestBody.requests ?? []).some(
+              (item: DevicePairingRequest) =>
+                item.requestId === review.requestId &&
+                item.status === 'pending',
+            )
+              ? review
+              : null,
+          );
+        }
         if (deviceBody) setDevices(deviceBody.devices ?? []);
       } catch {
         // Polling is best-effort. A later generation retries without allowing a
@@ -1493,9 +1511,14 @@ export function HostDevicePairingPanel({
     refreshGeneration.current += 1;
     requestActionIdsRef.current.add(request.requestId);
     setRequestActionIds(new Set(requestActionIdsRef.current));
+    let reviewWindow: Window | null = null;
     try {
       const bindPerson = personBindingRequests.has(request.requestId);
       const bindAccount = accountBindingRequests.has(request.requestId);
+      reviewWindow =
+        action === 'approve' && bindAccount
+          ? window.open('about:blank', '_blank')
+          : null;
       // An account binding confirms the request as asked; trimming is for an
       // ordinary device approval.
       const scope =
@@ -1512,18 +1535,73 @@ export function HostDevicePairingPanel({
       };
       const response = await authenticatedFetch(
         `/api/pairing/requests/${request.requestId}${
-          action === 'approve' ? '/confirm' : ''
+          action === 'approve'
+            ? bindAccount
+              ? '/account-consent'
+              : '/confirm'
+            : ''
         }`,
         {
           method: action === 'approve' ? 'POST' : 'DELETE',
-          ...(action === 'approve' && Object.keys(body).length > 0
+          ...(action === 'approve' &&
+          (bindAccount || Object.keys(body).length > 0)
             ? {
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
+                body: JSON.stringify(bindAccount ? {} : body),
               }
             : {}),
         },
       );
+      if (action === 'approve' && bindAccount) {
+        if (response.status === 202) {
+          const result = await response.json();
+          const url = new URL(result.transaction?.reviewUrl);
+          const base = new URL(apiBase);
+          if (
+            result.status !== 'step_up_required' ||
+            typeof result.transaction?.id !== 'string' ||
+            !Number.isFinite(result.transaction?.expiresAt) ||
+            url.protocol !== 'https:' ||
+            url.hostname !== base.hostname ||
+            url.origin === base.origin
+          ) {
+            reviewWindow?.close();
+            throw new Error('Invalid consent review');
+          }
+          setAccountPasskeyRequired(false);
+          setAccountReview({ requestId: request.requestId, url: url.href });
+          if (reviewWindow) {
+            reviewWindow.opener = null;
+            reviewWindow.location.replace(url.href);
+          }
+          return;
+        }
+        reviewWindow?.close();
+        if (response.status === 401 || response.status === 403) {
+          const result = await response.json().catch(() => null);
+          try {
+            const url = new URL(result?.signInUrl);
+            setAccountSignInUrl(
+              url.protocol === 'https:' &&
+                url.hostname === new URL(apiBase).hostname
+                ? url.href
+                : null,
+            );
+          } catch {
+            setAccountSignInUrl(null);
+          }
+          setAccountPasskeyRequired(true);
+          return;
+        }
+        setError(
+          response.status === 404
+            ? 'Update this Station to approve account-bound access in the browser.'
+            : response.status === 409
+              ? 'Identity binding is no longer available for this request. Refresh the account, then pair again.'
+              : 'This account access review is unavailable. Try again.',
+        );
+        return;
+      }
       if (!response.ok) {
         if (
           action === 'approve' &&
@@ -1620,6 +1698,7 @@ export function HostDevicePairingPanel({
       }
       await refresh();
     } catch {
+      reviewWindow?.close();
       setError(
         `This Station could not ${action} that access request. Try again.`,
       );
@@ -2451,6 +2530,45 @@ export function HostDevicePairingPanel({
           onDismiss={() => setRevocation(null)}
           onStopSession={stopSession}
         />
+      )}
+      {accountReview && (
+        <p role="status">
+          Waiting for passkey confirmation.{' '}
+          <a href={accountReview.url} target="_blank" rel="noreferrer">
+            Review access change
+          </a>
+        </p>
+      )}
+      {accountPasskeyRequired && (
+        <p role="status">
+          Approving an invited person’s browser needs an owner passkey.{' '}
+          {accountSignInUrl && (
+            <>
+              <a href={accountSignInUrl} target="_blank" rel="noreferrer">
+                Sign in as operator
+              </a>{' '}
+              or{' '}
+              <a
+                href={accountSignInUrl.replace(
+                  '/operator/sign-in',
+                  '/operator/passkeys/enroll',
+                )}
+                target="_blank"
+                rel="noreferrer"
+              >
+                enroll an owner passkey
+              </a>
+              , then approve again.{' '}
+            </>
+          )}
+          <a
+            href="https://github.com/kontourai/station/blob/main/docs/guides/operator-passkeys.md"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Passkey setup
+          </a>
+        </p>
       )}
       {operatorHandoff && (
         <section

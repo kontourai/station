@@ -12554,6 +12554,86 @@ export function configureDevicePairingHostRoutes(
     }
     return c.json({ requests: pairing.listRequests() });
   });
+  app.post('/api/pairing/requests/:requestId/account-consent', async (c) => {
+    if (isAgentOriginatedRequest(c.req.raw))
+      return c.json({ error: 'authentication_required' }, 403);
+    const body = await readPairingOfferJson(c.req.raw, new Set(['']));
+    if (!body || Object.keys(body).length !== 0)
+      return c.json({ error: 'invalid_request' }, 400);
+    const requestId = c.req.param('requestId');
+    const accountAuthentication = options.accountAuthentication;
+    const snapshot = (): ConsentTargetSnapshot | null => {
+      const request = pairing
+        .listRequests()
+        .find((item) => item.requestId === requestId);
+      const account = pairing.accountCandidateForRequest(requestId);
+      if (
+        !request ||
+        request.status !== 'pending' ||
+        request.kind !== 'device' ||
+        !account ||
+        pairing.isRelayEnrollmentRequest(requestId)
+      )
+        return null;
+      const scope = parsePairingScope(request.scope);
+      if (!scope || scope.some(isProtectedPairingPromotionScope)) return null;
+      return {
+        kind: 'device-access-change',
+        subject: requestId,
+        fingerprint: JSON.stringify({
+          request,
+          account,
+          bindAccountIdentity: true,
+        }),
+      };
+    };
+    const target = snapshot();
+    const account = pairing.accountCandidateForRequest(requestId);
+    const request = pairing
+      .listRequests()
+      .find((item) => item.requestId === requestId);
+    if (!target || !account || !request || !accountAuthentication)
+      return c.json({ error: 'person_binding_unavailable' }, 409);
+    return stepUp(
+      c,
+      target,
+      `Approve access for “${request.deviceName}” and link it to this account.`,
+      snapshot,
+      async (_passkeyId, _sessionId, assertCurrent) => {
+        const verified = await accountAuthentication.verifySessionReference(
+          account.sessionId,
+          new AbortController().signal,
+        );
+        assertCurrent();
+        if (
+          verified.kind !== 'authenticated' ||
+          accountAuthentication.describe().issuer !==
+            account.candidate.issuer ||
+          verified.session.subject !== account.candidate.subject
+        ) {
+          throw new ConsentCommitRefusedError(
+            'The account session is no longer current.',
+            false,
+            'target_changed',
+          );
+        }
+        const confirmation = pairing.confirmRequest(
+          requestId,
+          { kind: 'presented-credential' },
+          { principalId: LOCAL_OPERATOR_PRINCIPAL_ID, kind: 'account' },
+        );
+        return { ...confirmation, personBindingApproved: true };
+      },
+      undefined,
+      [
+        { label: 'Browser', detail: request.deviceName },
+        { label: 'Account', detail: account.candidate.displayName },
+        { label: 'Issuer', detail: account.candidate.issuer },
+        { label: 'Subject', detail: account.candidate.subject },
+        { label: 'Access', detail: request.scope },
+      ],
+    );
+  });
   app.post('/api/pairing/requests/:requestId/confirm', async (c) => {
     const requestId = c.req.param('requestId');
     // station#1490: the ONLY caller-identity signal this handler has. The
