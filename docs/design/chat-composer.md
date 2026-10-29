@@ -16,6 +16,11 @@
 
 ## Interaction stability and conversation continuity
 
+For a memory-exhausted turn restored from history, the dock offers Continue
+only when the conversation window reports that turn eligible. An older server
+without that fact leaves the failure visible without the action. The server
+checks eligibility again when Continue is requested.
+
 Every conversation uses the chat dock's reading surface and header, including
 conversations discovered in another coding app. A quiet "Started in Claude Code"
 (or the observed app name) identifies origin. Discovery is not evidence of running

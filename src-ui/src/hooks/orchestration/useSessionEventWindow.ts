@@ -49,6 +49,7 @@ interface SessionEventWindowReader {
   partialTurnStartEventIds: ReadonlySet<string>;
   /** Stable event-log head captured by the window read. */
   watermark: number;
+  memoryContinuation?: OrchestrationConversationEventWindow['memoryContinuation'];
   /** Present for conversation reads when the newest lineage child is known. */
   currentSessionId?: string;
   /** Per-execution-Session Agent identity for historical transcript rows. */
@@ -260,6 +261,8 @@ export function useSessionEventWindow(
   >([]);
   const [cursor, setCursor] = useState<string | undefined>();
   const [watermark, setWatermark] = useState(0);
+  const [memoryContinuation, setMemoryContinuation] =
+    useState<OrchestrationConversationEventWindow['memoryContinuation']>();
   const [loading, setLoading] = useState(false);
   const [settled, setSettled] = useState(false);
   const [settledRevision, setSettledRevision] = useState<number | undefined>();
@@ -319,6 +322,7 @@ export function useSessionEventWindow(
     requestControllerRef.current = controller;
     setLoading(true);
     setSettled(false);
+    setMemoryContinuation(undefined);
     let fill: { cursor: string; floor: number } | undefined;
     try {
       const capability = await fetchSessionEventWindowCapability(apiBase);
@@ -376,6 +380,7 @@ export function useSessionEventWindow(
       setSessionLineage(page.sessionLineage);
       setHandoffs(page.handoffs ?? []);
       setContextBoundaries(page.contextBoundaries ?? []);
+      setMemoryContinuation(page.memoryContinuation);
       const next = page.events;
       if (namespace) {
         void saveOfflineReading(
@@ -633,6 +638,7 @@ export function useSessionEventWindow(
     setContextBoundaries([]);
     setCursor(undefined);
     setWatermark(0);
+    setMemoryContinuation(undefined);
     setError(undefined);
     setUpgradeRequired(false);
     // A new thread has not been read yet, whatever the previous one reported.
@@ -701,6 +707,7 @@ export function useSessionEventWindow(
       ? partialTurnStartEventIds
       : NO_PARTIAL_TURNS,
     watermark: currentReader ? watermark : 0,
+    memoryContinuation: currentReader ? memoryContinuation : undefined,
     ...(currentReader && currentSessionId ? { currentSessionId } : {}),
     ...(currentReader && sessionLineage ? { sessionLineage } : {}),
     handoffs: currentReader ? handoffs : [],

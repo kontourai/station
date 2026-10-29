@@ -1455,6 +1455,8 @@ export interface OrchestrationConversationEventWindow
   extends OrchestrationSessionEventWindow {
   conversationId: string;
   currentSessionId: string;
+  /** Server's current person-continuation decision; absent on older hosts. */
+  memoryContinuation?: { eligible: boolean; turnId?: string };
   /**
    * Immutable execution-session lineage for this transcript.  A conversation
    * may replace its current Session during a handoff, so a historical turn

@@ -67,3 +67,38 @@ describe('POST /conversations/:id/memory-continuation outcome mapping', () => {
       expect(body.error).not.toMatch(/did not end because/);
   });
 });
+
+test('authorized conversation window carries the coordinator decision', async () => {
+  const eligibility = vi.fn(() => ({ eligible: true, turnId: 'turn-1' }));
+  const route = new Hono().route(
+    '/api/orchestration',
+    createOrchestrationRoutes(
+      {
+        readConversationEventWindow: async () => ({
+          conversationId: 'c-1',
+          currentSessionId: 's-1',
+          events: [],
+          hasMore: false,
+          watermark: 1,
+          handoffs: [],
+          contextBoundaries: [],
+        }),
+      } as never,
+      {
+        eventBus: new EventBus(),
+        logger: { debug: vi.fn(), warn: vi.fn() },
+        getUserId: () => 'person-1',
+        memoryContinuation: { continuationEligibility: eligibility },
+      } as never,
+    ),
+  );
+  const response = await route.request(
+    '/api/orchestration/conversations/c-1/event-window',
+  );
+  expect(response.status).toBe(200);
+  expect((await response.json()).data.memoryContinuation).toEqual({
+    eligible: true,
+    turnId: 'turn-1',
+  });
+  expect(eligibility).toHaveBeenCalledWith('c-1');
+});

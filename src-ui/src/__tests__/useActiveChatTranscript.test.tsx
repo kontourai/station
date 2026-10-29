@@ -4728,12 +4728,16 @@ describe('useActiveChatTranscript stored memory kill', () => {
         (message.content ?? '').startsWith('[SYSTEM_EVENT] [CHAT_ERROR') ||
         (message.contentParts ?? []).some((part) => part.runtimeError === true),
     );
-  async function read(events: ReturnType<typeof event>[]) {
+  async function read(
+    events: ReturnType<typeof event>[],
+    memoryContinuation?: { eligible: boolean; turnId?: string },
+  ) {
     fetchWindow.mockResolvedValue({
       protocolVersion: 1,
       watermark: 20,
       hasMore: false,
       events,
+      memoryContinuation,
     });
     const view = renderHook(() =>
       useActiveChatTranscript('http://station.test', baseSession),
@@ -4753,7 +4757,10 @@ describe('useActiveChatTranscript stored memory kill', () => {
   ])(
     'the newest turn’s kill (%s) becomes the one marker card',
     async (_label, code, message) => {
-      const found = await read(killed('turn-1', code, message));
+      const found = await read(killed('turn-1', code, message), {
+        eligible: true,
+        turnId: 'turn-1',
+      });
       expect(found).toHaveLength(1);
       expect(found[0]).toMatchObject({
         role: 'user',
@@ -4764,11 +4771,14 @@ describe('useActiveChatTranscript stored memory kill', () => {
   );
 
   test('a kill a person has moved on from keeps its projected part, with no card', async () => {
-    const found = await read([
-      ...killed('turn-1', 'engine-memory-exhausted', CURRENT, 2),
-      event('e10', 'turn.started', { turnId: 'turn-2', prompt: 'next' }),
-      event('e11', 'turn.completed', { turnId: 'turn-2' }),
-    ]);
+    const found = await read(
+      [
+        ...killed('turn-1', 'engine-memory-exhausted', CURRENT, 2),
+        event('e10', 'turn.started', { turnId: 'turn-2', prompt: 'next' }),
+        event('e11', 'turn.completed', { turnId: 'turn-2' }),
+      ],
+      { eligible: false, turnId: 'turn-1' },
+    );
     expect(found).toHaveLength(1);
     expect(found[0]?.contentParts?.some((part) => part.runtimeError)).toBe(
       true,
@@ -4777,25 +4787,28 @@ describe('useActiveChatTranscript stored memory kill', () => {
   });
 
   test('a continuation killed in turn gets the card, not the kill it continued', async () => {
-    const found = await read([
-      ...killed('turn-1', 'engine-memory-exhausted', CURRENT, 2),
-      event('e10', 'turn.started', {
-        turnId: 'turn-2',
-        prompt: 'Continue the task from where it stopped.',
-        clientTurnId: `memory-continue-${'a'.repeat(40)}`,
-        clientOrigin: {
-          version: 1,
-          actor: { kind: 'internal' },
-          reported: { surface: 'unknown' },
-        },
-      }),
-      event('e11', 'runtime.error', {
-        turnId: 'turn-2',
-        severity: 'error',
-        code: 'engine-memory-exhausted',
-        message: CURRENT,
-      }),
-    ]);
+    const found = await read(
+      [
+        ...killed('turn-1', 'engine-memory-exhausted', CURRENT, 2),
+        event('e10', 'turn.started', {
+          turnId: 'turn-2',
+          prompt: 'Continue the task from where it stopped.',
+          clientTurnId: `memory-continue-${'a'.repeat(40)}`,
+          clientOrigin: {
+            version: 1,
+            actor: { kind: 'internal' },
+            reported: { surface: 'unknown' },
+          },
+        }),
+        event('e11', 'runtime.error', {
+          turnId: 'turn-2',
+          severity: 'error',
+          code: 'engine-memory-exhausted',
+          message: CURRENT,
+        }),
+      ],
+      { eligible: true, turnId: 'turn-2' },
+    );
     const markers = found.filter((message) =>
       (message.content ?? '').startsWith('[SYSTEM_EVENT] [CHAT_ERROR'),
     );
@@ -4808,21 +4821,24 @@ describe('useActiveChatTranscript stored memory kill', () => {
   ] as const)(
     "the turn's last failure decides, as the server reads it (%s)",
     async (_label, failures, card) => {
-      const found = await read([
-        event('e2', 'turn.started', { turnId: 'turn-1', prompt: 'run' }),
-        ...failures.map((failure, index) =>
-          event(`e${3 + index}`, 'runtime.error', {
-            turnId: 'turn-1',
-            severity: 'error',
-            ...(failure === 'memory'
-              ? { code: 'engine-memory-exhausted', message: CURRENT }
-              : {
-                  code: 'codex-turn-orphaned',
-                  message: 'The Codex turn was orphaned.',
-                }),
-          }),
-        ),
-      ]);
+      const found = await read(
+        [
+          event('e2', 'turn.started', { turnId: 'turn-1', prompt: 'run' }),
+          ...failures.map((failure, index) =>
+            event(`e${3 + index}`, 'runtime.error', {
+              turnId: 'turn-1',
+              severity: 'error',
+              ...(failure === 'memory'
+                ? { code: 'engine-memory-exhausted', message: CURRENT }
+                : {
+                    code: 'codex-turn-orphaned',
+                    message: 'The Codex turn was orphaned.',
+                  }),
+            }),
+          ),
+        ],
+        { eligible: card, turnId: 'turn-1' },
+      );
       expect(
         found.some((message) =>
           (message.content ?? '').startsWith(
@@ -4860,4 +4876,42 @@ describe('useActiveChatTranscript stored memory kill', () => {
       ),
     ).toBe(false);
   });
+
+  test('a turnless later error does not offer Continue without server authority', async () => {
+    const found = await read([
+      ...killed('turn-1', 'engine-memory-exhausted', CURRENT),
+      event('e4', 'runtime.error', {
+        severity: 'error',
+        code: 'stream-disconnected',
+        message: 'later error',
+      }),
+    ]);
+    expect(
+      found.some((message) =>
+        (message.content ?? '').includes(
+          '[CHAT_ERROR:engine-memory-exhausted]',
+        ),
+      ),
+    ).toBe(false);
+  });
+
+  test.each([undefined, { eligible: false, turnId: 'turn-1' }])(
+    'withholds Continue without an eligible fact (%o)',
+    async (fact) => {
+      const found = await read(
+        killed('turn-1', 'engine-memory-exhausted', CURRENT),
+        fact,
+      );
+      expect(
+        found.some((message) =>
+          (message.content ?? '').includes('[CHAT_ERROR'),
+        ),
+      ).toBe(false);
+      expect(
+        found.some((message) =>
+          message.contentParts?.some((part) => part.runtimeError),
+        ),
+      ).toBe(true);
+    },
+  );
 });

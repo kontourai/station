@@ -77,8 +77,6 @@ interface ProjectedTurnFailure {
   startedAt: number;
   /** The turn's newest projected moment. */
   endedAt: number;
-  /** Whether the turn is a continuation Station sent after a memory kill. */
-  memoryContinuation: boolean;
   /** The turn's projected `runtime.error`, when it shows one. */
   failure?: { code?: string; message: string };
 }
@@ -104,21 +102,18 @@ function projectedTurnFailures(
           message: projectedRuntimeErrorRaw(part.content ?? ''),
         }
       : undefined;
-    const memoryContinuation = message.stationMemoryContinuation === true;
     const turn = turns.get(message.turnId);
     if (!turn) {
       turns.set(message.turnId, {
         turnId: message.turnId,
         startedAt: message.timestamp,
         endedAt: message.timestamp,
-        memoryContinuation,
         failure,
       });
       continue;
     }
     turn.startedAt = Math.min(turn.startedAt, message.timestamp);
     turn.endedAt = Math.max(turn.endedAt, message.timestamp);
-    turn.memoryContinuation ||= memoryContinuation;
     turn.failure = failure ?? turn.failure;
   }
   return [...turns.values()].sort((a, b) => a.startedAt - b.startedAt);
@@ -178,34 +173,15 @@ function adoptStoredFailureMarkers(
   });
 }
 
-/**
- * #4266: the card a memory kill read back from stored events gets. Live, the
- * kill appends a `[CHAT_ERROR:code]` marker that `ChatDockBody` renders with
- * Continue; a reopened chat holds only the projected `runtime.error` part,
- * which offers nothing. The marker is recreated for the one kill Continue
- * still applies to, as the server's `continueOnRequest` decides it: the
- * newest turn in the window, or the turn whose only successors are Station's
- * own continuations that have not failed themselves (the card then says
- * Station continued). A continuation that was killed too is that turn.
- * The failure read is the turn's last, as `deadTurn` reads it. A kill a person
- * has moved on from keeps its projected part, read in today's words by
- * `translateProjectedRuntimeError`, with no action. Recognition is the
- * server's own `isEngineMemoryExhaustedFailure`, so a kill stored before
- * #4257 qualifies too; `ChatDockBody` reads it in today's copy.
- */
+/** Recreate a stored failure marker only for the server-authorized turn. */
 function storedMemoryKillMarkers(
   turns: readonly ProjectedTurnFailure[],
   markedTurnIds: ReadonlySet<string>,
+  fact: { eligible: boolean; turnId?: string } | undefined,
 ): ChatMessage[] {
-  let index = turns.length - 1;
-  // A continuation that itself failed is the turn to continue next.
-  while (
-    index > 0 &&
-    turns[index]?.memoryContinuation &&
-    !turns[index]?.failure
-  )
-    index -= 1;
-  const turn = turns[index];
+  const turn = fact?.eligible
+    ? turns.find((item) => item.turnId === fact.turnId)
+    : undefined;
   if (
     !turn?.failure ||
     markedTurnIds.has(turn.turnId) ||
@@ -899,6 +875,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
             .map((message) => message.turnId)
             .filter((turnId): turnId is string => typeof turnId === 'string'),
         ),
+        serverWindow.memoryContinuation,
       ),
     ];
     const markerFailureTurnIds = new Set(
@@ -1031,6 +1008,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     session.stopSettledTurnId,
     changedFilesByTurn,
     window.events,
+    serverWindow.memoryContinuation,
     stitchedEvents,
     partialTurnStartEventIds,
     window.sessionLineage,

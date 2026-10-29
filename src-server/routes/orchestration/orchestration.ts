@@ -2131,7 +2131,7 @@ export function createOrchestrationRoutes(
      */
     memoryContinuation?: Pick<
       MemoryExhaustionContinuation,
-      'continueOnRequest'
+      'continueOnRequest' | 'continuationEligibility'
     >;
     delegationResults?: Pick<
       DelegationResultDelivery,
@@ -5525,7 +5525,20 @@ export function createOrchestrationRoutes(
     );
     if (!data)
       return c.json({ success: false, error: 'Conversation not found' }, 404);
-    return c.json({ success: true, data });
+    return c.json({
+      success: true,
+      data: {
+        ...data,
+        ...(deps.memoryContinuation
+          ? {
+              memoryContinuation:
+                deps.memoryContinuation.continuationEligibility(
+                  param(c, 'conversationId'),
+                ),
+            }
+          : {}),
+      },
+    });
   });
 
   /**

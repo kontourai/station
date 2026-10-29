@@ -187,6 +187,38 @@ describe('automatic continuation after a memory kill', () => {
     reason: 'memory-exhausted',
   });
 
+  test.each(['memory', 'retriable', 'continuation', 'turnless'] as const)(
+    'read eligibility matches a person Continue for %s',
+    (scenario) => {
+      const continuation = coordinator();
+      const turnId = killedTurn(
+        'thread-a',
+        scenario === 'continuation'
+          ? { continuation: memoryContinuationKey('thread-a', 'earlier') }
+          : {},
+      );
+      if (scenario === 'retriable' || scenario === 'turnless')
+        append('thread-a', {
+          method: 'runtime.error',
+          ...(scenario === 'retriable' ? { turnId } : {}),
+          severity: 'error',
+          code: 'stream-disconnected',
+          message: 'later error',
+          retriable: true,
+        });
+      const fact = continuation.continuationEligibility('thread-a');
+      const result = continuation.continueOnRequest({
+        conversationId: 'thread-a',
+        actor: { userId: 'person-1' },
+      });
+      expect(fact.eligible).toBe(result.kind === 'queued');
+      expect(fact.eligible).toBe(
+        scenario === 'memory' || scenario === 'continuation',
+      );
+      if (fact.eligible) expect(fact.turnId).toBe(turnId);
+    },
+  );
+
   test('continues once, with the continuation text under the dead-turn key', () => {
     const continuation = coordinator();
     const turnId = killedTurn('thread-a');
