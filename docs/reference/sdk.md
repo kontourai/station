@@ -6000,6 +6000,12 @@ or package publication.
 
 ## Qualified report groups
 
+`finalizeReportGroupContinuation` sends a finalizer operation key, expected
+revision and original continuation operation key. Current Station serving
+refuses it with `report_continuation_finalizer_unavailable` pending the released
+replay-authentication fix; a 404 from an older host is reported as unsupported.
+
+
 `@kontourai/station-sdk/client` exports `createReportGroup`, `getReportGroup`,
 `listReportGroups`, `cancelReportGroup`, `finalizeReportGroupCancel`, `readReportGroupEvents`,
 `subscribeReportGroupEvents`, `readReportGroupResult`, `syncReportGroupContext`

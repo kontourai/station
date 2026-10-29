@@ -184,6 +184,16 @@ function view(value: Historical): ReportGroupView {
   };
 }
 
+// Flow Agents 9.9.0 does not authenticate the retained winner on exact
+// finalizer replay. Enable only after a released, verified contract does.
+const CONTINUATION_FINALIZER_AVAILABLE = false;
+export class ReportContinuationUnavailable extends Error {
+  readonly code = 'report_continuation_finalizer_unavailable';
+  constructor() {
+    super('Report continuation finalization is unavailable.');
+  }
+}
+
 /** One personal-host custody root. Qualification is lazy so historical reads and
  * exact replay remain available when a provider profile expires. */
 export class StationReportGroupRuntime {
@@ -194,6 +204,7 @@ export class StationReportGroupRuntime {
   readonly #renewal: StationReportGroupRenewal;
   readonly #dispatch: FileAuthorizationLedger;
   readonly #wireIntents: FileFinalWireIntentStore;
+  readonly #sources: LocalSourceAdmissionOwner;
   constructor(
     private readonly owners: {
       publicationParticipant?: import('../../runtime/bootstrap/runtime-publication-participant.js').RuntimePublicationParticipant;
@@ -231,6 +242,7 @@ export class StationReportGroupRuntime {
       owners.runtime.environmentSecurityService,
       sourcesRoot,
     );
+    this.#sources = sources;
     const wireIntents = new FileFinalWireIntentStore(root);
     this.#wireIntents = wireIntents;
     this.#retainedTurns = new StationReportRetainedTurns({
@@ -445,6 +457,32 @@ export class StationReportGroupRuntime {
     command: ReportGroupContextSyncInput,
   ) {
     const result = await this.#continuation.sync(context, groupId, command);
+    const historical = await this.#custody.inspectForMutation(context, groupId);
+    if (!historical) throw new StationReportCustodyUnavailable();
+    return { replayed: result.replayed, group: view(historical) };
+  }
+  async finalizeContinuation(
+    context: RuntimeSourceRequestContext,
+    groupId: string,
+    command: {
+      operationKey: string;
+      expectedRevision: number;
+      continuationOperationKey: string;
+    },
+  ) {
+    if (!CONTINUATION_FINALIZER_AVAILABLE)
+      throw new ReportContinuationUnavailable();
+    const participant = this.owners.publicationParticipant;
+    if (!isRuntimePublicationParticipant(participant))
+      throw new StationReportCustodyUnavailable();
+    const result = await this.#custody.finalizeContinuation(
+      context,
+      groupId,
+      command,
+      this.#dispatch,
+      this.#sources,
+      participant,
+    );
     const historical = await this.#custody.inspectForMutation(context, groupId);
     if (!historical) throw new StationReportCustodyUnavailable();
     return { replayed: result.replayed, group: view(historical) };

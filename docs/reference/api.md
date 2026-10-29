@@ -2115,6 +2115,14 @@ owns the protocol, saved authority and failure limits.
 
 ## Report groups
 
+The source endpoint `POST /api/orchestration/report-groups/:groupId/continuation/finalize`
+accepts an operation key, expected revision and original continuation operation
+key. It currently returns `report_continuation_finalizer_unavailable`: installed
+Flow Agents 9.9.0 does not authenticate the retained winner on an exact
+finalizer replay. No provider work or receipt publication is attempted. A later
+released, verified Flow contract and Station owner-boundary proof are required
+before enabling it.
+
 The personal host mounts `/api/orchestration/report-groups` for bounded reports
 using configured Station Agents and the qualified sealed SDK profile. Requests
 can be independent advisory reports or explicitly bound to a Project Flow run.

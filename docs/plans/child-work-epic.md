@@ -11,9 +11,12 @@ Station selects the registry Flow Agents 9.9.0 and Flow 5.4.0 packages. The
 installed rounds module and type bytes match the 9.9.0 artifact. The source owner
 can authenticate a historical Flow location by joining signed report admission,
 member envelope and the retained signed source snapshot, without re-preparing
-source execution. That locator is not yet wired to a continuation finalizer.
+source execution. A metadata-only adapter now joins that locator with the
+bootstrap participant, home writer and retained receipt owner, but its route is
+disabled while 9.9.0 exact-finalizer replay lacks winner authentication. The
+released patch, real owner race/fault proof and enabled serving remain open.
 Missing or altered location evidence refuses; no provider execution or #91
-completion follows from the pin.
+completion follows from this work.
 
 ## Private publication lifetime (#91)
 
@@ -22,9 +25,9 @@ participant. The existing report sync finalizer holds it through its rounds
 transaction and response readback. Shutdown stops new admissions first and joins
 admitted work before closing dependent services or releasing the home; a pending
 join leaves those dependencies and the lease intact for a later attempt. This is
-not the new public continuation finalizer, does not create provider authority,
-and does not complete #91. The published Flow contract and metadata adapter
-remain separately required.
+not a provider authority and does not complete #91. The metadata continuation
+route remains disabled until the patched public Flow contract and its composed
+owner proofs are verified.
 
 ## Portable delegation-group source split (#91)
 

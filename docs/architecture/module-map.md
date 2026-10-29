@@ -2133,6 +2133,12 @@ recovery handle nor read access grants execution or authority to answer a reques
 
 ## StationReportGroupRuntime
 
+The continuation-finalizer route is mounted but disabled while the installed
+Flow Agents 9.9.0 exact-finalizer replay does not authenticate retained winner
+bytes. Its metadata-only adapter is not a provider execution grant and is not
+qualified until the patched public package and owner-boundary tests pass.
+
+
 [StationReportGroupRuntime](../../src-server/services/orchestration/station-report-group-runtime.ts)
 composes one private personal-host custody root with signed admissions, published
 AccountingV1 rounds/V3 authority, canonical reserved task dispatch and sealed SDK

@@ -129,6 +129,11 @@ export type ReportGroupContextSyncInput = {
   flowHead: string;
   text: string;
 };
+export type ReportGroupFinalizeContinuationInput = {
+  operationKey: string;
+  expectedRevision: number;
+  continuationOperationKey: string;
+};
 export type ReportGroupFinalizeSyncInput = {
   operationKey: string;
   expectedRevision: number;

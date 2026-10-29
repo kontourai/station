@@ -13,6 +13,7 @@ import {
   type ReportGroupContextSyncInput,
   type ReportGroupEventPage,
   type ReportGroupFinalizeCancelInput,
+  type ReportGroupFinalizeContinuationInput,
   type ReportGroupFinalizeSyncInput,
   type ReportGroupInput,
   type ReportGroupInputSyncInput,
@@ -49,6 +50,7 @@ export type {
   ReportGroupContinuation,
   ReportGroupEventPage,
   ReportGroupFinalizeCancelInput,
+  ReportGroupFinalizeContinuationInput,
   ReportGroupFinalizeSyncInput,
   ReportGroupInput,
   ReportGroupInputSyncInput,
@@ -600,6 +602,42 @@ export async function syncReportGroupContext(
     throw new ReportGroupProtocolError('Unexpected context sync operation.');
   return result;
 }
+export class ReportGroupContinuationUnsupportedError extends Error {
+  constructor() {
+    super(
+      'This host does not support report continuation finalization. Updating the host may resolve this.',
+    );
+  }
+}
+
+export async function finalizeReportGroupContinuation(
+  base: string,
+  groupId: string,
+  input: ReportGroupFinalizeContinuationInput,
+  options?: ClientRequestOptions,
+): Promise<ReportGroupOperation> {
+  const sent = cancelInput
+    .extend({ continuationOperationKey: id })
+    .strict()
+    .parse(input);
+  let response: unknown;
+  try {
+    response = await post(
+      `${path(base, groupId)}/continuation/finalize`,
+      sent,
+      options,
+    );
+  } catch (error) {
+    if (error instanceof StationHttpError && error.status === 404)
+      throw new ReportGroupContinuationUnsupportedError();
+    throw error;
+  }
+  const result = operation.parse(response);
+  if (result.group.groupId !== groupId)
+    throw new ReportGroupProtocolError('Unexpected continuation group.');
+  return result;
+}
+
 export async function finalizeReportGroupSync(
   base: string,
   groupId: string,

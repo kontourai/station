@@ -233,6 +233,21 @@ test.each(['independent', 'flow', 'mixed'] as const)(
       );
     let watchdog: ReturnType<typeof setTimeout> | undefined;
     try {
+      const disabled = await send(
+        'POST',
+        '/unmaterialized/continuation/finalize',
+        {
+          operationKey: 'final',
+          expectedRevision: 0,
+          continuationOperationKey: 'original',
+        },
+      );
+      assert.equal(disabled.status, 503);
+      assert.deepEqual(await disabled.json(), {
+        success: false,
+        code: 'report_continuation_finalizer_unavailable',
+      });
+      assert.equal(h.rawFetch.mock.calls.length, 0);
       assert.equal(qualifies.mock.calls.length, 0);
       assert.equal(
         (await send('POST', '', input, undefined, false)).status,

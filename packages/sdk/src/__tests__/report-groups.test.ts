@@ -2,11 +2,13 @@ import { afterEach, expect, test, vi } from 'vitest';
 import {
   continueReportGroupReport,
   createReportGroup,
+  finalizeReportGroupContinuation,
   finalizeReportGroupSync,
   listReportGroups,
   narrowReportGroupAfterInput,
   parseReportGroupInput,
   type ReportGroupContextSyncView,
+  ReportGroupContinuationUnsupportedError,
   ReportGroupProtocolError,
   ReportGroupRecoveryUnsupportedError,
   readReportGroupEvents,
@@ -498,4 +500,34 @@ test('an older host reports unsupported recovery without retry', async () => {
     }),
   ).rejects.toBeInstanceOf(ReportGroupRecoveryUnsupportedError);
   expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+test('continuation finalization sends one exact operation and reports older hosts unsupported', async () => {
+  const fetch = vi.fn<typeof globalThis.fetch>(
+    async () =>
+      new Response(JSON.stringify({ success: false, code: 'not_found' }), {
+        status: 404,
+      }),
+  );
+  vi.stubGlobal('fetch', fetch);
+  const input = {
+    operationKey: 'final-1',
+    expectedRevision: 7,
+    continuationOperationKey: 'original-1',
+  };
+  await expect(
+    finalizeReportGroupContinuation(base, 'group-1', input),
+  ).rejects.toBeInstanceOf(ReportGroupContinuationUnsupportedError);
+  expect(fetch).toHaveBeenCalledOnce();
+  expect(String(fetch.mock.calls[0]![0])).toBe(
+    'https://report.test/api/orchestration/report-groups/group-1/continuation/finalize',
+  );
+  expect(JSON.parse(String(fetch.mock.calls[0]![1]?.body))).toEqual(input);
+  await expect(
+    finalizeReportGroupContinuation(base, 'group-1', {
+      ...input,
+      expectedRevision: -1,
+    }),
+  ).rejects.toThrow();
+  expect(fetch).toHaveBeenCalledOnce();
 });

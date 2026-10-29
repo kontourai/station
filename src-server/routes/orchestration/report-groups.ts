@@ -1,4 +1,5 @@
 import { DelegationContractV2Error } from '@kontourai/flow-agents/delegation-authority-contract';
+import { ContinuationPublicationUncertainError } from '@kontourai/flow-agents/delegation-group-rounds';
 import {
   REPORT_GROUP_CONTEXT_LIMITS,
   REPORT_GROUP_RENEWAL_LIMITS,
@@ -13,7 +14,10 @@ import {
   readGroupStreamCursor,
   watchGroupPages,
 } from '../../services/orchestration/delegation-group-transport.js';
-import type { StationReportGroupRuntime } from '../../services/orchestration/station-report-group-runtime.js';
+import {
+  ReportContinuationUnavailable,
+  type StationReportGroupRuntime,
+} from '../../services/orchestration/station-report-group-runtime.js';
 import { streamSSE } from '../sse-response.js';
 
 const id = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/);
@@ -82,6 +86,13 @@ export function createReportGroupRoutes(
     } catch (error) {
       if (error instanceof z.ZodError || error instanceof SyntaxError)
         return c.json({ success: false, code: 'report_group_invalid' }, 400);
+      if (error instanceof ContinuationPublicationUncertainError)
+        return c.json(
+          { success: false, code: error.code, publicationStatus: error.status },
+          503,
+        );
+      if (error instanceof ReportContinuationUnavailable)
+        return c.json({ success: false, code: error.code }, 503);
       if (error instanceof DelegationContractV2Error)
         return c.json({ success: false, code: 'report_group_conflict' }, 409);
       return c.json({ success: false, code: 'report_group_unavailable' }, 503);
@@ -258,6 +269,20 @@ export function createReportGroupRoutes(
         c,
         id.parse(c.req.param('groupId')),
         await body(c, REPORT_GROUP_RENEWAL_LIMITS.requestBytes),
+      );
+    }),
+  );
+  app.post('/:groupId/continuation/finalize', (c) =>
+    respond(c, async (owner) => {
+      noQuery(c);
+      const input = cancel
+        .extend({ continuationOperationKey: id })
+        .strict()
+        .parse(await body(c));
+      return owner.finalizeContinuation(
+        c,
+        id.parse(c.req.param('groupId')),
+        input,
       );
     }),
   );

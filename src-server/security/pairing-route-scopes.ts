@@ -4247,6 +4247,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'POST',
       path: '/api/orchestration/report-groups/:groupId/sync/finalize',
     },
+    {
+      method: 'POST',
+      path: '/api/orchestration/report-groups/:groupId/continuation/finalize',
+    },
     { method: 'GET', path: '/api/orchestration/report-groups/:groupId' },
     {
       method: 'POST',

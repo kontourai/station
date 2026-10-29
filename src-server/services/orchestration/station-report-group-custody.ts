@@ -13,6 +13,7 @@ import {
   rootAuthorityReferenceV2,
 } from '@kontourai/flow-agents/delegation-envelope-v2';
 import {
+  ContinuationPublicationUncertainError,
   createDelegationRoundsController,
   type DelegationRoundsHost,
 } from '@kontourai/flow-agents/delegation-group-rounds';
@@ -24,6 +25,7 @@ import type {
 } from '@kontourai/station-contracts/report-group';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { createOrchestrationRequestPrincipalResolver } from '../../runtime/bootstrap/orchestration-request-principal.js';
+import { isRuntimePublicationParticipant } from '../../runtime/bootstrap/runtime-publication-participant.js';
 import { createPersonalRuntimeRequestGuard } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import {
   captureEnvironmentLocalGrantObservationOwner,
@@ -913,6 +915,230 @@ export class StationReportGroupCustody {
     });
     owner.current();
     return result;
+  }
+
+  // UNWIRED(#91): held off until released replay authentication and owner proof.
+  /** Close only an already-recorded Flow continuation; this cannot execute work. */
+  async finalizeContinuation(
+    context: RuntimeSourceRequestContext,
+    groupId: string,
+    input: {
+      operationKey: string;
+      expectedRevision: number;
+      continuationOperationKey: string;
+    },
+    dispatchLedger: AuthorizationLedger,
+    sources: import('./delegation-group-source-admission.js').LocalSourceAdmissionOwner,
+    participant: import('../../runtime/bootstrap/runtime-publication-participant.js').RuntimePublicationParticipant,
+  ) {
+    id(groupId);
+    id(input.operationKey);
+    id(input.continuationOperationKey);
+    if (
+      !Number.isSafeInteger(input.expectedRevision) ||
+      input.expectedRevision < 0
+    )
+      refuse();
+    if (!isRuntimePublicationParticipant(participant)) refuse();
+    participant.assertHome(this.owners.environment.getProjectHomeDir());
+    const captured = await this.#context(context, 'POST');
+    const parent = participant.acquire();
+    let hold: Awaited<ReturnType<HomeWriterOwner['acquire']>> | undefined;
+    const execute = async () => {
+      const writer = await HomeWriterOwner.forHome(
+        this.owners.environment.getProjectHomeDir(),
+      );
+      hold = await writer.acquire(context.req.raw.signal);
+      const held = hold;
+      const baseCurrent = (): undefined => {
+        parent.assertCurrent();
+        writer.runWithLease(held, captured.current);
+        return undefined;
+      };
+      const authorized = { ...captured, current: baseCurrent };
+      const before = await this.#inspect(authorized, groupId);
+      const group = before?.group;
+      const root = before?.authority?.epochs.at(-1)?.root;
+      if (!before || !group || !root || group.spec.topology.kind !== 'flow')
+        refuse();
+      const record = await this.owners.persistence.readReportAdmission(
+        groupId,
+        baseCurrent,
+      );
+      if (!record || !same(record.data, before.admission)) refuse();
+      const locations: Array<{ cwd: string; assertCurrent(): undefined }> = [];
+      for (const member of before.admission.members) {
+        const envelopes = before.admission.envelopes.filter(
+          (entry) => entry.execution_id === member.reservedTaskId,
+        );
+        if (envelopes.length !== 1) refuse();
+        locations.push(
+          await sources.readHistoricalFlowLocation({
+            source: envelopes[0]!.execution_binding.source,
+            subject: { groupId, workItemId: member.reservedTaskId },
+            admission: record,
+            principalId: captured.principal.id,
+            hostContextId: captured.lease.hostContextId,
+            current: baseCurrent,
+          }),
+        );
+      }
+      const cwd = locations[0]?.cwd;
+      if (!cwd || locations.some((location) => location.cwd !== cwd)) refuse();
+      const current = (): undefined => {
+        baseCurrent();
+        for (const location of locations) location.assertCurrent();
+        return undefined;
+      };
+      current();
+      const service = createDelegationAuthorityServiceV3(
+        this.owners.persistence.roundsAuthorityStore(current),
+        {
+          now: () => new Date().toISOString(),
+          authorize: async (action, candidate) => {
+            current();
+            return action === 'inspect' && same(candidate, root);
+          },
+          confirmExecution: async () => false,
+          authenticateRenewal: async () => null,
+        },
+        { maxRenewals: 0 },
+      );
+      const command = {
+        kind: 'finalizeContinuation' as const,
+        groupId,
+        ...input,
+        controller: group.spec.controller,
+      };
+      const controller = createDelegationRoundsController({
+        store: this.owners.persistence.roundsStore(current),
+        authorityService: service,
+        dispatchLedger,
+        cwd,
+        host: {
+          authorize: async ({
+            action,
+            groupId: candidate,
+            current: projection,
+            command: sent,
+          }) => {
+            current();
+            return ['finalizeContinuation', 'replay'].includes(action) &&
+              candidate === groupId &&
+              (!projection || same(projection.spec, group.spec)) &&
+              (!sent || same(sent, command))
+              ? root.authenticated_principal_ref
+              : null;
+          },
+          retainContinuation: async (spec, receipt) => {
+            current();
+            if (!same(spec, group.spec)) refuse();
+            return this.owners.persistence.retainReportContinuation(
+              groupId,
+              receipt,
+              current,
+            );
+          },
+          loadContinuation: async (spec, reference) => {
+            current();
+            if (!same(spec, group.spec)) refuse();
+            return this.owners.persistence.loadReportContinuation(
+              groupId,
+              reference,
+              current,
+            );
+          },
+          executionHost: () => refuse(),
+          prepareRequest: async () => refuse(),
+          retainObservation: async () => refuse(),
+          confirmTerminal: async () => refuse(),
+          requestDescendantCancellation: async () => refuse(),
+          flow: {
+            executionHost: () => refuse(),
+            confirmRetainedResult: async () => false,
+            retainEvaluation: async () => refuse(),
+            acquireContinuationPublication: async (original) => {
+              current();
+              if (
+                original.action !== 'finalizeContinuation' ||
+                !original.finalizerCommand ||
+                !same(original.finalizerCommand, command) ||
+                !same(original.originalSpec, group.spec) ||
+                original.originalCommand.operationKey !==
+                  input.continuationOperationKey ||
+                !/^[a-f0-9]{64}$/.test(original.originalPrefixDigest)
+              )
+                refuse();
+              const inner = parent.borrow();
+              let released = false;
+              const assertCurrent = (): undefined => {
+                if (released) refuse();
+                current();
+                inner.assertCurrent();
+                return undefined;
+              };
+              return {
+                assertCurrent,
+                flowAdmission: {
+                  acquire: async () => {
+                    assertCurrent();
+                    const child = parent.borrow();
+                    return {
+                      assertCurrent: (): undefined => {
+                        assertCurrent();
+                        child.assertCurrent();
+                        return undefined;
+                      },
+                      release: async () => {
+                        child.release();
+                      },
+                    };
+                  },
+                },
+                release: async () => {
+                  if (!released) {
+                    inner.release();
+                    released = true;
+                  }
+                },
+              };
+            },
+          },
+        },
+      });
+      const result = await controller.finalizeContinuation(command);
+      current();
+      return result;
+    };
+    let outcome:
+      | { ok: true; value: Awaited<ReturnType<typeof execute>> }
+      | { ok: false; error: unknown };
+    try {
+      outcome = { ok: true, value: await execute() };
+    } catch (error) {
+      outcome = { ok: false, error };
+    }
+    const cleanupFailure = (error: unknown) =>
+      new ContinuationPublicationUncertainError(
+        outcome.ok ||
+          (outcome.error instanceof ContinuationPublicationUncertainError &&
+            outcome.error.status === 'published-cleanup-unknown')
+          ? 'published-cleanup-unknown'
+          : 'publication-unknown',
+        outcome.ok ? [error] : [outcome.error, error],
+      );
+    try {
+      if (hold) await hold.release();
+    } catch (error) {
+      throw cleanupFailure(error);
+    }
+    try {
+      parent.release();
+    } catch (error) {
+      throw cleanupFailure(error);
+    }
+    if (!outcome.ok) throw outcome.error;
+    return outcome.value;
   }
 
   async finalizeSync(
