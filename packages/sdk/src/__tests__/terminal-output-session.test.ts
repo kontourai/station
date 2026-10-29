@@ -108,7 +108,7 @@ async function authenticate(socket: Socket, replayThrough?: number) {
   await flush();
   socket.message({ type: 'authenticated', protocolVersion: 1 });
   await flush();
-  const attach = socket.sent.at(-1)!;
+  const attach = socket.sent[socket.sent.length - 1]!;
   socket.message({
     type: 'attached',
     channel: 1,
@@ -270,7 +270,7 @@ describe('terminal output session', () => {
     });
     await ready(socket);
     await connected;
-    expect(f.states.at(-1)).toBe('ready');
+    expect(f.states[f.states.length - 1]).toBe('ready');
     expect(socket.sent.map((item) => item.type)).toEqual([
       'auth',
       'attach',
@@ -341,7 +341,7 @@ describe('terminal output session', () => {
       await authenticate(f.sockets[i + 1]);
       await ready(f.sockets[i + 1]);
     }
-    expect(f.states.at(-1)).toBe('ready');
+    expect(f.states[f.states.length - 1]).toBe('ready');
   });
 
   test('consecutive failed connections exhaust the reconnect budget', async () => {
@@ -488,7 +488,7 @@ describe('terminal output session', () => {
     );
     await flush();
     await vi.advanceTimersByTimeAsync(6000);
-    const stateWhileBlocked = f.states.at(-1);
+    const stateWhileBlocked = f.states[f.states.length - 1];
     const cursorWhileBlocked = f.session.appliedThrough;
     const prematureAcknowledgements = socket.sent.filter(
       (item) => item.type === 'ack' && item.seq === 1,
@@ -586,7 +586,7 @@ describe('terminal output session', () => {
     expect(
       socket.sent.filter((item) => item.type === 'ack').map((item) => item.seq),
     ).toEqual([0, 8]);
-    expect(f.states.at(-1)).toBe('ready');
+    expect(f.states[f.states.length - 1]).toBe('ready');
   });
 
   test('progress for the last applied frame cannot send a late ACK across reset', async () => {
@@ -621,7 +621,7 @@ describe('terminal output session', () => {
     expect(
       socket.sent.filter((item) => item.type === 'ack').map((item) => item.seq),
     ).toEqual([1, 8]);
-    expect(f.states.at(-1)).toBe('ready');
+    expect(f.states[f.states.length - 1]).toBe('ready');
   });
 
   test('a 4401 close before open is a terminal refusal and later connect stays failed', async () => {
@@ -698,7 +698,7 @@ describe('terminal output session', () => {
     await rejected;
     expect(f.session.appliedThrough).toBe(0);
     expect(socket.sent.some((item) => item.type === 'ack')).toBe(false);
-    expect(f.states.at(-1)).toBe('failed');
+    expect(f.states[f.states.length - 1]).toBe('failed');
   });
 
   test('dispose settles a waiting caller and cannot start a late credential socket', async () => {
@@ -714,7 +714,7 @@ describe('terminal output session', () => {
     credential.resolve({ credential: 'late', origin: 'http://127.0.0.1:4198' });
     await flush();
     expect(f.sockets).toHaveLength(0);
-    expect(f.states.at(-1)).toBe('disposed');
+    expect(f.states[f.states.length - 1]).toBe('disposed');
   });
 
   test('broker refusal occurs before credential resolution or raw socket creation', async () => {
