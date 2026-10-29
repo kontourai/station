@@ -9,7 +9,10 @@ import {
 import { join } from 'node:path';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
-import { MCPLocalConnectionCustody } from '@kontourai/station-shared/mcp';
+import {
+  createMCPTransport,
+  MCPLocalConnectionCustody,
+} from '@kontourai/station-shared/mcp';
 import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -323,6 +326,34 @@ function filesUnder(dir: string): string[] {
     return statSync(path).isDirectory() ? filesUnder(path) : [path];
   });
 }
+
+describe("Station's OAuth provider requires its fetch guard at the transport factory", () => {
+  test('the real provider and its consent proxy are refused without authorizationFetch, and accepted with it', () => {
+    const env = setup();
+    const provider = new StationToolServerOAuthProvider(
+      toolServerCredentialStoreFor(env.home, INSTANCE_CREDENTIAL_OWNER),
+      SERVER,
+      `${ORIGIN}/mcp`,
+      `http://127.0.0.1:${PORT}/integrations/${SERVER}/oauth/callback`,
+    );
+    const def = {
+      id: SERVER,
+      kind: 'mcp' as const,
+      transport: 'streamable-http' as const,
+      endpoint: `${ORIGIN}/mcp`,
+    };
+    for (const authProvider of [provider, provider.forAuthorization()]) {
+      expect(() => createMCPTransport(def, authProvider)).toThrow(
+        'requires its authorization fetch guard',
+      );
+      expect(() =>
+        createMCPTransport(def, authProvider, (fetch) =>
+          provider.authorizationFetch(fetch),
+        ),
+      ).not.toThrow();
+    }
+  });
+});
 
 describe('pre-registered OAuth client on a server without DCR', () => {
   test('a confidential client authenticates with Basic at consent and on refresh, and never registers', async () => {
