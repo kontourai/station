@@ -44,6 +44,19 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* "Runs on …" with nothing else to choose is plain text, not a control: it
+   keeps the chip's metrics (`.choice-trigger` on a span; hover styling is
+   button-only) so the row does not jump when a choice appears, without the
+   caret or pointer. */
+.start-composer__station--fixed {
+  cursor: default;
+  /* A span does not get the global `button { line-height: 1.4 }`, so its
+     text sat about 1px below the Project chip's beside it. */
+  line-height: 1.4;
+}
+.start-composer__station-mark {
+  flex: none;
+}
 .start-composer__project:disabled {
   opacity: 1;
   cursor: default;
@@ -381,6 +394,14 @@
 .start-menu__list .new-chat-modal__dropdown-item-label {
   flex: 0 0 auto;
   max-width: 60%;
+}
+/* A Station row's kind: quiet text beside the name, not a path. */
+.start-menu__detail {
+  overflow: hidden;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* An icon and a colour dot take the same 24px column, so names line up. */
 .start-menu__mark {

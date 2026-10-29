@@ -1,109 +1,76 @@
 import type { EnvironmentRef } from '@kontourai/station-contracts/execution-target';
-import type { DelegatedTaskHandle } from '@kontourai/station-sdk';
-import { lazy, Suspense, useRef, useState } from 'react';
-import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
-import { useDevicePresentation } from '../../hooks/useDevicePresentation';
-import { currentStationName } from '../../hooks/useExecutionStationCatalog';
-import { ArrowDownGlyph } from '../icons/Glyph';
-import { SkeletonList } from '../state';
+import {
+  effectiveExecutionStationId,
+  useExecutionStations,
+} from '../../hooks/useExecutionStationCatalog';
+import { ArrowDownGlyph, MonitorGlyph } from '../icons/Glyph';
 
-const DelegationLauncher = lazy(() =>
-  import('../chat-dock/DelegationLauncher').then((module) => ({
-    default: module.DelegationLauncher,
-  })),
-);
-
-/** Remote tasks retain the launcher's portable Project and receiver admission. */
+/**
+ * Names the Station this start runs on ("Runs on brian-media"). When the
+ * server reports another Station this caller may run on, it is a picker
+ * trigger: `onOpen` opens the start menus' Station list, which only chooses
+ * the destination — Start still does the starting. With nothing else to
+ * choose (or before the caller's Station reads have answered), it is plain
+ * text: no button, no caret, nothing to tap.
+ */
 export function StartStationControl({
-  prompt,
-  projectSlug,
-  projectName,
-  defaultEnvironment,
-  agentSlug,
-  model,
-  executionAgentId,
-  expectedDefinitionFingerprint,
   environmentId,
-  providerOptions,
+  defaultEnvironment,
+  canChoose,
+  projectSelected = false,
   disabled,
-  onPromptChange,
-  onStarted,
+  onOpen,
 }: {
-  prompt: string;
-  projectSlug?: string;
-  projectName?: string;
-  defaultEnvironment?: EnvironmentRef;
-  agentSlug?: string;
-  model?: string;
-  executionAgentId?: string;
-  expectedDefinitionFingerprint?: string;
+  /** The start's explicit Station choice, if any. */
   environmentId?: string;
-  providerOptions?: Record<string, unknown>;
+  /** The Project's saved default, used when nothing is chosen. */
+  defaultEnvironment?: EnvironmentRef;
+  /** False when there is no Agent whose Station choice could change. */
+  canChoose: boolean;
+  /** A Project is selected, so SSH Stations are not offered. */
+  projectSelected?: boolean;
   disabled?: boolean;
-  onPromptChange: (prompt: string) => void;
-  onStarted: (
-    task: DelegatedTaskHandle,
-    station: string,
-    sentPrompt: string,
-  ) => void;
+  onOpen: (trigger: HTMLElement) => void;
 }) {
-  const scope = useHostRequestAuthorityScope();
-  const device = useDevicePresentation();
-  const destination =
-    environmentId && environmentId !== 'current'
-      ? 'Selected Station'
-      : !environmentId && defaultEnvironment?.kind === 'saved'
-        ? 'Project default'
-        : currentStationName(device);
-  const [open, setOpen] = useState(false);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const close = () => {
-    setOpen(false);
-    requestAnimationFrame(() => triggerRef.current?.focus());
-  };
+  const { stations, nameFor, settled } = useExecutionStations({
+    projectSelected,
+  });
+  const selectedId = effectiveExecutionStationId(
+    environmentId,
+    defaultEnvironment,
+  );
+  const selected = stations.find((station) => station.id === selectedId);
+  // A remembered choice keeps its real name even when it is no longer
+  // offered (or the lists that offer it could not be read).
+  const name =
+    nameFor(selectedId) ??
+    (environmentId ? 'the selected Station' : 'the Project default');
+  const label = `Runs on ${name}`;
+  // An unlisted current choice stays changeable, so a Station this caller
+  // lost access to can always be replaced by one it still has.
+  const choosable =
+    canChoose &&
+    settled &&
+    (stations.length > 1 || !selected || selectedId !== 'current');
+  if (!choosable)
+    return (
+      <span className="choice-trigger start-composer__station start-composer__station--fixed">
+        <MonitorGlyph className="start-composer__station-mark" />
+        <span>{label}</span>
+      </span>
+    );
   return (
-    <>
-      <button
-        ref={triggerRef}
-        type="button"
-        className="choice-trigger start-composer__station"
-        title={`Run a tracked task on ${destination}`}
-        aria-haspopup="dialog"
-        aria-label={`Run a task on a Station; current Station: ${destination}`}
-        disabled={disabled || !scope}
-        onClick={() => setOpen(true)}
-      >
-        <span>Run a task…</span>
-        <ArrowDownGlyph className="choice-caret" />
-      </button>
-      {open && scope && (
-        <Suspense
-          fallback={<SkeletonList count={1} label="Loading Stations" />}
-        >
-          <DelegationLauncher
-            isOpen
-            apiBase={scope.apiBase}
-            projectSlug={projectSlug}
-            projectName={projectName}
-            currentAgentId={agentSlug}
-            currentModel={model}
-            executionAgentId={executionAgentId}
-            expectedDefinitionFingerprint={expectedDefinitionFingerprint}
-            initialEnvironmentId={environmentId}
-            providerOptions={providerOptions}
-            initialPrompt={prompt}
-            onDraftChange={onPromptChange}
-            title="Run on a Station"
-            submitLabel="Run task"
-            routingExpanded
-            onClose={close}
-            onDelegated={(task, _worker, placement) => {
-              close();
-              onStarted(task, placement.stationName, placement.prompt);
-            }}
-          />
-        </Suspense>
-      )}
-    </>
+    <button
+      type="button"
+      className="choice-trigger start-composer__station"
+      aria-haspopup="dialog"
+      aria-label={`${label}. Choose where this work runs`}
+      disabled={disabled}
+      onClick={(event) => onOpen(event.currentTarget)}
+    >
+      <MonitorGlyph className="start-composer__station-mark" />
+      <span>{label}</span>
+      <ArrowDownGlyph className="choice-caret" />
+    </button>
   );
 }
