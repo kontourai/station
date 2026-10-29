@@ -403,3 +403,21 @@
 .home-view__coordinator-body button {
   min-height: 44px;
 }
+
+.home-view__coordinator-picture {
+  padding: var(--k-space-3) var(--k-space-4);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+}
+.home-view__coordinator-picture h3 {
+  margin: 0 0 var(--k-space-2);
+}
+.home-view__coordinator-picture p {
+  margin: 0 0 var(--k-space-2);
+  color: var(--k-text-muted);
+}
+.home-view__coordinator-picture ul {
+  margin: 0;
+  padding-inline-start: var(--k-space-5);
+}

@@ -1857,6 +1857,12 @@ wakes are blocked (#4051: last turn ended, boundary still held) and whether
 the live Session still lacks the Station tools.
 The turn replays the person's dispatch actor and an internal client origin.
 
+The default-off coordinator-picture preview adds bounded, person-scoped
+conversation notes. The bound designated caller writes through Station Control;
+the person and coordinator reads recheck each conversation's access. Finished
+notes expire after seven days. The preview and normal caller scope both gate the
+operation; the picture is authored context, not an authoritative live status.
+
 **Composition and evidence.** The runtime mounts the routes and the wake in
 `runtime-routes.ts`, withdrawn on a hosted Station (`servesCoordinatorSession`).
 Tests: `coordinator-session.test.ts` (designation across a restart, coalescing,

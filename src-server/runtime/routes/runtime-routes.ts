@@ -875,6 +875,7 @@ import {
   refreshPeerDelegationActivity,
   respondToDelegatedTaskRequest,
 } from '../../tools/station-control-delegation.js';
+import { stationControlScopeRefusal } from '../../tools/station-control-policy.js';
 import { INTERNAL_CONTROL_CALLER_BINDING_HEADER } from '../../tools/station-control-shared.js';
 import {
   INTERNAL_API_TOKEN_HEADER,
@@ -6267,12 +6268,25 @@ export function configureRuntimeRoutes(
   })
     ? context.orchestrationEventStore?.coordinatorStore()
     : undefined;
+  const picturePreview = coordinatorStore
+    ? context.featurePreviews.bind({
+        id: 'coordinator-picture',
+        label: 'Coordinator working picture',
+        description:
+          'Keep a bounded coordinator-maintained picture of readable work across sessions.',
+      })
+    : undefined;
   const coordinatorWakes =
     coordinatorStore && threadInbox && context.orchestrationEventStore
       ? wireCoordinatorWakes({
           eventBus: context.eventBus,
           eventStore: context.orchestrationEventStore,
           store: coordinatorStore,
+          pictureEnabled: () =>
+            picturePreview?.select({
+              enabled: () => true,
+              disabled: () => false,
+            }) === true,
           threadInbox,
           mayRead: (userId, sessionId) =>
             context.orchestrationService.canUserReadSession(
@@ -6288,6 +6302,22 @@ export function configureRuntimeRoutes(
     '/api/orchestration',
     createCoordinatorRoutes({
       store: coordinatorStore,
+      picturePreview,
+      isInternalRequest: isStationInternalRequest,
+      resolvePictureCaller: (request) =>
+        resolveStationControlCallerForRequest(
+          request,
+          resolveStationControlCallerRecord,
+        ),
+      agentMayRead: (caller, conversationId) =>
+        !stationControlScopeRefusal(
+          caller,
+          stationControlDispatchScope.target(
+            { kind: 'conversation', conversationId, remote: false },
+            'view',
+          ),
+          (id) => id === LOCAL_OPERATOR_PRINCIPAL_ID,
+        ),
       person: agentSchedule.person,
       dispatchActor: (c) =>
         resolveDispatchActor(

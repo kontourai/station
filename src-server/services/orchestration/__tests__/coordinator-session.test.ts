@@ -5,6 +5,9 @@
  */
 import { join } from 'node:path';
 import {
+  COORDINATOR_PICTURE_FINISHED_WINDOW_MS,
+  COORDINATOR_PICTURE_MAX_ITEMS,
+  COORDINATOR_PICTURE_SUMMARY_MAX_CHARS,
   COORDINATOR_WAKE_COALESCE_MS,
   COORDINATOR_WAKE_DEDUPE_WINDOW_MS,
   COORDINATOR_WAKE_MAX_ITEMS_PER_TURN,
@@ -71,6 +74,7 @@ function harness(
     submitOutcome?: () => 'queued' | 'capacity' | 'throw';
     /** Start the clock here (a restart resumes where the last one stopped). */
     startAt?: number;
+    pictureEnabled?: boolean;
   } = {},
 ): Harness {
   const clock = { now: options.startAt ?? Date.UTC(2026, 9, 28, 9) };
@@ -79,6 +83,7 @@ function harness(
   const withdrawn: Harness['withdrawn'] = [];
   const delivery = new CoordinatorWakeDelivery({
     store: store.coordinatorStore(),
+    pictureEnabled: () => options.pictureEnabled === true,
     mayRead: options.readable ?? (() => true),
     conversationOf: (sessionId) => sessionId,
     delegatedBy: options.delegatedBy ?? (() => undefined),
@@ -846,5 +851,138 @@ describe('the placement policy for coordinator wakes', () => {
       'Session session-worker-1',
     );
     expect(h.submitted[0]!.payload.message).not.toContain('session-worker-2');
+  });
+});
+
+describe('coordinator working picture', () => {
+  test('a wake asks the coordinator to maintain the picture only when its preview is enabled', () => {
+    for (const enabled of [false, true]) {
+      const store = openStore(
+        join(makeTempDir('picture-wake-'), 'store.sqlite'),
+      );
+      designate(store);
+      const h = harness(store, { pictureEnabled: enabled });
+      h.delivery.observe(item(1));
+      h.advance(COORDINATOR_WAKE_COALESCE_MS);
+      expect(h.submitted).toHaveLength(1);
+      expect(
+        h.submitted[0]!.payload.message.includes('coordinator_picture_update'),
+      ).toBe(enabled);
+      h.delivery.stop();
+    }
+  });
+
+  test('refuses overflow and oversized text without changing stored entries', () => {
+    const store = openStore(
+      join(makeTempDir('coordinator-picture-bound-'), 'store.sqlite'),
+    ).coordinatorStore();
+    for (let i = 0; i < COORDINATOR_PICTURE_MAX_ITEMS; i++) {
+      expect(
+        store.setPictureItem({
+          userId: OWNER,
+          conversationId: `work-${i}`,
+          status: 'in-flight',
+          summary: 'In progress',
+          now: i,
+        }),
+      ).toEqual({ outcome: 'saved' });
+    }
+    expect(
+      store.setPictureItem({
+        userId: OWNER,
+        conversationId: 'extra',
+        status: 'waiting',
+        summary: 'Overflow',
+        now: 100,
+      }),
+    ).toEqual({ outcome: 'capacity' });
+    expect(
+      store.setPictureItem({
+        userId: OWNER,
+        conversationId: 'work-0',
+        status: 'waiting',
+        summary: 'x'.repeat(COORDINATOR_PICTURE_SUMMARY_MAX_CHARS + 1),
+        now: 100,
+      }),
+    ).toEqual({ outcome: 'invalid' });
+    expect(store.pictureItems(OWNER)).toHaveLength(
+      COORDINATOR_PICTURE_MAX_ITEMS,
+    );
+    expect(
+      store.pictureItems(OWNER).find((item) => item.conversationId === 'work-0')
+        ?.summary,
+    ).toBe('In progress');
+  });
+
+  test('old finished entries expire on a later write without pruning another person', () => {
+    const store = openStore(
+      join(makeTempDir('picture-retention-'), 'store.sqlite'),
+    ).coordinatorStore();
+    for (const userId of [OWNER, OTHER])
+      expect(
+        store.setPictureItem({
+          userId,
+          conversationId: 'work-a',
+          status: 'finished',
+          summary: 'Done',
+          now: 1,
+        }),
+      ).toEqual({ outcome: 'saved' });
+    expect(
+      store.setPictureItem({
+        userId: OWNER,
+        conversationId: 'work-b',
+        status: 'waiting',
+        summary: 'Needs input',
+        now: COORDINATOR_PICTURE_FINISHED_WINDOW_MS + 1,
+      }),
+    ).toEqual({ outcome: 'saved' });
+    expect(
+      store.pictureItems(OWNER).map((entry) => entry.conversationId),
+    ).toEqual(['work-b']);
+    expect(store.pictureItems(OTHER)).toHaveLength(1);
+  });
+
+  test('keeps bounded person-scoped entries across restart and replacement', () => {
+    const path = join(makeTempDir('coordinator-picture-'), 'store.sqlite');
+    const first = openStore(path);
+    designate(first);
+    expect(
+      first.coordinatorStore().setPictureItem({
+        userId: OWNER,
+        conversationId: 'work-a',
+        status: 'in-flight',
+        summary: 'Review in progress',
+        now: 10,
+      }),
+    ).toEqual({ outcome: 'saved' });
+    expect(
+      first.coordinatorStore().setPictureItem({
+        userId: OTHER,
+        conversationId: 'work-a',
+        status: 'waiting',
+        summary: 'Other person',
+        now: 11,
+      }),
+    ).toEqual({ outcome: 'saved' });
+    closeStore(first);
+    const second = openStore(path);
+    expect(second.coordinatorStore().pictureItems(OWNER)).toMatchObject([
+      {
+        conversationId: 'work-a',
+        status: 'in-flight',
+        summary: 'Review in progress',
+      },
+    ]);
+    expect(second.coordinatorStore().pictureItems(OTHER)).toMatchObject([
+      { summary: 'Other person' },
+    ]);
+    second.coordinatorStore().designate({
+      conversationId: 'replacement',
+      actor: { userId: OWNER },
+      replace: true,
+      now: 12,
+    });
+    expect(second.coordinatorStore().pictureItems(OWNER)).toHaveLength(1);
   });
 });

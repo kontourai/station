@@ -24,6 +24,11 @@ import { useCoordinatorDockActions } from '../components/chat-dock/useCoordinato
 import { HomeCoordinatorCard } from '../components/home/HomeCoordinatorCard';
 import { COORDINATOR_PRODUCT_NAME } from '../lib/productNames';
 
+const picturePreview = vi.hoisted(() => ({ enabled: false }));
+vi.mock('../hooks/useSurfaceVisibilityFlags', () => ({
+  useSurfaceVisibilityFlags: () =>
+    new Set(picturePreview.enabled ? ['coordinator-picture'] : []),
+}));
 const API = 'http://station.test';
 const authority = vi.hoisted(() => ({
   current: {
@@ -53,6 +58,7 @@ let calls: Array<{ method: string; body?: unknown }>;
 beforeEach(() => {
   designation = null;
   delivery = undefined;
+  picturePreview.enabled = false;
   status = 200;
   showToast.mockReset();
   calls = [];
@@ -69,6 +75,20 @@ beforeEach(() => {
       const body =
         typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
       calls.push({ method, ...(body ? { body } : {}) });
+      if (url === `${API}/api/orchestration/coordinator/picture`)
+        return Response.json({
+          success: true,
+          data: {
+            items: [
+              {
+                conversationId: 'work-a',
+                status: 'waiting',
+                summary: 'Needs review',
+                updatedAt: 10,
+              },
+            ],
+          },
+        });
       if (url !== `${API}/api/orchestration/coordinator`)
         return Response.json({ success: false }, { status: 404 });
       if (status !== 200)
@@ -122,6 +142,17 @@ function wrapper() {
 }
 
 describe('Home coordinator card', () => {
+  test('shows the readable working picture when its preview is enabled', async () => {
+    picturePreview.enabled = true;
+    designation = {
+      conversationId: 'chat-houston',
+      designatedAt: '2026-10-28T09:00:00.000Z',
+    };
+    render(<HomeCoordinatorCard />, { wrapper: wrapper() });
+    expect(await screen.findByText('Needs review')).toBeTruthy();
+    expect(screen.getByText('Waiting on you')).toBeTruthy();
+  });
+
   test('pins the coordinator with one action that opens its chat', async () => {
     designation = {
       conversationId: 'chat-houston',

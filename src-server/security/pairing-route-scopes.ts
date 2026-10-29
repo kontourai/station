@@ -3535,6 +3535,15 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // may be an agent's; designating also needs sending to the conversation.
     // No leaf is more sensitive than the family.
     { method: 'GET', path: '/api/orchestration/coordinator' },
+    { method: 'GET', path: '/api/orchestration/coordinator/picture' },
+    {
+      method: 'GET',
+      path: '/api/orchestration/station-control/coordinator-picture',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/station-control/coordinator-picture',
+    },
     { method: 'PUT', path: '/api/orchestration/coordinator' },
     { method: 'DELETE', path: '/api/orchestration/coordinator' },
     // #2061 Boards: the family read/mutate split is exactly right here —

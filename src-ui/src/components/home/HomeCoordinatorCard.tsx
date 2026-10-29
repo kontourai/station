@@ -2,7 +2,9 @@ import { useNavigation } from '../../contexts/NavigationContext';
 import {
   coordinatorStatusLine,
   useCoordinator,
+  useCoordinatorPicture,
 } from '../../hooks/useCoordinator';
+import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { COORDINATOR_PRODUCT_NAME } from '../../lib/productNames';
 import { Button } from '../Button';
 import { ErrorState, SkeletonBlock } from '../state';
@@ -17,6 +19,10 @@ const LABEL_ID = 'home-coordinator-label';
 export function HomeCoordinatorCard() {
   const { state, retry } = useCoordinator();
   const { navigate } = useNavigation();
+  const pictureEnabled = useSurfaceVisibilityFlags().has('coordinator-picture');
+  const picture = useCoordinatorPicture(
+    pictureEnabled && state.kind === 'ready' && Boolean(state.designation),
+  );
   if (state.kind === 'unavailable') return null;
   return (
     <section
@@ -64,6 +70,45 @@ export function HomeCoordinatorCard() {
             Open a chat and choose Make this {COORDINATOR_PRODUCT_NAME} from its
             menu.
           </p>
+        </div>
+      )}
+      {pictureEnabled && state.kind === 'ready' && state.designation && (
+        <div className="home-view__coordinator-picture">
+          <h3>Working picture</h3>
+          <p>
+            Maintained by your coordinator; check the work for its current
+            state.
+          </p>
+          {picture.isPending ? (
+            <SkeletonBlock count={1} label="Loading working picture" />
+          ) : picture.isError ? (
+            <ErrorState
+              variant="compact"
+              title="Working picture unavailable"
+              action={
+                <button type="button" onClick={() => void picture.refetch()}>
+                  Retry
+                </button>
+              }
+            />
+          ) : picture.data?.length ? (
+            <ul>
+              {picture.data.map((item) => (
+                <li key={item.conversationId}>
+                  <strong>
+                    {item.status === 'waiting'
+                      ? 'Waiting on you'
+                      : item.status === 'finished'
+                        ? 'Recently finished'
+                        : 'In flight'}
+                  </strong>
+                  : <span>{item.summary}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>No work recorded yet.</p>
+          )}
         </div>
       )}
     </section>

@@ -70,6 +70,15 @@ message that has waited more than 24 hours for Houston's chat is not delivered
 at all. When you stop using a chat as Houston (or replace it), all messages
 still waiting for that chat are withdrawn together.
 
+## Working picture
+
+Turn on **Coordinator working picture** in Settings → Advanced → Feature
+previews to let Houston keep a short picture of work in flight, waiting on you
+and recently finished. Home shows notes for conversations you can still read.
+The picture follows you when you replace Houston; finished notes show for
+seven days and are removed when a later update is saved. Houston maintains the notes, so check the underlying work for its
+current state.
+
 ## Limits
 
 - Requested stops, pairing requests and scheduler notices don't wake Houston.

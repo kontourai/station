@@ -2,6 +2,7 @@ import type {
   CoordinatorDelivery,
   CoordinatorDesignation,
   CoordinatorDesignationRead,
+  CoordinatorPictureItem,
   CoordinatorRefusalCode,
 } from '@kontourai/station-contracts/coordinator';
 import { getJson, mutateJson } from '@kontourai/station-sdk';
@@ -118,6 +119,47 @@ export function useCoordinator() {
     onSettled: settle,
   });
   return { state, retry: () => void query.refetch(), designate, undesignate };
+}
+
+/** Read only the current person's admitted picture; an old host refuses the leaf. */
+export function useCoordinatorPicture(enabled: boolean) {
+  const scope = useHostRequestAuthorityScope();
+  return useQuery({
+    queryKey: [
+      'coordinator-picture',
+      scope?.apiBase ?? null,
+      scope?.authorityKey ?? null,
+    ],
+    enabled: enabled && Boolean(scope?.isCurrent()),
+    retry: false,
+    queryFn: async ({ signal }) => {
+      const response = await getJson(
+        `${scope?.apiBase ?? ''}/api/orchestration/coordinator/picture`,
+        {
+          signal,
+          ...(scope ? { requestScope: scope } : {}),
+          maxResponseBytes: 128 * 1024,
+        },
+      );
+      const body = await readBody<{ items: CoordinatorPictureItem[] }>(
+        response,
+      );
+      if (
+        !body.ok ||
+        !Array.isArray(body.data.items) ||
+        body.data.items.some(
+          (item) =>
+            !item ||
+            typeof item.conversationId !== 'string' ||
+            !['in-flight', 'waiting', 'finished'].includes(item.status) ||
+            typeof item.summary !== 'string' ||
+            !Number.isSafeInteger(item.updatedAt),
+        )
+      )
+        throw new Error('Could not read the working picture');
+      return body.data.items;
+    },
+  });
 }
 
 /**

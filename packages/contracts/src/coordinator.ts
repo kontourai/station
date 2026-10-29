@@ -12,6 +12,19 @@
  * delivered again within `COORDINATOR_WAKE_DEDUPE_WINDOW_MS`.
  */
 
+/** A bounded coordinator-maintained note about one readable conversation. */
+export const COORDINATOR_PICTURE_MAX_ITEMS = 30;
+/** Finished entries are shown for seven days after their last update. */
+export const COORDINATOR_PICTURE_FINISHED_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+export const COORDINATOR_PICTURE_SUMMARY_MAX_CHARS = 300;
+export type CoordinatorPictureStatus = 'in-flight' | 'waiting' | 'finished';
+export interface CoordinatorPictureItem {
+  readonly conversationId: string;
+  readonly status: CoordinatorPictureStatus;
+  readonly summary: string;
+  readonly updatedAt: number;
+}
+
 /** A person's designated coordinator conversation. */
 export interface CoordinatorDesignation {
   readonly conversationId: string;

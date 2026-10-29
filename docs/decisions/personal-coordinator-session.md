@@ -132,6 +132,18 @@ Codex retry in progress reads `ready`. `toolsPending` holds while the live Sessi
 started without the Station tools. This is derived rather than keyed to engine
 names, so it stops reporting `blocked` when the boundary retires.
 
+## Working picture
+
+The default-off **Coordinator working picture** Feature Preview keeps up to 30
+short notes per person, each tied to one conversation and classified as in
+flight, waiting or finished. Only the bound designated coordinator may update
+or remove a note, using Station Control. A wake asks it to read the work before
+updating the picture. Reads recheck access to each source; unreadable notes
+are withheld. Finished notes stop showing after seven days and are pruned on a
+later write. A replacement coordinator inherits the person's picture. Notes
+are the coordinator's account, not a live status or evidence that work is done.
+The preview is off by default; enabling it does not grant additional access.
+
 ## Provisioning and permissions
 
 A coordinator's Sessions get the built-in Station tool servers and their
@@ -144,7 +156,6 @@ included. No other restriction or grant is added.
 
 ## Not in this decision
 
-- A durable person-scoped working picture (issue slice 4).
 - Scheduled jobs, PR or CI events and Automations delivering into the
   coordinator (slice 5). The Automations lane will offer the coordinator as a
   default target once it lands.

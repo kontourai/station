@@ -10,17 +10,23 @@
  * counts as absent: GET shows none, and PUT replaces it. Replacing or removing
  * a designation withdraws the wakes still queued for the old conversation.
  */
-import type {
-  CoordinatorDelivery,
-  CoordinatorDesignation,
-  CoordinatorDesignationRead,
+import {
+  COORDINATOR_PICTURE_FINISHED_WINDOW_MS,
+  type CoordinatorDelivery,
+  type CoordinatorDesignation,
+  type CoordinatorDesignationRead,
 } from '@kontourai/station-contracts/coordinator';
 import { type Context, Hono } from 'hono';
+import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import { requestMayBeAnAgent } from '../../security/coding-authority.js';
+import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
+import { FeaturePreviewDisabledError } from '../../services/feature-previews/feature-preview-refusal.js';
+import type { FeaturePreviewSelector } from '../../services/feature-previews/feature-preview-registry.js';
 import type {
   CoordinatorDesignationRecord,
   CoordinatorStore,
 } from '../../services/orchestration/coordinator-session.js';
+import type { StationControlCaller } from '../../tools/station-control-shared.js';
 import type {
   AgentScheduleActor,
   AgentSchedulePerson,
@@ -40,6 +46,10 @@ export interface CoordinatorRoutesDeps {
   /** Whether Station can reach the conversation as coordinator now. */
   delivery?(conversationId: string): CoordinatorDelivery | undefined;
   now?: () => number;
+  picturePreview?: FeaturePreviewSelector;
+  isInternalRequest?(request: Request): boolean;
+  resolvePictureCaller?(request: Request): StationControlCaller | null;
+  agentMayRead?(caller: StationControlCaller, conversationId: string): boolean;
 }
 
 function publicDesignation(
@@ -83,6 +93,146 @@ export function createCoordinatorRoutes(deps: CoordinatorRoutesDeps): Hono {
       ...(delivery ? { delivery } : {}),
     };
     return c.json({ success: true, data }, 200, NO_STORE);
+  });
+
+  const pictureDisabled = (c: Context) =>
+    c.json(
+      new FeaturePreviewDisabledError(
+        'coordinator-picture',
+        'Coordinator working picture',
+      ).refusal,
+      404,
+      NO_STORE,
+    );
+  const pictureEnabled = () =>
+    deps.picturePreview?.select({
+      enabled: () => true,
+      disabled: () => false,
+    }) === true;
+  const visiblePicture = (userId: string, mayRead: (id: string) => boolean) =>
+    (deps.store?.pictureItems(userId) ?? []).filter(
+      (item) =>
+        mayRead(item.conversationId) &&
+        (item.status !== 'finished' ||
+          item.updatedAt >
+            (deps.now?.() ?? Date.now()) -
+              COORDINATOR_PICTURE_FINISHED_WINDOW_MS),
+    );
+  const pictureCaller = (c: Context) => {
+    if (!deps.isInternalRequest?.(c.req.raw)) return undefined;
+    const authority = stationControlRequestAuthority(c.req.raw);
+    if (authority?.kind !== 'caller' || authority.caller.assurance !== 'bound')
+      return undefined;
+    const caller = deps.resolvePictureCaller?.(c.req.raw);
+    if (
+      !caller ||
+      caller.sessionId !== authority.caller.sessionId ||
+      caller.assurance !== 'bound' ||
+      caller.principal?.id !== authority.caller.principal?.id
+    )
+      return undefined;
+    const userId = caller.principal?.elevationEligible
+      ? caller.principal.id
+      : undefined;
+    const person = deps.person(c);
+    if (!userId || !person || person.userId !== userId || !deps.store)
+      return undefined;
+    const designation = deps.store.designation(userId);
+    const conversationId = caller.conversationId ?? caller.sessionId;
+    if (
+      !designation ||
+      designation.conversationId !== conversationId ||
+      !person.mayRead(conversationId) ||
+      !deps.agentMayRead?.(caller, conversationId)
+    )
+      return undefined;
+    return {
+      userId,
+      mayRead: (id: string) =>
+        person.mayRead(id) && deps.agentMayRead?.(caller, id) === true,
+    };
+  };
+  app.get('/coordinator/picture', (c) => {
+    const person = personFor(c);
+    if (person instanceof Response) return person;
+    if (!pictureEnabled()) return pictureDisabled(c);
+    if (!deps.store) return unavailable(c);
+    return c.json(
+      {
+        success: true,
+        data: { items: visiblePicture(person.userId, person.mayRead) },
+      },
+      200,
+      NO_STORE,
+    );
+  });
+  app.get('/station-control/coordinator-picture', (c) => {
+    const caller = pictureCaller(c);
+    if (!caller)
+      return c.json({ success: false, error: 'Not found' }, 404, NO_STORE);
+    if (!pictureEnabled()) return pictureDisabled(c);
+    return c.json(
+      {
+        success: true,
+        data: { items: visiblePicture(caller.userId, caller.mayRead) },
+      },
+      200,
+      NO_STORE,
+    );
+  });
+  app.post('/station-control/coordinator-picture', async (c) => {
+    const caller = pictureCaller(c);
+    if (!caller)
+      return c.json({ success: false, error: 'Not found' }, 404, NO_STORE);
+    if (!pictureEnabled()) return pictureDisabled(c);
+    const read = await readBoundedRequestBody(c.req.raw, 16 * 1024);
+    if (read.status !== 'ok')
+      return c.json({ success: false, code: 'invalid_request' }, 400, NO_STORE);
+    let body: unknown;
+    try {
+      body = JSON.parse(read.body);
+    } catch {
+      body = undefined;
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body))
+      return c.json({ success: false, code: 'invalid_request' }, 400, NO_STORE);
+    const value = body as Record<string, unknown>;
+    if (
+      Object.keys(value).some(
+        (key) => !['conversationId', 'status', 'summary'].includes(key),
+      ) ||
+      typeof value.conversationId !== 'string' ||
+      !value.conversationId ||
+      value.conversationId.length > 512 ||
+      typeof value.status !== 'string' ||
+      !['in-flight', 'waiting', 'finished', 'remove'].includes(value.status) ||
+      (value.status !== 'remove' && typeof value.summary !== 'string') ||
+      (value.status === 'remove' && value.summary !== undefined)
+    )
+      return c.json({ success: false, code: 'invalid_request' }, 400, NO_STORE);
+    // The body can arrive after designation, scope, or preview changed.
+    const current = pictureCaller(c);
+    if (
+      !current ||
+      current.userId !== caller.userId ||
+      !current.mayRead(value.conversationId)
+    )
+      return c.json({ success: false, error: 'Not found' }, 404, NO_STORE);
+    if (!pictureEnabled()) return pictureDisabled(c);
+    if (value.status === 'remove') {
+      deps.store!.removePictureItem(caller.userId, value.conversationId);
+      return c.json({ success: true, data: { removed: true } }, 200, NO_STORE);
+    }
+    const result = deps.store!.setPictureItem({
+      userId: caller.userId,
+      conversationId: value.conversationId,
+      status: value.status as 'in-flight' | 'waiting' | 'finished',
+      summary: value.summary as string,
+      now: deps.now?.() ?? Date.now(),
+    });
+    if (result.outcome !== 'saved')
+      return c.json({ success: false, code: result.outcome }, 400, NO_STORE);
+    return c.json({ success: true, data: result }, 200, NO_STORE);
   });
 
   app.put('/coordinator', async (c) => {

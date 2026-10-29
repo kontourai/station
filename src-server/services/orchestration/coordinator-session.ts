@@ -61,6 +61,9 @@ import {
   UNKNOWN_CLIENT_REPORTED_ORIGIN,
 } from '@kontourai/station-contracts/client-origin';
 import {
+  COORDINATOR_PICTURE_FINISHED_WINDOW_MS,
+  COORDINATOR_PICTURE_MAX_ITEMS,
+  COORDINATOR_PICTURE_SUMMARY_MAX_CHARS,
   COORDINATOR_WAKE_COALESCE_MS,
   COORDINATOR_WAKE_DEDUPE_WINDOW_MS,
   COORDINATOR_WAKE_MAX_ITEMS_PER_TURN,
@@ -72,6 +75,8 @@ import {
   type CoordinatorAttentionKind,
   type CoordinatorDelivery,
   type CoordinatorDesignation,
+  type CoordinatorPictureItem,
+  type CoordinatorPictureStatus,
   type CoordinatorRefusalCode,
   coordinatorWakeClientTurnId,
   isCoordinatorWakeClientTurnId,
@@ -255,6 +260,23 @@ function changed(result: unknown): boolean {
 /** The durable designations, items and wakes; every transition is one statement. */
 export function createSqliteCoordinatorStore(db: TransactionalSqliteDatabase) {
   db.exec(COORDINATOR_SCHEMA);
+  const ensurePictureSchema = () =>
+    db.exec(`CREATE TABLE IF NOT EXISTS coordinator_picture (
+    user_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, conversation_id)
+  )`);
+  const pictureTableExists = () =>
+    Boolean(
+      db
+        .prepare(
+          "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'coordinator_picture'",
+        )
+        .get(),
+    );
   const readDesignation = (userId: string) => {
     const row = db
       .prepare('SELECT * FROM coordinator_designations WHERE user_id = ?')
@@ -263,6 +285,82 @@ export function createSqliteCoordinatorStore(db: TransactionalSqliteDatabase) {
   };
   return {
     designation: readDesignation,
+    pictureItems(userId: string): CoordinatorPictureItem[] {
+      if (!pictureTableExists()) return [];
+      const rows = db
+        .prepare(
+          'SELECT conversation_id, status, summary, updated_at FROM coordinator_picture WHERE user_id = ? ORDER BY updated_at DESC, conversation_id',
+        )
+        .all(userId) as Array<{
+        conversation_id: string;
+        status: CoordinatorPictureStatus;
+        summary: string;
+        updated_at: number;
+      }>;
+      return rows.map((row) => ({
+        conversationId: row.conversation_id,
+        status: row.status,
+        summary: row.summary,
+        updatedAt: row.updated_at,
+      }));
+    },
+    setPictureItem(input: {
+      userId: string;
+      conversationId: string;
+      status: CoordinatorPictureStatus;
+      summary: string;
+      now: number;
+    }): { outcome: 'saved' | 'invalid' | 'capacity' } {
+      if (
+        !input.userId ||
+        !input.conversationId ||
+        input.conversationId.length > 512 ||
+        !['in-flight', 'waiting', 'finished'].includes(input.status) ||
+        !input.summary.trim() ||
+        Array.from(input.summary).length >
+          COORDINATOR_PICTURE_SUMMARY_MAX_CHARS ||
+        !Number.isSafeInteger(input.now)
+      )
+        return { outcome: 'invalid' };
+      ensurePictureSchema();
+      return writeTransaction(db, 'coordinator_picture_set', () => {
+        db.prepare(
+          "DELETE FROM coordinator_picture WHERE user_id = ? AND status = 'finished' AND updated_at <= ?",
+        ).run(input.userId, input.now - COORDINATOR_PICTURE_FINISHED_WINDOW_MS);
+        const existing = db
+          .prepare(
+            'SELECT 1 FROM coordinator_picture WHERE user_id = ? AND conversation_id = ?',
+          )
+          .get(input.userId, input.conversationId);
+        const count = db
+          .prepare(
+            'SELECT COUNT(*) AS count FROM coordinator_picture WHERE user_id = ?',
+          )
+          .get(input.userId) as { count: number };
+        if (!existing && count.count >= COORDINATOR_PICTURE_MAX_ITEMS)
+          return { outcome: 'capacity' as const };
+        db.prepare(
+          'INSERT INTO coordinator_picture (user_id, conversation_id, status, summary, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(user_id, conversation_id) DO UPDATE SET status=excluded.status, summary=excluded.summary, updated_at=excluded.updated_at',
+        ).run(
+          input.userId,
+          input.conversationId,
+          input.status,
+          input.summary,
+          input.now,
+        );
+        return { outcome: 'saved' as const };
+      });
+    },
+    removePictureItem(userId: string, conversationId: string): boolean {
+      if (!pictureTableExists()) return false;
+      return changed(
+        db
+          .prepare(
+            'DELETE FROM coordinator_picture WHERE user_id = ? AND conversation_id = ?',
+          )
+          .run(userId, conversationId),
+      );
+    },
     /** The person whose coordinator this conversation is, if any. */
     designationForConversation(conversationId: string) {
       const row = db
@@ -647,6 +745,7 @@ function coordinatorWakeMessage(
 
 export interface CoordinatorWakePorts {
   readonly store: CoordinatorStore;
+  readonly pictureEnabled?: () => boolean;
   /** Whether the person may read the Session (the same rule as its readers). */
   mayRead(userId: string, sessionId: string): boolean;
   /** The conversation a Session belongs to (itself when it has none). */
@@ -892,7 +991,12 @@ export class CoordinatorWakeDelivery {
     const claimed = this.ports.store.claimWake({
       designation,
       now,
-      compose: coordinatorWakeMessage,
+      compose: (items) => {
+        const message = coordinatorWakeMessage(items);
+        return this.ports.pictureEnabled?.()
+          ? `${message}\nAfter reading the work, update its conversation in coordinator_picture_update; include only information from that conversation.`
+          : message;
+      },
     });
     if (claimed.outcome === 'empty') return 'empty';
     if (claimed.outcome === 'capped') {
@@ -1021,12 +1125,14 @@ export function wireCoordinatorWakes(deps: {
     'submit' | 'list' | 'cancelQueued'
   >;
   mayRead(userId: string, sessionId: string): boolean;
+  readonly pictureEnabled?: () => boolean;
   readonly logger: CoordinatorWakePorts['logger'];
   readonly now?: () => number;
   readonly setTimer?: CoordinatorWakePorts['setTimer'];
 }): CoordinatorWakeDelivery & { unsubscribe(): void } {
   const delivery = new CoordinatorWakeDelivery({
     store: deps.store,
+    ...(deps.pictureEnabled ? { pictureEnabled: deps.pictureEnabled } : {}),
     mayRead: deps.mayRead,
     conversationOf: (sessionId) =>
       deps.eventStore.conversationForSession(sessionId)?.conversationId ??
