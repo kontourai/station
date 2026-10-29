@@ -1936,6 +1936,55 @@ completing; the diagnostic deliberately does not answer it for you.
 
 ## Review work in the attention inbox
 
+`GET /api/attention` returns `{success: true, data: {items, pendingCount}}`.
+Acknowledged and actively snoozed items remain in `items`; `pendingCount` is
+exactly `items.filter(isPendingAttentionItem).length`, where pending means
+neither `acknowledgedAt` nor `snoozedUntil` is present. The
+[attention contract](../../packages/contracts/src/attention.ts) also derives
+project counts from that predicate.
+
+`POST /api/attention/:id/ack` acknowledges the server-derived current item
+version. Standing notices such as `setup-incomplete` and decision-resolved
+kinds such as `proposed-change` and `gate-review` still refuse acknowledgement.
+
+With **Attention snooze** (`attention-snooze`) enabled in **Settings → Advanced →
+Feature previews**:
+
+- `POST /api/attention/:id/snooze` accepts `{until: string}` and returns
+  `{success: true, data: {snoozedUntil: string}}` with status 200. `until` must
+  be an ISO timestamp with a timezone, strictly after the server clock and at
+  most 30 days ahead (`ATTENTION_SNOOZE_MAX_MS`). The server normalizes it to
+  UTC. Invalid, past, present, or longer durations return 400 with a string
+  `error`; nothing is clamped. An absent current item returns 404.
+- `DELETE /api/attention/:id/snooze` removes only the caller's snooze, returning
+  `{success: true}` with status 200 even if no snooze or item exists.
+
+Every projected kind can be snoozed, including standing notices and pending
+human decisions. The service re-derives the item under the same request
+read authority as `/ack`; clients cannot supply its version. Snoozes live in
+`attention-snoozes.json`, separately from acknowledgements, scoped by user and
+item with the source `updatedAt` version and deadline. Writes prune expired
+entries. An active snooze decorates `snoozedUntil` only while the source version
+is no newer than the saved version and the deadline is strictly in the future.
+Expiry, a newer source version, or unsnooze restores pending status unless the
+item was acknowledged. No source decision or activity is deleted.
+
+Both mutations use the same `orchestration:operate` pairing scope as `/ack`.
+Like `/ack`, they emit no event; SDK mutations invalidate the attention cache
+and the attention query polls every 10 seconds. Expiry is observed on the next
+read, without a background timer. Disabling the preview refuses mutations with
+404 and `code: 'feature_preview_disabled'`, and omits snooze decoration while
+off; saved unexpired snoozes apply again if enabled for the same source version.
+This preview adds local file writes and no provider calls or background jobs.
+
+Implementation and evidence: [routes](../../src-server/routes/orchestration/attention.ts),
+[projection](../../src-server/services/projects/attention-projection.ts),
+[snooze store](../../src-server/services/projects/attention-snooze-store.ts),
+[HTTP tests](../../src-server/routes/orchestration/__tests__/attention.routes.test.ts),
+and [projection tests](../../src-server/services/projects/__tests__/attention-projection.test.ts).
+These tests exercise app requests and local persistence, not a deployed client
+or device journey.
+
 `/api/attention` projects supported attention sources for the caller, including
 the two that used to be reachable only from `/review-queue`:
 

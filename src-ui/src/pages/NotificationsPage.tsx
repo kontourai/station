@@ -1,4 +1,6 @@
+import type { Notification } from '@kontourai/station-contracts/notification';
 import {
+  type AttentionItem,
   acknowledgeAttentionItem,
   useQueryClient,
 } from '@kontourai/station-sdk';
@@ -20,6 +22,7 @@ import { useNavigation } from '../contexts/NavigationContext';
 import { toastStore, useNotificationHistory } from '../contexts/ToastContext';
 import { useAttentionInbox } from '../hooks/useAttentionInbox';
 import {
+  attentionKindLabel,
   countPendingAttention,
   isAcknowledgeableAttentionItem,
   pendingAttentionItems,
@@ -29,6 +32,17 @@ import { notificationCategoryLabel } from '../utils/notificationLabels';
 import '../views/page-layout.css';
 import './NotificationsPage.css';
 import { Button } from '../components/Button';
+import { SearchGlyph } from '../components/icons/Glyph';
+import {
+  attentionKindMark,
+  InboxMarkTile,
+  notificationMark,
+} from '../components/notifications/inboxPresentation';
+import {
+  formatSnoozeUntil,
+  isDeferredNotification,
+  useInboxSnooze,
+} from '../components/notifications/snooze';
 import {
   EMPTY_NOTIFICATION_HISTORY_FILTERS,
   filterNotificationHistory,
@@ -116,16 +130,41 @@ export function NotificationsPage() {
   const dismissibleItems = attentionItems.filter(
     isAcknowledgeableAttentionItem,
   );
-  const activityNotifications = useMemo(
+  const snooze = useInboxSnooze();
+  // Snoozed rows leave their lists until they come back, and are listed
+  // together below with the time each returns. Off while the preview is.
+  const snoozedItems = useMemo(
     () =>
-      exactApprovalNotification &&
-      !filtered.notifications.some(
+      snooze.enabled ? filtered.items.filter((item) => item.snoozedUntil) : [],
+    [filtered.items, snooze.enabled],
+  );
+  const deferredNotifications = useMemo(
+    () =>
+      snooze.enabled
+        ? filtered.notifications.filter(isDeferredNotification)
+        : [],
+    [filtered.notifications, snooze.enabled],
+  );
+  const activityTotal = snooze.enabled
+    ? inbox.notifications.filter(
+        (notification) => !isDeferredNotification(notification),
+      ).length
+    : inbox.notifications.length;
+  const activityNotifications = useMemo(() => {
+    const current = filtered.notifications.filter(
+      (notification) => !deferredNotifications.includes(notification),
+    );
+    return exactApprovalNotification &&
+      !current.some(
         (notification) => notification.id === exactApprovalNotification.id,
       )
-        ? [exactApprovalNotification, ...filtered.notifications]
-        : filtered.notifications,
-    [exactApprovalNotification, filtered.notifications],
-  );
+      ? [exactApprovalNotification, ...current]
+      : current;
+  }, [
+    deferredNotifications,
+    exactApprovalNotification,
+    filtered.notifications,
+  ]);
   const queryClient = useQueryClient();
   const dismissAllAttention = useMutation({
     // `allSettled`, not `all`: these acknowledgements are independent and
@@ -203,14 +242,11 @@ export function NotificationsPage() {
           filtered={false}
           onDismissAll={() => setShowDismissConfirm(true)}
           onOpenSettings={() =>
-            navigate('/settings', {
-              view: 'notifications',
-              highlight: 'push-notifications',
-            })
+            navigate('/settings', { view: 'notifications' })
           }
         />
-        <RecentAppMessages />
         <SkeletonList count={4} label="Loading notifications" />
+        <RecentAppMessages />
       </div>
     );
   }
@@ -226,13 +262,9 @@ export function NotificationsPage() {
           filtered={false}
           onDismissAll={() => setShowDismissConfirm(true)}
           onOpenSettings={() =>
-            navigate('/settings', {
-              view: 'notifications',
-              highlight: 'push-notifications',
-            })
+            navigate('/settings', { view: 'notifications' })
           }
         />
-        <RecentAppMessages />
         <ErrorState
           title="Unable to load notifications"
           description={describeReadFailure(loadError)}
@@ -242,6 +274,7 @@ export function NotificationsPage() {
             </Button>
           }
         />
+        <RecentAppMessages />
       </div>
     );
   }
@@ -255,13 +288,9 @@ export function NotificationsPage() {
           onDismissAll={() => setShowDismissConfirm(true)}
           isDismissing={dismissAllAttention.isPending}
           onOpenSettings={() =>
-            navigate('/settings', {
-              view: 'notifications',
-              highlight: 'push-notifications',
-            })
+            navigate('/settings', { view: 'notifications' })
           }
         />
-        <RecentAppMessages />
         {inbox.pendingCount === 0 &&
         inbox.notifications.length === 0 &&
         inbox.unavailableSources.length === 0 &&
@@ -283,6 +312,11 @@ export function NotificationsPage() {
           />
         ) : (
           <>
+            <NotificationHistoryFilterBar
+              categories={categories}
+              filters={filters}
+              onChange={updateFilters}
+            />
             <AttentionSection
               items={attentionItems}
               pendingTotal={inbox.pendingCount}
@@ -301,18 +335,6 @@ export function NotificationsPage() {
             {pairingTarget && !exactPairing && (
               <p role="status">That pairing request is no longer available.</p>
             )}
-            <NotificationHistoryFilterBar
-              categories={categories}
-              filters={filters}
-              onChange={updateFilters}
-            />
-            <div
-              className="notifications-page__result-summary"
-              aria-live="polite"
-            >
-              Showing {activityNotifications.length} of{' '}
-              {inbox.notifications.length} activity items
-            </div>
             <NotificationSection
               notifications={activityNotifications}
               onDismiss={inbox.dismiss}
@@ -320,9 +342,26 @@ export function NotificationsPage() {
               focusedNotificationId={
                 exactApproval ? undefined : approvalTarget || undefined
               }
+              summary={
+                <span
+                  className="notifications-page__result-summary"
+                  aria-live="polite"
+                >
+                  Showing {activityNotifications.length} of {activityTotal}{' '}
+                  activity items
+                </span>
+              }
             />
+            {snoozedItems.length + deferredNotifications.length > 0 && (
+              <SnoozedSection
+                items={snoozedItems}
+                notifications={deferredNotifications}
+                onUnsnooze={snooze.unsnooze}
+              />
+            )}
           </>
         )}
+        <RecentAppMessages />
       </div>
       {/*
        * archive#3779: the bulk action ACKNOWLEDGES, so it keeps the word
@@ -371,98 +410,167 @@ function NotificationHistoryFilterBar({
   return (
     <section
       className="notifications-page__filters"
-      aria-labelledby="notification-filters-heading"
+      aria-label="Filter notifications"
     >
-      <div className="notifications-page__filters-heading">
-        <div>
-          <h2 id="notification-filters-heading">Filter history</h2>
-          <p>Search attention and activity without changing what is stored.</p>
+      <div className="notifications-page__filter-row">
+        <label className="notifications-page__search">
+          <span className="sr-only">Search</span>
+          <SearchGlyph className="notifications-page__search-glyph" />
+          <input
+            type="search"
+            className="notifications-page__search-input"
+            placeholder="Search titles, details, sources…"
+            value={filters.query}
+            onChange={(event) =>
+              onChange({ ...filters, query: event.currentTarget.value })
+            }
+          />
+        </label>
+        <div className="notifications-page__date-filter">
+          <label className="notifications-page__date-field">
+            <span>From</span>
+            <input
+              type="date"
+              className="notifications-page__date-input"
+              value={filters.from}
+              max={filters.to || undefined}
+              aria-invalid={!validRange}
+              onChange={(event) =>
+                onChange({ ...filters, from: event.currentTarget.value })
+              }
+            />
+          </label>
+          <label className="notifications-page__date-field">
+            <span>To</span>
+            <input
+              type="date"
+              className="notifications-page__date-input"
+              value={filters.to}
+              min={filters.from || undefined}
+              aria-invalid={!validRange}
+              onChange={(event) =>
+                onChange({ ...filters, to: event.currentTarget.value })
+              }
+            />
+          </label>
         </div>
-        {active && (
-          <button
-            type="button"
-            className="button button--link notifications-page__reset-filters"
-            onClick={() => onChange(EMPTY_NOTIFICATION_HISTORY_FILTERS)}
-          >
-            Clear filters
-          </button>
-        )}
       </div>
-      <label className="notifications-page__filter-field">
-        <span>Search</span>
-        <input
-          type="search"
-          className="page__search-input"
-          placeholder="Search titles, details, sources…"
-          value={filters.query}
-          onChange={(event) =>
-            onChange({ ...filters, query: event.currentTarget.value })
-          }
-        />
-      </label>
-      {categories.length > 0 && (
-        <fieldset className="notifications-page__category-filter">
-          <legend>Categories</legend>
-          <div className="notifications-page__category-chips">
-            {categories.map((category) => {
-              const selected = filters.categories.includes(category);
-              return (
-                <button
-                  key={category}
-                  type="button"
-                  className="notifications-page__category-chip"
-                  aria-pressed={selected}
-                  onClick={() =>
-                    onChange({
-                      ...filters,
-                      categories: selected
-                        ? filters.categories.filter(
-                            (value) => value !== category,
-                          )
-                        : [...filters.categories, category],
-                    })
-                  }
-                >
-                  {notificationCategoryLabel(category)}
-                </button>
-              );
-            })}
-          </div>
-        </fieldset>
+      {(categories.length > 0 || active) && (
+        <div className="notifications-page__chip-row">
+          {categories.length > 0 && (
+            <fieldset className="notifications-page__category-filter">
+              <legend className="sr-only">Categories</legend>
+              <div className="notifications-page__category-chips">
+                {categories.map((category) => {
+                  const selected = filters.categories.includes(category);
+                  return (
+                    <button
+                      key={category}
+                      type="button"
+                      className="notifications-page__category-chip"
+                      aria-pressed={selected}
+                      onClick={() =>
+                        onChange({
+                          ...filters,
+                          categories: selected
+                            ? filters.categories.filter(
+                                (value) => value !== category,
+                              )
+                            : [...filters.categories, category],
+                        })
+                      }
+                    >
+                      {notificationCategoryLabel(category)}
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
+          )}
+          {active && (
+            <button
+              type="button"
+              className="notifications-page__reset-filters"
+              onClick={() => onChange(EMPTY_NOTIFICATION_HISTORY_FILTERS)}
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
       )}
-      <div className="notifications-page__date-filter">
-        <label className="notifications-page__filter-field">
-          <span>From</span>
-          <input
-            type="date"
-            className="notifications-page__date-input"
-            value={filters.from}
-            max={filters.to || undefined}
-            aria-invalid={!validRange}
-            onChange={(event) =>
-              onChange({ ...filters, from: event.currentTarget.value })
-            }
-          />
-        </label>
-        <label className="notifications-page__filter-field">
-          <span>To</span>
-          <input
-            type="date"
-            className="notifications-page__date-input"
-            value={filters.to}
-            min={filters.from || undefined}
-            aria-invalid={!validRange}
-            onChange={(event) =>
-              onChange({ ...filters, to: event.currentTarget.value })
-            }
-          />
-        </label>
-      </div>
       {!validRange && (
         <p className="notifications-page__filter-error" role="alert">
           From date must be on or before To date.
         </p>
       )}
+    </section>
+  );
+}
+
+/**
+ * Everything snoozed, with when it comes back. An attention snooze can be
+ * lifted here; a stored notification's snooze is a new delivery time, which
+ * has no "lift" on the server, so it says when it returns and nothing more.
+ */
+function SnoozedSection({
+  items,
+  notifications,
+  onUnsnooze,
+}: {
+  items: AttentionItem[];
+  notifications: Notification[];
+  onUnsnooze: (item: AttentionItem) => void;
+}) {
+  return (
+    <section
+      className="notifications-page__section"
+      aria-labelledby="notifications-snoozed-heading"
+    >
+      <div className="notifications-page__section-heading">
+        <h2
+          id="notifications-snoozed-heading"
+          className="notifications-page__section-title"
+        >
+          Snoozed ({items.length + notifications.length})
+        </h2>
+      </div>
+      <ul className="notifications-page__snoozed">
+        {items.map((item) => (
+          <li key={item.id} className="notifications-page__snoozed-row">
+            <InboxMarkTile mark={attentionKindMark(item.kind)} />
+            <div className="notifications-page__snoozed-text">
+              <span className="notifications-page__snoozed-title">
+                {item.title}
+              </span>
+              <span className="notifications-page__snoozed-when">
+                {attentionKindLabel(item.kind)} · back{' '}
+                {formatSnoozeUntil(item.snoozedUntil ?? '')}
+              </span>
+            </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => onUnsnooze(item)}
+            >
+              Unsnooze
+            </Button>
+          </li>
+        ))}
+        {notifications.map((notification) => (
+          <li key={notification.id} className="notifications-page__snoozed-row">
+            <InboxMarkTile mark={notificationMark(notification)} />
+            <div className="notifications-page__snoozed-text">
+              <span className="notifications-page__snoozed-title">
+                {notification.title}
+              </span>
+              <span className="notifications-page__snoozed-when">
+                {notificationCategoryLabel(notification.category)} · back{' '}
+                {formatSnoozeUntil(notification.scheduledAt ?? '')}
+              </span>
+            </div>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
@@ -478,18 +586,22 @@ function RecentAppMessages() {
       className="notifications-page__app-messages"
       aria-label="Recent app messages"
     >
-      <h2>Recent app messages</h2>
-      <p>
+      <div className="notifications-page__section-heading">
+        <h2 className="notifications-page__section-title">
+          Recent app messages
+        </h2>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => toastStore.clearRecentMessages()}
+        >
+          Clear recent messages
+        </Button>
+      </div>
+      <p className="notifications-page__section-note">
         Recent messages for this Station, including dismissed messages. Safe
         summaries are kept for up to seven days; actions are never saved.
       </p>
-      <Button
-        variant="secondary"
-        size="sm"
-        onClick={() => toastStore.clearRecentMessages()}
-      >
-        Clear recent messages
-      </Button>
       <ol>
         {messages.map((item) => (
           <li key={item.id}>
@@ -556,12 +668,13 @@ function NotificationsHeader({
       >
         {bulkLabel}
       </Button>
-      <details className="notifications-page__overflow">
-        <summary>More</summary>
-        <button type="button" onClick={onOpenSettings}>
-          Notification settings
-        </button>
-      </details>
+      <button
+        type="button"
+        className="notifications-page__settings"
+        onClick={onOpenSettings}
+      >
+        Notification settings
+      </button>
     </PageFrameActions>
   );
 }

@@ -1,0 +1,7 @@
+{
+  "revision": "17d281164948d7cee0ccfc611d87784af173648f",
+
+  "notes": [
+    {"path":"docs/user/settings.md","note":"Checked the Attention snooze row against its unconditional runtime registry binding, default-off selector, live enabled and disabled projection/HTTP tests, 30-day validator, and local atomic store. Disabling suppresses decoration and refuses writes while retaining saved state; no provider or background-job cost. This is API/server evidence; parallel UI controls are not verified.","inputs":["docs/user/settings.md","src-server/runtime/routes/runtime-route-support.ts","src-server/services/projects/attention-projection.ts","packages/contracts/src/attention.ts"]}
+  ]
+}

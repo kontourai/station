@@ -1,0 +1,7 @@
+{
+  "revision": "17d281164948d7cee0ccfc611d87784af173648f",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Traced attention POST and DELETE snooze through request authority and pairing scope, server-derived updatedAt, separate per-user atomic JSON store, strict ISO and 30-day rejection, expiry/version decoration, idempotent unsnooze, and off-by-default preview. Projection and HTTP tests pass, including max plus one, per-user isolation, and source-version authority. Ack emits no event and keeps standing/decision refusals; live deployment and UI remain unverified.","inputs":["docs/reference/session-api.md","src-server/services/projects/attention-projection.ts","src-server/routes/orchestration/attention.ts","src-server/services/projects/attention-snooze-store.ts","src-server/routes/orchestration/__tests__/attention.routes.test.ts","src-server/services/projects/__tests__/attention-projection.test.ts"]}
+  ]
+}

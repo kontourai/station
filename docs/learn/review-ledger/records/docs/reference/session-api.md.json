@@ -148,7 +148,15 @@
 
     "src-server/providers/__tests__/claude-adapter-events.test.ts",
 
-    "src-server/routes/orchestration/events.ts"
+    "src-server/routes/orchestration/events.ts",
+
+    "src-server/routes/orchestration/attention.ts",
+
+    "src-server/services/projects/attention-snooze-store.ts",
+
+    "src-server/routes/orchestration/__tests__/attention.routes.test.ts",
+
+    "src-server/services/projects/__tests__/attention-projection.test.ts"
   ],
 
   "checks": [

@@ -68,8 +68,19 @@ import { formatNotificationTime } from '../../utils/notifications';
 import { StationToolLibraryProvider } from '../../views/agent-editor/ToolLibraryContext';
 import { Dialog } from '../Dialog';
 import { LazyBoundary } from '../LazyBoundary';
+import { DecisionError } from '../notifications/DecisionError';
+import {
+  InboxContextLine,
+  type InboxContextPart,
+} from '../notifications/inboxContext';
+import {
+  attentionKindMark,
+  InboxMarkTile,
+} from '../notifications/inboxPresentation';
 import { NoticeAction } from '../notifications/NoticeAction';
+import { RowMenu, type RowMenuItem } from '../notifications/RowMenu';
 import { SkeletonList } from '../state';
+import { ExactRequestInline } from './ExactRequestInline';
 import './AttentionCard.css';
 import { useProposedChangeDecision } from '../review/proposedChangeDecision';
 import {
@@ -93,11 +104,50 @@ const loadNeedsInputReply = () =>
 export function AttentionCard({
   item,
   focused = false,
+  context = [],
+  menuItems,
 }: {
   item: AttentionItem;
   focused?: boolean;
+  /** Station · Project · Chat · Agent · Engine, from `useInboxContext`. */
+  context?: readonly InboxContextPart[];
+  /**
+   * The inbox page's ⋯ menu items (snooze). PRESENT puts the card in menu
+   * mode: its dismiss joins them in the corner menu instead of a footer
+   * button. Absent — every other surface that renders this card — keeps the
+   * visible dismiss exactly as it was.
+   */
+  menuItems?: readonly RowMenuItem[];
 }) {
   const cardRef = useRef<HTMLElement>(null);
+  const menuMode = menuItems !== undefined;
+  const { apiBase } = useApiBase();
+  const acknowledge = useAcknowledgeAttentionItemMutation(apiBase);
+  const dismissNotification = useDismissNotificationMutation();
+  // #1536 D8: a standing notice is not dismissible, and archive#3779: the
+  // labels come from the shared action model.
+  const dismissItems: RowMenuItem[] = !menuMode
+    ? []
+    : item.kind === 'approval'
+      ? [
+          {
+            id: 'dismiss',
+            label: DISMISS_NOTIFICATION_ACTION.label,
+            disabled: dismissNotification.isPending,
+            onSelect: () =>
+              dismissNotification.mutate(item.source.notificationId),
+          },
+        ]
+      : isAcknowledgeableAttentionItem(item)
+        ? [
+            {
+              id: 'dismiss',
+              label: ACKNOWLEDGE_ATTENTION_ACTION.label,
+              disabled: acknowledge.isPending,
+              onSelect: () => acknowledge.mutate(item.id),
+            },
+          ]
+        : [];
   useEffect(() => {
     if (focused) cardRef.current?.focus();
   }, [focused]);
@@ -108,14 +158,28 @@ export function AttentionCard({
       data-testid="attention-item"
       tabIndex={focused ? -1 : undefined}
     >
+      <InboxMarkTile mark={attentionKindMark(item.kind)} />
       <header className="attention-item__header">
         <div className="attention-item__content">
-          <div className="attention-item__type">
-            {attentionKindLabel(item.kind)}
+          <div className="attention-item__meta">
+            <span className="attention-item__type">
+              {attentionKindLabel(item.kind)}
+            </span>
+            <span className="attention-item__corner">
+              <time className="attention-item__time" dateTime={item.updatedAt}>
+                {formatNotificationTime(item.updatedAt)}
+              </time>
+              {menuMode ? (
+                <RowMenu items={[...(menuItems ?? []), ...dismissItems]} />
+              ) : null}
+            </span>
           </div>
           <div className="attention-item__message">{item.title}</div>
           {item.kind === 'session-failed' ? (
-            <SessionFailedDetail item={item} />
+            <SessionFailedDetail
+              item={item}
+              showIdentity={context.length === 0}
+            />
           ) : (
             item.body && (
               <div className="attention-item__detail">{item.body}</div>
@@ -124,20 +188,28 @@ export function AttentionCard({
           {item.kind === 'gate-route-back' && (
             <GateRouteBackDetail item={item} />
           )}
+          <InboxContextLine parts={context} />
         </div>
-        <time className="attention-item__time">
-          {formatNotificationTime(item.updatedAt)}
-        </time>
       </header>
       <div className="attention-item__footer">
-        <AttentionAction item={item} />
+        <AttentionAction item={item} dismissInMenu={menuMode} />
         {/* #1536 D8: a standing notice is not dismissible — acknowledging the
           only row that says why chat cannot start would leave the inbox
           claiming nothing needs you while it still does. One predicate, shared
           with "Dismiss all" and with the server's own refusal. */}
-        {item.kind !== 'approval' && isAcknowledgeableAttentionItem(item) && (
-          <DismissAttentionItem item={item} />
-        )}
+        {!menuMode &&
+          item.kind !== 'approval' &&
+          isAcknowledgeableAttentionItem(item) && (
+            <div className="attention-item__quiet">
+              <DismissAttentionItem item={item} />
+            </div>
+          )}
+        {menuMode ? (
+          <>
+            <MutationError error={acknowledge.error} />
+            <MutationError error={dismissNotification.error} />
+          </>
+        ) : null}
       </div>
     </article>
   );
@@ -150,8 +222,15 @@ export function AttentionCard({
  * show one (the reported "'Session failed' tells me nothing"). The identity
  * line renders only what the projection carried.
  */
-function SessionFailedDetail({ item }: { item: SessionFailedAttentionItem }) {
-  const identity = sessionFailedIdentity(item);
+function SessionFailedDetail({
+  item,
+  showIdentity,
+}: {
+  item: SessionFailedAttentionItem;
+  /** False when the card's context line already names engine and agent. */
+  showIdentity: boolean;
+}) {
+  const identity = showIdentity ? sessionFailedIdentity(item) : null;
   return (
     <>
       <div
@@ -177,7 +256,14 @@ const loadToolRequestPanel = () =>
     default: module.ToolRequestsPanel,
   }));
 
-function AttentionAction({ item }: { item: AttentionItem }) {
+function AttentionAction({
+  item,
+  dismissInMenu,
+}: {
+  item: AttentionItem;
+  /** The card's dismiss lives in its ⋯ menu; render none here. */
+  dismissInMenu: boolean;
+}) {
   // A task running on a paired Station: its thread id here names only the
   // local lifecycle record, so a reply or request inspection would address
   // nothing. Same rule, and same note, as the Activity detail's peer branch.
@@ -194,13 +280,17 @@ function AttentionAction({ item }: { item: AttentionItem }) {
         </StationToolLibraryProvider>
       );
     case 'approval':
+      // Answered on the card through the exact-request decision, with the
+      // full request one "Details" away — the same control the tray row uses.
       return item.requestReference ? (
-        <ExactRequestAction
+        <ExactRequestInline
           reference={item.requestReference}
           openHref={item.openHref}
+          quiet={dismissInMenu ? undefined : <ApprovalDismiss item={item} />}
+          open={item.openHref ? <OpenSessionLink href={item.openHref} /> : null}
         />
       ) : (
-        <ApprovalActions item={item} />
+        <ApprovalActions item={item} dismissInMenu={dismissInMenu} />
       );
     case 'needs_input':
       return <NeedsInputAction item={item} />;
@@ -592,7 +682,13 @@ function GateReviewAction({ item }: { item: GateReviewAttentionItem }) {
   );
 }
 
-function ApprovalActions({ item }: { item: ApprovalAttentionItem }) {
+function ApprovalActions({
+  item,
+  dismissInMenu = false,
+}: {
+  item: ApprovalAttentionItem;
+  dismissInMenu?: boolean;
+}) {
   const mutation = useNotificationActionMutation();
   const dismissMutation = useDismissNotificationMutation();
   const livePending = isApprovalLivePending(item);
@@ -600,6 +696,18 @@ function ApprovalActions({ item }: { item: ApprovalAttentionItem }) {
   // sets `status: 'dismissed'` and keeps the record; what differs from the bulk
   // acknowledge is the subject and terminality, not destruction.
   const dismiss = () => dismissMutation.mutate(item.source.notificationId);
+  const lastAction = useRef<string | null>(null);
+  const decide = (actionId: string) => {
+    lastAction.current = actionId;
+    mutation.mutate(
+      { actionId, id: item.source.notificationId },
+      {
+        onSuccess: () => {
+          if (item.openHref) openApprovalConversation(item.openHref);
+        },
+      },
+    );
+  };
   return (
     <>
       <div className="notice-actions">
@@ -609,19 +717,7 @@ function ApprovalActions({ item }: { item: ApprovalAttentionItem }) {
             type="button"
             className={`notice-action--${action.variant ?? 'secondary'}`}
             disabled={mutation.isPending}
-            onClick={() =>
-              mutation.mutate(
-                {
-                  actionId: action.id,
-                  id: item.source.notificationId,
-                },
-                {
-                  onSuccess: () => {
-                    if (item.openHref) openApprovalConversation(item.openHref);
-                  },
-                },
-              )
-            }
+            onClick={() => decide(action.id)}
           >
             {action.label}
           </NoticeAction>
@@ -632,7 +728,7 @@ function ApprovalActions({ item }: { item: ApprovalAttentionItem }) {
          * prominence right alongside whatever actions do exist — there is
          * nothing else useful left to do with this item.
          */}
-        {!livePending && (
+        {!livePending && !dismissInMenu && (
           <NoticeAction
             type="button"
             className="notice-action--ghost"
@@ -649,7 +745,7 @@ function ApprovalActions({ item }: { item: ApprovalAttentionItem }) {
        * stays available but visually secondary so approve/deny stay
        * primary and a casual click can't discard a live decision.
        */}
-      {livePending && (
+      {livePending && !dismissInMenu && (
         <button
           type="button"
           className="attention-dismiss-link"
@@ -659,7 +755,39 @@ function ApprovalActions({ item }: { item: ApprovalAttentionItem }) {
           {DISMISS_NOTIFICATION_ACTION.label}
         </button>
       )}
-      <MutationError error={mutation.error} />
+      {mutation.error ? (
+        <DecisionError
+          error={mutation.error}
+          openHref={item.openHref}
+          onRetry={
+            lastAction.current
+              ? () => decide(lastAction.current as string)
+              : undefined
+          }
+        />
+      ) : null}
+      <MutationError error={dismissMutation.error} />
+    </>
+  );
+}
+
+/**
+ * The dismiss an exact-request approval keeps beside its inline decision:
+ * quiet, because the decision is the point, and the stored notification it
+ * clears is the same one `ApprovalActions` dismisses.
+ */
+function ApprovalDismiss({ item }: { item: ApprovalAttentionItem }) {
+  const dismissMutation = useDismissNotificationMutation();
+  return (
+    <>
+      <button
+        type="button"
+        className="attention-dismiss-link"
+        disabled={dismissMutation.isPending}
+        onClick={() => dismissMutation.mutate(item.source.notificationId)}
+      >
+        {DISMISS_NOTIFICATION_ACTION.label}
+      </button>
       <MutationError error={dismissMutation.error} />
     </>
   );
@@ -916,10 +1044,7 @@ function LegacyNeedsInputAction({ item }: { item: NeedsInputAttentionItem }) {
 /** Without an exact request reference, review continues in the session. */
 function OpenSessionAction({ item }: { item: ReviewPendingAttentionItem }) {
   return (
-    <a
-      className="button notice-action notice-action--secondary"
-      href={item.openHref}
-    >
+    <a className="attention-open-link" href={item.openHref}>
       Open session
     </a>
   );

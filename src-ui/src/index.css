@@ -6192,6 +6192,9 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     /* Mobile toolbar controls are 44px tall with 4px block padding. Keep the
        shared geometry token honest for dock offsets and fixed overlays. */
     --app-toolbar-height: 52px;
+    /* The touch floor, set only here: a compact control sizes itself with
+       `var(--touch-target-min, <desktop size>)` and needs no media query. */
+    --touch-target-min: 44px;
   }
 
   /* Mobile Safari zooms the whole page when an editable control below 16px
