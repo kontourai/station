@@ -1574,6 +1574,24 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
         lastApply: { outcome: 'applied' },
       });
       expect(record().pending).toBeUndefined();
+      // The Settings control is a Feature Preview, offered and off by
+      // default; the stored choice applies regardless, so turning the
+      // preview off never signs invited people out.
+      expect(
+        (
+          runtime as unknown as {
+            featurePreviews: {
+              list(): Array<{ id: string; enabled: boolean }>;
+            };
+          }
+        ).featurePreviews
+          .list()
+          .find((preview) => preview.id === 'project-sharing-setting'),
+      ).toMatchObject({ enabled: false });
+      expect(
+        (routeContext() as { accountSharingPreview?: unknown })
+          .accountSharingPreview,
+      ).toBeDefined();
     });
 
     it('a staged choice that fails to load starts the Station with sharing off and rolls back', async () => {

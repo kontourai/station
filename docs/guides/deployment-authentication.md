@@ -54,7 +54,11 @@ these opt-ins are absent.
 
 Without these variables, the Station operator can turn the same configuration
 on in **Settings → System → Project sharing with local accounts**
-([#4305](https://github.com/kontourai/station/issues/4305)).
+([#4305](https://github.com/kontourai/station/issues/4305)). The control is a
+Feature Preview: turn on **Project sharing setting** (`project-sharing-setting`)
+in **Settings → Advanced → Feature previews** first. While the preview is off
+the route refuses with `feature_preview_disabled`, but a saved choice stays in
+force, so turning the preview off never signs invited people out.
 
 - **Who.** Only the Station operator: the route uses the same operator check as
   **Accounts and sign-in** (`projectMembershipAuthority(request).operator()`,

@@ -1128,6 +1128,8 @@ export class StationRuntime {
   /** Bound during composition, then selected at the fleet-routing branch. */
   private fleetConsumerProbesPreview!: FeaturePreviewSelector;
   private chatHostImagesPreview!: FeaturePreviewSelector;
+  /** #4305: gates the Settings control, not deployment configuration. */
+  private accountSharingSettingPreview!: FeaturePreviewSelector;
   private sshEnvironmentService: SshEnvironmentService;
   private timers: NodeJS.Timeout[] = [];
   private analyticsMaintenance?: (
@@ -1485,6 +1487,7 @@ export class StationRuntime {
       );
       this.bindFleetConsumerProbesPreview();
       this.bindChatHostImagesPreview();
+      this.bindAccountSharingSettingPreview();
       // Journal consumers wire after the quarantine notice: the runtime must
       // report a recorded corruption before anything asks the store for more
       // than its publisher.
@@ -4743,6 +4746,7 @@ export class StationRuntime {
       deploymentAuthentication: this.deploymentAuthentication,
       localAccounts: this.localAccounts,
       accountSharing: () => this.accountSharingState(),
+      accountSharingPreview: this.accountSharingSettingPreview,
       applicationSessions: this.applicationSessions,
       nativeRelayEnrollment: this.nativeRelayEnrollment,
       nativeSurfaceRegistry: this.nativeSurfaceRegistry,
@@ -5235,6 +5239,21 @@ export class StationRuntime {
     installSessionTmpDirPolicy(() =>
       preview.select({ enabled: () => true, disabled: () => false }),
     );
+  }
+
+  /**
+   * #4305: the Settings control for Project sharing with local accounts. It
+   * gates the operator route and its section only. Deployment variables and
+   * an already committed stored choice keep working when it is off, so
+   * turning the preview off never signs invited people out.
+   */
+  private bindAccountSharingSettingPreview(): void {
+    this.accountSharingSettingPreview = this.featurePreviews.bind({
+      id: 'project-sharing-setting',
+      label: 'Project sharing setting',
+      description:
+        'Turn on Project sharing with local accounts from Settings → System. Applying it restarts Station.',
+    });
   }
 
   private replaceTemplateVariables(text: string, _agentName?: string): string {

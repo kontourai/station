@@ -16,6 +16,14 @@ const host = vi.hoisted(() => ({
   apiBase: 'https://station.example.test',
   authorityKey: 'operator-one',
 }));
+const previews = vi.hoisted(() => ({
+  data: [{ id: 'project-sharing-setting', enabled: true }] as
+    | Array<{ id: string; enabled: boolean }>
+    | undefined,
+}));
+vi.mock('@kontourai/station-sdk', () => ({
+  useFeaturePreviewsQuery: () => ({ data: previews.data }),
+}));
 vi.mock('../../../contexts/ApiBaseContext', () => ({
   useHostRequestAuthorityScope: () => ({ ...host }),
 }));
@@ -45,6 +53,7 @@ vi.mock('../../../components/modals/ConfirmModal', () => ({
 }));
 const clients: QueryClient[] = [];
 beforeEach(() => {
+  previews.data = [{ id: 'project-sharing-setting', enabled: true }];
   setClientCredentialResolver(() => ({
     origin: host.apiBase,
     requestAuthority: { ...host, isCurrent: () => true },
@@ -241,4 +250,45 @@ test('a caller that is not the operator is told so, and a refused apply shows it
   fireEvent.click(screen.getByRole('button', { name: 'Apply and restart' }));
   fireEvent.click(screen.getByRole('button', { name: 'Confirm change' }));
   expect(await screen.findByText(/supervisor did not answer/)).toBeTruthy();
+});
+
+test('the section is absent until its Feature Preview is on, and asks for nothing', async () => {
+  const fetch = vi.fn(async () => reply(off));
+  vi.stubGlobal('fetch', fetch);
+  for (const data of [
+    undefined,
+    [],
+    [{ id: 'project-sharing-setting', enabled: false }],
+  ]) {
+    previews.data = data;
+    const rendered = mount();
+    expect(
+      screen.queryByText('Project sharing with local accounts'),
+    ).toBeNull();
+    rendered.unmount();
+  }
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+test('a server that refuses the preview says where to turn it on', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () =>
+      Response.json(
+        {
+          success: false,
+          error:
+            'Enable Project sharing setting in Settings → Advanced → Feature previews.',
+          code: 'feature_preview_disabled',
+          previewId: 'project-sharing-setting',
+          settingsPath:
+            '/settings?view=feature-previews&highlight=feature-previews',
+        },
+        { status: 404 },
+      ),
+    ),
+  );
+  mount();
+  expect(await screen.findByText(/Advanced → Feature previews/)).toBeTruthy();
+  expect(screen.queryByText(/Update Station/)).toBeNull();
 });

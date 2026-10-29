@@ -3,6 +3,7 @@ import type {
   AccountSharingOriginOption,
   AccountSharingSettingView,
 } from '@kontourai/station-contracts/local-accounts';
+import { useFeaturePreviewsQuery } from '@kontourai/station-sdk';
 import { StationHttpError } from '@kontourai/station-sdk/client';
 import {
   applyAccountSharingSetting,
@@ -39,13 +40,21 @@ const UNAVAILABLE_LABEL: Record<
   'not-a-browser-origin': 'Not in ALLOWED_ORIGINS',
 };
 
+/** The Station-wide Feature Preview that offers this section. */
+export const ACCOUNT_SHARING_PREVIEW_ID = 'project-sharing-setting';
+
 /**
  * #4305: Settings → System → Project sharing with local accounts. Operator
- * only; applying restarts the Station through its process supervisor.
+ * only; applying restarts the Station through its process supervisor. Shown
+ * only while its Feature Preview is on; the server refuses otherwise too.
  */
 export function AccountSharingSection() {
   const authority = useHostRequestAuthorityScope();
-  return authority ? (
+  const previews = useFeaturePreviewsQuery();
+  const offered = previews.data?.some(
+    (preview) => preview.id === ACCOUNT_SHARING_PREVIEW_ID && preview.enabled,
+  );
+  return authority && offered ? (
     <SharingControls
       key={`${authority.apiBase}:${authority.authorityKey}`}
       authority={authority}
@@ -144,12 +153,18 @@ function SharingControls({
   if (query.isError && !restarting) {
     const status =
       query.error instanceof StationHttpError ? query.error.status : undefined;
+    const code =
+      query.error instanceof StationHttpError ? query.error.code : undefined;
     return (
       <PageSection className="settings__section account-sharing" title={title}>
         {status === 403 ? (
           <p className="settings__field-hint" role="status">
             Only the Station operator can change this. Open Settings on the
             Station host.
+          </p>
+        ) : code === 'feature_preview_disabled' ? (
+          <p className="settings__field-hint" role="status">
+            Turn on Project sharing setting in Advanced → Feature previews.
           </p>
         ) : status === 404 ? (
           <p className="settings__field-hint" role="status">

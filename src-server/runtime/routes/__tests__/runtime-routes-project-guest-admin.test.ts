@@ -62,6 +62,7 @@ import { readJson } from '../../../__test-utils__/read-json.js';
 import { readStreamUntil } from '../../../__test-utils__/sse-helpers.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
+import { FeaturePreviewRegistry } from '../../../services/feature-previews/feature-preview-registry.js';
 import { createApplicationSessionRuntime } from '../../../services/identity/application-session-runtime.js';
 import { loadDeploymentAuthentication } from '../../../services/identity/deployment-authentication-loader.js';
 import { deploymentAccountPrincipal } from '../../../services/identity/deployment-authentication-service.js';
@@ -362,6 +363,19 @@ describe('project guest administration over the production composition', () => {
       });
     }
 
+    // #4305: the real preview registry, with the sharing setting offered and on.
+    const featurePreviews = new FeaturePreviewRegistry(homeDir, {
+      debug() {},
+      info() {},
+      warn() {},
+      error() {},
+    } as never);
+    const accountSharingPreview = featurePreviews.bind({
+      id: 'project-sharing-setting',
+      label: 'Project sharing setting',
+      description: 'Fixture definition.',
+    });
+    await featurePreviews.setEnabled('project-sharing-setting', true);
     const graph = new TaskGraphService(homeDir, {
       resolveProjectWorkspace: () => undefined,
     });
@@ -382,6 +396,7 @@ describe('project guest administration over the production composition', () => {
           externalProvider: false,
         },
       }),
+      accountSharingPreview,
       applicationSessions,
       storageAdapter: storage,
       knowledgeStoreProvider,

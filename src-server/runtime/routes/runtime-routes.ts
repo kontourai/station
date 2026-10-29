@@ -1028,6 +1028,8 @@ export interface ConfigureRuntimeRoutesContext {
   localAccounts?: LoadedLocalAccounts;
   /** #4305: Settings-controlled Project sharing; absent in embedders that do not offer it. */
   accountSharing?: () => import('../../routes/system/account-sharing-routes.js').AccountSharingRuntimeState;
+  /** #4305: the Feature Preview that offers that route. */
+  accountSharingPreview?: import('../../services/feature-previews/feature-preview-registry.js').FeaturePreviewSelector;
   applicationSessions?: ApplicationSessionService;
   nativeRelayEnrollment?: NativeRelayEnrollmentService;
   nativeSurfaceRegistry?: NativeSurfaceRegistry;
@@ -6843,7 +6845,7 @@ export function configureRuntimeRoutes(
   );
   // #4305: the same operator authority as account administration above, so
   // any operator step-up added to that check applies here too.
-  if (context.accountSharing) {
+  if (context.accountSharing && context.accountSharingPreview) {
     const accountSharingState = context.accountSharing;
     context.app.route(
       '/api/operator/account-sharing',
@@ -6852,6 +6854,7 @@ export function configureRuntimeRoutes(
         requireOperator: (request) =>
           projectMembershipAuthority(request).operator(),
         state: accountSharingState,
+        preview: context.accountSharingPreview,
         origins: async () => {
           const configured = process.env.STATION_TRUSTED_TAILSCALE_SERVE_ORIGIN;
           const detected = await publicIngressOriginResolver(

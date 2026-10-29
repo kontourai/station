@@ -7,6 +7,11 @@ import type {
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
 import type { HandoffRequestOutcome } from '../../runtime/bootstrap/supervisor-link.js';
+import {
+  FeaturePreviewDisabledError,
+  requireFeaturePreview,
+} from '../../services/feature-previews/feature-preview-refusal.js';
+import type { FeaturePreviewSelector } from '../../services/feature-previews/feature-preview-registry.js';
 import { offeredAccountSharingOrigin } from '../../services/identity/account-sharing-origins.js';
 import {
   readAccountSharingRecord,
@@ -27,6 +32,8 @@ export interface AccountSharingRouteDependencies {
   /** The existing operator check (`projectMembershipAuthority(...).operator()`). */
   requireOperator: (request: Request) => Promise<void>;
   state: () => AccountSharingRuntimeState;
+  /** The `project-sharing-setting` Feature Preview; off refuses both routes. */
+  preview: FeaturePreviewSelector;
   origins: () => Promise<AccountSharingOriginOption[]>;
   supervised: () => boolean;
   requestHandoff: () => Promise<HandoffRequestOutcome>;
@@ -36,6 +43,7 @@ export interface AccountSharingRouteDependencies {
   };
 }
 
+export const ACCOUNT_SHARING_PREVIEW_ID = 'project-sharing-setting';
 const MAX_BODY_BYTES = 4096;
 const choiceSchema = z.discriminatedUnion('enabled', [
   z.object({ enabled: z.literal(false) }).strict(),
@@ -86,6 +94,21 @@ export function createAccountSharingRoutes(
       return false;
     }
   };
+  /** The preview refusal, or undefined when the preview is on. */
+  const previewRefusal = (c: Context) => {
+    try {
+      requireFeaturePreview(
+        deps.preview,
+        ACCOUNT_SHARING_PREVIEW_ID,
+        'Project sharing setting',
+      );
+      return undefined;
+    } catch (error) {
+      if (error instanceof FeaturePreviewDisabledError)
+        return c.json(error.refusal, 404);
+      throw error;
+    }
+  };
   const operatorRequired = (c: Context) =>
     refuse(
       c,
@@ -96,6 +119,8 @@ export function createAccountSharingRoutes(
 
   app.get('/', async (c) => {
     if (!(await authorize(c))) return operatorRequired(c);
+    const refused = previewRefusal(c);
+    if (refused) return refused;
     const state = deps.state();
     const locked = state.lockedBy.length > 0;
     const view: AccountSharingSettingView = {
@@ -117,6 +142,8 @@ export function createAccountSharingRoutes(
 
   app.put('/', async (c) => {
     if (!(await authorize(c))) return operatorRequired(c);
+    const refused = previewRefusal(c);
+    if (refused) return refused;
     let choice: AccountSharingChoice;
     try {
       const text = await c.req.text();
