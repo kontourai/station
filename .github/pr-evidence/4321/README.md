@@ -10,6 +10,14 @@ rendering. Builds: `dde260ada73e01fb0154f6d3a837b26ac993876c` for 01–08,
 unchanged at head apart from the Feature Preview gate (10) and the action row
 primitive.
 
+The 01–10 captures are historical: the earlier in-app confirmation was
+replaced by a separate consent page. The four `11-sharing-*` PNGs were
+captured and inspected at `50f3c065f09` with the actual Settings section at
+390 and 1440 CSS pixels in both themes. They use an isolated `--watch` instance
+on ports 39261/39271 and show the unsupervised state, so Review change is
+disabled. The only offered address in that instance was loopback; these images
+do not establish reachable HTTPS or consent-page behavior.
+
 - `01-off-1440-dark.jpg`: Settings → System, sharing off.
 - `02-choose-origin-1440-dark.jpg`, `02-choose-origin-390-light.jpg`: turned on
   with the offered sign-in addresses; the first selectable one is preselected.
