@@ -240,7 +240,17 @@
 
     "scripts/__tests__/server-scenario.test.ts",
 
-    ".github/workflows/server-scenario.yml"
+    ".github/workflows/server-scenario.yml",
+
+    "scripts/lib/heavy-check-slots.mjs",
+
+    "scripts/heavy-check-slot.mjs",
+
+    "scripts/lib/slot-holder-exec.mjs",
+
+    "scripts/lib/verification-coordinator.mjs",
+
+    "scripts/lib/verification-completion-phases.mjs"
   ],
 
   "checks": [
