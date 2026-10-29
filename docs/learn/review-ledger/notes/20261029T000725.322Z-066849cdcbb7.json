@@ -1,0 +1,7 @@
+{
+  "revision": "85834e86c06115f90d6590b0b1d0d04b2026a209",
+
+  "notes": [
+    {"path":"docs/design/offline-outbound-queue.md","note":"Checked against the held-gap reload change in useSessionEventWindow.ts: the offline reading claims (closed text projection from successful history windows; best-effort capture never fails the live read) do not depend on which cursor a gap fill resumes from.","inputs":["docs/design/offline-outbound-queue.md","src-ui/src/hooks/orchestration/useSessionEventWindow.ts"]}
+  ]
+}

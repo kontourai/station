@@ -1338,3 +1338,20 @@ it('explains an unavailable Brief in visible navigation text', () => {
   ).toHaveProperty('disabled', true);
   expect(within(navigation).getByText('No Brief yet')).toBeTruthy();
 });
+
+it('renders working-state revision ordinals supplied by the server', () => {
+  const before = `swsr-v1:${'a'.repeat(64)}`;
+  const current = `swsr-v1:${'b'.repeat(64)}`;
+  render(
+    <ReviewDocumentView
+      draftScope="working-revision"
+      artifact={{ ...plan, revision: current }}
+      previousArtifact={{ ...plan, revision: before }}
+      revisionOrdinals={{ [before]: 2, [current]: 3 }}
+      title="Plan"
+      text="Plan"
+      onCreateThread={vi.fn()}
+    />,
+  );
+  expect(screen.getByText('v2 → v3')).toBeTruthy();
+});

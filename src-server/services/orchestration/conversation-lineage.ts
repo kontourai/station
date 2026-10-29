@@ -3,6 +3,7 @@ import type {
   ConversationContextBoundaryProjection,
   ConversationContextBoundaryRequest,
 } from '@kontourai/station-contracts/conversation-context-boundary';
+import { isLowContentPrompt } from '@kontourai/station-contracts/conversation-title';
 import type {
   ConversationContextSeedReceipt,
   ConversationHandoffStatusProjection,
@@ -56,6 +57,11 @@ import {
   readConversationStartSeedCarrier,
 } from './conversation-start-context.js';
 import { derivedConversationTitle } from './conversation-title.js';
+
+function meaningfulTitle(title: string | undefined): string | undefined {
+  return title && !isLowContentPrompt(title) ? title : undefined;
+}
+
 import {
   buildTranscriptSeed,
   transcriptSeedSource,
@@ -1663,9 +1669,18 @@ export class ConversationLineage {
       ...(detail.session.projectSlug
         ? { projectSlug: detail.session.projectSlug }
         : {}),
+      // #4266: the durable history title (which may be generated, and is
+      // never a low-content one while the conversation said more) before one
+      // thread's own messages.
       title:
         derivedConversationTitle(detail.session.delegation?.title) ??
-        conversationTitle(messages),
+        meaningfulTitle(
+          this.deps.eventStore?.conversationTitle([
+            durableConversationId,
+            threadId,
+          ]),
+        ) ??
+        conversationTitle(messages, detail.session.displayTitle),
       ...((detail.session.reportedModel ??
       detail.session.effectiveModel ??
       detail.session.model)
