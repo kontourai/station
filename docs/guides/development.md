@@ -241,10 +241,37 @@ its limit, the kernel OOM killer kills one process in it, normally the largest
 command (a build, a linter, a browser), and the engine keeps running and sees
 that command fail (SIGKILL, exit 137) within the same turn. Only when the
 engine itself is the process killed does the engine end. Aggregate exhaustion
-can kill any workload in the slice, including a sibling engine. The server
-requests 512 MiB of memory protection and an oomd avoidance preference; these
-do not guarantee survival under host-wide exhaustion or an ancestor policy
-that kills the entire user session.
+can kill any workload in the slice, including a sibling engine.
+
+Under host pressure caused by those workloads, the server's own unit is
+favoured:
+
+- `MemoryLow` asks for 1536 MiB, the measured working set of a busy server
+  with headroom, but never more than 1/8 of the memory the kernel reports
+  (`MemTotal`, a little under installed RAM): 1536 MiB at 16 GiB, 512 MiB at
+  4 GiB, 256 MiB at 2 GiB. Under host-wide reclaim the kernel
+  caps a cgroup's effective protection by its ancestors', and a user manager
+  cannot set `user.slice` or `user@.service`. So there this protection takes
+  effect only where the host protects those ancestors; by default they have
+  none.
+- `MemorySwapMax=0` keeps the server's anonymous memory resident on hosts
+  where the whole 1536 MiB fits in 1/8 of `MemTotal` (12 GiB and up). A
+  swapped page faulted back in on the event loop stalls every request. This
+  limit holds whatever the unit's ancestors set, but it puts no ceiling on how
+  much the server keeps resident, so smaller hosts get
+  `MemorySwapMax=infinity` and can still swap the server. File-backed pages
+  such as the Node.js binary stay reclaimable either way.
+- `ManagedOOMPreference=avoid` makes systemd-oomd pick other candidates first.
+  For a user unit, systemd-oomd honours this only when it acts on pressure at
+  or below the user manager, not on swap usage or on the whole host.
+- The workload slice has `CPUWeight=25`. It sits beside the `app.slice` that
+  holds the server's unit, so when just those two contend for CPU, that
+  subtree gets 80% of it. When the server is idle, workloads keep the whole
+  quota. There is no `IOWeight`: a user manager is normally delegated only the
+  cpu, memory and pids controllers.
+
+None of this guarantees survival under host-wide exhaustion or an ancestor
+policy that kills the entire user session.
 
 Managed Linux service isolation requires systemd 253 or newer, which accepts
 `OOMPolicy=` on a scope; an older `systemd-run` rejects the property (systemd
@@ -604,6 +631,31 @@ Common commands:
 ```
 
 See [../reference/cli.md](../reference/cli.md) for the complete command reference.
+
+### CLI and Station Control parity
+
+People and scripts use the `station` CLI; agents use Station Control tools.
+`scripts/cli-mcp-parity.json` classifies every tool in the authority table
+(`src-server/tools/station-control-policy.ts`) and every CLI action in
+`packages/cli/src/help.ts` as one of:
+
+- a counterpart: `"cli": ["<verb> <action>"]` on a tool, or `"tools": [...]` on a CLI action, naming entries that exist;
+- `"exempt"`: a category from `EXEMPT_CATEGORIES` in `scripts/cli-mcp-parity.mjs`, plus a one-line `"reason"`;
+- `"missing"`: the number of the issue tracking the gap.
+
+The `app` section records capabilities only the web app offers, keyed by
+name with their `"route"`; one is covered only when it has both a CLI and a
+tool counterpart. Keep section keys sorted.
+
+`npm run cli-mcp:parity:check` runs in `ci:fast` and `docs:truth:gate`. It
+fails on an unclassified or stale entry, a counterpart that does not exist, a
+`missing` entry without an issue number, and a tool or CLI action newly
+classified `missing` relative to the merge base with `origin/main`. That
+ratchet is keyed by name, so the missing set can only shrink. When you build a
+counterpart, change its entry from `missing` to the counterpart. The `app`
+section is outside the ratchet, so recording a newly found gap there passes.
+The check does not confirm that an `app` route exists, or that two
+counterparts reach the same server route.
 
 ## New user-facing capabilities
 

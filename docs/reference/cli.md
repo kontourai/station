@@ -1754,7 +1754,8 @@ List and resolve orchestration approval requests (`request.opened` events awaiti
 a `request.resolved`) for an external-engine Agent, without raw `curl` against
 `/api/orchestration/commands`. Adds no new server routes: `list` reads
 `GET /api/orchestration/sessions/:threadId` (or `.../sessions/read-model` to scan
-every thread for `--agent`'s provider when `--thread` is omitted) and derives
+every thread when `--thread` is omitted, narrowed to `--agent`'s provider
+when `--agent` is given) and derives
 "pending" the way the server does; `respond` calls the existing
 `POST /api/orchestration/commands {type:'respondToRequest'}` route.
 
@@ -1772,11 +1773,12 @@ not find is posted without the id and the server decides; nothing is refused
 client-side.
 
 ```
-station approvals list --agent=<slug> [--thread=<id>] [--watch] [--json] [--api-base=<url>]
+station approvals list [--agent=<slug>] [--thread=<id>] [--watch] [--json] [--api-base=<url>]
 station approvals respond <thread-id> <request-id> <accept|acceptForSession|decline|cancel> [--json] [--api-base=<url>]
 ```
 
-`--agent` must be a persisted Agent ID whose execution binds to an external
+Without `--agent`, `list` reads every session on the Station. `--agent`
+must be a persisted Agent ID whose execution binds to an external
 engine (for example `codex` or `kiro`) — approvals are an
 orchestration-session concept, and the provider is resolved from that binding.
 Station#979 AC5: resolution reads the connection's own
@@ -1796,6 +1798,7 @@ repo-wide default change.
 Examples:
 
 ```bash
+station approvals list --json
 station approvals list --agent=codex --thread=runtime-thread
 station approvals list --agent=codex --json
 station approvals list --agent=kiro --thread=kiro-thread
