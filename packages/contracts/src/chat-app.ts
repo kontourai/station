@@ -119,6 +119,7 @@ export interface ChatDiscordImport {
 
 export const CHAT_DELIVERY_REFUSAL_REASONS = [
   'app-disabled',
+  'policy-unavailable',
   'busy',
   'not-connected',
   'unlinked-sender',

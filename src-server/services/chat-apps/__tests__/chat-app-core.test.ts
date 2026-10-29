@@ -1,3 +1,5 @@
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import {
   DISCORD_CAPABILITIES,
@@ -721,7 +723,7 @@ test.each(['overflow', 'failure'] as const)(
   },
 );
 
-test.each(['capability', 'kill-switch'] as const)(
+test.each(['capability', 'kill-switch', 'policy'] as const)(
   'stops a reply when %s is revoked between chunks',
   async (scenario) => {
     const { homeDir, config, core } = fixture();
@@ -750,6 +752,11 @@ test.each(['capability', 'kill-switch'] as const)(
             const current = config.read();
             current.identities![0].capabilities = ['turn:start'];
             config.write(current);
+          } else if (scenario === 'policy') {
+            writeFileSync(
+              join(homeDir, 'security', 'discord-gateway.json'),
+              '{',
+            );
           } else {
             core.setKillSwitch(
               {
@@ -789,7 +796,9 @@ test.each(['capability', 'kill-switch'] as const)(
           reason:
             scenario === 'capability'
               ? 'capability-unavailable'
-              : 'app-disabled',
+              : scenario === 'policy'
+                ? 'policy-unavailable'
+                : 'app-disabled',
         },
       ]);
       expect(receipts.map((entry) => entry.replyChunk?.chunkIndex)).toEqual([

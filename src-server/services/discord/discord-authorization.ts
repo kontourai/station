@@ -29,7 +29,26 @@ export class DiscordAuthorizationService {
         () => JSON.stringify(this.store.read()) === snapshot,
       );
     } catch {
-      // An unreadable policy, database or refusal log must fail closed.
+      // Logging may itself be unavailable; never send when authority is uncertain.
+      if (request.replyChunk) {
+        try {
+          this.core.recordDelivery(
+            {
+              app: 'discord',
+              externalWorkspaceId: request.guildId,
+              externalChannelId: request.channelId,
+              externalUserId: request.discordUserId,
+              conversationId: request.expectedSessionId,
+              direction: 'outbound',
+              action: 'notify',
+              replyChunk: request.replyChunk,
+            },
+            { state: 'refused', reason: 'policy-unavailable' },
+          );
+        } catch {
+          /* The delivery log itself is unavailable. */
+        }
+      }
       return { allowed: false, reason: 'policy_unavailable' };
     }
   }

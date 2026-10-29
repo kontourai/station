@@ -202,6 +202,7 @@ describe('chat app boundary contracts', () => {
     'execute-required',
     'approve-required',
     'app-disabled',
+    'policy-unavailable',
     'busy',
     'approval-expired',
   ])('retains the %s delivery refusal', (reason) => {
