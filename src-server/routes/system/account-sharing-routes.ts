@@ -14,6 +14,8 @@ import {
 import type { FeaturePreviewSelector } from '../../services/feature-previews/feature-preview-registry.js';
 import { offeredAccountSharingOrigin } from '../../services/identity/account-sharing-origins.js';
 import {
+  AccountSharingPublishedWriteError,
+  armStagedAccountSharingChange,
   readAccountSharingRecord,
   stageAccountSharingChange,
   withdrawStagedAccountSharingChange,
@@ -136,6 +138,11 @@ export function createAccountSharingRoutes(
       view.stored = read.record.committed;
       if (read.kind === 'unreadable') view.storedUnreadable = true;
       if (read.record.lastApply) view.lastApply = read.record.lastApply;
+      if (read.record.pending)
+        view.pending = {
+          choice: read.record.pending.choice,
+          ready: read.record.pending.ready === true,
+        };
     }
     return c.json({ success: true, data: view });
   });
@@ -184,6 +191,29 @@ export function createAccountSharingRoutes(
         'apply_in_flight',
         'A change to Project sharing is already restarting this Station.',
       );
+    const pending = readAccountSharingRecord(deps.homeDirectory).record.pending;
+    if (pending) {
+      if (pending.ready || pending.attempted)
+        return refuse(
+          c,
+          409,
+          'pending_recovery',
+          'A previous change is still pending and needs reconciliation.',
+        );
+      try {
+        withdrawStagedAccountSharingChange(
+          deps.homeDirectory,
+          'A new change replaced an unarmed request.',
+        );
+      } catch {
+        return refuse(
+          c,
+          503,
+          'pending_recovery',
+          'The previous pending change could not be withdrawn.',
+        );
+      }
+    }
     if (activeMatches(state.active, choice)) {
       const result: AccountSharingApplyResult = { changed: false };
       return c.json({ success: true, data: result });
@@ -203,22 +233,60 @@ export function createAccountSharingRoutes(
       try {
         stageAccountSharingChange(deps.homeDirectory, choice);
       } catch {
+        let withdrawn = true;
+        try {
+          withdrawStagedAccountSharingChange(
+            deps.homeDirectory,
+            'Saving the change failed.',
+          );
+        } catch {
+          withdrawn = false;
+        }
         return refuse(
           c,
           503,
           'setting_unavailable',
-          'Station could not save the setting.',
+          withdrawn
+            ? 'Station could not save the setting.'
+            : 'Station could not save the setting; its pending state needs reconciliation.',
         );
       }
-      const outcome = await deps.requestHandoff();
+      const outcome = await deps
+        .requestHandoff()
+        .catch(() => ({ status: 'unanswered' as const }));
       if (outcome.status === 'draining') {
         handedOff = true;
+        let durabilityUncertain = false;
+        try {
+          armStagedAccountSharingChange(deps.homeDirectory);
+        } catch (error) {
+          if (!(error instanceof AccountSharingPublishedWriteError)) {
+            try {
+              withdrawStagedAccountSharingChange(
+                deps.homeDirectory,
+                'The change could not be armed.',
+              );
+            } catch {}
+            return refuse(
+              c,
+              503,
+              'setting_unavailable',
+              'Station could not prepare the setting for restart.',
+            );
+          }
+          // Published bytes may be adopted. Do not report this request as failed.
+          durabilityUncertain = true;
+          deps.logger?.warn?.(
+            'Project sharing publication durability is uncertain',
+          );
+        }
         deps.logger?.info?.('Project sharing: restarting to apply setting', {
           enabled: choice.enabled,
         });
         const result: AccountSharingApplyResult = {
           changed: true,
           restarting: true,
+          ...(durabilityUncertain ? { durabilityUncertain: true } : {}),
         };
         return c.json({ success: true, data: result });
       }
@@ -230,10 +298,11 @@ export function createAccountSharingRoutes(
             : outcome.status === 'unanswered'
               ? 'the supervisor did not answer'
               : 'no supervisor runs this Station';
+      let withdrawn = true;
       try {
         withdrawStagedAccountSharingChange(deps.homeDirectory, detail);
       } catch {
-        // A staged change left behind is tried, with rollback, next restart.
+        withdrawn = false;
       }
       deps.logger?.warn?.('Project sharing: restart did not start', {
         status: outcome.status,
@@ -242,7 +311,9 @@ export function createAccountSharingRoutes(
         c,
         outcome.status === 'unanswered' ? 504 : 409,
         'restart_failed',
-        `Nothing changed: ${detail}.`,
+        withdrawn
+          ? `Nothing changed: ${detail}.`
+          : `The restart did not start and the pending change needs reconciliation: ${detail}.`,
       );
     } finally {
       // This generation is draining after a handoff; it accepts no second apply.

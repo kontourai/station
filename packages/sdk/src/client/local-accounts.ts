@@ -107,6 +107,10 @@ const sharingView = z
       .strict(),
     stored: sharingChoice.optional(),
     storedUnreadable: z.boolean().optional(),
+    pending: z
+      .object({ choice: sharingChoice, ready: z.boolean() })
+      .strict()
+      .optional(),
     startupFailure: z.string().max(1024).optional(),
     lastApply: z
       .object({
@@ -168,7 +172,11 @@ export async function applyAccountSharingSetting(
     .discriminatedUnion('changed', [
       z.object({ changed: z.literal(false) }).strict(),
       z
-        .object({ changed: z.literal(true), restarting: z.literal(true) })
+        .object({
+          changed: z.literal(true),
+          restarting: z.literal(true),
+          durabilityUncertain: z.boolean().optional(),
+        })
         .strict(),
     ])
     .parse(

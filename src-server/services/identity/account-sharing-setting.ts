@@ -85,6 +85,7 @@ const recordSchema = z
         choice: choiceSchema,
         stagedAt: z.string().max(64),
         attempted: z.boolean(),
+        ready: z.boolean().optional(),
       })
       .strict()
       .optional(),
@@ -100,6 +101,15 @@ const recordSchema = z
   })
   .strict();
 export type AccountSharingRecord = z.infer<typeof recordSchema>;
+
+/** The rename published bytes, but syncing the containing directory failed. */
+export class AccountSharingPublishedWriteError extends Error {
+  constructor(cause: unknown) {
+    super('Account sharing publication could not be confirmed durable.', {
+      cause,
+    });
+  }
+}
 
 const DEFAULT_RECORD: AccountSharingRecord = Object.freeze({
   version: 1,
@@ -194,24 +204,31 @@ export function writeAccountSharingRecord(
   }
   const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`;
   let descriptor: number | undefined;
+  let published = false;
   try {
-    descriptor = openSync(temporary, 'wx', 0o600);
-    writeFileSync(descriptor, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
-    fsyncSync(descriptor);
-    closeSync(descriptor);
-    descriptor = undefined;
-    renameSync(temporary, path);
-  } finally {
-    if (descriptor !== undefined) closeSync(descriptor);
-    rmSync(temporary, { force: true });
-  }
-  // Windows cannot open a directory for fsync; the rename is still atomic.
-  if (process.platform === 'win32') return;
-  const directory = openSync(parent, 'r');
-  try {
-    fsyncSync(directory);
-  } finally {
-    closeSync(directory);
+    try {
+      descriptor = openSync(temporary, 'wx', 0o600);
+      writeFileSync(descriptor, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+      fsyncSync(descriptor);
+      closeSync(descriptor);
+      descriptor = undefined;
+      renameSync(temporary, path);
+      published = true;
+    } finally {
+      if (descriptor !== undefined) closeSync(descriptor);
+      rmSync(temporary, { force: true });
+    }
+    // Windows cannot open a directory for fsync; the rename is still atomic.
+    if (process.platform === 'win32') return;
+    const directory = openSync(parent, 'r');
+    try {
+      fsyncSync(directory);
+    } finally {
+      closeSync(directory);
+    }
+  } catch (error) {
+    if (published) throw new AccountSharingPublishedWriteError(error);
+    throw error;
   }
 }
 
@@ -258,6 +275,8 @@ export function resolveAccountSharingAtBoot(
     }
     return { choice: record.committed, applying: false, unreadable: false };
   }
+  if (!pending.ready)
+    return { choice: record.committed, applying: false, unreadable: false };
   try {
     write(homeDirectory, {
       ...record,
@@ -325,8 +344,28 @@ export function stageAccountSharingChange(
     version: 1,
     // An unreadable file was booted as off; staging over it records that.
     committed: read.record.committed,
-    pending: { choice, stagedAt: now().toISOString(), attempted: false },
+    pending: {
+      choice,
+      stagedAt: now().toISOString(),
+      attempted: false,
+      ready: false,
+    },
     ...(read.record.lastApply ? { lastApply: read.record.lastApply } : {}),
+  });
+}
+
+/** Only a handoff that has begun draining may arm a staged choice. */
+export function armStagedAccountSharingChange(homeDirectory: string): void {
+  const read = readAccountSharingRecord(homeDirectory);
+  if (
+    read.kind !== 'present' ||
+    !read.record.pending ||
+    read.record.pending.attempted
+  )
+    throw new Error('No unattempted account sharing change to arm.');
+  writeAccountSharingRecord(homeDirectory, {
+    ...read.record,
+    pending: { ...read.record.pending, ready: true },
   });
 }
 
@@ -341,6 +380,8 @@ export function withdrawStagedAccountSharingChange(
 ): void {
   const read = readAccountSharingRecord(homeDirectory);
   const pending = read.record.pending;
+  if (read.kind === 'unreadable')
+    throw new Error('Account sharing record is unreadable.');
   if (read.kind !== 'present' || !pending || pending.attempted) return;
   writeAccountSharingRecord(homeDirectory, {
     version: 1,

@@ -67,6 +67,8 @@ export interface AccountSharingSettingView {
   stored?: AccountSharingChoice;
   /** The stored file exists but could not be read, so sharing is off. */
   storedUnreadable?: boolean;
+  /** A staged choice remains on disk and requires reconciliation. */
+  pending?: { choice: AccountSharingChoice; ready: boolean };
   /** Why the stored choice is not in effect since this Station started. */
   startupFailure?: string;
   lastApply?: AccountSharingLastApply;
@@ -76,4 +78,4 @@ export interface AccountSharingSettingView {
 }
 export type AccountSharingApplyResult =
   | { changed: false }
-  | { changed: true; restarting: true };
+  | { changed: true; restarting: true; durabilityUncertain?: boolean };

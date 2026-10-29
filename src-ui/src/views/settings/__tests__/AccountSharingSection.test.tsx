@@ -99,6 +99,47 @@ const off: AccountSharingSettingView = {
   restart: 'supervised',
 };
 
+test('shows an unresolved pending change from the server', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () =>
+      reply({
+        ...off,
+        pending: {
+          choice: { enabled: true, publicOrigin: OFFERED },
+          ready: false,
+        },
+      }),
+    ),
+  );
+  mount();
+  expect(
+    await screen.findByText(/previous change remains pending/),
+  ).toBeTruthy();
+});
+
+test('reports an uncertain publication while Station restarts', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_url: string, init?: RequestInit) =>
+      init?.method === 'PUT'
+        ? reply({ changed: true, restarting: true, durabilityUncertain: true })
+        : reply(off),
+    ),
+  );
+  mount();
+  fireEvent.click(
+    await screen.findByRole('switch', {
+      name: 'Project sharing with local accounts',
+    }),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Apply and restart' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm change' }));
+  expect(
+    await screen.findByText(/durability could not be confirmed/),
+  ).toBeTruthy();
+});
+
 test('the operator picks an offered address, confirms, and Station restarts into it', async () => {
   const writes: unknown[] = [];
   let current = off;

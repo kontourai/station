@@ -17,6 +17,7 @@ import {
 } from '../account-sharing-origins.js';
 import {
   accountSharingSettingPath,
+  armStagedAccountSharingChange,
   commitAccountSharingAtBoot,
   deploymentAccountSharingVariables,
   readAccountSharingRecord,
@@ -51,7 +52,12 @@ describe('stored Project sharing setting (#4305)', () => {
       choice: on,
       stagedAt: now().toISOString(),
       attempted: false,
+      ready: false,
     });
+    expect(resolveAccountSharingAtBoot(path, now).choice).toEqual({
+      enabled: false,
+    });
+    armStagedAccountSharingChange(path);
     const boot = resolveAccountSharingAtBoot(path, now);
     expect(boot).toEqual({ choice: on, applying: true, unreadable: false });
     // Durable before anything uses it: a crash from here on is a rollback.
@@ -72,6 +78,7 @@ describe('stored Project sharing setting (#4305)', () => {
   test('a boot that finds an attempted change never committed rolls it back to the committed choice', () => {
     const path = home();
     stageAccountSharingChange(path, on, now);
+    armStagedAccountSharingChange(path);
     resolveAccountSharingAtBoot(path, now);
     // That boot died before committing. The supervisor's rollback relaunch:
     const relaunch = resolveAccountSharingAtBoot(path, now);
@@ -95,6 +102,7 @@ describe('stored Project sharing setting (#4305)', () => {
   test('a staged change that cannot be marked attempted is not used', () => {
     const path = home();
     stageAccountSharingChange(path, on, now);
+    armStagedAccountSharingChange(path);
     const boot = resolveAccountSharingAtBoot(path, now, () => {
       throw new Error('read-only home');
     });
@@ -105,6 +113,7 @@ describe('stored Project sharing setting (#4305)', () => {
   test('a load failure during the attempt rolls back with its reason', () => {
     const path = home();
     stageAccountSharingChange(path, on, now);
+    armStagedAccountSharingChange(path);
     resolveAccountSharingAtBoot(path, now);
     rollBackAccountSharingAtBoot(path, 'Project sharing could not start', now);
     expect(stored(path).pending).toBeUndefined();
@@ -118,9 +127,11 @@ describe('stored Project sharing setting (#4305)', () => {
   test('turning it off keeps the previous choice only as history', () => {
     const path = home();
     stageAccountSharingChange(path, on, now);
+    armStagedAccountSharingChange(path);
     resolveAccountSharingAtBoot(path, now);
     commitAccountSharingAtBoot(path, now);
     stageAccountSharingChange(path, { enabled: false }, now);
+    armStagedAccountSharingChange(path);
     resolveAccountSharingAtBoot(path, now);
     commitAccountSharingAtBoot(path, now);
     expect(stored(path).committed).toEqual({ enabled: false });
@@ -136,6 +147,7 @@ describe('stored Project sharing setting (#4305)', () => {
     });
     expect(stored(path).pending).toBeUndefined();
     stageAccountSharingChange(path, on, now);
+    armStagedAccountSharingChange(path);
     resolveAccountSharingAtBoot(path, now);
     withdrawStagedAccountSharingChange(path, 'late', now);
     expect(stored(path).pending.attempted).toBe(true);

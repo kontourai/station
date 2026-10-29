@@ -1,4 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs';
+import fs, { existsSync, readFileSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type { HandoffRequestOutcome } from '../../../runtime/bootstrap/supervisor-link.js';
@@ -275,4 +276,82 @@ describe('Project sharing settings route (#4305)', () => {
     expect(h.requestHandoff).not.toHaveBeenCalled();
     expect(existsSync(h.file)).toBe(false);
   });
+});
+
+test('a published staging write with failed directory sync is never adopted', async () => {
+  const h = await harness();
+  const real = fs.fsyncSync;
+  let response: Response;
+  try {
+    fs.fsyncSync = (fd) => {
+      if (fs.fstatSync(fd).isDirectory())
+        throw new Error('directory sync failed');
+      return real(fd);
+    };
+    syncBuiltinESMExports();
+    response = await h.call('PUT', enable);
+  } finally {
+    fs.fsyncSync = real;
+    syncBuiltinESMExports();
+  }
+  expect(response!.status).toBe(503);
+  expect(h.requestHandoff).not.toHaveBeenCalled();
+  expect(resolveAccountSharingAtBoot(h.homeDirectory).choice).toEqual({
+    enabled: false,
+  });
+});
+
+test('a failed withdrawal leaves a visible unarmed choice that boot will not adopt', async () => {
+  const h = await harness({ handoff: { status: 'refused', reason: 'busy' } });
+  const real = fs.renameSync;
+  let calls = 0;
+  let response: Response;
+  try {
+    fs.renameSync = (...args) => {
+      if (++calls === 2) throw new Error('withdrawal failed');
+      return real(...args);
+    };
+    syncBuiltinESMExports();
+    response = await h.call('PUT', enable);
+  } finally {
+    fs.renameSync = real;
+    syncBuiltinESMExports();
+  }
+  expect(response!.status).toBe(409);
+  expect((await response!.json()).error).toMatch(
+    /pending change needs reconciliation/,
+  );
+  expect((await (await h.call('GET')).json()).data.pending).toEqual({
+    choice: enable,
+    ready: false,
+  });
+  expect(resolveAccountSharingAtBoot(h.homeDirectory).choice).toEqual({
+    enabled: false,
+  });
+});
+
+test('an indeterminate arm publication is reported as uncertain rather than failed', async () => {
+  const h = await harness();
+  const real = fs.fsyncSync;
+  let directories = 0;
+  let response: Response;
+  try {
+    fs.fsyncSync = (fd) => {
+      if (fs.fstatSync(fd).isDirectory() && ++directories === 2)
+        throw new Error('arm directory sync failed');
+      return real(fd);
+    };
+    syncBuiltinESMExports();
+    response = await h.call('PUT', enable);
+  } finally {
+    fs.fsyncSync = real;
+    syncBuiltinESMExports();
+  }
+  expect(response!.status).toBe(200);
+  expect((await response!.json()).data).toEqual({
+    changed: true,
+    restarting: true,
+    durabilityUncertain: true,
+  });
+  expect(resolveAccountSharingAtBoot(h.homeDirectory).choice).toEqual(enable);
 });

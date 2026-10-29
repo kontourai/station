@@ -64,6 +64,7 @@ import {
 import {
   type AccountSharingRecord,
   accountSharingSettingPath,
+  armStagedAccountSharingChange,
   resolveAccountSharingAtBoot,
   stageAccountSharingChange,
 } from '../../services/identity/account-sharing-setting.js';
@@ -1555,6 +1556,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     it('a staged choice is adopted at boot, reaches the routes, and is committed', async () => {
       home = await createSchemaHome('station-sharing-setting-apply-');
       stageAccountSharingChange(home, { enabled: true, publicOrigin });
+      armStagedAccountSharingChange(home);
       await boot();
       expect(internals().localAccounts).toBeDefined();
       const context = routeContext();
@@ -1600,6 +1602,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       mkdirSync(join(home, 'authentication'), { mode: 0o700 });
       writeFileSync(join(home, 'authentication', 'local-accounts.sqlite'), '');
       stageAccountSharingChange(home, { enabled: true, publicOrigin });
+      armStagedAccountSharingChange(home);
       await boot();
       expect(internals().localAccounts).toBeUndefined();
       expect(internals().projectMembership).toBeUndefined();
@@ -1621,6 +1624,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     it('a change a previous boot tried and never committed is rolled back before use', async () => {
       home = await createSchemaHome('station-sharing-setting-crash-');
       stageAccountSharingChange(home, { enabled: true, publicOrigin });
+      armStagedAccountSharingChange(home);
       // The generation that tried it died before committing.
       resolveAccountSharingAtBoot(home);
       await boot();
@@ -1634,6 +1638,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     it('deployment variables win: the stored choice is neither used nor touched', async () => {
       home = await createSchemaHome('station-sharing-setting-locked-');
       stageAccountSharingChange(home, { enabled: true, publicOrigin });
+      armStagedAccountSharingChange(home);
       const previous = process.env.STATION_PROJECT_SHARING;
       process.env.STATION_PROJECT_SHARING = '0';
       try {
@@ -1654,6 +1659,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     }, async () => {
       home = await createSchemaHome('station-sharing-setting-off-');
       stageAccountSharingChange(home, { enabled: true, publicOrigin });
+      armStagedAccountSharingChange(home);
       await boot();
       const membership = internals().projectMembership!;
       vi.spyOn(membership.service as never, 'mayRegister').mockResolvedValue(
@@ -1698,6 +1704,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       await stop();
 
       stageAccountSharingChange(home, { enabled: false });
+      armStagedAccountSharingChange(home);
       await boot();
       expect(record().committed).toEqual({ enabled: false });
       // Nothing can authenticate an account: no provider reaches the routes.
@@ -1731,6 +1738,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       await stop();
 
       stageAccountSharingChange(home, { enabled: true, publicOrigin });
+      armStagedAccountSharingChange(home);
       await boot();
       const after = await internals().localAccounts!.service.authenticate(
         sessionRequest(),

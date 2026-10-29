@@ -113,6 +113,7 @@ function SharingControls({
   const [draft, setDraft] = useState<AccountSharingChoice>();
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string>();
+  const [uncertain, setUncertain] = useState(false);
 
   const view = query.data;
   // The restart is over once the Station reports the change, or reports a
@@ -134,11 +135,13 @@ function SharingControls({
     try {
       const result = await mutation.mutateAsync(draft);
       setConfirming(false);
+      setUncertain(result.changed && result.durabilityUncertain === true);
       if (result.changed) setRestarting({ choice: draft, since });
       setDraft(undefined);
       await client.invalidateQueries({ queryKey: key });
     } catch (cause) {
       setError(userFacingErrorMessage(cause));
+      await client.invalidateQueries({ queryKey: key });
     } finally {
       mutation.reset();
     }
@@ -333,6 +336,19 @@ function SharingControls({
             ? 'The last change was rolled back.'
             : 'The last change was not applied.'}{' '}
           {view.lastApply.reason}
+        </p>
+      )}
+      {view.pending && !restarting && (
+        <p className="settings__field-hint" role="status">
+          {view.pending.ready
+            ? 'A previous change remains pending. Restart Station to reconcile it.'
+            : 'A previous change remains pending. Try applying again to reconcile it.'}
+        </p>
+      )}
+      {uncertain && (
+        <p className="settings__field-hint" role="status">
+          The change was published, but its durability could not be confirmed.
+          Check the setting after restart.
         </p>
       )}
       {view.startupFailure && (
