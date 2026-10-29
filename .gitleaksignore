@@ -107,3 +107,7 @@ f5e4ad873375a1ffbb0123c1c56f24ffb0cd070b:src-server/routes/connections/__tests__
 # A fake API token in the workload recovery-note redaction test at one historical
 # location; the fixture now assembles the token at runtime.
 3279790c906a9f5d96abf325580b3fa78bf8227c:src-server/services/infra/__tests__/workload-budget.test.ts:curl-auth-header:169
+
+# Synthetic Discord snowflake fixture IDs at exact historical locations.
+610a5d1c626ba1481f29437914e77ab69f247239:packages/contracts/src/__tests__/discord-compatibility.test.ts:discord-client-id:15
+610a5d1c626ba1481f29437914e77ab69f247239:packages/contracts/src/__tests__/discord-compatibility.test.ts:discord-client-id:42
