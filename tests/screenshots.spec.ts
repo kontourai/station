@@ -2892,7 +2892,9 @@ const SCREENS: Screen[] = [
           dockBox!.y,
         );
       } finally {
-        await style.evaluate((element) => element.remove());
+        await style.evaluate((element) => {
+          element.parentNode?.removeChild(element);
+        });
       }
     },
   },
