@@ -15711,6 +15711,7 @@ export class EventStore {
     clientInputId: string;
     input: string;
     turnId?: string;
+    childId?: string;
   }):
     | Extract<SteerTurnResult, { outcome: 'steered' | 'indeterminate' }>
     | undefined {
@@ -15745,6 +15746,7 @@ export class EventStore {
     clientInputId: string;
     input: string;
     turnId?: string;
+    childId?: string;
   }): boolean {
     const result = this.steerReceiptStorage().executeSync(
       {
@@ -15767,6 +15769,7 @@ export class EventStore {
       clientInputId: string;
       input: string;
       turnId?: string;
+      childId?: string;
     },
     confirmedTurnId: string,
   ): void {
@@ -15785,9 +15788,24 @@ export class EventStore {
       throw new Error('Steer delivery confirmation was not recorded.');
   }
 
-  private steerInputDigest(input: { input: string; turnId?: string }): string {
+  private steerInputDigest(input: {
+    input: string;
+    turnId?: string;
+    childId?: string;
+  }): string {
     return createHash('sha256')
-      .update(JSON.stringify([input.input, input.turnId ?? null]))
+      .update(
+        JSON.stringify(
+          input.childId === undefined
+            ? [input.input, input.turnId ?? null]
+            : [
+                'child-work-steer-v1',
+                input.childId,
+                input.turnId ?? null,
+                input.input,
+              ],
+        ),
+      )
       .digest('hex');
   }
 

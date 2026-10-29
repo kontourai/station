@@ -32,6 +32,39 @@ describe('turn dedup over Station tables', () => {
     }
   };
 
+  test('child steer keys bind child, turn and input across store restart', () => {
+    const { store, file } = open();
+    const input = {
+      threadId: 'parent',
+      childId: 'child-a',
+      turnId: 'turn-a',
+      clientInputId: 'key',
+      input: 'hello',
+    };
+    expect(store.claimSteerInput(input)).toBe(true);
+    store.close();
+    const reopened = new EventStore(file);
+    for (const other of [
+      input,
+      { ...input, childId: 'child-b' },
+      { ...input, turnId: 'turn-b' },
+      { ...input, input: 'different' },
+      { ...input, childId: undefined },
+    ]) {
+      expect(reopened.claimSteerInput(other)).toBe(false);
+      expect(reopened.readSteerInput(other)?.outcome).toBe('indeterminate');
+    }
+    reopened.confirmSteerInput(input, input.turnId);
+    expect(reopened.readSteerInput(input)).toMatchObject({
+      outcome: 'steered',
+      turnId: 'turn-a',
+    });
+    expect(
+      reopened.readSteerInput({ ...input, childId: 'child-b' })?.outcome,
+    ).toBe('indeterminate');
+    reopened.close();
+  });
+
   test('writes the owner under the name an older binary reads, with the invocation beside it', () => {
     const { store, file } = open();
     expect(store.claimChatTurn('turn-a')).toEqual({ claimed: true });
