@@ -97,11 +97,14 @@ export class ProjectMembershipStore {
   }
 
   /** Caller must hold current Project revision and independently verified operator bootstrap authority. */
-  enable(scope: ProjectMembershipScope, owner: PrincipalRef): void {
+  enable(
+    scope: ProjectMembershipScope,
+    owner: PrincipalRef,
+  ): number | undefined {
     this.assertScopeStation(scope);
     if (!isPrincipalRef(owner) || owner.kind !== 'human')
       throw new ProjectMembershipRefusal('forbidden');
-    this.transaction(() => {
+    return this.transaction(() => {
       const existing = this.db
         .prepare(
           'SELECT portable_id, local_slug FROM shared_projects WHERE local_id=?',
@@ -119,7 +122,7 @@ export class ProjectMembershipStore {
           scope.portableProjectId,
           scope.localProjectSlug,
         );
-      this.putMember(scope, owner, 'owner', 'active', owner);
+      return this.putMember(scope, owner, 'owner', 'active', owner).revision;
     });
   }
 
@@ -350,7 +353,7 @@ export class ProjectMembershipStore {
     token: string,
     actor: PrincipalRef,
     verifiedEmails: readonly string[],
-  ): ProjectMembershipScope {
+  ): { scope: ProjectMembershipScope; revision: number } {
     if (!isPrincipalRef(actor) || actor.kind !== 'human')
       throw new ProjectMembershipRefusal('forbidden');
     return this.transaction(() => {
@@ -366,7 +369,7 @@ export class ProjectMembershipStore {
       const existing = this.member(scope, actor.id);
       if (existing?.status === 'active')
         throw new ProjectMembershipRefusal('conflict');
-      this.putMember(
+      const member = this.putMember(
         scope,
         actor,
         invitation.role,
@@ -379,7 +382,7 @@ export class ProjectMembershipStore {
           JSON.stringify({ ...invitation, status: 'accepted' }),
           invitation.id,
         );
-      return scope;
+      return { scope, revision: member.revision };
     });
   }
 
@@ -426,8 +429,8 @@ export class ProjectMembershipStore {
     scope: ProjectMembershipScope,
     actor: PrincipalRef,
     recipientId: string,
-  ): void {
-    this.transaction(() => {
+  ): { principalId: string; revision: number }[] {
+    return this.transaction(() => {
       if (
         this.require(scope, actor, 'manage-members').role !== 'owner' ||
         actor.id === recipientId
@@ -436,8 +439,18 @@ export class ProjectMembershipStore {
       const recipient = this.member(scope, recipientId);
       if (recipient?.status !== 'active')
         throw new ProjectMembershipRefusal('conflict');
-      this.putMember(scope, recipient.principal, 'owner', 'active', actor);
-      this.putMember(scope, actor, 'admin', 'active', actor);
+      const promoted = this.putMember(
+        scope,
+        recipient.principal,
+        'owner',
+        'active',
+        actor,
+      );
+      const demoted = this.putMember(scope, actor, 'admin', 'active', actor);
+      return [
+        { principalId: actor.id, revision: demoted.revision },
+        { principalId: recipientId, revision: promoted.revision },
+      ];
     });
   }
 
@@ -533,7 +546,7 @@ export class ProjectMembershipStore {
     role: ProjectMemberRole,
     status: MemberRecord['status'],
     grantedBy: PrincipalRef,
-  ): void {
+  ): MemberRecord {
     const record = memberSchema.parse({
       principal,
       role,
@@ -547,6 +560,7 @@ export class ProjectMembershipStore {
         'INSERT INTO project_members VALUES (?, ?, ?) ON CONFLICT(project_id, principal_id) DO UPDATE SET record=excluded.record',
       )
       .run(scope.localProjectId, principal.id, JSON.stringify(record));
+    return record;
   }
   private actions(role: ProjectMemberRole): ProjectMemberAction[] {
     return [...PROJECT_MEMBER_ROLES[role]];

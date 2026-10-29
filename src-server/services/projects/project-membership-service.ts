@@ -104,23 +104,10 @@ export class ProjectMembershipService {
         const actor = await this.currentActor(authority, initial.principal.id);
         if (scope.localProjectId !== expectedLocalId)
           throw new ProjectMembershipRefusal('conflict');
-        const before = this.admissionsForResolvedPrincipal(
-          actor.principal.id,
-        ).find(
-          (admission) =>
-            admission.scope.localProjectId === scope.localProjectId,
-        );
-        this.members.enable(scope, actor.principal);
+        const revision = this.members.enable(scope, actor.principal);
+        if (revision !== undefined)
+          this.emitChange(scope.localProjectId, actor.principal.id, revision);
         const view = this.members.administration(scope, actor.principal);
-        const owner = view.members.find(
-          (member) => member.principal.id === actor.principal.id,
-        );
-        if (!before && owner)
-          this.emitChange(
-            scope.localProjectId,
-            actor.principal.id,
-            owner.revision,
-          );
         return view;
       },
       async (localId) => {
@@ -377,13 +364,12 @@ export class ProjectMembershipService {
         actor.principal,
         actor.verifiedEmails,
       );
-      const member = this.members.require(scope, actor.principal, 'view');
       this.emitChange(
         scope.localProjectId,
         actor.principal.id,
-        member.revision,
+        accepted.revision,
       );
-      return accepted;
+      return accepted.scope;
     });
   }
 
@@ -450,23 +436,17 @@ export class ProjectMembershipService {
       capturedScope,
       authority,
       (actor) => {
-        this.members.transferOwnership(
+        const changes = this.members.transferOwnership(
           capturedScope,
           actor.principal,
           recipientId,
         );
-        for (const principalId of [actor.principal.id, recipientId]) {
-          const changed = this.admissionsForResolvedPrincipal(principalId).find(
-            (admission) =>
-              admission.scope.localProjectId === capturedScope.localProjectId,
+        for (const change of changes)
+          this.emitChange(
+            capturedScope.localProjectId,
+            change.principalId,
+            change.revision,
           );
-          if (changed)
-            this.emitChange(
-              capturedScope.localProjectId,
-              principalId,
-              changed.member.revision,
-            );
-        }
         return { changed: true as const };
       },
       capturedIntent,

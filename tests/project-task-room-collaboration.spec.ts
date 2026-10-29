@@ -465,6 +465,7 @@ test.describe
       await expect(avatars.getByText('Bob', { exact: true })).toHaveCount(1);
       const target = process.env.STATION_ROOM_MEMBER_SHOTS_DIR;
       if (target) mkdirSync(target, { recursive: true });
+      await page.emulateMedia({ reducedMotion: 'reduce' });
       for (const theme of ['light', 'dark']) {
         await page.evaluate(
           (value) => document.documentElement.setAttribute('data-theme', value),
@@ -475,10 +476,29 @@ test.describe
           await expect(
             history.getByText('Alice', { exact: true }),
           ).toBeVisible();
+          await expect
+            .poll(async () => {
+              const before = await history.boundingBox();
+              await page.evaluate(
+                () =>
+                  new Promise<void>((resolve) =>
+                    requestAnimationFrame(() =>
+                      requestAnimationFrame(() => resolve()),
+                    ),
+                  ),
+              );
+              const after = await history.boundingBox();
+              return (
+                before !== null &&
+                JSON.stringify(before) === JSON.stringify(after)
+              );
+            })
+            .toBe(true);
           const filename = `collaboration-${theme}-${width}.png`;
           await page.screenshot({
             path: testInfo.outputPath(filename),
             fullPage: true,
+            animations: 'disabled',
           });
           if (target)
             copyFileSync(testInfo.outputPath(filename), join(target, filename));

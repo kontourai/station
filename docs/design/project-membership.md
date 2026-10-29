@@ -176,9 +176,12 @@ Task incarnation, share and portable Project identity. `view` admits discovery,
 history, document and presence reads; `discuss` admits messages; `edit` admits
 edit planning. The account-bound route inventory does not admit batch settlement,
 attachments, Task memory, review or agent requests in this slice. The member's
-revision is captured and rechecked, including on delivery. A membership change
-notifies room subscribers after commit; a stream whose captured admission is no
-longer current closes, with a 15-second idle recheck as a fallback. A missing or
+revision is captured and rechecked, including on delivery. The service notifies
+in-process subscribers synchronously after a committed membership change, with
+the Project, principal and committed revision. Listener errors are isolated;
+notifications are not durable across a process failure. A stream whose captured
+admission is no longer current closes, with a 15-second idle recheck as a
+fallback. A missing or
 unshared Task is not found. Membership grants no host execution or private
 Session access. Local account and route tests exercise two principals; the
 real two-person/device journey remains unverified.

@@ -355,6 +355,10 @@ function fixture(
       value: unknown;
     }) => Promise<void>;
     revokeAfterWorkingRead?: boolean;
+    failTaskReadAfterWorkingRead?: boolean;
+    subscribeMembershipChanges?: ConstructorParameters<
+      typeof ProjectTaskRoomRuntime
+    >[0]['subscribeMembershipChanges'];
     recoveryValue?: unknown;
     readRecovery?: () => Promise<
       | { kind: 'available'; generation: string; value: unknown }
@@ -374,6 +378,7 @@ function fixture(
   let watches = 0;
   let unwatches = 0;
   let revoked = false;
+  let failTaskRead = false;
   const readSourceSeal = options.readSourceSeal
     ? vi.fn(options.readSourceSeal)
     : undefined;
@@ -431,7 +436,14 @@ function fixture(
     ...(readSourceSeal ? { readSourceSeal } : {}),
   };
   const runtime = new ProjectTaskRoomRuntime({
-    taskGraph: { readTaskView: (id) => (id === task.id ? task : null) },
+    subscribeMembershipChanges: options.subscribeMembershipChanges,
+    taskGraph: {
+      readTaskView: (id) => {
+        if (failTaskRead)
+          throw new Error('Task graph read failed after document read');
+        return id === task.id ? task : null;
+      },
+    },
     projectForId: (id) =>
       id === task.projectId ? { id, slug: 'project' } : undefined,
     history: () => room,
@@ -441,6 +453,7 @@ function fixture(
     working: {
       read: async () => {
         if (options.revokeAfterWorkingRead) revoked = true;
+        if (options.failTaskReadAfterWorkingRead) failTaskRead = true;
         return { kind: 'snapshot' as const, revision: 'empty', text: '' };
       },
       settle: async (input) => {
@@ -2804,6 +2817,31 @@ describe('ProjectTaskRoomRuntime', () => {
       }),
     ).resolves.toEqual({ kind: 'not-found' });
     await guarded.close();
+  });
+
+  test('releases the membership listener when subscription setup throws', async () => {
+    let active = 0;
+    const { runtime } = fixture({
+      subscribeMembershipChanges: () => {
+        active += 1;
+        return () => {
+          active -= 1;
+        };
+      },
+      failTaskReadAfterWorkingRead: true,
+    });
+    try {
+      await expect(
+        runtime.subscribe({
+          taskId: task.id,
+          request: new Request('http://station'),
+          emit: () => {},
+        }),
+      ).rejects.toThrow('Task graph read failed');
+      expect(active).toBe(0);
+    } finally {
+      await runtime.close();
+    }
   });
 
   test('releases the room watch immediately when initial subscription authorization fails', async () => {

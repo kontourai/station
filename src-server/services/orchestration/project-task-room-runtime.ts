@@ -2895,67 +2895,71 @@ export class ProjectTaskRoomRuntime {
     };
     subscribers.add(subscriber);
     this.#subscribers.set(key, subscribers);
-    subscriber.unsubscribeMembership = this.#deps.subscribeMembershipChanges?.(
-      (change) => {
-        if (change.principalId !== principal.operatorId) return;
-        void this.#subscriberAuthorized(document, subscriber)
-          .catch(() => false)
-          .then((authorized) => {
-            if (!authorized && subscribers.has(subscriber)) {
-              this.#deliver(subscriber, { type: 'terminal' });
-              this.#removeSubscriber(document, subscriber);
-            }
-          });
-      },
-    );
-    if (!this.#unwatchWorking)
-      this.#unwatchWorking = this.#deps.working.watch(() => {
-        void this.#publishWorkingChanges();
-      });
-    if (!(await this.#recoverPending(document))) {
-      this.#removeSubscriber(document, subscriber);
-      return { kind: 'not-found' } as const;
-    }
-    const now = Date.now();
-    const entry = this.#liveEntry(document, now);
-    const authorization: LiveWorkAuthorization = {
-      actorId: actorIdFor(principal),
-      scope: entry.room.scope,
-      capabilities: new Set(['read']),
-    };
-    const documentProjection = await this.#deps.working.read({
-      scope: document,
-      ...(input.after ? { after: input.after } : {}),
-    });
-    if (
-      !(await this.#sameAuthorizedDocument(
-        input.taskId,
-        input.request,
-        document,
-        principal,
-      ))
-    ) {
-      this.#removeSubscriber(document, subscriber);
-      return { kind: 'not-found' } as const;
-    }
-    return {
-      kind: 'subscribed' as const,
-      initial: {
-        type: 'snapshot',
-        generation: entry.generation,
-        viewerActorId: actorIdFor(principal),
-        live: this.#liveSnapshot(entry, authorization, now),
-        document: documentProjection,
-      },
-      unsubscribe: () => {
+    try {
+      subscriber.unsubscribeMembership =
+        this.#deps.subscribeMembershipChanges?.((change) => {
+          if (change.principalId !== principal.operatorId) return;
+          void this.#subscriberAuthorized(document, subscriber)
+            .catch(() => false)
+            .then((authorized) => {
+              if (!authorized && subscribers.has(subscriber)) {
+                this.#deliver(subscriber, { type: 'terminal' });
+                this.#removeSubscriber(document, subscriber);
+              }
+            });
+        });
+      if (!this.#unwatchWorking)
+        this.#unwatchWorking = this.#deps.working.watch(() => {
+          void this.#publishWorkingChanges();
+        });
+      if (!(await this.#recoverPending(document))) {
         this.#removeSubscriber(document, subscriber);
-      },
-      activate: () => {
-        subscriber.ready = true;
-        for (const event of subscriber.pending.splice(0))
-          subscriber.emit(event);
-      },
-    };
+        return { kind: 'not-found' } as const;
+      }
+      const now = Date.now();
+      const entry = this.#liveEntry(document, now);
+      const authorization: LiveWorkAuthorization = {
+        actorId: actorIdFor(principal),
+        scope: entry.room.scope,
+        capabilities: new Set(['read']),
+      };
+      const documentProjection = await this.#deps.working.read({
+        scope: document,
+        ...(input.after ? { after: input.after } : {}),
+      });
+      if (
+        !(await this.#sameAuthorizedDocument(
+          input.taskId,
+          input.request,
+          document,
+          principal,
+        ))
+      ) {
+        this.#removeSubscriber(document, subscriber);
+        return { kind: 'not-found' } as const;
+      }
+      return {
+        kind: 'subscribed' as const,
+        initial: {
+          type: 'snapshot',
+          generation: entry.generation,
+          viewerActorId: actorIdFor(principal),
+          live: this.#liveSnapshot(entry, authorization, now),
+          document: documentProjection,
+        },
+        unsubscribe: () => {
+          this.#removeSubscriber(document, subscriber);
+        },
+        activate: () => {
+          subscriber.ready = true;
+          for (const event of subscriber.pending.splice(0))
+            subscriber.emit(event);
+        },
+      };
+    } catch (error) {
+      this.#removeSubscriber(document, subscriber);
+      throw error;
+    }
   }
 
   /** SSE cadence rechecks the same request authority even when the document is idle. */
