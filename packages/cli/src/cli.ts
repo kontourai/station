@@ -806,12 +806,12 @@ function buildProgram(
   });
   register('dev', (rawArgs) => runDevCommand(rawArgs));
   register('doctor', async (rawArgs) => {
-    if (isBundledDistribution()) {
-      await runTargetCommand(rawArgs.filter((arg) => arg !== '--json'));
-      return;
-    }
     if (rawArgs.includes('--migrate-playbooks')) {
       await runPlaybookMigrationReport(rawArgs, dependencies);
+      return;
+    }
+    if (isBundledDistribution()) {
+      await runTargetCommand(rawArgs.filter((arg) => arg !== '--json'));
       return;
     }
     if (rawArgs.includes('--json')) await doctorJson();
