@@ -232,53 +232,57 @@ describe('IntegrationsView (#771)', () => {
     expect(JSON.parse(request.body)).not.toHaveProperty('contentTrust');
   });
 
-  test('legacy trust settings ask for review even without the preview, and keeping them posts the decision', async () => {
-    const { _setApiBase } = await vi.importActual<
-      typeof import('@kontourai/station-sdk')
-    >('@kontourai/station-sdk');
-    _setApiBase('http://localhost');
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ success: true }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }),
-    );
-    vi.stubGlobal('fetch', fetchMock);
-    pathname = '/connections/tools/mail';
-    detail = {
-      id: 'mail',
-      kind: 'mcp',
-      transport: 'stdio',
-      command: 'node',
-      enabled: false,
-      trustReview: {
-        fields: [
-          {
-            field: 'permissions',
-            value: { default: 'allow', tools: { send_reply: 'deny' } },
-          },
-          { field: 'trustReadOnlyHints', value: true },
-        ],
-      },
-    };
-    integrations = [detail];
-    renderView();
-    expect(await screen.findByText('Needs your review')).toBeTruthy();
-    expect(screen.getByText('default allow, send_reply deny')).toBeTruthy();
-    expect(screen.getByText('Trusted')).toBeTruthy();
-    // The editable trust controls stay behind the preview.
-    expect(
-      screen.queryByLabelText('Default after untrusted content'),
-    ).toBeNull();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Keep these settings' }),
-    );
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    const [url, request] = fetchMock.mock.calls[0];
-    expect(url).toBe('http://localhost/integrations/mail/trust-review');
-    expect(request.method).toBe('POST');
-    expect(JSON.parse(request.body)).toEqual({ decision: 'keep' });
-  });
+  test.each([false, true])(
+    'legacy trust settings ask for review (preview %s), are not editable, and keeping them posts the decision',
+    async (preview) => {
+      trustPreview = preview;
+      const { _setApiBase } = await vi.importActual<
+        typeof import('@kontourai/station-sdk')
+      >('@kontourai/station-sdk');
+      _setApiBase('http://localhost');
+      const fetchMock = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ success: true }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+      pathname = '/connections/tools/mail';
+      detail = {
+        id: 'mail',
+        kind: 'mcp',
+        transport: 'stdio',
+        command: 'node',
+        enabled: false,
+        trustReview: {
+          fields: [
+            {
+              field: 'permissions',
+              value: { default: 'allow', tools: { send_reply: 'deny' } },
+            },
+            { field: 'trustReadOnlyHints', value: true },
+          ],
+        },
+      };
+      integrations = [detail];
+      renderView();
+      expect(await screen.findByText('Needs your review')).toBeTruthy();
+      expect(screen.getByText('default allow, send_reply deny')).toBeTruthy();
+      expect(screen.getByText('Trusted')).toBeTruthy();
+      // Settings that are not loaded are not editable, preview or not.
+      expect(
+        screen.queryByLabelText('Default after untrusted content'),
+      ).toBeNull();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Keep these settings' }),
+      );
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      const [url, request] = fetchMock.mock.calls[0];
+      expect(url).toBe('http://localhost/integrations/mail/trust-review');
+      expect(request.method).toBe('POST');
+      expect(JSON.parse(request.body)).toEqual({ decision: 'keep' });
+    },
+  );
 
   test('renders the tool list before advanced secret bindings and uses user-facing unchecked copy', () => {
     integrations = [
