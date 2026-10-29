@@ -1628,7 +1628,10 @@ the MCP authorization specification gives:
 2. A **client metadata URL** you configured, only when the authorization server
    advertises `client_id_metadata_document_supported`. The URL is the client ID
    and must be an HTTPS URL with a path. Station does not host a metadata
-   document, and none is configured by default.
+   document, and none is configured by default. A deployment can set one for
+   every integration without its own client through
+   [`STATION_OAUTH_CLIENT_METADATA_URL`](../reference/env-vars.md); an
+   integration's own client ID or metadata URL takes precedence.
 3. Dynamic Client Registration, when the server offers it.
 
 If none of those applies, sign-in stops before contacting the token endpoint.

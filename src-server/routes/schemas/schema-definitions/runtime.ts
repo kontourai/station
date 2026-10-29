@@ -3,6 +3,7 @@ import { validateChatInputFileParts } from '@kontourai/station-contracts/chat-at
 import {
   isSafeToolServerCredentialKey,
   isSafeToolServerId,
+  isToolClientMetadataDocumentUrl,
 } from '@kontourai/station-contracts/tool';
 import { z } from 'zod/v3';
 import {
@@ -325,7 +326,7 @@ export const integrationSchema = z.object({
       clientMetadataUrl: z
         .string()
         .max(2048)
-        .refine(isClientMetadataDocumentUrl, {
+        .refine(isToolClientMetadataDocumentUrl, {
           message:
             'Client metadata URL must be an HTTPS URL with a path and no credentials or fragment',
         })
@@ -357,25 +358,6 @@ function isAuthorizationServerIssuer(value: string): boolean {
   }
 }
 
-/**
- * The MCP spec's Client ID Metadata Document shape: an HTTPS URL with a
- * non-root path. The SDK rejects anything else at consent time; refusing it
- * on write keeps a bad value out of the integration.
- */
-function isClientMetadataDocumentUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return (
-      url.protocol === 'https:' &&
-      url.pathname !== '/' &&
-      !url.username &&
-      !url.password &&
-      !url.hash
-    );
-  } catch {
-    return false;
-  }
-}
 export const integrationEnabledSchema = z.object({ enabled: z.boolean() });
 export const integrationToolsApplySchema = z.object({
   disabledTools: z.array(z.string()),

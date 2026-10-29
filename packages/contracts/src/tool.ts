@@ -779,3 +779,23 @@ export function withoutToolBindingReferences(def: ToolDef): ToolDef {
     ? { ...rest, oauthClient: client }
     : rest;
 }
+
+/**
+ * The MCP spec's Client ID Metadata Document shape: an HTTPS URL with a
+ * non-root path, no credentials and no fragment. The SDK rejects anything
+ * else at consent time; refusing it on write keeps a bad value out.
+ */
+export function isToolClientMetadataDocumentUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === 'https:' &&
+      url.pathname !== '/' &&
+      !url.username &&
+      !url.password &&
+      !url.hash
+    );
+  } catch {
+    return false;
+  }
+}

@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { principalIdMatchesKind } from '@kontourai/station-contracts/principal';
 import type { CredentialOwner } from '@kontourai/station-contracts/secret-binding';
 import {
+  isToolClientMetadataDocumentUrl,
   type ToolDef,
   toolServerOAuthResourceIdentity,
 } from '@kontourai/station-contracts/tool';
@@ -611,10 +612,19 @@ export function parseRequestedOAuthScopes(value: unknown): string[] {
 export function toolServerOAuthClientConfig(
   def: Pick<ToolDef, 'id' | 'oauthClient' | 'transport' | 'endpoint'>,
   secrets?: ToolServerOAuthClientSecretSource,
-  context: { homeDir?: string } = {},
+  context: {
+    homeDir?: string;
+    env?: Readonly<Record<string, string | undefined>>;
+  } = {},
 ): ToolServerOAuthClientConfig | undefined {
   const client = def.oauthClient ?? {};
   const { homeDir } = context;
+  // The deployment's metadata document, for integrations that name neither
+  // a client ID nor their own document.
+  const deploymentMetadataUrl =
+    client.clientId || client.clientMetadataUrl
+      ? undefined
+      : deploymentClientMetadataUrl(context.env ?? process.env);
   const pinResource = toolServerOAuthResourceIdentity(def);
   // A declared issuer is the operator's anchor; otherwise the first server
   // registered with for this resource becomes it.
@@ -632,7 +642,8 @@ export function toolServerOAuthClientConfig(
             ),
         }
       : undefined;
-  if (!def.oauthClient && !issuerPin) return undefined;
+  if (!def.oauthClient && !issuerPin && !deploymentMetadataUrl)
+    return undefined;
   const bindingId = client.clientSecretRef;
   // The binding authority releases the secret only for the issuer and
   // resource its grant was made at, so a definition rewritten to name
@@ -642,8 +653,8 @@ export function toolServerOAuthClientConfig(
   return {
     ...(client.clientId ? { clientId: client.clientId } : {}),
     ...(client.issuer ? { issuer: client.issuer } : {}),
-    ...(client.clientMetadataUrl
-      ? { clientMetadataUrl: client.clientMetadataUrl }
+    ...(client.clientMetadataUrl || deploymentMetadataUrl
+      ? { clientMetadataUrl: client.clientMetadataUrl ?? deploymentMetadataUrl }
       : {}),
     ...(client.scopes?.length ? { scopes: [...client.scopes] } : {}),
     ...(issuerPin ? { issuerPin } : {}),
@@ -668,6 +679,27 @@ export function toolServerOAuthClientConfig(
         }
       : {}),
   };
+}
+
+/** Name of the deployment-wide Client ID Metadata Document setting. */
+export const OAUTH_CLIENT_METADATA_URL_ENV =
+  'STATION_OAUTH_CLIENT_METADATA_URL';
+
+/**
+ * The deployment's Client ID Metadata Document URL, or undefined when unset.
+ * Nothing is configured by default. A malformed value refuses sign-in rather
+ * than being ignored, so a typo cannot silently fall back to registration.
+ */
+export function deploymentClientMetadataUrl(
+  env: Readonly<Record<string, string | undefined>>,
+): string | undefined {
+  const value = env[OAUTH_CLIENT_METADATA_URL_ENV]?.trim();
+  if (!value) return undefined;
+  if (value.length > 2048 || !isToolClientMetadataDocumentUrl(value))
+    throw new StationOwnedToolServerError(
+      `${OAUTH_CLIENT_METADATA_URL_ENV} must be an HTTPS URL with a path and no credentials or fragment.`,
+    );
+  return value;
 }
 
 /** A refresh outage preserves consent and may be retried after the cooldown. */

@@ -25,7 +25,9 @@ import {
 } from '../../secrets/secret-binding-administration.js';
 import { MCPService } from '../mcp-service.js';
 import {
+  deploymentClientMetadataUrl,
   INSTANCE_CREDENTIAL_OWNER,
+  OAUTH_CLIENT_METADATA_URL_ENV,
   OAuthClientIssuerMismatchError,
   OAuthClientIssuerRequiredError,
   OAuthClientRequiredError,
@@ -1326,6 +1328,80 @@ describe("a person's scope choice is remembered between sign-ins", () => {
     } finally {
       await as.close();
     }
+  });
+});
+
+describe('deployment-wide Client ID Metadata Document default', () => {
+  const DEPLOYMENT_CIMD = 'https://station.example.org/oauth/client.json';
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  test('none by default: an advertising server gets dynamic registration', async () => {
+    vi.stubEnv(OAUTH_CLIENT_METADATA_URL_ENV, '');
+    const as = startAuthorizationServer({ dcr: true, cimd: true });
+    const env = setup();
+    try {
+      await createIntegration(env);
+      const url = await consent(env);
+      expect(url.searchParams.get('client_id')).toBe('dcr-registered-client');
+      expect(as.registrations).toHaveLength(1);
+    } finally {
+      await as.close();
+    }
+  });
+
+  test('when set, it is the client ID for integrations without their own client', async () => {
+    vi.stubEnv(OAUTH_CLIENT_METADATA_URL_ENV, DEPLOYMENT_CIMD);
+    const as = startAuthorizationServer({ dcr: true, cimd: true });
+    const env = setup();
+    try {
+      await createIntegration(env);
+      const url = await consent(env);
+      expect(url.searchParams.get('client_id')).toBe(DEPLOYMENT_CIMD);
+      expect(as.registrations).toEqual([]);
+      expect(as.tokenRequests[0]!.params.get('client_id')).toBe(
+        DEPLOYMENT_CIMD,
+      );
+    } finally {
+      await as.close();
+    }
+  });
+
+  test.each([
+    {
+      label: 'its own metadata URL',
+      own: { clientMetadataUrl: CIMD_URL },
+      expected: CIMD_URL,
+    },
+    {
+      label: 'a pre-registered client',
+      own: { clientId: CLIENT_ID, issuer: ORIGIN },
+      expected: CLIENT_ID,
+    },
+  ])('an integration with $label keeps it', async ({ own, expected }) => {
+    vi.stubEnv(OAUTH_CLIENT_METADATA_URL_ENV, DEPLOYMENT_CIMD);
+    const as = startAuthorizationServer({ dcr: true, cimd: true });
+    const env = setup();
+    try {
+      await createIntegration(env, { oauthClient: own });
+      const url = await consent(env);
+      expect(url.searchParams.get('client_id')).toBe(expected);
+    } finally {
+      await as.close();
+    }
+  });
+
+  test('a malformed value is refused, not ignored', () => {
+    for (const value of [
+      'http://station.example.org/client.json',
+      'https://station.example.org/',
+      'https://user:pw@station.example.org/client.json',
+    ])
+      expect(() =>
+        deploymentClientMetadataUrl({ [OAUTH_CLIENT_METADATA_URL_ENV]: value }),
+      ).toThrow(OAUTH_CLIENT_METADATA_URL_ENV);
+    expect(deploymentClientMetadataUrl({})).toBeUndefined();
   });
 });
 
