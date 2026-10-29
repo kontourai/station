@@ -877,6 +877,11 @@ export class CodexAdapter implements ProviderAdapterShape {
           method,
         }),
       (threadId) => this.options.revokeStationControlMcpAuth?.(threadId),
+      () =>
+        this.options.logger?.warn?.(
+          'Codex app-server emitted stderr; details are withheld',
+          { provider: 'codex' },
+        ),
     );
   }
 
@@ -2007,6 +2012,9 @@ export class CodexAdapter implements ProviderAdapterShape {
       nowIso: () => this.now().toISOString(),
     });
     record.preparedResumeBindingKey = resumeBindingKey;
+    // Where Codex writes this session's thread rollouts, children included:
+    // a child's transcript ref names it, never a file path.
+    if (isAbsolute(configurationHome)) record.codexHome = configurationHome;
     if (sourceAffinity) {
       this.transport.setStdoutIngressLimit(
         record,

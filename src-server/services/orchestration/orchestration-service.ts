@@ -332,6 +332,7 @@ import {
   ConversationForkContextModule,
   type ConversationForkContextReference,
   type ConversationForkContextSnapshot,
+  type NativeForkCreationObservation,
 } from './conversation-fork-context.js';
 import {
   type ConversationHistoryPage,
@@ -948,6 +949,7 @@ export type SessionReadScope = SessionReadAuthority | InternalSessionReadScope;
 export type { InterruptedTurnMemoryAdapter };
 
 interface OrchestrationServiceOptions {
+  nativeForkStoredReadVerifier?: import('../../security/native-fork-read-admission.js').NativeForkReadAdmissionDomain['verifyForService'];
   adapterRegistry: IProviderAdapterRegistry;
   monitoringEmitter?: MonitoringEmitter;
   eventBus: EventBus;
@@ -2117,6 +2119,15 @@ export class OrchestrationService {
   private readonly conversationActivity:
     | ConversationTurnActivityProjection
     | undefined;
+  private nativeForkWarmReadScope:
+    | {
+        authority: SessionReadAuthority;
+        threadIds: ReadonlySet<string>;
+        conversationIds: ReadonlySet<string>;
+        current: () => boolean;
+        refused: boolean;
+      }
+    | undefined;
   /** Transcript read/search/usage projections (epic archive#4024, archive#4144). */
   private readonly transcriptReads: SessionTranscriptReads;
   private readonly transcriptReadEventStore: EventStore | undefined;
@@ -2392,6 +2403,7 @@ export class OrchestrationService {
   }
 
   constructor(private readonly options: OrchestrationServiceOptions) {
+    this.nativeForkStoredReadVerifier = options.nativeForkStoredReadVerifier;
     // All delete paths converge here, including Draft discard and attached alias cleanup.
     this.stopSessionDeletionNotifications = options.eventStore?.observeCommits({
       threadDeleting: (threadId) => {
@@ -2507,6 +2519,23 @@ export class OrchestrationService {
           readTurnProgress: (threadId) => this.turnProgress.read(threadId),
           readRunningChildWork: (threadId) => {
             const provider = this.sessionAdapters.get(threadId)?.provider;
+            const scope = this.nativeForkWarmReadScope;
+            if (scope) {
+              if (
+                scope.refused ||
+                !scope.threadIds.has(threadId) ||
+                !scope.current()
+              )
+                throw new Error('warm-child-work-out-of-scope');
+              const cached = this.childWork.readWarmReporter(
+                threadId,
+                provider,
+              );
+              if (cached.kind !== 'warm') throw new Error(cached.reason);
+              return cached.view.observability === 'reported'
+                ? cached.view.running
+                : [];
+            }
             const view = this.childWork.read(threadId, provider);
             return view?.observability === 'reported' ? view.running : [];
           },
@@ -2840,10 +2869,21 @@ export class OrchestrationService {
               environmentId: session.environmentId,
             })
           : undefined;
+        // #4266: the conversation's durable history title (it may be a
+        // generated one) and the session's own display title, for the
+        // conversation read's title.
+        const historyTitle = this.options.eventStore?.conversationTitle([
+          ...(conversationId ? [conversationId] : []),
+          threadId,
+        ]);
         return {
           assignedAgentSlug: session.assignedAgentSlug,
           ...(session.delegation?.title
             ? { delegationTitle: session.delegation.title }
+            : {}),
+          ...(historyTitle ? { historyTitle } : {}),
+          ...(session.displayTitle
+            ? { displayTitle: session.displayTitle }
             : {}),
           ...(conversationId ? { conversationId } : {}),
           ...(session.environmentId
@@ -6568,6 +6608,235 @@ export class OrchestrationService {
   canUserReadSession(threadId: string, authority: SessionReadScope): boolean {
     this.initialize();
     return this.sessionAuthz.canReadSession(threadId, authority);
+  }
+
+  private readonly nativeForkStoredReadVerifier:
+    | import('../../security/native-fork-read-admission.js').NativeForkReadAdmissionDomain['verifyForService']
+    | undefined;
+
+  /** Classification is not admission, a no-effect witness, or native completion. */
+  nativeForkStoredReadRequired(
+    targetId: string,
+    contextDigest: string,
+    authority: SessionReadAuthority,
+  ): 'required' | 'not-required' | 'unavailable' {
+    const store = this.options.eventStore;
+    if (
+      !store ||
+      !this.started ||
+      this.transcriptSearchStopped ||
+      !isSessionReadAuthority(authority) ||
+      !targetId ||
+      targetId.length > 512 ||
+      !/^[a-f0-9]{64}$/.test(contextDigest)
+    )
+      return 'unavailable';
+    try {
+      const reference = store.conversationForkContextReference(targetId);
+      if (
+        reference &&
+        (reference.state === 'deleted' ||
+          reference.digest !== contextDigest ||
+          !this.canReadForkContext(reference, authority))
+      )
+        return 'unavailable';
+      const disposition = store.nativeForkStoredReadDisposition(
+        targetId,
+        reference?.forkEventId,
+        contextDigest,
+      );
+      if (disposition === 'unavailable') return 'unavailable';
+      if (disposition === 'native-intent')
+        return reference ? 'required' : 'unavailable';
+      if (reference?.state === 'ready' && disposition !== 'replay')
+        return 'unavailable';
+      return 'not-required';
+    } catch {
+      return 'unavailable';
+    }
+  }
+
+  /** Stored facts only; no initialization, activity refresh, lifecycle or effect grant. */
+  readNativeForkStoredCreation(
+    targetId: string,
+    contextDigest: string,
+    admission: unknown,
+  ):
+    | {
+        kind: 'stored-creation';
+        observation: Extract<
+          NativeForkCreationObservation,
+          { kind: 'verified-creation' }
+        >;
+        warmCurrent: Extract<
+          ReturnType<
+            ConversationTurnActivityProjection['readWarmConversations']
+          >,
+          { kind: 'warm-current' }
+        >;
+      }
+    | { kind: 'unavailable'; reason: string } {
+    const verify = this.nativeForkStoredReadVerifier;
+    const store = this.options.eventStore;
+    if (!verify || !store || !this.started || this.transcriptSearchStopped)
+      return { kind: 'unavailable', reason: 'stored-read-not-composed' };
+    const sameAuthorization = this.sessionAuthz.captureReadCurrentness();
+    try {
+      const current = verify(admission);
+      if (current.kind !== 'current')
+        return { kind: 'unavailable', reason: 'request-not-current' };
+      const enclosing = this.nativeForkWarmReadScope;
+      if (
+        enclosing &&
+        (enclosing.refused ||
+          enclosing.authority !== current.authority ||
+          !enclosing.threadIds.has(targetId) ||
+          !enclosing.current())
+      ) {
+        enclosing.refused = true;
+        return { kind: 'unavailable', reason: 'warm-scope-widening-or-stale' };
+      }
+      // The bounded observation supplies only the current CHILD row, not
+      // current tenant bindings for every source/lineage member. Do not
+      // substitute cached tenant contexts or scan all Sessions to fill that gap.
+      if (
+        current.authority.mode !== 'personal' ||
+        this.options.requireTenantExecutionContext?.() === true
+      )
+        return {
+          kind: 'unavailable',
+          reason: 'affected-tenant-evidence-unavailable',
+        };
+      if (!this.sessionAuthz.canReadSession(targetId, current.authority))
+        return { kind: 'unavailable', reason: 'affected-owner-unavailable' };
+      const observation = store.observeCommittedNativeFork(
+        targetId,
+        contextDigest,
+      );
+      if (observation.kind !== 'verified-creation')
+        return { kind: 'unavailable', reason: 'creation-not-verified' };
+      if (observation.currentSession.tenantExecutionContext !== undefined)
+        return {
+          kind: 'unavailable',
+          reason: 'affected-tenant-evidence-unavailable',
+        };
+      for (const threadId of observation.affected.threadIds) {
+        if (
+          this.sessionAuthz.tenantContextFor(threadId) !== undefined ||
+          !this.sessionAuthz.canReadSession(threadId, current.authority)
+        )
+          return { kind: 'unavailable', reason: 'affected-owner-unavailable' };
+      }
+      // Historical eligibility alone does not make an activity cache warm.
+      if (
+        this.childWork.threadsNeedingHistoricalSeed(
+          observation.affected.threadIds,
+        ).length > 0
+      )
+        return {
+          kind: 'unavailable',
+          reason: 'cold-settled-evidence-budget-missing',
+        };
+      const isCurrent = () => {
+        const value = verify(admission);
+        return (
+          value.kind === 'current' &&
+          value.authority === current.authority &&
+          sameAuthorization() &&
+          this.started &&
+          !this.transcriptSearchStopped
+        );
+      };
+      const warmCurrent = this.readWarmNativeForkActivity(
+        observation,
+        current.authority,
+        isCurrent,
+      );
+      if (warmCurrent.kind === 'unavailable') return warmCurrent;
+      for (const threadId of observation.affected.threadIds) {
+        if (!this.sessionAuthz.canReadSession(threadId, current.authority))
+          return { kind: 'unavailable', reason: 'affected-owner-unavailable' };
+      }
+      const latest = verify(admission);
+      if (
+        latest.kind !== 'current' ||
+        latest.authority !== current.authority ||
+        !sameAuthorization() ||
+        !this.started ||
+        this.transcriptSearchStopped
+      )
+        return { kind: 'unavailable', reason: 'request-not-current' };
+      return { kind: 'stored-creation', observation, warmCurrent };
+    } catch {
+      return {
+        kind: 'unavailable',
+        reason: 'authoritative-stored-read-unavailable',
+      };
+    }
+  }
+
+  private readWarmNativeForkActivity(
+    observation: Extract<
+      NativeForkCreationObservation,
+      { kind: 'verified-creation' }
+    >,
+    authority: SessionReadAuthority,
+    current: () => boolean,
+  ): ReturnType<ConversationTurnActivityProjection['readWarmConversations']> {
+    const projection = this.conversationActivity;
+    const fork = observation.creation.fork;
+    const source = fork.sourceSessionId;
+    const child = observation.currentSession.threadId;
+    const threads = new Set(observation.affected.threadIds);
+    const conversations = new Set(observation.affected.conversationIds);
+    // The observation does not carry a general lineage map. Its verified
+    // two-conversation/two-thread shape proves only these singleton lineages.
+    if (
+      !projection ||
+      source !== fork.sourceConversationId ||
+      source === child ||
+      threads.size !== 2 ||
+      conversations.size !== 2 ||
+      !threads.has(source) ||
+      !threads.has(child) ||
+      !conversations.has(source) ||
+      !conversations.has(child)
+    )
+      return { kind: 'unavailable', reason: 'warm-lineage-proof-unavailable' };
+    const previous = this.nativeForkWarmReadScope;
+    if (
+      !current() ||
+      (previous &&
+        (previous.refused ||
+          previous.authority !== authority ||
+          !previous.current() ||
+          [...threads].some((id) => !previous.threadIds.has(id)) ||
+          [...conversations].some((id) => !previous.conversationIds.has(id))))
+    ) {
+      if (previous) previous.refused = true;
+      return { kind: 'unavailable', reason: 'warm-scope-widening-or-stale' };
+    }
+    const active = {
+      authority,
+      threadIds: threads,
+      conversationIds: conversations,
+      current,
+      refused: false,
+    };
+    this.nativeForkWarmReadScope = active;
+    try {
+      const result = projection.readWarmConversations(
+        new Map([
+          [source, [source]],
+          [child, [child]],
+        ]),
+      );
+      return !active.refused && current()
+        ? result
+        : { kind: 'unavailable', reason: 'request-not-current' };
+    } finally {
+      this.nativeForkWarmReadScope = previous;
+    }
   }
 
   /**

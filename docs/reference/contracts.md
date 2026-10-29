@@ -260,7 +260,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/native-relay-link` | Closed v1 public route intent or unchanged native v2 invitation envelope, untrusted origin hints, fixed native channels and secret-free host delivery metadata/opaque handles; no trust, person, Device, Project or compute authority |
 | `@kontourai/station-contracts/deployment-authentication` | Public operator-installed authentication provider configuration, factory, descriptor, operations and verified account-session results; see [deployment authentication](../guides/deployment-authentication.md) |
 | `@kontourai/station-contracts/catalog` | Registry items, install results, skills, guidance assets |
-| `@kontourai/station-contracts/child-work` | Provider-neutral child work (engine subagents and Station delegates): items, deltas, the session read model, and the one pure reducer over them. An item's optional `model` is the child's own model with its `source` (never the parent's), and `transcript` names the engine records its read-only transcript is served from. Its optional bounded `latestTool` is the latest reported child tool name, independent of `progress`; it carries no tool arguments or inferred execution state. Missing reports retain the last observed name through reducer updates and settlement, and a new resumed child has a separate identity. `usageProvisional` marks a terminal child whose usage still holds figures from while it ran; settles that report usage replace its running fields, and a field a settle reported stays sticky, even while `usageRunningFields` names other fields still running. `childWorkSettleFromItem` restates a stored settled item as a settle that keeps both, for seeding a registry from history or a session view |
+| `@kontourai/station-contracts/child-work` | Provider-neutral child work (engine subagents and Station delegates): items, deltas, the session read model, and the one pure reducer over them. An item's optional `model` is the child's own model with its `source` (never the parent's), and `transcript` names the engine records its read-only transcript is served from: a Claude subagent by session and agent id (`claude-subagent`), a Codex child by its thread id under the session's `CODEX_HOME` (`codex-thread`, its rollout file), never by a path. An `unresolved` child may carry `endedBy: 'engine-exit'`: the engine process it ran in died under it (a crash, a signal, memory exhaustion). A stop someone requested is not one: its children read "No result". Unlike a bare `unresolved` that is an observed end, so no later settle corrects it, and `childWorkDisplayStatus` reads it as `interrupted`. It is a field rather than a status so a client built before it, which drops unknown members, keeps showing "No result" instead of an unknown status; the wire statuses stay the six released clients know. Its optional bounded `latestTool` is the latest reported child tool name, independent of `progress`; it carries no tool arguments or inferred execution state. Missing reports retain the last observed name through reducer updates and settlement, and a new resumed child has a separate identity. `usageProvisional` marks a terminal child whose usage still holds figures from while it ran; settles that report usage replace its running fields, and a field a settle reported stays sticky, even while `usageRunningFields` names other fields still running. `childWorkSettleFromItem` restates a stored settled item as a settle that keeps both, for seeding a registry from history or a session view |
 | `@kontourai/station-contracts/thread-usage-tree` | A conversation's usage tree: own figures, each child's usage relation to its parent (`added`, `included-in-parent`, `not-reported`) for tokens and cost, and a roll-up total that names what it leaves out |
 | `@kontourai/station-contracts/cloud-move` | Cloud preparation target/inventory, enrolled target observations, unavailable-transfer projection, and workspace package capture/inspection/verification receipts |
 | `@kontourai/station-contracts/registry-trust` | Candidate registry policies, bounded applied identity/epoch shapes, and untrusted signed-package claim shapes |
@@ -285,7 +285,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/personal-board` | Declarative dashboard sections, saved/proposed Board document and revisioned authoring inputs |
 | `@kontourai/station-contracts/local-accounts` | Operator-only account projections, sign-in/session actions and one-time recovery results |
 | `@kontourai/station-contracts/notification` | Notification payloads and actions |
-| `@kontourai/station-contracts/orchestration` | Connected-agent/orchestration request and response shapes. A session event window may carry `latestTool: { turnId, name }` independently of its transcript caps, bounded to a 256-byte UTF-8 name and 4096-byte turn ID at the snapshot watermark. `null` means no usable current-turn tool; only an absent field permits older-server event fallback. A new turn clears the fact; steering the same turn preserves it. No arguments or inferred tool-running state are included. `turnStartDetached: true` marks a capped newest page whose oldest event is its oldest turn's `turn.started`, re-added across events the page left out; its `nextCursor` reads that gap first. Absent means the page is contiguous, or the host predates the field. |
+| `@kontourai/station-contracts/orchestration` | Connected-agent/orchestration request and response shapes. A session event window may carry `latestTool: { turnId, name }` independently of its transcript caps, bounded to a 256-byte UTF-8 name and 4096-byte turn ID at the snapshot watermark. `null` means no usable current-turn tool; only an absent field permits older-server event fallback. A new turn clears the fact; steering the same turn preserves it. No arguments or inferred tool-running state are included. `turnStartDetached: true` marks a capped newest page whose oldest event is its oldest turn's `turn.started`, re-added across events the page left out; its `nextCursor` reads that gap first. Absent means the page is contiguous, or the host predates the field. Conversation windows may include `memoryContinuation: { eligible, turnId? }`, the server's current person-continuation decision; an absent field does not authorize a stored-event Continue action. Submission still checks the sender's permission and current state. |
 | `@kontourai/station-contracts/required-slots` | Required Home and shared Inbox/Chat default identities, non-empty assignment parser, default mutation refusal and pure override/default/safe-mode resolution; declarations grant no execution or role authority. See [required slots](../guides/plugins.md#required-home-and-inboxchat-slots) |
 | `@kontourai/station-contracts/plugin` | Plugin manifests, previews, overrides, conflicts, install outcomes and current permission status |
 | `@kontourai/station-contracts/plugin-foreground-work` | Bounded foreground-work declarations, start intents, effect depth, run states, and safe public outcomes. Published ahead of a server implementation: Station does not admit or list plugin foreground runs yet |
@@ -302,6 +302,8 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/task-room-work` | Versioned Task agent request intent, explicit engine/model/options digest identity, authorized request records, list and submission outcomes. Requester IDs are Task-scoped display pseudonyms; execution references do not grant Session access or prove completion |
 | `@kontourai/station-contracts/task-memory` | Task memory (#4003): the Task summary revision and keyed record shapes, limits, default importance, the stateless write check (`checkTaskRecordWrite`, `taskSummaryRefusal`), refusal wording, the person's views, `taskAwaitsAnswer` for the Tasks list's `openQuestionCount`, and the Learning shapes (`TaskLearningView`, candidates, promotion and dismissal input, limits) for a done Task's promotion candidates. Every bound is a refusal |
 | `@kontourai/station-contracts/task-review` | Task review thread, event, evidence and capture shapes; person and caller-bound station-control DTOs; strict boundary parsing, append-transition checks, derived views/counts, quote relocation and freshness. [Contract source](../../packages/contracts/src/task-review.ts) and [pure contract tests](../../packages/contracts/src/__tests__/task-review.test.ts). Runtime integration and evidence belong to the Task review API and SDK references |
+| `@kontourai/station-contracts/chat-app` | Discord/Slack chips sharing status action shapes, principal links and explicit legacy import provenance, Project/conversation channel bindings, approval-correlated delivery attempts, per-app kill switches, hashed two-step link-code records and confirmation requests; [source](../../packages/contracts/src/chat-app.ts), [boundary tests](../../packages/contracts/src/__tests__/chat-app.test.ts) |
+| `@kontourai/station-contracts/integration-status` | Per-connection actions for GitHub, Discord, Slack, webhooks, Linear and Jira. Each action requires a `computedBy` probe ID, `works`, `waiting-on-provider`, `unsupported` or `failed` state, and a diagnostic/upstream reason; [source](../../packages/contracts/src/integration-status.ts), [boundary tests](../../packages/contracts/src/__tests__/integration-status.test.ts) |
 | `@kontourai/station-contracts/task-approval` | Task approval decisions, first-winner outcomes and refusal codes; bounded, closed `parseTaskApprovalDecision` and `parseTaskApprovalOutcome`. [Contract source](../../packages/contracts/src/task-approval.ts) and [parser tests](../../packages/contracts/src/__tests__/task-approval.test.ts). Store arbitration, admission and engine settlement are separate runtime work |
 | `@kontourai/station-contracts/work-claims` | A Session's work claim as Station's routes answer it (#3413): information, not a lock. The view shape, its parser and the subject labels the Session-row chip uses |
 | `@kontourai/station-contracts/tool` | Tool definitions, permissions, connection configs |
@@ -310,6 +312,90 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/workspace-activity-review-pane` | Canonical Activity review Pane descriptor, `activity-review:` plus 32 lowercase hexadecimal occurrence identity, instance constructor and pure canonical-instance check. These grant no source access or review authority. |
 | `@kontourai/station-contracts/workspace-pane-host-contract` | The transport-independent Pane-host capability interface: navigation, notices, confirmation, device facts, the optional Skill experience and the optional, occurrence-bound related-pane capability (`PaneRelatedPanesHost`, see [Related panes](sdk.md#related-panes)) |
 | `@kontourai/station-contracts/workspace-pane-host-contribution` | Package-level Pane-host actions and explicit owner-relative/default Agent selection |
+
+The chat-app and integration-status subpaths publish contracts ahead of their
+runtime lanes (#4143–#4146). A parsed probe ID does not prove that a live probe
+ran or that its action is authorized. These contracts add no SDK query domain.
+Existing Discord v1 configuration remains unchanged, including optional grants
+and its permissive handling of extra keys. The
+[compatibility tests](../../packages/contracts/src/__tests__/discord-compatibility.test.ts)
+use the real private store's writer and reader before calling the pure
+`importLegacyDiscordConfiguration` projection. This is contract preparation,
+not a completed runtime migration.
+
+All new `parseChat*` and `parseIntegration*` functions return `null` for invalid
+input and extra keys, including nested records. They refuse max+1 without
+truncating. Text uses well-formed Unicode and UTF-16 code units: IDs and probe
+IDs max 256 and reasons max 1000. Leading/trailing whitespace, DEL, C0/C1
+controls, bidi controls and zero-width format characters are refused. Discord
+external IDs are 17–20 ASCII digits. Slack users use U/W, teams T, and channels
+C/G/D followed by uppercase base-36 characters; thread and message timestamps
+use `digits.digits`. Timestamps use canonical UTC ISO strings with milliseconds.
+
+`ChatAppCapabilityChip` is an `IntegrationActionStatus` restricted to chat
+actions. Both use `{action, computedBy, state, reason}`. The closed integration
+action set is `notify`, `start`, `continue`, `approve`, `read`, `write`, `link-pr`,
+`update-status`, `close-issue`; each connection can report each action once,
+with at most 100 distinct connections. This vocabulary describes status, not
+an authorization grant. Delivery entries may retain an `approval` reference
+`{sessionId, requestId}`. An `unlinked-sender` refusal cannot name a principal.
+
+New identity links require a real `linkedAt`, and revocation cannot predate it.
+Imported Discord links instead carry `importedAt` and legacy provenance, so an
+earlier revocation remains representable. Presence of `revokedAt` revokes the
+link immediately, even when the timestamp is in the future, preserving v1
+semantics. Import canonicalizes a parseable legacy revocation date to ISO; a
+value that is unparseable or outside the canonical timestamp range imports as
+revoked at `importedAt`. The
+projection keeps `stationIdentity` in its legacy userId namespace and omits `principalId`; the runtime must resolve
+it against verified principals before access. It must retain first-match order
+for duplicate legacy identity mappings. Imported binding IDs are exactly
+`legacy-discord:<guildId>:<channelId>`, independent of the selected conversation.
+They carry `{source:'legacy-import'}` in place of invented operator/time metadata.
+
+The projection retains `enabled === true`; absent/false remains disabled.
+It retains all four per-person legacy grants (`turn:start`, `turn:stop`,
+`transcript:read`, `project-files:read`) and the `projectFileProjects` slug list,
+with absent lists becoming empty lists. The runtime must continue to check
+these exact grants as ceilings alongside current membership; none implies
+`approve`. File reads require both the grant and an explicitly listed project
+slug. Guild/channel allow-lists are retained separately from routing bindings:
+an explicitly listed channel in a matching guild is required, and absent or
+empty lists deny all. A binding must never bypass that check. Unrepresentable
+legacy records refuse the entire projection rather than silently skipping them.
+The runtime owns one-time persistence, revocation, and token transfer to secrets.
+
+Delivery entries admit a `busy` refusal. An outbound acknowledgement may name
+its inbound refusal with `refusalId`, independently of `retryOf` (which names a
+prior attempt). Outbound reply chunks may carry `replyChunk` with a bounded
+`replyId`, zero-based `chunkIndex`, and `chunkCount` from 1 through 10; the
+index must be smaller than the count. Only the last chunk of a ten-chunk reply
+may set `overflow: true`. Refusal links and chunk metadata cannot occur on
+inbound entries or together on one entry. These references describe receipts;
+the parser cannot establish that a referenced record exists.
+
+Raw confirmation codes use 10–128 symbols from
+`23456789ABCDEFGHJKLMNPQRSTUVWXYZ` (32 unambiguous symbols). The runtime must use
+uniform cryptographic randomness with at least 50 bits of entropy; format
+validation alone cannot establish randomness. The private `ChatLinkCode` stores
+a non-secret bounded `challengeId`, a lowercase SHA-256 `codeHash` of only the
+secret code, app, external user, issue/expiry times and
+`failedAttempts` in 0–5. At 5 failures the record is locked. Issue precedes
+principal resolution, so an unconsumed record has no principal. A consumed
+record requires both `principalId` and `consumedAt` in the issue/expiry window,
+with fewer than 5 failures. Lifetime is at most ten minutes. Parsing retained
+expired, locked or consumed records does not grant redemption.
+
+The confirm request carries app, `challengeId` and raw code. Its principal comes
+from the authenticated caller. The runtime must look up the challenge by
+`challengeId`, compare the code digest in constant time, recheck expiry,
+attempt budget and single use, atomically increment that challenge’s failed
+attempts on mismatch and lock it at the bound. An unknown `challengeId` changes
+nothing. On success it must atomically bind the caller principal with consumption. It must never accept a
+client-supplied principal. Channel binding writes and kill switches require
+operator authorization. A binding or identity link grants no Project membership.
+Slack tokens stay in secret bindings, outside these shapes; one Slack workspace
+per Station and the Discord import remain responsibilities of the runtime lanes.
 
 The `task-review` subpath defines the [Task review API](api.md#task-review-threads)
 and its SDK types; runtime delivery and verification are documented in the API reference.
@@ -322,7 +408,7 @@ and `parseTaskCapture`, return `null` on malformed input or unknown keys.
 Bounds refuse max+1 without truncating: bodies 4000, reasons 500, quotes 2000,
 serialized anchors/evidence 4096, URLs 2048 and labels 120 UTF-16 code units.
 Artifact/operation/reference IDs and delivery keys are bounded at 512, revisions at 256 and author
-IDs at 256. All strings must be well-formed Unicode. Evidence ref lists are
+IDs at 256. Bounded text must be well-formed Unicode and refuses C1 controls. Evidence ref lists are
 capped at 200 each, subject to the tighter serialized evidence bound. Capture
 metadata caps bytes at 16 MiB and each optional image dimension at 32768 pixels
 (`TASK_REVIEW_LIMITS.captureDimension`); metadata parsing grants no capture
@@ -1221,7 +1307,11 @@ than Send again, to a caller the conversation's open read lets send. That
 answer (`callerAccess.continue`) is computed for
 `POST /api/orchestration/chat/:conversationId/continue`; Continue posts
 `POST /api/orchestration/conversations/:id/memory-continuation`, and the chat
-pane relies on both being in the same `orchestration:operate` tier. That continuation's turn carries a send key starting
+pane relies on both being in the same `orchestration:operate` tier.
+`isEngineMemoryExhaustedFailure` (`provider`) also recognises
+a failure stored before that code existed (`codex-turn-orphaned` with the old
+"Codex was killed because memory was exhausted." sentence), so chat shows it
+in current copy and a person's Continue applies to it. That continuation's turn carries a send key starting
 `MEMORY_CONTINUATION_CLIENT_TURN_PREFIX` and an internal origin;
 `isStationMemoryContinuationTurn` (`provider`) recognises it and
 `memoryContinuationKeyKind` tells Station's automatic key from a person's
@@ -1486,6 +1576,33 @@ Work-chat listings expose only currently readable canonical IDs and revisions.
 owner. See the real-store relationship and mounted-route tests for the local
 persistence/transport boundary; these do not qualify production composition.
 
+### Finish time and engines run
+
+`OrchestrationSessionSummary.lifecycleChangedAt` is when the event that
+produced the current `lifecycleState` was recorded, so a finished session
+reports its real finish time; later bookkeeping moves `updatedAt` and
+`lastEventAt` but not this. It is absent when no event in the folded window
+changed the state, and consumers fall back to `updatedAt`. A runtime
+`ConversationListItem` carries its current execution's `lifecycleChangedAt` and
+`executionProviders`: the distinct engines of the conversation's execution
+sessions in lineage order, so a handoff between engines lists both. A reserved
+handoff whose session never started ran nothing and is not listed. Both fields
+are absent from older hosts. See the
+[lifecycle fold](../../src-server/services/orchestration/session-lifecycle-service.ts)
+and the [inventory projection](../../src-server/services/orchestration/conversation-history-read-service.ts).
+
+### Conversation titles
+
+`@kontourai/station-contracts/conversation-title` exports `isLowContentPrompt`,
+the one rule every title derivation shares (#4266): a prompt whose words are
+all conversational filler ("Continue", "ok, go ahead", "yes please"), that has
+no letters or digits, or that is Station's memory-recovery continuation never
+names a conversation while a later prompt does, and never replaces a title that
+names something. It is not a length rule: "Deploy staging" is a title. See the
+[helper](../../packages/contracts/src/conversation-title.ts). A runtime
+`ConversationListItem` now carries `titleSource` (`prompt`, `provider` or
+`generated`); rows recorded before #4266 carry none.
+
 ### Conversation measurements
 
 Per-model rows in `ConversationStatsResponse.modelStats` use optional token,
@@ -1734,9 +1851,9 @@ and agent shapes remain supported. Both version-gated parsers require an
 explicit schema version and refuse a missing one rather than assuming v5. This structural check grants no authority.
 Member `principalId` and `deviceId`, mention principal IDs and approval IDs
 must be nonempty, at most 256 UTF-16 code units, well-formed Unicode, unchanged
-by trimming, and free of C0, DEL and C1 controls. Legacy operator and agent
-room IDs retain their existing wire rules. This is the opaque-ID rule for
-#4236 to align with; the clean Agent/engine slug validator has a different
+by trimming, and free of C0, DEL, C1, Unicode format controls and combining
+grapheme joiners. Legacy operator and agent room IDs retain their existing
+wire rules. Chat-app IDs use the same opaque-ID rule; the clean Agent/engine slug validator has a different
 grammar and cannot validate these principal/device IDs.
 
 Human messages may carry 1 to 32 structured
@@ -1772,8 +1889,8 @@ notification only and adds no review-store event.
 
 `TaskApprovalDecision` carries `requestId`, `sessionId`, an `allow` or `deny`
 decision, `decider: {principalId}`, `channel: 'station'|'slack'|'discord'`, and
-canonical ISO UTC `decidedAt`. The chat channels must match `ChatAppId` in
-#4236; `station` names the local channel. `parseTaskApprovalDecision` refuses
+canonical ISO UTC `decidedAt`. The channel type is `'station' | ChatAppId`;
+`station` names the local channel. `parseTaskApprovalDecision` refuses
 extra keys, malformed timestamps and invalid IDs, without truncation.
 `TaskApprovalOutcome` is `decided` with a decision, `already-decided` with the
 winning decision, or `refused` with `invalid-request`, `not-found`, `forbidden`,
@@ -1975,6 +2092,17 @@ previews. HTML requires Station's distinct-origin frame viewer; the contract
 carries display data and does not confer workspace-read authority. The server
 reuses Project/Session admission and confines reads to that workspace or a
 verified Git worktree of the same repository.
+
+A refused read answers `{ success: false, error, reason }` with a
+`WorkspaceVisualFileRefusal`: `missing` and `no-workspace` (404),
+`outside-project` (403), `unsupported-type` (415), `too-large` (413) and
+`unreadable` (422), per `WORKSPACE_VISUAL_FILE_REFUSAL_STATUS`. Name and
+extension are checked before any filesystem access, and containment is decided
+on resolved paths; a path or link that does not end inside the allowed folders
+is `outside-project` whether or not its target exists.
+`workspaceVisualFileUnavailableReason(status, body)` believes a reason only
+with its paired status, and otherwise reports `unauthorized` (401, or 403
+without a reason), `server-error` (5xx) or `unavailable`.
 
 ## Walkthrough
 

@@ -1260,6 +1260,8 @@ describe('typecheck:scripts refuses a scripts/ tree it does not fully account fo
       libs: [
         'module-entry.mjs',
         'typecheck-host-slots.mjs',
+        'heavy-check-slots.mjs',
+        'slot-holder-exec.mjs',
         'owned-process.mjs',
         'windows-owned-guard-build.mjs',
         'windows-owned-control-stdin.mjs',
@@ -1415,7 +1417,7 @@ describe('typecheck:scripts refuses a scripts/ tree it does not fully account fo
     // actually runs. Assert THAT catalog still names typecheck:scripts,
     // rather than grepping a field that is now just an aggregate invocation.
     expect(root.scripts.typecheck).toContain(
-      'node scripts/typecheck-aggregate.mjs',
+      'node scripts/heavy-check-slot.mjs typecheck scripts/typecheck-aggregate.mjs',
     );
     expect(TYPECHECK_LANES.map((lane) => lane.id)).toContain(
       'typecheck:scripts',
@@ -1457,7 +1459,7 @@ describe('typecheck:scripts refuses a scripts/ tree it does not fully account fo
   it('docs:truth:gate is wired into the completion-mode aggregate runner, and its lane catalog matches package.json', () => {
     const root = JSON.parse(readFileSync('package.json', 'utf8'));
     expect(root.scripts['docs:truth:gate']).toBe(
-      'node scripts/docs-truth-gate-aggregate.mjs',
+      'node scripts/heavy-check-slot.mjs docs:truth:gate scripts/docs-truth-gate-aggregate.mjs',
     );
     // Membership, derived rather than copied (#2927): every `docs:*` script
     // is a lane unless it is excluded below with the reason it is not one,

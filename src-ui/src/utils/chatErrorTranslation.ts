@@ -11,6 +11,7 @@ import {
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_SIGN_IN_REQUIRED_CODE,
   ENGINE_TURN_FAILED_CODE,
+  isEngineMemoryExhaustedFailure,
   MODEL_NOT_ADVERTISED_CODE,
   MUSE_TURN_IDLE_TIMEOUT_CODE,
   MUSE_TURN_TOTAL_TIMEOUT_CODE,
@@ -339,6 +340,32 @@ const CONTINUATION_WORKSPACE_CODES: ReadonlySet<string> = new Set(
  */
 /** `SessionStartIndeterminateError`'s code (src-server session-turn-boundary). */
 export { SESSION_START_INDETERMINATE_CODE };
+
+/** The budget sentence a Codex memory kill was stored with before #4257. */
+const LEGACY_MEMORY_BUDGET = / Its workload budget was (\d+) MiB\./;
+
+/**
+ * A stored failure in today's vocabulary (#4266). A memory kill recorded
+ * before #4257 carries the generic orphaned-turn code and a sentence
+ * addressed to the agent; it reads as an `ENGINE_MEMORY_EXHAUSTED_CODE`
+ * failure in Station's own words, so it gets the same card and Continue.
+ * Every other failure is returned unchanged.
+ */
+export function currentChatError(input: { code?: string; message: string }): {
+  code?: string;
+  message: string;
+} {
+  if (
+    input.code === ENGINE_MEMORY_EXHAUSTED_CODE ||
+    !isEngineMemoryExhaustedFailure(input)
+  )
+    return input;
+  const budget = LEGACY_MEMORY_BUDGET.exec(input.message)?.[1];
+  return {
+    code: ENGINE_MEMORY_EXHAUSTED_CODE,
+    message: `Codex ran out of memory and was stopped, along with the commands it was running.${budget ? ` Its workload budget was ${budget} MiB.` : ''}`,
+  };
+}
 
 const SESSION_START_INDETERMINATE_SUFFIX =
   /\s*Provider session creation may have completed\. Inspect the session before retrying\.\s*$/;
@@ -800,6 +827,19 @@ export function translateProjectedRuntimeError(
   code: string,
   callerAccess?: { continue?: boolean; startChat?: boolean },
 ): string | null {
+  // #4266: a memory kill the dock no longer offers Continue for (a later
+  // turn moved on) reads in today's words, stored before #4257 or not, and
+  // without the hint that points at a Continue it does not show.
+  const current = currentChatError({
+    code,
+    message: projectedRuntimeErrorRaw(text),
+  });
+  if (current.code === ENGINE_MEMORY_EXHAUSTED_CODE) {
+    const card = { ...translateChatError(current), hint: undefined };
+    const repeat = /( \(repeated \d+×\))$/.exec(text)?.[1]?.trim();
+    const display = formatChatErrorDisplay(card);
+    return repeat ? `${display}\n${repeat}` : display;
+  }
   if (
     code !== ENGINE_SESSION_BINDING_DEAD_CODE &&
     code !== ENGINE_TURN_FAILED_CODE &&

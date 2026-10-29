@@ -348,6 +348,14 @@ describe('closed boundary parsers', () => {
         expect(parse(invalid)).toBeNull();
     },
   );
+  test('refuses C1 controls in review text', () => {
+    expect(
+      review.parseTaskReviewReplyRequest({
+        body: 'a\u0085b',
+        operationId: 'op',
+      }),
+    ).toBeNull();
+  });
   test('bounds body, reason, label and opaque identities at max and max+1', () => {
     const cases = [
       [review.parseTaskReviewCreateThreadRequest, requests[2][1], 'body', 4000],
