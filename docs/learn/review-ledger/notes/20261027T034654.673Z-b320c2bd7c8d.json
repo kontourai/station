@@ -1,0 +1,7 @@
+{
+  "revision": "03de66577b851284970e0e9ed397dd8487597327",
+
+  "notes": [
+    {"path":"docs/patterns/frontend.md","note":"Only sidebar footer inventory lines changed in responsive-action-surfaces.txt; frontend patterns unaffected. No prose change.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

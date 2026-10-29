@@ -508,7 +508,7 @@ test.describe
         await expect(
           owner.getByRole('list', { name: 'Task room history' }),
         ).toContainText('Peer is working in the same Task room.');
-        await expect(await rawHistory(owner)).toContainText(
+        await expect(await rawHistory(owner)).not.toContainText(
           'revision-evidence-v1:',
         );
         await Promise.all([

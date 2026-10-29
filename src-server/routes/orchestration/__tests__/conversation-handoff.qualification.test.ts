@@ -542,6 +542,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
           };
         };
       };
+      expect(handoffReceipt.data).toMatchObject({ sessionStarted: true });
       if (failFirstHandoffSeed) {
         try {
           await eventually(async () => {
@@ -555,6 +556,18 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
               )?.status,
             ).toBe('failed');
           });
+          // #4179: the handoff Session is still live, but its failed seed
+          // fences the next ordinary turn, so the open read does not say
+          // whether that turn starts a Session.
+          const opened = await service.resolveConversationOpen(
+            conversationId,
+            sessionReadAuthorityFromRequest(OWNER, undefined, undefined),
+          );
+          expect(opened).toMatchObject({
+            status: 'resolved',
+            currentSessionId: handoffReceipt.data.sessionId,
+          });
+          expect(opened).not.toHaveProperty('nextTurnStartsSession');
           await expect(
             execute(target, {
               conversationId,
@@ -609,6 +622,9 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       const replayBody = (await replay.json()) as { data: unknown };
       expect(replayBody.data).toMatchObject({
         sessionId: handoffReceipt.data.sessionId,
+        // #4162: the handoff started its target Session, and so says the
+        // replay of it.
+        sessionStarted: true,
         handoff: {
           outcome: 'existing',
           target: {
@@ -1245,7 +1261,8 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
         restored?.events.filter(
           (entry) =>
             entry.event.method === 'turn.completed' &&
-            entry.event.outputText?.includes(CONTEXT_TOKEN),
+            typeof entry.event.outputText === 'string' &&
+            entry.event.outputText.includes(CONTEXT_TOKEN),
         ),
       ).toHaveLength(
         (repeatNativeReturn ? 6 : nativeReturn ? 4 : 3) +

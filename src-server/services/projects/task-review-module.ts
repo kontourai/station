@@ -68,6 +68,12 @@ interface Dependencies {
     | { kind: 'available'; documentId: string; revision: string; text: string }
     | { kind: 'unavailable' }
   >;
+  freezePlan(input: {
+    taskId: string;
+    documentId: string;
+    workingRevision: string;
+    beforeCommit: () => boolean;
+  }): Promise<boolean>;
   /** Optional selector confines mutation/item reads to one structured answer identity. */
   readAnswers(
     taskId: string,
@@ -810,6 +816,21 @@ export class TaskReviewModule {
       throw new TaskReviewError(
         'anchor-mismatch',
         'The retained quote does not match the selected block.',
+      );
+    assertCurrent(access);
+    if (
+      !prior &&
+      input.artifact.kind === 'plan' &&
+      !(await this.deps.freezePlan({
+        taskId: access.write.taskId,
+        documentId: input.artifact.id,
+        workingRevision: input.artifact.revision,
+        beforeCommit: access.write.beforeCommit,
+      }))
+    )
+      throw new TaskReviewError(
+        'artifact-unavailable',
+        'This plan revision could not be saved to revision history, which may be full or unavailable.',
       );
     assertCurrent(access);
     const result = this.deps.store.createThread({

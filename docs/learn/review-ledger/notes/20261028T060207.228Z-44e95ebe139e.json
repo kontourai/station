@@ -1,0 +1,7 @@
+{
+  "revision": "af3e5a84422aca57bfe6b2b91b157b1a2b9e04f0",
+
+  "notes": [
+    {"path":"docs/design/developer-surface.md","note":"App.tsx change mounts NativeContextMenuGuard only; developer routes, tabs and the Cmd/Ctrl+Shift+D shortcut registrations are untouched.","inputs":["docs/design/developer-surface.md","src-ui/src/App.tsx"]}
+  ]
+}

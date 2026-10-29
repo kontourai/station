@@ -287,7 +287,9 @@ The transcript's own reads are byte-budgeted and hand on the reference rather
 than the bytes, so the browser fetches previews from
 `GET /api/attachments/:ref` (station#3385) — an authenticated, same-origin
 route that serves inert `application/octet-stream` and 404s once a blob is
-reclaimed.
+reclaimed. The sending browser's own chips skip that fetch for the turn it just
+sent: when `turn.started` records the reference, the client drops its inline
+copy and caches the bytes it sent under that reference instead.
 
 | variable | default | description |
 |---|---|---|

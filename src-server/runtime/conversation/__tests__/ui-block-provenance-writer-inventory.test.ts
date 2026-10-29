@@ -190,7 +190,12 @@ describe('UI-block provenance — writer/server inventory ratchet (station#1399 
       emitCalls: 1,
     },
     'src-server/services/orchestration/attached-session-follow-service.ts': {
-      appendEventCalls: 1,
+      // appendAndPublish, plus its retry that persists the unavailable-marked
+      // copy of the same event after an ingress refusal
+      // (docs/design/event-content-spill.md#residual-refusal). That copy is
+      // built from the event already passed through
+      // safeSanitizeUIBlockEventProvenance at the top of the method.
+      appendEventCalls: 2,
       emitCalls: 1,
     },
     'src-server/services/orchestration/conversation-lineage.ts': {

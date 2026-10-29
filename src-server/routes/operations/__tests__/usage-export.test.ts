@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import {
   parseHostedTenantRegistry,
   sessionReadAuthorityFromRequest,
@@ -19,9 +20,8 @@ afterEach(() => {
 });
 
 function fixture() {
-  const store = new EventStore(
-    join(makeHome('usage-export-'), 'events.sqlite'),
-  );
+  const storePath = join(makeHome('usage-export-'), 'events.sqlite');
+  const store = new EventStore(storePath);
   stores.push(store);
   const day = new Date().toISOString().slice(0, 10);
   let owners: string[] | undefined = ['reader', 'account-member'];
@@ -114,6 +114,7 @@ function fixture() {
   const url = (extra = '') => `/usage-export?from=${day}&to=${day}${extra}`;
   return {
     store,
+    storePath,
     app,
     start,
     observation,
@@ -267,6 +268,200 @@ test('continuations and queued response release stay bound to current source and
     (await f.app.request(f.url(`&scope=personal-account&cursor=${cursor}`)))
       .status,
   ).toBe(403);
+});
+
+test('thread deletion ends a queued export and invalidates its earlier continuation', async () => {
+  const f = fixture();
+  f.start('own', 'reader');
+  f.observation();
+  f.observation();
+  const first = await f.app.request(f.url('&pageSize=1'));
+  expect(first.status).toBe(200);
+  const firstBody = (await first.json()) as { data: UsageExportPage };
+  const cursor = firstBody.data.nextCursor;
+  expect(cursor).toBeDefined();
+  const queued = await f.app.request(f.url());
+  expect(queued.status).toBe(200);
+  f.store.deleteThread('own');
+  await expect(queued.text()).rejects.toThrow('usage_export_authority_changed');
+  expect((await f.app.request(f.url(`&cursor=${cursor}`))).status).toBe(403);
+  const fresh = await f.app.request(f.url());
+  expect(fresh.status).toBe(200);
+  expect(await fresh.json()).toMatchObject({ data: { observations: [] } });
+});
+
+test('a failed invalidation write rolls thread deletion back without invalidating an unchanged queued page', async () => {
+  const f = fixture();
+  f.start('own', 'reader');
+  const eventId = f.observation();
+  const revision = f.store.usageExportRevision();
+  const queued = await f.app.request(f.url());
+  const db = new DatabaseSync(f.storePath);
+  try {
+    db.exec(`CREATE TRIGGER fixture_invalidation_write_failure AFTER UPDATE ON orchestration_usage_export_state
+      BEGIN SELECT RAISE(ABORT,'fixture invalidation write failed'); END;`);
+    expect(() => f.store.deleteThread('own')).toThrow(
+      'fixture invalidation write failed',
+    );
+    expect(f.store.usageExportRevision()).toBe(revision);
+    db.exec('DROP TRIGGER fixture_invalidation_write_failure');
+    const body = (await queued.json()) as { data: UsageExportPage };
+    expect(
+      body.data.observations
+        .flatMap((row) => row.receipts)
+        .some((row) => row.sourceEventId === eventId),
+    ).toBe(true);
+    expect(
+      db
+        .prepare(
+          'SELECT COUNT(*) AS retained FROM orchestration_usage_export_invalidations',
+        )
+        .get(),
+    ).toEqual({ retained: revision });
+  } finally {
+    db.close();
+  }
+});
+
+test('tenant reassignment journals both scopes and fences the old tenant snapshot', async () => {
+  const f = fixture();
+  f.start('own', 'reader', 'tenant-a');
+  f.observation();
+  const registry = parseHostedTenantRegistry({
+    schemaVersion: 1,
+    tenants: [
+      { id: 'tenant-a', authority: 'a.example.test' },
+      { id: 'tenant-b', authority: 'b.example.test' },
+    ],
+  });
+  f.setAuthority(
+    sessionReadAuthorityFromRequest(
+      'reader',
+      { tenantId: tenantId('tenant-a') },
+      registry,
+    ),
+  );
+  const revision = f.store.usageExportRevision();
+  const queued = await f.app.request(f.url());
+  const time = new Date().toISOString();
+  f.store.upsertSession({
+    threadId: 'own',
+    provider: 'codex',
+    status: 'ready',
+    createdAt: time,
+    updatedAt: time,
+    tenantExecutionContext: {
+      tenantId: tenantId('tenant-b'),
+      source: 'session',
+    },
+  });
+  expect(f.store.usageExportRevision()).toBe(revision + 2);
+  await expect(queued.text()).rejects.toThrow('usage_export_authority_changed');
+  const oldScope = await f.app.request(f.url());
+  expect(await oldScope.json()).toMatchObject({ data: { observations: [] } });
+  const db = new DatabaseSync(f.storePath, { readOnly: true });
+  try {
+    expect(
+      db
+        .prepare(
+          'SELECT owner_user_id,tenant_id,thread_id,reason FROM orchestration_usage_export_invalidations ORDER BY revision',
+        )
+        .all(),
+    ).toEqual([
+      {
+        owner_user_id: 'reader',
+        tenant_id: 'tenant-a',
+        thread_id: 'own',
+        reason: 'scope-changed',
+      },
+      {
+        owner_user_id: 'reader',
+        tenant_id: 'tenant-b',
+        thread_id: 'own',
+        reason: 'scope-entered',
+      },
+    ]);
+  } finally {
+    db.close();
+  }
+  f.setAuthority(
+    sessionReadAuthorityFromRequest(
+      'reader',
+      { tenantId: tenantId('tenant-b') },
+      registry,
+    ),
+  );
+  const newScope = await f.app.request(f.url());
+  const body = (await newScope.json()) as { data: UsageExportPage };
+  expect(body.data.observations).toHaveLength(1);
+});
+
+test('the invalidation journal retains 10000 entries and refuses missing retained evidence', async () => {
+  const f = fixture();
+  const db = new DatabaseSync(f.storePath);
+  try {
+    db.exec(`BEGIN;
+      WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<10005)
+      INSERT INTO orchestration_conversation_history(thread_id,owner_user_id,created_at,updated_at)
+        SELECT 'journal-bound-'||i,'reader','2026-10-24T00:00:00.000Z','2026-10-24T00:00:00.000Z' FROM n;
+      DELETE FROM orchestration_conversation_history WHERE thread_id LIKE 'journal-bound-%';
+      COMMIT;`);
+    expect(f.store.usageExportRevision()).toBe(10005);
+    expect(
+      db
+        .prepare(
+          'SELECT COUNT(*) AS retained,MIN(revision) AS first,MAX(revision) AS last FROM orchestration_usage_export_invalidations',
+        )
+        .get(),
+    ).toEqual({ retained: 10000, first: 6, last: 10005 });
+    expect(
+      db
+        .prepare('SELECT retained_after FROM orchestration_usage_export_state')
+        .get(),
+    ).toEqual({ retained_after: 5 });
+    db.exec(
+      'DELETE FROM orchestration_usage_export_invalidations WHERE revision=10005',
+    );
+    expect(() => f.store.usageExportRevision()).toThrow(
+      'invalidation journal is unavailable',
+    );
+    expect((await f.app.request(f.url())).status).toBe(503);
+  } finally {
+    db.close();
+  }
+});
+
+test('startup refuses a same-name invalidation trigger with changed behavior', () => {
+  const f = fixture();
+  const db = new DatabaseSync(f.storePath);
+  try {
+    db.exec(`DROP TRIGGER orchestration_usage_export_history_deleted;
+      CREATE TRIGGER orchestration_usage_export_history_deleted AFTER DELETE ON orchestration_conversation_history BEGIN SELECT 1; END;`);
+    expect(() => new EventStore(f.storePath)).toThrow(
+      'Usage export invalidation schema is incomplete or changed',
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('startup does not reset a previously initialized journal when all of its local objects are lost', async () => {
+  const f = fixture();
+  const db = new DatabaseSync(f.storePath);
+  try {
+    db.exec(`DROP TRIGGER orchestration_usage_export_history_deleted;
+      DROP TRIGGER orchestration_usage_export_scope_changed;
+      DROP TRIGGER orchestration_usage_export_scope_entered;
+      DROP TRIGGER orchestration_usage_export_recorded;
+      DROP TABLE orchestration_usage_export_invalidations;
+      DROP TABLE orchestration_usage_export_state;`);
+    expect((await f.app.request(f.url())).status).toBe(503);
+    expect(() => new EventStore(f.storePath)).toThrow(
+      'Previously initialized usage export journal is missing',
+    );
+  } finally {
+    db.close();
+  }
 });
 
 test.each([

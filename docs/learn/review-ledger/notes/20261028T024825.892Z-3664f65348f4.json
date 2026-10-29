@@ -1,0 +1,11 @@
+{
+  "revision": "43c3c8e0c8a1864ca8af39a74523030a2fc6f2f8",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the two-line resource-manifest addition for coding-mobile-tools.browser.test.tsx: mounted browser proof owns Chromium and is isolated in the process-heavy group. Existing verification ownership, resource classification and runtime boundaries remain accurate; no command, lane, contract or agent-runtime behavior changed. Resource-manifest focused suite passed within 154 focused tests.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Reviewed the two-line resource-manifest addition for coding-mobile-tools.browser.test.tsx: mounted browser proof owns Chromium and is isolated in the process-heavy group. Existing verification ownership, resource classification and runtime boundaries remain accurate; no command, lane, contract or agent-runtime behavior changed. Resource-manifest focused suite passed within 154 focused tests.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed the two-line resource-manifest addition for coding-mobile-tools.browser.test.tsx: mounted browser proof owns Chromium and is isolated in the process-heavy group. Existing verification ownership, resource classification and runtime boundaries remain accurate; no command, lane, contract or agent-runtime behavior changed. Resource-manifest focused suite passed within 154 focused tests.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "03de66577b851284970e0e9ed397dd8487597327",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Inventory lines for ProjectSidebarFooter and SidebarAccountControl rewritten to the one-row footer and the rewritten activity-pane Sidebar footer controls test; guide's account-control layering claim unchanged. No prose change.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

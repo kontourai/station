@@ -186,10 +186,10 @@ export function TelemetryTierSettings({
                   label={label}
                   description={
                     isPlugin
-                      ? "Don't share stops automatic sending. Plugin usage counts can encode identifiers; Station adds no installation identifier. Detailed plugin usage also adds a monthly publisher identifier. Sending requires this plugin's own current notice or destination-bound confirmation; these choices do not confirm it."
+                      ? "Plugin counts can encode identifiers. Detailed adds a monthly publisher ID. The plugin's own notice is still required."
                       : publisher === 'kontour'
-                        ? "Don't share stops automatic sending. Anonymous usage counts sends one daily count after notice. Detailed sharing needs a configured Kontour destination and your review before saving."
-                        : "Don't share stops automatic sending. Anonymous usage counts sends one daily count after notice, when a destination is configured. Detailed usage uses a monthly rotating installation code, never an account identity. Review What's included before saving detailed sharing."
+                        ? 'Sends one daily count after notice. Detailed needs a configured Kontour destination.'
+                        : 'Sends one daily count after notice, to a configured destination. Detailed adds a monthly-rotating ID, never your account.'
                   }
                   control={
                     <select

@@ -26,11 +26,9 @@ interface SidebarAccountControlProps {
 }
 
 /**
- * The account control beside Live work in the sidebar footer. It is a
- * separate control from presence: Live work reads paired-device participants
- * and sessions, this opens the signed-in account's access, Profile, Help and
- * Settings. The header's `⋯` overflow keeps its Profile row as the phone
- * fallback while the drawer is closed.
+ * The account control at the end of the sidebar footer opens the signed-in
+ * account's access, Profile, Help and Settings. The header's overflow keeps
+ * its Profile row as the phone fallback while the drawer is closed.
  */
 export function SidebarAccountControl({
   activePath,

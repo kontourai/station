@@ -76,6 +76,11 @@ is not completed boot. The current
 [pane](../../src-ui/src/workspace-panes/DeviceWorkspacePane.tsx) renders a
 `LiveSurfaceCanvas`, controller and input status, and device tools. Its bounded
 selection state does not persist captured image bytes or control authority.
+The canvas asks for frames no larger than the pane's size in device pixels,
+rounded up in 320-pixel steps so resizing within a step keeps the stream. On a
+metered or data-saving connection it asks for at most 5 frames per second at
+quality 50 and 960 pixels on each side. See the
+[stream budget](../../src-ui/src/live-surface/liveSurfaceStreamBudget.ts).
 
 Devices belong to the operator. An active admin/owner of a Project may view or
 drive only devices shared with that Project, on the named host. Android shares

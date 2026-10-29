@@ -119,22 +119,20 @@ digest, settled-state, topology, scope, and compatible authority attestation.
 Corrupt/unavailable recovery is explicit (`revision_unavailable`), never an
 empty healthy ledger. Capacity is the retention policy: it rejects new receipts
 without pruning an active room/history reference. There is no time-based
-expiry in this slice. The ledger is Station-wide and every Task room edit
-stores a receipt carrying its full snapshot, so a few hundred small edits, or a
-few edits of a large document, fill it. Room admission applies the same bounds
-inside its settle transaction and refuses such a write as
-`evidence-ledger-full` before writing it
-([#4007](https://github.com/kontourai/station/issues/4007)); room editing then
-stops Station-wide, deletions included, until receipts can be retired, which
-this slice does not provide ([#4055](https://github.com/kontourai/station/issues/4055)). A Task document's capacity is per
-document and also bounded by this ledger. Run snapshots retain about 180 B of
-metadata per small save, giving roughly 2.5–3k lifetime saves before explicit
-`document-full`, depending on text and fragmentation. The 256 KiB text and
-768 KiB record limits are now reachable; the worker checks both alongside
-the shared 512 KiB snapshot limit. Inserts leave a 16 KiB deletion reserve in
-snapshot and record budgets. Deletions can spend it even when splitting a run
-grows metadata, but the reserve is finite and does not bypass this ledger cap.
+
+expiry. The Station-wide ledger retains at most 256 receipts / 4 MiB, each
+carrying the full canonical snapshot. Ordinary saves no longer consume this
+capacity. The [freeze policy decision](../decisions/revision-evidence-freeze-policy.md)
+for [#4055](https://github.com/kontourai/station/issues/4055) separates a durable,
+replaceable candidate from a requested immutable receipt. Run snapshots retain
+about 180 B of metadata per small save, giving roughly 2.5–3k lifetime saves
+before explicit `document-full`, depending on text and fragmentation. The worker
+checks the 256 KiB text and 768 KiB record limits alongside the shared 512 KiB
+snapshot limit. Inserts leave a finite 16 KiB deletion reserve in snapshot and
+record budgets; deletions can spend it even when splitting a run grows metadata.
+A full ledger refuses new immutable references, not ordinary saves.
 A lost post-commit response and a peer witness race each
+
 receive one bounded restore/retry; the retry's exact inserted count determines
 `duplicate` versus `imported`. A live peer miss refreshes from SQLite before
 returning.
@@ -143,15 +141,63 @@ The SQLite write batch temporarily sets its connection's busy timeout to zero,
 then restores the prior value. A room worker may hold `BEGIN IMMEDIATE` while
 waiting for main-thread authorization; synchronously waiting for that lock
 would prevent the authorization from running ([#4204](https://github.com/kontourai/station/issues/4204)).
-Contention therefore returns unavailable immediately and leaves the room's
-durable publication outbox intact. When a later person or agent save encounters
+Contention therefore returns unavailable immediately and leaves a requested
+freeze in the durable publication outbox. When a later person or agent save encounters
 `revision-publication-pending`, the runtime drains that publication and retries
 the exact settlement once, rechecking authority across the asynchronous work.
 Proposal seed plans retain their empty-document precondition, which the worker
 rechecks inside the write transaction so concurrent acceptance cannot duplicate
 the brief during a retry.
-Persistent publication failures can still refuse a save; they do not require
-a restart to retry.
+Persistent or indeterminate publication failures can still refuse a save;
+they do not require a restart to retry. A deterministic `capacity_exceeded` or
+`snapshot_invalid` freeze refusal releases an unmarked request back to a
+replaceable candidate. This also lets an older capacity-wedged room accept a
+later edit without deleting any immutable receipt or published link.
+
+## Freeze and retention decision
+
+The event that requests a new receipt is a consumer linking a specific working
+revision. Task Review calls `freezeDocumentRevision` before creating a plan
+anchor. An absent or unavailable bridge refuses it before any claim, so that refusal
+leaves no claim to block later saves. The worker compares that exact revision and durably claims its snapshot
+under `BEGIN IMMEDIATE`, with the caller's authority checked before commit.
+A concurrent save either replaces the candidate before that claim (the stale
+anchor is refused), or waits for the claimed publication to finish. The bridge
+then freezes, marks, links and removes the outbox entry through the existing
+recovery protocol. The anchor is admitted only after that succeeds. An untouched empty document
+can be claimed without a prior settlement; its initial receipt names the
+recorded Task owner. Already
+published head revisions reuse their validated receipt. A plan changed before
+its claim is not silently rebound to the latest head.
+
+Person and agent saves atomically replace only an unclaimed, unmarked candidate.
+It keeps the complete snapshot, last writer's attribution and principal; it is
+mutable working state, never evidence. Its parent is the last frozen receipt,
+so skipped saves do not create missing parents. Replacing a candidate does not
+prune a receipt. Source sealing ignores unclaimed candidates while hashing the
+working document; claimed or marked publications still block closure. A successful save can return `revisionEvidence: unavailable`
+until a consumer requests evidence. Reads, room discovery, idle timers and
+session lifecycle events do not request new receipts; startup/discovery only
+resume requests already claimed. This avoids consuming immutable capacity for
+unreferenced edits. Task Review outputs already have retained content-addressed
+snapshots and digest references; they do not freeze the room document.
+
+The additive `freeze_requested` column defaults to claimed for older outboxes:
+a previous process might have frozen a receipt and crashed before marking it.
+Neither new saves nor migration discard those rows. A later save follows the
+existing one-drain/one-retry path. Only a definite size/capacity rejection can
+release an unmarked claim; contention, corruption, unknown persistence results,
+and marked receipts retain their recovery obligation. All committed receipts,
+room links and parent closure remain intact. A genuinely full ledger still
+refuses new immutable references; coalescing does not provide unlimited receipt
+retention or repair a corrupt ledger.
+
+The runtime regression appends one character 600 times and saves in a second
+room through the real working worker, runtime and bridge. The Task Review
+composition test races an edit before the claim, refuses the stale anchor, and
+checks the exact frozen text/shared revision for a successful anchor. Existing
+crash, restart, attribution, capacity and SQLite suites own the other boundaries.
+These are local runtime tests, not installed-release or browser qualification.
 
 `reader().resolve({ scope, revisionId })` is the later room/SDK seam. It
 projects text, parents, actor, and correlation only after exact scope matching;

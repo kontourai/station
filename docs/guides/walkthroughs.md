@@ -117,7 +117,8 @@ an unread completed body does not put a total deadline on a streaming response. 
 limit stays in place. The replacement total timer fires at its deadline rather
 than Node's periodic parser sweep; exact timeout scheduling can therefore differ.
 Socket timeout values are left alone, preserving Node's keep-alive timer even
-when a refusal races the body's end. The proxy's 60-second idle window covers
+when a refusal races the body's end; separately, `configureHttpKeepAlive` sets
+that idle time to 65 seconds on both listeners. The proxy's 60-second idle window covers
 receiving the upload; afterward it allows the Walkthrough processing response
 up to two hours. The SDK import default is two hours; callers may supply `timeoutMs`.
 Processing after upload has a 30-minute budget, with scaled scene/frame deadlines.

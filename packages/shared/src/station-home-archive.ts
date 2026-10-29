@@ -55,15 +55,15 @@ import {
   STATION_HOME_SQLITE_STORES,
 } from './station-home-store-registry.js';
 
-export const STATION_HOME_BACKUP_SCHEMA = 'station.home-backup/v1' as const;
+export const STATION_HOME_BACKUP_SCHEMA = 'station.home-backup/v2' as const;
 /**
- * A supervised update's snapshot (#2675 D): `station.home-backup/v1` minus
+ * A supervised update's snapshot (#2675 D): `station.home-backup/v2` minus
  * the registry's `external` paths, plus the symbolic links under the state
  * it covers, recorded (never followed) so a restore puts them back as links.
  * A distinct schema, so neither restore accepts the other's backup.
  */
 export const STATION_HOME_UPDATE_BACKUP_SCHEMA =
-  'station.home-update-backup/v1' as const;
+  'station.home-update-backup/v2' as const;
 export const STATION_HOME_BACKUP_MANIFEST = 'station-home-backup.json';
 export const STATION_HOME_RECOVERY_RECORD = 'station-home-recovery.json';
 
@@ -76,6 +76,65 @@ export interface StationHomeRecoveryRecord {
   snapshotCreatedAt: string;
   backupManifestSha256: string;
   authorityTransferred: false;
+}
+
+function recoveryRecord(
+  manifest: StationHomeBackupManifest,
+): StationHomeRecoveryRecord {
+  return {
+    schemaVersion: 'station.home-recovery/v1',
+    kind: 'recovered-from-copy',
+    recoveryId: randomUUID(),
+    recoveredAt: new Date().toISOString(),
+    snapshotCreatedAt: manifest.createdAt,
+    backupManifestSha256: createHash('sha256')
+      .update(JSON.stringify(manifest))
+      .digest('hex'),
+    authorityTransferred: false,
+  };
+}
+function recoveryPath(segments: readonly string[]): boolean {
+  return segments.length === 1 && segments[0] === STATION_HOME_RECOVERY_RECORD;
+}
+function assertRecoveryMetadataPath(segments: readonly string[]): void {
+  if (
+    segments[0]?.normalize('NFC').toLowerCase() ===
+      STATION_HOME_RECOVERY_RECORD &&
+    (segments.length !== 1 || segments[0] !== STATION_HOME_RECOVERY_RECORD)
+  )
+    fail('recovery metadata path is ambiguous');
+}
+/** Persist the negative activation fence before any copied authority state is replaced. */
+function publishRecoveryRecord(
+  homeDir: string,
+  record: StationHomeRecoveryRecord,
+): void {
+  for (const name of readdirSync(homeDir)) assertRecoveryMetadataPath([name]);
+  const path = join(homeDir, STATION_HOME_RECOVERY_RECORD);
+  try {
+    const entry = lstatSync(path);
+    if (!entry.isFile() || entry.isSymbolicLink())
+      fail('recovery metadata must be a regular file');
+  } catch (error) {
+    if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT'))
+      throw error;
+  }
+  const temporary = `${path}.${randomUUID()}.tmp`;
+  let created = false;
+  try {
+    const fd = openSync(temporary, 'wx', 0o600);
+    created = true;
+    try {
+      writeFileSync(fd, `${JSON.stringify(record)}\n`);
+    } finally {
+      closeSync(fd);
+    }
+    syncFile(temporary);
+    renameSync(temporary, path);
+    fsyncDirectorySync(homeDir);
+  } finally {
+    if (created && existsSync(temporary)) rmSync(temporary, { force: true });
+  }
 }
 
 export function readStationHomeRecovery(
@@ -175,7 +234,7 @@ const MAX_SYMLINK_TARGET_LENGTH = 4096;
 // quarantine (station#3217) is top level because `isTransient` only inspects
 // `segments[0]`.
 const SQLITE_TRANSIENT_SUFFIXES = ['-journal', '-shm', '-wal'];
-// A corruption marker describes a database AT A MOMENT, and collectFiles
+// A corruption marker describes a database AT A MOMENT, and collectEntries
 // already refuses to archive an unhealthy *.sqlite — so every archived home
 // contains a database that passed quick_check. Carrying a marker alongside it
 // would restore a home whose own backup proved the database healthy while
@@ -209,10 +268,14 @@ type BackupKind = 'home' | 'update';
 export interface StationHomeBackupManifest {
   schemaVersion:
     | typeof STATION_HOME_BACKUP_SCHEMA
-    | typeof STATION_HOME_UPDATE_BACKUP_SCHEMA;
+    | typeof STATION_HOME_UPDATE_BACKUP_SCHEMA
+    | 'station.home-backup/v1'
+    | 'station.home-update-backup/v1';
   homeSchemaVersion: number;
   createdAt: string;
   files: StationHomeBackupFile[];
+  /** All retained directories, including empty ones. Absent only in v1. */
+  directories?: string[][];
   /** Update backups only. */
   symlinks?: StationHomeBackupSymlink[];
   totalBytes: number;
@@ -553,13 +616,24 @@ function assertSymlinkTarget(target: unknown): asserts target is string {
     fail('backup contains an unusable symbolic link target');
 }
 
-function collectFiles(
-  homeDir: string,
-  limits: ReturnType<typeof canonicalLimits>,
-  checkpointSqlite = false,
-): StationHomeBackupFile[] {
-  return collectEntries(homeDir, limits, { checkpointSqlite, kind: 'home' })
-    .files;
+function restoreDirectories(paths: readonly string[]): void {
+  for (const path of paths) {
+    mkdirSync(path, { recursive: true, mode: 0o700 });
+    const stats = lstatSync(path);
+    if (!stats.isDirectory() || stats.isSymbolicLink())
+      fail('archive directory changed type during restore');
+  }
+}
+
+function assertDirectories(
+  expected: readonly string[][] | undefined,
+  actual: readonly string[][],
+): void {
+  if (
+    expected !== undefined &&
+    JSON.stringify(expected) !== JSON.stringify(actual)
+  )
+    fail('backup directories do not match the manifest');
 }
 
 /**
@@ -572,26 +646,65 @@ function collectFiles(
 function collectEntries(
   homeDir: string,
   limits: ReturnType<typeof canonicalLimits>,
-  options: { checkpointSqlite?: boolean; kind: BackupKind },
-): { files: StationHomeBackupFile[]; symlinks: StationHomeBackupSymlink[] } {
+  options: {
+    checkpointSqlite?: boolean;
+    kind: BackupKind;
+    includeDirectories?: boolean;
+    expectedDirectories?: ReadonlySet<string>;
+    expectedRecoveryRecord?: StationHomeRecoveryRecord;
+    excludeMediaTools?: boolean;
+  },
+): {
+  files: StationHomeBackupFile[];
+  symlinks: StationHomeBackupSymlink[];
+  directories: string[][];
+} {
   const checkpointSqlite = options.checkpointSqlite ?? false;
   const update = options.kind === 'update';
   const files: StationHomeBackupFile[] = [];
   const symlinks: StationHomeBackupSymlink[] = [];
+  const directories: string[][] = [];
+  let recoveryRecordObserved = options.expectedRecoveryRecord === undefined;
+  let archivedEntries = 0;
+  let visitedEntries = 0;
+  const traversalLimit = Math.min(
+    Number.MAX_SAFE_INTEGER,
+    limits.maxFiles + DEFAULT_STATION_HOME_UPDATE_BACKUP_MAX_FILES,
+  );
+  const reserveEntry = () => {
+    if (archivedEntries >= limits.maxFiles)
+      fail('Station home exceeds the archive file-count limit');
+    archivedEntries += 1;
+  };
   let totalBytes = 0;
   const visit = (directory: string, parentSegments: string[]): void => {
     for (const entry of readdirSync(directory, { withFileTypes: true }).sort(
       (left, right) => left.name.localeCompare(right.name),
     )) {
+      if (
+        options.expectedDirectories !== undefined &&
+        ++visitedEntries > traversalLimit
+      )
+        fail('update restore verification exceeds its traversal limit');
       const segments = [...parentSegments, entry.name];
       if (isTransient(segments)) continue;
       assertSegment(entry.name);
       const path = join(directory, entry.name);
       let stats = lstatSync(path);
-      // Media tools can be downloaded again; unlike user workspaces, neither
-      // backup kind needs a copy. Older home archives remain restorable.
+      if (options.expectedRecoveryRecord && recoveryPath(segments)) {
+        const expected = `${JSON.stringify(options.expectedRecoveryRecord)}\n`;
+        if (
+          !stats.isFile() ||
+          stats.size !== Buffer.byteLength(expected) ||
+          readFileSync(path, 'utf8') !== expected
+        )
+          fail('recovery metadata changed during restore');
+        recoveryRecordObserved = true;
+        continue;
+      }
+      // New snapshots omit downloads; validation still inspects archived bytes.
       if (
-        segments[0] === 'media-tools' ||
+        (options.excludeMediaTools && segments[0] === 'media-tools') ||
         (update && isExternalStationHomePath(segments, stats.isDirectory()))
       )
         continue;
@@ -602,8 +715,7 @@ function collectEntries(
           );
         const target = readlinkSync(path);
         assertSymlinkTarget(target);
-        if (files.length + symlinks.length >= limits.maxFiles)
-          fail('Station home exceeds the archive file-count limit');
+        reserveEntry();
         let directoryTarget = false;
         try {
           directoryTarget = statSync(path).isDirectory();
@@ -614,6 +726,14 @@ function collectEntries(
         continue;
       }
       if (stats.isDirectory()) {
+        if (options.includeDirectories !== false) {
+          const preservedContainer =
+            options.expectedDirectories !== undefined &&
+            !options.expectedDirectories.has(JSON.stringify(segments)) &&
+            containsExternalStationHomePath(segments);
+          if (!preservedContainer) reserveEntry();
+          directories.push(segments);
+        }
         visit(path, segments);
         continue;
       }
@@ -641,8 +761,7 @@ function collectEntries(
       totalBytes += stats.size;
       if (totalBytes > limits.maxBytes)
         fail('Station home exceeds the archive byte limit');
-      if (files.length + symlinks.length >= limits.maxFiles)
-        fail('Station home exceeds the archive file-count limit');
+      reserveEntry();
       files.push({
         path: segments,
         size: stats.size,
@@ -652,7 +771,8 @@ function collectEntries(
     }
   };
   visit(homeDir, []);
-  return { files, symlinks };
+  if (!recoveryRecordObserved) fail('recovery metadata changed during restore');
+  return { files, symlinks, directories };
 }
 
 function strictManifest(
@@ -662,6 +782,13 @@ function strictManifest(
 ): StationHomeBackupManifest {
   if (!isPlainRecord(value)) fail('backup manifest must be an object');
   const update = kind === 'update';
+  const currentSchema = update
+    ? STATION_HOME_UPDATE_BACKUP_SCHEMA
+    : STATION_HOME_BACKUP_SCHEMA;
+  const legacySchema = update
+    ? 'station.home-update-backup/v1'
+    : 'station.home-backup/v1';
+  const hasDirectories = value.schemaVersion === currentSchema;
   if (
     Object.keys(value).sort().join(',') !==
     [
@@ -670,6 +797,7 @@ function strictManifest(
       'homeSchemaVersion',
       'schemaVersion',
       'totalBytes',
+      ...(hasDirectories ? ['directories'] : []),
       ...(update ? ['symlinks'] : []),
     ]
       .sort()
@@ -677,10 +805,9 @@ function strictManifest(
   )
     fail('backup manifest contains unknown or missing fields');
   if (
-    value.schemaVersion !==
-      (update
-        ? STATION_HOME_UPDATE_BACKUP_SCHEMA
-        : STATION_HOME_BACKUP_SCHEMA) ||
+    (value.schemaVersion !== currentSchema &&
+      value.schemaVersion !== legacySchema) ||
+    (hasDirectories && !Array.isArray(value.directories)) ||
     (update && !Array.isArray(value.symlinks)) ||
     !Number.isSafeInteger(value.homeSchemaVersion) ||
     (value.homeSchemaVersion as number) < 1 ||
@@ -732,16 +859,55 @@ function strictManifest(
   });
   if (totalBytes !== value.totalBytes)
     fail('backup manifest total does not match its files');
-  if (!update)
+  const rawDirectories = hasDirectories ? (value.directories as unknown[]) : [];
+  if (files.length + rawDirectories.length > limits.maxFiles)
+    fail('backup manifest exceeds the file-count limit');
+  const directories = rawDirectories.map((entry): string[] => {
+    if (!Array.isArray(entry) || entry.length === 0)
+      fail('backup manifest contains an invalid directory entry');
+    const segments = entry.map((segment) => {
+      assertSegment(segment);
+      return segment;
+    });
+    const key = JSON.stringify(segments);
+    if (seen.has(key)) fail('backup manifest contains a duplicate path');
+    seen.add(key);
+    return segments;
+  });
+  const directoryKeys = new Set(
+    directories.map((path) => JSON.stringify(path)),
+  );
+  const aliases = new Set<string>();
+  const assertUnaliased = (path: string[]) => {
+    if (!hasDirectories) return;
+    const key = updateRestorePathKey(path);
+    if (aliases.has(key)) fail('backup manifest contains aliased paths');
+    aliases.add(key);
+  };
+  for (const path of directories) assertUnaliased(path);
+  for (const file of files) assertUnaliased(file.path);
+  const assertParents = (path: string[]) => {
+    if (!hasDirectories) return;
+    for (let length = 1; length < path.length; length += 1)
+      if (!directoryKeys.has(JSON.stringify(path.slice(0, length))))
+        fail('backup manifest omits a parent directory');
+  };
+  if (!update) {
+    for (const path of directories) assertParents(path);
+    for (const file of files) assertParents(file.path);
     return {
-      schemaVersion: STATION_HOME_BACKUP_SCHEMA,
+      schemaVersion: hasDirectories
+        ? STATION_HOME_BACKUP_SCHEMA
+        : 'station.home-backup/v1',
       homeSchemaVersion: value.homeSchemaVersion as number,
       createdAt: value.createdAt,
       files,
+      ...(hasDirectories ? { directories } : {}),
       totalBytes,
     };
+  }
   const rawSymlinks = value.symlinks as unknown[];
-  if (files.length + rawSymlinks.length > limits.maxFiles)
+  if (files.length + directories.length + rawSymlinks.length > limits.maxFiles)
     fail('backup manifest exceeds the file-count limit');
   const symlinks = rawSymlinks.map((entry): StationHomeBackupSymlink => {
     if (
@@ -773,16 +939,26 @@ function strictManifest(
   const below = (path: string[], link: string[]) =>
     path.length > link.length &&
     link.every((segment, index) => fold(path[index] ?? '') === segment);
-  for (const entry of [...files, ...symlinks]) {
+  for (const entry of [
+    ...files,
+    ...symlinks,
+    ...directories.map((path) => ({ path })),
+  ]) {
     if (linkKeys.some((link) => below(entry.path, link)))
       fail('backup manifest places a path below a symbolic link');
   }
+  for (const path of directories) assertParents(path);
+  for (const entry of [...files, ...symlinks]) assertParents(entry.path);
+  for (const link of symlinks) assertUnaliased(link.path);
   return {
-    schemaVersion: STATION_HOME_UPDATE_BACKUP_SCHEMA,
+    schemaVersion: hasDirectories
+      ? STATION_HOME_UPDATE_BACKUP_SCHEMA
+      : 'station.home-update-backup/v1',
     homeSchemaVersion: value.homeSchemaVersion as number,
     createdAt: value.createdAt,
     files,
     symlinks,
+    ...(hasDirectories ? { directories } : {}),
     totalBytes,
   };
 }
@@ -820,7 +996,12 @@ function validateBackupDirectory(
   }
   const contentRoot = join(root, 'home');
   // A backup's copy holds regular files only (links live in its manifest).
-  const actual = collectFiles(contentRoot, limits, false);
+  const contents = collectEntries(contentRoot, limits, {
+    kind: 'home',
+    includeDirectories: manifest.directories !== undefined,
+  });
+  const actual = contents.files;
+  assertDirectories(manifest.directories, contents.directories);
   if (actual.length !== manifest.files.length)
     fail('backup contents do not match the manifest');
   for (let index = 0; index < actual.length; index += 1) {
@@ -939,9 +1120,10 @@ function createBackup(
     const homeSchemaVersion = readStationHomeSchemaVersion(homeDir);
     if (homeSchemaVersion > STATION_HOME_SCHEMA_VERSION)
       fail('Station home schema is newer than this Station');
-    const { files, symlinks } = collectEntries(homeDir, limits, {
+    const { files, symlinks, directories } = collectEntries(homeDir, limits, {
       checkpointSqlite: true,
       kind,
+      excludeMediaTools: true,
     });
     assertInactive('backup', options.assertInactive);
     if (kind === 'update')
@@ -956,6 +1138,7 @@ function createBackup(
       fail('backup staging root is unsafe');
     const contentRoot = join(staging, 'home');
     mkdirSync(contentRoot, { mode: 0o700 });
+    restoreDirectories(directories.map((path) => pathFor(contentRoot, path)));
     for (const file of files) {
       const source = pathFor(homeDir, file.path);
       const target = pathFor(contentRoot, file.path);
@@ -978,13 +1161,14 @@ function createBackup(
     const createdAt = (options.now ?? (() => new Date().toISOString()))();
     if (Number.isNaN(Date.parse(createdAt))) fail('backup clock is invalid');
     const totalBytes = files.reduce((total, file) => total + file.size, 0);
-    const manifest: StationHomeBackupManifest =
+    const manifest = strictManifest(
       kind === 'update'
         ? {
             schemaVersion: STATION_HOME_UPDATE_BACKUP_SCHEMA,
             homeSchemaVersion,
             createdAt,
             files,
+            directories,
             symlinks,
             totalBytes,
           }
@@ -993,8 +1177,12 @@ function createBackup(
             homeSchemaVersion,
             createdAt,
             files,
+            directories,
             totalBytes,
-          };
+          },
+      limits,
+      kind,
+    );
     const manifestPath = join(staging, STATION_HOME_BACKUP_MANIFEST);
     writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, {
       encoding: 'utf8',
@@ -1060,17 +1248,7 @@ export function restoreStationHomeBackup(
       error,
     );
   }
-  const recovery: StationHomeRecoveryRecord = {
-    schemaVersion: 'station.home-recovery/v1',
-    kind: 'recovered-from-copy',
-    recoveryId: randomUUID(),
-    recoveredAt: new Date().toISOString(),
-    snapshotCreatedAt: manifest.createdAt,
-    backupManifestSha256: createHash('sha256')
-      .update(JSON.stringify(manifest))
-      .digest('hex'),
-    authorityTransferred: false,
-  };
+  const recovery = recoveryRecord(manifest);
   let movedPrevious = false;
   try {
     assertInactive('restore', options.assertInactive);
@@ -1079,6 +1257,9 @@ export function restoreStationHomeBackup(
     const stagingStats = lstatSync(staging);
     if (!stagingStats.isDirectory() || stagingStats.isSymbolicLink())
       fail('restore staging root is unsafe');
+    restoreDirectories(
+      (manifest.directories ?? []).map((path) => pathFor(staging, path)),
+    );
     for (const file of manifest.files) {
       const source = pathFor(contentRoot, file.path);
       const target = pathFor(staging, file.path);
@@ -1087,7 +1268,12 @@ export function restoreStationHomeBackup(
       if (process.platform !== 'win32') chmodSync(target, file.mode);
       syncFile(target);
     }
-    const stagedFiles = collectFiles(staging, limits, false);
+    const staged = collectEntries(staging, limits, {
+      kind: 'home',
+      includeDirectories: manifest.directories !== undefined,
+    });
+    const stagedFiles = staged.files;
+    assertDirectories(manifest.directories, staged.directories);
     if (
       stagedFiles.length !== manifest.files.length ||
       stagedFiles.some((file, index) => {
@@ -1103,14 +1289,7 @@ export function restoreStationHomeBackup(
     // Publish disclosure with the restored home, after verifying copied bytes.
     // Repeated restores replace only this reserved metadata file; no nested
     // history or credentials are exposed in the record.
-    const recoveryPath = join(staging, STATION_HOME_RECOVERY_RECORD);
-    const recoveryTemp = `${recoveryPath}.${randomUUID()}.tmp`;
-    writeFileSync(recoveryTemp, `${JSON.stringify(recovery)}\n`, {
-      flag: 'wx',
-      mode: 0o600,
-    });
-    syncFile(recoveryTemp);
-    renameSync(recoveryTemp, recoveryPath);
+    publishRecoveryRecord(staging, recovery);
     syncDirectoryTree(staging);
     options.beforePublish?.();
     assertInactive('restore', options.assertInactive);
@@ -1270,14 +1449,19 @@ function outsideUpdate(
 }
 
 /**
- * Removes every `state` entry below `directory`, descending only into a
+ * Removes copied `state` entries, preserving the newly published recovery
+ * fence at the root and descending only into a
  * real directory that holds an `external` path (so `browser/` loses its
  * Station files but keeps `browser/profiles`). rmSync never follows a link.
  */
 function removeUpdateState(directory: string, parentSegments: string[]): void {
   for (const name of readdirSync(directory)) {
     const segments = [...parentSegments, name];
-    if (parentSegments.length === 0 && isLiveStationHomeRoot(name)) continue;
+    if (
+      parentSegments.length === 0 &&
+      (isLiveStationHomeRoot(name) || name === STATION_HOME_RECOVERY_RECORD)
+    )
+      continue;
     const path = join(directory, name);
     const stats = lstatSync(path);
     if (isExternalStationHomePath(segments, stats.isDirectory())) continue;
@@ -1298,11 +1482,12 @@ function updateRestorePathKey(segments: readonly string[]): string {
   );
 }
 
-/** Refuse saved files/links at retained containers or inside external directories. */
+/** Refuse saved paths that would replace retained containers or external work. */
 function assertUpdateRestoreTargets(
   directory: string,
   targets: ReadonlySet<string>,
   targetAncestors: ReadonlyMap<string, ReadonlySet<string>>,
+  directoryTargets: ReadonlySet<string>,
   parentSegments: string[] = [],
 ): void {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -1317,7 +1502,7 @@ function assertUpdateRestoreTargets(
       spellings !== undefined &&
       [...spellings].some((spelling) => spelling !== JSON.stringify(segments));
     if (
-      targets.has(key) ||
+      (targets.has(key) && (!directoryTargets.has(key) || external)) ||
       (external && spellings !== undefined) ||
       renamedContainer
     )
@@ -1328,6 +1513,7 @@ function assertUpdateRestoreTargets(
         join(directory, entry.name),
         targets,
         targetAncestors,
+        directoryTargets,
         segments,
       );
   }
@@ -1356,9 +1542,10 @@ function symlinkType(link: StationHomeBackupSymlink) {
  * before the trial (a plugin draft's `node_modules` links into the version
  * that built it, outside the home, by design), and nothing here follows them.
  *
- * Idempotent, so a rollback interrupted at any point is finished by running
- * it again: the backup is only read, and each run starts by removing whatever
- * a previous run (or the trial) left in the state entries.
+ * Copied state is idempotent, so an interrupted rollback can be retried. Each
+ * attempt deliberately advances recovery activation before replacing state;
+ * authority from the snapshot must never become current again. The backup is
+ * only read, and each run removes what the previous run or trial left behind.
  */
 export function restoreStationHomeUpdateBackup(
   options: StationHomeUpdateRestoreOptions,
@@ -1370,9 +1557,18 @@ export function restoreStationHomeUpdateBackup(
   const manifest = validateBackupDirectory(backupDir, limits, 'update');
   // A backup written under another registry may hold an entry that is live
   // or external now; those are this home's, so they are left as they are.
-  const restorable = manifest.files.filter((file) => !outsideUpdate(file.path));
+  for (const entry of [...manifest.files, ...(manifest.symlinks ?? [])])
+    assertRecoveryMetadataPath(entry.path);
+  if (manifest.symlinks?.some((link) => recoveryPath(link.path)))
+    fail('backup recovery metadata must be a regular file');
+  const restorable = manifest.files.filter(
+    (file) => !outsideUpdate(file.path) && !recoveryPath(file.path),
+  );
   const links = (manifest.symlinks ?? []).filter(
     (link) => !outsideUpdate(link.path),
+  );
+  const directories = manifest.directories?.filter(
+    (path) => !outsideUpdate(path, true),
   );
   let release: () => void;
   try {
@@ -1401,12 +1597,27 @@ export function restoreStationHomeUpdateBackup(
       link,
       path: pathFor(homeDir, link.path),
     }));
+    const directoryPaths = (directories ?? []).map((path) =>
+      pathFor(homeDir, path),
+    );
     const targets = new Set<string>();
+    const directoryTargets = new Set(
+      (directories ?? []).map(updateRestorePathKey),
+    );
     const targetAncestors = new Map<string, Set<string>>();
-    for (const entry of [...restorable, ...links]) {
+    for (const entry of [
+      ...restorable,
+      ...links,
+      ...(directories ?? []).map((path) => ({ path })),
+    ]) {
       targets.add(updateRestorePathKey(entry.path));
       // Segment slices keep aliases bounded: checkout-1 never owns checkout-10.
-      for (let length = 1; length < entry.path.length; length += 1) {
+      const ancestorCount = directoryTargets.has(
+        updateRestorePathKey(entry.path),
+      )
+        ? entry.path.length
+        : entry.path.length - 1;
+      for (let length = 1; length <= ancestorCount; length += 1) {
         const ancestor = entry.path.slice(0, length);
         const key = updateRestorePathKey(ancestor);
         const spellings = targetAncestors.get(key) ?? new Set<string>();
@@ -1414,10 +1625,18 @@ export function restoreStationHomeUpdateBackup(
         targetAncestors.set(key, spellings);
       }
     }
-    assertUpdateRestoreTargets(homeDir, targets, targetAncestors);
+    assertUpdateRestoreTargets(
+      homeDir,
+      targets,
+      targetAncestors,
+      directoryTargets,
+    );
+    const recovery = recoveryRecord(manifest);
+    publishRecoveryRecord(homeDir, recovery);
     removeUpdateState(homeDir, []);
     fsyncDirectorySync(homeDir);
     options.afterRemove?.();
+    restoreDirectories(directoryPaths);
     for (const { file, source, target } of files) {
       mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
       copyFileSync(source, target, constants.COPYFILE_EXCL);
@@ -1428,10 +1647,30 @@ export function restoreStationHomeUpdateBackup(
       mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
       symlinkSync(link.target, path, symlinkType(link));
     }
-    const restored = collectEntries(homeDir, limits, { kind: 'update' });
+    const expectedDirectories = new Set(
+      directories?.map((path) => JSON.stringify(path)),
+    );
+    const restored = collectEntries(homeDir, limits, {
+      kind: 'update',
+      expectedRecoveryRecord: recovery,
+      includeDirectories: directories !== undefined,
+      ...(directories === undefined ? {} : { expectedDirectories }),
+    });
+    // Trial-created ancestors of external work survive with that work.
+    assertDirectories(
+      directories,
+      restored.directories.filter(
+        (path) =>
+          expectedDirectories.has(JSON.stringify(path)) ||
+          !containsExternalStationHomePath(path),
+      ),
+    );
+    const restoredFiles = restored.files.filter(
+      (file) => !recoveryPath(file.path),
+    );
     if (
-      restored.files.length !== restorable.length ||
-      restored.files.some((file, index) => {
+      restoredFiles.length !== restorable.length ||
+      restoredFiles.some((file, index) => {
         const expected = restorable[index];
         return (
           !expected ||

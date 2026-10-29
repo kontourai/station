@@ -20,7 +20,19 @@
 
     "src-server/services/orchestration/sqlite-revision-evidence-persistence.ts",
 
-    "src-server/domain/__fixtures__/shared-working-state-v1.json"
+    "src-server/domain/__fixtures__/shared-working-state-v1.json",
+
+    "docs/decisions/revision-evidence-freeze-policy.md",
+
+    "src-server/domain/migrations/024-project-task-room-revision-freeze.ts",
+
+    "src-server/services/orchestration/project-task-room-runtime.ts",
+
+    "src-server/services/orchestration/project-task-room-working-state-worker.ts",
+
+    "src-server/services/orchestration/project-task-room-history-worker.ts",
+
+    "src-server/services/projects/task-review-module.ts"
   ],
 
   "checks": [

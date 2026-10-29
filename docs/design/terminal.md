@@ -1,6 +1,6 @@
 # Integrated terminal
 
-Status: In progress under #3994. The scoped in-process foundation is implemented on this branch; the replacement transport, SDK runtime and Ghostty surface remain proposed.
+Status: In progress under #3994. The scoped in-process foundation is implemented on this branch; a personal-operator same-origin gateway is added in part b1; paired-device/remote admission, SDK runtime, Coding cutover and Ghostty remain proposed.
 
 > **Reading status: proposal (2026-10-17).** Replaces the current terminal
 > stack end to end. The bounded implementation below precedes that replacement; the current Coding UI behavior is
@@ -90,13 +90,151 @@ filesystem persistence across service recreation, not power-loss qualification.
 
 The Settings controls for persistence/location, age and aggregate retention,
 clear-history actions, supervisor survival, doctor reporting, explicit restart,
-and command sessions remain follow-ups within phase 1. `terminal:observe` is governed by the Admin ceiling and its description names
-the future remote-watch admission; no preset gains it. The complete scope
-vocabulary uses 236 of the parser's 256 characters, leaving 20 characters.
-Part (b) owns the
-same-origin multiplexed socket, credit flow control, public observe grants,
-remote egress changes, SDK runtime and legacy endpoint cutover. Ghostty remains
+and command sessions remain follow-ups within phase 1. `terminal:observe` is
+governed by the Admin ceiling; no preset gains it. Its description names future
+remote-watch admission. The complete scope vocabulary uses 253 of the parser's
+256 characters, leaving three characters. Part b1 adds the personal-operator socket
+below. Part b2 retains remote egress changes, SDK runtime and Coding cutover. Ghostty remains
 phase 3; no interim TerminalView is introduced.
+
+## Transport implementation boundary (#3994, part b1)
+
+[TerminalGateway](../../src-server/services/terminal/terminal-gateway.ts) mounts
+`/api/terminal/socket` on the main API listener through the
+[Station Hono provider](../../src-server/runtime/frameworks/voltagent-hono-runtime.ts).
+Every connection, including loopback, must pass the existing first-frame auth
+protocol. The runtime sends its credential through the normal HTTP admission
+pipeline and retains that authenticated Request for per-operation checks.
+This tranche admits only the current personal operator in person, as part (a)
+does. Account, hosted, paired-device, agent and plugin admission stays refused.
+No request-supplied principal, cwd or executable is accepted.
+
+[TerminalChannelConnection](../../src-server/services/terminal/terminal-channel-connection.ts)
+serializes open, attach, list, input, resize, close and detach. Only adjacent
+resizes on the same channel coalesce; input and lifecycle commands are barriers.
+Restart is refused until the session service owns explicit restart semantics.
+The [wire contract](../../packages/contracts/src/terminal-transport.ts) carries
+input/output as UTF-8 binary frames with a 13-byte header (one-byte kind,
+four-byte channel, eight-byte sequence, big-endian). JSON controls and the
+bounded credit protocol are described in the [API reference](../reference/api.md#terminal-socket-personal-operator-transport).
+
+The journal remains the single output source. Invalidation subscribes before
+attach reads, and reads serialize with appends/compaction. Gateway reads are
+paged to 64 KiB; live and replay output both use the journal's sanitizer.
+A retained resume sends only records after `fromSeq`. Lost retention sends an
+explicit reset after outstanding output drains. Clients must acknowledge
+replay before input is accepted. Input sequences start at one on each new
+channel; duplicate or skipped input is refused. Input is never retried by the
+server, and channel ids cannot be reused on a socket. A reconnect replays only
+output; callers must not resend input with an uncertain outcome.
+
+`terminal:observe`, added by the part (a) ingress hardening, uses explicit operator
+promotion only. No default grant, preset or stored credential gains it. The
+shared scope predicate permits observe to read and operate to read/write;
+the production personal-operator gate remains an additional restriction.
+The [real-socket suite](../../src-server/services/terminal/__tests__/terminal-gateway.process.test.ts)
+uses injected identities and current grants with real PTYs. Its observer and
+revocation evidence qualifies that gateway/service boundary, not live pairing.
+The listener integration suite proves the registered gateway mounts and stops
+on the API listener. Windows/ConPTY and remote/native routes remain unqualified.
+
+The proposed split stops this review at b1. Part b2 owns Project/principal
+admission for paired devices, remote relay/broker egress and its threat model,
+the SDK session store and public-entry proof, Coding's xterm adapter and saved
+terminal migration. The legacy listener, port discovery, Coding UI, saved tabs,
+process projections and close endpoint remain on TerminalService until that
+cutover. A Coding render before b2 can qualify only legacy compatibility.
+
+### Whole-store retention and process custody
+
+The service reserves each retained record's configured journal disk limit and
+raw in-memory tail limit against whole-store budgets (defaults: 1 GiB disk,
+64 MiB of raw tail payload and 32 records). The smallest budget-derived slot
+count governs admission; a single journal that cannot fit is refused. These
+are core constructor controls, not shipped Settings controls or a measured
+process-RSS bound. With the default per-journal limits, at most 32 journal
+instances/tails and 512 MiB of journal files can be retained.
+
+When a slot is needed, the oldest ended or failed record eligible for the
+caller's operate authority expires: its journal and cache entry are discarded
+and its metadata is removed. Live/stopping sessions are pinned. Closed/failed
+records therefore do not consume admission forever. A caller cannot evict
+another Project/binding it cannot operate. Startup applies the same fixed
+retention policy as trusted store maintenance, including to older homes with
+more records or larger previous per-journal settings. Expired UUIDs are refused;
+retention does not implicitly launch a replacement. Legacy raw history retains
+its separate migration ownership and limits.
+
+The [node-pty backend](../../src-server/adapters/node-pty-adapter.ts) now exposes
+an owned termination operation. On POSIX it uses a bounded process census,
+matches both descendants and the owned controlling tty (including reparented
+jobs), freezes each discovered process group, then kills
+the quiescent groups with children before parents. Job-control groups, nohup
+and HUP-ignoring jobs no longer rely on the shell's HUP handler. Cleanup
+failures are reported; missing census support cannot become successful close.
+The census accepts only concrete `ttysN` or `pts/N` device names. Missing,
+unknown or changed tty identity refuses all census signals; the adapter kills
+its owned shell handle and reports the cleanup failure instead of guessing
+at descendant custody. Adapters without this operation retain the owned handle's HUP/KILL fallback.
+The real PTY tests qualify macOS cleanup of the tested descendants. Windows,
+other POSIX hosts and already-daemonized workloads are not newly qualified;
+supervisor workload custody remains the route to stronger survival/cleanup.
+A fully detached `setsid` job that has lost both ancestry and its controlling
+tty is outside this census. A real-PTY negative control observes that survivor
+and cleans it up independently; close does not qualify daemon custody.
+
+### Replay controls before Ghostty
+
+The socket and HTTP read route apply a second streaming filter to stored and
+live output. HTTP replay refuses more than 64 KiB of journal payload with 413;
+it never returns a silently truncated page.
+OSC 8 hyperlinks admit only absolute `http:` and `https:` URLs; `file:`,
+`javascript:`, malformed URLs and URI control bytes are omitted while link text
+remains visible. Filtering preserves journal sequence identities. Credit is
+charged for transmitted bytes, and parser state advances only after a record
+fits. The minimum window is 16 KiB so a buffered allowed rendering control can
+complete inside one credit window.
+
+OSC 0/1/2 titles and bidi characters in otherwise valid https URIs deliberately
+remain terminal content. Scheme validation prevents active local/script links;
+visual spoofing remains the renderer's responsibility, so these values grant
+no Station or navigation authority.
+
+Pending authentication has its own 32-socket budget, separate from 64 authenticated
+connections, with eight pending sockets per exact source address. This is a
+bounded resource limit, not an availability guarantee: four IPv4 addresses or
+IPv6 addresses (including siblings in one /64) can occupy all pending slots and
+renew them by disconnecting before the five-second timeout. Eight sockets behind one relay address can block
+other users of that address, and timeout failures back off that shared address.
+Any peer that can reach the main API listener can hold pending slots, including
+clients without an Origin header. The in-person rule limits authentication,
+not who can hold slots, so this gap can lock the operator out today.
+Before b2 admits remote devices, it must provide:
+
+- credential- or ticket-bound admission before upgrade;
+- per-identity fairness, or reserved slots for loopback/the operator;
+- a relay/shared-address policy.
+
+An IPv6 /64 key alone would not solve the shared-address or multi-IPv4 case.
+Five-second auth timeouts count as failures; peers that ignore the close handshake
+are terminated after another 100 ms. Socket data pauses above 2 MiB of queued wire bytes and retries
+on the heartbeat; cursor/filter state advances only after sending. Control
+replies have a separate 256 KiB reserve before close code 4429. Frame overhead
+therefore cannot close a client merely for using its channel credit.
+
+A current observer's complete mouse/focus reports are acknowledged as discarded,
+including while replaying. They never reach the shell. Ordinary observer input
+and all observer lifecycle mutations remain refused. Fragmented or unsupported
+reports are refused rather than forwarded. Permission checks still use the
+stored session's Project/binding and the current authority.
+
+Ghostty must treat OSC 0/1/2 titles as untrusted terminal state, never as HTML,
+a Station identity, browser navigation or native-window authority; replay must
+not overwrite application chrome. ESC c reset, CSI repeat counts and mouse,
+focus and paste modes remain part of the conservative rendering subset. The
+Ghostty adapter needs bounded parsing/rendering work, an explicit reset/title
+contract and detached reply/report writers during replay. This tranche does
+not qualify those emulator behaviors or establish full VT fidelity.
 
 ## Why
 

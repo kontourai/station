@@ -34,8 +34,7 @@ const PLACEHOLDER = 'x'.repeat(MAX_REVISION_EVIDENCE_IDENTIFIER_BYTES);
  * the room's working state applies before it commits (#4007). Scope and actor
  * identities are not known before the Task exists, so they are taken at
  * their maximum length: this can refuse a few characters early, never late.
- * The Station-wide evidence ledger is not consulted; a full ledger is still
- * refused explicitly when the seed is written.
+ * Coalesced room seeding does not reserve immutable ledger capacity.
  */
 export function taskRoomDocumentSeedFits(text: string): boolean {
   return taskRoomDocumentSeedRefusal(text) === null;

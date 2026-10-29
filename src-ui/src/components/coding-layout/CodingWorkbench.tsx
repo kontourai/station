@@ -66,7 +66,9 @@ import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { ChatWorkspacePane } from '../chat-dock/ChatDock';
 import { inboxToggleLabel } from '../chat-dock/inbox-toggle-label';
+import { Dialog } from '../Dialog';
 import {
+  ArrowDownGlyph,
   ArrowLeftGlyph,
   ArrowRightGlyph,
   CheckGlyph,
@@ -317,6 +319,18 @@ export function CodingWorkbench({
   // it replaces did), so a focused terminal or preview is not left under the
   // keyboard.
   const isMobile = useIsMobile();
+  const [toolPicker, setToolPicker] = useState<{
+    paneId: string | null;
+  } | null>(null);
+  const toolPickerOpen =
+    isMobile && toolPicker !== null && toolPicker.paneId === paneId;
+  const setToolPickerOpen = (open: boolean) =>
+    setToolPicker(open ? { paneId } : null);
+  useEffect(() => {
+    if (toolPicker && (!isMobile || toolPicker.paneId !== paneId)) {
+      setToolPicker(null);
+    }
+  }, [isMobile, paneId, toolPicker]);
   const visualViewport = useMobileVisualViewport();
   const rootRef = useRef<HTMLDivElement>(null);
   const [fittedHeight, setFittedHeight] = useState<number | null>(null);
@@ -1016,7 +1030,7 @@ export function CodingWorkbench({
 
   // ── One bar: the breadcrumb names the conversation, and Chat's own
   // toolbar (its project context, Open/New, the dock menu) renders into the
-  // bar's two slots beside it (#3046) rather than as a second row.
+  // bar's slots beside it (#3046) rather than as a second row.
   // The folded inbox's edge: a slim strip on the Chat column's left edge
   // that reopens the inbox (the reader's own choice) and carries the inbox's
   // "Needs you" count so a fold never hides that something is waiting. Fine
@@ -1026,11 +1040,17 @@ export function CodingWorkbench({
   const inboxEdge = wide && centerChat && !inboxOpen && !coarsePointer;
   const inboxEdgeName = inboxToggleLabel(false, inboxNeedsYou);
   const chatBar = centerChat && page === 'chat';
+  const [barStart, setBarStart] = useState<HTMLElement | null>(null);
   const [barLeading, setBarLeading] = useState<HTMLElement | null>(null);
   const [barTrailing, setBarTrailing] = useState<HTMLElement | null>(null);
   const chatBarSlots = useMemo(
-    () => ({ leading: barLeading, trailing: barTrailing, namesPane: true }),
-    [barLeading, barTrailing],
+    () => ({
+      start: barStart,
+      leading: barLeading,
+      trailing: barTrailing,
+      namesPane: true,
+    }),
+    [barStart, barLeading, barTrailing],
   );
   // The panel heads: the pane's own controls join the head row.
   const [sideHeadLeading, setSideHeadLeading] = useState<HTMLElement | null>(
@@ -1151,6 +1171,7 @@ export function CodingWorkbench({
     <div
       ref={rootRef}
       className="coding-workbench"
+      data-mobile={isMobile || undefined}
       data-mode={wide ? 'panels' : 'stack'}
       style={
         fittedHeight === null
@@ -1166,67 +1187,102 @@ export function CodingWorkbench({
         <div className="coding-workbench__bar">
           {/* The rail is last in the tab order (bar, Chat, the open panel,
               then the rail); a reader who wants a tool first skips to it. */}
-          <button
-            type="button"
-            className="coding-workbench__skip"
-            onClick={() => {
-              rootRef.current
-                ?.querySelector<HTMLElement>(
-                  '.coding-workbench__rail-item[data-rail-item]',
-                )
-                ?.focus();
-            }}
-          >
-            Skip to views
-          </button>
-          <nav
-            className="coding-workbench__nav"
-            aria-label={`${stackName} navigation`}
-          >
-            <ol className="coding-workbench__crumbs" aria-label="Breadcrumb">
-              <li className="coding-workbench__crumb">
-                <button
-                  type="button"
-                  className="coding-workbench__crumb-link"
-                  onClick={openInbox}
-                >
-                  Inbox
-                </button>
-              </li>
-              {(!isMobile || page === 'drill-in') && (
+          {!isMobile && (
+            <button
+              type="button"
+              className="coding-workbench__skip"
+              onClick={() => {
+                rootRef.current
+                  ?.querySelector<HTMLElement>(
+                    '.coding-workbench__rail-item[data-rail-item]',
+                  )
+                  ?.focus();
+              }}
+            >
+              Skip to views
+            </button>
+          )}
+          {chatBar ? (
+            <div className="coding-workbench__bar-trailing" ref={setBarStart} />
+          ) : null}
+          {isMobile ? (
+            <nav
+              className="coding-workbench__mobile-nav"
+              aria-label={`${stackName} navigation`}
+            >
+              <Button
+                variant="ghost"
+                className="coding-workbench__mobile-back"
+                onClick={page === 'drill-in' ? returnToChatPage : openInbox}
+              >
+                <ArrowLeftGlyph />
+                {page === 'drill-in' ? 'Chat' : 'Inbox'}
+              </Button>
+              <button
+                type="button"
+                className="choice-trigger coding-workbench__tool-trigger"
+                ref={(node) => {
+                  currentCrumbRef.current = node;
+                }}
+                aria-label={`Switch tool, current: ${page === 'drill-in' ? drillInLabel : 'Chat'}`}
+                aria-haspopup="dialog"
+                aria-expanded={toolPickerOpen}
+                onClick={() => setToolPickerOpen(true)}
+              >
+                <span>{page === 'drill-in' ? drillInLabel : 'Chat'}</span>
+                <ArrowDownGlyph className="choice-caret" />
+              </button>
+            </nav>
+          ) : (
+            <nav
+              className="coding-workbench__nav"
+              aria-label={`${stackName} navigation`}
+            >
+              <ol className="coding-workbench__crumbs" aria-label="Breadcrumb">
                 <li className="coding-workbench__crumb">
-                  {page === 'drill-in' ? (
-                    <button
-                      type="button"
-                      className="coding-workbench__crumb-link"
-                      onClick={returnToChatPage}
-                    >
-                      {chatTitle}
-                    </button>
-                  ) : (
+                  <button
+                    type="button"
+                    className="coding-workbench__crumb-link"
+                    onClick={openInbox}
+                  >
+                    Inbox
+                  </button>
+                </li>
+                {(!isMobile || page === 'drill-in') && (
+                  <li className="coding-workbench__crumb">
+                    {page === 'drill-in' ? (
+                      <button
+                        type="button"
+                        className="coding-workbench__crumb-link"
+                        onClick={returnToChatPage}
+                      >
+                        {chatTitle}
+                      </button>
+                    ) : (
+                      <span
+                        className="coding-workbench__crumb-current"
+                        aria-current="page"
+                      >
+                        {chatTitle}
+                      </span>
+                    )}
+                  </li>
+                )}
+                {page === 'drill-in' ? (
+                  <li className="coding-workbench__crumb">
                     <span
                       className="coding-workbench__crumb-current"
                       aria-current="page"
+                      ref={currentCrumbRef}
+                      tabIndex={-1}
                     >
-                      {chatTitle}
+                      {drillInLabel}
                     </span>
-                  )}
-                </li>
-              )}
-              {page === 'drill-in' ? (
-                <li className="coding-workbench__crumb">
-                  <span
-                    className="coding-workbench__crumb-current"
-                    aria-current="page"
-                    ref={currentCrumbRef}
-                    tabIndex={-1}
-                  >
-                    {drillInLabel}
-                  </span>
-                </li>
-              ) : null}
-            </ol>
-          </nav>
+                  </li>
+                ) : null}
+              </ol>
+            </nav>
+          )}
           {chatBar ? (
             <div
               className="coding-workbench__bar-leading"
@@ -1494,36 +1550,108 @@ export function CodingWorkbench({
           ) : null}
         </div>
       </div>
-      <CodingViewRail
-        instances={railInstances}
-        mode={wide ? 'panels' : 'stack'}
-        currentPaneId={page === 'drill-in' ? paneId : null}
-        pressed={
-          wide
-            ? {
-                ...(sidePaneId ? { [sidePaneId]: sidePanelId } : {}),
-                ...(lowerOpen && terminalId
-                  ? { [terminalId]: lowerPanelId }
-                  : {}),
-              }
-            : undefined
-        }
-        paneLabel={paneLabel}
-        paneDetail={paneDetail}
-        badges={badges}
-        onOpenView={openView}
-        onAddPane={hostOpen ? requestCatalog : undefined}
-        browserLauncher={
-          browserPreviewAvailability ? (
-            <BrowserPreviewPaneLauncher
-              projectId={projectId}
-              projectSlug={projectSlug}
-              host={hostOpen}
-              availability={browserPreviewAvailability}
-            />
-          ) : null
-        }
-      />
+      {isMobile ? (
+        <Dialog
+          open={toolPickerOpen}
+          title="Tools"
+          overlayClassName="coding-workbench__tool-overlay"
+          panelClassName="coding-workbench__tool-sheet"
+          closeLabel="Close tools"
+          onClose={() => setToolPickerOpen(false)}
+          size="sm"
+        >
+          <nav className="coding-workbench__tool-list" aria-label="Views">
+            <Button
+              variant="ghost"
+              aria-current={page === 'chat' ? 'page' : undefined}
+              onClick={() => {
+                setToolPickerOpen(false);
+                goToChatPage();
+              }}
+            >
+              Chat
+            </Button>
+            {railInstances.map((instance) => (
+              <Button
+                key={instance.instanceId}
+                variant="ghost"
+                aria-label={
+                  badges[instance.descriptorId] === undefined
+                    ? paneLabel(instance)
+                    : `${paneLabel(instance)}, ${badges[instance.descriptorId]} changed ${badges[instance.descriptorId] === 1 ? 'file' : 'files'}`
+                }
+                aria-current={
+                  instance.instanceId === paneId ? 'page' : undefined
+                }
+                title={paneDetail?.(instance) ?? undefined}
+                onClick={(event) => {
+                  setToolPickerOpen(false);
+                  openView(instance, activatedByKeyboard(event));
+                }}
+              >
+                {railGlyph(instance.descriptorId)}
+                <span>{paneLabel(instance)}</span>
+                {badges[instance.descriptorId] === undefined ? null : (
+                  <span className="coding-workbench__tool-count">
+                    {badges[instance.descriptorId]} changed files
+                  </span>
+                )}
+              </Button>
+            ))}
+            {browserPreviewAvailability ? (
+              <BrowserPreviewPaneLauncher
+                projectId={projectId}
+                projectSlug={projectSlug}
+                host={hostOpen}
+                availability={browserPreviewAvailability}
+              />
+            ) : null}
+            {hostOpen ? (
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setToolPickerOpen(false);
+                  requestCatalog();
+                }}
+              >
+                <PlusGlyph />
+                Add tool
+              </Button>
+            ) : null}
+          </nav>
+        </Dialog>
+      ) : (
+        <CodingViewRail
+          instances={railInstances}
+          mode={wide ? 'panels' : 'stack'}
+          currentPaneId={page === 'drill-in' ? paneId : null}
+          pressed={
+            wide
+              ? {
+                  ...(sidePaneId ? { [sidePaneId]: sidePanelId } : {}),
+                  ...(lowerOpen && terminalId
+                    ? { [terminalId]: lowerPanelId }
+                    : {}),
+                }
+              : undefined
+          }
+          paneLabel={paneLabel}
+          paneDetail={paneDetail}
+          badges={badges}
+          onOpenView={openView}
+          onAddPane={hostOpen ? requestCatalog : undefined}
+          browserLauncher={
+            browserPreviewAvailability ? (
+              <BrowserPreviewPaneLauncher
+                projectId={projectId}
+                projectSlug={projectSlug}
+                host={hostOpen}
+                availability={browserPreviewAvailability}
+              />
+            ) : null
+          }
+        />
+      )}
     </div>
   );
 }
@@ -1672,6 +1800,7 @@ const CenterChat = memo(function CenterChat({
   onInboxNeedsYouChange,
 }: {
   slots: {
+    start: HTMLElement | null;
     leading: HTMLElement | null;
     trailing: HTMLElement | null;
     namesPane: boolean;

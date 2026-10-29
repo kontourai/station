@@ -66,16 +66,18 @@ async function fixture(
   let current = true;
   const security = new EnvironmentSecurityService({ homeDir: directory });
   await security.initialize();
+  const revisionEvidence = new ProjectTaskRoomRevisionEvidenceBridge({
+    eventStore: store,
+    security,
+  });
   const room = new ProjectTaskRoomRuntime({
     taskGraph: service,
-    revisionEvidence: new ProjectTaskRoomRevisionEvidenceBridge({
-      eventStore: store,
-      security,
-    }),
+    revisionEvidence,
     projectForId: (id) => ({ id, slug: id }),
     history: (authority) => store.createProjectTaskRoomHistory(authority),
     working,
     requestAuthority: {
+      isCurrent: () => current,
       resolve: async () =>
         current
           ? {
@@ -115,6 +117,7 @@ async function fixture(
     read,
     accept,
     room,
+    revisionEvidence,
     working,
     revoke: () => {
       current = false;
@@ -398,12 +401,15 @@ test('accepts and durably seeds a long proposal brief (#4007)', async () => {
 /**
  * Fills the Station-wide revision ledger (#4055) through other Tasks' rooms,
  * with ever smaller documents, until even a one-character document's receipt
- * no longer fits. Each edit stores a receipt of the whole document.
+ * no longer fits. Each requested reference stores a full snapshot receipt.
  */
 async function fillRevisionLedger(
   service: TaskGraphService,
   room: ProjectTaskRoomRuntime,
+  bridge: ProjectTaskRoomRevisionEvidenceBridge,
+  working: Awaited<ReturnType<typeof fixture>>['working'],
 ) {
+  const freezes = vi.spyOn(bridge, 'recordPublication');
   const request = new Request('http://station.test');
   const fillers: string[] = [];
   for (const size of [
@@ -434,66 +440,69 @@ async function fillRevisionLedger(
         intentId: plan.intentId,
         intentDigest: plan.digest,
       });
-      if (result.kind === 'committed') {
-        text += 'g';
-        continue;
-      }
-      expect(result).toEqual({
-        kind: 'rejected',
-        reason: 'evidence-ledger-full',
+      expect(result).toMatchObject({ kind: 'committed' });
+      const document = await room.readPlanForReview(filler.id, request);
+      if (document.kind !== 'available') throw new Error('expected plan');
+      const frozen = await room.freezeDocumentRevision({
+        taskId: filler.id,
+        documentId: document.documentId,
+        workingRevision: document.revision,
+        beforeCommit: () => true,
       });
-      break;
+      if (!frozen) {
+        expect(freezes.mock.results.at(-1)).toMatchObject({
+          type: 'return',
+          value: { kind: 'refused', reason: 'capacity_exceeded' },
+        });
+        break;
+      }
+      text += 'g';
     }
   }
+  expect(await working.revisionLedgerUsage?.()).toMatchObject({
+    kind: 'available',
+    count: expect.any(Number),
+  });
+  const usage = await working.revisionLedgerUsage?.();
+  if (usage?.kind !== 'available')
+    throw new Error('Expected real ledger usage');
+  expect(usage.count).toBeGreaterThan(1);
+  expect(usage.count).toBeLessThanOrEqual(256);
   return fillers;
 }
 
-test('with the revision ledger full, acceptance refuses before creating the Task (#4007, #4055)', async () => {
-  const { accept, service, room } = await fixture();
-  const fillers = await fillRevisionLedger(service, room);
-  const response = await accept();
-  expect(response.status).toBe(507);
-  const body = (await response.json()) as { error?: string; code?: string };
-  expect(body).toMatchObject({ code: 'revision-history-full' });
-  expect(body.error).toBe(
-    "Station's revision history is full, so it cannot save a Task brief, and the Task was not created. Retrying will not help until the history has room.",
-  );
-  expect(
-    service
-      .listTasks()
-      .map((task) => task.id)
-      .sort(),
-  ).toEqual([...fillers].sort());
-}, 300_000);
-
-test('a ledger that fills between the check and the seed is reported without a retry promise (#4007, #4055)', async () => {
-  // No pre-creation check: the seed itself meets the full ledger.
-  const { accept, service, room } = await fixture({
-    checkLedgerBeforeCreate: false,
-  });
-  await fillRevisionLedger(service, room);
-  const response = await accept();
-  expect(response.status).toBe(507);
-  const body = (await response.json()) as { error?: string; code?: string };
-  expect(body).toMatchObject({ code: 'revision-history-full' });
-  expect(body.error).toBe(
-    "Task created, but its brief was not saved. Station's revision history is full, so it cannot save a Task brief. Retrying will not help until the history has room.",
-  );
-  expect(body.error).not.toMatch(/Retry Create Task/);
-  // The created Task is named so the client can open it.
-  const created = service
-    .listTasks()
-    .find((task) => task.title === 'Installer progress');
-  expect(created).toBeDefined();
-  expect(body).toMatchObject({ details: { taskId: created?.id } });
-}, 300_000);
+test.each([true, false])(
+  'with the revision ledger full, proposal acceptance still seeds the Task (precheck=%s)',
+  async (checkLedgerBeforeCreate) => {
+    const { accept, service, room, revisionEvidence, working } = await fixture({
+      checkLedgerBeforeCreate,
+    });
+    const fillers = await fillRevisionLedger(
+      service,
+      room,
+      revisionEvidence,
+      working,
+    );
+    const response = await accept();
+    expect(response.status, await response.clone().text()).toBe(201);
+    const created = ((await response.json()) as { data: { id: string } }).data;
+    expect(service.listTasks()).toHaveLength(fillers.length + 1);
+    expect(
+      await room.document({
+        taskId: created.id,
+        request: new Request('http://station.test'),
+      }),
+    ).toMatchObject({ text: brief });
+  },
+  300_000,
+);
 
 test('re-accepting an accepted proposal while the revision ledger is full returns the existing Task (#4007, #4055)', async () => {
-  const { accept, service, room } = await fixture();
+  const { accept, service, room, revisionEvidence, working } = await fixture();
   const first = await accept();
   expect(first.status, await first.clone().text()).toBe(201);
   const accepted = ((await first.json()) as { data: { id: string } }).data;
-  await fillRevisionLedger(service, room);
+  await fillRevisionLedger(service, room, revisionEvidence, working);
   // A lost response or a double-click: the same source again.
   const again = await accept();
   expect(again.status, await again.clone().text()).toBe(201);

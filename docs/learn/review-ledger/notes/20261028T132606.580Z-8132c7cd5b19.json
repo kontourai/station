@@ -1,0 +1,7 @@
+{
+  "revision": "4d44791a2fa7c243da862fa0df5d7ca6cf806529",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Rechecked after the newest-window anchor fix (a steer's turn.started no longer stands in for the turn's start; the anchored turn is the oldest one the page shows): no claim here about window anchoring or paging.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/__tests__/event-store.test.ts","src-server/services/orchestration/event-store.ts"]}
+  ]
+}

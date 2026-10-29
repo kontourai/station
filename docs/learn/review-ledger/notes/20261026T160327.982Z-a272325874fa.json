@@ -1,0 +1,7 @@
+{
+  "revision": "75f2209ade3bc600f13ccb8b689def33fc030bac",
+
+  "notes": [
+    {"path":"docs/guides/agent-development.md","note":"Checked against the event-content-spill change (large runtime event values stored out of line, delta split and byte-based coalescer cap, approval viewedContentDigest gate, per-event residual refusal, removal of the Codex 48 KiB approval refusal): searched this document for claims about event ingress size limits, structural limits, spilled or elided content, outputText handling, delta coalescing caps, approval allow conditions and refusals. It states none that the changed inputs contradict; size and coalescing statements here concern other subsystems. No update needed.","inputs":["docs/guides/agent-development.md","packages/sdk/package.json#/exports"]}
+  ]
+}

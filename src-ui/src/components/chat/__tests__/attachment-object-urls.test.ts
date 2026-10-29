@@ -3,9 +3,12 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   acquireAttachmentObjectUrl,
+  moveAttachmentObjectUrl,
   peekAttachmentObjectUrl,
   releaseAttachmentObjectUrl,
   resetAttachmentObjectUrls,
+  retireAttachmentObjectUrl,
+  seedAttachmentObjectUrl,
   storeAttachmentObjectUrl,
 } from '../attachment-object-urls';
 
@@ -87,4 +90,123 @@ describe('attachment object-URL cache (station#3385)', () => {
     expect(acquireAttachmentObjectUrl('never-fetched')).toBeUndefined();
     expect(peekAttachmentObjectUrl('never-fetched')).toBeUndefined();
   });
+
+  // A chip's first render shows a seeded (or moved) URL before its effect takes
+  // a hold; eviction in that gap would revoke what it is already showing.
+  function crowdOut() {
+    for (let index = 0; index < 40; index += 1) {
+      storeAttachmentObjectUrl(`idle-${index}`, `blob:idle-${index}`);
+      releaseAttachmentObjectUrl(`idle-${index}`);
+    }
+  }
+  test('seeded bytes survive eviction until their chip can hold them, then become ordinary idle entries', () => {
+    vi.useFakeTimers();
+    try {
+      Object.assign(URL, { createObjectURL: () => 'blob:seeded' });
+      seedAttachmentObjectUrl('seeded', new Blob([new Uint8Array([1])]));
+      crowdOut();
+      expect(peekAttachmentObjectUrl('seeded')).toBe('blob:seeded');
+      vi.advanceTimersByTime(10_000);
+      crowdOut();
+      expect(peekAttachmentObjectUrl('seeded')).toBeUndefined();
+      expect(revokeObjectURL).toHaveBeenCalledWith('blob:seeded');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // Two rows can show identical bytes (the same screenshot sent twice, or a
+  // Send again of a recovered attachment) and so share one data-URL thumbnail
+  // name. One row's turn moving or retiring that name must not revoke what
+  // the other is still showing.
+  const OLD = 'thumbnail data:image/png;base64,AAAA';
+  function withFakeTimers(body: () => void) {
+    vi.useFakeTimers();
+    try {
+      body();
+    } finally {
+      vi.useRealTimers();
+    }
+  }
+
+  test('a retired name another chip still holds keeps its URL past the hand-off window, and goes when that chip lets go', () =>
+    withFakeTimers(() => {
+      storeAttachmentObjectUrl(OLD, 'blob:shared'); // row A
+      acquireAttachmentObjectUrl(OLD); // row B
+      retireAttachmentObjectUrl(OLD); // row A's turn
+      releaseAttachmentObjectUrl(OLD); // row A re-renders away
+      vi.advanceTimersByTime(20_000);
+      crowdOut();
+      expect(peekAttachmentObjectUrl(OLD)).toBe('blob:shared');
+      expect(revokeObjectURL).not.toHaveBeenCalledWith('blob:shared');
+      releaseAttachmentObjectUrl(OLD); // row B lets go
+      expect(peekAttachmentObjectUrl(OLD)).toBeUndefined();
+      expect(revokeObjectURL).toHaveBeenCalledWith('blob:shared');
+    }));
+
+  test('retiring a name nothing holds revokes its URL at once', () => {
+    storeAttachmentObjectUrl(OLD, 'blob:idle');
+    releaseAttachmentObjectUrl(OLD);
+    retireAttachmentObjectUrl(OLD);
+    expect(peekAttachmentObjectUrl(OLD)).toBeUndefined();
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:idle');
+  });
+
+  test('a moved entry keeps the holds taken under its old name: that chip keeps a live URL past the hand-off window', () =>
+    withFakeTimers(() => {
+      storeAttachmentObjectUrl(OLD, 'blob:thumb'); // row B, still mounted
+      moveAttachmentObjectUrl(OLD, 'thumbnail ref'); // row A's turn
+      expect(peekAttachmentObjectUrl('thumbnail ref')).toBe('blob:thumb');
+      vi.advanceTimersByTime(20_000);
+      crowdOut();
+      expect(peekAttachmentObjectUrl(OLD)).toBe('blob:thumb');
+      expect(peekAttachmentObjectUrl('thumbnail ref')).toBe('blob:thumb');
+      expect(revokeObjectURL).not.toHaveBeenCalledWith('blob:thumb');
+      // Row B lets go: the old name goes with its last hold, and the entry is
+      // then an ordinary idle one under the reference.
+      releaseAttachmentObjectUrl(OLD);
+      expect(peekAttachmentObjectUrl(OLD)).toBeUndefined();
+      expect(peekAttachmentObjectUrl('thumbnail ref')).toBe('blob:thumb');
+      crowdOut();
+      expect(peekAttachmentObjectUrl('thumbnail ref')).toBeUndefined();
+      expect(revokeObjectURL).toHaveBeenCalledWith('blob:thumb');
+    }));
+
+  test('a moved entry survives eviction under its new name until its chip can hold it', () =>
+    withFakeTimers(() => {
+      storeAttachmentObjectUrl(OLD, 'blob:thumb');
+      releaseAttachmentObjectUrl(OLD);
+      moveAttachmentObjectUrl(OLD, 'thumbnail ref');
+      expect(peekAttachmentObjectUrl(OLD)).toBeUndefined();
+      crowdOut();
+      expect(peekAttachmentObjectUrl('thumbnail ref')).toBe('blob:thumb');
+      vi.advanceTimersByTime(10_000);
+      crowdOut();
+      expect(peekAttachmentObjectUrl('thumbnail ref')).toBeUndefined();
+    }));
+
+  test('moving onto a name already cached keeps that entry and retires only the old name', () => {
+    storeAttachmentObjectUrl('thumbnail ref', 'blob:existing');
+    storeAttachmentObjectUrl(OLD, 'blob:old');
+    moveAttachmentObjectUrl(OLD, 'thumbnail ref');
+    expect(peekAttachmentObjectUrl('thumbnail ref')).toBe('blob:existing');
+    // Still held through the old name, so still found there.
+    expect(peekAttachmentObjectUrl(OLD)).toBe('blob:old');
+    releaseAttachmentObjectUrl(OLD);
+    expect(peekAttachmentObjectUrl(OLD)).toBeUndefined();
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:old');
+    expect(revokeObjectURL).not.toHaveBeenCalledWith('blob:existing');
+  });
+
+  test('a hand-off hold releases only the entry it was taken on, not one recreated under the same name', () =>
+    withFakeTimers(() => {
+      Object.assign(URL, { createObjectURL: () => 'blob:seeded' });
+      seedAttachmentObjectUrl('seeded', new Blob([new Uint8Array([1])]));
+      resetAttachmentObjectUrls();
+      // A chip holds a fresh entry under the same name.
+      storeAttachmentObjectUrl('seeded', 'blob:fresh');
+      vi.advanceTimersByTime(10_000);
+      crowdOut();
+      expect(peekAttachmentObjectUrl('seeded')).toBe('blob:fresh');
+    }));
 });

@@ -1,4 +1,11 @@
-import { appendFile, mkdir, readdir, readFile, unlink } from 'node:fs/promises';
+import {
+  appendFile,
+  mkdir,
+  readdir,
+  readFile,
+  rm,
+  unlink,
+} from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod/v3';
 import { TerminalOutputSanitizer } from './terminal-output-sanitizer.js';
@@ -39,6 +46,34 @@ function lineBreaks(data: string): number {
   return data.match(/\n/g)?.length ?? 0;
 }
 
+export function resolveTerminalJournalOptions(
+  input: Partial<TerminalJournalOptions> = {},
+): TerminalJournalOptions {
+  const options = { ...defaults, ...input };
+  for (const key of [
+    'maxBytes',
+    'tailBytes',
+    'segmentBytes',
+    'maxPendingBytes',
+  ] as const) {
+    if (
+      !Number.isSafeInteger(options[key]) ||
+      options[key] < 1024 ||
+      options[key] > 1024 ** 3
+    )
+      throw new Error(`Invalid terminal journal ${key}`);
+  }
+  for (const key of ['maxLines', 'tailLines'] as const) {
+    if (
+      !Number.isSafeInteger(options[key]) ||
+      options[key] < 2 ||
+      options[key] > 1_000_000
+    )
+      throw new Error(`Invalid terminal journal ${key}`);
+  }
+  return options;
+}
+
 /** Output is sanitized before sequencing; disk segments are never rewritten. */
 export class TerminalJournal {
   private readonly options: TerminalJournalOptions;
@@ -59,33 +94,13 @@ export class TerminalJournal {
   private appendScheduled = false;
   private failure: unknown;
   private sealed = false;
+  private retired = false;
 
   constructor(
     private readonly directory: string,
     options: Partial<TerminalJournalOptions> = {},
   ) {
-    this.options = { ...defaults, ...options };
-    for (const key of [
-      'maxBytes',
-      'tailBytes',
-      'segmentBytes',
-      'maxPendingBytes',
-    ] as const) {
-      if (
-        !Number.isSafeInteger(this.options[key]) ||
-        this.options[key] < 1024 ||
-        this.options[key] > 1024 ** 3
-      )
-        throw new Error(`Invalid terminal journal ${key}`);
-    }
-    for (const key of ['maxLines', 'tailLines'] as const) {
-      if (
-        !Number.isSafeInteger(this.options[key]) ||
-        this.options[key] < 2 ||
-        this.options[key] > 1_000_000
-      )
-        throw new Error(`Invalid terminal journal ${key}`);
-    }
+    this.options = resolveTerminalJournalOptions(options);
   }
 
   async load(): Promise<void> {
@@ -124,6 +139,8 @@ export class TerminalJournal {
   }
 
   append(data: string): Promise<void> {
+    if (this.retired)
+      return Promise.reject(new Error('Terminal journal retired'));
     if (this.failure) return Promise.reject(this.failure);
     const bytes = Buffer.byteLength(data);
     if (this.queuedBytes + bytes > this.options.maxPendingBytes) {
@@ -173,13 +190,15 @@ export class TerminalJournal {
     return this.queuedBytes <= this.options.maxPendingBytes / 4;
   }
 
-  read(fromSeq = 0) {
+  read(fromSeq = 0, maxReadBytes = Number.MAX_SAFE_INTEGER) {
     // Seal the queued batch so later appends cannot jump this read barrier.
     if (this.appendScheduled) {
       this.pendingAppends = [];
       this.appendScheduled = false;
     }
-    const task = this.queue.then(() => this.readSnapshot(fromSeq));
+    const task = this.queue.then(() =>
+      this.readSnapshot(fromSeq, maxReadBytes),
+    );
     this.queue = task.then(
       () => undefined,
       () => undefined,
@@ -187,7 +206,10 @@ export class TerminalJournal {
     return task;
   }
 
-  private async readSnapshot(fromSeq: number) {
+  private async readSnapshot(fromSeq: number, maxReadBytes: number) {
+    if (this.retired) throw new Error('Terminal journal retired');
+    if (!Number.isSafeInteger(maxReadBytes) || maxReadBytes < 2048)
+      throw new Error('Invalid terminal journal read limit');
     if (!Number.isSafeInteger(fromSeq) || fromSeq < 0)
       throw new Error('Invalid terminal journal sequence');
     if (this.failure) throw this.failure;
@@ -199,24 +221,38 @@ export class TerminalJournal {
       throw new Error('Terminal journal sequence is in the future');
     const reset = fromSeq < firstSeq - 1;
     const start = reset ? 0 : fromSeq;
-    let records: JournalRecord[];
+    const records: JournalRecord[] = [];
+    let bytes = 0;
+    const take = (record: JournalRecord) => {
+      if (record.seq <= start) return true;
+      const size = Buffer.byteLength(record.data);
+      if (bytes + size > maxReadBytes) return false;
+      records.push(record);
+      bytes += size;
+      return true;
+    };
     if (
       !this.options.persist ||
       start >= (this.tail[0]?.seq ?? this.nextSeq) - 1
     ) {
-      records = this.tail.filter((record) => record.seq > start);
+      for (const record of this.tail) if (!take(record)) break;
     } else {
-      records = [];
-      for (const segment of this.segments) {
+      outer: for (const segment of this.segments) {
         if (segment.last <= start) continue;
-        records.push(
-          ...this.decode(
-            await readFile(join(this.directory, segment.name), 'utf8'),
-          ).filter((record) => record.seq > start),
-        );
+        for (const record of this.decode(
+          await readFile(join(this.directory, segment.name), 'utf8'),
+        ))
+          if (!take(record)) break outer;
       }
     }
     return { firstSeq, lastSeq, reset, records };
+  }
+
+  /** Retention owns this directory only after its shell has ended. */
+  async discard(): Promise<void> {
+    this.retired = true;
+    await this.queue;
+    await rm(this.directory, { recursive: true, force: true });
   }
 
   async flush(): Promise<void> {

@@ -60,7 +60,10 @@ function setup(
         throw new Error('Unexpected content read');
       },
     },
+
+    freezePlan: async () => true,
     readPlan: readPlan ?? (async () => plan),
+
     readAnswers: async () => [],
     deliveryStatusFor,
   });

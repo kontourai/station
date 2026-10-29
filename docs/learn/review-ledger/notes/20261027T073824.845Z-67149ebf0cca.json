@@ -1,0 +1,7 @@
+{
+  "revision": "3a71d62a3fa80c4c8fc697acde28e70aa0aa15d7",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"plan.updated claim re-checked: unchanged by the seed reader, schema max and SSR snapshot changes. No prose change.","inputs":["docs/guides/acp.md","src-server/routes/orchestration/orchestration.ts"]}
+  ]
+}

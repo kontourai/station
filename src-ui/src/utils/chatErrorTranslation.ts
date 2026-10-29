@@ -7,6 +7,7 @@ import { PRINCIPAL_UNRESOLVED_CODE } from '@kontourai/station-contracts/principa
 import {
   ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
+  ENGINE_MEMORY_EXHAUSTED_CODE,
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_SIGN_IN_REQUIRED_CODE,
   ENGINE_TURN_FAILED_CODE,
@@ -432,7 +433,7 @@ export function translateChatError(
     return {
       title: "This engine doesn't offer that model",
       body: `${text || 'The engine did not offer the selected model.'} Nothing was sent.`,
-      hint: 'Choose one of the models this engine offers and send again. The engine behind this Agent may have changed; Station has re-read its list.',
+      hint: 'Choose a model this engine offers and send again.',
       retryable: false,
     };
   }
@@ -445,6 +446,21 @@ export function translateChatError(
     return {
       title: 'Full access was not applied',
       body: "Only this Station's operator can allow full access for this device, so the message was not sent. Pick another approval mode to send it.",
+    };
+  }
+
+  // The engine's workload scope was killed for exhausting its memory budget.
+  // The server's sentence is Station's own (budget and peak, no engine
+  // prose), so it is the body. Resending the original prompt would restart
+  // the same concurrent work from scratch: the card offers Continue, whose
+  // next turn carries Station's recovery note (see
+  // `memory-exhaustion-recovery.ts`), instead of Send again.
+  if (code === ENGINE_MEMORY_EXHAUSTED_CODE) {
+    return {
+      title: 'The engine ran out of memory',
+      body: text,
+      hint: 'Continue picks the task up where it stopped.',
+      retryable: false,
     };
   }
 
@@ -640,7 +656,7 @@ export function translateChatError(
   if (ABORTED_PATTERN.test(text)) {
     return {
       title: 'Response stopped before it finished',
-      body: 'The connection to this Station ended while the model was still responding, so the turn was cut short. Nothing is wrong with the Model connection.',
+      body: 'The connection to this Station ended mid-response. Your Model connection is fine.',
       hint: 'Your message was kept — send it again to retry.',
     };
   }
@@ -648,7 +664,7 @@ export function translateChatError(
   if (STALLED_PATTERN.test(text)) {
     return {
       title: 'Station stopped responding',
-      body: 'The connection went silent mid-turn — no response arrived for a while. This looks like a dropped connection or a Station restart, not a problem with your Model connection.',
+      body: 'No response arrived for a while, likely a dropped connection or Station restart. Your Model connection is fine.',
       hint: 'Your message was kept — Retry to reconnect and resend it.',
     };
   }
@@ -739,6 +755,14 @@ export function translateProjectedRuntimeError(
   );
   return repeatSuffix ? `${display}\n${repeatSuffix.trim()}` : display;
 }
+
+/** The memory-kill card once Station has continued on its own. */
+export const MEMORY_EXHAUSTION_CONTINUING_DISPLAY =
+  '**The engine ran out of memory and was restarted — continuing**\n\nStation started it again with a note of the commands that were interrupted.';
+
+/** What the Continue action sends after a memory kill; Station adds the rest. */
+export const MEMORY_EXHAUSTION_CONTINUE_TEXT =
+  'Continue the task from where it stopped.';
 
 /**
  * Renders a `ChatErrorTranslation` as the markdown chat copy shown to the

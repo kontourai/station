@@ -22,7 +22,7 @@ export const SETTINGS_PAGES = [
   {
     id: 'devices',
     title: 'Devices',
-    sections: ['pairing', 'device-hosts', 'people'],
+    sections: ['pairing', 'station-routes', 'device-hosts', 'people'],
   },
   {
     id: 'privacy',
