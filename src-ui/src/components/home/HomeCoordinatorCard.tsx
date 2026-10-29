@@ -7,7 +7,7 @@ import {
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { COORDINATOR_PRODUCT_NAME } from '../../lib/productNames';
 import { Button } from '../Button';
-import { ErrorState, SkeletonBlock } from '../state';
+import { Empty, ErrorState, SkeletonBlock } from '../state';
 
 const LABEL_ID = 'home-coordinator-label';
 
@@ -107,7 +107,7 @@ export function HomeCoordinatorCard() {
               ))}
             </ul>
           ) : (
-            <p>No work recorded yet.</p>
+            <Empty variant="compact" label="Nothing here yet" />
           )}
         </div>
       )}

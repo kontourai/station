@@ -55,6 +55,12 @@ let designation: CoordinatorDesignation | null;
 let delivery: CoordinatorDelivery | undefined;
 let status: number;
 let calls: Array<{ method: string; body?: unknown }>;
+let pictureItems: Array<{
+  conversationId: string;
+  status: 'waiting';
+  summary: string;
+  updatedAt: number;
+}>;
 
 beforeEach(() => {
   designation = null;
@@ -63,6 +69,14 @@ beforeEach(() => {
   status = 200;
   showToast.mockReset();
   calls = [];
+  pictureItems = [
+    {
+      conversationId: 'work-a',
+      status: 'waiting',
+      summary: 'Needs review',
+      updatedAt: 10,
+    },
+  ];
   navigate.mockReset();
   setClientCredentialResolver(() => ({
     origin: authority.current.apiBase,
@@ -80,14 +94,7 @@ beforeEach(() => {
         return Response.json({
           success: true,
           data: {
-            items: [
-              {
-                conversationId: 'work-a',
-                status: 'waiting',
-                summary: 'Needs review',
-                updatedAt: 10,
-              },
-            ],
+            items: pictureItems,
           },
         });
       if (url !== `${API}/api/orchestration/coordinator`)
@@ -197,6 +204,18 @@ describe('Home coordinator card', () => {
     render(<HomeCoordinatorCard />, { wrapper: wrapper() });
     expect(await screen.findByText('Needs review')).toBeTruthy();
     expect(screen.getByText('Waiting on you')).toBeTruthy();
+  });
+
+  test('shows an empty working picture after its read completes', async () => {
+    picturePreview.enabled = true;
+    pictureItems = [];
+    designation = {
+      conversationId: 'chat-houston',
+      designatedAt: '2026-10-28T09:00:00.000Z',
+    };
+    render(<HomeCoordinatorCard />, { wrapper: wrapper() });
+    expect(await screen.findByText('Nothing here yet')).toBeTruthy();
+    expect(screen.queryByText('Loading working picture')).toBeNull();
   });
 
   test('pins the coordinator with one action that opens its chat', async () => {
