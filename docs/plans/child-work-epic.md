@@ -8,11 +8,12 @@ normally before publication. Open one PR when the combined work is ready.
 ## Published Flow 9.9.0 pin (#91)
 
 Station selects the registry Flow Agents 9.9.0 and Flow 5.4.0 packages. The
-installed rounds module and type bytes match the 9.9.0 artifact. The private
-continuation metadata finalizer is not yet composed: signed historical report
-admission does not retain the Flow working-directory locator, and the live
-source-preparation owner is not metadata-only authority. Missing locator must
-refuse; no provider execution or #91 completion follows from the pin.
+installed rounds module and type bytes match the 9.9.0 artifact. The source owner
+can authenticate a historical Flow location by joining signed report admission,
+member envelope and the retained signed source snapshot, without re-preparing
+source execution. That locator is not yet wired to a continuation finalizer.
+Missing or altered location evidence refuses; no provider execution or #91
+completion follows from the pin.
 
 ## Private publication lifetime (#91)
 

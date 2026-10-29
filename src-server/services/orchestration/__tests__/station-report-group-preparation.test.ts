@@ -1015,6 +1015,33 @@ test('initial Flow continuation limits are immutable intent and reserve aggregat
       () => undefined,
     );
     assert.ok(stored?.data.intentRef);
+    const locatorInput = {
+      source: child.execution_binding.source,
+      subject: { groupId, workItemId: prepared.members[0].taskId },
+      admission: stored,
+      principalId: prepared.root.authenticated_principal_ref.id,
+      hostContextId: prepared.root.issuer_host_id,
+      current: () => undefined,
+    };
+    assert.equal(
+      (await h.f.owner.readHistoricalFlowLocation(locatorInput)).cwd,
+      h.f.repo,
+    );
+    await assert.rejects(
+      h.f.owner.readHistoricalFlowLocation({
+        ...locatorInput,
+        admission: { ...stored, signature: 'forged' },
+      }),
+      { code: 'flow_location_unavailable' },
+    );
+    await assert.rejects(
+      h.f.owner.readHistoricalFlowLocation({
+        ...locatorInput,
+        subject: { ...locatorInput.subject, workItemId: 'foreign' },
+      }),
+      { code: 'flow_location_unavailable' },
+    );
+
     assert.ok(!JSON.stringify(stored).includes('Review correctness'));
     const loaded = await h.custody.loadIntentForMutation(
       h.f.context(requestFor(h, 'POST')),
@@ -1190,6 +1217,23 @@ test('initial Flow continuation limits are immutable intent and reserve aggregat
       }),
     );
     assert.equal(h.rawFetch.mock.calls.length, 0);
+    const receiptPath = join(
+      h.f.store,
+      `snapshot-${child.execution_binding.source.source_admission_receipt.id}.json`,
+    );
+    const receipt = readFileSync(receiptPath);
+    try {
+      writeFileSync(receiptPath, '{}');
+      await assert.rejects(h.f.owner.readHistoricalFlowLocation(locatorInput), {
+        code: 'flow_location_unavailable',
+      });
+      unlinkSync(receiptPath);
+      await assert.rejects(h.f.owner.readHistoricalFlowLocation(locatorInput), {
+        code: 'flow_location_unavailable',
+      });
+    } finally {
+      writeFileSync(receiptPath, receipt, { mode: 0o600 });
+    }
   } finally {
     h.owner.close(handle);
   }

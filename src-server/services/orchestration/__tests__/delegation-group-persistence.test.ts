@@ -1116,3 +1116,48 @@ try {
       );
   },
 );
+
+test('continuation receipt retention returns exact authenticated canonical bytes', async () => {
+  const f = fixture();
+  const value = { z: [1, 'text'], a: { status: 'unknown' } };
+  const first = await f.persistence.retainReportContinuation(
+    'group-1',
+    value,
+    f.finalizeCurrent,
+  );
+  const replay = await f.persistence.retainReportContinuation(
+    'group-1',
+    { a: { status: 'unknown' }, z: [1, 'text'] },
+    f.finalizeCurrent,
+  );
+  expect(replay).toEqual(first);
+  expect(first.digest).toBe(`sha256:${digest(value)}`);
+  expect(
+    await f.persistence.loadReportContinuation(
+      'group-1',
+      first,
+      f.finalizeCurrent,
+    ),
+  ).toBe(canonicalJson(value));
+  await expect(
+    f.persistence.loadReportContinuation(
+      'other-group',
+      first,
+      f.finalizeCurrent,
+    ),
+  ).rejects.toThrow();
+  await expect(
+    f.persistence.loadReportContinuation(
+      'group-1',
+      { ...first, digest: `sha256:${'0'.repeat(64)}` },
+      f.finalizeCurrent,
+    ),
+  ).rejects.toThrow();
+  await expect(
+    f.persistence.loadReportContinuation(
+      'group-1',
+      { ...first, domain: 'foreign' },
+      f.finalizeCurrent,
+    ),
+  ).rejects.toThrow();
+});

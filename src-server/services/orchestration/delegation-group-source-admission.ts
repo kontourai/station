@@ -59,6 +59,10 @@ import {
   disposeSdkSourceWire,
   sdkDisposalPromise,
 } from './delegation-group-sdk-source-wire-owner.js';
+import {
+  reportAdmissionSignatureMatches,
+  validateStationReportAdmission,
+} from './station-report-group-admission.js';
 
 export class SourceRefusal extends Error {
   constructor(readonly code: string) {
@@ -938,6 +942,136 @@ export class LocalSourceAdmissionOwner {
         digest: `sha256:${sha(json(record))}`,
       }),
     });
+  }
+
+  // UNWIRED(#91): metadata finalizer must own request authority and publication custody.
+  /** Authenticated historical locator only: never admits or prepares source execution. */
+  async readHistoricalFlowLocation(input: {
+    source: SourceTuple;
+    subject: Subject;
+    admission: unknown;
+    principalId: string;
+    hostContextId: string;
+    current: () => void;
+  }): Promise<{ cwd: string; assertCurrent(): undefined }> {
+    const expected = structuredClone(input.source);
+    const ref = expected.source_admission_receipt;
+    input.current();
+    if (
+      ref.domain !== SNAPSHOT_DOMAIN ||
+      !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
+        ref.id,
+      )
+    )
+      refuse('flow_location_unavailable');
+    try {
+      const admission = validateStationReportAdmission(input.admission);
+      const spec = admission.data.spec;
+      const matching = admission.data.envelopes.filter(
+        (envelope) =>
+          envelope.execution_id === input.subject.workItemId &&
+          isDeepStrictEqual(envelope.execution_binding.source, expected),
+      );
+      if (
+        !reportAdmissionSignatureMatches(admission, this.#environment) ||
+        spec.groupId !== input.subject.groupId ||
+        admission.data.root.authenticated_principal_ref.id !==
+          input.principalId ||
+        admission.data.root.issuer_host_id !== input.hostContextId ||
+        spec.topology.kind !== 'flow' ||
+        matching.length !== 1
+      )
+        refuse('flow_location_unavailable');
+      privateDirectory(this.#home);
+      privateDirectory(this.#store);
+      if (
+        identity(this.#home) !== this.#homeIdentity ||
+        identity(this.#store) !== this.#storeIdentity
+      )
+        refuse('flow_location_unavailable');
+      const path = join(this.#store, `snapshot-${ref.id}.json`);
+      const capturedStamp = stamp(path);
+      const encoded = new TextDecoder('utf-8', { fatal: true }).decode(
+        readRegular(path, 128 * 1024, true),
+      );
+      const stored: { payload: SealedRecord; signature: string } =
+        JSON.parse(encoded);
+      const record = stored.payload;
+      if (
+        encoded !== json(stored) ||
+        Object.keys(stored).sort().join(',') !== 'payload,signature' ||
+        stamp(path) !== capturedStamp ||
+        stored.signature !==
+          this.#environment.signRevisionEvidenceAuthorityBinding(
+            json([SNAPSHOT_DOMAIN, record]),
+          ) ||
+        record.schema !== 2 ||
+        record.kind !== 'sealed-source-no-tools' ||
+        record.provenance.schema !== 1 ||
+        record.provenance.kind !== 'source-class-only' ||
+        record.provenance.id !== ref.id ||
+        record.provenance.principalId !== input.principalId ||
+        `sha256:${record.provenance.principalCredentialHash}` !==
+          admission.data.credentialDigest ||
+        record.provenance.hostContextId !== input.hostContextId ||
+        !isDeepStrictEqual(record.provenance.subject, input.subject) ||
+        !isDeepStrictEqual(this.#sealedTuple(record), expected)
+      )
+        refuse('flow_location_unavailable');
+      const observed = record.provenance.observed;
+      const assertLocation = (): undefined => {
+        input.current();
+        if (
+          stamp(path) !== capturedStamp ||
+          realpathSync(observed.top) !== observed.top ||
+          identity(observed.top) !== observed.identities.root ||
+          realpathSync(observed.gitDir) !== observed.gitDir ||
+          identity(observed.gitDir) !== observed.identities.git ||
+          realpathSync(observed.commonDir) !== observed.commonDir ||
+          identity(observed.commonDir) !== observed.identities.common
+        )
+          refuse('flow_location_unavailable');
+        return undefined;
+      };
+      if (
+        realpathSync(observed.top) !== observed.top ||
+        identity(observed.top) !== observed.identities.root ||
+        realpathSync(observed.gitDir) !== observed.gitDir ||
+        identity(observed.gitDir) !== observed.identities.git ||
+        realpathSync(observed.commonDir) !== observed.commonDir ||
+        identity(observed.commonDir) !== observed.identities.common
+      )
+        refuse('flow_location_unavailable');
+      input.current();
+      const run = await loadRun(id(spec.topology.runId), observed.top);
+      input.current();
+      if (
+        stamp(path) !== capturedStamp ||
+        realpathSync(observed.top) !== observed.top ||
+        identity(observed.top) !== observed.identities.root ||
+        realpathSync(observed.gitDir) !== observed.gitDir ||
+        identity(observed.gitDir) !== observed.identities.git ||
+        realpathSync(observed.commonDir) !== observed.commonDir ||
+        identity(observed.commonDir) !== observed.identities.common ||
+        !isDeepStrictEqual(
+          definitionIdentity(run.definition),
+          spec.topology.definition,
+        )
+      )
+        refuse('flow_location_unavailable');
+      assertLocation();
+      return Object.freeze({
+        cwd: observed.top,
+        assertCurrent: assertLocation,
+      });
+    } catch (error) {
+      if (
+        error instanceof SourceRefusal &&
+        error.code === 'flow_location_unavailable'
+      )
+        throw error;
+      refuse('flow_location_unavailable');
+    }
   }
 
   // UNWIRED(#91): retained-turn execution must compose this with its own budget and Session admission.

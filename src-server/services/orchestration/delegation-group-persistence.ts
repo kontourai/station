@@ -637,6 +637,103 @@ export class StationDelegationPersistence {
     });
   }
 
+  // UNWIRED(#91): the metadata finalizer must hold request and publication custody.
+  /** Retain exact canonical continuation receipt bytes under group-bound custody. */
+  async retainReportContinuation(
+    groupId: string,
+    value: unknown,
+    current: DelegationPersistenceFinalizer,
+  ) {
+    delegationIdV2(groupId);
+    const valueBytes = canonicalJson(value);
+    requirePersistence(
+      Buffer.byteLength(valueBytes) <= 128 * 1024,
+      'report_flow_observation_too_large',
+    );
+    const record = {
+      version: 1,
+      groupId,
+      kind: 'continuation-receipt',
+      value: JSON.parse(valueBytes),
+    };
+    const recordBytes = canonicalJson(record);
+    const id = createHash('sha256').update(recordBytes).digest('hex');
+    const digest = createHash('sha256').update(valueBytes).digest('hex');
+    const domain = this.#flowObservations;
+    return domain.locked(current, async () => {
+      const file = `${id}.json`;
+      const existing = readBytes(join(domain.directory, file), 256 * 1024);
+      if (existing === null) {
+        requirePersistence(
+          domain.files().length < MAX_FILES,
+          'report_flow_observation_capacity',
+        );
+        await domain.publish(file, record, 256 * 1024, current);
+      } else
+        requirePersistence(
+          canonicalJson(JSON.parse(existing)) === recordBytes,
+          'report_flow_observation_conflict',
+        );
+      const confirmed = readBytes(join(domain.directory, file), 256 * 1024);
+      requirePersistence(
+        confirmed !== null &&
+          canonicalJson(JSON.parse(confirmed)) === recordBytes,
+        'report_flow_observation_unconfirmed',
+      );
+      assertCurrent(current);
+      return {
+        id,
+        domain: 'station.report-continuation.v1' as const,
+        digest: `sha256:${digest}`,
+      };
+    });
+  }
+
+  async loadReportContinuation(
+    groupId: string,
+    reference: ReportGroupReference,
+    current: DelegationPersistenceFinalizer,
+  ): Promise<string> {
+    delegationIdV2(groupId);
+    const expected = structuredClone(reference);
+    requirePersistence(
+      expected.domain === 'station.report-continuation.v1' &&
+        /^[a-f0-9]{64}$/.test(expected.id) &&
+        /^sha256:[a-f0-9]{64}$/.test(expected.digest),
+      'report_flow_observation_reference_invalid',
+    );
+    const domain = this.#flowObservations;
+    return domain.locked(current, async () => {
+      const bytes = readBytes(
+        join(domain.directory, `${expected.id}.json`),
+        256 * 1024,
+      );
+      requirePersistence(bytes !== null, 'report_flow_observation_missing');
+      const record = z
+        .object({
+          version: z.literal(1),
+          groupId: reportObservationId,
+          kind: z.literal('continuation-receipt'),
+          value: z.unknown(),
+        })
+        .strict()
+        .parse(JSON.parse(bytes));
+      const recordBytes = canonicalJson(record);
+      const valueBytes = canonicalJson(record.value);
+      requirePersistence(
+        record.groupId === groupId &&
+          Buffer.byteLength(valueBytes) <= 128 * 1024 &&
+          createHash('sha256').update(recordBytes).digest('hex') ===
+            expected.id &&
+          `sha256:${createHash('sha256').update(valueBytes).digest('hex')}` ===
+            expected.digest,
+        'report_flow_observation_reference_mismatch',
+      );
+      assertCurrent(current);
+      return valueBytes;
+    });
+  }
+
   async retainReportContext(
     groupId: string,
     text: string,
