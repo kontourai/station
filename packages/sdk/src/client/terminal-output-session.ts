@@ -2,6 +2,7 @@ import { REMOTE_AUTH_PROTOCOL_VERSION } from '@kontourai/station-contracts/envir
 import {
   decodeTerminalFrame,
   TERMINAL_FRAME_HEADER_BYTES,
+  TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES,
   TERMINAL_OUTPUT,
   TERMINAL_SOCKET_PATH,
   TERMINAL_WINDOW_BYTES,
@@ -12,7 +13,10 @@ import {
   assertClientRawEgressAllowed,
   type ClientCredential,
   type ClientCredentialResolver,
-  getJson,
+  getJsonWithResolvedCredential,
+  StationRawEgressUnavailableError,
+  StationRequestAuthorityError,
+  StationRequestTimeoutError,
 } from './http';
 
 const seq = z.number().int().nonnegative().safe();
@@ -24,6 +28,7 @@ const control = z.discriminatedUnion('type', [
     requestId: z.string(),
     terminalId: z.string().uuid(),
     replayThrough: seq,
+    maxOutstandingOutputFrames: z.unknown().optional(),
   }),
   z.object({
     type: z.literal('progress'),
@@ -68,12 +73,18 @@ export class TerminalOutputError extends Error {
       | 'output-failed'
       | 'reconnect-exhausted'
       | 'disposed'
-      | 'unsupported-host',
+      | 'unsupported-host'
+      | 'native-transport-unsupported'
+      | 'raw-egress-unavailable',
   ) {
     super(
       code === 'unsupported-host'
         ? 'This host does not support terminal output sessions. Update the host to use this feature.'
-        : `Terminal output unavailable: ${code}`,
+        : code === 'raw-egress-unavailable'
+          ? 'Terminal output requires a direct Station connection. Select a direct connection and try again.'
+          : code === 'native-transport-unsupported'
+            ? 'Terminal output is not available over this native transport. Select a direct Station connection.'
+            : `Terminal output unavailable: ${code}`,
     );
     this.name = 'TerminalOutputError';
   }
@@ -87,6 +98,7 @@ interface TerminalOutputConnection {
   authenticated: boolean;
   attached: boolean;
   replayThrough: number;
+  baselineAckNeeded: boolean;
 }
 
 export interface TerminalOutputSessionOptions {
@@ -142,7 +154,10 @@ export class TerminalOutputSession {
   private state: TerminalOutputState = 'disconnected';
   private work: Promise<void> = Promise.resolve();
   private queued = 0;
+  private queuedFrames = 0;
+  private queuedControls = 0;
   private queuedBytes = 0;
+  private queuedFrameBytes = 0;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private retryTimer: ReturnType<typeof setTimeout> | undefined;
   private assertAuthority: () => void = () => {
@@ -274,24 +289,64 @@ export class TerminalOutputSession {
       );
       const configured = await this.options.resolveCredential();
       if (this.stopped || generation !== this.generation) return;
-      if (!configured?.credential || configured.transport)
+      if (configured?.transport)
+        throw new TerminalOutputError('native-transport-unsupported');
+      if (!configured?.credential)
         throw new TerminalOutputError('credential-unavailable');
       const credential = configured.credential;
       this.assertAuthority = this.credentialGuard(configured);
       this.assertAuthority();
+      clearTimeout(this.timer);
+      const probeScope = this.options.requestScope ??
+        configured.requestAuthority ?? {
+          apiBase: this.options.apiBase,
+          authorityKey: 'terminal-output-captured',
+        };
+      const probeCredential: ClientCredential = {
+        ...configured,
+        requestAuthority: {
+          ...probeScope,
+          isCurrent: () => {
+            if (this.stopped || generation !== this.generation) return false;
+            try {
+              this.assertAuthority();
+              return true;
+            } catch {
+              return false;
+            }
+          },
+        },
+      };
       // The existing authenticated route distinguishes an older host's 404
       // from an access refusal before the WebSocket API hides HTTP status.
-      const probe = await getJson(
-        this.options.apiBase.replace(/\/$/, '') + TERMINAL_SOCKET_PATH,
-        {
-          credential,
-          credentialOrigin: configured.origin,
-          authentication: 'required',
-          redirect: 'error',
-          signal: this.outputLifetime.signal,
-          timeoutMs: 5000,
-        },
-      );
+      let probe: Response;
+      try {
+        probe = await getJsonWithResolvedCredential(
+          this.options.apiBase.replace(/\/$/, '') + TERMINAL_SOCKET_PATH,
+          {
+            authentication: 'required',
+            requestScope: probeScope,
+            redirect: 'error',
+            signal: this.outputLifetime.signal,
+            timeoutMs: 5000,
+          },
+          probeCredential,
+        );
+      } catch (error) {
+        if (
+          error instanceof TypeError ||
+          error instanceof StationRequestTimeoutError
+        ) {
+          if (!this.stopped && generation === this.generation) {
+            this.assertAuthority();
+            clearTimeout(this.timer);
+            this.setState('disconnected');
+            this.retry();
+          }
+          return;
+        }
+        throw error;
+      }
       await probe.body?.cancel();
       if (this.stopped || generation !== this.generation) return;
       this.assertAuthority();
@@ -299,6 +354,10 @@ export class TerminalOutputSession {
         throw new TerminalOutputError('unsupported-host');
       if (probe.status !== 204)
         throw new TerminalOutputError('terminal-refused');
+      this.timer = setTimeout(
+        () => this.fail(new TerminalOutputError('connection-timeout')),
+        5000,
+      );
       const socket = (
         this.options.createSocket ?? ((url) => new WebSocket(url))
       )(this.socketURL);
@@ -311,6 +370,7 @@ export class TerminalOutputSession {
         authenticated: false,
         attached: false,
         replayThrough: this.cursor,
+        baselineAckNeeded: false,
       };
       socket.addEventListener('open', () => {
         if (generation !== this.generation || this.stopped) return;
@@ -324,8 +384,14 @@ export class TerminalOutputSession {
               credential,
             }),
           );
-        } catch {
-          this.fail(new TerminalOutputError('authority-changed'));
+        } catch (error) {
+          this.fail(
+            new TerminalOutputError(
+              error instanceof StationRawEgressUnavailableError
+                ? 'raw-egress-unavailable'
+                : 'authority-changed',
+            ),
+          );
         }
       });
       socket.addEventListener('message', (event) => {
@@ -337,10 +403,27 @@ export class TerminalOutputSession {
             : typeof data === 'string'
               ? new TextEncoder().encode(data).byteLength
               : 0;
+        const binary = data instanceof ArrayBuffer;
         this.queuedBytes += bytes;
+        if (binary) {
+          ++this.queuedFrames;
+          this.queuedFrameBytes += bytes;
+        } else ++this.queuedControls;
         if (
-          ++this.queued > 128 ||
-          this.queuedBytes > 2 * TERMINAL_WINDOW_BYTES
+          ++this.queued > 3 * TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES + 8 ||
+          this.queuedFrames > TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES ||
+          this.queuedFrameBytes >
+            TERMINAL_WINDOW_BYTES +
+              TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES *
+                TERMINAL_FRAME_HEADER_BYTES ||
+          this.queuedControls >
+            2 * TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES + 8 ||
+          (!binary && bytes > 4096) ||
+          this.queuedBytes >
+            TERMINAL_WINDOW_BYTES +
+              TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES *
+                TERMINAL_FRAME_HEADER_BYTES +
+              (2 * TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES + 8) * 4096
         ) {
           this.fail(new TerminalOutputError('protocol'));
           return;
@@ -351,11 +434,19 @@ export class TerminalOutputSession {
             this.fail(
               error instanceof TerminalOutputError
                 ? error
-                : new TerminalOutputError('output-failed'),
+                : error instanceof StationRequestAuthorityError
+                  ? new TerminalOutputError('authority-changed')
+                  : error instanceof StationRawEgressUnavailableError
+                    ? new TerminalOutputError('raw-egress-unavailable')
+                    : new TerminalOutputError('output-failed'),
             );
           })
           .finally(() => {
             --this.queued;
+            if (binary) {
+              --this.queuedFrames;
+              this.queuedFrameBytes -= bytes;
+            } else --this.queuedControls;
             this.queuedBytes -= bytes;
           });
       });
@@ -383,25 +474,41 @@ export class TerminalOutputSession {
           )
             return;
           clearTimeout(this.timer);
-          if (++this.retries > 3) {
-            this.fail(new TerminalOutputError('reconnect-exhausted'));
-            return;
-          }
-          this.retryTimer = setTimeout(() => {
-            void this.begin();
-          }, 250);
+          this.retry();
         });
       });
       socket.addEventListener('error', () => {
         /* The close event owns reconnect and its bound. */
       });
     } catch (error) {
+      if (this.stopped || generation !== this.generation) return;
+      clearTimeout(this.timer);
       this.fail(
         error instanceof TerminalOutputError
           ? error
-          : new TerminalOutputError('credential-unavailable'),
+          : error instanceof StationRequestAuthorityError
+            ? new TerminalOutputError('authority-changed')
+            : error instanceof StationRawEgressUnavailableError
+              ? new TerminalOutputError('raw-egress-unavailable')
+              : new TerminalOutputError('credential-unavailable'),
       );
     }
+  }
+
+  private retry(): void {
+    if (++this.retries > 3) {
+      this.fail(new TerminalOutputError('reconnect-exhausted'));
+      return;
+    }
+    this.retryTimer = setTimeout(() => void this.begin(), 250);
+  }
+
+  private armProgressDeadline(): void {
+    clearTimeout(this.timer);
+    this.timer = setTimeout(
+      () => this.fail(new TerminalOutputError('output-failed')),
+      5000,
+    );
   }
 
   private live(connection: TerminalOutputConnection): boolean {
@@ -427,7 +534,14 @@ export class TerminalOutputSession {
     if (message.type === 'ready') return this.ready(connection, message.seq);
     if (message.sentThrough !== this.cursor)
       throw new TerminalOutputError('protocol');
-    this.send(connection.socket, { type: 'ack', channel: 1, seq: this.cursor });
+    if (connection.baselineAckNeeded) {
+      connection.baselineAckNeeded = false;
+      this.send(connection.socket, {
+        type: 'ack',
+        channel: 1,
+        seq: this.cursor,
+      });
+    }
   }
 
   private authenticated(connection: TerminalOutputConnection): void {
@@ -456,8 +570,15 @@ export class TerminalOutputSession {
       message.terminalId !== this.options.terminalId
     )
       throw new TerminalOutputError('protocol');
+    if (
+      message.maxOutstandingOutputFrames !==
+      TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES
+    )
+      throw new TerminalOutputError('unsupported-host');
     connection.attached = true;
     connection.replayThrough = message.replayThrough;
+    connection.baselineAckNeeded = message.replayThrough <= this.cursor;
+    this.armProgressDeadline();
     this.setState('replaying');
   }
 
@@ -477,6 +598,7 @@ export class TerminalOutputSession {
       frame.seq !== this.cursor + 1
     )
       throw new TerminalOutputError('protocol');
+    this.armProgressDeadline();
     await this.options.onOutput(
       frame.data,
       frame.seq,
@@ -485,6 +607,9 @@ export class TerminalOutputSession {
     if (!this.live(connection)) return;
     this.assertAuthority();
     this.cursor = frame.seq;
+    connection.baselineAckNeeded = false;
+    if (this.state === 'ready') clearTimeout(this.timer);
+    else this.armProgressDeadline();
     if (connection.socket.readyState === 1)
       this.send(connection.socket, {
         type: 'ack',
@@ -497,11 +622,14 @@ export class TerminalOutputSession {
     connection: TerminalOutputConnection,
     message: Extract<TerminalControl, { type: 'reset' }>,
   ): Promise<void> {
+    this.armProgressDeadline();
     await this.options.onReset(message.fromSeq, this.outputLifetime.signal);
     if (!this.live(connection)) return;
     this.assertAuthority();
     this.cursor = message.fromSeq;
     connection.replayThrough = message.replayThrough;
+    connection.baselineAckNeeded = message.replayThrough <= this.cursor;
+    this.armProgressDeadline();
     this.setState('replaying');
   }
 
@@ -509,6 +637,7 @@ export class TerminalOutputSession {
     if (sequence > this.cursor || sequence < connection.replayThrough)
       throw new TerminalOutputError('protocol');
     clearTimeout(this.timer);
+    this.retries = 0;
     this.setState('ready');
     this.pending?.resolve();
     this.pending = undefined;

@@ -20,14 +20,22 @@ terminal through the Station API listener. Pass its `apiBase`, `projectId`,
 `ClientCredential`, and `onOutput`/`onReset` callbacks. Call `connect()` and
 `dispose()` to own the connection lifetime. An optional `requestScope` pins the
 selected host authority; broker routes and credential-less native transports
-are refused.
+are refused. Both the HTTP probe and socket require a terminal-operate
+credential; output-only describes the commands this client sends, not an
+observe-scope credential.
 
 An authenticated HTTP probe distinguishes an older host's 404 and reports
 `unsupported-host`, suggesting a host update before any socket is attempted.
+After attachment, the SDK also requires the server's advertised, enforced
+128-frame outstanding output bound. Hosts without it return `unsupported-host`
+and need an update; older clients can ignore the additive field.
 Authentication is mandatory on loopback too. Output credit advances only after
 `onOutput` resolves; `appliedThrough` is the last applied journal sequence. A
 retention reset awaits `onReset` before replay. Three bounded reconnect attempts
-resume that same terminal from the applied sequence. Callbacks receive an abort
+resume that same terminal from the applied sequence after each disconnect;
+probe network failures share that bounded retry budget. Replay can take longer
+than five seconds while output advances, but a stalled renderer is bounded.
+Callbacks receive an abort
 signal for disposal or failure. Rejected credentials, expired authority and
 protocol errors settle `connect()` and are reported through `onError`.
 

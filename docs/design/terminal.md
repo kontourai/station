@@ -121,6 +121,9 @@ bounded credit protocol are described in the [API reference](../reference/api.md
 The journal remains the single output source. Invalidation subscribes before
 attach reads, and reads serialize with appends/compaction. Gateway reads are
 paged to 64 KiB; live and replay output both use the journal's sanitizer.
+Each channel also admits at most 128 unacknowledged output frames, including
+sanitized empty frames. ACKs release slots so a replay can span bounded pages.
+The attachment advertises this limit to new clients; older clients can ignore it.
 A retained resume sends only records after `fromSeq`. Lost retention sends an
 explicit reset after outstanding output drains. Clients must acknowledge
 replay before input is accepted. Input sequences start at one on each new
@@ -142,7 +145,7 @@ The gateway evidence stops at b1. The public SDK's output-only
 [`TerminalOutputSession`](../../packages/sdk/src/client/terminal-output-session.ts)
 adds authenticated attachment, applied-output credit and bounded reconnect for
 an existing terminal. Its real-gateway consumer tests cover loopback
-authentication and PTY output; its transport controls cover reset ordering,
+authentication, bounded PTY replay and first-frame refusal; its transport controls cover reset ordering,
 revocation and disposal. It does not open or operate a shell or replace the
 Coding view. See the [SDK contract](../reference/sdk.md#terminal-output-sessions).
 

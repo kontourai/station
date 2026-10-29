@@ -8,6 +8,7 @@ import {
   decodeTerminalFrame,
   encodeTerminalFrame,
   TERMINAL_INPUT,
+  TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES,
   terminalScopeAllows,
 } from '@kontourai/station-contracts/terminal-transport';
 import { TerminalOutputSession } from '@kontourai/station-sdk/client';
@@ -35,6 +36,7 @@ const controlSchema = z.object({
   sentThrough: z.number().optional(),
   replayThrough: z.number().optional(),
   lastSeq: z.number().optional(),
+  maxOutstandingOutputFrames: z.number().optional(),
 });
 type Control = z.infer<typeof controlSchema>;
 type Output = { channel: number; seq: number; data: string };
@@ -156,7 +158,13 @@ describe.skipIf(process.platform === 'win32')(
       server = createServer((req, res) => {
         if (req.url === '/api/terminal/socket') {
           const credential = req.headers.authorization?.replace(/^Bearer /, '');
-          res.writeHead(credential && grants.has(credential) ? 204 : 403);
+          res.writeHead(
+            credential === 'revoked'
+              ? 401
+              : credential && grants.has(credential)
+                ? 204
+                : 403,
+          );
           res.end();
         } else res.end('ordinary HTTP on the same listener');
       });
@@ -253,6 +261,140 @@ describe.skipIf(process.platform === 'win32')(
         code: 'terminal-refused',
       });
       expect(output).not.toHaveBeenCalled();
+    });
+
+    test('bounded frame credit carries small and sanitized-empty journal records through the real gateway', async () => {
+      const record = await open();
+      await sessions.write(
+        'operator',
+        scope,
+        record.terminalId,
+        "stty -echo; printf 'start-marker\\n'\r",
+      );
+      await journal(record.terminalId, 'start-marker');
+      const start = (await sessions.read('operator', scope, record.terminalId))
+        .journal.lastSeq;
+      await sessions.write(
+        'operator',
+        scope,
+        record.terminalId,
+        "i=0; while [ $i -lt 160 ]; do printf x; sleep 0.01; i=$((i+1)); done; printf '\\033]8;;file:///tmp/private\\007'; sleep 0.05; printf 'end-marker\\n'\r",
+      );
+      await journal(record.terminalId, 'end-marker');
+      const end = (await sessions.read('operator', scope, record.terminalId))
+        .journal.lastSeq;
+      expect(end - start).toBeGreaterThan(140);
+
+      const client = await connect();
+      const attached = await client.attach(record.terminalId, 1, start);
+      expect(attached.maxOutstandingOutputFrames).toBe(
+        TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES,
+      );
+      await expect
+        .poll(() => client.output.length)
+        .toBe(TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES);
+      const progressCount = client.controls.filter(
+        (item) => item.type === 'progress',
+      ).length;
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      expect(client.output).toHaveLength(
+        TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES,
+      );
+      expect(
+        client.controls.filter((item) => item.type === 'progress'),
+      ).toHaveLength(progressCount);
+      client.ack(1, client.output.at(-1)!.seq);
+      await expect.poll(() => client.output.at(-1)?.seq).toBe(end);
+      expect(client.output.some((item) => item.data === '')).toBe(true);
+      client.ack(1, end);
+      await client.wait((item) => item.type === 'ready' && item.seq === end);
+
+      const apiBase = url
+        .replace(/^ws:/, 'http:')
+        .replace('/api/terminal/socket', '');
+      let release!: () => void;
+      let started!: () => void;
+      const rendering = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      const blocked = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const rendered: number[] = [];
+      const reader = new TerminalOutputSession({
+        apiBase,
+        ...scope,
+        terminalId: record.terminalId,
+        fromSeq: start,
+        resolveCredential: () => ({ origin: apiBase, credential: 'operator' }),
+        onOutput: async (_bytes, seq) => {
+          started();
+          await blocked;
+          rendered.push(seq);
+        },
+        onReset: () => undefined,
+      });
+      outputReaders.push(reader);
+      const connected = reader.connect();
+      await rendering;
+      expect(reader.appliedThrough).toBe(start);
+      release();
+      await connected;
+      expect(reader.appliedThrough).toBe(end);
+      expect(rendered.length).toBeGreaterThan(140);
+    });
+
+    test('SDK reaches gateway first-frame refusal after an accepted HTTP probe', async () => {
+      const record = await open();
+      grants.set('probe-only', 'terminal:operate');
+      const apiBase = url
+        .replace(/^ws:/, 'http:')
+        .replace('/api/terminal/socket', '');
+      const reader = new TerminalOutputSession({
+        apiBase,
+        ...scope,
+        terminalId: record.terminalId,
+        resolveCredential: () => ({
+          origin: apiBase,
+          credential: 'probe-only',
+        }),
+        createSocket: (target) => {
+          grants.delete('probe-only');
+          return new WebSocket(target, {
+            origin: 'http://station.test',
+          }) as unknown as import('@kontourai/station-sdk/client').TerminalOutputSocket;
+        },
+        onOutput: () => undefined,
+        onReset: () => undefined,
+      });
+      outputReaders.push(reader);
+      await expect(reader.connect()).rejects.toMatchObject({
+        code: 'terminal-refused',
+      });
+    });
+    test('a real HTTP probe 401 notifies its captured credential owner', async () => {
+      const record = await open();
+      const apiBase = url
+        .replace(/^ws:/, 'http:')
+        .replace('/api/terminal/socket', '');
+      const onUnauthorized = vi.fn();
+      const reader = new TerminalOutputSession({
+        apiBase,
+        ...scope,
+        terminalId: record.terminalId,
+        resolveCredential: () => ({
+          origin: apiBase,
+          credential: 'revoked',
+          onUnauthorized,
+        }),
+        onOutput: () => undefined,
+        onReset: () => undefined,
+      });
+      outputReaders.push(reader);
+      await expect(reader.connect()).rejects.toMatchObject({
+        code: 'terminal-refused',
+      });
+      expect(onUnauthorized).toHaveBeenCalledTimes(1);
     });
     async function journal(id: string, text: string) {
       await expect
@@ -628,7 +770,7 @@ describe.skipIf(process.platform === 'win32')(
         (frame) =>
           frame.type === 'progress' &&
           frame.channel === 1 &&
-          frame.lastSeq === snapshot.journal.lastSeq,
+          (frame.sentThrough ?? 0) > acknowledged,
       );
       expect(blocked.sentThrough).toBeLessThan(snapshot.journal.lastSeq);
       const pending = client.output.filter(

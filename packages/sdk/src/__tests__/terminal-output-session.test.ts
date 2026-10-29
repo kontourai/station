@@ -1,5 +1,6 @@
 import {
   encodeTerminalFrame,
+  TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES,
   TERMINAL_OUTPUT,
 } from '@kontourai/station-contracts/terminal-transport';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -114,6 +115,7 @@ async function authenticate(socket: Socket, replayThrough?: number) {
     requestId: attach.requestId,
     terminalId: id,
     replayThrough: replayThrough ?? attach.fromSeq,
+    maxOutstandingOutputFrames: TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES,
   });
   await flush();
 }
@@ -172,7 +174,7 @@ describe('terminal output session', () => {
       }),
     });
     await expect(f.session.connect()).rejects.toMatchObject({
-      code: 'credential-unavailable',
+      code: 'native-transport-unsupported',
     });
     expect(transport).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
@@ -264,6 +266,7 @@ describe('terminal output session', () => {
       requestId: socket.sent[1].requestId,
       terminalId: id,
       replayThrough: 0,
+      maxOutstandingOutputFrames: TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES,
     });
     await ready(socket);
     await connected;
@@ -320,6 +323,284 @@ describe('terminal output session', () => {
     await resumed;
     expect(text).toEqual(['one']);
     expect(f.resolver).toHaveBeenCalledTimes(2);
+  });
+
+  test('allows a fresh reconnect budget after each successful ready', async () => {
+    vi.useFakeTimers();
+    const f = fixture();
+    const connected = f.session.connect();
+    await flush();
+    await authenticate(f.sockets[0]);
+    await ready(f.sockets[0]);
+    await connected;
+    for (let i = 0; i < 4; i++) {
+      f.sockets[i].drop(1006);
+      await flush();
+      await vi.advanceTimersByTimeAsync(250);
+      expect(f.sockets).toHaveLength(i + 2);
+      await authenticate(f.sockets[i + 1]);
+      await ready(f.sockets[i + 1]);
+    }
+    expect(f.states.at(-1)).toBe('ready');
+  });
+
+  test('consecutive failed connections exhaust the reconnect budget', async () => {
+    vi.useFakeTimers();
+    const f = fixture();
+    const connected = f.session.connect();
+    const rejected = expect(connected).rejects.toMatchObject({
+      code: 'reconnect-exhausted',
+    });
+    await flush();
+    for (let i = 0; i < 4; i++) {
+      f.sockets[i].drop(1006);
+      await flush();
+      await vi.advanceTimersByTimeAsync(250);
+    }
+    await rejected;
+    expect(f.sockets).toHaveLength(4);
+  });
+
+  test('retries a probe network failure and preserves a bounded failure', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('network')));
+    const f = fixture();
+    const rejected = expect(f.session.connect()).rejects.toMatchObject({
+      code: 'reconnect-exhausted',
+    });
+    await flush();
+    await vi.advanceTimersByTimeAsync(750);
+    await rejected;
+    expect(fetch).toHaveBeenCalledTimes(4);
+    expect(f.sockets).toHaveLength(0);
+  });
+
+  test('refuses an old host without the enforced frame capability', async () => {
+    vi.useFakeTimers();
+    const f = fixture();
+    const rejected = expect(f.session.connect()).rejects.toMatchObject({
+      code: 'unsupported-host',
+    });
+    await flush();
+    const socket = f.sockets[0];
+    socket.open();
+    socket.message({ type: 'authenticated', protocolVersion: 1 });
+    await flush();
+    socket.message({
+      type: 'attached',
+      channel: 1,
+      requestId: socket.sent[1].requestId,
+      terminalId: id,
+      replayThrough: 0,
+    });
+    await flush();
+    await rejected;
+  });
+
+  test('refuses a frame flood while rendering is stalled', async () => {
+    vi.useFakeTimers();
+    const applied = deferred<void>();
+    const f = fixture({ onOutput: () => applied.promise });
+    const rejected = expect(f.session.connect()).rejects.toMatchObject({
+      code: 'protocol',
+    });
+    await flush();
+    const socket = f.sockets[0];
+    await authenticate(socket, 200);
+    for (let i = 1; i <= TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES + 1; i++)
+      socket.message(
+        encodeTerminalFrame(TERMINAL_OUTPUT, 1, i, new Uint8Array([65]))
+          .buffer as ArrayBuffer,
+      );
+    await rejected;
+    applied.resolve();
+    await flush();
+  });
+
+  test('refuses a control flood while rendering is stalled', async () => {
+    vi.useFakeTimers();
+    const applied = deferred<void>();
+    const f = fixture({ onOutput: () => applied.promise });
+    const rejected = expect(f.session.connect()).rejects.toMatchObject({
+      code: 'protocol',
+    });
+    await flush();
+    const socket = f.sockets[0];
+    await authenticate(socket, 1);
+    socket.message(
+      encodeTerminalFrame(TERMINAL_OUTPUT, 1, 1, new Uint8Array([65]))
+        .buffer as ArrayBuffer,
+    );
+    await flush();
+    for (let i = 0; i < 2 * TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES + 9; i++)
+      socket.message({
+        type: 'progress',
+        channel: 1,
+        sentThrough: 1,
+        replayThrough: 1,
+      });
+    await rejected;
+    applied.resolve();
+    await flush();
+  });
+
+  test('replay progresses for longer than five seconds without duplicating frame acknowledgements', async () => {
+    vi.useFakeTimers();
+    const f = fixture({
+      onOutput: () => new Promise<void>((resolve) => setTimeout(resolve, 100)),
+    });
+    const connected = f.session.connect();
+    await flush();
+    const socket = f.sockets[0];
+    await authenticate(socket, 60);
+    for (let i = 1; i <= 60; i++)
+      socket.message(
+        encodeTerminalFrame(TERMINAL_OUTPUT, 1, i, new Uint8Array([65]))
+          .buffer as ArrayBuffer,
+      );
+    socket.message({
+      type: 'progress',
+      channel: 1,
+      sentThrough: 60,
+      replayThrough: 60,
+    });
+    socket.message({ type: 'ready', channel: 1, seq: 60 });
+    await vi.advanceTimersByTimeAsync(6100);
+    await connected;
+    expect(f.session.appliedThrough).toBe(60);
+    expect(socket.sent.filter((item) => item.type === 'ack')).toHaveLength(60);
+  });
+
+  test('a probe 401 reports only to the captured current credential owner', async () => {
+    vi.useFakeTimers();
+    const owner = vi.fn();
+    const f = fixture({
+      requestScope: undefined,
+      resolveCredential: () => ({
+        origin: 'http://127.0.0.1:4198',
+        credential: 'owned',
+        onUnauthorized: owner,
+      }),
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(null, { status: 401 })),
+    );
+    await expect(f.session.connect()).rejects.toMatchObject({
+      code: 'terminal-refused',
+    });
+    expect(owner).toHaveBeenCalledTimes(1);
+  });
+
+  test('a stale captured owner receives no 401 report after authority changes', async () => {
+    vi.useFakeTimers();
+    const owner = vi.fn();
+    const response = deferred<Response>();
+    const f = fixture({
+      resolveCredential: () => ({
+        origin: 'http://127.0.0.1:4198',
+        credential: 'owned',
+        onUnauthorized: owner,
+        requestAuthority: {
+          apiBase: 'http://127.0.0.1:4198',
+          authorityKey: 'owner-1',
+          isCurrent: () => current,
+        },
+      }),
+    });
+    let current = true;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => response.promise),
+    );
+    const rejected = expect(f.session.connect()).rejects.toMatchObject({
+      code: 'authority-changed',
+    });
+    await flush();
+    current = false;
+    response.resolve(new Response(null, { status: 401 }));
+    await flush();
+    await rejected;
+    expect(owner).not.toHaveBeenCalled();
+  });
+
+  test('empty reset acknowledges its new baseline once and ignores duplicate progress', async () => {
+    vi.useFakeTimers();
+    const f = fixture();
+    const connected = f.session.connect();
+    await flush();
+    const socket = f.sockets[0];
+    await authenticate(socket);
+    await ready(socket);
+    await connected;
+    socket.message({ type: 'reset', channel: 1, fromSeq: 8, replayThrough: 8 });
+    socket.message({
+      type: 'progress',
+      channel: 1,
+      sentThrough: 8,
+      replayThrough: 8,
+    });
+    socket.message({
+      type: 'progress',
+      channel: 1,
+      sentThrough: 8,
+      replayThrough: 8,
+    });
+    socket.message({ type: 'ready', channel: 1, seq: 8 });
+    await flush();
+    expect(
+      socket.sent.filter((item) => item.type === 'ack').map((item) => item.seq),
+    ).toEqual([0, 8]);
+    expect(f.states.at(-1)).toBe('ready');
+  });
+
+  test('progress for the last applied frame cannot send a late ACK across reset', async () => {
+    vi.useFakeTimers();
+    const f = fixture();
+    const connected = f.session.connect();
+    await flush();
+    const socket = f.sockets[0];
+    await authenticate(socket, 1);
+    socket.message(
+      encodeTerminalFrame(TERMINAL_OUTPUT, 1, 1, new Uint8Array([65]))
+        .buffer as ArrayBuffer,
+    );
+    socket.message({
+      type: 'progress',
+      channel: 1,
+      sentThrough: 1,
+      replayThrough: 1,
+    });
+    socket.message({ type: 'ready', channel: 1, seq: 1 });
+    await flush();
+    await connected;
+    socket.message({ type: 'reset', channel: 1, fromSeq: 8, replayThrough: 8 });
+    socket.message({
+      type: 'progress',
+      channel: 1,
+      sentThrough: 8,
+      replayThrough: 8,
+    });
+    socket.message({ type: 'ready', channel: 1, seq: 8 });
+    await flush();
+    expect(
+      socket.sent.filter((item) => item.type === 'ack').map((item) => item.seq),
+    ).toEqual([1, 8]);
+    expect(f.states.at(-1)).toBe('ready');
+  });
+
+  test('a 4401 close before open is a terminal refusal and later connect stays failed', async () => {
+    vi.useFakeTimers();
+    const f = fixture();
+    const rejected = expect(f.session.connect()).rejects.toMatchObject({
+      code: 'terminal-refused',
+    });
+    await flush();
+    f.sockets[0].drop(4401);
+    await rejected;
+    await expect(f.session.connect()).rejects.toMatchObject({
+      code: 'terminal-refused',
+    });
   });
 
   test('clears the old renderer epoch before applying or acknowledging reset replay', async () => {
@@ -413,7 +694,7 @@ describe('terminal output session', () => {
     }));
     const f = fixture();
     await expect(f.session.connect()).rejects.toMatchObject({
-      code: 'credential-unavailable',
+      code: 'raw-egress-unavailable',
     });
     expect(f.resolver).not.toHaveBeenCalled();
     expect(f.sockets).toHaveLength(0);
