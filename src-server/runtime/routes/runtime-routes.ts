@@ -32,6 +32,7 @@ import { createHomeTransferRoomRoutes } from '../../routes/environments/home-tra
 import { createLiveSurfaceRoutes } from '../../routes/live-surface.js';
 import { createEngineOAuthProxyRoutes } from '../../routes/mcp/engine-oauth-proxy-route.js';
 import { createAccountPreferencesRoutes } from '../../routes/me/account-preferences.js';
+import { createPersonNotificationRoutes } from '../../routes/me/person-notifications.js';
 import { createMediaToolsRoutes } from '../../routes/media-tools.js';
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
 import { createAnalyticsSavedViewRoutes } from '../../routes/operations/analytics-saved-views.js';
@@ -10127,6 +10128,14 @@ export function configureRuntimeRoutes(
       context.logger,
       conversationReadAuthorityForRequest,
     ),
+  );
+  context.app.route(
+    '/api/me',
+    createPersonNotificationRoutes({
+      service: notificationService,
+      resolvePrincipal: resolveOrchestrationRequestPrincipal,
+      isInternal: (request) => !!stationControlRequestAuthority(request),
+    }),
   );
   context.app.route(
     '/notifications',

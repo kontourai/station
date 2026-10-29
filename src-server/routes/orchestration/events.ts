@@ -43,6 +43,7 @@ import {
   isHostedSessionReadAuthority,
   type SessionReadAuthority,
 } from '@kontourai/station-contracts/tenancy';
+import { hasPrincipalNotificationAudience } from '@kontourai/station-shared/notification-envelope';
 import { type Context, Hono } from 'hono';
 import { SSE_KEEPALIVE_INTERVAL_MS } from '../../constants.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
@@ -467,6 +468,7 @@ function canRelayNotificationEvent(
       ) => boolean)
     | undefined,
 ): boolean {
+  if (hasPrincipalNotificationAudience(data)) return false;
   // Personal mode retains the existing broadcast contract. In hosted mode a
   // missing filter cannot become a notification-id/content disclosure.
   if (!authority) return canReadNotificationEvent === undefined;
