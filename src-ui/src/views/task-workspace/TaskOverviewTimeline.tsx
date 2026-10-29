@@ -133,12 +133,16 @@ function TimelineScreenContent({
     gcTime: 0,
     staleTime: Infinity,
   });
-  const [image, setImage] = useState<{ blob: Blob; url: string }>();
+  const imageRef = useRef<HTMLImageElement>(null);
   useEffect(() => {
-    if (!near || !content.data) return;
+    if (!near || !content.data || !imageRef.current) return;
+    const element = imageRef.current;
     const url = URL.createObjectURL(content.data);
-    setImage({ blob: content.data, url });
-    return () => URL.revokeObjectURL(url);
+    element.src = url;
+    return () => {
+      element.removeAttribute('src');
+      URL.revokeObjectURL(url);
+    };
   }, [content.data, near]);
   const evidence = threads.flatMap((thread) => {
     if (thread.status !== 'available') return [];
@@ -165,14 +169,14 @@ function TimelineScreenContent({
             </Button>
           }
         />
-      ) : near && image && image.blob === content.data ? (
+      ) : near && content.data ? (
         <Button
           variant="ghost"
           className="task-timeline__screen"
           aria-label={`Review ${label}`}
           onClick={() => onOpenCapture(capture.captureId)}
         >
-          <img src={image.url} alt={label} />
+          <img ref={imageRef} alt={label} />
         </Button>
       ) : (
         <SkeletonBlock label={`Loading ${label}`} />
