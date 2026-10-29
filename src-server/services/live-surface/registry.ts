@@ -294,17 +294,9 @@ function internalsOf(entry: LiveSurfaceEntry): EntryInternals {
 
 export class LiveSurfaceRegistry {
   private readonly entries = new Map<string, LiveSurfaceEntry>();
-  private readonly disposers = new Set<() => Promise<void>>();
   private disposal?: Promise<void>;
 
   constructor(private readonly options: LiveSurfaceRegistryOptions = {}) {}
-
-  /** Register work owned by the same runtime that owns the registry. */
-  onDispose(dispose: () => Promise<void>): () => void {
-    if (this.disposal) throw new Error('Live surface registry is disposed');
-    this.disposers.add(dispose);
-    return () => this.disposers.delete(dispose);
-  }
 
   /**
    * Register a producer. Returns an unregister function that also stops its
@@ -423,11 +415,8 @@ export class LiveSurfaceRegistry {
     if (this.disposal) return this.disposal;
     const entries = [...this.entries.values()];
     this.entries.clear();
-    const disposers = [...this.disposers];
-    this.disposers.clear();
     this.disposal = Promise.all([
       ...entries.map((entry) => internalsOf(entry).dispose()),
-      ...disposers.map((dispose) => dispose()),
     ]).then(() => {});
     return this.disposal;
   }

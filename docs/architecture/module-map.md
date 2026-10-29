@@ -4859,11 +4859,11 @@ page dialog waits for its person), which reaches the viewer as that code
 rather than `dispatch-failed`. It cannot cancel an arbitrary producer effect
 already in flight.
 
-Task Browser recordings register their cleanup with the runtime-owned live
-surface registry and with the selected Browser generation. Unregistering that
-generation or disposing the registry cancels and joins the recording; the
-recorder stops its encoder and removes staging before cleanup settles. The
-registry reports cleanup failure instead of treating a timed-out wait as success.
+Task Browser recordings are owned by the runtime and bound to the selected
+Browser generation. Runtime shutdown disposes the recorder before stopping the
+Browser; unregistering the generation also cancels and joins its recordings.
+The recorder stops its encoder and removes staging before cleanup settles, and
+reports cleanup failure instead of treating a timed-out wait as success.
 
 **Real adapters and callers.** `browser-live-surfaces.ts` binds each live
 browser generation to `ChromiumScreencastProducer` and its profile authorizer.

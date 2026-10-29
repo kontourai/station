@@ -196,15 +196,13 @@ export class TaskBrowserRecording {
     private readonly deps: {
       captures: TaskBrowserCapture;
       registry: TaskCaptureBrowserRegistry;
-      surfaces: Pick<LiveSurfaceRegistry, 'get' | 'onDispose'>;
+      surfaces: Pick<LiveSurfaceRegistry, 'get'>;
       surfaceIdFor(browserSessionId: string): string | undefined;
       resolver: MediaToolsResolver;
       preview: FeaturePreviewSelector;
       store: TaskWalkthroughStore;
     },
-  ) {
-    deps.surfaces.onDispose(() => this.dispose());
-  }
+  ) {}
 
   async dispose(): Promise<void> {
     this.disposed = true;

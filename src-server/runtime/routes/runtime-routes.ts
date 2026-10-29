@@ -1199,6 +1199,8 @@ interface ConfigureRuntimeRoutesResult {
    * multi-tenant deployments, where the routes are not mounted at all.
    */
   liveSurfaceRegistry?: LiveSurfaceRegistry;
+  /** Task Browser recordings are joined before Browser shutdown. */
+  taskRecordings?: TaskBrowserRecording;
   /** Personal hosts only; the runtime shuts it down on stop. */
   browserService?: BrowserService;
   /** Personal hosts only; the runtime stops the managed hub on stop. */
@@ -1602,6 +1604,7 @@ export function configureRuntimeRoutes(
   let pluginDraftService: PluginDraftService | undefined;
   let projectTaskRoomLifecycleReady: Promise<void> = Promise.resolve();
   let liveSurfaceRegistry: LiveSurfaceRegistry | undefined;
+  let taskRecordings: TaskBrowserRecording | undefined;
   let browserService: BrowserService | undefined;
   let deviceToolchainService: DeviceToolchainService | undefined;
   let deviceShareStore: DeviceShareStore | undefined;
@@ -7224,7 +7227,7 @@ export function configureRuntimeRoutes(
             forbiddenRoots: captureForbiddenRoots,
           })
         : undefined;
-    const taskRecordings =
+    taskRecordings =
       taskCaptures &&
       taskWalkthroughs &&
       liveSurfaceRegistry &&
@@ -10307,6 +10310,7 @@ export function configureRuntimeRoutes(
     projectTaskRoomRuntime,
     projectRoomRuntime,
     liveSurfaceRegistry,
+    taskRecordings,
     browserService,
     deviceToolchainService,
     deviceSessions,

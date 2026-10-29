@@ -18,6 +18,7 @@ import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { ProjectFileTransactions } from '../../domain/project-file-transactions.js';
+import { StationRuntime } from '../../runtime/bootstrap/station-runtime.js';
 import {
   createStationControlCallerRecordResolver,
   resolveStationControlCallerFromToken,
@@ -370,6 +371,7 @@ async function harness(
   let events: EventStore;
   let room: ProjectTaskRoomRuntime;
   let app: Hono;
+  let recordings: TaskBrowserRecording | undefined;
   function compose() {
     events = new EventStore(join(home, 'orchestration.sqlite'));
     room = new ProjectTaskRoomRuntime({
@@ -404,7 +406,7 @@ async function harness(
       taskGraph,
       blobs: () => blobs,
     });
-    const recordings =
+    recordings =
       live && taskWalkthroughs
         ? new TaskBrowserRecording({
             captures,
@@ -512,6 +514,7 @@ async function harness(
   }
   compose();
   closers.push(async () => {
+    await recordings?.dispose();
     await room.close();
     events.close();
     await live?.dispose();
@@ -588,7 +591,44 @@ async function harness(
     streamStarted,
     streams: () => streams,
     stopBrowser: () => live!.dispose(),
-    stopRuntime: () => surfaces.dispose(),
+    stopRuntime: (configurationDrain: Promise<void> = Promise.resolve()) => {
+      // The real shutdown sequence runs over the live recorder and surfaces;
+      // unrelated runtime services are inert lifecycle doubles.
+      const runtime = Object.create(StationRuntime.prototype) as StationRuntime;
+      Object.assign(runtime, {
+        logger: { info() {}, warn() {}, error() {}, debug() {} },
+        timers: [],
+        nativeEngineAdoptionAbort: new AbortController(),
+        enginePrerequisitePrimingAbort: new AbortController(),
+        agentConfigurationPersistenceQueue: Promise.resolve(),
+        agentConfigurationMutationQueue: configurationDrain,
+        configurationSourceUnsubscribers: [],
+        mcpConfigs: new Map(),
+        activeAgents: new Map(),
+        acpBridge: { shutdown: async () => {} },
+        feedbackService: { stop: () => {} },
+        voiceService: { stop: async () => {} },
+        terminalWsServer: { stop: () => {} },
+        terminalService: { dispose: async () => {} },
+        configLoader: {
+          getProjectHomeDir: () => home,
+          dispose: async () => {},
+        },
+        pluginOperationalEventSubscriptions: {
+          close: async () => ({ kind: 'closed' }),
+        },
+        orchestrationEventStore: { close: () => ({ kind: 'closed' }) },
+        taskRecordings: recordings,
+        browserService: {
+          shutdown: async () => {
+            await live?.dispose();
+            await registry.shutdown();
+          },
+        },
+        liveSurfaceRegistry: surfaces,
+      });
+      return runtime.shutdown();
+    },
     watch: () => {
       const id = live?.surfaceIdFor(browser.browserSessionId);
       const entry = id ? surfaces.get(id) : undefined;
@@ -1567,6 +1607,11 @@ test
       Promise.all([stopped, pending]),
       1800,
     ).catch((error: unknown) => {
+      if (
+        !(error instanceof Error) ||
+        error.message !== 'recording cleanup timed out'
+      )
+        throw error;
       const running = probeProcesses(h.home);
       const staging = readdirSync(probeRoot(h.home)).filter((name) =>
         name.startsWith('.pending-'),
@@ -1607,11 +1652,51 @@ test.skipIf(!mediaReady)(
     });
     const pending = h.record(h.bound, { durationMs: 700 });
     await resolving;
+    let disposing!: () => void;
+    const disposeStarted = new Promise<void>((resolve) => {
+      disposing = resolve;
+    });
+    const dispose = TaskBrowserRecording.prototype.dispose;
+    vi.spyOn(TaskBrowserRecording.prototype, 'dispose').mockImplementation(
+      function (this: TaskBrowserRecording) {
+        disposing();
+        return dispose.call(this);
+      },
+    );
     const stopped = h.stopRuntime();
+    await within(disposeStarted, 2500);
     release();
     const [, result] = await within(Promise.all([stopped, pending]), 2500);
     expect(result).toMatchObject({ ok: false, code: 'cancelled' });
     expect(existsSync(probeRoot(h.home))).toBe(false);
+  },
+);
+
+test.skipIf(!mediaReady)(
+  'runtime shutdown cancels capture before waiting for configuration work',
+  async () => {
+    let release!: () => void;
+    const configurationDrain = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const h = await harness({ recording: true });
+    const controller = new AbortController();
+    const pending = probeRequest(h, controller.signal, 700);
+    await h.streamStarted;
+    const watcher = h.watch();
+    const stopped = h.stopRuntime(configurationDrain);
+    try {
+      expect(await within(pending, 2500)).toMatchObject({
+        ok: false,
+        code: 'cancelled',
+      });
+      expect(watcher.count()).toBe(1);
+      await expectNoClip(h);
+    } finally {
+      watcher.viewer.close();
+      release();
+      await stopped;
+    }
   },
 );
 
