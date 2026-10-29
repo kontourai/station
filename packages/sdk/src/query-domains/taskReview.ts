@@ -14,10 +14,23 @@ import type {
   TaskReviewThreadView,
   TaskReviewView,
 } from '@kontourai/station-contracts/task-review';
-import { useQuery } from '@tanstack/react-query';
+import {
+  isWalkthroughId,
+  parseWalkthrough,
+  WALKTHROUGH_LIMITS,
+  type Walkthrough,
+} from '@kontourai/station-contracts/walkthrough';
+import {
+  useInfiniteQuery,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
+import { useEffect, useId, useMemo } from 'react';
 import { _getApiBase } from '../api';
 import {
+  type ApiRequestScope,
   authenticatedFetch,
+  getJson,
   readJsonBody,
   StationHttpError,
 } from '../client/http';
@@ -310,6 +323,132 @@ export async function fetchTaskCaptureContent(
   );
   if (!response.ok) await result<never>(response);
   return response.blob();
+}
+
+const TASK_WALKTHROUGH_PAGE_SIZE = 5;
+type TaskWalkthroughPage = { items: Walkthrough[]; nextCursor?: string };
+type TaskWalkthroughScope = {
+  requestScope: ApiRequestScope;
+  taskCreatedAt: string;
+};
+
+const taskWalkthroughPath = (scope: ApiRequestScope, taskId: string) =>
+  `${scope.apiBase}/api/tasks/${encodeURIComponent(taskId)}/review/walkthroughs`;
+
+export async function fetchTaskWalkthroughPage(
+  taskId: string,
+  scope: ApiRequestScope,
+  cursor?: string,
+  signal?: AbortSignal,
+): Promise<TaskWalkthroughPage> {
+  const query = new URLSearchParams({
+    limit: String(TASK_WALKTHROUGH_PAGE_SIZE),
+  });
+  if (cursor) query.set('cursor', cursor);
+  const page = await result<{ items: unknown; nextCursor?: unknown }>(
+    await getJson(`${taskWalkthroughPath(scope, taskId)}?${query}`, {
+      requestScope: scope,
+      signal,
+      maxResponseBytes:
+        TASK_WALKTHROUGH_PAGE_SIZE * WALKTHROUGH_LIMITS.manifestBytes + 4096,
+    }),
+  );
+  if (
+    !Array.isArray(page.items) ||
+    page.items.length > TASK_WALKTHROUGH_PAGE_SIZE ||
+    (page.nextCursor !== undefined && !isWalkthroughId(page.nextCursor))
+  )
+    throw new Error('Invalid Task Walkthrough page.');
+  const items = page.items.map(parseWalkthrough);
+  if (items.some((item) => !item.source.commit || !item.source.recording))
+    throw new Error('Invalid Task Walkthrough recording.');
+  return { items, ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}) };
+}
+
+export function useTaskWalkthroughsQuery(
+  taskId: string,
+  scope: TaskWalkthroughScope,
+) {
+  return useInfiniteQuery({
+    queryKey: [
+      'task-walkthroughs',
+      scope.requestScope.apiBase,
+      scope.requestScope.authorityKey,
+      taskId,
+      scope.taskCreatedAt,
+    ],
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam, signal }) =>
+      fetchTaskWalkthroughPage(taskId, scope.requestScope, pageParam, signal),
+    getNextPageParam: (page) => page.nextCursor,
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useTaskWalkthroughVideoQuery(
+  taskId: string,
+  clip: Walkthrough,
+  scope: TaskWalkthroughScope,
+) {
+  const observerId = useId();
+  const client = useQueryClient();
+  const queryKey = useMemo(
+    () =>
+      [
+        'task-walkthrough-video',
+        scope.requestScope.apiBase,
+        scope.requestScope.authorityKey,
+        taskId,
+        scope.taskCreatedAt,
+        clip.id,
+        clip.source.recording?.digest,
+        observerId,
+      ] as const,
+    [
+      scope.requestScope.apiBase,
+      scope.requestScope.authorityKey,
+      taskId,
+      scope.taskCreatedAt,
+      clip.id,
+      clip.source.recording?.digest,
+      observerId,
+    ],
+  );
+  useEffect(
+    () => () => client.removeQueries({ queryKey, exact: true }),
+    [client, queryKey],
+  );
+  return useQuery({
+    queryKey,
+    queryFn: async ({ signal }) => {
+      const recording = clip.source.recording;
+      if (!recording)
+        throw new Error('Task Walkthrough recording unavailable.');
+      const response = await getJson(
+        `${taskWalkthroughPath(scope.requestScope, taskId)}/${encodeURIComponent(clip.id)}/video`,
+        {
+          requestScope: scope.requestScope,
+          signal,
+          maxResponseBytes: recording.byteLength,
+        },
+      );
+      if (!response.ok) await result<never>(response);
+      const video = await response.blob();
+      if (
+        video.size !== recording.byteLength ||
+        video.type !== recording.mediaType
+      )
+        throw new Error('Invalid Task Walkthrough video.');
+      return video;
+    },
+    staleTime: Infinity,
+    gcTime: 0,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
 }
 export type {
   TaskCapture,

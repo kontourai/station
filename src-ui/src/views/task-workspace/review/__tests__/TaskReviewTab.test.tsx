@@ -5,7 +5,9 @@ import {
   parseTaskReviewCreateThreadRequest,
   TASK_REVIEW_LIMITS,
 } from '@kontourai/station-contracts/task-review';
+import type { Walkthrough } from '@kontourai/station-contracts/walkthrough';
 import { _setApiBase } from '@kontourai/station-sdk';
+import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -32,7 +34,11 @@ import {
 
 vi.mock('../../../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'https://review.test' }),
-  useHostRequestAuthorityScope: () => ({ authorityKey: 'review-test-person' }),
+  useHostRequestAuthorityScope: () => ({
+    apiBase: 'https://review.test',
+    authorityKey: 'review-test-person',
+    isCurrent: () => true,
+  }),
 }));
 
 const task: TaskRecord = {
@@ -55,13 +61,58 @@ afterEach(() => {
   window.getSelection()?.removeAllRanges();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  setClientCredentialResolver(undefined);
 });
+
+function clip(id: string, title: string): Walkthrough {
+  return {
+    schema: 'station.walkthrough/v1',
+    id,
+    title,
+    createdAt: '2026-10-25T00:00:00Z',
+    source: {
+      adapter: 'browser-screencast',
+      adapterVersion: '1',
+      durationMs: 12500,
+      commit: 'a'.repeat(40),
+      recording: {
+        file: 'recording.webm',
+        mediaType: 'video/webm',
+        byteLength: 4,
+        digest: `sha256:${'b'.repeat(64)}`,
+      },
+    },
+    capture: { platform: 'web' },
+    coverage: {
+      transcript: 'absent',
+      frames: 'absent',
+      marks: 'absent',
+      elements: 'absent',
+      route: 'absent',
+      console: 'absent',
+      network: 'absent',
+    },
+    events: [],
+  };
+}
 
 function setup(
   replied = false,
   sessionUrls = ['https://example.test/preview'],
+  clips?: Record<string, Walkthrough[]>,
 ) {
   _setApiBase('https://review.test');
+  if (clips) {
+    const requestAuthority = {
+      apiBase: 'https://review.test',
+      authorityKey: 'review-test-person',
+      isCurrent: () => true,
+    };
+    setClientCredentialResolver(() => ({
+      origin: requestAuthority.apiBase,
+      requestAuthority,
+    }));
+  }
   navigationStore.navigate('/projects/project-1/tasks/task-1', {
     taskView: 'review',
     reviewKind: null,
@@ -105,7 +156,8 @@ function setup(
   vi.stubGlobal(
     'fetch',
     vi.fn<typeof fetch>(async (input, init) => {
-      const path = new URL(String(input)).pathname;
+      const url = new URL(String(input));
+      const path = url.pathname;
       if (init?.method === 'POST') {
         const body = JSON.parse(String(init.body));
         writes.push({ path, body });
@@ -189,6 +241,35 @@ function setup(
         throw new Error(`Unexpected Review mutation ${path}`);
       }
       reads.push(path);
+      if (path === '/api/feature-previews')
+        return json(clips ? [{ id: 'walkthroughs', enabled: true }] : []);
+      const clipPath = path.match(
+        /^\/api\/tasks\/([^/]+)\/review\/walkthroughs(?:\/([^/]+)\/video)?$/,
+      );
+      if (clipPath && clips) {
+        const available = clips[decodeURIComponent(clipPath[1]!)] ?? [];
+        if (!clipPath[2]) {
+          const cursor = url.searchParams.get('cursor');
+          const after = cursor
+            ? available.findIndex((item) => item.id === cursor) + 1
+            : 0;
+          const items = available.slice(after, after + 5);
+          return json({
+            items,
+            ...(after + items.length < available.length
+              ? { nextCursor: items.at(-1)?.id }
+              : {}),
+          });
+        }
+        if (available.some((item) => item.id === clipPath[2]))
+          return new Response(new Uint8Array([1, 2, 3, 4]), {
+            headers: { 'Content-Type': 'video/webm' },
+          });
+        return new Response(
+          JSON.stringify({ success: false, error: 'Not found' }),
+          { status: 404 },
+        );
+      }
       if (path.endsWith('/capture-sessions')) {
         if (pickerFails)
           return new Response(
@@ -528,6 +609,108 @@ test('retries a committed comment with the same key, then uses fresh send keys w
     threadIds: ['one', 'two'],
     mode: 'send',
   });
+});
+
+test('lists Task clips without reading video, then releases the opened clip on close and unmount', async () => {
+  const createUrl = vi.fn(() => 'blob:review-clip');
+  const revokeUrl = vi.fn();
+  vi.stubGlobal(
+    'URL',
+    class extends URL {
+      static createObjectURL = createUrl;
+      static revokeObjectURL = revokeUrl;
+    },
+  );
+  const fixture = setup(false, undefined, {
+    'task-1': [clip('clip-a', 'Checkout tour')],
+  });
+  const entry = await screen.findByRole('button', {
+    name: /Checkout tour.*aaaaaaa.*0:13/,
+  });
+  expect(fixture.reads.filter((path) => path.endsWith('/video'))).toEqual([]);
+  fireEvent.click(entry);
+  const dialog = await screen.findByRole('dialog', { name: 'Checkout tour' });
+  await waitFor(() =>
+    expect(dialog.querySelector('video')?.getAttribute('src')).toBe(
+      'blob:review-clip',
+    ),
+  );
+  expect(fixture.reads.filter((path) => path.endsWith('/video'))).toEqual([
+    '/api/tasks/task-1/review/walkthroughs/clip-a/video',
+  ]);
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Close walkthrough clip' }),
+  );
+  expect(revokeUrl).toHaveBeenCalledTimes(1);
+  expect(revokeUrl).toHaveBeenCalledWith('blob:review-clip');
+  fireEvent.click(entry);
+  await waitFor(() => expect(createUrl).toHaveBeenCalledTimes(2));
+  expect(fixture.reads.filter((path) => path.endsWith('/video'))).toHaveLength(
+    2,
+  );
+  fixture.unmount();
+  expect(revokeUrl).toHaveBeenCalledTimes(2);
+});
+
+test('switching Tasks discards the first Task’s clip and closes its player', async () => {
+  const revokeUrl = vi.fn();
+  vi.stubGlobal(
+    'URL',
+    class extends URL {
+      static createObjectURL = vi.fn(() => 'blob:first-task');
+      static revokeObjectURL = revokeUrl;
+    },
+  );
+  const fixture = setup(false, undefined, {
+    'task-1': [clip('clip-a', 'First Task clip')],
+    'task-2': [clip('clip-b', 'Second Task clip')],
+  });
+  fireEvent.click(
+    await screen.findByRole('button', { name: /First Task clip/ }),
+  );
+  await waitFor(() =>
+    expect(
+      screen
+        .getByRole('dialog', { name: 'First Task clip' })
+        .querySelector('video'),
+    ).toBeTruthy(),
+  );
+  fixture.rerender(
+    <QueryClientProvider client={fixture.client}>
+      <NavigationProvider>
+        <TaskReviewTab task={{ ...task, id: 'task-2' }} visible />
+      </NavigationProvider>
+    </QueryClientProvider>,
+  );
+  await screen.findByRole('button', { name: /Second Task clip/ });
+  expect(screen.queryByRole('button', { name: /First Task clip/ })).toBeNull();
+  expect(screen.queryByRole('dialog', { name: 'First Task clip' })).toBeNull();
+  expect(revokeUrl).toHaveBeenCalledWith('blob:first-task');
+  expect(fixture.reads).toContain('/api/tasks/task-2/review/walkthroughs');
+  expect(fixture.reads.filter((path) => path.endsWith('/video'))).toEqual([
+    '/api/tasks/task-1/review/walkthroughs/clip-a/video',
+  ]);
+});
+
+test('loads further clip pages only on request and does not fetch their video', async () => {
+  const entries = Array.from({ length: 7 }, (_, index) =>
+    clip(`clip-${index}`, `Tour ${index}`),
+  );
+  const fixture = setup(false, undefined, { 'task-1': entries });
+  await screen.findByRole('button', { name: /Tour 0/ });
+  expect(screen.queryByRole('button', { name: /Tour 6/ })).toBeNull();
+  expect(
+    fixture.reads.filter((path) => path.endsWith('/walkthroughs')),
+  ).toHaveLength(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Show more clips' }));
+  await screen.findByRole('button', { name: /Tour 6/ });
+  expect(screen.queryByRole('button', { name: 'Show more clips' })).toBeNull();
+  expect(
+    fixture.reads.filter((path) => path.endsWith('/walkthroughs')),
+  ).toHaveLength(2);
+  expect(fixture.reads.filter((path) => path.endsWith('/video'))).toHaveLength(
+    0,
+  );
 });
 
 test('captures from the Project session picker, loads authenticated content and posts a keyboard region pin', async () => {

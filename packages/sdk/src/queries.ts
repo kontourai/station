@@ -836,6 +836,7 @@ export {
   fetchTaskReview,
   fetchTaskReviewItem,
   fetchTaskReviewThread,
+  fetchTaskWalkthroughPage,
   TASK_REVIEW_OPENING_PREVIEW_CHARS,
   type TaskCapture,
   type TaskCaptureBrowserSession,
@@ -862,6 +863,8 @@ export {
   useTaskReviewItemQuery,
   useTaskReviewQuery,
   useTaskReviewThreadQuery,
+  useTaskWalkthroughsQuery,
+  useTaskWalkthroughVideoQuery,
 } from './query-domains/taskReview';
 export {
   checkTelemetryConnection,
