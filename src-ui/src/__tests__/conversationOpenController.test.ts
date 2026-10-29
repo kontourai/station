@@ -304,8 +304,16 @@ describe('#749 conversation open controller', () => {
   });
 
   test.each([
-    ['the open does not take', false, () => 'conversation-tab'],
-    ['the opened tab cannot be found', true, () => undefined],
+    [
+      'the open does not take',
+      false,
+      (): string | undefined => 'conversation-tab',
+    ],
+    [
+      'the opened tab cannot be found',
+      true,
+      (): string | undefined => undefined,
+    ],
   ] as const)(
     'a resolved open that fails because %s keeps the caller access',
     async (_case, opened, findTab) => {
