@@ -1,0 +1,7 @@
+{
+  "revision": "3ca80ebbceee238c445dfce9bfdb4757dd93720f",
+
+  "notes": [
+    {"path":"docs/user/personal-boards.md","note":"ChatDock.tsx only withholds the engine-switch callback when the conversation cannot be changed; personal board claims are unaffected.","inputs":["docs/user/personal-boards.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

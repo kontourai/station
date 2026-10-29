@@ -3251,7 +3251,7 @@ for (const viewport of [
     const agentButton = page.locator('.chat-input__agent-btn');
     await expect(agentButton).toBeVisible();
     await expect(agentButton).toHaveAccessibleName(
-      'Agent: Claude. Send a message before changing Agent.',
+      'Agent: Claude. Can’t change Agent yet. Send a message first.',
     );
     await expect(agentButton).toHaveAttribute('aria-disabled', 'true');
     await expect(agentButton.locator('.chat-input__agent-name')).toHaveText(
