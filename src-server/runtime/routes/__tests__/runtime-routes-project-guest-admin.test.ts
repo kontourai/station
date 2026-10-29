@@ -721,18 +721,12 @@ describe('project guest administration over the production composition', () => {
         h.localAccounts.service.captureCurrentSession(verifiedRequest)(),
         JSON.stringify(authenticated.session),
       ).toBe(true);
-      const paired = h.pairAccountBound(
-        username,
-        GUEST_GRANT,
-        authenticated.session.subject,
-      );
       const accepted = await h.request(
         '/api/account-auth/accept-invitation',
         {
           method: 'POST',
           headers: {
             ...serveHeaders,
-            Authorization: `Bearer ${paired.credential}`,
             Cookie: cookie,
             Origin: ORIGIN,
             'Content-Type': 'application/json',
@@ -741,7 +735,77 @@ describe('project guest administration over the production composition', () => {
         },
         serveEnv,
       );
-      expect(accepted.status, await accepted.clone().text()).toBe(200);
+      expect(accepted.status, `accept: ${await accepted.clone().text()}`).toBe(
+        200,
+      );
+      const clientInstanceId = crypto.randomUUID();
+      const requested = await h.request(
+        '/.well-known/station/v1/pairing/access-request',
+        {
+          method: 'POST',
+          headers: {
+            ...serveHeaders,
+            Cookie: cookie,
+            Origin: ORIGIN,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            deviceName: username,
+            requireAccountBinding: true,
+            clientInstanceId,
+          }),
+        },
+        serveEnv,
+      );
+      expect(
+        requested.status,
+        `access-request: ${await requested.clone().text()}`,
+      ).toBe(202);
+      const access = await readJson<{
+        offerId: string;
+        proof: string;
+        requestId: string;
+        accountCandidate: { subject: string };
+      }>(requested);
+      expect(access.accountCandidate.subject).toBe(
+        authenticated.session.subject,
+      );
+      const approved = await h.request(
+        `/api/pairing/requests/${access.requestId}/confirm`,
+        h.operatorHeaders({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bindAccountIdentity: true }),
+        }),
+      );
+      expect(approved.status, `approve: ${await approved.clone().text()}`).toBe(
+        200,
+      );
+      const exchanged = await h.request(
+        '/.well-known/station/v1/pairing/exchange',
+        {
+          method: 'POST',
+          headers: {
+            ...serveHeaders,
+            Cookie: cookie,
+            Origin: ORIGIN,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            offerId: access.offerId,
+            proof: access.proof,
+            requestId: access.requestId,
+            clientInstanceId,
+          }),
+        },
+        serveEnv,
+      );
+      expect(
+        exchanged.status,
+        `exchange: ${await exchanged.clone().text()}`,
+      ).toBe(200);
+      const paired =
+        await readJson<ReturnType<typeof h.pairAccountBound>>(exchanged);
       people.push({ cookie, authenticated, paired });
     }
     const parent = await h.graph.createTask({

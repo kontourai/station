@@ -1956,6 +1956,9 @@ export function configureRuntimeRoutes(
     const scoped =
       path === '/api/account-auth' ||
       path.startsWith('/api/account-auth/') ||
+      (request.method === 'POST' &&
+        (path === PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH ||
+          path === PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH)) ||
       isTaskRelationshipHttpLeaf(request.method, path) ||
       /^\/api\/projects\/[^/]+\/access(?:\/|$)/.test(path) ||
       (read &&
