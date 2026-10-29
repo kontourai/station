@@ -59,6 +59,7 @@ import {
   FAST_CHECKS_SHARD_IF,
   FAST_CHECKS_SHARD_RUN,
   FAST_CHECKS_SLICE_RUN,
+  isOptionalChromiumCacheRestore,
   MERGE_INTEGRATION_DECISION_STEP,
   REQUIRED_FAST_CHECKS_AGGREGATE_CONDITION,
 } from './ci-workflow-governance.mjs';
@@ -2111,6 +2112,7 @@ function unapprovedActionFindings(file, jobId, job, allowedPrefixes) {
       (step) =>
         typeof step?.uses === 'string' &&
         !isPinnedPnpmSetup(step) &&
+        !isReviewedCacheRestore(file, jobId, step) &&
         !allowedPrefixes.some((prefix) => step.uses.startsWith(prefix)),
     )
     .map(() => ({
@@ -3159,6 +3161,21 @@ function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
 }
 
 function isReviewedCacheRestore(file, jobId, step) {
+  const chromiumCondition =
+    jobId === 'fast-checks-shard'
+      ? `\${{ steps.slice.outputs.empty == 'false' }}`
+      : jobId === 'fast-checks-plan'
+        ? `\${{ steps.mode.outputs.legacy == 'true' }}`
+        : undefined;
+  if (
+    file === '.github/workflows/ci.yml' &&
+    ['fast-checks-plan', 'fast-checks-shard', 'fast-checks-statics'].includes(
+      jobId,
+    )
+  )
+    return (
+      isOptionalChromiumCacheRestore(step) && step.if === chromiumCondition
+    );
   return (
     step?.uses === REVIEWED_CACHE_RESTORE_ACTION &&
     CACHE_RESTORE_JOBS[file]?.has(jobId) === true
