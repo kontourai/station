@@ -7,7 +7,8 @@ import {
   usePluginVisibilityQuery,
 } from '@kontourai/station-sdk';
 import { StationHttpError } from '@kontourai/station-sdk/client';
-import { Badge, Popover, Tooltip } from '@kontourai/ui/react';
+import { Badge } from '@kontourai/ui/react';
+import { useId, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
@@ -44,35 +45,74 @@ const states = {
   unsupported: { label: 'Not available yet', tone: 'neutral' },
 } as const;
 
-function CapabilityChip({ action }: { action: IntegrationActionStatus }) {
+function actionPresentation(action: IntegrationActionStatus) {
   const hasProbe =
     typeof action.computedBy === 'string' &&
     action.computedBy.trim().length > 0;
   const state = hasProbe ? action.state : 'unverified';
-  const reason = hasProbe ? action.reason : 'No probe result is available.';
-  const label = actions[action.action];
-  const presentation = states[state];
+  return {
+    hasProbe,
+    reason: hasProbe ? action.reason : 'No probe result is available.',
+    label: actions[action.action],
+    state: states[state],
+  };
+}
+
+function ConnectionStatus({
+  connection,
+}: {
+  connection: IntegrationConnectionStatus;
+}) {
+  const [selectedAction, setSelectedAction] = useState<
+    IntegrationActionStatus['action'] | null
+  >(null);
+  const detailsId = useId();
+  const selected = connection.actions.find(
+    (action) => action.action === selectedAction,
+  );
+  const details = selected ? actionPresentation(selected) : null;
   return (
-    <Popover
-      ariaLabel={`${label} status details`}
-      className="integration-status__popover"
-      trigger={
-        <Tooltip label={reason}>
-          <Button
-            variant="ghost"
-            className="integration-status__chip"
-            aria-label={`${label}: ${presentation.label}`}
-            aria-haspopup="dialog"
-          >
-            <span>{label}</span>
-            <Badge value={presentation.label} tone={presentation.tone} />
-          </Button>
-        </Tooltip>
-      }
-    >
-      <p>{reason}</p>
-      {hasProbe && <small>Probe: {action.computedBy}</small>}
-    </Popover>
+    <section>
+      <h3>{providers[connection.provider]}</h3>
+      <ul>
+        {connection.actions.map((action) => {
+          const display = actionPresentation(action);
+          return (
+            <li key={action.action}>
+              <Button
+                variant="ghost"
+                className="integration-status__chip"
+                aria-label={`${display.label}: ${display.state.label}`}
+                aria-expanded={selectedAction === action.action}
+                aria-controls={detailsId}
+                title={display.reason}
+                onClick={() =>
+                  setSelectedAction((current) =>
+                    current === action.action ? null : action.action,
+                  )
+                }
+              >
+                <span>{display.label}</span>
+                <Badge value={display.state.label} tone={display.state.tone} />
+              </Button>
+            </li>
+          );
+        })}
+      </ul>
+      {selected && details && (
+        <div
+          id={detailsId}
+          className="integration-status__details"
+          role="status"
+        >
+          <strong>
+            {details.label}: {details.state.label}
+          </strong>
+          <p>{details.reason}</p>
+          {details.hasProbe && <small>Probe: {selected.computedBy}</small>}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -130,16 +170,10 @@ function IntegrationStatusForAuthority({
             </div>
             <div className="integration-status__connections">
               {status.data.connections.map((connection) => (
-                <section key={connection.connectionId}>
-                  <h3>{providers[connection.provider]}</h3>
-                  <ul>
-                    {connection.actions.map((action) => (
-                      <li key={action.action}>
-                        <CapabilityChip action={action} />
-                      </li>
-                    ))}
-                  </ul>
-                </section>
+                <ConnectionStatus
+                  key={connection.connectionId}
+                  connection={connection}
+                />
               ))}
             </div>
           </>

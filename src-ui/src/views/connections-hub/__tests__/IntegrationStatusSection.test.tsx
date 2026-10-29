@@ -96,11 +96,12 @@ describe('IntegrationStatusSection', () => {
       ['Update status: Not configured', 'No account configured.'],
       ['Close issue: Not available yet', 'Waiting for tracker support.'],
     ]) {
-      fireEvent.click(screen.getByRole('button', { name }));
-      const dialog = screen.getByRole('dialog');
-      expect(within(dialog).getByText(reason)).toBeTruthy();
-      expect(within(dialog).getByText(/Probe:/)).toBeTruthy();
-      fireEvent.keyDown(document, { key: 'Escape' });
+      const chip = screen.getByRole('button', { name });
+      expect(chip.getAttribute('title')).toBe(reason);
+      fireEvent.click(chip);
+      const details = screen.getByRole('status');
+      expect(within(details).getByText(reason)).toBeTruthy();
+      expect(within(details).getByText(/Probe:/)).toBeTruthy();
     }
   });
 
@@ -112,7 +113,7 @@ describe('IntegrationStatusSection', () => {
     expect(screen.queryByRole('button', { name: 'Read: Works' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Read: Unverified' }));
     expect(
-      within(screen.getByRole('dialog')).getByText(
+      within(screen.getByRole('status')).getByText(
         'No probe result is available.',
       ),
     ).toBeTruthy();
