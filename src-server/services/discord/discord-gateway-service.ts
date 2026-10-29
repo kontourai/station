@@ -1,3 +1,8 @@
+import { randomUUID } from 'node:crypto';
+import {
+  CHAT_REPLY_MAX_CHUNKS,
+  type ChatDeliveryLogEntry,
+} from '@kontourai/station-contracts/chat-app';
 import type {
   DiscordChannelSessionBinding,
   DiscordGatewayConfiguration,
@@ -11,10 +16,7 @@ import WebSocket from 'ws';
 import { discordGatewayEvents } from '../../telemetry/metrics.js';
 import { isRecord } from '../../utils/is-record.js';
 import type { Logger } from '../../utils/logger.js';
-import {
-  ChatAppCore,
-  renderChatTranscript,
-} from '../chat-apps/chat-app-core.js';
+import { ChatAppCore, splitChatText } from '../chat-apps/chat-app-core.js';
 import type { DiscordAuthorizationResult } from './discord-authorization.js';
 import { DiscordAuthorizationService } from './discord-authorization.js';
 import {
@@ -388,10 +390,23 @@ export class DiscordGatewayService {
       this.relayStore.hasSession(binding.sessionId)
     ) {
       recordGatewayEvent('turn_busy');
+      const refusalId = this.core.recordDelivery(
+        {
+          app: 'discord',
+          externalWorkspaceId: payload.guild_id,
+          externalChannelId: payload.channel_id,
+          externalUserId: payload.author.id,
+          conversationId: binding.sessionId,
+          direction: 'inbound',
+          action: 'continue',
+        },
+        { state: 'refused', reason: 'busy' },
+      );
       await this.deliverAcknowledgement(
         payload.guild_id,
         payload.channel_id,
         'A Station turn is already running for this channel. Please wait for it to finish.',
+        { refusalId },
       );
       return;
     }
@@ -507,20 +522,46 @@ export class DiscordGatewayService {
       return;
     }
 
-    const transcript = this.options.readTranscript?.({
-      sessionId: relay.sessionId,
-      turnId: event.turnId,
-    });
-    await this.deliverAcknowledgement(
-      relay.guildId,
-      relay.channelId,
-      renderChatTranscript(
-        transcript ?? '',
-        DISCORD_MESSAGE_MAX_CHARS,
-        stationSessionPointer(relay.sessionId),
-      ),
-    );
+    const transcript =
+      this.options.readTranscript?.({
+        sessionId: relay.sessionId,
+        turnId: event.turnId,
+      }) || 'Station completed the turn.';
+    // Claim the relay before sending: a duplicate completion must never replay
+    // chunks already delivered or whose transport outcome is unknown.
     this.relayStore.remove(event.turnId);
+    const iterator = splitChatText(transcript, DISCORD_MESSAGE_MAX_CHARS);
+    const chunks: string[] = [];
+    for (const chunk of iterator) {
+      chunks.push(chunk);
+      if (chunks.length > CHAT_REPLY_MAX_CHUNKS) break;
+    }
+    const overflow = chunks.length > CHAT_REPLY_MAX_CHUNKS;
+    if (overflow) {
+      chunks.length = CHAT_REPLY_MAX_CHUNKS - 1;
+      chunks.push(
+        `Response continues in Station: ${stationSessionPointer(relay.sessionId)}`,
+      );
+    }
+    const replyId = randomUUID();
+    for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+      const delivered = await this.deliverAcknowledgement(
+        relay.guildId,
+        relay.channelId,
+        chunks[chunkIndex],
+        {
+          replyChunk: {
+            replyId,
+            chunkIndex,
+            chunkCount: chunks.length,
+            ...(overflow && chunkIndex === chunks.length - 1
+              ? { overflow: true }
+              : {}),
+          },
+        },
+      );
+      if (!delivered) return;
+    }
     recordGatewayEvent('relay_delivered');
   }
 
@@ -528,23 +569,25 @@ export class DiscordGatewayService {
     guildId: string,
     channelId: string,
     content: string,
-  ): Promise<void> {
+    metadata: Pick<ChatDeliveryLogEntry, 'refusalId' | 'replyChunk'> = {},
+  ): Promise<boolean> {
     let configuration: DiscordGatewayConfiguration;
     try {
       configuration = this.configurationStore.read();
     } catch {
-      return;
+      return false;
     }
     const token = configuration.token;
-    if (!configuration.enabled || !token) return;
+    if (!configuration.enabled || !token) return false;
     try {
-      await this.core.deliver(
+      return await this.core.deliver(
         {
           app: 'discord',
           externalWorkspaceId: guildId,
           externalChannelId: channelId,
           direction: 'outbound',
           action: 'notify',
+          ...metadata,
         },
         () =>
           (this.options.deliverMessage ?? defaultDeliverMessage)({
@@ -556,6 +599,7 @@ export class DiscordGatewayService {
     } catch {
       this.options.logger.warn('Discord message delivery failed');
       recordGatewayEvent('delivery_error');
+      return false;
     }
   }
 }
@@ -574,6 +618,7 @@ function stationSessionPointer(sessionId: string): string {
   return activityDeepLink({ sessionId });
 }
 
+// Discord applies per-route and global rate limits; cap a reply to bound a burst.
 const DISCORD_MESSAGE_MAX_CHARS = 2_000;
 
 async function defaultDeliverMessage(input: {

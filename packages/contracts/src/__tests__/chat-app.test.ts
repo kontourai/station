@@ -202,10 +202,55 @@ describe('chat app boundary contracts', () => {
     'execute-required',
     'approve-required',
     'app-disabled',
+    'busy',
     'approval-expired',
   ])('retains the %s delivery refusal', (reason) => {
     const value = { ...delivery, outcome: { state: 'refused', reason } };
     expect(parseChatDeliveryLogEntry(value)).toEqual(value);
+  });
+
+  test('validates reply chunk and refusal acknowledgement metadata', () => {
+    const outbound = { ...delivery, direction: 'outbound' };
+    const chunk = { replyId: 'reply-1', chunkIndex: 0, chunkCount: 2 };
+    expect(
+      parseChatDeliveryLogEntry({ ...outbound, replyChunk: chunk }),
+    ).toEqual({ ...outbound, replyChunk: chunk });
+    expect(
+      parseChatDeliveryLogEntry({ ...outbound, refusalId: 'refusal-1' }),
+    ).toEqual({ ...outbound, refusalId: 'refusal-1' });
+    for (const invalid of [
+      { ...chunk, chunkIndex: 2 },
+      { ...chunk, chunkIndex: -1 },
+      { ...chunk, chunkCount: 11 },
+      { ...chunk, overflow: true },
+      { ...chunk, extra: true },
+    ])
+      expect(
+        parseChatDeliveryLogEntry({ ...outbound, replyChunk: invalid }),
+      ).toBeNull();
+    expect(
+      parseChatDeliveryLogEntry({
+        ...delivery,
+        direction: 'inbound',
+        replyChunk: chunk,
+      }),
+    ).toBeNull();
+    expect(
+      parseChatDeliveryLogEntry({
+        ...outbound,
+        refusalId: 'refusal-1',
+        replyChunk: chunk,
+      }),
+    ).toBeNull();
+    const overflow = {
+      replyId: 'reply-1',
+      chunkIndex: 9,
+      chunkCount: 10,
+      overflow: true,
+    };
+    expect(
+      parseChatDeliveryLogEntry({ ...outbound, replyChunk: overflow }),
+    ).toEqual({ ...outbound, replyChunk: overflow });
   });
 
   test('retains pending, delivered and failed attempts and their retry linkage', () => {

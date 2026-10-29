@@ -174,7 +174,10 @@ turn" with the relative Station link for that session.
 Station replies with an ordinary channel message, not a threaded reply. The
 reply is visible to everyone who can read the channel, so bind a channel only
 where every reader may see that conversation's answers. Text over Discord's
-2,000-character limit is cut and ends with a link to Station.
+2,000 UTF-16-unit limit is split at grapheme boundaries into ordered messages.
+A single oversized grapheme is split at code-point boundaries. At most ten
+messages are sent per reply: if it exceeds that cap, the tenth is a notice
+linking to the conversation in Station.
 
 Station answers in the channel when it cannot run a turn:
 
@@ -202,10 +205,12 @@ Station answers in the channel when it cannot run a turn:
   session when it can. There is no backoff, and an invalid token is retried
   every second rather than reported.
 - **Rate limits:** a failed reply, including one refused by Discord's rate
-  limit, is logged as `Discord message delivery failed` and is not retried.
+  limit, is logged as `Discord message delivery failed`. Sending stops at the
+  failed or unconfirmed chunk; completed chunks are not replayed.
 - **Pending replies:** Station records each turn it is waiting on in
   `<STATION_HOME>/runtime/discord-turn-relays.json` so a reply survives a
-  restart. The record is cleared when the turn completes. A turn that is
+  restart. The record is cleared before the completion reply is sent, so a
+  crash during delivery does not replay earlier or uncertain chunks. A turn that is
   aborted rather than completed may leave its record behind, and the channel
   then keeps answering that a turn is already running.
 - **Hosted Stations:** a Station running in hosted tenant mode cannot start
@@ -221,7 +226,9 @@ Station counts gateway events in `station.discord.gateway_events`, with one
 include message content.
 
 The core also appends refusal and delivery receipts to SQLite, without the
-token or message text. Pending receipts precede external sends; a confirmed
+token or message text. A busy inbound refusal is linked to its acknowledgement.
+Each reply chunk has its own receipt; the final notice records overflow.
+Pending receipts precede external sends; a confirmed
 outbound receipt retains Discord's message ID. A transport that returns no
 message ID leaves delivery pending/unknown. Errors do not cause retries, and
 an uncertain submission stays pending. These receipts have no public read

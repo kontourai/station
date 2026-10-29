@@ -613,7 +613,7 @@ describe('DiscordGatewayService', () => {
     await service.stop();
   });
 
-  test('discloses truncation and refuses concurrent channel turns without using the device-local queue', async () => {
+  test('delivers complete chunks and refuses concurrent channel turns without using the device-local queue', async () => {
     const directory = home();
     new DiscordGatewayConfigurationStore(directory).write(
       configuration({
@@ -657,6 +657,7 @@ describe('DiscordGatewayService', () => {
       readTranscript: () => `${'A complete sentence. '.repeat(200)}`,
       deliverMessage: async ({ content }) => {
         delivered.push(content);
+        return { externalMessageId: '8'.repeat(18) };
       },
     });
 
@@ -673,11 +674,14 @@ describe('DiscordGatewayService', () => {
     await settle();
     eventBus.emitTurnCompleted('turn-a', 'session-a', 'ignored event output');
     await settle();
-    expect(delivered).toHaveLength(2);
-    expect(delivered[1]).toContain(
-      `[Truncated — view the full response in Station: ${activityDeepLink({ sessionId: 'session-a' })}]`,
+    await settle();
+    expect(delivered).toHaveLength(4);
+    expect(delivered.slice(1).join('')).toBe(
+      'A complete sentence. '.repeat(200),
     );
-    expect(delivered[1].length).toBeLessThanOrEqual(2_000);
+    expect(delivered.slice(1).every((chunk) => chunk.length <= 2_000)).toBe(
+      true,
+    );
     await service.stop();
   });
 });

@@ -402,11 +402,11 @@ export class ChatAppCore {
   async deliver(
     context: DeliveryContext,
     send: () => Promise<void | { externalMessageId: string }>,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const id = this.recordDelivery(context, { state: 'pending' });
     if (this.isDisabled(context.app)) {
       this.settleDelivery(id, { state: 'refused', reason: 'app-disabled' });
-      return;
+      return false;
     }
     let receipt: void | { externalMessageId: string };
     try {
@@ -425,6 +425,7 @@ export class ChatAppCore {
         state: 'delivered',
         externalMessageId: receipt.externalMessageId,
       });
+    return Boolean(receipt);
   }
 }
 
@@ -445,14 +446,30 @@ function codePointBoundary(text: string, end: number): number {
 export function* splitChatText(text: string, limit: number): Generator<string> {
   if (!Number.isSafeInteger(limit) || limit < 1)
     throw new Error('Invalid chat text limit');
-  let offset = 0;
-  while (offset < text.length) {
-    const end = codePointBoundary(text, Math.min(offset + limit, text.length));
-    if (end === offset)
-      throw new Error('Chat text limit cannot contain a code point');
-    yield text.slice(offset, end);
-    offset = end;
+  let chunk = '';
+  const segments = new Intl.Segmenter('en', {
+    granularity: 'grapheme',
+  }).segment(text);
+  for (const { segment } of segments) {
+    if (chunk.length + segment.length <= limit) {
+      chunk += segment;
+      continue;
+    }
+    if (chunk) {
+      yield chunk;
+      chunk = '';
+    }
+    let offset = 0;
+    while (segment.length - offset > limit) {
+      const end = codePointBoundary(segment, offset + limit);
+      if (end === offset)
+        throw new Error('Chat text limit cannot contain a code point');
+      yield segment.slice(offset, end);
+      offset = end;
+    }
+    chunk = segment.slice(offset);
   }
+  if (chunk) yield chunk;
 }
 
 /** Discord retains its one-message truncation/disclosure policy on the shared renderer. */

@@ -503,6 +503,8 @@ describe('chat text boundaries', () => {
     ['a'.repeat(1999) + '😀z', 2000, ['a'.repeat(1999), '😀z']],
     ['a'.repeat(1998) + '😀z', 2000, ['a'.repeat(1998) + '😀', 'z']],
     ['😀😀😀', 3, ['😀', '😀', '😀']],
+    ['a'.repeat(1998) + '👩‍💻Z', 2000, ['a'.repeat(1998), '👩‍💻Z']],
+    ['a\u0301\u0301\u0301', 2, ['a\u0301', '\u0301\u0301']],
     ['', 2000, []],
   ] as const)(
     'splits case %# at UTF-16 limits without breaking code points',
@@ -531,3 +533,204 @@ describe('chat text boundaries', () => {
     expect(() => Array.from(splitChatText('😀', 1))).toThrow('code point');
   });
 });
+
+// Exercise the gateway through its socket and completion-event seams.
+async function reviewFlush() {
+  for (let i = 0; i < 100; i++) await Promise.resolve();
+}
+function reviewMessage(socket: GatewaySocket, messageId: string) {
+  socket.emit(
+    'message',
+    JSON.stringify({
+      t: 'MESSAGE_CREATE',
+      d: {
+        id: messageId,
+        guild_id: guildId,
+        channel_id: channelId,
+        author: { id: senderId },
+        content: 'synthetic review message',
+      },
+    }),
+  );
+}
+
+test('busy ingress has a durable inbound refusal', async () => {
+  const { homeDir } = fixture();
+  const socket = new GatewaySocket();
+  let finish!: (value: { providerTurnId: string }) => void;
+  const pending = new Promise<{ providerTurnId: string }>((resolve) => {
+    finish = resolve;
+  });
+  const execute = vi.fn(() => pending);
+  const send = vi.fn(async () => ({ externalMessageId: '8'.repeat(18) }));
+  const service = new DiscordGatewayService({
+    homeDir,
+    logger: createLogger({ name: 'review-probe' }),
+    socketFactory: () => socket,
+    executeForegroundMessage: execute,
+    deliverMessage: send,
+  });
+  try {
+    service.start();
+    reviewMessage(socket, '4'.repeat(18));
+    reviewMessage(socket, '5'.repeat(18));
+    await reviewFlush();
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send.mock.calls[0]).toBeDefined();
+    const entries = new ChatAppCore(homeDir).deliveryLog();
+    const refusal = entries.find(
+      (entry) =>
+        entry.direction === 'inbound' && entry.outcome.state === 'refused',
+    );
+    expect(refusal?.outcome).toEqual({ state: 'refused', reason: 'busy' });
+    expect(
+      entries.filter(
+        (entry) =>
+          entry.direction === 'inbound' && entry.outcome.state === 'pending',
+      ),
+    ).toHaveLength(1);
+    expect(
+      entries.find((entry) => entry.direction === 'outbound')?.refusalId,
+    ).toBe(refusal?.id);
+  } finally {
+    finish({ providerTurnId: 'review-turn' });
+    await reviewFlush();
+    await service.stop();
+  }
+});
+
+test('a long Discord response is delivered in full as bounded chunks', async () => {
+  const { homeDir } = fixture();
+  const socket = new GatewaySocket();
+  let emit!: (event: { event: string; data?: Record<string, unknown> }) => void;
+  const delivered: string[] = [];
+  const transcript = 'x'.repeat(2001);
+  const service = new DiscordGatewayService({
+    homeDir,
+    logger: createLogger({ name: 'review-probe' }),
+    socketFactory: () => socket,
+    executeForegroundMessage: async () => ({ providerTurnId: 'review-turn' }),
+    eventBus: {
+      subscribe(listener) {
+        emit = listener;
+        return () => {};
+      },
+    },
+    readTranscript: () => transcript,
+    deliverMessage: async ({ content }) => {
+      delivered.push(content);
+      return { externalMessageId: '8'.repeat(18) };
+    },
+  });
+  try {
+    service.start();
+    reviewMessage(socket, '4'.repeat(18));
+    await reviewFlush();
+    const { SERVER_EVENTS } = await import(
+      '@kontourai/station-contracts/runtime-events'
+    );
+    emit({
+      event: SERVER_EVENTS.ORCHESTRATION_EVENT,
+      data: { event: { method: 'turn.completed', turnId: 'review-turn' } },
+    });
+    await reviewFlush();
+    expect(delivered.map((s) => s.length)).toEqual([2000, 1]);
+    expect(delivered.join('')).toBe(transcript);
+    const receipts = new ChatAppCore(homeDir)
+      .deliveryLog()
+      .filter((entry) => entry.replyChunk)
+      .reverse();
+    expect(receipts.map((entry) => entry.replyChunk?.chunkIndex)).toEqual([
+      0, 1,
+    ]);
+    expect(receipts.map((entry) => entry.replyChunk?.chunkCount)).toEqual([
+      2, 2,
+    ]);
+  } finally {
+    await service.stop();
+  }
+});
+
+test('chunks preserve grapheme boundaries at the Discord limit', () => {
+  const input = 'a'.repeat(1998) + '👩‍💻Z';
+  const chunks = Array.from(splitChatText(input, 2000));
+  const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' });
+  const boundaries = new Set(
+    Array.from(
+      segmenter.segment(input),
+      (part) => part.index + part.segment.length,
+    ),
+  );
+  let offset = 0;
+  const splitBoundaries = chunks.map((chunk) => (offset += chunk.length));
+  expect(splitBoundaries.every((end) => boundaries.has(end))).toBe(true);
+});
+
+test.each(['overflow', 'failure'] as const)(
+  'bounded Discord relay: %s',
+  async (scenario) => {
+    const { homeDir } = fixture();
+    const socket = new GatewaySocket();
+    let emit!: (event: {
+      event: string;
+      data?: Record<string, unknown>;
+    }) => void;
+    const delivered: string[] = [];
+    const service = new DiscordGatewayService({
+      homeDir,
+      logger: createLogger({ name: 'chunk-test' }),
+      socketFactory: () => socket,
+      executeForegroundMessage: async () => ({ providerTurnId: 'chunk-turn' }),
+      eventBus: {
+        subscribe(listener) {
+          emit = listener;
+          return () => {};
+        },
+      },
+      readTranscript: () => 'x'.repeat(scenario === 'overflow' ? 22000 : 4001),
+      deliverMessage: async ({ content }) => {
+        if (scenario === 'failure' && delivered.length === 1)
+          throw new Error('private');
+        delivered.push(content);
+        return { externalMessageId: '8'.repeat(18) };
+      },
+    });
+    try {
+      service.start();
+      reviewMessage(socket, '4'.repeat(18));
+      await reviewFlush();
+      const { SERVER_EVENTS } = await import(
+        '@kontourai/station-contracts/runtime-events'
+      );
+      const event = {
+        event: SERVER_EVENTS.ORCHESTRATION_EVENT,
+        data: { event: { method: 'turn.completed', turnId: 'chunk-turn' } },
+      };
+      emit(event);
+      await reviewFlush();
+      emit(event);
+      await reviewFlush();
+      const receipts = new ChatAppCore(homeDir)
+        .deliveryLog()
+        .filter((entry) => entry.replyChunk)
+        .reverse();
+      if (scenario === 'overflow') {
+        expect(delivered).toHaveLength(10);
+        expect(delivered.slice(0, 9).join('')).toBe('x'.repeat(18000));
+        expect(delivered[9]).toContain('continues in Station');
+        expect(delivered[9]).toContain('conversation-a');
+        expect(receipts[9].replyChunk?.overflow).toBe(true);
+      } else {
+        expect(delivered).toHaveLength(1);
+        expect(receipts.map((entry) => entry.outcome.state)).toEqual([
+          'delivered',
+          'failed',
+        ]);
+        expect(receipts[1].replyChunk?.chunkIndex).toBe(1);
+      }
+    } finally {
+      await service.stop();
+    }
+  },
+);
