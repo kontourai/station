@@ -2,6 +2,8 @@
   width: min(960px, 100%);
   margin: 0 auto;
   padding: clamp(24px, 5vw, 64px);
+  /* Keep the first Home actions and coordinator above the collapsed dock. */
+  padding-top: var(--k-space-6);
   overflow-x: hidden;
 }
 
@@ -263,13 +265,23 @@
   }
   .home-view__actions {
     grid-template-columns: 1fr;
-    margin: 24px 0 32px;
+    margin: 8px 0 32px;
+  }
+  .home-view .home-view__welcome {
+    margin-bottom: var(--k-space-2);
+  }
+  .home-view__start {
+    margin-bottom: var(--k-space-2);
+  }
+  .home-view__start .start-composer__destination {
+    padding-block: var(--k-space-2);
   }
   .home-view__action--primary {
     grid-column: auto;
   }
   .home-view__action {
     min-height: 104px;
+    padding: 12px;
   }
   .home-view__task-copy {
     align-self: stretch;

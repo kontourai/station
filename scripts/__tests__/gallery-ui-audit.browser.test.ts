@@ -82,6 +82,26 @@ describe('hit-target audit scrollers', { timeout: 60_000 }, () => {
 });
 
 describe('gallery finding identities', { timeout: 60_000 }, () => {
+  it('reports a control partly covered by collapsed dock chrome, but not one clear of it', async () => {
+    await render(
+      `<button aria-label="Covered" style="position:fixed;left:10px;bottom:35px;width:100px;height:44px">Covered</button><button aria-label="Clear" style="position:fixed;left:150px;bottom:100px;width:100px;height:44px">Clear</button><div class="chat-dock is-collapsed" style="position:fixed;left:0;right:0;bottom:0;height:55px;background:#333"></div>`,
+    );
+    const audit = await auditGalleryScreen(page, 'fixture');
+    expect(
+      audit.findings.some(
+        (finding) =>
+          finding.identity.startsWith('hit-target:occluded-by-dock:') &&
+          finding.identity.includes('Covered'),
+      ),
+    ).toBe(true);
+    expect(
+      audit.findings.some(
+        (finding) =>
+          finding.identity.startsWith('hit-target:occluded-by-dock:') &&
+          finding.identity.includes('Clear'),
+      ),
+    ).toBe(false);
+  });
   // Visible text missing from the accessible name: axe's
   // label-content-name-mismatch (serious), keyed by the gallery.
   const mismatch =

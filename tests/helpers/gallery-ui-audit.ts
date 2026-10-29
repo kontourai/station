@@ -20,6 +20,28 @@ export interface GalleryUiFinding {
 /** The phone layout is the touch layout; the 44px rule applies there. */
 const TOUCH_LAYOUT_MAX_WIDTH = 600;
 
+/** Controls partly covered by the collapsed dock's non-interactive chrome. */
+const DOCK_OCCLUSION_AUDIT = `(() => {
+  ${STABLE_ANCHOR_SOURCE}
+  const docks = Array.from(document.querySelectorAll('.chat-dock.is-collapsed'));
+  const controls = Array.from(document.querySelectorAll('button, input, select, textarea, summary, a[href], [role="button"], [role="menuitem"]'));
+  const findings = [];
+  for (const control of controls) {
+    if (docks.some((dock) => dock.contains(control))) continue;
+    if (typeof control.checkVisibility === 'function' && !control.checkVisibility({ visibilityProperty: true })) continue;
+    const r = control.getBoundingClientRect();
+    for (const dock of docks) {
+      const d = dock.getBoundingClientRect();
+      const left = Math.max(r.left, d.left, 0), right = Math.min(r.right, d.right, innerWidth);
+      const top = Math.max(r.top, d.top, 0), bottom = Math.min(r.bottom, d.bottom, innerHeight);
+      if (right - left <= 1 || bottom - top <= 1) continue;
+      const hit = document.elementFromPoint((left + right) / 2, (top + bottom) / 2);
+      if (hit && dock.contains(hit)) findings.push({ anchor: stableAnchor(control) });
+    }
+  }
+  return findings;
+})()`;
+
 /**
  * Horizontal escape, measured in the page. Reports the document scrolling
  * sideways, and every element that crosses the viewport's left or right edge
@@ -98,6 +120,14 @@ export async function auditGalleryScreen(
   const width = page.viewportSize()?.width ?? 0;
 
   const hits = (await page.evaluate(HIT_TARGET_AUDIT)) as HitTargetAudit;
+  const dockOcclusions = (await page.evaluate(DOCK_OCCLUSION_AUDIT)) as Array<{
+    anchor: string;
+  }>;
+  for (const { anchor } of dockOcclusions)
+    findings.push({
+      identity: `hit-target:occluded-by-dock:${anchor}`,
+      detail: 'control is partly covered by collapsed dock chrome',
+    });
   for (const { anchor } of hits.unreachableTargets.filter(
     (target) => !target.offCanvas,
   ))
