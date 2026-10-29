@@ -85,7 +85,7 @@ jobs:
             timeoutMinutes: 60
           - id: process-exclusive
             args: --group=process-exclusive
-            timeoutMinutes: 21
+            timeoutMinutes: 30
           - id: coordinator-exclusive
             args: --group=coordinator-exclusive
             timeoutMinutes: 21

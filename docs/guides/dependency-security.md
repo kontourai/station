@@ -318,6 +318,11 @@ an inert install, and validates every installed lifecycle package's locked
 identity and complete hook set before running approved commands. Keep npm for
 script execution and publication; do not use raw npm to install this workspace.
 
+On GitHub Actions, approved native hooks use headers bundled with the running
+Node distribution when available, avoiding a separate header download during
+compilation. An explicit `npm_config_nodedir` takes precedence. Other hosts and
+Node distributions without bundled headers retain node-gyp's normal selection.
+
 `pnpm-workspace.yaml` owns workspace membership, overrides, pinned build
 permissions, and native patches. The retained npm workspace list supports
 existing `npm run --workspace` commands and is checked for parity. The hoisted

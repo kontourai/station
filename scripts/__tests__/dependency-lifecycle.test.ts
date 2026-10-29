@@ -1473,6 +1473,101 @@ describe('dependency lifecycle policy', () => {
     }
   });
 
+  it.skipIf(process.platform !== 'linux')(
+    'builds a reviewed native hook from the CI Node headers without a header download',
+    () => {
+      const fixtureRoot = mkdtempSync(
+        resolve(tmpdir(), 'station-native-headers-'),
+      );
+      const packageRoot = resolve(fixtureRoot, 'node_modules/header-probe');
+      const variables = [
+        'GITHUB_ACTIONS',
+        'npm_config_nodedir',
+        'npm_config_devdir',
+        'npm_config_disturl',
+      ];
+      const original = variables.map((key) => [key, process.env[key]] as const);
+      try {
+        mkdirSync(resolve(packageRoot, 'scripts'), { recursive: true });
+        const hook = 'node scripts/prebuild.js || node-gyp rebuild';
+        writeFileSync(
+          resolve(packageRoot, 'package.json'),
+          JSON.stringify({
+            name: 'header-probe',
+            version: '1.0.0',
+            scripts: { install: hook },
+          }),
+        );
+        writeFileSync(
+          resolve(packageRoot, 'scripts/prebuild.js'),
+          'process.exit(1);',
+        );
+        writeFileSync(
+          resolve(packageRoot, 'binding.gyp'),
+          JSON.stringify({
+            targets: [{ target_name: 'header_probe', sources: ['probe.cc'] }],
+          }),
+        );
+        writeFileSync(
+          resolve(packageRoot, 'probe.cc'),
+          '#include <node.h>\nNODE_MODULE_INIT() {}\n',
+        );
+        process.env.GITHUB_ACTIONS = 'true';
+        delete process.env.npm_config_nodedir;
+        process.env.npm_config_devdir = resolve(
+          fixtureRoot,
+          'empty-header-cache',
+        );
+        process.env.npm_config_disturl = 'http://127.0.0.1:1';
+        runApprovedHooks(
+          {
+            entries: [
+              {
+                scope: 'root',
+                lock: 'package-lock.json',
+                path: 'node_modules/header-probe',
+                name: 'header-probe',
+                version: '1.0.0',
+                decision: 'execute',
+                platform: { os: [], cpu: [] },
+                hooks: [{ name: 'install', command: hook }],
+                artifact: {
+                  path: 'build/Release/header_probe.node',
+                  proof: 'fixture',
+                },
+              },
+            ],
+          },
+          { cwd: fixtureRoot },
+        );
+        execFileSync(
+          process.execPath,
+          [
+            '-e',
+            'require(process.argv[1])',
+            resolve(packageRoot, 'build/Release/header_probe.node'),
+          ],
+          {
+            windowsHide: true,
+            timeout: 10_000,
+            stdio: 'ignore',
+          },
+        );
+        expect(
+          existsSync(resolve(packageRoot, 'build/Release/header_probe.node')),
+        ).toBe(true);
+        expect(existsSync(process.env.npm_config_devdir)).toBe(false);
+      } finally {
+        for (const [key, value] of original) {
+          if (value === undefined) delete process.env[key];
+          else process.env[key] = value;
+        }
+        rmSync(fixtureRoot, { recursive: true, force: true });
+      }
+    },
+    150_000,
+  );
+
   it('verifies degradable artifacts as loud degraded results while others fail closed (#1244)', () => {
     const fixtureRoot = mkdtempSync(resolve(tmpdir(), 'station-lifecycle-'));
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
