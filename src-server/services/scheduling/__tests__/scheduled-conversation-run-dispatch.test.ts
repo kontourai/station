@@ -147,6 +147,9 @@ describe.each([
           ? createAcpEngine()
           : createConformanceEngine(engineName, tmp);
       const adapter = engine.adapter;
+      // The Codex process is scripted; host CLI and login do not participate.
+      if (engineName === 'codex')
+        vi.spyOn(adapter, 'getPrerequisites').mockResolvedValue([]);
       service = new OrchestrationService({
         adapterRegistry: {
           register() {},
