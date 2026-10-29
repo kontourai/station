@@ -20,6 +20,7 @@ import {
 } from '../../contexts/ToastContext';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { Button } from '../Button';
+import { WarningGlyph } from '../icons/Glyph';
 import {
   focusRenderedApprovalCard,
   getApprovalClaims,
@@ -210,10 +211,14 @@ function ToastCard({
           <div className="toast-card__message">
             {(notification.type === 'warning' ||
               notification.type === 'error') && (
-              <strong>
-                {notification.type === 'error' ? 'Error: ' : 'Warning: '}
+              <strong className="toast-card__severity">
+                <WarningGlyph />
+                {notification.type === 'error' ? 'Error:' : 'Warning:'}
               </strong>
             )}
+            {(notification.type === 'warning' ||
+              notification.type === 'error') &&
+              ' '}
             {headline}
           </div>
           {(notification.occurrences ?? 1) > 1 && (
