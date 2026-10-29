@@ -5907,6 +5907,7 @@ Each of these requests with a live operator session returns
 `202 { status: 'step_up_required', transaction: { id, reviewUrl, expiresAt } }`:
 
 - `POST /api/pairing/devices/:deviceId/scope`
+- `POST /api/pairing/requests/:requestId/account-consent`
 - `DELETE /api/pairing/devices/:deviceId`
 - `DELETE /api/pairing/devices/:deviceId/record`
 - `PUT /api/pairing/people/:principalId/group`

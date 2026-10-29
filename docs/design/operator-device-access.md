@@ -22,6 +22,9 @@ This grants no operator identity. Its invitations, request approvals and scope
 introductions cannot transfer protected administration or consent scopes;
 `coding:exec` and `approval:full-access` remain explicit Device-use grants.
 Native consent custody stays separate.
+Account-bound browser approval now uses the same passkey-only
+`device-access-change` transaction, with the pending request and account pinned
+and rechecked at commit. The host CLI retains its operator-credential path.
 The dated passkey proposal below remains the separate operator-session design;
 its former blanket ordinary-device refusals are historical assumptions.
 
