@@ -280,9 +280,15 @@ function AttentionAction({
         </StationToolLibraryProvider>
       );
     case 'approval':
-      // Answered on the card through the exact-request decision, with the
-      // full request one "Details" away — the same control the tray row uses.
-      return item.requestReference ? (
+      // In the inbox (`dismissInMenu`), answered on the card through the
+      // exact-request decision, the full request one "Details" away — the
+      // same control the tray row uses. Other surfaces keep Inspect request.
+      return item.requestReference && !dismissInMenu ? (
+        <ExactRequestAction
+          reference={item.requestReference}
+          openHref={item.openHref}
+        />
+      ) : item.requestReference ? (
         <ExactRequestInline
           reference={item.requestReference}
           openHref={item.openHref}

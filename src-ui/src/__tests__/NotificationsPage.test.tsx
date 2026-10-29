@@ -1494,6 +1494,42 @@ describe('NotificationsPage snoozed items (Feature Preview)', () => {
     snoozePreviews = [];
     renderPage();
     expect(screen.queryByRole('region', { name: /Snoozed/ })).toBeNull();
-    expect(screen.queryByRole('button', { name: /Snooze/ })).toBeNull();
+    fireEvent.click(screen.getAllByRole('button', { name: 'More actions' })[0]);
+    expect(screen.queryByRole('menuitem', { name: /^1 hour/ })).toBeNull();
+  });
+
+  test('when everything is snoozed, the page still offers Unsnooze', () => {
+    snoozePreviews = [{ id: 'attention-snooze', enabled: true }];
+    attention = {
+      pendingCount: 0,
+      items: attention.items.filter((item) => item.snoozedUntil),
+    };
+    notifications = [];
+    renderPage();
+    expect(screen.queryByText('All caught up')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Unsnooze' })).toBeTruthy();
+    snoozePreviews = [];
+  });
+
+  test('an overdue pending notification is activity, not snoozed', () => {
+    snoozePreviews = [{ id: 'attention-snooze', enabled: true }];
+    notifications = [
+      {
+        id: 'overdue',
+        source: 'scheduler',
+        category: 'job',
+        title: 'Overdue report',
+        priority: 'normal',
+        status: 'pending',
+        scheduledAt: new Date(Date.now() - 3_600_000).toISOString(),
+        createdAt: stamp,
+        updatedAt: stamp,
+      },
+    ];
+    renderPage();
+    const activity = screen.getByRole('region', { name: /^Activity/ });
+    expect(within(activity).getByText('Overdue report')).toBeTruthy();
+    expect(screen.getByText(/Showing 1 of 1 activity items/)).toBeTruthy();
+    snoozePreviews = [];
   });
 });

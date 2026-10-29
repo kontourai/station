@@ -86,11 +86,16 @@ export function inboxContextParts(facts: ContextFacts): InboxContextPart[] {
         ...(remote ? { remote } : {}),
       });
   };
-  const remote =
-    facts.environmentName ??
-    (session?.delegation?.environmentKind !== 'current'
-      ? session?.delegation?.environmentName
-      : undefined);
+  const delegatedKind = session?.delegation?.environmentKind;
+  const runsElsewhere =
+    Boolean(facts.environmentName) ||
+    (delegatedKind !== undefined && delegatedKind !== 'current');
+  // Remote work keeps saying so even when its Station sent no display name.
+  const remote = runsElsewhere
+    ? (facts.environmentName ??
+      session?.delegation?.environmentName ??
+      'Another Station')
+    : undefined;
   // Only a row that names work (a session, or a Station it runs on) has a
   // Station to report; a plain job notification is not "running" anywhere.
   push(

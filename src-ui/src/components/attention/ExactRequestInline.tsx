@@ -57,7 +57,9 @@ export function ExactRequestInline({
   // an attempt across it.
   return (
     <ExactRequestDecisionRow
-      key={authority.authorityKey}
+      // A new authority or a new exact request is a new inspection: remount
+      // rather than carry a read or an attempt latch across it.
+      key={`${authority.authorityKey}|${reference.threadId}|${reference.requestId}|${reference.requestEventId}`}
       authority={authority}
       reference={reference}
       openHref={openHref}

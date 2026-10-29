@@ -35,6 +35,7 @@ vi.mock('../../../lib/openApprovalConversation', () => ({
   openApprovalConversation: (href: string) => openConversation(href),
 }));
 
+import { AttentionCard } from '../AttentionCard';
 import { AttentionHistoryItem } from '../AttentionHistoryItem';
 import { ExactRequestInline } from '../ExactRequestInline';
 
@@ -53,6 +54,12 @@ const ok = (data: unknown, extra: object = {}) =>
   new Response(JSON.stringify({ success: true, data, ...extra }), {
     headers: { 'Content-Type': 'application/json' },
   });
+
+const fetchCalls = () =>
+  (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls as [
+    unknown,
+    RequestInit | undefined,
+  ][];
 
 function wrap(node: ReactNode) {
   const client = new QueryClient({
@@ -202,6 +209,78 @@ test("the tray row answers an exact request inline and never through the notific
 
   expect(screen.getByTestId('exact-request-inline')).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Allow Once' })).toBeNull();
-  await screen.findByRole('button', { name: 'Approve once' });
+  const approve = await screen.findByRole('button', { name: 'Approve once' });
+  await waitFor(() =>
+    expect((approve as HTMLButtonElement).disabled).toBe(false),
+  );
+  fireEvent.click(approve);
+  // Answered through the exact-request route, never the notification action.
+  await waitFor(() =>
+    expect(fetchCalls().some((call) => call[1]?.method === 'POST')).toBe(true),
+  );
   expect(onAction).not.toHaveBeenCalled();
+});
+
+test('a newer exact request on the same row can be answered again', async () => {
+  const fetch = vi.fn(async (url: unknown, init?: RequestInit) => {
+    if (init?.method === 'POST')
+      return ok(null, { receipt: { commandId: 'r' } });
+    const eventId =
+      new URL(String(url)).searchParams.get('eventId') ?? 'event-a';
+    return ok({
+      ...open,
+      reference: { ...reference, requestEventId: eventId },
+    });
+  });
+  vi.stubGlobal('fetch', fetch);
+  const view = wrap(<ExactRequestInline reference={reference} />);
+  const click = async () => {
+    const approve = await screen.findByRole('button', { name: 'Approve once' });
+    await waitFor(() =>
+      expect((approve as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(approve);
+  };
+  await click();
+  await screen.findByText(/Decision sent\./);
+
+  view.rerender(
+    <QueryClientProvider client={new QueryClient()}>
+      <ExactRequestInline
+        reference={{ ...reference, requestEventId: 'event-b' }}
+      />
+    </QueryClientProvider>,
+  );
+  await click();
+  await waitFor(() =>
+    expect(
+      fetch.mock.calls.filter((call) => call[1]?.method === 'POST'),
+    ).toHaveLength(2),
+  );
+});
+
+test('outside the inbox an approval card keeps Inspect request', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ok(open)),
+  );
+  wrap(
+    <AttentionCard
+      item={{
+        id: 'approval:notif-1',
+        kind: 'approval',
+        title: 'Run a shell command',
+        createdAt: '2026-09-04T00:00:00Z',
+        updatedAt: '2026-09-04T00:00:00Z',
+        source: {
+          notificationId: 'notif-1',
+          notificationSource: 'approval-inbox',
+        },
+        actions: [],
+        requestReference: reference,
+      }}
+    />,
+  );
+  expect(screen.getByRole('button', { name: 'Inspect request' })).toBeTruthy();
+  expect(screen.queryByTestId('exact-request-inline')).toBeNull();
 });

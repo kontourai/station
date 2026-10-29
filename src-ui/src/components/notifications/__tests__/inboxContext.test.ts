@@ -97,3 +97,18 @@ test('an agent named for its engine is not repeated beside it', () => {
   expect(result.agent).toBeUndefined();
   expect(result.engine).toBe('Codex');
 });
+
+test('remote work with no Station name still reads as remote, never as this one', () => {
+  const result = parts({
+    title: 'Which database?',
+    session: session({
+      delegation: {
+        taskId: 'task-1',
+        environmentKind: 'peer',
+        environmentId: 'env-1',
+      } as OrchestrationSessionSummary['delegation'],
+    }),
+    localStationName: 'workstation',
+  });
+  expect(result.station).toBe('Another Station');
+});

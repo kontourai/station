@@ -141,7 +141,9 @@ export function NotificationsPage() {
   const deferredNotifications = useMemo(
     () =>
       snooze.enabled
-        ? filtered.notifications.filter(isDeferredNotification)
+        ? filtered.notifications.filter((notification) =>
+            isDeferredNotification(notification),
+          )
         : [],
     [filtered.notifications, snooze.enabled],
   );
@@ -293,6 +295,8 @@ export function NotificationsPage() {
         />
         {inbox.pendingCount === 0 &&
         inbox.notifications.length === 0 &&
+        // A snoozed item still has a row to lift its snooze from.
+        snoozedItems.length === 0 &&
         inbox.unavailableSources.length === 0 &&
         !approvalTarget &&
         !pairingTarget ? (

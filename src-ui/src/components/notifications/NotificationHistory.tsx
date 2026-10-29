@@ -275,8 +275,20 @@ export function NotificationHistory({
         <Empty variant="compact" label="Nothing needs you right now" />
       ) : (
         attentionItems.map((item) =>
-          pendingDismiss.includes(item.id) ? (
-            <DismissedRow key={item.id} onUndo={() => undoDismiss(item.id)} />
+          // An approval's dismissal is held under its notification id.
+          pendingDismiss.includes(
+            item.kind === 'approval' ? item.source.notificationId : item.id,
+          ) ? (
+            <DismissedRow
+              key={item.id}
+              onUndo={() =>
+                undoDismiss(
+                  item.kind === 'approval'
+                    ? item.source.notificationId
+                    : item.id,
+                )
+              }
+            />
           ) : (
             <AttentionHistoryItem
               key={item.id}

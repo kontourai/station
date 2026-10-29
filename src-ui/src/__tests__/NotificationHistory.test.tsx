@@ -1193,3 +1193,31 @@ describe('NotificationHistory snooze (Feature Preview)', () => {
     expect(screen.getByText('Job later')).toBeTruthy();
   });
 });
+
+test('dismissing an approval row holds it for Undo', () => {
+  const stamp = new Date().toISOString();
+  attention = {
+    pendingCount: 1,
+    items: [
+      {
+        id: 'approval:notif-u',
+        kind: 'approval',
+        title: 'Approve the deploy',
+        createdAt: stamp,
+        updatedAt: stamp,
+        source: {
+          notificationId: 'notif-u',
+          notificationSource: 'approval-inbox',
+        },
+        actions: [{ id: 'accept', label: 'Allow', variant: 'primary' }],
+      },
+    ],
+  };
+  render(<NotificationHistory isOpen onClose={vi.fn()} onViewAll={vi.fn()} />);
+  chooseRowAction('Dismiss');
+  expect(screen.getByText('Dismissed')).toBeTruthy();
+  expect(screen.queryByText('Approve the deploy')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+  expect(screen.getByText('Approve the deploy')).toBeTruthy();
+  expect(dismiss).not.toHaveBeenCalled();
+});

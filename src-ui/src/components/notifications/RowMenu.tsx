@@ -197,7 +197,9 @@ export function RowMenu({
                     aria-describedby={headingId}
                     disabled={item.disabled}
                     onClick={() => {
-                      close(false);
+                      // Back to the trigger: if the action leaves the row in
+                      // place (a failed snooze), focus must not fall to body.
+                      close(true);
                       item.onSelect();
                     }}
                   >
