@@ -47,6 +47,8 @@ export const SHARED_OUTPUT_VITEST_FILES = Object.freeze([
 // changes the system under test or turns their correctness bound into a
 // scheduler-contention measurement.
 export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
+  // Checks prompt closure and the room's real 15-second idle recheck bound.
+  'src-server/runtime/routes/__tests__/runtime-routes-task-room-members.test.ts',
   // #4204 measures main-thread approval latency while a real room worker
   // holds SQLite's write lock; overlapping suites would distort that bound.
   'src-server/services/orchestration/__tests__/project-task-room-revision-evidence-bridge.test.ts',
