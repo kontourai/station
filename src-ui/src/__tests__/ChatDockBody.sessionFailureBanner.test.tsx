@@ -17,6 +17,7 @@ import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -1168,6 +1169,15 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       // The composer's Send becomes "Start new chat" only when it is allowed.
       expect(chatInputPropsMock.current?.workspaceRefused).toBe(startChat);
       expect(chatInputPropsMock.current?.sendBlockedReason).toBe(reason);
+
+      // The refused queued turn's own "New chat", in the real outbox rows the
+      // dock hands the pending list.
+      cleanup();
+      render(<>{queuedMessagesPropsMock.current?.outbox?.node}</>);
+      await screen.findByText(/Refused/);
+      expect(Boolean(screen.queryByRole('button', { name: 'New chat' }))).toBe(
+        startChat,
+      );
     },
   );
 
