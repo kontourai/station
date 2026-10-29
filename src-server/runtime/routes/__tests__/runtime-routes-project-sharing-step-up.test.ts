@@ -11,14 +11,14 @@
  * authenticator producing real WebAuthn assertions. Nothing hand-sets an
  * authenticated principal.
  */
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { ProjectAccessAdministrationView } from '@kontourai/station-contracts/project-membership';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { SoftwareAuthenticator } from '../../../__test-utils__/software-authenticator.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { ConsentChannelService } from '../../../services/consent/consent-channel.js';
 import { ConsentTransactionStore } from '../../../services/consent/consent-transactions.js';
@@ -72,6 +72,9 @@ const STATION_ID = 'sharing-step-up-fixture';
 const PHONE_SCOPE = 'orchestration:read orchestration:operate';
 
 describe('remote Project sharing enable with operator passkey step-up (#4306)', () => {
+  // Registered before the afterEach below, so it removes the directories
+  // after the databases in them are closed.
+  const makeTemp = trackTempDirs();
   const directories: string[] = [];
   const registries: LazyOperatorPasskeyRegistry[] = [];
   const closers: (() => Promise<void>)[] = [];
@@ -81,7 +84,7 @@ describe('remote Project sharing enable with operator passkey step-up (#4306)', 
     origins: process.env.ALLOWED_ORIGINS,
   };
   beforeEach(() => {
-    const owned = mkdtempSync(join(tmpdir(), 'station-sharing-step-up-'));
+    const owned = makeTemp('station-sharing-step-up-');
     directories.push(owned);
     for (const name of ['home', 'root', 'data']) mkdirSync(join(owned, name));
     process.env.STATION_HOME = join(owned, 'home');
@@ -100,8 +103,7 @@ describe('remote Project sharing enable with operator passkey step-up (#4306)', 
       else process.env[key] = value;
     }
     vi.restoreAllMocks();
-    for (const directory of directories.splice(0))
-      rmSync(directory, { recursive: true, force: true });
+    directories.splice(0);
   });
 
   async function setup() {
