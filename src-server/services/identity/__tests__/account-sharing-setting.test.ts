@@ -1,4 +1,13 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import {
+  chmodSync,
+  existsSync,
+  linkSync,
+  mkdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -258,3 +267,57 @@ describe('offered sign-in origins (#4305)', () => {
     ]);
   });
 });
+
+test.skipIf(process.platform === 'win32')(
+  'refuses a linked config directory for reads and writes',
+  () => {
+    const path = home();
+    const outside = home();
+    chmodSync(outside, 0o777);
+    symlinkSync(outside, join(path, 'config'));
+    writeFileSync(
+      join(outside, 'account-sharing.json'),
+      JSON.stringify({ version: 1, committed: on }),
+      { mode: 0o600 },
+    );
+    expect(readAccountSharingRecord(path).kind).toBe('unreadable');
+    expect(resolveAccountSharingAtBoot(path).choice).toEqual({
+      enabled: false,
+    });
+    expect(() => stageAccountSharingChange(path, on)).toThrow();
+    expect(
+      JSON.parse(readFileSync(join(outside, 'account-sharing.json'), 'utf8'))
+        .committed,
+    ).toEqual(on);
+  },
+);
+
+test.skipIf(process.platform === 'win32')(
+  'refuses nonprivate directories and files, symlinks, hard links, and FIFOs',
+  () => {
+    for (const kind of ['directory', 'file', 'symlink', 'hardlink', 'fifo']) {
+      const path = home();
+      const config = join(path, 'config');
+      mkdirSync(config, { mode: 0o700 });
+      const file = accountSharingSettingPath(path);
+      const content = JSON.stringify({ version: 1, committed: on });
+      if (kind === 'directory') {
+        writeFileSync(file, content, { mode: 0o600 });
+        chmodSync(config, 0o777);
+      } else if (kind === 'file') {
+        writeFileSync(file, content, { mode: 0o600 });
+        chmodSync(file, 0o644);
+      } else if (kind === 'fifo') {
+        execFileSync('mkfifo', [file], { windowsHide: true });
+      } else {
+        const other = join(path, 'other');
+        writeFileSync(other, content, { mode: 0o600 });
+        if (kind === 'symlink') symlinkSync(other, file);
+        else linkSync(other, file);
+      }
+      expect(readAccountSharingRecord(path).kind, kind).toBe('unreadable');
+      expect(() => stageAccountSharingChange(path, on), kind).toThrow();
+      expect(existsSync(file), kind).toBe(true);
+    }
+  },
+);

@@ -22,10 +22,12 @@
 import { randomUUID } from 'node:crypto';
 import {
   closeSync,
+  fstatSync,
   fsyncSync,
+  lstatSync,
   mkdirSync,
   openSync,
-  readFileSync,
+  readSync,
   renameSync,
   rmSync,
   writeFileSync,
@@ -35,8 +37,10 @@ import type {
   AccountSharingChoice,
   AccountSharingLastApply,
 } from '@kontourai/station-contracts/local-accounts';
+import { openRegularFileSync } from '@kontourai/station-shared/regular-file';
 import { z } from 'zod/v3';
 import { HOSTED_TENANT_REGISTRY_FILE_ENV } from '../../runtime/bootstrap/hosted-tenant-mode.js';
+import { assertPrivateDirectory } from '../../utils/private-sqlite.js';
 
 /**
  * Process configuration that owns sharing or authentication. Any of these
@@ -113,10 +117,41 @@ export function readAccountSharingRecord(
 ): AccountSharingRecordRead {
   let text: string;
   try {
-    const bytes = readFileSync(accountSharingSettingPath(homeDirectory));
-    if (bytes.byteLength > MAX_RECORD_BYTES)
-      return { kind: 'unreadable', record: DEFAULT_RECORD };
-    text = bytes.toString('utf8');
+    const path = accountSharingSettingPath(homeDirectory);
+    assertPrivateDirectory(dirname(path), 'Account sharing');
+    const entry = lstatSync(path);
+    const fd = openRegularFileSync(path);
+    if (fd === null) throw new Error('Not a regular file');
+    try {
+      const file = fstatSync(fd);
+      if (
+        !entry.isFile() ||
+        entry.isSymbolicLink() ||
+        entry.dev !== file.dev ||
+        entry.ino !== file.ino ||
+        file.nlink !== 1 ||
+        (process.platform !== 'win32' &&
+          (file.uid !== process.getuid?.() || (file.mode & 0o077) !== 0)) ||
+        file.size > MAX_RECORD_BYTES
+      )
+        throw new Error('Not a private file');
+      const buffer = Buffer.alloc(file.size);
+      let offset = 0;
+      while (offset < buffer.length) {
+        const count = readSync(
+          fd,
+          buffer,
+          offset,
+          buffer.length - offset,
+          offset,
+        );
+        if (count === 0) throw new Error('Short read');
+        offset += count;
+      }
+      text = buffer.toString('utf8');
+    } finally {
+      closeSync(fd);
+    }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT')
       return { kind: 'absent', record: DEFAULT_RECORD };
@@ -141,6 +176,22 @@ export function writeAccountSharingRecord(
   const value = recordSchema.parse(record);
   const parent = dirname(path);
   mkdirSync(parent, { recursive: true, mode: 0o700 });
+  assertPrivateDirectory(parent, 'Account sharing');
+  try {
+    const existing = lstatSync(path);
+    if (
+      !existing.isFile() ||
+      existing.isSymbolicLink() ||
+      existing.nlink !== 1 ||
+      (process.platform !== 'win32' &&
+        (existing.uid !== process.getuid?.() || (existing.mode & 0o077) !== 0))
+    )
+      throw new Error(
+        'Account sharing requires a private operator-owned file.',
+      );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
   const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`;
   let descriptor: number | undefined;
   try {
