@@ -9,6 +9,7 @@
  */
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { brotliCompressSync, deflateSync, gzipSync } from 'node:zlib';
 import type { ResolvedAgentToolServer } from '@kontourai/station-contracts/provider';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { createMCPTransport } from '@kontourai/station-shared/mcp';
@@ -44,6 +45,7 @@ let port: number;
 let received: IncomingMessage[];
 let uninstall: (() => void) | undefined;
 let lookups: string[];
+let tokenEncoding: string | undefined;
 
 beforeEach(async () => {
   home = makeTempDir('station-catalog-address-');
@@ -52,6 +54,7 @@ beforeEach(async () => {
   const log: IncomingMessage[] = [];
   received = log;
   lookups = [];
+  tokenEncoding = undefined;
   stand = createServer((request, response) => {
     // Only the paths these tests use: another local process may probe a
     // newly listening loopback port, and that is not a Station request.
@@ -62,8 +65,7 @@ beforeEach(async () => {
     });
     request.on('end', () => {
       if (request.url === '/token') {
-        response.writeHead(200, { 'content-type': 'application/json' });
-        response.end(
+        const token = Buffer.from(
           JSON.stringify({
             access_token: 'rotated-secret',
             refresh_token: 'rotated-refresh',
@@ -71,6 +73,17 @@ beforeEach(async () => {
             expires_in: 3600,
           }),
         );
+        const encoders = {
+          gzip: gzipSync,
+          deflate: deflateSync,
+          br: brotliCompressSync,
+        };
+        const encode = encoders[tokenEncoding as keyof typeof encoders];
+        response.writeHead(200, {
+          'content-type': 'application/json',
+          ...(tokenEncoding ? { 'content-encoding': tokenEncoding } : {}),
+        });
+        response.end(encode ? encode(token) : token);
         return;
       }
       const message = body ? JSON.parse(body) : {};
@@ -356,3 +369,27 @@ test('a catalog server is never handed to an engine to connect directly', async 
     ).size,
   ).toBe(0);
 });
+
+test.each(['gzip', 'deflate', 'br'])(
+  'catalog token refresh decodes %s without resolving again',
+  async (encoding) => {
+    tokenEncoding = encoding;
+    const def = catalogDef(
+      'compressed-refresh',
+      { credentialOwnership: { owner: 'principal' } },
+      'catalog.localhost',
+    );
+    await signedInAccount(def, { expired: true });
+    install([PUBLIC, PRIVATE]);
+    const urls = await engineResolver(def)(
+      [asServer(def)],
+      PRINCIPAL,
+      undefined,
+      'compressed-refresh-session',
+    );
+    expect(urls.has(def.id)).toBe(true);
+    expect(received.map((request) => request.url)).toEqual(['/token']);
+    expect(received[0]!.headers.host).toBe(`catalog.localhost:${port}`);
+    expect(lookups).toEqual(['catalog.localhost']);
+  },
+);

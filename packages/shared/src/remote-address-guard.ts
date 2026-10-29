@@ -14,7 +14,13 @@ import { lookup as dnsLookup } from 'node:dns/promises';
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { BlockList, isIP, type LookupFunction } from 'node:net';
-import { Readable } from 'node:stream';
+import { compose, Readable } from 'node:stream';
+import {
+  constants,
+  createBrotliDecompress,
+  createGunzip,
+  createInflate,
+} from 'node:zlib';
 
 /**
  * Loopback, private, link-local, shared, reserved and multicast ranges. A
@@ -222,11 +228,42 @@ export function createAddressPinnedFetch(
           const empty =
             NULL_BODY_STATUSES.has(status) || request.method === 'HEAD';
           if (empty) incoming.resume();
+          // HTTP streams carry encoded bytes; fetch consumers expect decoded
+          // bodies. Keep decoding streaming so SSE does not wait for EOF.
+          const codings = (responseHeaders.get('content-encoding') ?? '')
+            .toLowerCase()
+            .split(',')
+            .map((coding) => coding.trim())
+            .filter(Boolean);
+          if (!empty && codings.length > 5) {
+            incoming.destroy();
+            reject(new TypeError('Too many content encodings'));
+            return;
+          }
+          const supported = codings.every((coding) =>
+            ['gzip', 'x-gzip', 'deflate', 'br'].includes(coding),
+          );
+          const decoders =
+            empty || !supported
+              ? []
+              : codings.reverse().map((coding) => {
+                  if (coding === 'br') return createBrotliDecompress();
+                  const decodingOptions = {
+                    flush: constants.Z_SYNC_FLUSH,
+                    finishFlush: constants.Z_SYNC_FLUSH,
+                  };
+                  return coding === 'deflate'
+                    ? createInflate(decodingOptions)
+                    : createGunzip(decodingOptions);
+                });
+          const decoded = decoders.length
+            ? compose(incoming, ...decoders)
+            : incoming;
           settle(
             new Response(
               empty
                 ? null
-                : (Readable.toWeb(incoming) as ReadableStream<Uint8Array>),
+                : (Readable.toWeb(decoded) as ReadableStream<Uint8Array>),
               {
                 status,
                 statusText: incoming.statusMessage,
