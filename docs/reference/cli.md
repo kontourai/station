@@ -913,8 +913,9 @@ is merged into local `config/app.json`, replacing the same keys when present;
 this is a real configuration write. Matching Agent and integration IDs can also
 be replaced. The command does not ask the remote API to activate these files.
 Imported trust classification, permissions, hint settings, receipts and
-ownership are ignored. Station defaults a new imported integration to
-untrusted and the ask policy; existing person choices are preserved.
+ownership are ignored. A new imported integration takes Station's own
+classification (trusted, unless Station's bundled curated catalog classifies
+it) and the default ask permission; existing person choices are preserved.
 
 Each completed import writes a ledger under the Station home recording the source path,
 format, what was applied, and any fields that could not be represented, so a
