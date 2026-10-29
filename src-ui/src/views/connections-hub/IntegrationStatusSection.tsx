@@ -178,7 +178,7 @@ function IntegrationStatusForAuthority({
             </div>
           </>
         ) : (
-          <Empty label="No integration status available" variant="compact" />
+          <Empty label="Integration status list is empty" variant="compact" />
         )}
       </div>
     </details>

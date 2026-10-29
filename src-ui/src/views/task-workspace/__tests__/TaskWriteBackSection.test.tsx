@@ -125,7 +125,7 @@ describe('TaskWriteBackSection', () => {
       <TaskWriteBackSection taskId="task-1" taskCreatedAt={createdAt} />,
     );
     await openSection();
-    expect(screen.getByText('No recorded writes yet')).toBeTruthy();
+    expect(screen.getByText('Nothing recorded yet')).toBeTruthy();
     fixture.result = {
       isFetching: true,
       isError: false,

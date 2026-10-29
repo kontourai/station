@@ -146,7 +146,7 @@ describe('IntegrationStatusSection', () => {
     fixture.status.data.connections = [];
     const { rerender } = render(<IntegrationStatusSection />);
     fireEvent.click(screen.getByText('Integration status'));
-    expect(screen.getByText('No integration status available')).toBeTruthy();
+    expect(screen.getByText('Integration status list is empty')).toBeTruthy();
     fixture.status = {
       isError: true,
       error: new Error('network'),

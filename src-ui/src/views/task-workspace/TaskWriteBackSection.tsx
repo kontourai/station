@@ -136,7 +136,7 @@ function TaskWriteBackForAuthority({
           ) : log.data.entries.length === 0 ? (
             <Empty
               variant="compact"
-              label="No recorded writes yet"
+              label="Nothing recorded yet"
               description="Only writes recorded by Station appear here."
             />
           ) : (
