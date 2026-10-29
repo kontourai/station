@@ -31,7 +31,7 @@ import {
 import type { DatabaseSync } from 'node:sqlite';
 import { passkey } from '@better-auth/passkey';
 import type { DeploymentAuthenticationEndpoint } from '@kontourai/station-contracts/deployment-authentication';
-import type { BetterAuthPlugin } from 'better-auth';
+import type { BetterAuthPlugin, GenericEndpointContext } from 'better-auth';
 import { APIError } from 'better-auth/api';
 import { z } from 'zod/v3';
 import type { LocalAccountAdministration } from './local-account-administration.js';
@@ -88,18 +88,6 @@ interface Ceremony {
   readonly tokenDigest?: Buffer;
 }
 
-interface EndpointContext {
-  context: {
-    internalAdapter: {
-      createUser(user: Record<string, unknown>): Promise<{ id: string } | null>;
-      consumeVerificationValue(
-        identifier: string,
-      ): Promise<{ value: string } | null>;
-      deleteUserSessions(userId: string): Promise<void>;
-    };
-  };
-}
-
 type Scope =
   | { kind: 'sign-in' }
   | {
@@ -107,7 +95,10 @@ type Scope =
       /** Present on the options step: what the new ceremony will bind. */
       draft?: Omit<Ceremony, 'kind' | 'expiresAt'>;
       /** Present on the verify step: binds a ceremony to its account. */
-      complete?: (ceremony: Ceremony, ctx: EndpointContext) => Promise<string>;
+      complete?: (
+        ceremony: Ceremony,
+        ctx: GenericEndpointContext,
+      ) => Promise<string>;
     };
 
 export interface MemberPasskeyAccount {
@@ -217,10 +208,7 @@ export function createMemberPasskeys(host: MemberPasskeyHost): MemberPasskeys {
         )
           throw rejected();
         return {
-          userId: await current.complete(
-            ceremony,
-            ctx as unknown as EndpointContext,
-          ),
+          userId: await current.complete(ceremony, ctx),
         };
       },
     },
@@ -510,11 +498,14 @@ export function createMemberPasskeys(host: MemberPasskeyHost): MemberPasskeys {
                 throw rejected();
               // The Station user-create hook re-checks this invitation from
               // the forwarded header before the row is written.
-              const user = await ctx.context.internalAdapter.createUser({
-                email: `${randomUUID()}@station.invalid`,
-                name: ceremony.displayName,
-                emailVerified: false,
-              });
+              const user = await ctx.context.internalAdapter.createUser(
+                {
+                  email: `${randomUUID()}@station.invalid`,
+                  name: ceremony.displayName,
+                  emailVerified: false,
+                },
+                { method: 'passkey' },
+              );
               if (!user) throw rejected();
               // The plugin runs this inside its registration transaction on
               // the single node:sqlite connection. Better Auth 1.7.11's
