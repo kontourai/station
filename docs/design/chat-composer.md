@@ -347,6 +347,45 @@ inbox footer offers Refresh, which reconnects the same stream and re-reads the
 session list and conversation inventory; when the last read failed, the footer
 says the rows are the last known list.
 
+A conversation's pane offers only what this caller can do there, as the
+server's open read for that conversation reports it. When it says this caller
+may not continue the conversation (`callerAccess.continue`), the composer is
+disabled with "You can read this chat but can't send to it." and no
+placeholder, a busy wait keeps no draft, the failure banner drops its "send a
+message" note, the error card offers neither Send again nor Continue, and an
+empty chat shows "This chat is empty" instead of inviting typing. When it
+says this caller may not start a chat (`callerAccess.startChat`), the pane's
+own new-chat offers are withheld: the recovery notices' Start new chat, the
+terminal-session and error-card New chat and Switch agent actions, the
+refused queued turn's New chat, the workspace-refused composer's Start new
+chat (the composer is then disabled with "This chat can only continue in its
+original workspace, and you can't start a new chat here."), and Enable it in
+a new chat. Error hints follow one default-deny rule on every chat error copy
+surface (the error card, the reply bubble live and after a reload, and the
+send-failure notice). Full access sees each hint unchanged. A caller refused a
+send or a new chat sees only a hint the error's translation declares for that
+kind of caller (a hand-written alternative, or the hint itself where it asks
+for nothing the caller lacks); any other hint is not shown. A declared hint
+never recommends something that caller was refused, and an unconfirmed session
+start keeps its "Station may already have started this session" warning for
+every caller. The live bubble's hint is fixed when the error arrives and
+refreshes when the chat reloads. Not covered: the approval-delivery failure
+line on a tool call, which has its own copy. A read-only verdict says only
+"Retry resolution to check again." A session
+that cannot take another message (`terminalSession`) offers Send again to no
+caller. A failed retry from the picker keeps the last answer for that
+conversation. Not gated: the app-wide New chat entry points (toolbar,
+shortcut, inbox, task switcher), because the answer is per conversation, and
+Fork from turn, which posts `POST /agents/:slug/conversations/:id/fork`, a
+route the answer does not cover. The client does not re-derive scopes; when
+the server sent no answer, everything shows and the server still enforces.
+The answer is as of the last open read, so a scope changed mid-session shows
+on the next one. The agent-turn
+toast's session chord (⌘1/Ctrl+1) and the composer menu's command-launcher
+chord are not shown on a coarse primary pointer. A touch tablet with a hardware
+keyboard loses them too; Station has no keyboard-presence signal, and that
+limit is accepted.
+
 The pill uses compact state labels such as Sending, Starting, Working,
 Thinking, and Reconnecting; it does not expand to display tool names.
 **Sending** covers the chat's own send until Station's delivery lookup says it

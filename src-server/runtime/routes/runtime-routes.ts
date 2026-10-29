@@ -9710,6 +9710,7 @@ export function configureRuntimeRoutes(
           undefined,
           peerCredentialStore,
         ),
+      context.environmentSecurityService,
     ),
   );
   // `rename_session`'s own leaf (never the person's `PATCH`, which stamps

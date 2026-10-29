@@ -2076,6 +2076,12 @@ the `resolved` arm whether the next ordinary turn starts a new Session
 and so does a server that would refuse that turn (a handoff awaiting its target,
 or a context delivery not yet reconciled). A value that is not a boolean is
 refused as `invalid-response`.
+Every arm may also carry `callerAccess` (`{ continue, startChat }`): whether
+the server's HTTP boundary would let THIS caller post
+`POST /api/orchestration/chat/:conversationId/continue` or
+`POST /api/orchestration/chat`. Older servers, and requests with no
+authenticated principal, omit it; treat absent as unknown. A present value that
+is not that pair of booleans is refused as `invalid-response`.
 Transport, rejection, and invalid wire failures throw a
 typed `ConversationOpenResolutionFailure` rather than degrading to an empty
 chat. Optional `options.signal` cancels the request and `options.timeoutMs`
