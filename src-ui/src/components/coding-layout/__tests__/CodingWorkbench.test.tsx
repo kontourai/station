@@ -230,6 +230,10 @@ const crumbs = () =>
 const rail = () => screen.getByRole('navigation', { name: 'Views' });
 
 async function drillInto(name: 'Files' | 'Diff') {
+  if (harness.isMobile)
+    fireEvent.click(
+      screen.getByRole('button', { name: /Switch tool, current:/ }),
+    );
   fireEvent.click(within(rail()).getByRole('button', { name }));
   await act(async () => undefined);
 }
@@ -272,10 +276,71 @@ test('central phone chat preserves the ambient dock state while mounting and lea
   harness.isMobile = true;
   navigationStore.setDockState(false, false);
   const view = renderStack({ centerChat: true });
-  expect(crumbs()).toEqual(['Inbox']);
+  expect(
+    screen.getByRole('button', { name: 'Switch tool, current: Chat' }),
+  ).toBeTruthy();
   expect(navigationStore.getSnapshot().isDockOpen).toBe(false);
   view.unmount();
   expect(navigationStore.getSnapshot().isDockOpen).toBe(false);
+});
+
+test('phone tool picker switches through canonical history and preserves the chat draft', async () => {
+  harness.isMobile = true;
+  renderStack();
+  const composer = screen.getByRole('textbox', { name: 'Message' });
+  fireEvent.change(composer, { target: { value: 'Keep my draft' } });
+  expect(screen.queryByRole('navigation', { name: 'Views' })).toBeNull();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Switch tool, current: Chat' }),
+  );
+  const picker = screen.getByRole('dialog', { name: 'Tools' });
+  fireEvent.click(within(picker).getByRole('button', { name: 'Files' }));
+  await act(async () => undefined);
+  expect(screen.queryByRole('dialog', { name: 'Tools' })).toBeNull();
+  expect(new URLSearchParams(window.location.search).get('pane')).toBe(
+    files.instanceId,
+  );
+  expect(
+    screen.getByRole('button', { name: 'Switch tool, current: Files' }),
+  ).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Chat' }));
+  await historyBackSettled();
+  expect(new URLSearchParams(window.location.search).get('pane')).toBeNull();
+  expect(screen.getByRole('textbox', { name: 'Message' })).toBe(composer);
+  expect((composer as HTMLTextAreaElement).value).toBe('Keep my draft');
+  expect(harness.chatMounts).toBe(1);
+});
+
+test('dismissing the phone tool sheet leaves the active tool unchanged', async () => {
+  harness.isMobile = true;
+  renderStack();
+  const trigger = screen.getByRole('button', {
+    name: 'Switch tool, current: Chat',
+  });
+  trigger.focus();
+  fireEvent.click(trigger);
+  fireEvent.click(screen.getByRole('button', { name: 'Close tools' }));
+  await act(async () => undefined);
+  expect(screen.queryByRole('dialog', { name: 'Tools' })).toBeNull();
+  expect(new URLSearchParams(window.location.search).get('pane')).toBeNull();
+  expect(window.document.activeElement).toBe(trigger);
+});
+
+test('a tool opened while the phone picker is visible does not reopen the picker on return', async () => {
+  harness.isMobile = true;
+  renderStack();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Switch tool, current: Chat' }),
+  );
+  act(() => navigationStore.setActiveWorkspacePane(files.instanceId, scopeKey));
+  expect(screen.queryByRole('dialog', { name: 'Tools' })).toBeNull();
+  act(() => navigationStore.updateParams({ pane: null, paneScope: null }));
+  expect(
+    screen
+      .getByRole('button', { name: 'Switch tool, current: Chat' })
+      .getAttribute('aria-expanded'),
+  ).toBe('false');
+  expect(screen.queryByRole('dialog', { name: 'Tools' })).toBeNull();
 });
 
 describe('CodingWorkbench — the Coding layout as a navigation stack', () => {

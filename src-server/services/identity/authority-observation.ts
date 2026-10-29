@@ -383,6 +383,24 @@ export async function revalidateAuthorityObservation(
   );
 }
 
+/** A bounded probe may retain resource custody until the synchronous release seam. */
+export interface AuthorityReleaseLease {
+  assertLocalCurrent(): void;
+  release(): Promise<void>;
+}
+export interface AuthorityReleaseProbe {
+  probe(): Promise<AuthorityReleaseLease>;
+}
+
+export function assertAuthorityObservationLocalCurrent(
+  input: RevalidateAuthorityObservationInput,
+): void {
+  requireCredentialFactsMatch(
+    input.captured,
+    readFreshCredentialFacts(input.request, input.captured, input.security),
+  );
+}
+
 /**
  * Delivery guard for the observation body — the same streaming shape as
  * `guardProjectResponse`/`guardAccountResponse`, but a dedicated owner
@@ -402,7 +420,7 @@ export async function revalidateAuthorityObservation(
  */
 export async function guardAuthorityObservationResponse(
   response: Response,
-  revalidate: () => Promise<void>,
+  revalidate: (() => Promise<void>) | AuthorityReleaseProbe,
 ): Promise<Response> {
   const refused = await refuseIfStale(response, revalidate);
   if (refused) return refused;
@@ -429,14 +447,24 @@ export async function guardAuthorityObservationResponse(
             return;
           }
           try {
-            await revalidate();
+            const lease =
+              typeof revalidate === 'function'
+                ? undefined
+                : await revalidate.probe();
+            try {
+              if (typeof revalidate === 'function') await revalidate();
+              if (closed) return;
+              lease?.assertLocalCurrent();
+              controller.enqueue(next.value);
+            } finally {
+              await lease?.release();
+            }
           } catch (error) {
             if (!(error instanceof AuthorityObservationRejected)) throw error;
             throw new Error(
               'Authority observation ended before response delivery.',
             );
           }
-          controller.enqueue(next.value);
         } catch (error) {
           closed = true;
           void reader.cancel().catch(() => {});
@@ -459,10 +487,18 @@ export async function guardAuthorityObservationResponse(
 
 async function refuseIfStale(
   response: Response,
-  revalidate: () => Promise<void>,
+  revalidate: (() => Promise<void>) | AuthorityReleaseProbe,
 ): Promise<Response | undefined> {
   try {
-    await revalidate();
+    if (typeof revalidate === 'function') await revalidate();
+    else {
+      const lease = await revalidate.probe();
+      try {
+        lease.assertLocalCurrent();
+      } finally {
+        await lease.release();
+      }
+    }
   } catch (error) {
     if (!(error instanceof AuthorityObservationRejected)) throw error;
     void response.body?.cancel().catch(() => {});

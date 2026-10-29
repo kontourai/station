@@ -19,7 +19,7 @@ import { describe, expect, test } from 'vitest';
 
 const time = '2026-10-26T12:00:00.000Z';
 const later = '2026-10-26T12:01:00.000Z';
-const snowflake = '123456789012345678';
+const snowflake = '123456789'.repeat(2);
 const link: ChatIdentityLink = {
   app: 'discord',
   externalUserId: snowflake,
@@ -47,13 +47,18 @@ const delivery: ChatDeliveryLogEntry = {
 };
 const linkCode: ChatLinkCode = {
   app: 'slack',
+  challengeId: 'challenge-1',
   codeHash: 'a'.repeat(64),
   externalUserId: 'UABC123',
   failedAttempts: 0,
   issuedAt: time,
   expiresAt: later,
 };
-const confirm = { app: 'slack', code: 'ABCD234567' };
+const confirm = {
+  app: 'slack',
+  challengeId: 'challenge-1',
+  code: 'ABCD234567',
+};
 const killSwitch = {
   app: 'slack',
   disabled: true,
@@ -231,11 +236,12 @@ describe('chat app boundary contracts', () => {
       expect(parseChatDeliveryLogEntry({ ...delivery, outcome })).toBeNull();
   });
 
-  test('refuses cross-variant extra keys on refused and failed delivery outcomes', () => {
-    for (const outcome of [
-      { state: 'refused', reason: 'unlinked-sender' },
-      { state: 'failed', reason: 'disconnected' },
-    ]) {
+  test.each([
+    { state: 'refused', reason: 'unlinked-sender' },
+    { state: 'failed', reason: 'disconnected' },
+  ])(
+    'refuses cross-variant extra keys on $state delivery outcomes',
+    (outcome) => {
       expect(
         parseChatDeliveryLogEntry({ ...delivery, outcome }),
       ).not.toBeNull();
@@ -246,8 +252,8 @@ describe('chat app boundary contracts', () => {
           outcome: { ...outcome, externalMessageId: snowflake },
         }),
       ).toBeNull();
-    }
-  });
+    },
+  );
 
   test('unlinked-sender cannot claim an attributed principal', () => {
     expect(parseChatDeliveryLogEntry(delivery)).toEqual(delivery);
@@ -526,6 +532,23 @@ describe('chat app boundary contracts', () => {
 
   test('issues only a hash and attempt budget before the authenticated principal is known', () => {
     expect(parseChatLinkCode(linkCode)).toEqual(linkCode);
+    const { challengeId: _challengeId, ...withoutChallenge } = confirm;
+    const { challengeId: _storedChallengeId, ...withoutStoredChallenge } =
+      linkCode;
+    expect(parseChatLinkConfirmRequest(withoutChallenge)).toBeNull();
+    expect(parseChatLinkCode(withoutStoredChallenge)).toBeNull();
+    for (const challengeId of [
+      undefined,
+      '',
+      ' '.repeat(2),
+      'a'.repeat(257),
+      'bad\u0000id',
+    ]) {
+      expect(parseChatLinkCode({ ...linkCode, challengeId })).toBeNull();
+      expect(
+        parseChatLinkConfirmRequest({ ...confirm, challengeId }),
+      ).toBeNull();
+    }
     expect(parseChatLinkCode({ ...linkCode, code: confirm.code })).toBeNull();
     expect(
       parseChatLinkCode({ ...linkCode, principalId: 'person-1' }),

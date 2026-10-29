@@ -29,9 +29,11 @@ import {
   isDockOwnedViewType,
   isMobileDockFullscreen as isMobileDockFullscreenState,
 } from './components/chat-dock/mobile-chrome';
+import { StationRouteLearning } from './components/connections/useStationRoutes';
 import { DialogHistoryHostBoundary } from './components/DialogHistoryHost';
 import { Header } from './components/header/Header';
 import { LazyBoundary } from './components/LazyBoundary';
+import { NativeContextMenuGuard } from './components/NativeContextMenuGuard';
 import { ConnectionBannerSource } from './components/notifications/ConnectionBannerSource';
 import {
   SetupReturnNotice,
@@ -39,7 +41,7 @@ import {
   WorkspaceStationState,
 } from './components/notifications/StationConditions';
 import { ProjectSidebar } from './components/project-sidebar/ProjectSidebar';
-import { Empty, ErrorState } from './components/state';
+import { Empty, ErrorState, useRetainedReadFailure } from './components/state';
 import { useAgents } from './contexts/AgentsContext';
 import { useApiBase } from './contexts/ApiBaseContext';
 import { useConfig } from './contexts/ConfigContext';
@@ -457,8 +459,21 @@ function App() {
   // transient `#chat-dock` on the Coding route (#3035 review). A layout route
   // only ever has both slugs, so the query is never disabled here; `isPending`
   // settles on its answer or its error.
-  const { data: selectedLayout, isPending: selectedLayoutUnknown } =
-    useProjectLayoutQuery(selectedLayoutProjectSlug, selectedLayoutSlug);
+  //
+  // A failure being re-checked is still an answer. Without that, a failed
+  // read mounted the dock, the dock's new observer re-ran the errored query
+  // (TanStack loads a no-data query on observer mount regardless of
+  // `refetchOnMount`), the query went pending, the dock unmounted, the retry
+  // failed, and the cycle repeated about once a second for as long as the
+  // layout endpoint failed.
+  const selectedLayoutQuery = useProjectLayoutQuery(
+    selectedLayoutProjectSlug,
+    selectedLayoutSlug,
+  );
+  const selectedLayoutFailure = useRetainedReadFailure(selectedLayoutQuery);
+  const selectedLayout = selectedLayoutQuery.data;
+  const selectedLayoutUnknown =
+    selectedLayoutQuery.isPending && !selectedLayoutFailure;
   // Derived from the same facts `ProjectLayoutRenderer` dispatches on, not
   // from the `type` word alone: a plugin-contributed layout typed 'chat'
   // renders its own tabs and keeps the ambient regions (#1446), and one typed
@@ -701,6 +716,7 @@ function App() {
                   onNavigate={navigateToView}
                 />
                 <ConnectionBannerSource />
+                <StationRouteLearning />
                 <StationDetailsHost />
 
                 {showShortcutsCheatsheet && (
@@ -768,6 +784,7 @@ function App() {
                   componentProps={{}}
                   pending={null}
                 />
+                <NativeContextMenuGuard />
                 {/* Single floating voice affordance: the S2S pill. The separate STT
               FAB was unmounted here first — having both rendered two floating
               mics (opposite corners) whenever voice was enabled — and its

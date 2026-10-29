@@ -30,8 +30,7 @@ import { type MouseEvent, useRef } from 'react';
  * captures as its return target — so a pointer-opened menu still has somewhere
  * to hand focus back to on close. (`captureReturnFocus` walks up to
  * `document.body` and returns an EMPTY chain when that is all it finds, so a
- * trigger that cancels its own press has to focus itself instead —
- * `ProjectSidebarPresenceTray` does exactly that.)
+ * trigger that cancels its own press has to focus itself instead.)
  *
  * `detail === 0` means "no press to read": a click the user agent synthesises
  * from Enter or Space has no `mousedown` before it and reports a click count of

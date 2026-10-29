@@ -153,6 +153,16 @@ export type OrchestrationCommand =
        */
       sessionGrantScope?: 'server';
       /**
+       * docs/design/event-content-spill.md: required to allow a request whose
+       * content EventStore stored out of line (`spilledContent` set). The
+       * `sha256-<hex>` digest of the stored request event exactly as
+       * delivered (`JSON.stringify` of the reference-bearing payload), which
+       * the client computes only after loading every reference. With it,
+       * `expectedRequestEventId` must name the same event. Decline and
+       * cancel never need it.
+       */
+      viewedContentDigest?: string;
+      /**
        * #3390: accepted content for a form input request (a harness question
        * or a tool server's elicitation), keyed by field name. Only with
        * `accept`; the server validates it against the exact opened event.
@@ -1406,6 +1416,13 @@ export interface OrchestrationSessionEventWindow {
   events: OrchestrationSequencedEvent[];
   hasMore: boolean;
   nextCursor?: string;
+  /**
+   * The page's oldest event is its oldest turn's `turn.started`, re-added
+   * across events the page's budget left out: the page is not contiguous, and
+   * `nextCursor` reads that gap first. Absent when the page is contiguous, and
+   * from hosts that predate the field.
+   */
+  turnStartDetached?: true;
   /** Thread-filtered stream watermark at the snapshot transaction boundary. */
   watermark: number;
   /**
@@ -1962,6 +1979,20 @@ export type ConversationOpenResolution =
       canContinue: boolean;
       /** Continuation is temporarily blocked only by the current active turn. */
       continuationPending?: boolean;
+      /**
+       * #4179: whether the next ordinary turn starts a new Session (on the
+       * Agent's then-current engine binding) rather than running in
+       * `currentSessionId`: that Session's lifecycle is terminal, its engine
+       * binding ended (`closed`/`dead`/`error`), or a continuation is
+       * reserved but not started. The same rule as the server's continuation
+       * decision, read with this resolution; a model change the Session
+       * cannot apply per turn also starts one, and is not counted here.
+       * Absent on older servers, and when the server would refuse that turn
+       * (a handoff awaiting its target, a context delivery not yet
+       * reconciled). It sits on the resolution rather than on
+       * `execution`, whose field set older clients validate strictly.
+       */
+      nextTurnStartsSession?: boolean;
       /**
        * #2309: the conversation's activity read with this resolution — fresher
        * than any copy on the `conversation` row the caller supplied.

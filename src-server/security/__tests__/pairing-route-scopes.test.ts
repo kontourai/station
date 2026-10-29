@@ -30,6 +30,65 @@ import {
 } from './pairing-route-leaf-scan.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+test.each([
+  ['POST', 'archive-preparations'],
+  ['POST', 'installations'],
+  ['POST', 'installations/01234567-89ab-4cde-8fab-0123456789ab/actions'],
+  ['POST', 'product-incidents/group/links'],
+  ['DELETE', 'product-incidents/group/links/link'],
+])(
+  'companion %s %s requires promoted management authority rather than continuity or ordinary operation',
+  (method, operation) => {
+    const route = {
+      method,
+      path: `/api/operator/telemetry-companion/${operation}`,
+    };
+    expect(requiredPairingScope(route.method, route.path)).toBe(
+      'telemetry:manage',
+    );
+    for (const scope of [
+      DEFAULT_GRANT_PAIRING_SCOPE,
+      'orchestration:read orchestration:operate home:control',
+    ])
+      expect(
+        pairingScopeSatisfiesHttpRoute(scope, 'telemetry:manage', route),
+      ).toBe(false);
+    expect(
+      pairingScopeSatisfiesHttpRoute(
+        'orchestration:read telemetry:manage',
+        'telemetry:manage',
+        route,
+      ),
+    ).toBe(true);
+    expect(
+      pairingScopeSatisfiesHttpRoute(
+        DEFAULT_GRANT_PAIRING_SCOPE,
+        'telemetry:manage',
+        route,
+        true,
+      ),
+    ).toBe(true);
+    expect(
+      pairingScopeSatisfiesHttpRoute(
+        DEFAULT_GRANT_PAIRING_SCOPE,
+        'telemetry:manage',
+        route,
+        false,
+        true,
+      ),
+    ).toBe(true);
+    expect(
+      pairingScopeSatisfiesHttpRoute(
+        DEFAULT_GRANT_PAIRING_SCOPE,
+        'telemetry:manage',
+        { ...route, path: '/api/unrelated' },
+        true,
+        true,
+      ),
+    ).toBe(false);
+  },
+);
 const RUNTIME_ROUTES_PATH = join(
   __dirname,
   '../../runtime/routes/runtime-routes.ts',
@@ -84,6 +143,13 @@ function scanMountedRouteBases(): string[] {
   }
   return bases;
 }
+
+test('terminal socket HTTP classification refuses personal tokens explicitly', () => {
+  expect(matchPairingScopeRule('GET', '/api/terminal/socket')).toMatchObject({
+    scope: 'terminal:operate',
+    personalTokens: 'refused',
+  });
+});
 
 describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () => {
   test('reserves the entire home-authority family for explicit home-transfer grants', () => {

@@ -6,12 +6,10 @@ import {
 import { resolveViewFromPath } from '../../app-shell/routing';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
-import { SettingsGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import { UpdatesControl } from '../updates/UpdatesControl';
 import './ProjectSidebarFooter.css';
 import { destinationIcon } from './nav-items';
-import { ProjectSidebarPresenceTray } from './ProjectSidebarPresenceTray';
 import { SidebarAccountControl } from './SidebarAccountControl';
 import { SidebarPopover } from './SidebarPopover';
 
@@ -26,7 +24,6 @@ function destination(id: string): DestinationDefinition {
   return entry;
 }
 const SCHEDULE = destination('schedule');
-const SETTINGS = destination('settings');
 
 interface ProjectSidebarFooterProps {
   activePath: string;
@@ -76,13 +73,6 @@ export function ProjectSidebarFooter({
         setCustomizeOpen(true);
       },
     },
-    {
-      key: 'settings',
-      label: SETTINGS.label(),
-      icon: <SettingsGlyph />,
-      current: activeDestination?.id === SETTINGS.id,
-      onSelect: () => go(SETTINGS.route),
-    },
   ];
   const utilityButtons = utilities.map((action) => (
     <button
@@ -114,24 +104,7 @@ export function ProjectSidebarFooter({
   );
   return (
     <div className="sidebar__footer">
-      <div className="sidebar__update">
-        <UpdatesControl collapsed={collapsed} onNavigate={go} />
-      </div>
       <div className="sidebar__footer-meta">
-        {/* Live work and the account stay on the rail itself, outside the
-            collapsed utilities popover: presence is something to notice, and
-            the account is its own control rather than a utility row. */}
-        <div className="sidebar__footer-identity">
-          <ProjectSidebarPresenceTray
-            onOpenActivity={isMobile ? onAfterNavigate : undefined}
-          />
-          <SidebarAccountControl
-            activePath={activePath}
-            collapsed={collapsed}
-            onNavigate={go}
-            onDismissDrawer={isMobile ? onAfterNavigate : undefined}
-          />
-        </div>
         {collapsed ? (
           <button
             ref={moreTriggerRef}
@@ -140,7 +113,7 @@ export function ProjectSidebarFooter({
             aria-label="Sidebar utilities"
             aria-haspopup="dialog"
             aria-expanded={moreOpen}
-            title="Schedule, Customize and Settings"
+            title="Schedule and Customize"
             onPointerDown={(event) => {
               if (moreOpen) event.preventDefault();
             }}
@@ -151,6 +124,17 @@ export function ProjectSidebarFooter({
         ) : (
           controls
         )}
+        <div className="sidebar__footer-identity">
+          <div className="sidebar__update">
+            <UpdatesControl collapsed onNavigate={go} />
+          </div>
+          <SidebarAccountControl
+            activePath={activePath}
+            collapsed={collapsed}
+            onNavigate={go}
+            onDismissDrawer={isMobile ? onAfterNavigate : undefined}
+          />
+        </div>
       </div>
       <SidebarPopover
         open={collapsed && moreOpen}

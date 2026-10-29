@@ -182,6 +182,20 @@ with controlled provider responses. An isolated Claude CLI probe confirmed the
 browser-code prompt on macOS; these checks do not prove a completed live OAuth
 exchange, every provider plan or Windows secure-store behavior.
 
+## Manage telemetry companion access
+
+An operator can enable **Manage telemetry companion** in a paired device's access
+editor, then choose **Apply**. This explicitly grants `telemetry:manage`; presets
+and default device grants do not include it. The caller must also be a currently
+verified human operator. Agents and delegation credentials cannot use the
+companion controls. The permission admits archive preparation and the conditional
+qualified installation, explicit start/stop APIs and incident-link creation/removal;
+it does not enable telemetry sending
+or personal analytics access. Home continuity permissions do
+not substitute for it. See [Monitoring](monitoring.md#developer-diagnostics) for
+preparation, conditional install/start/stop controls and recovery. A complete
+official companion profile and installed-release acceptance remain unfinished.
+
 ## Invite a device to a relay Station
 
 Under **Connections → Computers**, the **Devices** list and its **Invite device**
@@ -290,10 +304,29 @@ request does not revoke an already approved receiver grant. A saved peer
 credential establishes permission, not observed reachability or Project readiness.
 
 Tap the connection dot on a phone, or the connection name on desktop, to
-choose a Station. A checkmark identifies the current Station, whose status is
-live. The chooser does not probe inactive Stations; they say **Not checked**
-unless a saved access or connection error needs attention. Holding the phone's
-dot shows its saved name without switching or opening the chooser.
+choose a Station, or press **Switch Station** (⌘⇧S, Ctrl+Shift+S elsewhere)
+once two are saved. The current Station comes first with a checkmark and its
+live status; the rest follow most recently used first, and focus starts on the
+previous one, so the shortcut and Enter flip back. With five or more Stations,
+type to filter; Enter switches to the first match. Holding the phone's dot
+shows its saved name without switching or opening the chooser.
+
+Opening the chooser checks whether each other Station answers its public
+handshake, from this device, without credentials. A green dot means it
+answered; **Unreachable** means nothing did within a few seconds. Answering
+proves only that the address responds, not that this device still has access.
+Stations reached through a broker route are not checked, nor, from an HTTPS
+page, a plain-HTTP address other than loopback, which the browser would block.
+
+Forget a Station on this device with the × beside it (Delete on a focused
+row) and confirm. With two or more unreachable, **Forget N unreachable**
+forgets them together after a confirmation that names each one. The current Station cannot be
+forgotten here. On the desktop app, Stations other channels or development
+instances left in the shared profile file can be forgotten like any other;
+only the app's own local Station is refused, and the × is not offered for it.
+If the app cannot identify its own local Station at startup (its local service
+did not start, for example), every local-service profile stays protected until
+the app is restarted.
 
 Choose **Manage Stations** to inspect saved connections. Tap a row to reveal
 **Switch to this Station** and **Edit Station**; inspecting a row does not

@@ -1,5 +1,17 @@
 import { isStationCheckBackTurn } from '@kontourai/station-contracts/agent-schedule';
+import {
+  type ChatHostImageMap,
+  chatHostImageMapFromEvent,
+} from '@kontourai/station-contracts/chat-host-images';
 import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
+import { isStationMemoryContinuationTurn } from '@kontourai/station-contracts/provider';
+import {
+  hasRuntimeEventContentRefs,
+  isRuntimeEventContentRef,
+  isRuntimeEventContentUnavailable,
+  runtimeEventContentDisplayText,
+  runtimeEventContentForDisplay,
+} from '@kontourai/station-contracts/runtime-event-content';
 import {
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
@@ -31,6 +43,9 @@ import {
 } from './tool-request-preview.js';
 
 import { assembleTurnProvenanceEnvelopes } from './turn-provenance-fold.js';
+
+/** docs/design/event-content-spill.md: a value, or a marked preview. */
+const spillableDisplayText = runtimeEventContentDisplayText;
 
 function repeatedRuntimeErrorText(message: string, count: number) {
   const text = `⚠️ ${message}`;
@@ -269,6 +284,27 @@ export function projectRuntimeEventsToMessages(
       envelope,
     ]),
   );
+  // chat-host-images: the images a settled turn's reply named, recorded by a
+  // `content.host-images` event that arrives AFTER the turn's terminal, so
+  // it is gathered up front like the envelope above. A later event for the
+  // same turn adds to (and overrides paths in) an earlier one.
+  const hostImagesByTurn = new Map<string, ChatHostImageMap>();
+  for (const event of events) {
+    if (event.method !== 'content.host-images') continue;
+    const key = turnKey(event.threadId, event.turnId);
+    if (!key) continue;
+    const next = chatHostImageMapFromEvent(event);
+    const prior = hostImagesByTurn.get(key);
+    hostImagesByTurn.set(
+      key,
+      prior
+        ? {
+            images: { ...prior.images, ...next.images },
+            refused: { ...prior.refused, ...next.refused },
+          }
+        : next,
+    );
+  }
   // The turn whose events are currently being folded, read straight off the
   // events' own `turnId` — never inferred from ordering.
   let turnIdentity: string | undefined;
@@ -288,6 +324,18 @@ export function projectRuntimeEventsToMessages(
   // are only unique per session, and a lineage window folds several, so an
   // exact-id approval binds only a part from the request's own session.
   const toolPartThread = new WeakMap<MessagePart, string>();
+  // docs/design/event-content-spill.md: the request awaiting each call, so a
+  // bound tool.started that arrives later with spilled arguments marks the
+  // card as needing a load before Allow (rather than waiting for a 409).
+  const approvalRequestByPart = new WeakMap<
+    MessagePart,
+    Extract<CanonicalRuntimeEvent, { method: 'request.opened' }>
+  >();
+  const markLateBoundContent = (part: MessagePart) => {
+    const request = approvalRequestByPart.get(part);
+    if (request && hasRuntimeEventContentRefs(part.args))
+      part.approvalContentEvent = request;
+  };
   const approvalKey = (threadId: string, requestId: string) =>
     `${threadId}\u0000${requestId}`;
   /**
@@ -434,6 +482,12 @@ export function projectRuntimeEventsToMessages(
       role === 'assistant' && !beforeSteer && turnIdentity
         ? envelopesByTurn.get(turnKey(turnSessionId, turnIdentity) ?? '')
         : undefined;
+    // Every assistant row of the turn, pre-steer segments included: an image
+    // can be named in any of them.
+    const hostImages =
+      role === 'assistant' && turnIdentity
+        ? hostImagesByTurn.get(turnKey(turnSessionId, turnIdentity) ?? '')
+        : undefined;
     const metadata = {
       ...(turnTimestamp !== undefined ? { timestamp: turnTimestamp } : {}),
       ...(role === 'user' && inputKind ? { inputKind } : {}),
@@ -459,6 +513,7 @@ export function projectRuntimeEventsToMessages(
         ? { answerEligible: true }
         : {}),
       ...(provenance ? { provenance } : {}),
+      ...(hostImages ? { hostImages } : {}),
     };
     messages.push({
       id:
@@ -490,11 +545,19 @@ export function projectRuntimeEventsToMessages(
     }
   };
 
+  // A reply shown as a spilled outputText's preview names its reference on
+  // the text part it lands in.
+  let pendingSpilledText: MessagePart['spilledText'];
   const flushText = () => {
     if (textBuf) {
-      parts.push({ type: 'text', text: textBuf });
+      parts.push({
+        type: 'text',
+        text: textBuf,
+        ...(pendingSpilledText ? { spilledText: pendingSpilledText } : {}),
+      });
       textBuf = '';
     }
+    pendingSpilledText = undefined;
   };
   const flushReasoning = () => {
     if (reasoningBuf) {
@@ -617,9 +680,16 @@ export function projectRuntimeEventsToMessages(
   // `handleToolCompletedEvent`, `result: event.output`) shows it once.
   const resultText = (output: unknown): string | undefined => {
     if (typeof output === 'string') return output;
+    if (
+      isRuntimeEventContentRef(output) ||
+      isRuntimeEventContentUnavailable(output)
+    )
+      return spillableDisplayText(output);
     if (output != null) {
       try {
-        return JSON.stringify(output);
+        // A reference at any depth shows as its marked preview.
+        const shown = runtimeEventContentForDisplay(output);
+        return typeof shown === 'string' ? shown : JSON.stringify(shown);
       } catch {
         return String(output);
       }
@@ -749,10 +819,19 @@ export function projectRuntimeEventsToMessages(
           turnAnchorEventId = ev.eventId;
           stamp(ev.createdAt);
           const steerParts: MessagePart[] = [];
-          const steerInput = agentMessageInput(ev);
+          const steerInput = agentMessageInput({
+            ...ev,
+            prompt: spillableDisplayText(ev.prompt),
+          });
           userRowSender = steerInput.sender;
           if (steerInput.prompt)
-            steerParts.push({ type: 'text', text: steerInput.prompt });
+            steerParts.push({
+              type: 'text',
+              text: steerInput.prompt,
+              ...(isRuntimeEventContentRef(ev.prompt)
+                ? { spilledText: { threadId: ev.threadId, ref: ev.prompt } }
+                : {}),
+            });
           for (const attachment of ev.attachments ?? []) {
             steerParts.push({
               type: 'file',
@@ -808,10 +887,19 @@ export function projectRuntimeEventsToMessages(
         // sessionReportedModel — it belongs to the prior model generation.
         noteModelGeneration(turnModel, turnReportedModel);
         const userParts: MessagePart[] = [];
-        const turnInput = agentMessageInput(ev);
+        const turnInput = agentMessageInput({
+          ...ev,
+          prompt: spillableDisplayText(ev.prompt),
+        });
         userRowSender = turnInput.sender;
         if (turnInput.prompt)
-          userParts.push({ type: 'text', text: turnInput.prompt });
+          userParts.push({
+            type: 'text',
+            text: turnInput.prompt,
+            ...(isRuntimeEventContentRef(ev.prompt)
+              ? { spilledText: { threadId: ev.threadId, ref: ev.prompt } }
+              : {}),
+          });
         for (const attachment of ev.attachments ?? []) {
           // `url` is omitted, not empty, when the bytes are not in this read:
           // retention reclaimed the blob, or the caller asked for a bounded
@@ -836,6 +924,10 @@ export function projectRuntimeEventsToMessages(
           if (isStationCheckBackTurn(ev)) {
             const row = messages[messages.length - 1]!;
             row.metadata = { ...row.metadata, stationCheckBack: true };
+          }
+          if (isStationMemoryContinuationTurn(ev)) {
+            const row = messages[messages.length - 1]!;
+            row.metadata = { ...row.metadata, stationMemoryContinuation: true };
           }
           userRowSender = undefined;
         }
@@ -895,6 +987,8 @@ export function projectRuntimeEventsToMessages(
             if (ev.toolName !== undefined) lateExisting.toolName = ev.toolName;
             if (ev.toolKind !== undefined) lateExisting.toolKind = ev.toolKind;
             if (ev.arguments !== undefined) lateExisting.args = ev.arguments;
+            if (ev.spilledContent) lateExisting.contentThreadId = ev.threadId;
+            markLateBoundContent(lateExisting);
             lateExisting.state = 'call';
             break;
           }
@@ -905,6 +999,7 @@ export function projectRuntimeEventsToMessages(
             ...(ev.toolKind !== undefined ? { toolKind: ev.toolKind } : {}),
             args: ev.arguments,
             state: 'call',
+            ...(ev.spilledContent ? { contentThreadId: ev.threadId } : {}),
           };
           messages[startNamedTurnIndex]!.parts.push(latePart);
           carriedToolsByCallId.set(ev.toolCallId, {
@@ -925,6 +1020,8 @@ export function projectRuntimeEventsToMessages(
           if (ev.toolName !== undefined) existing.toolName = ev.toolName;
           if (ev.toolKind !== undefined) existing.toolKind = ev.toolKind;
           if (ev.arguments !== undefined) existing.args = ev.arguments;
+          if (ev.spilledContent) existing.contentThreadId = ev.threadId;
+          markLateBoundContent(existing);
           if (ev.purpose !== undefined) existing.purpose = ev.purpose;
           existing.state = 'call';
           break;
@@ -937,6 +1034,7 @@ export function projectRuntimeEventsToMessages(
           args: ev.arguments,
           purpose: ev.purpose,
           state: 'call',
+          ...(ev.spilledContent ? { contentThreadId: ev.threadId } : {}),
           startedAt: ev.createdAt,
         };
         toolsByCallId.set(ev.toolCallId, part);
@@ -1035,11 +1133,12 @@ export function projectRuntimeEventsToMessages(
           if (ev.toolKind !== undefined) existing.toolKind = ev.toolKind;
           existing.state = derivedState;
           existing.output = ev.output;
+          if (ev.spilledContent) existing.contentThreadId = ev.threadId;
           if (ev.htmlReply) existing.htmlReply = ev.htmlReply;
           const refusal = stationControlRefusalView(ev.stationControlRefusal);
           if (refusal) existing.stationControlRefusal = refusal;
           if (ev.outputReceipt?.truncated) existing.outputTruncated = true;
-          existing.error = ev.error;
+          existing.error = spillableDisplayText(ev.error);
           existing.sourceEventId = ev.eventId;
           existing.cancelled = isCancelled;
           // A superseded `unresolved` row must not keep Station's own "no
@@ -1119,6 +1218,7 @@ export function projectRuntimeEventsToMessages(
             purpose: ev.purpose,
             state: derivedState,
             output: ev.output,
+            ...(ev.spilledContent ? { contentThreadId: ev.threadId } : {}),
             ...(ev.htmlReply ? { htmlReply: ev.htmlReply } : {}),
             ...(stationControlRefusalView(ev.stationControlRefusal)
               ? {
@@ -1130,7 +1230,7 @@ export function projectRuntimeEventsToMessages(
             ...(ev.outputReceipt?.truncated
               ? { outputTruncated: true as const }
               : {}),
-            error: ev.error,
+            error: spillableDisplayText(ev.error),
             cancelled: isCancelled,
             isError,
             ...(policyDenied ? { approvalStatus: 'policy-denied' } : {}),
@@ -1262,6 +1362,12 @@ export function projectRuntimeEventsToMessages(
           target.approvalServerGrant = toolRequestServerGrantFromPayload(
             ev.payload,
           );
+          // docs/design/event-content-spill.md: what a surface must load
+          // whole before it offers Allow.
+          approvalRequestByPart.set(target, ev);
+          if (ev.spilledContent || hasRuntimeEventContentRefs(target.args))
+            target.approvalContentEvent = ev;
+          else delete target.approvalContentEvent;
           target.state = 'awaiting-approval';
           approvalTargets.set(ev.requestId, target);
           openApprovalParts.set(approvalKey(ev.threadId, ev.requestId), {
@@ -1370,19 +1476,29 @@ export function projectRuntimeEventsToMessages(
             .filter((p) => p.type === 'text')
             .map((p) => p.text ?? '')
             .join('') + textBuf;
-        if (ev.outputText && ev.outputText !== emittedText) {
-          if (ev.outputText.startsWith(emittedText)) {
-            textBuf += ev.outputText.slice(emittedText.length);
+        // An `outputText` stored out of line is not known here: reconciling
+        // against its preview would cut a streamed reply to the preview. The
+        // streamed text stands; only a turn that streamed nothing shows the
+        // preview, marked as partial.
+        const outputText =
+          typeof ev.outputText === 'string' ? ev.outputText : undefined;
+        if (outputText === undefined && ev.outputText && !emittedText) {
+          textBuf = spillableDisplayText(ev.outputText) ?? '';
+          if (isRuntimeEventContentRef(ev.outputText))
+            pendingSpilledText = { threadId: ev.threadId, ref: ev.outputText };
+        }
+        if (outputText && outputText !== emittedText) {
+          if (outputText.startsWith(emittedText)) {
+            textBuf += outputText.slice(emittedText.length);
           } else if (
             // Otherwise the pre-#2300 fallback, unchanged: an engine whose
             // `outputText` is only its FINAL answer (Claude) replaces a
             // streamed tail it starts or ends with. The live path keeps what
             // it streamed in this case; that divergence predates #2300.
             textBuf &&
-            (ev.outputText.startsWith(textBuf) ||
-              ev.outputText.endsWith(textBuf))
+            (outputText.startsWith(textBuf) || outputText.endsWith(textBuf))
           ) {
-            textBuf = ev.outputText;
+            textBuf = outputText;
           }
         }
         emitAssistantTurn(true, 'completed');

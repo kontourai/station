@@ -41,21 +41,201 @@ references describe cleanup and uncertain delivery outcomes.
 
 ## Modules
 
+`@kontourai/station-contracts/telemetry-delivery` owns
+`TelemetryCompanionPrerequisites`, the request-local local-container capability
+result used by the operator companion prerequisite API. Its `available` branch
+describes the observed Docker/Compose versions and container architecture; it is
+not an artifact qualification, installation or ingestion-readiness receipt.
+The unavailable branch names the missing capability without returning host paths
+or raw subprocess output. See the [companion profile](../../deployment/telemetry/README.md#station-host-prerequisite-api).
+
+The same module defines `TelemetryCompanionArchivePreparation` and
+`TelemetryCompanionPreparationState`. Receipts bind a UUIDv4 operation to the
+release source, signed archive digest, byte counts and recorded phase. Optional
+`payloadPrepared:true` means the fixed companion files were prepared and checked;
+older authenticated receipts may omit it. Optional `qualifiedArchitectures`
+contains unique `amd64`/`arm64` profile declarations from authenticated prepared
+files. It is absent on unsuccessful preparation and grants no execution permit.
+A pending phase or observed lock does
+not prove a live process. The latest-operation pointer supports read-only recovery
+after reopening the pane or losing a mutation response. Every receipt retains
+`installationAuthority:false`; neither preparation nor the parent-envelope
+evidence enables sending, installs a service or grants personal source access.
+
+`TelemetryCompanionInstallation` records the conditional stopped-service install
+operation, its preparation ID, source/version, architecture and phase. Its host
+and storage choices are closed literals. `configuresSending:false` describes the
+operation's effect; it is not a claim that every existing destination is disabled.
+An installed receipt is not current container liveness or storage readiness.
+
+`TelemetryCompanionAction` records a unique start/stop intent and its pending,
+completed or unconfirmed outcome; completion is historical, not current liveness.
+`TelemetryCompanionManagedState` keeps the installation/action records separate
+from observed runtime and authenticated storage state. Unavailable custody or
+runtime evidence does not imply an empty or healthy installation.
+
+`@kontourai/station-contracts/product-telemetry` also owns
+`ProductTelemetryTrends`, `isProductTelemetryTrendWindow` and
+`isProductTelemetryTrends`. The bounded receiver aggregate contains received
+product groups, source build provenance, a UTC window, retention and explicitly
+unknown delivery coverage. It excludes person/source identity and arbitrary
+observation properties. Its pure decoder rejects extra fields, invalid counts,
+unknown events and inconsistent build provenance. This is separate from personal
+canonical usage receipts and does not prove complete activity or delivery.
+
+The same product module declares `ProductTelemetryIncidents`, its strict
+`isProductTelemetryIncidents` decoder, and the pure `createProductTelemetryIncidentDraft`
+formatter. Groups retain immutable builds, distinct reported installation counts,
+observed denominators and separate failed/aborted/unresolved/unknown populations.
+The draft includes retained-observation and producer-clock limitations; formatting
+never publishes an issue. `ProductTelemetryIncidentLink` and its receipt describe
+Core-owned GitHub references, logical expiry and active/deleted outcomes. They
+carry neither source authority nor proof that an external issue exists.
+
 The authored `@kontourai/station-contracts/usage-export` module defines the
 individual/personal-account request and retained-observation page, including
 UTC window, stream epoch, fixed high watermark and unknown history coverage.
-It neither describes an analytics authorization credential nor proves a
-durable sync/restore fence. See [monitoring](../guides/monitoring.md#canonical-usage-export-source)
+A usage page alone supplies neither an analytics authorization credential nor
+proof of a durable sync/restore fence. See [monitoring](../guides/monitoring.md#canonical-usage-export-source)
 for current implementation and unexecuted acceptance limits.
+
+The usage-export module also declares `AnalyticsSourceEnrollmentIntent`: an
+immutable proposed source/destination, requested scope, expiry and retention
+choice with a prepared/cancelled phase. Optional
+`operationalConsent:"terminal-outcomes/v1"` is a separate immutable consent
+reservation. Absence means usage-only. Its exact presence is bound by the
+recipient candidate intent digest, source approval and encrypted credential;
+receiving custody rejects a mismatch. The proposal itself activates nothing.
+Under an approved grant with that consent, `UsageExportPage.operationalConsent`
+admits `UsageTerminalFact` observations: outcome class, engine family,
+Station-observed time and opaque event/thread/turn IDs. Without the literal a
+`terminal` field is refused as unknown. `PrivateUsageCommit.binding`, its query
+and its page must agree exactly. `PrivateOperationalOutcomeQuery` and
+`PrivateOperationalOutcomeSummary` are the strict companion query/response pair
+(engine or day groups, observed-turn denominator, retained-only coverage). Saved
+`AnalyticsViewDefinition` values with `kind:"outcomes"` select completed,
+aborted or failed counts and engine/day grouping; the capability-gated SDK
+reader and Personal Insights consume them. Full consent-to-PostgreSQL/UI
+execution remains unverified by this source review. `destinationVerified:false`
+and `exportAuthority:false` are required literals. The source's private person,
+tenant and owner-set binding is not a caller-supplied DTO. This proposal neither
+issues a credential nor authorizes export; see the [proposal
+API](api.md#prepare-a-personal-source-enrollment-proposal).
+
+The same module owns `AnalyticsRecipientCandidateClaims`,
+`AnalyticsRecipientCandidate` and `AnalyticsRecipientCandidateView`, with the
+`ANALYTICS_RECIPIENT_CANDIDATE_PROTOCOL` domain. These carry signed public
+receiving keys, source-intent binding and proposed transport metadata. A view's
+`sourceVerified:false`, `exportAuthority:false` and `key-possession-only`
+verification are deliberate: the candidate is neither remote person
+authentication nor source authorization. Private keys and private tenant/owner
+records remain server-owned. A view may report `restore-required`; this refuses
+copied or legacy unbound key custody without exposing stored credential,
+confirmation or sync metadata. Its shape does not renew source access. See the [candidate API](api.md#prepare-a-receiving-analytics-key-candidate).
+
+`AnalyticsSourceApproval` records requester-bound source consent for the reviewed
+source scope and receiving key, with immutable provenance and approved/revoked
+phase. `sourceApproved:true` is historical, while `exportAuthority:false` and
+`recipientAssurance:"source-user-approved-key"` prevent treating it as an active
+credential or remote-person authentication. Identity/tenant fields used for
+source authorization remain private and server-derived.
+
+`AnalyticsSourceCredentialDelivery` carries only encrypted transport metadata and
+ciphertext. `AnalyticsStoredSourceCredential` reports receiving custody without
+plaintext, source verification or export authority. Its optional `deliveryProof`
+binds the receiving proof key to the decrypted credential hash and exact grant
+generation; it is static delivery evidence, not a fresh request signature.
+Neither shape is an
+authorization input by itself. The server checks approved policy and live
+source/receiving owners before delivery/materialization; actual source data
+admission remains a separate owner.
+
+`AnalyticsRecipientCandidateView.sourceConfirmation` records a person's explicit
+HTTPS-origin choice for the current credential revision; it does not change the
+custody DTO's `sourceVerified:false` or grant general identity. Rotation clears
+that choice. The pure `parseUsageExportPage` decoder in the same subpath is shared
+by the SDK and receiving reader. It checks strict receipt/page shapes, selected
+source/scope/window, committed order, snapshot and unknown coverage while
+preserving immutable money/provenance fields. `UsageExportQuery` and
+`UsageExportSnapshot` are also exported there and retain SDK type re-exports.
+`USAGE_EXPORT_SOURCE_REVISION_HEADER` names the separate HTTP snapshot revision.
+It binds destructive source changes at the receiving release check; it is not a
+person/grant credential, a pricing revision or a restored-home generation fence.
+Canonical page bodies remain unchanged; opaque cursors now include source
+invalidation state and require restarting after this upgrade.
+`UsageInvalidationRequest` and `UsageInvalidationPage` describe the separate
+retained journal replay, with a journal position/epoch, fixed high water,
+retention floor and scoped thread invalidations. Positions carry no authority;
+a pruned checkpoint is a gap requiring reconciliation, not an empty page.
+`AnalyticsSourceSyncStatus` includes `invalidations-pending` and an optional
+`invalidationCheckpoint` for page-bounded Core replay; these remain historical
+progress metadata, never live source/query authority.
+Withdrawal applies to earlier source snapshots, while `scope-entered` requests
+refresh/backfill. These types do not define a new person registry or change
+legacy interactive rollup accounting.
+`PrivateUsageSummary` adds resumable `aggregating`/`ready` progress and grouped
+`UsageRollupRow` results. Query mode, group and actual provider/model/account
+filters remain separate from source authority. `parseUsageSummaryRows` validates
+bounded persisted/returned rows. The shared `UsageReceiptRowAccumulator` consumes
+already reconciled receipts and restores its own snapshots; both indexed totals
+and the existing interactive fold use that arithmetic owner. Its existence does
+not remove the interactive fold's 500-receipt/coverage policy.
+`PrivateUsageReceiptQuery` carries Core's captured receiver/checkpoint/source
+fences for bounded receipt-index derivation. `PrivateUsageReceiptPage` distinguishes
+row-free indexing progress from ready receipt pages, with an index UUID, retention
+expiry and explicit retained-only coverage. The strict query/page decoders reject
+unknown fields and source/window mismatches. These storage contracts do not
+resolve a person or authorize source access; Core performs those checks.
+`PrivateUsageCommit`, `PrivateUsageCheckpoint` and `PrivateUsageCommitReceipt`
+describe strict canonical page storage under an opaque private storage key.
+`parsePrivateUsageCommit` shares the canonical page decoder, pins the declared
+source/scope/query and refuses unknown/content fields. Receiver epoch and expected
+checkpoint are storage concurrency fences, not verified person/source authority
+or copied-backup restore protection. A receipt is historical commit evidence.
+Core's page-sync caller supplies verified person/source authorization; canonical
+current receipt/query semantics remain separate. `restartSnapshot` explicitly
+begins a new fact cycle under checkpoint CAS without erasing retained history.
+`AnalyticsSourceSyncStatus` is content-free historical delivery metadata, not
+current source authority. `PrivateUsageInvalidationCommit`,
+`PrivateUsageInvalidationCheckpoint` and `PrivateUsageInvalidationReceipt`
+describe atomic withdrawal/replay under private storage ownership.
+`parseUsageInvalidationPage` and `parsePrivateUsageInvalidations` validate strict
+retained-only pages, scope/epoch, order and progress without resolving a person
+or creating a source grant. `canonicalUsageExportJson` is the shared stable JSON
+representation for immutable payload comparison, not an identity/signature grant.
+
+
+
+
+
 
 The `@kontourai/station-contracts/html-reply` subpath defines prepared page
 bytes, publication references, byte/height limits and theme variable names for
 [visual replies](../user/html-replies.md). It grants no publication or
 conversation access. Filesystem preparation stays in the server.
 
+The `@kontourai/station-contracts/terminal-transport` subpath exports the
+terminal binary frame codec, limits and observe/operate scope predicate. The
+[API reference](api.md#terminal-socket-personal-operator-transport) owns the
+wire controls and the current personal-operator admission limit. The predicate
+is not Project membership or a credential verifier.
+
+The `@kontourai/station-contracts/runtime-event-content` subpath defines the
+reference a stored runtime event keeps in place of a large value
+(`RuntimeEventContentRef`: digest, kind, byte size and a preview whose JSON
+encoding is at most 512 bytes), the `exceeds-ceiling`/`missing` marker, the
+literal wrapper for engine data that used a reserved key, and the
+`spilledContent` summary. Its pure helpers collect, resolve (single-level,
+with a caller-supplied lookup), unescape and display references, and give the
+text a viewed-content digest covers: the stored request plus the references
+of the tool calls it gates (`requestBoundCallIds`, `viewedContentPreimage`).
+A plan entry's `content` is spillable text. A preview is never the whole
+value; see [event content spill](../design/event-content-spill.md).
+
 | Module | Owns |
 | `@kontourai/station-contracts/walkthrough` | Versioned recording manifest, strict hand-written parser, limits, typed import outcomes and bounded list pages |
 |---|---|
+| `@kontourai/station-contracts/chat-host-images` | The `chat-host-images` preview ID, the closed refusal vocabulary, a turn's path-to-attachment map, and pure helpers: `hostImagePathFromDestination` (the one path key both the server scan and the client lookup use), `chatHostImageMapFromEvent` and `chatHostImageRefusalText`. The `content.host-images` runtime event carries it; Station emits that event, engines cannot (`ProviderRuntimeEvent` excludes it). It grants no file or attachment access. See [images saved on the host](../user/html-replies.md#images-saved-on-the-host). |
 | `@kontourai/station-contracts/station-control-external-client` | Explicit initial tool selection, bounded lease request and secret-bearing client configuration response; a pure response parser grants no authority. Local operator setup, Session/Project validation and revocation remain server-owned. See [external client setup](session-api.md#external-clients-using-station-tools). |
 | `@kontourai/station-contracts/engine-accounts` | Secret-free engine account, quota, optional identity/credit/model/spending/breakdown metadata and bounded capture-audit projections, plus provider-owned login; runtime validation stays in SDK consumers |
 | `@kontourai/station-contracts/engine-sign-in` | Sign-in for engines run as commands: status with its source, offered methods (id, name, kind, terms note), key names (never values), the running attempt and what the caller may do |
@@ -65,11 +245,12 @@ conversation access. Filesystem preparation stays in the server.
 | `@kontourai/station-contracts/agent-plugin` | Agent Plugins 1.0 schema identities, name grammar, and Station extension declarations |
 | `@kontourai/station-contracts/skill-experience` | Inert v1 Skill definitions and explicit stage/rich-pane declarations, host-observed inventory identity, canonical start inputs and retained Session invocation views; see [experience contract](skill-experiences.md) |
 | `@kontourai/station-contracts/attention` | Attention projections and exact approval/permission request references and inspection states |
-| `@kontourai/station-contracts/environment-security` | Public handshake and compatibility declarations, scoped Device/Station pairing, receiver-owned additive grant kind, and secret-free `PeerEnrollmentInput`/`PeerEnrollment` metadata; explicit `access:devices` administration scope and `device-access` / `operator-passkey` revocation provenance. A missing legacy kind denotes Device access; these declarations grant no Project membership or execution consent. See [peer enrollment](sdk.md#station-peer-enrollment). |
+| `@kontourai/station-contracts/environment-security` | Public handshake and compatibility declarations, scoped Device/Station pairing, receiver-owned additive grant kind, and secret-free `PeerEnrollmentInput`/`PeerEnrollment` metadata; explicit `access:devices` administration scope and `device-access` / `operator-passkey` revocation provenance. Companion management uses the separate operator-promoted `telemetry:manage` permission, absent from presets/defaults; it does not enable sending or personal source access. A missing legacy kind denotes Device access; these declarations grant no Project membership or execution consent. See [peer enrollment](sdk.md#station-peer-enrollment). |
+| `@kontourai/station-contracts/station-routes` | The addresses a Station reports it can be reached on (`GET /api/system/routes`): LAN, Tailscale and Tailscale HTTPS origins with the Station's `environmentId`, and a parser that drops invalid entries. A client learns them as routes to the same saved Station and still checks each against the handshake before use; see [Station routes](../design/station-routes.md). |
 | `@kontourai/station-contracts/station-groups` | Station groups for people (#3557): the Admin/Member vocabulary and default, the governed permissions and each group's ceiling, the pure `capScopeToGroup`, and the `StationPerson`/`StationGroupAssignment` shapes `GET /api/pairing/people` returns. Groups only cap a person-tied Device's governed permissions; they grant nothing, never include `access:manage`, and are not Project roles |
 | `@kontourai/station-contracts/auth` | Auth status, renew results, user identity/detail models |
 | `@kontourai/station-contracts/secret-binding` | Metadata-only AuthRef bindings, instance/person ownership, distinct exact MCP environment, ACP header and instance telemetry destination grants; raw material is server-only |
-| `@kontourai/station-contracts/telemetry-delivery` | Current-process product acknowledgement/queue/failure and OTLP callback/probe status; collector acceptance does not prove downstream storage |
+| `@kontourai/station-contracts/telemetry-delivery` | Current-process product acknowledgement/queue/failure and OTLP callback/probe status; host prerequisites, build-only artifact evidence and archive-byte preparation receipts. Preparation receipts never grant installation authority; collector acceptance does not prove downstream storage |
 | `@kontourai/station-contracts/authority-observation` | Closed credential-bound authority observation: current home identity, resolved principal echo (kind+id only), and verified grant tier; authorization-neutral, grants nothing |
 | `@kontourai/station-contracts/automation` | Automation sources (GitHub poll and webhook), the source-safe projection without the webhook secret, source grants, exact-equality string matchers (event fields are strings; numbers arrive as canonical decimal strings; an empty `where` is refused), rules, episodes, the closed delivery outcomes and the subset that takes part in semantic dedupe, `AUTOMATION_EXECUTION_LIMITS`, the GitHub event allow-list and the `AUTOMATION_OPERATOR_SURFACE` parity table, whose mutations have no MCP verb. Shapes only: the server validates and stores them, and no route, intake or dispatch consumes them yet |
 | `@kontourai/station-contracts/application-session` | Device-bound account continuations, explicit capabilities, public proof keys and challenge/credential projections; no Device or Project grant |
@@ -104,7 +285,7 @@ conversation access. Filesystem preparation stays in the server.
 | `@kontourai/station-contracts/personal-board` | Declarative dashboard sections, saved/proposed Board document and revisioned authoring inputs |
 | `@kontourai/station-contracts/local-accounts` | Operator-only account projections, sign-in/session actions and one-time recovery results |
 | `@kontourai/station-contracts/notification` | Notification payloads and actions |
-| `@kontourai/station-contracts/orchestration` | Connected-agent/orchestration request and response shapes. A session event window may carry `latestTool: { turnId, name }` independently of its transcript caps, bounded to a 256-byte UTF-8 name and 4096-byte turn ID at the snapshot watermark. `null` means no usable current-turn tool; only an absent field permits older-server event fallback. A new turn clears the fact; steering the same turn preserves it. No arguments or inferred tool-running state are included. |
+| `@kontourai/station-contracts/orchestration` | Connected-agent/orchestration request and response shapes. A session event window may carry `latestTool: { turnId, name }` independently of its transcript caps, bounded to a 256-byte UTF-8 name and 4096-byte turn ID at the snapshot watermark. `null` means no usable current-turn tool; only an absent field permits older-server event fallback. A new turn clears the fact; steering the same turn preserves it. No arguments or inferred tool-running state are included. `turnStartDetached: true` marks a capped newest page whose oldest event is its oldest turn's `turn.started`, re-added across events the page left out; its `nextCursor` reads that gap first. Absent means the page is contiguous, or the host predates the field. |
 | `@kontourai/station-contracts/required-slots` | Required Home and shared Inbox/Chat default identities, non-empty assignment parser, default mutation refusal and pure override/default/safe-mode resolution; declarations grant no execution or role authority. See [required slots](../guides/plugins.md#required-home-and-inboxchat-slots) |
 | `@kontourai/station-contracts/plugin` | Plugin manifests, previews, overrides, conflicts, install outcomes and current permission status |
 | `@kontourai/station-contracts/plugin-foreground-work` | Bounded foreground-work declarations, start intents, effect depth, run states, and safe public outcomes. Published ahead of a server implementation: Station does not admit or list plugin foreground runs yet |
@@ -117,12 +298,13 @@ conversation access. Filesystem preparation stays in the server.
 | `@kontourai/station-contracts/session-inventory` | Closed Session inventory rows, gaps, and current-answer Basis projection |
 | `@kontourai/station-contracts/session-work-item` | Closed immutable Session-to-work-item association observations |
 | `@kontourai/station-contracts/scheduler` | Scheduler jobs, stats, capabilities, notifications |
-| `@kontourai/station-contracts/system-status` | Device presentation, the answering server's runtime identity, update-provenance issue codes, and service and server update state |
+| `@kontourai/station-contracts/system-status` | Device presentation, the answering server's runtime identity, update-provenance issue codes, service and server update state, and engine workload memory budgets |
 | `@kontourai/station-contracts/task-room-work` | Versioned Task agent request intent, explicit engine/model/options digest identity, authorized request records, list and submission outcomes. Requester IDs are Task-scoped display pseudonyms; execution references do not grant Session access or prove completion |
 | `@kontourai/station-contracts/task-memory` | Task memory (#4003): the Task summary revision and keyed record shapes, limits, default importance, the stateless write check (`checkTaskRecordWrite`, `taskSummaryRefusal`), refusal wording, the person's views, `taskAwaitsAnswer` for the Tasks list's `openQuestionCount`, and the Learning shapes (`TaskLearningView`, candidates, promotion and dismissal input, limits) for a done Task's promotion candidates. Every bound is a refusal |
 | `@kontourai/station-contracts/task-review` | Task review thread, event, evidence and capture shapes; person and caller-bound station-control DTOs; strict boundary parsing, append-transition checks, derived views/counts, quote relocation and freshness. [Contract source](../../packages/contracts/src/task-review.ts) and [pure contract tests](../../packages/contracts/src/__tests__/task-review.test.ts). Runtime integration and evidence belong to the Task review API and SDK references |
 | `@kontourai/station-contracts/chat-app` | Discord/Slack chips sharing status action shapes, principal links and explicit legacy import provenance, Project/conversation channel bindings, approval-correlated delivery attempts, per-app kill switches, hashed two-step link-code records and confirmation requests; [source](../../packages/contracts/src/chat-app.ts), [boundary tests](../../packages/contracts/src/__tests__/chat-app.test.ts) |
 | `@kontourai/station-contracts/integration-status` | Per-connection actions for GitHub, Discord, Slack, webhooks, Linear and Jira. Each action requires a `computedBy` probe ID, `works`, `waiting-on-provider`, `unsupported` or `failed` state, and a diagnostic/upstream reason; [source](../../packages/contracts/src/integration-status.ts), [boundary tests](../../packages/contracts/src/__tests__/integration-status.test.ts) |
+| `@kontourai/station-contracts/task-approval` | Task approval decisions, first-winner outcomes and refusal codes; bounded, closed `parseTaskApprovalDecision` and `parseTaskApprovalOutcome`. [Contract source](../../packages/contracts/src/task-approval.ts) and [parser tests](../../packages/contracts/src/__tests__/task-approval.test.ts). Store arbitration, admission and engine settlement are separate runtime work |
 | `@kontourai/station-contracts/work-claims` | A Session's work claim as Station's routes answer it (#3413): information, not a lock. The view shape, its parser and the subject labels the Session-row chip uses |
 | `@kontourai/station-contracts/tool` | Tool definitions, permissions, connection configs |
 | `@kontourai/station-contracts/tool-library` | Safe source metadata, Project policy, requests, access summaries and Project agent drafts; [SDK client](sdk.md#project-tool-library) |
@@ -162,8 +344,10 @@ New identity links require a real `linkedAt`, and revocation cannot predate it.
 Imported Discord links instead carry `importedAt` and legacy provenance, so an
 earlier revocation remains representable. Presence of `revokedAt` revokes the
 link immediately, even when the timestamp is in the future, preserving v1
-semantics. The projection keeps `stationIdentity`
-in its legacy userId namespace and omits `principalId`; the runtime must resolve
+semantics. Import canonicalizes a parseable legacy revocation date to ISO; a
+value that is unparseable or outside the canonical timestamp range imports as
+revoked at `importedAt`. The
+projection keeps `stationIdentity` in its legacy userId namespace and omits `principalId`; the runtime must resolve
 it against verified principals before access. It must retain first-match order
 for duplicate legacy identity mappings. Imported binding IDs are exactly
 `legacy-discord:<guildId>:<channelId>`, independent of the selected conversation.
@@ -185,17 +369,20 @@ Raw confirmation codes use 10–128 symbols from
 `23456789ABCDEFGHJKLMNPQRSTUVWXYZ` (32 unambiguous symbols). The runtime must use
 uniform cryptographic randomness with at least 50 bits of entropy; format
 validation alone cannot establish randomness. The private `ChatLinkCode` stores
-only a lowercase SHA-256 `codeHash`, app, external user, issue/expiry times and
+a non-secret bounded `challengeId`, a lowercase SHA-256 `codeHash` of only the
+secret code, app, external user, issue/expiry times and
 `failedAttempts` in 0–5. At 5 failures the record is locked. Issue precedes
 principal resolution, so an unconsumed record has no principal. A consumed
 record requires both `principalId` and `consumedAt` in the issue/expiry window,
 with fewer than 5 failures. Lifetime is at most ten minutes. Parsing retained
 expired, locked or consumed records does not grant redemption.
 
-The confirm request carries only app and raw code. Its principal comes from
-the authenticated caller. The runtime must compare digests, recheck expiry,
-attempt budget and single use, atomically increment failed attempts, and
-atomically bind the caller principal with consumption. It must never accept a
+The confirm request carries app, `challengeId` and raw code. Its principal comes
+from the authenticated caller. The runtime must look up the challenge by
+`challengeId`, compare the code digest in constant time, recheck expiry,
+attempt budget and single use, atomically increment that challenge’s failed
+attempts on mismatch and lock it at the bound. An unknown `challengeId` changes
+nothing. On success it must atomically bind the caller principal with consumption. It must never accept a
 client-supplied principal. Channel binding writes and kill switches require
 operator authorization. A binding or identity link grants no Project membership.
 Slack tokens stay in secret bindings, outside these shapes; one Slack workspace
@@ -212,7 +399,7 @@ and `parseTaskCapture`, return `null` on malformed input or unknown keys.
 Bounds refuse max+1 without truncating: bodies 4000, reasons 500, quotes 2000,
 serialized anchors/evidence 4096, URLs 2048 and labels 120 UTF-16 code units.
 Artifact/operation/reference IDs and delivery keys are bounded at 512, revisions at 256 and author
-IDs at 256. All strings must be well-formed Unicode. Evidence ref lists are
+IDs at 256. Bounded text must be well-formed Unicode and refuses C1 controls. Evidence ref lists are
 capped at 200 each, subject to the tighter serialized evidence bound. Capture
 metadata caps bytes at 16 MiB and each optional image dimension at 32768 pixels
 (`TASK_REVIEW_LIMITS.captureDimension`); metadata parsing grants no capture
@@ -677,8 +864,10 @@ No existing diagnostic code is renamed or removed.
 | `continuation_workspace_unbound` | `input_unsupported` | `false` |
 | `continuation_workspace_worktree_gone` | `input_unsupported` | `false` |
 | `continuation_workspace_worktree_moved` | `input_unsupported` | `false` |
+| `conversation-context-unavailable` | `conflict` | `false` |
 | `engine-decision-not-sent` | `warning` | `false` |
 | `engine-decision-unacknowledged` | `warning` | `false` |
+| `engine-memory-exhausted` | `engine_crashed` | `true` |
 | `engine-session-binding-dead` | `session_gone` | `false` |
 | `engine-sign-in-required` | `auth` | `false` |
 | `engine-turn-failed` | `provider_error` | `false` |
@@ -714,6 +903,7 @@ No existing diagnostic code is renamed or removed.
 | `SESSION_START_INDETERMINATE` | `indeterminate` | `false` |
 | `session-reattach-conflict` | `conflict` | `false` |
 | `transcript-line-skipped` | `warning` | `false` |
+| `workload-command-oom-killed` | `warning` | `false` |
 
 The [source inventory guard](../../scripts/__tests__/provider-failure-inventory.test.ts)
 recursively discovers string `*_CODE` declarations and string-literal `code` class
@@ -1095,6 +1285,22 @@ required", as the ACP SDK builds it) is refused the same way, carrying
 `ENGINE_SIGN_IN_REQUIRED_CODE` (`engine-sign-in-required`, kind `auth`, from
 `provider`); the same error on a prompt is that turn's `runtime.error` with the
 same code, and chat renders both as a prompt to sign in to the engine.
+A Codex turn whose engine process was killed for exhausting its workload
+memory budget ends with a `runtime.error` carrying
+`ENGINE_MEMORY_EXHAUSTED_CODE` (`engine-memory-exhausted`, from `provider`)
+and `details.workload` (`result`, `memoryPeakBytes`, `memoryMaxBytes`,
+`oomKills`, `unreportedOomKills` when observed); the evidence is the scope's
+kernel `oom_kill` count (`childWorkloadMemoryExhausted` in
+`@kontourai/station-shared/child-workload`), not a signal alone. Only the Codex
+adapter publishes it today. The conversation is continued automatically
+(capped) with a Station recovery note; past the cap chat offers Continue rather
+than Send again. That continuation's turn carries a send key starting
+`MEMORY_CONTINUATION_CLIENT_TURN_PREFIX` and an internal origin;
+`isStationMemoryContinuationTurn` (`provider`) recognises it and
+`memoryContinuationKeyKind` tells Station's automatic key from a person's
+Continue (`-p` suffix); the prefix is reserved for Station's own origin. A kill of a
+process inside a still-running Codex scope is a `runtime.warning` with
+`WORKLOAD_COMMAND_OOM_KILLED_CODE` (`workload-command-oom-killed`).
 That type is how an adapter tells the start boundary that its start is settled:
 the boundary is released and the receipt is `rejected`, where every other
 adapter failure at start stays an indeterminate start that fences the thread. An
@@ -1508,6 +1714,15 @@ Station process's PID, uptime, RSS and JavaScript heap. The resource-posture API
 adds it optionally; its observation timestamp is independent of the cached CPU
 sample. It is display-only and carries no execution or admission authority.
 
+`WorkloadBudgetStatus` (also `system-status`) is the `GET /api/system/workload`
+read: enforcement state and reason, host memory, effective limits, each memory
+budget's source (`environment`, `settings` or `default`), saved settings and
+whether a change applies to new scopes or after a restart. Its optional
+`scopes` lists running scopes with the per-engine limit each was launched
+with, the OOM kills Station observed in it, when it first saw the latest, and
+for an engine scope whether its holder is `placed` or `unplaced` (with a
+`WorkloadHolderUnplacedReason` code).
+
 `@kontourai/station-contracts/system-status` owns `DevicePresentation`
 (the request-bound host/paired projection), `SystemRuntimeIdentity`
 (the answering server's `instanceId`/`bootId`/`sha` triple with an optional
@@ -1579,6 +1794,69 @@ Sparse or mixed-model/pricing evidence cannot substantiate a combined estimate.
 receipt drilldown. See the [analytics API](api.md#read-usage-receipts-and-rollups)
 for limits and observation-window semantics.
 
+
+## Multiplayer Task contracts
+
+The room contract declares `station.project-task-room/v5` with
+`ProjectTaskRoomMemberPrincipal {kind: 'member', principalId, deviceId}`.
+`ProjectTaskRoomV5Principal` and `ProjectTaskRoomV5Record` carry the new wire
+shape. The existing `ProjectTaskRoomPrincipal` and `ProjectTaskRoomRecord`
+remain legacy types until runtime member admission is wired. The pure
+`parseProjectTaskRoomPrincipal` accepts members only with v5; legacy operator
+and agent shapes remain supported. Both version-gated parsers require an
+explicit schema version and refuse a missing one rather than assuming v5. This structural check grants no authority.
+Member `principalId` and `deviceId`, mention principal IDs and approval IDs
+must be nonempty, at most 256 UTF-16 code units, well-formed Unicode, unchanged
+by trimming, and free of C0, DEL, C1, Unicode format controls and combining
+grapheme joiners. Legacy operator and agent room IDs retain their existing
+wire rules. Chat-app IDs use the same opaque-ID rule; the clean Agent/engine slug validator has a different
+grammar and cannot validate these principal/device IDs.
+
+Human messages may carry 1 to 32 structured
+`mentions: {kind: 'person', principalId}[]`, with IDs bounded to 256 UTF-16
+code units. `parseProjectTaskRoomHumanMessage` refuses extra keys and max+1,
+retains v4 attachments, rejects duplicate `principalId` values, and rejects
+mentions under v2/v3/v4. Presence locations are `conversation`, `review`,
+`plan` or a closed `{file}` object. Files must be relative POSIX paths of
+1–4096 UTF-16 code units, with well-formed Unicode and no surrounding
+whitespace. Leading `/` or `~`, drive letters, URL schemes, backslashes,
+empty or `..` segments, and C0, DEL and C1 controls are refused. This lexical
+check does not resolve symlinks or authorize file access. Browser projections
+carry optional human actor
+`standing: 'operator'|'member'`, agent `startedBy: {principalId, label, standing}`,
+and participant `location`; legacy projections may omit them.
+
+`projectTaskRoomWriteSchemaVersion` specifies monotone format selection:
+members or nonempty mentions advance to v5, and subsequent writes stay v5.
+An empty `mentions: []` does not select v5, and every parser refuses it. A
+defined `attachments` array, even `[]`, selects at least v4, whose parser
+accepts it. The helper
+accepts both append bodies and resolved record bodies directly.
+The persisted-record parser and permanent old-writer fence are still runtime
+work in #4136; this contract addition does not activate member writes or enforce
+a database fence. The closed record budget includes both copies of the message
+body, the maximal principal and embedded grant receipt, and page continuation.
+
+`TaskReviewListProjection` requires `{view, comment, send}` capabilities;
+`TaskReviewView` permits their absence for legacy producers. Runtime projection
+and controls are separate work. The action mapping is `view` to read, `discuss`
+to comment/reply/resolve/reopen, and `execute` to Send. Request review is a
+notification only and adds no review-store event.
+
+`TaskApprovalDecision` carries `requestId`, `sessionId`, an `allow` or `deny`
+decision, `decider: {principalId}`, `channel: 'station'|'slack'|'discord'`, and
+canonical ISO UTC `decidedAt`. The channel type is `'station' | ChatAppId`;
+`station` names the local channel. `parseTaskApprovalDecision` refuses
+extra keys, malformed timestamps and invalid IDs, without truncation.
+`TaskApprovalOutcome` is `decided` with a decision, `already-decided` with the
+winning decision, or `refused` with `invalid-request`, `not-found`, `forbidden`,
+`request-not-pending` or `unavailable`. `parseTaskApprovalOutcome` checks the
+closed outcome and parses its nested decision or winner. The winning decision
+retains principal ID, channel and decision time for “Allowed by”; 2E resolves
+the display name. The host supplies attribution and time; parsing establishes
+neither authority nor settlement. There is no Allow for
+Task choice. Persistence, first-winner arbitration and chat timeout behavior
+belong to later runtime lanes (#4139).
 
 ## Immutable Task output review
 
@@ -1752,6 +2030,16 @@ unavailable. This lease preserves source identity, while the server's scoped
 write authority separately checks the current request at physical file effects.
 It is not a grant to import or a file-content version.
 
+
+`@kontourai/station-contracts/analytics-views` owns principal-independent view
+shapes and pure validators: `AnalyticsViewDefinition`, `AnalyticsSavedView`,
+`parseAnalyticsViewDefinition`, `parseAnalyticsSavedView`, and
+`resolveAnalyticsViewWindows(definition,today)`. They describe selected recipient
+references, actual attribution filters, canonical usage measure/group, UTC
+relative/fixed periods and comparison. They never identify an authenticated
+principal or grant source permission. Owner/tenant checks, revisions, private
+persistence and current source reads belong to Core.
+
 ## Workspace visual files
 
 `WorkspaceVisualFile` and `parseWorkspaceVisualFile` in the
@@ -1858,3 +2146,14 @@ route evidence; Board UX remains #2997, and release/browser/device qualification
 is separate. Personal reads do not issue a primary Chat declaration, including
 when a caller names the Coding type; clone preserves server-issued catalog
 attribution but does not manufacture a declaration from client input.
+
+### Saved terminal outcome views
+
+`AnalyticsViewDefinition.kind` defaults to usage when omitted, preserving existing
+definitions. Explicit `kind: "outcomes"` accepts `completed`, `aborted` or `failed`
+measures and `engine` or `day` grouping. Outcome sources carry only `recipientId`;
+provider/model/account filters are rejected rather than ignored. UTC windows and
+comparison retain the existing saved-view owner and revision protocol.
+`PrivateOperationalOutcomeSummary.observedTurns` counts distinct retained turns
+with terminal observations; completed/aborted/failed partition those observations,
+with unknown retained-only coverage. Independent source populations stay separate.

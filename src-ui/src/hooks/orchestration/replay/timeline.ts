@@ -1,3 +1,4 @@
+import { runtimeEventContentText } from '@kontourai/station-contracts/runtime-event-content';
 import { isProviderTriggeredTurn } from '@kontourai/station-contracts/runtime-events';
 import type { SessionTapePlayer } from './player';
 
@@ -78,7 +79,7 @@ export function conversationTimelineLandmarks(
       (starts[index + 1]?.frameIndex ?? player.frames.length) - 1;
     return {
       turnId: event.turnId,
-      label: turnLabel(event.prompt, index),
+      label: turnLabel(runtimeEventContentText(event.prompt)?.text, index),
       startFrame: frameIndex,
       endFrame,
       forkable: completedTurnIds.has(event.turnId),

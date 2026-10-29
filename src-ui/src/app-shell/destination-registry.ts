@@ -544,16 +544,16 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
   },
   {
     // archive#3313 (Settings IA, option A): Feature Previews and always-on
-    // Developer folded into this one surface. #2059 (D3): it is the panel
-    // footer's gear now rather than a row — and the way every destination in
-    // the Manage group is reached.
+    // Developer folded into this one surface. #2059 (D3): it left the panel's
+    // rows, and it is the way every destination in the Manage group is
+    // reached. The footer's account menu ("Open settings") opens it.
     id: 'settings',
     route: '/settings',
     label: () => 'Settings',
     keywords: ['settings', 'preferences', 'config'],
     icon: 'settings',
     // Listed last in Customize as well, without leaving its other doors: the
-    // footer gear, ⌘, and the palette still open it directly.
+    // footer's account menu, ⌘, and the palette still open it directly.
     customizeNav: { group: 'this-station', order: 110 },
     palette: { order: 100 },
     managementViewTypes: ['settings'],

@@ -1,0 +1,7 @@
+{
+  "revision": "560752d9daaa13a20c8975853cc4fc76ce5b4136",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Correction to the previous note for this document: it does carry topic summaries that link to session-api, sdk and other references; it does not list no per-topic prose. Rechecked: searched it for sessionStarted, conversation-open/reopen, next-turn and engine-chip claims and found none; its summaries of the Session API and SDK stay accurate with the optional open-read field and replay sessionStarted this PR adds. station-docs-content.ts was regenerated from the edited canonical documents. No prose change.","inputs":["docs/reference/station-docs.md"]}
+  ]
+}

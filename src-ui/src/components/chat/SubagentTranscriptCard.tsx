@@ -1,6 +1,7 @@
 import { CHILD_WORK_SUMMARY_MAX_CHARS } from '@kontourai/station-contracts/child-work';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
-import { useEffect, useId, useState } from 'react';
+import { useId, useState } from 'react';
+import { useElapsedClock } from '../../hooks/useElapsedClock';
 import {
   CHILD_WORK_MODEL_SOURCE_TEXT,
   CHILD_WORK_STATUS_LABEL,
@@ -38,18 +39,6 @@ function parseTime(iso: string | undefined): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-/** Re-renders once a second while `active`, for a running child's clock. */
-function useTicker(active: boolean): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!active) return;
-    setNow(Date.now());
-    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
-    return () => window.clearInterval(timer);
-  }, [active]);
-  return now;
-}
-
 /** The first line of `text` with Markdown emphasis left as written. */
 function firstLine(text: string): string {
   return (
@@ -85,7 +74,7 @@ export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
   const running = item.status === 'running';
   const startedAtMs = parseTime(item.startedAt);
   const endedAtMs = parseTime(item.endedAt);
-  const now = useTicker(running && startedAtMs !== undefined);
+  const now = useElapsedClock(running && startedAtMs !== undefined);
 
   // Running: the live clock from the reported start. Settled: the reported
   // start and end, else the engine's own duration. Nothing reported: absent.

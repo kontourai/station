@@ -519,8 +519,8 @@ describe.skipIf(!chromiumAvailable)(
      * `RegionToolbarControls`, the toolbar's last sibling, and the account
      * menu is the sidebar footer's. The phone row is the connection dot,
      * Notifications, and the `⋯` overflow — no account control and no
-     * Settings gear: both live in the sidebar drawer's footer, which the
-     * hamburger opens.
+     * Settings gear: the account control lives in the sidebar drawer's
+     * footer, which the hamburger opens, and its menu opens Settings.
      *
      * Added because a fault injection went green without it, and kept
      * because a `display` rule can fail either way: a regressed gear (or a

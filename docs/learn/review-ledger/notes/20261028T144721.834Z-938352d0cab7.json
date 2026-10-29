@@ -1,0 +1,7 @@
+{
+  "revision": "138b5dd1d399d4a48aa0f1e307bd65bcefb26dd7",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed active-pill border change at 138b5dd1d. Transparent border retains 1px geometry; min-height, 44px actionable touch targets, focus outline, backwards-fill entry/body/details animations and loop lifetime are unchanged. Existing status suite passed 18 tests; isolated actual CSS renders inspected at 390/1440 in both themes. Responsive guide claims remain accurate; no prose changes. Full dock/device layout not requalified.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/status/live-status.css"]}
+  ]
+}

@@ -7,6 +7,7 @@ import type {
 import { spawnChildWorkload } from '@kontourai/station-shared/child-workload';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import { terminateProcessTree } from '../../services/infra/process-utils.js';
+import { WORKLOAD_SESSION_ENV } from '../../services/infra/workload-budget.js';
 import {
   ClaudePermissionAsks,
   ClaudePermissionFrameTap,
@@ -91,6 +92,8 @@ function tailOf(text: string): string {
 export function createClaudeEngineProcess(
   spawnChild: SpawnChild = spawnChildWorkload,
   wrap?: ClaudeSpawnWrap,
+  /** The Station session this engine serves, for workload attribution. */
+  sessionId?: string,
 ): ClaudeEngineProcess {
   const asks = new ClaudePermissionAsks();
   let stderrTail = '';
@@ -113,7 +116,7 @@ export function createClaudeEngineProcess(
       cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
       signal: options.signal,
-      env,
+      env: sessionId ? { ...env, [WORKLOAD_SESSION_ENV]: sessionId } : env,
       windowsHide: true,
     });
     children.add(child);
