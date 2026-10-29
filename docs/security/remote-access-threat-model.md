@@ -142,7 +142,7 @@ every read, so a revoked binding cannot resume after restart.
 `__Host-station-operator` is Secure, HttpOnly, SameSite=Strict, Path=/, with no
 Domain. A hostname cookie also reaches the app on another port. That is an
 accepted read disclosure: app-origin plugin code can read
-`GET /api/pairing/devices`, `GET /api/operator/passkeys` and
+`GET /api/pairing/devices`, `GET /api/pairing/requests`, `GET /api/operator/passkeys` and
 `GET /api/operator/session` while the session is live. Exact-leaf admission
 stamps `operator-session`, never `operator-credential`. Ordinary bearer/Device
 admission runs first; an invalid operator cookie cannot block that authority. For

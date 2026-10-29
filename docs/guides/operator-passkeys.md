@@ -88,7 +88,7 @@ require the host approval path.
 The session uses `__Host-station-operator`, a Secure, HttpOnly,
 SameSite=Strict cookie with Path=/ and no Domain. Cookies are scoped by hostname,
 not port: the same-host app origin receives it too. While signed in, app-origin
-plugin code can read the device inventory and the operator's passkey/session
+plugin code can read the device inventory, pending pairing requests, and the operator's passkey/session
 metadata. It cannot run a passkey ceremony or mutate with operator-session
 authority directly: a write only requests a transaction and cannot approve it. Do not treat HttpOnly as isolation from same-origin code using the
 session to make allowed requests.

@@ -1327,21 +1327,25 @@ export function HostDevicePairingPanel({
     url: string;
     review: boolean;
     requestId?: string;
+    poll?: boolean;
   } | null>(null);
-  const consentLink = (value: unknown) => {
-    try {
-      if (typeof value !== 'string') return null;
-      const url = new URL(value);
-      const app = new URL(apiBase);
-      return url.protocol === 'https:' &&
-        url.hostname === app.hostname &&
-        url.origin !== app.origin
-        ? url.href
-        : null;
-    } catch {
-      return null;
-    }
-  };
+  const consentLink = useCallback(
+    (value: unknown) => {
+      try {
+        if (typeof value !== 'string') return null;
+        const url = new URL(value);
+        const app = new URL(apiBase);
+        return url.protocol === 'https:' &&
+          url.hostname === app.hostname &&
+          url.origin !== app.origin
+          ? url.href
+          : null;
+      } catch {
+        return null;
+      }
+    },
+    [apiBase],
+  );
   const [reconnecting, setReconnecting] = useState(false);
   // #2228 slice 3: a remembered reachable address (the tailnet or LAN URL the
   // operator last created an offer with for this Station) outranks the active
@@ -1440,14 +1444,16 @@ export function HostDevicePairingPanel({
       const generation = ++refreshGeneration.current;
       try {
         const [requestResponse, deviceResponse] = await Promise.all([
-          authenticatedFetch('/api/pairing/requests'),
+          authenticatedFetch('/api/pairing/requests', {
+            headers: background ? { 'X-Station-Background-Refresh': '1' } : {},
+          }),
           authenticatedFetch('/api/pairing/devices', {
             headers: background ? { 'X-Station-Background-Refresh': '1' } : {},
           }),
         ]);
         const [requestBody, deviceBody] = await Promise.all([
-          requestResponse.ok ? requestResponse.json() : undefined,
-          deviceResponse.ok ? deviceResponse.json() : undefined,
+          requestResponse.json().catch(() => undefined),
+          deviceResponse.json().catch(() => undefined),
         ]);
         if (generation !== refreshGeneration.current) return;
         if (
@@ -1461,6 +1467,11 @@ export function HostDevicePairingPanel({
           if (errorOwner.current !== 'action') {
             const authenticationFailed =
               requestResponse.status === 401 || deviceResponse.status === 401;
+            const signInUrl = consentLink(
+              requestBody?.signInUrl ?? deviceBody?.signInUrl,
+            );
+            if (signInUrl)
+              setOperatorLink({ url: signInUrl, review: false, poll: true });
             setAuthBlocked(authenticationFailed);
             setOperatorHandoff(!authenticationFailed);
             setError(
@@ -1481,14 +1492,16 @@ export function HostDevicePairingPanel({
           setAuthBlocked(false);
           setOperatorHandoff(false);
         }
-        if (requestBody) setRequests(requestBody.requests ?? []);
-        if (deviceBody) setDevices(deviceBody.devices ?? []);
+        if (requestResponse.ok && requestBody)
+          setRequests(requestBody.requests ?? []);
+        if (deviceResponse.ok && deviceBody)
+          setDevices(deviceBody.devices ?? []);
       } catch {
         // Polling is best-effort. A later generation retries without allowing a
         // slow or failed response to overwrite newer inbox state.
       }
     },
-    [authenticatedFetch, setError],
+    [authenticatedFetch, consentLink, setError],
   );
 
   useEffect(() => {
@@ -1567,7 +1580,6 @@ export function HostDevicePairingPanel({
             : null;
         if (!url) throw new Error('Invalid operator review');
         setOperatorLink({ url, review: true, requestId: request.requestId });
-        setError('Approval is pending passkey confirmation.');
         return;
       }
       if (!response.ok) {
@@ -1588,7 +1600,12 @@ export function HostDevicePairingPanel({
             ? await response.json().catch(() => null)
             : null;
         const signInUrl = consentLink(refusal?.signInUrl);
-        if (signInUrl) setOperatorLink({ url: signInUrl, review: false });
+        if (signInUrl)
+          setOperatorLink({
+            url: signInUrl,
+            review: false,
+            requestId: request.requestId,
+          });
         const operatorCli =
           response.status === 403 && action === 'approve'
             ? knownOperatorCli(refusal?.operatorCli)
@@ -2244,6 +2261,25 @@ export function HostDevicePairingPanel({
                   </button>
                 </>
               )}
+              {operatorLink?.requestId === request.requestId && (
+                <p role="status">
+                  {operatorLink.review
+                    ? 'Approval is pending passkey confirmation. '
+                    : ''}
+                  <a
+                    href={operatorLink.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {operatorLink.review
+                      ? 'Review and confirm with passkey'
+                      : 'Sign in as operator'}
+                  </a>
+                  {operatorLink.review
+                    ? ''
+                    : ', then return and approve again.'}
+                </p>
+              )}
             </div>
           ))}
         </section>
@@ -2522,7 +2558,7 @@ export function HostDevicePairingPanel({
       {error && (
         <div className="pairing-error" role="alert">
           <p>{error}</p>
-          {operatorLink && (
+          {operatorLink && !operatorLink.requestId && (
             <p>
               <a
                 href={operatorLink.url}
@@ -2533,7 +2569,11 @@ export function HostDevicePairingPanel({
                   ? 'Review and confirm with passkey'
                   : 'Sign in as operator'}
               </a>
-              {operatorLink.review ? '' : ', then return and approve again.'}
+              {operatorLink.review
+                ? ''
+                : operatorLink.poll
+                  ? ', then return and check the connection again.'
+                  : ', then return and approve again.'}
             </p>
           )}
           {authBlocked && onReconnect && (

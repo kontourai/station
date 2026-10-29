@@ -336,6 +336,7 @@ export function isOperatorSessionRead(method: string, path: string): boolean {
     (method === 'GET' &&
       [
         '/api/pairing/devices',
+        '/api/pairing/requests',
         '/api/operator/session',
         '/api/operator/passkeys',
         '/api/outside-agent/clients',

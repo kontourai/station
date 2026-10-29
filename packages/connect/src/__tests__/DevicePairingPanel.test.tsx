@@ -39,6 +39,35 @@ function response(body: unknown, status = 200) {
   });
 }
 
+test('the pairing panel offers operator sign-in when its inventory is refused', async () => {
+  const request = vi.fn(async () =>
+    response(
+      {
+        error: { code: 'insufficient_scope' },
+        signInUrl: 'https://station.example.test:8443/operator/sign-in',
+      },
+      403,
+    ),
+  );
+  render(
+    <HostDevicePairingPanel
+      apiBase="https://station.example.test"
+      publicEndpoint="https://station.example.test"
+      getCredential={() => 'device'}
+      request={request}
+      onCancel={vi.fn()}
+    />,
+  );
+  expect(
+    (
+      await screen.findByRole('link', { name: 'Sign in as operator' })
+    ).getAttribute('href'),
+  ).toBe('https://station.example.test:8443/operator/sign-in');
+  expect(
+    screen.getByText(/then return and check the connection again/),
+  ).toBeTruthy();
+});
+
 test('a polling authentication refusal is visible, pauses automatic retries, and can be checked explicitly', async () => {
   vi.useFakeTimers({
     toFake: [

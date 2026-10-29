@@ -1460,6 +1460,32 @@ describe('per-action operator passkey step-up (#3257 S4)', () => {
     });
   });
 
+  test('a signed-in operator can read pending pairing requests', async () => {
+    const h = await build();
+    const offer = h.pairing.createOffer({
+      endpoint: APP,
+      scope: 'orchestration:read',
+    });
+    const pending = h.pairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'New browser',
+      source: 'pairing-code',
+      requesterPosition: 'unproven',
+    });
+    const signed = await h.signIn();
+    const response = await h.read(signed.cookie, '/api/pairing/requests');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      requests: [
+        expect.objectContaining({
+          requestId: pending.requestId,
+          status: 'pending',
+        }),
+      ],
+    });
+  });
+
   test('a valid operator session starts review while an expired cookie does not block an independently authorized device', async () => {
     const h = await build();
     const approver = h.pair('Approver', 'orchestration:read access:approve');

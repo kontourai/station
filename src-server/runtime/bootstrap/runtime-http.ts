@@ -1252,7 +1252,10 @@ function configureRuntimeSecurity(
       return c.res;
     };
     const inventorySignIn =
-      (c.req.method === 'GET' && c.req.path === '/api/pairing/devices') ||
+      (c.req.method === 'GET' &&
+        ['/api/pairing/devices', '/api/pairing/requests'].includes(
+          c.req.path,
+        )) ||
       (c.req.method === 'POST' &&
         /^\/api\/pairing\/requests\/[^/]+\/confirm$/.test(c.req.path))
         ? security.operatorSessions?.signInUrl
