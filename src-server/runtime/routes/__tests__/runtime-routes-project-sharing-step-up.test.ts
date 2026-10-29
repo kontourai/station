@@ -424,6 +424,39 @@ describe('remote Project sharing enable with operator passkey step-up (#4306)', 
     };
   }
 
+  test('sharing refusal discloses only to a current admitted operator session', async () => {
+    const h = await setup();
+    const details = async (cookie: string) => {
+      const response = await h.call(
+        `/api/projects/${h.project.slug}/access`,
+        cookie,
+      );
+      expect(response.status).toBe(403);
+      return ((await response.json()) as { details: unknown }).details;
+    };
+    expect(await details(h.deviceCookie(h.phone.credential))).toEqual({
+      sharing: 'undisclosed',
+      canEnable: false,
+    });
+    const signed = await h.signIn();
+    expect(await details(signed.cookie)).toEqual({
+      sharing: 'off',
+      canEnable: true,
+    });
+    const other = h.pair('Other phone');
+    expect(
+      await details(
+        `${h.deviceCookie(other.credential)}; ${signed.operatorCookie}`,
+      ),
+    ).toEqual({ sharing: 'undisclosed', canEnable: false });
+    h.clock.now += OPERATOR_SESSION_IDLE_MS + 1;
+    expect(await details(signed.cookie)).toEqual({
+      sharing: 'undisclosed',
+      canEnable: false,
+    });
+    expect(h.shared()).toBe(false);
+  });
+
   test('a signed-in operator Device enables sharing only after a fresh passkey confirmation, and owns it', async () => {
     const h = await setup();
     const signed = await h.signIn();

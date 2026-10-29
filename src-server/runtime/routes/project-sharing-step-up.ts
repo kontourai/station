@@ -86,12 +86,31 @@ export function createProjectSharingStepUp(deps: ProjectSharingStepUpDeps) {
   };
 
   return {
+    mayDisclose(request: Request, slug: string): boolean {
+      if (
+        !deps.membership ||
+        !deps.mayPostEnable(request, slug) ||
+        !deps.isPrincipalCurrent(request)
+      )
+        return false;
+      const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+      if (
+        principal?.authority === 'operator-credential' ||
+        principal?.locality === 'home-possession'
+      )
+        return true;
+      return channelReady() && !!boundSession(request);
+    },
     async enablement(
       request: Request,
       slug: string,
     ): Promise<ProjectSharingEnablement> {
-      if (!deps.membership) return { enable: 'unavailable' };
-      if (await holdsOperator(request)) return { enable: 'direct' };
+      if (!deps.membership || !deps.mayPostEnable(request, slug))
+        return { enable: 'unavailable' };
+      if (await holdsOperator(request))
+        return deps.mayPostEnable(request, slug)
+          ? { enable: 'direct' }
+          : { enable: 'unavailable' };
       const principal = getRuntimeAuthenticatedRequestPrincipal(request);
       if (
         principal?.authority !== 'device-credential' ||
@@ -248,7 +267,3 @@ export function createProjectSharingStepUp(deps: ProjectSharingStepUpDeps) {
     },
   };
 }
-
-export type ProjectSharingStepUp = ReturnType<
-  typeof createProjectSharingStepUp
->;

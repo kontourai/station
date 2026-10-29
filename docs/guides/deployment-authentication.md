@@ -48,10 +48,12 @@ or TLS. Solo local operation still requires neither accounts nor a provider when
 these opt-ins are absent.
 
 The operator enables sharing in a Project's **People and access** section,
-on the host or from a paired browser signed in with an operator passkey, which
-confirms each enable with the passkey
+on the host or from an eligible paired browser signed in with an operator passkey,
+which confirms each enable with the passkey
 ([Turn on Project sharing from a paired browser](operator-passkeys.md#turn-on-project-sharing-from-a-paired-browser)).
-The owner then chooses a role and creates a single-use invitation link. Share the link manually;
+Before sharing is on, an eligible caller sees **Sharing is off** and **Enable Project sharing**.
+Other callers see an explanation without disclosure of the sharing state. The owner
+chooses a role and creates a single-use invitation link. Share the link manually;
 no email is sent. The default link may be accepted by any authenticated person
 who possesses it, once, before its expiry. Cancel a pending link from that same
 section. An optional email restriction requires provider-verified contact

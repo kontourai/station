@@ -3,10 +3,12 @@ import {
   PROJECT_MEMBER_ROLES,
   PROJECT_MEMBERSHIP_VERSION,
   type ProjectAccessAdministrationView,
+  type ProjectAccessRefusalDetails,
   type ProjectInvitationView,
   type ProjectMemberRole,
   type ProjectMembershipScope,
   type ProjectSharingEnablement,
+  parseProjectAccessRefusalDetails,
 } from '@kontourai/station-contracts/project-membership';
 import { z } from 'zod/v3';
 import {
@@ -14,6 +16,7 @@ import {
   getJson,
   mutateJson,
   readJsonBody,
+  StationHttpError,
 } from './http';
 import { unwrapProjectResponse } from './project-response';
 
@@ -90,6 +93,22 @@ function administration(
     );
   return parsed.data as ProjectAccessAdministrationView;
 }
+/**
+ * The server's statement about a refused `getProjectAccess`: whether sharing
+ * is off and this caller can enable it. `undefined` for any other failure,
+ * including an older Station that sends no details. In that case the caller
+ * knows only that it was refused.
+ */
+export function projectAccessRefusal(
+  error: unknown,
+): ProjectAccessRefusalDetails | undefined {
+  return error instanceof StationHttpError &&
+    error.status === 403 &&
+    error.code === 'project_access_forbidden'
+    ? parseProjectAccessRefusalDetails(error.details)
+    : undefined;
+}
+
 export async function getProjectAccess(
   apiBase: string,
   slug: string,

@@ -46,6 +46,7 @@ class StepUpResponse extends Error {
 /** #4306: the operator passkey step-up for enabling sharing, supplied by the runtime. */
 export interface ProjectSharingEnableStepUp {
   enablement(request: Request, slug: string): Promise<ProjectSharingEnablement>;
+  mayDisclose(request: Request, slug: string): boolean;
   /** A `202 step_up_required` answer, or `undefined` for the ordinary path. */
   enable(
     c: Context,
@@ -101,6 +102,7 @@ export function createProjectMembershipRoutes(
   authority: (request: Request) => ProjectMembershipAuthority,
   invitationOrigin?: string,
   stepUp?: ProjectSharingEnableStepUp,
+  mayEnableRoute: (request: Request, slug: string) => boolean = () => false,
 ) {
   const app = new Hono();
   async function perform<T>(
@@ -110,6 +112,11 @@ export function createProjectMembershipRoutes(
       access: ProjectMembershipAuthority,
     ) => Promise<T>,
     release?: (data: T) => DeliveryAdmission | undefined,
+    /** `details` for a `forbidden` refusal, so the client knows which state it is in. */
+    forbiddenDetails?: (
+      owner: ProjectMembershipService,
+      access: ProjectMembershipAuthority,
+    ) => Promise<unknown>,
   ) {
     c.header('Cache-Control', 'no-store');
     if (!service)
@@ -157,6 +164,30 @@ export function createProjectMembershipRoutes(
           { error: { code: 'invalid_project_access_request' } },
           400,
         );
+      if (
+        error instanceof ProjectMembershipRefusal &&
+        error.code === 'forbidden' &&
+        forbiddenDetails
+      ) {
+        // Fresh authority: the details are judged on what the caller holds
+        // now, not on the authority object the refused read used.
+        const details = await forbiddenDetails(
+          service,
+          authority(c.req.raw),
+        ).catch((cause: unknown) => {
+          logger.error('Project access refusal details unavailable', {
+            error: cause,
+          });
+          return undefined;
+        });
+        return c.json(
+          {
+            error: { code: 'project_access_forbidden' },
+            ...(details === undefined ? {} : { details }),
+          },
+          403,
+        );
+      }
       if (error instanceof ProjectMembershipRefusal)
         return c.json(
           { error: { code: `project_access_${error.code}` } },
@@ -196,6 +227,12 @@ export function createProjectMembershipRoutes(
         ...(invitationOrigin ? { invitationOrigin } : {}),
       }),
       (data) => managementRelease(data.scope, data.actingPrincipal.id),
+      (owner, access) =>
+        owner.accessRefusal(c.req.param('slug'), access, (operator) =>
+          stepUp
+            ? stepUp.mayDisclose(c.req.raw, c.req.param('slug'))
+            : operator && mayEnableRoute(c.req.raw, c.req.param('slug')),
+        ),
     ),
   );
   // Describes the caller only; it reads no Project files or membership.

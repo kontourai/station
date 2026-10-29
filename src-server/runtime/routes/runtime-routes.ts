@@ -888,6 +888,7 @@ import {
   type RequestDelegationSources,
 } from '../agents/request-delegation.js';
 import {
+  accountBoundProjectRouteMayPass,
   installAccountBoundDeviceGate,
   isTaskRelationshipHttpLeaf,
 } from '../bootstrap/account-bound-device-gate.js';
@@ -7075,6 +7076,28 @@ export function configureRuntimeRoutes(
     );
     await next();
   });
+  const mayPostProjectSharingEnable = (request: Request, slug: string) => {
+    const route = {
+      method: 'POST',
+      path: `/api/projects/${encodeURIComponent(slug)}/access/enable`,
+    };
+    const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+    const binding =
+      principal?.authority === 'device-credential'
+        ? context.environmentSecurityService.identifyDevice(
+            principal.credential,
+          )?.principalBinding
+        : undefined;
+    return (
+      runtimeRequestPrincipalMayAccessHttpRoute(
+        request,
+        context.environmentSecurityService,
+        route,
+      ) &&
+      (!(binding && 'kind' in binding && binding.kind === 'account') ||
+        accountBoundProjectRouteMayPass(route.method, route.path))
+    );
+  };
   context.app.route(
     '/api/projects',
     createProjectMembershipRoutes(
@@ -7093,17 +7116,10 @@ export function configureRuntimeRoutes(
             request,
             context.environmentSecurityService,
           ),
-        mayPostEnable: (request, slug) =>
-          runtimeRequestPrincipalMayAccessHttpRoute(
-            request,
-            context.environmentSecurityService,
-            {
-              method: 'POST',
-              path: `/api/projects/${encodeURIComponent(slug)}/access/enable`,
-            },
-          ),
+        mayPostEnable: mayPostProjectSharingEnable,
         logger: context.logger,
       }),
+      mayPostProjectSharingEnable,
     ),
   );
   // #90 Browser pane: personal hosts only (same gate as the device routes),

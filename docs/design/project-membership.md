@@ -168,6 +168,17 @@ these actions; they are not tokens appended to device pairing scopes.
 Only an authorized owner/admin may grant actions within their grant authority.
 Reject removal of the last active owner unless ownership transfer commits first.
 
+Turning sharing on for a Project (`POST .../access/enable`) needs Station
+operator authority, separate from any membership. Until then, the
+administration read `GET .../access` is refused with `403
+project_access_forbidden`, as it is for a non-manager. That refusal carries
+`ProjectAccessRefusalDetails` (#4302). The service reads the sharing state only
+after the caller has human authority and current operator credentials or a
+Device-bound operator passkey session, and passes HTTP admission for
+`POST .../access/enable`, including pairing scope and the account-bound Device gate. That caller learns `off` (and that it can enable)
+or `on`. Everyone else gets `undisclosed`, the same for a shared, unshared or
+missing Project.
+
 Private Sessions remain private by default. New Project work must explicitly
 record whether it is Project-shared. Sharing existing work requires a review
 of the selected conversations, artifacts and resource references; selecting a

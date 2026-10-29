@@ -92,6 +92,39 @@ export type ProjectSharingEnablement =
   | { readonly enable: 'operator-sign-in'; readonly signInUrl: string }
   | { readonly enable: 'unavailable' };
 
+/**
+ * Why `GET /api/projects/:slug/access` refused, sent as the 403 envelope's
+ * `details` so a client never has to guess the state from the status alone.
+ *
+ * The server reads whether the Project is shared only after the caller has
+ * shown the authority `POST .../access/enable` requires. Every other caller
+ * gets `undisclosed` whether or not the Project is shared, so the refusal
+ * tells them nothing new about the Project.
+ *
+ * - `off`: sharing has not been turned on, and this caller can turn it on.
+ * - `on`: the Project is shared, but this caller does not manage its people.
+ * - `undisclosed`: this caller cannot turn sharing on from here and is not
+ *   told whether the Project is shared.
+ */
+export type ProjectAccessRefusalDetails =
+  | { readonly sharing: 'off'; readonly canEnable: true }
+  | { readonly sharing: 'on'; readonly canEnable: false }
+  | { readonly sharing: 'undisclosed'; readonly canEnable: false };
+
+/** Boundary parser for {@link ProjectAccessRefusalDetails}. `undefined` for any other value, including the absent details of an older Station. */
+export function parseProjectAccessRefusalDetails(
+  value: unknown,
+): ProjectAccessRefusalDetails | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return undefined;
+  const { sharing, canEnable, ...rest } = value as Record<string, unknown>;
+  if (Object.keys(rest).length > 0) return undefined;
+  if (sharing === 'off' && canEnable === true) return { sharing, canEnable };
+  if ((sharing === 'on' || sharing === 'undisclosed') && canEnable === false)
+    return { sharing, canEnable };
+  return undefined;
+}
+
 /** Minimal disclosure to a holder of a current invitation; no files, paths or member inventory. */
 export interface ProjectInvitationPreview {
   projectName: string;
