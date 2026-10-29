@@ -9,12 +9,13 @@ rendering. Builds: `dde260ada73e01fb0154f6d3a837b26ac993876c` for 01–08,
 `1cd3c90c366e3b9fd85db0564fac369c461d8aab` for 10.
 
 The 01–10 captures are historical: the earlier in-app confirmation was
-replaced by a separate consent page. The four `11-sharing-*` PNGs were
-captured and inspected at `50f3c065f09` with the actual Settings section at
-390 and 1440 CSS pixels in both themes. They use an isolated `--watch` instance
-on ports 39261/39271 and show the unsupervised state, so Review change is
-disabled. The only offered address in that instance was loopback; these images
-do not establish reachable HTTPS or consent-page behavior.
+replaced by a separate consent page. The PR body links four later captures
+inspected at source revision `50f3c065f09`, at 390 and 1440 CSS pixels in
+both themes. They show an isolated, unsupervised `--watch` instance on ports
+39261/39271, with only loopback offered and Review change disabled. They do
+not establish reachable HTTPS or consent-page behavior. The temporary image
+commit remains in PR history because the reviewed branch cannot be rewritten;
+the new images are not present in the branch's final tree.
 
 - `01-off-1440-dark.jpg`: Settings → System, sharing off.
 - `02-choose-origin-1440-dark.jpg`, `02-choose-origin-390-light.jpg`: turned on
