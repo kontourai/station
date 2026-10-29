@@ -14,9 +14,8 @@ import { redactSecrets } from '@kontourai/station-shared/redaction';
  * `configWarning` (`lastErrorLine`). Mirrors Claude's `stderrTail`
  * (`claude-code-spawn.ts`).
  *
- * Each line is redacted before truncation. Delimiter lines and key-like
- * tokens are withheld independently, so a missing or mismatched delimiter
- * cannot change how later diagnostics are treated.
+ * Each line is redacted before truncation. A bounded PEM context withholds
+ * short body lines, while orphaned key-like tokens are filtered independently.
 
  */
 
@@ -69,7 +68,16 @@ function boundedLine(plain: string): string {
   const redacted = redactSecrets(plain);
   if (/-----BEGIN|-----END/.test(plain) || PADDED_BODY_LINE.test(plain))
     return '';
-  const safe = redacted.replace(KEY_MATERIAL, '[REDACTED]');
+  const safe = redacted.replace(/\S+/g, (token) => {
+    if (
+      /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(token) ||
+      /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(token) ||
+      /^(?:\/|\.\/)/.test(token) ||
+      /\/[^\s/]+\.[A-Za-z0-9]+(?::\d+)?$/.test(token)
+    )
+      return token;
+    return token.replace(KEY_MATERIAL, '[REDACTED]');
+  });
   return safe.length > CODEX_STDERR_LINE_MAX_CHARS
     ? `${safe.slice(0, CODEX_STDERR_LINE_MAX_CHARS)}…`
     : safe;
@@ -82,11 +90,28 @@ function normalized(text: string): string {
 export class CodexStderrTail {
   private lines: string[] = [];
   private chars = 0;
+  private pemLines = 0;
   private readonly reported: string[] = [];
 
   /** Keeps a cleaned line; returns it, or '' for a blank or withheld one. */
   push(raw: string): string {
-    const line = boundedLine(plainLine(raw));
+    const plain = plainLine(raw);
+    if (/-----END/.test(plain)) {
+      this.pemLines = 0;
+      return '';
+    }
+    if (/-----BEGIN/.test(plain)) {
+      this.pemLines = 200;
+      return '';
+    }
+    if (this.pemLines > 0) {
+      if (/^[A-Za-z0-9+/=]+$/.test(plain)) {
+        this.pemLines -= 1;
+        return '';
+      }
+      this.pemLines = 0;
+    }
+    const line = boundedLine(plain);
     if (!line) return '';
     this.lines.push(line);
     this.chars += line.length + 1;

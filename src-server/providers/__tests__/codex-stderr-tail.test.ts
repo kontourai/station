@@ -3,6 +3,7 @@
  * secret a whole-line pattern would have caught, nor a PEM body, and a
  * failure's text quotes one ERROR line that was not already reported.
  */
+import { createPrivateKey, generateKeyPairSync } from 'node:crypto';
 import { describe, expect, test } from 'vitest';
 import {
   CodexStderrTail,
@@ -65,6 +66,67 @@ describe('CodexStderrTail', () => {
       'ERROR real failure',
     ];
     expect(lines.map((line) => tail.push(line))).toEqual(lines);
+  });
+
+  test.each(['ed25519', 'rsa'] as const)(
+    'withholds a real %s PEM body and keeps later errors',
+    (kind) => {
+      const key =
+        kind === 'ed25519'
+          ? generateKeyPairSync('ed25519').privateKey
+          : generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey;
+      const pem = key.export({ type: 'pkcs8', format: 'pem' }).toString();
+      const body = pem.split('\n').slice(1, -2).join('');
+      const width = kind === 'ed25519' ? 16 : 64;
+      const parts = body.match(new RegExp('.{1,' + width + '}', 'g'))!;
+      const tail = new CodexStderrTail();
+      const outputs = [
+        '-----BEGIN PRIVATE KEY-----',
+        ...parts,
+        '-----END PRIVATE KEY-----',
+        'ERROR real failure',
+      ].map((line) => tail.push(line));
+      for (const part of parts) {
+        expect(outputs.join('\n')).not.toContain(part);
+        expect(tail.text()).not.toContain(part);
+      }
+      const reconstructed = outputs.join('\n').replace(/[^A-Za-z0-9+/=]/g, '');
+      expect(() =>
+        createPrivateKey({
+          key: Buffer.from(reconstructed, 'base64'),
+          format: 'der',
+          type: 'pkcs8',
+        }),
+      ).toThrow();
+      expect(tail.text()).toContain('ERROR real failure');
+    },
+  );
+
+  test('preserves tracing paths, hashes and UUIDs', () => {
+    const tail = new CodexStderrTail();
+    const lines = [
+      '2026-10-27T18:02:11Z ERROR codex_core: /workspace/a/very/long/project/src/some_module.rs:42 failed',
+      '2026-10-27T18:02:11Z INFO codex_core: commit 0123456789abcdef0123456789abcdef01234567',
+      '2026-10-27T18:02:11Z INFO codex_core: digest 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef request 10000000-0000-4000-8000-000000000000',
+    ];
+    expect(lines.map((line) => tail.push(line))).toEqual(lines);
+  });
+
+  test('ends PEM context on a diagnostic, an END, or the line cap', () => {
+    const tail = new CodexStderrTail();
+    expect(tail.push('\u001b[31m-----BEGIN PRIVATE KEY-----\u001b[0m\r')).toBe(
+      '',
+    );
+    expect(tail.push('  shortBody1234  \r')).toBe('');
+    expect(tail.push('ERROR real failure')).toBe('ERROR real failure');
+    expect(tail.push('ready')).toBe('ready');
+    tail.push('-----BEGIN PRIVATE KEY-----');
+    tail.push('-----END OTHER KEY-----');
+    expect(tail.push('ready')).toBe('ready');
+    tail.push('-----BEGIN PRIVATE KEY-----');
+    for (let i = 0; i < 200; i += 1)
+      expect(tail.push('shortBody1234')).toBe('');
+    expect(tail.push('ready')).toBe('ready');
   });
 
   test('handles a delimiter-dense line without repeated rescans', () => {

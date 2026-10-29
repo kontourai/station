@@ -2116,6 +2116,7 @@ export function createOrchestrationRoutes(
      */
     threadInbox?: Pick<
       ThreadInboxDelivery,
+      | 'mayContinue'
       | 'mustQueue'
       | 'submit'
       | 'list'
@@ -5525,16 +5526,24 @@ export function createOrchestrationRoutes(
     );
     if (!data)
       return c.json({ success: false, error: 'Conversation not found' }, 404);
+    const eligibility = deps.memoryContinuation?.continuationEligibility(
+      param(c, 'conversationId'),
+    );
     return c.json({
       success: true,
       data: {
         ...data,
-        ...(deps.memoryContinuation
+        ...(eligibility
           ? {
-              memoryContinuation:
-                deps.memoryContinuation.continuationEligibility(
-                  param(c, 'conversationId'),
-                ),
+              memoryContinuation: {
+                ...eligibility,
+                eligible:
+                  eligibility.eligible &&
+                  deps.threadInbox?.mayContinue(
+                    param(c, 'conversationId'),
+                    resolveDispatchActor(deps, c).userId,
+                  ) === true,
+              },
             }
           : {}),
       },

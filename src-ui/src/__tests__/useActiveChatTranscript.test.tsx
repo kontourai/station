@@ -4815,6 +4815,7 @@ describe('useActiveChatTranscript stored memory kill', () => {
     expect(markers.map((message) => message.turnId)).toEqual(['turn-2']);
   });
 
+  // The server service tests cover how the last failure derives eligibility.
   test.each([
     ['a memory kill after another failure', ['other', 'memory'], true],
     ['another failure after a memory kill', ['memory', 'other'], false],

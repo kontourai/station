@@ -89,6 +89,7 @@ test('authorized conversation window carries the coordinator decision', async ()
         logger: { debug: vi.fn(), warn: vi.fn() },
         getUserId: () => 'person-1',
         memoryContinuation: { continuationEligibility: eligibility },
+        threadInbox: { mayContinue: () => true },
       } as never,
     ),
   );
@@ -101,4 +102,32 @@ test('authorized conversation window carries the coordinator decision', async ()
     turnId: 'turn-1',
   });
   expect(eligibility).toHaveBeenCalledWith('c-1');
+});
+
+test('reader without send authority is not eligible to continue', async () => {
+  const route = new Hono().route(
+    '/api/orchestration',
+    createOrchestrationRoutes(
+      {
+        readConversationEventWindow: async () => ({
+          conversationId: 'c-1',
+          events: [],
+        }),
+      } as never,
+      {
+        eventBus: new EventBus(),
+        logger: { debug: vi.fn(), warn: vi.fn() },
+        getUserId: () => 'reader',
+        memoryContinuation: {
+          continuationEligibility: () => ({ eligible: true, turnId: 'turn-1' }),
+        },
+        threadInbox: { mayContinue: () => false },
+      } as never,
+    ),
+  );
+  const response = await route.request(
+    '/api/orchestration/conversations/c-1/event-window',
+  );
+  expect(response.status).toBe(200);
+  expect((await response.json()).data.memoryContinuation.eligible).toBe(false);
 });
