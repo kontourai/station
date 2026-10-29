@@ -98,6 +98,7 @@ import { personOnly } from './plugin-person-approval.js';
 import { recordProposalCompletion } from './plugin-proposal-routes.js';
 
 interface PluginInstallRouteDeps {
+  recoveryInventoryPreview?: import('../../services/feature-previews/feature-preview-registry.js').FeaturePreviewSelector;
   installationHost?: PluginInstallationHost;
   /** Install trust policy; absent in production, which uses the default. */
   installTrust?: PluginInstallTrustPolicy;
@@ -183,6 +184,21 @@ export function registerPluginInstallRoutes(
     )
       return c.json(
         { success: false, error: 'Operator credential required' },
+        403,
+      );
+    if (
+      !deps.recoveryInventoryPreview?.select({
+        enabled: () => true,
+        disabled: () => false,
+      })
+    )
+      return c.json(
+        {
+          success: false,
+          code: 'feature_preview_disabled',
+          error:
+            'Enable Plugin recovery inventory in Settings → Advanced → Feature previews.',
+        },
         403,
       );
     try {

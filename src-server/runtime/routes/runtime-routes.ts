@@ -3756,6 +3756,12 @@ export function configureRuntimeRoutes(
       context.logger,
       context.eventBus,
       {
+        recoveryInventoryPreview: context.featurePreviews.bind({
+          id: 'plugin-recovery-inventory',
+          label: 'Plugin recovery inventory',
+          description:
+            'List retained plugin recovery material and manual recovery guidance.',
+        }),
         onTelemetryRemoval: async (publisher, reason) => {
           return context
             .getUsageTelemetry?.()

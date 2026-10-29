@@ -1548,7 +1548,8 @@ and [installation lifecycle](../design/plugin-installation-lifecycle.md) for
 refusals, retention and the legacy path's limits.
 
 If an install and its compensation both fail, the error gives a retained
-backup id. An operator can run `station plugin recovery-backups` against that
+backup id. Enable **Plugin recovery inventory** in **Settings → Advanced →
+Feature previews**. An operator can run `station plugin recovery-backups` against that
 Station to list the id, creation time, integration names, size, local path and
 manual recovery guidance. The API is `GET /api/plugins/recovery-backups` and
 requires the operator credential. Newly created backups carry their home
