@@ -1797,10 +1797,8 @@ test('a failed Kontour author read alone leaves Settings offering what the capab
     </QueryClientProvider>,
   );
   try {
-    // The author read has failed and the main read has answered.
-    await waitFor(() =>
-      expect(seen.at(-1)).toEqual({ isError: true, readError: false }),
-    );
+    // The author read has failed (`isError`) and the main read has answered.
+    await waitFor(() => expect(seen.at(-1)?.isError).toBe(true));
     expect(
       calls('/api/usage-telemetry/disclosure?publisher=kontour').length,
     ).toBeGreaterThan(0);
@@ -1816,6 +1814,9 @@ test('a failed Kontour author read alone leaves Settings offering what the capab
     ).toHaveProperty('disabled', true);
     expect(screen.getByTestId('usage-sharing-limit').textContent).toBe(
       'This device can keep or reduce sharing. More sharing is chosen on the host computer.',
+    );
+    expect(seen.at(-1)?.readError, 'the main read reported an error').toBe(
+      false,
     );
   } finally {
     view.unmount();
