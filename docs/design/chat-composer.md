@@ -186,8 +186,26 @@ coding app's default profile, and does not edit saved Agent defaults. Known
 capability incompatibilities remain visible with a refusal reason; live resource
 and adapter delivery checks still decide admission. In an existing conversation,
 changing or resetting the engine opens an explicit handoff with the real draft
-and the existing context/write-identity confirmation. **Use Agent defaults**
-returns to the authored engine and model through that handoff. In a new-start
+and the existing context/write-identity confirmation. There the picker lists
+only the other engines this client can start (an unready or incompatible one is
+left out rather than shown with a refusal), lists none when the conversation's
+open resolution does not allow changes (read-only, unverified, busy on the
+server or still resolving), and shows them disabled with the reason while a
+turn, queued message or pending check blocks the switch; the handoff's
+**Switch to …** action is disabled for the same reasons ([entry
+point](../../src-ui/src/components/chat-dock/ChatDockBody.tsx),
+[dialog](../../src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx)).
+On an engine override, **Use Agent defaults** returns to the authored engine and
+model through that handoff when the switch is open. Whenever it is not, the
+picker's reset is disabled with the reason (the open resolution's refusal reads
+"This conversation can’t change its engine right now."). The composer's reset
+chip is not shown when the open resolution denies changes. While the reset is
+temporarily blocked (a turn running, or queued or offline messages unresolved,
+still being checked or with their state unavailable) the chip stays in place,
+disabled, with the reason as its accessible description, and the picker states
+the reason as text, so the row does not shift each turn. It never falls
+back to a model-only reset that would leave the engine override in place. In a
+new-start
 picker, resetting also clears an explicit Station choice, restoring configured
 placement defaults rather than leaving a remote destination without its verified
 binding. An explicit This Station choice is carried independently of engine

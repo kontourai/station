@@ -3865,7 +3865,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         availableModels={effectiveModels}
                         executionModels={executionRoutes}
                         onExecutionModelSelect={
-                          conversationBoundaryDialogs.openExecutionHandoff
+                          conversationCanMutate
+                            ? conversationBoundaryDialogs.openExecutionHandoff
+                            : undefined
                         }
                         modelsLoading={modelsLoading}
                         chatInput={chatInput}

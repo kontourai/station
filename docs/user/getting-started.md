@@ -477,6 +477,12 @@ show what **Start** will use:
   returns to, such as **Use project default** for a model-only choice or
   **Use Agent defaults** for an engine override. In an existing conversation,
   changing or resetting the engine opens a handoff confirmation that keeps your draft.
+  In the model picker, while a reply you sent is still running, the other
+  engines and **Use Agent defaults** are shown but unavailable until it
+  finishes. When Station reports that the conversation can't be changed right
+  now (it is read-only, still loading, the check failed, or it is waiting on a
+  turn the server reports as still running), the other engines are not listed
+  and **Use Agent defaults** is unavailable.
 - The **project** control (above the message on Home, beside the Agent chip
   in the dock) shows the Project's icon (or
   its colour when none is displayable) and name, or **Without a project**.
