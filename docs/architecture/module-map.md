@@ -5658,8 +5658,11 @@ shared contracts `summarizeThreadView` projection. Plan item metadata includes
 revisions. The working-state worker persists final save revisions in a separate
 SQLite index, in the settle transaction. Operation pruning and operation encoding
 never determine these ordinals; restart preserves them. Existing documents are
-backfilled from committed batch receipts in insertion order, with repeated
-revision identities counted once. Intermediate operation states have no version.
+backfilled from committed batch receipts in insertion order, using the historical
+revision format for v0 and counting consecutive unchanged identities once. A
+malformed receipt leaves that document's ordinals unavailable and retryable at
+startup without blocking other documents or inventing versions on later saves.
+Intermediate operation states have no version.
 The Review module caches requested ordinals, including missing identities, per
 Task incarnation, document and latest revision. New anchors fetch only missing
 identities; a new latest revision invalidates that cache. Entries share the

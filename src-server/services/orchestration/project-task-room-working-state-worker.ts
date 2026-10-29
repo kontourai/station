@@ -1,5 +1,7 @@
+import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { parentPort, workerData } from 'node:worker_threads';
+import { canonicalizeForDigest } from '@kontourai/station-contracts/fleet-routing-receipt';
 import { PROJECT_TASK_ROOM_RUNTIME_MIGRATION } from '../../domain/migrations/006-project-task-room-runtime.js';
 import { PROJECT_TASK_ROOM_REVISION_PUBLICATION_MIGRATION } from '../../domain/migrations/008-project-task-room-revision-publication.js';
 import { ensureProjectTaskRoomRevisionAttributionColumn } from '../../domain/migrations/009-project-task-room-revision-attribution.js';
@@ -46,54 +48,80 @@ db.exec(PROJECT_TASK_ROOM_REVISION_PUBLICATION_MIGRATION);
 ensureProjectTaskRoomRevisionAttributionColumn(db);
 db.exec('BEGIN IMMEDIATE');
 try {
-  if (
-    !db
-      .prepare(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='project_task_room_save_revisions'",
-      )
-      .get()
-  ) {
-    db.exec(PROJECT_TASK_ROOM_SAVE_REVISIONS_MIGRATION);
-    // Batch receipts survive resume-chain pruning. Backfill once from final
-    // revisions in commit insertion order, never from individual operations.
-    const insert = db.prepare(
-      'INSERT INTO project_task_room_save_revisions VALUES(?,?,?,?,?)',
-    );
-    const receipts = db.prepare(
-      'SELECT receipt_json FROM project_task_room_working_batches WHERE project_id=? AND task_id=? AND document_id=? ORDER BY rowid',
-    );
-    const documents = db.prepare(
-      'SELECT DISTINCT project_id,task_id,document_id FROM project_task_room_working_batches',
-    );
-    for (const row of documents.iterate()) {
-      const scope = {
-        projectId: row.project_id,
-        taskId: row.task_id,
-        documentId: row.document_id,
-      };
-      const initial = new SharedWorkingState({ scope }).snapshot().revision;
-      insert.run(row.project_id, row.task_id, row.document_id, initial, 0);
-      let ordinal = 0;
-      let previous = initial;
-      for (const receipt of receipts.iterate(
-        row.project_id,
-        row.task_id,
-        row.document_id,
-      )) {
-        const revision = JSON.parse(receipt.receipt_json).revision;
-        if (typeof revision !== 'string' || !revision.length)
-          throw new Error('malformed working batch receipt');
-        if (revision === previous) continue;
-        insert.run(
-          row.project_id,
-          row.task_id,
-          row.document_id,
-          revision,
-          ++ordinal,
-        );
-        previous = revision;
+  const needsBackfill = !db
+    .prepare(
+      "SELECT 1 FROM sqlite_master WHERE type='table' AND name='project_task_room_save_revisions'",
+    )
+    .get();
+  db.exec(PROJECT_TASK_ROOM_SAVE_REVISIONS_MIGRATION);
+  db.exec(`CREATE TABLE IF NOT EXISTS project_task_room_save_revisions_pending (
+    project_id TEXT NOT NULL, task_id TEXT NOT NULL, document_id TEXT NOT NULL,
+    PRIMARY KEY(project_id, task_id, document_id)
+  )`);
+  if (needsBackfill) {
+    db.exec(`INSERT OR IGNORE INTO project_task_room_save_revisions_pending
+      SELECT DISTINCT project_id,task_id,document_id FROM project_task_room_working_batches`);
+  }
+  const documents = db
+    .prepare(
+      'SELECT project_id,task_id,document_id FROM project_task_room_save_revisions_pending',
+    )
+    .all();
+  const receipts = db.prepare(
+    'SELECT receipt_json FROM project_task_room_working_batches WHERE project_id=? AND task_id=? AND document_id=? ORDER BY rowid',
+  );
+  const insert = db.prepare(
+    'INSERT INTO project_task_room_save_revisions VALUES(?,?,?,?,?)',
+  );
+  for (const row of documents) {
+    const key = [row.project_id, row.task_id, row.document_id];
+    const revisions: string[] = [];
+    let valid = true;
+    for (const receipt of receipts.iterate(...key)) {
+      try {
+        const revision = JSON.parse(receipt.receipt_json)?.revision;
+        if (
+          typeof revision !== 'string' ||
+          !/^swsr-v[12]:[a-f0-9]{64}$/.test(revision)
+        ) {
+          valid = false;
+          break;
+        }
+        revisions.push(revision);
+      } catch {
+        valid = false;
+        break;
       }
     }
+    if (!valid || !revisions.length) continue;
+    const format = revisions[0].startsWith('swsr-v1:') ? 1 : 2;
+    const empty = {
+      schemaVersion: format,
+      documentId: row.document_id,
+      ...(format === 1 ? { atoms: [] } : { runs: [] }),
+      knownOperations: [],
+      deferredOperations: [],
+    };
+    const initial = `swsr-v${format}:${createHash('sha256')
+      .update(JSON.stringify(canonicalizeForDigest(empty)) ?? 'null')
+      .digest('hex')}`;
+    const ordered = [initial];
+    const seen = new Set(ordered);
+    for (const revision of revisions) {
+      if (revision === ordered[ordered.length - 1]) continue;
+      if (seen.has(revision)) {
+        valid = false;
+        break;
+      }
+      seen.add(revision);
+      ordered.push(revision);
+    }
+    if (!valid) continue;
+    for (const [ordinal, revision] of ordered.entries())
+      insert.run(...key, revision, ordinal);
+    db.prepare(
+      'DELETE FROM project_task_room_save_revisions_pending WHERE project_id=? AND task_id=? AND document_id=?',
+    ).run(...key);
   }
   db.exec('COMMIT');
 } catch (error) {
@@ -550,6 +578,14 @@ async function handle(message: any) {
       );
     }
     if (value.type === 'revision-ordinals') {
+      if (
+        db
+          .prepare(
+            'SELECT 1 FROM project_task_room_save_revisions_pending WHERE project_id=? AND task_id=? AND document_id=?',
+          )
+          .get(...key(value.scope))
+      )
+        return send(id, { kind: 'unavailable' });
       const row = db
         .prepare(
           'SELECT revision FROM project_task_room_working_states WHERE project_id=? AND task_id=? AND document_id=?',
@@ -1019,12 +1055,17 @@ async function handle(message: any) {
             'SELECT MAX(ordinal) AS ordinal FROM project_task_room_save_revisions WHERE project_id=? AND task_id=? AND document_id=?',
           )
           .get(...key(value.scope)) as { ordinal: number | null };
-        if (saveHead.ordinal === null) {
+        const pendingOrdinals = db
+          .prepare(
+            'SELECT 1 FROM project_task_room_save_revisions_pending WHERE project_id=? AND task_id=? AND document_id=?',
+          )
+          .get(...key(value.scope));
+        if (!pendingOrdinals && saveHead.ordinal === null) {
           db.prepare(
             'INSERT INTO project_task_room_save_revisions VALUES(?,?,?,?,0)',
           ).run(...key(value.scope), baseWorkingRevision);
         }
-        if (snapshot.revision !== baseWorkingRevision) {
+        if (!pendingOrdinals && snapshot.revision !== baseWorkingRevision) {
           db.prepare(
             'INSERT INTO project_task_room_save_revisions VALUES(?,?,?,?,?)',
           ).run(

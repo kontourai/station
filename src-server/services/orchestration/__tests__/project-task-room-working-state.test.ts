@@ -625,6 +625,209 @@ describe('project task room working state', () => {
     }
   });
 
+  test('isolates malformed legacy receipts and retries without inventing ordinals', async () => {
+    directory = makeTempDir('station-room-bad-receipt-');
+    const path = join(directory, 'orchestration.sqlite');
+    const healthy = { ...scope, taskId: 'healthy' };
+    const legacy = createProjectTaskRoomWorkingState(path);
+    let healthyRevision = '';
+    let healthyInitial = '';
+    let badRevision = '';
+    let badReceipt = '';
+    try {
+      for (const target of [scope, healthy]) {
+        const before = await legacy.read({ scope: target });
+        if (target === healthy && before.kind === 'snapshot')
+          healthyInitial = before.revision;
+        const saved = await legacy.settle({
+          scope: target,
+          intentId: target.taskId,
+          intentDigest: target.taskId,
+          actorId: 'operator',
+          epoch: 1,
+          operations: [operation(target.taskId, 'a')],
+          suppressRevisionPublicationForDiagnostic: true,
+        });
+        expect(saved.kind).toBe('committed');
+        if (!saved.revision) throw new Error('missing revision');
+        if (target === healthy) healthyRevision = saved.revision;
+        else badRevision = saved.revision;
+      }
+    } finally {
+      await legacy.close();
+    }
+    const db = new DatabaseSync(path);
+    badReceipt = (
+      db
+        .prepare(
+          'SELECT receipt_json FROM project_task_room_working_batches WHERE task_id=?',
+        )
+        .get(scope.taskId) as { receipt_json: string }
+    ).receipt_json;
+    db.exec('DROP TABLE project_task_room_save_revisions');
+    db.prepare(
+      'UPDATE project_task_room_working_batches SET receipt_json=? WHERE task_id=?',
+    ).run('{}', scope.taskId);
+    db.close();
+    for (let restart = 0; restart < 2; restart++) {
+      const upgraded = createProjectTaskRoomWorkingState(path);
+      try {
+        expect((await upgraded.read({ scope: healthy })).kind).toBe('snapshot');
+        expect(
+          await upgraded.readRevisionOrdinals({
+            scope: healthy,
+            revision: healthyRevision,
+            revisions: [healthyInitial, healthyRevision],
+          }),
+        ).toEqual({
+          kind: 'available',
+          revisionOrdinals: { [healthyInitial]: 0, [healthyRevision]: 1 },
+        });
+        expect(
+          await upgraded.readRevisionOrdinals({
+            scope,
+            revision: badRevision,
+            revisions: [badRevision],
+          }),
+        ).toEqual({ kind: 'unavailable' });
+      } finally {
+        await upgraded.close();
+      }
+    }
+    const pending = createProjectTaskRoomWorkingState(path);
+    let nextRevision = '';
+    try {
+      const next = await pending.settle({
+        scope,
+        intentId: 'later',
+        intentDigest: 'later',
+        actorId: 'operator',
+        epoch: 1,
+        operations: [operation('later', 'b')],
+        suppressRevisionPublicationForDiagnostic: true,
+      });
+      expect(next.kind).toBe('committed');
+      if (!next.revision) throw new Error('missing later revision');
+      nextRevision = next.revision;
+      expect(
+        await pending.readRevisionOrdinals({
+          scope,
+          revision: nextRevision,
+          revisions: [badRevision, nextRevision],
+        }),
+      ).toEqual({ kind: 'unavailable' });
+    } finally {
+      await pending.close();
+    }
+    const repaired = new DatabaseSync(path);
+    repaired
+      .prepare(
+        'UPDATE project_task_room_working_batches SET receipt_json=? WHERE task_id=? AND intent_id=?',
+      )
+      .run(badReceipt, scope.taskId, scope.taskId);
+    repaired.close();
+    const retried = createProjectTaskRoomWorkingState(path);
+    try {
+      expect(
+        await retried.readRevisionOrdinals({
+          scope,
+          revision: nextRevision,
+          revisions: [badRevision, nextRevision],
+        }),
+      ).toEqual({
+        kind: 'available',
+        revisionOrdinals: { [badRevision]: 1, [nextRevision]: 2 },
+      });
+    } finally {
+      await retried.close();
+    }
+  });
+
+  test('backfills v1 initial no-op and save identities independently of the current default', async () => {
+    directory = makeTempDir('station-room-v1-upgrade-');
+    const path = join(directory, 'orchestration.sqlite');
+    const bootstrap = createProjectTaskRoomWorkingState(path);
+    await bootstrap.read({ scope });
+    await bootstrap.close();
+    // Captured from the v1 writer before the v2 snapshot format was introduced.
+    const initial =
+      'swsr-v1:3937eaa33e2bf85608ae0fa9dc4198a899092007cd53cbf249be44f092365e76';
+    const saved = {
+      schemaVersion: 1,
+      scope: { projectId: 'project', taskId: 'task', documentId: 'document' },
+      checkpointRevision:
+        'swsr-v1:c075998f086e3861c4063956f2899e76e94d4d7acf013b7f3402828b8759af69',
+      revision:
+        'swsr-v1:c075998f086e3861c4063956f2899e76e94d4d7acf013b7f3402828b8759af69',
+      atoms: [
+        { id: 'legacy-fixture:0', after: null, value: 'a', deleted: false },
+      ],
+      knownOperations: [
+        {
+          operationId: 'legacy-fixture',
+          digest:
+            '12f58990b50d505ed7cd619238fdd45a8ebde9e0816ad918fb987bcfad109def',
+        },
+      ],
+      deferred: [],
+    };
+    const db = new DatabaseSync(path);
+    try {
+      db.exec('DROP TABLE project_task_room_save_revisions');
+      db.prepare(
+        'INSERT INTO project_task_room_working_states VALUES(?,?,?,?,?,?,?)',
+      ).run(
+        scope.projectId,
+        scope.taskId,
+        scope.documentId,
+        JSON.stringify(saved),
+        saved.revision,
+        initial,
+        '2026-01-01',
+      );
+      const insert = db.prepare(
+        'INSERT INTO project_task_room_working_batches VALUES(?,?,?,?,?,?,?)',
+      );
+      insert.run(
+        scope.projectId,
+        scope.taskId,
+        scope.documentId,
+        'noop',
+        'noop',
+        JSON.stringify({ revision: initial, text: '' }),
+        '2026-01-01',
+      );
+      insert.run(
+        scope.projectId,
+        scope.taskId,
+        scope.documentId,
+        'save',
+        'save',
+        JSON.stringify({ revision: saved.revision, text: 'a' }),
+        '2026-01-01',
+      );
+    } finally {
+      db.close();
+    }
+    for (let restart = 0; restart < 2; restart++) {
+      const upgraded = createProjectTaskRoomWorkingState(path);
+      try {
+        expect(
+          await upgraded.readRevisionOrdinals({
+            scope,
+            revision: saved.revision,
+            revisions: [initial, saved.revision],
+          }),
+        ).toEqual({
+          kind: 'available',
+          revisionOrdinals: { [initial]: 0, [saved.revision]: 1 },
+        });
+      } finally {
+        await upgraded.close();
+      }
+    }
+  });
+
   test('backfills legacy save ordinals from final batch receipts after operation pruning', async () => {
     directory = makeTempDir('station-room-save-upgrade-');
     const path = join(directory, 'orchestration.sqlite');
