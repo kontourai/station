@@ -71,6 +71,7 @@ import {
 import type { LoadedLocalAccounts } from '../../services/identity/local-account-runtime.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
 import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
+import type { ProjectMembershipService } from '../../services/projects/project-membership-service.js';
 import { openRelayEnrollmentJournal } from '../../services/relay/relay-enrollment-journal.js';
 import type { RuntimeSearch } from '../../services/search/runtime-search.js';
 import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
@@ -1523,7 +1524,9 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     type Internals = {
       localAccounts?: LoadedLocalAccounts;
       deploymentAuthentication?: unknown;
-      projectMembership?: { service: { mayRegister: unknown } };
+      projectMembership?: {
+        service: Pick<ProjectMembershipService, 'mayRegister'>;
+      };
       environmentSecurityService: EnvironmentSecurityService;
     };
     const internals = () => runtime as unknown as Internals;
@@ -1662,9 +1665,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       armStagedAccountSharingChange(home);
       await boot();
       const membership = internals().projectMembership!;
-      vi.spyOn(membership.service as never, 'mayRegister').mockResolvedValue(
-        true as never,
-      );
+      vi.spyOn(membership.service, 'mayRegister').mockResolvedValue(true);
       const accounts = internals().localAccounts!;
       const post = (path: string, body: unknown, invitation = false) =>
         accounts.service.handle(

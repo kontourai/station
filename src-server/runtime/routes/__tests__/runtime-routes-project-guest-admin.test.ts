@@ -47,6 +47,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { S3Client } from '@aws-sdk/client-s3';
 import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
+import type { AccountSharingSettingView } from '@kontourai/station-contracts/local-accounts';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import type { ProjectMembershipScope } from '@kontourai/station-contracts/project-membership';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
@@ -3474,7 +3475,8 @@ describe('project guest administration over the production composition', () => {
     // The operator reads the offered origins.
     const read = await h.request(path, h.operatorHeaders());
     expect(read.status, await read.clone().text()).toBe(200);
-    const view = (await read.json()).data;
+    const view = (await readJson<{ data: AccountSharingSettingView }>(read))
+      .data;
     expect(view.source).toBe('setting');
     expect(view.origins).toContainEqual({
       origin: 'http://localhost:4322',
@@ -3486,14 +3488,18 @@ describe('project guest administration over the production composition', () => {
       h.operatorHeaders(apply('http://127.0.0.2:4321')),
     );
     expect(typed.status).toBe(400);
-    expect((await typed.json()).code).toBe('origin_not_offered');
+    expect((await readJson<{ code: string }>(typed)).code).toBe(
+      'origin_not_offered',
+    );
     // An offered one is valid, but this test process has no supervisor.
     const unsupervised = await h.request(
       path,
       h.operatorHeaders(apply('http://localhost:4322')),
     );
     expect(unsupervised.status).toBe(409);
-    expect((await unsupervised.json()).code).toBe('restart_unavailable');
+    expect((await readJson<{ code: string }>(unsupervised)).code).toBe(
+      'restart_unavailable',
+    );
     expect(existsSync(stored)).toBe(false);
   });
   test('the UI ingress witness survives the initiating connection closing before consent', async () => {
@@ -3521,7 +3527,9 @@ describe('project guest administration over the production composition', () => {
       { incoming: { socket } },
     );
     expect(response.status, await response.clone().text()).toBe(202);
-    const id = (await response.json()).data.confirmation.id;
+    const id = (
+      await readJson<{ data: { confirmation: { id: string } } }>(response)
+    ).data.confirmation.id;
     socket.remoteAddress = undefined;
     const review = h.consentChannel.store.renderReview(
       h.consentChannel.tenantId,
@@ -3591,7 +3599,9 @@ describe('project guest administration over the production composition', () => {
     expect(response.status, await response.clone().text()).toBe(202);
     expect(existsSync(file)).toBe(false);
     expect(handoff).not.toHaveBeenCalled();
-    const { confirmation } = (await response.json()).data;
+    const { confirmation } = (
+      await readJson<{ data: { confirmation: { id: string } } }>(response)
+    ).data;
     const cookie = response.headers.get('set-cookie')!.split(';')[0];
     const consent = createConsentApp({
       channel: h.consentChannel,

@@ -1,6 +1,8 @@
 import fs, { existsSync, readFileSync } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
+import type { AccountSharingSettingView } from '@kontourai/station-contracts/local-accounts';
 import { describe, expect, test, vi } from 'vitest';
+import { readJson } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type { HandoffRequestOutcome } from '../../../runtime/bootstrap/supervisor-link.js';
 import { ConsentChannelService } from '../../../services/consent/consent-channel.js';
@@ -104,7 +106,9 @@ async function harness(
   const file = accountSharingSettingPath(homeDirectory);
   const approve = async (response: Response) => {
     expect(response.status).toBe(202);
-    const { data } = await response.json();
+    const { data } = await readJson<{ data: { confirmation: { id: string } } }>(
+      response,
+    );
     const id = data.confirmation.id;
     const review = consentChannel.store.renderReview(
       consentChannel.tenantId,
@@ -154,7 +158,9 @@ describe('Project sharing settings route (#4305)', () => {
     expect(h.requestHandoff).not.toHaveBeenCalled();
     // A caller that is not the operator still learns only that.
     const stranger = await h.call('GET', undefined, 'paired-device');
-    expect((await stranger.json()).code).toBe('operator_required');
+    expect((await readJson<{ code: string }>(stranger)).code).toBe(
+      'operator_required',
+    );
   });
 
   test('the operator reads the active state, stored choice and offered origins', async () => {
@@ -162,7 +168,9 @@ describe('Project sharing settings route (#4305)', () => {
     const response = await h.call('GET');
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toBe('no-store');
-    const { data } = await response.json();
+    const { data } = await readJson<{ data: AccountSharingSettingView }>(
+      response,
+    );
     expect(data).toMatchObject({
       source: 'setting',
       lockedBy: [],
@@ -201,7 +209,9 @@ describe('Project sharing settings route (#4305)', () => {
     ]) {
       const response = await h.call('PUT', { enabled: true, publicOrigin });
       expect(response.status).toBe(400);
-      expect((await response.json()).code).toBe('origin_not_offered');
+      expect((await readJson<{ code: string }>(response)).code).toBe(
+        'origin_not_offered',
+      );
     }
     for (const body of [
       '{',
@@ -212,7 +222,9 @@ describe('Project sharing settings route (#4305)', () => {
     ]) {
       const response = await h.call('PUT', body);
       expect(response.status).toBe(400);
-      expect((await response.json()).code).toBe('invalid_request');
+      expect((await readJson<{ code: string }>(response)).code).toBe(
+        'invalid_request',
+      );
     }
     expect(existsSync(h.file)).toBe(false);
     expect(h.requestHandoff).not.toHaveBeenCalled();
@@ -230,7 +242,9 @@ describe('Project sharing settings route (#4305)', () => {
         },
       },
     });
-    const read = (await (await h.call('GET')).json()).data;
+    const read = (
+      await readJson<{ data: AccountSharingSettingView }>(await h.call('GET'))
+    ).data;
     expect(read).toMatchObject({
       source: 'deployment',
       lockedBy: ['STATION_PROJECT_SHARING', 'STATION_LOCAL_ACCOUNTS'],
@@ -240,7 +254,9 @@ describe('Project sharing settings route (#4305)', () => {
     for (const body of [{ enabled: false }, enable]) {
       const response = await h.call('PUT', body);
       expect(response.status).toBe(409);
-      expect((await response.json()).code).toBe('set_by_deployment');
+      expect((await readJson<{ code: string }>(response)).code).toBe(
+        'set_by_deployment',
+      );
     }
     expect(existsSync(h.file)).toBe(false);
   });
@@ -249,7 +265,9 @@ describe('Project sharing settings route (#4305)', () => {
     const h = await harness({ supervised: false });
     const response = await h.call('PUT', enable);
     expect(response.status).toBe(409);
-    expect((await response.json()).code).toBe('restart_unavailable');
+    expect((await readJson<{ code: string }>(response)).code).toBe(
+      'restart_unavailable',
+    );
     expect(existsSync(h.file)).toBe(false);
   });
 
@@ -317,7 +335,9 @@ describe('Project sharing settings route (#4305)', () => {
       },
     });
     const response = await h.call('PUT', enable);
-    expect((await response.json()).data).toEqual({ changed: false });
+    expect(
+      (await readJson<{ data: { changed: boolean } }>(response)).data,
+    ).toEqual({ changed: false });
     expect(h.requestHandoff).not.toHaveBeenCalled();
     expect(existsSync(h.file)).toBe(false);
   });
@@ -368,7 +388,10 @@ test('a failed withdrawal leaves a visible unarmed choice that boot will not ado
   expect(decision!.ok ? '' : decision!.detail).toMatch(
     /pending change needs reconciliation/,
   );
-  expect((await (await h.call('GET')).json()).data.pending).toEqual({
+  expect(
+    (await readJson<{ data: AccountSharingSettingView }>(await h.call('GET')))
+      .data.pending,
+  ).toEqual({
     choice: enable,
     ready: false,
   });

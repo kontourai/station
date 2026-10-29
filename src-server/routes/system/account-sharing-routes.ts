@@ -440,7 +440,9 @@ export function createAccountSharingRoutes(
             body.error ?? 'The change could not be applied.',
             false,
           );
-        return body.data;
+        // A successful handoff may already have published its choice. Keep
+        // the decision successful even if an unexpected response has no data.
+        return body.data ?? {};
       },
     });
     if (!created.ok)
