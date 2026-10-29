@@ -83,6 +83,11 @@ stated guarantee.
 
 ## Delivery
 
+The wake records a server-composed `coordinator` sender with an internal actor;
+the transcript labels it “Update from Station” rather than attributing it to
+the person or another agent. Its Session id is the receiving conversation as
+context, not a link to a sending Session.
+
 The wake is a conversation inbox entry (#3568), the path agent wake-ups use:
 it waits for a running turn, and placement applies the live continuation's
 permission rule. The wake row and its claimed items are committed before the

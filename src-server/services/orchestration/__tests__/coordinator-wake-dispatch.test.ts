@@ -336,7 +336,10 @@ describe('a worker finishing wakes the coordinator once', () => {
       .map((row) => row.payload)
       .filter((event) => event.method === 'turn.started');
     expect(started[0]).toMatchObject({
-      clientOrigin: { actor: { kind: 'internal' } },
+      clientOrigin: {
+        actor: { kind: 'internal' },
+        sender: { kind: 'coordinator', sessionId: COORDINATOR },
+      },
     });
 
     // The wake turn ends: its own "finished" does not wake it again.

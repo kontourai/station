@@ -942,7 +942,10 @@ export class CoordinatorWakeDelivery {
               ? { principal: designation.actor.principal }
               : {}),
           },
-          clientOrigin: COORDINATOR_WAKE_CLIENT_ORIGIN,
+          clientOrigin: {
+            ...COORDINATOR_WAKE_CLIENT_ORIGIN,
+            sender: { kind: 'coordinator', sessionId: wake.conversationId },
+          },
         },
       });
     } catch (error) {
