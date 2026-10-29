@@ -18,6 +18,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
 import {
   NavigationProvider,
@@ -100,6 +101,8 @@ function setup(
   replied = false,
   sessionUrls = ['https://example.test/preview'],
   clips?: Record<string, Walkthrough[]>,
+  strict = false,
+  holdVideo?: (signal: AbortSignal | undefined) => Promise<void>,
 ) {
   _setApiBase('https://review.test');
   if (clips) {
@@ -261,10 +264,12 @@ function setup(
               : {}),
           });
         }
-        if (available.some((item) => item.id === clipPath[2]))
+        if (available.some((item) => item.id === clipPath[2])) {
+          if (holdVideo) await holdVideo(init?.signal ?? undefined);
           return new Response(new Uint8Array([1, 2, 3, 4]), {
             headers: { 'Content-Type': 'video/webm' },
           });
+        }
         return new Response(
           JSON.stringify({ success: false, error: 'Not found' }),
           { status: 404 },
@@ -406,13 +411,14 @@ function setup(
       throw new Error(`Unexpected Review read ${path}`);
     }),
   );
-  const view = render(
+  const content = (
     <QueryClientProvider client={client}>
       <NavigationProvider>
         <TaskReviewTab task={task} visible />
       </NavigationProvider>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+  const view = render(strict ? <StrictMode>{content}</StrictMode> : content);
   return {
     ...view,
     reads,
@@ -652,6 +658,87 @@ test('lists Task clips without reading video, then releases the opened clip on c
   expect(revokeUrl).toHaveBeenCalledTimes(2);
 });
 
+test('opens one video read under StrictMode', async () => {
+  vi.stubGlobal(
+    'URL',
+    class extends URL {
+      static createObjectURL = vi.fn(() => 'blob:strict-clip');
+      static revokeObjectURL = vi.fn();
+    },
+  );
+  const fixture = setup(
+    false,
+    undefined,
+    { 'task-1': [clip('clip-a', 'Strict clip')] },
+    true,
+  );
+  fireEvent.click(await screen.findByRole('button', { name: /Strict clip/ }));
+  const dialog = await screen.findByRole('dialog', { name: 'Strict clip' });
+  await waitFor(() => expect(dialog.querySelector('video')).toBeTruthy());
+  expect(fixture.reads.filter((path) => path.endsWith('/video'))).toEqual([
+    '/api/tasks/task-1/review/walkthroughs/clip-a/video',
+  ]);
+});
+
+test('closing a pending video read cancels its caller and drops its cache', async () => {
+  const createUrl = vi.fn(() => 'blob:late-video');
+  vi.stubGlobal(
+    'URL',
+    class extends URL {
+      static createObjectURL = createUrl;
+      static revokeObjectURL = vi.fn();
+    },
+  );
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let signal: AbortSignal | undefined;
+  const fixture = setup(
+    false,
+    undefined,
+    { 'task-1': [clip('clip-a', 'Pending clip')] },
+    false,
+    async (value) => {
+      signal = value;
+      await pending;
+    },
+  );
+  fireEvent.click(await screen.findByRole('button', { name: /Pending clip/ }));
+  const dialog = await screen.findByRole('dialog', { name: 'Pending clip' });
+  await waitFor(() => expect(signal).toBeDefined());
+  const query = fixture.client
+    .getQueryCache()
+    .find({ queryKey: ['task-walkthrough-video'], exact: false });
+  expect(query).toBeDefined();
+  const waiting = fixture.client
+    .fetchQuery({
+      queryKey: query!.queryKey,
+      queryFn: async () => {
+        throw new Error('Unexpected second read');
+      },
+    })
+    .then(
+      () => 'resolved',
+      () => 'cancelled',
+    );
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Close walkthrough clip' }),
+  );
+  await waitFor(() => expect(signal?.aborted).toBe(true));
+  expect(await waiting).toBe('cancelled');
+  release();
+  await act(async () => {
+    await pending;
+  });
+  expect(
+    fixture.client
+      .getQueryCache()
+      .find({ queryKey: ['task-walkthrough-video'], exact: false }),
+  ).toBeUndefined();
+  expect(createUrl).not.toHaveBeenCalled();
+});
+
 test('switching Tasks discards the first Task’s clip and closes its player', async () => {
   const revokeUrl = vi.fn();
   vi.stubGlobal(
@@ -682,6 +769,8 @@ test('switching Tasks discards the first Task’s clip and closes its player', a
       </NavigationProvider>
     </QueryClientProvider>,
   );
+  expect(screen.queryByRole('button', { name: /First Task clip/ })).toBeNull();
+  expect(screen.queryByRole('dialog', { name: 'First Task clip' })).toBeNull();
   await screen.findByRole('button', { name: /Second Task clip/ });
   expect(screen.queryByRole('button', { name: /First Task clip/ })).toBeNull();
   expect(screen.queryByRole('dialog', { name: 'First Task clip' })).toBeNull();

@@ -417,13 +417,25 @@ export function useTaskWalkthroughVideoQuery(
       observerId,
     ],
   );
-  useEffect(
-    () => () => client.removeQueries({ queryKey, exact: true }),
-    [client, queryKey],
+  const lease = useMemo(
+    () => ({ active: false, controller: new AbortController(), queryKey }),
+    [queryKey],
   );
+  useEffect(() => {
+    lease.active = true;
+    return () => {
+      lease.active = false;
+      // StrictMode replays effects synchronously; a real unmount retires this read.
+      queueMicrotask(() => {
+        if (lease.active) return;
+        lease.controller.abort();
+        client.removeQueries({ queryKey: lease.queryKey, exact: true });
+      });
+    };
+  }, [client, lease]);
   return useQuery({
     queryKey,
-    queryFn: async ({ signal }) => {
+    queryFn: async () => {
       const recording = clip.source.recording;
       if (!recording)
         throw new Error('Task Walkthrough recording unavailable.');
@@ -431,7 +443,7 @@ export function useTaskWalkthroughVideoQuery(
         `${taskWalkthroughPath(scope.requestScope, taskId)}/${encodeURIComponent(clip.id)}/video`,
         {
           requestScope: scope.requestScope,
-          signal,
+          signal: lease.controller.signal,
           maxResponseBytes: recording.byteLength,
         },
       );
