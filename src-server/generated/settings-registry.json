@@ -484,6 +484,15 @@
       "configKey": "defaultChatFontSize"
     },
     {
+      "id": "chat-title-model",
+      "label": "Chat title model",
+      "help": "Choose the model that names a chat after its first reply.",
+      "scope": "station",
+      "section": "chat",
+      "route": "/settings?view=chat&highlight=chat-title-model",
+      "configKey": "titleModel"
+    },
+    {
       "id": "smooth-answer-reveal",
       "label": "Answer delivery",
       "help": "Only the optional features turned on here are active on this device, and this is where each notification category’s sound is kept.",

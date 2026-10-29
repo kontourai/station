@@ -2116,6 +2116,7 @@ export function createOrchestrationRoutes(
      */
     threadInbox?: Pick<
       ThreadInboxDelivery,
+      | 'mayContinue'
       | 'mustQueue'
       | 'submit'
       | 'list'
@@ -2131,7 +2132,7 @@ export function createOrchestrationRoutes(
      */
     memoryContinuation?: Pick<
       MemoryExhaustionContinuation,
-      'continueOnRequest'
+      'continueOnRequest' | 'continuationEligibility'
     >;
     delegationResults?: Pick<
       DelegationResultDelivery,
@@ -2159,6 +2160,11 @@ export function createOrchestrationRoutes(
      * reads this instead.
      */
     resolvePrincipal?: (c: PrincipalResolutionContext) => PrincipalRef;
+    /** Checks whether this request may invoke the continuation POST. */
+    mayRequestMemoryContinuation?: (
+      request: Request,
+      conversationId: string,
+    ) => boolean;
     /** Revalidates protected point-read publication at its response boundary. */
     isRequestPrincipalCurrent?: (request: Request) => boolean;
     /** Personal-only producer binding authority. Hosted requires a tenant adapter. */
@@ -5525,7 +5531,32 @@ export function createOrchestrationRoutes(
     );
     if (!data)
       return c.json({ success: false, error: 'Conversation not found' }, 404);
-    return c.json({ success: true, data });
+    const eligibility = deps.memoryContinuation?.continuationEligibility(
+      param(c, 'conversationId'),
+    );
+    return c.json({
+      success: true,
+      data: {
+        ...data,
+        ...(eligibility
+          ? {
+              memoryContinuation: {
+                ...eligibility,
+                eligible:
+                  eligibility.eligible &&
+                  deps.mayRequestMemoryContinuation?.(
+                    c.req.raw,
+                    param(c, 'conversationId'),
+                  ) === true &&
+                  deps.threadInbox?.mayContinue(
+                    param(c, 'conversationId'),
+                    resolveDispatchActor(deps, c).userId,
+                  ) === true,
+              },
+            }
+          : {}),
+      },
+    });
   });
 
   /**
