@@ -63,17 +63,19 @@ test('scheduler metrics export opaque job ids instead of private job names', asy
       .flatMap((r) => r.scopeMetrics.flatMap((s) => s.metrics))
       .filter((m) => m.descriptor.name.startsWith('station.scheduler.job.'));
     expect(schedulerMetrics.length).toBeGreaterThanOrEqual(2);
-    const points = schedulerMetrics.flatMap((metric) => metric.dataPoints);
+    const points = schedulerMetrics.flatMap((metric) =>
+      metric.dataPoints.map((point) => point.attributes),
+    );
     for (const id of ids)
-      expect(points.some((point) => point.attributes.job_id === id)).toBe(true);
-    expect(points.some((point) => point.attributes.status === 'success')).toBe(
+      expect(points.some((point) => point.job_id === id)).toBe(true);
+    expect(points.some((point) => point.status === 'success')).toBe(
       true,
     );
-    expect(points.some((point) => point.attributes.status === 'error')).toBe(
+    expect(points.some((point) => point.status === 'error')).toBe(
       true,
     );
     expect(
-      points.every((point) => !Object.hasOwn(point.attributes, 'job')),
+      points.every((point) => !Object.hasOwn(point, 'job')),
     ).toBe(true);
     expect(JSON.stringify(schedulerMetrics)).not.toContain(
       'round5-legacy-private',

@@ -499,6 +499,7 @@ test('REVIEW: a completed turn after 50 deferred retry errors still settles', as
         method: 'runtime.error',
         createdAt: '2026-10-28T00:00:00.000Z',
         message: 'reconnecting',
+        severity: 'error',
         retriable: true,
       });
     store.appendEvent({

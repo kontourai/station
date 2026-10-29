@@ -1162,11 +1162,6 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
     };
   });
   try {
-    const removeHandshake = await withRoute(
-      page,
-      '**/.well-known/station/v1',
-      (route) => fulfillGalleryStationHandshake(route, true),
-    );
     let historyFailed = true;
     let historyReads = 0;
     let releaseHistory!: () => void;
@@ -1314,7 +1309,6 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
       releaseHistory();
       await removeOpen();
       await removeHistory();
-      await removeHandshake();
     }
     if (width > 600) {
       let releaseInventory!: () => void;
@@ -1512,6 +1506,11 @@ function overlayDockProjectMismatchHooks(
       ];
       if (resyncOnly) {
         cleanups.push(
+          // The history and scheduler readers share the host capability cache.
+          // Advertise the fixture's history support before either can read it.
+          await withRoute(page, '**/.well-known/station/v1', (route) =>
+            fulfillGalleryStationHandshake(route, true),
+          ),
           await withRoute(page, '**/api/conversations**', async (route) => {
             if (
               new URL(route.request().url()).pathname !== '/api/conversations'
