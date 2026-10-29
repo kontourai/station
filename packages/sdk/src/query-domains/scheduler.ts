@@ -6,6 +6,7 @@ import type { AddJobOpts } from '@kontourai/station-contracts/scheduler';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { _getApiBase } from '../api';
 import { hasCapability } from '../capability';
+import { readPublicStationCapabilities } from '../client/publicStationCapabilities';
 import { getRun, listRuns } from '../client/runs';
 import {
   createJob,
@@ -23,7 +24,6 @@ import {
   runJob,
   updateJob,
 } from '../client/scheduler';
-import { fetchPublicStationCapabilities } from '../publicStationCapabilities';
 import { type QueryConfig, useApiQuery } from '../query-core';
 
 export const runsQueries = {
@@ -65,7 +65,7 @@ export function useSchedulerJobs() {
 async function fetchScheduledConversationTargetCapability(
   apiBase: string,
 ): Promise<boolean | null> {
-  const handshake = await fetchPublicStationCapabilities(apiBase);
+  const handshake = await readPublicStationCapabilities(apiBase);
   return handshake
     ? hasCapability(handshake, 'scheduledConversationTarget')
     : null;
@@ -75,7 +75,7 @@ export function useScheduledConversationTargetCapability() {
   return useApiQuery(
     ['scheduler', 'conversation-target-capability'],
     async () => fetchScheduledConversationTargetCapability(await _getApiBase()),
-    { staleTime: 60_000, retry: false },
+    { staleTime: 10_000, refetchInterval: 10_000, retry: false },
   );
 }
 
