@@ -325,18 +325,17 @@ test('bounds initial requests and admits more only after Show more and viewport 
   const h = setup({ count: 200 });
   render(h.tree(true));
   await screen.findByRole('button', { name: 'Show more' });
-  expect(screen.getAllByRole('listitem')).toHaveLength(12);
   expect(h.reads.filter((path) => path.endsWith('/content'))).toHaveLength(0);
   for (const [element, callback] of callbacks)
     callback(
       [{ target: element, isIntersecting: true } as IntersectionObserverEntry],
       {} as IntersectionObserver,
     );
-  await waitFor(() =>
-    expect(h.reads.filter((path) => path.endsWith('/content'))).toHaveLength(
-      12,
-    ),
-  );
+  await screen.findByRole('button', { name: 'Review Screen 199' });
+  expect(
+    h.reads.filter((path) => path.endsWith('/content')).length,
+  ).toBeLessThanOrEqual(12);
+  expect(screen.getAllByRole('listitem')).toHaveLength(12);
   fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
   expect(screen.getAllByRole('listitem')).toHaveLength(24);
   expect(h.reads.filter((path) => path.endsWith('/content'))).toHaveLength(12);
