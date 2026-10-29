@@ -9108,7 +9108,10 @@ describe('ClaudeAdapter', () => {
       const { options } = mockQuery.mock.calls[0][0];
       expect(options.strictMcpConfig).toBe(false);
       expect(options.env.ENABLE_TOOL_SEARCH).toBe('true');
-      expect(options.disallowedTools).toEqual(['mcp__weather__write', 'Artifact']);
+      expect(options.disallowedTools).toEqual([
+        'mcp__weather__write',
+        'Artifact',
+      ]);
       const hook = options.hooks.PreToolUse[0].hooks[0];
       for (const name of ['write', 'new_tool']) {
         const refused = await hook(
@@ -9183,7 +9186,10 @@ describe('ClaudeAdapter', () => {
       const { options } = mockQuery.mock.calls[0][0];
       expect(options.strictMcpConfig).toBe(false);
       expect(options.mcpServers.weather.command).toBe(process.execPath);
-      expect(options.disallowedTools).toEqual(['mcp__weather__write', 'Artifact']);
+      expect(options.disallowedTools).toEqual([
+        'mcp__weather__write',
+        'Artifact',
+      ]);
       const hook = options.hooks.PreToolUse[0].hooks[0];
       expect(
         await hook(

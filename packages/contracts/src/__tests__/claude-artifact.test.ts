@@ -104,9 +104,9 @@ describe('claudeArtifactLinkView', () => {
 describe('claudeArtifactLinkOfEvent', () => {
   test('admits the link only from a Claude event', () => {
     const claudeArtifact = { url: URL_OK, title: 'R' };
-    expect(claudeArtifactLinkOfEvent({ provider: 'claude', claudeArtifact })).toEqual(
-      claudeArtifact,
-    );
+    expect(
+      claudeArtifactLinkOfEvent({ provider: 'claude', claudeArtifact }),
+    ).toEqual(claudeArtifact);
     for (const provider of ['codex', 'station-agent', undefined])
       expect(
         claudeArtifactLinkOfEvent({ provider, claudeArtifact }),
@@ -125,8 +125,8 @@ describe('artifact titles', () => {
   });
 
   test('a title with nothing visible labels the link with its URL', () => {
-    expect(
-      claudeArtifactLinkView({ url: URL_OK, title: '​‮ ' }),
-    ).toEqual({ url: URL_OK });
+    expect(claudeArtifactLinkView({ url: URL_OK, title: '​‮ ' })).toEqual({
+      url: URL_OK,
+    });
   });
 });

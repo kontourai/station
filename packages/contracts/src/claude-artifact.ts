@@ -61,7 +61,10 @@ export function claudeArtifactUrl(value: unknown): string | undefined {
  * author chose it); `undefined` when nothing visible remains or it is too long.
  */
 function artifactTitle(value: unknown): string | undefined {
-  if (typeof value !== 'string' || value.length > CLAUDE_ARTIFACT_TITLE_MAX_CHARS)
+  if (
+    typeof value !== 'string' ||
+    value.length > CLAUDE_ARTIFACT_TITLE_MAX_CHARS
+  )
     return undefined;
   return (
     sanitizeUntrustedDisplayText(value, CLAUDE_ARTIFACT_TITLE_MAX_CHARS) ||
