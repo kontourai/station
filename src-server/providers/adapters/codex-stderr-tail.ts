@@ -14,40 +14,20 @@ import { redactSecrets } from '@kontourai/station-shared/redaction';
  * `configWarning` (`lastErrorLine`). Mirrors Claude's `stderrTail`
  * (`claude-code-spawn.ts`).
  *
- * Secrets: each line is redacted before it is cut to length, so a cut can
- * never leave the start of a key a pattern would have recognized whole. A
- * PEM block (`-----BEGIN …-----` to `-----END …-----`) is found on the
- * whole line, before any cut, and kept as one marker; its body lines are
- * never kept or logged. A block ends at its END, or at the first line that
- * is not a body line (base64, an encapsulated header, blank), so a lost
- * END withholds only lines that look like key material, never the rest of
- * stderr. An END whose BEGIN was never seen takes the base64 lines just
- * above it, including a short last line, out of the tail with it, though
- * they were already logged at debug level.
+ * Each line is redacted before truncation. Delimiter lines and key-like
+ * tokens are withheld independently, so a missing or mismatched delimiter
+ * cannot change how later diagnostics are treated.
+
  */
 
 /** Characters of stderr kept, newest last. */
 export const CODEX_STDERR_TAIL_MAX_CHARS = 2048;
 /** A longer single line is cut before it is kept or logged. */
 const CODEX_STDERR_LINE_MAX_CHARS = 1024;
-/**
- * A line is bounded to this before it is redacted, so a pathological line
- * costs bounded work. Far past the kept length: only a line holding more
- * redacted text than this could bring a fragment cut here into what is kept.
- */
-const CODEX_STDERR_REDACT_MAX_CHARS = 64 * 1024;
-
-const PEM_BEGIN = /-----BEGIN [A-Z0-9 ]+-----/;
-const PEM_END = /-----END [A-Z0-9 ]+-----/;
-/** A PEM body line: base64 only. */
-const PEM_BODY_LINE = /^[A-Za-z0-9+/=]{16,}$/;
-/** A PEM block's last body line, which can be short (`abc=`). */
-const PEM_LAST_BODY_LINE = /^[A-Za-z0-9+/]+={0,2}$/;
-/** What a PEM block holds between its BEGIN and END: base64, or an
- * encapsulated header (`Proc-Type:`, `DEK-Info:`, `Comment:`). */
-const PEM_INNER_LINE =
-  /^(?:[A-Za-z0-9+/=]+|(?:Proc-Type|DEK-Info|Comment|[A-Z][A-Za-z]*-[A-Za-z-]+):.*)$/;
-const PEM_REDACTED = '[REDACTED PEM BLOCK]';
+// Long base64-like runs and padded short body lines are withheld even when
+// the surrounding PEM delimiters were never observed.
+const KEY_MATERIAL = /[A-Za-z0-9+/=]{32,}/g;
+const PADDED_BODY_LINE = /^[A-Za-z0-9+/]+={1,2}$/;
 
 /**
  * A tracing ERROR line (`<time> ERROR <target>: <message>`) or a CLI's own
@@ -70,10 +50,9 @@ const CONTROL_CHARACTERS = new RegExp(
   'g',
 );
 
-/** A stderr line without escapes or controls, bounded for the work on it. */
+/** A stderr line without escapes or controls. */
 function plainLine(line: string): string {
   return line
-    .slice(0, CODEX_STDERR_REDACT_MAX_CHARS * 2)
     .replace(ANSI_ESCAPE_SEQUENCE, '')
     .replace(CONTROL_CHARACTERS, '')
     .trim();
@@ -87,16 +66,13 @@ export function cleanCodexDiagnosticLine(line: string): string {
 /** A plain line redacted, then cut to the kept length. */
 function boundedLine(plain: string): string {
   if (!plain) return '';
-  // Redacted before the cut: a key the cut split would no longer match.
-  const redacted = redactSecrets(plain.slice(0, CODEX_STDERR_REDACT_MAX_CHARS));
-  return redacted.length > CODEX_STDERR_LINE_MAX_CHARS ||
-    plain.length > CODEX_STDERR_REDACT_MAX_CHARS
-    ? `${redacted.slice(0, CODEX_STDERR_LINE_MAX_CHARS)}…`
-    : redacted;
-}
-
-function joinParts(...parts: string[]): string {
-  return parts.filter(Boolean).join(' ');
+  const redacted = redactSecrets(plain);
+  if (/-----BEGIN|-----END/.test(plain) || PADDED_BODY_LINE.test(plain))
+    return '';
+  const safe = redacted.replace(KEY_MATERIAL, '[REDACTED]');
+  return safe.length > CODEX_STDERR_LINE_MAX_CHARS
+    ? `${safe.slice(0, CODEX_STDERR_LINE_MAX_CHARS)}…`
+    : safe;
 }
 
 function normalized(text: string): string {
@@ -106,18 +82,11 @@ function normalized(text: string): string {
 export class CodexStderrTail {
   private lines: string[] = [];
   private chars = 0;
-  /** Whether a PEM block's BEGIN was read and its END not yet. */
-  private inPem = false;
   private readonly reported: string[] = [];
 
   /** Keeps a cleaned line; returns it, or '' for a blank or withheld one. */
   push(raw: string): string {
-    // PEM blocks are found on the whole line: a cut could separate a BEGIN
-    // from its END.
-    const line = boundedLine(this.withoutPem(plainLine(raw)));
-    // The unscanned suffix may have opened a block. Fail closed until a
-    // subsequent line cannot be PEM content or closes the block.
-    if (raw.length > CODEX_STDERR_REDACT_MAX_CHARS * 2) this.inPem = true;
+    const line = boundedLine(plainLine(raw));
     if (!line) return '';
     this.lines.push(line);
     this.chars += line.length + 1;
@@ -125,48 +94,6 @@ export class CodexStderrTail {
       this.chars -= (this.lines.shift() ?? '').length + 1;
     }
     return line;
-  }
-
-  /** `line` with any PEM block in it, or a body line, withheld. */
-  private withoutPem(line: string): string {
-    const parts: string[] = [];
-    let rest = line;
-    while (rest) {
-      if (this.inPem) {
-        const end = PEM_END.exec(rest);
-        if (end) {
-          this.inPem = false;
-          rest = rest.slice(end.index + end[0].length).trim();
-          continue;
-        }
-        if (PEM_INNER_LINE.test(rest)) break;
-        this.inPem = false;
-      }
-      const begin = PEM_BEGIN.exec(rest);
-      const end = PEM_END.exec(rest);
-      if (begin && (!end || begin.index < end.index)) {
-        parts.push(rest.slice(0, begin.index).trim(), PEM_REDACTED);
-        this.inPem = true;
-        rest = rest.slice(begin.index + begin[0].length).trim();
-        // The remainder belongs to the block even if it is not a body line.
-        const closing = PEM_END.exec(rest);
-        if (!closing) break;
-        this.inPem = false;
-        rest = rest.slice(closing.index + closing[0].length).trim();
-        continue;
-      }
-      if (!end) {
-        parts.push(rest);
-        break;
-      }
-      if (PEM_LAST_BODY_LINE.test(this.lines.at(-1) ?? ''))
-        this.chars -= (this.lines.pop() ?? '').length + 1;
-      while (PEM_BODY_LINE.test(this.lines.at(-1) ?? ''))
-        this.chars -= (this.lines.pop() ?? '').length + 1;
-      parts.push(rest.slice(0, end.index).trim(), PEM_REDACTED);
-      rest = rest.slice(end.index + end[0].length).trim();
-    }
-    return joinParts(...parts);
   }
 
   /** Notes text already shown to the user (a `configWarning`). */
