@@ -2052,6 +2052,11 @@ there is no author confirmation to review. `GET /api/usage-telemetry/disclosure`
 `additionalHost` for an additional destination, including an environment-derived
 address. `GET /api/usage-telemetry/disclosure?publisher=kontour` returns the exact
 build destination for its separate, revision-bound acknowledgement.
+Each disclosure response, and the acknowledgement response, also carries
+`capabilities: { acknowledge, recordNotice, lower, raise, defaults }` for the
+calling credential, decided by the same gates as those writes (`defaults` is
+the DNT-ignored baseline a tier write is compared against); see
+[Usage telemetry](usage-telemetry.md).
 The two Lite sinks send independently after notice; the default Full receipt
 covers operator only; author Full uses a separate destination-bound receipt. `GET /api/usage-telemetry/outbox[?publisher=operator]`
 returns the bounded local payload ledger with `orchestration:read` authority. The optional `limit` is an integer from 1 to 200, defaults to 50, and selects the newest records after publisher filtering; invalid values return 400.
@@ -4998,6 +5003,15 @@ reader. Hosted mode skips the two personal storage branches. File-memory Agent
 attribution comes from the stored resource ID, with the adapter key as fallback;
 response shape can also include Project and fork-provenance fields.
 
+`GET /api/conversations/:id/open` resolves a conversation before a client
+treats it as writable (the SDK's `resolveConversationOpen`). Its result may
+carry `callerAccess: {continue, startChat}`, computed for the requesting
+credential by the same boundary gate ingress applies, against
+`POST /api/orchestration/chat/:id/continue` and `POST /api/orchestration/chat`.
+A read-only paired device reads `{continue: false, startChat: false}`. The field
+is omitted when the request has no authenticated principal; clients treat that
+as unknown.
+
 `GET /api/conversations/:id/read?limit=&cursor=&aroundMessageId=` returns one
 page of a conversation's transcript: `{conversationId, access, notice,
 messageCount, messages, prevCursor, nextCursor}`. `limit` is 1 to 50 (default
@@ -5893,13 +5907,20 @@ nightly build, otherwise `npx @kontourai/station-cli@latest`).
 a non-empty subset of the request's scope, for an ordinary device request only
 (not a delegation, relay or account binding). Omitted, it keeps everything
 requested. Keeping `coding:exec` or `approval:full-access` needs the operator
-credential, a qualifying local-grant credential or that host-issued browser
-session; an `access:approve` Device or
+credential, a qualifying local-grant credential, that host-issued browser
+session, or an operator passkey session followed by per-action review; an `access:approve` Device or
 an unauthenticated approval is refused with 403
 `{ "error": "approval_requires_operator", "operatorCli": "…" }` and may approve
 the rest with them left out. Every such 403 carries `operatorCli`. A device
 pairing **Needs attention** item carries `requestedScope` for an ordinary,
 non-account-bound device request.
+
+A live operator passkey session approving an ordinary Device request receives
+202 `step_up_required` and a transaction review URL. No pairing approval is
+committed until a fresh passkey assertion on the consent origin. The request
+and kept scope are rechecked at commit; delegation, relay, and identity-binding
+requests cannot use this path. A refusal may include `signInUrl` when remote
+operator sign-in is configured.
 
 Sender-side Station peer enrollment is a separate operator-only workflow under
 `/api/environments/peers/enrollments`. Its safe status response never returns the

@@ -1,0 +1,7 @@
+{
+  "revision": "653125cc640165ce25f00addeaf8b5808c99af0a",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Copy fix only: the read-only empty chat heading is now \"This chat is empty\" (the state-primitives ratchet refuses a new ad-hoc \"No X\" string); the paragraph and the ChatDockBody.sessionFailureBanner test now say the same. The rest of the round-2 caller-access paragraph is unchanged.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatDockBody.sessionFailureBanner.test.tsx"]}
+  ]
+}

@@ -66,7 +66,9 @@ interface OutboundQueuedMessagesProps {
    */
   onDiscarded?: (remaining: number) => void;
   onRetry: (clientTurnId: string) => Promise<void>;
-  onStartNewChat: (
+  /** Absent when this caller may not start a chat: the refused row then
+   * offers no "New chat". */
+  onStartNewChat?: (
     message: string,
     attachments: FileAttachment[] | undefined,
     clientTurnId: string,
@@ -250,30 +252,32 @@ export function OutboundQueuedMessages({
                 {workspaceRefused ? (
                   <>
                     Refused{' '}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        // A failed discard leaves the row actionable on
-                        // purpose — the draft exists either way; surfacing
-                        // the error beats a silent duplicate-capable state.
-                        void Promise.resolve(
-                          onStartNewChat(
-                            turn.content,
-                            turn.attachments,
-                            turn.clientTurnId,
-                          ),
-                        ).catch((error: unknown) =>
-                          onError(
-                            error instanceof Error &&
-                              error.name === 'NewChatUnavailableError'
-                              ? error.message
-                              : `New chat created; old queued turn kept: ${error instanceof Error ? error.message : String(error)}`,
-                          ),
-                        )
-                      }
-                    >
-                      New chat
-                    </button>
+                    {onStartNewChat ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          // A failed discard leaves the row actionable on
+                          // purpose — the draft exists either way; surfacing
+                          // the error beats a silent duplicate-capable state.
+                          void Promise.resolve(
+                            onStartNewChat(
+                              turn.content,
+                              turn.attachments,
+                              turn.clientTurnId,
+                            ),
+                          ).catch((error: unknown) =>
+                            onError(
+                              error instanceof Error &&
+                                error.name === 'NewChatUnavailableError'
+                                ? error.message
+                                : `New chat created; old queued turn kept: ${error instanceof Error ? error.message : String(error)}`,
+                            ),
+                          )
+                        }
+                      >
+                        New chat
+                      </button>
+                    ) : null}
                     {threadAdvanced ? (
                       <span className="queued-message__advanced-context">
                         The conversation moved on — this may have been answered
