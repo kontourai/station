@@ -254,13 +254,17 @@ export function IntegrationEditorPanel({
       {!isNew && editForm.trustReview && (
         <IntegrationTrustReview form={editForm} />
       )}
-      {!isNew && trustControlsEnabled && (isBuiltin || viewMode === 'form') && (
-        <IntegrationTrustSection
-          form={editForm}
-          locked={locked}
-          onUpdate={onUpdate}
-        />
-      )}
+      {/* Its settings are not loaded until reviewed, so they are not editable. */}
+      {!isNew &&
+        !editForm.trustReview &&
+        trustControlsEnabled &&
+        (isBuiltin || viewMode === 'form') && (
+          <IntegrationTrustSection
+            form={editForm}
+            locked={locked}
+            onUpdate={onUpdate}
+          />
+        )}
       {!isNew && !isRuntimeManaged && (
         <LazyBoundary
           load={loadSecretBindingPicker}
