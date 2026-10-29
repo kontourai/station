@@ -61,6 +61,13 @@ The existing composition example is
 [`bindFleetConsumerProbesPreview` and `fleetProbes`](../../src-server/runtime/bootstrap/station-runtime.ts).
 Its disabled branch skips optional probe work and continues ordinary routing.
 
+A preview with no server branch, whose only consumer is the UI (`task-review`,
+`continue-interrupted-turn`), is offered by the
+[registry's](../../src-server/services/feature-previews/feature-preview-registry.ts)
+own constructor through `rememberConsumer`, not a composition bind. The UI reads
+its choice from the catalog at each entry point; any server operation it uses
+keeps its ordinary access checks and is not gated by the preview.
+
 ## Gate every entry point
 
 Inventory every path that can reach the feature, including direct callers that

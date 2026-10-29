@@ -713,6 +713,29 @@ export function useChatInput({
     ],
   );
 
+  /**
+   * Send a message Station composed (Continue after a restart) under the
+   * caller's key, so every repeat names the same turn. The composer is not
+   * part of it: its draft, quotes, attachments and visual skill stay as they
+   * are, and nothing is sent while a turn is running.
+   */
+  const sendComposedMessage = useCallback(
+    async (text: string, clientTurnId: string) => {
+      if (!sessionId || !agentSlug) return false;
+      return sendMessageAction(
+        sessionId,
+        agentSlug,
+        conversationId,
+        text,
+        [],
+        undefined,
+        clientTurnId,
+        { preserveComposer: true },
+      );
+    },
+    [sessionId, agentSlug, conversationId, sendMessageAction],
+  );
+
   const handleCancel = useCallback(async () => {
     if (!sessionId) return;
     const currentChat = activeChatsStore.getSnapshot()[sessionId];
@@ -1254,6 +1277,7 @@ export function useChatInput({
       // Handlers
       handleInputChange,
       handleSend,
+      sendComposedMessage,
       handleCancel,
       handleClearInput,
       handleAddAttachments,
@@ -1301,6 +1325,7 @@ export function useChatInput({
       slashCommands,
       handleInputChange,
       handleSend,
+      sendComposedMessage,
       handleCancel,
       handleClearInput,
       handleAddAttachments,

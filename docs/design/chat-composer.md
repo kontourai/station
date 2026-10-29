@@ -359,7 +359,24 @@ long" when Station's stall detection stopped it, "Station restarted mid-turn"
 after recovery, or the engine's own reason (a known one as a short line, any
 other cut to one line with the full text as its tooltip). Who stopped it comes
 from Station's `session.stop-settled` record and the recovery abort's marker,
-not from the reason text. A row without answer text has no Basis chip. The pill's state changes animate its width with
+not from the reason text. Recovery's restart notice is dropped under a row that
+already says "Station restarted mid-turn"; a partial answer keeps it as its own
+line. Behind the `continue-interrupted-turn` Feature Preview, that notice (or
+the row that took its place) offers **Continue** while the latest row carries
+the same interruption, the transcript has caught up, the conversation can take
+a send, and nothing is running or waiting to send. Continue sends a fixed
+note as an ordinary turn, keyed `continue-interrupted:<boundary id>` from the
+notice's `interruptedTurnBoundary`, so a second tap or another device names the
+same turn and the server's turn deduplication starts it once. Every send
+under that key (the tap, a Retry, an outbox replay) leaves the composer out:
+the draft, quotes, attachments and visual skill stay there, a refusal puts
+nothing there, and a turn running by the time it is sent makes it send nothing
+rather than steer or queue under a new key. Station refusing it as busy before
+sending holds it in the queue under the same key; an engine that refuses it as
+busy after Station began sending spends that key, and Continue for that
+interruption then only reports the refusal (type a message instead). Only a person's tap
+starts it; the outbox may replay an unanswered tap under the same key, as it
+does any send. A row without answer text has no Basis chip. The pill's state changes animate its width with
 the shared motion token, while the clock reserves a stable text column. A running
 tool call's label carries a highlight moving through its text; settled calls
 and approval requests stay still. The streaming row's "Running <tool>" line

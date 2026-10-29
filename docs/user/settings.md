@@ -27,6 +27,7 @@ only when this Station's build can run it; if none is, the section says
 | `local-speech` | Local speech | Offers Station (local) in Voice → Speech-to-text: record a message, then transcribe it on this Station. | One-time consented tool/model download; English batch dictation only; microphone permission; shares one recognizer and a bounded wait queue with Walkthroughs. |
 | `chat-host-images` | Chat images from the host | Shows images an agent saves on this Station and names by absolute path in its reply, on any device, and tells agents where to save them. | Station copies each admitted image (up to 5 per reply, 512 KiB each) into the chat's attachment storage; engines started while it is on get a per-session temporary folder. |
 | `task-review` | Task review | Adds a Review tab to Tasks for anchored comments on plans, outputs, answers and Screens, which can be sent to the lead agent. | Sending starts or queues a lead-agent turn; Screen capture needs a committed workspace. |
+| `continue-interrupted-turn` | Continue after restart | Offers **Continue** on a chat turn a Station restart cut off, which sends the agent a short note to pick up where it stopped. | Continue starts an ordinary agent turn, once per interrupted turn; it is never sent on its own. |
 | `visual-skills` | Visual skills | Offers installed visual skills in the start composer (**⋯ → Use a visual skill**) and the New Chat agent list. | Only the entry points are the preview: installing, validating and authoring visual skills work either way, and a chat already started with one keeps its skill view and any unsent next stage. Turning it off mid-draft stops New Chat showing or starting a chosen, unsent visual skill; turning it back on restores that choice. |
 | `workload-budget-settings` | Workload budget settings | Shows a memory budget editor under **Settings → Advanced → Host options**: per-engine and total memory for engine workloads, beside the host's memory and where each value comes from. | Only the editor is the preview; budgets themselves are enforced either way. On a Linux Station service a lower budget kills memory-heavy commands sooner, and a total below current use is refused; an environment variable still overrides the saved value; elsewhere the values are only saved. Turning the preview off keeps saved values in force (save empty fields first to clear them). |
 
@@ -51,6 +52,17 @@ chat's own temporary folder, and shows them in the reply on every device. See
 [visual replies](html-replies.md#images-saved-on-the-host) for what is admitted
 and what each "not available" message means. Turning it off stops new copies;
 copies already made stay with their chat.
+
+**Continue after restart** (`continue-interrupted-turn`): when Station
+restarts while an agent is working, the chat marks the cut-off turn ("Station
+restarted mid-turn" or the restart notice). With the preview on, that marker
+offers **Continue** while it is still the chat's latest message, the chat has
+caught up, and no turn is running. Continue sends the agent a fixed note, as your message, asking it to
+continue from where it stopped and to check what already finished first.
+Anything you were writing stays in the composer. A second tap, here or on
+another device, does not send it again. A newer message retires the button.
+If the agent refuses it as busy, that Continue cannot be sent again; type a
+message instead.
 
 Turning a preview on affects everyone who uses this Station.
 

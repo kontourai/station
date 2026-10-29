@@ -9,8 +9,12 @@ const script = join(root, 'scripts/feature-preview-docs-check.mjs');
 const registry =
   'src-server/services/feature-previews/feature-preview-registry.ts';
 const makeTempDir = trackTempDirs();
-// The copied registry offers this consumer itself, through rememberConsumer.
-const registryOffered = ['task-review', 'visual-skills'];
+// The copied registry offers these consumers itself, through rememberConsumer.
+const registryOffered = [
+  'task-review',
+  'continue-interrupted-turn',
+  'visual-skills',
+];
 
 function run(directory: string) {
   const result = spawnSyncBounded(process.execPath, [script, directory], {

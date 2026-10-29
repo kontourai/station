@@ -105,6 +105,11 @@ interface ChatMessageListProps {
   showToolDetails: boolean;
   /** Override rendering for specific messages. Return a ReactNode to replace default, or null to use MessageBubble. */
   renderOverride?: (msg: ChatMessage, idx: number) => React.ReactNode | null;
+  /** Content drawn under a default-rendered message, or null for none. */
+  renderAfterMessage?: (
+    msg: ChatMessage,
+    idx: number,
+  ) => React.ReactNode | null;
   emptyState?: React.ReactNode;
   historyNotice?: React.ReactNode;
   hasOlderMessages?: boolean;
@@ -246,6 +251,7 @@ function ChatMessageListComponent({
   showReasoning,
   showToolDetails,
   renderOverride,
+  renderAfterMessage,
   emptyState,
   historyNotice,
   hasOlderMessages,
@@ -1495,7 +1501,16 @@ function ChatMessageListComponent({
       const override = renderOverride(msg, idx);
       if (override !== null) return override;
     }
-    return renderDefaultMessage(msg, idx, rowId);
+    const after = renderAfterMessage?.(msg, idx) ?? null;
+    const message = renderDefaultMessage(msg, idx, rowId);
+    return after === null ? (
+      message
+    ) : (
+      <>
+        {message}
+        {after}
+      </>
+    );
   };
 
   const renderTranscriptRow = (row: ChildTranscriptRow) => {
