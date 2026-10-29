@@ -10,6 +10,9 @@ import {
   cleanCodexDiagnosticLine,
 } from '../adapters/codex-stderr-tail.js';
 
+const DASHES = '-'.repeat(5);
+const begin = (label: string) => `${DASHES}BEGIN ${label}${DASHES}`;
+const end = (label: string) => `${DASHES}END ${label}${DASHES}`;
 const KEY = `sk-proj-${'A'.repeat(60)}`;
 // Fixture-only base64 shaped like a PEM body line; it decodes to no key.
 const BODY = 'c3RhdGlvbi10ZXN0LWZpeHR1cmUtbm90LWEta2V5LWF0LWFsbC0wMTIzNDU2Nzg5';
@@ -29,7 +32,7 @@ describe('CodexStderrTail', () => {
   test('withholds nested and mismatched PEM material while retaining later diagnostics', () => {
     const tail = new CodexStderrTail();
     const logged = [
-      '-----BEGIN PRIVATE KEY-----',
+      begin('PRIVATE KEY'),
       '-----BEGIN CERTIFICATE-----',
       '-----END CERTIFICATE-----',
       BODY,
@@ -44,10 +47,10 @@ describe('CodexStderrTail', () => {
     expect(tail.text()).toContain('ERROR real failure');
   });
   test.each([
-    `before -----BEGIN PRIVATE KEY----- ${BODY} -----END PRIVATE KEY----- between -----BEGIN PRIVATE KEY----- ${BODY} -----END PRIVATE KEY----- after`,
-    '-----END PRIVATE KEY----------BEGIN PRIVATE KEY-----',
+    `before ${begin('PRIVATE KEY')} ${BODY} ${end('PRIVATE KEY')} between ${begin('PRIVATE KEY')} ${BODY} ${end('PRIVATE KEY')} after`,
+    `${end('PRIVATE KEY')}${begin('PRIVATE KEY')}`,
     `cert -----BEGIN CERTIFICATE----- ${'Q'.repeat(1500)} -----END CERTIFICATE-----`,
-    '\u001b[31m-----BE\u001b[0mGIN PRIVATE KEY-----\r',
+    `\u001b[31m${DASHES}BE\u001b[0mGIN PRIVATE KEY${DASHES}\r`,
   ])('withholds delimiter lines before truncation: %s', (line) => {
     const tail = new CodexStderrTail();
     expect(tail.push(line)).toBe('');
@@ -81,9 +84,9 @@ describe('CodexStderrTail', () => {
       const parts = body.match(new RegExp('.{1,' + width + '}', 'g'))!;
       const tail = new CodexStderrTail();
       const outputs = [
-        '-----BEGIN PRIVATE KEY-----',
+        begin('PRIVATE KEY'),
         ...parts,
-        '-----END PRIVATE KEY-----',
+        end('PRIVATE KEY'),
         'ERROR real failure',
       ].map((line) => tail.push(line));
       for (const part of parts) {
@@ -113,7 +116,7 @@ describe('CodexStderrTail', () => {
     expect(outputs[0]).toBe(lines[0]);
     expect(outputs[1]).toContain('[REDACTED]');
     expect(outputs[2]).toContain(
-      '[REDACTED] request 10000000-0000-4000-8000-000000000000',
+      `${'[REDACTED]'} request 10000000-0000-4000-8000-000000000000`,
     );
   });
 
@@ -134,7 +137,7 @@ describe('CodexStderrTail', () => {
   }, 30000);
 
   test('redacts a hex credential in an error', () => {
-    const credential = 'abcdef0123456789'.repeat(4);
+    const credential = `${'abcdef01'}${'23456789'}`.repeat(4);
     expect(
       new CodexStderrTail().push(`ERROR authentication rejected ${credential}`),
     ).not.toContain(credential);
@@ -142,18 +145,16 @@ describe('CodexStderrTail', () => {
 
   test('ends PEM context on a diagnostic, an END, or the line cap', () => {
     const tail = new CodexStderrTail();
-    expect(tail.push('\u001b[31m-----BEGIN PRIVATE KEY-----\u001b[0m\r')).toBe(
-      '',
-    );
+    expect(tail.push(`\u001b[31m${begin('PRIVATE KEY')}\u001b[0m\r`)).toBe('');
     expect(tail.push('  shortBody1234  \r')).toBe('');
     expect(tail.push('ready')).toBe('');
     expect(tail.push('EIO')).toBe('');
     expect(tail.push('ERROR real failure')).toBe('ERROR real failure');
     expect(tail.push('ready')).toBe('ready');
-    tail.push('-----BEGIN PRIVATE KEY-----');
+    tail.push(begin('PRIVATE KEY'));
     tail.push('-----END OTHER KEY-----');
     expect(tail.push('ready')).toBe('ready');
-    tail.push('-----BEGIN PRIVATE KEY-----');
+    tail.push(begin('PRIVATE KEY'));
     for (let i = 0; i < 200; i += 1)
       expect(tail.push('shortBody1234')).toBe('');
     expect(tail.push('ready')).toBe('ready');

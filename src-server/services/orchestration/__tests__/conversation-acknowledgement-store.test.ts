@@ -1,5 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { PairedDevice } from '@kontourai/station-contracts/environment-security';
 import {
@@ -7,6 +6,7 @@ import {
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
 import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { JsonFileStore } from '../../infra/json-store.js';
 import {
   conversationAcknowledgementKey,
@@ -52,9 +52,11 @@ const DEVICES: PairedDevice[] = [
 ];
 const isOwnerDevice = ownerDevicePredicate(() => DEVICES);
 
+const makeTempDir = trackTempDirs();
+
 describe('FileConversationAcknowledgementStore', () => {
   test('treats an absent store as an honest empty state and writes the first acknowledgement', () => {
-    const dataDir = mkdtempSync(join(tmpdir(), 'station-conversation-empty-'));
+    const dataDir = makeTempDir('station-conversation-empty-');
     const store = new FileConversationAcknowledgementStore(dataDir);
 
     expect(
@@ -72,7 +74,7 @@ describe('FileConversationAcknowledgementStore', () => {
   });
 
   test('persists a user-scoped rendered conversation version across instances', () => {
-    const dataDir = mkdtempSync(join(tmpdir(), 'station-conversation-read-'));
+    const dataDir = makeTempDir('station-conversation-read-');
     const first = new FileConversationAcknowledgementStore(dataDir);
 
     first.acknowledge({
@@ -91,7 +93,7 @@ describe('FileConversationAcknowledgementStore', () => {
   });
 
   test('batches one snapshot, scopes it to the user, and sees external writes on the next read', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'station-ack-batch-'));
+    const dir = makeTempDir('station-ack-batch-');
     const path = join(dir, 'conversation-acknowledgements.json');
     const ids = Array.from({ length: 100 }, (_, i) => `thread-${i}`);
     const write = (version: string) =>
@@ -127,9 +129,7 @@ describe('FileConversationAcknowledgementStore', () => {
   });
 
   test('refuses a readable-corrupt store without overwriting its original bytes', () => {
-    const dataDir = mkdtempSync(
-      join(tmpdir(), 'station-conversation-corrupt-'),
-    );
+    const dataDir = makeTempDir('station-conversation-corrupt-');
     const storePath = join(dataDir, 'conversation-acknowledgements.json');
     const corruptBytes = '{"version":1,"acknowledgements":';
     writeFileSync(storePath, corruptBytes, 'utf8');
@@ -149,7 +149,7 @@ describe('FileConversationAcknowledgementStore', () => {
   });
 
   test('migrates a version 1 file: the owner’s writers fold into the owner key, newest version wins, another person keeps theirs', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'station-ack-migrate-'));
+    const dir = makeTempDir('station-ack-migrate-');
     const path = join(dir, 'conversation-acknowledgements.json');
     try {
       // The exact shape the version 1 writers left on a real personal
@@ -226,7 +226,7 @@ describe('FileConversationAcknowledgementStore', () => {
   });
 
   test('never moves a version backwards when a second device acknowledges an older render', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'station-ack-monotonic-'));
+    const dir = makeTempDir('station-ack-monotonic-');
     try {
       const store = new FileConversationAcknowledgementStore(dir);
       const ack = (updatedAt: string) =>
@@ -263,7 +263,7 @@ describe('FileConversationAcknowledgementStore', () => {
 
 describe('FileConversationAcknowledgementStore eviction', () => {
   test('past the bound, a version that does not parse goes first, then the oldest', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'station-ack-evict-'));
+    const dir = makeTempDir('station-ack-evict-');
     try {
       const acknowledgements: Record<string, string> = {};
       for (let index = 0; index < 1_998; index++)

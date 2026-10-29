@@ -1,8 +1,7 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { resolveTitleModel } from '../../../routes/chat/chat-title-generation.js';
 import {
   ConversationTitleGeneration,
@@ -10,6 +9,8 @@ import {
 } from '../conversation-title-generation.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
+
+const makeTempDir = trackTempDirs();
 
 const THREAD = 'claude:title-generation';
 const OWNER = 'human:local:operator';
@@ -20,13 +21,12 @@ describe('generated conversation titles (#4266)', () => {
   let store: EventStore;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'title-generation-'));
+    dir = makeTempDir('title-generation-');
     store = new EventStore(join(dir, 'orchestration.sqlite'));
   });
 
   afterEach(() => {
     store.close();
-    rmSync(dir, { recursive: true, force: true });
   });
 
   function start(metadata: Record<string, unknown> = {}): void {

@@ -1,8 +1,7 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventStore } from '../event-store.js';
 import { buildOrchestrationSessionSummary } from '../orchestration-session-state.js';
 
@@ -32,6 +31,8 @@ import { buildOrchestrationSessionSummary } from '../orchestration-session-state
  *    newly created.
  */
 
+const makeTempDir = trackTempDirs();
+
 const ROOT = 'claude:1788628457157';
 const CHILD = `${ROOT}:session:3329a9d6-acde-4143-8421-b0b99bf6f0da`;
 const OWNER = 'human:local:operator';
@@ -47,13 +48,12 @@ describe('a continuation child never renames its conversation (#1536 B4)', () =>
   let store: EventStore;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'continuation-title-'));
+    dir = makeTempDir('continuation-title-');
     store = new EventStore(join(dir, 'orchestration.sqlite'));
   });
 
   afterEach(() => {
     store.close();
-    rmSync(dir, { recursive: true, force: true });
   });
 
   /** The exact two-thread shape the audit home recorded. */
@@ -280,13 +280,12 @@ describe('low-content prompts keep the previous title (#4266)', () => {
   let store: EventStore;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'low-content-title-'));
+    dir = makeTempDir('low-content-title-');
     store = new EventStore(join(dir, 'orchestration.sqlite'));
   });
 
   afterEach(() => {
     store.close();
-    rmSync(dir, { recursive: true, force: true });
   });
 
   function startThread(threadId: string, createdAt = ROOT_CREATED): void {

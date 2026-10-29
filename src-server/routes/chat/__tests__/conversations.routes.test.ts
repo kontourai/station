@@ -3713,7 +3713,7 @@ describe('Global Conversation Routes', () => {
   });
 
   test('an acknowledgement POSTed by one principal is read back by another principal of the same personal owner', async () => {
-    const dataDir = mkdtempSync(join(tmpdir(), 'station-ack-route-'));
+    const dataDir = makeForkDir('station-ack-route-');
     try {
       // The real wiring: request authority is the resolved principal, and
       // `getUserId` is the OS account name the POST used to write under.

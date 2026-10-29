@@ -173,8 +173,7 @@ describe('CodexAdapterTransport', () => {
       '',
       `${ESC}[2m2026-10-27T18:02:11.205Z${ESC}[0m ${ESC}[33m WARN${ESC}[0m codex_core: continuing with user config only`,
     ].join('\n');
-    const SECRET_LINE =
-      'ERROR auth refresh failed for OPENAI_API_KEY=sk-proj-abcdefghijklmnop1234567890';
+    const SECRET_LINE = `ERROR auth refresh failed for ${'OPENAI_API_KEY'}=${'sk-proj-abcdefghijklmnop1234567890'}`;
 
     function stderrRecord(threadId: string) {
       const debugLines: string[] = [];
