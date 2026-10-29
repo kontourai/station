@@ -24,7 +24,8 @@ export type MobileActivityGroupId =
   | 'drafts'
   | 'settled'
   | 'snoozed'
-  | 'earlier';
+  | 'earlier'
+  | 'dismissed';
 
 /**
  * THE snooze presets — one set for the dock, the phone picker and Home

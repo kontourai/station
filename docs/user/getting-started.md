@@ -632,6 +632,16 @@ visible. Task-owned chats appear under their Task as sessions. **Show work**
 filters by project or Station and stays selected on this device. If work needs
 you outside the filter, choose **Show all** from the notice.
 
+To clear your inbox, hover a conversation on desktop and choose **× Dismiss
+from inbox**. On mobile, use the row’s Details menu; with **Sheet gestures
+preview** enabled in Settings → Advanced → Developer tools, swipe left to
+reveal the clock and × controls. The clock opens Snooze duration choices; ×
+dismisses the conversation. Dismissal leaves running work and history intact.
+Choose **Undo**, or expand **Dismissed** and choose **Restore to inbox**.
+Dismissal is saved on this browser/device, like Snooze. A changed status, a
+changed attention kind, or newer activity outside a running turn brings the
+conversation back; streaming progress during the same running turn does not.
+
 The workspace map lists Projects and their named Layouts, followed by your
 **Personal Boards**. Its **+** creates a Board and lets you name it, even
 when the list is empty. Select a project to see its configured views as child rows.

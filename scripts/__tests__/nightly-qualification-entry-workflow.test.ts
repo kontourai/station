@@ -9,6 +9,7 @@ type Step = {
   run?: string;
   uses?: string;
   with?: Record<string, unknown>;
+  'continue-on-error'?: boolean;
 };
 type Job = {
   name?: string;
@@ -36,6 +37,28 @@ const qualification = read('main-qualification.yml');
 const nightly = read('nightly.yml');
 const expr = (inner: string) => `\${{ ${inner} }}`;
 describe('independent scheduled delivery and full qualification', () => {
+  it('warms the version-bound Chromium cache only inside the admitted main source gate', () => {
+    const gate = nightly.jobs['test-gate'];
+    expect(gate.if).toBe(
+      expr(
+        "github.ref == 'refs/heads/main' && needs.delivery-decide.outputs.publish == 'true'",
+      ),
+    );
+    const steps = gate.steps ?? [];
+    const cache = steps.findIndex((step) => step.name === 'Cache Chromium');
+    const install = steps.findIndex((step) => step.name === 'Install Chromium');
+    expect(cache).toBeGreaterThanOrEqual(0);
+    expect(steps[cache].uses).toBe(
+      'actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9',
+    );
+    expect(steps[cache]['continue-on-error']).toBe(true);
+    expect(steps[cache].with).toEqual({
+      path: '~/.cache/ms-playwright',
+      key: `station-playwright-v1-\${{ runner.os }}-\${{ runner.arch }}-\${{ hashFiles('pnpm-lock.yaml') }}`,
+    });
+    expect(install).toBeGreaterThan(cache);
+    expect(steps[install].run).toContain('npx playwright install chromium');
+  });
   it.each(['test-gate', 'nightly-cli'])(
     '%s selects verified pnpm before Node package caching and managed install',
     (jobId) => {

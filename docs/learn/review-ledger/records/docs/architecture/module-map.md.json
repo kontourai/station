@@ -1448,7 +1448,9 @@
 
     "tests/task-review.spec.ts",
 
-    "packages/shared/src/__tests__/station-home-update-backup.test.ts"
+    "packages/shared/src/__tests__/station-home-update-backup.test.ts",
+
+    "scripts/lib/heavy-check-slots.mjs"
   ],
 
   "checks": [
