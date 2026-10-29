@@ -15,11 +15,19 @@
   backdrop-filter: blur(6px);
 }
 
+/* `ResponsiveDialogSurface` supplies behavior and geometry only, so the panel
+   owns its own surface; without one the form floated on the dimmed overlay
+   and the muted text was unreadable in the light theme. */
 .conversation-handoff-dialog {
+  box-sizing: border-box;
   width: min(680px, calc(100vw - 32px));
   max-height: min(760px, calc(100dvh - 32px));
   overflow: auto;
   padding: var(--space-5, 20px);
+  border: var(--k-border-thin, 1px) solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+  color: var(--k-text);
 }
 .conversation-handoff-dialog__header,
 .conversation-handoff-dialog__actions,
@@ -62,17 +70,28 @@
   margin-left: auto;
   color: var(--text-muted);
 }
-.conversation-handoff-dialog__confirmation,
-.conversation-handoff-dialog__confirmation label {
-  display: grid;
-  gap: 8px;
-}
+/* The fields are the shared form primitives (`.editor-field`, `.editor-label`,
+   `.editor-select`, `.editor-textarea` in components/editor-controls.css);
+   this grid owns only the rhythm between groups, so a field's own bottom
+   margin would double it. */
 .conversation-handoff-dialog__confirmation {
-  gap: 16px;
+  display: grid;
+  gap: var(--k-space-4);
 }
-.conversation-handoff-dialog__confirmation textarea,
-.conversation-handoff-dialog__confirmation select {
-  width: 100%;
+.conversation-handoff-dialog__confirmation .editor-field {
+  margin-bottom: 0;
+}
+/* The engine-change line states what the submit will do; it is a paragraph of
+   its own, separated from the first field below it. */
+.conversation-handoff-dialog__summary {
+  margin: var(--k-space-4) 0;
+  color: var(--k-text);
+  line-height: var(--k-leading-normal);
+}
+.conversation-handoff-dialog__precondition {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
 }
 .conversation-handoff-dialog__disclosure,
 .conversation-handoff-boundary__disclosure {
