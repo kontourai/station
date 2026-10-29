@@ -1,0 +1,27 @@
+{
+  "revision": "5447fbe4ab1c63c51501fb057d9b66b51259d070",
+
+  "notes": [
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed the comment-only follow-up to the Chromium cache policy: the pinned read-only restore and trusted main writer are described accurately; mandatory installation and test verdicts remain unchanged. This does not claim hosted cache performance or delivery evidence.","inputs":["docs/guides/delegation-attempt-claims.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed the comment-only follow-up to the Chromium cache policy: the pinned read-only restore and trusted main writer are described accurately; mandatory installation and test verdicts remain unchanged. This does not claim hosted cache performance or delivery evidence.","inputs":["docs/guides/dependency-security.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed the comment-only follow-up to the Chromium cache policy: the pinned read-only restore and trusted main writer are described accurately; mandatory installation and test verdicts remain unchanged. This does not claim hosted cache performance or delivery evidence.","inputs":["docs/guides/home-transfer-controller.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Reviewed the comment-only follow-up to the Chromium cache policy: the pinned read-only restore and trusted main writer are described accurately; mandatory installation and test verdicts remain unchanged. This does not claim hosted cache performance or delivery evidence.","inputs":["docs/guides/private-runner-partition.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Reviewed the comment-only follow-up to the Chromium cache policy: the pinned read-only restore and trusted main writer are described accurately; mandatory installation and test verdicts remain unchanged. This does not claim hosted cache performance or delivery evidence.","inputs":["docs/guides/product-law-authoring.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Reviewed the comment-only follow-up to the Chromium cache policy: the pinned read-only restore and trusted main writer are described accurately; mandatory installation and test verdicts remain unchanged. This does not claim hosted cache performance or delivery evidence.","inputs":["docs/guides/release-rings.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/releasing.md","note":"Reviewed the comment-only follow-up to the Chromium cache policy: the pinned read-only restore and trusted main writer are described accurately; mandatory installation and test verdicts remain unchanged. This does not claim hosted cache performance or delivery evidence.","inputs":["docs/guides/releasing.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Reviewed the comment-only follow-up to the Chromium cache policy: the pinned read-only restore and trusted main writer are described accurately; mandatory installation and test verdicts remain unchanged. This does not claim hosted cache performance or delivery evidence.","inputs":["docs/guides/repository-layout.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the comment-only follow-up to the Chromium cache policy: the pinned read-only restore and trusted main writer are described accurately; mandatory installation and test verdicts remain unchanged. This does not claim hosted cache performance or delivery evidence.","inputs":["docs/guides/testing.md","scripts/actionlint-gate.mjs","scripts/ci-workflow-governance.mjs"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Reviewed the comment-only follow-up to the Chromium cache policy: the pinned read-only restore and trusted main writer are described accurately; mandatory installation and test verdicts remain unchanged. This does not claim hosted cache performance or delivery evidence.","inputs":["docs/guides/work-board-security.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Reviewed the comment-only follow-up to the Chromium cache policy: the pinned read-only restore and trusted main writer are described accurately; mandatory installation and test verdicts remain unchanged. This does not claim hosted cache performance or delivery evidence.","inputs":["docs/guides/workspace-packages.md","scripts/actionlint-gate.mjs"]}
+  ]
+}

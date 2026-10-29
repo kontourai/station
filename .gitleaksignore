@@ -120,3 +120,7 @@ a73c165e529c8947150199a5b1293e65634ff999:src-server/providers/__tests__/codex-st
 f593af702092e3ca78989e79aeca1949ea5fada2:src-server/providers/__tests__/codex-stderr-tail.test.ts:private-key:32
 f593af702092e3ca78989e79aeca1949ea5fada2:src-server/providers/__tests__/codex-stderr-tail.test.ts:private-key:56
 c8c2b8917321681700ff0e07c948ed0c5b2ab407:src-server/providers/__tests__/codex-adapter-transport.test.ts:generic-api-key:177
+
+# Synthetic Discord snowflake fixture IDs at exact historical locations.
+610a5d1c626ba1481f29437914e77ab69f247239:packages/contracts/src/__tests__/discord-compatibility.test.ts:discord-client-id:15
+610a5d1c626ba1481f29437914e77ab69f247239:packages/contracts/src/__tests__/discord-compatibility.test.ts:discord-client-id:42
