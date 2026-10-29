@@ -86,6 +86,11 @@ close button. Confirmation prompts and sheets that cannot be dismissed get no
 handle, and the handle can only be dragged with touch or a pointer; the close
 button and Escape still close every sheet.
 
+The same preview lets you swipe a conversation left in the inbox to reveal
+**Snooze** (clock) and **Dismiss** (×), with larger touch targets and labels.
+Swiping reveals the controls; tap one to act. Swipe right to hide them.
+The row’s Details menu offers the same actions with the preview off.
+
 **Station routes preview** adds **Routes** to the Devices page: every address
 this device reaches the current Station on, which one is in use, which failed
 and why, and **Add route** for an address you type. **Edit** removes routes you
