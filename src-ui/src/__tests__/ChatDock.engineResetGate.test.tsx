@@ -15,7 +15,7 @@
 
 import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ChatWorkspacePane } from '../components/chat-dock/ChatDock';
 import { DockShell } from '../components/chat-dock/DockShell';
@@ -26,6 +26,7 @@ import type { ChatSession } from '../types';
 
 type ComposerProps = {
   modelResetDisabledReason?: string;
+  modelResetOffered?: boolean;
   onModelReset: () => void;
 };
 const composer = vi.hoisted(() => ({
@@ -262,6 +263,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
 
 function session(
   conversationOpenState?: ConversationOpenResolution,
+  overrides: Partial<ChatSession> = {},
 ): ChatSession {
   return {
     id: 'chat-reset',
@@ -283,13 +285,12 @@ function session(
     updatedAt: 1,
     hasUnread: false,
     ...(conversationOpenState ? { conversationOpenState } : {}),
+    ...overrides,
   } as unknown as ChatSession;
 }
 
-async function renderPane(active: ChatSession) {
-  viewSession.current = active;
-  composer.props = null;
-  render(
+function pane() {
+  return (
     <QueryClientProvider
       client={
         new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -304,12 +305,20 @@ async function renderPane(active: ChatSession) {
           </DockShell>
         </NavigationProvider>
       </KeyboardShortcutsProvider>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+}
+
+// Re-read through the holder's declared type: a reset narrows the field to
+// `null`, but the mocked composer assigns it on every render.
+const composerProps = () => (composer as { props: null | ComposerProps }).props;
+
+async function renderPane(active: ChatSession) {
+  viewSession.current = active;
+  composer.props = null;
+  const view = render(pane());
   await screen.findByTestId('chat-input-area');
-  // Re-read through the holder's declared type: the reset above narrowed the
-  // field to `null`, but the mocked composer has assigned it since.
-  return (composer as { props: null | ComposerProps }).props;
+  return { props: composerProps(), view };
 }
 
 beforeEach(() => {
@@ -353,27 +362,78 @@ function resolved(overrides: {
   } as unknown as ConversationOpenResolution;
 }
 
+const SERVER_REFUSAL = 'This conversation can’t change its engine right now.';
+
 describe('ChatWorkspacePane engine-override reset gate', () => {
   test('a conversation this caller may change is offered the reset', async () => {
-    const props = await renderPane(session(resolved({ canContinue: true })));
+    const { props } = await renderPane(
+      session(resolved({ canContinue: true })),
+    );
     expect(props?.modelResetDisabledReason).toBeUndefined();
+    expect(props?.modelResetOffered).toBe(true);
+    props?.onModelReset();
+    // An engine override resets through the engine change, never model-only.
+    expect(handleModelReset).not.toHaveBeenCalled();
+  });
+
+  test('without an engine override the reset is the plain model reset', async () => {
+    const { props } = await renderPane(
+      session(resolved({ canContinue: true }), { executionAgentId: undefined }),
+    );
+    expect(props?.modelResetDisabledReason).toBeUndefined();
+    props?.onModelReset();
+    expect(handleModelReset).toHaveBeenCalledOnce();
+  });
+
+  test('its own running turn keeps the chip in place but unavailable', async () => {
+    const { props } = await renderPane(
+      session(resolved({ canContinue: true }), { status: 'sending' }),
+    );
+    expect(props?.modelResetOffered).toBe(true);
+    expect(props?.modelResetDisabledReason).toBe(
+      'Wait for the current turn to finish.',
+    );
+    props?.onModelReset();
+    expect(handleModelReset).not.toHaveBeenCalled();
   });
 
   test.each([
-    ['read-only', resolved({ canContinue: false })],
+    ['read-only', session(resolved({ canContinue: false }))],
     [
       'busy on the server',
-      resolved({ canContinue: false, continuationPending: true }),
+      session(resolved({ canContinue: false, continuationPending: true })),
+    ],
+    [
+      'still loading',
+      session(resolved({ canContinue: true }), {
+        conversationOpenPending: true,
+      }),
+    ],
+    [
+      'unchecked after a failed check',
+      session(undefined, { conversationOpenFailed: true }),
     ],
   ])(
-    'a %s conversation refuses it and never resets only the model',
-    async (_label, resolution) => {
-      const props = await renderPane(session(resolution));
-      expect(props?.modelResetDisabledReason).toBe(
-        'This conversation can’t change its engine right now.',
-      );
+    'a %s conversation offers no reset and never resets only the model',
+    async (_label, active) => {
+      const { props } = await renderPane(active);
+      expect(props?.modelResetOffered).toBe(false);
+      expect(props?.modelResetDisabledReason).toBe(SERVER_REFUSAL);
       props?.onModelReset();
       expect(handleModelReset).not.toHaveBeenCalled();
     },
   );
+
+  test('the refusal clears once the conversation resolves as writable', async () => {
+    const { view } = await renderPane(
+      session(resolved({ canContinue: true }), {
+        conversationOpenPending: true,
+      }),
+    );
+    expect(composerProps()?.modelResetOffered).toBe(false);
+    viewSession.current = session(resolved({ canContinue: true }));
+    view.rerender(pane());
+    await waitFor(() => expect(composerProps()?.modelResetOffered).toBe(true));
+    expect(composerProps()?.modelResetDisabledReason).toBeUndefined();
+  });
 });
