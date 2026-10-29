@@ -490,7 +490,9 @@ export function NewChatModal({
     scopedAgents = [],
     compatibilityMessage,
   } = viewModel;
-  const stationChoices = useExecutionStations({ projectSelected: Boolean(selectedProject) });
+  const stationChoices = useExecutionStations({
+    projectSelected: Boolean(selectedProject),
+  });
   // The composer's chips: the same selection Home's composer derives.
   const start = useStartSelection(selectionModel, selectedContext);
   const draftAgent = start.agent;
