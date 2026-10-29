@@ -1,12 +1,23 @@
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import {
-  exactProcessIdentity,
   isWindowsRoundTripUtcIso,
+  resolveOwnProcessIdentity,
 } from '../../packages/shared/src/process-identity.mjs';
 import { buildWindowsOwnedGuard } from './windows-owned-guard-build.mjs';
 
 const TERMINATION_FORCE_MS = 5_000;
+
+/**
+ * This coordinator's own exact identity, on the own-process probe schedule
+ * (#2675): a cold Windows PowerShell start can outlast one 1.5s probe, and a
+ * single attempt then refused every owned command. Still exact-or-null; no
+ * PID-only fallback.
+ */
+export function resolveCoordinatorIdentity(pid, dependencies = {}) {
+  const probe = resolveOwnProcessIdentity(pid, dependencies);
+  return probe.state === 'exact' ? probe.identity : null;
+}
 // Per-stream raw-output cap. Two streams consume at most 6MiB, reserving the
 // remaining 2MiB of the reporter's aggregate 8MiB budget for attachments.
 const DEFAULT_OUTPUT_CAP_BYTES = 3 * 1024 * 1024;
@@ -427,9 +438,9 @@ export function executeOwnedCommand(
     resolveInner = resolveCompletion;
   });
   const callerOnSpawn = spawnOptions.onSpawn;
-  const parent = (spawnOptions.resolveParentIdentity ?? exactProcessIdentity)(
-    process.pid,
-  );
+  const parent = (
+    spawnOptions.resolveParentIdentity ?? resolveCoordinatorIdentity
+  )(process.pid);
   if (!parent)
     return failedExecution(
       new Error(
