@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import {
   mkdir,
   mkdtemp,
@@ -288,14 +288,59 @@ function storedIntegration(path: string): ToolDef | undefined {
  * raw bytes. A failure restores every replaced tree. Returns the published
  * integration ids.
  */
-export async function publishPluginIntegrations(options: {
+type PluginPublicationOptions = {
   projectHomeDir: string;
   pluginName: string;
   /** Copies the plugin's integration trees into `stagingDir`; absent retires only. */
   stage?: (stagingDir: string) => string[];
   validators?: readonly PluginIntegrationValidator[];
   now?: () => Date;
+};
+
+export async function publishPluginIntegrations(
+  options: PluginPublicationOptions,
+): Promise<string[]> {
+  return publishPluginIntegrationsLocked(options, false);
+}
+
+/** Restore a Station-owned backup, preserving newer person edits in storage. */
+export async function restorePluginIntegrations(options: {
+  projectHomeDir: string;
+  pluginName: string;
+  backupDir: string;
 }): Promise<string[]> {
+  return publishPluginIntegrationsLocked(
+    {
+      projectHomeDir: options.projectHomeDir,
+      pluginName: options.pluginName,
+      stage: (stagingDir) => {
+        if (!existsSync(options.backupDir)) return [];
+        const ids: string[] = [];
+        for (const entry of readdirSync(options.backupDir, {
+          withFileTypes: true,
+        })) {
+          if (!entry.isDirectory()) continue;
+          assertSafeIntegrationId(entry.name);
+          const source = join(options.backupDir, entry.name);
+          const def = storedIntegration(join(source, 'integration.json')) as
+            | (ToolDef & { plugin?: unknown })
+            | undefined;
+          if (!def || def.plugin !== options.pluginName)
+            throw new Error(`Invalid integration backup '${entry.name}'`);
+          cpSync(source, join(stagingDir, entry.name), { recursive: true });
+          ids.push(entry.name);
+        }
+        return ids;
+      },
+    },
+    true,
+  );
+}
+
+async function publishPluginIntegrationsLocked(
+  options: PluginPublicationOptions,
+  restoring: boolean,
+): Promise<string[]> {
   const { projectHomeDir, pluginName } = options;
   const integrationsDir = join(projectHomeDir, 'integrations');
   // Nothing to publish and nothing stored: create nothing.
@@ -331,7 +376,7 @@ export async function publishPluginIntegrations(options: {
           ),
         );
       const now = (options.now ?? (() => new Date()))();
-      for (const id of staged) {
+      for (const id of ids) {
         const current = storedIntegration(
           integrationConfigPath(projectHomeDir, id),
         ) as (ToolDef & { plugin?: unknown }) | undefined;
@@ -339,16 +384,27 @@ export async function publishPluginIntegrations(options: {
           throw new Error(
             `Integration '${id}' already exists and is not owned by this plugin`,
           );
+        if (!staged.includes(id)) continue;
         // Staged ids exist only when a staging directory does.
         const stagedPath = join(stagingDir!, id, 'integration.json');
         const incoming = JSON.parse(
           readFileSync(stagedPath, 'utf8'),
         ) as ToolDef;
         // A plugin cannot author secret bindings.
+        const person = current ?? (restoring ? { ...incoming } : undefined);
         delete incoming.secretEnvRefs;
-        if (current) carryPersonIntegrationFields(current, incoming);
+        if (person) {
+          if (restoring && current) {
+            delete incoming.contentTrust;
+            delete incoming.untrustedContentPermissions;
+            delete incoming.trustReadOnlyHints;
+          }
+          carryPersonIntegrationFields(person, incoming);
+          if (restoring && person.secretEnvRefs)
+            incoming.secretEnvRefs = person.secretEnvRefs;
+        }
         const next = withUntrustedContentChange(
-          current,
+          person,
           incoming,
           undefined,
           now,

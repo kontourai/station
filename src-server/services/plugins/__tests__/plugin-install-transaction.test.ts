@@ -24,6 +24,7 @@ import {
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { loadOrCreateAgentRegistry } from '../../../domain/agent-registry.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
+import { saveIntegrationConfig } from '../../../domain/config-loader-storage.js';
 import { ensureStationHomeSchema } from '../../../domain/home-schema-gate.js';
 import { JsonManifestRegistryProvider } from '../../../providers/registries/json-manifest-registry.js';
 import * as pluginBundles from '../../../routes/plugins/plugin-bundles.js';
@@ -4775,6 +4776,68 @@ describe('installPluginFromSource', () => {
     );
     expect(stored.contentTrust).toBe('untrusted');
     expect(stored.untrustedContentChanges).toEqual(history);
+  });
+
+  test('failed install-over retains a person edit made after publication', async () => {
+    const root = trackedTempDir('station-plugin-rollback-receipts-');
+    const source = join(root, 'source');
+    const installed = join(root, 'plugins', 'mail-plugin');
+    writePlugin(source, { name: 'mail-plugin', version: '2.0.0', agents: [] });
+    writePlugin(installed, {
+      name: 'mail-plugin',
+      version: '1.0.0',
+      agents: [],
+    });
+    mkdirSync(join(source, 'integrations', 'mail'), { recursive: true });
+    writeFileSync(
+      join(source, 'integrations', 'mail', 'integration.json'),
+      JSON.stringify({ id: 'mail', command: 'new' }),
+    );
+    await saveIntegrationConfig(root, 'mail', {
+      id: 'mail',
+      command: 'old',
+      plugin: 'mail-plugin',
+      contentTrust: 'untrusted',
+    } as any);
+    const failing = {
+      ...deps(root),
+      reconcileEngineConnections: vi
+        .fn()
+        .mockImplementationOnce(async () => {
+          await saveIntegrationConfig(
+            root,
+            'mail',
+            {
+              id: 'mail',
+              command: 'new',
+              plugin: 'mail-plugin',
+              contentTrust: 'untrusted',
+              untrustedContentPermissions: { default: 'deny' },
+            } as any,
+            { changedBy: 'person' },
+          );
+          throw new Error('reconcile failed');
+        })
+        .mockResolvedValue(undefined),
+    };
+    await expect(installPluginFromSource(source, [], failing)).rejects.toThrow(
+      'reconcile failed',
+    );
+    const restored = JSON.parse(
+      readFileSync(
+        join(root, 'integrations', 'mail', 'integration.json'),
+        'utf8',
+      ),
+    );
+    expect(restored.command).toBe('old');
+    expect(restored.untrustedContentChanges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          by: 'person',
+          permissions: { default: 'deny' },
+        }),
+      ]),
+    );
   });
 
   test('does not overwrite an existing user integration during first install', async () => {

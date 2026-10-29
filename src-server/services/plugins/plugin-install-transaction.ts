@@ -45,6 +45,7 @@ import { owningProjectExists } from '../../domain/config-loader-agents.js';
 import { observeAppConfigFile } from '../../domain/config-loader-app.js';
 import {
   publishPluginIntegrations,
+  restorePluginIntegrations,
   saveIntegrationConfig,
 } from '../../domain/config-loader-storage.js';
 import {
@@ -2632,36 +2633,16 @@ function backupPluginOwnedIntegrations(
   }
 }
 
-function restorePluginOwnedIntegrations(
-  projectIntegrationsDir: string,
+async function restorePluginOwnedIntegrations(
+  projectHomeDir: string,
   pluginName: string,
   backupRoot: string,
-): void {
-  for (const integrationId of readPluginOwnedIntegrationIds(
-    projectIntegrationsDir,
+): Promise<void> {
+  await restorePluginIntegrations({
+    projectHomeDir,
     pluginName,
-  )) {
-    assertPluginNameSegment(integrationId);
-    const target = join(projectIntegrationsDir, integrationId);
-    assertPathInside(projectIntegrationsDir, target, 'Integration target');
-    rmSync(target, { recursive: true, force: true });
-  }
-  const backupDir = join(backupRoot, 'integrations');
-  if (!existsSync(backupDir)) return;
-  for (const entry of readdirSync(backupDir, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    assertPluginNameSegment(entry.name);
-    const source = join(backupDir, entry.name);
-    const target = join(projectIntegrationsDir, entry.name);
-    assertPathInside(backupDir, source, 'Integration backup source');
-    assertPathInside(
-      projectIntegrationsDir,
-      target,
-      'Integration restore target',
-    );
-    mkdirSync(projectIntegrationsDir, { recursive: true });
-    cpSync(source, target, { recursive: true });
-  }
+    backupDir: join(backupRoot, 'integrations'),
+  });
 }
 
 function removePluginOwnedIntegrations(
@@ -4621,8 +4602,8 @@ async function installPluginFromSourceUnderContext(
             // providers until the next restart. The lock's release forgets it
             // too, but that is after every read in here.
             forgetPluginContentDigest(pluginsDir, pluginName);
-            restorePluginOwnedIntegrations(
-              join(projectHomeDir, 'integrations'),
+            await restorePluginOwnedIntegrations(
+              projectHomeDir,
               pluginName,
               backupRoot,
             );
@@ -5024,8 +5005,8 @@ async function uninstallPluginUnderPublication(
     // correct by luck rather than by construction; a restored tree is a
     // tree whose memoized digest must not be trusted, whoever wrote it.
     forgetPluginContentDigest(pluginsDir, pluginName);
-    restorePluginOwnedIntegrations(
-      join(projectHomeDir, 'integrations'),
+    await restorePluginOwnedIntegrations(
+      projectHomeDir,
       pluginName,
       backupRoot,
     );
