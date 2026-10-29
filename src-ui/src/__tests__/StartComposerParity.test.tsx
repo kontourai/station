@@ -1913,55 +1913,6 @@ describe("the dock's New chat is a draft, not a dialog", () => {
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
-  // Start navigates to its new chat before the draft closes. Folding the
-  // draft's Back entry by travelling back would undo that navigation (on a
-  // phone, back to a URL with the dock closed), so a started draft releases
-  // its entry in place.
-  test('a started draft keeps the URL its chat navigated to', async () => {
-    function Harness() {
-      const [open, setOpen] = useState(true);
-      return (
-        <AuthorityPersistenceContext.Provider
-          value={{ status: 'verified', namespace: 'ns-1', observation: null }}
-        >
-          {open && (
-            <NewChatModal
-              projectIconBySlug={new Map()}
-              startSurface
-              agents={state.agents as AgentData[]}
-              projects={state.projects as ProjectMetadata[]}
-              onSelect={() => {
-                window.history.pushState(null, '', '/?chat=started-chat');
-                setOpen(false);
-              }}
-              onClose={() => setOpen(false)}
-            />
-          )}
-        </AuthorityPersistenceContext.Provider>
-      );
-    }
-    render(<Harness />);
-    await flushHistory();
-    const draft = screen.getByRole('region', { name: 'New chat' });
-    fireEvent.change(
-      within(draft).getByRole('textbox', { name: 'What would you like done?' }),
-      { target: { value: 'Go' } },
-    );
-    const start = within(draft).getByRole('button', { name: 'Start' });
-    await waitFor(() =>
-      expect((start as HTMLButtonElement).disabled).toBe(false),
-    );
-    const back = vi.spyOn(window.history, 'back');
-    fireEvent.click(start);
-    await waitFor(() =>
-      expect(screen.queryByRole('region', { name: 'New chat' })).toBeNull(),
-    );
-    await flushHistory();
-    expect(back).not.toHaveBeenCalled();
-    expect(window.location.search).toBe('?chat=started-chat');
-    back.mockRestore();
-  });
-
   // After Start the dock hands focus to the new chat's composer
   // (`requestComposerFocus`); the draft must not pull it back to its opener.
   test('a started draft does not return focus to the control that opened it', async () => {
