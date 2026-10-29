@@ -145,12 +145,13 @@ on the host instead.
 
 Turning on sharing for a Project needs Station operator authority. Without an
 operator session, only the host (the Desktop or the operator credential) can do
-it. A signed-in operator session can do it from any paired browser with one
-passkey confirmation per Project
+it. A signed-in operator session can do it from a paired browser admitted to
+the Project-sharing enable route, with one passkey confirmation per Project
 ([#4306](https://github.com/kontourai/station/issues/4306)).
 
-1. The browser must be paired with permission to operate (`orchestration:operate`).
-   Sign in as operator as above.
+1. The browser must be paired with permission to operate (`orchestration:operate`)
+   and admitted to the enable route. Account-bound Devices cannot use this route,
+   even with an operator session. Sign in as operator as above.
 2. Open the Project's **Settings → People and access**. If you are not signed
    in, the section offers **Sign in as operator**. Once you are, it offers
    **Enable Project sharing**.
