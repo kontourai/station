@@ -1626,3 +1626,148 @@ describe('untrusted-content permission changes (#3483)', () => {
     ).rejects.toThrow();
   });
 });
+
+describe('legacy trust settings that need a person (#3483)', () => {
+  const makeTempDir = trackTempDirs();
+  const legacy = {
+    id: 'mail',
+    kind: 'mcp' as const,
+    transport: 'streamable-http' as const,
+    endpoint: 'https://mail.example.test/mcp',
+    contentTrust: 'trusted',
+    untrustedContentPermissions: {
+      default: 'allow',
+      tools: { send_reply: 'deny' },
+    },
+    trustReadOnlyHints: true,
+    untrustedContentPersonOwned: [
+      'contentTrust',
+      'permissions',
+      'trustReadOnlyHints',
+    ],
+  };
+
+  async function fixture(
+    principal: string | null = 'human:local:operator',
+    operator = true,
+  ) {
+    const home = makeTempDir('station-trust-review-');
+    await mkdir(join(home, 'integrations', 'mail'), { recursive: true });
+    await writeFile(
+      join(home, 'integrations', 'mail', 'integration.json'),
+      JSON.stringify(legacy),
+    );
+    const loader = new ConfigLoader({ projectHomeDir: home });
+    const service = new MCPService(
+      loader,
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      { warn: vi.fn() },
+    );
+    const app = createToolRoutes(service, vi.fn(), {
+      authorizeOperator: async () => {
+        if (!operator) throw new Error('forbidden');
+      },
+      resolveRequestPrincipalId: () => principal ?? undefined,
+    });
+    const decide = (decision: string) =>
+      app.request('/mail/trust-review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision }),
+      });
+    return { home, loader, app, decide };
+  }
+
+  const expectedFields = [
+    { field: 'contentTrust', value: 'trusted' },
+    {
+      field: 'permissions',
+      value: { default: 'allow', tools: { send_reply: 'deny' } },
+    },
+    { field: 'trustReadOnlyHints', value: true },
+  ];
+
+  test('is listed and shown as needing review, never applied', async () => {
+    const { app, loader } = await fixture();
+    const list = (await json(await app.request('/'))) as {
+      data: Array<{ id: string; trustReview?: unknown; enabled?: boolean }>;
+    };
+    expect(list.data.find((item) => item.id === 'mail')).toMatchObject({
+      enabled: false,
+      trustReview: { fields: expectedFields },
+    });
+    const detail = (await json(await app.request('/mail'))) as {
+      data: Record<string, unknown>;
+    };
+    expect(detail.data).toMatchObject({
+      id: 'mail',
+      enabled: false,
+      trustReview: { fields: expectedFields },
+    });
+    expect(detail.data.untrustedContentPermissions).toBeUndefined();
+    expect(detail.data.trustReadOnlyHints).toBeUndefined();
+    await expect(loader.loadIntegration('mail')).rejects.toThrow(
+      /ownership cannot be verified/,
+    );
+  });
+
+  test('only the operator, signed in as a person, can decide', async () => {
+    for (const [principal, operator] of [
+      [null, true],
+      ['agent:station:worker', true],
+      ['human:local:operator', false],
+    ] as const) {
+      const { decide, loader } = await fixture(principal, operator);
+      expect((await decide('keep')).status).toBe(403);
+      await expect(loader.loadIntegration('mail')).rejects.toThrow(
+        /ownership cannot be verified/,
+      );
+    }
+    const { decide } = await fixture();
+    expect((await decide('widen')).status).toBe(400);
+  });
+
+  test('keeping the settings makes them person-owned with a receipt', async () => {
+    const { decide, loader, app } = await fixture();
+    expect((await decide('keep')).status).toBe(200);
+    const kept = await loader.loadIntegration('mail');
+    expect(kept).toMatchObject({
+      contentTrust: 'trusted',
+      untrustedContentPermissions: {
+        default: 'allow',
+        tools: { send_reply: 'deny' },
+      },
+      trustReadOnlyHints: true,
+    });
+    expect(kept.untrustedContentChanges?.at(-1)).toMatchObject({
+      by: 'human:local:operator',
+      contentTrust: 'trusted',
+      permissions: { default: 'allow', tools: { send_reply: 'deny' } },
+      trustReadOnlyHints: true,
+    });
+    const list = (await json(await app.request('/'))) as {
+      data: Array<{ id: string; trustReview?: unknown }>;
+    };
+    expect(list.data.find((item) => item.id === 'mail')?.trustReview).toBe(
+      undefined,
+    );
+    expect((await decide('keep')).status).toBe(409);
+  });
+
+  test('resetting returns them to Station defaults with a receipt', async () => {
+    const { decide, loader } = await fixture();
+    expect((await decide('reset')).status).toBe(200);
+    const reset = await loader.loadIntegration('mail');
+    expect(reset.untrustedContentPermissions).toBeUndefined();
+    expect(reset.trustReadOnlyHints).toBeUndefined();
+    expect(reset.untrustedContentChanges?.at(-1)).toMatchObject({
+      by: 'human:local:operator',
+      permissions: {},
+      trustReadOnlyHints: false,
+    });
+  });
+});

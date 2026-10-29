@@ -18,6 +18,27 @@
   padding-inline-start: var(--k-space-5);
 }
 
+.integration-trust-review {
+  display: grid;
+  gap: var(--k-space-2);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.integration-trust-review dt {
+  font-weight: 600;
+}
+
+.integration-trust-review dd {
+  margin: 0;
+}
+
+.integration-trust-review__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+}
+
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
   /* Form / Raw JSON toggle: full-width, equal halves, 44px tap targets.
      Desktop keeps the compact fit-content pill from editor-layout.css. */

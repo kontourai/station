@@ -9,7 +9,11 @@ type Tool<_T = any> = any;
 
 import { type SpawnOptions, spawn } from 'node:child_process';
 import type { CredentialOwner } from '@kontourai/station-contracts/secret-binding';
-import type { ToolDef, ToolMetadata } from '@kontourai/station-contracts/tool';
+import type {
+  IntegrationTrustReviewDecision,
+  ToolDef,
+  ToolMetadata,
+} from '@kontourai/station-contracts/tool';
 import {
   type MCPConnection,
   type MCPLocalClaim,
@@ -409,6 +413,21 @@ export class MCPService {
 
   async listIntegrations(): Promise<ToolMetadata[]> {
     return this.configLoader.listIntegrations();
+  }
+
+  /** #3483: legacy trust settings waiting for a person, if any. */
+  async integrationTrustReview(id: string) {
+    return this.configLoader.integrationTrustReview(id);
+  }
+
+  /** #3483: a person keeps or resets legacy trust settings, with a receipt. */
+  async decideIntegrationTrustReview(
+    id: string,
+    decision: IntegrationTrustReviewDecision,
+    by: string,
+  ): Promise<void> {
+    this.assertMutableIntegration(id);
+    await this.configLoader.decideIntegrationTrustReview(id, decision, by);
   }
 
   async getToolAgentMap(): Promise<Record<string, string[]>> {

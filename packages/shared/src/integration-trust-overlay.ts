@@ -14,10 +14,13 @@ import {
 import { join } from 'node:path';
 import {
   DEFAULT_EXTERNAL_CONTENT_TRUST,
+  type IntegrationTrustReviewDecision,
+  type IntegrationTrustReviewField,
   isSafeToolServerId,
   personOwnedUntrustedContentFields,
   type ToolDef,
   type UntrustedContentChange,
+  type UntrustedContentPermissions,
 } from '@kontourai/station-contracts/tool';
 import { fsyncDirectorySync } from './fs-windows-compat.js';
 import { stationCuratedContentTrust } from './station-curation.js';
@@ -181,6 +184,124 @@ function overlayFrom(id: string, value: ToolDef): Overlay {
   };
 }
 
+/**
+ * #3483: legacy person-owned fields that would widen what runs. Their
+ * ownership cannot be authenticated, so they wait for a person.
+ */
+function grantExpandingFields(overlay: Overlay): Field[] {
+  const expanding: Field[] = [];
+  const trust = overlay.fields.contentTrust;
+  if (trust?.present && trust.value === 'trusted')
+    expanding.push('contentTrust');
+  const permissions = overlay.fields.permissions;
+  const policy = permissions?.present
+    ? (permissions.value as {
+        default?: string;
+        tools?: Record<string, string>;
+      })
+    : undefined;
+  if (
+    policy?.default === 'allow' ||
+    Object.values(policy?.tools ?? {}).includes('allow')
+  )
+    expanding.push('permissions');
+  const hints = overlay.fields.trustReadOnlyHints;
+  if (hints?.present && hints.value === true)
+    expanding.push('trustReadOnlyHints');
+  return expanding;
+}
+
+/** Thrown in place of migrating legacy grant-expanding trust settings. */
+export class LegacyTrustReviewRequiredError extends Error {
+  readonly code = 'trust_review_required';
+  constructor(
+    readonly integrationId: string,
+    readonly fields: IntegrationTrustReviewField[],
+  ) {
+    super(
+      `Legacy trust settings for '${integrationId}' require person review before migration: their ownership cannot be verified`,
+    );
+    this.name = 'LegacyTrustReviewRequiredError';
+  }
+}
+
+function reviewFields(overlay: Overlay, fields: Field[]) {
+  return fields.map((field) => {
+    const entry = overlay.fields[field];
+    return { field, value: entry?.present ? entry.value : undefined };
+  });
+}
+
+/**
+ * The fields of a stored definition waiting for a person, or `undefined`
+ * when it has none. Caller holds the integration mutation lock.
+ */
+export function integrationTrustReview(
+  home: string,
+  id: string,
+  stored: ToolDef,
+): IntegrationTrustReviewField[] | undefined {
+  if (readIntegrationTrustOverlay(home, id)) return undefined;
+  const overlay = overlayFrom(id, stored);
+  const expanding = grantExpandingFields(overlay);
+  return expanding.length ? reviewFields(overlay, expanding) : undefined;
+}
+
+/**
+ * A person keeps the legacy settings (they become person-owned) or resets
+ * them to Station's defaults. Either way a receipt names the person, and
+ * the definition then migrates normally. Caller holds the integration
+ * mutation lock and has authenticated `by`.
+ */
+export function resolveIntegrationTrustReview(
+  home: string,
+  id: string,
+  stored: ToolDef,
+  decision: IntegrationTrustReviewDecision,
+  by: string,
+  now = new Date(),
+): void {
+  if (readIntegrationTrustOverlay(home, id))
+    throw new Error(`Integration '${id}' has no trust settings to review`);
+  const overlay = overlayFrom(id, stored);
+  const expanding = grantExpandingFields(overlay);
+  if (expanding.length === 0)
+    throw new Error(`Integration '${id}' has no trust settings to review`);
+  if (decision === 'reset')
+    for (const field of expanding) delete overlay.fields[field];
+  const value = (field: Field) => {
+    const entry = overlay.fields[field];
+    return entry?.present ? entry.value : undefined;
+  };
+  const receipt: UntrustedContentChange = {
+    at: now.toISOString(),
+    by,
+    ...(expanding.includes('contentTrust')
+      ? {
+          contentTrust: (value('contentTrust') ??
+            stationCuratedContentTrust(stored) ??
+            DEFAULT_EXTERNAL_CONTENT_TRUST) as 'trusted' | 'untrusted',
+        }
+      : {}),
+    ...(expanding.includes('permissions')
+      ? {
+          permissions: (value('permissions') ??
+            {}) as UntrustedContentPermissions,
+        }
+      : {}),
+    ...(expanding.includes('trustReadOnlyHints')
+      ? { trustReadOnlyHints: value('trustReadOnlyHints') === true }
+      : {}),
+  };
+  // A kept field becomes person-owned by this receipt; a reset field is
+  // recorded as owned and absent, so Station's default applies.
+  if (decision === 'reset')
+    for (const field of expanding) overlay.fields[field] = { present: false };
+  overlay.changes = [...overlay.changes, receipt].slice(-50);
+  writeOverlay(home, id, overlay);
+  migrateIntegrationTrustOverlay(home, id, stored);
+}
+
 /** Publish the overlay before removing legacy person fields from a definition. */
 export function migrateIntegrationTrustOverlay(
   home: string,
@@ -191,25 +312,12 @@ export function migrateIntegrationTrustOverlay(
   if (!stored) return existing;
   const migrated = existing ?? overlayFrom(id, stored);
   if (!existing) {
-    const trust = migrated.fields.contentTrust;
-    const hints = migrated.fields.trustReadOnlyHints;
-    const permissions = migrated.fields.permissions;
-    const policy = permissions?.present
-      ? (permissions.value as {
-          default?: string;
-          tools?: Record<string, string>;
-        })
-      : undefined;
-    if (
-      (trust?.present && trust.value === 'trusted') ||
-      (hints?.present && hints.value === true) ||
-      policy?.default === 'allow' ||
-      Object.values(policy?.tools ?? {}).includes('allow')
-    ) {
-      throw new Error(
-        `Legacy trust settings for '${id}' require person review before migration: their ownership cannot be verified`,
+    const expanding = grantExpandingFields(migrated);
+    if (expanding.length)
+      throw new LegacyTrustReviewRequiredError(
+        id,
+        reviewFields(migrated, expanding),
       );
-    }
   }
   if (
     !existing &&

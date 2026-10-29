@@ -1559,6 +1559,12 @@ Your trust settings and receipts survive a plugin retiring and later
 reintroducing the same integration. Deleting an integration yourself removes
 its saved trust settings and receipts.
 
+Older saved trust settings that allow more than Station's defaults, and
+whose owner Station cannot confirm, are not applied. The server stays off and
+shows **Needs your review** in **Connections → Tools**. Choose **Keep these
+settings** or **Use Station defaults**; either records a receipt with your
+name.
+
 Enable **Content trust settings** under **Settings → Advanced → Feature previews**,
 then open a server in **Connections → Tools** to change its classification,
 default, individual tool permissions, and read-only hints. The panel shows

@@ -27,6 +27,7 @@ import type { ACPConfig } from '@kontourai/station-contracts/acp';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { PluginOverrides } from '@kontourai/station-contracts/plugin';
 import {
+  type IntegrationTrustReviewDecision,
   isSafeToolServerId,
   type ToolDef,
   type ToolMetadata,
@@ -81,6 +82,7 @@ import {
   withAppConfigMutationAuthority,
 } from './config-loader-app.js';
 import {
+  decideIntegrationTrustReview,
   deleteIntegrationConfig,
   deleteSkillPackageAt,
   integrationConfigExists,
@@ -88,6 +90,7 @@ import {
   listSkillConfigs,
   loadACPConfigFile,
   loadIntegrationConfig,
+  loadIntegrationTrustReview,
   loadSkillConfig,
   type SkillConfigRecord,
   saveACPConfigFile,
@@ -1001,6 +1004,22 @@ export class ConfigLoader {
    * next reload, forever (archive#1588, the reload loop behind archive#1574's catalog
    * churn). A genuine content change still writes and still activates.
    */
+  /** #3483: legacy trust settings waiting for a person, if any. */
+  async integrationTrustReview(id: string) {
+    await this.ensureHomeSchema();
+    return loadIntegrationTrustReview(this.projectHomeDir, id);
+  }
+
+  /** #3483: a person keeps or resets legacy trust settings, with a receipt. */
+  async decideIntegrationTrustReview(
+    id: string,
+    decision: IntegrationTrustReviewDecision,
+    by: string,
+  ): Promise<void> {
+    await this.ensureHomeSchema();
+    await decideIntegrationTrustReview(this.projectHomeDir, id, decision, by);
+  }
+
   async saveIntegration(
     id: string,
     def: ToolDef,

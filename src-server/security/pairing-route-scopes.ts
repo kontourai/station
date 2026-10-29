@@ -4048,6 +4048,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'POST', path: '/integrations/:id/oauth/authorize' },
     { method: 'POST', path: '/integrations/:id/oauth/callback' },
     { method: 'POST', path: '/integrations/:id/reconnect' },
+    // #3483: keeps or resets an integration's legacy trust settings in this
+    // Station, like an integration edit; the handler requires the operator in
+    // person and records a receipt.
+    { method: 'POST', path: '/integrations/:id/trust-review' },
     // #3483: a conversation's untrusted-content mark. The read resolves
     // through the integration detail rule (operate); clearing relaxes a
     // protection within this Station and inherits integration operate, and

@@ -392,7 +392,28 @@ export interface ToolMetadata {
   enabled?: boolean;
   disabledTools?: string[];
   probe?: ToolServerProbeResult;
+  /** #3483: legacy trust settings that wait for a person; see `IntegrationTrustReview`. */
+  trustReview?: IntegrationTrustReview;
 }
+
+/**
+ * #3483: a stored trust setting that would widen what runs (a trusted
+ * classification, an `allow`, trusted read-only hints) whose ownership
+ * cannot be authenticated. It is not applied, and the integration does not
+ * load, until a person keeps it or resets it.
+ */
+export interface IntegrationTrustReviewField {
+  field: 'contentTrust' | 'permissions' | 'trustReadOnlyHints';
+  /** The stored value, shown for review; never applied before a decision. */
+  value: unknown;
+}
+
+export interface IntegrationTrustReview {
+  fields: IntegrationTrustReviewField[];
+}
+
+/** A person's answer to an integration's trust review. */
+export type IntegrationTrustReviewDecision = 'keep' | 'reset';
 
 /** Installation provenance, separate from an execution or trust grant. */
 export interface ToolOrigin {

@@ -229,8 +229,17 @@ writer. A versioned person overlay outside the integration directory retains
 explicit settings, resets and receipts through retirement and reintroduction.
 Legacy person fields are migrated under the integration lock: the overlay is
 published before removing them from the definition, so an interrupted migration
-can be retried. Legacy grant-expanding values whose ownership cannot be verified
-are refused for person review; the definition and its history are retained.
+can be retried. Legacy grant-expanding values whose ownership cannot be verified (a
+`trusted` classification, an `allow`, trusted read-only hints) are refused
+for person review; the definition and its history are retained, and the
+integration does not load. The integration list and
+`GET /api/integrations/:id` show it with `trustReview` (the stored values,
+not applied) and without those settings; Connections → Tools shows **Needs
+your review** whether or not the trust settings preview is on.
+`POST /api/integrations/:id/trust-review` with `keep` or `reset` (operator,
+signed in as a person) publishes the overlay under the integration lock with
+the kept values or Station's defaults and a receipt naming the person; the
+definition then loads normally.
 An unreadable overlay refuses the read. Person deletion clears
 the overlay. A concurrent save keeps its receipts. The last 50 are kept. The rule itself is
 `withUntrustedContentChange` in the tool contract.

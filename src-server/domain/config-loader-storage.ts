@@ -22,6 +22,8 @@ import type {
 } from '@kontourai/station-contracts/catalog';
 import {
   DEFAULT_EXTERNAL_CONTENT_TRUST,
+  type IntegrationTrustReviewDecision,
+  type IntegrationTrustReviewField,
   isSafeToolServerId,
   personOwnedUntrustedContentFields,
   type ToolDef,
@@ -32,7 +34,10 @@ import {
 import {
   applyIntegrationTrustOverlay,
   deleteIntegrationTrustOverlay,
+  integrationTrustReview,
+  LegacyTrustReviewRequiredError,
   migrateIntegrationTrustOverlay,
+  resolveIntegrationTrustReview,
   writeIntegrationTrustOverlay,
 } from '@kontourai/station-shared/integration-trust-overlay';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
@@ -778,11 +783,96 @@ export async function listIntegrationMetadata(
         ),
       });
     } catch (error) {
+      if (error instanceof LegacyTrustReviewRequiredError) {
+        // #3483: listed, not dropped, so a person can review it. It stays
+        // unloaded (and so unused) until then.
+        const raw = await readStoredIntegrationForReview(
+          projectHomeDir,
+          entry.name,
+        ).catch(() => undefined);
+        if (raw)
+          tools.push({
+            id: entry.name,
+            kind: raw.kind,
+            displayName: raw.displayName,
+            description: raw.description,
+            transport: raw.transport,
+            source: raw.command || raw.endpoint,
+            enabled: false,
+            trustReview: { fields: error.fields },
+          });
+        continue;
+      }
       logger.error('Failed to load tool', { tool: entry.name, error });
     }
   }
 
   return tools;
+}
+
+async function readStoredIntegrationForReview(
+  projectHomeDir: string,
+  id: string,
+): Promise<ToolDef> {
+  assertSafeIntegrationId(id);
+  const path = join(projectHomeDir, 'integrations', id, 'integration.json');
+  return JSON.parse(await readFile(path, 'utf-8')) as ToolDef;
+}
+
+/**
+ * #3483: an integration whose legacy trust settings wait for a person: its
+ * stored definition without them, and the fields to review. `undefined`
+ * when there is nothing to review.
+ */
+export async function loadIntegrationTrustReview(
+  projectHomeDir: string,
+  id: string,
+): Promise<
+  { definition: ToolDef; fields: IntegrationTrustReviewField[] } | undefined
+> {
+  assertSafeIntegrationId(id);
+  const release = await acquireFileMutationLockAsync(
+    toolServerIntegrationMutationLockPath(projectHomeDir, id),
+  );
+  try {
+    const stored = await readStoredIntegrationForReview(projectHomeDir, id);
+    const fields = integrationTrustReview(projectHomeDir, id, stored);
+    if (!fields) return undefined;
+    const definition = { ...stored };
+    delete definition.untrustedContentPermissions;
+    delete definition.trustReadOnlyHints;
+    delete definition.untrustedContentChanges;
+    delete definition.untrustedContentPersonOwned;
+    definition.contentTrust =
+      stationCuratedContentTrust(stored) ?? DEFAULT_EXTERNAL_CONTENT_TRUST;
+    return { definition, fields };
+  } finally {
+    await release();
+  }
+}
+
+/** #3483: a person keeps or resets an integration's legacy trust settings. */
+export async function decideIntegrationTrustReview(
+  projectHomeDir: string,
+  id: string,
+  decision: IntegrationTrustReviewDecision,
+  by: string,
+): Promise<void> {
+  assertSafeIntegrationId(id);
+  const release = await acquireFileMutationLockAsync(
+    toolServerIntegrationMutationLockPath(projectHomeDir, id),
+  );
+  try {
+    resolveIntegrationTrustReview(
+      projectHomeDir,
+      id,
+      await readStoredIntegrationForReview(projectHomeDir, id),
+      decision,
+      by,
+    );
+  } finally {
+    await release();
+  }
 }
 
 function sanitizeProbeProjection(probe: ToolDef['probe']): ToolDef['probe'] {

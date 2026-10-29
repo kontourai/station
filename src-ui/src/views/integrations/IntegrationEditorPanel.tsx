@@ -4,6 +4,7 @@ import { LockGlyph } from '../../components/icons/Glyph';
 import { IntegrationGlyph } from '../../components/icons/IntegrationGlyph';
 import { LazyBoundary } from '../../components/LazyBoundary';
 import { IntegrationAccountSection } from './IntegrationAccountSection';
+import { IntegrationTrustReview } from './IntegrationTrustReview';
 import { IntegrationTrustSection } from './IntegrationTrustSection';
 
 const loadSecretBindingPicker = () =>
@@ -248,6 +249,11 @@ export function IntegrationEditorPanel({
             requireSave={secretBindingRequireSave}
           />
         )}
+      {/* A legacy setting waiting for a person is shown even without the
+          trust settings preview: until it is decided the server stays off. */}
+      {!isNew && editForm.trustReview && (
+        <IntegrationTrustReview form={editForm} />
+      )}
       {!isNew && trustControlsEnabled && (isBuiltin || viewMode === 'form') && (
         <IntegrationTrustSection
           form={editForm}

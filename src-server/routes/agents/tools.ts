@@ -2,7 +2,9 @@
  * Tool Routes - MCP tool management
  */
 
+import { principalIdMatchesKind } from '@kontourai/station-contracts/principal';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
+import { LegacyTrustReviewRequiredError } from '@kontourai/station-shared/integration-trust-overlay';
 import {
   canonicalDisabledMcpTools,
   mcpToolDisabled,
@@ -250,7 +252,9 @@ export function createToolRoutes(
       (c.req.method === 'POST' && path === '/') ||
       (['PUT', 'DELETE'].includes(c.req.method) && /^\/[^/]+$/.test(path)) ||
       (c.req.method === 'POST' &&
-        /^\/[^/]+\/(?:enabled|tools\/apply|reconnect)$/.test(path));
+        /^\/[^/]+\/(?:enabled|tools\/apply|reconnect|trust-review)$/.test(
+          path,
+        ));
     if (management && mcpUiCallDeps.authorizeOperator) {
       try {
         await mcpUiCallDeps.authorizeOperator(c);
@@ -493,7 +497,56 @@ export function createToolRoutes(
       const def = await mcpService.getIntegration(param(c, 'id'));
       return c.json({ success: true, data: integrationReadProjection(def) });
     } catch (error: unknown) {
+      // #3483: shown for review without its unreviewed settings; it stays
+      // unloaded until a person decides.
+      if (error instanceof LegacyTrustReviewRequiredError) {
+        const review = await mcpService
+          .integrationTrustReview(param(c, 'id'))
+          .catch(() => undefined);
+        if (review)
+          return c.json({
+            success: true,
+            data: {
+              ...integrationReadProjection({
+                ...review.definition,
+                enabled: false,
+              }),
+              trustReview: { fields: review.fields },
+            },
+          });
+      }
       return c.json({ success: false, error: errorMessage(error) }, 404);
+    }
+  });
+
+  // #3483: keep or reset legacy trust settings. The management guard above
+  // admits only the operator; the receipt needs the authenticated person.
+  app.post('/:id/trust-review', async (c) => {
+    const body = await c.req.json().catch(() => undefined);
+    const decision = (body as { decision?: unknown } | undefined)?.decision;
+    if (decision !== 'keep' && decision !== 'reset')
+      return c.json(
+        { success: false, error: 'decision must be keep or reset' },
+        400,
+      );
+    const by = mcpUiCallDeps.resolveRequestPrincipalId?.(c);
+    if (!by || !principalIdMatchesKind(by, 'human'))
+      return c.json(
+        {
+          success: false,
+          error: 'Only a signed-in person can review these settings.',
+        },
+        403,
+      );
+    try {
+      await mcpService.decideIntegrationTrustReview(
+        param(c, 'id'),
+        decision,
+        by,
+      );
+      return c.json({ success: true });
+    } catch (error: unknown) {
+      return c.json({ success: false, error: errorMessage(error) }, 409);
     }
   });
 
