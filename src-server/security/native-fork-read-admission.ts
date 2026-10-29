@@ -29,9 +29,7 @@ export type NativeForkReadAdmission =
 type ReadAuthorityForRequest = (request: Request) => SessionReadAuthority;
 interface MountPort {
   readonly kind: 'bound';
-  capture(
-    request: Request,
-  ):
+  capture(request: Request):
     | {
         readonly kind: 'captured';
         readonly handle: NativeForkReadAdmissionHandle;

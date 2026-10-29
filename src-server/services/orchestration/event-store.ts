@@ -148,11 +148,11 @@ import { CONVERSATION_START_CONTEXT_MIGRATION } from '../../domain/migrations/02
 import { TASK_LEARNING_DISMISSALS_MIGRATION } from '../../domain/migrations/021-task-learning-dismissals.js';
 import { TASK_LEARNING_PROMOTIONS_MIGRATION } from '../../domain/migrations/022-task-learning-promotions.js';
 import { TASK_REVIEW_MIGRATION } from '../../domain/migrations/023-task-review.js';
-import { CONVERSATION_NATIVE_FORK_EFFECT_MIGRATION } from '../../domain/migrations/024-conversation-native-fork-effect.js';
 import {
   ensureUsageExportInvalidations,
   USAGE_EXPORT_JOURNAL_MARKER,
 } from '../../domain/migrations/023-usage-export-invalidations.js';
+import { CONVERSATION_NATIVE_FORK_EFFECT_MIGRATION } from '../../domain/migrations/024-conversation-native-fork-effect.js';
 import {
   EVENT_CONTENT_MIGRATION,
   EVENT_CONTENT_ORPHAN_SWEEP,
