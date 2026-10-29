@@ -72,7 +72,7 @@ export function ChatEmptyState({
   if (!canSend) {
     return (
       <div className="empty-state">
-        <h3>No messages yet</h3>
+        <h3>This chat is empty</h3>
       </div>
     );
   }

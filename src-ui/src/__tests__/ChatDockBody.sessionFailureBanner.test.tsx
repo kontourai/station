@@ -1094,7 +1094,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
         conversationOpenState: openState({ continue: false, startChat: false }),
       }),
     });
-    expect(await screen.findByText('No messages yet')).toBeTruthy();
+    expect(await screen.findByText('This chat is empty')).toBeTruthy();
     expect(screen.queryByText(/Type a message below/)).toBeNull();
   });
 

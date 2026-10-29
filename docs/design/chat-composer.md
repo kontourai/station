@@ -320,7 +320,7 @@ The chat pane offers only what this caller can do, as the server's open read
 reports it. When it says this caller may not continue the conversation
 (`callerAccess.continue`), the composer is disabled with "You can read this
 chat but can't send to it.", the failure banner drops its "send a message"
-note, and an empty chat shows "No messages yet" instead of inviting typing.
+note, and an empty chat shows "This chat is empty" instead of inviting typing.
 When it says this caller may not start a chat (`callerAccess.startChat`),
 every new-chat offer is withheld: the recovery notices' Start new chat, the
 terminal-session and recovery-row New chat and Switch agent actions, the
