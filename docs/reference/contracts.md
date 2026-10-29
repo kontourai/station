@@ -2067,6 +2067,12 @@ mark, 16,384 pixels per dimension and 8 MiB encoded manifest. Tokens stay within
 their segment's ordered time interval. Frame-selection counts account for
 intentional importer selection; `kept` equals the frame event count.
 
+The optional `source.commit` accepts a lowercase 40- or 64-character Git object
+ID. Optional `source.recording` has a safe plain filename, `video/webm` media
+type, positive byte length and lowercase SHA-256 digest. The shared parser bounds
+that length by the 512 MiB upload ceiling; the Task Browser recorder applies a
+separate 16 MiB encoded limit. Imported manifests may omit both fields.
+
 `MEDIA_UPLOAD_POLICIES` and `mediaUploadPolicy(method, path, policies)` share
 the exact Walkthrough/transcription POST matches, byte ceilings, receive idle/total
 and proxy response windows across server and CLI consumers. Transcription is
