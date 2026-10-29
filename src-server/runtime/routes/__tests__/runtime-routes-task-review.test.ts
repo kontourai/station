@@ -396,6 +396,46 @@ describe('Task review through configureRuntimeRoutes', () => {
     };
   }
 
+  test('Task write-back reads use the real Task room authority and do not cross Tasks', async () => {
+    const e = await setup();
+    const other = await e.taskGraph.createTask({
+      projectId: PROJECT,
+      title: 'Another Task',
+    });
+    const target = {
+      kind: 'chat' as const,
+      system: 'discord',
+      destination: 'channel',
+      action: 'message',
+    };
+    const add = (task: typeof e.task) =>
+      e.store.taskWriteBackStore().start({
+        projectId: PROJECT,
+        taskId: task.id,
+        taskCreatedAt: task.createdAt,
+        initiatedBy: { kind: 'person', id: 'owner' },
+        beforeCommit: () => true,
+        target,
+      });
+    expect(add(e.task).ok).toBe(true);
+    expect(add(other).ok).toBe(true);
+    const path = `/api/tasks/${e.task.id}/write-back`;
+    const result = await e.asOperator('GET', path);
+    expect(result.status).toBe(200);
+    expect(result.json.data.entries).toHaveLength(1);
+    expect(result.json.data.entries[0]).toMatchObject({
+      taskId: e.task.id,
+      state: 'pending',
+      target,
+    });
+    expect(
+      (await e.asOperator('GET', path, undefined, REVOKED_CREDENTIAL)).status,
+    ).not.toBe(200);
+    expect(
+      (await e.asOperator('GET', '/api/tasks/no-such-task/write-back')).status,
+    ).toBe(404);
+  });
+
   test('author labels preserve profile names and use Teammate for unknown people', async () => {
     const identity = vi
       .spyOn(auth, 'getCachedUser')

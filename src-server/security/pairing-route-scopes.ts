@@ -3641,6 +3641,7 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // exact room/Project authority. Reads use read standing; append-only person
     // comments and transitions use operate standing. Send starts an agent turn
     // through the lead conversation inbox.
+    { method: 'GET', path: '/api/tasks/:taskId/write-back' },
     { method: 'GET', path: '/api/tasks/:taskId/review' },
     { method: 'GET', path: '/api/tasks/:taskId/review/capture-sessions' },
     { method: 'POST', path: '/api/tasks/:taskId/review/captures' },

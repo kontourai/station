@@ -2016,6 +2016,15 @@ test('declares exact inventory input inspection at the read tier', () => {
   expect(requiredPairingScope('GET', path)).toBe('orchestration:read');
 });
 
+test('Task write-back log is a declared Task read', () => {
+  expect(isLeafScopeDeclared('GET', '/api/tasks/:taskId/write-back')).toBe(
+    true,
+  );
+  expect(requiredPairingScope('GET', '/api/tasks/task-a/write-back')).toBe(
+    'orchestration:read',
+  );
+});
+
 test('Task capture and review comments require operate scope; capture reads use read scope', () => {
   expect(
     requiredPairingScope('POST', '/api/tasks/task-a/review/captures'),

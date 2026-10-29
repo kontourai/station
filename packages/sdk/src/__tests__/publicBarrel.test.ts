@@ -68,6 +68,7 @@ const PUBLIC_QUERY_DOMAINS = [
   'taskGraph',
   'taskMemory',
   'taskReview',
+  'taskWriteBack',
   'taskRoomWork',
   'telemetryDelivery',
   'telemetryCompanion',

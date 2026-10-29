@@ -114,6 +114,7 @@
     "./guidance-assets": "./src/guidance-assets.ts",
     "./inbound-webhook": "./src/inbound-webhook.ts",
     "./integration-status": "./src/integration-status.ts",
+    "./task-write-back": "./src/task-write-back.ts",
     "./http": "./src/http.ts",
     "./knowledge": "./src/knowledge.ts",
     "./openai-compat-catalog-semantics": "./src/openai-compat-catalog-semantics.ts",

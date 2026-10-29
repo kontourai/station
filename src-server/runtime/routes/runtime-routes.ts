@@ -466,6 +466,7 @@ import { createTaskOutputRoutes } from '../../routes/orchestration/task-outputs.
 import { createTaskRelationshipRoutes } from '../../routes/orchestration/task-relationships.js';
 import { createTaskReviewRoutes } from '../../routes/orchestration/task-review.js';
 import { createTaskReviewStationControlRoutes } from '../../routes/orchestration/task-review-station-control.js';
+import { createTaskWriteBackRoutes } from '../../routes/orchestration/task-write-back.js';
 import {
   createTaskRoutes,
   keptRowsForTaskSession,
@@ -5696,6 +5697,14 @@ export function configureRuntimeRoutes(
         return answers;
       },
     });
+    context.app.route(
+      '/api/tasks',
+      createTaskWriteBackRoutes({
+        runtime: roomRuntime,
+        store: roomEventStore.taskWriteBackStore(),
+        logger: context.logger,
+      }),
+    );
     context.app.route(
       '/api/tasks',
       createTaskReviewRoutes({

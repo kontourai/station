@@ -1,4 +1,10 @@
 export { sentTurnKey } from './client/sent-turn-key';
+export {
+  fetchTaskWriteBack,
+  type TaskWriteBackEntry,
+  type TaskWriteBackLog,
+  useTaskWriteBackQuery,
+} from './query-domains/taskWriteBack';
 
 // Re-export all types
 
