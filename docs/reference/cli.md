@@ -1800,7 +1800,8 @@ List and resolve orchestration approval requests (`request.opened` events awaiti
 a `request.resolved`) for an external-engine Agent, without raw `curl` against
 `/api/orchestration/commands`. Adds no new server routes: `list` reads
 `GET /api/orchestration/sessions/:threadId` (or `.../sessions/read-model` to scan
-every thread for `--agent`'s provider when `--thread` is omitted) and derives
+every thread when `--thread` is omitted, narrowed to `--agent`'s provider
+when `--agent` is given) and derives
 "pending" the way the server does; `respond` calls the existing
 `POST /api/orchestration/commands {type:'respondToRequest'}` route.
 
@@ -1818,11 +1819,12 @@ not find is posted without the id and the server decides; nothing is refused
 client-side.
 
 ```
-station approvals list --agent=<slug> [--thread=<id>] [--watch] [--json] [--api-base=<url>]
+station approvals list [--agent=<slug>] [--thread=<id>] [--watch] [--json] [--api-base=<url>]
 station approvals respond <thread-id> <request-id> <accept|acceptForSession|decline|cancel> [--json] [--api-base=<url>]
 ```
 
-`--agent` must be a persisted Agent ID whose execution binds to an external
+Without `--agent`, `list` reads every session on the Station. `--agent`
+must be a persisted Agent ID whose execution binds to an external
 engine (for example `codex` or `kiro`) — approvals are an
 orchestration-session concept, and the provider is resolved from that binding.
 Station#979 AC5: resolution reads the connection's own
@@ -1842,6 +1844,7 @@ repo-wide default change.
 Examples:
 
 ```bash
+station approvals list --json
 station approvals list --agent=codex --thread=runtime-thread
 station approvals list --agent=codex --json
 station approvals list --agent=kiro --thread=kiro-thread
@@ -3317,6 +3320,9 @@ station upgrade
 ### `fresh`
 
 Clean the selected Station home without starting the app.
+After stopping the selected instance, the command takes the home maintenance
+lease before removing the home and its owned build outputs. Another live or
+unverifiable runtime lease on that home refuses cleanup, even with `--force`.
 
 ```
 station fresh [--force] [--allow-default-home-clean] [--home=<dir>] [--base=<dir>] [--temp-home] [--instance=<name>] [--port=<n>] [--ui-port=<n>]
@@ -3486,10 +3492,11 @@ station home reset --confirm [--if-incompatible] [--home=<dir>] [--base=<dir>] [
 | `--json` | Print the result (`{"archived":..., "archivePath"?:..., "projectHome":...}`) as JSON |
 
 Without `--if-incompatible`, this can archive a compatible home too. It checks
-the lifecycle instance records for that home before renaming it. Unlike backup
-and restore, this path does not acquire the home maintenance lease or separately
-consult the home-scoped service registry. Stop every process using the home
-first; use `station service stop` for a supervised service. A successful reset
+the lifecycle instance records, then holds the home maintenance lease while
+rechecking inactivity and renaming the home. Live or unverifiable runtime
+leases refuse reset. This path does not separately consult the home-scoped
+service registry. Stop every process using the home first; use
+`station service stop` for a supervised service. A successful reset
 preserves the old directory but does not itself start or scaffold the new home.
 
 ```bash

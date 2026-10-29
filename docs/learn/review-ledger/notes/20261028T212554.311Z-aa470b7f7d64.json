@@ -1,0 +1,41 @@
+{
+  "revision": "90c64de9fc54ccec0160edc9dfee8600326f6794",
+
+  "notes": [
+    {"path":"docs/learn/media/project-with-task.png","note":"Rechecked against this change: src-ui/src/index.css only adds .composer-mode-sheet__notes and its phone override, which style the approval picker notes. This capture does not show the approval picker open, so its pixels are unaffected.","inputs":["docs/learn/media/project-with-task.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"Rechecked against this change: src-ui/src/index.css only adds .composer-mode-sheet__notes and its phone override, which style the approval picker notes. This capture does not show the approval picker open, so its pixels are unaffected.","inputs":["docs/learn/media/shared-task-document.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Rechecked against this change: src-ui/src/index.css only adds .composer-mode-sheet__notes and its phone override, which style the approval picker notes. This capture does not show the approval picker open, so its pixels are unaffected.","inputs":["docs/learn/media/connections-models.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Rechecked against this change: src-ui/src/index.css only adds .composer-mode-sheet__notes and its phone override, which style the approval picker notes. This capture does not show the approval picker open, so its pixels are unaffected.","inputs":["docs/learn/media/inspect-request.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Rechecked against this change: src-ui/src/index.css only adds .composer-mode-sheet__notes and its phone override, which style the approval picker notes. This capture does not show the approval picker open, so its pixels are unaffected.","inputs":["docs/learn/media/inspect-request.webm","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Rechecked against this change: src-ui/src/index.css only adds .composer-mode-sheet__notes and its phone override, which style the approval picker notes. This capture does not show the approval picker open, so its pixels are unaffected.","inputs":["docs/learn/media/connections-tour.webm","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge.png","note":"Rechecked against this change: src-ui/src/index.css only adds .composer-mode-sheet__notes and its phone override, which style the approval picker notes. This capture does not show the approval picker open, so its pixels are unaffected.","inputs":["docs/learn/media/repository-knowledge.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge-narrow.png","note":"Rechecked against this change: src-ui/src/index.css only adds .composer-mode-sheet__notes and its phone override, which style the approval picker notes. This capture does not show the approval picker open, so its pixels are unaffected.","inputs":["docs/learn/media/repository-knowledge-narrow.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/oauth-mcp-sign-in-comparison.png","note":"Rechecked against this change: src-ui/src/index.css only adds .composer-mode-sheet__notes and its phone override, which style the approval picker notes. This capture does not show the approval picker open, so its pixels are unaffected.","inputs":["docs/learn/media/oauth-mcp-sign-in-comparison.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/oauth-mcp-picker-comparison.png","note":"Rechecked against this change: src-ui/src/index.css only adds .composer-mode-sheet__notes and its phone override, which style the approval picker notes. This capture does not show the approval picker open, so its pixels are unaffected.","inputs":["docs/learn/media/oauth-mcp-picker-comparison.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-paired-before-sign-in.png","note":"Rechecked against this change: src-ui/src/index.css only adds .composer-mode-sheet__notes and its phone override, which style the approval picker notes. This capture does not show the approval picker open, so its pixels are unaffected.","inputs":["docs/learn/media/operator-s3-paired-before-sign-in.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-consent-sign-in.png","note":"Rechecked against this change: src-ui/src/index.css only adds .composer-mode-sheet__notes and its phone override, which style the approval picker notes. This capture does not show the approval picker open, so its pixels are unaffected.","inputs":["docs/learn/media/operator-s3-consent-sign-in.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-paired-after-sign-in.png","note":"Rechecked against this change: src-ui/src/index.css only adds .composer-mode-sheet__notes and its phone override, which style the approval picker notes. This capture does not show the approval picker open, so its pixels are unaffected.","inputs":["docs/learn/media/operator-s3-paired-after-sign-in.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-other-browser-refused.png","note":"Rechecked against this change: src-ui/src/index.css only adds .composer-mode-sheet__notes and its phone override, which style the approval picker notes. This capture does not show the approval picker open, so its pixels are unaffected.","inputs":["docs/learn/media/operator-s3-other-browser-refused.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Rechecked against this change: src-ui/src/index.css only adds .composer-mode-sheet__notes and its phone override, which style the approval picker notes. This capture does not show the approval picker open, so its pixels are unaffected.","inputs":["docs/learn/media/operator-s4-before-sign-in.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Rechecked against this change: src-ui/src/index.css only adds .composer-mode-sheet__notes and its phone override, which style the approval picker notes. This capture does not show the approval picker open, so its pixels are unaffected.","inputs":["docs/learn/media/operator-s4-after-sign-in.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Rechecked against this change: src-ui/src/index.css only adds .composer-mode-sheet__notes and its phone override, which style the approval picker notes. This capture does not show the approval picker open, so its pixels are unaffected.","inputs":["docs/learn/media/operator-s4-step-up-review.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Rechecked against this change: src-ui/src/index.css only adds .composer-mode-sheet__notes and its phone override, which style the approval picker notes. This capture does not show the approval picker open, so its pixels are unaffected.","inputs":["docs/learn/media/operator-s4-after-step-up.png","src-ui/src/index.css"]}
+  ]
+}
