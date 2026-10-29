@@ -233,14 +233,15 @@ behind `station environment operator passkeys`. The
 [session service](../../src-server/services/identity/operator-sessions.ts) verifies
 single-use sign-in assertions on the [consent origin](../../src-server/runtime/consent/operator-sign-in-routes.ts)
 and stores hashed, device-bound sessions in that same private registry. The HTTP
-boundary admits exact session read leaves and per-action access-change requests.
+boundary admits exact session read leaves, including pending pairing requests,
+and per-action access-change requests.
 Those writes return 202 without mutation. The
 [consent store](../../src-server/services/consent/consent-transactions.ts) owns the
 single-use transaction and target fingerprint; the separate consent listener
 requires a UV passkey assertion from its owning session before commit. Cancel
 uses that session and the render nonce on the consent origin to record terminal
-denial without a passkey; it cannot commit. Device
-scope/revoke/removal, people groups, personal tokens and different-passkey
+denial without a passkey; it cannot commit. Ordinary Device pairing approval,
+Device scope/revoke/removal, people groups, personal tokens and different-passkey
 revocation share this boundary. Token secrets appear once in the commit response,
 never in transaction reads. Server-side idle/absolute expiry and live pairing,
 passkey and credential-rotation checks remain enforced; step-up and its status

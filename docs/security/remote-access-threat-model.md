@@ -150,12 +150,15 @@ every read, so a revoked binding cannot resume after restart.
 `__Host-station-operator` is Secure, HttpOnly, SameSite=Strict, Path=/, with no
 Domain. A hostname cookie also reaches the app on another port. That is an
 accepted read disclosure: app-origin plugin code can read
-`GET /api/pairing/devices`, `GET /api/operator/passkeys` and
+`GET /api/pairing/devices`, `GET /api/pairing/requests`, `GET /api/operator/passkeys` and
 `GET /api/operator/session` while the session is live. Exact-leaf admission
 stamps `operator-session`, never `operator-credential`. Ordinary bearer/Device
-admission runs first; an operator cookie cannot block that authority. The
+admission runs first; an invalid operator cookie cannot block that authority. For
+pairing approval, a valid operator session takes precedence so its decision
+requires a separate passkey review. The
 session path verifies the binding Device and enforces alias/account policy.
-S4 admits exact scope/revoke/removal, group, token and passkey-revocation requests
+S4 admits exact scope/revoke/removal, group, token, passkey-revocation and
+ordinary Device pairing-approval requests
 only to create a transaction: 202, with no mutation. The owning session alone can
 read or review it. Its canonical fingerprint and one-use render nonce bind a
 fresh UV assertion on the consent origin to that exact action. Only
