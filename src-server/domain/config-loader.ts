@@ -32,6 +32,7 @@ import {
   withStationIntegrationTrustDefaults,
   withUntrustedContentChange,
 } from '@kontourai/station-contracts/tool';
+import { applyIntegrationTrustOverlay, readIntegrationTrustOverlay } from '@kontourai/station-shared/integration-trust-overlay';
 import { type FSWatcher, watch } from 'chokidar';
 import {
   type AppConfigLaunchabilitySnapshot,
@@ -908,7 +909,7 @@ export class ConfigLoader {
       );
       const value: unknown = JSON.parse(source);
       validator.validateToolDef(value);
-      return this.withBuiltinIntegrationRuntimeIdentity(id, value as ToolDef);
+      return this.withBuiltinIntegrationRuntimeIdentity(id, applyIntegrationTrustOverlay(value as ToolDef, readIntegrationTrustOverlay(this.projectHomeDir, id)));
     } catch {
       return undefined;
     }

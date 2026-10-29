@@ -21,6 +21,7 @@ import type {
   SkillVariable,
 } from '@kontourai/station-contracts/catalog';
 import {
+  DEFAULT_EXTERNAL_CONTENT_TRUST,
   isSafeToolServerId,
   personOwnedUntrustedContentFields,
   type ToolDef,
@@ -28,6 +29,12 @@ import {
   withStationIntegrationTrustDefaults,
   withUntrustedContentChange,
 } from '@kontourai/station-contracts/tool';
+import {
+  applyIntegrationTrustOverlay,
+  deleteIntegrationTrustOverlay,
+  migrateIntegrationTrustOverlay,
+  writeIntegrationTrustOverlay,
+} from '@kontourai/station-shared/integration-trust-overlay';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { stationCuratedContentTrust } from '@kontourai/station-shared/station-curation';
 import { normalizePersistedToolServerReason } from '../security/tool-server-reason.js';
@@ -146,9 +153,23 @@ export async function loadIntegrationConfig(
     throw new Error(`Tool '${id}' not found at ${path}`);
   }
 
-  const def = JSON.parse(await readFile(path, 'utf-8')) as ToolDef;
-  const curated = stationCuratedContentTrust(def);
-  if (curated && !personOwnedUntrustedContentFields(def).has('contentTrust')) def.contentTrust = curated;
+  const release = await acquireFileMutationLockAsync(
+    toolServerIntegrationMutationLockPath(projectHomeDir, id),
+  );
+  let def: ToolDef;
+  try {
+    const raw = JSON.parse(await readFile(path, 'utf-8')) as ToolDef;
+    def = applyIntegrationTrustOverlay(
+      {
+        ...raw,
+        contentTrust:
+          stationCuratedContentTrust(raw) ?? DEFAULT_EXTERNAL_CONTENT_TRUST,
+      },
+      migrateIntegrationTrustOverlay(projectHomeDir, id, raw),
+    );
+  } finally {
+    await release();
+  }
   if (Object.hasOwn(def, 'envCredentialRefs')) {
     throw new Error(
       `Retired tool-server credential format for ${JSON.stringify(id)}: this branch's pre-release envCredentialRefs format changed; clear this developer home and recreate the integration`,
@@ -196,6 +217,11 @@ export async function saveIntegrationConfig(
     const current = existsSync(integrationPath)
       ? (JSON.parse(readFileSync(integrationPath, 'utf8')) as ToolDef)
       : undefined;
+    const overlay = migrateIntegrationTrustOverlay(projectHomeDir, id, current);
+    const effectiveCurrent =
+      current || overlay
+        ? applyIntegrationTrustOverlay(current ?? def, overlay)
+        : undefined;
     await writeIntegrationConfigLocked(
       projectHomeDir,
       id,
@@ -203,7 +229,7 @@ export async function saveIntegrationConfig(
       options.externalDefaults
         ? withStationIntegrationTrustDefaults(
             def,
-            current,
+            effectiveCurrent,
             stationCuratedContentTrust(def) ?? options.stationCuratedTrust,
           )
         : def,
@@ -242,11 +268,15 @@ export async function updateIntegrationConfig(
       readFileSync(integrationPath, 'utf8'),
     ) as ToolDef;
     rejectRetiredIntegrationCredentialFormat(current, id);
+    const effective = applyIntegrationTrustOverlay(
+      current,
+      migrateIntegrationTrustOverlay(projectHomeDir, id, current),
+    );
     return await writeIntegrationConfigLocked(
       projectHomeDir,
       id,
       integrationPath,
-      update(current),
+      update(effective),
       current,
       undefined,
     );
@@ -403,9 +433,19 @@ async function publishPluginIntegrationsLocked(
         );
       const now = (options.now ?? (() => new Date()))();
       for (const id of ids) {
-        const current = storedIntegration(
+        const currentRaw = storedIntegration(
           integrationConfigPath(projectHomeDir, id),
         ) as (ToolDef & { plugin?: unknown }) | undefined;
+        const overlay = migrateIntegrationTrustOverlay(
+          projectHomeDir,
+          id,
+          currentRaw,
+        );
+        const current = currentRaw
+          ? (applyIntegrationTrustOverlay(currentRaw, overlay) as ToolDef & {
+              plugin?: unknown;
+            })
+          : undefined;
         if (current && current.plugin !== pluginName)
           throw new Error(
             `Integration '${id}' already exists and is not owned by this plugin`,
@@ -456,27 +496,34 @@ async function publishPluginIntegrationsLocked(
           readFileSync(stagedPath, 'utf8'),
         ) as ToolDef;
         // A plugin cannot author secret bindings.
+        const curatedTrust = stationCuratedContentTrust(rawIncoming);
         const incoming = withStationIntegrationTrustDefaults(
           rawIncoming,
           current,
-          stationCuratedContentTrust(rawIncoming),
+          curatedTrust,
         );
         delete incoming.secretEnvRefs;
         const bindingSource = current ?? (restoring ? rawIncoming : undefined);
         if (restoring && bindingSource?.secretEnvRefs)
           incoming.secretEnvRefs = bindingSource.secretEnvRefs;
-        const next = withUntrustedContentChange(
-          current,
-          incoming,
-          undefined,
-          now,
+        const next = applyIntegrationTrustOverlay(
+          withUntrustedContentChange(current, incoming, undefined, now),
+          overlay,
         );
         for (const validate of [
           ...pluginIntegrationValidators,
           ...(options.validators ?? []),
         ])
           validate({ id, next, current });
-        await writeFile(stagedPath, JSON.stringify(next, null, 2));
+        const published = {
+          ...next,
+          contentTrust: curatedTrust ?? DEFAULT_EXTERNAL_CONTENT_TRUST,
+        };
+        delete published.untrustedContentPermissions;
+        delete published.trustReadOnlyHints;
+        delete published.untrustedContentChanges;
+        delete published.untrustedContentPersonOwned;
+        await writeFile(stagedPath, JSON.stringify(published, null, 2));
       }
       const replaced: { id: string; backup?: string; published: boolean }[] =
         [];
@@ -569,14 +616,33 @@ async function writeIntegrationConfigLocked(
   rejectRetiredIntegrationCredentialFormat(current, id);
   // The spread inside keeps the enumerable in-memory enabled marker read
   // below.
+  const overlay = migrateIntegrationTrustOverlay(projectHomeDir, id, current);
+  const effectiveCurrent =
+    current || overlay
+      ? applyIntegrationTrustOverlay(current ?? incoming, overlay)
+      : undefined;
   const def = withUntrustedContentChange(
-    current,
+    effectiveCurrent,
     incoming,
     changedBy,
     new Date(),
     { personChange, explicitFields },
   );
   const persisted = { ...def };
+  delete persisted.untrustedContentPermissions;
+  delete persisted.trustReadOnlyHints;
+  delete persisted.untrustedContentChanges;
+  delete persisted.untrustedContentPersonOwned;
+  if (changedBy || personChange) {
+    if (
+      current &&
+      !personOwnedUntrustedContentFields(current).has('contentTrust')
+    )
+      persisted.contentTrust = current.contentTrust;
+    else
+      persisted.contentTrust =
+        stationCuratedContentTrust(incoming) ?? DEFAULT_EXTERNAL_CONTENT_TRUST;
+  }
   delete persisted.secretEnv;
   delete persisted.removeSecretEnvKeys;
   const explicitlyEdited = Object.hasOwn(def, 'secretEnv');
@@ -623,6 +689,9 @@ async function writeIntegrationConfigLocked(
     def as ToolDef & { [integrationEnabledSynthesized]?: boolean }
   )[integrationEnabledSynthesized];
   if (synthesized && def.enabled === true) delete persisted.enabled;
+  // The overlay is the durable person choice. Publish it only after all
+  // preparatory credential writes, and before the replaceable definition.
+  writeIntegrationTrustOverlay(projectHomeDir, id, def);
   await publishJsonFileWithOwnedLock(integrationPath, persisted);
   // One credential-store publication retains the referenced set while
   // removing a migrated set. Splitting this into removeMany then reconcile
@@ -642,6 +711,7 @@ export async function deleteIntegrationConfig(
     toolServerIntegrationMutationLockPath(projectHomeDir, id),
   );
   try {
+    deleteIntegrationTrustOverlay(projectHomeDir, id);
     if (existsSync(integrationDir)) {
       rmSync(integrationDir, { recursive: true, force: true });
     }

@@ -1553,16 +1553,16 @@ Station defaults external integrations outside its bundled curated catalog to
 for example, Gmail is untrusted. Plugins, external registries and CLI imports
 cannot supply trust settings. Existing integrations without a classification
 were already treated as trusted, so upgrading does not change that behavior.
-If a plugin retires and later reintroduces an integration, its former person
-settings and receipts do not carry over; the integration returns to the
-Station classification and default ask policy. You can set them again.
+Your trust settings and receipts survive a plugin retiring and later
+reintroducing the same integration. Deleting an integration yourself removes
+its saved trust settings and receipts.
 
 There is no settings UI for these fields today. For a writable integration,
 save its definition with `contentTrust: "untrusted"` through the operator-gated
 `PUT /api/integrations/:id` API. The API records a receipt for the person making
 the change. Integration JSON can also be edited locally, without a receipt.
 An unrecorded local edit is not protected from a later plugin publication;
-use the API for a persistent person choice while the integration remains.
+use the API for a persistent person choice.
 Live Agent Plugin contributions are read-only and cannot currently be changed
 through the API; their default remains trusted. For example:
 

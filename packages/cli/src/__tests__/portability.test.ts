@@ -52,7 +52,9 @@ describe('portability commands', () => {
   });
 
   test('integration import ignores supplied trust policy and history', async () => {
-    const { writeIntegration } = await import('../commands/portability-io.js');
+    const { writeIntegration, listIntegrations } = await import(
+      '../commands/portability-io.js'
+    );
     const initial = {
       id: 'mail',
       kind: 'mcp',
@@ -73,16 +75,10 @@ describe('portability commands', () => {
       },
       home,
     );
-    const value = JSON.parse(
-      readFileSync(
-        join(home, 'integrations', 'mail', 'integration.json'),
-        'utf8',
-      ),
-    );
+    const [value] = listIntegrations(home);
     expect(value.contentTrust).toBe('trusted');
     expect(value.trustReadOnlyHints).toBeUndefined();
     expect(value.untrustedContentPermissions).toBeUndefined();
-    expect(value.untrustedContentChanges).toBeUndefined();
     expect(
       (value.untrustedContentChanges ?? []).some(
         (row: { by?: string }) => row.by === 'forged',
@@ -91,7 +87,9 @@ describe('portability commands', () => {
   });
 
   test('integration import keeps the existing person choice', async () => {
-    const { writeIntegration } = await import('../commands/portability-io.js');
+    const { writeIntegration, listIntegrations } = await import(
+      '../commands/portability-io.js'
+    );
     const dir = join(home, 'integrations', 'mail');
     mkdirSync(dir, { recursive: true });
     const history = [
@@ -126,9 +124,7 @@ describe('portability commands', () => {
       },
       home,
     );
-    const value = JSON.parse(
-      readFileSync(join(dir, 'integration.json'), 'utf8'),
-    );
+    const [value] = listIntegrations(home);
     expect(value.contentTrust).toBe('untrusted');
     expect(value.untrustedContentPermissions).toEqual({ default: 'deny' });
     expect(value.trustReadOnlyHints).toBeUndefined();

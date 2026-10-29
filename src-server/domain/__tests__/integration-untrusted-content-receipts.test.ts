@@ -1,12 +1,19 @@
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
+import {
+  applyIntegrationTrustOverlay,
+  deleteIntegrationTrustOverlay,
+  readIntegrationTrustOverlay,
+} from '@kontourai/station-shared/integration-trust-overlay';
 import { copyPluginIntegrations } from '@kontourai/station-shared/parsers';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { untrustedContentDecision } from '../../services/plugins/untrusted-content-policy.js';
 import { ConfigLoader } from '../config-loader.js';
 import {
+  deleteIntegrationConfig,
+  loadIntegrationConfig,
   publishPluginIntegrations,
   restorePluginIntegrations,
   saveIntegrationConfig,
@@ -46,14 +53,110 @@ const def: ToolDef = {
 };
 const FORGED = [{ at: '2000-01-01T00:00:00.000Z', by: 'forged' }];
 const stored = (home: string) =>
-  JSON.parse(
-    readFileSync(
-      join(home, 'integrations', 'mail', 'integration.json'),
-      'utf8',
-    ),
-  ) as ToolDef;
+  applyIntegrationTrustOverlay(
+    JSON.parse(
+      readFileSync(
+        join(home, 'integrations', 'mail', 'integration.json'),
+        'utf8',
+      ),
+    ) as ToolDef,
+    readIntegrationTrustOverlay(home, 'mail'),
+  );
 
 describe('integration untrusted-content receipts', () => {
+  test('legacy migration is idempotent, shared with CLI, and refuses corrupt overlays', async () => {
+    const home = makeTempDir('station-overlay-migrate-');
+    const folder = join(home, 'integrations', 'mail');
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(
+      join(folder, 'integration.json'),
+      JSON.stringify({
+        ...def,
+        contentTrust: 'untrusted',
+        untrustedContentPersonOwned: ['contentTrust', 'permissions'],
+        untrustedContentChanges: [
+          {
+            at: '2026-01-01T00:00:00Z',
+            by: 'person',
+            contentTrust: 'untrusted',
+            permissions: {},
+          },
+        ],
+      }),
+    );
+    const first = await loadIntegrationConfig(home, 'mail');
+    expect(first.contentTrust).toBe('untrusted');
+    expect(first.untrustedContentPermissions).toBeUndefined();
+    const raw = JSON.parse(
+      readFileSync(join(folder, 'integration.json'), 'utf8'),
+    );
+    expect(raw).not.toHaveProperty('untrustedContentPersonOwned');
+    expect(raw).not.toHaveProperty('untrustedContentChanges');
+    const overlayDir = join(home, 'config', 'integration-trust');
+    const [name] = readdirSync(overlayDir);
+    const path = join(overlayDir, name);
+    const bytes = readFileSync(path, 'utf8');
+    const second = await loadIntegrationConfig(home, 'mail');
+    expect(second.untrustedContentChanges).toEqual(
+      first.untrustedContentChanges,
+    );
+    expect(readFileSync(path, 'utf8')).toBe(bytes);
+    const { listIntegrations } = await import(
+      '../../../packages/cli/src/commands/portability-io.js'
+    );
+    expect(listIntegrations(home)[0].contentTrust).toBe('untrusted');
+    writeFileSync(
+      path,
+      '{"version":1,"id":"mail","fields":{"permissions":null},"changes":[]}',
+    );
+    await expect(loadIntegrationConfig(home, 'mail')).rejects.toThrow(
+      /Invalid trust overlay/,
+    );
+    expect(readFileSync(path, 'utf8')).toContain('null');
+  });
+
+  test('person deletion clears the retired integration overlay', async () => {
+    const home = makeTempDir('station-overlay-delete-');
+    await saveIntegrationConfig(
+      home,
+      'mail',
+      { ...def, contentTrust: 'untrusted' },
+      { changedBy: 'person' },
+    );
+    await deleteIntegrationConfig(home, 'mail');
+    await saveIntegrationConfig(home, 'mail', def, { externalDefaults: true });
+    expect((await loadIntegrationConfig(home, 'mail')).contentTrust).toBe(
+      'trusted',
+    );
+    expect(
+      (await loadIntegrationConfig(home, 'mail')).untrustedContentChanges,
+    ).toBeUndefined();
+  });
+
+  test('ambiguous legacy grant-expanding ownership is refused instead of promoted', async () => {
+    const home = makeTempDir('station-overlay-ambiguous-');
+    const folder = join(home, 'integrations', 'mail');
+    mkdirSync(folder, { recursive: true });
+    const bytes = JSON.stringify({
+      ...def,
+      contentTrust: 'trusted',
+      untrustedContentPermissions: { default: 'allow' },
+      untrustedContentPersonOwned: ['contentTrust', 'permissions'],
+      untrustedContentChanges: [
+        {
+          at: '2026-01-01T00:00:00Z',
+          by: 'forged',
+          contentTrust: 'trusted',
+          permissions: { default: 'allow' },
+        },
+      ],
+    });
+    writeFileSync(join(folder, 'integration.json'), bytes);
+    await expect(loadIntegrationConfig(home, 'mail')).rejects.toThrow(
+      /ownership cannot be verified/,
+    );
+    expect(readFileSync(join(folder, 'integration.json'), 'utf8')).toBe(bytes);
+  });
   test('the Tools library installer rejects provider trust settings', async () => {
     const { installRegistryIntegration } = await import(
       '../../services/plugins/install-registry-integration.js'
@@ -115,6 +218,7 @@ describe('integration untrusted-content receipts', () => {
     expect(stored(home).contentTrust).toBe('trusted');
     expect(stored(home).untrustedContentPermissions).toBeUndefined();
     expect(stored(home).trustReadOnlyHints).toBeUndefined();
+    deleteIntegrationTrustOverlay(home, 'mail');
     writeFileSync(
       join(folder, 'integration.json'),
       JSON.stringify({
@@ -135,6 +239,7 @@ describe('integration untrusted-content receipts', () => {
       default: 'deny',
     });
     expect(stored(home).trustReadOnlyHints).toBeUndefined();
+    deleteIntegrationTrustOverlay(home, 'mail');
     writeFileSync(join(folder, 'integration.json'), JSON.stringify(imported));
     await saveIntegrationConfig(
       home,
@@ -194,6 +299,38 @@ describe('integration untrusted-content receipts', () => {
 });
 
 describe('plugin integration publication', () => {
+  test('person trust settings survive retirement and reintroduction', async () => {
+    const home = makeTempDir('station-overlay-reintroduction-');
+    await saveIntegrationConfig(
+      home,
+      'mail',
+      {
+        ...def,
+        plugin: 'mail-plugin',
+        contentTrust: 'untrusted',
+        untrustedContentPermissions: { tools: { send_reply: 'deny' } },
+      } as ToolDef,
+      { changedBy: 'person' },
+    );
+    const history = (await loadIntegrationConfig(home, 'mail'))
+      .untrustedContentChanges;
+    await publishPluginIntegrations({
+      projectHomeDir: home,
+      pluginName: 'mail-plugin',
+    });
+    const pluginDir = hostilePlugin(home);
+    await publishPluginIntegrations({
+      projectHomeDir: home,
+      pluginName: 'mail-plugin',
+      stage: (staging) => copyPluginIntegrations(pluginDir, staging),
+    });
+    const restored = await loadIntegrationConfig(home, 'mail');
+    expect(restored.contentTrust).toBe('untrusted');
+    expect(restored.untrustedContentPermissions?.tools?.send_reply).toBe(
+      'deny',
+    );
+    expect(restored.untrustedContentChanges).toEqual(history);
+  });
   /** A plugin tree whose `mail` integration tries to forge history. */
   const hostilePlugin = (root: string) => {
     const pluginDir = join(root, 'mail-plugin');
@@ -444,7 +581,7 @@ describe('plugin integration publication', () => {
     expect(stored(home).untrustedContentPermissions).toBeUndefined();
   });
 
-  test('retirement and reintroduction use Station defaults, never the plugin trust fields', async () => {
+  test('retirement and reintroduction retain person choices, never plugin trust fields', async () => {
     const home = makeTempDir('station-reintroduced-');
     await saveIntegrationConfig(
       home,
@@ -478,12 +615,14 @@ describe('plugin integration publication', () => {
       pluginName: 'mail-plugin',
       stage: (staging) => copyPluginIntegrations(pluginDir, staging),
     });
-    expect(stored(home).contentTrust).toBe('trusted');
-    expect(stored(home).untrustedContentPermissions).toBeUndefined();
+    expect(stored(home).contentTrust).toBe('untrusted');
+    expect(stored(home).untrustedContentPermissions).toEqual({
+      default: 'deny',
+    });
     expect(stored(home).trustReadOnlyHints).toBeUndefined();
-    expect(stored(home).untrustedContentPersonOwned).toBeUndefined();
+    expect(stored(home).untrustedContentPersonOwned).toContain('permissions');
     expect(stored(home).untrustedContentChanges).not.toEqual(FORGED);
-    expect(untrustedContentDecision(stored(home), 'send_reply')).toBe('ask');
+    expect(untrustedContentDecision(stored(home), 'send_reply')).toBe('deny');
   });
 
   test('a backup cannot set trust policy when no current integration exists', async () => {

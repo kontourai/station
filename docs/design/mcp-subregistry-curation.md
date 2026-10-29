@@ -195,16 +195,19 @@ validators runs on each definition under the lock; other owners, such as
 tool-server OAuth client rules, add theirs there. A reader sees the old
 definition, briefly none, or the sanitized one, never the plugin's raw
 bytes. Install and uninstall recovery also restore backups through the locked
-writer. If an integration was retired, its person settings and history no
-longer exist in the current definition; restoration or later reintroduction
-uses Station's classification and ask defaults. This is a known limitation until a
-durable person overlay is available. For a still-present integration, a
-concurrent save keeps its receipts. The last 50 are kept. The rule itself is
+writer. A versioned person overlay outside the integration directory retains
+explicit settings, resets and receipts through retirement and reintroduction.
+Legacy person fields are migrated under the integration lock: the overlay is
+published before removing them from the definition, so an interrupted migration
+can be retried. Legacy grant-expanding values whose ownership cannot be verified
+are refused for person review; the definition and its history are retained.
+An unreadable overlay refuses the read. Person deletion clears
+the overlay. A concurrent save keeps its receipts. The last 50 are kept. The rule itself is
 `withUntrustedContentChange` in the tool contract.
 
 Person ownership is recorded per field, so a reset to an absent default stays
 authoritative even after older receipts leave the 50-entry history, while the
-integration remains present. CLI imports strip the supplied trust fields and
+integration is retired. CLI imports strip the supplied trust fields and
 history at their own filesystem writer under the integration lock; they do not
 assert a verified Station principal.
 

@@ -3,11 +3,12 @@
  * through the locked storage publication, so a person's untrusted-content
  * settings and receipts survive and a plugin cannot forge receipts.
  */
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
 import { withOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { loadIntegrationConfig } from '../../../domain/config-loader-storage.js';
 import { execGitSync } from '../../../utils/git-exec.js';
 import type { Logger } from '../../../utils/logger.js';
 
@@ -145,13 +146,7 @@ function mailPlugin() {
   return { home, origin };
 }
 
-const stored = (home: string) =>
-  JSON.parse(
-    readFileSync(
-      join(home, 'integrations', 'mail', 'integration.json'),
-      'utf8',
-    ),
-  );
+const stored = (home: string) => loadIntegrationConfig(home, 'mail');
 
 describe('plugin update and rollback publish integrations through the locked writer', () => {
   test("an update keeps the person's settings and history and refuses forged receipts", async () => {
@@ -162,7 +157,7 @@ describe('plugin update and rollback publish integrations through the locked wri
       method: 'POST',
     });
     expect(await response.json()).toMatchObject({ success: true });
-    expect(stored(home)).toMatchObject({
+    expect(await stored(home)).toMatchObject({
       plugin: 'mail-plugin',
       contentTrust: 'untrusted',
       untrustedContentPermissions: { tools: { send_reply: 'deny' } },
@@ -181,7 +176,7 @@ describe('plugin update and rollback publish integrations through the locked wri
       expect((await response.json()) as { success: boolean }).toMatchObject({
         success: false,
       });
-      expect(stored(home)).toMatchObject({
+      expect(await stored(home)).toMatchObject({
         plugin: 'mail-plugin',
         contentTrust: 'untrusted',
         untrustedContentPermissions: { tools: { send_reply: 'deny' } },
@@ -192,7 +187,7 @@ describe('plugin update and rollback publish integrations through the locked wri
     }
   });
 
-  test('a late failure restores a retired integration at safe defaults', async () => {
+  test('a late failure restores retired integration person settings', async () => {
     const { home, origin } = mailPlugin();
     git(origin, 'rm', '-q', 'integrations/mail/integration.json');
     git(origin, 'commit', '-q', '-m', 'retire integration');
@@ -203,10 +198,13 @@ describe('plugin update and rollback publish integrations through the locked wri
         method: 'POST',
       });
       expect(await response.json()).toMatchObject({ success: false });
-      expect(stored(home).contentTrust).toBe('trusted');
-      expect(stored(home).untrustedContentPermissions).toBeUndefined();
-      expect(stored(home).trustReadOnlyHints).toBeUndefined();
-      expect(stored(home).untrustedContentChanges).not.toEqual(HISTORY);
+      const restored = await stored(home);
+      expect(restored.contentTrust).toBe('untrusted');
+      expect(restored.untrustedContentPermissions).toEqual({
+        tools: { send_reply: 'deny' },
+      });
+      expect(restored.trustReadOnlyHints).toBeUndefined();
+      expect(restored.untrustedContentChanges).toEqual(HISTORY);
     } finally {
       providerFault.failOnce = false;
     }

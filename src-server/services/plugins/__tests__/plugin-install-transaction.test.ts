@@ -26,7 +26,10 @@ import {
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { loadOrCreateAgentRegistry } from '../../../domain/agent-registry.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
-import { saveIntegrationConfig } from '../../../domain/config-loader-storage.js';
+import {
+  loadIntegrationConfig,
+  saveIntegrationConfig,
+} from '../../../domain/config-loader-storage.js';
 import { ensureStationHomeSchema } from '../../../domain/home-schema-gate.js';
 import { JsonManifestRegistryProvider } from '../../../providers/registries/json-manifest-registry.js';
 import * as pluginBundles from '../../../routes/plugins/plugin-bundles.js';
@@ -4796,12 +4799,7 @@ describe('installPluginFromSource', () => {
 
     await installPluginFromSource(sourceDir, [], deps(root));
 
-    const stored = JSON.parse(
-      readFileSync(
-        join(root, 'integrations', 'mail', 'integration.json'),
-        'utf-8',
-      ),
-    );
+    const stored = await loadIntegrationConfig(root, 'mail');
     expect(stored.contentTrust).toBe('untrusted');
     expect(stored.untrustedContentChanges).toEqual(history);
   });
@@ -4851,12 +4849,7 @@ describe('installPluginFromSource', () => {
     await expect(installPluginFromSource(source, [], failing)).rejects.toThrow(
       'reconcile failed',
     );
-    const restored = JSON.parse(
-      readFileSync(
-        join(root, 'integrations', 'mail', 'integration.json'),
-        'utf8',
-      ),
-    );
+    const restored = await loadIntegrationConfig(root, 'mail');
     expect(restored.command).toBe('old');
     expect(restored.untrustedContentChanges).toEqual(
       expect.arrayContaining([
@@ -4868,7 +4861,7 @@ describe('installPluginFromSource', () => {
     );
   });
 
-  test('failed install-over restores a retired integration at safe defaults', async () => {
+  test('failed install-over restores retired integration person settings', async () => {
     const root = trackedTempDir('station-plugin-retired-receipts-');
     const source = join(root, 'source');
     writePlugin(source, { name: 'mail-plugin', version: '2.0.0', agents: [] });
@@ -4907,20 +4900,15 @@ describe('installPluginFromSource', () => {
     await expect(installPluginFromSource(source, [], failing)).rejects.toThrow(
       'reconcile failed',
     );
-    const restored = JSON.parse(
-      readFileSync(
-        join(root, 'integrations', 'mail', 'integration.json'),
-        'utf8',
-      ),
-    );
-    expect(restored.contentTrust).toBe('trusted');
-    expect(restored.untrustedContentPermissions).toBeUndefined();
+    const restored = await loadIntegrationConfig(root, 'mail');
+    expect(restored.contentTrust).toBe('untrusted');
+    expect(restored.untrustedContentPermissions).toEqual({ default: 'deny' });
     expect(restored.trustReadOnlyHints).toBeUndefined();
     expect(
       (restored.untrustedContentChanges ?? []).some(
         (change: { by?: string }) => change.by === 'person',
       ),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   test('failed install-over compensation retains its backup for recovery', async () => {
