@@ -113,7 +113,7 @@ describe('owned command coordinator identity', () => {
       spawn as never,
       'fixture',
       { guardExecutable: 'guard.exe' },
-      { platform: 'win32', runWindowsTaskkill: async () => {} },
+      { platform: 'win32' },
     );
     expect(ownProbe.calls).toBe(1);
     expect(spawn).toHaveBeenCalledTimes(1);
