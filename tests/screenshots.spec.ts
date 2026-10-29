@@ -2871,7 +2871,30 @@ const SCREENS: Screen[] = [
     title: 'Mobile — Home',
     path: '/',
     viewport: MOBILE,
-    afterGoto: (page) => assertNoStrayProjectModal(page),
+    afterGoto: async (page) => {
+      await assertNoStrayProjectModal(page);
+      // Exercise the two-line heading seen with the hosted runner's fonts.
+      const style = await page.addStyleTag({
+        content: '.home-view__welcome h1 { max-width: 250px !important; }',
+      });
+      try {
+        const heading = page.locator('.home-view__welcome h1');
+        const action = page.locator('.home-view__action').nth(1);
+        const dock = page.locator('.chat-dock.is-collapsed');
+        await expect(heading).toBeVisible();
+        await expect(action).toBeVisible();
+        await expect(dock).toBeVisible();
+        const headingBox = await heading.boundingBox();
+        const actionBox = await action.boundingBox();
+        const dockBox = await dock.boundingBox();
+        expect(headingBox!.height).toBeGreaterThan(35);
+        expect(actionBox!.y + actionBox!.height).toBeLessThanOrEqual(
+          dockBox!.y,
+        );
+      } finally {
+        await style.evaluate((element) => element.remove());
+      }
+    },
   },
   {
     name: 'mobile-agents',
