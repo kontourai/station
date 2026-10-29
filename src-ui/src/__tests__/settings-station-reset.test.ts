@@ -181,6 +181,7 @@ describe('buildStationResetPlan', () => {
       'reviewGuideInstructions',
       // Chat
       'defaultChatFontSize',
+      'titleModel',
       // Pairing: restore the Station's default-off LAN publication choice.
       'lanDiscoveryEnabled',
     ]);

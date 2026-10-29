@@ -36,7 +36,10 @@ import { registerPluginNotificationProviders } from '../../services/notification
 import { PushSigningKeyStore } from '../../services/notifications/push-signing-key-store.js';
 import { VapidKeyService } from '../../services/notifications/vapid-key-service.js';
 import { WebPushService } from '../../services/notifications/web-push-service.js';
-import { FileConversationAcknowledgementStore } from '../../services/orchestration/conversation-acknowledgement-store.js';
+import {
+  FileConversationAcknowledgementStore,
+  ownerDevicePredicate,
+} from '../../services/orchestration/conversation-acknowledgement-store.js';
 import { UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION } from '../../services/orchestration/session-owner-attribution.js';
 import {
   wireInternalStopRedispatchFailureNotifications,
@@ -737,6 +740,9 @@ export function configureRuntimeSupportServices(
     // not a new storage mechanism.
     new FileConversationAcknowledgementStore(
       context.configLoader.getProjectHomeDir(),
+      ownerDevicePredicate(() =>
+        context.environmentSecurityService.devicePairing.listDevices(),
+      ),
     ),
     () => getCachedUser().alias,
     // #765 D5: pending pairing requests project as needs-attention items,

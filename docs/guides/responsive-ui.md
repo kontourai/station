@@ -245,7 +245,8 @@ At the shared mobile breakpoint, `responsive-surface-panel` raises the compact
 Station text aliases to the published Kontour UI tokens: supporting text uses
 `--k-text-md` (14px), and shared sheet headings and action-menu labels use
 `--k-text-lg` (18px). Desktop density remains owned by each surface. The task
-picker uses 18px titles with up to two lines, Agent icons, 14px project/status
+picker uses 18px titles with up to two lines, the marks of the engines that ran
+each row beside its Agent name, 14px project/status
 metadata, and a pinned New chat action at the lower right. Project names wrap.
 The project picker retains [PickerCreateAction](../../src-ui/src/components/PickerCreateAction.tsx)
 for its 52px add button. Chat creation shares [NewChatAction](../../src-ui/src/components/NewChatAction.tsx)

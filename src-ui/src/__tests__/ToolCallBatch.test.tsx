@@ -39,12 +39,14 @@ describe('ToolCallBatch', () => {
         toolCallId: 'a',
         toolName: 'Read',
         args: { file_path: 'a.ts' },
+        state: 'completed',
       },
       {
         type: 'tool-invocation',
         toolCallId: 'b',
         toolName: 'Bash',
         args: { command: 'npm test' },
+        state: 'completed',
       },
     ]);
     const summary = classifyToolCallRun(run).summary;
@@ -63,18 +65,21 @@ describe('ToolCallBatch', () => {
         toolCallId: 'a',
         toolName: 'Read',
         args: { file_path: 'a.ts' },
+        state: 'completed',
       },
       {
         type: 'tool-invocation',
         toolCallId: 'b',
         toolName: 'Bash',
         args: { command: 'npm test' },
+        state: 'completed',
       },
       {
         type: 'tool-invocation',
         toolCallId: 'c',
         toolName: 'Bash',
         args: { command: 'npm build' },
+        state: 'completed',
       },
     ]);
     const summary = classifyToolCallRun(run).summary;
@@ -97,12 +102,14 @@ describe('ToolCallBatch', () => {
         toolCallId: 'a',
         toolName: 'Read',
         args: { file_path: 'a.ts' },
+        state: 'completed',
       },
       {
         type: 'tool-invocation',
         toolCallId: 'b',
         toolName: 'Bash',
         args: { command: 'npm test' },
+        state: 'completed',
       },
     ]);
     const summary = classifyToolCallRun(run).summary;
@@ -568,7 +575,7 @@ test('a live batch button keeps the inventory and progress count; the sheet titl
   expect(
     screen.getByRole('heading', { name: group.aggregateSummary }),
   ).toBeTruthy();
-  expect(group.summary).toBe('1 file read, 1 command · 1 done');
+  expect(group.summary).toBe('1 file read, 1 command · 1 done · 1 running');
   expect(group.aggregateSummary).toBe('1 file read, 1 command');
 });
 
