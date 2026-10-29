@@ -126,6 +126,7 @@ import {
   resetUsageTelemetryDisclosureDismissal,
   UsageTelemetryDisclosure,
   UsageTelemetryDisclosureStep,
+  useUsageTelemetryDisclosureState,
 } from '../UsageTelemetryDisclosure';
 
 const makeTempDir = trackTempDirs();
@@ -1430,13 +1431,27 @@ test.each(['full', 'lite'] as const)(
 const READ_ONLY_SCOPE = pairingScopePresetString('read-only');
 const STANDARD_SCOPE = pairingScopePresetString('standard');
 
-async function settleDisclosureReads() {
-  await waitFor(() =>
-    expect(calls('/api/usage-telemetry/disclosure').length).toBeGreaterThan(0),
+/**
+ * Mounts the standalone dialog beside a probe on the SAME query cache, and
+ * resolves once the probe has seen the disclosure state settled with data —
+ * the render in which the dialog decides whether to mount. Waiting on that
+ * event, not on time, is what makes the dialog's absence meaningful.
+ */
+async function mountDialogUntilSettled(client: QueryClient) {
+  let settled = false;
+  function Probe() {
+    const state = useUsageTelemetryDisclosureState();
+    if (state.settled && state.data) settled = true;
+    return null;
+  }
+  const view = render(
+    <QueryClientProvider client={client}>
+      <Probe />
+      <UsageTelemetryDisclosure firstRun />
+    </QueryClientProvider>,
   );
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  });
+  await waitFor(() => expect(settled).toBe(true));
+  return view;
 }
 
 test.each([
@@ -1465,9 +1480,8 @@ test.each([
     const { client, loader } = await publisherFixture(dnt, undefined, {
       callerScope,
     });
-    const view = mountChoice(client, vi.fn(), true);
+    const view = await mountDialogUntilSettled(client);
     try {
-      await settleDisclosureReads();
       expect(
         screen.queryByRole('dialog'),
         'prompted a device that cannot complete the decision',
