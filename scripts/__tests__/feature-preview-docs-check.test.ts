@@ -10,7 +10,7 @@ const registry =
   'src-server/services/feature-previews/feature-preview-registry.ts';
 const makeTempDir = trackTempDirs();
 // The copied registry offers these consumers itself, through rememberConsumer.
-const registryOffered = ['task-review', 'continue-interrupted-turn'];
+const registryOffered = ['task-review', 'continue-interrupted-turn', 'visual-skills'];
 
 function run(directory: string) {
   const result = spawnSyncBounded(process.execPath, [script, directory], {

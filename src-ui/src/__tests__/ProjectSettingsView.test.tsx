@@ -440,6 +440,46 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     expect(container.querySelector('#section-danger')).toBeTruthy();
   });
 
+  test('clearing the working directory reaches the update instead of retaining the old folder', async () => {
+    renderProjectSettings();
+    fireEvent.change(screen.getByLabelText('Working Directory'), {
+      target: { value: '' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(sdkMocks.updateProject).toHaveBeenCalledWith(
+        expect.objectContaining({ slug: 'demo', workingDirectory: '' }),
+      ),
+    );
+  });
+
+  test('a refreshed project preserves unsaved edits through Save', async () => {
+    const { rerender } = renderProjectSettings();
+    fireEvent.change(screen.getByLabelText('Name *'), {
+      target: { value: 'Draft name' },
+    });
+    sdkMocks.project = { ...projectFixture, description: 'Changed elsewhere' };
+    rerender(<ProjectSettingsView slug="demo" />);
+    expect(inputValue(screen.getByLabelText('Name *'))).toBe('Draft name');
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(sdkMocks.updateProject).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Draft name' }),
+      ),
+    );
+  });
+
+  test('a whitespace-only name cannot be saved', () => {
+    renderProjectSettings();
+    fireEvent.change(screen.getByLabelText('Name *'), {
+      target: { value: '   ' },
+    });
+    expect(screen.getByRole('button', { name: 'Save' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+  });
+
   test('shows a dangling saved environment as the selected missing option', () => {
     sdkMocks.project = {
       ...projectFixture,
@@ -629,7 +669,11 @@ describe('ProjectSettingsView (#250 shell port)', () => {
         'Default AI Model',
       ) as HTMLInputElement;
       expect(model.disabled).toBe(true);
-      expect(screen.getByText('Choose a model connection first.')).toBeTruthy();
+      expect(
+        screen.getByText(
+          'Choose a connection to override the Station default.',
+        ),
+      ).toBeTruthy();
 
       fireEvent.change(screen.getByLabelText('Model connection'), {
         target: { value: 'openai-main' },
@@ -762,7 +806,9 @@ describe('ProjectSettingsView (#250 shell port)', () => {
         (screen.getByLabelText('Default AI Model') as HTMLInputElement).value,
       ).toBe('');
       expect(
-        screen.getByText('This connection offers no model to pre-fill.'),
+        screen.getByText(
+          'This connection offers no model to pre-fill. Choose one, or this project uses the Station default.',
+        ),
       ).toBeTruthy();
     });
 
@@ -953,7 +999,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       ).toBeTruthy();
       // The fallback select says what it is for.
       expect(
-        screen.getByText(/Used by “Use the set approval mode”/),
+        screen.getByText(/Also used when there is no chat history/),
       ).toBeTruthy();
     });
 

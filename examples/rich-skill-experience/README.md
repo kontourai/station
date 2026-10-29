@@ -7,7 +7,8 @@ component allowlist or server module.
 
 Run `station plugin build` in this folder with the CLI built from this revision,
 then install and activate it through the Registry. Grant `agents.invoke` when
-reviewing the package. In a Project chat, select its experience, review the idea
+reviewing the package. Turn on the **Visual skills** Feature Preview
+(**Settings → Advanced → Feature previews**). In a Project chat, select its experience, review the idea
 input and explicitly send. Choose the rich presentation if its declared pane is
 available. Ordinary guided/chat presentation remains available when it is not.
 

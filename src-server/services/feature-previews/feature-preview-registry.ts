@@ -93,6 +93,15 @@ export class FeaturePreviewRegistry {
       description:
         'Offer Continue on a chat turn a Station restart cut off. It sends the agent a short note to pick up where it stopped.',
     });
+    // Consumed by the start composers' "Use a visual skill" entry points. The
+    // inventory route and authoring contract stay unconditional: hiding the
+    // entry points does not change what an installed plugin may declare.
+    this.rememberConsumer({
+      id: 'visual-skills',
+      label: 'Visual skills',
+      description:
+        'Offer installed visual skills when starting a chat: guided question rounds and optional plugin panes around a bundled Skill.',
+    });
     this.state = new GrantsFileStore<FeaturePreviewState>({
       filePath: featurePreviewStatePath(homeDir),
       storeLabel: 'feature-previews',
