@@ -4191,15 +4191,17 @@ its occurrence and firing time. Terminal outcomes consume that occurrence;
 manual runs do not advance the recurring cursor. Claim and `beginInvocation`
 persist before their respective effects. A dead initial pre-invocation owner
 can release its claim, while an advanced safe retry retains its run/attempt and
-budget. A dead invoked owner becomes indeterminate and is never automatically
+budget and is returned to the tick executor even for a manual run. A dead invoked owner becomes indeterminate and is never automatically
 replayed. A foreign owner's pid is probed before its recorded birth is read, so
 a dead pid releases its claim even when no birth was recorded; a live pid
 without one keeps the fence. One unreadable job record is quarantined in place:
 `claimDue` skips it and reports it once per record revision (BuiltinScheduler
 logs an error), and every other due job still claims. Settling a dead claim on
 such a record advances `last_run_ms` without rewriting the unreadable bytes. Exact revision checks let a concurrent job edit/delete win over old
-completion. Each claim snapshots its target; a dedicated start also records
-its actual conversation against that run, even if the job was retargeted.
+completion. Each claim snapshots its target; a dedicated target reserves its
+conversation identity before starting and records it against that run, even
+if the job is retargeted. A later run adopts an already-started conversation
+through the inbox; a changed target gets a new reservation.
 Run reads use that target. Pre-change records require the creator and current
 conversation read access, except the local operator can read a creatorless,
 untargeted legacy job. Scheduler failure and monitor notices use generic public
