@@ -54,6 +54,12 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
   Station Agent or external engine, on this Station or a supported saved environment
 - `respond_to_task_request` for an open approval or permission request from a
   delegated worker
+- `coordinator_picture_read` and `coordinator_picture_update` for the bound
+  designated coordinator, when the **Coordinator working picture** preview is
+  enabled. They keep short, person-scoped notes about readable conversations;
+  Station rechecks source access on reads and updates. Notes are the
+  coordinator's account, not authoritative live status. See [Houston's
+  working picture](../user/houston.md#working-picture).
 - `search_sessions` and `rename_session` for finding and naming conversations
   (see [Searching and renaming conversations](#searching-and-renaming-conversations))
 - `declare_pull_request` for an agent on any engine (Claude Code, Codex, ACP) to
