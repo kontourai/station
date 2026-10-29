@@ -475,6 +475,18 @@ describe('account-tied personal access tokens over the production composition', 
     ).toEqual([aliceNotice]);
     expect(await list(bob.device())).toEqual([bobNotice]);
     expect(await list(h.ownerOperator())).toEqual([ownerNotice]);
+    const minted = await h.mintToken(alice.device, GRANT);
+    expect(minted.status, await minted.clone().text()).toBe(201);
+    const token = h.bearer((await readJson<{ secret: string }>(minted)).secret);
+    expect(await list(token())).toEqual([aliceNotice]);
+    expect(
+      (
+        await h.request(
+          `/api/me/notifications/${bobNotice.id}/read`,
+          token({ method: 'POST' }),
+        )
+      ).status,
+    ).toBe(404);
     const ownerFeed = await h.request('/notifications', h.ownerOperator());
     expect(ownerFeed.status, await ownerFeed.clone().text()).toBe(200);
     expect(
