@@ -126,10 +126,12 @@ of the chat on screen, in any dock region or placement (full screen on a phone):
 - **Layout.** One quiet line, **Start a chat in <Project> on <Station>**, then
   the composer where a reply composer sits. The line uses the Project chip's
   words (**without a project** for No project) and the Agent chip's Station
-  from `useStationChoices` (this Station is its host name, else **This
-  Station**); it shows only while the draft is empty. There is no title bar,
-  close button, hero or recent-chats list. The Project control and, with more
-  than one Station, **Run a task…** join the chip row under the text. Setup,
+  from the shared `useExecutionStations` catalog; the Station name appears
+  only once known, and the line shows only while the draft is empty. There is
+  no title bar, close button, hero or recent-chats list. The Project control
+  and **Runs on <Station>** join the chip row under the text. Runs on opens
+  the Station chooser when another permitted destination is available;
+  choosing one continues to its Engine & model. Setup,
   repair and read errors render in the body; while a setup panel shows, setup
   and the composer scroll together. Otherwise the composer stays pinned and, in
   a short dock, a plain New chat's text box shrinks toward one line.
