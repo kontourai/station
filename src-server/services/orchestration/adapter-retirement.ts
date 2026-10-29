@@ -1,3 +1,4 @@
+import { sanitizeFreeText } from '@kontourai/station-shared/redaction';
 import type {
   ProviderAdapterShape,
   ProviderSession,
@@ -225,12 +226,12 @@ export class AdapterRetirement {
     } catch (error) {
       this.deps.logger.warn('Provider cleanup failed', {
         cleanup: label,
-        error: errorMessage(error).slice(0, 2_000),
+        error: sanitizeFreeText(errorMessage(error), 2_000),
         ...(error instanceof AggregateError
           ? {
               causes: error.errors
                 .slice(0, 5)
-                .map((cause) => errorMessage(cause).slice(0, 2_000)),
+                .map((cause) => sanitizeFreeText(errorMessage(cause), 2_000)),
             }
           : {}),
       });

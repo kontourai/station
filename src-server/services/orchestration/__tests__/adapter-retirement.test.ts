@@ -143,7 +143,7 @@ describe('AdapterRetirement (unit pins)', () => {
     const retirement = new AdapterRetirement(deps);
     const failure = new AggregateError(
       Array.from({ length: 6 }, () => new Error('x'.repeat(3_000))),
-      'adapter failure',
+      'adapter failure https://private.example/error?token=private /private/provider/key',
     );
     await expect(
       retirement.runCleanupWithinDeadline(async () => {
@@ -154,8 +154,11 @@ describe('AdapterRetirement (unit pins)', () => {
       'Provider cleanup failed',
       {
         cleanup: 'codex adapter shutdown',
-        error: 'adapter failure',
-        causes: Array.from({ length: 5 }, () => 'x'.repeat(2_000)),
+        error: 'adapter failure [REDACTED_URL] [REDACTED_PATH]',
+        causes: Array.from(
+          { length: 5 },
+          () => `${'x'.repeat(1_988)}…[TRUNCATED]`,
+        ),
       },
     );
   });
