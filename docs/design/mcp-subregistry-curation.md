@@ -132,8 +132,8 @@ can change, not a fixed gate.
 
 - **Classification.** `ToolDef.contentTrust: "untrusted"` marks a server that
   returns content written by others. Station defaults plugin, external registry
-  and CLI imports to untrusted; its bundled curated catalog may supply its
-  reviewed classification. The person can set `trusted` for a server they trust.
+  and CLI imports outside its curated catalog to trusted; the bundled catalog
+  supplies its reviewed classification. The person can set `untrusted`.
 - **Permission.** `ToolDef.untrustedContentPermissions` holds a `default`
   and per-tool entries, each `ask`, `allow` or `deny`. Absent means `ask`.
 - **Order.** The called tool's own entry, then its integration's `default`,
@@ -143,7 +143,7 @@ can change, not a fixed gate.
   Only when neither is set can a server's read-only hint (MCP
   `readOnlyHint`, recorded by the probe) exempt the tool, and only when that
   server's hints are trusted: its `contentTrust` is not `untrusted`, or
-  `trustReadOnlyHints` is set by a catalog or the person. MCP annotations
+  `trustReadOnlyHints` is set by the person. MCP annotations
   are the server's own claim, so an untrusted server's hints count for
   nothing by default. Otherwise the answer is `ask`.
 - **When it applies.** After a tool from an `untrusted` server returns in a
@@ -189,7 +189,7 @@ trees are staged privately, then every affected integration's lock is held
 from reading the stored definitions through renaming sanitized trees into
 place. External definitions and backups cannot supply classification,
 permissions, hint settings, receipts or ownership. Station supplies the
-untrusted default; a person's stored choices win for a still-present
+trusted default outside the curated catalog; a person's stored choices win for a still-present
 integration. A list of
 validators runs on each definition under the lock; other owners, such as
 tool-server OAuth client rules, add theirs there. A reader sees the old
@@ -197,7 +197,7 @@ definition, briefly none, or the sanitized one, never the plugin's raw
 bytes. Install and uninstall recovery also restore backups through the locked
 writer. If an integration was retired, its person settings and history no
 longer exist in the current definition; restoration or later reintroduction
-uses Station's untrusted and ask defaults. This is a known limitation until a
+uses Station's classification and ask defaults. This is a known limitation until a
 durable person overlay is available. For a still-present integration, a
 concurrent save keeps its receipts. The last 50 are kept. The rule itself is
 `withUntrustedContentChange` in the tool contract.
@@ -207,6 +207,11 @@ authoritative even after older receipts leave the 50-entry history, while the
 integration remains present. CLI imports strip the supplied trust fields and
 history at their own filesystem writer under the integration lock; they do not
 assert a verified Station principal.
+
+If install and compensation both fail, the response includes an opaque backup
+id. The local durable server log records that id and its full backup path; the
+startup temp sweep keeps marked recovery backups. A restore workflow that
+checks newer state and stale grants is follow-up work, not an available command.
 
 ### Coverage and gaps
 

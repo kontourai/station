@@ -176,12 +176,28 @@ export interface UntrustedContentChange {
 }
 
 const UNTRUSTED_CONTENT_CHANGE_LIMIT = 50;
-export const DEFAULT_EXTERNAL_CONTENT_TRUST = 'untrusted' as const;
+export const DEFAULT_EXTERNAL_CONTENT_TRUST = 'trusted' as const;
+
+function lastImportedReceipt(
+  receipts: readonly UntrustedContentChange[],
+): number {
+  for (let i = receipts.length - 1; i >= 0; i--) {
+    if (receipts[i].source) return i;
+  }
+  return -1;
+}
 
 export function personOwnedUntrustedContentFields(stored: ToolDef | undefined) {
-  const owned = new Set(stored?.untrustedContentPersonOwned ?? []);
-  for (const receipt of stored?.untrustedContentChanges ?? []) {
-    if (!receipt.by && receipt.source !== 'local-cli-operator') continue;
+  const receipts = stored?.untrustedContentChanges ?? [];
+  const lastImport = lastImportedReceipt(receipts);
+  // Old, unreleased import writers marked imported fields as person-owned.
+  // Their ownership flags cannot establish a person's choice; only later
+  // attributed person receipts can do so.
+  const owned = new Set(
+    lastImport >= 0 ? [] : (stored?.untrustedContentPersonOwned ?? []),
+  );
+  for (const receipt of receipts.slice(lastImport + 1)) {
+    if (!receipt.by || receipt.source) continue;
     if (Object.hasOwn(receipt, 'contentTrust')) owned.add('contentTrust');
     if (Object.hasOwn(receipt, 'permissions')) owned.add('permissions');
     if (Object.hasOwn(receipt, 'trustReadOnlyHints'))
@@ -202,7 +218,7 @@ export function withStationIntegrationTrustDefaults(
   delete result.trustReadOnlyHints;
   delete result.untrustedContentChanges;
   delete result.untrustedContentPersonOwned;
-  // External integrations are untrusted until the person decides otherwise.
+  // The bundled catalog may supply Station's classification.
   result.contentTrust = stationCuratedTrust ?? DEFAULT_EXTERNAL_CONTENT_TRUST;
   if (!stored) return result;
   const owned = personOwnedUntrustedContentFields(stored);
@@ -253,8 +269,14 @@ export function withUntrustedContentChange(
   delete result.untrustedContentChanges;
   delete result.untrustedContentPersonOwned;
   const owned = personOwnedUntrustedContentFields(stored);
-  if (stored?.untrustedContentChanges?.length)
-    result.untrustedContentChanges = stored.untrustedContentChanges;
+  if (stored?.untrustedContentChanges?.length) {
+    // Legacy imports could replace both values and ownership. Discard their
+    // contaminated history so later person edits without a principal still
+    // retain their independently recorded ownership.
+    const history = stored.untrustedContentChanges;
+    const retained = history.slice(lastImportedReceipt(history) + 1);
+    if (retained.length) result.untrustedContentChanges = retained;
+  }
   const trustChanged =
     (stored?.contentTrust ?? 'trusted') !== (next.contentTrust ?? 'trusted');
   const permissionsChanged = !sameValue(

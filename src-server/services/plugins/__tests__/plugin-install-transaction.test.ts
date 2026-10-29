@@ -8,6 +8,7 @@ import {
   readFileSync,
   rmSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs';
 import { rm } from 'node:fs/promises';
@@ -15,6 +16,7 @@ import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import { sweepStationTempRoot } from '@kontourai/station-shared/temp-dir';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -31,6 +33,7 @@ import * as pluginBundles from '../../../routes/plugins/plugin-bundles.js';
 import { registerPluginInstallRoutes } from '../../../routes/plugins/plugin-install-routes.js';
 import { loadPluginProviders } from '../../../routes/plugins/plugin-loader.js';
 import { createRegistryRoutes } from '../../../routes/plugins/registry.js';
+import { errorMessage } from '../../../routes/schemas/schemas.js';
 import { execGitSync } from '../../../utils/git-exec.js';
 import type { Logger } from '../../../utils/logger.js';
 import {
@@ -4773,7 +4776,11 @@ describe('installPluginFromSource', () => {
       }),
     );
     const history = [
-      { at: '2026-10-28T00:00:00.000Z', contentTrust: 'untrusted' },
+      {
+        at: '2026-10-28T00:00:00.000Z',
+        by: 'person',
+        contentTrust: 'untrusted',
+      },
     ];
     mkdirSync(join(root, 'integrations', 'mail'), { recursive: true });
     writeFileSync(
@@ -4906,11 +4913,11 @@ describe('installPluginFromSource', () => {
         'utf8',
       ),
     );
-    expect(restored.contentTrust).toBe('untrusted');
+    expect(restored.contentTrust).toBe('trusted');
     expect(restored.untrustedContentPermissions).toBeUndefined();
     expect(restored.trustReadOnlyHints).toBeUndefined();
     expect(
-      restored.untrustedContentChanges.some(
+      (restored.untrustedContentChanges ?? []).some(
         (change: { by?: string }) => change.by === 'person',
       ),
     ).toBe(false);
@@ -4950,13 +4957,26 @@ describe('installPluginFromSource', () => {
           throw new Error('late reconcile failure');
         }),
       };
-      await expect(
-        installPluginFromSource(source, [], failing),
-      ).rejects.toThrow(/recovery required at/);
+      const failure = await installPluginFromSource(source, [], failing).catch(
+        (error) => error,
+      );
       const backups = readdirSync(join(root, 'station-temp')).filter((name) =>
         name.startsWith('plugin-install-'),
       );
       expect(backups).toHaveLength(1);
+      expect(failure.message).toContain(
+        `recovery required; backup id ${backups[0]}`,
+      );
+      expect(errorMessage(failure)).toContain(`backup id ${backups[0]}`);
+      const backupPath = join(root, 'station-temp', backups[0]);
+      expect(failing.logger.error).toHaveBeenCalledWith(
+        'Plugin install recovery required',
+        { backupId: backups[0], backupPath },
+      );
+      const old = new Date(Date.now() - 48 * 60 * 60 * 1000);
+      utimesSync(backupPath, old, old);
+      await sweepStationTempRoot();
+      expect(existsSync(backupPath)).toBe(true);
       const restored = JSON.parse(
         readFileSync(
           join(

@@ -35,7 +35,10 @@ import {
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { copyPluginIntegrations } from '@kontourai/station-shared/parsers';
-import { createStationTempDirSync } from '@kontourai/station-shared/temp-dir';
+import {
+  createStationTempDirSync,
+  retainStationTempRecovery,
+} from '@kontourai/station-shared/temp-dir';
 import {
   acquireAgentIdentityMutationLockAtHome,
   DefaultAgentMutationError,
@@ -3241,6 +3244,31 @@ async function installPluginFromSourceUnderContext(
   let grantScope: PluginGrantMutationScope | undefined;
   let backupRoot: string | null = null;
   let retainBackup = false;
+  function recoveryRequired(
+    error: unknown,
+    rollbackError: unknown,
+  ): AggregateError {
+    retainBackup = true;
+    const backupId = backupRoot ? basename(backupRoot) : 'unavailable';
+    const errors = [error, rollbackError];
+    let markerFailure = '';
+    if (backupRoot) {
+      try {
+        retainStationTempRecovery(backupRoot);
+      } catch (markerError) {
+        errors.push(markerError);
+        markerFailure = '; retention marker failed';
+      }
+    }
+    logger.error('Plugin install recovery required', {
+      backupId,
+      backupPath: backupRoot,
+    });
+    return new AggregateError(
+      errors,
+      `Plugin install and rollback both failed; recovery required; backup id ${backupId}${markerFailure}`,
+    );
+  }
   // Destructive rollback (delete the live plugin dir, restore from backup) is
   // gated on this flag, never on backupRoot existence: the root is created
   // before the backup finishes (archive#1835 delta review).
@@ -4665,11 +4693,7 @@ async function installPluginFromSourceUnderContext(
             await deps.settleProviderAdapterRetirements?.();
             await rollbackOwnershipHandoffs(ownershipHandoffs);
           } catch (rollbackError) {
-            retainBackup = true;
-            throw new AggregateError(
-              [error, rollbackError],
-              `Plugin install and rollback both failed; recovery required at ${backupRoot}`,
-            );
+            throw recoveryRequired(error, rollbackError);
           }
         } else {
           // Rollback failures must not REPLACE the original install failure —
@@ -4717,11 +4741,7 @@ async function installPluginFromSourceUnderContext(
             });
             await rollbackOwnershipHandoffs(ownershipHandoffs);
           } catch (rollbackError) {
-            retainBackup = true;
-            throw new AggregateError(
-              [error, rollbackError],
-              `Plugin install and rollback both failed; recovery required at ${backupRoot}`,
-            );
+            throw recoveryRequired(error, rollbackError);
           }
         }
         throw error;

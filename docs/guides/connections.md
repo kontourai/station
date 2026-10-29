@@ -1546,16 +1546,25 @@ Some servers return content written by others, such as email. In a
 Station-engine turn that has read such content, Station asks before running
 a tool, even one the Agent auto-approves, unless the tool's trusted server
 declares it read-only. A server classified untrusted cannot exempt its own
-tools that way unless you set `trustReadOnlyHints`. You can change it per
-server and per tool in its settings; your entry always wins:
+tools that way unless you set `trustReadOnlyHints`.
 
-Station classifies newly installed plugin and external registry integrations
-and CLI imports as untrusted by default. Their supplied trust settings are
-ignored. The bundled curated catalog may instead supply Station's reviewed
-classification.
+Station defaults external integrations outside its bundled curated catalog to
+`trusted`. The bundled catalog supplies Station's reviewed classification;
+for example, Gmail is untrusted. Plugins, external registries and CLI imports
+cannot supply trust settings. Existing integrations without a classification
+were already treated as trusted, so upgrading does not change that behavior.
 If a plugin retires and later reintroduces an integration, its former person
 settings and receipts do not carry over; the integration returns to the
-untrusted classification and default ask policy. You can set them again.
+Station classification and default ask policy. You can set them again.
+
+There is no settings UI for these fields today. For a writable integration,
+save its definition with `contentTrust: "untrusted"` through the operator-gated
+`PUT /api/integrations/:id` API. The API records a receipt for the person making
+the change. Integration JSON can also be edited locally, without a receipt.
+An unrecorded local edit is not protected from a later plugin publication;
+use the API for a persistent person choice while the integration remains.
+Live Agent Plugin contributions are read-only and cannot currently be changed
+through the API; their default remains trusted. For example:
 
 ```json
 {
@@ -1569,7 +1578,7 @@ untrusted classification and default ask policy. You can set them again.
 
 `allow` means untrusted content adds no question and the tool's usual
 permission applies; `deny` refuses. Set `contentTrust` to `trusted` for a
-server whose content you trust. Each change is recorded with who made it.
+server whose content you trust. API edits record the authenticated person.
 Delegated children share the mark both ways. Station applies this on its own
 engine only, and not yet to MCP prompts from an untrusted server; see the
 [coverage notes](../design/mcp-subregistry-curation.md#coverage-and-gaps).

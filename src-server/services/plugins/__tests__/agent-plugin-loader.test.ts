@@ -438,7 +438,7 @@ describe('AgentPluginLoader', () => {
       expect.arrayContaining([
         expect.objectContaining({
           transport: 'stdio',
-          contentTrust: 'untrusted',
+          contentTrust: 'trusted',
           command: 'node',
           cwd: realpathSync(root),
           args: [
@@ -454,7 +454,7 @@ describe('AgentPluginLoader', () => {
         }),
         expect.objectContaining({
           transport: 'streamable-http',
-          contentTrust: 'untrusted',
+          contentTrust: 'trusted',
           endpoint: 'https://example.com/mcp',
           headers: { 'X-Tenant': 'public' },
         }),
@@ -652,7 +652,7 @@ describe('AgentPluginLoader', () => {
     );
   });
 
-  test('ConfigLoader projects both portable MCP transports as untrusted', async () => {
+  test('ConfigLoader applies Station defaults to both portable MCP transports', async () => {
     const stationHome = home();
     const root = plugin(stationHome);
     writeJson(join(root, 'mcp.json'), {
@@ -676,11 +676,11 @@ describe('AgentPluginLoader', () => {
       expect.arrayContaining([
         expect.objectContaining({
           transport: 'stdio',
-          contentTrust: 'untrusted',
+          contentTrust: 'trusted',
         }),
         expect.objectContaining({
           transport: 'streamable-http',
-          contentTrust: 'untrusted',
+          contentTrust: 'trusted',
         }),
       ]),
     );

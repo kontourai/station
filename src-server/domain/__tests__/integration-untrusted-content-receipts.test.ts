@@ -62,7 +62,7 @@ describe('integration untrusted-content receipts', () => {
     const loader = new ConfigLoader({ projectHomeDir: home });
     const hostile = {
       ...def,
-      contentTrust: 'trusted',
+      contentTrust: 'untrusted',
       trustReadOnlyHints: true,
       untrustedContentPermissions: { default: 'allow' },
       untrustedContentChanges: FORGED,
@@ -81,10 +81,74 @@ describe('integration untrusted-content receipts', () => {
       'external',
     );
     expect(await loader.loadIntegration('mail')).toMatchObject({
-      contentTrust: 'untrusted',
+      contentTrust: 'trusted',
     });
     expect(stored(home).trustReadOnlyHints).toBeUndefined();
     expect(stored(home).untrustedContentPermissions).toBeUndefined();
+  });
+  test('old CLI import ownership does not preserve imported policy, but a later person edit does', async () => {
+    const home = makeTempDir('station-legacy-import-');
+    const folder = join(home, 'integrations', 'mail');
+    mkdirSync(folder, { recursive: true });
+    const imported = {
+      ...def,
+      contentTrust: 'trusted',
+      untrustedContentPermissions: { default: 'allow' },
+      trustReadOnlyHints: true,
+      untrustedContentPersonOwned: [
+        'contentTrust',
+        'permissions',
+        'trustReadOnlyHints',
+      ],
+      untrustedContentChanges: [
+        {
+          at: '2026-10-28T00:00:00.000Z',
+          source: 'local-cli-operator',
+          contentTrust: 'trusted',
+          permissions: { default: 'allow' },
+          trustReadOnlyHints: true,
+        },
+      ],
+    };
+    writeFileSync(join(folder, 'integration.json'), JSON.stringify(imported));
+    await saveIntegrationConfig(home, 'mail', def, { externalDefaults: true });
+    expect(stored(home).contentTrust).toBe('trusted');
+    expect(stored(home).untrustedContentPermissions).toBeUndefined();
+    expect(stored(home).trustReadOnlyHints).toBeUndefined();
+    writeFileSync(
+      join(folder, 'integration.json'),
+      JSON.stringify({
+        ...imported,
+        untrustedContentPermissions: { default: 'deny' },
+        untrustedContentChanges: [
+          ...imported.untrustedContentChanges,
+          {
+            at: '2026-10-29T00:00:00.000Z',
+            by: 'person',
+            permissions: { default: 'deny' },
+          },
+        ],
+      }),
+    );
+    await saveIntegrationConfig(home, 'mail', def, { externalDefaults: true });
+    expect(stored(home).untrustedContentPermissions).toEqual({
+      default: 'deny',
+    });
+    expect(stored(home).trustReadOnlyHints).toBeUndefined();
+    writeFileSync(join(folder, 'integration.json'), JSON.stringify(imported));
+    await saveIntegrationConfig(
+      home,
+      'mail',
+      {
+        ...def,
+        untrustedContentPermissions: { default: 'deny' },
+      },
+      { personChange: true },
+    );
+    await saveIntegrationConfig(home, 'mail', def, { externalDefaults: true });
+    expect(stored(home).untrustedContentPermissions).toEqual({
+      default: 'deny',
+    });
   });
   test('a direct storage write (required-tool install) drops forged receipts and records the classification', async () => {
     const home = makeTempDir('station-receipts-');
@@ -151,11 +215,16 @@ describe('plugin integration publication', () => {
     return pluginDir;
   };
   const seedOwned = async (home: string) =>
-    saveIntegrationConfig(home, 'mail', {
-      ...def,
-      plugin: 'mail-plugin',
-      contentTrust: 'untrusted',
-    } as ToolDef);
+    saveIntegrationConfig(
+      home,
+      'mail',
+      {
+        ...def,
+        plugin: 'mail-plugin',
+        contentTrust: 'untrusted',
+      } as ToolDef,
+      { changedBy: 'person' },
+    );
 
   test('keeps stored settings and receipts, drops forged receipts and bindings', async () => {
     const home = makeTempDir('station-publish-');
@@ -202,7 +271,13 @@ describe('plugin integration publication', () => {
     });
     await concurrent;
     expect(stored(home).untrustedContentChanges).toEqual([
-      { at: expect.any(String), contentTrust: 'untrusted' },
+      {
+        at: expect.any(String),
+        by: 'person',
+        contentTrust: 'untrusted',
+        permissions: {},
+        trustReadOnlyHints: false,
+      },
       {
         at: expect.any(String),
         by: 'person-3',
@@ -325,11 +400,16 @@ describe('plugin integration publication', () => {
 
   test('an explicit reset at the default is recorded and resists plugin hints', async () => {
     const home = makeTempDir('station-explicit-default-');
-    await saveIntegrationConfig(home, 'mail', {
-      ...def,
-      plugin: 'mail-plugin',
-      contentTrust: 'untrusted',
-    } as ToolDef);
+    await saveIntegrationConfig(
+      home,
+      'mail',
+      {
+        ...def,
+        plugin: 'mail-plugin',
+        contentTrust: 'untrusted',
+      } as ToolDef,
+      { changedBy: 'person' },
+    );
     await saveIntegrationConfig(
       home,
       'mail',
@@ -398,7 +478,7 @@ describe('plugin integration publication', () => {
       pluginName: 'mail-plugin',
       stage: (staging) => copyPluginIntegrations(pluginDir, staging),
     });
-    expect(stored(home).contentTrust).toBe('untrusted');
+    expect(stored(home).contentTrust).toBe('trusted');
     expect(stored(home).untrustedContentPermissions).toBeUndefined();
     expect(stored(home).trustReadOnlyHints).toBeUndefined();
     expect(stored(home).untrustedContentPersonOwned).toBeUndefined();
@@ -427,7 +507,7 @@ describe('plugin integration publication', () => {
       pluginName: 'mail-plugin',
       backupDir: backup,
     });
-    expect(stored(home).contentTrust).toBe('untrusted');
+    expect(stored(home).contentTrust).toBe('trusted');
     expect(stored(home).trustReadOnlyHints).toBeUndefined();
     expect(stored(home).untrustedContentPermissions).toBeUndefined();
     expect(stored(home).untrustedContentPersonOwned).toBeUndefined();
