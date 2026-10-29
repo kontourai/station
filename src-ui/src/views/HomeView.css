@@ -2,8 +2,11 @@
   width: min(960px, 100%);
   margin: 0 auto;
   padding: clamp(24px, 5vw, 64px);
-  /* Keep the first Home actions and coordinator above the collapsed dock. */
-  padding-top: var(--k-space-6);
+  /* Trade top whitespace for the shell's bottom dock clearance at first paint. */
+  padding-top: max(
+    var(--k-space-3),
+    calc(clamp(24px, 5vw, 64px) - var(--dock-bottom-clearance, 0px))
+  );
   overflow-x: hidden;
 }
 
