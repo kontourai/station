@@ -222,9 +222,8 @@ through the Task-authorized capture-content route.
 
 The commit records the observed Task workspace. It does not establish which
 build is installed on the device or which app is in the foreground; attach
-those receipts separately. This addition is source preparation only. Its
-prepared component/route tests, planned faults, visual and real-device checks
-are **NOT_RUN (capacity)**.
+those receipts separately. Real-device capture and installed-build provenance
+require separate verification.
 
 ## Single-frame API and SDK
 

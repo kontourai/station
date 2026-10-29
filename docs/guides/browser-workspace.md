@@ -247,7 +247,9 @@ stored Project slug or ID through the current Project registry with
 `localProjectIdFor`. Browser standing and sessions use the resulting opaque
 Project ID; the persisted Task review scope keeps the Task's stored identity.
 
-Captures appear as Screen items in `GET /review`. Region anchors use normalized
+Captures appear as Screen items in `GET /review` and on the Task Overview
+Timeline while the Task review preview is enabled. Select a Timeline thumbnail
+to open its Screen in Review. Region anchors use normalized
 rectangles validated by the review contract. Image bytes live outside Project
 roots in `<STATION_HOME>/task-captures/sha256/`; migration 023 stores append-only
 metadata scoped to the Task's creation time. Task count and home capacity are

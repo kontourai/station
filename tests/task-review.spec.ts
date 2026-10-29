@@ -192,6 +192,51 @@ async function shots(page: Page, testInfo: TestInfo, prefix: string) {
   await page.setViewportSize({ width: 1440, height: 1000 });
 }
 
+async function timelineShots(page: Page, empty = false) {
+  const directory = process.env.STATION_REVIEW_SHOTS_DIR;
+  if (!directory) return;
+  mkdirSync(directory, { recursive: true });
+  const taskUrl = page.url();
+  for (const theme of empty ? ['dark'] : ['dark', 'light']) {
+    await page.goto(new URL('/appearance', taskUrl).href);
+    const mode = page.getByRole('radiogroup', { name: 'Mode', exact: true });
+    const label = theme === 'dark' ? 'Dark' : 'Light';
+    if (
+      !(await mode.getByRole('radio', { name: label, exact: true }).isChecked())
+    ) {
+      const [saved] = await Promise.all([
+        page.waitForResponse(
+          (response) =>
+            new URL(response.url()).pathname === '/api/me/preferences' &&
+            response.request().method() === 'PATCH' &&
+            response.request().postDataJSON()?.theme === theme,
+        ),
+        mode.getByText(label, { exact: true }).click(),
+      ]);
+      expect(saved.ok()).toBe(true);
+    }
+    await page.goto(taskUrl);
+    await page.getByRole('tab', { name: 'Overview', exact: true }).click();
+    const timeline = page.getByRole('region', {
+      name: 'Timeline',
+      exact: true,
+    });
+    if (empty) await expect(timeline.getByText('No Screens yet')).toBeVisible();
+    else
+      await expect(timeline.locator('.task-timeline__capture')).toHaveCount(2);
+    for (const width of empty ? [390] : [390, 1440]) {
+      await page.setViewportSize({ width, height: 1000 });
+      await expect(timeline).toBeVisible();
+      if (!empty) await expect(timeline.locator('img')).toHaveCount(2);
+      const name = empty
+        ? 'timeline-empty.png'
+        : `timeline-${theme}-${width}.png`;
+      await page.screenshot({ path: join(directory, name), fullPage: true });
+    }
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
+}
+
 test.describe
   .serial('Task review on an isolated Station', () => {
     let live: LiveStation;
@@ -292,6 +337,7 @@ syncBuiltinESMExports();
         'review-demo',
       );
       await page.reload();
+      await timelineShots(page, true);
       await page.getByRole('tab', { name: 'Review', exact: true }).click();
       await expect(
         page.getByRole('tabpanel', { name: 'Review', exact: true }),
@@ -590,5 +636,14 @@ syncBuiltinESMExports();
       await target.hover();
       await expect(target).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await shots(page, info, 'screens');
+      if (process.env.STATION_REVIEW_SHOTS_DIR) {
+        await page
+          .getByRole('button', { name: 'Capture', exact: true })
+          .click();
+        await page
+          .getByRole('button', { name: 'Capture Screen', exact: true })
+          .click();
+        await timelineShots(page);
+      }
     });
   });

@@ -5624,11 +5624,10 @@ and device Screens use the same store, limits and authorized content route.
 The frame's commit identifies the observed workspace, not the installed build
 or foreground application; see [device provenance](../guides/mobile-device-workspace.md#capture-a-device-screen-to-a-task).
 
-Prepared evidence owners are
+Evidence owners are
 [Timeline component tests](../../src-ui/src/views/task-workspace/__tests__/TaskOverviewTimeline.test.tsx)
 and [device-capture route tests](../../src-server/routes/__tests__/device-agent-capture.test.ts).
-This lane is source preparation only: validation and planned fault injections
-are **NOT_RUN (capacity)**. It supplies no runtime, device or visual qualification.
+These tests do not establish real-device capture or installed-build provenance.
 
 The [Review tab](../../src-ui/src/views/task-workspace/review/TaskReviewTab.tsx)
 is offered by [TaskWorkspaceView](../../src-ui/src/views/TaskWorkspaceView.tsx)
