@@ -410,9 +410,6 @@ test.each([
         expect(box.width).toBeGreaterThanOrEqual(44);
         expect(box.height).toBeGreaterThanOrEqual(44);
       }
-      await page.screenshot({
-        path: `/tmp/turn-navigation-${width}-${theme}.png`,
-      });
       if (width < 560) {
         await page.getByRole('button', { name: 'Previous turn' }).click();
         await settledScrollTop(page);
