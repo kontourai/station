@@ -444,7 +444,7 @@ test.describe('Schedule Page', () => {
 
     await page.getByPlaceholder('Filter automations…').fill('missing');
     await expect(
-      page.getByText('Nothing in scheduled jobs matches “missing”'),
+      page.getByText('Nothing in automations matches “missing”'),
     ).toBeVisible();
     await expect(
       page.getByRole('button', { name: 'Clear filter' }),
