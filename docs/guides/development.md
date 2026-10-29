@@ -241,10 +241,37 @@ its limit, the kernel OOM killer kills one process in it, normally the largest
 command (a build, a linter, a browser), and the engine keeps running and sees
 that command fail (SIGKILL, exit 137) within the same turn. Only when the
 engine itself is the process killed does the engine end. Aggregate exhaustion
-can kill any workload in the slice, including a sibling engine. The server
-requests 512 MiB of memory protection and an oomd avoidance preference; these
-do not guarantee survival under host-wide exhaustion or an ancestor policy
-that kills the entire user session.
+can kill any workload in the slice, including a sibling engine.
+
+Under host pressure caused by those workloads, the server's own unit is
+favoured:
+
+- `MemoryLow` asks for 1536 MiB, the measured working set of a busy server
+  with headroom, but never more than 1/8 of the memory the kernel reports
+  (`MemTotal`, a little under installed RAM): 1536 MiB at 16 GiB, 512 MiB at
+  4 GiB, 256 MiB at 2 GiB. Under host-wide reclaim the kernel
+  caps a cgroup's effective protection by its ancestors', and a user manager
+  cannot set `user.slice` or `user@.service`. So there this protection takes
+  effect only where the host protects those ancestors; by default they have
+  none.
+- `MemorySwapMax=0` keeps the server's anonymous memory resident on hosts
+  where the whole 1536 MiB fits in 1/8 of `MemTotal` (12 GiB and up). A
+  swapped page faulted back in on the event loop stalls every request. This
+  limit holds whatever the unit's ancestors set, but it puts no ceiling on how
+  much the server keeps resident, so smaller hosts get
+  `MemorySwapMax=infinity` and can still swap the server. File-backed pages
+  such as the Node.js binary stay reclaimable either way.
+- `ManagedOOMPreference=avoid` makes systemd-oomd pick other candidates first.
+  For a user unit, systemd-oomd honours this only when it acts on pressure at
+  or below the user manager, not on swap usage or on the whole host.
+- The workload slice has `CPUWeight=25`. It sits beside the `app.slice` that
+  holds the server's unit, so when just those two contend for CPU, that
+  subtree gets 80% of it. When the server is idle, workloads keep the whole
+  quota. There is no `IOWeight`: a user manager is normally delegated only the
+  cpu, memory and pids controllers.
+
+None of this guarantees survival under host-wide exhaustion or an ancestor
+policy that kills the entire user session.
 
 Managed Linux service isolation requires systemd 253 or newer, which accepts
 `OOMPolicy=` on a scope; an older `systemd-run` rejects the property (systemd
