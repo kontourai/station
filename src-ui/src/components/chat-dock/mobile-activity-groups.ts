@@ -8,7 +8,6 @@ import {
   LIVE_LANE_LABELS,
   type LiveLaneId,
   partitionHomeWorkItems,
-  terminalSinceFromRecency,
 } from '../../views/home/home-lane-model';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type { WorkFactsById } from '../../views/home/work-facts';
@@ -114,9 +113,9 @@ export function snoozeKeyFor(item: HomeWorkItem): string {
  * same mapping the Sessions lanes use (`sessions-lane-model.ts`). An
  * unfinished-but-idle item (`Ready`/`Recent`/`Current`/`Unanswerable`) is
  * Idle, not "Active now": nothing is running, and "Just finished"/"Earlier"
- * would assert the work FINISHED, which it did not. `terminalSince` uses the shared fresh-load proxy
- * (`terminalSinceFromRecency`) because this surface, like the Sessions list,
- * has no persisted transition store.
+ * would assert the work FINISHED, which it did not. Finished work's place
+ * comes from its recorded finish time and the person's last view, the same
+ * rule on every surface (`partitionHomeWorkItems`, #4266).
  *
  * Still pure and `now`-injected so the linger boundary is testable without
  * faking timers. Input order is preserved within each group — callers hand
@@ -136,7 +135,6 @@ export function groupMobileActivity(
     now,
     workFacts,
     snoozedUntil: new Map(Object.entries(snoozed)),
-    terminalSince: terminalSinceFromRecency(items),
   });
 
   // Live groups are emitted only when non-empty, like Drafts and "From

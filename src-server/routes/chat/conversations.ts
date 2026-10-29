@@ -41,6 +41,7 @@ import {
 import * as ConversationManager from '../../runtime/conversation/conversation-manager.js';
 import type { StationControlDispatchScope } from '../../runtime/mcp/station-control-dispatch-scope.js';
 import type { RuntimeContext } from '../../runtime/types.js';
+import type { CurrentRuntimeRequestPrincipalSecurity } from '../../security/runtime-request-security.js';
 import { isPrincipalScopedAgentRequest } from '../../security/station-control-request-authority.js';
 import {
   publicAgentIdFromRuntimeKey,
@@ -51,7 +52,10 @@ import {
   type ActionOperationTrackingService,
   beginActionOperationTracking,
 } from '../../services/operations/action-operation-tracker.js';
-import type { ConversationAcknowledgementStore } from '../../services/orchestration/conversation-acknowledgement-store.js';
+import {
+  type ConversationAcknowledgementStore,
+  conversationAcknowledgementKey,
+} from '../../services/orchestration/conversation-acknowledgement-store.js';
 import {
   FORK_REPLAY_DISCLOSURE,
   selectForkTranscriptSlice,
@@ -102,6 +106,7 @@ import {
   ConversationLineageTooLongError,
   createConversationMessageReader,
 } from './conversation-message-reader.js';
+import { conversationOpenCallerAccess } from './conversation-open-caller-access.js';
 
 export { CONVERSATION_READ_MAX_SESSIONS } from './conversation-message-reader.js';
 
@@ -2546,6 +2551,13 @@ export function createGlobalConversationRoutes(
     }>;
     deferredInstanceCount: number;
   }>,
+  /**
+   * The runtime principal gate. When wired, the open read also reports
+   * whether this caller may continue the conversation or start a chat
+   * (`callerAccess`); unwired, the field is omitted and clients treat it as
+   * unknown.
+   */
+  principalSecurity?: CurrentRuntimeRequestPrincipalSecurity,
 ) {
   const app = new Hono();
   const authorityFor =
@@ -2655,7 +2667,6 @@ export function createGlobalConversationRoutes(
   app.get('/', async (c) => {
     try {
       const authority = authorityFor(c.req.raw);
-      const userId = authority.userId;
       const hosted = isHostedSessionReadAuthority(authority);
       const pageQuery = conversationHistoryPageQuerySchema.safeParse({
         cursor: c.req.query('cursor'),
@@ -2706,10 +2717,16 @@ export function createGlobalConversationRoutes(
       const provenanceById = eventStore?.readConversationForkProvenanceBatch?.(
         combined.map((item) => item.id),
       );
-      const acknowledgements = acknowledgementStore?.getMany(
-        userId,
-        combined.map((item) => item.id),
+      const acknowledgementKey = conversationAcknowledgementKey(
+        authority,
+        acknowledgementStore?.isOwnerDevice,
       );
+      const acknowledgements = acknowledgementKey
+        ? acknowledgementStore?.getMany(
+            acknowledgementKey,
+            combined.map((item) => item.id),
+          )
+        : undefined;
       const data = combined.map((item) => {
         const acknowledgedAt = acknowledgements?.get(item.id);
         const forkProvenance =
@@ -2803,8 +2820,23 @@ export function createGlobalConversationRoutes(
         400,
       );
     }
+    // The same key the inventory GET reads (`conversationAcknowledgementKey`):
+    // what a person viewed on one device clears it on all of theirs.
+    const acknowledgementKey = conversationAcknowledgementKey(
+      authority,
+      acknowledgementStore?.isOwnerDevice,
+    );
+    if (!acknowledgementKey) {
+      return c.json(
+        {
+          success: false,
+          error: 'Only a person can acknowledge a conversation',
+        },
+        403,
+      );
+    }
     acknowledgementStore.acknowledge({
-      userId: getUserId(),
+      userId: acknowledgementKey,
       conversationId,
       updatedAt: new Date(parsedUpdatedAt).toISOString(),
     });
@@ -2830,6 +2862,9 @@ export function createGlobalConversationRoutes(
           authority,
         );
       if (resolved) {
+        const callerAccess = principalSecurity
+          ? conversationOpenCallerAccess(c.req.raw, principalSecurity, id)
+          : undefined;
         if (resolved.status === 'fork-ready') {
           const saved = await readSavedForkMetadata(id, authority);
           if (!saved)
@@ -2847,12 +2882,13 @@ export function createGlobalConversationRoutes(
                 updatedAt: saved.updatedAt,
                 titleSource: saved.titleSource,
               },
+              ...(callerAccess ? { callerAccess } : {}),
             },
           });
         }
         return c.json({
           success: true,
-          data: resolved,
+          data: callerAccess ? { ...resolved, callerAccess } : resolved,
         });
       }
       // File-store ownership is not a request principal.  Until it has a

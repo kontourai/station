@@ -451,6 +451,7 @@ function fixture(
       ? { revisionEvidence: options.revisionEvidence }
       : {}),
     working: {
+      readRevisionOrdinals: async () => ({ kind: 'unavailable' as const }),
       read: async () => {
         if (options.revokeAfterWorkingRead) revoked = true;
         if (options.failTaskReadAfterWorkingRead) failTaskRead = true;
@@ -748,6 +749,7 @@ describe('ProjectTaskRoomRuntime', () => {
             : undefined,
         history: () => historyEffects,
         working: {
+          readRevisionOrdinals: async () => ({ kind: 'unavailable' as const }),
           read: vi.fn(async () => ({ kind: 'unavailable' as const })),
           settle: publicationEffects.settle,
           receipt: vi.fn(async () => ({ kind: 'missing' as const })),
@@ -2780,6 +2782,7 @@ describe('ProjectTaskRoomRuntime', () => {
           close: async () => ({ kind: 'closed' }),
         }) as ProjectTaskRoomAuthority,
       working: {
+        readRevisionOrdinals: async () => ({ kind: 'unavailable' as const }),
         read: async () => {
           revoked = true;
           return { kind: 'snapshot' as const, revision: 'one', text: 'secret' };

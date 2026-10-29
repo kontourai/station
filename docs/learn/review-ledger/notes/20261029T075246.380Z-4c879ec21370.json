@@ -1,0 +1,7 @@
+{
+  "revision": "3ca80ebbceee238c445dfce9bfdb4757dd93720f",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"ChatDockBody filters and disables engine alternatives in the composer picker and gates the override reset; no contract, request shape or nativeReturn behaviour changed. Unaffected.","inputs":["docs/reference/contracts.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]}
+  ]
+}

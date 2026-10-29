@@ -121,8 +121,10 @@ export interface ToolCallGroup<P extends ToolCallLike = ToolCallLike> {
   calls: ClassifiedToolCall<P>[];
   /**
    * Collapsed-button copy: the run's inventory, never the current call. A
-   * run still executing reads "4 commands · 3 done" (the noun inventory —
-   * nothing is past tense until every call settled — plus how many have);
+   * run still executing reads "4 commands · 2 done · 1 running" (the noun
+   * inventory — nothing is past tense until every call settled — plus how
+   * many have and how many run now; the badges count the rest, each call
+   * once);
    * a settled one "Ran 4 commands". What is running right now is shown by
    * {@link ToolCallGroup.activeCalls}' own rows, so this line never swaps
    * its words as calls start and finish.
@@ -145,7 +147,8 @@ export interface ToolCallGroup<P extends ToolCallLike = ToolCallLike> {
   /** Failed calls a later identical call recovered. Disclosed neutrally: the
    * failure still happened, but it is not the run's outcome. */
   recoveredCount: number;
-  /** How many of this run's calls ended `unresolved`. Disclosed for the same
+  /** How many of this run's calls have no result: ended `unresolved`, or
+   * started with no outcome in a turn that is over. Disclosed for the same
    * reason `failedCount` is: the summary's verb alone cannot say that some of
    * these calls may never have run, and a reader who does not open the batch
    * would otherwise be told nothing (station#1569 item 3). */
@@ -246,6 +249,30 @@ function classifyCall<P extends ToolCallLike>(
   };
 }
 
+type CallBucket =
+  | 'awaiting'
+  | 'denied'
+  | 'cancelled'
+  | 'running'
+  | 'retried'
+  | 'failed'
+  | 'done'
+  | 'no-result';
+
+/** The one count a call adds to its batch header, by precedence. */
+function callBucket(call: ClassifiedToolCall): CallBucket {
+  if (call.awaitingApproval) return 'awaiting';
+  if (call.denied) return 'denied';
+  if (call.cancelled) return 'cancelled';
+  if (call.inProgress) return 'running';
+  if (call.recovered) return 'retried';
+  if (call.failed) return 'failed';
+  if (call.phase === 'done') return 'done';
+  // Ended unresolved, or started with no outcome in a turn that is over:
+  // its row reads "No result recorded".
+  return 'no-result';
+}
+
 /** Joins per-kind segments the way the owner-supplied examples read: plain
  * comma separation, no trailing "and" ("Read 2 files, ran 2 commands"). */
 function summarizeCalls(
@@ -327,8 +354,16 @@ export function classifyToolCallRun<P extends ToolCallLike>(
     recovered: recovered[position]!,
   }));
   const inProgress = calls.some((c) => c.inProgress);
-  const unresolvedCount = calls.filter((c) => c.unresolved).length;
-  const awaitingApprovalCount = calls.filter((c) => c.awaitingApproval).length;
+  // #4266: every call is counted exactly once, so the header's counts add up
+  // to the run: "9 commands · 6 done · 1 running" plus "2 failed".
+  const buckets = new Map<CallBucket, number>();
+  for (const call of calls) {
+    const bucket = callBucket(call);
+    buckets.set(bucket, (buckets.get(bucket) ?? 0) + 1);
+  }
+  const count = (bucket: CallBucket) => buckets.get(bucket) ?? 0;
+  const unresolvedCount = count('no-result');
+  const awaitingApprovalCount = count('awaiting');
   // A call with no observed outcome at all (started, no terminal — the
   // durable projection's `state: 'call'`, e.g. the open turn's running call
   // when the transcript window renders it) cannot take the past tense
@@ -346,23 +381,24 @@ export function classifyToolCallRun<P extends ToolCallLike>(
   ).length;
   // "Done" is a call that finished successfully: a failed, cancelled or
   // denied one is not done, and wears its own badge instead.
-  const doneCount = calls.filter(
-    (c) => c.phase === 'done' && !c.failed && !c.cancelled && !c.denied,
-  ).length;
-  // The progress count belongs to a multi-call run in flight (a solo call's
-  // label already says it is running), and only once something finished: "0
-  // done" says nothing. A run waiting on a grant leads with that badge.
+  const doneCount = count('done');
+  const runningCount = count('running');
+  // The progress counts belong to a multi-call run in flight (a solo call's
+  // label already says it is running): how many finished ("0 done" says
+  // nothing) and how many run now. A run waiting on a grant leads with that
+  // badge.
   const summary =
-    inProgress &&
-    calls.length > 1 &&
-    doneCount > 0 &&
-    awaitingApprovalCount === 0
-      ? `${aggregateSummary} · ${doneCount} done`
+    inProgress && calls.length > 1 && awaitingApprovalCount === 0
+      ? [
+          aggregateSummary,
+          ...(doneCount > 0 ? [`${doneCount} done`] : []),
+          `${runningCount} running`,
+        ].join(' · ')
       : aggregateSummary;
-  const failedCount = calls.filter((c) => c.failed && !c.recovered).length;
-  const recoveredCount = calls.filter((c) => c.recovered).length;
-  const deniedCount = calls.filter((c) => c.denied).length;
-  const cancelledCount = calls.filter((c) => c.cancelled).length;
+  const failedCount = count('failed');
+  const recoveredCount = count('retried');
+  const deniedCount = count('denied');
+  const cancelledCount = count('cancelled');
   return {
     type: 'tool-call-group',
     key: run.key,
