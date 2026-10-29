@@ -22,6 +22,7 @@ import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { ConsentChannelService } from '../../../services/consent/consent-channel.js';
 import { ConsentTransactionStore } from '../../../services/consent/consent-transactions.js';
+import { DeploymentAuthenticationService } from '../../../services/identity/deployment-authentication-service.js';
 import { OperatorPasskeyEnrollmentService } from '../../../services/identity/operator-passkey-enrollment.js';
 import { LazyOperatorPasskeyRegistry } from '../../../services/identity/operator-passkey-registry.js';
 import {
@@ -106,7 +107,10 @@ describe('remote Project sharing enable with operator passkey step-up (#4306)', 
     directories.splice(0);
   });
 
-  async function setup() {
+  async function setup(deploymentAuthentication?: {
+    publicOrigin: string;
+    service: DeploymentAuthenticationService;
+  }) {
     const homeDir = join(directories[directories.length - 1], 'data');
     mkdirSync(join(homeDir, 'security'), { mode: 0o700, recursive: true });
     const clock = { now: Date.now() };
@@ -154,7 +158,7 @@ describe('remote Project sharing enable with operator passkey step-up (#4306)', 
     const context = deepStub({
       projectMembership: membership.service,
       projectSharedTasks: undefined,
-      deploymentAuthentication: undefined,
+      deploymentAuthentication,
       localAccounts: undefined,
       applicationSessions: undefined,
       consentChannel: channel,
@@ -601,6 +605,74 @@ describe('remote Project sharing enable with operator passkey step-up (#4306)', 
       'Project sharing enabled',
       expect.anything(),
     );
+  });
+
+  test('session revocation during the final account lookup refuses the write', async () => {
+    let hook = async () => {};
+    const service = new DeploymentAuthenticationService({
+      version: 'station.authentication/v1',
+      issuer: 'https://identity.example.test',
+      displayName: 'Identity provider',
+      sessionCookies: ['review_account'],
+      endpoints: [{ path: '/logout', methods: ['POST'], operation: 'logout' }],
+      authenticate: async () => {
+        await hook();
+        return {
+          kind: 'authenticated',
+          session: {
+            subject: 'reviewed-person',
+            displayName: 'reviewed-person',
+            sessionId: 'review-session',
+            authenticatedAt: new Date(Date.now() - 1000).toISOString(),
+            expiresAt: new Date(Date.now() + 600000).toISOString(),
+            contacts: [],
+          },
+        };
+      },
+      handle: async () => new Response(null, { status: 204 }),
+    });
+    const h = await setup({ publicOrigin: APP, service });
+    const signed = await h.signIn();
+    signed.cookie += '; review_account=valid';
+    const transaction = await h.requestStepUp(signed);
+    const rendered = await h.review(signed, transaction.id);
+    let calls = 0;
+    let revoked = false;
+    hook = async () => {
+      if (++calls === 3) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        revoked = h.registry.existing()!.revoke(signed.passkey.id);
+      }
+    };
+    const result = await h.decide(signed, transaction.id, rendered);
+    expect(calls).toBe(3);
+    expect(revoked).toBe(true);
+    expect(result.status, await result.clone().text()).toBe(409);
+    expect(h.shared()).toBe(false);
+  });
+
+  test('revoking a different approving passkey after verification refuses the write', async () => {
+    const h = await setup();
+    const signed = await h.signIn();
+    const approving = await h.signIn();
+    const transaction = await h.requestStepUp(signed);
+    const rendered = await h.review(signed, transaction.id);
+    const enable = h.membership.service.enable.bind(h.membership.service);
+    let revoked = false;
+    vi.spyOn(h.membership.service, 'enable').mockImplementationOnce(
+      async (...args) => {
+        revoked = h.registry.existing()!.revoke(approving.passkey.id);
+        return enable(...args);
+      },
+    );
+    const result = await h.decide(
+      { ...signed, authenticator: approving.authenticator },
+      transaction.id,
+      rendered,
+    );
+    expect(revoked).toBe(true);
+    expect(result.status, await result.clone().text()).toBe(409);
+    expect(h.shared()).toBe(false);
   });
 
   test('the operator credential still enables directly, without a step-up', async () => {

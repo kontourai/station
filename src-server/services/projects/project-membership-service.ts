@@ -67,6 +67,7 @@ export class ProjectMembershipService {
     slug: string,
     expectedLocalId: string,
     authority: ProjectMembershipAuthority,
+    assertLiveAuthority?: () => void,
   ) {
     await authority.operator();
     const initial = await authority.current();
@@ -78,6 +79,7 @@ export class ProjectMembershipService {
         const actor = await this.currentActor(authority, initial.principal.id);
         if (scope.localProjectId !== expectedLocalId)
           throw new ProjectMembershipRefusal('conflict');
+        assertLiveAuthority?.();
         this.members.enable(scope, actor.principal);
         return this.members.administration(scope, actor.principal);
       },

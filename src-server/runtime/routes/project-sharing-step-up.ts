@@ -199,7 +199,15 @@ export function createProjectSharingStepUp(deps: ProjectSharingStepUpDeps) {
             operator: async () => assertCurrent(),
           };
           try {
-            await membership.enable(slug, localProjectId, approved);
+            await membership.enable(slug, localProjectId, approved, () => {
+              assertCurrent();
+              if (!deps.operatorSessions?.isStepUpPasskeyCurrent(passkeyId))
+                throw new ConsentCommitRefusedError(
+                  CHANGED,
+                  false,
+                  'target_changed',
+                );
+            });
           } catch (error) {
             if (error instanceof ConsentCommitRefusedError) throw error;
             if (error instanceof ProjectMembershipRefusal)
