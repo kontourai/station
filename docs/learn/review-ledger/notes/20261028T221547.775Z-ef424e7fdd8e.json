@@ -1,0 +1,7 @@
+{
+  "revision": "ed1c17f4fd3531d7e0e161bfc307d48d8ee58f43",
+
+  "notes": [
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"scripts/lib/verification-request-context.mjs is byte-identical to origin/main again: this branch's interim heavy-check marker there was reverted when admission moved into the coordinator's execute path. The context's request identity, provenance and receipt claims are unchanged.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","scripts/lib/verification-request-context.mjs"]}
+  ]
+}
