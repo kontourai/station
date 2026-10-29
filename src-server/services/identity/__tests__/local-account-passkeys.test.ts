@@ -4,12 +4,10 @@
  * The software authenticator produces real WebAuthn bytes, so every accepted
  * ceremony passed the maintained plugin's verification, not a stub.
  */
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { SoftwareAuthenticator } from '../../../__test-utils__/software-authenticator.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { createDeploymentAuthenticationRoutes } from '../../../routes/system/deployment-authentication-routes.js';
 import { createLogger } from '../../../utils/logger.js';
 import { FeaturePreviewRegistry } from '../../feature-previews/feature-preview-registry.js';
@@ -22,13 +20,13 @@ import {
   loadLocalAccounts,
 } from '../local-account-runtime.js';
 
-const roots: string[] = [];
+// Registered first, so its after-hook removes the homes after the account
+// stores below have closed.
+const makeTempDir = trackTempDirs();
 const loaded: LoadedLocalAccounts[] = [];
 afterEach(async () => {
   vi.useRealTimers();
   for (const accounts of loaded.splice(0)) await accounts.service.close();
-  for (const root of roots.splice(0))
-    await rm(root, { recursive: true, force: true });
 });
 
 const ORIGIN = 'https://station.example.test';
@@ -70,8 +68,7 @@ async function station(
   } = {},
 ) {
   const origin = input.origin ?? ORIGIN;
-  const homeDirectory = await mkdtemp(join(tmpdir(), 'station-passkeys-'));
-  roots.push(homeDirectory);
+  const homeDirectory = makeTempDir('station-passkeys-');
   const invitations = input.invitations ?? new Set([INVITATION]);
   // The production registry, bound with the definition the runtime binds.
   const previews = new FeaturePreviewRegistry(
