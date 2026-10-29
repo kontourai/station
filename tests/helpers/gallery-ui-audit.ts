@@ -35,8 +35,9 @@ const DOCK_OCCLUSION_AUDIT = `(() => {
       const left = Math.max(r.left, d.left, 0), right = Math.min(r.right, d.right, innerWidth);
       const top = Math.max(r.top, d.top, 0), bottom = Math.min(r.bottom, d.bottom, innerHeight);
       if (right - left <= 1 || bottom - top <= 1) continue;
-      const hit = document.elementFromPoint((left + right) / 2, (top + bottom) / 2);
-      if (hit && dock.contains(hit)) findings.push({ anchor: stableAnchor(control) });
+      const stack = document.elementsFromPoint((left + right) / 2, (top + bottom) / 2);
+      if (stack[0] && dock.contains(stack[0]) && stack.some((element) => element === control || control.contains(element)))
+        findings.push({ anchor: stableAnchor(control) });
     }
   }
   return findings;
