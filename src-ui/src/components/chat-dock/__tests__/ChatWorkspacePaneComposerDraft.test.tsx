@@ -30,6 +30,7 @@ import {
 import type { ReactNode } from 'react';
 import { afterEach, beforeAll, expect, test, vi } from 'vitest';
 import { ActiveChatsProvider } from '../../../contexts/ActiveChatsContext';
+import { activeChatsStore } from '../../../contexts/active-chats-store';
 import { ConversationsProvider } from '../../../contexts/ConversationsContext';
 import { KeyboardShortcutsProvider } from '../../../contexts/KeyboardShortcutsContext';
 import { NavigationProvider } from '../../../contexts/NavigationContext';
@@ -126,10 +127,12 @@ vi.mock('../ChatDockMobileHeader', () => ({
     activeCount,
     projectSwitcher,
     sessionProjectMismatchLabel,
+    onOpenTaskSwitcher,
   }: {
     activeCount: number;
     projectSwitcher?: { projectName: string } | null;
     sessionProjectMismatchLabel?: string;
+    onOpenTaskSwitcher?: () => void;
   }) => (
     <>
       <div data-testid="mobile-dock-work-badge">{activeCount}</div>
@@ -139,8 +142,25 @@ vi.mock('../ChatDockMobileHeader', () => ({
       <div data-testid="mobile-dock-mismatch">
         {sessionProjectMismatchLabel}
       </div>
+      <button type="button" onClick={onOpenTaskSwitcher}>
+        Open task switcher
+      </button>
     </>
   ),
+}));
+
+// #4266: what the pane hands the "last viewed" recorder on each render. The
+// recorder's own rules are tested with it; this pins the pane's wiring.
+const acknowledgeCalls = vi.hoisted(
+  () => [] as { id: string | undefined; visible: boolean }[],
+);
+vi.mock('../useAcknowledgeVisibleConversation', () => ({
+  useAcknowledgeVisibleConversation: (
+    item: { id: string } | undefined,
+    visible: boolean,
+  ) => {
+    acknowledgeCalls.push({ id: item?.id, visible });
+  },
 }));
 
 vi.mock('../../modals/NewChatModal', async () => {
@@ -293,6 +313,8 @@ afterEach(async () => {
   dockProbe.mobile = false;
   dockProbe.sessions = [];
   dockProbe.agents = [{ slug: 'assistant', name: 'Assistant' }];
+  acknowledgeCalls.length = 0;
+  activeChatsStore.removeChat('chat-a');
   showSurface = undefined;
   deviceSettingsStore.reset('chatDockProjectSlug');
   navigationStore.navigate('/', { chat: null, dock: null });
@@ -696,6 +718,56 @@ test('the docked New Chat picker defaults to the dock’s bound Project', async 
   await screen.findByRole('region', { name: 'New chat picker' });
   expect(pickerProps.at(-1)!.activeProjectSlug).toBe('pulse');
   expect(createChatSession).not.toHaveBeenCalled();
+});
+
+/** `chat-a` open in this tab, which is what puts it in the inbox's rows. */
+function openChatA() {
+  dockProbe.sessions = [chatSession('chat-a')];
+  activeChatsStore.initChat('chat-a', {
+    agentSlug: 'assistant',
+    agentName: 'Assistant',
+    title: 'Pulse chat',
+    projectSlug: 'pulse',
+  } as Parameters<typeof activeChatsStore.initChat>[1]);
+}
+
+test('the open pane records the chat on screen as viewed (#4266)', async () => {
+  openChatA();
+  navigationStore.navigate('/', { chat: 'chat-a' });
+  renderPane('pulse');
+  await act(async () => {});
+  expect(screen.getByTestId('active-chat-body')).toBeTruthy();
+  expect(acknowledgeCalls.at(-1)).toEqual({ id: 'chat-a', visible: true });
+});
+
+test('the phone’s task switcher covers the chat, so it stops counting as viewed (#4266)', async () => {
+  dockProbe.mobile = true;
+  openChatA();
+  navigationStore.navigate('/', { chat: 'chat-a' });
+  renderPane('pulse');
+  await act(async () => {});
+  expect(acknowledgeCalls.at(-1)).toEqual({ id: 'chat-a', visible: true });
+  fireEvent.click(screen.getByRole('button', { name: 'Open task switcher' }));
+  await act(async () => {});
+  expect(acknowledgeCalls.at(-1)).toEqual({ id: 'chat-a', visible: false });
+});
+
+// A New chat draft covers the chat on screen like the task switcher does, so
+// the covered chat stops counting as viewed until the draft goes.
+test('a chat covered by a New chat draft stops counting as viewed', async () => {
+  openChatA();
+  navigationStore.navigate('/', { chat: 'chat-a' });
+  renderPane('pulse');
+  await act(async () => {});
+  expect(acknowledgeCalls.at(-1)).toEqual({ id: 'chat-a', visible: true });
+  act(() => {
+    dispatchNewChatIntent({});
+  });
+  await screen.findByRole('region', { name: 'New chat picker' });
+  expect(acknowledgeCalls.at(-1)).toEqual({ id: 'chat-a', visible: false });
+  act(() => pickerProps.at(-1)!.onClose());
+  await act(async () => {});
+  expect(acknowledgeCalls.at(-1)).toEqual({ id: 'chat-a', visible: true });
 });
 
 test('a route-selected Agent does not hide other Agents’ chats from the dock (#1053)', async () => {

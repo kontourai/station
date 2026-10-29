@@ -102,7 +102,7 @@ describe('A2/C1-C3: one session, one name', () => {
     expect(mutableSessionTitle(titled, [])).toBe('Ship the Home history fix');
   });
 
-  test('the live feed’s own first prompt still outranks the summary in the detail header', () => {
+  test('the live feed’s own first prompt outranks the summary’s fallback names in the detail header', () => {
     // The one deliberate divergence, and it is a strict refinement: the
     // header has the event stream, which no helper over a summary can see.
     const events = [
@@ -110,6 +110,24 @@ describe('A2/C1-C3: one session, one name', () => {
     ] as unknown as OrchestrationEvent[];
     expect(mutableSessionTitle(ATTACHED_UNTITLED, events)).toBe(
       'Fix the flaky lane',
+    );
+  });
+
+  test('#4266: a feed window opening with "Continue" never retitles the session', () => {
+    const events = [
+      { method: 'turn.started', prompt: 'Continue' },
+      { method: 'turn.started', prompt: 'Also fix the footer' },
+    ] as unknown as OrchestrationEvent[];
+    // The server's title wins over the bounded feed.
+    expect(
+      mutableSessionTitle(
+        session({ ...ATTACHED_UNTITLED, displayTitle: 'Fix the dock header' }),
+        events,
+      ),
+    ).toBe('Fix the dock header');
+    // Without one, the feed's first prompt that names something.
+    expect(mutableSessionTitle(ATTACHED_UNTITLED, events)).toBe(
+      'Also fix the footer',
     );
   });
 });

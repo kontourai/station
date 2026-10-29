@@ -749,6 +749,7 @@ describe('central runtime HTTP security boundary', () => {
           close: async () => ({ kind: 'closed' }),
         }) as any,
       working: {
+        readRevisionOrdinals: async () => ({ kind: 'unavailable' as const }),
         read: async () => ({ kind: 'snapshot', revision: 'empty', text: '' }),
         settle: async () => ({ kind: 'rejected' }),
         receipt: async () => ({ kind: 'missing' }),

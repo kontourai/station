@@ -163,6 +163,72 @@ describe('useDerivedSessions — ChatDock identity stability (station#726)', () 
     ).toBe('Chosen title');
   });
 
+  test('#4266: a paged window starting with "Continue" never titles an orchestration chat; the inventory title stands', () => {
+    // A reopened chat: the server named it at open, and the transcript
+    // window it loaded starts mid-conversation.
+    activeChatsStore.updateChat(SESSION_A, {
+      title: 'Fix the dock header',
+      orchestrationSessionStarted: true,
+      messages: [
+        { role: 'user', content: 'Continue' },
+        { role: 'user', content: 'Also the footer' },
+      ],
+    });
+    // One the server has not named: the window still never names it.
+    activeChatsStore.updateChat(SESSION_B, {
+      title: 'New chat',
+      orchestrationSessionStarted: true,
+      messages: [{ role: 'user', content: 'Also the footer' }],
+    });
+    const { result } = renderHook(() => useDerivedSessions('', null, null));
+    const titleOf = (id: string) =>
+      result.current.find((session) => session.id === id)?.title;
+    expect(titleOf(SESSION_A)).toBe('Fix the dock header');
+    expect(titleOf(SESSION_B)).toBe('New chat');
+  });
+
+  test('#4266: an orchestration chat titled "Continue" reads as untitled, so the dock header takes the server title', () => {
+    // The issue's live case: the chat's own title was "Continue" while the
+    // conversation's root prompt named it. ChatDock substitutes the active
+    // orchestration session's `displayTitle` for a session titled
+    // "New chat" (its D3 fallback), so the derived title must be exactly that.
+    activeChatsStore.updateChat(SESSION_A, {
+      title: 'Continue',
+      orchestrationSessionStarted: true,
+      messages: [{ role: 'user', content: 'Continue' }],
+    });
+    activeChatsStore.updateChat(SESSION_B, {
+      title: 'Continue',
+      messages: [{ role: 'user', content: 'Continue' }],
+    });
+    const { result } = renderHook(() => useDerivedSessions('', null, null));
+    const titleOf = (id: string) =>
+      result.current.find((session) => session.id === id)?.title;
+    expect(titleOf(SESSION_A)).toBe('New chat');
+    // Without a server session there is nothing better to defer to.
+    expect(titleOf(SESSION_B)).toBe('Continue');
+  });
+
+  test('#4266: a complete transcript skips a low-content first prompt', () => {
+    activeChatsStore.updateChat(SESSION_A, {
+      title: 'New chat',
+      messages: [
+        { role: 'user', content: 'ok' },
+        { role: 'user', content: 'Check the project build' },
+      ],
+    });
+    activeChatsStore.updateChat(SESSION_B, {
+      title: 'New chat',
+      messages: [{ role: 'user', content: 'Continue' }],
+    });
+    const { result } = renderHook(() => useDerivedSessions('', null, null));
+    const titleOf = (id: string) =>
+      result.current.find((session) => session.id === id)?.title;
+    expect(titleOf(SESSION_A)).toBe('Check the project build');
+    // A low-content prompt keeps the previous title.
+    expect(titleOf(SESSION_B)).toBe('New chat');
+  });
+
   test("(b) a keystroke in one session does not change another session's derived identity", () => {
     const { result } = renderHook(() => useDerivedSessions('', null, null));
 

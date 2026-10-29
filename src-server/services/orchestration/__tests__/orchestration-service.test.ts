@@ -15693,6 +15693,65 @@ describe('OrchestrationService', () => {
     ]);
   });
 
+  test('#4266: a continuation child opening with "Continue" reads under its conversation\'s title', async () => {
+    const root = 'title-root-thread';
+    const child = `${root}:session:continue`;
+    const started = (threadId: string, at: string) => {
+      eventStore.upsertSession({
+        provider: 'claude',
+        threadId,
+        status: 'ready',
+        createdAt: at,
+        updatedAt: at,
+      });
+      eventStore.appendEvent({
+        eventId: `${threadId}-started`,
+        provider: 'claude',
+        threadId,
+        createdAt: at,
+        method: 'session.started',
+        sessionId: threadId,
+        metadata: { userId: 'owner-user', agentSlug: 'claude' },
+      });
+    };
+    const prompted = (threadId: string, turnId: string, prompt: string) =>
+      eventStore.appendEvent({
+        eventId: `${threadId}-${turnId}`,
+        provider: 'claude',
+        threadId,
+        turnId,
+        createdAt: '2026-08-12T00:00:01.000Z',
+        method: 'turn.started',
+        prompt,
+      });
+    started(root, '2026-08-12T00:00:00.000Z');
+    prompted(root, 'turn-1', 'Fix the dock header');
+    eventStore.reserveNextConversationSession({
+      conversationId: root,
+      predecessorSessionId: root,
+      proposedSessionId: child,
+      createdAt: '2026-08-12T00:00:02.000Z',
+    });
+    started(child, '2026-08-12T00:00:02.000Z');
+    prompted(child, 'turn-2', 'Continue');
+
+    await expect(
+      service.sessionQueries.read(
+        { type: 'conversation', threadId: child },
+        personalReadAuthority('owner-user'),
+      ),
+    ).resolves.toMatchObject({
+      status: 'found',
+      conversation: { title: 'Fix the dock header' },
+    });
+    await expect(
+      service.readSessionConversation(
+        child,
+        personalReadAuthority('owner-user'),
+      ),
+    ).resolves.toMatchObject({ title: 'Fix the dock header' });
+  });
+
   test('reads one persisted conversation target without polling adapters or replaying a denied thread', async () => {
     const thread = 'thread-targeted-query';
     eventStore.upsertSession({

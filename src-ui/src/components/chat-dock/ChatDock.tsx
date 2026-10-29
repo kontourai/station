@@ -129,6 +129,7 @@ import {
   isSessionWorkActive,
 } from '../../utils/execution';
 import { displayProvider, sessionTitle } from '../../utils/sessionDisplay';
+import { withConversationInventory } from '../../views/home/conversation-inventory-facts';
 import { chatTaskSessionId } from '../../views/home/home-view-model';
 import {
   openChatInboxRows,
@@ -200,6 +201,7 @@ import {
   useSessionInventoryHostRegistered,
   useSessionInventoryHostRegistration,
 } from './sessionInventoryOccurrence';
+import { useAcknowledgeVisibleConversation } from './useAcknowledgeVisibleConversation';
 import { useChatDockActiveChatSync } from './useChatDockActiveChatSync';
 import { useChatDockOverlays } from './useChatDockOverlays';
 import { useChatDockViewModel } from './useChatDockViewModel';
@@ -787,23 +789,11 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     () => openChatInboxRows(inboxItems),
     [inboxItems],
   );
-  // The inventory's acknowledgement stamps are presentation (which finished
-  // rows are "Just finished"), layered on the shared items; no status word
-  // reads them.
+  // The inventory's per-conversation facts (last view, finish time, engines
+  // run) are presentation layered on the shared items; no status word reads
+  // them.
   const taskItems = useMemo(
-    () =>
-      inboxItems.map((item) => {
-        const conversation = inventoryById.get(item.id);
-        if (!conversation) return item;
-        const acknowledgedAt = conversation.acknowledgedAt
-          ? Date.parse(conversation.acknowledgedAt)
-          : Number.NaN;
-        return {
-          ...item,
-          conversationUpdatedAt: conversation.updatedAt,
-          ...(Number.isFinite(acknowledgedAt) ? { acknowledgedAt } : {}),
-        };
-      }),
+    () => withConversationInventory(inboxItems, inventoryById),
     [inboxItems, inventoryById],
   );
   const acknowledgeTaskConversation = useCallback(
@@ -1556,6 +1546,13 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const activeTaskItem = activeSession
     ? taskItems.find((item) => chatTaskSessionId(item) === activeSession.id)
     : undefined;
+  // #4266: the chat on screen is viewed. Watching a thread finish clears it
+  // from "Just finished" on every device; the phone's task switcher and a
+  // New chat draft cover the transcript, so neither counts as viewing it.
+  useAcknowledgeVisibleConversation(
+    activeTaskItem,
+    isPaneOpen && !(isMobile && isTaskSwitcherOpen) && !showNewChatModal,
+  );
   const activeWorkStatus = useOptionalObservedWorkStatus(
     activeTaskItem,
     inboxClock,
