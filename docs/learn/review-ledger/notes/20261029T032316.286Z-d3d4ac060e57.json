@@ -1,0 +1,17 @@
+{
+  "revision": "1ea7aabea8ab553823a407e1be9ff4367c345200",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Rechecked: testing.md gained one bullet on how a slotted heavy check runs (execve on macOS and Linux, an owned Job on Windows, an ordinary child on Windows when no slot is held). This page routes to or summarises testing.md and makes no claim about how a slotted check is launched, so it stays accurate.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Rechecked: testing.md gained one bullet on how a slotted heavy check runs (execve on macOS and Linux, an owned Job on Windows, an ordinary child on Windows when no slot is held). This page routes to or summarises testing.md and makes no claim about how a slotted check is launched, so it stays accurate.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Rechecked: testing.md gained one bullet on how a slotted heavy check runs (execve on macOS and Linux, an owned Job on Windows, an ordinary child on Windows when no slot is held). This page routes to or summarises testing.md and makes no claim about how a slotted check is launched, so it stays accurate.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Rechecked: testing.md gained one bullet on how a slotted heavy check runs (execve on macOS and Linux, an owned Job on Windows, an ordinary child on Windows when no slot is held). This page routes to or summarises testing.md and makes no claim about how a slotted check is launched, so it stays accurate.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Rechecked: testing.md gained one bullet on how a slotted heavy check runs (execve on macOS and Linux, an owned Job on Windows, an ordinary child on Windows when no slot is held). This page routes to or summarises testing.md and makes no claim about how a slotted check is launched, so it stays accurate.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Rechecked: testing.md gained one bullet on how a slotted heavy check runs (execve on macOS and Linux, an owned Job on Windows, an ordinary child on Windows when no slot is held). This page routes to or summarises testing.md and makes no claim about how a slotted check is launched, so it stays accurate.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}
