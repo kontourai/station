@@ -131,6 +131,7 @@ export type ChatContentPart = {
   result?: any;
   output?: any;
   htmlReply?: import('@kontourai/station-contracts/html-reply').HtmlReplyReference;
+  claudeArtifact?: import('@kontourai/station-contracts/claude-artifact').ClaudeArtifactLink;
   stationControlRefusal?: import('@kontourai/station-contracts/station-control-refusal').StationControlRefusalView;
   error?: string;
   errorText?: string;

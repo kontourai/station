@@ -119,6 +119,25 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
     expect(part?.approvalStatus).toBeUndefined();
   });
 
+  test('a Claude Code Artifact publish keeps its claude.ai link on the live tool part', () => {
+    const link = {
+      url: 'https://claude.ai/code/artifact/5f0c2e4a-8d1b-4c33-9a7e-1b2c3d4e5f60',
+      title: 'Q3 latency report',
+    };
+    handleToolCompletedEvent(
+      toolCompleted({
+        provider: 'claude',
+        toolName: 'Artifact',
+        output: 'Published.',
+        claudeArtifact: link,
+      }),
+    );
+    expect(toolPart()).toMatchObject({
+      state: 'completed',
+      claudeArtifact: link,
+    });
+  });
+
   test('chat-host-images: a settled turn host images land on that turn committed row', () => {
     const ref = `sha256-${'d'.repeat(64)}`;
     activeChatsStore.updateChat(threadId, {

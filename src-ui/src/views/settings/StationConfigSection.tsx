@@ -86,6 +86,7 @@ export const STATION_SETTING_KEYS_BY_SECTION = {
     'defaultWorkspaceIsolation',
     'workspaceCheckpoints',
     'usageLimitAutoResume',
+    'claudeArtifactsEnabled',
     'reviewGuidesEnabled',
     'reviewGuideModel',
     'reviewGuideInstructions',

@@ -370,6 +370,7 @@ export function handleToolCompletedEvent(
     result: event.output,
     ...(event.spilledContent ? { contentThreadId: event.threadId } : {}),
     ...(event.htmlReply ? { htmlReply: event.htmlReply } : {}),
+    ...(event.claudeArtifact ? { claudeArtifact: event.claudeArtifact } : {}),
     error: event.error,
     ...(event.outputReceipt?.truncated
       ? { outputTruncated: true as const }

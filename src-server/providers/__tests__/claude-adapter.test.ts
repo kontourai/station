@@ -9005,6 +9005,7 @@ describe('ClaudeAdapter', () => {
         persistSession: false,
         env: scrubBootInternalSecrets({
           ...process.env,
+          CLAUDE_CODE_ARTIFACT: '0',
           TMPDIR: engineSpawnTmpDirPath(),
         }),
         // #2932: Station owns the engine spawn to read permission asks.
@@ -10597,6 +10598,7 @@ echo '{"loggedIn":true}'
       expect(call.options.env).toEqual(
         scrubBootInternalSecrets({
           ...augmentedEnv,
+          CLAUDE_CODE_ARTIFACT: '0',
           TMPDIR: engineSpawnTmpDirPath(),
         }),
       );
@@ -10618,6 +10620,7 @@ echo '{"loggedIn":true}'
       expect(call.options.env).toEqual(
         scrubBootInternalSecrets({
           ...process.env,
+          CLAUDE_CODE_ARTIFACT: '0',
           TMPDIR: engineSpawnTmpDirPath(),
         }),
       );
@@ -10649,6 +10652,7 @@ echo '{"loggedIn":true}'
         scrubBootInternalSecrets({
           ...augmentedEnv,
           CLAUDE_CONFIG_DIR: '/station/app-homes/claude',
+          CLAUDE_CODE_ARTIFACT: '0',
           TMPDIR: engineSpawnTmpDirPath(),
         }),
       );
@@ -10677,6 +10681,7 @@ echo '{"loggedIn":true}'
       expect(call.options.env).toEqual(
         scrubBootInternalSecrets({
           ...augmentedEnv,
+          CLAUDE_CODE_ARTIFACT: '0',
           TMPDIR: engineSpawnTmpDirPath(),
         }),
       );
@@ -10764,6 +10769,105 @@ echo '{"loggedIn":true}'
         else process.env.STATION_HOME = previousStationHome;
         rmSync(stationHome, { recursive: true, force: true });
       }
+    });
+  });
+
+  describe('Claude Code artifacts setting at the SDK spawn seam', () => {
+    async function sessionEnv(
+      options: ConstructorParameters<typeof ClaudeAdapter>[0],
+      threadId: string,
+    ) {
+      mockQuery.mockClear();
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter(options);
+      await adapter.startSession({ provider: 'claude', threadId });
+      const env = mockQuery.mock.calls.at(-1)?.[0].options.env;
+      await adapter.stopAll();
+      return env as Record<string, string | undefined>;
+    }
+
+    test('on, a session start turns the Artifact tool on', async () => {
+      const getArtifactsEnabled = vi.fn(async () => true);
+      const env = await sessionEnv({ getArtifactsEnabled }, 'artifacts-on');
+      expect(env.CLAUDE_CODE_ARTIFACT).toBe('1');
+      expect(getArtifactsEnabled).toHaveBeenCalledTimes(1);
+    });
+
+    test('off, unwired, or unreadable, a session start turns it off explicitly', async () => {
+      expect(
+        (await sessionEnv({ getArtifactsEnabled: async () => false }, 'off'))
+          .CLAUDE_CODE_ARTIFACT,
+      ).toBe('0');
+      expect((await sessionEnv({}, 'unwired')).CLAUDE_CODE_ARTIFACT).toBe('0');
+      expect(
+        (
+          await sessionEnv(
+            {
+              getArtifactsEnabled: async () => {
+                throw new Error('config unreadable');
+              },
+              logger: { warn: vi.fn() } as never,
+            },
+            'unreadable',
+          )
+        ).CLAUDE_CODE_ARTIFACT,
+      ).toBe('0');
+    });
+
+    test('off wins over an ambient or connection-env enable; on wins over a connection-env disable', async () => {
+      mockAugmentedSpawnEnv.mockResolvedValue({
+        ...process.env,
+        CLAUDE_CODE_ARTIFACT: '1',
+      });
+      expect(
+        (
+          await sessionEnv(
+            {
+              getArtifactsEnabled: async () => false,
+              getConnectionEnv: async () => ({ CLAUDE_CODE_ARTIFACT: '1' }),
+            },
+            'off-over-ambient',
+          )
+        ).CLAUDE_CODE_ARTIFACT,
+      ).toBe('0');
+      mockAugmentedSpawnEnv.mockReset();
+      expect(
+        (
+          await sessionEnv(
+            {
+              getArtifactsEnabled: async () => true,
+              getConnectionEnv: async () => ({ CLAUDE_CODE_ARTIFACT: '0' }),
+            },
+            'on-over-connection',
+          )
+        ).CLAUDE_CODE_ARTIFACT,
+      ).toBe('1');
+    });
+
+    test('an adopted session reads the setting at its own start', async () => {
+      mockForkSession.mockResolvedValue({ sessionId: 'vendor-child' });
+      mockQuery.mockClear();
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter({
+        getArtifactsEnabled: async () => true,
+      });
+      await adapter.adoptSession(
+        {
+          provider: 'claude',
+          threadId: 'artifacts-adopted',
+          sourceSessionId: 'vendor-source',
+          sourceKind: 'claude-transcript',
+          cwd: '/workspace/project',
+        },
+        {
+          onProviderChildCreationStarted: () => {},
+          onProviderChildCreated: () => {},
+        },
+      );
+      expect(
+        mockQuery.mock.calls.at(-1)?.[0].options.env.CLAUDE_CODE_ARTIFACT,
+      ).toBe('1');
+      await adapter.stopAll();
     });
   });
 

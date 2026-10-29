@@ -881,6 +881,30 @@ function claudeConnectionEnvForSpawn(
 /** Matches the `any`-typed logger convention used across `providers/adapters` (e.g. AcpAdapterOptions.logger). */
 type ClaudeAdapterLogger = any;
 
+export interface ClaudeArtifactsSpawnEnv {
+  CLAUDE_CODE_ARTIFACT: '1' | '0';
+}
+
+/**
+ * The env that turns Claude Code's Artifact tool on or off for one spawn,
+ * from `AppConfig.claudeArtifactsEnabled`.
+ *
+ * The CLI keeps the tool off under the Agent SDK unless
+ * `CLAUDE_CODE_ARTIFACT` is truthy, and a defined falsy value (`0`) turns
+ * it off before any other enable (including
+ * `CLAUDE_CODE_BRIDGE_CHILD_ARTIFACT`) is consulted (Claude Code 0.3.304
+ * bundle). Off is therefore written as `0`, not left unset: the setting is
+ * authoritative, so an ambient enable in Station's own environment, or one
+ * in the connection's `env` map, cannot publish to claude.ai while Settings
+ * shows the tool off. The engine still offers the
+ * tool only to a first-party claude.ai subscription login.
+ */
+export function claudeArtifactsSpawnEnv(
+  enabled: boolean,
+): ClaudeArtifactsSpawnEnv {
+  return { CLAUDE_CODE_ARTIFACT: enabled === true ? '1' : '0' };
+}
+
 export interface ClaudeAdapterOptions {
   resolveMcpOAuth?: EngineMcpOAuthResolver;
   resolveSourceHome?: (
@@ -983,6 +1007,12 @@ export interface ClaudeAdapterOptions {
    * credentials, so it never blocks a session start.
    */
   getConnectionEnv?: () => Promise<Record<string, string> | undefined>;
+  /**
+   * `AppConfig.claudeArtifactsEnabled`, read at each session start (never by
+   * a running session). Absent or failing reads as off. See
+   * {@link claudeArtifactsSpawnEnv} for what reaches the spawn.
+   */
+  getArtifactsEnabled?: () => Promise<boolean>;
   getConnectionLaunch?: () => Promise<ReturnType<typeof engineProxyLaunch>>;
   /**
    * Station#1157 review fix (MEDIUM): the running instance's own
@@ -1536,6 +1566,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         !sourceCursor,
       );
       const augmentedEnv = await this.resolveAugmentedSpawnEnv();
+      const artifactsEnv = await this.resolveArtifactsEnv();
       const preToolPolicy = await this.resolvePreToolPolicy(input);
       const oauthTokens = await this.options.resolveMcpOAuth?.(input);
       const claudeExecutable = launchedClaudeExecutable(
@@ -1562,6 +1593,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           connectionLaunch?.route,
           undefined,
           oauthTokens,
+          artifactsEnv,
         );
       const seatbelt = await this.prepareSeatbeltStart(input, {
         appHomeEnv,
@@ -1584,6 +1616,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         connectionLaunch?.route,
         seatbelt.confined,
         oauthTokens,
+        artifactsEnv,
       );
       if (seatbelt.fallback)
         this.publishConfinementFallback(input.threadId, seatbelt.fallback);
@@ -1857,6 +1890,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         false,
       );
       const augmentedEnv = await this.resolveAugmentedSpawnEnv();
+      const artifactsEnv = await this.resolveArtifactsEnv();
       const preToolPolicy = await this.resolvePreToolPolicy(input);
       const oauthTokens = await this.options.resolveMcpOAuth?.(input);
       const claudeExecutable = launchedClaudeExecutable(
@@ -1877,6 +1911,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           connectionLaunch?.route,
           undefined,
           oauthTokens,
+          artifactsEnv,
         );
       const session = await this.startTrackedSession(
         { ...input, resumeCursor, persistSession: true },
@@ -1892,6 +1927,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         connectionLaunch?.route,
         undefined,
         oauthTokens,
+        artifactsEnv,
       );
       this.publishConfinementFallback(input.threadId, adoptionFallback);
       return session;
@@ -2008,6 +2044,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     modelRoute?: ReturnType<typeof engineProxyLaunch>['route'],
     seatbelt?: SeatbeltStart,
     oauthTokens?: ReadonlyMap<string, string>,
+    artifactsEnv: ClaudeArtifactsSpawnEnv = claudeArtifactsSpawnEnv(false),
   ): ProviderSession | Promise<ProviderSession> {
     const now = new Date().toISOString();
     const promptQueue = new AsyncUserMessageQueue();
@@ -2133,6 +2170,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             hostBypassGrant ||
             permissionMode === 'bypassPermissions',
           sessionTmpDir,
+          artifactsEnv,
         ),
       });
     } catch (error) {
@@ -3731,6 +3769,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
      * Seatbelt-confined spawn gets none: its wrapper sets its own TMPDIR.
      */
     sessionTmpDir?: string,
+    artifactsEnv: ClaudeArtifactsSpawnEnv = claudeArtifactsSpawnEnv(false),
   ): Options {
     const modelOptions = claudeAppliedModelOptions(input.modelOptions);
     // #2947: the approval guardian's allows, by the engine's tool-use id,
@@ -3916,6 +3955,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                 input.agent.toolServerLoading === 'always' ? 'false' : 'true',
             }
           : {}),
+        // After every caller/ambient layer: the Station setting owns this
+        // key (see `claudeArtifactsSpawnEnv`).
+        ...artifactsEnv,
         TMPDIR: sessionTmpDir ?? ensureEngineSpawnTmpDir(),
       }),
       // #2932: the SDK reads stdout from the process this returns, after
@@ -4606,6 +4648,24 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         `Claude app-home profile lookup failed; continuing with the global Claude Code config: ${errorMessage(error)}`,
       );
       return undefined;
+    }
+  }
+
+  /**
+   * The Artifact tool's spawn env for this start. A failed setting read
+   * starts the session with the tool off rather than blocking it: off is
+   * the default, and the read asserts nothing about credentials.
+   */
+  private async resolveArtifactsEnv(): Promise<ClaudeArtifactsSpawnEnv> {
+    try {
+      return claudeArtifactsSpawnEnv(
+        (await this.options.getArtifactsEnabled?.()) === true,
+      );
+    } catch (error) {
+      (this.options.logger ?? console).warn?.(
+        `Claude artifacts setting lookup failed; starting with the Artifact tool off: ${errorMessage(error)}`,
+      );
+      return claudeArtifactsSpawnEnv(false);
     }
   }
 

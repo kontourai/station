@@ -308,6 +308,11 @@
       "type": "boolean",
       "description": "Send a Claude Code or Codex turn that stopped on a usage limit again once the provider-reported reset passes. Default off."
     },
+    "claudeArtifactsEnabled": {
+      "type": "boolean",
+      "default": false,
+      "description": "Turn on Claude Code's Artifact tool (publishes pages to claude.ai; needs a claude.ai subscription login) for Claude sessions started afterwards. Default off."
+    },
     "agentConnections": {
       "type": "object",
       "description": "Per-agent connection overrides keyed by agent slug.",

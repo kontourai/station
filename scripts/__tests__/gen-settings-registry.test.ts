@@ -258,6 +258,7 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'default-skill-registries': 'station',
   'workspace-checkpoints': 'station',
   'usage-limit-auto-resume': 'station',
+  'claude-artifacts': 'station',
   'default-workspace-isolation': 'station',
   'device-hosts': 'station',
   'default-approval-mode': 'station',

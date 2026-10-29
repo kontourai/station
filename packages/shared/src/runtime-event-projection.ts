@@ -3,6 +3,7 @@ import {
   type ChatHostImageMap,
   chatHostImageMapFromEvent,
 } from '@kontourai/station-contracts/chat-host-images';
+import { claudeArtifactLinkView } from '@kontourai/station-contracts/claude-artifact';
 import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
 import { isStationMemoryContinuationTurn } from '@kontourai/station-contracts/provider';
 import {
@@ -1137,6 +1138,8 @@ export function projectRuntimeEventsToMessages(
           if (ev.htmlReply) existing.htmlReply = ev.htmlReply;
           const refusal = stationControlRefusalView(ev.stationControlRefusal);
           if (refusal) existing.stationControlRefusal = refusal;
+          const artifact = claudeArtifactLinkView(ev.claudeArtifact);
+          if (artifact) existing.claudeArtifact = artifact;
           if (ev.outputReceipt?.truncated) existing.outputTruncated = true;
           existing.error = spillableDisplayText(ev.error);
           existing.sourceEventId = ev.eventId;
@@ -1220,6 +1223,9 @@ export function projectRuntimeEventsToMessages(
             output: ev.output,
             ...(ev.spilledContent ? { contentThreadId: ev.threadId } : {}),
             ...(ev.htmlReply ? { htmlReply: ev.htmlReply } : {}),
+            ...(claudeArtifactLinkView(ev.claudeArtifact)
+              ? { claudeArtifact: claudeArtifactLinkView(ev.claudeArtifact) }
+              : {}),
             ...(stationControlRefusalView(ev.stationControlRefusal)
               ? {
                   stationControlRefusal: stationControlRefusalView(

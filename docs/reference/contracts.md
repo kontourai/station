@@ -686,6 +686,16 @@ reads it only from a station-control tool's whole result, and
 `ToolCompletedEvent.stationControlRefusal`, read before the window cut the
 output to an excerpt; a sentence over its bound is not carried.
 
+`@kontourai/station-contracts/claude-artifact` owns `ClaudeArtifactLink`
+(the claude.ai page a Claude Code `Artifact` publish produced, and its
+title), `parseClaudeArtifactPublish`, which reads it only from a publish's
+structured tool output (`url` and `path` at the top level), and
+`claudeArtifactLinkView`, which checks a stored link again before a reader
+renders it. `claudeArtifactUrl` admits only an `https://claude.ai` URL with
+no credentials or port; a URL over its bound is refused, and a title over
+its bound is dropped. The Claude adapter carries the link on
+`ToolCompletedEvent.claudeArtifact`.
+
 `ORCHESTRATION_STREAM_ACTIVITY_EVENT` names an idless SSE frame carrying the
 current conversation activity after a burst of coalesced runtime events. It
 updates liveness without advancing the event replay cursor.
