@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-29T00:54:36Z | nightly-desktop | 0.1.11-nightly.2492.3 | `7ab23e3` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/40788221601) |
 | 2026-10-29T00:54:33Z | nightly-android | 0.1.11-nightly.2492.3 | `7ab23e3` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/40788221601) |
 | 2026-10-28T23:49:37Z | nightly-npm | 0.11.0-nightly.2492.40788221601 | `7ab23e3` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/40788221601) |
 | 2026-10-28T14:59:05Z | nightly-desktop | 0.1.11-nightly.2492.2 | `aacdba4` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/40697396751) |
@@ -373,6 +374,38 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-29T00:54:36Z · nightly-desktop · 0.1.11-nightly.2492.3
+
+- Ship SHA: `7ab23e351c844bdccf6359c8ba773e11c8ab00ad`
+- Artifact built at: `2026-10-28T23:47:59.469Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 40788221601)
+
+### Changelog
+
+Commits since `aacdba4` ([full sha](https://github.com/kontourai/station/commit/aacdba448bc461868cfcd149884185598b47e6ec)):
+
+**Features**
+
+- [#4291](https://github.com/kontourai/station/pull/4291) feat(skills): put visual skills behind a Feature Preview
+- [#4295](https://github.com/kontourai/station/pull/4295) feat(scripts): enforce CLI ↔ Station Control parity with a classified manifest
+- [#4274](https://github.com/kontourai/station/pull/4274) feat(ui): right-click and touch-hold item menus; guard the desktop WebView menu
+
+**Fixes**
+
+- [#4297](https://github.com/kontourai/station/pull/4297) fix(ui): say what Codex's engine default approval means
+- [#4296](https://github.com/kontourai/station/pull/4296) fix(runtime): say what held the event loop in each stall log line
+- [#4294](https://github.com/kontourai/station/pull/4294) fix(inbox): re-read sessions when an approval opens or resolves
+- [#4293](https://github.com/kontourai/station/pull/4293) fix(monitoring): scope insights and event history by request principal
+- [#4290](https://github.com/kontourai/station/pull/4290) fix(cli): defer the supervisor wedge escalation while the host is CPU-starved
+- [#4275](https://github.com/kontourai/station/pull/4275) fix(connect): forget leftover Stations and switch between Stations faster
+- [#4277](https://github.com/kontourai/station/pull/4277) fix(ui): place inbox toggle at the start of dock headers
+- [#4278](https://github.com/kontourai/station/pull/4278) fix(settings): preserve project drafts and clarify settings actions
+- [#4273](https://github.com/kontourai/station/pull/4273) fix(chat): steer a reopened running turn and keep a long turn whole across reloads
+- [#4276](https://github.com/kontourai/station/pull/4276) fix(ui): soften active chat status pill border
+- [#4272](https://github.com/kontourai/station/pull/4272) fix(orchestration): tell a parent its delegated task was cut off by a restart, and catch more turn-id reuse
+- [#4269](https://github.com/kontourai/station/pull/4269) fix(ci): repair qualification coverage and remaining Nightly bootstrap
 
 ## 2026-10-29T00:54:33Z · nightly-android · 0.1.11-nightly.2492.3
 
