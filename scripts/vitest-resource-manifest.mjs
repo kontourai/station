@@ -645,6 +645,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/dogfood-reconcile-scenario-parity.test.ts',
   // One bounded node child proving the cli-doc parity entry point.
   'scripts/__tests__/cli-doc-parity.test.ts',
+  // Bounded node children run the CLI ↔ Station Control parity entry point
+  // against fixture manifests, and read the ratchet base through git.
+  'scripts/__tests__/cli-mcp-parity.test.ts',
   // Bounded node children prove generation and check failures in disposable roots.
   'scripts/__tests__/metric-reference.test.ts',
   // Regenerate-and-diff plus real-entry-point runs: docs-index --check and
