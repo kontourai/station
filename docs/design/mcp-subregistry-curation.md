@@ -192,8 +192,11 @@ copy (a plugin update cannot downgrade or reopen them), and a list of
 validators runs on each definition under the lock; other owners, such as
 tool-server OAuth client rules, add theirs there. A reader sees the old
 definition, briefly none, or the sanitized one, never the plugin's raw
-bytes. A whole-definition replacement or a concurrent save cannot erase or
-drop a receipt. The last 50 are kept. The
+bytes. Install and uninstall recovery also restore backups through the locked
+writer: current stored person settings and receipts win over the backup. Before
+retiring an integration, the writer refreshes its recovery backup under the
+same lock, retaining edits made since the earlier backup. A whole-definition
+replacement or a concurrent save cannot erase or drop a receipt. The last 50 are kept. The
 rule itself is `withUntrustedContentChange` in the tool contract.
 
 ### Coverage and gaps

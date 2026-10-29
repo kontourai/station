@@ -295,6 +295,8 @@ type PluginPublicationOptions = {
   stage?: (stagingDir: string) => string[];
   validators?: readonly PluginIntegrationValidator[];
   now?: () => Date;
+  /** Station's recovery backup, refreshed under the lock before retirement. */
+  backupRetiredTo?: string;
 };
 
 export async function publishPluginIntegrations(
@@ -384,7 +386,46 @@ async function publishPluginIntegrationsLocked(
           throw new Error(
             `Integration '${id}' already exists and is not owned by this plugin`,
           );
-        if (!staged.includes(id)) continue;
+        if (!staged.includes(id)) {
+          if (current && options.backupRetiredTo) {
+            const backupDir = options.backupRetiredTo;
+            await mkdir(backupDir, { recursive: true });
+            const temporary = await mkdtemp(join(backupDir, '.retired-'));
+            const destination = join(backupDir, id);
+            const previous = join(temporary, 'previous');
+            let movedPrevious = false;
+            let retainTemporary = false;
+            try {
+              cpSync(join(integrationsDir, id), join(temporary, 'next'), {
+                recursive: true,
+              });
+              if (existsSync(destination)) {
+                await rename(destination, previous);
+                movedPrevious = true;
+              }
+              try {
+                await rename(join(temporary, 'next'), destination);
+              } catch (error) {
+                if (movedPrevious) {
+                  try {
+                    await rename(previous, destination);
+                  } catch (restoreError) {
+                    retainTemporary = true;
+                    throw new AggregateError(
+                      [error, restoreError],
+                      `Integration backup recovery retained at ${temporary}`,
+                    );
+                  }
+                }
+                throw error;
+              }
+            } finally {
+              if (!retainTemporary)
+                await rm(temporary, { recursive: true, force: true });
+            }
+          }
+          continue;
+        }
         // Staged ids exist only when a staging directory does.
         const stagedPath = join(stagingDir!, id, 'integration.json');
         const incoming = JSON.parse(

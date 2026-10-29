@@ -4840,6 +4840,61 @@ describe('installPluginFromSource', () => {
     );
   });
 
+  test('failed install-over restores a retired integration with the latest receipt', async () => {
+    const root = trackedTempDir('station-plugin-retired-receipts-');
+    const source = join(root, 'source');
+    writePlugin(source, { name: 'mail-plugin', version: '2.0.0', agents: [] });
+    writePlugin(join(root, 'plugins', 'mail-plugin'), {
+      name: 'mail-plugin',
+      version: '1.0.0',
+      agents: [],
+    });
+    await saveIntegrationConfig(root, 'mail', {
+      id: 'mail',
+      command: 'old',
+      plugin: 'mail-plugin',
+      contentTrust: 'untrusted',
+    } as any);
+    const failing = {
+      ...deps(root),
+      buildPlugin: vi.fn(async () => {
+        await saveIntegrationConfig(
+          root,
+          'mail',
+          {
+            id: 'mail',
+            command: 'old',
+            plugin: 'mail-plugin',
+            contentTrust: 'untrusted',
+            untrustedContentPermissions: { default: 'deny' },
+          } as any,
+          { changedBy: 'person' },
+        );
+      }),
+      reconcileEngineConnections: vi
+        .fn()
+        .mockRejectedValueOnce(new Error('reconcile failed'))
+        .mockResolvedValue(undefined),
+    };
+    await expect(installPluginFromSource(source, [], failing)).rejects.toThrow(
+      'reconcile failed',
+    );
+    const restored = JSON.parse(
+      readFileSync(
+        join(root, 'integrations', 'mail', 'integration.json'),
+        'utf8',
+      ),
+    );
+    expect(restored.untrustedContentChanges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          by: 'person',
+          permissions: { default: 'deny' },
+        }),
+      ]),
+    );
+  });
+
   test('does not overwrite an existing user integration during first install', async () => {
     const root = mkdtempSync(join(tmpdir(), 'station-plugin-tools-conflict-'));
     cleanupDirs.push(root);

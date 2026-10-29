@@ -2645,21 +2645,6 @@ async function restorePluginOwnedIntegrations(
   });
 }
 
-function removePluginOwnedIntegrations(
-  projectIntegrationsDir: string,
-  pluginName: string,
-): void {
-  for (const integrationId of readPluginOwnedIntegrationIds(
-    projectIntegrationsDir,
-    pluginName,
-  )) {
-    assertPluginNameSegment(integrationId);
-    const target = join(projectIntegrationsDir, integrationId);
-    assertPathInside(projectIntegrationsDir, target, 'Integration target');
-    rmSync(target, { recursive: true, force: true });
-  }
-}
-
 async function autoInstallCopiedIntegrationCommands(
   copiedIntegrations: string[],
   projectHomeDir: string,
@@ -4182,6 +4167,9 @@ async function installPluginFromSourceUnderContext(
         const copiedIntegrations = await publishPluginIntegrations({
           projectHomeDir,
           pluginName,
+          ...(hadExistingPlugin && backupRoot
+            ? { backupRetiredTo: join(backupRoot, 'integrations') }
+            : {}),
           ...(isAgentPlugin
             ? {}
             : {
@@ -4695,10 +4683,7 @@ async function installPluginFromSourceUnderContext(
                   );
               }
             } else rmSync(pluginDir, { recursive: true, force: true });
-            removePluginOwnedIntegrations(
-              join(projectHomeDir, 'integrations'),
-              pluginName,
-            );
+            await publishPluginIntegrations({ projectHomeDir, pluginName });
             if (backupRoot && backupComplete) {
               await restorePluginDurableState(
                 projectHomeDir,
@@ -5112,10 +5097,11 @@ async function uninstallPluginUnderPublication(
     }
 
     await grantScope.run(() => revokeAllGrants(projectHomeDir, pluginName));
-    removePluginOwnedIntegrations(
-      join(projectHomeDir, 'integrations'),
+    await publishPluginIntegrations({
+      projectHomeDir,
       pluginName,
-    );
+      backupRetiredTo: join(backupRoot, 'integrations'),
+    });
     if (managed) {
       lifecycle = await installationService!.withdraw(priorInstallation!);
       if (deps.packageMcpJournal)
