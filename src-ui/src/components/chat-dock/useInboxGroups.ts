@@ -8,11 +8,11 @@ import { workAttentionCount } from '../../views/home/home-lane-model';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type { WorkFactsById } from '../../views/home/work-facts';
 import { useInboxScope } from './InboxScopeFilter';
+import { useInboxDismissals } from './inbox-dismissals';
 import {
   groupMobileActivity,
   type MobileActivityGroup,
 } from './mobile-activity-groups';
-import { useHeldLifecycles } from './useHeldLifecycles';
 
 /**
  * THE inbox's groups, from its live sources: the items with brief lifecycle
@@ -27,7 +27,7 @@ export function useInboxGroups(
   now: number,
   workFacts?: WorkFactsById,
 ): MobileActivityGroup[] {
-  const heldItems = useHeldLifecycles(items);
+  const { visible, dismissed } = useInboxDismissals(items, workFacts);
   const version = useSyncExternalStore(
     subscribeSnoozes,
     snoozesVersion,
@@ -37,8 +37,13 @@ export function useInboxGroups(
   // biome-ignore lint/correctness/useExhaustiveDependencies: version is the change signal for readSnoozes
   const snoozed = useMemo(() => readSnoozes(now), [now, version]);
   return useMemo(
-    () => groupMobileActivity(heldItems, now, snoozed, workFacts),
-    [heldItems, now, snoozed, workFacts],
+    () => [
+      ...groupMobileActivity(visible, now, snoozed, workFacts),
+      ...(dismissed.length
+        ? [{ id: 'dismissed' as const, label: 'Dismissed', items: dismissed }]
+        : []),
+    ],
+    [visible, now, snoozed, workFacts, dismissed],
   );
 }
 
