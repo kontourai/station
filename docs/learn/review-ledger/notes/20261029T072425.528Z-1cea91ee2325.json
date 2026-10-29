@@ -1,0 +1,7 @@
+{
+  "revision": "4640bf9e93b17471ee52d1dd28b7d79e8b2a4d8a",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the native-fork owner test delta: new started/configured/fork method controls use real SQLite and assert rejection before any append sink call, supporting the consciously updated five-call provenance inventory. Production paths, authority and documented limits are unchanged; focused inventory/native owners passed105 cases. No live provider or activation claim.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/__tests__/conversation-native-fork-effect.test.ts"]}
+  ]
+}
