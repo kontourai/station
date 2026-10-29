@@ -342,7 +342,15 @@ export function useSendMessage(
   handleSlashCommand?: (
     sessionId: string,
     content: string,
-  ) => Promise<boolean | string | 'CLEAR'>,
+  ) => Promise<
+    | boolean
+    | string
+    | 'CLEAR'
+    | {
+        text: string;
+        mcpPromptOrigin: import('@kontourai/station-contracts/mcp-prompts').AgentMcpPromptOrigin;
+      }
+  >,
 ) {
   const {
     updateChat,
@@ -552,6 +560,14 @@ export function useSendMessage(
       const turnBusy = isTurnInFlight(currentState);
 
       if (turnBusy && currentState) {
+        if (/^\/[^\s:]+:[^\s]+/.test(content)) {
+          addEphemeralMessage(sessionId, {
+            role: 'system',
+            content:
+              'MCP prompts cannot be queued or steered during a turn. Send this prompt after the current turn finishes.',
+          });
+          return false;
+        }
         if (attachments?.length) {
           addEphemeralMessage(sessionId, {
             role: 'system',
@@ -607,6 +623,9 @@ export function useSendMessage(
         steerOpenTurn = true;
       }
 
+      let mcpPromptOrigin:
+        | import('@kontourai/station-contracts/mcp-prompts').AgentMcpPromptOrigin
+        | undefined;
       if (!sourceStart && content.startsWith('/') && handleSlashCommand) {
         const result = await handleSlashCommand(sessionId, content);
         if (result === true || result === 'CLEAR') {
@@ -622,6 +641,23 @@ export function useSendMessage(
             content: `Slash command **${content}** was sent as user message`,
           });
           content = result;
+        }
+        if (
+          typeof result === 'object' &&
+          result !== null &&
+          'mcpPromptOrigin' in result
+        ) {
+          if (steerOpenTurn) {
+            updateChat(sessionId, { input: submittedDraft });
+            addEphemeralMessage(sessionId, {
+              role: 'system',
+              content:
+                'MCP prompts cannot be sent as steering. Send this prompt after the current turn finishes.',
+            });
+            return false;
+          }
+          content = result.text;
+          mcpPromptOrigin = result.mcpPromptOrigin;
         }
       }
 
@@ -861,6 +897,7 @@ export function useSendMessage(
       if (
         !options?.dispatch &&
         !sourceStart &&
+        !mcpPromptOrigin &&
         !attachments?.length &&
         !currentState?.attachmentStages?.length
       ) {
@@ -1076,6 +1113,7 @@ export function useSendMessage(
             ? options.executionSnapshot.providerOptions
             : currentState?.providerOptions,
           message: content,
+          ...(mcpPromptOrigin ? { mcpPromptOrigin } : {}),
           conversationId: sentConversationId,
           attachments,
           attachmentStages: currentState?.attachmentStages,
@@ -1433,6 +1471,18 @@ export function useSendMessage(
         );
         const undeliverableCause =
           queueModule?.classifyUndeliverableSend(err) ?? null;
+        if (undeliverableCause && mcpPromptOrigin && !options?.dispatch) {
+          updateChat(sessionId, {
+            status: 'error',
+            error:
+              'The prompt send was not confirmed. Inspect the conversation before running it again.',
+            abortController: undefined,
+            pendingClientTurnId: undefined,
+            sendAwaitingTurnStart: undefined,
+          });
+          options?.onAdmission?.('indeterminate');
+          return false;
+        }
         if (undeliverableCause && !options?.dispatch) {
           try {
             const { outboundDispatch } = await import('../lib/outboundQueue');
@@ -1591,6 +1641,7 @@ export function useSendMessage(
         if (
           isQueuedOnRefusalCode(err.code) &&
           !options?.dispatch &&
+          !mcpPromptOrigin &&
           !(attachments && attachments.length > 0)
         ) {
           const { input: _restoredDraft, ...rollback } = rejectedSendRollback(

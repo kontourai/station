@@ -2,6 +2,7 @@ import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { MCPToolProvenanceGeneration } from '../../../services/orchestration/mcp-tool-provenance.js';
 import { UntrustedContentLedger } from '../../../services/plugins/untrusted-content-policy.js';
+import { runWithAuthorizedTurnCorrelation } from '../../conversation/authorized-turn-correlation.js';
 import {
   type MCPToolNameMappingEntry,
   normalizeLoadedMCPTools,
@@ -181,6 +182,59 @@ function setup(
 beforeEach(() => vi.mocked(toolDenials.add).mockClear());
 
 describe('outbound tools after untrusted content', () => {
+  test('an untrusted prompt origin marks its turn before the first tool', async () => {
+    const { requester, invocation, createIssue } = setup(
+      {},
+      { invocation: { turnId: 'turn-prompt' } },
+    );
+    requester.mockResolvedValueOnce(false);
+    const correlation = {
+      accountId: 'person',
+      sessionId: invocation.conversationId,
+      turnId: 'turn-prompt',
+      correlationId: 'correlation',
+    };
+    const result = await runWithAuthorizedTurnCorrelation(
+      correlation,
+      createIssue,
+      undefined,
+      undefined,
+      { serverId: 'mail', name: 'summarize', untrusted: true },
+    );
+    expect(result).toMatchObject({ allowed: false });
+    expect(requester).toHaveBeenCalledTimes(1);
+  });
+
+  test('a trusted prompt does not mark its turn', async () => {
+    const { requester, invocation, createIssue } = setup(
+      { mail: { contentTrust: 'trusted' } },
+      { invocation: { turnId: 'turn-prompt' } },
+    );
+    const correlation = {
+      accountId: 'person',
+      sessionId: invocation.conversationId,
+      turnId: 'turn-prompt',
+      correlationId: 'correlation',
+    };
+    const result = await runWithAuthorizedTurnCorrelation(
+      correlation,
+      createIssue,
+      undefined,
+      undefined,
+      { serverId: 'mail', name: 'summarize', untrusted: false },
+    );
+    expect(result).toBe(true);
+    expect(requester).not.toHaveBeenCalled();
+  });
+
+  test('a prompt observed untrusted remains marked after its source becomes trusted', async () => {
+    const { requester, invocation, createIssue } = setup({ mail: { contentTrust: 'trusted' } }, { invocation: { turnId: 'turn-prompt' } });
+    requester.mockResolvedValueOnce(false);
+    const correlation = { accountId: 'person', sessionId: invocation.conversationId, turnId: 'turn-prompt', correlationId: 'correlation' };
+    const result = await runWithAuthorizedTurnCorrelation(correlation, createIssue, undefined, undefined, { serverId: 'mail', name: 'summarize', untrusted: true });
+    expect(result).toMatchObject({ allowed: false });
+    expect(requester).toHaveBeenCalledTimes(1);
+  });
   test('person policy controls authentic built-in tools, while unproven names still ask', async () => {
     const { hooks, invocation, readMail, requester } = setup();
     await readMail();

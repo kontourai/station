@@ -4488,6 +4488,16 @@ For new integrations, use `sendExecutionMessage` from
 the [Session API](session-api.md). The legacy `streamConversationTurn` export
 targets Station's private compatibility route, `/api/agents/:slug/chat`.
 
+When the input is a Station-fetched MCP prompt, `sendExecutionMessage` accepts
+`mcpPromptOrigin: { serverId, name, receipt }` alongside the unchanged rendered
+message. Carry the receipt returned by the prompt run; it binds the source,
+text and observed classification for ten minutes and expires on server restart.
+Station's own engine uses it to apply
+the source's content classification before the turn's first tool. Prompt sends
+to an external engine or another Station are refused until that origin can be
+carried there. A client should refuse to send when the prompt response lacks
+`turnOriginSupported: true`, because an older Station may ignore the field.
+
 `streamConversationTurn` chooses one `clientTurnId` per call. Pass
 `chatOptions.clientTurnId` to reuse a caller-owned key; an omitted key is generated
 with the shared correlation-ID helper. A supplied key must be a nonblank string of

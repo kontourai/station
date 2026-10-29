@@ -177,6 +177,7 @@ import {
 } from '../../services/orchestration/thread-inbox.js';
 import { MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES } from '../../services/orchestration/thread-tool-result-adapter.js';
 import { foregroundTurnSubmissionDigest } from '../../services/orchestration/turn-submission-digest.js';
+import { verifyMcpPromptOrigin } from '../../services/plugins/mcp-prompt-origin-receipt.js';
 import { isPersonChatRequest } from '../../services/projects/project-chat-defaults.js';
 import type { ReceiverExecutionAdmission } from '../../services/projects/project-contribution-service.js';
 import {
@@ -900,6 +901,14 @@ export const foregroundMessageObjectSchema = z.object({
   // text bound, but let the object-level check below require either text or an
   // attachment rather than silently rejecting a caption-less pasted image.
   message: z.string().max(CHAT_INPUT_MAX_CHARS),
+  mcpPromptOrigin: z
+    .object({
+      serverId: z.string().min(1).max(256),
+      name: z.string().min(1).max(256),
+      receipt: z.string().min(1).max(4096),
+    })
+    .strict()
+    .optional(),
   conversationId: z.string().min(1).max(512).optional(),
   ambientContext: z.string().max(4000).optional(),
   attachments: z
@@ -969,6 +978,7 @@ function inboxFollowUpOf(
     body.attachments?.length ||
     body.attachmentRefs?.length ||
     body.skillExperience ||
+    body.mcpPromptOrigin ||
     body.expectedInputRequest ||
     body.setApprovalMode !== undefined ||
     requestedApprovalMode(body.target.model?.options) !== undefined
@@ -1081,6 +1091,7 @@ export const continueForegroundMessageSchema = foregroundMessageObjectSchema
     // A continuation is remote-capable. Never silently strip a current-host
     // reference: that would hide a cross-host byte dispatch from the caller.
     attachmentRefs: z.never().optional(),
+    mcpPromptOrigin: z.never().optional(),
     environment: environmentRefSchema.optional(),
     // The persisted binding, not this continuation request, owns execution
     // identity. Preserve legacy clients that sent a scalar `model` field by
@@ -1100,6 +1111,7 @@ export const conversationHandoffSchema = foregroundMessageObjectSchema
     // A handoff may target another Station; current-host staged references
     // have no portable byte authority and must be refused at validation.
     attachmentRefs: z.never().optional(),
+    mcpPromptOrigin: z.never().optional(),
     idempotencyKey: z.string().min(1).max(200),
   })
   .superRefine(requireApprovalPickBasis);
@@ -1278,6 +1290,7 @@ interface ForegroundMessageRequest {
   expectedInputRequest?: AttentionRequestReference;
   target: ExecutionTarget;
   message: string;
+  mcpPromptOrigin?: import('@kontourai/station-contracts/mcp-prompts').VerifiedMcpPromptOrigin;
   conversationId?: string;
   attachments?: ChatAttachmentInput[];
   resolveAttachments?: (binding: {
@@ -2649,6 +2662,26 @@ export function createOrchestrationRoutes(
         automaticBackground?: true;
         whenBusy?: 'queue';
       };
+      let verifiedMcpPromptOrigin:
+        | import('@kontourai/station-contracts/mcp-prompts').VerifiedMcpPromptOrigin
+        | undefined;
+      if (body.mcpPromptOrigin) {
+        try {
+          verifiedMcpPromptOrigin = verifyMcpPromptOrigin(
+            body.mcpPromptOrigin,
+            body.message,
+          );
+        } catch {
+          return c.json(
+            {
+              success: false,
+              error:
+                'MCP prompt origin is invalid or expired; run the prompt again.',
+            },
+            400,
+          );
+        }
+      }
       // #2377 slice C3b: an agent sends without an approval posture.
       const postureRefused = refuseCarriedPosture(c, [
         { path: 'setApprovalMode', value: body.setApprovalMode, kind: 'pick' },
@@ -2834,6 +2867,9 @@ export function createOrchestrationRoutes(
       let stagedBinding: { threadId: string; clientTurnId: string } | undefined;
       const foregroundRequest = {
         ...body,
+        ...(verifiedMcpPromptOrigin
+          ? { mcpPromptOrigin: verifiedMcpPromptOrigin }
+          : {}),
         ...(delegation ? { delegation } : {}),
         // #3323: how the route came by `delegation`, stamped beside it by the
         // start. Set here only, after the body spread, so a body can never

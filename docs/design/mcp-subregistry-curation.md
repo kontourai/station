@@ -226,10 +226,12 @@ checks newer state and stale grants is follow-up work, not an available command.
   build their evaluator in `StationRuntime.resolveExternalPreToolPolicy`
   without this stage, and their tool results are not reported to Station's
   hooks per turn. Station shows no claim of coverage there.
-- **MCP prompts.** A prompt from an untrusted server (`/<server>:<prompt>`)
-  is fetched by the composer and sent as the person's own message; the turn
-  is not marked. Marking it needs the prompt's origin carried with the
-  message into the turn, which this change does not add.
+- **MCP prompts.** The composer carries the source of `/<server>:<prompt>`
+  through the foreground send and Station's authorized relay. The Station
+  engine marks the turn before its first tool when that source is untrusted
+  or unreadable. A Station that cannot carry the origin refuses the send.
+  Prompt sends to another Station or an external engine, and prompt steering
+  into an active turn, are refused rather than sent without the mark.
 - **Delegation memory.** The delegation records live in the server's memory
   (the most recent 10,000 conversations per record, never forgetting one an
   active turn depends on) and do not survive a restart. A child that starts

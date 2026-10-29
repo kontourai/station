@@ -176,6 +176,10 @@ export interface UntrustedContentChange {
 }
 
 const UNTRUSTED_CONTENT_CHANGE_LIMIT = 50;
+const ownProperty = Object.prototype.hasOwnProperty;
+function owns(value: object, key: string): boolean {
+  return ownProperty.call(value, key);
+}
 export const DEFAULT_EXTERNAL_CONTENT_TRUST = 'trusted' as const;
 
 function lastImportedReceipt(
@@ -198,10 +202,9 @@ export function personOwnedUntrustedContentFields(stored: ToolDef | undefined) {
   );
   for (const receipt of receipts.slice(lastImport + 1)) {
     if (!receipt.by || receipt.source) continue;
-    if (Object.hasOwn(receipt, 'contentTrust')) owned.add('contentTrust');
-    if (Object.hasOwn(receipt, 'permissions')) owned.add('permissions');
-    if (Object.hasOwn(receipt, 'trustReadOnlyHints'))
-      owned.add('trustReadOnlyHints');
+    if (owns(receipt, 'contentTrust')) owned.add('contentTrust');
+    if (owns(receipt, 'permissions')) owned.add('permissions');
+    if (owns(receipt, 'trustReadOnlyHints')) owned.add('trustReadOnlyHints');
   }
   return owned;
 }
@@ -223,17 +226,16 @@ export function withStationIntegrationTrustDefaults(
   if (!stored) return result;
   const owned = personOwnedUntrustedContentFields(stored);
   if (owned.has('contentTrust')) {
-    if (Object.hasOwn(stored, 'contentTrust'))
-      result.contentTrust = stored.contentTrust;
+    if (owns(stored, 'contentTrust')) result.contentTrust = stored.contentTrust;
     else delete result.contentTrust;
   }
   if (owned.has('permissions')) {
-    if (Object.hasOwn(stored, 'untrustedContentPermissions'))
+    if (owns(stored, 'untrustedContentPermissions'))
       result.untrustedContentPermissions = stored.untrustedContentPermissions;
     else delete result.untrustedContentPermissions;
   }
   if (owned.has('trustReadOnlyHints')) {
-    if (Object.hasOwn(stored, 'trustReadOnlyHints'))
+    if (owns(stored, 'trustReadOnlyHints'))
       result.trustReadOnlyHints = stored.trustReadOnlyHints;
     else delete result.trustReadOnlyHints;
   }

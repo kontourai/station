@@ -28,6 +28,7 @@ import {
 } from '../../services/plugins/untrusted-content-policy.js';
 import { toolDenials } from '../../telemetry/metrics.js';
 import { findModelPricing } from '../../utils/pricing.js';
+import { currentMcpPromptOrigin } from '../conversation/authorized-turn-correlation.js';
 import {
   buildConversationStatsUpdate,
   calculateUsageCost,
@@ -224,6 +225,16 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
     },
 
     beforeToolCall: async (tool, invocation) => {
+      const promptOrigin = currentMcpPromptOrigin();
+      if (promptOrigin && !(await untrustedContent.hasRead(invocation))) {
+        untrustedContent.mark(
+          invocation,
+          storedDefinition(promptOrigin.serverId).then(
+            (definition) =>
+              promptOrigin.untrusted || definition.contentTrust === 'untrusted',
+          ),
+        );
+      }
       const scopedRequester = invocation.conversationId
         ? approvalRequesters.get(invocation.conversationId)
         : undefined;

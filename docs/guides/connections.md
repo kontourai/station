@@ -1586,9 +1586,14 @@ The same per-tool permissions apply to Station's installed built-ins: use the
 integration API for `bash`, `file-editor`, or `http-request`, with tool keys
 `bash`, `fileEditor`, or `http_request` respectively. If a tool's loaded
 identity cannot be verified, Station asks rather than applying its allow entry.
-Delegated children share the mark both ways. Station applies this on its own
-engine only, and not yet to MCP prompts from an untrusted server; see the
+Delegated children share the mark both ways. Station's own engine also marks
+turns sent from untrusted MCP prompts. Prompt steering and prompt sends to
+another Station or an external engine are refused until their origin can be
+carried safely; see the
 [coverage notes](../design/mcp-subregistry-curation.md#coverage-and-gaps).
+An unconfirmed MCP prompt send is not automatically replayed; inspect the
+conversation before running it again. Prompt receipts expire after ten minutes
+or a Station restart, so an expired prompt must be run again.
 
 ## Connect an OAuth MCP server to an Agent
 

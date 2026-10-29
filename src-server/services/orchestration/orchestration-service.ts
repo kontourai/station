@@ -562,6 +562,7 @@ function telemetryEngine(
  * from an HTTP route.
  */
 interface OrchestrationDispatchInternalOptions {
+  mcpPromptOrigin?: import('@kontourai/station-contracts/mcp-prompts').VerifiedMcpPromptOrigin;
   /** Original intent proof; null preserves unknown legacy inbox input. */
   submissionDigest?: string | null;
   skillExperience?: SkillExperienceStartInputV1;
@@ -8578,6 +8579,15 @@ export class OrchestrationService {
                                   : {}),
                               })
                             : undefined;
+                        if (
+                          internal?.mcpPromptOrigin &&
+                          (!turnCorrelation ||
+                            adapter.provider !== 'station-agent')
+                        ) {
+                          throw new Error(
+                            'This engine cannot safely carry MCP prompt origin into the turn.',
+                          );
+                        }
                         // The native-output companion is composed only after the
                         // command's normal read authorization gate above. Its
                         // PrincipalRef is attribution; this live lease repeats
@@ -8782,6 +8792,7 @@ export class OrchestrationService {
                                   send,
                                   nativeMemory,
                                   experienceContext,
+                                  internal?.mcpPromptOrigin,
                                 )
                               : send();
                           };
@@ -8852,6 +8863,8 @@ export class OrchestrationService {
                                         )
                                       : sendAdapter(),
                                   nativeMemory,
+                                  undefined,
+                                  internal?.mcpPromptOrigin,
                                 )
                               : sendAdapter(),
                         );

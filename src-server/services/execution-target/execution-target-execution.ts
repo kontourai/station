@@ -107,6 +107,7 @@ export interface ForegroundMessageInput {
   expectedInputRequest?: AttentionRequestReference;
   target: ExecutionTarget;
   message: string;
+  mcpPromptOrigin?: import('@kontourai/station-contracts/mcp-prompts').VerifiedMcpPromptOrigin;
   conversationId?: string;
   attachments?: ChatAttachmentInput[];
   /** Authorized staged bytes; inspection validates an earlier proof holder without binding. */
@@ -411,6 +412,7 @@ export interface ExecutionTargetExecutionDependencies
       clientOrigin?: ClientOrigin;
       principal?: PrincipalRef;
       submissionDigest?: string | null;
+      mcpPromptOrigin?: import('@kontourai/station-contracts/mcp-prompts').VerifiedMcpPromptOrigin;
     },
   ) => Promise<{ turnId: string }>;
   /**
@@ -679,6 +681,7 @@ export async function executeForegroundMessage(
       'attachments',
       'expectedInputRequest',
       'skillExperience',
+      'mcpPromptOrigin',
     ]);
   }
   const message = input.message.trim();
@@ -690,6 +693,10 @@ export async function executeForegroundMessage(
   }
 
   const resolved = await resolveExecutionTarget(input.target, deps);
+  if (input.mcpPromptOrigin && resolved.access.kind !== 'current')
+    throw new Error(
+      'MCP prompt origin cannot be safely carried to another Station.',
+    );
   // Target resolution makes both explicit saved and project-default saved
   // Environments concrete. Refuse process-local staged bytes before their
   // resolver can hydrate or send anything to a non-current Station.
@@ -1591,6 +1598,7 @@ export async function executeForegroundMessage(
     },
     input.clientOrigin ||
       input.principal ||
+      input.mcpPromptOrigin ||
       submissionDigest ||
       context?.inboxPlacement
       ? {
@@ -1601,6 +1609,9 @@ export async function executeForegroundMessage(
               : {}),
           ...(input.clientOrigin ? { clientOrigin: input.clientOrigin } : {}),
           ...(input.principal ? { principal: input.principal } : {}),
+          ...(input.mcpPromptOrigin
+            ? { mcpPromptOrigin: input.mcpPromptOrigin }
+            : {}),
         }
       : undefined,
   );
