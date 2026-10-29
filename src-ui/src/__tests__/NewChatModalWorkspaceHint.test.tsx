@@ -15,7 +15,9 @@
  * ACP connection list and the selected project can be varied directly; the
  * component under test — NewChatModal's own render of the hint — is real.
  */
-import { cleanup, render, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { cleanup, render as renderView, screen } from '@testing-library/react';
+import type { ReactElement } from 'react';
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 import type { AgentData } from '../contexts/AgentsContext';
 
@@ -198,3 +200,12 @@ describe('NewChatModal workspace hint (#1089)', () => {
     ).toBeDefined();
   });
 });
+
+function render(ui: ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return renderView(
+    <QueryClientProvider client={client}>{ui}</QueryClientProvider>,
+  );
+}

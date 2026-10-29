@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  cleanup,
+  fireEvent,
+  render as renderView,
+  screen,
+} from '@testing-library/react';
+import type { ReactElement } from 'react';
 import {
   afterEach,
   beforeAll,
@@ -183,3 +190,12 @@ describe('NewChatModal connections read failure (#771)', () => {
     expect(screen.queryByText("Couldn't load engines or models")).toBeNull();
   });
 });
+
+function render(ui: ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return renderView(
+    <QueryClientProvider client={client}>{ui}</QueryClientProvider>,
+  );
+}

@@ -5,13 +5,15 @@ import {
   engineConnectionId,
   engineId,
 } from '@kontourai/station-contracts/agent-identity';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   cleanup,
   fireEvent,
-  render,
+  render as renderView,
   screen,
   waitFor,
 } from '@testing-library/react';
+import type { ReactElement } from 'react';
 import { useState } from 'react';
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 import { NewChatModal } from '../components/modals/NewChatModal';
@@ -643,3 +645,12 @@ describe('NewChatModal row hierarchy', () => {
     expect(labels[2]?.className.includes(divided)).toBe(true);
   });
 });
+
+function render(ui: ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return renderView(
+    <QueryClientProvider client={client}>{ui}</QueryClientProvider>,
+  );
+}
