@@ -1030,13 +1030,13 @@ describe('ChatInputArea', () => {
     });
 
     const agent = screen.getByRole('button', {
-      name: 'Agent: Codex reviewer. Wait for the current turn to finish.',
+      name: 'Agent: Codex reviewer. Can’t change Agent yet. Wait for the current turn to finish.',
     }) as HTMLButtonElement;
     expect(agent.getAttribute('aria-disabled')).toBe('true');
     agent.focus();
     expect(document.activeElement).toBe(agent);
     expect(agent.title).toBe(
-      'Agent: Codex reviewer. Wait for the current turn to finish.',
+      'Agent: Codex reviewer. Can’t change Agent yet. Wait for the current turn to finish.',
     );
     fireEvent.click(agent);
     expect(document.activeElement).toBe(agent);
@@ -1253,6 +1253,42 @@ describe('ChatInputArea', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Use default model' }));
     expect(onModelReset).toHaveBeenCalledOnce();
+  });
+
+  test('a reset waiting on the turn stays in place, unavailable, with its reason', () => {
+    const onModelReset = vi.fn();
+    renderChatInputArea({
+      currentModel: 'override-model',
+      currentModelSource: 'session override',
+      onModelReset,
+      modelResetDisabledReason: 'Wait for the current turn to finish.',
+    });
+
+    const reset = screen.getByRole('button', { name: 'Use default model' });
+    expect(reset.getAttribute('aria-disabled')).toBe('true');
+    const describedBy = reset.getAttribute('aria-describedby');
+    expect(
+      describedBy && document.getElementById(describedBy)?.textContent,
+    ).toBe('Wait for the current turn to finish.');
+    fireEvent.click(reset);
+    expect(onModelReset).not.toHaveBeenCalled();
+  });
+
+  test('a reset the conversation cannot take is not offered as a chip', () => {
+    renderChatInputArea({
+      currentModel: 'override-model',
+      currentModelSource: 'session override',
+      onModelReset: vi.fn(),
+      modelResetDisabledReason:
+        'This conversation can’t change its engine right now.',
+      modelResetOffered: false,
+    });
+
+    // The picker's own reset states the reason as text
+    // (SessionModelPicker "a refused reset is disabled and states why").
+    expect(screen.queryByRole('button', { name: 'Use default model' })).toBe(
+      null,
+    );
   });
 
   test.each([
