@@ -6259,6 +6259,15 @@ export function configureRuntimeRoutes(
       resolveAgentDispatchActor,
       stationControlDispatchScope,
       isRequestPrincipalCurrent,
+      mayRequestMemoryContinuation: (request, id) =>
+        runtimeRequestPrincipalMayAccessHttpRoute(
+          request,
+          context.environmentSecurityService,
+          {
+            method: 'POST',
+            path: `/api/orchestration/conversations/${encodeURIComponent(id)}/memory-continuation`,
+          },
+        ),
       answerAssessmentModule,
       answerNarrativeBindingModule,
       reviewedSourceBasisResolver,

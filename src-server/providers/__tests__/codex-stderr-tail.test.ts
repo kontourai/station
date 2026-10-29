@@ -102,14 +102,42 @@ describe('CodexStderrTail', () => {
     },
   );
 
-  test('preserves tracing paths, hashes and UUIDs', () => {
+  test('preserves tracing paths and UUIDs but redacts hashes', () => {
     const tail = new CodexStderrTail();
     const lines = [
       '2026-10-27T18:02:11Z ERROR codex_core: /workspace/a/very/long/project/src/some_module.rs:42 failed',
       '2026-10-27T18:02:11Z INFO codex_core: commit 0123456789abcdef0123456789abcdef01234567',
       '2026-10-27T18:02:11Z INFO codex_core: digest 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef request 10000000-0000-4000-8000-000000000000',
     ];
-    expect(lines.map((line) => tail.push(line))).toEqual(lines);
+    const outputs = lines.map((line) => tail.push(line));
+    expect(outputs[0]).toBe(lines[0]);
+    expect(outputs[1]).toContain('[REDACTED]');
+    expect(outputs[2]).toContain(
+      '[REDACTED] request 10000000-0000-4000-8000-000000000000',
+    );
+  });
+
+  test('redacts orphaned RSA body lines, including a slash-prefixed line', () => {
+    const bodies = Array.from({ length: 30 }, () =>
+      generateKeyPairSync('rsa', { modulusLength: 2048 })
+        .privateKey.export({ type: 'pkcs8', format: 'pem' })
+        .toString()
+        .split('\n')
+        .slice(1, -2),
+    ).flat();
+    bodies.push('/' + 'A'.repeat(63));
+    const tail = new CodexStderrTail();
+    for (const body of bodies) {
+      expect(tail.push(body)).not.toContain(body);
+      expect(cleanCodexDiagnosticLine(body)).not.toContain(body);
+    }
+  }, 30000);
+
+  test('redacts a hex credential in an error', () => {
+    const credential = 'abcdef0123456789'.repeat(4);
+    expect(
+      new CodexStderrTail().push(`ERROR authentication rejected ${credential}`),
+    ).not.toContain(credential);
   });
 
   test('ends PEM context on a diagnostic, an END, or the line cap', () => {
@@ -118,6 +146,8 @@ describe('CodexStderrTail', () => {
       '',
     );
     expect(tail.push('  shortBody1234  \r')).toBe('');
+    expect(tail.push('ready')).toBe('');
+    expect(tail.push('EIO')).toBe('');
     expect(tail.push('ERROR real failure')).toBe('ERROR real failure');
     expect(tail.push('ready')).toBe('ready');
     tail.push('-----BEGIN PRIVATE KEY-----');

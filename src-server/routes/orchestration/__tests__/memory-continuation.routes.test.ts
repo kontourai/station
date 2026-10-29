@@ -90,6 +90,7 @@ test('authorized conversation window carries the coordinator decision', async ()
         getUserId: () => 'person-1',
         memoryContinuation: { continuationEligibility: eligibility },
         threadInbox: { mayContinue: () => true },
+        mayRequestMemoryContinuation: () => true,
       } as never,
     ),
   );
@@ -130,4 +131,87 @@ test('reader without send authority is not eligible to continue', async () => {
   );
   expect(response.status).toBe(200);
   expect((await response.json()).data.memoryContinuation.eligible).toBe(false);
+});
+
+test('read-only credential cannot be offered continuation through the HTTP scope boundary', async () => {
+  const { configureRuntimeHttp } = await import(
+    '../../../runtime/bootstrap/runtime-http.js'
+  );
+  const { runtimeRequestPrincipalMayAccessHttpRoute } = await import(
+    '../../../security/runtime-request-security.js'
+  );
+  const { pairingScopePresetString } = await import(
+    '@kontourai/station-contracts'
+  );
+  const security = {
+    authorizeCredential: () => true,
+    resolveGrantedScope: () => pairingScopePresetString('read-only'),
+  };
+  const route = new Hono();
+  configureRuntimeHttp({
+    app: route as never,
+    logger: {
+      info() {},
+      warn() {},
+      error() {},
+      debug() {},
+      trace() {},
+      fatal() {},
+      child() {
+        return this;
+      },
+      setLevel() {},
+      getLevel() {
+        return 'info';
+      },
+    } as never,
+    eventBus: { emit() {} } as never,
+    security: {
+      verifyCredential: () => true,
+      resolveGrantedScope: security.resolveGrantedScope,
+      allowedOrigins: [],
+    },
+  });
+  route.route(
+    '/api/orchestration',
+    createOrchestrationRoutes(
+      {
+        readConversationEventWindow: async () => ({
+          conversationId: 'c-1',
+          events: [],
+        }),
+        hasReadableSession: async () => true,
+      } as never,
+      {
+        eventBus: new EventBus(),
+        logger: { debug: vi.fn(), warn: vi.fn() },
+        getUserId: () => 'person-1',
+        memoryContinuation: {
+          continuationEligibility: () => ({ eligible: true, turnId: 'turn-1' }),
+        },
+        threadInbox: { mayContinue: () => true },
+        mayRequestMemoryContinuation: (request: Request, id: string) =>
+          runtimeRequestPrincipalMayAccessHttpRoute(request, security, {
+            method: 'POST',
+            path: `/api/orchestration/conversations/${encodeURIComponent(id)}/memory-continuation`,
+          }),
+      } as never,
+    ),
+  );
+  const headers = { Authorization: 'Bearer read-only-credential' };
+  const env = { incoming: { socket: { remoteAddress: '100.96.12.7' } } };
+  const get = await route.request(
+    '/api/orchestration/conversations/c-1/event-window',
+    { headers },
+    env,
+  );
+  expect(get.status).toBe(200);
+  const post = await route.request(
+    '/api/orchestration/conversations/c-1/memory-continuation',
+    { method: 'POST', headers },
+    env,
+  );
+  expect(post.status).toBe(403);
+  expect(await post.json()).toEqual({ error: { code: 'insufficient_scope' } });
+  expect((await get.json()).data.memoryContinuation.eligible).toBe(false);
 });

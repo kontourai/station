@@ -25,7 +25,7 @@ export const CODEX_STDERR_TAIL_MAX_CHARS = 2048;
 const CODEX_STDERR_LINE_MAX_CHARS = 1024;
 // Long base64-like runs and padded short body lines are withheld even when
 // the surrounding PEM delimiters were never observed.
-const KEY_MATERIAL = /[A-Za-z0-9+/=]{32,}/g;
+const KEY_MATERIAL = /[A-Za-z0-9+/=]{16,}/g;
 const PADDED_BODY_LINE = /^[A-Za-z0-9+/]+={1,2}$/;
 
 /**
@@ -70,10 +70,10 @@ function boundedLine(plain: string): string {
     return '';
   const safe = redacted.replace(/\S+/g, (token) => {
     if (
-      /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(token) ||
       /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(token) ||
-      /^(?:\/|\.\/)/.test(token) ||
-      /\/[^\s/]+\.[A-Za-z0-9]+(?::\d+)?$/.test(token)
+      (!/^[A-Za-z0-9+/=]+$/.test(token) &&
+        (/^(?:\/|\.\/)/.test(token) ||
+          /\/[^\s/]+\.[A-Za-z0-9]+(?::\d+)?$/.test(token)))
     )
       return token;
     return token.replace(KEY_MATERIAL, '[REDACTED]');
@@ -109,6 +109,7 @@ export class CodexStderrTail {
         this.pemLines -= 1;
         return '';
       }
+      // Any non-base64 character ends the context, so later diagnostics survive.
       this.pemLines = 0;
     }
     const line = boundedLine(plain);
