@@ -1,8 +1,7 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileStorageNotFoundError } from '../../../domain/project-file-transactions.js';
 import { FeaturePreviewRegistry } from '../../../services/feature-previews/feature-preview-registry.js';
 import { createProjectCheckoutFreshnessReader } from '../../../services/projects/project-checkout-freshness.js';
@@ -10,13 +9,7 @@ import { execGitSync } from '../../../utils/git-exec.js';
 import { createLogger } from '../../../utils/logger.js';
 import { createProjectRoutes } from '../projects.js';
 
-const roots: string[] = [];
-afterEach(() => {
-  while (roots.length > 0) {
-    const dir = roots.pop();
-    if (dir) rmSync(dir, { recursive: true, force: true });
-  }
-});
+const temp = trackTempDirs();
 
 function git(cwd: string, args: string[]) {
   execGitSync(
@@ -27,8 +20,7 @@ function git(cwd: string, args: string[]) {
 
 /** A Project checkout four commits behind its fetched upstream. */
 function checkoutBehind(): string {
-  const root = mkdtempSync(join(tmpdir(), 'station-freshness-route-'));
-  roots.push(root);
+  const root = temp('station-freshness-route-');
   const upstream = join(root, 'upstream.git');
   const other = join(root, 'other');
   const checkout = join(root, 'checkout');
@@ -50,8 +42,7 @@ async function routes(options: {
   member?: boolean;
   workingDirectory: string;
 }) {
-  const home = mkdtempSync(join(tmpdir(), 'station-freshness-home-'));
-  roots.push(home);
+  const home = temp('station-freshness-home-');
   const previews = new FeaturePreviewRegistry(
     home,
     createLogger({ name: 'preview-test', level: 'error' }),
@@ -159,8 +150,7 @@ describe('GET /api/projects/:slug/checkout-freshness', () => {
   });
 
   test('a working directory outside any repository is unknown, not an error', async () => {
-    const plain = mkdtempSync(join(tmpdir(), 'station-freshness-plain-'));
-    roots.push(plain);
+    const plain = temp('station-freshness-plain-');
     const { app } = await routes({ enabled: true, workingDirectory: plain });
     const res = await app.request('/atlas/checkout-freshness');
     expect(res.status).toBe(200);

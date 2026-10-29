@@ -1,7 +1,6 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { execGitSync } from '../../../utils/git-exec.js';
 
 /**
@@ -50,15 +49,11 @@ const { createProjectCheckoutFreshnessReader } = await import(
   '../project-checkout-freshness.js'
 );
 
-const roots: string[] = [];
+const temp = trackTempDirs();
 afterEach(() => {
   seams.swapAfterFirstLstat = undefined;
   seams.wedged = false;
   seams.substituted = undefined;
-  while (roots.length > 0) {
-    const dir = roots.pop();
-    if (dir) rmSync(dir, { recursive: true, force: true });
-  }
 });
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -84,8 +79,7 @@ function git(cwd: string, args: string[], date?: Date) {
 
 /** A checkout one commit behind, fetched five days ago. */
 function behindSinceFiveDays(): string {
-  const root = mkdtempSync(join(tmpdir(), 'station-freshness-seams-'));
-  roots.push(root);
+  const root = temp('station-freshness-seams-');
   const upstream = join(root, 'upstream.git');
   const other = join(root, 'other');
   const checkout = join(root, 'checkout');

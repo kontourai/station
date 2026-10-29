@@ -1,10 +1,9 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/server';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { asStationControlCaller } from '../../__test-utils__/station-control-caller-fixture.js';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { FeaturePreviewRegistry } from '../../services/feature-previews/feature-preview-registry.js';
 import { createProjectCheckoutFreshnessReader } from '../../services/projects/project-checkout-freshness.js';
 import { execGitSync } from '../../utils/git-exec.js';
@@ -16,7 +15,7 @@ delete process.env.STATION_PORT;
 type ToolResult = { content: Array<{ type: 'text'; text: string }> };
 type ToolHandler = (...args: any[]) => Promise<ToolResult>;
 
-const roots: string[] = [];
+const temp = trackTempDirs();
 
 function git(cwd: string, args: string[]) {
   execGitSync(
@@ -27,8 +26,7 @@ function git(cwd: string, args: string[]) {
 
 /** A checkout two commits behind its fetched upstream. */
 function checkoutBehind(): string {
-  const root = mkdtempSync(join(tmpdir(), 'station-get-project-'));
-  roots.push(root);
+  const root = temp('station-get-project-');
   const upstream = join(root, 'upstream.git');
   const other = join(root, 'other');
   const checkout = join(root, 'checkout');
@@ -47,8 +45,7 @@ function checkoutBehind(): string {
 
 /** The real project routes, with the real reader and preview registry. */
 async function station(enabled: boolean) {
-  const home = mkdtempSync(join(tmpdir(), 'station-get-project-home-'));
-  roots.push(home);
+  const home = temp('station-get-project-home-');
   const previews = new FeaturePreviewRegistry(
     home,
     createLogger({ name: 'preview-test', level: 'error' }),
@@ -114,10 +111,6 @@ describe('get_project', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     fetchMock.mockReset();
-    while (roots.length > 0) {
-      const dir = roots.pop();
-      if (dir) rmSync(dir, { recursive: true, force: true });
-    }
   });
 
   test('carries the checkout’s freshness when the host answers it', async () => {

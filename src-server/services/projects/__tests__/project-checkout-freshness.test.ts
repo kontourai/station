@@ -2,7 +2,6 @@ import {
   appendFileSync,
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -11,19 +10,13 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { execGitSync } from '../../../utils/git-exec.js';
 import { createProjectCheckoutFreshnessReader } from '../project-checkout-freshness.js';
 
-const roots: string[] = [];
-afterEach(() => {
-  while (roots.length > 0) {
-    const dir = roots.pop();
-    if (dir) rmSync(dir, { recursive: true, force: true });
-  }
-});
+const temp = trackTempDirs();
 
 const THRESHOLDS = { commits: 3, days: 3 };
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -56,8 +49,7 @@ function git(cwd: string, args: string[], date?: Date): string {
  * a second clone that pushes new work to the upstream.
  */
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), 'station-checkout-freshness-'));
-  roots.push(root);
+  const root = temp('station-checkout-freshness-');
   const upstream = join(root, 'upstream.git');
   const checkout = join(root, 'checkout');
   const other = join(root, 'other');
