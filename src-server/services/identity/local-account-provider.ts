@@ -748,6 +748,44 @@ export async function createLocalAccountProvider(
       }
       return resolveSession(current);
     }
+    /** Member passkeys, refused while their Feature Preview is off. */
+    async function handleMemberPasskey(
+      passkeys: NonNullable<typeof memberPasskeys>,
+      path: string,
+      request: Request,
+    ): Promise<Response> {
+      if (!features.memberPasskeys?.())
+        return Response.json(
+          {
+            success: false,
+            error:
+              'Enable Member passkeys in Settings → Advanced → Feature previews.',
+            code: 'feature_preview_disabled',
+            previewId: MEMBER_PASSKEYS_PREVIEW_ID,
+            settingsPath:
+              '/settings?view=feature-previews&highlight=feature-previews',
+          },
+          { status: 404 },
+        );
+      return passkeys.handle(path, request, {
+        handler: (ceremony) => auth.handler(ceremony),
+        challengeCookie: passkeyChallengeCookie,
+        async currentAccount(current) {
+          const result = await authenticateRequest(current);
+          return result.kind === 'authenticated'
+            ? {
+                userId: result.session.subject,
+                authenticatedAt: result.session.authenticatedAt,
+              }
+            : undefined;
+        },
+        async findVerification(identifier) {
+          const row =
+            await context.internalAdapter.findVerificationValue(identifier);
+          return row ? { value: row.value, expiresAt: row.expiresAt } : null;
+        },
+      });
+    }
     return {
       administration,
       async issueRecovery(accountId) {
@@ -1072,41 +1110,8 @@ export async function createLocalAccountProvider(
             { status: 404 },
           );
         }
-        if (memberPasskeys && path.startsWith('/passkey/')) {
-          if (!features.memberPasskeys?.())
-            return Response.json(
-              {
-                success: false,
-                error:
-                  'Enable Member passkeys in Settings → Advanced → Feature previews.',
-                code: 'feature_preview_disabled',
-                previewId: MEMBER_PASSKEYS_PREVIEW_ID,
-                settingsPath:
-                  '/settings?view=feature-previews&highlight=feature-previews',
-              },
-              { status: 404 },
-            );
-          return memberPasskeys.handle(path, request, {
-            handler: (ceremony) => auth.handler(ceremony),
-            challengeCookie: passkeyChallengeCookie,
-            async currentAccount(current) {
-              const result = await authenticateRequest(current);
-              return result.kind === 'authenticated'
-                ? {
-                    userId: result.session.subject,
-                    authenticatedAt: result.session.authenticatedAt,
-                  }
-                : undefined;
-            },
-            async findVerification(identifier) {
-              const row =
-                await context.internalAdapter.findVerificationValue(identifier);
-              return row
-                ? { value: row.value, expiresAt: row.expiresAt }
-                : null;
-            },
-          });
-        }
+        if (memberPasskeys && path.startsWith('/passkey/'))
+          return handleMemberPasskey(memberPasskeys, path, request);
         let operation = request;
         const external = oidc.find(
           (provider) => path === `/oidc/${provider.id}/begin`,

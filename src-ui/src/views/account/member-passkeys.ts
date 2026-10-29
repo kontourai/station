@@ -1,12 +1,5 @@
 import { runAccountOperation } from '@kontourai/station-sdk/account-authentication';
 
-/** The Station endpoints a provider declares for each passkey operation. */
-export type PasskeyOperation =
-  | 'passkey-sign-in'
-  | 'passkey-register'
-  | 'passkey-add'
-  | 'passkey-recover';
-
 export function passkeysSupported(): boolean {
   return (
     typeof window !== 'undefined' &&

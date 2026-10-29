@@ -258,7 +258,7 @@ export function createMemberPasskeys(host: MemberPasskeyHost): MemberPasskeys {
     }
   }
 
-  function list(userId: string) {
+  function listPasskeys(userId: string) {
     return host.database
       .prepare(
         `SELECT id, name, createdAt, deviceType, backedUp FROM passkey
@@ -417,273 +417,285 @@ export function createMemberPasskeys(host: MemberPasskeyHost): MemberPasskeys {
           }),
         );
 
-    switch (path) {
-      case '/passkey/sign-in': {
-        if (step.data?.step === 'options') {
-          const response = await scope.run({ kind: 'sign-in' }, () =>
-            runtime.handler(
-              ceremonyRequest('/passkey/generate-authenticate-options', {
-                method: 'GET',
-              }),
-            ),
-          );
-          return relay(
-            response,
-            { status: 401, code: 'passkey_rejected' },
-            (options) => ({ options }),
-          );
-        }
-        const input = z
-          .object({ step: z.literal('verify'), response: credential })
-          .strict()
-          .safeParse(body);
-        if (!input.success) return refuse(400, 'invalid_request');
+    async function signIn(): Promise<Response> {
+      if (step.data?.step === 'options') {
         const response = await scope.run({ kind: 'sign-in' }, () =>
           runtime.handler(
-            ceremonyRequest('/passkey/verify-authentication', {
-              method: 'POST',
-              body: { response: input.data.response },
+            ceremonyRequest('/passkey/generate-authenticate-options', {
+              method: 'GET',
             }),
           ),
         );
-        return relay(response, { status: 401, code: 'passkey_rejected' });
+        return relay(
+          response,
+          { status: 401, code: 'passkey_rejected' },
+          (options) => ({ options }),
+        );
       }
-      case '/passkey/sign-up': {
-        const invitation = request.headers.get('x-station-invitation');
-        if (
-          !invitation ||
-          !/^[A-Za-z0-9._-]{16,2048}$/.test(invitation) ||
-          !(await host.mayRegister(invitation))
-        )
-          return refuse(403, 'invitation_required');
-        if (step.data?.step === 'options') {
-          const input = z
-            .object({
-              step: z.literal('options'),
-              username: z.string().regex(USERNAME),
-              name: z.string().trim().min(1).max(128).optional(),
-            })
-            .strict()
-            .safeParse(body);
-          if (!input.success) return refuse(400, 'invalid_request');
-          if (usernameTaken(input.data.username))
-            return refuse(409, 'username_unavailable');
-          return registrationOptions('sign-up', {
-            kind: 'sign-up',
-            draft: {
-              invitation,
-              username: input.data.username,
-              displayName: input.data.name ?? input.data.username,
-            },
-          });
-        }
+      const input = z
+        .object({ step: z.literal('verify'), response: credential })
+        .strict()
+        .safeParse(body);
+      if (!input.success) return refuse(400, 'invalid_request');
+      const response = await scope.run({ kind: 'sign-in' }, () =>
+        runtime.handler(
+          ceremonyRequest('/passkey/verify-authentication', {
+            method: 'POST',
+            body: { response: input.data.response },
+          }),
+        ),
+      );
+      return relay(response, { status: 401, code: 'passkey_rejected' });
+    }
+
+    async function signUp(): Promise<Response> {
+      const invitation = request.headers.get('x-station-invitation');
+      if (
+        !invitation ||
+        !/^[A-Za-z0-9._-]{16,2048}$/.test(invitation) ||
+        !(await host.mayRegister(invitation))
+      )
+        return refuse(403, 'invitation_required');
+      if (step.data?.step === 'options') {
         const input = z
           .object({
-            step: z.literal('verify'),
-            response: credential,
-            label: label.optional(),
+            step: z.literal('options'),
+            username: z.string().regex(USERNAME),
+            name: z.string().trim().min(1).max(128).optional(),
           })
           .strict()
           .safeParse(body);
         if (!input.success) return refuse(400, 'invalid_request');
-        return registrationVerify(
-          'sign-up',
-          {
-            kind: 'sign-up',
-            complete: async (ceremony, ctx) => {
-              if (
-                ceremony.invitation !== invitation ||
-                !(await host.mayRegister(invitation))
-              )
-                throw rejected();
-              // The Station user-create hook re-checks this invitation from
-              // the forwarded header before the row is written.
-              const user = await ctx.context.internalAdapter.createUser(
-                {
-                  email: `${randomUUID()}@station.invalid`,
-                  name: ceremony.displayName,
-                  emailVerified: false,
-                },
-                { method: 'passkey' },
-              );
-              if (!user) throw rejected();
-              // The plugin runs this inside its registration transaction on
-              // the single node:sqlite connection. Better Auth 1.7.11's
-              // username hook validates through the non-transactional adapter
-              // and would wait on that connection forever, so the username is
-              // written here, on the same connection and transaction, with
-              // the hook's normalization. The column's UNIQUE constraint still
-              // rolls the whole registration back on a race.
-              host.database
-                .prepare(
-                  'UPDATE user SET username = ?, displayUsername = ? WHERE id = ?',
-                )
-                .run(
-                  ceremony.username.toLowerCase(),
-                  ceremony.username,
-                  user.id,
-                );
-              return user.id;
-            },
+        if (usernameTaken(input.data.username))
+          return refuse(409, 'username_unavailable');
+        return registrationOptions('sign-up', {
+          kind: 'sign-up',
+          draft: {
+            invitation,
+            username: input.data.username,
+            displayName: input.data.name ?? input.data.username,
           },
-          input.data,
-          { 'x-station-invitation': invitation },
-        );
+        });
       }
-      case '/passkey/add': {
-        const account = await runtime.currentAccount(request);
-        if (!account) return refuse(401, 'authentication_required');
-        if (
-          now() - Date.parse(account.authenticatedAt) >
-          PASSKEY_ADD_FRESHNESS_MS
-        )
-          return refuse(403, 'reauthentication_required');
-        if (step.data?.step === 'options') {
-          if (
-            !z
-              .object({ step: z.literal('options') })
-              .strict()
-              .safeParse(body).success
-          )
-            return refuse(400, 'invalid_request');
-          const names = accountNames(account.userId);
-          if (!names) return refuse(401, 'authentication_required');
-          return registrationOptions('add', {
-            kind: 'add',
-            draft: { userId: account.userId, ...names },
-          });
-        }
-        const input = z
-          .object({
-            step: z.literal('verify'),
-            response: credential,
-            label: label.optional(),
-          })
-          .strict()
-          .safeParse(body);
-        if (!input.success) return refuse(400, 'invalid_request');
-        return registrationVerify(
-          'add',
-          {
-            kind: 'add',
-            complete: async (ceremony) => {
-              if (
-                ceremony.userId !== account.userId ||
-                !host.administration.permits(account.userId)
+      const input = z
+        .object({
+          step: z.literal('verify'),
+          response: credential,
+          label: label.optional(),
+        })
+        .strict()
+        .safeParse(body);
+      if (!input.success) return refuse(400, 'invalid_request');
+      return registrationVerify(
+        'sign-up',
+        {
+          kind: 'sign-up',
+          complete: async (ceremony, ctx) => {
+            if (
+              ceremony.invitation !== invitation ||
+              !(await host.mayRegister(invitation))
+            )
+              throw rejected();
+            // The Station user-create hook re-checks this invitation from
+            // the forwarded header before the row is written.
+            const user = await ctx.context.internalAdapter.createUser(
+              {
+                email: `${randomUUID()}@station.invalid`,
+                name: ceremony.displayName,
+                emailVerified: false,
+              },
+              { method: 'passkey' },
+            );
+            if (!user) throw rejected();
+            // The plugin runs this inside its registration transaction on
+            // the single node:sqlite connection. Better Auth 1.7.11's
+            // username hook validates through the non-transactional adapter
+            // and would wait on that connection forever, so the username is
+            // written here, on the same connection and transaction, with
+            // the hook's normalization. The column's UNIQUE constraint still
+            // rolls the whole registration back on a race.
+            host.database
+              .prepare(
+                'UPDATE user SET username = ?, displayUsername = ? WHERE id = ?',
               )
-                throw rejected();
-              return account.userId;
-            },
+              .run(ceremony.username.toLowerCase(), ceremony.username, user.id);
+            return user.id;
           },
-          input.data,
-        );
-      }
-      case '/passkey/recover': {
-        const input = z
-          .discriminatedUnion('step', [
-            z
-              .object({
-                step: z.literal('options'),
-                token: z.string().regex(RECOVERY_TOKEN),
-              })
-              .strict(),
-            z
-              .object({
-                step: z.literal('verify'),
-                token: z.string().regex(RECOVERY_TOKEN),
-                response: credential,
-                label: label.optional(),
-              })
-              .strict(),
-          ])
-          .safeParse(body);
-        if (!input.success) return refuse(400, 'invalid_request');
-        const token = input.data.token;
-        if (input.data.step === 'options') {
-          // Read without consuming: the token stays usable for a password
-          // reset until one recovery path actually completes.
-          const row = await runtime.findVerification(`reset-password:${token}`);
-          const userId = row?.value;
-          const names = userId ? accountNames(userId) : undefined;
-          if (
-            !row ||
-            !userId ||
-            !names ||
-            !(row.expiresAt.getTime() > now()) ||
-            !host.administration.permits(userId)
-          )
-            return refuse(403, 'recovery_unavailable');
-          return registrationOptions('recover', {
-            kind: 'recover',
-            draft: { userId, tokenDigest: digest(token), ...names },
-          });
-        }
-        return registrationVerify(
-          'recover',
-          {
-            kind: 'recover',
-            complete: async (ceremony, ctx) => {
-              if (
-                !ceremony.tokenDigest ||
-                !timingSafeEqual(ceremony.tokenDigest, digest(token))
-              )
-                throw rejected();
-              // Single use, shared with password reset: whichever completes
-              // first consumes the operator's link.
-              const consumed =
-                await ctx.context.internalAdapter.consumeVerificationValue(
-                  `reset-password:${token}`,
-                );
-              if (
-                !consumed ||
-                consumed.value !== ceremony.userId ||
-                !host.administration.permits(ceremony.userId)
-              )
-                throw rejected();
-              // Mirrors revokeSessionsOnPasswordReset.
-              await ctx.context.internalAdapter.deleteUserSessions(
-                ceremony.userId,
-              );
-              return ceremony.userId;
-            },
-          },
-          input.data,
-        );
-      }
-      case '/passkey/list': {
+        },
+        input.data,
+        { 'x-station-invitation': invitation },
+      );
+    }
+
+    async function add(): Promise<Response> {
+      const account = await runtime.currentAccount(request);
+      if (!account) return refuse(401, 'authentication_required');
+      if (
+        now() - Date.parse(account.authenticatedAt) >
+        PASSKEY_ADD_FRESHNESS_MS
+      )
+        return refuse(403, 'reauthentication_required');
+      if (step.data?.step === 'options') {
         if (
           !z
-            .object({})
+            .object({ step: z.literal('options') })
             .strict()
-            .safeParse(body ?? {}).success
+            .safeParse(body).success
         )
           return refuse(400, 'invalid_request');
-        const account = await runtime.currentAccount(request);
-        if (!account) return refuse(401, 'authentication_required');
-        return Response.json({ data: { passkeys: list(account.userId) } });
+        const names = accountNames(account.userId);
+        if (!names) return refuse(401, 'authentication_required');
+        return registrationOptions('add', {
+          kind: 'add',
+          draft: { userId: account.userId, ...names },
+        });
       }
-      case '/passkey/remove': {
-        const input = z
-          .object({ id: z.string().min(1).max(256) })
-          .strict()
-          .safeParse(body);
-        if (!input.success) return refuse(400, 'invalid_request');
-        const account = await runtime.currentAccount(request);
-        if (!account) return refuse(401, 'authentication_required');
-        const owned = host.database
-          .prepare('SELECT 1 AS found FROM passkey WHERE id = ? AND userId = ?')
-          .get(input.data.id, account.userId);
-        if (!owned) return refuse(404, 'passkey_not_found');
-        if (isLastSignInMethod(account.userId))
-          return refuse(409, 'last_sign_in_method');
-        host.database
-          .prepare('DELETE FROM passkey WHERE id = ? AND userId = ?')
-          .run(input.data.id, account.userId);
-        return Response.json({ data: { success: true } });
-      }
-      default:
-        return refuse(404, 'authentication_operation_unsupported');
+      const input = z
+        .object({
+          step: z.literal('verify'),
+          response: credential,
+          label: label.optional(),
+        })
+        .strict()
+        .safeParse(body);
+      if (!input.success) return refuse(400, 'invalid_request');
+      return registrationVerify(
+        'add',
+        {
+          kind: 'add',
+          complete: async (ceremony) => {
+            if (
+              ceremony.userId !== account.userId ||
+              !host.administration.permits(account.userId)
+            )
+              throw rejected();
+            return account.userId;
+          },
+        },
+        input.data,
+      );
     }
+
+    async function recover(): Promise<Response> {
+      const input = z
+        .discriminatedUnion('step', [
+          z
+            .object({
+              step: z.literal('options'),
+              token: z.string().regex(RECOVERY_TOKEN),
+            })
+            .strict(),
+          z
+            .object({
+              step: z.literal('verify'),
+              token: z.string().regex(RECOVERY_TOKEN),
+              response: credential,
+              label: label.optional(),
+            })
+            .strict(),
+        ])
+        .safeParse(body);
+      if (!input.success) return refuse(400, 'invalid_request');
+      const token = input.data.token;
+      if (input.data.step === 'options') {
+        // Read without consuming: the token stays usable for a password
+        // reset until one recovery path actually completes.
+        const row = await runtime.findVerification(`reset-password:${token}`);
+        const userId = row?.value;
+        const names = userId ? accountNames(userId) : undefined;
+        if (
+          !row ||
+          !userId ||
+          !names ||
+          !(row.expiresAt.getTime() > now()) ||
+          !host.administration.permits(userId)
+        )
+          return refuse(403, 'recovery_unavailable');
+        return registrationOptions('recover', {
+          kind: 'recover',
+          draft: { userId, tokenDigest: digest(token), ...names },
+        });
+      }
+      return registrationVerify(
+        'recover',
+        {
+          kind: 'recover',
+          complete: async (ceremony, ctx) => {
+            if (
+              !ceremony.tokenDigest ||
+              !timingSafeEqual(ceremony.tokenDigest, digest(token))
+            )
+              throw rejected();
+            // Single use, shared with password reset: whichever completes
+            // first consumes the operator's link.
+            const consumed =
+              await ctx.context.internalAdapter.consumeVerificationValue(
+                `reset-password:${token}`,
+              );
+            if (
+              !consumed ||
+              consumed.value !== ceremony.userId ||
+              !host.administration.permits(ceremony.userId)
+            )
+              throw rejected();
+            // Mirrors revokeSessionsOnPasswordReset.
+            await ctx.context.internalAdapter.deleteUserSessions(
+              ceremony.userId,
+            );
+            return ceremony.userId;
+          },
+        },
+        input.data,
+      );
+    }
+
+    async function list(): Promise<Response> {
+      if (
+        !z
+          .object({})
+          .strict()
+          .safeParse(body ?? {}).success
+      )
+        return refuse(400, 'invalid_request');
+      const account = await runtime.currentAccount(request);
+      if (!account) return refuse(401, 'authentication_required');
+      return Response.json({
+        data: { passkeys: listPasskeys(account.userId) },
+      });
+    }
+
+    async function remove(): Promise<Response> {
+      const input = z
+        .object({ id: z.string().min(1).max(256) })
+        .strict()
+        .safeParse(body);
+      if (!input.success) return refuse(400, 'invalid_request');
+      const account = await runtime.currentAccount(request);
+      if (!account) return refuse(401, 'authentication_required');
+      const owned = host.database
+        .prepare('SELECT 1 AS found FROM passkey WHERE id = ? AND userId = ?')
+        .get(input.data.id, account.userId);
+      if (!owned) return refuse(404, 'passkey_not_found');
+      if (isLastSignInMethod(account.userId))
+        return refuse(409, 'last_sign_in_method');
+      host.database
+        .prepare('DELETE FROM passkey WHERE id = ? AND userId = ?')
+        .run(input.data.id, account.userId);
+      return Response.json({ data: { success: true } });
+    }
+
+    const routes: Record<string, () => Promise<Response>> = {
+      '/passkey/sign-in': signIn,
+      '/passkey/sign-up': signUp,
+      '/passkey/add': add,
+      '/passkey/recover': recover,
+      '/passkey/list': list,
+      '/passkey/remove': remove,
+    };
+    const route = routes[path];
+    return route
+      ? route()
+      : refuse(404, 'authentication_operation_unsupported');
   }
 
   return { plugin, handle };
