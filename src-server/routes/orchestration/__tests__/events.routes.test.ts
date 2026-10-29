@@ -51,6 +51,45 @@ const mockLogger = {
 };
 
 describe('paired-device event-stream lifecycle', () => {
+  test('keeps only one outstanding heartbeat write for a stalled reader', async () => {
+    vi.useFakeTimers();
+    let release!: () => void;
+    const barrier = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const write = vi.fn(
+      async (_stream: unknown, frame: { event: string; data: string }) => {
+        if (frame.event === 'ping') await barrier;
+      },
+    );
+    const controller = new AbortController();
+    const app = createEventRoutes({
+      eventBus: new EventBus(),
+      getACPStatus: () => ({ connected: false, connections: [] }),
+      logger: mockLogger,
+      writeSse: write,
+    });
+    try {
+      await app.request(
+        new Request('http://station.test/', { signal: controller.signal }),
+      );
+      await vi.advanceTimersByTimeAsync(30_000 * 5);
+      expect(
+        write.mock.calls.filter(([, frame]) => frame.event === 'ping'),
+      ).toHaveLength(1);
+      release();
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(
+        write.mock.calls.filter(([, frame]) => frame.event === 'ping'),
+      ).toHaveLength(2);
+    } finally {
+      release();
+      controller.abort();
+      await vi.advanceTimersByTimeAsync(0);
+      vi.useRealTimers();
+    }
+  });
+
   test('does not acquire a lease or subscribe for an already-aborted request', () => {
     const connectClientSession = vi.fn();
     const subscribe = vi.fn();
@@ -170,13 +209,13 @@ function hostedAuthority(tenant: 'alpha' | 'bravo') {
   );
 }
 
-// archive#3583 review round (LOW-4): `gatedChannelLeakProbe` returns the
+// archive#3583: `gatedChannelLeakProbe` returns the
 // exact secret substring `gatedChannelFixture` embeds in a genuine payload
 // field for every channel, and the AC2c sweep below asserts it is absent
 // from the stream. Without this, the sweep's only channel-specific
 // assertion was `not.toContain('event: ${name}')` — independent of the
 // payload entirely — so `gatedChannelFixture` returning `{}` for every
-// channel left 25/25 green (review fault injection) and the "realistic
+// channel left 25/25 green (fault injection) and the "realistic
 // per-channel payload" claim proved nothing: a wrong shape, or the payload
 // leaking under some OTHER frame's event name, would have been
 // unobservable. Asserting this probe closes both: it makes the fixture
@@ -496,16 +535,16 @@ describe('Event Routes (SSE)', () => {
     });
   });
 
-  // archive#3567 fix round FIX 1: `UI_NAVIGATE`'s payload (`{path}`) carries
+  // archive#3567: `UI_NAVIGATE`'s payload (`{path}`) carries
   // no destination identity at all, so there is no per-event predicate to
   // test (unlike notification/approval above) — the whole decision is
   // personal-vs-hosted, and BOTH directions need their own proof: a gate
-  // whose rejection path has never executed is unproven, and (per TRAP 1)
+  // whose rejection path has never executed is unproven, and
   // constructing the route with no `readAuthorityForRequest` at all would
   // prove delivery through a branch production never takes (it always wires
   // one — `runtime-routes.ts`). So the personal-mode case below supplies a
   // REAL personal-mode `SessionReadAuthority`, not an omitted dependency —
-  // doubly so since archive#3567 second fix round FIX 2 removed the
+  // doubly so since archive#3567 removed the
   // fail-open `!authority` branch: undefined authority now denies.
   describe('UI_NAVIGATE: personal mode delivers, hosted mode denies (station#3567 fix round FIX 1)', () => {
     function personalAuthority(userId: string) {
@@ -590,7 +629,7 @@ describe('Event Routes (SSE)', () => {
       expect(other).not.toContain('owner-target');
     });
 
-    // archive#3567 second fix round FIX 2: fail-CLOSED, not fail-open, when
+    // archive#3567: fail-CLOSED, not fail-open, when
     // authority is unknown. Before this fix,
     // `if (!authority) return true` treated missing authority as clearance —
     // the only relay predicate on this route that did. This test proves the
@@ -706,7 +745,7 @@ describe('Event Routes (SSE)', () => {
     // assertion that only caught the denylist and this list drifting apart.
     // A brand-new session-scoped channel with no denylist entry and no
     // exclusion-list entry sat entirely outside its awareness and stayed
-    // GREEN while broadcasting verbatim. (archive#3567 fix round FIX 4: this
+    // GREEN while broadcasting verbatim. (archive#3567: this
     // comment used to cite a specific pass count from that probe — dropped,
     // not re-derived, because it never matched this suite's actual test
     // count at any commit and the claim it supports — that the old
@@ -751,13 +790,13 @@ describe('Event Routes (SSE)', () => {
     // gate is stricter. But nothing REPLACES that coverage unless someone
     // deliberately writes both-directions tests for the new gate, and a
     // forgotten pair is silent: the channel simply never appears in any
-    // assertion again. `UI_NAVIGATE` demonstrated this live during archive#3582's
-    // fix round (reverting its fail-open branch reddened nothing, because it
+    // assertion again. `UI_NAVIGATE` demonstrated this live during the archive#3582
+    // fix (reverting its fail-open branch reddened nothing, because it
     // had already dropped out of the sweep), and the notification/approval
     // families had never been in the sweep at all (archive#3583) because they've
     // had dedicated gates since they were written.
     //
-    // archive#3583 review round: a first version of this test used a
+    // archive#3583: a first version of this test used a
     // hand-maintained checklist Set (channel names "on record" as having a
     // proven test elsewhere) instead of proving denial itself, and named
     // only 3 of these 7 channels' *own* fail-closed test even though it
@@ -806,7 +845,7 @@ describe('Event Routes (SSE)', () => {
         expect(payload).toContain('"marker":"before"');
         expect(payload).toContain('"marker":"after"');
         expect(payload, name).not.toContain(`event: ${name}`);
-        // archive#3583 review round (LOW-4): makes the fixture load-bearing
+        // archive#3583: makes the fixture load-bearing
         // — proves the payload's actual secret content never reaches the
         // stream, not merely that this event name's own frame doesn't
         // (which the check above already covers independent of payload).
@@ -885,7 +924,7 @@ describe('Event Routes (SSE)', () => {
       expect(payload).toContain('"marker":"before"');
       expect(payload).toContain('"marker":"after"');
       for (const name of ungatedScopedNames) {
-        // archive#3567 fix round FIX 5: this used to assert
+        // archive#3567: this used to assert
         // `.not.toContain(`"${name}"`)`, which reads as checking the SSE
         // frame's own `event: <name>` line — but that line is emitted
         // UNQUOTED (hono's `writeSSE` writes `event: ${message.event}` with
@@ -939,7 +978,7 @@ describe('Event Routes (SSE)', () => {
       ).toBe(false);
     });
 
-    // archive#3525 fix round (BLOCKING): probe-proven — before this fix,
+    // archive#3525: probe-proven — before this fix,
     // this exact payload (another user's session identity) was relayed
     // verbatim on this unauthenticated route.
     test('internal-stop-redispatch-failed signals never cross the identity-free broadcast route', async () => {
@@ -1101,5 +1140,89 @@ describe('Event Routes (SSE)', () => {
       expect(payload).not.toContain('thread-owner');
       expect(payload).not.toContain(SERVER_EVENTS.ORCHESTRATION_EVENT);
     });
+  });
+});
+
+describe('bounded broadcast backlog recovery', () => {
+  test('compacts overflow into a generic resync marker', async () => {
+    const bus = new EventBus();
+    const controller = new AbortController();
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const frames: Array<{ event: string; data: string }> = [];
+    const app = createEventRoutes({
+      eventBus: bus,
+      logger: mockLogger,
+      getACPStatus: () => ({ connected: false, connections: [] }),
+      writeSse: async (_stream, frame) => {
+        frames.push(frame);
+        if (frame.event === SERVER_EVENTS.CONFIG_CHANGED) await blocked;
+      },
+    });
+    try {
+      await app.request(
+        new Request('http://station.test/', { signal: controller.signal }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      for (let i = 0; i < 1100; i++)
+        bus.emit(SERVER_EVENTS.CONFIG_CHANGED, { revision: i });
+      release();
+      await vi.waitFor(() =>
+        expect(
+          frames.filter((frame) => frame.event === SERVER_EVENTS.DATA_CHANGED),
+        ).toHaveLength(1),
+      );
+      expect(
+        JSON.parse(
+          frames.find((frame) => frame.event === SERVER_EVENTS.DATA_CHANGED)!
+            .data,
+        ),
+      ).toEqual({ resync: true });
+    } finally {
+      release();
+      controller.abort();
+    }
+  });
+
+  test('a throwing event authorization gate denies that event and continues the stream', async () => {
+    const bus = new EventBus();
+    const controller = new AbortController();
+    const frames: Array<{ event: string; data: string }> = [];
+    const gate = vi.fn(() => {
+      throw new Error('authority unavailable');
+    });
+    const app = createEventRoutes({
+      eventBus: bus,
+      logger: mockLogger,
+      getACPStatus: () => ({ connected: false, connections: [] }),
+      canReadPluginEvent: gate,
+      writeSse: async (_stream, frame) => {
+        frames.push(frame);
+      },
+    });
+    try {
+      await app.request(
+        new Request('http://station.test/', { signal: controller.signal }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      bus.emit(SERVER_EVENTS.PLUGINS_INSTALLED, {
+        pluginId: 'private',
+        revision: 1,
+      });
+      await vi.waitFor(() => expect(gate).toHaveBeenCalled());
+      bus.emit(SERVER_EVENTS.CONFIG_CHANGED, { revision: 'after-denial' });
+      await vi.waitFor(() =>
+        expect(
+          frames.some((frame) => frame.data.includes('after-denial')),
+        ).toBe(true),
+      );
+      expect(frames.some((frame) => frame.data.includes('private'))).toBe(
+        false,
+      );
+    } finally {
+      controller.abort();
+    }
   });
 });

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import {
   createPublicIngressOriginResolver,
   createTailscaleCli,
+  inspectServePort,
   parseMagicDnsHost,
   parseServePublicOrigins,
   TAILSCALE_MACOS_APP_CLI,
@@ -15,16 +16,16 @@ import {
  * parser matches itself.
  */
 const STATUS_JSON = JSON.stringify({
-  Self: { DNSName: 'kontour.python-smelt.ts.net.', Online: true },
+  Self: { DNSName: 'station.example.ts.net.', Online: true },
 });
 
 const SERVE_JSON = JSON.stringify({
   TCP: { '443': { HTTPS: true }, '8090': { HTTPS: true } },
   Web: {
-    'kontour.python-smelt.ts.net:443': {
+    'station.example.ts.net:443': {
       Handlers: { '/': { Proxy: 'http://127.0.0.1:3000' } },
     },
-    'kontour.python-smelt.ts.net:8090': {
+    'station.example.ts.net:8090': {
       Handlers: { '/': { Proxy: 'http://127.0.0.1:8080' } },
     },
   },
@@ -32,7 +33,7 @@ const SERVE_JSON = JSON.stringify({
 
 describe('parseMagicDnsHost', () => {
   test('reads the node name and drops the trailing dot', () => {
-    expect(parseMagicDnsHost(STATUS_JSON)).toBe('kontour.python-smelt.ts.net');
+    expect(parseMagicDnsHost(STATUS_JSON)).toBe('station.example.ts.net');
   });
 
   test('refuses a node that is offline, unnamed, or not a ts.net host', () => {
@@ -41,7 +42,7 @@ describe('parseMagicDnsHost', () => {
     expect(
       parseMagicDnsHost(
         JSON.stringify({
-          Self: { DNSName: 'kontour.python-smelt.ts.net.', Online: false },
+          Self: { DNSName: 'station.example.ts.net.', Online: false },
         }),
       ),
     ).toBeUndefined();
@@ -57,13 +58,13 @@ describe('parseMagicDnsHost', () => {
 });
 
 describe('parseServePublicOrigins', () => {
-  const host = 'kontour.python-smelt.ts.net';
+  const host = 'station.example.ts.net';
 
   test('finds the origin serving the UI proxy port', () => {
     // The topology that actually ships: serve fronts the UI proxy, which
     // forwards the pairing paths to the API.
     expect(parseServePublicOrigins(SERVE_JSON, host, [3141, 3000])).toEqual([
-      'https://kontour.python-smelt.ts.net',
+      'https://station.example.ts.net',
     ]);
   });
 
@@ -76,7 +77,7 @@ describe('parseServePublicOrigins', () => {
       },
     });
     expect(parseServePublicOrigins(serve, host, [3141, 3000])).toEqual([
-      'https://kontour.python-smelt.ts.net',
+      'https://station.example.ts.net',
     ]);
   });
 
@@ -89,7 +90,7 @@ describe('parseServePublicOrigins', () => {
       },
     });
     expect(parseServePublicOrigins(serve, host, [3000])).toEqual([
-      'https://kontour.python-smelt.ts.net:8443',
+      'https://station.example.ts.net:8443',
     ]);
   });
 
@@ -102,7 +103,7 @@ describe('parseServePublicOrigins', () => {
   test('ignores a mapping published for a different host', () => {
     const serve = JSON.stringify({
       Web: {
-        'other-node.python-smelt.ts.net:443': {
+        'other-node.example.ts.net:443': {
           Handlers: { '/': { Proxy: 'http://127.0.0.1:3000' } },
         },
       },
@@ -146,8 +147,8 @@ describe('parseServePublicOrigins', () => {
       },
     });
     expect(parseServePublicOrigins(serve, host, [3000])).toEqual([
-      'https://kontour.python-smelt.ts.net',
-      'https://kontour.python-smelt.ts.net:8443',
+      'https://station.example.ts.net',
+      'https://station.example.ts.net:8443',
     ]);
   });
 
@@ -167,8 +168,8 @@ describe('parseServePublicOrigins', () => {
     });
 
     expect(parseServePublicOrigins(serve, host, [38141])).toEqual([
-      'https://kontour.python-smelt.ts.net:3773',
-      'https://kontour.python-smelt.ts.net:8444',
+      'https://station.example.ts.net:3773',
+      'https://station.example.ts.net:8444',
     ]);
   });
 
@@ -206,8 +207,25 @@ describe('createPublicIngressOriginResolver', () => {
       cli,
     });
     await expect(resolver.resolve()).resolves.toEqual([
-      'https://kontour.python-smelt.ts.net',
+      'https://station.example.ts.net',
     ]);
+  });
+
+  test('reports the MagicDNS name from the same cached lookup, even without Serve', async () => {
+    const calls: string[][] = [];
+    const { cli } = cliFrom(
+      { 'status --json': { stdout: STATUS_JSON, exitCode: 0 } },
+      calls,
+    );
+    const resolver = createPublicIngressOriginResolver({
+      localPorts: [3000],
+      cli,
+    });
+    await expect(resolver.resolve()).resolves.toBeUndefined();
+    await expect(resolver.magicDnsHost()).resolves.toBe(
+      'station.example.ts.net',
+    );
+    expect(calls).toHaveLength(2);
   });
 
   test('caches within the TTL and re-reads after it', async () => {
@@ -269,7 +287,7 @@ describe('createPublicIngressOriginResolver', () => {
       resolver.resolve(),
       resolver.resolve(),
     ]);
-    expect(first).toEqual(['https://kontour.python-smelt.ts.net']);
+    expect(first).toEqual(['https://station.example.ts.net']);
     expect(second).toBe(first);
     expect(calls).toHaveLength(2);
   });
@@ -375,7 +393,7 @@ describe('Tailscale CLI executable discovery', () => {
     });
 
     await expect(resolver.resolve()).resolves.toEqual([
-      'https://kontour.python-smelt.ts.net',
+      'https://station.example.ts.net',
     ]);
     expect(calls).toEqual([
       `${TAILSCALE_MACOS_APP_CLI} status --json`,
@@ -417,5 +435,88 @@ describe('Tailscale CLI executable discovery', () => {
       stdout: '',
       exitCode: null,
     });
+  });
+});
+
+describe('negative Serve exposure proof', () => {
+  test.each([
+    [
+      {
+        TCP: { '443': { HTTPS: true } },
+        Web: {
+          'any.test:443': {
+            Handlers: { '/sub': { Proxy: 'http://localhost:43141/path' } },
+          },
+        },
+      },
+      'mapped',
+    ],
+    [{ TCP: { '443': { TCPForward: '127.0.0.1:43141' } } }, 'mapped'],
+    [
+      { Web: { 'host:443': { Handlers: { '/': { Proxy: '43141' } } } } },
+      'mapped',
+    ],
+    [
+      { Web: { 'host:443': { Handlers: { '/': { Proxy: '43142' } } } } },
+      'clear',
+    ],
+    [{ TCP: { '443': { TCPForward: '43141' } } }, 'mapped'],
+    [
+      {
+        Foreground: {
+          session: { TCP: { '443': { TCPForward: '[::1]:43141' } } },
+        },
+      },
+      'mapped',
+    ],
+    [
+      {
+        Web: {
+          'host:443': {
+            Handlers: { '/': { Proxy: 'http://127.0.0.1:43142' } },
+          },
+        },
+      },
+      'clear',
+    ],
+    [{ Web: 'bad' }, 'unverifiable'],
+    [{ FutureForwarder: '127.0.0.1:43141' }, 'unverifiable'],
+  ])(
+    'inspects all subpaths/TCP/foreground mappings and refuses unknown schemas %j',
+    async (config, expected) => {
+      expect(
+        await inspectServePort(43141, async () => ({
+          stdout: JSON.stringify(config),
+          exitCode: 0,
+        })),
+      ).toBe(expected);
+    },
+  );
+  test('absent CLI is clear, installed failure or malformed status is not', async () => {
+    expect(
+      await inspectServePort(43141, async () => ({
+        stdout: '',
+        exitCode: null,
+        unavailable: true,
+      })),
+    ).toBe('clear');
+    for (const result of [
+      { stdout: '', exitCode: null },
+      { stdout: '', exitCode: 1 },
+      { stdout: 'not json', exitCode: 0 },
+      { stdout: 'null', exitCode: 0 },
+    ])
+      expect(await inspectServePort(43141, async () => result)).toBe(
+        'unverifiable',
+      );
+    const fallback = createTailscaleCli({
+      platform: 'darwin',
+      execute: async (executable) => ({
+        stdout: '',
+        exitCode: executable === 'tailscale' ? null : 1,
+        unavailable: executable === 'tailscale',
+      }),
+    });
+    expect(await inspectServePort(43141, fallback)).toBe('unverifiable');
   });
 });

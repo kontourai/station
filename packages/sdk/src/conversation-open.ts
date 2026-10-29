@@ -4,7 +4,7 @@ import {
   agentId as validateAgentId,
 } from '@kontourai/station-contracts/agent-identity';
 import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
-import { authenticatedFetch } from './client/http';
+import { authenticatedFetch, type ClientRequestOptions } from './client/http';
 import { StationRequestTimeoutError } from './client/request-deadline';
 import { resolveApiBase } from './query-core';
 
@@ -16,12 +16,14 @@ import { resolveApiBase } from './query-core';
 export async function resolveConversationOpen(
   conversationId: string,
   apiBase?: string,
+  options?: Pick<ClientRequestOptions, 'signal' | 'timeoutMs'>,
 ): Promise<ConversationOpenResolution> {
   const resolvedApiBase = await resolveApiBase(apiBase);
   let response: Response;
   try {
     response = await authenticatedFetch(
       `${resolvedApiBase}/api/conversations/${encodeURIComponent(conversationId)}/open`,
+      options,
     );
   } catch (cause) {
     throw conversationOpenResolutionError('network', cause);
@@ -74,7 +76,7 @@ function parseConversationOpenResolution(
   if (!value || typeof value !== 'object') return false;
   const record = value as Record<string, unknown>;
   if (
-    !['resolved', 'missing-session', 'unavailable'].includes(
+    !['resolved', 'fork-ready', 'missing-session', 'unavailable'].includes(
       String(record.status),
     ) ||
     typeof record.canContinue !== 'boolean' ||
@@ -112,7 +114,24 @@ function parseConversationOpenResolution(
     )
   )
     return false;
+  if (record.status === 'fork-ready') {
+    return (
+      record.currentSessionId === undefined &&
+      record.execution === undefined &&
+      transcript.available === true &&
+      transcript.owner === 'fork-context' &&
+      actions.length === 0 &&
+      (record.continuationPending === undefined ||
+        typeof record.continuationPending === 'boolean')
+    );
+  }
   if (record.status === 'resolved') {
+    // #4179: optional; a present value must be the boolean it claims to be.
+    if (
+      record.nextTurnStartsSession !== undefined &&
+      typeof record.nextTurnStartsSession !== 'boolean'
+    )
+      return false;
     if (
       record.execution !== undefined &&
       !validExecution(
@@ -155,13 +174,32 @@ function validExecution(
   const execution = value as Record<string, unknown>;
   const fields = [
     'sessionId',
+    'environment',
     'agentId',
+    'executionAgentId',
+    'expectedDefinitionFingerprint',
     'provider',
     'engineConnectionId',
     'model',
     'acceptedModel',
   ];
   if (Object.keys(execution).some((key) => !fields.includes(key))) return false;
+  if (execution.environment !== undefined) {
+    const environment = execution.environment;
+    if (
+      !environment ||
+      typeof environment !== 'object' ||
+      Array.isArray(environment)
+    )
+      return false;
+    const environmentFields = Object.keys(environment);
+    if (
+      environmentFields.length !== 1 ||
+      environmentFields[0] !== 'kind' ||
+      (environment as Record<string, unknown>).kind !== 'current'
+    )
+      return false;
+  }
   const boundedText = (text: unknown) =>
     typeof text === 'string' &&
     text.length > 0 &&
@@ -173,6 +211,10 @@ function validExecution(
   if (typeof execution.agentId !== 'string') return false;
   try {
     validateAgentId(execution.agentId);
+    if (execution.executionAgentId !== undefined) {
+      if (typeof execution.executionAgentId !== 'string') return false;
+      validateAgentId(execution.executionAgentId);
+    }
   } catch {
     return false;
   }
@@ -180,6 +222,11 @@ function validExecution(
     execution.sessionId === sessionId &&
     execution.agentId === agentId &&
     parseEngineId(execution.provider) !== undefined &&
+    (execution.expectedDefinitionFingerprint === undefined ||
+      (typeof execution.expectedDefinitionFingerprint === 'string' &&
+        /^sha256:[a-f0-9]{64}$/.test(
+          execution.expectedDefinitionFingerprint,
+        ))) &&
     (execution.engineConnectionId === undefined ||
       parseEngineConnectionId(execution.engineConnectionId) !== undefined) &&
     (execution.model === undefined || boundedText(execution.model)) &&

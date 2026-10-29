@@ -21,11 +21,13 @@ device receipts for current availability.
 `.github/workflows/nightly.yml` builds and publishes the Android nightly.
 
 **Cadence: a configurable minimum interval, six hours by default.**
-`Main: Qualification` runs after main source changes with an hourly fallback. A
-passing candidate can start Nightly under a separate serialized delivery lease.
-The interval is a minimum publication spacing, not a delivery latency guarantee.
-Nightly has no independent schedule and does not rerun regression on that
-qualified path. Manual dispatch retains exact-source qualification for recovery.
+Nightly checks eligibility hourly at minute 47 UTC under its serialized delivery
+lease. The default minimum publication spacing is six hours; unchanged or recent
+ships skip before source tests and builds. Eligible candidates must pass lint,
+all typecheck lanes, native boundary checks and real browser smoke on the exact
+event SHA. Full qualification runs separately every six hours; Nightly's gate
+does not produce that receipt. Manual dispatch retains the same source and
+artifact gates for recovery.
 The hourly qualification-health watchdog reports stale or missing qualification
 and failed delivery; see [the release procedure](releasing.md#release-procedure).
 The cohort decision compares its source
@@ -41,7 +43,7 @@ Admitted ships of new content take the next reserved version code. Manual `rebui
 commit that already shipped, below.
 
 **What a tester should expect.** Queueing, separate stage timeouts, signing and
-provider processing determine delivery time. The qualification schedule is not a
+provider processing determine delivery time. The eligibility schedule is not a
 promise that a build reaches a phone within a few hours. Play auto-update and
 tester eligibility are separate device/provider conditions. Read the final
 per-platform receipt and Play state; a job exit alone is not installation proof.
@@ -59,9 +61,8 @@ See [native-releases.md](./native-releases.md) for the ledger and its
 section for an exceptional same-day rebuild (`rebuild_index`).
 
 A manual `source_sha` may only echo the current workflow event SHA. It cannot
-select an older Stable/TestFlight candidate. Native staging needs the source
-gate and can run alongside full regression; promotion needs both completed
-staging and the exact-SHA full-regression receipt.
+select an older Stable/TestFlight candidate. Native staging needs the successful exact-SHA source usability gate; promotion
+requires that gate and completed staging. Full regression runs independently.
 
 **Signing and upload.** `nightly-native-stage.yml` authenticates through Google
 OIDC, fetches the upload key from Secret Manager, and checks the APK/AAB package,
@@ -75,6 +76,14 @@ iOS uses `ios-nightly`. Whether those environments currently require manual
 approval is live GitHub configuration, not determined by the schedule trigger.
 Their provider credentials and permissions have distinct scopes.
 
+After required TestFlight upload and internal delivery, Nightly attempts
+external-group assignment and beta-review submission. This step is non-blocking:
+failures appear in the workflow summary and external-distribution receipt.
+Set `TESTFLIGHT_EXTERNAL_GROUP_ID` or the exact `TESTFLIGHT_EXTERNAL_GROUP_NAME`
+in `ios-nightly` and complete Apple's beta
+review information first. See [external TestFlight distribution](mobile-release.md#nightly-external-testflight-distribution)
+for setup, review states and tester automatic updates.
+
 The rolling `nightly` marker moves only after Android is verified and recorded.
 Desktop has its own `nightly-desktop` publication marker. Partial or ambiguous
 provider outcomes retain their own status; a failed overall run can already have
@@ -84,7 +93,7 @@ before retrying or changing a marker.
 ## Portable server nightly
 
 `.github/workflows/portable-nightly-publish.yml`, called by `nightly.yml` as
-`portable-nightly` after full regression, builds the five
+`portable-nightly` after source usability succeeds, builds the five
 `station-server-<os>-<arch>` archives through the reusable
 `portable-server-archives.yml` under version `X.Y.Z-nightly.<code>`, where
 `<code>` is the native Nightly's reserved version code (re-checked against the
@@ -166,8 +175,9 @@ To enable it (owner only):
 
 - Plan retention first. Each publish adds a permanent prerelease and tag
   `vX.Y.Z-nightly.<code>` (the versioned assets pinned and rollback manifests
-  point at): one for each Nightly that builds, and up to four
-  scheduled runs a day.
+  point at): one for each Nightly that builds. The default six-hour minimum permits
+  about four publication opportunities a day; hourly decisions that skip add no
+  release, and a shorter configured interval increases retention needs.
 - Provision the `portable-nightly-signing` environment and its
   `STATION_PORTABLE_NIGHTLY_MANIFEST_SIGNING_KEY` secret, matching the public
   key pinned as `station-portable-nightly-2026-09` in
@@ -181,8 +191,9 @@ To enable it (owner only):
 - Read the first enabled Nightly's step summary for "Assemble, dry-run sign and
   verify". It says whether the gate evaluated as enabled for that run. The gate
   relies on `github.workflow_ref` in a called workflow naming the top-level
-  caller (`nightly.yml`, or `main-qualification.yml` when qualification starts
-  the Nightly), as GitHub documents, and that is unverified until then. If
+  caller (`nightly.yml`), as GitHub documents. Historical qualification-driven
+  identity remains admitted, but no current workflow calls Nightly that way.
+  Actual enabled publication remains unverified until that provider run. If
   the summary says dry run, the publish job was skipped, which fails safe.
 
 Deleting the variable returns every run to a dry run.
@@ -223,8 +234,12 @@ does not acquire that publication or notarization receipt.
 
 ## Update checks in Settings: source check vs release check
 
-Two distinct mechanisms answer "is there an update?", and Settings keeps them
-separate:
+The sidebar's **Updates** control opens one panel for the desktop app and the
+connected server, also available from a collapsed rail or mobile drawer.
+Browser and mobile devices can review server updates there; mobile app release
+links use its app section. Settings retains the same update controls and owns
+automatic-download policies and further details. The shared presentation
+keeps two independent mechanisms and separately labelled actions:
 
 - **Desktop release check.** Tauri's configured signed update feed owns
   desktop release availability and installation. The packaged server code
@@ -237,19 +252,80 @@ separate:
   release is available, and the UI never renders it as "update available".
   A prebuilt release archive is the exception: the same route fetches the
   signed public manifest its install records, verifies it against the pinned
-  keys for its ring, and reports the running and newest versions. Settings can
-  apply that update only when the service's fixed launcher runs the server;
-  any other archive names `station upgrade` on the host, or a reinstall (see
-  the [CLI `service` reference](../reference/cli.md#service)).
+  keys for its ring, and reports the running and newest versions. A manifest
+  older than the newest release that install already accepted is not offered
+  (it would be a stale or replayed one). The panel and Settings can
+  apply that update only when the service's fixed launcher runs the server.
+  Such a server downloads and verifies the release without restarting (when
+  asked, or by itself under the `serverUpdateDownloadPolicy` setting). Only
+  a confirmed restart or **When idle** switches it to the new version; see the
+  [CLI `service` reference](../reference/cli.md#service). Any other archive
+  names `station upgrade` on the host, or a reinstall.
 
 An established built-in (embedded sidecar) server never runs the ordinary
-source check at all; its update path is the desktop app itself, and its card
-says so.
+source check at all; its update path is the desktop app itself, including the
+built-in server in that app update and its restart confirmation. The server
+section says so and keeps the advanced source disclosure reachable. An
+installed local service or remote server updates separately. Opening the panel
+never applies an update; there is no shared "Update both" operation, and app
+and server versions need not be equal.
+
+For a staged service update, **Download server update** leaves the running
+version in place. **Restart server** opens a confirmation that lists the
+running agent turns the caller may see and counts hidden turns. It offers
+**Restart now** or **When idle**; closing the confirmation changes nothing.
+Older servers and source checkouts that expose a direct update action require
+**Update and restart** confirmation. Closing the Updates panel keeps its
+existing server observer mounted so it can follow an accepted restart and
+recheck its outcome. The section shows the running version once in its
+header, with one status badge and one primary action; address, channel,
+install facts, finished-update history and the method explanation fold into a
+collapsed **Details**, while errors, warnings and the restart confirmation stay
+visible. Manual host instructions remain in the server section, the source
+disclosure inside its **Details**, and **Update policies and details** opens
+System settings.
+
+### When the server is older than the app
+
+A desktop or mobile app whose version a release pipeline stamped
+(`STATION_BUILD_VERSION`) compares that version with the one a prebuilt
+archive server reports on the same route, in Station's release order
+([`release-version-order.ts`](../../packages/shared/src/release-version-order.ts)).
+A native Nightly's `X.Y.Z-nightly.<day>[.<build>]` is first written as the
+portable `X.Y.Z-nightly.<day × 100 + build>` that names the same nightly
+allocation; #2962 is meant to replace that bridge with one identity. An iOS
+build's Apple marketing version is the bare `X.Y.Z`, so its web bundle is
+stamped with the cohort's full Nightly version, or a Beta's full release
+version, instead. A bare `X.Y.Z` client never counts as newer than a
+prerelease of the same `X.Y.Z`; that also keeps a stable `0.1.12` client quiet
+against a `0.1.12-preview.N` server, which tracks another ring and cannot
+update itself to the stable release. When the server is older, the Updates
+panel says so in one line in its server section
+([`ServerOlderLaunchCheck`](../../src-ui/src/components/ServerOlderLaunchCheck.tsx)),
+whose header already shows the server version; the notice has no action of
+its own. If the service's launcher runs the server and its verified manifest
+names a newer release, the section's own controls own download, restart
+confirmation, and progress;
+the launch comparison never applies the update itself. Any other server keeps
+its manual host guidance. This older-server notice never appears for a dev or
+locally built app, equal versions, a server that
+reports no version (source checkouts and desktop bundles), the server's own
+web UI, or a built-in server.
+
+The presentation owners are
+[`UpdatesControl`](../../src-ui/src/components/updates/UpdatesControl.tsx) and
+[`UpdatesPanel`](../../src-ui/src/components/updates/UpdatesPanel.tsx).
+[`DesktopUpdateCheck`](../../src-ui/src/views/settings/DesktopUpdateCheck.tsx)
+keeps the native updater adapter; the connected-server section reuses
+[`ConnectedServerUpdates`](../../src-ui/src/views/settings/ConnectedServerUpdates.tsx),
+[`CoreUpdateCheck`](../../src-ui/src/views/settings/CoreUpdateCheck.tsx), and
+[`ServerUpdateStageApply`](../../src-ui/src/views/settings/ServerUpdateStageApply.tsx).
 
 ### Advanced source installer boundary
 
 The checkout-backed bundle installer survives behind the **Source installation
-details** disclosure on the server updates card, under the action
+details** disclosure on the server updates card (inside the card's **Details**
+unless the server is built in), under the action
 **Rebuild and reinstall desktop app from source…**. It is a distinct advanced
 workflow, not the normal desktop update path: the source query behind it mounts
 only while the disclosure is open, it names the affected host from the
@@ -260,10 +336,10 @@ not run both against the same install.
 
 ## Install or refresh
 
-Use Node 24 from a clean checkout with the intended `origin` remote:
+Activate Node 24 using your version manager, then use a clean checkout with the
+intended `origin` remote:
 
 ```sh
-export PATH="$HOME/.local/share/mise/installs/node/24.19.0/bin:$PATH"
 ./ops/nightly/install-macos.zsh
 ```
 
@@ -377,7 +453,10 @@ The same `setup.exe` serves as the initial installer and update payload; its
 `.sig` is generated and checked with the Tauri updater key. The app installs
 per user and uses the separate `io.kontourai.station.nightly` identity and
 `station-nightly.exe` process name, so NSIS does not close Stable during an update.
-Station's desktop server currently requires Node 24 on the user's PATH.
+Desktop releases carry the pinned `station-node` executable; the installed app
+does not require system Node. Development builds still use the developer's
+Node. See [packaged runtime](desktop-build.md#packaged-runtime) for staging and
+macOS signing requirements.
 
 `nightly-native-stage.yml` builds Windows from the same source SHA and reserved
 version as macOS and Android. `scripts/build-windows-nightly.ps1` uses
@@ -426,7 +505,7 @@ signing remains required.
 
 One publisher owns `nightly-desktop/latest.json`. It waits for both desktop
 builds, verifies their updater signatures, and creates a manifest containing
-only that cohort. It uploads the five version-specific desktop downloads and
+only that cohort; each signature must name the cohort version (#3851). It uploads the five version-specific desktop downloads and
 checks their GitHub sizes and digests. Then it replaces three more assets:
 the two installers again under fixed names,
 `station-nightly-macos-aarch64.dmg` and

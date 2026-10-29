@@ -1,0 +1,7 @@
+{
+  "revision": "a75e1374339db7750b57e19b13ff0fa4031dddb2",
+
+  "notes": [
+    {"path":"packages/sdk/AGENTS.md","note":"PR #3676 Fix round 8: Re-read SDK instructions after the canonical SDK-reference signature changed. Public subpath ownership and cancellation test guidance remain accurate. The new real-SDK probes observe both command settlement/recovery and observation record release, including transport that ignores abort; no instruction change is needed.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

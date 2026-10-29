@@ -1,0 +1,39 @@
+{
+  "revision": "dddc4cd17d598053ae3f145278ec829b85aac4c1",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Delta-only review: since this document was last reviewed on this branch (385756f8d83), src-ui/src/index.css changed only inside the --surface-lift comment (dddc4cd17d5: a measured-ratio sentence restated as a relative claim). No selector, custom property or value changed, so no claim this document makes about index.css is affected.","inputs":["docs/design/chat-composer.md","src-ui/src/index.css"]},
+
+    {"path":"docs/design/collaborative-editor-pane.md","note":"Delta-only review: since this document was last reviewed on this branch (385756f8d83), src-ui/src/index.css changed only inside the --surface-lift comment (dddc4cd17d5: a measured-ratio sentence restated as a relative claim). No selector, custom property or value changed, so no claim this document makes about index.css is affected.","inputs":["docs/design/collaborative-editor-pane.md","src-ui/src/index.css"]},
+
+    {"path":"docs/design/placement.md","note":"Delta-only review: since this document was last reviewed on this branch (385756f8d83), src-ui/src/index.css changed only inside the --surface-lift comment (dddc4cd17d5: a measured-ratio sentence restated as a relative claim). No selector, custom property or value changed, so no claim this document makes about index.css is affected.","inputs":["docs/design/placement.md","src-ui/src/index.css"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"Delta-only review: since this document was last reviewed on this branch (385756f8d83), src-ui/src/index.css changed only inside the --surface-lift comment (dddc4cd17d5: a measured-ratio sentence restated as a relative claim). No selector, custom property or value changed, so no claim this document makes about index.css is affected.","inputs":["docs/design/session-tape-replay.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/connections.md","note":"Delta-only review: since this document was last reviewed on this branch (385756f8d83), src-ui/src/index.css changed only inside the --surface-lift comment (dddc4cd17d5: a measured-ratio sentence restated as a relative claim). No selector, custom property or value changed, so no claim this document makes about index.css is affected.","inputs":["docs/guides/connections.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Delta-only review: since this document was last reviewed on this branch (385756f8d83), src-ui/src/index.css changed only inside the --surface-lift comment (dddc4cd17d5: a measured-ratio sentence restated as a relative claim). No selector, custom property or value changed, so no claim this document makes about index.css is affected.","inputs":["docs/guides/knowledge.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Delta-only review: since this document was last reviewed on this branch (385756f8d83), src-ui/src/index.css changed only inside the --surface-lift comment (dddc4cd17d5: a measured-ratio sentence restated as a relative claim). No selector, custom property or value changed, so no claim this document makes about index.css is affected.","inputs":["docs/guides/responsive-ui.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Delta-only review: since this document was last reviewed on this branch (385756f8d83), src-ui/src/index.css changed only inside the --surface-lift comment (dddc4cd17d5: a measured-ratio sentence restated as a relative claim). No selector, custom property or value changed, so no claim this document makes about index.css is affected.","inputs":["docs/guides/starter-work.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/theming.md","note":"Delta-only review: since this document was last reviewed on this branch (385756f8d83), src-ui/src/index.css changed only inside the --surface-lift comment (dddc4cd17d5: a measured-ratio sentence restated as a relative claim). No selector, custom property or value changed, so no claim this document makes about index.css is affected.","inputs":["docs/guides/theming.md","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Delta-only review: since this document was last reviewed on this branch (385756f8d83), src-ui/src/index.css changed only inside the --surface-lift comment (dddc4cd17d5: a measured-ratio sentence restated as a relative claim). No selector, custom property or value changed, so no claim this document makes about index.css is affected.","inputs":["docs/learn/walkthroughs.md","src-ui/src/index.css"]},
+
+    {"path":"docs/patterns/backend.md","note":"Delta-only review: since this document was last reviewed on this branch (385756f8d83), src-ui/src/index.css changed only inside the --surface-lift comment (dddc4cd17d5: a measured-ratio sentence restated as a relative claim). No selector, custom property or value changed, so no claim this document makes about index.css is affected.","inputs":["docs/patterns/backend.md","src-ui/src/index.css"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Delta-only review: since this document was last reviewed on this branch (385756f8d83), src-ui/src/index.css changed only inside the --surface-lift comment (dddc4cd17d5: a measured-ratio sentence restated as a relative claim). No selector, custom property or value changed, so no claim this document makes about index.css is affected.","inputs":["docs/patterns/frontend.md","src-ui/src/index.css"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Delta-only review: since this document was last reviewed on this branch (385756f8d83), src-ui/src/index.css changed only inside the --surface-lift comment (dddc4cd17d5: a measured-ratio sentence restated as a relative claim). No selector, custom property or value changed, so no claim this document makes about index.css is affected.","inputs":["docs/reference/agent-smoke-confidence.md","src-ui/src/index.css"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Delta-only review: since this document was last reviewed on this branch (385756f8d83), src-ui/src/index.css changed only inside the --surface-lift comment (dddc4cd17d5: a measured-ratio sentence restated as a relative claim). No selector, custom property or value changed, so no claim this document makes about index.css is affected.","inputs":["docs/reference/project-task-room-collaboration-acceptance.md","src-ui/src/index.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"Delta-only review: since this document was last reviewed on this branch (385756f8d83), src-ui/src/index.css changed only inside the --surface-lift comment (dddc4cd17d5: a measured-ratio sentence restated as a relative claim). No selector, custom property or value changed, so no claim this document makes about index.css is affected.","inputs":["docs/user/getting-started.md","src-ui/src/index.css"]},
+
+    {"path":"examples/knowledge-library/README.md","note":"Delta-only review: since this document was last reviewed on this branch (385756f8d83), src-ui/src/index.css changed only inside the --surface-lift comment (dddc4cd17d5: a measured-ratio sentence restated as a relative claim). No selector, custom property or value changed, so no claim this document makes about index.css is affected.","inputs":["examples/knowledge-library/README.md","src-ui/src/index.css"]},
+
+    {"path":"src-desktop/icons/README.md","note":"Delta-only review: since this document was last reviewed on this branch (385756f8d83), src-ui/src/index.css changed only inside the --surface-lift comment (dddc4cd17d5: a measured-ratio sentence restated as a relative claim). No selector, custom property or value changed, so no claim this document makes about index.css is affected.","inputs":["src-desktop/icons/README.md","src-ui/src/index.css"]}
+  ]
+}

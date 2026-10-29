@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useId,
+  useImperativeHandle,
   useLayoutEffect,
   useRef,
   useState,
@@ -89,6 +90,17 @@ export interface OverflowAction {
   onSelect: (trigger: HTMLElement) => void;
 }
 
+/**
+ * Opens the menu from outside its trigger: the right-click or hold on the row
+ * the `⋯` belongs to (`useContextMenuGesture`), so that gesture shows exactly
+ * the rows the `⋯` does. `open` returns false when there is no menu to open (no
+ * rows, or one row rendered as its own button), so the caller can leave the
+ * gesture to the platform instead of running a command nobody chose.
+ */
+export interface OverflowMenuHandle {
+  open: () => boolean;
+}
+
 /** "⌘G" → "Meta+G", the `aria-keyshortcuts` spelling; "Ctrl+G" stays. */
 function ariaShortcut(shortcut: string): string {
   return shortcut.replace('⌘', 'Meta+');
@@ -111,6 +123,24 @@ const MENU_PADDING_PX = 12;
 const roomNeededPx = (rowCount: number) =>
   rowCount * MENU_ROW_PX + MENU_PADDING_PX + MENU_GAP_PX;
 
+/** The first paint's position, from the trigger's rect and the guess above. */
+function pressPosition(
+  trigger: HTMLElement,
+  rowCount: number,
+): React.CSSProperties {
+  const rect = trigger.getBoundingClientRect();
+  const below = window.innerHeight - rect.bottom;
+  return below < roomNeededPx(rowCount)
+    ? {
+        bottom: `${window.innerHeight - rect.top + MENU_GAP_PX}px`,
+        right: `${window.innerWidth - rect.right}px`,
+      }
+    : {
+        top: `${rect.bottom + MENU_GAP_PX}px`,
+        right: `${window.innerWidth - rect.right}px`,
+      };
+}
+
 /**
  * A `⋯` trigger and the menu of commands folded behind it.
  *
@@ -129,12 +159,15 @@ const roomNeededPx = (rowCount: number) =>
 export function ActionOverflowMenu({
   actions,
   triggerRef,
+  handleRef,
   badgeCount = 0,
   badgeLabel,
+  status,
   label,
   inlineSingle = false,
   triggerClassName = 'action-overflow__trigger',
   triggerText,
+  triggerGlyph,
   reserveGlyphColumn = false,
 }: {
   actions: readonly OverflowAction[];
@@ -144,6 +177,8 @@ export function ActionOverflowMenu({
    * anchoring to the control that opened it.
    */
   triggerRef?: React.RefObject<HTMLButtonElement | null>;
+  /** Opens the menu from the row it belongs to; see `OverflowMenuHandle`. */
+  handleRef?: React.Ref<OverflowMenuHandle>;
   /**
    * Live work behind a folded row, surfaced on the trigger. Folding Background
    * tasks into this menu took its running-count badge off the bar with it, and
@@ -154,6 +189,12 @@ export function ActionOverflowMenu({
   badgeCount?: number;
   /** What the count means, for the trigger's accessible name. */
   badgeLabel?: string;
+  /**
+   * Live state behind the menu's rows that has no count of its own on the
+   * trigger ("2 chats working"). Joined to the trigger's name after the
+   * badge's; the trigger paints it as a dot (`.action-overflow__status-dot`).
+   */
+  status?: string;
   /**
    * The trigger's and the menu's accessible name. REQUIRED: the trigger shows
    * only `⋯`, so this is the only name it has, and two of these on one page
@@ -178,6 +219,7 @@ export function ActionOverflowMenu({
    * has to appear in `label`.
    */
   triggerText?: string;
+  triggerGlyph?: React.ReactNode;
   /**
    * Keep the 16px glyph slot on every row even when no row has a glyph. The
    * dock passes this: its menu sits beside the header's menus, and the slot
@@ -188,6 +230,8 @@ export function ActionOverflowMenu({
   reserveGlyphColumn?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const openRef = useRef(open);
+  openRef.current = open;
   const coarse = useCoarsePointer();
   const [position, setPosition] = useState<React.CSSProperties>({});
   /** The menu's z-index when its host outranks the default; see `placeMenu`. */
@@ -351,6 +395,28 @@ export function ActionOverflowMenu({
     setOpen(false);
   }, [actions.length]);
 
+  useImperativeHandle(
+    handleRef,
+    () => ({
+      open: () => {
+        const trigger = ownRef.current;
+        // The same two branches the render below takes without a menu.
+        if (!trigger || actions.length === 0) return false;
+        if (inlineSingle && actions.length === 1) return false;
+        // An open, not a toggle: one hold can ask twice (the platform's own
+        // long-press `contextmenu` after the hold timer), and focusing the
+        // trigger again would take focus out of the open menu and close it.
+        if (openRef.current) return true;
+        // Focus first, so `useMenuFocus` returns focus to the `⋯` on close.
+        trigger.focus();
+        setPosition(pressPosition(trigger, actions.length));
+        setOpen(true);
+        return true;
+      },
+    }),
+    [actions.length, inlineSingle],
+  );
+
   if (actions.length === 0) return null;
 
   /**
@@ -366,10 +432,12 @@ export function ActionOverflowMenu({
    */
   if (inlineSingle && actions.length === 1) {
     const only = actions[0]!;
-    const inlineName =
-      badgeCount > 0 && badgeLabel
-        ? `${only.label} — ${badgeLabel}`
-        : undefined;
+    const inlineDetail = [badgeCount > 0 ? badgeLabel : undefined, status]
+      .filter(Boolean)
+      .join(', ');
+    const inlineName = inlineDetail
+      ? `${only.label} — ${inlineDetail}`
+      : undefined;
     return (
       <button
         ref={setTrigger}
@@ -415,15 +483,17 @@ export function ActionOverflowMenu({
   ];
   const hasGlyphColumn =
     reserveGlyphColumn || actions.some((action) => action.glyph);
-  const triggerName =
-    badgeCount > 0 && badgeLabel ? `${label} — ${badgeLabel}` : label;
+  const triggerDetail = [badgeCount > 0 ? badgeLabel : undefined, status]
+    .filter(Boolean)
+    .join(', ');
+  const triggerName = triggerDetail ? `${label} — ${triggerDetail}` : label;
 
   return (
     <>
       <button
         ref={setTrigger}
         type="button"
-        className={`${triggerText ? 'button button--secondary button--small action-overflow__trigger--labelled' : triggerClassName}${open ? ' is-active' : ''}`}
+        className={`${triggerClassName} ${triggerText ? 'button button--secondary button--small action-overflow__trigger--labelled' : ''}${open ? ' is-active' : ''}`}
         // The count is part of the NAME, not only a painted badge: the badge is
         // `aria-hidden` (it is a glyph for the same fact), so without this a
         // screen reader would hear no difference between an idle dock and one
@@ -434,29 +504,19 @@ export function ActionOverflowMenu({
         aria-expanded={open}
         onClick={(event) => {
           event.stopPropagation();
-          const rect = event.currentTarget.getBoundingClientRect();
-          const below = window.innerHeight - rect.bottom;
-          setPosition(
-            below < roomNeededPx(ordered.length)
-              ? {
-                  bottom: `${window.innerHeight - rect.top + MENU_GAP_PX}px`,
-                  right: `${window.innerWidth - rect.right}px`,
-                }
-              : {
-                  top: `${rect.bottom + MENU_GAP_PX}px`,
-                  right: `${window.innerWidth - rect.right}px`,
-                },
-          );
+          setPosition(pressPosition(event.currentTarget, ordered.length));
           setOpen((wasOpen) => !wasOpen);
         }}
       >
         {triggerText}
-        <span aria-hidden="true">⋯</span>
-        {badgeCount > 0 && (
+        <span aria-hidden="true">{triggerGlyph ?? '⋯'}</span>
+        {badgeCount > 0 ? (
           <span className="chat-dock__more-badge" aria-hidden="true">
             {badgeCount}
           </span>
-        )}
+        ) : status ? (
+          <span className="action-overflow__status-dot" aria-hidden="true" />
+        ) : null}
       </button>
       {open
         ? createPortal(
@@ -480,6 +540,12 @@ export function ActionOverflowMenu({
                   event.stopPropagation();
                   setOpen(false);
                 }}
+                // No WebView menu over an open one. The menu stays open: on
+                // touch this is usually the platform's own long-press
+                // `contextmenu` for the hold that opened it, landing on this
+                // backdrop, and it reaches the row's gesture (React bubbles
+                // portal events) as a repeat open.
+                onContextMenu={(event) => event.preventDefault()}
               />
               {/* The class names are the dock's because the RULES are: a
                   body-portalled, fixed menu that must outrank the dock is the

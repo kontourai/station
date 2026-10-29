@@ -42,7 +42,7 @@ import { useActiveProject } from '../hooks/useActiveProject';
  * re-binds. Disclosed rather than gated: the SDK does not yet distinguish a
  * not-found error.
  *
- * The stale-binding fallback (review L1): `useDockShellChrome` clears a
+ * The stale-binding fallback (#2184): `useDockShellChrome` clears a
  * `chatDockProjectSlug` naming a deleted project only while the shell holds
  * Chat, so with Chat in no region a deleted binding would otherwise leave
  * every docked coding pane on the placeholder forever while the route has a

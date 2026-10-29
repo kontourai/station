@@ -15,6 +15,8 @@ import {
   FAST_CHECKS_PART_RESULTS_RUN,
   FAST_CHECKS_PLAN_RUN,
   FAST_CHECKS_PLANNED_STEP_IF,
+  FAST_CHECKS_PROVISIONAL_RUN,
+  FAST_CHECKS_PROVISIONAL_STEP_IF,
   FAST_CHECKS_SHARD_IF,
   FAST_CHECKS_SHARD_RUN,
   FAST_CHECKS_SLICE_RUN,
@@ -47,8 +49,11 @@ jobs:
     if: ${REQUIRED_FAST_CHECKS_CONDITION}
     outputs:
       legacy: ${FAST_CHECKS_LEGACY_OUTPUT}
+      integration-ready: \${{ steps.merge-decision.outputs.integration-ready }}
+      full-regression: \${{ steps.merge-decision.outputs.full-regression }}
       shards: \${{ steps.plan.outputs.shards }}
       shard-count: \${{ steps.plan.outputs.shard-count }}
+      empty: \${{ steps.plan.outputs.empty }}
     steps:
       - name: Detect a candidate without the sharded lane
         id: mode
@@ -101,8 +106,12 @@ jobs:
       - name: Require every fast-checks part job to succeed
         run: ${block(FAST_CHECKS_PART_RESULTS_RUN, 10)}
       - name: Verify fast-checks shard receipts
+        id: verify
         if: ${FAST_CHECKS_AGGREGATE_STEP_IF}
         run: '${FAST_CHECKS_AGGREGATE_RUN}'
+      - name: Mark fast-checks provisional
+        if: ${FAST_CHECKS_PROVISIONAL_STEP_IF}
+        run: '${FAST_CHECKS_PROVISIONAL_RUN}'
   completion:
     steps:
       - name: Run connected agents
@@ -351,9 +360,9 @@ describe('primary CI workflow governance', () => {
     expect(classify?.['runs-on']).toBe('ubuntu-22.04');
     expect(fastChecks?.if).toBe(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression syntax is literal workflow data.
-      "${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}",
+      "${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}",
     );
-    expect(fastChecks?.['runs-on']).toBe('ubuntu-22.04');
+    expect(fastChecks?.['runs-on']).toBe('ubuntu-24.04');
     // The fence is the gate's constant, not a second literal (#2577: this pin
     // stayed at 45 when the fence moved). ci-workflow-contract.test.ts proves
     // the value covers the ci:fast budget plus the job's bounded steps; this
@@ -364,33 +373,30 @@ describe('primary CI workflow governance', () => {
     expect(aggregate?.concurrency).toEqual({
       group:
         // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression syntax is literal workflow data.
-        'ci-fast-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}',
+        'ci-fast-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.event.pull_request.base.sha }}',
       'cancel-in-progress': true,
     });
-    // Every part job keys its own group on the head sha (#1445), and each
-    // shard on its index, so no leg or part cancels another's run.
-    for (const [id, prefix] of [
-      ['fast-checks-statics', 'ci-fast-statics-'],
-      ['fast-checks-plan', 'ci-fast-plan-'],
+    // The planner retains head isolation; statics/shard FIFO routing belongs
+    // to the executable graph tests and the exact actionlint shape guards.
+    const planGroup = String(
+      (
+        parsedJob(workflow, 'fast-checks-plan')?.concurrency as {
+          group?: string;
+        }
+      )?.group,
+    );
+    expect(planGroup.startsWith('ci-fast-plan-')).toBe(true);
+    expect(planGroup).toContain(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression syntax is literal workflow data.
-      ['fast-checks-shard', 'ci-fast-shard-${{ matrix.shard }}-'],
-    ]) {
-      const group = String(
-        (parsedJob(workflow, id)?.concurrency as { group?: string })?.group,
-      );
-      expect(group.startsWith(prefix), id).toBe(true);
-      expect(group, id).toContain(
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression syntax is literal workflow data.
-        '${{ github.event.pull_request.head.sha || github.sha }}',
-      );
-    }
+      '${{ github.event.pull_request.head.sha || github.sha }}',
+    );
     const forkSmoke = parsedJob(workflow, 'fork-smoke');
     expect(forkSmoke?.if).toBe(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression syntax is literal workflow data.
-      "${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name != github.repository }}",
+      "${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name != github.repository }}",
     );
     expect(forkSmoke?.permissions).toEqual({ contents: 'read' });
-    expect(forkSmoke?.['runs-on']).toBe('ubuntu-22.04');
+    expect(forkSmoke?.['runs-on']).toBe('ubuntu-24.04');
     expect(JSON.stringify(forkSmoke)).not.toContain('secrets.');
     expect(JSON.stringify(forkSmoke)).not.toContain('actions/cache@');
     expect(JSON.stringify(forkSmoke)).not.toContain('actions/upload-artifact@');
@@ -425,7 +431,7 @@ describe('primary CI workflow governance', () => {
     expect(actionlintStepIndex).toBeGreaterThanOrEqual(0);
     expect(forkSmokeIndex).toBeGreaterThan(actionlintStepIndex ?? 0);
     const fastSteps = fastChecks?.steps as
-      | Array<{ name?: string; run?: string }>
+      | Array<{ name?: string; run?: string; env?: Record<string, unknown> }>
       | undefined;
     expect(
       (
@@ -442,11 +448,17 @@ describe('primary CI workflow governance', () => {
       repository: `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}`,
       ref: `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}`,
     });
+    // The required smoke's clean startup builds and gates its own UI. A
+    // standalone UI build repeats that cost without adding an assertion.
     expect(
-      fastSteps?.find(
-        (step) => step.name === 'Enforce candidate UI bundle budget',
-      )?.run,
-    ).toBe('npm run build:ui');
+      fastSteps?.filter((step) => step.run === 'npm run build:ui'),
+    ).toHaveLength(0);
+    expect(
+      fastSteps?.find((step) => step.run === 'npm run test:e2e:pr-smoke')?.env,
+    ).toMatchObject({
+      STATION_UI_BUNDLE_BUDGET: 'enforce',
+      VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE: '0',
+    });
     const fastActionlintIndex = fastSteps?.findIndex(
       (step) => step.name === 'Install pinned actionlint',
     );
@@ -706,8 +718,8 @@ describe('the required fast-checks aggregator cannot pass over a missing part (#
     ],
     [
       'a part-result check that accepts any result',
-      'all(.value.result == "success")',
-      'all(.value.result != "")',
+      '.["fast-checks-statics"].result == "success"',
+      '.["fast-checks-statics"].result != ""',
       'Required fast-checks must fail unless every part job succeeded and every shard receipt verifies.',
     ],
     [
@@ -721,6 +733,18 @@ describe('the required fast-checks aggregator cannot pass over a missing part (#
       `        if: ${FAST_CHECKS_AGGREGATE_STEP_IF}\n        run: '${FAST_CHECKS_AGGREGATE_RUN}'`,
       `        if: \${{ needs.fast-checks-plan.outputs.legacy != 'false' }}\n        run: '${FAST_CHECKS_AGGREGATE_RUN}'`,
       'Required fast-checks must fail unless every part job succeeded and every shard receipt verifies.',
+    ],
+    [
+      'a renamed provisional marker the source policy no longer reads (#1706)',
+      '      - name: Mark fast-checks provisional\n',
+      '      - name: Note provisional fast-checks\n',
+      'Required fast-checks must mark a deferred plan provisional for the source policy.',
+    ],
+    [
+      'a provisional marker detached from the aggregate output (#1706)',
+      '        id: verify\n',
+      '        id: receipts\n',
+      'Required fast-checks must mark a deferred plan provisional for the source policy.',
     ],
     [
       'a dropped shard',

@@ -13,6 +13,10 @@ import { isDistinctFrameOrigin } from '../components/mcp-ui/frameOrigin';
 import { useConfig, useConfigSettled } from '../contexts/ConfigContext';
 import { pluginRegistry } from '../core/PluginRegistry';
 import {
+  developerPaneEnabled,
+  useDeveloperFeatures,
+} from '../hooks/useDeveloperFeatures';
+import {
   type PlatformProfile,
   usePlatformProfile,
 } from '../platform/PlatformProfileContext';
@@ -79,21 +83,6 @@ export function rendererGateFromPluginRegistryLoadStatus(status: {
   failure?: string;
 }): 'remote-isolation' | null {
   return status.failure === 'remote-isolation' ? 'remote-isolation' : null;
-}
-
-/**
- * The direct-pane host registry is the authoritative UI fact for this batch.
- * Layout-only, plugin, and MCP branches stay fail-closed until their host
- * adapters register an actual single-slot renderer.
- */
-export function clientWorkspacePaneRendererPresence(
-  descriptor: WorkspacePaneDescriptor,
-  mcpAppsEnabled = true,
-): ClientWorkspacePaneRendererPresence {
-  return selectClientWorkspacePaneRenderer(descriptor, { mcpAppsEnabled })
-    .state === 'selected'
-    ? 'present'
-    : 'missing';
 }
 
 /**
@@ -293,6 +282,7 @@ export function useResolvedWorkspacePaneCatalog(projectSlug: string) {
     keepPreviousData: false,
   });
   const profile = usePlatformProfile();
+  const { flow, readiness, trust } = useDeveloperFeatures();
   const config = useConfig();
   const configSettled = useConfigSettled();
   // The registry is populated asynchronously after the pane catalog may have
@@ -331,5 +321,12 @@ export function useResolvedWorkspacePaneCatalog(projectSlug: string) {
     query.data,
   ]);
 
-  return { ...query, ...catalog };
+  const entries = useMemo(
+    () =>
+      catalog.entries.filter((entry) =>
+        developerPaneEnabled(entry.descriptor, { flow, readiness, trust }),
+      ),
+    [catalog.entries, flow, readiness, trust],
+  );
+  return { ...query, ...catalog, registeredEntries: catalog.entries, entries };
 }

@@ -1,0 +1,98 @@
+name: ${COMPOSE_PROJECT_NAME:?set a unique persistent Compose project name}
+
+# The diagnostic services (Collector, Prometheus, Tempo, Grafana) live in
+# compose.diagnostics.yaml so the developer profile (compose.dev.yaml) runs
+# them without the product receiver.
+include:
+  - compose.diagnostics.yaml
+
+x-service: &service
+  labels:
+    station.telemetry.custody: ${TELEMETRY_HOME_CUSTODY:-unmanaged}
+  restart: unless-stopped
+  read_only: true
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  stop_grace_period: 15s
+  logging:
+    driver: local
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  postgres:
+    <<: *service
+    image: postgres:16.14-bookworm@sha256:64154d0babcb1741988719e703419af0382b19953706149f9872fbd0f438efa8
+    environment:
+      POSTGRES_DB: station_telemetry
+      POSTGRES_USER: station_telemetry
+      POSTGRES_PASSWORD_FILE: /run/private/postgres-password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - type: bind
+        source: ${TELEMETRY_PRIVATE_DIR:?set an absolute private directory}/postgres-password
+        target: /run/private/postgres-password
+        read_only: true
+        bind: {create_host_path: false}
+    tmpfs:
+      - /var/run/postgresql:size=8m,mode=0777
+      - /tmp:size=16m
+    networks: [product]
+    cpus: 1.0
+    mem_limit: 512m
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U station_telemetry -d station_telemetry"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  receiver:
+    <<: *service
+    image: ${TELEMETRY_RECEIVER_IMAGE:?set an exact source-built image tag or qualified image digest}
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      target: telemetry-runtime
+      args:
+        STATION_RELEASE_SHA: ${STATION_RELEASE_SHA:?set the exact clean source SHA}
+        STATION_RELEASE_REF: ${STATION_RELEASE_REF:?set a preview or stable release ref}
+        STATION_RELEASE_CREATED_AT: ${STATION_RELEASE_CREATED_AT:?set its canonical ISO timestamp}
+    environment:
+      STATION_TELEMETRY_BROKER_HOST: 0.0.0.0
+      STATION_TELEMETRY_BROKER_PORT: "43891"
+      STATION_TELEMETRY_BROKER_DATABASE_URL_FILE: /run/private/database-url
+      STATION_TELEMETRY_BROKER_OPERATOR_KEY_FILE: /run/private/product-operator-key
+    volumes:
+      - type: bind
+        source: ${TELEMETRY_PRIVATE_DIR}/database-url
+        target: /run/private/database-url
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${TELEMETRY_PRIVATE_DIR}/product-operator-key
+        target: /run/private/product-operator-key
+        read_only: true
+        bind: {create_host_path: false}
+    ports: ["127.0.0.1:${TELEMETRY_PRODUCT_PORT:-44481}:43891"]
+    networks: [product, product-ingress]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    init: true
+    cpus: 1.0
+    mem_limit: 256m
+
+networks:
+  product:
+    labels: {station.telemetry.custody: "${TELEMETRY_HOME_CUSTODY:-unmanaged}"}
+    internal: true
+  product-ingress:
+    labels: {station.telemetry.custody: "${TELEMETRY_HOME_CUSTODY:-unmanaged}"}
+    internal: false
+
+volumes:
+  postgres-data:
+    labels: {station.telemetry.custody: "${TELEMETRY_HOME_CUSTODY:-unmanaged}"}

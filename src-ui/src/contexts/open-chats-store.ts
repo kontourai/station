@@ -1,5 +1,5 @@
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
-import { useMemo, useSyncExternalStore } from 'react';
+import { useMemo } from 'react';
 import type { AgentSummary } from '../types';
 import type { HomeWorkItem } from '../views/home/home-view-model';
 import {
@@ -7,6 +7,7 @@ import {
   type ResolveModelLabel,
 } from '../views/home/home-view-model';
 import { activeChatsStore } from './active-chats-store';
+import { useOpenChatStatus } from './open-chat-status';
 
 export interface ChatFocusTarget {
   sessionId?: string;
@@ -32,6 +33,7 @@ export interface OpenChatsNavigation {
   openConversation?: (
     conversationId: string,
     isCurrent?: () => boolean,
+    options?: { revealDock?: boolean },
   ) => Promise<boolean>;
   focus: (target: ChatFocusTarget) => void | Promise<void>;
   focusRemote?: (
@@ -46,6 +48,9 @@ export interface OpenChatsNavigation {
 class OpenChatsStore {
   private navigation: OpenChatsNavigation | null = null;
   private pending: ChatFocusTarget | null = null;
+  private navigationWaiter:
+    | ((navigation: OpenChatsNavigation | null) => void)
+    | null = null;
 
   subscribe = activeChatsStore.subscribe;
   getSnapshot = activeChatsStore.getSnapshot;
@@ -84,10 +89,35 @@ class OpenChatsStore {
   async openConversation(
     conversationId: string,
     isCurrent?: () => boolean,
+    options: { signal?: AbortSignal; revealDock?: boolean } = {},
   ): Promise<boolean> {
+    const { signal } = options;
+    let navigation = this.navigation;
+    if (!navigation && signal && !signal.aborted) {
+      navigation = await new Promise<OpenChatsNavigation | null>((resolve) => {
+        const timeout = setTimeout(() => settle(null), 10_000);
+        this.navigationWaiter?.(null);
+        const settle = (value: OpenChatsNavigation | null) => {
+          clearTimeout(timeout);
+          signal.removeEventListener('abort', abort);
+          if (this.navigationWaiter === settle) this.navigationWaiter = null;
+          resolve(value);
+        };
+        const abort = () => settle(null);
+        this.navigationWaiter = settle;
+        signal.addEventListener('abort', abort, { once: true });
+      });
+    }
+    const current = () => !signal?.aborted && isCurrent?.() !== false;
+    if (!current()) return false;
     return (
-      (await this.navigation?.openConversation?.(conversationId, isCurrent)) ??
-      false
+      (await navigation?.openConversation?.(
+        conversationId,
+        signal ? current : isCurrent,
+        options.revealDock === undefined
+          ? undefined
+          : { revealDock: options.revealDock },
+      )) ?? false
     );
   }
 
@@ -97,6 +127,7 @@ class OpenChatsStore {
 
   registerNavigation(navigation: OpenChatsNavigation) {
     this.navigation = navigation;
+    this.navigationWaiter?.(navigation);
     const pending = this.pending;
     this.pending = null;
     if (pending && this.hasTarget(pending)) void navigation.focus(pending);
@@ -193,11 +224,7 @@ export function useOpenWorkChats(
   sessions: OrchestrationSessionSummary[] = [],
   resolveModelLabel?: ResolveModelLabel,
 ): HomeWorkItem[] {
-  const chats = useSyncExternalStore(
-    openChatsStore.subscribe,
-    openChatsStore.getSnapshot,
-    openChatsStore.getSnapshot,
-  );
+  const chats = useOpenChatStatus();
   return useMemo(
     () =>
       buildActiveChatTaskItems({
@@ -225,11 +252,7 @@ export function useOpenChatInbox(
   items: HomeWorkItem[];
   currentSessionIdByConversation: ReadonlyMap<string, string>;
 } {
-  const chats = useSyncExternalStore(
-    openChatsStore.subscribe,
-    openChatsStore.getSnapshot,
-    openChatsStore.getSnapshot,
-  );
+  const chats = useOpenChatStatus();
   return useMemo(
     () => ({
       items: buildActiveChatTaskItems({
@@ -261,11 +284,7 @@ export function useOpenChats(
    */
   resolveModelLabel?: ResolveModelLabel,
 ): HomeWorkItem[] {
-  const chats = useSyncExternalStore(
-    openChatsStore.subscribe,
-    openChatsStore.getSnapshot,
-    openChatsStore.getSnapshot,
-  );
+  const chats = useOpenChatStatus();
   return useMemo(
     () =>
       buildActiveChatTaskItems({

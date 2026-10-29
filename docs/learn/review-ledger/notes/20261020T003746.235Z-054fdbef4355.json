@@ -1,0 +1,7 @@
+{
+  "revision": "19f9c32363347444f0ab0b66d4fa7402c67ae6ba",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Reworded the removed layout dashboard entry as a layout operations query (station vocabulary gate); the claim that no instrument exists until #2751 is unchanged.","inputs":["docs/guides/monitoring.md"]}
+  ]
+}

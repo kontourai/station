@@ -1,0 +1,513 @@
+import { createHash } from 'node:crypto';
+import { join } from 'node:path';
+import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
+import { afterEach, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { EventStore } from '../../../services/orchestration/event-store.js';
+import { ProjectTaskRoomRevisionEvidenceBridge } from '../../../services/orchestration/project-task-room-revision-evidence-bridge.js';
+import { ProjectTaskRoomRuntime } from '../../../services/orchestration/project-task-room-runtime.js';
+import type { SessionAssistantTurnQueryOutcome } from '../../../services/orchestration/session-query-module.js';
+import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
+import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
+import { createTaskRoutes } from '../tasks.js';
+
+const temp = trackTempDirs();
+const cleanups: (() => Promise<void>)[] = [];
+afterEach(async () => {
+  for (const close of cleanups.splice(0)) await close();
+});
+const proposal = {
+  title: 'Installer progress',
+  goal: 'Show progress.',
+  doneWhen: ['Steps have counts.'],
+  firstStep: 'Find the installer.',
+};
+const proposalAnswer =
+  '```station-task-proposal\n' + JSON.stringify(proposal) + '\n```';
+const brief =
+  '## Goal\n\nShow progress.\n\n## Done when\n\n- [ ] Steps have counts.\n\n## Suggested first step\n\nFind the installer.';
+const input = {
+  projectId: 'alpha',
+  title: 'Installer progress',
+  description: 'Show progress.',
+  proposalBrief: brief,
+  shapingSource: { sessionId: 'shaping-session', turnId: 'shaping-turn' },
+};
+async function fixture(
+  options: { checkLedgerBeforeCreate?: boolean } = {},
+  outcome: SessionAssistantTurnQueryOutcome = {
+    status: 'found',
+    sessionId: 'shaping-session',
+    turnId: 'shaping-turn',
+    projectSlug: 'alpha',
+    message: {
+      id: 'answer',
+      role: 'assistant',
+      parts: [{ type: 'text', text: proposalAnswer }],
+    },
+  },
+) {
+  const directory = temp('station-proposal-');
+  const service = new TaskGraphService(directory, {
+    projectService: {
+      getProject: () => ({
+        id: 'alpha',
+        slug: 'alpha',
+        name: 'Alpha',
+        workingDirectory: directory,
+        createdAt: '2026-10-15T00:00:00Z',
+        updatedAt: '2026-10-15T00:00:00Z',
+      }),
+    },
+  });
+  const store = new EventStore(join(directory, 'events.sqlite'));
+  const backing = store.createProjectTaskRoomWorkingState();
+  const working = { ...backing, settle: vi.fn(backing.settle) };
+  let current = true;
+  const security = new EnvironmentSecurityService({ homeDir: directory });
+  await security.initialize();
+  const revisionEvidence = new ProjectTaskRoomRevisionEvidenceBridge({
+    eventStore: store,
+    security,
+  });
+  const room = new ProjectTaskRoomRuntime({
+    taskGraph: service,
+    revisionEvidence,
+    projectForId: (id) => ({ id, slug: id }),
+    history: (authority) => store.createProjectTaskRoomHistory(authority),
+    working,
+    requestAuthority: {
+      isCurrent: () => current,
+      resolve: async () =>
+        current
+          ? {
+              kind: 'granted',
+              operatorId: 'owner',
+              deviceId: 'device',
+              policyRevision: 'v1',
+            }
+          : { kind: 'revoked' },
+    },
+  });
+  cleanups.push(async () => {
+    await room.close();
+    store.close();
+  });
+  const read = vi.fn(async () => outcome);
+  const app = createTaskRoutes(service, {
+    taskDispatcher: { dispatch: vi.fn() },
+    readAuthorityForRequest: () =>
+      sessionReadAuthorityFromRequest('owner', undefined, undefined),
+    canReadSession: () => true,
+    readAssistantTurn: read,
+    seedProposalBrief: (input) => room.seedProposalBrief(input),
+    ...(options.checkLedgerBeforeCreate === false
+      ? {}
+      : { proposalBriefRefusal: (text) => room.proposalBriefRefusal(text) }),
+  });
+  const accept = (changes: Partial<typeof input> & { agentId?: string } = {}) =>
+    app.request('/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...input, ...changes }),
+    });
+  return {
+    directory,
+    service,
+    read,
+    accept,
+    room,
+    revisionEvidence,
+    working,
+    revoke: () => {
+      current = false;
+    },
+  };
+}
+
+test('acceptance durably commits the brief and first Session link, and retries keep one Task', async () => {
+  const { directory, service, accept, read, room, working } = await fixture();
+  expect(service.listTasks()).toEqual([]);
+  const response = await accept();
+  expect(response.status, await response.text()).toBe(201);
+  expect(read).toHaveBeenCalledWith(
+    expect.objectContaining({
+      sessionId: 'shaping-session',
+      turnId: 'shaping-turn',
+    }),
+  );
+  const reopened = new TaskGraphService(directory);
+  const [task] = reopened.listTasks();
+  expect(task).toMatchObject({
+    title: 'Installer progress',
+    description: 'Show progress.',
+  });
+  expect(task.sessionId).toBeUndefined();
+  expect(task.agentId).toBeUndefined();
+  expect(reopened.readSessionRelations('shaping-session').links).toEqual([
+    expect.objectContaining({
+      sourceId: task.id,
+      targetId: 'shaping-session',
+      relationType: 'spawned_session',
+      source: 'user',
+      createdAt: task.createdAt,
+      metadata: { shapingTurnId: 'shaping-turn', proposalBriefSaved: true },
+    }),
+  ]);
+  const request = new Request('http://station.test');
+  expect(await room.document({ taskId: task.id, request })).toMatchObject({
+    text: brief,
+  });
+  expect(working.settle.mock.calls[0][0].operations).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        actor: {
+          actorId: `human:${createHash('sha256').update('owner\0device').digest('hex')}`,
+          kind: 'human',
+        },
+      }),
+    ]),
+  );
+  const edit = await room.editPlan({
+    taskId: task.id,
+    request,
+    intentId: 'later-edit',
+    desiredText: 'A later human edit',
+    selection: { anchor: 0, focus: 0 },
+  });
+  if (edit.kind !== 'planned') throw new Error('Expected a plan');
+  expect(
+    await room.submitBatch({
+      taskId: task.id,
+      request,
+      intentId: edit.intentId,
+      intentDigest: edit.digest,
+    }),
+  ).toMatchObject({ kind: 'committed' });
+  expect((await accept()).status).toBe(201);
+  expect(await room.document({ taskId: task.id, request })).toMatchObject({
+    text: 'A later human edit',
+  });
+  expect(reopened.listTasks()).toHaveLength(1);
+});
+
+test.each([
+  { status: 'not-found' },
+  { status: 'unavailable' },
+  {
+    status: 'found',
+    sessionId: 'shaping-session',
+    turnId: 'shaping-turn',
+    projectSlug: 'other-project',
+    message: { id: 'answer', role: 'assistant', parts: [] },
+  },
+] satisfies SessionAssistantTurnQueryOutcome[])(
+  'refuses an unreadable or out-of-project shaping source: $status',
+  async (outcome) => {
+    const { service, accept } = await fixture({}, outcome);
+    expect((await accept()).status).toBe(
+      outcome.status === 'unavailable' ? 503 : 404,
+    );
+    expect(service.listTasks()).toEqual([]);
+    expect(service.readSessionRelations('shaping-session').links).toEqual([]);
+  },
+);
+
+test('revoking source access during workspace capture commits neither Task nor link', async () => {
+  const directory = temp('station-proposal-revoked-');
+  let current = true;
+  const service = new TaskGraphService(directory, {
+    projectService: {
+      getProject: () => {
+        current = false;
+        return {
+          id: 'alpha',
+          slug: 'alpha',
+          name: 'Alpha',
+          workingDirectory: directory,
+          createdAt: '2026-10-15T00:00:00Z',
+          updatedAt: '2026-10-15T00:00:00Z',
+        };
+      },
+    },
+  });
+  await expect(
+    service.createTask(input, undefined, undefined, () => current),
+  ).rejects.toThrow('Shaping source is no longer available');
+  expect(new TaskGraphService(directory).listTasks()).toEqual([]);
+  expect(service.readSessionRelations('shaping-session').links).toEqual([]);
+});
+
+test('a failed document write reports recoverable creation and retry seeds the same Task', async () => {
+  const { working, service, accept, room } = await fixture();
+  const fault = vi
+    .spyOn(working, 'settle')
+    .mockResolvedValueOnce({ kind: 'unavailable' });
+  const failed = await accept();
+  expect(failed.status).toBe(503);
+  expect(await failed.json()).toMatchObject({
+    error: expect.stringContaining(
+      'Task created, but its brief could not be saved',
+    ),
+  });
+  const [task] = service.listTasks();
+  expect(task.description).toBe('Show progress.');
+  expect(
+    service.readSessionRelations('shaping-session').links[0].metadata
+      ?.proposalBriefSaved,
+  ).toBeUndefined();
+  fault.mockRestore();
+  expect((await accept()).status).toBe(201);
+  expect(service.listTasks().map((task) => task.id)).toEqual([task.id]);
+  expect(
+    await room.document({
+      taskId: task.id,
+      request: new Request('http://station.test'),
+    }),
+  ).toMatchObject({ text: brief });
+});
+test('document authority loss reports a recoverable failure without writing under another principal', async () => {
+  const { revoke, service, accept, working } = await fixture();
+  revoke();
+  const settle = vi.spyOn(working, 'settle');
+  expect((await accept()).status).toBe(503);
+  expect(service.listTasks()).toHaveLength(1);
+  expect(settle).not.toHaveBeenCalled();
+});
+
+test('accepted proposals remain unassigned work and reconciliation publishes no agent activity', async () => {
+  const { service, accept, room } = await fixture();
+  expect((await accept()).status).toBe(201);
+  const [task] = service.listTasks();
+  expect(task.sessionId).toBeUndefined();
+  expect(task.agentId).toBeUndefined();
+  await room.reconcileAgentLifecycles([task.id]);
+  const history = await room.history({
+    taskId: task.id,
+    request: new Request('http://station.test'),
+  });
+  expect(history.kind).toBe('available');
+  if (history.kind !== 'available')
+    throw new Error('Expected readable history');
+  expect(
+    history.records.filter(
+      (record) => record.body.kind === 'live-work-started',
+    ),
+  ).toEqual([]);
+});
+
+test('concurrent acceptance saves one brief and both callers succeed', async () => {
+  const { accept, room, service } = await fixture();
+  // Both plans observe the empty document before either submission commits.
+  const submit = room.submitBatch.bind(room);
+  let release!: () => void;
+  const bothPlanned = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let arrivals = 0;
+  vi.spyOn(room, 'submitBatch').mockImplementation(async (input) => {
+    if (++arrivals === 2) release();
+    await bothPlanned;
+    return submit(input);
+  });
+  const responses = await Promise.all([accept(), accept()]);
+  expect(responses.map((response) => response.status)).toEqual([201, 201]);
+  expect(service.listTasks()).toHaveLength(1);
+  expect(
+    await room.document({
+      taskId: service.listTasks()[0].id,
+      request: new Request('http://station.test'),
+    }),
+  ).toMatchObject({ text: brief });
+});
+
+test.each([
+  { title: 'Invented title' },
+  { description: 'Invented goal' },
+  { proposalBrief: 'Invented brief' },
+])(
+  'rejects client proposal edits before creating any Task: %j',
+  async (changes) => {
+    const { accept, service } = await fixture();
+    expect((await accept(changes)).status).toBe(409);
+    expect(service.listTasks()).toEqual([]);
+  },
+);
+
+test('a readable ordinary answer cannot attest a proposal', async () => {
+  const { read, accept, service } = await fixture();
+  read.mockResolvedValue({
+    status: 'found',
+    sessionId: 'shaping-session',
+    turnId: 'shaping-turn',
+    projectSlug: 'alpha',
+    message: {
+      id: 'ordinary',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Plain answer' }],
+    },
+  });
+  expect((await accept()).status).toBe(409);
+  expect(service.listTasks()).toEqual([]);
+});
+
+test('rejects an assigned agent on proposal acceptance without creating a Task', async () => {
+  const { accept, service } = await fixture();
+  const response = await accept({ agentId: 'station' });
+  expect(response.status).toBe(409);
+  expect(service.listTasks()).toEqual([]);
+  expect(service.readSessionRelations('shaping-session').links).toEqual([]);
+});
+
+test('a proposal brief the Task document cannot hold is refused before any Task exists (#4007)', async () => {
+  // Proposals allow 12,000 characters; a Task document holds about 5,400.
+  const goal = 'Show progress. '.repeat(400).trim();
+  const long = { ...proposal, goal };
+  const { read, accept, service, working } = await fixture();
+  read.mockResolvedValue({
+    status: 'found',
+    sessionId: 'shaping-session',
+    turnId: 'shaping-turn',
+    projectSlug: 'alpha',
+    message: {
+      id: 'answer',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'text',
+          text: `\`\`\`station-task-proposal\n${JSON.stringify(long)}\n\`\`\``,
+        },
+      ],
+    },
+  });
+  const longBrief = `## Goal\n\n${goal}\n\n## Done when\n\n- [ ] Steps have counts.\n\n## Suggested first step\n\nFind the installer.`;
+  expect(longBrief.length).toBeGreaterThan(5_479);
+  expect(longBrief.length).toBeLessThanOrEqual(12_000);
+  const response = await accept({
+    description: goal,
+    proposalBrief: longBrief,
+  });
+  expect(response.status).toBe(413);
+  expect(((await response.json()) as { error?: string }).error).toBe(
+    'This brief is too long for a Task document, which holds about 5,400 characters of plain text. Ask the agent for a shorter proposal.',
+  );
+  expect(service.listTasks()).toEqual([]);
+  expect(working.settle).not.toHaveBeenCalled();
+});
+
+/**
+ * Fills the Station-wide revision ledger (#4055) through other Tasks' rooms,
+ * with ever smaller documents, until even a one-character document's receipt
+ * no longer fits. Each requested reference stores a full snapshot receipt.
+ */
+async function fillRevisionLedger(
+  service: TaskGraphService,
+  room: ProjectTaskRoomRuntime,
+  bridge: ProjectTaskRoomRevisionEvidenceBridge,
+  working: Awaited<ReturnType<typeof fixture>>['working'],
+) {
+  const freezes = vi.spyOn(bridge, 'recordPublication');
+  const request = new Request('http://station.test');
+  const fillers: string[] = [];
+  for (const size of [4_000, 2_000, 1_000, 500, 200, 50, 1]) {
+    const filler = await service.createTask({
+      projectId: 'alpha',
+      title: `Ledger filler ${size}`,
+      description: 'Fills the ledger.',
+      createdBy: 'user',
+    } as Parameters<TaskGraphService['createTask']>[0]);
+    fillers.push(filler.id);
+    await room.discover({ taskId: filler.id, request });
+    let text = 'f'.repeat(size);
+    for (let index = 0; ; index += 1) {
+      if (index > 20) throw new Error('the revision ledger never filled');
+      const plan = await room.editPlan({
+        taskId: filler.id,
+        request,
+        intentId: `fill-${size}-${index}`,
+        desiredText: text,
+        selection: { anchor: 0, focus: 0 },
+      });
+      if (plan.kind !== 'planned') throw new Error(`plan was ${plan.kind}`);
+      const result = await room.submitBatch({
+        taskId: filler.id,
+        request,
+        intentId: plan.intentId,
+        intentDigest: plan.digest,
+      });
+      expect(result).toMatchObject({ kind: 'committed' });
+      const document = await room.readPlanForReview(filler.id, request);
+      if (document.kind !== 'available') throw new Error('expected plan');
+      const frozen = await room.freezeDocumentRevision({
+        taskId: filler.id,
+        documentId: document.documentId,
+        workingRevision: document.revision,
+        beforeCommit: () => true,
+      });
+      if (!frozen) {
+        expect(freezes.mock.results.at(-1)).toMatchObject({
+          type: 'return',
+          value: { kind: 'refused', reason: 'capacity_exceeded' },
+        });
+        break;
+      }
+      text += 'g';
+    }
+  }
+  expect(await working.revisionLedgerUsage?.()).toMatchObject({
+    kind: 'available',
+    count: expect.any(Number),
+  });
+  const usage = await working.revisionLedgerUsage?.();
+  if (usage?.kind !== 'available')
+    throw new Error('Expected real ledger usage');
+  expect(usage.count).toBeGreaterThan(1);
+  expect(usage.count).toBeLessThanOrEqual(256);
+  return fillers;
+}
+
+test.each([true, false])(
+  'with the revision ledger full, proposal acceptance still seeds the Task (precheck=%s)',
+  async (checkLedgerBeforeCreate) => {
+    const { accept, service, room, revisionEvidence, working } = await fixture({
+      checkLedgerBeforeCreate,
+    });
+    const fillers = await fillRevisionLedger(
+      service,
+      room,
+      revisionEvidence,
+      working,
+    );
+    const response = await accept();
+    expect(response.status, await response.clone().text()).toBe(201);
+    const created = ((await response.json()) as { data: { id: string } }).data;
+    expect(service.listTasks()).toHaveLength(fillers.length + 1);
+    expect(
+      await room.document({
+        taskId: created.id,
+        request: new Request('http://station.test'),
+      }),
+    ).toMatchObject({ text: brief });
+  },
+  300_000,
+);
+
+test('re-accepting an accepted proposal while the revision ledger is full returns the existing Task (#4007, #4055)', async () => {
+  const { accept, service, room, revisionEvidence, working } = await fixture();
+  const first = await accept();
+  expect(first.status, await first.clone().text()).toBe(201);
+  const accepted = ((await first.json()) as { data: { id: string } }).data;
+  await fillRevisionLedger(service, room, revisionEvidence, working);
+  // A lost response or a double-click: the same source again.
+  const again = await accept();
+  expect(again.status, await again.clone().text()).toBe(201);
+  expect(((await again.json()) as { data: { id: string } }).data.id).toBe(
+    accepted.id,
+  );
+  expect(
+    await room.document({
+      taskId: accepted.id,
+      request: new Request('http://station.test'),
+    }),
+  ).toMatchObject({ text: brief });
+}, 300_000);

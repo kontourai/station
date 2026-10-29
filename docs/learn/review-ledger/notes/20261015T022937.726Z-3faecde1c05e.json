@@ -1,0 +1,7 @@
+{
+  "revision": "1f8a05b6fff641ed13690b2ab0d48c2e0192b97f",
+
+  "notes": [
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"#3667 Fix round 2: Reviewed the scheduler comment-only delta against fetchOrchestrationSessions: it now describes header and body inactivity bounds, not a total duration bound. SSE replay, stream cursor and registration ownership remain unchanged; the ADR historical connection census remains explicitly qualified.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts"]}
+  ]
+}

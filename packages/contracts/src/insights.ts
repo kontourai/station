@@ -38,7 +38,23 @@ export interface UsageInsights {
   totalOutcomeUnknown?: number;
   totalUnresolved?: number;
   days: number;
-  applied?: { agent?: string; tool?: string; engine?: string; limit?: number };
+  applied?: {
+    agent?: string;
+    tool?: string;
+    engine?: string;
+    producer?: string;
+    limit?: number;
+  };
+  /**
+   * Activity external telemetry producers reported, by token name. Producer
+   * rows never count toward the Station aggregates above unless the request
+   * names that producer (`producer=<name>`), which then scopes every figure
+   * to it. Older Stations omit this field.
+   */
+  producerActivity?: Record<
+    string,
+    { events: number; chats: number; toolCalls: number }
+  >;
   /** Older Stations omit this field; consumers treat their scan as unknown. */
   coverage?: InsightsScanCoverage;
 }

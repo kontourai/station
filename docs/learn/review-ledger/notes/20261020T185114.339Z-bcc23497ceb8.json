@@ -1,0 +1,31 @@
+{
+  "revision": "8182ea9910298755dc9d55f144c84f35ef0f0fdb",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed settlement owner and CLI HTTP tests from base19a234c: already-authorized normal cancellation gets immediate/3s read, same run/attempt/head/workflow/repository/PR attribution fences, complete unique job inventory with matching identities, refusal of unfinished assigned runners, then fresh run and final PR read after inventory before one force POST. Force result must become terminal immediately or after1s or fails. Guide captures bounded settlement, one fallback and no source PASS; lost authority stops effects, not permission to force. Merged/closed/current-head policy unchanged. No tests/live controls executed here; manually recovered own3919 is not proof deployed controller uses fallback or backlog improved.","inputs":["docs/guides/testing.md","scripts/__tests__/pr-ci-supersession.test.ts","scripts/pr-ci-supersession.mjs","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Read current Local CI pipeline and Push & Monitor claims. Cancellation settlement changes no normal push gate, required receipt/head identity or merge-queue composition. Observing terminal cancellation is lifecycle evidence, not the exact-source completion receipt; silence remains nonsuccess. Existing canonical testing route and no rerun-to-green guidance remain accurate.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Reviewed common slice acceptance criteria and retained design status. Bounded obsolete-run fallback changes no plugin/kernel/distribution authority or persisted-state contract; behavior-reversion, migration and documentation evidence requirements remain intact. CI terminal cancellation is not plugin delivery acceptance.","inputs":["docs/design/shell-plugins-distributions.md"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed Components and evidence boundary. Obsolete GitHub cancellation settlement changes no theme tokens, channel branding, contrast or startup state. Existing real-surface light/dark/focus/native evidence requirements stay accurate; mocked controller tests cannot supply visual proof.","inputs":["docs/guides/theming.md"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Read current Logging and verification paragraph and focused evidence route. Controller settlement has no frontend query/navigation/logger or layout effect. Distinction between declared hook seams and real keyboard/native/provider proof remains correct; no broader product or performance claim introduced.","inputs":["docs/patterns/frontend.md","pnpm-lock.yaml#/packages"]},
+
+    {"path":"scripts/AGENTS.md","note":"Read complete instructions against new owner: bounded waits, refreshed effect authority and complete identity inventory preserve fail-closed evidence tooling; no new child-process API or schedule/reuse contract. Real CLI/HTTP cases cover stuck cancellation, lost head/attempt, after-inventory PR race, assigned-runner refusal and nonterminal failure. Focused controls/exit collection requirements remain accurate; no executed-test claim in this review.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Read full server instructions. GitHub obsolete-run terminal reconciliation does not modify route/domain/logger, request-local freshness/batching or installed-integrity authority. Existing focused server and mutation/profile routing stays appropriate; lifecycle completion does not establish server runtime or performance.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Read full UI instructions. One force fallback under live cancellation authority affects no query/layout/guard ownership, theme controls or mobile targets. Existing mounted and real geometry/focus proof requirements remain applicable, and no UI inference follows from HTTP controller fixtures.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Read full test instructions and changed fixture lifecycle. Tests exercise actual CLI effects through local HTTP transitions and deliberately inject head change after jobs inventory; no production-only test seam is added. Existing hermetic/resource classification and observable-contract rules apply. Normal/force POST acceptance alone is not terminal proof, and terminal cancellation is never qualified source completion.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"scripts/CLAUDE.md","note":"Read complete @AGENTS.md forwarding file; paired scripts instructions inspected for settlement authority and evidence boundaries. No independent normal/force cancellation policy is duplicated, and import remains accurate.","inputs":["scripts/CLAUDE.md"]},
+
+    {"path":"src-server/CLAUDE.md","note":"Read complete @AGENTS.md forwarding file; paired src-server instructions inspected for settlement authority and evidence boundaries. No independent normal/force cancellation policy is duplicated, and import remains accurate.","inputs":["src-server/CLAUDE.md"]},
+
+    {"path":"src-ui/CLAUDE.md","note":"Read complete @AGENTS.md forwarding file; paired src-ui instructions inspected for settlement authority and evidence boundaries. No independent normal/force cancellation policy is duplicated, and import remains accurate.","inputs":["src-ui/CLAUDE.md"]},
+
+    {"path":"tests/CLAUDE.md","note":"Read complete @AGENTS.md forwarding file; paired tests instructions inspected for settlement authority and evidence boundaries. No independent normal/force cancellation policy is duplicated, and import remains accurate.","inputs":["tests/CLAUDE.md"]}
+  ]
+}

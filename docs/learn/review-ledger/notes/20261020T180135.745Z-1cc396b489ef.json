@@ -1,0 +1,7 @@
+{
+  "revision": "3a5956111d7cdb3981760d5d7de38757b424ab53",
+
+  "notes": [
+    {"path":"docs/guides/discord-gateway.md","note":"Reviewed the merged update changes at 3a5956111d7 against the Discord guide: station-runtime.ts adds server-update readiness after session attachment recovery and coordinator shutdown, while Discord construction, foreground continuation, transcript relay, startup and shutdown remain unchanged. settings-registry.ts adds only serverUpdateDownloadPolicy, not a Discord setting. The guide still accurately describes file-only configuration, startup connection and existing gateway limits. Source review only; live Discord and packaged desktop remain NOT_VERIFIED.","inputs":["docs/guides/discord-gateway.md","src-server/runtime/bootstrap/station-runtime.ts","packages/contracts/src/settings-registry.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "0319fb5d2146004b0150eb7cf444e54447871019",
+
+  "notes": [
+    {"path":"docs/design/connection-list-recovery.md","note":"Scoped review of onboarding native-host delta after merge3a6f4f82edc: the only difference from main in src-desktop/src/lib.rs adds cfg(mobile) registration of the station-discovery plugin. Desktop profile-store genesis, shared-root markers, custody/keyring metadata, locks, CAS and recovery admission are unchanged. This document explicitly excludes mobile recovery and remains an unimplemented desktop/shared-root proposal for4023; its retained baseline and platform acceptance requirements are not renewed or claimed implemented. No prose change required for this exact two-line mobile registration delta.","inputs":["docs/design/connection-list-recovery.md","src-desktop/src/lib.rs"]}
+  ]
+}

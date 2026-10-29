@@ -1,0 +1,7 @@
+{
+  "revision": "8a1276b0347e43e210ea9ffdb1dd37e0be1ae80e",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Re-checked after a comment-only correction in useActiveChatSessionMessaging.ts (may-have-started rows are kept as unconfirmed evidence, as the code already did) and the SDK reference gaining getTurnDelivery; this document's claims are unchanged and still hold.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]}
+  ]
+}

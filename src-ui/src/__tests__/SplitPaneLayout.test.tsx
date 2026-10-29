@@ -31,7 +31,8 @@ vi.mock('../contexts/NavigationContext', () => {
 // Drive the layout's responsive branch through the shared hook so tests can
 // flip between desktop and mobile deterministically.
 const isMobileMock = vi.fn(() => false);
-vi.mock('../hooks/useIsMobile', () => ({
+vi.mock('../hooks/useIsMobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useIsMobile')>()),
   useIsMobile: () => isMobileMock(),
   MOBILE_MEDIA_QUERY: '(max-width: 768px)',
 }));

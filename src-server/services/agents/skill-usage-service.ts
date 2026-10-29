@@ -47,7 +47,7 @@ import { PROTOTYPE_AFFECTING_KEYS } from '../../domain/skill-paths.js';
 /** `{ [skillName]: stats }`, as persisted (without `qualityScore`). */
 export type SkillUsageRecord = Record<string, SkillStats>;
 
-export const SKILL_USAGE_FILENAME = '.usage.json';
+const SKILL_USAGE_FILENAME = '.usage.json';
 
 /** Raised when the counter file exists but cannot be read as a record. */
 export class SkillUsageUnreadableError extends Error {

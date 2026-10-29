@@ -617,7 +617,7 @@ describe('boundFleetContributionManifest (§4.2 peer-boundary decision)', () => 
 });
 
 /**
- * archive#1398, review round 1 (M-1) — a concurrency cap is only a
+ * archive#1398 — a concurrency cap is only a
  * bound if every occupant is guaranteed to leave.
  *
  * Before this, a provider that accepted a request and never yielded held its
@@ -780,7 +780,7 @@ describe('FleetInferenceService: liveness bounds (M-1)', () => {
   });
 
   test('admission control runs before the manifest projection, so a refused request does no pre-admission work', async () => {
-    // L-2: the projection can trigger a bounded inventory refresh with a
+    // The projection can trigger a bounded inventory refresh with a
     // multi-second deadline. Doing it for a request that was always going to
     // be refused lets a saturated Station be pushed further under by the
     // requests it is refusing.

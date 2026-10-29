@@ -1,0 +1,7 @@
+{
+  "revision": "0287e6aa52731def42c90db59c141ff32d4b6e74",
+
+  "notes": [
+    {"path":"docs/guides/deployment.md","note":"Reviewed built UI delivery against lifecycle uiRequestHandler, Vite asset plugins, Docker/Caddy ingress and phone helper. Executed HTTP tests cover immutable hashed assets, ETag/304, negotiated sidecars, HEAD, nonce HTML and containment; browser worker highlighted TypeScript and on-demand Haskell through shared grammar URLs. API auth/cache/SSE ownership is unchanged. Native packaged size and hosted rollout remain unverified.","inputs":["docs/guides/deployment.md","packages/cli/src/commands/lifecycle.ts"]}
+  ]
+}

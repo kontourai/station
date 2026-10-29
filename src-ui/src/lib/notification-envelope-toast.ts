@@ -19,7 +19,9 @@ import {
 export function showEnvelopeNotificationToast(
   data: Record<string, unknown>,
   duration: number,
+  isCurrent: () => boolean = () => true,
 ): void {
+  if (!isCurrent()) return;
   const title = data.title as string;
   const body = data.body as string | undefined;
   const metadata = data.metadata as Record<string, unknown> | undefined;
@@ -36,7 +38,9 @@ export function showEnvelopeNotificationToast(
           {
             label: 'Open',
             variant: 'primary',
-            onClick: () => void activateNotification(notification),
+            onClick: () => {
+              if (isCurrent()) void activateNotification(notification);
+            },
           },
         ]
       : undefined,

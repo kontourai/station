@@ -1,3 +1,7 @@
+import {
+  createWorkspaceActivityReviewPaneInstance,
+  WORKSPACE_ACTIVITY_REVIEW_PANE_DESCRIPTOR,
+} from '@kontourai/station-contracts/workspace-activity-review-pane';
 /** @vitest-environment jsdom */
 
 import { WORKSPACE_BASIS_PANE_DESCRIPTOR } from '@kontourai/station-basis-pane/workspace-basis-pane';
@@ -263,6 +267,41 @@ test('registers only the package-declared lazy Basis descriptor', () => {
     getBuiltinWorkspacePaneRenderer({
       ...WORKSPACE_BASIS_PANE_DESCRIPTOR,
       placement: { supportedRegions: ['primary'] },
+    }),
+  ).toBeNull();
+});
+
+test('Activity review renderer refuses forged declarations and mismatched occurrence state', () => {
+  const descriptor = WORKSPACE_ACTIVITY_REVIEW_PANE_DESCRIPTOR;
+  const instance = createWorkspaceActivityReviewPaneInstance(
+    `activity-review:${'b'.repeat(32)}`,
+  );
+  if (!instance) throw new Error('Canonical review occurrence missing');
+  expect(getBuiltinWorkspacePaneRenderer(descriptor, instance)).toBeTypeOf(
+    'function',
+  );
+  expect(
+    getBuiltinWorkspacePaneRenderer(
+      { ...descriptor, provenance: { origin: 'plugin', pluginId: 'decoy' } },
+      instance,
+    ),
+  ).toBeNull();
+  expect(
+    getBuiltinWorkspacePaneRenderer(
+      { ...descriptor, placement: { supportedRegions: ['primary'] } },
+      instance,
+    ),
+  ).toBeNull();
+  expect(
+    getBuiltinWorkspacePaneRenderer(
+      { ...descriptor, modes: [{ id: 'other' }] },
+      instance,
+    ),
+  ).toBeNull();
+  expect(
+    getBuiltinWorkspacePaneRenderer(descriptor, {
+      ...instance,
+      stateKey: 'other' as typeof instance.stateKey,
     }),
   ).toBeNull();
 });

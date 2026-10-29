@@ -21,7 +21,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { DEGRADED_QUERY_TIMEOUT_MS } from '../hooks/useDegradedQueryState';
-import { OPEN_PROJECT_CHATS_EVENT } from '../lib/projectChatEvents';
 
 const sdkMocks = vi.hoisted(() => ({
   project: undefined as ProjectConfig | undefined,
@@ -153,6 +152,7 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => {
     ...actual,
     useConnections: () => ({
       captureCredentialEvidence: () => sdkMocks.credentialEvidence,
+      captureSelectionIntent: () => 0,
       isCredentialEvidenceCurrent: () => sdkMocks.credentialEvidenceCurrent,
     }),
   };
@@ -647,13 +647,14 @@ describe('ProjectPage (#762 query-failure regression)', () => {
     expect(sdkMocks.refetch).toHaveBeenCalledTimes(1);
   });
 
-  test('offers both add actions under one Open section', async () => {
+  test('keeps workspace add actions in the expandable workspace section', async () => {
     await renderProjectPage();
 
     expect(
       screen.queryByRole('heading', { name: 'Workspace panes' }),
     ).toBeNull();
-    expect(screen.getByText('Open')).toBeTruthy();
+    fireEvent.click(screen.getByText('Open workspace'));
+    expect(screen.getByText('Workspace views')).toBeTruthy();
     expect(screen.getByRole('button', { name: '+ Add layout' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '+ Add pane' })).toBeTruthy();
     // #765 F4: plain copy — no internal migration narrative in product copy.
@@ -824,8 +825,8 @@ describe('ProjectPage (#762 query-failure regression)', () => {
   // (`WorkspacePaneAvailabilityList.tsx` `actionPresentation`), so the remedy
   // the copy promises has no affordance. The gate here is derived, not stated:
   // a plugin-hosted descriptor plus a remote-isolation registry load failure is
-  // what makes `reviewInRegistry` true.
-  test('the picker can reach the Registry for a pane whose remedy is there', async () => {
+  // what makes `reviewExtensions` true.
+  test('the picker reviews extension access without leaving the Project', async () => {
     pluginRegistryState.loadStatus = { failure: 'remote-isolation' };
     const contributed = paneAdaptationFromLayoutTab(
       {
@@ -849,9 +850,14 @@ describe('ProjectPage (#762 query-failure regression)', () => {
     await renderProjectPage();
     fireEvent.click(screen.getByRole('button', { name: '+ Add pane' }));
 
-    const review = screen.getByRole('button', { name: 'Review in Registry' });
+    const review = screen.getByRole('button', { name: 'Review and enable' });
     fireEvent.click(review);
-    expect(navigationMocks.navigate).toHaveBeenCalledWith('/registry');
+    expect(
+      screen.getByRole('dialog', {
+        name: /Allow extensions from/,
+      }),
+    ).toBeTruthy();
+    expect(navigationMocks.navigate).not.toHaveBeenCalledWith('/registry');
   });
 
   test('keeps layout cards visible when the panes catalog fails, and reports the failure in the picker', async () => {
@@ -876,136 +882,6 @@ describe('ProjectPage (#762 query-failure regression)', () => {
     expect(screen.getByText('Could not load workspace panes')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(sdkMocks.refetchPanes).toHaveBeenCalledTimes(1);
-  });
-
-  /**
-   * The banner used to read "Chat with Station … no setup required"
-   * unconditionally, and "Start a chat" called `setDockState(true)`, which
-   * revealed whatever conversation was last active — on a fresh install, a
-   * chat in no project at all, on the one Agent that still needed setup.
-   */
-  describe('"New here?" chat CTA', () => {
-    const readyCodex = () => {
-      sdkMocks.agents = [
-        {
-          slug: 'station',
-          name: 'Station',
-          available: false,
-          unavailableReason: 'No model resolves yet.',
-        },
-        {
-          slug: 'codex',
-          name: 'Codex',
-          execution: { agentConnectionId: 'codex-connection' },
-        },
-      ];
-      sdkMocks.engineConnections = [
-        {
-          id: 'codex-connection',
-          kind: 'agent',
-          enabled: true,
-          status: 'ready',
-          capabilities: ['agent-runtime'],
-        },
-      ];
-    };
-
-    test('names the Agent that can actually start the chat', async () => {
-      readyCodex();
-
-      await renderProjectPage();
-
-      expect(
-        screen.getByText('New here? Chat with Codex to get started.'),
-      ).toBeTruthy();
-      expect(screen.queryByText(/Chat with Station/)).toBeNull();
-    });
-
-    test('#1582 C4: it is the shared page callout, with its copy unchanged', async () => {
-      // It used to be an inline card with its own border, its own text ramp
-      // and a hand-rolled accent button — one of the three visual systems
-      // Home and this page used for the same kind of offer.
-      readyCodex();
-
-      await renderProjectPage();
-
-      const callout = document.querySelector(
-        '[data-callout-id="project-chat-cta"]',
-      );
-      expect(
-        callout,
-        'the CTA does not render through PageCallout',
-      ).toBeTruthy();
-      expect(callout?.className).toContain('page-callout--info');
-      expect(callout?.querySelector('.page-callout__title')?.textContent).toBe(
-        'New here? Chat with Codex to get started.',
-      );
-      expect(callout?.querySelector('.page-callout__body')?.textContent).toBe(
-        'Ask a question or describe a task — no setup required.',
-      );
-      expect(
-        callout?.querySelector('.page-callout__action .button--primary')
-          ?.textContent,
-      ).toBe('Start a chat');
-    });
-
-    test('withholds the banner, and its no-setup promise, when nothing can start a chat', async () => {
-      readyCodex();
-      sdkMocks.engineConnections = [
-        {
-          id: 'codex-connection',
-          kind: 'agent',
-          enabled: true,
-          status: 'connecting',
-          capabilities: ['agent-runtime'],
-        },
-      ];
-
-      await renderProjectPage();
-
-      expect(screen.queryByText(/no setup required/)).toBeNull();
-      expect(screen.queryByRole('button', { name: 'Start a chat' })).toBeNull();
-    });
-
-    test('asks the dock for a chat bound to this project, not just an open dock', async () => {
-      readyCodex();
-      const requests: Array<{
-        projectSlug?: string;
-        projectName?: string;
-        source?: string;
-      }> = [];
-      const listener = (event: Event) => {
-        requests.push(
-          (event as CustomEvent<{ projectSlug?: string }>).detail as {
-            projectSlug?: string;
-            projectName?: string;
-            source?: string;
-          },
-        );
-      };
-      window.addEventListener(OPEN_PROJECT_CHATS_EVENT, listener);
-      try {
-        await renderProjectPage();
-        fireEvent.click(screen.getByRole('button', { name: 'Start a chat' }));
-      } finally {
-        window.removeEventListener(OPEN_PROJECT_CHATS_EVENT, listener);
-      }
-
-      // #1536 M6/D4: the dispatcher names itself, so the source is observable
-      // right here rather than asserted as a constant against its own literal
-      // (D3). The dock reports what it is told; nothing in it hardcodes a
-      // caller that can outlive its only dispatcher.
-      expect(requests).toEqual([
-        {
-          projectSlug: 'demo',
-          projectName: 'Demo Project',
-          source: 'project-page-cta',
-        },
-      ]);
-      // The dock has to be revealed too: its New Chat dialog renders inside
-      // the dock shell, which is collapsed while closed.
-      expect(navigationMocks.setDockState).toHaveBeenCalledWith(true);
-    });
   });
 });
 

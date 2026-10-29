@@ -1,0 +1,7 @@
+{
+  "revision": "cc00643b444b11388f6e06c69f27f15a3c0ae01a",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Reviewed the existing health workflow and real HTTP caller regressions: four-hour scheduled-request freshness and six-hour active Nightly escalation retain exact source/attempt identity, inspect live work beyond the 48-hour completed lookback, and preserve retained provider incidents. Observer adds no dispatch, cancellation, retries or publication authority; bounds depend on GitHub availability. Cadence-before-tests produces no qualified artifact on a skip; admitted runs retain their event SHA. Focused owner tests pass 39/39, including intended pre-fix failures and malformed-evidence controls; hosted execution of this revision remains unverified.","inputs":["docs/guides/releasing.md","scripts/qualification-health.mjs"]}
+  ]
+}

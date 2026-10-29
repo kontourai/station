@@ -1,0 +1,7 @@
+{
+  "revision": "757b510858ea116c0e722d5eda68c5d30b95739a",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"#561: runShellCommand now writes an owned-process registry record for its detached command group (registerDetachedOwnedChild), released after the group exits; the record carries a label, not the command line. Checked the reference for Flow command execution and detached-process claims: the detached mentions concern station start and instance state, unaffected. No prose change.","inputs":["docs/reference/cli.md","src-server/services/flow/flow-run-service.ts"]}
+  ]
+}

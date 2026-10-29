@@ -12,6 +12,24 @@ distinction and no-credential-bridging decision remain; completion of every
 other proposed binding and live vendor interoperability require their own
 evidence. The investigation and alternatives are preserved below.
 
+**2026-10-21 note (steer):** the third falsifier below now has evidence from
+two vendors. Kiro (`kiro-cli 2.33.0`, both `acp` and `--v3 acp`) answers
+`_session/steer` and Grok (`grok 1.0.50`) answers `_x.ai/interject`, and
+neither declares the method. That also outdates the falsifier's "v2 declares
+nothing and answers nothing" (observed on 2.16.0): 2.33.0 `acp` still
+declares nothing, but answers. The adapter's steer selection uses a declared
+method first, then a vendor-attributed data table keyed on exact facts the
+live handshake states about the engine (agentInfo name, `_meta` keys), never
+the launch command; a `-32601` still degrades to cancel + re-prompt. This is
+not rejected alternative 1: that alternative calls documented vendor
+constants on any connection, while each table entry names the one method an
+identity was observed answering, applies only when this session's handshake
+carries that identity, and records the version it was observed on. The
+falsifier's per-connection opt-in list was not adopted because it would turn
+working steering off by default for both engines. The per-connection
+handshake facts are recorded as `declaredHandshake` on the connection status
+([acp-handshake-facts.ts](../../src-server/services/acp/acp-handshake-facts.ts)).
+
 ## Context
 
 station#1815 asks how Station consumes ACP agent extensions — Kiro's
@@ -95,7 +113,7 @@ One authenticated binary, two handshakes:
   nothing it could legitimately hand over; answering it is a
   credential-disclosure surface. Refusing it (`-32601`) leaves v3 turns
   unable to execute — a known Kiro compatibility break that already bites
-  other generic ACP clients (kirodotdev/Kiro#10416, #10543) and is not
+  other generic ACP clients (kirodotdev/Kiro#10416, kirodotdev/Kiro#10543) and is not
   Station's to paper over.
 
 ### The ecosystem (surveyed 2026-08-03)
@@ -318,7 +336,7 @@ reason to render it.
 Third: refusing inbound extension requests can break an agent that
 requires a client-side answer to function — Kiro v3 is *already* this case
 (turns fail without the auth callback). That is disclosed as the vendor's
-compatibility break (their #10416), not absorbed; the alternative
+compatibility break (kirodotdev/Kiro#10416), not absorbed; the alternative
 (answering unknowable requests with fabricated success, or with
 credentials) fails worse in the invisible direction.
 

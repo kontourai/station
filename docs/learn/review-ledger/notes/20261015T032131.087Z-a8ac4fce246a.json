@@ -1,0 +1,7 @@
+{
+  "revision": "942391b5b7c770a7433f75f0be24e94f471ecc3c",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Final screenshots delta requires the labelled Message composer group to receive focus after history recovery in this fixture, whose textarea is disabled because no live model is configured. The assertion does not remove disabled, force a click, or claim writability. Real SDK/owner reads and single-flight request counts remain asserted.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]}
+  ]
+}

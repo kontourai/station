@@ -1,0 +1,7 @@
+{
+  "revision": "eb9bfb8b074a676949c338289eb4f9dc41ce7a97",
+
+  "notes": [
+    {"path":"docs/reference/connect.md","note":"Added forgetConnection to the useConnections listing (shared profile through the host, rejects when none can forget). ConnectionManagerModalContent now forgets through it; removeConnection and removeSharedProfile behavior unchanged. No other documented claim touches the forget path.","inputs":["docs/reference/connect.md","packages/connect/src/react/ConnectionManagerModalContent.tsx","packages/connect/src/react/ConnectionsContext.tsx","src-ui/src/platform/native/stationProfileStorage.ts"]}
+  ]
+}

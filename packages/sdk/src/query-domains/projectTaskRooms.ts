@@ -1,4 +1,7 @@
-import type { ProjectTaskRoomOutputFeedback } from '@kontourai/station-contracts/project-task-room';
+import type {
+  ProjectTaskRoomOutputFeedback,
+  TaskRoomAttachment,
+} from '@kontourai/station-contracts/project-task-room';
 import {
   type ProjectTaskRoomBrowserLiveSnapshot,
   parseProjectTaskRoomBrowserLiveSnapshot,
@@ -219,6 +222,7 @@ export function useAppendProjectTaskRoomHumanMessageMutation(
     mutationFn: async (input: {
       proposalId: string;
       text: string;
+      attachments?: TaskRoomAttachment[];
       occurredAt?: string;
     }) => {
       const scope = config?.requestScope;
@@ -471,10 +475,14 @@ export function useProjectTaskRoomStream(
             const live = parseProjectTaskRoomBrowserLiveSnapshot(event.value);
             if (live?.scope.taskId === taskId)
               notifyCurrent(() => callbackRef.current?.onRoom?.(live));
-            else
+            else {
               void client.invalidateQueries({
                 queryKey: projectTaskRoomQueries.history(taskId).queryKey,
               });
+              void client.invalidateQueries({
+                queryKey: ['task-graph', taskId],
+              });
+            }
           } else if (event.kind === 'snapshot') {
             const live = parseProjectTaskRoomBrowserLiveSnapshot(event.value);
             if (live?.scope.taskId === taskId)
@@ -562,3 +570,8 @@ export function useProjectTaskRoomStream(
   }, [client, connectionGeneration, streamKey, taskId]);
   return useCallback(() => connectionRef.current?.restart(), []);
 }
+
+export {
+  fetchTaskRoomAttachment,
+  uploadTaskRoomAttachments,
+} from '../client/project-task-rooms';

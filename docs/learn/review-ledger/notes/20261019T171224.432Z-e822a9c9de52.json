@@ -1,0 +1,7 @@
+{
+  "revision": "18343ebf076baf5443c35bfe639c21869b97fc65",
+
+  "notes": [
+    {"path":"CONTEXT.md","note":"The glossary gained a Session context card entry; this page's Panel sentence (a visual grouping, not a persisted Pane) still holds and the new entry is consistent with it. No prose change.","inputs":["CONTEXT.md","docs/glossary.md"]}
+  ]
+}

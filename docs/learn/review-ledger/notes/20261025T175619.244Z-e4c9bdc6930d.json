@@ -1,0 +1,9 @@
+{
+  "revision": "1de41dc70d7d375e962ba9e3955f6557ecc02f5d",
+
+  "notes": [
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Rechecked the R4a contract against dc9467f: unknown methods before initialize now return HTTP 200/-32601 without a session; known pre-initialize methods still require initialize. Added direct R4a router, caller/dispatch, audience, shared callback and test sources to this reference owner. Two real CLIs again logged in, listed exactly two tools and called Alpha; actual Claude server/discover was 200. Exposure and full remain compiled/refused; R3 budget changes remain separately owned.","inputs":["docs/reference/outside-agent-oauth.md","src-server/routes/outside-agent/mcp-routes.ts","src-server/services/outside-agent/mcp-dispatch.ts","src-server/security/outside-agent-token-audience.ts","src-server/tools/station-control-project-read-tools.ts","src-server/routes/outside-agent/__tests__/mcp-routes.test.ts","src-server/routes/outside-agent/__tests__/mcp-audience.test.ts"]},
+
+    {"path":"docs/design/outside-agent-mcp-r4a-evidence.md","note":"Reviewed the appended correction and repeated evidence against dc9467f. The pre-initialize test demonstrably failed at 400, then passed at HTTP 200/-32601. Repeated clean-commit audience/dispatch/emission mutations caught 1/3/4 failing tests; baseline/restored each passed 21. Both real CLIs again completed login/list/get_project with actual server/discover 200, followed by token/Keychain/grant/listener/tab cleanup and byte-exact scratch guard restore. The integrated selection passed 735 tests. Preserved earlier 30-second corpus timeout failures and cancelled stale-candidate Veritas without upgrading them to passes.","inputs":["docs/design/outside-agent-mcp-r4a-evidence.md","src-server/routes/outside-agent/__tests__/mcp-routes.test.ts","src-server/routes/outside-agent/mcp-routes.ts"]}
+  ]
+}

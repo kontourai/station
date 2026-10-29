@@ -1,3 +1,4 @@
+import type { StagedAttachmentReference } from '@kontourai/station-contracts/attachment-staging';
 /**
  * `station delegate` — hand Station a Task (create) and headlessly supervise
  * it (status, events, continue, respond, interrupt), or discover ready
@@ -11,6 +12,7 @@
  *   station delegate --agent=<slug> [--model=<id>]
  *     [--project=<slug> | --project-path=<path>] [--on=<environment>]
  *     [--parent-task=<task-id>] [--json] <prompt|--file|stdin>
+ *   station delegate attempt <attempt-id> [--station=<receiver>] [--json]
  *   station delegate status <task-id> [--on=<environment>] [--json]
  *   station delegate events <task-id> [--after=<cursor>] [--on=<environment>] [--json]
  *   station delegate --session=<conversation-id> <message> [--on=<environment>] [--model=<id>] [--json]
@@ -20,9 +22,11 @@
  *   station delegate wait <task-id> [--on=<environment>] [--timeout=<seconds>]
  *     [--interval=<seconds>] [--json]
  *   station delegate targets [--on=<environment>] [--project=<slug> | --project-path=<path>] [--json]
+ *   station delegate list [--on=<environment>] [--limit=<1-100>] [--json]
  *
- * `--on=<environment>` is accepted on every sub-verb (not just create/targets,
- * as the issue's literal sketch showed) because the underlying service
+ * `--on=<environment>` is accepted on task supervision sub-verbs and
+ * create/targets; `attempt` instead requires the executing receiver directly.
+ * The task service
  * functions accept it to address a task living on a non-current SSH
  * environment — omitting it would silently restrict status/events/continue/
  * respond/interrupt to the current environment only, a real functional gap.
@@ -33,14 +37,14 @@
  * page returned (`station-task-events:v1:<n>`), never a raw sequence number —
  * see `client/delegations.ts`'s module docblock.
  *
- * Dispatch: the seven sub-verb names (`status`, `events`, `continue`,
- * `respond`, `interrupt`, `targets`, `wait`) are only treated as an action
+ * Dispatch: the sub-verb names (`attempt`, `status`, `events`, `continue`,
+ * `respond`, `interrupt`, `targets`, `wait`, `list`) are only treated as an action
  * word when `--agent` is not present. `create` is the only verb
  * that takes a target flag, so a bare `station delegate --agent=<slug>
  * status ...` prompt (whose text happens to start with a reserved word) is
  * unambiguously a create call, not a mis-dispatch to `delegate status`. A
  * `--agent`-less create call whose prompt's first word is
- * exactly one of the seven reserved words is a known, narrow, and disclosed
+ * exactly one of the reserved words is a known, narrow, and disclosed
  * ambiguity (the CLI reads it as the sub-verb) — not solved here.
  *
  * `wait` (#2264) is OBSERVATION ONLY. It polls the same secret-minimized
@@ -57,6 +61,8 @@
  */
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import { EXECUTION_PREPARATION_PROTOCOL } from '@kontourai/station-contracts/execution-preparation';
+import type { WorkspaceTarget } from '@kontourai/station-contracts/execution-target';
 import {
   type ApprovalDecision,
   type ContinueForegroundMessageInput,
@@ -68,15 +74,19 @@ import {
   type DelegatedTaskFollowUpHandle,
   type DelegatedTaskHandle,
   type DelegatedTaskInterruptResult,
+  type DelegatedTaskInventory,
   type DelegatedTaskReason,
   type DelegatedTaskRequestResponseHandle,
   type DelegatedTaskSnapshot,
+  type DelegationAttemptView,
   type DelegationOptions,
   type DelegationProjectSlugJoin,
   delegateTask,
   discoverDelegationOptions,
   type ForegroundMessageReceipt,
   interruptDelegatedTask,
+  listDelegatedTasks,
+  lookupDelegationAttempt,
   observeDelegatedTask,
   observeDelegatedTaskEvents,
   respondToDelegatedTaskRequest,
@@ -90,6 +100,11 @@ import {
   type ResolvedApiBase,
   requirePositional,
 } from './core-api.js';
+import {
+  cancelDelegateAttachmentStages,
+  loadDelegateAttachments,
+  stageDelegateAttachments,
+} from './delegate-attachments.js';
 import {
   type DelegateWaitResult,
   formatDurationMs,
@@ -145,7 +160,12 @@ function buildDelegateRespondCommand(
   )} <accept|acceptForSession|decline|cancel>`;
 }
 
-const RESERVED_ACTIONS = new Set([
+/**
+ * The supervision and discovery sub-verbs. A `--session` follow-up that
+ * starts with one is refused as ambiguous; see {@link RESERVED_ACTIONS}.
+ */
+const SUPERVISION_ACTIONS = new Set([
+  'attempt',
   'status',
   'events',
   'continue',
@@ -154,6 +174,13 @@ const RESERVED_ACTIONS = new Set([
   'targets',
   'wait',
 ]);
+
+/**
+ * Every word read as a sub-verb without `--agent`. `list` is not refused
+ * after `--session`: it was never ambiguous there, and "list the files" is an
+ * ordinary follow-up.
+ */
+const RESERVED_ACTIONS = new Set([...SUPERVISION_ACTIONS, 'list']);
 
 function delegateContinuationCommand(conversationId: string): string {
   return `station delegate --session=${shellQuote(conversationId)} "<message>"`;
@@ -201,6 +228,8 @@ function formatDelegateSummary(kind: string, data: unknown): string {
       return formatInterruptSummary(data as DelegatedTaskInterruptResult);
     case 'targets':
       return formatTargetsSummary(data as DelegationOptions);
+    case 'list':
+      return formatListSummary(data as DelegatedTaskInventory);
     default:
       return JSON.stringify(data, null, 2);
   }
@@ -552,6 +581,23 @@ function formatInterruptSummary(result: DelegatedTaskInterruptResult): string {
   return `Interrupt requested for task ${result.taskId} (status: ${result.status})`;
 }
 
+function formatListSummary(inventory: DelegatedTaskInventory): string {
+  const lines = [
+    `Delegated tasks on ${inventory.environment.name} (${inventory.environment.kind})`,
+  ];
+  if (inventory.tasks.length === 0) lines.push('  (none)');
+  for (const task of inventory.tasks) {
+    const project = task.projectSlug ? ` in ${task.projectSlug}` : '';
+    lines.push(
+      `  ${task.taskId} — ${task.status} — ${displayTargetKind(task.target.kind)} '${task.target.id}'${project}`,
+    );
+  }
+  // The server bounds the inventory; say so rather than imply it is whole.
+  if (inventory.truncated)
+    lines.push('More tasks exist than shown; raise --limit (at most 100).');
+  return lines.join('\n');
+}
+
 function formatTargetsSummary(options: DelegationOptions): string {
   const lines = [
     `Targets on ${options.environment.name} (${options.environment.kind})`,
@@ -668,6 +714,108 @@ async function checkOnRequestFail({
   return true;
 }
 
+const PREPARED_DELEGATION_FLAGS = [
+  'portable-project',
+  'resource',
+  'source-commit',
+  'attempt-id',
+] as const;
+
+function preparedDelegation(parsed: ParsedCoreArgs):
+  | {
+      workspace: WorkspaceTarget;
+      attemptId: string;
+    }
+  | undefined {
+  if (
+    !PREPARED_DELEGATION_FLAGS.some((name) => parsed.flags[name] !== undefined)
+  ) {
+    return undefined;
+  }
+  const portableProjectId = optionalValueFlag(parsed, 'portable-project');
+  const resourceId = optionalValueFlag(parsed, 'resource');
+  const commit = optionalValueFlag(parsed, 'source-commit');
+  const attemptId = optionalValueFlag(parsed, 'attempt-id');
+  if (!portableProjectId || !resourceId || !commit || !attemptId) {
+    throw new Error(
+      'Prepared delegation requires --portable-project, --resource, --source-commit and --attempt-id together.',
+    );
+  }
+  if (portableProjectId.length > 512 || resourceId.length > 512) {
+    throw new Error(
+      'Portable Project and resource ids must be at most 512 characters.',
+    );
+  }
+  if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(commit)) {
+    throw new Error(
+      '--source-commit requires a full lowercase Git object id (40 or 64 hex characters).',
+    );
+  }
+  assertAttemptId(attemptId);
+  if (
+    ['project', 'project-path', 'cwd'].some(
+      (name) => parsed.flags[name] !== undefined,
+    )
+  ) {
+    throw new Error(
+      'Prepared delegation cannot be combined with --project, --project-path or --cwd.',
+    );
+  }
+  return {
+    workspace: {
+      kind: 'project-portable-prepared',
+      portableProjectId,
+      resourceId,
+      preparation: {
+        protocol: EXECUTION_PREPARATION_PROTOCOL,
+        mode: 'existing-realization',
+        version: { scheme: 'git-commit', value: commit },
+        guarantees: ['version-matched-when-checked'],
+      },
+    },
+    attemptId,
+  };
+}
+
+function assertAttemptId(value: string): void {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value)) {
+    throw new Error(
+      'Attempt id must be 1–128 characters: a letter or digit followed by letters, digits, dots, underscores, colons or hyphens.',
+    );
+  }
+}
+
+async function runDelegateAttempt(
+  apiBase: string,
+  parsed: ParsedCoreArgs,
+  jsonMode: boolean,
+): Promise<void> {
+  if (parsed.flags.on !== undefined) {
+    throw new Error(
+      'Attempt lookup requires the executing receiver directly: use --station or --api-base, not --on.',
+    );
+  }
+  const attemptId = requirePositional(parsed, 1, 'attempt id');
+  assertAttemptId(attemptId);
+  let view: DelegationAttemptView;
+  try {
+    view = await lookupDelegationAttempt(apiBase, attemptId);
+  } catch (error) {
+    return handleDelegateFailure(error, getResolvedApiBase());
+  }
+  if (jsonMode) {
+    printDelegateResult('attempt', view, true);
+    return;
+  }
+  console.log(`Attempt ${view.attemptId}: ${view.state}`);
+  if (view.taskId) console.log(`Task: ${view.taskId}`);
+  if (view.turnId) console.log(`Initial turn: ${view.turnId}`);
+  if (view.refusalCode) console.log(`Refusal: ${view.refusalCode}`);
+  console.log(
+    'Observation only. This result does not authorize resending the request.',
+  );
+}
+
 async function runDelegateCreate(
   apiBase: string,
   parsed: ParsedCoreArgs,
@@ -677,6 +825,7 @@ async function runDelegateCreate(
   if (!agent) {
     throw new Error('An Agent selector is required.');
   }
+  const prepared = preparedDelegation(parsed);
   const model = optionalValueFlag(parsed, 'model');
   const projectSlug = optionalValueFlag(parsed, 'project');
   const projectPath = optionalValueFlag(parsed, 'project-path');
@@ -698,11 +847,24 @@ async function runDelegateCreate(
   // station#979: usage error before any request, same as every other flag
   // check above.
   const onRequest = resolveOnRequestMode(parsed);
+  const attach = optionalValueFlag(parsed, 'attach');
+  if (attach && (environment.kind !== 'current' || prepared))
+    throw new Error(
+      '--attach requires a new current-host delegation without prepared execution.',
+    );
+  const attachments = attach
+    ? await loadDelegateAttachments(parsed.repeatedFlags.attach ?? [attach])
+    : undefined;
 
   let data: DelegatedTaskHandle;
+  let attachmentRefs: StagedAttachmentReference[] | undefined;
   try {
+    attachmentRefs = attachments
+      ? await stageDelegateAttachments(apiBase, attachments)
+      : undefined;
     data = await delegateTask(apiBase, {
       prompt,
+      ...(attachmentRefs ? { attachmentRefs } : {}),
       target: {
         environment,
         agent: agentId(agent),
@@ -714,17 +876,25 @@ async function runDelegateCreate(
               },
             }
           : {}),
-        ...(projectSlug
-          ? { workspace: { kind: 'project' as const, projectSlug } }
-          : projectPath
-            ? { workspace: { kind: 'directory' as const, cwd: projectPath } }
-            : cwd
-              ? { workspace: { kind: 'directory' as const, cwd } }
-              : {}),
+        ...(prepared
+          ? { workspace: prepared.workspace }
+          : projectSlug
+            ? { workspace: { kind: 'project' as const, projectSlug } }
+            : projectPath
+              ? { workspace: { kind: 'directory' as const, cwd: projectPath } }
+              : cwd
+                ? { workspace: { kind: 'directory' as const, cwd } }
+                : {}),
       },
       ...(parentTaskId ? { parentTaskId } : {}),
+      ...(prepared ? { attemptId: prepared.attemptId } : {}),
     });
   } catch (error) {
+    if (attachmentRefs?.length)
+      await cancelDelegateAttachmentStages(
+        apiBase,
+        attachmentRefs.map(({ stageId }) => stageId),
+      );
     // `return` here (not just a bare call) guards the on-request-fail
     // probe below from ever running with an unassigned `data` — relying on
     // `process.exit`'s real-world termination alone is fragile whenever a
@@ -1057,6 +1227,43 @@ async function runDelegateTargets(
   }
 }
 
+/** The bounds `list_delegated_tasks` and the listing route accept. */
+const LIST_MAX_LIMIT = 100;
+
+/**
+ * `station delegate list`: the person's own delegated tasks on one
+ * Environment, over the same route and fetcher as Station Control's
+ * `list_delegated_tasks` (`GET /api/orchestration/delegations`).
+ */
+async function runDelegateList(
+  apiBase: string,
+  parsed: ParsedCoreArgs,
+  jsonMode: boolean,
+): Promise<void> {
+  const environment = executionEnvironment(parsed);
+  const environmentId =
+    environment.kind === 'saved' ? environment.id : undefined;
+  const rawLimit = optionalValueFlag(parsed, 'limit');
+  let limit: number | undefined;
+  if (rawLimit !== undefined) {
+    limit = Number(rawLimit);
+    // A bound is a refusal, never a silent clamp.
+    if (!Number.isInteger(limit) || limit < 1 || limit > LIST_MAX_LIMIT)
+      throw new Error(
+        `--limit must be a whole number from 1 to ${LIST_MAX_LIMIT}.`,
+      );
+  }
+  try {
+    const data = await listDelegatedTasks(apiBase, {
+      ...(environmentId ? { environmentId } : {}),
+      ...(limit !== undefined ? { limit } : {}),
+    });
+    printDelegateResult('list', data, jsonMode);
+  } catch (error) {
+    handleDelegateFailure(error, getResolvedApiBase());
+  }
+}
+
 /**
  * #2264 — `station delegate wait` command seam. The observation loop,
  * outcome classification, and duration/flag validation live in
@@ -1149,12 +1356,22 @@ export async function runDelegateCommand(
   const hasCreateTarget = Boolean(optionalValueFlag(parsed, 'agent'));
   const conversationId = optionalValueFlag(parsed, 'session');
   if (conversationId) {
+    if (parsed.flags.attach !== undefined)
+      throw new Error('--attach is create-only.');
+    if (
+      PREPARED_DELEGATION_FLAGS.some((name) => parsed.flags[name] !== undefined)
+    ) {
+      throw new Error('Prepared delegation flags are create-only.');
+    }
     if (hasCreateTarget) {
       throw new Error(
         'Use --agent to start a new delegation or --session to continue a conversation, not both.',
       );
     }
-    if (parsed.positionals[0] && RESERVED_ACTIONS.has(parsed.positionals[0])) {
+    if (
+      parsed.positionals[0] &&
+      SUPERVISION_ACTIONS.has(parsed.positionals[0])
+    ) {
       throw new Error(
         '--session continues a conversation with a message; status, events, respond, and interrupt operate on the current Session/task by their positional id.',
       );
@@ -1170,7 +1387,19 @@ export async function runDelegateCommand(
       ? candidate
       : undefined;
 
+  if (
+    action &&
+    PREPARED_DELEGATION_FLAGS.some((name) => parsed.flags[name] !== undefined)
+  ) {
+    throw new Error('Prepared delegation flags are create-only.');
+  }
+
+  if (action && parsed.flags.attach !== undefined)
+    throw new Error('--attach is create-only.');
+
   switch (action) {
+    case 'attempt':
+      return runDelegateAttempt(apiBase, parsed, jsonMode);
     case 'status':
       return runDelegateStatus(apiBase, parsed, jsonMode);
     case 'events':
@@ -1191,6 +1420,8 @@ export async function runDelegateCommand(
       return runDelegateInterrupt(apiBase, parsed, jsonMode);
     case 'targets':
       return runDelegateTargets(apiBase, parsed, jsonMode);
+    case 'list':
+      return runDelegateList(apiBase, parsed, jsonMode);
     case 'wait':
       return runDelegateWait(apiBase, parsed, jsonMode);
     default:

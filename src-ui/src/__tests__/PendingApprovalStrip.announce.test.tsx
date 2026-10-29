@@ -151,4 +151,36 @@ describe('PendingApprovalStrip announcements (#2344)', () => {
     );
     expect(liveRegion().textContent).toBe('Needs approval: Edit');
   });
+
+  test('a form is announced by its own ask, not its protocol method', () => {
+    const { rerender } = render(strip([]));
+    rerender(
+      strip([
+        {
+          ...request('req-plan', 'cursor/create_plan'),
+          inputRequest: {
+            schema: 'station.input-request/v1',
+            source: 'harness:cursor',
+            requester: 'Lab Engine',
+            message: 'Session storage on SQLite\n\nMove session records.',
+            body: {
+              kind: 'form',
+              fields: [
+                {
+                  name: 'review',
+                  kind: 'choice',
+                  title: 'Approve the plan?',
+                  required: true,
+                  options: [{ value: 'approve', label: 'Approve' }],
+                },
+              ],
+            },
+          },
+        },
+      ]),
+    );
+    expect(liveRegion().textContent).toBe(
+      'Needs approval: Session storage on SQLite…',
+    );
+  });
 });

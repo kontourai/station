@@ -15,6 +15,8 @@ export interface ConnectionQuotaWindow {
   windowDurationMins?: number;
   /** Provider-reported epoch value; Station does not guess its unit or format. */
   resetsAt?: number;
+  /** Qualified deadline normalized by an adapter with a declared wire unit. */
+  resetDeadlineAt?: string;
 }
 
 /**
@@ -41,6 +43,11 @@ export interface ConnectionQuotaSnapshot {
   accountScope: 'profile' | 'global';
   /** `type` is an opaque provider plan string; Station does not enumerate it. */
   plan?: ObservedQuotaValue<{ type: string }>;
+  /** Provider-reported qualified lifecycle; never inferred from a plan name. */
+  subscriptionEnd?: ObservedQuotaValue<{
+    endsAt: string;
+    renewal: 'non-renewing' | 'renewing' | 'unknown';
+  }>;
   windows: ConnectionQuotaWindow[];
   credits?: ObservedQuotaValue<{
     hasCredits: boolean;
@@ -68,6 +75,11 @@ export interface ConnectionQuotaSnapshotUpdate {
   source: 'provider-reported';
   accountScope: 'profile' | 'global';
   plan?: ObservedQuotaValue<{ type: string }> | null;
+  /** Provider-reported qualified lifecycle; never inferred from a plan name. */
+  subscriptionEnd?: ObservedQuotaValue<{
+    endsAt: string;
+    renewal: 'non-renewing' | 'renewing' | 'unknown';
+  }> | null;
   windows: ConnectionQuotaWindow[];
   credits?: ObservedQuotaValue<{
     hasCredits: boolean;
@@ -89,6 +101,7 @@ function newestObservedAt(
   const observedAt = [
     ...snapshot.windows.map((window) => window.observedAt),
     snapshot.plan?.observedAt,
+    snapshot.subscriptionEnd?.observedAt,
     snapshot.credits?.observedAt,
     snapshot.limitReached?.observedAt,
     snapshot.spendControl?.observedAt,
@@ -130,7 +143,7 @@ export function mergeQuotaSnapshot(
     if (baselineWindow && updateWindow.observedAt < baselineWindow.observedAt) {
       continue;
     }
-    windows.set(updateWindow.id, {
+    const mergedWindow: ConnectionQuotaWindow = {
       ...baselineWindow,
       ...updateWindow,
       ...(updateWindow.label === undefined &&
@@ -145,7 +158,13 @@ export function mergeQuotaSnapshot(
       baselineWindow?.resetsAt !== undefined
         ? { resetsAt: baselineWindow.resetsAt }
         : {}),
-    });
+    };
+    if (
+      updateWindow.resetsAt !== undefined &&
+      updateWindow.resetDeadlineAt === undefined
+    )
+      delete mergedWindow.resetDeadlineAt;
+    windows.set(updateWindow.id, mergedWindow);
   }
   const newest = <T>(
     baselineValue: ObservedQuotaValue<T> | undefined,
@@ -164,6 +183,14 @@ export function mergeQuotaSnapshot(
     ...(baseline?.baselineAt ? { baselineAt: baseline.baselineAt } : {}),
     ...(newest(baseline?.plan, update.plan)
       ? { plan: newest(baseline?.plan, update.plan) }
+      : {}),
+    ...(newest(baseline?.subscriptionEnd, update.subscriptionEnd)
+      ? {
+          subscriptionEnd: newest(
+            baseline?.subscriptionEnd,
+            update.subscriptionEnd,
+          ),
+        }
       : {}),
     windows: [...windows.values()],
     ...(credits

@@ -1,32 +1,15 @@
 /**
- * Ask pane — retrieval-grounded Q&A over the K3 index
- * (`s203-knowledge-meeting-notes` plan, Wave 2 Task 5, AC2-provenance-qa).
+ * Ask pane: retrieval-grounded Q&A over the K3 knowledge index. Retrieval and
+ * excerpts with provenance links, with no generation: a query goes straight
+ * to `POST /api/knowledge/index/search` (via `useSearchKnowledgeIndexMutation`)
+ * and every hit renders as an answer card (title, category, matched excerpt,
+ * score). No `useSendToChat` or model call is wired in.
  *
- * Per the pickup Probe's Q3 decision (`s203-knowledge-meeting-notes--pull-
- * work.md` §pickup_probe): "the honest v1 is retrieval + excerpt
- * presentation with provenance links (no generation)". This pane is a
- * search box, not a chat product — a query goes straight to Task 2's
- * `POST /api/knowledge/index/search` (via `useSearchKnowledgeIndexMutation`)
- * and every hit is rendered as an answer card (title, category, matched
- * excerpt, score) with a provenance affordance that opens the source
- * record's own detail (self-contained here — see the module doc below for
- * why, and the noted Wave 3 duplication). No `useSendToChat`/model call is
- * wired in; Q3 already resolved that question, so this file does not
- * re-litigate it.
- *
- * Provenance/detail rendering: `examples/knowledge-docs-starter/` type-shape
- * precedent aside, this plan's Wave 2 Task 4 (`GraphPane.tsx`, a parallel
- * worker's file) is expected to introduce its own "open a record's detail"
- * affordance for the Library tab. As of this task's landing, `GraphPane.tsx`
- * does not exist yet in this worktree and `index.tsx` defines no shared
- * cross-pane selection state to coordinate through, so this pane renders its
- * own self-contained detail panel (fetching the full `KitRecord` via
- * `useKnowledgeRecordQuery` on demand). `GraphPane.tsx` has since landed with
- * its own detail panel and the two panes still don't share cross-pane
- * selection state — that remains a deliberate, small duplication (each
- * pane's detail affordance is scoped to its own tab), not a follow-up this
- * Wave 3 cleanup pass reopens. The relevant-root filter duplication IS
- * addressed by this pass — see `./roots.ts`.
+ * Each card opens the source record's own detail panel, which fetches the full
+ * `KitRecord` with `useKnowledgeRecordQuery`. `GraphPane.tsx` has its own
+ * detail panel; the two panes deliberately share no selection state, because
+ * each detail affordance belongs to its own tab. The relevant-root filter is
+ * shared through `./roots.ts`.
  */
 
 import type { LayoutComponentProps } from '@kontourai/station-sdk';

@@ -1,0 +1,11 @@
+{
+  "revision": "d9ecb107b36bab1bf96aed2776936f2dd54400c8",
+
+  "notes": [
+    {"path":"docs/guides/desktop-build.md","note":"P2 correction: reviewed desktop_node_command and spawn_sidecar_child debug login-PATH selection, node-pty loader and restored OS-only pruning. Same-OS arm64/x64 bindings remain staged for Darwin, Windows and Linux, including linux-arm64 staging. Replaces the earlier exact-architecture rationale; RxJS pruning stays unchanged. Full portability/pruning tests pass; clean old-pruning mutation fails at the named Linux arm64 assertion and restores green. Rosetta GUI execution and Windows first-launch latency remain NOT_VERIFIED.","inputs":["docs/guides/desktop-build.md"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Reviewed the node-pty OS-only retention correction against staging budget and package-layout claims. The stager still refuses over-budget inputs and keeps runtime adjacency, pinned release Node and release signatures unchanged. Debug PATH Node can have a different architecture, so same-OS prebuilds must remain. Focused fixture and restored fault proof pass; AppImage startup and release delivery remain NOT_VERIFIED.","inputs":["docs/guides/native-releases.md","scripts/lib/desktop-server-runtime.mjs"]},
+
+    {"path":"docs/guides/nightly.md","note":"Reviewed restored same-OS node-pty retention against the documented split between pinned release Node and developer Node in debug builds. The correction preserves both architectures without changing Nightly signing, updater contract, identity, workflow or publication. This supersedes the earlier exact-architecture pruning rationale; packaged/Windows runtime evidence is not inferred from unit fixtures.","inputs":["docs/guides/nightly.md","scripts/lib/desktop-server-runtime.mjs"]}
+  ]
+}

@@ -1,0 +1,1342 @@
+/**
+ * Core server generations: first boot, sequential hold-and-swap handoff with
+ * rollback, and crash restart with backoff.
+ *
+ * Phase 1 never runs two generations against the Station home at once. A
+ * trial generation parks before touching the home; only after the active
+ * generation has exited is it promoted. Listening handles stay open in the
+ * supervisor throughout, so connections queue in the kernel backlog instead
+ * of being refused. On Windows the supervisor also accepts, briefly, while a
+ * handoff moves the listeners (see `ListenerSparesMessage`).
+ *
+ * Process creation and time are injected so the algorithm can be tested
+ * in-process with a fake clock.
+ */
+import { EventEmitter } from 'node:events';
+import { isRecord } from './ndjson.ts';
+import {
+  type GenerationState,
+  type GenerationStatus,
+  HANDOFF_DEFAULTS,
+  type HandoffOutcome,
+  type HandoffPhase,
+  type HandoffTimings,
+  type ListenerStatus,
+  MAX_LISTENER_SPARES,
+  RESTART_DEFAULTS,
+  type RestartPolicy,
+  type SupervisorEvent,
+  type SupervisorState,
+  type SupervisorToCoreMessage,
+} from './protocol.ts';
+
+export interface Clock {
+  now(): number;
+  setTimeout(callback: () => void, ms: number): unknown;
+  clearTimeout(timer: unknown): void;
+}
+
+export const systemClock: Clock = {
+  now: () => Date.now(),
+  setTimeout: (callback, ms) => setTimeout(callback, ms),
+  clearTimeout: (timer) => clearTimeout(timer as NodeJS.Timeout),
+};
+
+/** A listening handle held by the supervisor. Node's raw TCP and Pipe wraps satisfy this. */
+export interface ListenerHandle {
+  close(): void;
+}
+
+/** A connection a catcher accepted and holds, unread, until a generation adopts it. */
+export interface HeldConnection {
+  destroy(): void;
+}
+
+/** Listens on a spare copy of a held listener while a handoff moves it. */
+export interface ListenerCatcher {
+  readonly name: string;
+  /** Clock time of the last connection it accepted; 0 if none. */
+  readonly lastCaughtAt: number;
+  /** Connections it holds that are still open. */
+  readonly heldCount: number;
+  /** Stops listening, closing the spare, but keeps what it holds. */
+  stop(): void;
+  /** Stops listening, closing the spare, and returns what it holds. */
+  close(): HeldConnection[];
+}
+
+type CatcherFactory = (
+  name: string,
+  handle: ListenerHandle,
+  now: () => number,
+  /** Called after each connection it accepts. */
+  onCatch: () => void,
+) => ListenerCatcher;
+
+export interface GenerationProcess {
+  readonly pid: number | null;
+  send(
+    message: SupervisorToCoreMessage,
+    handle?: ListenerHandle | HeldConnection,
+  ): void;
+  kill(signal: 'SIGTERM' | 'SIGKILL'): void;
+  onMessage(listener: (message: unknown, handle: unknown) => void): void;
+  onExit(listener: (code: number | null, signal: string | null) => void): void;
+}
+
+export interface GenerationLauncher {
+  launch(options: { entry: string; generation: number }): GenerationProcess;
+}
+
+export interface HandoffOptions {
+  entry?: string;
+  readinessTimeoutMs?: number;
+  drainDeadlineMs?: number;
+}
+
+/** A core's own `handoff.request`: who asked, so progress can answer it. */
+interface CoreHandoffRequester {
+  gen: Generation;
+  requestId: string;
+}
+
+export interface HandoffOutcomeResult {
+  outcome: HandoffOutcome;
+  reason?: string;
+  generation?: number;
+  bootId?: string;
+}
+
+export interface GenerationManagerOptions {
+  entry: string;
+  launcher: GenerationLauncher;
+  clock?: Clock;
+  handoff?: Partial<HandoffTimings>;
+  restart?: Partial<RestartPolicy>;
+  log?: (message: string) => void;
+  onEvent?: (event: SupervisorEvent) => void;
+  /** Called once when crash restarts exceed the failure budget. */
+  onGiveUp?: (failures: number) => void;
+  /**
+   * Checks an entry a handoff request names, returning the entry to run or a
+   * refusal. Entries the manager already runs (the committed one, and the one
+   * a rollback relaunches) are not re-checked: they passed this on the way in.
+   */
+  resolveEntry?: (entry: string) => { entry: string } | { refused: string };
+  /**
+   * Catch connections while a handoff drains the active generation: listen
+   * on `spares` copies of each held listener, made by `createCatcher`. Only
+   * Windows needs this (see `ListenerSparesMessage`); without it handoffs
+   * leave connections to the kernel backlog.
+   */
+  catchConnections?: { spares: number; createCatcher: CatcherFactory };
+}
+
+/** How long a handoff waits for the draining generation's `listener.spare` answers. */
+const SPARE_ANSWER_TIMEOUT_MS = 2_000;
+/**
+ * Catchers for a listener close once none has accepted for CATCH_QUIET_MS
+ * after the next generation listens on it, or after CATCH_QUIET_CAP_MS.
+ * That generation's accepts are newer, so connections reach it first, but
+ * one still booting may be slow to post its next accept, and closing a
+ * catcher resets a connection completed into one of its accepts, as closing
+ * a generation's listener would.
+ */
+const CATCH_QUIET_MS = 50;
+const CATCH_QUIET_CAP_MS = 1_000;
+/**
+ * The most connections held for one listener: Node's default listen backlog,
+ * the queue those connections would otherwise wait in. Past it the
+ * listener's spares close, and new connections wait in the kernel backlog
+ * instead. That loses fewer than turning new arrivals away: closing a spare
+ * resets only a connection completed into its accept in that instant, while
+ * destroying arrivals would reset every one.
+ */
+const HOLD_LIMIT_PER_LISTENER = 511;
+/**
+ * Held connections still unclaimed this long after their catcher started are
+ * closed, but only once the handoff that caught them has ended with no
+ * generation taking them (it fell back to crash restarts). While the handoff
+ * runs, a trial or the rollback is on its way, however long a live call
+ * extends the drain, so the deadline is checked again a period later; the
+ * count limit still bounds what is held meanwhile.
+ */
+const HOLD_DEADLINE_MS = 60_000;
+
+interface Generation {
+  id: number;
+  entry: string;
+  proc: GenerationProcess;
+  state: GenerationState;
+  bootId: string | null;
+  port: number | null;
+  voiceSessions: number;
+  /** Set once the supervisor itself asked the generation to drain or die. */
+  expectingExit: boolean;
+  /** Set when the generation broke the protocol and is being killed. */
+  failed: boolean;
+  /** It reported `drained`: it shut down on purpose, not in a crash. */
+  drained: boolean;
+  /** Exit code, once exited. */
+  exitCode: number | null;
+  /** It said, when parked, that it speaks connection catching (protocol 1.1). */
+  adoptsConnections: boolean;
+  /** It announced `handoff-events` when parked (protocol 1.2). */
+  handoffEvents: boolean;
+  /** Held listeners it listens on: bound itself, or reported listening. */
+  listening: Set<string>;
+  /** A failed trial being ended: it gets no held connections. */
+  retiring: boolean;
+  notify: Set<() => void>;
+  exited: Promise<void>;
+}
+
+type WaitResult = 'ok' | 'exit' | 'timeout';
+
+/**
+ * After a failed trial's drain deadline, how long SIGTERM gets before
+ * SIGKILL. Short: the trial already ignored a drain, and the previous entry
+ * cannot start until it is gone.
+ */
+export const FAILED_TRIAL_TERM_GRACE_MS = 250;
+
+function hasExited(gen: Generation): boolean {
+  return gen.state === 'exited';
+}
+
+function isClosable(value: unknown): value is ListenerHandle {
+  return isRecord(value) && typeof value.close === 'function';
+}
+
+/**
+ * Only Node's raw listening wraps (TCP, or Pipe for a named pipe or Unix
+ * socket) may be held. A core that sends its `net.Server` instead makes Node
+ * rebuild a listening server in this process, which would accept connections
+ * and never answer them.
+ */
+function isRawListenerHandle(value: unknown): value is ListenerHandle {
+  if (!isClosable(value) || value instanceof EventEmitter) return false;
+  const name = (value as { constructor?: { name?: unknown } }).constructor
+    ?.name;
+  if (name === 'Pipe') return true;
+  if (name !== 'TCP') return false;
+  // A connected TCP wrap is a TCP wrap too. getpeername fails (ENOTCONN) on a
+  // listening one. Pipe wraps have no such query, so a connected pipe cannot
+  // be told apart here; the handle-guard test pins the TCP behavior.
+  const getpeername = (value as { getpeername?: unknown }).getpeername;
+  if (typeof getpeername !== 'function') return false;
+  try {
+    return getpeername.call(value, {}) !== 0;
+  } catch {
+    return false;
+  }
+}
+
+function destroyQuietly(connection: HeldConnection): void {
+  try {
+    connection.destroy();
+  } catch {
+    // Already gone.
+  }
+}
+
+function closeQuietly(handle: unknown): void {
+  if (!isClosable(handle)) return;
+  try {
+    handle.close();
+  } catch {
+    // Already closed.
+  }
+}
+
+export class GenerationManager {
+  private readonly clock: Clock;
+  private readonly handoffConfig: HandoffTimings;
+  private readonly restartConfig: RestartPolicy;
+  private readonly log: (message: string) => void;
+  private entry: string;
+  private nextId = 1;
+  private state: SupervisorState = 'starting';
+  private active: Generation | null = null;
+  private trial: Generation | null = null;
+  /** Spares listening for the handoff in progress (see `beginCatching`). */
+  private catchers: ListenerCatcher[] = [];
+  /** When each catcher started, for HOLD_DEADLINE_MS. */
+  private readonly catcherSince = new Map<ListenerCatcher, number>();
+  private holdTimer: unknown = null;
+  /** Where `listener.spare` answers go while `beginCatching` waits. */
+  private spareRequest: {
+    gen: Generation;
+    onSpare: (name: string, handle: ListenerHandle) => void;
+  } | null = null;
+  private readonly listeners = new Map<
+    string,
+    { port: number; handle: ListenerHandle }
+  >();
+  private failures: number[] = [];
+  private consecutiveFailures = 0;
+  private lastBackoffMs: number | null = null;
+  private stableTimer: unknown = null;
+  private stopping = false;
+  private gaveUp = false;
+  private cancelSleep: (() => void) | null = null;
+  private stopped: Promise<void> | null = null;
+
+  private readonly options: GenerationManagerOptions;
+
+  constructor(options: GenerationManagerOptions) {
+    this.options = options;
+    this.clock = options.clock ?? systemClock;
+    this.handoffConfig = { ...HANDOFF_DEFAULTS, ...options.handoff };
+    this.restartConfig = { ...RESTART_DEFAULTS, ...options.restart };
+    this.log = options.log ?? (() => {});
+    this.entry = options.entry;
+  }
+
+  /** Boots the first generation, retrying with backoff. */
+  start(): Promise<void> {
+    return this.bringUp('starting');
+  }
+
+  status(): {
+    state: SupervisorState;
+    active: GenerationStatus | null;
+    trial: GenerationStatus | null;
+    listeners: ListenerStatus[];
+    restarts: { consecutiveFailures: number; lastBackoffMs: number | null };
+  } {
+    return {
+      state: this.state,
+      active: this.active ? this.describe(this.active) : null,
+      trial: this.trial ? this.describe(this.trial) : null,
+      listeners: [...this.listeners].map(([name, { port }]) => ({
+        name,
+        port,
+      })),
+      restarts: {
+        consecutiveFailures: this.consecutiveFailures,
+        lastBackoffMs: this.lastBackoffMs,
+      },
+    };
+  }
+
+  heldListenerCount(): number {
+    return this.listeners.size;
+  }
+
+  async handoff(
+    request: HandoffOptions,
+    onProgress: (phase: HandoffPhase, generation: number) => void = () => {},
+  ): Promise<HandoffOutcomeResult> {
+    return this.handoffFor(request, onProgress, null);
+  }
+
+  /**
+   * Runs a handoff and, when it leaves a generation serving, tells that
+   * generation the outcome (protocol 1.2 `handoff.outcome`). `requester` is
+   * the core whose `handoff.request` started it, if any: it hears progress
+   * while it is still alive.
+   */
+  private async handoffFor(
+    request: HandoffOptions,
+    onProgress: (phase: HandoffPhase, generation: number) => void,
+    requester: CoreHandoffRequester | null,
+  ): Promise<HandoffOutcomeResult> {
+    const result = await this.runHandoff(request, (phase, generation) => {
+      onProgress(phase, generation);
+      if (
+        requester?.gen.handoffEvents &&
+        !hasExited(requester.gen) &&
+        requester.gen.state !== 'draining'
+      ) {
+        requester.gen.proc.send({
+          type: 'handoff.progress',
+          requestId: requester.requestId,
+          phase,
+          generation,
+        });
+      }
+    });
+    const survivor = this.active;
+    if (
+      result.outcome !== 'refused' &&
+      result.generation !== undefined &&
+      survivor?.id === result.generation &&
+      survivor.state === 'serving' &&
+      survivor.handoffEvents
+    ) {
+      survivor.proc.send({
+        type: 'handoff.outcome',
+        requestId: requester?.requestId ?? null,
+        outcome: result.outcome,
+        ...(result.reason !== undefined ? { reason: result.reason } : {}),
+        generation: survivor.id,
+      });
+    }
+    return result;
+  }
+
+  private async runHandoff(
+    request: HandoffOptions,
+    onProgress: (phase: HandoffPhase, generation: number) => void,
+  ): Promise<HandoffOutcomeResult> {
+    if (this.stopping) return { outcome: 'refused', reason: 'stopping' };
+    if (this.state === 'handoff') return { outcome: 'refused', reason: 'busy' };
+    const previous = this.active;
+    if (this.state !== 'serving' || !previous || previous.state !== 'serving') {
+      return { outcome: 'refused', reason: 'not-serving' };
+    }
+    let entry = previous.entry;
+    if (request.entry !== undefined) {
+      const checked = this.options.resolveEntry?.(request.entry) ?? {
+        entry: request.entry,
+      };
+      if ('refused' in checked)
+        return { outcome: 'refused', reason: checked.refused };
+      entry = checked.entry;
+    }
+    const readinessTimeoutMs =
+      request.readinessTimeoutMs ?? this.handoffConfig.readinessTimeoutMs;
+    const drainDeadlineMs =
+      request.drainDeadlineMs ?? this.handoffConfig.drainDeadlineMs;
+    const previousEntry = previous.entry;
+
+    this.setState('handoff');
+    const progress = (phase: HandoffPhase, generation: number) => {
+      onProgress(phase, generation);
+      this.emit({ type: 'handoff', phase, generation });
+    };
+    const trial = this.launch(entry);
+    this.trial = trial;
+    progress('trial-started', trial.id);
+
+    const parked = await this.waitForState(
+      trial,
+      ['parked'],
+      this.handoffConfig.parkTimeoutMs,
+    );
+    if (parked !== 'ok' || this.stopping) {
+      await this.terminate(trial);
+      this.trial = null;
+      const reason = this.stopping
+        ? 'stopping'
+        : parked === 'exit'
+          ? 'trial-exited-before-parked'
+          : 'trial-park-timeout';
+      return this.finishRollback(previous, previousEntry, reason, progress);
+    }
+    progress('trial-parked', trial.id);
+
+    // Re-read: the previous generation may have exited while the trial parked.
+    if (!hasExited(previous)) {
+      await this.beginCatching(previous, trial.adoptsConnections);
+      progress('draining', previous.id);
+      await this.drain(previous, drainDeadlineMs);
+    }
+    progress('drained', previous.id);
+    if (this.active === previous) this.active = null;
+
+    if (this.stopping || hasExited(trial)) {
+      await this.terminate(trial);
+      this.trial = null;
+      return this.finishRollback(
+        null,
+        previousEntry,
+        this.stopping ? 'stopping' : 'trial-exited-while-draining',
+        progress,
+      );
+    }
+
+    this.promote(trial);
+    progress('promoted', trial.id);
+    const ready = await this.waitForState(
+      trial,
+      ['serving'],
+      readinessTimeoutMs,
+    );
+    if (ready !== 'ok' || this.stopping) {
+      await this.retireTrial(trial, previous, drainDeadlineMs);
+      this.trial = null;
+      const reason = this.stopping
+        ? 'stopping'
+        : ready === 'exit'
+          ? 'trial-exited-after-promote'
+          : 'trial-readiness-timeout';
+      return this.finishRollback(null, previousEntry, reason, progress);
+    }
+    // A trial that dies as it reports ready, or just after, is a failed trial:
+    // committing it would report success for a generation that is gone.
+    if (
+      (await this.waitForExit(trial, this.handoffConfig.commitGraceMs)) ||
+      this.stopping
+    ) {
+      await this.retireTrial(trial, previous, drainDeadlineMs);
+      this.trial = null;
+      const reason = this.stopping ? 'stopping' : 'trial-exited-at-commit';
+      return this.finishRollback(null, previousEntry, reason, progress);
+    }
+
+    this.trial = null;
+    this.entry = trial.entry;
+    this.commitActive(trial);
+    this.emit({ type: 'handoff', phase: 'committed', generation: trial.id });
+    return {
+      outcome: 'committed',
+      generation: trial.id,
+      bootId: trial.bootId ?? undefined,
+    };
+  }
+
+  /** Drains every generation and resolves once none is running. Idempotent. */
+  stop(
+    drainDeadlineMs: number = this.handoffConfig.drainDeadlineMs,
+  ): Promise<void> {
+    if (this.stopped) return this.stopped;
+    this.stopping = true;
+    this.setState('stopping');
+    this.emit({ type: 'stopping' });
+    this.cancelSleep?.();
+    this.clearStableTimer();
+    this.stopped = (async () => {
+      const work: Promise<void>[] = [];
+      // A stop must finish inside a service manager's stop timeout, so its
+      // drain, voice sessions included, is capped well below the handoff cap.
+      const cap = this.handoffConfig.stopDrainCapMs;
+      if (this.trial) {
+        work.push(
+          this.retire(
+            this.trial,
+            this.failedDrainMs(Math.min(drainDeadlineMs, cap)),
+          ),
+        );
+      }
+      if (this.active) {
+        work.push(this.drain(this.active, Math.min(drainDeadlineMs, cap), cap));
+      }
+      await Promise.all(work);
+      // A handoff or restart in flight may have launched a generation while
+      // the above ran; it sees `stopping` and terminates it, but wait for it.
+      while (this.trial || (this.active && this.active.state !== 'exited')) {
+        const pending = [this.trial, this.active].filter(
+          (gen): gen is Generation => gen !== null && gen.state !== 'exited',
+        );
+        if (pending.length === 0) break;
+        await Promise.all(pending.map((gen) => this.terminate(gen)));
+        if (this.trial?.state === 'exited') this.trial = null;
+      }
+      this.closeListeners();
+    })();
+    return this.stopped;
+  }
+
+  closeListeners(): void {
+    // Nothing will adopt what the catchers hold now.
+    this.dropCatchers(this.catchers.splice(0));
+    for (const { handle } of this.listeners.values()) {
+      try {
+        handle.close();
+      } catch {
+        // Already closed.
+      }
+    }
+    this.listeners.clear();
+  }
+
+  // -------------------------------------------------------------------------
+
+  private describe(gen: Generation): GenerationStatus {
+    return {
+      generation: gen.id,
+      pid: gen.proc.pid,
+      entry: gen.entry,
+      state: gen.state,
+      bootId: gen.bootId,
+      port: gen.port,
+    };
+  }
+
+  private emit(event: SupervisorEvent): void {
+    try {
+      this.options.onEvent?.(event);
+    } catch (error) {
+      this.log(`event listener failed: ${String(error)}`);
+    }
+  }
+
+  private setState(state: SupervisorState): void {
+    this.state = state;
+  }
+
+  private setGenerationState(gen: Generation, state: GenerationState): void {
+    if (gen.state === 'exited') return;
+    gen.state = state;
+    this.emit({ type: 'generation', generation: this.describe(gen) });
+    for (const listener of [...gen.notify]) listener();
+  }
+
+  private launch(entry: string): Generation {
+    const id = this.nextId++;
+    const proc = this.options.launcher.launch({ entry, generation: id });
+    let resolveExited: () => void = () => {};
+    const gen: Generation = {
+      id,
+      entry,
+      proc,
+      state: 'starting',
+      bootId: null,
+      port: null,
+      voiceSessions: 0,
+      expectingExit: false,
+      failed: false,
+      drained: false,
+      exitCode: null,
+      adoptsConnections: false,
+      handoffEvents: false,
+      listening: new Set(),
+      retiring: false,
+      notify: new Set(),
+      exited: new Promise<void>((resolve) => {
+        resolveExited = resolve;
+      }),
+    };
+    this.log(
+      `generation ${id} started (pid ${proc.pid ?? 'unknown'}) entry=${entry}`,
+    );
+    proc.onMessage((message, handle) =>
+      this.onGenerationMessage(gen, message, handle),
+    );
+    proc.onExit((code, signal) => {
+      this.log(`generation ${id} exited code=${code} signal=${signal}`);
+      gen.exitCode = code;
+      this.setGenerationState(gen, 'exited');
+      resolveExited();
+      this.onGenerationExit(gen);
+    });
+    this.emit({ type: 'generation', generation: this.describe(gen) });
+    return gen;
+  }
+
+  private onGenerationMessage(
+    gen: Generation,
+    message: unknown,
+    handle: unknown,
+  ): void {
+    if (!isRecord(message) || typeof message.type !== 'string') {
+      closeQuietly(handle);
+      return;
+    }
+    // Only listener.bound and listener.spare carry a handle; close one sent
+    // with anything else.
+    if (
+      handle !== undefined &&
+      message.type !== 'listener.bound' &&
+      message.type !== 'listener.spare'
+    ) {
+      closeQuietly(handle);
+      this.log(
+        `closed a stray handle sent with ${message.type} from generation ${gen.id}`,
+      );
+    }
+    switch (message.type) {
+      case 'listener.bound': {
+        const { name, port } = message;
+        if (handle !== undefined && !isRawListenerHandle(handle)) {
+          closeQuietly(handle);
+          this.log(
+            `refused listener.bound from generation ${gen.id}: not a raw listening handle (send server._handle, not the server); failing the generation`,
+          );
+          this.failGeneration(gen);
+          return;
+        }
+        const acceptable =
+          typeof name === 'string' &&
+          name.length > 0 &&
+          typeof port === 'number' &&
+          isRawListenerHandle(handle) &&
+          (gen.state === 'promoted' || gen.state === 'serving') &&
+          !this.listeners.has(name);
+        if (acceptable) {
+          this.listeners.set(name, { port, handle });
+          gen.listening.add(name);
+          this.log(
+            `holding listener ${name} on port ${port} from generation ${gen.id}`,
+          );
+        } else {
+          closeQuietly(handle);
+          this.log(`ignored listener.bound from generation ${gen.id}`);
+        }
+        return;
+      }
+      case 'listener.spare':
+      case 'listener.listening':
+        this.onCatchingMessage(gen, message, handle);
+        return;
+      case 'parked':
+        if (gen.state === 'starting') {
+          gen.adoptsConnections = message.adoptsConnections === true;
+          gen.handoffEvents =
+            Array.isArray(message.capabilities) &&
+            message.capabilities.includes('handoff-events');
+          this.setGenerationState(gen, 'parked');
+        }
+        return;
+      case 'ready':
+        if (
+          !gen.failed &&
+          gen.state === 'promoted' &&
+          typeof message.bootId === 'string' &&
+          typeof message.port === 'number'
+        ) {
+          gen.bootId = message.bootId;
+          gen.port = message.port;
+          this.setGenerationState(gen, 'serving');
+          // Whatever is still held (for a listener it never reported
+          // listening on) goes to it now.
+          void this.releaseCatching(gen);
+        }
+        return;
+      case 'drain.progress':
+        if (
+          typeof message.voiceSessions === 'number' &&
+          message.voiceSessions >= 0
+        ) {
+          gen.voiceSessions = message.voiceSessions;
+        }
+        return;
+      case 'drained':
+        gen.drained = true;
+        return;
+      case 'handoff.request': {
+        const requestId =
+          typeof message.requestId === 'string' ? message.requestId : '';
+        const refuse = (reason: string) =>
+          gen.proc.send({ type: 'handoff.refused', requestId, reason });
+        if (gen !== this.active) {
+          refuse('not-active');
+          return;
+        }
+        const options: HandoffOptions = {};
+        if (typeof message.entry === 'string') options.entry = message.entry;
+        if (typeof message.readinessTimeoutMs === 'number') {
+          options.readinessTimeoutMs = message.readinessTimeoutMs;
+        }
+        if (typeof message.drainDeadlineMs === 'number') {
+          options.drainDeadlineMs = message.drainDeadlineMs;
+        }
+        void this.handoffFor(options, () => {}, { gen, requestId }).then(
+          (result) => {
+            if (result.outcome === 'refused' && gen.state !== 'exited') {
+              refuse(result.reason ?? 'refused');
+            }
+          },
+        );
+        return;
+      }
+      default:
+      // Minor versions may add messages; ignore what this version does not know.
+    }
+  }
+
+  /** Protocol 1.1 messages for connection catching. */
+  private onCatchingMessage(
+    gen: Generation,
+    message: Record<string, unknown>,
+    handle: unknown,
+  ): void {
+    const name = typeof message.name === 'string' ? message.name : null;
+    if (message.type === 'listener.spare') {
+      const request = this.spareRequest;
+      if (
+        request?.gen !== gen ||
+        name === null ||
+        !this.listeners.has(name) ||
+        !isRawListenerHandle(handle)
+      ) {
+        closeQuietly(handle);
+        this.log(`ignored listener.spare from generation ${gen.id}`);
+        return;
+      }
+      request.onSpare(name, handle);
+      return;
+    }
+    if (
+      name !== null &&
+      this.listeners.has(name) &&
+      (gen.state === 'promoted' || gen.state === 'serving')
+    ) {
+      gen.listening.add(name);
+      // Held connections go to the first generation listening again, as
+      // the kernel backlog would hand them to the first that accepts.
+      void this.releaseCatching(gen, name);
+    }
+  }
+
+  /**
+   * A protocol violation: the generation is killed and its exit handled like
+   * any other failure (a failed boot, or a crash restart if it was active).
+   */
+  private failGeneration(gen: Generation): void {
+    if (gen.failed || gen.state === 'exited') return;
+    gen.failed = true;
+    gen.proc.kill('SIGKILL');
+  }
+
+  private onGenerationExit(gen: Generation): void {
+    if (gen !== this.active || gen.expectingExit) return;
+    // A generation that drained and exited cleanly without being asked (an
+    // operator's SIGTERM, say) is restarted, but it did not crash: once it had
+    // served stably (stableAfterMs), it does not count toward giving up and
+    // restarts without a backoff. One that drains before then counts like a
+    // crash, so a generation that drains right after serving, or repeated
+    // signals, cannot restart it in an unbounded loop.
+    const stable = this.stableTimer === null;
+    const crashed = !(gen.drained && gen.exitCode === 0 && stable);
+    if (this.state === 'handoff') {
+      // The handoff carries on without it, but a crash still counts.
+      if (crashed) this.noteFailure();
+      return;
+    }
+    if (this.state !== 'serving') return; // A restart owns this generation.
+    this.clearStableTimer();
+    this.active = null;
+    if (!crashed) {
+      this.log(
+        `generation ${gen.id} drained and exited on its own; restarting it`,
+      );
+    }
+    void this.bringUp('restarting', crashed);
+  }
+
+  private promote(gen: Generation): void {
+    const names = [...this.listeners.keys()];
+    gen.proc.send({ type: 'promote', listeners: names });
+    for (const [name, { handle }] of this.listeners) {
+      gen.proc.send({ type: 'listener.adopt', name }, handle);
+    }
+    this.setGenerationState(gen, 'promoted');
+  }
+
+  private commitActive(gen: Generation): void {
+    this.active = gen;
+    this.setState('serving');
+    this.clearStableTimer();
+    this.stableTimer = this.clock.setTimeout(() => {
+      this.stableTimer = null;
+      if (this.active === gen && gen.state === 'serving') {
+        this.consecutiveFailures = 0;
+        this.lastBackoffMs = null;
+      }
+    }, this.restartConfig.stableAfterMs);
+    // It may have died between `ready` and this commit.
+    if (gen.state === 'exited') this.onGenerationExit(gen);
+  }
+
+  private clearStableTimer(): void {
+    if (this.stableTimer !== null) {
+      this.clock.clearTimeout(this.stableTimer);
+      this.stableTimer = null;
+    }
+  }
+
+  /** Launches one generation and brings it to `serving`; false on failure. */
+  private async launchActive(entry: string): Promise<Generation | null> {
+    const gen = this.launch(entry);
+    this.trial = gen;
+    const parked = await this.waitForState(
+      gen,
+      ['parked'],
+      this.handoffConfig.parkTimeoutMs,
+    );
+    if (parked === 'ok' && !this.stopping) {
+      this.promote(gen);
+      const ready = await this.waitForState(
+        gen,
+        ['serving'],
+        this.handoffConfig.readinessTimeoutMs,
+      );
+      if (ready === 'ok' && !this.stopping) {
+        this.trial = null;
+        return gen;
+      }
+    }
+    await this.retire(
+      gen,
+      this.failedDrainMs(this.handoffConfig.drainDeadlineMs),
+    );
+    this.trial = null;
+    return null;
+  }
+
+  /**
+   * Starts generations from the current entry until one serves, with
+   * exponential backoff between failures. `crashed` records the failure that
+   * caused this restart before the first attempt.
+   */
+  private async bringUp(
+    state: SupervisorState,
+    crashed = false,
+  ): Promise<void> {
+    this.setState(state);
+    if (crashed && !(await this.recordFailureAndWait())) return;
+    for (;;) {
+      if (this.stopping) return;
+      const gen = await this.launchActive(this.entry);
+      if (gen) {
+        this.commitActive(gen);
+        return;
+      }
+      if (this.stopping) return;
+      if (!(await this.recordFailureAndWait())) return;
+    }
+  }
+
+  /** Counts a failure; waits out the backoff. False when giving up or stopping. */
+  /** Counts one failure; false when that exhausts the failure budget. */
+  private noteFailure(): boolean {
+    const now = this.clock.now();
+    this.failures = this.failures.filter(
+      (at) => now - at < this.restartConfig.failureWindowMs,
+    );
+    this.failures.push(now);
+    this.consecutiveFailures += 1;
+    if (this.failures.length >= this.restartConfig.maxFailures) {
+      this.giveUp();
+      return false;
+    }
+    return true;
+  }
+
+  private async recordFailureAndWait(): Promise<boolean> {
+    if (!this.noteFailure()) return false;
+    const backoff = Math.min(
+      this.restartConfig.initialBackoffMs * 2 ** (this.consecutiveFailures - 1),
+      this.restartConfig.maxBackoffMs,
+    );
+    this.lastBackoffMs = backoff;
+    this.setState('restarting');
+    this.emit({ type: 'restart', generation: this.nextId, backoffMs: backoff });
+    this.log(
+      `restarting in ${backoff}ms (failure ${this.consecutiveFailures})`,
+    );
+    await this.sleep(backoff);
+    return !this.stopping;
+  }
+
+  private giveUp(): void {
+    if (this.gaveUp) return;
+    this.gaveUp = true;
+    const failures = this.failures.length;
+    this.log(`giving up after ${failures} failures`);
+    this.emit({ type: 'gave-up', failures });
+    this.options.onGiveUp?.(failures);
+  }
+
+  private async finishRollback(
+    survivor: Generation | null,
+    previousEntry: string,
+    reason: string,
+    progress: (phase: HandoffPhase, generation: number) => void,
+  ): Promise<HandoffOutcomeResult> {
+    // The previous generation was never asked to drain: it is still serving.
+    if (survivor && survivor.state === 'serving' && this.active === survivor) {
+      if (this.stopping) return { outcome: 'rolled-back', reason };
+      this.setState('serving');
+      this.emit({
+        type: 'handoff',
+        phase: 'rolled-back',
+        generation: survivor.id,
+      });
+      return { outcome: 'rolled-back', reason, generation: survivor.id };
+    }
+    if (this.stopping) return { outcome: 'rolled-back', reason };
+    progress('rolling-back', this.nextId);
+    this.entry = previousEntry;
+    this.active = null;
+    const gen = await this.launchActive(previousEntry);
+    if (gen) {
+      this.commitActive(gen);
+      this.emit({ type: 'handoff', phase: 'rolled-back', generation: gen.id });
+      return {
+        outcome: 'rolled-back',
+        reason,
+        generation: gen.id,
+        bootId: gen.bootId ?? undefined,
+      };
+    }
+    if (!this.stopping) void this.bringUp('restarting', true);
+    return {
+      outcome: 'rolled-back',
+      reason: `${reason}; previous entry failed to start, restarting`,
+    };
+  }
+
+  private async drain(
+    gen: Generation,
+    deadlineMs: number,
+    capMs: number = this.handoffConfig.voiceDrainCapMs,
+    /** After the deadline: SIGTERM then SIGKILL, or SIGKILL at once. */
+    escalation: 'terminate' | 'kill' = 'terminate',
+  ): Promise<void> {
+    if (gen.state === 'exited') return;
+    gen.expectingExit = true;
+    this.setGenerationState(gen, 'draining');
+    gen.proc.send({ type: 'drain', deadlineMs });
+    const started = this.clock.now();
+    let budget = deadlineMs;
+    for (;;) {
+      if (await this.waitForExit(gen, budget)) return;
+      const elapsed = this.clock.now() - started;
+      if (gen.voiceSessions > 0 && elapsed < capMs) {
+        budget = Math.min(1_000, capMs - elapsed);
+        continue;
+      }
+      break;
+    }
+    this.log(`generation ${gen.id} missed its drain deadline`);
+    if (escalation === 'kill') {
+      // SIGTERM first, so the generation's process group can clean up, but
+      // only briefly: it already ignored a drain, and the rollback waits.
+      gen.proc.kill('SIGTERM');
+      if (await this.waitForExit(gen, FAILED_TRIAL_TERM_GRACE_MS)) return;
+      gen.proc.kill('SIGKILL');
+      await gen.exited;
+      return;
+    }
+    await this.terminate(gen);
+  }
+
+  /**
+   * Windows: before `gen` drains, listens on spare copies of each held
+   * listener `gen` listens on, which it sends back, so connections reach the
+   * supervisor rather than the listener `gen` is about to close (see
+   * `ListenerSparesMessage`). Only when `gen` speaks catching and so does the
+   * generation that will adopt what is held (`successorAdopts`). A
+   * generation that does not answer in time is drained anyway.
+   */
+  private async beginCatching(
+    gen: Generation,
+    successorAdopts: boolean,
+  ): Promise<void> {
+    const catching = this.options.catchConnections;
+    const count = Math.min(catching?.spares ?? 0, MAX_LISTENER_SPARES);
+    const names = [...this.listeners.keys()].filter((name) =>
+      gen.listening.has(name),
+    );
+    if (
+      !catching ||
+      count <= 0 ||
+      names.length === 0 ||
+      !gen.adoptsConnections ||
+      !successorAdopts ||
+      hasExited(gen)
+    ) {
+      return;
+    }
+    const expected = count * names.length;
+    let received = 0;
+    let listening = 0;
+    await new Promise<void>((resolve) => {
+      let timer: unknown = null;
+      const finish = () => {
+        this.spareRequest = null;
+        gen.notify.delete(check);
+        if (timer !== null) this.clock.clearTimeout(timer);
+        resolve();
+      };
+      const check = () => {
+        if (received >= expected || hasExited(gen)) finish();
+      };
+      this.spareRequest = {
+        gen,
+        onSpare: (name, handle) => {
+          received += 1;
+          try {
+            const catcher = catching.createCatcher(
+              name,
+              handle,
+              () => this.clock.now(),
+              () => this.onCaught(name),
+            );
+            this.catchers.push(catcher);
+            this.catcherSince.set(catcher, this.clock.now());
+            listening += 1;
+          } catch (error) {
+            closeQuietly(handle);
+            this.log(`could not listen on a spare ${name}: ${String(error)}`);
+          }
+          check();
+        },
+      };
+      gen.notify.add(check);
+      timer = this.clock.setTimeout(() => {
+        timer = null;
+        this.log(
+          `generation ${gen.id} sent ${received} of ${expected} listener spares; draining anyway`,
+        );
+        finish();
+      }, SPARE_ANSWER_TIMEOUT_MS);
+      for (const name of names) {
+        gen.proc.send({ type: 'listener.spares', name, count });
+      }
+      check();
+    });
+    if (listening > 0) {
+      this.log(
+        `catching connections on ${listening} spare listener(s) while generation ${gen.id} drains`,
+      );
+    }
+    this.armHoldDeadline();
+  }
+
+  /**
+   * Past HOLD_LIMIT_PER_LISTENER, a listener's spares stop listening. Only
+   * catchers in the list count: those being released are out of it, and
+   * uncapped, for up to CATCH_QUIET_CAP_MS while their quiet wait runs.
+   */
+  private onCaught(name: string): void {
+    const catchers = this.catchers.filter((c) => c.name === name);
+    const held = catchers.reduce((sum, c) => sum + c.heldCount, 0);
+    if (held < HOLD_LIMIT_PER_LISTENER) return;
+    for (const catcher of catchers) catcher.stop();
+    this.log(
+      `holding ${held} connection(s) for ${name}, the limit; new ones wait in the kernel backlog`,
+    );
+  }
+
+  /** Closes catchers held past HOLD_DEADLINE_MS and what they hold. */
+  private armHoldDeadline(): void {
+    if (this.holdTimer !== null) this.clock.clearTimeout(this.holdTimer);
+    this.holdTimer = null;
+    const starts = this.catchers.map((c) => this.catcherSince.get(c) ?? 0);
+    if (starts.length === 0) return;
+    const due = Math.min(...starts) + HOLD_DEADLINE_MS - this.clock.now();
+    this.holdTimer = this.clock.setTimeout(
+      () => this.onHoldDeadline(),
+      Math.max(0, due),
+    );
+  }
+
+  private onHoldDeadline(): void {
+    this.holdTimer = null;
+    if (this.state === 'handoff') {
+      // A trial or the rollback is still on its way: look again later.
+      this.holdTimer = this.clock.setTimeout(
+        () => this.onHoldDeadline(),
+        HOLD_DEADLINE_MS,
+      );
+      return;
+    }
+    const now = this.clock.now();
+    const expired = this.catchers.filter(
+      (c) => now - (this.catcherSince.get(c) ?? 0) >= HOLD_DEADLINE_MS,
+    );
+    this.catchers = this.catchers.filter((c) => !expired.includes(c));
+    const dropped = this.dropCatchers(expired);
+    this.log(
+      `closed ${dropped} connection(s) held longer than ${HOLD_DEADLINE_MS}ms with no generation to take them`,
+    );
+    this.armHoldDeadline();
+  }
+
+  /** Closes catchers and destroys what they hold; returns how many. */
+  private dropCatchers(catchers: ListenerCatcher[]): number {
+    let dropped = 0;
+    for (const catcher of catchers) {
+      this.catcherSince.delete(catcher);
+      for (const connection of catcher.close()) {
+        destroyQuietly(connection);
+        dropped += 1;
+      }
+    }
+    if (this.catchers.length === 0 && this.holdTimer !== null) {
+      this.clock.clearTimeout(this.holdTimer);
+      this.holdTimer = null;
+    }
+    return dropped;
+  }
+
+  /**
+   * Passes what the catchers hold (for one listener, or all) to `gen`, now
+   * listening on it or ready. Its accepts are newer than the catchers', so
+   * connections go to it first; the catchers close once none has accepted
+   * for CATCH_QUIET_MS.
+   */
+  private async releaseCatching(gen: Generation, name?: string): Promise<void> {
+    const catchers = this.catchers.filter(
+      (catcher) => name === undefined || catcher.name === name,
+    );
+    if (catchers.length === 0) return;
+    this.catchers = this.catchers.filter(
+      (catcher) => !catchers.includes(catcher),
+    );
+    this.armHoldDeadline();
+    const started = this.clock.now();
+    for (;;) {
+      const now = this.clock.now();
+      const last = Math.max(0, ...catchers.map((c) => c.lastCaughtAt));
+      const quietLeft = CATCH_QUIET_MS - (now - last);
+      const capLeft = CATCH_QUIET_CAP_MS - (now - started);
+      if (quietLeft <= 0 || capLeft <= 0 || this.stopping) break;
+      await new Promise<void>((resolve) =>
+        this.clock.setTimeout(resolve, Math.min(quietLeft, capLeft)),
+      );
+    }
+    // It exited, or is being ended (a failed trial that listens or reports
+    // ready late gets here too): keep holding for the generation that comes
+    // next, the rollback's.
+    if ((hasExited(gen) || gen.retiring) && !this.stopping) {
+      this.holdForNext(gen, catchers);
+      return;
+    }
+    for (const catcher of catchers) this.catcherSince.delete(catcher);
+    let passed = 0;
+    let dropped = 0;
+    for (const catcher of catchers) {
+      for (const connection of catcher.close()) {
+        // A generation that cannot adopt would close it as a stray handle.
+        if (hasExited(gen) || this.stopping || !gen.adoptsConnections) {
+          destroyQuietly(connection);
+          dropped += 1;
+          continue;
+        }
+        gen.proc.send(
+          { type: 'connection.adopt', name: catcher.name },
+          connection,
+        );
+        passed += 1;
+      }
+    }
+    if (dropped > 0) {
+      this.log(
+        `closed ${dropped} connection(s) held during the handoff: generation ${gen.id} cannot adopt them`,
+      );
+    }
+    if (passed > 0) {
+      this.log(
+        `passed ${passed} connection(s) held during the handoff to generation ${gen.id}`,
+      );
+    }
+  }
+
+  /** Puts back catchers `gone` will not take, for the generation after it. */
+  private holdForNext(gone: Generation, catchers: ListenerCatcher[]): void {
+    this.catchers.push(...catchers);
+    this.armHoldDeadline();
+    const names = new Set(catchers.map((c) => c.name));
+    this.log(
+      `generation ${gone.id} is gone; still holding connections for ${[...names].join(', ')}`,
+    );
+    // The next generation may already listen: it asked while these were out
+    // of the list.
+    for (const next of [this.trial, this.active]) {
+      if (!next || next === gone || hasExited(next) || next.retiring) continue;
+      for (const name of names) {
+        if (next.state === 'serving' || next.listening.has(name)) {
+          void this.releaseCatching(next, name);
+        }
+      }
+    }
+  }
+
+  /**
+   * Ends a trial that failed after promotion. It may serve the held
+   * listeners already, so on Windows the supervisor catches while it drains,
+   * for the generation the rollback starts from `previous`'s entry.
+   */
+  private async retireTrial(
+    trial: Generation,
+    previous: Generation,
+    drainDeadlineMs: number,
+  ): Promise<void> {
+    trial.retiring = true;
+    if (!this.stopping) {
+      await this.beginCatching(trial, previous.adoptsConnections);
+    }
+    await this.retire(trial, this.failedDrainMs(drainDeadlineMs));
+  }
+
+  /**
+   * How long a failed or abandoned trial drains. It may be frozen, and the
+   * previous entry cannot start until it is gone, so it gets no longer than
+   * the kill grace; the committed handoff's old generation drains in full.
+   */
+  private failedDrainMs(deadlineMs: number): number {
+    return Math.min(deadlineMs, this.handoffConfig.killGraceMs);
+  }
+
+  /**
+   * Ends a generation that failed or is being abandoned. One that was
+   * promoted may already serve the held listeners, and a signal would make it
+   * drop its clients' connections, so it is drained first (no voice
+   * extension) and signalled only after the deadline. One that never left
+   * `parked` holds no connections and is signalled at once.
+   */
+  private async retire(gen: Generation, deadlineMs: number): Promise<void> {
+    if (gen.state === 'exited') return;
+    // Already draining: that drain signals it after its own deadline.
+    if (gen.state === 'draining') return gen.exited;
+    if (gen.state === 'promoted' || gen.state === 'serving') {
+      // It has had its drain; a full SIGTERM grace on top would only delay
+      // the rollback, so a trial still running at the deadline gets a short
+      // one (FAILED_TRIAL_TERM_GRACE_MS) before SIGKILL.
+      await this.drain(gen, deadlineMs, deadlineMs, 'kill');
+      return;
+    }
+    await this.terminate(gen);
+  }
+
+  /** SIGTERM, then SIGKILL after the grace period; resolves once exited. */
+  private async terminate(gen: Generation): Promise<void> {
+    if (gen.state === 'exited') return;
+    gen.expectingExit = true;
+    gen.proc.kill('SIGTERM');
+    if (await this.waitForExit(gen, this.handoffConfig.killGraceMs)) return;
+    gen.proc.kill('SIGKILL');
+    await gen.exited;
+  }
+
+  private waitForExit(gen: Generation, timeoutMs: number): Promise<boolean> {
+    return this.waitForState(gen, ['exited'], timeoutMs).then(
+      (result) => result !== 'timeout',
+    );
+  }
+
+  private waitForState(
+    gen: Generation,
+    targets: GenerationState[],
+    timeoutMs: number,
+  ): Promise<WaitResult> {
+    return new Promise((resolve) => {
+      let timer: unknown = null;
+      const finish = (result: WaitResult) => {
+        gen.notify.delete(check);
+        if (timer !== null) this.clock.clearTimeout(timer);
+        resolve(result);
+      };
+      const check = () => {
+        if (targets.includes(gen.state)) finish('ok');
+        else if (gen.state === 'exited') finish('exit');
+      };
+      gen.notify.add(check);
+      timer = this.clock.setTimeout(() => {
+        timer = null;
+        finish('timeout');
+      }, timeoutMs);
+      check();
+    });
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => {
+      const timer = this.clock.setTimeout(() => {
+        this.cancelSleep = null;
+        resolve();
+      }, ms);
+      this.cancelSleep = () => {
+        this.clock.clearTimeout(timer);
+        this.cancelSleep = null;
+        resolve();
+      };
+    });
+  }
+}

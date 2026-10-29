@@ -1,5 +1,9 @@
 # Agent identity supported-surface inventory
 
+> **Reading status: completed removal record** for archive#1417 (closed).
+> `npm run agent-identity:inventory` reads the inventory block below, so this
+> file stays at its path.
+
 This is the executable removal record for archive#1417. Station now uses one
 clean, persisted Agent identity surface. The pre-release schema gate rejects an
 incompatible home before application data is read or changed; no migration or

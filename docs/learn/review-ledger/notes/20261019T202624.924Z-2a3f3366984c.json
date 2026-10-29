@@ -1,0 +1,11 @@
+{
+  "revision": "6c91b42587608d1e908c2688545a8741e707d903",
+
+  "notes": [
+    {"path":"docs/guides/web-push-notifications.md","note":"Edited this round. Tap paragraph now states: sw.js opens /notifications for non-http(s) or off-origin URLs (service-worker-notificationclick.test.ts, blob: of the own origin included); admitted links carry no fragment and no openedNotification (isRelativeStationPath; agent-notification-gate.test.ts and notification-envelope.test.ts); the open link is rebuilt without a fragment (notification-deep-link.test.ts); action requests go only to the worker origin with encoded ids (same sw test). Not executed: a physical browser.","inputs":["docs/guides/web-push-notifications.md","src-server/services/notifications/notification-deep-link.ts","src-ui/public/sw.js"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Its Web Push paragraph points to the guide and records a synthetic-state race test; the guide's link-rule edits this round do not change that claim.","inputs":["docs/architecture/abstraction-review.md","docs/guides/web-push-notifications.md"]},
+
+    {"path":"docs/reference/shared.md","note":"Edited the path-target sentence: a fragment or an openedNotification parameter (also under a percent-encoded name) now makes the envelope malformed, per isRelativeStationPath in notification-envelope.ts; asserted by the read-mode refusal table in notification-envelope.test.ts.","inputs":["docs/reference/shared.md","packages/shared/src/notification-envelope.ts"]}
+  ]
+}

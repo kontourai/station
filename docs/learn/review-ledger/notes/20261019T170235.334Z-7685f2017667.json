@@ -1,0 +1,7 @@
+{
+  "revision": "4106e6ac38e20b94e20e7a740c2a333184ecb74b",
+
+  "notes": [
+    {"path":"docs/patterns/frontend.md","note":"Only the responsive inventories changed; the card uses React Query through the existing pull-request-links hook, no bespoke fetch state. No frontend pattern claim affected.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt","docs/ui/responsive-surfaces.json"]}
+  ]
+}

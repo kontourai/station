@@ -466,3 +466,20 @@ describe('BrowserEgressProxy', () => {
     expect(h.devHits).toEqual(['http /lh', 'http /lh', 'http /lh', 'http /lh']);
   });
 });
+
+test('none reach refuses hostname navigation before any host DNS lookup', async () => {
+  const lookup = async () => {
+    throw new Error('DNS lookup must not run for none reach');
+  };
+  const proxy = new BrowserEgressProxy({
+    policy: {
+      listeners: () => ({ ports: [], hostnames: [] }),
+      interfaceAddresses: () => [],
+      reach: { kind: 'none' },
+    },
+    lookup,
+  });
+  expect(
+    await proxy.resolveDestination('attacker-controlled.example', 443),
+  ).toEqual({ ok: false, refusal: 'non-public-address' });
+});

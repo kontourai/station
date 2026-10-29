@@ -1,0 +1,7 @@
+{
+  "revision": "be6184e9dd9c443ed79c90cff27f1aaff51e0ee0",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Correction to this rollup's earlier note: the regenerated station-docs-content.ts changes four topic bodies (TurnDeduplicator, OutboundDispatchModule, SharedWorkingState and Evidence), not two, plus the digest. All four come from module-map and guide edits in the merged PRs. The manual's account of how topics are generated, what they hold and their credential-free scope is unchanged.","inputs":["docs/reference/station-docs.md"]}
+  ]
+}

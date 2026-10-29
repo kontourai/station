@@ -1,0 +1,9 @@
+{
+  "revision": "0d3a32b7937a91ad2cb654d2b1b7d2a9ca95539e",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Merge integration reviewed at0d3a32b7937: main aade593c8c1 was merged without rebase. Only remerge conflict was generated station-docs-content digest, resolved solely by canonical generator (115topics,181c110e digest). Compared Board feature delta against main in ChatDockModalStack, ChatDock, taskGraph query and canonical docs. Explicit projectSlug:null, authority-matched single-pane claim, null-preserving picker selection, upstream Task-shaping reset and Task polling/error handling coexist. Main authoring, shared saved rendering, scoped reads and person-only proposal publication claims remain accurate; no prose change needed. Independent report-only source reviewer cleared delta. Parent executed73tests in six owners and generator/check; earlier browser/provider/device limits remain tied to their original source.","inputs":["docs/architecture/module-map.md","src-ui/src/components/chat-dock/ChatDockModalStack.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Merge integration reviewed at0d3a32b7937. Read complete concepts guide and inspected merged ChatDock draft handoff, modal projection and upstream overlay reset. Personal Board Build with chat stages an unsent projectless draft on matching authority; opening the ordinary picker resets Task-shaping mode. Explicit Task shaping/acceptance stays separate from direct chat, so the direct-chat-does-not-silently-create-a-Task explanation remains accurate. Upstream last-known freshness, stream epoch/sequence and Task/Session wording are preserved. No prose change needed. Independent source review found no blocker; parent mounted chat/editor/query and MCP owner checks passed73tests. This does not extend older browser evidence to a live provider or physical device.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

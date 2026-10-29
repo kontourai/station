@@ -32,7 +32,7 @@ interface CatalogProps {
     action: WorkspacePaneAvailabilityAction,
   ) => boolean;
   isOpen?: (entry: WorkspacePaneAvailabilityCatalogEntry) => boolean;
-  onReviewInRegistry?: () => void;
+  onReviewExtensions?: () => void;
 }
 
 function CatalogContents({
@@ -46,7 +46,7 @@ function CatalogContents({
   onAction,
   canExecuteAction,
   isOpen,
-  onReviewInRegistry,
+  onReviewExtensions,
 }: CatalogProps) {
   if (loading && entries.length === 0) {
     return <SkeletonList count={2} label="Loading workspace panes" />;
@@ -105,7 +105,7 @@ function CatalogContents({
         onAction={onAction}
         canExecuteAction={canExecuteAction}
         isOpen={isOpen}
-        onReviewInRegistry={onReviewInRegistry}
+        onReviewExtensions={onReviewExtensions}
       />
     </>
   );

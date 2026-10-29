@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
 import type { ProviderSessionSourceAffinity } from '@kontourai/station-contracts/provider';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { CodexAdapter } from '../adapters/codex-adapter.js';
 
 class FakeWritable extends Writable {
@@ -59,6 +60,7 @@ const SYMLINK_CHILD_ID = '0199a001-0000-7000-8000-000000000007';
 const OVERSIZED_CHILD_ID = '0199a001-0000-7000-8000-000000000008';
 const LATER_TURN_ID = 'turn/opaque:later';
 const MARKER = `station-adoption:${TARGET_ID}`;
+const makeWorkspace = trackTempDirs();
 const tempRoots: string[] = [];
 
 function sourceHomeWithRollout(
@@ -250,9 +252,21 @@ describe('Codex native attached-session adoption', () => {
       codexThreadId: CHILD_ID,
       sourceAffinity: AFFINITY,
     });
+    // No confinement given: confined, so it runs under Station's permission
+    // profile with its sandbox keys pinned (#3800).
     expect(processFactory).toHaveBeenCalledWith(
-      { CODEX_HOME: '/source-home' },
-      undefined,
+      // The adopted child is this Session's engine: its scope is labelled.
+      { CODEX_HOME: '/source-home', STATION_WORKLOAD_SESSION_ID: TARGET_ID },
+      [
+        '-c',
+        'default_permissions="station-workspace"',
+        '-c',
+        'permissions.station-workspace={extends=":workspace",filesystem={":workspace_roots"={".git"="read",".agents"="read","**/.codex"="deny","**/.codex/**"="deny","**/.claude"="deny","**/.claude/**"="deny"}}}',
+        '-c',
+        'sandbox_workspace_write.writable_roots=[]',
+        '-c',
+        'approvals_reviewer="user"',
+      ],
     );
     const lifecycle = [await nextEvent(events), await nextEvent(events)];
     expect(lifecycle).toContainEqual(
@@ -404,7 +418,7 @@ describe('Codex native attached-session adoption', () => {
     },
   );
 
-  test('#2493: a fork outside a host session asks for workspace-write and refuses a full-access child', async () => {
+  test('#2493: a fork outside a host session sends no sandbox mode over its permission profile and refuses a full-access child', async () => {
     const process = new FakeCodexProcess();
     const created = vi.fn();
     const adapter = new CodexAdapter({
@@ -420,16 +434,82 @@ describe('Codex native attached-session adoption', () => {
     );
     await initialize(process);
     const fork = await waitForCall(process, 'thread/fork');
-    expect(fork.params).toMatchObject({
-      approvalPolicy: 'never',
-      sandbox: 'workspace-write',
-    });
+    expect(fork.params).toMatchObject({ approvalPolicy: 'never' });
+    // #3800: a mode would replace the profile the spawn selects.
+    expect(fork.params).not.toHaveProperty('sandbox');
     // The fixture's default response reports `dangerFullAccess`: a child
     // that came back unconfined is refused, not adopted.
     respond(process, fork, forkResult());
 
     await expect(adoption).rejects.toThrow(/workspace and execution policy/);
     expect(process.killed).toBe(true);
+  });
+
+  test('#2494 D1: a workspace fork Station sends no mode to leaves approvals to Codex, and records the child confined under its permission profile', async () => {
+    const process = new FakeCodexProcess();
+    const adapter = new CodexAdapter({
+      processFactory: () => process,
+      resolveSourceHome: () => '/source-home',
+    });
+    const events = adapter.streamEvents()[Symbol.asyncIterator]();
+    const adoption = adapter.adoptSession(
+      adoptInput({
+        confinement: 'workspace',
+        confinementPlan: {
+          requiredLevel: 'host',
+          policyBasis: 'workspace-floor',
+          mechanism: 'codex-sandbox',
+          level: 'os-profile',
+          workspaceAccess: 'mounted',
+        },
+      }),
+      {
+        onProviderChildCreationStarted: vi.fn(),
+        onProviderChildCreated: vi.fn(),
+      },
+    );
+    await initialize(process);
+    const fork = await waitForCall(process, 'thread/fork');
+    expect(fork.params).not.toHaveProperty('sandbox');
+    expect(fork.params).not.toHaveProperty('approvalPolicy');
+    // The operator's Codex config runs approvals at never; the permission
+    // profile the spawn selects is applied.
+    respond(
+      process,
+      fork,
+      forkResult(
+        {},
+        {
+          approvalPolicy: 'never',
+          sandbox: {
+            type: 'workspaceWrite',
+            writableRoots: [],
+            networkAccess: false,
+            excludeTmpdirEnvVar: false,
+            excludeSlashTmp: false,
+          },
+          activePermissionProfile: {
+            id: 'station-workspace',
+            extends: ':workspace',
+          },
+        },
+      ),
+    );
+    await expect(adoption).resolves.toMatchObject({ threadId: TARGET_ID });
+    let started: any;
+    for (let index = 0; index < 4 && !started; index += 1) {
+      const event = await nextEvent(events);
+      if (event.method === 'session.started') started = event;
+    }
+    expect(started?.metadata?.stationConfinementRecord).toEqual({
+      level: 'os-profile',
+      required: true,
+      posture: 'confined',
+      mechanism: 'codex-sandbox',
+      workspaceAccess: 'mounted',
+      policyBasis: 'workspace-floor',
+    });
+    await adapter.stopAll();
   });
 
   test('records a proven child before rejecting a response that lacks the completed cutoff', async () => {
@@ -578,9 +658,21 @@ describe('Codex native attached-session adoption', () => {
       resumeCursor: { codexThreadId: CHILD_ID, sourceAffinity: AFFINITY },
     });
     expect(getAppHomeEnv).not.toHaveBeenCalled();
+    // No confinement given: confined, so it runs under Station's permission
+    // profile with its sandbox keys pinned (#3800).
     expect(processFactory).toHaveBeenCalledWith(
-      { CODEX_HOME: '/source-home' },
-      undefined,
+      // The adopted child is this Session's engine: its scope is labelled.
+      { CODEX_HOME: '/source-home', STATION_WORKLOAD_SESSION_ID: TARGET_ID },
+      [
+        '-c',
+        'default_permissions="station-workspace"',
+        '-c',
+        'permissions.station-workspace={extends=":workspace",filesystem={":workspace_roots"={".git"="read",".agents"="read","**/.codex"="deny","**/.codex/**"="deny","**/.claude"="deny","**/.claude/**"="deny"}}}',
+        '-c',
+        'sandbox_workspace_write.writable_roots=[]',
+        '-c',
+        'approvals_reviewer="user"',
+      ],
     );
     process.stdout.write(
       `${JSON.stringify({
@@ -660,6 +752,7 @@ describe('Codex native attached-session adoption', () => {
   });
 
   test('rejects a malformed affinity-bearing resume cursor instead of starting a fresh thread', async () => {
+    const cwd = makeWorkspace('station-codex-invalid-cursor-');
     const processFactory = vi.fn(() => new FakeCodexProcess());
     const adapter = new CodexAdapter({
       processFactory,
@@ -667,6 +760,7 @@ describe('Codex native attached-session adoption', () => {
     });
     await expect(
       adapter.startSession({
+        cwd,
         provider: 'codex',
         threadId: TARGET_ID,
         resumeCursor: {

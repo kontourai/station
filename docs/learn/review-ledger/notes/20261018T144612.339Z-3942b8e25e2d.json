@@ -1,0 +1,7 @@
+{
+  "revision": "b1b5e3e5ade3d676ba711dddd69bbcb64092ec78",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"PR #3820 round 1 at b1b5e3e5ade: Reviewed telemetry-destination choices and DNT precedence against the service delta. Status now reports Full support but does not persist a setting or override tier resolution, destinations, key grants, migration or restart behavior. Existing configuration prose remains accurate.","inputs":["docs/reference/config.md","src-server/services/usage-telemetry-service.ts"]}
+  ]
+}

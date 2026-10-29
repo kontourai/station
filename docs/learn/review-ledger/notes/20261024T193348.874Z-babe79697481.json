@@ -1,0 +1,7 @@
+{
+  "revision": "178e672eddc1467d97de59ad0ca6c7f347aeb827",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Bounded receipt-extraction delta review: temporary explicit steerReceipts:unused additions were removed by178e672eddc; turn-delivery.routes.test.ts, turn-idempotency.test.ts and thread-inbox.ts are byte-exact main993a6f0a7c (independently compared Git objects and working bytes). Existing request digest, authorized delivery lookup and inbox FIFO/recovery callers are unchanged. Reviewed steerTurnOnce/inspectSteerInput and server-held follow-up paragraphs against the unchanged orchestration service and the migrated EventStore receipt methods. Same-ID confirmation, changed/unknown-input indeterminate and explicit deletion semantics remain; no API/retention/placement capability added. This note covers the net source move and withdrawn binding edits, not new live-provider/account/native or full API qualification.","inputs":["docs/reference/session-api.md","src-server/routes/orchestration/__tests__/turn-delivery.routes.test.ts","src-server/services/__tests__/turn-idempotency.test.ts","src-server/services/orchestration/thread-inbox.ts"]}
+  ]
+}

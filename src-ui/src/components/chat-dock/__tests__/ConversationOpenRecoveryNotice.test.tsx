@@ -17,7 +17,7 @@ function renderNotice(state: ConversationOpenRecoveryNoticeProps['state']) {
       onRetry={() => {}}
     />,
   );
-  return screen.getByRole('alert').textContent ?? '';
+  return screen.getByRole('status').textContent ?? '';
 }
 
 // #2424: "read-only" is a verdict. Only a Session that is gone, or one the
@@ -26,10 +26,10 @@ function renderNotice(state: ConversationOpenRecoveryNoticeProps['state']) {
 describe('ConversationOpenRecoveryNotice verdicts (#2424)', () => {
   // `resolved` reaches the notice only as a resolution that refused
   // continuation.
-  test.each(['missing-session', 'resolved'] as const)(
+  test.each(['missing-session', 'resolved', 'fork-ready'] as const)(
     '%s is a verdict and says read-only',
     (state) => {
-      expect(renderNotice(state)).toContain('Cool chat is read-only.');
+      expect(renderNotice(state)).toContain('This chat is read-only.');
     },
   );
 
@@ -45,7 +45,7 @@ describe('ConversationOpenRecoveryNotice verdicts (#2424)', () => {
   ] as const)('%s is a failed check and never claims read-only', (state) => {
     const text = renderNotice(state);
     expect(text).not.toContain('read-only');
-    expect(text).toContain("Station couldn't confirm Cool chat can continue.");
+    expect(text).toContain("Couldn't check this chat.");
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
 });

@@ -7,7 +7,7 @@ import { describe, expect, test } from 'vitest';
  * archive#3549: every path that starts a provider engine must apply the
  * session agent's credential-profile pin first.
  *
- * Four review rounds produced the same defect three times, and the last of
+ * Successive fixes produced the same defect three times, and the last of
  * them found the reason: the pin is applied by CALLERS, and one caller —
  * cold restored-session materialization — never had it. A pinned agent's
  * session, recovered after a restart, ran on the connection's account. The

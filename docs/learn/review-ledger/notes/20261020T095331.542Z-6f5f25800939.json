@@ -1,0 +1,11 @@
+{
+  "revision": "55108fe2b30150e44aee7e8f786b5aa6dac1a276",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Scoped source review of SettingsView scroll clearance: the dirty state already owns the standard floating Save/Discard bar. A conditional root class adds 96px of ending space to the navigation body while either server draft or override draft is dirty. This changes presentation only; control ownership, revisioned persistence and telemetry acknowledgement remain unchanged. The stronger expanded-mobile screenshot assertion failed before this layout fix because confirmation could not clear Save. Browser results are separate qualification.","inputs":["docs/architecture/module-map.md","src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed the Settings presentation and Save/Discard model against the scroll-clearance change. The same hasChanges-or-overrideDirty condition renders both floating actions and ending scroll space; clean Settings has no additional space. Server settings remain drafts, device/account behavior and unsaved-change guards are unchanged. Existing presentation and persistence explanation remains accurate; no prose change needed.","inputs":["docs/design/settings-architecture.md","src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Reviewed SettingsView root clearance class against the deep-link and reveal path. It only adds ending scroll space while standard Save actions exist, without changing stable control IDs, view/highlight parsing, disclosure reveal, focus or route healing. The documented URL and platform limits remain accurate; no prose change needed.","inputs":["docs/reference/settings-deep-links.md","src-ui/src/views/SettingsView.tsx"]}
+  ]
+}

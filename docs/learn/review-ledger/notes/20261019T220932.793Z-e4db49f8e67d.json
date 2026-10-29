@@ -1,0 +1,29 @@
+{
+  "revision": "5447dc936a266fd65da944a8fbdb5960bbe73c2b",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"index.ts: under STATION_SUPERVISOR_IPC=1 only, the SIGTERM wiring moved into createSigtermHandler (supervisor-drain.ts), with the same behavior: drain within the kill grace for a supervised generation, immediate graceful shutdown otherwise. Unsupervised boot and signal handling unchanged.","inputs":["docs/architecture.md","src-server/index.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"index.ts: under STATION_SUPERVISOR_IPC=1 only, the SIGTERM wiring moved into createSigtermHandler (supervisor-drain.ts), with the same behavior: drain within the kill grace for a supervised generation, immediate graceful shutdown otherwise. Unsupervised boot and signal handling unchanged.","inputs":["docs/architecture/abstraction-review.md","src-server/index.ts"]},
+
+    {"path":"docs/design/instance-registry.md","note":"lifecycle-events.ts adds supervisor_drain and supervisor_disconnect exit classifications for the matching shutdown reasons; this document makes no claim about exit classifications.","inputs":["docs/design/instance-registry.md","packages/shared/src/lifecycle-events.ts"]},
+
+    {"path":"docs/design/station-instance-reconciler.md","note":"lifecycle-events.ts adds supervisor_drain and supervisor_disconnect exit classifications for the matching shutdown reasons; this document makes no claim about exit classifications.","inputs":["docs/design/station-instance-reconciler.md","packages/shared/src/lifecycle-events.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"index.ts: under STATION_SUPERVISOR_IPC=1 only, the SIGTERM wiring moved into createSigtermHandler (supervisor-drain.ts), with the same behavior: drain within the kill grace for a supervised generation, immediate graceful shutdown otherwise. Unsupervised boot and signal handling unchanged.","inputs":["docs/guides/deployment.md","src-server/index.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"index.ts: under STATION_SUPERVISOR_IPC=1 only, the SIGTERM wiring moved into createSigtermHandler (supervisor-drain.ts), with the same behavior: drain within the kill grace for a supervised generation, immediate graceful shutdown otherwise. Unsupervised boot and signal handling unchanged.","inputs":["docs/guides/monitoring.md","src-server/index.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"index.ts: under STATION_SUPERVISOR_IPC=1 only, the SIGTERM wiring moved into createSigtermHandler (supervisor-drain.ts), with the same behavior: drain within the kill grace for a supervised generation, immediate graceful shutdown otherwise. Unsupervised boot and signal handling unchanged.","inputs":["docs/guides/native-shell-verification.md","src-server/index.ts"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"index.ts: under STATION_SUPERVISOR_IPC=1 only, the SIGTERM wiring moved into createSigtermHandler (supervisor-drain.ts), with the same behavior: drain within the kill grace for a supervised generation, immediate graceful shutdown otherwise. Unsupervised boot and signal handling unchanged.","inputs":["docs/guides/self-hosted-broker.md","src-server/index.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"vitest-resource-manifest.mjs compacts the ordinary group's exclusions into exact per-directory brace alternations and checks the Windows command-line limit against worst-case paths; group membership and the exact-partition verification are unchanged, and no claim here names the exclusion form.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/reference/env-vars.md","note":"index.ts: under STATION_SUPERVISOR_IPC=1 only, the SIGTERM wiring moved into createSigtermHandler (supervisor-drain.ts), with the same behavior: drain within the kill grace for a supervised generation, immediate graceful shutdown otherwise. Unsupervised boot and signal handling unchanged. supervisor-link.ts no longer installs an upgrade listener on every server (WebSocket listeners report their upgrades), clamps the drain bound to the deadline, and reads _header/_handle through Reflect.get; the parking contract and environment the env-vars row describes are unchanged.","inputs":["docs/reference/env-vars.md","src-server/index.ts","src-server/runtime/bootstrap/supervisor-link.ts"]},
+
+    {"path":"docs/user/native-recovery.md","note":"index.ts: under STATION_SUPERVISOR_IPC=1 only, the SIGTERM wiring moved into createSigtermHandler (supervisor-drain.ts), with the same behavior: drain within the kill grace for a supervised generation, immediate graceful shutdown otherwise. Unsupervised boot and signal handling unchanged.","inputs":["docs/user/native-recovery.md","src-server/index.ts"]},
+
+    {"path":"scripts/AGENTS.md","note":"vitest-resource-manifest.mjs compacts the ordinary group's exclusions into exact per-directory brace alternations and checks the Windows command-line limit against worst-case paths; group membership and the exact-partition verification are unchanged, and no claim here names the exclusion form.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "e258d82076814157b15e2bfd6332e405dd3db727",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Rewrote the two capacity-admission passages for #3612: a denial now waits (re-observing every 60 s, 20-minute ceiling) instead of failing the required check; only an elapsed ceiling fails, with the last observed capacity; an observation error still fails at once; the receipt is one JSON line per observation. Checked against scripts/release-pipeline.mjs awaitQualificationAdmission/main and full-regression.yml resolve (job 30 min, step 23 min). Capacity rule, profiles and reserve claims unchanged.","inputs":["docs/guides/releasing.md",".github/workflows/full-regression.yml"]}
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "revision": "143011d6ad3b99b13b4fa2d37988e0a1f51869ab",
+
+  "notes": [
+    {"path":"docs/acp-chat-architecture.md","note":"#3938 round 5: comment-only change in acp-adapter (OpenCode is not offered the client file methods because its own tools write every edit; the earlier claim that a refusal ends the engine was refuted on OpenCode 1.18.18). No behaviour changed; no claim here is affected.","inputs":["docs/acp-chat-architecture.md","docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","note":"#3938 round 5: comment-only change in acp-adapter (OpenCode is not offered the client file methods because its own tools write every edit; the earlier claim that a refusal ends the engine was refuted on OpenCode 1.18.18). No behaviour changed; no claim here is affected.","inputs":["docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"#3938 round 5: comment-only change in acp-adapter (OpenCode is not offered the client file methods because its own tools write every edit; the earlier claim that a refusal ends the engine was refuted on OpenCode 1.18.18). No behaviour changed; no claim here is affected.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"#3938 round 5: comment-only change in acp-adapter (OpenCode is not offered the client file methods because its own tools write every edit; the earlier claim that a refusal ends the engine was refuted on OpenCode 1.18.18). Updated: the initialize step now says fs read/write is offered to every engine except OpenCode, linking to the File System section that explains why; anchor validated by docs:links:check.","inputs":["docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/agents.md","note":"#3938 round 5: comment-only change in acp-adapter (OpenCode is not offered the client file methods because its own tools write every edit; the earlier claim that a refusal ends the engine was refuted on OpenCode 1.18.18). No behaviour changed; no claim here is affected.","inputs":["docs/guides/agents.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"#3938 round 5: comment-only change in acp-adapter (OpenCode is not offered the client file methods because its own tools write every edit; the earlier claim that a refusal ends the engine was refuted on OpenCode 1.18.18). No behaviour changed; no claim here is affected.","inputs":["docs/guides/connections.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#3938 round 5: comment-only change in acp-adapter (OpenCode is not offered the client file methods because its own tools write every edit; the earlier claim that a refusal ends the engine was refuted on OpenCode 1.18.18). No behaviour changed; no claim here is affected.","inputs":["docs/guides/self-configuring-agent.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#3938 round 5: comment-only change in acp-adapter (OpenCode is not offered the client file methods because its own tools write every edit; the earlier claim that a refusal ends the engine was refuted on OpenCode 1.18.18). No behaviour changed; no claim here is affected.","inputs":["docs/reference/api.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"#3938 round 5: comment-only change in acp-adapter (OpenCode is not offered the client file methods because its own tools write every edit; the earlier claim that a refusal ends the engine was refuted on OpenCode 1.18.18). No behaviour changed; no claim here is affected.","inputs":["docs/reference/cli.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"#3938 round 5: comment-only change in acp-adapter (OpenCode is not offered the client file methods because its own tools write every edit; the earlier claim that a refusal ends the engine was refuted on OpenCode 1.18.18). No behaviour changed; no claim here is affected.","inputs":["docs/reference/contracts.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"#3938 round 5: comment-only change in acp-adapter (OpenCode is not offered the client file methods because its own tools write every edit; the earlier claim that a refusal ends the engine was refuted on OpenCode 1.18.18). No behaviour changed; no claim here is affected.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"#3938 round 5: comment-only change in acp-adapter (OpenCode is not offered the client file methods because its own tools write every edit; the earlier claim that a refusal ends the engine was refuted on OpenCode 1.18.18). No behaviour changed; no claim here is affected.","inputs":["docs/reference/station-docs.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"#3938 round 5: comment-only change in acp-adapter (OpenCode is not offered the client file methods because its own tools write every edit; the earlier claim that a refusal ends the engine was refuted on OpenCode 1.18.18). No behaviour changed; no claim here is affected.","inputs":["examples/self-configuring-agent/README.md","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

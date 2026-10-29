@@ -26,6 +26,7 @@
  */
 export const BUILTIN_WORKSPACE_PANE_RENDERER_NAMES = [
   'flow-run-console',
+  'workspace-activity-review',
   'workspace-chat',
   'task-room-editor',
   'coding',

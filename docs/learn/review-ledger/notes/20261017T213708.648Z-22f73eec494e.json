@@ -1,0 +1,11 @@
+{
+  "revision": "dd1fb51c28c36d304b13a8d166f0770da6939d7f",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"PR 3778 resource classification follow-up: reviewed the four-worker ordinary, two-worker process-heavy and serial/exclusive grouping explanation against scripts/vitest-resource-manifest.mjs. The coding content route suite now creates a real FIFO with mkfifo inside its isolated Git fixture, so it belongs in processHeavy. Worker caps, discovery, partition validation and policy strength are unchanged. Manifest owner tests pass 24 cases and verification:policy:gate passes including 33 fixture/policy tests. No prose change needed.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"PR 3778 resource classification follow-up: read the complete scripts instructions. The direct child-process coding fixture is explicitly classified in the manifest and uses windowsHide. No allowlist, baseline or checker was weakened. The new classification follows this existing instruction; no instruction prose change needed. Code-health analysis is required on the frozen final revision; its earlier unstable-revision result was not treated as a pass.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/reference/sdk.md","note":"PR 3778 final preview review: MAX_PREVIEW_BYTES is implementation-local after confirming every use is inside FileTreeService. The named 2 MiB cap, typed refusals, prefix sniff, pre-open admission and bounded growth behavior remain unchanged. The real coding content route suite passes all 34 cases after removing the unused export. No SDK export or documented public constant was removed, and no further prose change is needed.","inputs":["docs/reference/sdk.md","src-server/services/projects/file-tree-service.ts"]}
+  ]
+}

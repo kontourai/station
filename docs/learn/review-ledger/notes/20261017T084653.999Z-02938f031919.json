@@ -1,0 +1,13 @@
+{
+  "revision": "b8becf8d3bcdd71d9c18c70312a419e20363b717",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the bounded ChatDock merge delta: retained main observation wiring and the draft full-height transcript, removing the redundant in-chat shaping chip while preserving Stop shaping this Task in More. Placement, responsive header controls, attachment/config contracts and shared start-composer behavior remain unchanged. This source review does not renew browser/device geometry proof.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed the bounded ChatDock merge delta: retained main observation wiring and the draft full-height transcript, removing the redundant in-chat shaping chip while preserving Stop shaping this Task in More. Placement, responsive header controls, attachment/config contracts and shared start-composer behavior remain unchanged. This source review does not renew browser/device geometry proof.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the bounded ChatDock merge delta: retained main observation wiring and the draft full-height transcript, removing the redundant in-chat shaping chip while preserving Stop shaping this Task in More. Placement, responsive header controls, attachment/config contracts and shared start-composer behavior remain unchanged. This source review does not renew browser/device geometry proof.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the bounded ChatDock merge delta: retained main observation wiring and the draft full-height transcript, removing the redundant in-chat shaping chip while preserving Stop shaping this Task in More. Placement, responsive header controls, attachment/config contracts and shared start-composer behavior remain unchanged. This source review does not renew browser/device geometry proof.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

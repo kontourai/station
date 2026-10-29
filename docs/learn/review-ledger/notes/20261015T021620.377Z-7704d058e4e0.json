@@ -1,0 +1,7 @@
+{
+  "revision": "f19cbb8680f99b2c8877eccb54b18f786af0885c",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Fix round 1 final fixture delta: typed public handshake advertises the top-level boolean sessionEventWindow flag. During scripted recovery only, an explicitly scoped open SSE transport prevents the empty real server snapshot from retiring the synthetic conversation; finally restores fetch. Real SDK open/history/inventory reads use held route responses, request counts, ordinary activation, and rendered errors/replacement transcript. No native or hosted Gallery claim; no reference baseline changed.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]}
+  ]
+}

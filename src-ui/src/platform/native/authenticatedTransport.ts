@@ -47,9 +47,40 @@ type BrokerMessage =
       headers: Record<string, string>;
       bodyLength?: number | null;
     }
-  | { type: 'chunk'; bytes: number[] }
   | { type: 'end' }
   | { type: 'error'; code: string; detail?: string };
+
+function isBrokerMessage(message: unknown): message is BrokerMessage {
+  if (!message || typeof message !== 'object' || !('type' in message))
+    return false;
+  if (message.type === 'end') return true;
+  if (message.type === 'error')
+    return (
+      'code' in message &&
+      typeof message.code === 'string' &&
+      (!('detail' in message) || typeof message.detail === 'string')
+    );
+  return (
+    message.type === 'response' &&
+    'status' in message &&
+    typeof message.status === 'number' &&
+    Number.isInteger(message.status) &&
+    message.status >= 200 &&
+    message.status <= 599 &&
+    'headers' in message &&
+    message.headers !== null &&
+    typeof message.headers === 'object' &&
+    !Array.isArray(message.headers) &&
+    Object.values(message.headers).every(
+      (value) => typeof value === 'string',
+    ) &&
+    (!('bodyLength' in message) ||
+      message.bodyLength === null ||
+      (typeof message.bodyLength === 'number' &&
+        Number.isSafeInteger(message.bodyLength) &&
+        message.bodyLength >= 0))
+  );
+}
 
 const encoder = new TextEncoder();
 const CAPACITY_RETRY_LIMIT = 6;
@@ -73,19 +104,28 @@ function waitForCapacityRetry(
 
 async function requestBody(
   body: BodyInit | null | undefined,
-): Promise<number[] | undefined> {
+): Promise<string | undefined> {
   if (body === undefined || body === null) return undefined;
-  if (typeof body === 'string') return [...encoder.encode(body)];
-  if (body instanceof URLSearchParams)
-    return [...encoder.encode(body.toString())];
-  if (body instanceof ArrayBuffer) return [...new Uint8Array(body)];
-  if (ArrayBuffer.isView(body))
-    return [...new Uint8Array(body.buffer, body.byteOffset, body.byteLength)];
-  if (body instanceof Blob)
-    return [...new Uint8Array(await body.arrayBuffer())];
-  throw new TypeError(
-    'Native Station requests require a serializable request body.',
-  );
+  let bytes: Uint8Array;
+  if (typeof body === 'string') bytes = encoder.encode(body);
+  else if (body instanceof URLSearchParams)
+    bytes = encoder.encode(body.toString());
+  else if (body instanceof ArrayBuffer) bytes = new Uint8Array(body);
+  else if (ArrayBuffer.isView(body))
+    bytes = new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
+  else if (body instanceof Blob)
+    bytes = new Uint8Array(await body.arrayBuffer());
+  else
+    throw new TypeError(
+      'Native Station requests require a serializable request body.',
+    );
+  // The command also carries structured authority metadata, so its upload
+  // body uses base64. Responses use Tauri's raw channel transport instead.
+  const parts: string[] = [];
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    parts.push(String.fromCharCode(...bytes.subarray(offset, offset + 0x8000)));
+  }
+  return btoa(parts.join(''));
 }
 
 /** A Fetch-compatible transport backed by the host-owned profile authority. */
@@ -174,8 +214,19 @@ const nativeAuthenticatedTransportWithoutDnsRetry: ClientAuthenticatedTransport 
       if (finished) return;
       finished = true;
       cleanup();
+      // Ambient callers recover through the existing credential-binding path.
+      // A scoped receipt stays stale and must never silently adopt another binding.
+      if (code === 'request_binding_stale' && !expectedBindingId) {
+        code = 'credential_binding_changed';
+        detail =
+          'The saved Station connection changed. Refresh the connection and try again.';
+      }
       const error = Object.assign(
-        new Error(`Native Station request failed: ${detail ?? code}`),
+        // A changed network is a fetch failure with uncertain delivery. Keep
+        // its code while using the queue's existing TypeError recovery path.
+        code === 'network_changed'
+          ? new TypeError(`Native Station request failed: ${detail ?? code}`)
+          : new Error(`Native Station request failed: ${detail ?? code}`),
         code === undefined ? {} : { code },
         capacity ? { capacity } : {},
       );
@@ -185,7 +236,18 @@ const nativeAuthenticatedTransportWithoutDnsRetry: ClientAuthenticatedTransport 
       }
       completeStream(error);
     };
-    const channel = new Channel<BrokerMessage>((message) => {
+    const channel = new Channel<unknown>((message) => {
+      if (message instanceof ArrayBuffer) {
+        if (!finished) {
+          receivedBodyLength += message.byteLength;
+          streamController?.enqueue(new Uint8Array(message));
+        }
+        return;
+      }
+      if (!isBrokerMessage(message)) {
+        fail('transport', 'invalid native response message');
+        return;
+      }
       if (message.type === 'response') {
         expectedBodyLength =
           typeof message.bodyLength === 'number' &&
@@ -204,11 +266,6 @@ const nativeAuthenticatedTransportWithoutDnsRetry: ClientAuthenticatedTransport 
               },
             ),
           );
-        }
-      } else if (message.type === 'chunk') {
-        if (!finished) {
-          receivedBodyLength += message.bytes.length;
-          streamController?.enqueue(new Uint8Array(message.bytes));
         }
       } else if (message.type === 'end') {
         if (!finished) {
@@ -233,7 +290,7 @@ const nativeAuthenticatedTransportWithoutDnsRetry: ClientAuthenticatedTransport 
     };
     signal?.addEventListener('abort', abort, { once: true });
     if (signal?.aborted) abort();
-    let body: number[] | undefined;
+    let body: string | undefined;
     try {
       body = await requestBody(
         init?.body ?? (request ? await request.clone().blob() : undefined),

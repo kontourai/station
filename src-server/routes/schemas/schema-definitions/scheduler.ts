@@ -91,6 +91,12 @@ export const addJobSchema = z
     retryCount: z.number().int().min(0).max(10).optional(),
     retryDelaySecs: z.number().int().min(0).max(3600).optional(),
     monitor: monitorSchema.optional(),
+    /**
+     * A person approving an agent's job proposal (`propose_job`): the route
+     * creates the job only when the body is exactly the proposed job, and
+     * then records the proposal approved. Never passed to the scheduler.
+     */
+    proposalId: z.string().min(1).max(100).optional(),
   })
   .superRefine(rejectAmbiguousSchedule)
   .superRefine((value, context) => {

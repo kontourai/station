@@ -1,0 +1,65 @@
+{
+  "revision": "593651abb0b2d35ef9b5cf146c991a523b5630dc",
+
+  "notes": [
+    {"path":"docs/guides/knowledge.md","note":"Rewrote the embedding-model, migration, search and external-edit passages against the new code: per-chunk embedding generation in sqlite-vec-index-provider (metadata column, schemaVersion 2, legacy table reported unknown and replaced on first write), identity rule in embedding-identity.ts, migration always rebuilding, and the search route's current-excerpt check, 1,000-hit refill bound and index report. Verified by the route currency/refill tests and the CLI stderr test; retirement behaviour (still returned) checked in the route source.","inputs":["docs/guides/knowledge.md","packages/sdk/src/client/knowledge.ts","src-server/knowledge-index/migrate-pre-index-knowledge.ts","src-server/knowledge-index/sqlite-vec-index-provider.ts","src-server/routes/knowledge/knowledge-index-routes.ts","src-server/knowledge-index/embedding-identity.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Rewrote the SqliteVecIndexProvider limits against the provider and route: generations(), identity-scoped search, legacy-table upgrade, current-excerpt check, refill bound and stale report; retired records still returned. Other sections are unaffected by this change.","inputs":["docs/architecture/module-map.md","src-server/knowledge-index/migrate-pre-index-knowledge.ts","src-server/knowledge-index/sqlite-vec-index-provider.ts","src-server/routes/knowledge/knowledge-index-routes.ts","src-server/knowledge-index/embedding-identity.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Removed the store-index freshness candidate: #2727 (embedding identity) and #2728 (excerpt freshness) are resolved by the provider/route/migration changes this note reviews. Remaining candidates do not cite the changed sources.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md","src-server/knowledge-index/migrate-pre-index-knowledge.ts","src-server/knowledge-index/sqlite-vec-index-provider.ts","src-server/routes/knowledge/knowledge-index-routes.ts"]},
+
+    {"path":"docs/design/knowledge-foundation.md","note":"Updated the migration step: the importer no longer reuses vectors.json and rebuilds each migrated root. Checked the K3 dimension-tracking sketch is still true (width change still drops the table); the contract additions (embeddingIdentity, generations, identity-scoped search) are optional and do not contradict the historical sketches, which the reading status already subordinates to source.","inputs":["docs/design/knowledge-foundation.md","packages/cli/src/commands/knowledge.ts","packages/contracts/src/knowledge-index.ts","packages/sdk/src/client/knowledge.ts","src-server/knowledge-index/migrate-pre-index-knowledge.ts","src-server/knowledge-index/sqlite-vec-index-provider.ts","src-server/routes/knowledge/knowledge-index-routes.ts"]},
+
+    {"path":"examples/meeting-notes/README.md","note":"Updated the Ask step: the search route withholds excerpts the record no longer contains and old-model roots return nothing until rebuilt. AskPane still uses useSearchKnowledgeIndexMutation, which returns only results, so the README states that Ask does not show the stale-index report.","inputs":["examples/meeting-notes/README.md","packages/sdk/src/client/knowledge.ts","src-server/routes/knowledge/knowledge-index-routes.ts"]},
+
+    {"path":"docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","note":"Status paragraph says model and freshness limits matter and defers to the Knowledge guide and index owner; still accurate after generation tracking and excerpt checks. Historical body unchanged.","inputs":["docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","docs/guides/knowledge.md","src-server/knowledge-index/sqlite-vec-index-provider.ts"]},
+
+    {"path":"CONTEXT-MAP.md","note":"Only module-map's SqliteVecIndexProvider section changed; this map's routing claims do not depend on it.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Only module-map's SqliteVecIndexProvider section changed; no vocabulary here describes index freshness or embedding identity.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"Only module-map's SqliteVecIndexProvider section changed; the entry point makes no index freshness claim.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Only module-map's SqliteVecIndexProvider section changed; audience routes and index descriptions are unaffected.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Only module-map's SqliteVecIndexProvider section changed; this design does not cite it.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/glossary.md","note":"Only module-map's SqliteVecIndexProvider section changed; no glossary term defines index freshness or embedding identity.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Only module-map's SqliteVecIndexProvider section changed; the agent identity inventory does not cite it.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Only module-map's SqliteVecIndexProvider section changed; deep-link behaviour is unaffected.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/concepts.md","note":"Only module-map's SqliteVecIndexProvider section changed; the concept guide makes no index freshness claim.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Only module-map's SqliteVecIndexProvider section changed; graph export and ingestion do not use the vector index search route.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Only module-map's SqliteVecIndexProvider section changed; the routing and batching rules here still hold (the search route reads each record once per request).","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Only module-map's SqliteVecIndexProvider section changed; UI routing guidance is unaffected.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/knowledge-recall-ui.md","note":"SDK knowledge.ts gained searchKnowledgeIndexWithReport; searchKnowledgeIndex keeps its signature and result shape. This recall UI design does not depend on the index search fetcher's envelope.","inputs":["docs/design/knowledge-recall-ui.md","packages/sdk/src/client/knowledge.ts"]},
+
+    {"path":"docs/guides/repository-knowledge-graph.md","note":"SDK knowledge.ts gained searchKnowledgeIndexWithReport; the graph guide uses record and graph fetchers, whose behaviour is unchanged.","inputs":["docs/guides/repository-knowledge-graph.md","packages/sdk/src/client/knowledge.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"SDK knowledge.ts gained searchKnowledgeIndexWithReport; walkthrough claims about record and graph reads are unchanged.","inputs":["docs/learn/walkthroughs.md","packages/sdk/src/client/knowledge.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"SDK knowledge.ts gained an additive searchKnowledgeIndexWithReport and an exported report type; this reference does not document the K3 index-search fetchers, so nothing here became wrong. searchKnowledgeIndex is unchanged.","inputs":["docs/reference/sdk.md","packages/sdk/src/client/knowledge.ts"]},
+
+    {"path":"examples/knowledge-library/README.md","note":"SDK knowledge.ts gained searchKnowledgeIndexWithReport; the library example does not call index search, and its record/graph fetchers are unchanged.","inputs":["examples/knowledge-library/README.md","packages/sdk/src/client/knowledge.ts"]},
+
+    {"path":"docs/design/local-model-tool-calling.md","note":"ollama-provider.ts only gained OllamaEmbeddingProvider.embeddingIdentity(); chat/tool-calling behaviour described here is unchanged.","inputs":["docs/design/local-model-tool-calling.md","src-server/providers/llm/ollama-provider.ts"]},
+
+    {"path":"docs/guides/agents.md","note":"ollama and openai-compat providers only gained embeddingIdentity() on their embedding classes; agent and chat provider behaviour is unchanged.","inputs":["docs/guides/agents.md","src-server/providers/llm/ollama-provider.ts","src-server/providers/llm/openai-compat-provider.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"ollama and openai-compat providers only gained embeddingIdentity() on their embedding classes; connection setup, catalogues and health checks are unchanged.","inputs":["docs/guides/connections.md","src-server/providers/llm/ollama-provider.ts","src-server/providers/llm/openai-compat-provider.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"ollama and openai-compat providers only gained embeddingIdentity() on their embedding classes; nothing here describes embedding identity.","inputs":["docs/guides/self-configuring-agent.md","src-server/providers/llm/ollama-provider.ts","src-server/providers/llm/openai-compat-provider.ts"]},
+
+    {"path":"docs/reference/config.md","note":"ollama and openai-compat providers only gained embeddingIdentity(); no config key was added or changed.","inputs":["docs/reference/config.md","src-server/providers/llm/ollama-provider.ts","src-server/providers/llm/openai-compat-provider.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"bedrock-embedding-provider.ts only gained embeddingIdentity() (model plus normalize flag, no credentials); the documented environment variables and IAM guidance are unchanged.","inputs":["docs/reference/env-vars.md","src-server/providers/llm/bedrock-embedding-provider.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"ollama and openai-compat providers only gained embeddingIdentity() on their embedding classes; the example's setup is unchanged.","inputs":["examples/self-configuring-agent/README.md","src-server/providers/llm/ollama-provider.ts","src-server/providers/llm/openai-compat-provider.ts"]}
+  ]
+}

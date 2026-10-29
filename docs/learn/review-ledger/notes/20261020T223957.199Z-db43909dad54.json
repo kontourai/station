@@ -1,0 +1,7 @@
+{
+  "revision": "b2c7037a372a77b55c22ce4103739299021ca4ee",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed the agents-pane journey change against its product/parallel-safe ownership: the existing CLI delegate now has catalog Owl artwork and recorded Codex engine, and a child-owned tool.started Read arrives through the existing named SSE/event-window fixture. Assertions inspect the real rendered artwork, engine badge and latest tool together. Existing scope, stop and provenance assertions remain. Browser execution for this extension is pending; prior fixture runs are not adopted as new-head proof.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/agents-pane.spec.ts"]}
+  ]
+}

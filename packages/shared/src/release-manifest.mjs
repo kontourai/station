@@ -11,8 +11,10 @@
  * it, and it names no server archive anything could install.
  *
  * Not here either: downgrade or replay protection. A validly signed older
- * manifest verifies; the supervisor's monotonic version check (slice D)
- * refuses it.
+ * manifest verifies; the installers refuse it against the active release and
+ * the install root's accepted-release mark (prebuilt-archive.ts
+ * readAcceptedRelease), the server's release check does not offer it, and
+ * the service launcher trials only a newer version.
  */
 import { createPublicKey, verify } from 'node:crypto';
 import {

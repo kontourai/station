@@ -7,7 +7,7 @@ import type {
   RevisionReferenceResolution,
 } from './revision-bound-evidence.js';
 
-export const LIVE_WORK_SESSION_SCHEMA_VERSION =
+const LIVE_WORK_SESSION_SCHEMA_VERSION =
   'station.live-work-session/v6' as const;
 export const LIVE_WORK_RECOVERY_SCHEMA_VERSION =
   'station.live-work-recovery/v3' as const;

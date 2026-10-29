@@ -26,7 +26,7 @@ const hooks = vi.hoisted(() => {
       {
         id: 'chosen-task',
         title: 'Chosen Task',
-        status: 'open',
+        status: 'todo',
       },
     ],
     focusRestore: undefined as 'inspect' | 'keep' | undefined,

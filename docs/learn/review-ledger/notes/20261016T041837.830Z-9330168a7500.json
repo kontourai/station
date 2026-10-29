@@ -1,0 +1,7 @@
+{
+  "revision": "800f9fb066409816460a8fe7e7ec666ef1bef466",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the merged runtime route-composition delta: scoped tool-library registration and Project authority are additive and do not change the telemetry status/check/export route owners or their request authorization. Upstream delivery/export behavior and evidence limits remain unchanged; no fresh collector, broker or artifact publication proof is claimed.","inputs":["docs/reference/usage-telemetry.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

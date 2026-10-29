@@ -1,7 +1,16 @@
+import type { ChatHostImageMap } from '@kontourai/station-contracts/chat-host-images';
+import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
 import type { InputRequestRecord } from '@kontourai/station-contracts/input-request';
-import type { EngineToolKind } from '@kontourai/station-contracts/runtime-events';
+import type { RuntimeEventContentRef } from '@kontourai/station-contracts/runtime-event-content';
+import type {
+  CanonicalRuntimeEvent,
+  EngineToolKind,
+} from '@kontourai/station-contracts/runtime-events';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
-import type { ToolRequestSessionGrant } from './tool-request-preview.js';
+import type {
+  ToolRequestServerGrant,
+  ToolRequestSessionGrant,
+} from './tool-request-preview.js';
 
 /**
  * Canonical conversation message shape — the single shared contract every
@@ -53,10 +62,15 @@ export interface MessagePart {
   result?: string;
   /** Provider output retained in its original JSON-compatible shape. */
   output?: unknown;
+  htmlReply?: import('@kontourai/station-contracts/html-reply').HtmlReplyReference;
   error?: string;
   cancelled?: boolean;
   isError?: boolean;
   progressMessage?: string;
+  /** A station-control refusal, whole (see `ToolCompletedEvent`). */
+  stationControlRefusal?: import('@kontourai/station-contracts/station-control-refusal').StationControlRefusalView;
+  /** When the call's `tool.started` was created (ISO); a running row's elapsed time. */
+  startedAt?: string;
   /** Engine output was deliberately narrowed before publication. */
   outputTruncated?: true;
   /**
@@ -100,6 +114,24 @@ export interface MessagePart {
    */
   approvalEventId?: string;
   /**
+   * docs/design/event-content-spill.md: the stored `request.opened` this
+   * approval answers, set only when its content (or the bound call's
+   * arguments) was stored out of line. A surface must load it whole before
+   * it offers Allow.
+   */
+  approvalContentEvent?: CanonicalRuntimeEvent;
+  /**
+   * docs/design/event-content-spill.md: a text part that shows a spilled
+   * prompt or reply's preview names the reference, so a surface can load
+   * the rest on demand.
+   */
+  spilledText?: { threadId: string; ref: RuntimeEventContentRef };
+  /**
+   * The thread whose content store holds the references inside this tool
+   * part's `args` or `output`, set only when they hold any.
+   */
+  contentThreadId?: string;
+  /**
    * The tool name that `request.opened`'s payload reported, if any — the name
    * an adapter records a session grant under. The session-grant button names
    * THIS, never `toolName`: for a nameless ACP or Codex call `toolName` is
@@ -113,6 +145,11 @@ export interface MessagePart {
    * session option and label. Set only next to `approvalEventId`.
    */
   approvalSessionGrant?: ToolRequestSessionGrant;
+  /**
+   * Whether that request also offers the server-wide Station browser grant
+   * (`toolRequestServerGrantFromPayload`); `'none'` or absent offers nothing.
+   */
+  approvalServerGrant?: ToolRequestServerGrant;
   /**
    * station#3117: `'policy-denied'` is set only from the runtime event's own
    * `policyDenied` marker (see `runtime-event-projection.ts`'s `tool.completed`
@@ -137,11 +174,32 @@ export interface ConversationMessage {
   role: 'user' | 'assistant' | 'system';
   parts: MessagePart[];
   metadata?: {
+    /** Immutable copied-context receipt; it is not an execution or read grant. */
+    forkOrigin?: { eventId: string; digest: string };
+    forkSourceMessageId?: string;
     timestamp?: number;
     /** User input appended inside an already-running provider turn. */
     inputKind?: 'steer';
+    /**
+     * #3419: set on a user-role row another agent sent (`send_to_session`),
+     * from the server's own record of who sent it. Its presence is what makes
+     * a row render and read as a message from another agent, never as the
+     * person's; `text` is the sender's own words, without the frame the
+     * receiving engine was given.
+     */
+    sender?: ClientOriginSender;
     /** That steer was delivered by cancelling the running step (see `TurnStartedEvent`). */
     steerInterruptedRun?: true;
+    /**
+     * A check-back Station sent (`isStationCheckBackTurn`): sent as the
+     * person, written by nobody. Shown as Station's, not the person's.
+     */
+    stationCheckBack?: true;
+    /**
+     * Station's continuation after the engine was killed for memory
+     * (`isStationMemoryContinuationTurn`). Shown as Station's.
+     */
+    stationMemoryContinuation?: true;
     /** Durable source event for an authored user row, never an optimistic id. */
     sourceEventId?: string;
     /** The model Station requested — NOT a runtime-confirmed observation. See `reportedModel`. */
@@ -169,10 +227,33 @@ export interface ConversationMessage {
     /** True only for a terminal successful assistant response. */
     answerEligible?: boolean;
     /**
+     * How this row's turn ended, on the turn's last row, when the projection
+     * was asked to mark ended turns (`markEndedTurns`). Absent while open.
+     */
+    turnEnded?: 'completed' | 'aborted';
+    /**
+     * The abort's `reason`, raw, on a row that ended `aborted` with nothing
+     * to draw: the one place that reason survives, since it is not drawn as
+     * text in the row.
+     */
+    turnEndedReason?: string;
+    /**
+     * Who stopped that row's turn, when Station recorded it: a person's
+     * Stop, Station's stall detection, or recovery after Station restarted
+     * mid-turn (`recoveryTerminal`). Never inferred from `turnEndedReason`.
+     */
+    turnStoppedBy?: 'person' | 'stall' | 'restart';
+    /**
      * station#1410: the turn's provenance envelope, re-derived from the
      * durable orchestration event stream on every read. A projection, not a
      * second store — see `packages/contracts/src/turn-provenance.ts`.
      */
     provenance?: TurnProvenanceEnvelope;
+    /**
+     * chat-host-images: images this turn's reply named by host path, each
+     * mapped to the attachment Station stored, or to why it did not. A
+     * projection of the turn's `content.host-images` events.
+     */
+    hostImages?: ChatHostImageMap;
   };
 }

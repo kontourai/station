@@ -1,5 +1,5 @@
 {
-  "pageLocalMediaQueryCeiling": 106,
+  "pageLocalMediaQueryCeiling": 102,
   "pageLocal": {
     "src-ui/src/components/Checkbox.css": {
       "count": 1,
@@ -29,10 +29,6 @@
       "count": 2,
       "reason": "Two blocks. The shared toggle's 44px pseudo-element hit box on touch \u2014 deliberately larger than the switch it wraps. And #2441's `@media (forced-colors: active)`, a CAPABILITY query rather than responsive layout (the same shape as the `(hover: hover)` block recorded for ChatInputArea): forced colors drop the track's box-shadow ring and repaint its fill as Canvas, so off and on rendered identically until this block repainted them in system colours. It belongs to the one component whose state it keeps readable; no layout primitive owns forced colors."
     },
-    "src-ui/src/components/acp-connections/ACPConnections.css": {
-      "count": 1,
-      "reason": "FORK: the add-connection dialog hand-rolls the mobile bottom-sheet treatment instead of adopting the shared dialog surface. Retire with the sheet primitive (see docs note)."
-    },
     "src-ui/src/components/attention/AttentionCard.css": {
       "count": 1,
       "reason": "Left-aligns the card's action row on small screens."
@@ -44,6 +40,10 @@
     "src-ui/src/components/chat-dock/ChatDockInboxPanel.css": {
       "count": 1,
       "reason": "prefers-reduced-motion. Keeps `animation: none` because the exit animation is `forwards`: under the motion primitive alone a 0.01ms run HOLDS the collapsed end state instead of leaving the panel as it was."
+    },
+    "src-ui/src/components/modals/TaskChatStart.css": {
+      "count": 1,
+      "reason": "#3705: the New Task shaping start surface is a chat-dock sheet like BackgroundTasksSheet; on phones it fills the viewport below the toolbar so the page's own Start work composer cannot sit beside the shaping composer. No shared primitive owns chat-dock sheet height."
     },
     "src-ui/src/components/chat/QueuedMessages.css": {
       "count": 1,
@@ -101,10 +101,6 @@
       "count": 1,
       "reason": "The insights tab and pill strips become horizontal scrollers and its grids single-column, so nothing forces a horizontal page scroll."
     },
-    "src-ui/src/components/notifications/BannerHost.css": {
-      "count": 3,
-      "reason": "Three blocks, three different jobs: the reduced-motion `display: none` for an exiting banner (an end state, not a duration); the DESKTOP-only inset that keeps the overlay clear of a side dock; and the mobile grid that moves the actions onto their own row."
-    },
     "src-ui/src/components/notifications/NotificationContainer.css": {
       "count": 2,
       "reason": "The toast stack's small-screen box (safe-area gutters, a viewport-bounded height) and its dismiss touch target."
@@ -123,7 +119,7 @@
     },
     "src-ui/src/components/project-sidebar/ProjectSidebarFooter.css": {
       "count": 1,
-      "reason": "The drawer's footer anchors to the device safe-area, not to the dock height \u2014 on mobile the drawer covers that dock. The same block raises the bell, the gear, the presence trigger and the presence tray's row actions (#2066) to the 44px touch floor; the tray's own stylesheet deliberately carries no at-rule so this surface keeps one."
+      "reason": "The drawer's footer anchors to the device safe-area, not to the dock height \u2014 on mobile the drawer covers that dock. The same block raises the footer actions and the Updates control to the 44px touch floor."
     },
     "src-ui/src/components/registry/ProjectLayoutCatalog.css": {
       "count": 1,
@@ -214,7 +210,7 @@
       "reason": "The cron editor, detail fields and table scrollers; at 640px two table columns are dropped and the row name is clamped \u2014 a decision about THIS table's columns that no primitive can hold."
     },
     "src-ui/src/views/SessionsView.css": {
-      "count": 3,
+      "count": 2,
       "reason": "The session detail pane's compact ladder, including a viewport-HEIGHT rung (620px) for an open software keyboard, and the `--viewport-compact` variant that collapses only non-identity chrome (station#1170/#3305)."
     },
     "src-ui/src/views/SettingsView.css": {

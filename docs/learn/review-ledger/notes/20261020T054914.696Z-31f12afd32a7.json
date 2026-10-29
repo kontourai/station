@@ -1,0 +1,69 @@
+{
+  "revision": "0da9421e119b4b2c861ed894bc1a5c351d211a55",
+
+  "notes": [
+    {"path":"deploy/gcp-dev/README.md","note":"Since this page was last reviewed on this branch, station-runtime.ts changed only by moving the listAgents doc comment back above listAgents (no code change); the page's claims are unaffected.","inputs":["deploy/gcp-dev/README.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"Since this page was last reviewed on this branch, station-runtime.ts changed only by moving the listAgents doc comment back above listAgents (no code change); the page's claims are unaffected.","inputs":["deploy/public-ingress/README.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/architecture.md","note":"Since this page was last reviewed on this branch, station-runtime.ts changed only by moving the listAgents doc comment back above listAgents (no code change); the page's claims are unaffected.","inputs":["docs/architecture.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Since this page was last reviewed on this branch, station-runtime.ts changed only by moving the listAgents doc comment back above listAgents (no code change); the page's claims are unaffected.","inputs":["docs/architecture/module-map.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Since this page was last reviewed on this branch, station-runtime.ts changed only by moving the listAgents doc comment back above listAgents (no code change); the page's claims are unaffected.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Since this page was last reviewed on this branch, station-runtime.ts changed only by moving the listAgents doc comment back above listAgents (no code change); the page's claims are unaffected.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Since this page was last reviewed on this branch, station-runtime.ts changed only by moving the listAgents doc comment back above listAgents (no code change); the page's claims are unaffected.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Since this page was last reviewed on this branch, station-runtime.ts changed only by moving the listAgents doc comment back above listAgents (no code change); the page's claims are unaffected.","inputs":["docs/design/connections-onboarding.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/hosted-execution-isolation.md","note":"Since this page was last reviewed on this branch, station-runtime.ts changed only by moving the listAgents doc comment back above listAgents (no code change); the page's claims are unaffected.","inputs":["docs/design/hosted-execution-isolation.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"Since this page was last reviewed on this branch, station-runtime.ts changed only by moving the listAgents doc comment back above listAgents (no code change); the page's claims are unaffected.","inputs":["docs/design/plugin-installation-lifecycle.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/principals.md","note":"Since this page was last reviewed on this branch, station-runtime.ts changed only by moving the listAgents doc comment back above listAgents (no code change); the page's claims are unaffected.","inputs":["docs/design/principals.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Since this page was last reviewed on this branch, station-runtime.ts changed only by moving the listAgents doc comment back above listAgents (no code change); the page's claims are unaffected.","inputs":["docs/design/project-membership.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/registry-trust-policy.md","note":"Since this page was last reviewed on this branch, station-runtime.ts changed only by moving the listAgents doc comment back above listAgents (no code change); the page's claims are unaffected.","inputs":["docs/design/registry-trust-policy.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"Since this page was last reviewed on this branch, station-runtime.ts changed only by moving the listAgents doc comment back above listAgents (no code change); the page's claims are unaffected.","inputs":["docs/design/survey-flow-review.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"Since this page was last reviewed on this branch, station-runtime.ts changed only by moving the listAgents doc comment back above listAgents (no code change); the page's claims are unaffected.","inputs":["docs/design/task-dispatcher.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Since this page was last reviewed on this branch, station-runtime.ts changed only by moving the listAgents doc comment back above listAgents (no code change); the page's claims are unaffected.","inputs":["docs/design/task-room-agent-requests.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/agents.md","note":"Since this page was last reviewed on this branch, station-runtime.ts changed only by moving the listAgents doc comment back above listAgents (no code change); the page's claims are unaffected.","inputs":["docs/guides/agents.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Since this page was last reviewed on this branch, station-runtime.ts changed only by moving the listAgents doc comment back above listAgents (no code change); the page's claims are unaffected.","inputs":["docs/guides/connections.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Since this page was last reviewed on this branch, station-runtime.ts changed only by moving the listAgents doc comment back above listAgents (no code change); the page's claims are unaffected.","inputs":["docs/guides/deployment.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Since this page was last reviewed on this branch, station-runtime.ts changed only by moving the listAgents doc comment back above listAgents (no code change); the page's claims are unaffected.","inputs":["docs/guides/integrating-station.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Since this page was last reviewed on this branch, station-runtime.ts changed only by moving the listAgents doc comment back above listAgents (no code change); the page's claims are unaffected.","inputs":["docs/guides/plugins.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Since this page was last reviewed on this branch, station-runtime.ts changed only by moving the listAgents doc comment back above listAgents (no code change); the page's claims are unaffected.","inputs":["docs/guides/self-configuring-agent.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Since this page was last reviewed on this branch, station-runtime.ts changed only by moving the listAgents doc comment back above listAgents (no code change); the page's claims are unaffected.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Since this page was last reviewed on this branch, station-runtime.ts changed only by moving the listAgents doc comment back above listAgents (no code change); the page's claims are unaffected.","inputs":["docs/reference/api.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Since this page was last reviewed on this branch, station-runtime.ts changed only by moving the listAgents doc comment back above listAgents (no code change); the page's claims are unaffected.","inputs":["docs/reference/config.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Since this page was last reviewed on this branch, station-runtime.ts changed only by moving the listAgents doc comment back above listAgents (no code change); the page's claims are unaffected.","inputs":["docs/reference/contracts.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Since this page was last reviewed on this branch, station-runtime.ts changed only by moving the listAgents doc comment back above listAgents (no code change); the page's claims are unaffected.","inputs":["docs/reference/project-task-room-collaboration-acceptance.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Since this page was last reviewed on this branch, station-runtime.ts changed only by moving the listAgents doc comment back above listAgents (no code change); the page's claims are unaffected.","inputs":["docs/reference/usage-telemetry.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"examples/builder-delivery-viewer/README.md","note":"Since this page was last reviewed on this branch, station-runtime.ts changed only by moving the listAgents doc comment back above listAgents (no code change); the page's claims are unaffected.","inputs":["examples/builder-delivery-viewer/README.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"examples/fieldwork-review/README.md","note":"Since this page was last reviewed on this branch, station-runtime.ts changed only by moving the listAgents doc comment back above listAgents (no code change); the page's claims are unaffected.","inputs":["examples/fieldwork-review/README.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Since this page was last reviewed on this branch, station-runtime.ts changed only by moving the listAgents doc comment back above listAgents (no code change); the page's claims are unaffected.","inputs":["examples/self-configuring-agent/README.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"examples/survey-review-workbench/README.md","note":"Since this page was last reviewed on this branch, station-runtime.ts changed only by moving the listAgents doc comment back above listAgents (no code change); the page's claims are unaffected.","inputs":["examples/survey-review-workbench/README.md","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}

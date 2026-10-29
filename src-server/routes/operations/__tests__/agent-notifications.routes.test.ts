@@ -118,6 +118,7 @@ beforeAll(async () => {
     eventBus,
     logger: quietLogger(),
     devicePairing: {
+      deviceLocality: () => undefined,
       listDevices: () => [
         {
           id: 'phone',
@@ -145,7 +146,7 @@ beforeAll(async () => {
     // audience) resolve to no pushable surface; a legacy owner record (no
     // named session) still reaches the phone.
     canUserReadSession: () => false,
-    listNotifications: () => service.list(),
+    getNotification: (id) => service.get(id),
   });
   const app = new Hono();
   configureRuntimeHttp({

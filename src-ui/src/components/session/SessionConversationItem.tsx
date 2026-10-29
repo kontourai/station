@@ -198,7 +198,7 @@ export function SessionConversationItem({
           </span>
         </div>
         <div className="session-item__meta">
-          {/* Round-3: every resolved agent's conversation gets an engine
+          {/* Every resolved agent's conversation gets an engine
               chip now (not just ACP ones) — the Layout/Global badge below
               is a different axis (workspace scope, not engine identity) and
               stays alongside it unchanged. */}
@@ -248,10 +248,10 @@ export function SessionConversationItem({
                   width: `${Math.min(contextPct, 100)}%`,
                   background:
                     contextPct > 80
-                      ? '#ef4444'
+                      ? 'var(--meter-high)'
                       : contextPct > 50
-                        ? '#f59e0b'
-                        : '#10b981',
+                        ? 'var(--meter-mid)'
+                        : 'var(--meter-low)',
                 }}
               />
             </div>

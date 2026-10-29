@@ -144,7 +144,55 @@
 
     "src-ui/src/views/provider-settings/ProviderConnectionForm.tsx",
 
-    "src-ui/src/views/provider-settings/providerCatalog.tsx"
+    "src-ui/src/views/provider-settings/providerCatalog.tsx",
+
+    "packages/monument/src/session-message-delivery.ts",
+
+    "src-server/routes/orchestration/session-agent-control.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-station-control-session-control.test.ts",
+
+    "src-server/routes/orchestration/agent-schedule.ts",
+
+    "src-server/services/orchestration/agent-schedule.ts",
+
+    "src-server/tools/station-control-schedule-tools.ts",
+
+    "src-server/services/orchestration/session-turn-wait.ts",
+
+    "src-server/services/orchestration/sqlite-session-turn-boundary.ts",
+
+    "src-server/services/orchestration/__tests__/session-turn-wait.test.ts",
+
+    "src-server/services/orchestration/__tests__/delegation-result-delivery.test.ts",
+
+    "docs/architecture/module-map.md",
+
+    "src-server/services/orchestration/delegation-result-delivery.ts",
+
+    "packages/contracts/src/orchestration.ts",
+
+    "src-server/routes/chat/conversation-reference-read.ts",
+
+    "packages/shared/src/conversation-message.ts",
+
+    "src-server/tools/station-knowledge-tools.ts",
+
+    "src-server/tools/station-control-work-discovery-tools.ts",
+
+    "src-server/routes/chat/conversation-work-search.ts",
+
+    "src-server/routes/chat/work-discovery-limits.ts",
+
+    "src-server/routes/orchestration/session-project-activity.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-station-control-project-activity.test.ts",
+
+    "src-server/routes/orchestration/task-review-station-control.ts",
+
+    "src-server/tools/station-control-task-thread-tools.ts",
+
+    "src-server/services/projects/task-review-evidence.ts"
   ],
 
   "checks": [

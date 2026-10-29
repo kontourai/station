@@ -28,9 +28,12 @@ npm run hooks:install    # git config core.hooksPath .githooks
 `npm run gate:for [-- <paths...>]` prints which of the scoped checks below a
 change surface feeds, using the hook's scope deciders. Run it before editing;
 its output selects evidence and prints guidance but does not execute those
-checks or grant permission to publish.
+checks or grant permission to publish. For `.tsx`/`.css` under `src-ui/src` or
+a pane package it also names the gallery screens whose module graph loads the
+path and the commands to capture just those
+([gallery product assertions](testing.md#gallery-product-assertions)).
 
-The pre-push hook runs eight checks, in this order. Costs in this table are
+The pre-push hook runs six checks, in this order. Costs in this table are
 historical measurements, not deadlines or guarantees on the current host. The hook file,
 `.githooks/pre-push`, is the source of truth if this table drifts:
 
@@ -41,9 +44,14 @@ historical measurements, not deadlines or guarantees on the current host. The ho
 | `node scripts/check-prepush-orchestration-transfer.mjs` | scoped; requires a verified baseline at the merge base when orchestration transport inputs change | missing, stale, incomplete, or over-budget two-baseline-plus-candidate transfer evidence |
 | `node scripts/check-prepush-static-gates.mjs` | ~7s, and only when the push changes something these gates read | a UI-contract ratchet or content-gate violation (#3208) |
 | `node scripts/check-prepush-sdk-barrel.mjs` | ~6s, and only when the push changes the SDK's own sources | an SDK export missing from the public barrel (#3629) |
-| `npm run veritas:readiness` | ~15s idle, ~35s typical | a Veritas FAIL line: a missing required artifact, an unsynced AI instruction file, a stale protected-standards attestation, or a failing routed evidence-check. The invocation is unconditional here, while Veritas uses changed scope to select rules and routed checks. Selected commands may inspect repository-wide state. Readiness also evaluates standards and protected-policy authority; it is not identical to the governance proof |
-| `node scripts/check-prepush-typecheck.mjs` | ~50-90s (51s wall measured end to end, preconditions included; station#4273 recorded 82s for the aggregate alone), and only when the push changes a `.ts`/`.tsx`/`.mts`/`.cts` source, any `tsconfig`, a manifest, or a patch | any of the `typecheck:*` lanes. `ci:fast` already runs the same aggregate pre-merge, so this moves the finding to the author rather than a CI cycle later |
 | `node scripts/commit-message-gate.mjs --prepush-stdin` | instant | a commit subject in the push range that breaks the conventional grammar the forthcoming deploy-ledger changelog (station#4572) will generate from |
+
+Repository-wide Veritas readiness and all typecheck lanes belong to hosted
+`fast-checks-statics`, via `FAST_STATIC_COMMANDS` in
+`scripts/run-ci-fast.mjs`. The `fast-checks` aggregate rejects any
+non-success statics result, and the required `Source verification policy`
+context reconciles that aggregate. Local pushes retain cheap lint/governance and
+commit checks plus scoped transfer, static and SDK checks.
 
 Before the first check the hook resolves the bounded host-pressure liveness
 scale once and exports it to every step (see the
@@ -51,8 +59,7 @@ scale once and exports it to every step (see the
 a budget or assertion.
 
 A push that only adds clean merges of `origin/main` onto the tip the remote
-already holds skips the transfer, static-gate, SDK-barrel, readiness and
-typecheck rows; the other three still run, and every row runs for a conflict
+already holds skips the transfer, static-gate and SDK-barrel rows; the other three still run, and every row runs for a conflict
 resolution, an edited merge or any new commit of the author's
 ([testing guide](testing.md#pre-push-orchestration-transfer-gate)).
 
@@ -193,19 +200,66 @@ findings from fixes and inherited debt. Freeze each repair batch for validation
 and landing; later discoveries belong to a subsequent batch. These gates reduce
 specific regressions; they cannot guarantee that new code has no defects.
 
+### Dead-code ceiling
+
+The baselines above list inherited findings by name, so a finding that moves
+or is renamed can look new. The dead-code ceiling holds counts instead.
+[`scripts/fallow-dead-code-ceiling.json`](../../scripts/fallow-dead-code-ceiling.json)
+records how many findings `fallow dead-code` reports in each category and in
+total. It records no file paths, symbols or line numbers.
+
+```bash
+npm run fallow:ceiling
+```
+
+The command analyzes the whole tree, which takes about 25 seconds. A category
+fails (exit 1) only when its count exceeds the recorded count plus headroom of
+`max(3, ceil(5% of the recorded count))`. The headroom absorbs findings that
+pull requests add independently and that land together in one merge-queue
+batch, so the next pull request is not failed for growth it did not cause. A
+category the ceiling has never recorded is held at zero plus headroom. Moving
+or editing code that keeps its findings never fails the check. A lower count
+is printed with a reminder to record it. If the analysis cannot run or its
+report has no counts, the command exits 2 and prints `NOT_VERIFIED`. It never
+reports a pass in that case.
+
+The ceiling is advisory until it is promoted through the
+[proof-family promotion workflow](../strategy/veritas/proof-family-promotion-workflow.md).
+
+To update the baselines and the ceiling, run one command on a clean, current
+`main`, or after merging `main` into your branch:
+
+```bash
+npm run fallow:baseline
+```
+
+It rewrites the three analyzer baselines in `fallow-baselines/` and then the
+ceiling. Commit the four files together, in their own commit, and state in the
+pull request why the counts changed. Raising a ceiling to admit new dead code
+needs the same justification as any other new finding.
+
+Regenerate after every fallow upgrade. The command accepts only the report
+kind and schema version it was written for. It refuses, with `NOT_VERIFIED`,
+a report whose counts disagree with its findings, whose total is not the sum
+of its categories, or that lacks a category the ceiling records. A category
+that fallow renames or adds is held at zero plus 3, so it can fail a run whose
+total did not change until the ceiling is regenerated.
+
 ## Local CI pipeline
 
-Use `npm run gate:for -- <paths>` before editing, run its focused checks, then
-`npm run ci:fast` before pushing. The pre-push hook enforces its scoped gates;
-the merge queue verifies the latest-main composition. The [testing guide](testing.md)
-owns the full schedule and promotion-completion requirements.
+Use `npm run gate:for -- <paths>` before editing and run its focused checks.
+Push through the normal scoped gates; required hosted PR checks own broad
+integration feedback, and the merge queue verifies the latest-main composition.
+The [testing guide](testing.md#what-counts-as-tested) owns local diagnosis,
+the full schedule and promotion-completion requirements.
 
 The push hook clears repository-local Git routing variables before launching
 checks, while preserving global/system configuration. This lets a check inspect
 its intended subdirectory or temporary repository instead of inheriting the
 pushed repository's index and Git directory. A failed check still rejects the push.
 
-In hosted CI, required `fast-checks` aggregates the affected-test plan, one to four planned
+In hosted CI, `fast-checks` (reconciled by the required `Source verification
+policy` context; the ruleset lists required contexts) aggregates the affected-test plan, zero to four planned
 shards, and `fast-checks-statics`. It checks both job outcomes and receipts
 bound to the plan and source revision. Local `ci:fast` still runs its whole
 bounded lane; `STATION_CI_FAST_SCOPE=statics` is the hosted split's explicit
@@ -216,7 +270,7 @@ CLI parity, source references, links, public-content hygiene, generated issue
 lifecycle content and contract examples. Veritas readiness also selects the
 full `docs:truth:gate` as required evidence, including recorded review
 freshness for source-only changes: a stale record blocks when the change's own
-diff touches it ([keep reviews fresh](documentation.md#keep-reviews-fresh)).
+diff touches it ([keep reviews fresh](documentation-review-ledger.md#keep-reviews-fresh)).
 The separate **Repository source scans** job remains non-required and only
 reports freshness. Merge-queue static verification also includes the
 documentation truth gate, where freshness is advisory. These checks catch stale
@@ -381,8 +435,10 @@ it. A `catch` that returns a clean zero has decided on evidence it does not have
 
 Push only the branch and remote authorized for the task, after its required
 local checks. A configured remote is not publication permission. Do not bypass
-pre-push checks. Follow [AGENTS.md](../../AGENTS.md) for the merge queue and
-current handoff rules; do not manually merge or arm another lane's pull request.
+pre-push checks. Follow
+[Landing a pull request](development.md#landing-a-pull-request) for the merge
+queue and [AGENTS.md](../../AGENTS.md) for handoff rules; do not manually merge
+or arm another lane's pull request.
 For the merge queue, arm and confirm once, then stop polling it. When checking
 CI, inspect the actual job and failure before deciding what to rerun; silence is
 not success. Follow the task's required verification through its real outcome.

@@ -1,0 +1,7 @@
+{
+  "revision": "edc4d7b933b79e1fce80cf62a908b50d0ea9f385",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"#3924: session-api.md gained a governance-refusal cause and an OpenCode edit-grant note; this ADR routes to session-api.md for the managed-chat seam and none of its claims depend on those paragraphs.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
+  ]
+}

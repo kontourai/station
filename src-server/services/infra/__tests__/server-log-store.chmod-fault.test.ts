@@ -4,13 +4,24 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 
 const fchmodShouldFail = vi.hoisted(() => ({ value: false }));
+const openShouldFail = vi.hoisted(() => ({ value: false }));
+const writeShouldFail = vi.hoisted(() => ({ value: false }));
 
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>();
   return {
     ...actual,
+    openSync: (...args: Parameters<typeof actual.openSync>) => {
+      if (openShouldFail.value) throw new Error('EACCES');
+      return actual.openSync(...args);
+    },
+    writeSync: (...args: Parameters<typeof actual.writeSync>) => {
+      if (writeShouldFail.value) throw new Error('EIO');
+      return Reflect.apply(actual.writeSync, actual, args);
+    },
     fchmodSync: (fd: number, mode: number) => {
       if (fchmodShouldFail.value) {
         throw new Error('EPERM');
@@ -21,9 +32,12 @@ vi.mock('node:fs', async (importOriginal) => {
 });
 
 const dirs: string[] = [];
+const makeTempDir = trackTempDirs();
 
 afterEach(async () => {
   fchmodShouldFail.value = false;
+  writeShouldFail.value = false;
+  openShouldFail.value = false;
   const { resetServerLogSinkForTests } = await import('../server-log-store.js');
   resetServerLogSinkForTests();
   for (const dir of dirs.splice(0)) {
@@ -51,4 +65,33 @@ describe('createServerLogStore — chmod failure does not write secrets', () => 
     ).not.toContain('secret-bearing');
     expect(store.isOpen()).toBe(false);
   });
+});
+
+it('retains a buffered batch through a failed write and failed reopen', async () => {
+  const { createServerLogStore } = await import('../server-log-store.js');
+  const directory = makeTempDir('station-log-retry-');
+  const store = createServerLogStore({ directory });
+  try {
+    store.writeLine('retained');
+    writeShouldFail.value = true;
+    store.flushSync();
+    expect(store.isOpen()).toBe(false);
+    writeShouldFail.value = false;
+    openShouldFail.value = true;
+    store.flushSync();
+    expect(store.isOpen()).toBe(false);
+    openShouldFail.value = false;
+    store.flushSync();
+    expect(
+      readFileSync(
+        join(
+          directory,
+          `server-${new Date().toISOString().split('T')[0]}.ndjson`,
+        ),
+        'utf8',
+      ),
+    ).toBe('retained\n');
+  } finally {
+    store.close();
+  }
 });

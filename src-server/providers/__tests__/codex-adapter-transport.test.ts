@@ -1,6 +1,11 @@
 import { EventEmitter } from 'node:events';
 import { PassThrough, Writable } from 'node:stream';
+import * as workload from '@kontourai/station-shared/child-workload';
 import { describe, expect, test, vi } from 'vitest';
+import {
+  classifyConnectionFailure,
+  decideConnectionRecovery,
+} from '../../services/connections/connection-recovery-policy.js';
 import {
   CodexAdapterTransport,
   createCodexSessionRecord,
@@ -268,6 +273,7 @@ describe('CodexAdapterTransport', () => {
       nowIso: () => '2026-04-11T00:00:00Z',
     });
     record.activeTurnId = 'turn-mid-flight';
+    record.turnInvocationIds.set('turn-mid-flight', 'owned-invocation');
     transport.registerSession(record);
     transport.handleProcess(record);
     const iterator = transport.streamEvents()[Symbol.asyncIterator]();
@@ -281,6 +287,7 @@ describe('CodexAdapterTransport', () => {
       method: 'runtime.error',
       severity: 'error',
       turnId: 'turn-mid-flight',
+      invocationId: 'owned-invocation',
       threadId: 'thread-orphaned-exit',
     });
     expect(await nextEvent(iterator, 'session.exited')).toMatchObject({
@@ -537,6 +544,7 @@ describe('CodexAdapterTransport', () => {
       nowIso: () => '2026-04-11T00:00:00Z',
     });
     record.activeTurnId = 'turn-stopped-mid-flight';
+    record.turnInvocationIds.set('turn-stopped-mid-flight', 'owned-invocation');
     transport.registerSession(record);
     transport.handleProcess(record);
     const iterator = transport.streamEvents()[Symbol.asyncIterator]();
@@ -552,6 +560,7 @@ describe('CodexAdapterTransport', () => {
       method: 'runtime.error',
       severity: 'error',
       turnId: 'turn-stopped-mid-flight',
+      invocationId: 'owned-invocation',
     });
     expect(await nextEvent(iterator, 'session.exited')).toMatchObject({
       method: 'session.exited',
@@ -1127,6 +1136,224 @@ describe('CodexAdapterTransport — host image reads keep publish order', () => 
       );
     } finally {
       rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('Codex workload exit evidence', () => {
+  test.each([
+    {
+      result: 'oom-kill',
+      message: 'workload budget is 3072 MiB',
+      code: 'engine-memory-exhausted',
+    },
+    {
+      result: 'success',
+      message: 'signal: SIGKILL',
+      code: 'codex-turn-orphaned',
+    },
+    {
+      result: 'unavailable',
+      message: 'signal: SIGKILL',
+      code: 'codex-turn-orphaned',
+    },
+    {
+      result: 'observation-rejected',
+      message: 'signal: SIGKILL',
+      code: 'codex-turn-orphaned',
+    },
+    // OOMPolicy=continue: systemd records no oom-kill result; an OOM kill
+    // the engine never survived to hear about is its own death.
+    {
+      result: 'success',
+      oomKills: 1,
+      unreportedOomKills: 1,
+      message: 'workload budget is 3072 MiB',
+      code: 'engine-memory-exhausted',
+    },
+    // Every kill was a command already reported while Codex ran.
+    {
+      result: 'success',
+      oomKills: 2,
+      unreportedOomKills: 0,
+      message: 'signal: SIGKILL',
+      code: 'codex-turn-orphaned',
+    },
+  ] as Array<{
+    result: string;
+    message: string;
+    code: string;
+    oomKills?: number;
+    unreportedOomKills?: number;
+  }>)(
+    'reports only positively observed memory kills: $result $unreportedOomKills',
+    async ({ result, message, code, oomKills, unreportedOomKills }) => {
+      const observation = vi
+        .spyOn(workload, 'childWorkloadOutcome')
+        .mockReturnValue(
+          result === 'observation-rejected'
+            ? Promise.reject(new Error('scope inspection unavailable'))
+            : Promise.resolve({
+                result,
+                memoryMaxBytes: 3072 * 1024 * 1024,
+                ...(oomKills === undefined ? {} : { oomKills }),
+                ...(unreportedOomKills === undefined
+                  ? {}
+                  : { unreportedOomKills }),
+              }),
+        );
+      const transport = new CodexAdapterTransport(
+        () => new Date('2026-10-24T16:04:50Z'),
+        async () => {},
+      );
+      const processHandle = new FakeCodexProcess();
+      const record = createCodexSessionRecord({
+        externalThreadId: 'workload-exit',
+        process: processHandle,
+        provider: 'codex',
+        threadId: 'workload-exit',
+        model: 'gpt-5-codex',
+        nowIso: () => '2026-10-24T16:04:50Z',
+      });
+      record.activeTurnId = 'turn-1';
+      transport.registerSession(record);
+      transport.handleProcess(record);
+      try {
+        const iterator = transport.streamEvents()[Symbol.asyncIterator]();
+        processHandle.emit('exit', null, 'SIGKILL');
+        const terminal = await nextEvent(iterator, 'workload terminal');
+        expect(terminal).toMatchObject({
+          method: 'runtime.error',
+          message: expect.stringContaining(message),
+          code,
+          turnId: 'turn-1',
+        });
+        // Ordinary recovery leaves a memory kill to its own continuation
+        // path: the policy answers manual, never a replay of the prompt.
+        if (code === 'engine-memory-exhausted')
+          expect(
+            decideConnectionRecovery({
+              capability: { sameSession: true, maxAttempts: 1 } as never,
+              failure: classifyConnectionFailure(
+                terminal as { message: string; code?: string },
+              ),
+              now: new Date('2026-10-24T16:04:50Z'),
+            }).decision,
+          ).toBe('manual');
+        expect(await nextEvent(iterator, 'session terminal')).toMatchObject({
+          method: 'session.exited',
+        });
+      } finally {
+        observation.mockRestore();
+      }
+    },
+  );
+
+  test('a command OOM kill is reported as a warning and transcript marker while Codex keeps running', async () => {
+    let listener: ((kill: workload.ChildWorkloadOomKill) => void) | undefined;
+    const watch = vi
+      .spyOn(workload, 'watchChildWorkloadOomKills')
+      .mockImplementation((_child, next) => {
+        listener = next;
+        return () => {
+          listener = undefined;
+        };
+      });
+    const transport = new CodexAdapterTransport(
+      () => new Date('2026-10-24T16:04:50Z'),
+      async () => {},
+    );
+    const processHandle = new FakeCodexProcess();
+    const record = createCodexSessionRecord({
+      externalThreadId: 'workload-command',
+      process: processHandle,
+      provider: 'codex',
+      threadId: 'workload-command',
+      model: 'gpt-5-codex',
+      nowIso: () => '2026-10-24T16:04:50Z',
+    });
+    record.activeTurnId = 'turn-7';
+    transport.registerSession(record);
+    transport.handleProcess(record);
+    try {
+      const iterator = transport.streamEvents()[Symbol.asyncIterator]();
+      expect(listener).toBeDefined();
+      listener?.({
+        oomKills: 1,
+        newKills: 1,
+        memoryMaxBytes: 4915 * 1024 * 1024,
+      });
+      expect(await nextEvent(iterator, 'warning')).toMatchObject({
+        method: 'runtime.warning',
+        code: 'workload-command-oom-killed',
+        turnId: 'turn-7',
+        message: expect.stringContaining('the 4915 MiB workload memory budget'),
+      });
+      expect(await nextEvent(iterator, 'marker')).toMatchObject({
+        method: 'extension.notification',
+        namespace: 'station-workload',
+        type: 'command-oom-killed',
+        turnId: 'turn-7',
+      });
+      // The turn is still Codex's: nothing terminal was synthesized.
+      expect(record.activeTurnId).toBe('turn-7');
+      processHandle.emit('exit', 0, null);
+      expect(listener).toBeUndefined();
+    } finally {
+      watch.mockRestore();
+    }
+  });
+
+  test('an intentional stop while exit observation is delayed publishes no stale failure', async () => {
+    let resolve!: (value: workload.ChildWorkloadOutcome) => void;
+    const observation = vi
+      .spyOn(workload, 'childWorkloadOutcome')
+      .mockReturnValue(
+        new Promise((accept) => {
+          resolve = accept;
+        }),
+      );
+    const transport = new CodexAdapterTransport(
+      () => new Date('2026-10-24T16:04:50Z'),
+      async () => {},
+    );
+    const processHandle = new FakeCodexProcess();
+    const record = createCodexSessionRecord({
+      externalThreadId: 'workload-stop',
+      process: processHandle,
+      provider: 'codex',
+      threadId: 'workload-stop',
+      model: 'gpt-5-codex',
+      nowIso: () => '2026-10-24T16:04:50Z',
+    });
+    record.activeTurnId = 'stopped-turn';
+    transport.registerSession(record);
+    transport.handleProcess(record);
+    try {
+      const iterator = transport.streamEvents()[Symbol.asyncIterator]();
+      processHandle.emit('exit', null, 'SIGKILL');
+      await transport.stopSession(
+        'workload-stop',
+        () => '2026-10-24T16:04:50Z',
+      );
+      resolve({ result: 'oom-kill' });
+      const events = await drainEvents(iterator);
+      expect(
+        events.filter((event) => event.method === 'runtime.error'),
+      ).toHaveLength(1);
+      expect(
+        events.some(
+          (event) =>
+            event.method === 'runtime.error' &&
+            (event as { code?: string }).code === 'engine-memory-exhausted',
+        ),
+      ).toBe(false);
+      expect(JSON.stringify(events)).not.toContain('ran out of memory');
+      expect(
+        events.filter((event) => event.method === 'session.exited'),
+      ).toHaveLength(1);
+    } finally {
+      observation.mockRestore();
     }
   });
 });

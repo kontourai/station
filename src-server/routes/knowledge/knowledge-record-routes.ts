@@ -1,30 +1,29 @@
 /**
  * K5 knowledge-record routes — thin delegations onto the K2 `KnowledgeStoreProvider`
  * seam's per-root adapter (`docs/design/knowledge-foundation.md`'s K2 section;
- * `packages/contracts/src/knowledge-store.ts`'s `KnowledgeStoreAdapter`). This closes
- * one of the two flagged primitive gaps `s203-knowledge-meeting-notes--plan.md`'s
- * Wave 1 Task 2 names: `KnowledgeStoreProvider.adapterFor(rootId)` had NO HTTP route
- * before this file — only root-registry (`knowledge-store-routes.ts`) and
+ * `packages/contracts/src/knowledge-store.ts`'s `KnowledgeStoreAdapter`).
+ * `KnowledgeStoreProvider.adapterFor(rootId)` had NO HTTP route before this
+ * file — only root-registry (`knowledge-store-routes.ts`) and
  * index-rebuild/migrate (`knowledge-index-routes.ts`) routes existed.
  *
- * Scope (Q4 "genuine primitive gap, not scope creep"): this file exposes ONLY the
- * record operations K5's capture+recall flow needs — create, get, listByType, link,
- * and a bulk graph read for the wikilink pane. It deliberately does NOT expose the
+ * Scope: this file exposes ONLY the record operations K5's capture+recall flow
+ * needs — create, get, listByType, link, and a bulk graph read for the
+ * wikilink pane. It deliberately does NOT expose the
  * rest of the adapter's §8 surface over HTTP (`update`/`propose`/`apply`/`reject`/
- * `supersede`/`retire` stay unexposed — nothing in this plan needs them).
+ * `supersede`/`retire` stay unexposed — no caller of these routes needs them).
  *
- * Path-safety (SEC-1, mirroring `knowledge-store-routes.ts`'s `projectSlug` guard and
+ * Path-safety (mirroring `knowledge-store-routes.ts`'s `projectSlug` guard and
  * `knowledge-index-routes.ts`'s `isPlausibleRootId` guard): `rootId` never reaches a
  * filesystem path directly (the store resolves roots by registry id), so it only gets
  * the same defensive shape/length check `knowledge-index-routes.ts` already applies.
  * A Kit record `id`, by contrast, DOES reach a filesystem path directly in
  * `kit-default-store` (verified by reading `default-store.ts`): `recordPath(id)`
- * joins the raw id straight into `records/<id>.md` with no validation of its own —
- * `create`'s optional `input.id`, `link`'s `l.target_id` (via `readRecord` inside the
- * adapter's own existence check), and `get`'s `idOrHandle` (via `resolveRecordId` ->
- * `idExists`) all reach that join unguarded. A caller-supplied id containing `..`/`/`
- * is therefore a real traversal vector at the adapter layer this route sits in front
- * of. Every id-shaped value this file accepts — the create body's optional `id`, the
+ * joins the raw id into `records/<id>.md`. Only create IDs are validated by the
+ * adapter: get handles, link targets and update IDs can still reach recordPath
+ * unvalidated. KnowledgeFileTransactions.relativePath prevents escapes from
+ * the store root, but a legacy path-shaped ID can still read a matching record
+ * inside the root and outside records/. Read handles also support slug aliases.
+ * Every id-shaped value this HTTP surface accepts — the create body's optional `id`, the
  * `:id` path param, and each `links[].target_id` — is validated with the same
  * `isSafePathSegment` check `knowledge-store-routes.ts` already uses for
  * `projectSlug`, rejecting with 400 before the value ever reaches the adapter.
@@ -41,12 +40,11 @@
  * `listByType`'s own `KitRecord.links` field (already the same forward-edge data
  * `getLinks(id).forward` would return for that same record) rather than an
  * additional `getLinks` call per record — same data, one read per record instead of
- * two. A Neo4j-connected root's graph read (Wave 1 Task 1's `readGraph`) is
- * deliberately NOT wired in here: that module lives under `src-server/knowledge-store/
- * neo4j-graph-provider.ts`, owned by a different, file-disjoint Wave 1 task — every
- * root this route serves goes through its registered `KnowledgeStoreAdapter` only.
- * Wiring a Neo4j-backed root's graph read through this route is follow-up scope for
- * whichever task lands `runtime-routes.ts`'s final wiring decision, not this file.
+ * two. A Neo4j-connected root's graph read (`readGraph` in `src-server/knowledge-store/
+ * neo4j-graph-provider.ts`) is deliberately NOT wired in here — every root this
+ * route serves goes through its registered `KnowledgeStoreAdapter` only. The
+ * Neo4j-backed read lives in `neo4j-graph-routes.ts`, at the distinct
+ * `/roots/:rootId/graph/neo4j*` sub-path.
  *
  * Error-code honesty: adapter mutation methods throw one of the five
  * `KnowledgeStoreErrorCode`s (`src-server/knowledge-store/errors.ts`) rather than a
@@ -60,8 +58,9 @@ import type {
   KitLink,
   KitRecordType,
   KnowledgeStoreProvider,
+  KnowledgeStoreRoot,
 } from '@kontourai/station-contracts/knowledge-store';
-import type { Context } from 'hono';
+import type { Context, Env, MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
 import { isSafePathSegment } from '../../knowledge-index/path-safety.js';
 import {
@@ -71,11 +70,17 @@ import {
   ReadOnlyStoreError,
   SlugConflictError,
 } from '../../knowledge-store/errors.js';
+import { TASK_LEARNING_PROVENANCE_AGENT } from '../../services/projects/task-learning.js';
 import { errorMessage } from '../schemas/schemas.js';
 import { projectKnowledgePersistenceError } from './knowledge-persistence-errors.js';
 
 interface KnowledgeRecordRouteDeps {
   store: KnowledgeStoreProvider;
+  guardReadResponse?: (
+    request: Request,
+    roots: readonly KnowledgeStoreRoot[],
+    response: Response,
+  ) => Promise<Response>;
   mayUseRoot?: (
     request: Request,
     rootId: string,
@@ -187,13 +192,26 @@ interface LinkRecordBody {
 
 export function createKnowledgeRecordRoutes(deps: KnowledgeRecordRouteDeps) {
   const app = new Hono();
-  app.use('/roots/:rootId/*', async (c, next) => {
+  const authorizeRoot: MiddlewareHandler<Env, '/roots/:rootId'> = async (
+    c,
+    next,
+  ) => {
+    const read = c.req.method === 'GET' || c.req.method === 'HEAD';
+    const expectedRoot =
+      read && deps.guardReadResponse
+        ? await deps.store.getRoot(c.req.param('rootId'))
+        : undefined;
+    if (read && deps.guardReadResponse && !expectedRoot)
+      return c.json(
+        { success: false, error: 'Knowledge store not found.' },
+        404,
+      );
     if (
       deps.mayUseRoot &&
       !(await deps.mayUseRoot(
         c.req.raw,
         c.req.param('rootId'),
-        c.req.method === 'GET' ? 'view' : 'edit',
+        read ? 'view' : 'edit',
       ))
     ) {
       return c.json(
@@ -201,8 +219,13 @@ export function createKnowledgeRecordRoutes(deps: KnowledgeRecordRouteDeps) {
         403,
       );
     }
-    return next();
-  });
+    await next();
+    if (expectedRoot && deps.guardReadResponse && c.res.ok)
+      c.res = await deps.guardReadResponse(c.req.raw, [expectedRoot], c.res);
+  };
+  app.use('/roots/:rootId/records', authorizeRoot);
+  app.use('/roots/:rootId/records/*', authorizeRoot);
+  app.use('/roots/:rootId/graph', authorizeRoot);
 
   // POST /roots/:rootId/records — body: CreateInput (store-contract.md §6.1).
   app.post('/roots/:rootId/records', async (c) => {
@@ -248,6 +271,19 @@ export function createKnowledgeRecordRoutes(deps: KnowledgeRecordRouteDeps) {
       ) {
         return c.json(
           { success: false, error: 'Invalid provenance.agent' },
+          400,
+        );
+      }
+      // Reserved (#4003 review round 8): Task Learning writes its records
+      // in process through the store's adapter, never through this route,
+      // so a request naming its agent is someone claiming to be it.
+      if (provenance.agent === TASK_LEARNING_PROVENANCE_AGENT) {
+        return c.json(
+          {
+            success: false,
+            error:
+              'provenance.agent "station-task-learning" is reserved for Station\'s Task Learning.',
+          },
           400,
         );
       }

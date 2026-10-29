@@ -1,0 +1,7 @@
+{
+  "revision": "92591a18abe343a197d7f7fd0ebedd70f51698e7",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Bounded #1521 delta: the pre-build dependency pin check now treats an unreadable journal entry as an installation conflict, matching captureLocalPluginInstallation; tests added for the dependency trust-refusal unwrap and the recovery receipt source. Scanned this document for registry pin, stale-review and journal-availability claims; none contradicts the change.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/services/plugins/plugin-install-transaction.ts"]}
+  ]
+}

@@ -1,5 +1,11 @@
 # The catch log
 
+Retention: permanent — `scripts/__tests__/catch-log.test.ts` validates this log against its schema and checks that this README's class table matches the data, and `.veritas/proof-families/repo-guardrails.families.json` consumes it as catch evidence.
+
+The counts and ratios below cover the 55 records dated 2026-06-12 to
+2026-08-03. No catch has been recorded since 2026-08-03, so they describe that
+window, not current practice.
+
 `catches.jsonl` is one record per event where a defect was caught **before it
 shipped**, and — the part that matters — **what caught it**.
 

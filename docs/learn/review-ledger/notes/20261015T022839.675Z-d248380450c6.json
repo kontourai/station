@@ -1,0 +1,7 @@
+{
+  "revision": "50e8100e531c506beb9ab16ed9d468467a7e9cc5",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"#3667 Fix round 2: Checked the scheduler comment against the SDK read: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS now bounds headers and body inactivity, allowing slow progress to finish. No wire shape, Session authority, projection contract, registration lifetime or scheduler behavior changed in this round.","inputs":["docs/reference/contracts.md","src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts"]}
+  ]
+}

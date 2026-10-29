@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import {
   chmodSync,
   existsSync,
@@ -9,8 +9,12 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { probeExactProcessIdentity as realProbe } from '@kontourai/station-shared/process-identity';
-import { describe, expect, test } from 'vitest';
+import {
+  lookupProcessBirthFingerprint,
+  probeExactProcessIdentity as realProbe,
+} from '@kontourai/station-shared/process-identity';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   destroyProcessWithEscalation,
   type EscalatableProcess,
@@ -20,6 +24,7 @@ import {
   evaluateRegistryDirTrust,
   forgetOwnedProcess,
   type ProcessIdentityProbe,
+  parseProcessGroupListing,
   recordOwnedProcess,
   resolveOwnedProcessOwner,
   spawnOwnedChild,
@@ -49,8 +54,39 @@ function isAlive(pid: number | undefined | null): boolean {
   }
 }
 
-/** Group-SIGKILL a whole process group, best-effort, for test cleanup. */
+/** True while any member of the process group `pgid` is alive. */
+function groupAlive(pgid: number): boolean {
+  try {
+    process.kill(-pgid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
+let runnerGroup: number | undefined;
+
+/** This runner's own process group id, read once. */
+function ownProcessGroup(): number {
+  runnerGroup ??= Number(
+    execFileSync('ps', ['-o', 'pgid=', '-p', String(process.pid)], {
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 5_000,
+    }).trim(),
+  );
+  return runnerGroup;
+}
+
+/**
+ * Group-SIGKILL a whole process group, best-effort, for test cleanup. Never
+ * 0, 1, this process or this runner's own group: `kill(-0)` signals the
+ * caller's group, so a pid misread as 0 (an empty pid file) would kill an
+ * attached CI shell and hide the failure.
+ */
 function reapGroup(pid: number): void {
+  if (!Number.isInteger(pid) || pid <= 1 || pid === process.pid) return;
+  if (process.platform !== 'win32' && pid === ownProcessGroup()) return;
   try {
     process.kill(-pid, 'SIGKILL');
   } catch {
@@ -76,7 +112,7 @@ function spawnOwnerFixture(gcFile: string): {
   const enginePid = new Promise<number>((resolve, reject) => {
     owner.stdout!.on('data', (chunk: Buffer) => {
       buffer += chunk.toString();
-      const match = buffer.match(/ENGINE_PID=(\d+)/);
+      const match = buffer.match(/ENGINE_PID=(\d+)\n/);
       if (match && !resolved) {
         resolved = true;
         resolve(Number(match[1]));
@@ -897,9 +933,11 @@ describe('sweep refuses invalid engine pids (#1863 BLOCKING 1)', () => {
     }
   });
 
-  test('engineBirth: null against a live pid is retained, not killed', async () => {
+  test('engineBirth: null with a dead owner drops the record and never signals the live pid', async () => {
     // The fail-open defect: a null engineBirth used to skip the identity check
-    // and fall through to the kill. Now: cannot confirm identity ⇒ retain.
+    // and fall through to the kill. With no birth nothing proves the pid is
+    // ours, so it is never signaled. #561: once the owner is dead, nothing can
+    // ever confirm it either, so retaining the record only kept it forever.
     const registryDir = mkdtempSync(join(tmpdir(), 'station-sweep-nullbirth-'));
     const dead = spawn(process.execPath, ['-e', 'process.exit(0)']);
     await new Promise<void>((resolve) => dead.once('exit', () => resolve()));
@@ -928,10 +966,21 @@ describe('sweep refuses invalid engine pids (#1863 BLOCKING 1)', () => {
         { mode: 0o600 },
       );
 
+      const kill = vi.spyOn(process, 'kill');
+
       const result = await sweepOrphanedOwnedProcesses({ registryDir });
 
+      const signals = kill.mock.calls.filter(
+        ([, signal]) => signal !== 0 && signal !== undefined,
+      );
+      kill.mockRestore();
       expect(result.reaped).toEqual([]);
-      expect(result.retained).toBe(1);
+      expect(result.retained).toBe(0);
+      expect(result.unverifiable).toBe(1);
+      expect(signals).toEqual([]);
+      expect(existsSync(join(registryDir, `engine-${survivor.pid}.json`))).toBe(
+        false,
+      );
       // THE PROPERTY: the survivor is still alive.
       expect(isAlive(survivor.pid)).toBe(true);
     } finally {
@@ -1271,6 +1320,154 @@ describe('fail-closed identity: unavailable retains, never reclaims (#1863 fix r
 });
 
 // ---------------------------------------------------------------------------
+// #561: a record with no recorded engine birth.
+//
+// Without a birth nothing proves the engine pid is still the child that was
+// recorded, so such a record is never signaled. It used to be retained on
+// every sweep, forever. Whether the OWNER is gone is decidable without the
+// engine's birth: once it is, nothing can ever confirm or release the record,
+// so it is dropped (a missed reclaim, never a wrong kill). While the owner is
+// live or its identity is unavailable, the owner may still release it, so it
+// is kept. Each engine is a REAL live detached process, so a signal on any of
+// these paths would land; the spy proves none is sent.
+// ---------------------------------------------------------------------------
+
+describe('a record with no recorded engine birth (#561)', () => {
+  const makeTempDir = trackTempDirs();
+  const engines: ReturnType<typeof spawn>[] = [];
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    for (const engine of engines.splice(0)) {
+      if (engine.exitCode !== null || engine.signalCode !== null) continue;
+      const exited = new Promise<void>((resolve) =>
+        engine.once('exit', () => resolve()),
+      );
+      reapGroup(engine.pid!);
+      await exited;
+    }
+  });
+
+  /** A live detached engine and a null-birth record naming it. */
+  function nullBirthRecord(ownerPid: number, ownerBirth: string | null) {
+    const registryDir = makeTempDir('station-sweep-nullbirth-owner-');
+    const engine = spawn(
+      process.execPath,
+      ['-e', 'setInterval(() => {}, 86400000)'],
+      { stdio: 'ignore', detached: true },
+    );
+    engines.push(engine);
+    const recordFile = join(registryDir, `engine-${engine.pid}.json`);
+    writeFileSync(
+      recordFile,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        enginePid: engine.pid,
+        engineBirth: null,
+        owner: {
+          pid: ownerPid,
+          instanceId: 'nullbirth-owner-test',
+          bootId: 'boot-nullbirth-owner',
+          birth: ownerBirth,
+        },
+        command: 'fake-engine',
+        spawnedAt: new Date().toISOString(),
+      })}\n`,
+      { mode: 0o600 },
+    );
+    expect(isAlive(engine.pid)).toBe(true);
+    return { registryDir, engine, recordFile };
+  }
+
+  /** Every real signal sent (liveness probes use signal 0). */
+  function spyOnSignals() {
+    const kill = vi.spyOn(process, 'kill');
+    return () =>
+      kill.mock.calls.filter(
+        ([, signal]) => signal !== 0 && signal !== undefined,
+      );
+  }
+
+  async function deadPid(): Promise<number> {
+    const dead = spawn(process.execPath, ['-e', 'process.exit(0)'], {
+      stdio: 'ignore',
+    });
+    await new Promise<void>((resolve) => dead.once('exit', () => resolve()));
+    expect(isAlive(dead.pid)).toBe(false);
+    return dead.pid!;
+  }
+
+  test('a dead owner: the record is dropped and nothing is signaled', async () => {
+    const { registryDir, engine, recordFile } = nullBirthRecord(
+      await deadPid(),
+      null,
+    );
+    const signals = spyOnSignals();
+
+    const result = await sweepOrphanedOwnedProcesses({ registryDir });
+
+    expect(result.reaped).toEqual([]);
+    expect(result.unverifiable).toBe(1);
+    expect(result.retained).toBe(0);
+    expect(signals()).toEqual([]);
+    expect(existsSync(recordFile)).toBe(false);
+    expect(isAlive(engine.pid)).toBe(true);
+  });
+
+  test('an owner whose pid now names another process: the record is dropped and nothing is signaled', async () => {
+    // The owner pid is live (this test process) but its recorded birth does
+    // not match: the owner that wrote the record is gone.
+    const { registryDir, engine, recordFile } = nullBirthRecord(
+      process.pid,
+      'Thu Jan  1 00:00:00 1970',
+    );
+    const signals = spyOnSignals();
+
+    const result = await sweepOrphanedOwnedProcesses({ registryDir });
+
+    expect(result.reaped).toEqual([]);
+    expect(result.unverifiable).toBe(1);
+    expect(signals()).toEqual([]);
+    expect(existsSync(recordFile)).toBe(false);
+    expect(isAlive(engine.pid)).toBe(true);
+  });
+
+  test.each([
+    ['live, with a matching birth', 'live'],
+    ['live, with no recorded birth', 'live-no-birth'],
+    ['unavailable', 'unavailable'],
+  ] as const)(
+    'an owner that is %s: the record is kept and nothing is signaled',
+    async (_label, owner) => {
+      const ownerBirth =
+        owner === 'live' ? lookupProcessBirthFingerprint(process.pid) : null;
+      if (owner === 'live') expect(ownerBirth).not.toBeNull();
+      const { registryDir, engine, recordFile } = nullBirthRecord(
+        process.pid,
+        ownerBirth,
+      );
+      const probeIdentity: ProcessIdentityProbe = (pid) =>
+        owner === 'unavailable' && pid === process.pid
+          ? { state: 'unavailable' }
+          : realProbe(pid);
+      const signals = spyOnSignals();
+
+      const result = await sweepOrphanedOwnedProcesses({
+        registryDir,
+        probeIdentity,
+      });
+
+      expect(result.reaped).toEqual([]);
+      expect(result.retained).toBe(1);
+      expect(result.unverifiable).toBe(0);
+      expect(signals()).toEqual([]);
+      expect(existsSync(recordFile)).toBe(true);
+      expect(isAlive(engine.pid)).toBe(true);
+    },
+  );
+});
+
+// ---------------------------------------------------------------------------
 // archive#1863 fix round 3 — registry trust predicate (BLOCKING 2, uid axis).
 //
 // The foreign-OWNER (uid) refusal gates an arbitrary group-SIGKILL, but it
@@ -1327,3 +1524,454 @@ describe('registry trust predicate (#1863 BLOCKING 2 uid refusal)', () => {
     expect(reason?.kind).toBe('not-directory');
   });
 });
+
+// ---------------------------------------------------------------------------
+// #561: the recorded group leader is dead, but its process group is not.
+//
+// A detached engine is its own process-group leader. When the leader exits
+// while a grandchild keeps the group alive, the sweep used to read "leader
+// dead" as "nothing to reap" and delete the record, so the survivor was
+// forgotten for good.
+//
+// The sweep now RETAINS such a record and signals nothing: a group id whose
+// leader is dead cannot be tied to the recorded engine by any per-member
+// proof available here (pids wrap within minutes, and plenty of unrelated
+// groups on a normal host have a dead leader and init-parented members). The
+// record drops once the group is empty, or when it is from an earlier boot.
+//
+// These spawn REAL processes and reap every one of them in afterEach.
+// ---------------------------------------------------------------------------
+
+const groupSurvivorPlatform =
+  process.platform === 'darwin' || process.platform === 'linux';
+
+describe.skipIf(!groupSurvivorPlatform)(
+  'a dead leader with a live process group (#561)',
+  () => {
+    const makeTempDir = trackTempDirs();
+
+    interface GroupFixture {
+      leaderPid: number;
+      memberPids: number[];
+      registryDir: string;
+      recordFile: string;
+      unrelated: ReturnType<typeof spawn>[];
+    }
+
+    const fixtures: GroupFixture[] = [];
+
+    afterEach(async () => {
+      vi.restoreAllMocks();
+      for (const fixture of fixtures.splice(0)) {
+        reapGroup(fixture.leaderPid);
+        for (const child of fixture.unrelated) {
+          if (child.exitCode !== null || child.signalCode !== null) continue;
+          const exited = new Promise<void>((resolve) =>
+            child.once('exit', () => resolve()),
+          );
+          try {
+            process.kill(-child.pid!, 'SIGKILL');
+          } catch {
+            child.kill('SIGKILL');
+          }
+          await exited;
+        }
+        for (
+          let i = 0;
+          i < 200 &&
+          (groupAlive(fixture.leaderPid) || fixture.memberPids.some(isAlive));
+          i++
+        ) {
+          await new Promise((r) => setTimeout(r, 10));
+        }
+      }
+    });
+
+    async function deadOwnerPid(): Promise<number> {
+      const dead = spawn(process.execPath, ['-e', 'process.exit(0)'], {
+        stdio: 'ignore',
+      });
+      await new Promise<void>((resolve) => dead.once('exit', () => resolve()));
+      expect(isAlive(dead.pid)).toBe(false);
+      return dead.pid!;
+    }
+
+    /**
+     * A detached leader (its own process group) that starts `members`
+     * grandchildren in the SAME group, is recorded while alive, and is then
+     * SIGKILLed alone. The grandchildren keep the group alive.
+     */
+    async function leaderDeadGroupAlive(members = 1): Promise<GroupFixture> {
+      const registryDir = makeTempDir('station-sweep-group-');
+      const leader = spawn(
+        process.execPath,
+        [
+          '-e',
+          [
+            "const { spawn } = require('node:child_process');",
+            `const pids = Array.from({ length: ${members} }, () => spawn(process.execPath, ['-e', 'setInterval(() => {}, 86400000)'], { stdio: 'ignore' }).pid);`,
+            "process.stdout.write(pids.join(',') + '\\n');",
+            'setInterval(() => {}, 86400000);',
+          ].join('\n'),
+        ],
+        { stdio: ['ignore', 'pipe', 'inherit'], detached: true },
+      );
+      const leaderPid = leader.pid!;
+      const fixture: GroupFixture = {
+        leaderPid,
+        memberPids: [],
+        registryDir,
+        recordFile: join(registryDir, `engine-${leaderPid}.json`),
+        unrelated: [],
+      };
+      fixtures.push(fixture);
+      fixture.memberPids = await new Promise<number[]>((resolve, reject) => {
+        let buffer = '';
+        leader.stdout!.on('data', (chunk: Buffer) => {
+          buffer += chunk.toString();
+          const match = buffer.match(/^([\d,]+)\n/);
+          if (match) resolve(match[1].split(',').map(Number));
+        });
+        leader.once('exit', (code) =>
+          reject(new Error(`leader exited early code=${code}`)),
+        );
+      });
+      recordOwnedProcess(
+        leaderPid,
+        resolveOwnedProcessOwner(
+          { STATION_INSTANCE_ID: 'group-test', STATION_BOOT_ID: 'boot-group' },
+          await deadOwnerPid(),
+        ),
+        'fake-engine',
+        { registryDir },
+      );
+      expect(existsSync(fixture.recordFile)).toBe(true);
+      const leaderExited = new Promise<void>((resolve) =>
+        leader.once('exit', () => resolve()),
+      );
+      process.kill(leaderPid, 'SIGKILL');
+      await leaderExited;
+      // Preconditions: the leader is gone, the members and the group live.
+      expect(isAlive(leaderPid)).toBe(false);
+      for (const pid of fixture.memberPids) expect(isAlive(pid)).toBe(true);
+      expect(groupAlive(leaderPid)).toBe(true);
+      return fixture;
+    }
+
+    /** Processes the sweep must never touch: their own group and ours. */
+    function spawnUnrelated(fixture: GroupFixture): void {
+      fixture.unrelated.push(
+        spawn(process.execPath, ['-e', 'setInterval(() => {}, 86400000)'], {
+          stdio: 'ignore',
+          detached: true,
+        }),
+        spawn(process.execPath, ['-e', 'setInterval(() => {}, 86400000)'], {
+          stdio: 'ignore',
+        }),
+      );
+    }
+
+    async function waitDead(pid: number): Promise<void> {
+      for (let i = 0; i < 200 && isAlive(pid); i++) {
+        await new Promise((r) => setTimeout(r, 10));
+      }
+    }
+
+    /** Every real signal the sweep sent (liveness probes use signal 0). */
+    function spyOnSignals() {
+      const kill = vi.spyOn(process, 'kill');
+      return () =>
+        kill.mock.calls.filter(
+          ([, signal]) => signal !== 0 && signal !== undefined,
+        );
+    }
+
+    /** Rewrite the record's engine birth, keeping every other field. */
+    function rewriteEngineBirth(
+      fixture: GroupFixture,
+      engineBirth: string | null,
+    ) {
+      const record = JSON.parse(readFileSync(fixture.recordFile, 'utf8'));
+      record.engineBirth = engineBirth;
+      writeFileSync(fixture.recordFile, `${JSON.stringify(record)}\n`, {
+        mode: 0o600,
+      });
+    }
+
+    /** A real birth fingerprint moved onto an earlier boot. */
+    function previousBootBirth(real: string): string {
+      if (process.platform === 'linux') {
+        const match = /^linux:([^:]+):(\d+)$/.exec(real);
+        if (!match) throw new Error(`unexpected linux birth: ${real}`);
+        return `linux:00000000-0000-0000-0000-000000000000:${match[2]}`;
+      }
+      const match = /^(.*\s)(\d{4})$/.exec(real);
+      if (!match) throw new Error(`unexpected lstart birth: ${real}`);
+      return `${match[1]}1971`;
+    }
+
+    test('the sweep retains the record of a live group, signals nothing, and drops it once the group empties', async () => {
+      const fixture = await leaderDeadGroupAlive();
+      spawnUnrelated(fixture);
+      const signals = spyOnSignals();
+
+      const result = await sweepOrphanedOwnedProcesses({
+        registryDir: fixture.registryDir,
+      });
+
+      expect(result.reaped).toEqual([]);
+      expect(result.retained).toBe(1);
+      expect(result.survivingGroups).toEqual([
+        { pgid: fixture.leaderPid, members: 1 },
+      ]);
+      expect(signals()).toEqual([]);
+      expect(isAlive(fixture.memberPids[0])).toBe(true);
+      expect(existsSync(fixture.recordFile)).toBe(true);
+      for (const child of fixture.unrelated) {
+        expect(isAlive(child.pid)).toBe(true);
+      }
+
+      // The survivor exits; the next sweep sees an empty group and drops it.
+      reapGroup(fixture.leaderPid);
+      await waitDead(fixture.memberPids[0]);
+      for (let i = 0; i < 200 && groupAlive(fixture.leaderPid); i++) {
+        await new Promise((r) => setTimeout(r, 10));
+      }
+      const later = await sweepOrphanedOwnedProcesses({
+        registryDir: fixture.registryDir,
+      });
+      expect(later.alreadyDead).toBe(1);
+      expect(later.survivingGroups).toEqual([]);
+      expect(existsSync(fixture.recordFile)).toBe(false);
+    });
+
+    test('a stale record naming an unrelated group whose leader exited leaves that group alone', async () => {
+      // The executed review probe: the recorded pid now names someone
+      // else's group. A detached `sh` backgrounds a sleep and exits, so the
+      // group has a dead leader and an init-parented member, exactly the
+      // shape of many unrelated groups on a normal host.
+      const registryDir = makeTempDir('station-sweep-unrelated-');
+      const sh = spawn(
+        '/bin/sh',
+        ['-c', 'sleep 600 >/dev/null 2>&1 & echo $!'],
+        {
+          stdio: ['ignore', 'pipe', 'ignore'],
+          detached: true,
+        },
+      );
+      const fixture: GroupFixture = {
+        leaderPid: sh.pid!,
+        memberPids: [],
+        registryDir,
+        recordFile: join(registryDir, `engine-${sh.pid}.json`),
+        unrelated: [],
+      };
+      fixtures.push(fixture);
+      let out = '';
+      sh.stdout!.on('data', (chunk: Buffer) => {
+        out += chunk.toString();
+      });
+      await new Promise<void>((resolve) => sh.once('exit', () => resolve()));
+      const sleepPid = Number(out.trim());
+      fixture.memberPids = [sleepPid];
+      expect(isAlive(sh.pid)).toBe(false);
+      expect(isAlive(sleepPid)).toBe(true);
+      expect(groupAlive(sh.pid!)).toBe(true);
+      // The stale record: its birth is earlier in THIS boot (the test
+      // runner's own), so the boot check cannot drop it.
+      const earlierBirth = lookupProcessBirthFingerprint(process.pid);
+      expect(earlierBirth).not.toBeNull();
+      writeFileSync(
+        fixture.recordFile,
+        `${JSON.stringify({
+          schemaVersion: 1,
+          enginePid: sh.pid,
+          engineBirth: earlierBirth,
+          owner: {
+            pid: await deadOwnerPid(),
+            instanceId: 'stale-test',
+            bootId: 'boot-stale',
+            birth: null,
+          },
+          command: 'fake-engine',
+          spawnedAt: new Date().toISOString(),
+        })}\n`,
+        { mode: 0o600 },
+      );
+      const signals = spyOnSignals();
+
+      const result = await sweepOrphanedOwnedProcesses({ registryDir });
+
+      expect(result.reaped).toEqual([]);
+      expect(result.retained).toBe(1);
+      expect(signals()).toEqual([]);
+      expect(isAlive(sleepPid)).toBe(true);
+      expect(groupAlive(sh.pid!)).toBe(true);
+      expect(existsSync(fixture.recordFile)).toBe(true);
+    });
+
+    test('a two-member group with one unavailable identity is retained and nothing is signaled', async () => {
+      const fixture = await leaderDeadGroupAlive(2);
+      const [exact, unavailable] = fixture.memberPids;
+      const signals = spyOnSignals();
+
+      const result = await sweepOrphanedOwnedProcesses({
+        registryDir: fixture.registryDir,
+        probeIdentity: (pid) =>
+          pid === unavailable ? { state: 'unavailable' } : realProbe(pid),
+      });
+
+      expect(result.reaped).toEqual([]);
+      expect(result.retained).toBe(1);
+      expect(result.survivingGroups).toEqual([
+        { pgid: fixture.leaderPid, members: 2 },
+      ]);
+      expect(signals()).toEqual([]);
+      expect(isAlive(exact)).toBe(true);
+      expect(isAlive(unavailable)).toBe(true);
+      expect(existsSync(fixture.recordFile)).toBe(true);
+    });
+
+    test('an unreadable group listing still retains the record, with an unknown member count', async () => {
+      const fixture = await leaderDeadGroupAlive();
+      // `isAlive` reads a killed-but-unreaped member as alive, so the spy is
+      // what proves nothing was signaled on this branch.
+      const signals = spyOnSignals();
+
+      const result = await sweepOrphanedOwnedProcesses({
+        registryDir: fixture.registryDir,
+        listProcessGroup: async () => null,
+      });
+
+      expect(result.reaped).toEqual([]);
+      expect(result.retained).toBe(1);
+      expect(result.survivingGroups).toEqual([
+        { pgid: fixture.leaderPid, members: null },
+      ]);
+      expect(signals()).toEqual([]);
+      expect(isAlive(fixture.memberPids[0])).toBe(true);
+      expect(existsSync(fixture.recordFile)).toBe(true);
+    });
+
+    test('a record from an earlier boot is dropped without signaling the group', async () => {
+      const fixture = await leaderDeadGroupAlive();
+      const real = lookupProcessBirthFingerprint(fixture.memberPids[0]);
+      expect(real).not.toBeNull();
+      rewriteEngineBirth(fixture, previousBootBirth(real!));
+      const signals = spyOnSignals();
+
+      const result = await sweepOrphanedOwnedProcesses({
+        registryDir: fixture.registryDir,
+      });
+
+      expect(result.reaped).toEqual([]);
+      expect(result.recycled).toBe(1);
+      expect(signals()).toEqual([]);
+      expect(isAlive(fixture.memberPids[0])).toBe(true);
+      expect(existsSync(fixture.recordFile)).toBe(false);
+    });
+
+    test('a null engine birth with a dead owner drops the record without signaling the surviving group', async () => {
+      // #561: with no birth the earlier-boot check cannot run, so this record
+      // used to be retained as a surviving group forever.
+      const fixture = await leaderDeadGroupAlive();
+      rewriteEngineBirth(fixture, null);
+      const signals = spyOnSignals();
+
+      const result = await sweepOrphanedOwnedProcesses({
+        registryDir: fixture.registryDir,
+      });
+
+      expect(result.reaped).toEqual([]);
+      expect(result.unverifiable).toBe(1);
+      expect(result.survivingGroups).toEqual([]);
+      expect(signals()).toEqual([]);
+      expect(isAlive(fixture.memberPids[0])).toBe(true);
+      expect(groupAlive(fixture.leaderPid)).toBe(true);
+      expect(existsSync(fixture.recordFile)).toBe(false);
+    });
+
+    test('a dead leader with an empty group still just drops the record', async () => {
+      const fixture = await leaderDeadGroupAlive();
+      reapGroup(fixture.leaderPid);
+      await waitDead(fixture.memberPids[0]);
+      for (let i = 0; i < 200 && groupAlive(fixture.leaderPid); i++) {
+        await new Promise((r) => setTimeout(r, 10));
+      }
+      expect(groupAlive(fixture.leaderPid)).toBe(false);
+
+      const result = await sweepOrphanedOwnedProcesses({
+        registryDir: fixture.registryDir,
+      });
+
+      expect(result.reaped).toEqual([]);
+      expect(result.alreadyDead).toBe(1);
+      expect(existsSync(fixture.recordFile)).toBe(false);
+    });
+  },
+);
+
+describe('process-group listing parser (#561)', () => {
+  test('keeps only members of the requested group', () => {
+    expect(
+      parseProcessGroupListing(
+        '  101     1   100\n  102   101   100\n  200     1   200\n',
+        100,
+      ),
+    ).toEqual([
+      { pid: 101, ppid: 1 },
+      { pid: 102, ppid: 101 },
+    ]);
+  });
+
+  test('an empty table is an empty group, not a failure', () => {
+    expect(parseProcessGroupListing('\n', 100)).toEqual([]);
+  });
+
+  test('a truncated line fails the whole listing', () => {
+    expect(
+      parseProcessGroupListing('  101     1   100\n  102   101\n', 100),
+    ).toBeNull();
+  });
+
+  test('a garbage line fails the whole listing, even after a good one', () => {
+    expect(
+      parseProcessGroupListing('  101     1   100\nps: kvm_open failed\n', 100),
+    ).toBeNull();
+    expect(
+      parseProcessGroupListing('  101     1   100\n  1x2   101   100\n', 100),
+    ).toBeNull();
+  });
+});
+
+describe.skipIf(process.platform === 'win32')(
+  'owned child release (#561)',
+  () => {
+    const makeTempDir = trackTempDirs();
+
+    test('an owned child release that cannot remove its record logs and does not throw (#561)', async () => {
+      // Callers run release() inside 'exit' listeners (h264-jpeg-decoder) and
+      // shutdown paths (chromium-server-host), where a throw is uncaught.
+      const registryDir = makeTempDir('station-release-ro-');
+      const { proc, release } = spawnOwnedChild(
+        process.execPath,
+        ['-e', 'setInterval(() => {}, 86400000)'],
+        { registryDir, stdio: 'ignore' },
+      );
+      const recordFile = join(registryDir, `engine-${proc.pid}.json`);
+      try {
+        expect(existsSync(recordFile)).toBe(true);
+        chmodSync(registryDir, 0o500);
+        expect(() => release()).not.toThrow();
+        expect(existsSync(recordFile)).toBe(true);
+      } finally {
+        chmodSync(registryDir, 0o700);
+        const exited = new Promise<void>((resolve) =>
+          proc.once('exit', () => resolve()),
+        );
+        reapGroup(proc.pid!);
+        await exited;
+      }
+    });
+  },
+);

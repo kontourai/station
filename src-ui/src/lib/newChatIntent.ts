@@ -1,3 +1,8 @@
+import {
+  type ApprovalMode,
+  isApprovalMode,
+} from '@kontourai/station-contracts/provider';
+import { isRecord } from '../utils/isRecord';
 import type { NewChatModelChoice } from '../utils/modelCapabilities';
 
 export const OPEN_NEW_CHAT_EVENT = 'station:open-new-chat';
@@ -12,6 +17,8 @@ export interface NewChatStartSelection {
   context: string;
   agentSlug?: string;
   model?: NewChatModelChoice;
+  /** The Permissions chip's pick, queued on the chat that starts. */
+  approvalMode?: ApprovalMode;
 }
 
 /** The setup routes an Agent row can repair through (`AgentFixRoute`). */
@@ -38,9 +45,16 @@ export type NewChatHandoff =
 export type NewChatClosedOutcome = 'started' | 'dismissed';
 
 export interface NewChatIntent {
+  taskShaping?: boolean;
   /** Start at once with `selection` (or the defaults), sending the prompt. */
   startWithDefault?: boolean;
   initialPrompt?: string;
+  /**
+   * Files attached with the prompt. The chat that starts stages them under its
+   * own engine before its first send (a start composer cannot know what that
+   * engine accepts).
+   */
+  initialFiles?: File[];
   selection?: NewChatStartSelection;
   /**
    * The intent carried a selection that did not parse. The dock opens the
@@ -82,15 +96,12 @@ export function dockAcceptsNewChatIntent(
 ): boolean {
   if (!hasImmutableProjectScope) return true;
   return !(
+    intent.taskShaping ||
     intent.startWithDefault ||
     intent.handoff ||
     intent.selection ||
     intent.selectionInvalid
   );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 /** `undefined` when absent; `null` when present but not a non-empty string. */
@@ -102,8 +113,10 @@ function optionalString(value: unknown): string | undefined | null {
 /** A malformed selection is refused whole, never partly applied. */
 function readSelection(value: unknown): NewChatStartSelection | undefined {
   if (!isRecord(value)) return undefined;
-  const { context, agentSlug, model } = value;
+  const { context, agentSlug, model, approvalMode } = value;
   if (typeof context !== 'string' || !context) return undefined;
+  if (approvalMode !== undefined && !isApprovalMode(approvalMode))
+    return undefined;
   const slug = optionalString(agentSlug);
   if (slug === null) return undefined;
   let choice: NewChatModelChoice | undefined;
@@ -142,6 +155,7 @@ function readSelection(value: unknown): NewChatStartSelection | undefined {
     context,
     ...(slug ? { agentSlug: slug } : {}),
     ...(choice ? { model: choice } : {}),
+    ...(approvalMode !== undefined ? { approvalMode } : {}),
   };
 }
 
@@ -165,6 +179,10 @@ export function readNewChatIntent(event: Event): NewChatIntent {
     event instanceof CustomEvent ? event.detail : undefined;
   if (!detail || typeof detail !== 'object') return {};
   const prompt = 'initialPrompt' in detail ? detail.initialPrompt : undefined;
+  const files =
+    'initialFiles' in detail && Array.isArray(detail.initialFiles)
+      ? detail.initialFiles.filter((file): file is File => file instanceof File)
+      : [];
   const callback = 'onClosed' in detail ? detail.onClosed : undefined;
   const selection =
     'selection' in detail ? readSelection(detail.selection) : undefined;
@@ -177,7 +195,11 @@ export function readNewChatIntent(event: Event): NewChatIntent {
       !selectionInvalid &&
       'startWithDefault' in detail &&
       detail.startWithDefault === true,
+    ...('taskShaping' in detail && detail.taskShaping === true
+      ? { taskShaping: true }
+      : {}),
     initialPrompt: typeof prompt === 'string' ? prompt : undefined,
+    ...(files.length ? { initialFiles: files } : {}),
     ...(selection ? { selection } : {}),
     ...(selectionInvalid ? { selectionInvalid: true } : {}),
     ...(handoff ? { handoff } : {}),

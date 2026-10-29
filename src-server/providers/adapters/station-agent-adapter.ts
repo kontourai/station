@@ -3,14 +3,16 @@ import type { AgentDelegationContext } from '@kontourai/station-contracts/agent'
 import { engineId } from '@kontourai/station-contracts/agent-identity';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
+import { STATION_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 import type {
   InputRequestContent,
   InputRequestResponse,
 } from '@kontourai/station-contracts/input-request';
 import { stripReservedOrchestrationMetadata } from '@kontourai/station-contracts/provider';
+import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/runtime-events';
 import {
   type ApprovalStatus,
-  type CanonicalRuntimeEvent,
+  type ProviderRuntimeEvent as CanonicalRuntimeEvent,
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
 import { readWithStallWatchdog } from '@kontourai/station-contracts/stall-watchdog';
@@ -56,6 +58,7 @@ import {
   stationServerScopeHeaders,
 } from '../../security/station-server-scope.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
+import { derivedConversationTitle } from '../../services/orchestration/conversation-title.js';
 import type {
   EventBus,
   ServerEvent,
@@ -87,14 +90,15 @@ import {
   modelProviderFailureMessage,
   modelProviderHttpStatus,
 } from '../model-provider-failure.js';
+import { providerFailure } from '../provider-failure.js';
 import { AsyncEventQueue } from '../sessions/async-event-queue.js';
 import { UNRESOLVED_TOOL_OUTPUT } from './unresolved-tool-output.js';
 
 const PROVIDER = 'station-agent' as const;
 
 /**
- * archive#1207 (review HIGH 2, the actual production trigger under
- * `managed-chat-orchestration`): how long `consumeChatStream`'s bridge from
+ * archive#1207 (the production trigger is managed chat, which runs through
+ * orchestration): how long `consumeChatStream`'s bridge from
  * the inner `/chat` SSE response onto the orchestration event bus may go
  * completely silent before it is treated as dead. Without this, a silent
  * stall on the inner stream (server crash, dropped connection, no error
@@ -144,7 +148,10 @@ interface StationAgentResumeCursor {
   tenantExecutionContext?: TenantExecutionContext;
 }
 
+type TurnOrigin = Readonly<Pick<ProviderSendTurnInput, 'invocationId'>>;
+
 interface StationAgentSessionRecord {
+  conversationTitle?: string;
   workspaceRequired: boolean;
   session: ProviderSession;
   agentId: string;
@@ -154,10 +161,16 @@ interface StationAgentSessionRecord {
   tenantExecutionContext?: TenantExecutionContext;
   activeTurnId?: string;
   activeController?: AbortController;
+  activeOrigin?: TurnOrigin;
   abortPublished?: boolean;
   pendingRequests: Map<
     string,
-    { toolName?: string; turnId?: string; elicitation?: true }
+    {
+      toolName?: string;
+      turnId: string;
+      origin: TurnOrigin;
+      elicitation?: true;
+    }
   >;
   approvedTools: Set<string>;
   resolvedBeforeOpen: Map<string, ApprovalStatus>;
@@ -194,7 +207,10 @@ interface StationAgentSessionRecord {
    * order-only — which is safe today only because it never emits an id-less
    * CALL, so nothing is queued for such a result to claim.
    */
-  openToolCalls: Map<string, { toolName: string; turnId: string }>;
+  openToolCalls: Map<
+    string,
+    { toolName: string; turnId: string; origin: TurnOrigin }
+  >;
 }
 
 interface StationAgentAdapterOptions {
@@ -539,6 +555,7 @@ export function mapStationAgentStreamEvent(options: {
   event: Record<string, unknown>;
   threadId: string;
   turnId: string;
+  invocationId?: string;
   publish(event: CanonicalRuntimeEvent): void;
   now?: () => Date;
   /**
@@ -605,6 +622,9 @@ export function mapStationAgentStreamEvent(options: {
     provider: PROVIDER,
     threadId,
     turnId,
+    ...(options.invocationId === undefined
+      ? {}
+      : { invocationId: options.invocationId }),
     createdAt,
   };
 
@@ -791,6 +811,15 @@ export function mapStationAgentStreamEvent(options: {
     publish({
       ...base,
       method: 'runtime.error',
+      ...providerFailure(
+        inferredCredentials || httpStatus === 401 || httpStatus === 403
+          ? 'auth'
+          : httpStatus === 429
+            ? event.failureKind === 'quota_exhausted'
+              ? 'quota_exhausted'
+              : 'rate_limited'
+            : 'provider_error',
+      ),
       severity: 'error',
       message: inferredCredentials
         ? MODEL_PROVIDER_CREDENTIALS_REJECTED
@@ -799,11 +828,16 @@ export function mapStationAgentStreamEvent(options: {
             // (`outwardTurnFailureText`), so a reloaded chat's projected
             // runtime error and marker de-duplicate to one card.
             outwardTransportError('sse')
-          : modelProviderFailureMessage(httpStatus),
+          : modelProviderFailureMessage(
+              httpStatus,
+              event.failureKind === 'quota_exhausted'
+                ? 'quota_exhausted'
+                : undefined,
+            ),
       code: 'station_agent_turn_failed',
       retriable: true,
       ...(httpStatus !== undefined ? { details: { httpStatus } } : {}),
-    });
+    } satisfies ProviderRuntimeErrorEvent);
     return { failed: true };
   }
   return {};
@@ -837,6 +871,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       'interrupt',
       'resume',
     ],
+    durability: STATION_ENGINE_DURABILITY,
     continuity: { resume: 'same-session', fork: 'replay-seed', rewind: 'none' },
     builtin: true,
     engineId: engineId('station'),
@@ -907,6 +942,9 @@ export class StationAgentAdapter implements ProviderAdapterShape {
         (input.metadata?.workspaceIsolation as { mode?: unknown } | undefined)
           ?.mode === 'worktree',
       session,
+      conversationTitle: derivedConversationTitle(
+        stringField(input.metadata?.delegationTitle),
+      ),
       agentId,
       ...(projectSlug ? { projectSlug } : {}),
       ...(userId ? { userId } : {}),
@@ -951,6 +989,9 @@ export class StationAgentAdapter implements ProviderAdapterShape {
   async sendTurn(
     input: ProviderSendTurnInput,
   ): Promise<ProviderTurnStartResult> {
+    const invocationId = input.invocationId;
+    const origin: TurnOrigin =
+      invocationId === undefined ? {} : { invocationId };
     const record = this.requireSession(input.threadId);
     if (!(await this.options.hasAgent(record.agentId))) {
       throw new Error(`Unknown Station agent: ${record.agentId}`);
@@ -963,6 +1004,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     if (record.activeController && !record.activeController.signal.aborted) {
       throw new SendTurnRefusedError(
         `Station agent task is already running: ${input.threadId}`,
+        'busy',
       );
     }
     // A start/resume override is accepted into the adapter-owned session.
@@ -992,6 +1034,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     const controller = new AbortController();
     record.activeTurnId = turnId;
     record.activeController = controller;
+    record.activeOrigin = origin;
     beginNativeKnowledgeTurn(input.threadId, turnId, controller.signal);
     record.abortPublished = false;
     // archive#796: a Station agent's session is started without a model — the UI
@@ -1034,6 +1077,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       provider: this.provider,
       threadId: input.threadId,
       turnId,
+      ...origin,
       createdAt: this.now().toISOString(),
       method: 'turn.started',
       // Transcript-facing: the typed text, never the composed model input.
@@ -1129,6 +1173,9 @@ export class StationAgentAdapter implements ProviderAdapterShape {
                 : {}),
               options: {
                 conversationId: input.threadId,
+                ...(record.conversationTitle
+                  ? { title: record.conversationTitle }
+                  : {}),
                 ...(record.userId ? { userId: record.userId } : {}),
                 ...(record.delegation ? { delegation: record.delegation } : {}),
                 ...(modelId ? { model: modelId } : {}),
@@ -1194,7 +1241,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       }
     } catch (error) {
       nativeForeground?.refuse();
-      this.failTurn(record, turnId, controller, rejectionReason);
+      this.failTurn(record, turnId, controller, origin, rejectionReason);
       throw error;
     }
 
@@ -1202,6 +1249,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       record,
       turnId,
       controller,
+      origin,
       response,
       modelMetadata,
     )
@@ -1210,6 +1258,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
           record,
           turnId,
           controller,
+          origin,
           error instanceof StationAgentStreamStallError
             ? error.message
             : undefined,
@@ -1225,6 +1274,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
           record,
           turnId,
           controller,
+          origin,
           'The captured native action was not admitted.',
         );
         throw error;
@@ -1241,6 +1291,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     const record = this.requireSession(threadId);
     const activeTurnId = record.activeTurnId;
     const activeController = record.activeController;
+    const origin = record.activeOrigin;
     if (!activeTurnId || !activeController) {
       return { outcome: 'no-active-turn' } as const;
     }
@@ -1256,6 +1307,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
         provider: this.provider,
         threadId,
         turnId: activeTurnId,
+        ...origin,
         createdAt: this.now().toISOString(),
         method: 'turn.aborted',
         reason: 'interrupted',
@@ -1372,13 +1424,14 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     const createdAt = this.now().toISOString();
     const entries = [...record.openToolCalls];
     record.openToolCalls.clear();
-    for (const [toolCallId, { toolName, turnId }] of entries) {
+    for (const [toolCallId, { toolName, turnId, origin }] of entries) {
       this.publish({
         eventId: crypto.randomUUID(),
         provider: this.provider,
         threadId: record.session.threadId,
         createdAt,
         turnId,
+        ...origin,
         itemId: toolCallId,
         method: 'tool.completed',
         toolCallId,
@@ -1421,6 +1474,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     record: StationAgentSessionRecord,
     turnId: string,
     controller: AbortController,
+    origin: TurnOrigin,
     response: Response,
     modelMetadata: ReturnType<typeof effectiveModelMetadata>,
   ): Promise<void> {
@@ -1466,22 +1520,33 @@ export class StationAgentAdapter implements ProviderAdapterShape {
             event,
             threadId: record.session.threadId,
             turnId,
+            ...origin,
             publish: (next) => this.publish(next),
             now: this.options.now,
             pendingIdlessToolCalls,
           });
           if (mapped.approvalOpened) {
-            this.trackApproval(record, turnId, mapped.approvalOpened);
+            this.trackApproval(record, turnId, origin, mapped.approvalOpened);
           }
           // station#1569 (item 4): what the session-end settle reads. Kept
           // here rather than inside the relay so that function stays pure.
-          if (mapped.toolOpened) {
+          if (
+            mapped.toolOpened &&
+            !controller.signal.aborted &&
+            this.sessions.get(record.session.threadId) === record &&
+            record.activeController === controller
+          ) {
             record.openToolCalls.set(mapped.toolOpened.toolCallId, {
               toolName: mapped.toolOpened.toolName,
               turnId,
+              origin,
             });
           }
-          if (mapped.toolSettled) {
+          if (
+            mapped.toolSettled &&
+            record.openToolCalls.get(mapped.toolSettled.toolCallId)?.origin ===
+              origin
+          ) {
             record.openToolCalls.delete(mapped.toolSettled.toolCallId);
           }
           // `mapped.unpairedToolResult` is deliberately not tracked here:
@@ -1517,6 +1582,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
         finishNativeKnowledgeTurn(record.session.threadId, turnId);
         record.activeTurnId = undefined;
         record.activeController = undefined;
+        record.activeOrigin = undefined;
       }
       return;
     }
@@ -1532,6 +1598,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
         provider: this.provider,
         threadId: record.session.threadId,
         turnId,
+        ...origin,
         createdAt: this.now().toISOString(),
         method: 'turn.completed',
         finishReason: resolvedFinishReason,
@@ -1562,12 +1629,14 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     finishNativeKnowledgeTurn(record.session.threadId, turnId);
     record.activeTurnId = undefined;
     record.activeController = undefined;
+    record.activeOrigin = undefined;
   }
 
   private failTurn(
     record: StationAgentSessionRecord,
     turnId: string,
-    controller = record.activeController,
+    controller: AbortController,
+    origin: TurnOrigin,
     reason?: string,
   ): void {
     if (
@@ -1582,18 +1651,21 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       provider: this.provider,
       threadId: record.session.threadId,
       turnId,
+      ...origin,
       createdAt: this.now().toISOString(),
       method: 'runtime.error',
+      ...providerFailure('provider_error'),
       severity: 'error',
       message: turnRejectionMessage(reason),
       code: 'station_agent_turn_unavailable',
       retriable: true,
-    });
+    } satisfies ProviderRuntimeErrorEvent);
     this.updateSession(record, 'error');
     this.publishState(record, 'running', 'errored');
     finishNativeKnowledgeTurn(record.session.threadId, turnId);
     record.activeTurnId = undefined;
     record.activeController = undefined;
+    record.activeOrigin = undefined;
   }
 
   /**
@@ -1658,6 +1730,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
   private trackApproval(
     record: StationAgentSessionRecord,
     turnId: string,
+    origin: TurnOrigin,
     approval: { requestId: string; toolName?: string; elicitation?: true },
   ): void {
     const resolvedStatus = record.resolvedBeforeOpen.get(approval.requestId);
@@ -1668,11 +1741,13 @@ export class StationAgentAdapter implements ProviderAdapterShape {
         approval.requestId,
         resolvedStatus,
         turnId,
+        origin,
       );
       return;
     }
     record.pendingRequests.set(approval.requestId, {
       turnId,
+      origin,
       ...(approval.toolName ? { toolName: approval.toolName } : {}),
       ...(approval.elicitation ? { elicitation: true as const } : {}),
     });
@@ -1702,6 +1777,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
         requestId,
         effectiveStatus,
         pending.turnId,
+        pending.origin,
       );
       return;
     }
@@ -1718,13 +1794,15 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     record: StationAgentSessionRecord,
     requestId: string,
     status: ApprovalStatus,
-    turnId?: string,
+    turnId: string,
+    origin: TurnOrigin,
   ): void {
     this.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,
       threadId: record.session.threadId,
       ...(turnId ? { turnId } : {}),
+      ...origin,
       createdAt: this.now().toISOString(),
       method: 'request.resolved',
       requestId,

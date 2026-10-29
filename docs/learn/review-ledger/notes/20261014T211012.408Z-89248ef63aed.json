@@ -1,0 +1,7 @@
+{
+  "revision": "48141e60edaa61152a858faff936428d93992123",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Checked PR_BROWSER_SMOKE_CONTRACT: unchanged, still the seven listed specs; the new spec is product-bucket only and not added to the PR smoke. No prose change.","inputs":["docs/testing/browser-smoke.md","tests/e2e-manifest.mjs"]}
+  ]
+}

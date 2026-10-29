@@ -1,0 +1,7 @@
+{
+  "revision": "5852563d8a08b90d082633b456a994b81e76f0e2",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"PR #4092 fix round 1, bounded work-discovery delta only: traced MCP search_conversations through the policy and mounted work/search route, shared read admission and sanitized file-lineage reader. Reviewed the changed route, policy comment placement and mounted project-activity tests. Metadata matching counts only Project/Agent-filtered admitted candidates, capped at 2000; indexed native hits remain eligible, file reads are capped at 32 and overlong file lineages are skipped. Local incomplete sources disclose partial coverage without conversation identities. Updated the owning search explanation and HTTP reference. EXECUTED: original 23-test baseline, pre-fix four named regression failures, and fixed 65/65 search/policy tests. Remaining source, provider, hosted and device claims are outside this delta; fault-injection results will be reported separately.","inputs":["docs/guides/self-configuring-agent.md","src-server/routes/chat/conversation-work-search.ts","src-server/runtime/routes/__tests__/runtime-routes-station-control-project-activity.test.ts","src-server/tools/station-control-policy.ts"]}
+  ]
+}

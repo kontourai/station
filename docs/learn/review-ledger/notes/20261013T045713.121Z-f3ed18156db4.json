@@ -1,0 +1,7 @@
+{
+  "revision": "c5e22fddb295d1ed797a00a1405748245caec2bd",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed the complete dependency-security guide on c5e22 and scoped formatter-parent delta: exact generated lock transformation removes argparse1/sprintf without other graph changes; gray-matter library/caller bytes and all32published YAML artifacts unchanged; modern BIN preserves h/v/c/j/t/stdin/file/errors with19installed controls, originalBIN14FAIL and exactrestore19PASS. Installed all12importers/1633identities and actualCLI0.1.21/Core2.10 resolution checked; badedge/privateclonedgraph, real shadow/librarydrift rejected with restoration. Six CURRENT normalized audits lack formatter; retained old expired+unusedRED, Root independently reviewed exact obsolete residual4 removal, live maintained audit:policy now0 on c5e22. Reviewed unchanged inert install/hook/artifact ownership, pnpm scope/count normalization and fail-closed exception/unused/expiry behavior; other records and dates untouched. Prior109formatter/228numeric and dated provider/advisory observations remain historical, not current qualification. No endpoint-unreachability/upstreamcure/hosted/native/provider/full-source approval inferred.","inputs":["docs/guides/dependency-security.md","pnpm-lock.yaml","pnpm-workspace.yaml","scripts/dependency-advisory-exceptions.json","patches/js-yaml-3.15.2-argparse2-cli.patch","scripts/__tests__/js-yaml3-argparse2-compatibility.test.ts"]}
+  ]
+}

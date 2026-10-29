@@ -17,8 +17,10 @@ export function ProjectTaskSharingControl({
   slug,
   projectId,
   task,
+  compact = false,
 }: {
   slug: string;
+  compact?: boolean;
   projectId?: string;
   task: { id: string; createdAt: string };
 }) {
@@ -38,6 +40,7 @@ export function ProjectTaskSharingControl({
       slug={slug}
       projectId={projectId}
       task={task}
+      compact={compact}
     />
   );
 }
@@ -47,8 +50,10 @@ function ProjectTaskSharingControlInner({
   slug,
   projectId,
   task,
+  compact,
 }: {
   authority: ReturnType<typeof useHostRequestAuthorityScope>;
+  compact: boolean;
   slug: string;
   projectId?: string;
   task: { id: string; createdAt: string };
@@ -118,7 +123,27 @@ function ProjectTaskSharingControlInner({
     query.isError ||
     !publication
   )
-    return null;
+    return compact ? (
+      <span
+        title={
+          query.isPending
+            ? 'Checking sharing…'
+            : 'Sharing is off for this Station'
+        }
+      >
+        <Button
+          disabled
+          aria-label="Share"
+          aria-description={
+            query.isPending
+              ? 'Checking sharing'
+              : 'Sharing is off for this Station'
+          }
+        >
+          Share
+        </Button>
+      </span>
+    ) : null;
   const expected = expectation(publication);
   const shared = publication.kind === 'shared';
   const capturedAuthority = authority;
@@ -146,7 +171,7 @@ function ProjectTaskSharingControlInner({
     }
   }
 
-  return (
+  const content = (
     <div className="project-page__task-sharing" aria-live="polite">
       <strong>
         {shared
@@ -164,6 +189,14 @@ function ProjectTaskSharingControlInner({
       </Button>
       {notice ? <p>{notice}</p> : null}
     </div>
+  );
+  return compact ? (
+    <details className="task-room-share">
+      <summary>Share</summary>
+      {content}
+    </details>
+  ) : (
+    content
   );
 }
 

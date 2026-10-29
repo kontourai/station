@@ -10,10 +10,15 @@
  * trusting that two files that look alike stay alike.
  */
 
+import type {
+  OrchestrationSessionSummary,
+  TaskRecord,
+} from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { createRef } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { FOLD_FIXTURES } from '../../../tests/helpers/session-summary-fold-fixtures';
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
 import {
   InboxRow,
@@ -22,6 +27,8 @@ import {
 import { MobileTaskSwitcher } from '../components/chat-dock/MobileTaskSwitcher';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import type { HomeWorkItem } from '../views/home/home-view-model';
+import { buildHomeWorkItems } from '../views/home/home-view-model';
+import { buildWorkFacts } from '../views/home/work-facts';
 import { renderWithIsolatedConnections } from './renderWithIsolatedConnections';
 
 const NOW = Date.parse('2026-08-18T12:00:00Z');
@@ -40,6 +47,19 @@ function workItem(overrides: Partial<HomeWorkItem> = {}): HomeWorkItem {
     chatSessionId: 'shared',
     ...overrides,
   };
+}
+
+function historicalItems(): HomeWorkItem[] {
+  return Array.from({ length: 45 }, (_, index) =>
+    workItem({
+      id: `chat:history-${index}`,
+      chatSessionId: `history-${index}`,
+      orchestrationThreadId: `thread-history-${index}`,
+      title: `Historical work ${index}`,
+      lifecycleLabel: 'Completed',
+      updatedAt: NOW - 3_600_000 - index * 1000,
+    }),
+  );
 }
 
 /** The live agent catalog both hosts pass down for the rows' agent icons. */
@@ -119,6 +139,425 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     localStorage.clear();
     deviceSettingsStore.reloadFromStorage();
   });
+
+  it('keeps an auto-opened family expanded after resolution and clears hidden child details', async () => {
+    const parent = workItem({
+      id: 'parent',
+      chatSessionId: 'parent',
+      title: 'Parent chat',
+      lifecycleLabel: 'Completed',
+    });
+    const child = workItem({
+      id: 'child',
+      chatSessionId: 'child',
+      title: 'Child chat',
+      lifecycleLabel: 'Needs attention',
+    });
+    const facts = new Map([['child', { runRootId: 'parent' }]]);
+    const view = (items: HomeWorkItem[]) => (
+      <MobileTaskSwitcher
+        open
+        tasks={items}
+        workFacts={facts}
+        activeChatSessionId={null}
+        openChatSessionIds={['parent', 'child']}
+        triggerRef={createRef<HTMLButtonElement>()}
+        visualViewportStyle={{}}
+        onClose={vi.fn()}
+        onFocusChat={vi.fn()}
+        onOpenConversation={vi.fn()}
+        onOpenSession={vi.fn()}
+        now={NOW}
+      />
+    );
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const mounted = renderWithIsolatedConnections(view([parent, child]), {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      ),
+    });
+    expect(screen.getByText('Child chat')).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Details for Child chat' }),
+    );
+    await screen.findByRole('dialog', { name: 'Details for Child chat' });
+    mounted.rerender(view([parent, { ...child, lifecycleLabel: 'Completed' }]));
+    const details = await screen.findByRole('dialog', {
+      name: 'Details for Child chat',
+    });
+    fireEvent.click(within(details).getByRole('button', { name: /Close/ }));
+    fireEvent.click(screen.getByRole('button', { name: '1 subtask' }));
+    expect(screen.queryByText('Child chat')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '1 subtask' }));
+    expect(
+      screen.queryByRole('dialog', { name: 'Details for Child chat' }),
+    ).toBeNull();
+  });
+
+  it('keeps the current folded child visible beyond the Earlier page', () => {
+    const history = historicalItems();
+    const parent = history[40];
+    const child = history[41];
+    render(
+      <ChatDockInboxPanel
+        items={history}
+        workFacts={new Map([[child.id, { runRootId: parent.id }]])}
+        activeChatSessionId={child.chatSessionId!}
+        openChatSessionIds={history.map((entry) => entry.chatSessionId!)}
+        onFocusChat={vi.fn()}
+        onOpenConversation={vi.fn()}
+        onOpenSession={vi.fn()}
+        onCloseChat={vi.fn()}
+        onOpenHistory={vi.fn()}
+        now={NOW}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Earlier' }));
+    expect(screen.getByText(child.title)).toBeTruthy();
+    expect(screen.getByText(parent.title)).toBeTruthy();
+  });
+
+  it.each(['desktop', 'mobile'] as const)(
+    '%s keeps scope after remount and discloses attention outside it',
+    (host) => {
+      const items = [
+        workItem({
+          id: 'local',
+          title: 'Local project work',
+          projectSlug: 'alpha',
+          projectLabel: 'Alpha',
+          chatSessionId: 'local',
+        }),
+        workItem({
+          id: 'remote',
+          title: 'Remote approval',
+          kind: 'remote-session',
+          chatSessionId: undefined,
+          environmentId: 'remote-station',
+          environmentLabel: 'Build server',
+          lifecycleLabel: 'Needs attention',
+        }),
+      ];
+      const mount = () =>
+        host === 'desktop'
+          ? render(
+              <ChatDockInboxPanel
+                items={items}
+                activeChatSessionId={null}
+                openChatSessionIds={['local']}
+                onFocusChat={vi.fn()}
+                onOpenConversation={vi.fn()}
+                onOpenSession={vi.fn()}
+                onCloseChat={vi.fn()}
+                onOpenHistory={vi.fn()}
+                now={NOW}
+              />,
+            )
+          : render(
+              <MobileTaskSwitcher
+                open
+                tasks={items}
+                activeChatSessionId={null}
+                openChatSessionIds={['local']}
+                onFocusChat={vi.fn()}
+                onOpenConversation={vi.fn()}
+                onOpenSession={vi.fn()}
+                onClose={vi.fn()}
+                triggerRef={createRef<HTMLButtonElement>()}
+                visualViewportStyle={{}}
+                now={NOW}
+              />,
+            );
+      const first = mount();
+      fireEvent.change(screen.getByRole('combobox', { name: 'Inbox scope' }), {
+        target: { value: 'project:["station:local","alpha"]' },
+      });
+      expect(screen.queryByText('Remote approval')).toBeNull();
+      expect(screen.getByText('Local project work')).toBeTruthy();
+      first.unmount();
+      deviceSettingsStore.reloadFromStorage();
+      mount();
+      expect(
+        (
+          screen.getByRole('combobox', {
+            name: 'Inbox scope',
+          }) as HTMLSelectElement
+        ).value,
+      ).toBe('project:["station:local","alpha"]');
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: '1 need you outside this filter · Show all',
+        }),
+      );
+      expect(screen.getByText('Remote approval')).toBeTruthy();
+    },
+  );
+
+  it('keeps a Task-owned chat reachable under its Task and opens the Task destination', () => {
+    const tasks: TaskRecord[] = [
+      {
+        id: 'task-1',
+        projectId: 'alpha',
+        title: 'Ship release',
+        description: '',
+        createdBy: 'user',
+        priority: 'normal',
+        status: 'in_progress',
+        sessionId: 'linked-chat',
+        createdAt: '2026-08-18T11:00:00Z',
+        updatedAt: '2026-08-18T11:59:00Z',
+      },
+    ];
+    const chat = workItem({
+      id: 'linked-chat',
+      chatSessionId: 'linked-chat',
+      title: 'Release conversation',
+      lifecycleLabel: 'Needs attention',
+    });
+    const items = buildHomeWorkItems({
+      chats: {},
+      sessions: [],
+      agents: [],
+      tasks,
+      chatItems: [chat],
+      retainTaskChildren: true,
+    });
+    const onFocusChat = vi.fn();
+    render(
+      <ChatDockInboxPanel
+        items={items}
+        workFacts={buildWorkFacts({ items, tasks })}
+        activeChatSessionId={null}
+        openChatSessionIds={['linked-chat']}
+        onFocusChat={onFocusChat}
+        onOpenConversation={vi.fn()}
+        onOpenSession={vi.fn()}
+        onCloseChat={vi.fn()}
+        onOpenHistory={vi.fn()}
+        now={NOW}
+      />,
+    );
+    const lane = screen
+      .getByRole('heading', { name: 'Needs you' })
+      .closest('section')!;
+    expect(within(lane).getByText('Ship release')).toBeTruthy();
+    fireEvent.click(
+      within(lane).getByRole('button', {
+        name: 'Release conversation, Shared project',
+      }),
+    );
+    expect(onFocusChat).toHaveBeenCalledWith('linked-chat');
+    fireEvent.click(
+      within(lane).getByRole('button', { name: 'Ship release, alpha' }),
+    );
+    expect(window.location.pathname).toBe('/tasks/task-1');
+    window.history.replaceState(null, '', '/');
+  });
+
+  it.each(['desktop', 'mobile'] as const)(
+    '%s groups delegated work with its root and opens the child needing approval',
+    async (host) => {
+      const sessions: OrchestrationSessionSummary[] = [
+        {
+          threadId: 'root',
+          displayTitle: 'Release review',
+          fixture: 'turnCompleted' as const,
+        },
+        {
+          threadId: 'child',
+          displayTitle: 'Security review',
+          fixture: 'approvalInOpenTurn' as const,
+        },
+      ].map(({ fixture, ...identity }) => ({
+        provider: 'claude',
+        status: 'running',
+        controlMode: 'station-owned',
+        answerability: { answerable: true },
+        isLoaded: true,
+        isPersisted: true,
+        eventCount: 2,
+        createdAt: '2026-08-18T11:59:00Z',
+        updatedAt: '2026-08-18T11:59:30Z',
+        ...FOLD_FIXTURES[fixture].summary,
+        ...identity,
+        ...(identity.threadId === 'child'
+          ? {
+              delegation: { taskId: 'security-task', parentTaskId: 'root' },
+            }
+          : {}),
+      }));
+      const items = buildHomeWorkItems({ chats: {}, sessions, agents: [] });
+      const onOpenSession = vi.fn();
+      const common = {
+        activeChatSessionId: null,
+        openChatSessionIds: [],
+        now: NOW,
+        onFocusChat: vi.fn(),
+        onOpenConversation: vi.fn(),
+        onOpenSession,
+        onCloseChat: vi.fn(),
+        workFacts: buildWorkFacts({ items, sessions }),
+      };
+      if (host === 'desktop') {
+        render(
+          <ChatDockInboxPanel
+            {...common}
+            items={items}
+            onOpenHistory={vi.fn()}
+          />,
+        );
+      } else {
+        render(
+          <MobileTaskSwitcher
+            {...common}
+            open
+            tasks={items}
+            triggerRef={createRef<HTMLButtonElement>()}
+            visualViewportStyle={{}}
+            onClose={vi.fn()}
+          />,
+        );
+      }
+      const needsYou = screen
+        .getByRole('heading', { name: /^Needs you/ })
+        .closest('section')!;
+      expect(within(needsYou).getByText('Release review')).toBeTruthy();
+      expect(
+        within(needsYou).getByText('1 subtask · 1 needs you'),
+      ).toBeTruthy();
+      fireEvent.click(
+        within(needsYou).getByRole('button', {
+          name: 'Security review, No project',
+        }),
+      );
+      await vi.waitFor(() =>
+        expect(onOpenSession).toHaveBeenCalledWith('child'),
+      );
+    },
+  );
+
+  it.each(['desktop', 'mobile'] as const)(
+    '%s pages Earlier history through the real host',
+    (host) => {
+      const history = historicalItems();
+      const handlers = {
+        activeChatSessionId: null,
+        onCloseChat: vi.fn(),
+        onFocusChat: vi.fn(),
+        onOpenConversation: vi.fn(),
+        onOpenSession: vi.fn(),
+        now: NOW,
+      };
+      if (host === 'desktop') {
+        render(
+          <ChatDockInboxPanel
+            {...handlers}
+            items={history}
+            openChatSessionIds={[]}
+            onOpenHistory={vi.fn()}
+          />,
+        );
+        expect(document.querySelectorAll('.chat-dock-inbox__row')).toHaveLength(
+          0,
+        );
+        fireEvent.click(screen.getByRole('button', { name: 'Earlier' }));
+      } else {
+        render(
+          <MobileTaskSwitcher
+            {...handlers}
+            open
+            tasks={history}
+            triggerRef={createRef<HTMLButtonElement>()}
+            visualViewportStyle={{}}
+            onClose={vi.fn()}
+          />,
+        );
+      }
+      expect(document.querySelectorAll('.chat-dock-inbox__row')).toHaveLength(
+        20,
+      );
+      const more = screen.getByRole('button', {
+        name: 'Show more earlier chats and tasks',
+      });
+      more.focus();
+      fireEvent.click(more);
+      expect(document.querySelectorAll('.chat-dock-inbox__row')).toHaveLength(
+        40,
+      );
+      expect(document.activeElement).toBe(more);
+      fireEvent.click(more);
+      expect(document.querySelectorAll('.chat-dock-inbox__row')).toHaveLength(
+        45,
+      );
+      expect(
+        screen.queryByRole('button', {
+          name: 'Show more earlier chats and tasks',
+        }),
+      ).toBeNull();
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: 'Historical work 44, Shared project',
+        }),
+      );
+      expect(handlers.onFocusChat).toHaveBeenCalledWith('history-44');
+    },
+  );
+
+  it.each([
+    { host: 'desktop', currentId: 'history-40' },
+    { host: 'mobile', currentId: 'history-40' },
+    { host: 'desktop', currentId: 'thread-history-40' },
+    { host: 'mobile', currentId: 'thread-history-40' },
+  ])(
+    '$host keeps the current Earlier row beyond page one ($currentId)',
+    ({ host, currentId }) => {
+      const history = historicalItems();
+      const handlers = {
+        activeChatSessionId: currentId,
+        onFocusChat: vi.fn(),
+        onOpenConversation: vi.fn(),
+        onOpenSession: vi.fn(),
+        onCloseChat: vi.fn(),
+        now: NOW,
+      };
+      if (host === 'desktop') {
+        render(
+          <ChatDockInboxPanel
+            {...handlers}
+            items={history}
+            openChatSessionIds={['history-40']}
+            onOpenHistory={vi.fn()}
+          />,
+        );
+        fireEvent.click(screen.getByRole('button', { name: 'Earlier' }));
+      } else {
+        render(
+          <MobileTaskSwitcher
+            {...handlers}
+            open
+            tasks={history}
+            triggerRef={createRef<HTMLButtonElement>()}
+            visualViewportStyle={{}}
+            onClose={vi.fn()}
+          />,
+        );
+      }
+      const current = screen.getByRole('button', {
+        name: 'Historical work 40, Shared project',
+      });
+      expect(current.getAttribute('aria-current')).toBe('true');
+      expect(document.querySelectorAll('.chat-dock-inbox__row')).toHaveLength(
+        21,
+      );
+      expect(
+        screen.queryByRole('button', {
+          name: 'Historical work 39, Shared project',
+        }),
+      ).toBeNull();
+    },
+  );
 
   it('desktop panel host renders the shared anatomy', () => {
     const { container } = renderPanelHost(workItem());
@@ -371,7 +810,7 @@ describe('inbox rows show the agent they belong to (station#2802)', () => {
   });
 
   it('adds no icon column at all for a host that supplies no catalog', () => {
-    // `SidebarOpenChats` (archive#3314) renders these rows with no catalog;
+    // Compact inbox callers render these rows with no catalog;
     // its layout must be untouched by this feature.
     const { container } = renderPanelHost(sessionItem({ agentSlug: 'codex' }));
     expect(avatarOf(container)).toBeNull();

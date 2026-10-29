@@ -1,0 +1,7 @@
+{
+  "revision": "74a63b5e9d220234c5d34ca4f51eb481b9d76365",
+
+  "notes": [
+    {"path":"docs/user/settings.md","note":"Read the whole page against settings-catalog.ts on the Appearance branch. This branch changes the Theme and Accent color rows (now links to the Appearance page, scoped to theme and accentColor) and their search keywords; the page covers only feature previews, developer tools, shared answers and device hosts, none of which change. Its claim that developer tools show the Developer page in Customize still holds: Customize gains Appearance and Settings and keeps Developer.","inputs":["docs/user/settings.md","src-ui/src/views/settings/settings-catalog.ts"]}
+  ]
+}

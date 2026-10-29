@@ -2,6 +2,7 @@
  * @vitest-environment jsdom
  */
 
+import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { ToolCallDisplay } from '../components/chat/ToolCallDisplay';
@@ -10,6 +11,7 @@ import {
   DocumentGlyph,
   PlugGlyph,
 } from '../components/icons/Glyph';
+import { conversationPartToContentParts } from '../hooks/orchestration/conversationTranscriptParts';
 import { unansweredApprovalRequests } from '../hooks/orchestration/pendingRequestRows';
 
 // archive#3091 / archive#3117: the rendered end of the carrying seam. `ToolCallData`
@@ -205,7 +207,7 @@ describe('ToolCallDisplay — quiet activity row (station#2652 redesign)', () =>
     // Success claims nothing collapsed — no badge, no raw internal state.
     expect(screen.queryByText('completed')).toBe(null);
     expect(screen.queryByText('Success')).toBe(null);
-    expect(document.querySelector('.tool-call__pulse')).toBe(null);
+    expect(document.querySelector('.tool-call__label--active')).toBe(null);
   });
 
   test('expanding a settled call shows the truthful terminal status footer', () => {
@@ -360,7 +362,7 @@ describe('ToolCallDisplay — quiet activity row (station#2652 redesign)', () =>
     expect(screen.getByText('Blocked by Station')).toBeTruthy();
   });
 
-  test('a running call uses the progressive verb and a pulse, never a raw state string', () => {
+  test('a running call uses the progressive verb and highlights its label, never a raw state string', () => {
     render(
       <ToolCallDisplay
         toolCall={{
@@ -374,8 +376,9 @@ describe('ToolCallDisplay — quiet activity row (station#2652 redesign)', () =>
       />,
     );
 
-    expect(screen.getByText('Running npm test')).toBeTruthy();
-    expect(document.querySelector('.tool-call__pulse')).toBeTruthy();
+    expect(screen.getByText('Running npm test').className).toContain(
+      'tool-call__label--active',
+    );
     expect(screen.queryByText('running', { exact: true })).toBe(null);
     expect(screen.getByText('running suite')).toBeTruthy();
   });
@@ -516,7 +519,9 @@ test('disabling tool details preserves the compact running row without a payload
     />,
   );
   expect(view.container.querySelector('.tool-call')).not.toBeNull();
-  expect(view.container.querySelector('.tool-call__pulse')).not.toBeNull();
+  expect(
+    view.container.querySelector('.tool-call__label--active'),
+  ).not.toBeNull();
   expect(screen.getByText('Reading the selected file')).toBeTruthy();
   expect(view.container.querySelector('.tool-call__details')).toBeNull();
   expect(screen.queryByRole('button')).toBeNull();
@@ -743,7 +748,7 @@ describe('ToolCallDisplay — a pending multi-line command is shown whole (#3382
     );
   });
 
-  test('"Why:" drops bidi controls and turns C1 controls into spaces; the grant button names a sanitised tool', () => {
+  test('"Why:" drops bidi controls and turns C1 controls into spaces; the grant menu item names a sanitised tool', async () => {
     pendingBash(
       { command: 'ls' },
       {
@@ -756,8 +761,13 @@ describe('ToolCallDisplay — a pending multi-line command is shown whole (#3382
     expect(document.querySelector('.tool-call__purpose')!.textContent).toBe(
       'Why: List the txt.exe files',
     );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'More ways to allow this request' }),
+    );
     expect(
-      screen.getByRole('button', { name: 'Allow Bash for this session' }),
+      await screen.findByRole('menuitem', {
+        name: 'Allow Bash for this session',
+      }),
     ).toBeTruthy();
   });
 });
@@ -1065,5 +1075,217 @@ describe('ToolCallDisplay — round 4 (#3382)', () => {
     expect(
       document.querySelector('.tool-call__code--command')!.textContent,
     ).toBe(`echo ${heart} a${token('FE0F')}b`);
+  });
+});
+
+describe('ToolCallDisplay — failed calls', () => {
+  test('a failed call opens collapsed even after its approval card was expanded', () => {
+    const pending = {
+      type: 'tool-invocation',
+      toolCallId: 'fail-after-approve',
+      toolName: 'Bash',
+      args: { command: 'npm run deploy' },
+      needsApproval: true,
+      state: 'awaiting-approval',
+      approvalId: 'req-fail-after-approve',
+      approvalThreadId: 'thread-x',
+    };
+    const first = render(
+      <ToolCallDisplay toolCall={pending} onApprove={vi.fn()} />,
+    );
+    const line = () =>
+      first.container.querySelector('button.tool-call__line') as HTMLElement;
+    // Opens by default while pending; collapse then expand again, so the
+    // remembered choice for this request is "expanded".
+    expect(line().getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(line());
+    fireEvent.click(line());
+    expect(line().getAttribute('aria-expanded')).toBe('true');
+    first.unmount();
+
+    // The same request, now a transcript row for a call that failed (the
+    // projection keeps `needsApproval` on the part).
+    const failed = render(
+      <ToolCallDisplay
+        toolCall={{
+          ...pending,
+          state: 'error',
+          error: 'exit 1',
+        }}
+        onApprove={vi.fn()}
+      />,
+    );
+    const row = failed.container.querySelector('button.tool-call__line');
+    expect(row?.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.getByText('Failed')).toBeTruthy();
+    expect(failed.container.querySelector('.tool-call__details')).toBeNull();
+  });
+
+  test('a station-control refusal shows its sentence, with the JSON one disclosure away', () => {
+    const envelope = JSON.stringify(
+      {
+        success: false,
+        code: 'station_control_role_required',
+        error: 'Only the operator can do this. Ask them to do it in Station.',
+      },
+      null,
+      2,
+    );
+    render(
+      <ToolCallDisplay
+        toolCall={{
+          type: 'tool-invocation',
+          toolCallId: 'refused',
+          toolName: 'mcp__station-control__delete_agent',
+          args: { slug: 'helper' },
+          state: 'error',
+          result: envelope,
+        }}
+      />,
+    );
+    const line = document.querySelector('button.tool-call__line')!;
+    expect(line.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(line);
+    const sentence = screen.getByText(
+      'Only the operator can do this. Ask them to do it in Station.',
+    );
+    expect(sentence.className).toContain('tool-call__refusal');
+    // The raw envelope is kept, inside the closed "Raw response" disclosure.
+    const raw = document.querySelector('details.tool-call__raw');
+    expect(raw).not.toBeNull();
+    expect(raw?.hasAttribute('open')).toBe(false);
+    expect(raw?.textContent).toContain('station_control_role_required');
+    // A failure reported with output and no error text is still a failure.
+    expect(
+      document.querySelector('.tool-call__status-footer')?.textContent,
+    ).toContain('Failed');
+  });
+
+  test('a refusal read back from history: its sentence, from what Station kept whole, not the cut excerpt', () => {
+    const sentence =
+      'This action needs a credential that stayed inside Station. Ask the person to do it in Station.';
+    const envelope = JSON.stringify(
+      {
+        success: false,
+        code: 'station_control_assurance_insufficient',
+        error: sentence,
+      },
+      null,
+      2,
+    );
+    // The served event's shape: the error cut to the window's 84-character
+    // excerpt, the refusal kept beside it.
+    const served = {
+      eventId: 'done',
+      provider: 'claude',
+      threadId: 't',
+      turnId: 'turn',
+      createdAt: '2026-10-20T12:00:00.000Z',
+      method: 'tool.completed',
+      itemId: 'c',
+      toolCallId: 'c',
+      toolName: 'mcp__station-control__add_job',
+      status: 'error',
+      error: envelope.slice(0, 84),
+      stationControlRefusal: {
+        code: 'station_control_assurance_insufficient',
+        message: sentence,
+      },
+    };
+    const part = projectRuntimeEventsToMessages([
+      {
+        eventId: 'start',
+        provider: 'claude',
+        threadId: 't',
+        turnId: 'turn',
+        createdAt: '2026-10-20T12:00:00.000Z',
+        method: 'turn.started',
+        prompt: 'x',
+      },
+      served,
+    ] as never)
+      .flatMap((message) => message.parts)
+      .find((p) => p.toolCallId === 'c')!;
+    const [toolCall] = conversationPartToContentParts(part);
+    render(<ToolCallDisplay toolCall={toolCall as never} />);
+    fireEvent.click(document.querySelector('button.tool-call__line')!);
+    expect(screen.getByText(sentence).className).toContain(
+      'tool-call__refusal',
+    );
+  });
+
+  test('another tool whose output is exactly a refusal’s JSON is not read as one', () => {
+    render(
+      <ToolCallDisplay
+        toolCall={{
+          type: 'tool-invocation',
+          toolCallId: 'lookalike',
+          toolName: 'mcp__other__add_job',
+          args: {},
+          state: 'error',
+          result: JSON.stringify({
+            success: false,
+            code: 'station_control_role_required',
+            error: 'Only the operator can do this.',
+          }),
+        }}
+      />,
+    );
+    fireEvent.click(document.querySelector('button.tool-call__line')!);
+    expect(document.querySelector('.tool-call__refusal')).toBeNull();
+    expect(screen.getByText('Response:')).toBeTruthy();
+  });
+
+  test('an ordinary failure keeps its raw output as the response, with no refusal section', () => {
+    render(
+      <ToolCallDisplay
+        toolCall={{
+          type: 'tool-invocation',
+          toolCallId: 'plain-fail',
+          toolName: 'Bash',
+          args: { command: 'npm test' },
+          state: 'error',
+          result: '{"success": false, "detail": "no code"}',
+        }}
+      />,
+    );
+    fireEvent.click(document.querySelector('button.tool-call__line')!);
+    expect(document.querySelector('.tool-call__refusal')).toBeNull();
+    expect(document.querySelector('details.tool-call__raw')).toBeNull();
+    expect(screen.getByText('Response:')).toBeTruthy();
+  });
+});
+
+// A multi-line text argument (a file body, a loaded spilled value) is read,
+// not decoded: its line breaks show as lines, not as `\n` inside JSON.
+describe('ToolCallDisplay — multi-line text arguments show as text', () => {
+  test('a Write body renders with real line breaks; the rest stays JSON', () => {
+    pendingBash(
+      { file_path: 'notes.md', content: 'first line\nsecond line' },
+      { toolName: 'Write' },
+    );
+    const body = document.querySelector('.tool-call__code--text')!;
+    expect(body.textContent).toBe('first line\nsecond line');
+    expect(body.previousElementSibling!.textContent).toBe('content:');
+    const details = document.querySelector('.tool-call__details')!.textContent!;
+    expect(details).not.toContain('first line\\nsecond line');
+    // The short arguments (the path) come before the long text.
+    expect(details.indexOf('"file_path": "notes.md"')).toBeGreaterThan(-1);
+    expect(details.indexOf('"file_path": "notes.md"')).toBeLessThan(
+      details.indexOf('first line'),
+    );
+  });
+
+  test('a hidden character in a text argument still raises the warning', () => {
+    pendingBash(
+      { file_path: 'notes.md', content: `ok\n${RLO}evil` },
+      { toolName: 'Write' },
+    );
+    expect(
+      document.querySelector('.tool-call__code--text')!.textContent,
+    ).toContain(token('202E'));
+    expect(
+      document.querySelector('.tool-call__hidden-warning')!.textContent,
+    ).toContain('These arguments contain hidden characters');
   });
 });

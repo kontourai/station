@@ -1,0 +1,7 @@
+{
+  "revision": "912ebd63e6bb7970b8f7f579483fc2ff9e9d10f1",
+
+  "notes": [
+    {"path":"deployment/telemetry/README.md","note":"Rechecked the receiver README delta through schema 5 pending-association index, per-ping privacyUnit and the real qualifier credential-refresh lifecycle. Complete-schema backups already include the persistent noise key; the private profile introduces no new host credential mount or service and still makes no deployment, restore or release acceptance claim.","inputs":["deployment/telemetry/README.md","packages/telemetry-broker/README.md"]}
+  ]
+}

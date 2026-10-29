@@ -47,7 +47,7 @@ function workspaceControls() {
  * session count (the inbox enumerates the chats).
  */
 describe('ChatDockHeader in a bar that names the pane', () => {
-  test('joins the bar, omits its identity, and keeps New as a named icon with a tipped shortcut, with no Open and no session count', async () => {
+  test('leaves the conversation bar free of repeated assistant and future-chat context while retaining actions', async () => {
     const leading = document.createElement('span');
     const trailing = document.createElement('span');
     document.body.append(leading, trailing);
@@ -78,9 +78,7 @@ describe('ChatDockHeader in a bar that names the pane', () => {
       expect(container.querySelector('.chat-dock__header')).toBeNull();
       // No session count anywhere in the bar: the inbox enumerates them.
       expect(trailing.textContent).not.toMatch(/sessions?/i);
-      // The title is the bar's: the identity is not repeated.
-      expect(leading.textContent).not.toContain('Dev Agent Chat');
-      expect(leading.textContent).toContain('Dev');
+      expect(leading.textContent).toBe('');
 
       // The verbs arrive with a lazily loaded chunk; a cold transform of it
       // can take seconds in this runner.
@@ -107,6 +105,28 @@ describe('ChatDockHeader in a bar that names the pane', () => {
     } finally {
       leading.remove();
       trailing.remove();
+    }
+  });
+
+  test('keeps an imported chat origin visible in the named conversation bar', () => {
+    const leading = document.createElement('span');
+    document.body.append(leading);
+    try {
+      render(
+        <RegionChromeSlotsContext.Provider
+          value={{ leading, trailing: null, namesPane: true }}
+        >
+          <ChatDockHeader
+            fullscreen
+            retainIdentityInNamedPane
+            chatIdentity={<span>Started in Codex</span>}
+            regionVisible
+          />
+        </RegionChromeSlotsContext.Provider>,
+      );
+      expect(leading.textContent).toBe('Started in Codex');
+    } finally {
+      leading.remove();
     }
   });
 

@@ -31,7 +31,10 @@ vi.mock('../eventHandlers', () => ({
     settleSemanticDeliveryBuffer(...args),
 }));
 
-import { ensureOrchestrationEventStream } from '../ensureOrchestrationEventStream';
+import {
+  ensureOrchestrationEventStream,
+  resyncOrchestrationEventStream,
+} from '../ensureOrchestrationEventStream';
 import { getStreamConnectionState } from '../streamConnectionState';
 
 const encoder = new TextEncoder();
@@ -311,6 +314,29 @@ describe('ensureOrchestrationEventStream recovery (station#2301)', () => {
     for (let i = 0; i < 5; i++) window.dispatchEvent(new Event('focus'));
     await settle();
     expect(requestsTo(apiBase)).toHaveLength(2);
+  });
+
+  test('explicit Resync keeps auth-refused retries within the parked floor and targets only its Station', async () => {
+    const a = 'http://recovery.test/resync-floor';
+    const b = 'http://recovery.test/resync-other';
+    script(a, 'always-401');
+    ensureOrchestrationEventStream(a);
+    ensureOrchestrationEventStream(b);
+    await settle();
+    for (let i = 0; i < 5; i++) {
+      resyncOrchestrationEventStream(a);
+      await settle();
+    }
+    expect(requestsTo(a)).toHaveLength(1);
+    expect(requestsTo(b)).toHaveLength(1);
+    advanceClock(30_001);
+    resyncOrchestrationEventStream(a);
+    await settle();
+    expect(requestsTo(a)).toHaveLength(2);
+    resyncOrchestrationEventStream(a);
+    await settle();
+    expect(requestsTo(a)).toHaveLength(2);
+    expect(requestsTo(b)).toHaveLength(1);
   });
 
   test('a stream resumed from its park is no longer treated as parked', async () => {

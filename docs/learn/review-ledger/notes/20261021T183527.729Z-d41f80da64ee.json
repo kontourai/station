@@ -1,0 +1,7 @@
+{
+  "revision": "552ddde870670aca1bf70f07ec7424b45d16d8b3",
+
+  "notes": [
+    {"path":"packages/sdk/AGENTS.md","note":"The SDK reference gained the #4003 Tracker-backed Tasks and Task memory export section; AGENTS.md only routes to that reference and states no export list, so it stays accurate.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

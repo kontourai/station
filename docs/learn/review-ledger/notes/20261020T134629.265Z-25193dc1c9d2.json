@@ -1,0 +1,7 @@
+{
+  "revision": "d9b88f154cb28fb2646edc8552b2d6a70018ecf2",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"#3800 change only moves non-host Codex confinement to a spawn-selected permission profile (codex-confinement.ts, codex-approval-mode.ts, adapter thread/turn sandbox wire). Searched this document for sandbox, workspace-write, writable_roots and .codex claims: none describe the changed mechanism; no prose change needed.","inputs":["docs/guides/agents.md","src-server/providers/adapters/codex-adapter.ts","src-server/providers/adapters/codex-approval-mode.ts"]}
+  ]
+}

@@ -98,36 +98,39 @@ describe('E2E browser session bootstrap', () => {
     );
   });
 
-  test('exchanges the launcher capability for the browser session cookie', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      headers: new Headers({
-        'set-cookie': `station-device=${sessionCredential}; Path=/; HttpOnly; SameSite=Strict`,
-      }),
-    });
+  test.each(['station-device', 'station-device-0123456789abcdef'])(
+    'exchanges the launcher capability for the %s browser session cookie',
+    async (cookieName) => {
+      const fetchImpl = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Headers({
+          'set-cookie': `${cookieName}=${sessionCredential}; Path=/; HttpOnly; SameSite=Strict`,
+        }),
+      });
 
-    await expect(
-      issueE2EBrowserSession({ uiPort: 5274, token, fetchImpl }),
-    ).resolves.toBe(sessionCredential);
-    // station#3876: the exchange lands on the UI PORT — the authority
-    // `station start` prints — so the host fixture is minted over the journey
-    // an operator actually takes, and a regression in the proxy's locality
-    // attestation reddens that fixture instead of hiding behind a
-    // direct-socket mint no user performs. The Origin stays the UI origin:
-    // that is where the cookie will be presented.
-    expect(fetchImpl).toHaveBeenCalledWith(
-      'http://127.0.0.1:5274/.well-known/station/v1/pairing/ui-bootstrap',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Origin: 'http://localhost:5274',
+      await expect(
+        issueE2EBrowserSession({ uiPort: 5274, token, fetchImpl }),
+      ).resolves.toBe(sessionCredential);
+      // station#3876: the exchange lands on the UI PORT — the authority
+      // `station start` prints — so the host fixture is minted over the journey
+      // an operator actually takes, and a regression in the proxy's locality
+      // attestation reddens that fixture instead of hiding behind a
+      // direct-socket mint no user performs. The Origin stays the UI origin:
+      // that is where the cookie will be presented.
+      expect(fetchImpl).toHaveBeenCalledWith(
+        'http://127.0.0.1:5274/.well-known/station/v1/pairing/ui-bootstrap',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Origin: 'http://localhost:5274',
+          },
+          body: JSON.stringify({ token }),
         },
-        body: JSON.stringify({ token }),
-      },
-    );
-  });
+      );
+    },
+  );
 
   test('refuses an exchange with no UI port to land on', async () => {
     // The dialled authority is the loopback `Host` the proxy attests
@@ -142,16 +145,25 @@ describe('E2E browser session bootstrap', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  test('fails closed when the exchange omits a valid cookie', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      headers: new Headers(),
-    });
-    await expect(
-      issueE2EBrowserSession({ uiPort: 5274, token, fetchImpl }),
-    ).rejects.toThrow('omitted a valid session cookie');
-  });
+  test.each([
+    undefined,
+    `unrelated=${sessionCredential}; Path=/`,
+    `station-device-short=${sessionCredential}; Path=/`,
+    `station-device-0123456789abcdeg=${sessionCredential}; Path=/`,
+    'station-device-0123456789abcdef=short; Path=/',
+  ])(
+    'fails closed when the exchange omits a valid cookie (%s)',
+    async (cookie) => {
+      const fetchImpl = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Headers(cookie ? { 'set-cookie': cookie } : undefined),
+      });
+      await expect(
+        issueE2EBrowserSession({ uiPort: 5274, token, fetchImpl }),
+      ).rejects.toThrow('omitted a valid session cookie');
+    },
+  );
 });
 
 describe('runE2EExecutionPhases', () => {

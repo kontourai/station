@@ -8,11 +8,11 @@ import {
   usePendingPairingApproval,
 } from '@kontourai/station-connect';
 import { useApiBase } from '../../contexts/ApiBaseContext';
-import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import {
   checkServerHealth,
   probeServerConnection,
 } from '../../lib/serverHealth';
+import { openStationDetails } from '../notifications/stationDetailsEvents';
 
 /**
  * station#4512 review (H1) — short-form action words for this bar.
@@ -139,7 +139,7 @@ export function ChatDockMobileConnection({
           // re-probing the SAME address proves nothing new. Aligned with the
           // toolbar chip's own exclusion (`HeaderActions.tsx`) so the two
           // surfaces agree on when a tap is worth spending a recheck.
-          openConnectionsModal({ mode: 'request-access' });
+          openStationDetails();
           return;
         }
         // Tapping a failing indicator means "check again now". Doing it here
@@ -149,10 +149,10 @@ export function ChatDockMobileConnection({
         // be up to 10s away. Also covers `awaiting-approval`: a recheck
         // cannot manufacture a credential out of a pending request (see
         // `HeaderActions.tsx`'s own comment on this), but it is harmless,
-        // and the tap's real job for that state is `openConnectionsModal`
+        // and the tap's real job for that state is `openStationDetails`
         // below, which surfaces the pending exchange itself.
         recheck();
-        openConnectionsModal({});
+        openStationDetails();
       }}
     >
       <ConnectionStatusDot status={state} size={isRepairLike(state) ? 11 : 8} />

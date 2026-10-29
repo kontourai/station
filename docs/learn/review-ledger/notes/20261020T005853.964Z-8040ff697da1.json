@@ -1,0 +1,31 @@
+{
+  "revision": "6d59c6d4755a7160c10bed48b9b5801b69175785",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Dependency change only rewords how fast-checks is enforced (reconciled by the required Source verification policy context, per live rules/branches/main and scripts/source-verification-policy.mjs); nothing this document cites changed.","inputs":[".veritas/README.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/README.md","note":"Dependency change only rewords how fast-checks is enforced (reconciled by the required Source verification policy context, per live rules/branches/main and scripts/source-verification-policy.mjs); nothing this document cites changed.","inputs":["docs/README.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Dependency change only rewords how fast-checks is enforced (reconciled by the required Source verification policy context, per live rules/branches/main and scripts/source-verification-policy.mjs); nothing this document cites changed.","inputs":["docs/architecture/abstraction-review.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Dependency change only rewords how fast-checks is enforced (reconciled by the required Source verification policy context, per live rules/branches/main and scripts/source-verification-policy.mjs); nothing this document cites changed.","inputs":["docs/guides/code-quality.md","docs/guides/documentation.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/development.md","note":"Dependency change only rewords how fast-checks is enforced (reconciled by the required Source verification policy context, per live rules/branches/main and scripts/source-verification-policy.mjs); nothing this document cites changed.","inputs":["docs/guides/development.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Dependency change only rewords how fast-checks is enforced (reconciled by the required Source verification policy context, per live rules/branches/main and scripts/source-verification-policy.mjs); nothing this document cites changed.","inputs":["docs/guides/integrating-station.md","docs/guides/documentation.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Dependency change only rewords how fast-checks is enforced (reconciled by the required Source verification policy context, per live rules/branches/main and scripts/source-verification-policy.mjs); nothing this document cites changed.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Dependency change only rewords how fast-checks is enforced (reconciled by the required Source verification policy context, per live rules/branches/main and scripts/source-verification-policy.mjs); nothing this document cites changed.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Dependency change only rewords how fast-checks is enforced (reconciled by the required Source verification policy context, per live rules/branches/main and scripts/source-verification-policy.mjs); nothing this document cites changed.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Dependency change only rewords how fast-checks is enforced (reconciled by the required Source verification policy context, per live rules/branches/main and scripts/source-verification-policy.mjs); nothing this document cites changed.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/documentation.md","note":"Decisions-index paragraph no longer calls fast-checks a required lane; it is reconciled by the required Source verification policy context. Checked against live rules/branches/main and scripts/source-verification-policy.mjs.","inputs":["docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Three fast-checks mentions (metadata-only aggregate, aggregator section, browser smoke) no longer call it a required check; the required Source verification policy context reconciles it. Checked against live rules/branches/main and scripts/source-verification-policy.mjs. Generated blocks untouched; verification-policy gate passes.","inputs":["docs/guides/testing.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/releasing.md","note":"Present-tense activation instruction rewritten as completed: live rules/branches/main requires Source verification policy, CodeQL, Dependency review, Windows PR portable floor, build-ios-verification, Merge-queue regression and PR title policy, and no longer fast-checks.","inputs":["docs/guides/releasing.md"]}
+  ]
+}

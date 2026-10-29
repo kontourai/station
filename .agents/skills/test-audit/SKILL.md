@@ -162,9 +162,11 @@ sibling worktree under `../station-worktrees/`.
 4. For removed source greps or plan assertions, run the executable script or
    gate that owns the real contract, as a child process, and assert its exit
    status.
-5. Run `git diff --check origin/main...HEAD`,
-   `npm run test:changed -- --base=origin/main --explain`, then
-   `npm run ci:fast`. Exit 3 from the selector is provisional, not completion.
+5. Run `git diff --check origin/main...HEAD` and
+   `npm run test:changed -- --base=origin/main --explain`. Use focused evidence
+   and normal push hooks; required hosted PR and merge-queue checks own broad
+   integration verification. Follow the [local feedback rule](../../../docs/guides/testing.md#what-counts-as-tested). Exit 3 from
+   the selector is provisional, not completion.
 6. Inspect `git diff --numstat origin/main...HEAD`; report production/tooling separately from
    tests and test support. Update `scripts/test-fixture-policy-baseline.json`
    when a deleted test removes a legacy site.

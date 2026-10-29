@@ -1,0 +1,7 @@
+{
+  "revision": "0d37e042d99dc6a33dce000a5454d55494e43c4c",
+
+  "notes": [
+    {"path":"docs/README.md","note":"Reviewed against this branch's module-map change, which only extends the turn-deduplicator section (a contended wait ends on release, refused with retryable client_turn_in_flight). This document links to or routes through the module map and makes no claim about turn deduplication waits; its statements remain accurate.","inputs":["docs/README.md","docs/architecture/module-map.md"]}
+  ]
+}

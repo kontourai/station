@@ -74,7 +74,9 @@ import {
   STATION_CONTROL_MCP_HTTP_CHANNELS,
   STATION_CONTROL_MCP_PATH,
   STATION_KNOWLEDGE_MCP_PATH,
+  stationControlTokenAssurance,
   verifyStationControlMcpToken,
+  verifyStationControlMcpTokenEntry,
 } from '../../runtime/mcp/station-control-mcp-token.js';
 import {
   stationControlMcpHttpAuth,
@@ -138,6 +140,8 @@ interface StationControlMcpRouteOptions {
   hostedTenantRegistry?: HostedTenantRegistry;
   /** Station #90 lane D: the server's own records for a verified session. */
   resolveCallerRecord?: StationControlCallerRecordResolver;
+  /** External leases additionally require current Project identity, never slug reuse. */
+  resolveExternalClientProjectId?: (slug: string) => string | undefined;
   /** Test seam only: production always serves the real registrations. */
   createServer?: typeof createStationControlMcpServer;
 }
@@ -165,7 +169,26 @@ export function createStationControlMcpRoutes(
       channels: STATION_CONTROL_MCP_HTTP_CHANNELS,
       serverId,
     });
-    if (!verified) {
+    const resolveCallerRecord: StationControlCallerRecordResolver | undefined =
+      verified?.externalClientLeaseId
+        ? (sessionId) => {
+            const record = options.resolveCallerRecord?.(sessionId);
+            if (
+              !record?.localProjectId ||
+              !record.projectSlug ||
+              options.resolveExternalClientProjectId?.(record.projectSlug) !==
+                record.localProjectId
+            )
+              return undefined;
+            return record;
+          }
+        : options.resolveCallerRecord;
+    if (
+      !verified ||
+      (verified.externalClientLeaseId && url.searchParams.has('token')) ||
+      (verified.externalClientLeaseId &&
+        !resolveStationControlCallerFromToken(candidate, resolveCallerRecord))
+    ) {
       stationControlMcpHttpAuth.add(1, { result: 'rejected' });
       tenantExecutionContextOutcomes.add(
         1,
@@ -223,6 +246,14 @@ export function createStationControlMcpRoutes(
     const callerBinding = createHash('sha256')
       .update(candidate!)
       .digest('base64url');
+    // The channel this token was minted for fixes its assurance, so the
+    // tools it can never be allowed are left out of `tools/list` for it.
+    // Each request builds its own server from its own credential, and the
+    // list's cache hint is `private` (one engine's own connection), so one
+    // session's list is never served to another.
+    const channel = verifyStationControlMcpTokenEntry(candidate)?.channel;
+    if (!channel) return c.text('Unauthorized', 401, SECURITY_HEADERS);
+    const listableFor = stationControlTokenAssurance(channel);
     const handler = createMcpHandler(
       () =>
         options.createServer
@@ -231,6 +262,7 @@ export function createStationControlMcpRoutes(
               verified.allowedTools,
               undefined,
               serverId,
+              listableFor,
             ),
       { legacy: 'stateless', responseMode: 'auto' },
     );
@@ -252,7 +284,7 @@ export function createStationControlMcpRoutes(
                 resolve: () =>
                   resolveStationControlCallerFromToken(
                     candidate,
-                    options.resolveCallerRecord,
+                    resolveCallerRecord,
                   ),
               },
               () => handler.fetch(c.req.raw),
@@ -265,6 +297,11 @@ export function createStationControlMcpRoutes(
             return (
               current !== undefined &&
               current.sessionId === verified.sessionId &&
+              (!current.externalClientLeaseId ||
+                resolveStationControlCallerFromToken(
+                  candidate,
+                  resolveCallerRecord,
+                ) !== null) &&
               JSON.stringify(current.tenantExecutionContext) ===
                 JSON.stringify(verified.tenantExecutionContext)
             );

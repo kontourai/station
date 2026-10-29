@@ -15,7 +15,11 @@ import {
 
 /**
  * Where a raw operator-credential use came from (#2894 S1, owner decision
- * D2). S1 only observes this; it is telemetry, not authority.
+ * D2). For the operator credential S1 only observes this; it is telemetry,
+ * not authority. Its one enforcing caller narrows rather than grants: a
+ * telemetry producer token, already valid, is refused when this reads
+ * `off-host` (`runtime-http.ts`). Nothing is admitted because of it, which
+ * is why the limits below are acceptable there.
  *
  *  - `host-direct`: a direct loopback socket, no forwarding evidence, and a
  *    loopback `Host`. The host CLI's `openLocalOperatorChannel` is this
@@ -141,7 +145,10 @@ export interface OperatorCredentialUseRecord {
     | 'GET /api/pairing/devices'
     | 'DELETE /api/pairing/devices/:deviceId'
     | 'POST /api/pairing/devices/:deviceId/scope'
-    | 'DELETE /api/pairing/devices/:deviceId/record';
+    | 'DELETE /api/pairing/devices/:deviceId/record'
+    | 'PUT /api/pairing/people/:principalId/group'
+    | 'POST /api/pairing/people/:principalId/tokens'
+    | 'DELETE /api/pairing/people/:principalId/tokens/:tokenId';
   readonly position: OperatorCredentialPosition;
   readonly hostLocal: boolean;
   /** Off-host uses this process has observed so far, this one included. */

@@ -87,6 +87,9 @@ test.describe('UI CRUD Smoke', () => {
       await page.getByRole('heading', { name: 'New Project' }).waitFor({
         timeout: 15_000,
       });
+      await expect(
+        page.getByRole('dialog', { name: 'Starting Station', exact: true }),
+      ).toHaveCount(0);
 
       await page.getByPlaceholder('My Project').fill(projectName);
       await page.getByRole('button', { name: 'Create', exact: true }).click();

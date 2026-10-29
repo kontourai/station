@@ -6,11 +6,17 @@ export function SettingsSection({
   id,
   icon,
   title,
+  action,
   children,
 }: {
   id?: string;
   icon: ReactNode;
   title: string;
+  /**
+   * One compact control on the header line, right-aligned (#3557). Optional:
+   * a section without it renders exactly as before.
+   */
+  action?: ReactNode;
   children: ReactNode;
 }) {
   const catalogTitle = SETTINGS_SECTIONS.find(
@@ -19,7 +25,11 @@ export function SettingsSection({
   return (
     <PageSection
       id={id}
-      className="settings__section"
+      className={
+        action
+          ? 'settings__section settings__section--with-action'
+          : 'settings__section'
+      }
       title={
         <>
           <span className="settings__section-icon" aria-hidden="true">
@@ -29,6 +39,7 @@ export function SettingsSection({
         </>
       }
       bodyClassName="settings__section-body"
+      {...(action ? { actions: action } : {})}
     >
       {children}
     </PageSection>

@@ -57,6 +57,7 @@
 import type { PairingScope } from '@kontourai/station-contracts';
 import {
   PAIRING_SCOPE_ACCESS_APPROVE,
+  PAIRING_SCOPE_ACCESS_DEVICES,
   PAIRING_SCOPE_ACCESS_MANAGE,
   PAIRING_SCOPE_CONSENT_DECIDE,
   PAIRING_SCOPE_HOME_CONTROL,
@@ -65,6 +66,8 @@ import {
   PAIRING_SCOPE_ORCHESTRATION_OPERATE,
   PAIRING_SCOPE_ORCHESTRATION_READ,
   PAIRING_SCOPE_RELAY_MANAGE,
+  PAIRING_SCOPE_TELEMETRY_MANAGE,
+  PAIRING_SCOPE_TERMINAL_OBSERVE,
   PAIRING_SCOPE_TERMINAL_OPERATE,
   pairingScopeIncludes,
 } from '@kontourai/station-contracts';
@@ -134,6 +137,24 @@ export function isPairingApprovalLeaf(request: {
   );
 }
 
+/** Exact existing-device administration leaves; new pairing routes stay closed. */
+export function isDeviceAccessManagementLeaf(request: {
+  method: string;
+  path: string;
+}): boolean {
+  const method = request.method.toUpperCase();
+  const path = request.path.split('?')[0] ?? request.path;
+  return (
+    (method === 'GET' && path === '/api/pairing/devices') ||
+    (method === 'POST' &&
+      /^\/api\/pairing\/devices\/[A-Za-z0-9._~-]{1,128}\/scope$/u.test(path)) ||
+    (method === 'DELETE' &&
+      /^\/api\/pairing\/devices\/[A-Za-z0-9._~-]{1,128}(?:\/record)?$/u.test(
+        path,
+      ))
+  );
+}
+
 function isEngineLoginLeaf(request: { method: string; path: string }): boolean {
   const path = request.path.split('?')[0] ?? request.path;
   return (
@@ -146,7 +167,13 @@ function isEngineLoginLeaf(request: { method: string; path: string }): boolean {
     (['GET', 'POST', 'DELETE'].includes(request.method) &&
       /^\/api\/connections\/agent\/[^/]+\/enrolment\/[^/]+\/device-code$/.test(
         path,
-      ))
+      )) ||
+    (request.method === 'POST' &&
+      /^\/acp\/connections\/[^/]+\/sign-in\/start$/.test(path)) ||
+    (['GET', 'DELETE'].includes(request.method) &&
+      /^\/acp\/connections\/[^/]+\/sign-in\/attempt$/.test(path)) ||
+    (['PUT', 'DELETE'].includes(request.method) &&
+      /^\/acp\/connections\/[^/]+\/credentials\/[^/]+$/.test(path))
   );
 }
 
@@ -194,6 +221,26 @@ export function pairingScopeSatisfiesHttpRoute(
 ): boolean {
   return (
     pairingScopeIncludes(grantedScope, requiredScope) ||
+    ((verifiedOperator || verifiedHomeOperator) &&
+      requiredScope === PAIRING_SCOPE_TELEMETRY_MANAGE &&
+      ((request.method === 'POST' &&
+        /^\/api\/operator\/telemetry-companion\/product-incidents\/[^/]+\/links$/.test(
+          request.path,
+        )) ||
+        (request.method === 'DELETE' &&
+          /^\/api\/operator\/telemetry-companion\/product-incidents\/[^/]+\/links\/[^/]+$/.test(
+            request.path,
+          )) ||
+        (request.method === 'POST' &&
+          ([
+            '/api/operator/telemetry-companion/archive-preparations',
+            '/api/operator/telemetry-companion/installations',
+          ].includes(request.path) ||
+            /^\/api\/operator\/telemetry-companion\/installations\/[^/]+\/actions$/.test(
+              request.path,
+            ))))) ||
+    (requiredScope === PAIRING_SCOPE_TERMINAL_OBSERVE &&
+      pairingScopeIncludes(grantedScope, PAIRING_SCOPE_TERMINAL_OPERATE)) ||
     (requiredScope === PAIRING_SCOPE_ORCHESTRATION_OPERATE &&
       isProjectAccessManagementLeaf(request) &&
       pairingScopeIncludes(grantedScope, PAIRING_SCOPE_RELAY_MANAGE)) ||
@@ -212,12 +259,37 @@ export function pairingScopeSatisfiesHttpRoute(
       isEngineLoginLeaf(request)) ||
     (requiredScope === PAIRING_SCOPE_ACCESS_MANAGE &&
       isPairingApprovalLeaf(request) &&
-      pairingScopeIncludes(grantedScope, PAIRING_SCOPE_ACCESS_APPROVE))
+      pairingScopeIncludes(grantedScope, PAIRING_SCOPE_ACCESS_APPROVE)) ||
+    (requiredScope === PAIRING_SCOPE_ACCESS_MANAGE &&
+      isDeviceAccessManagementLeaf(request) &&
+      pairingScopeIncludes(grantedScope, PAIRING_SCOPE_ACCESS_DEVICES))
   );
 }
 
 const READ_METHODS = ['GET', 'HEAD'] as const;
 const MUTATING_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'] as const;
+
+/**
+ * The telemetry ingest leaves `createOtlpReceiverRoutes` mounts. The only
+ * routes a telemetry producer token is admitted on, and only with POST.
+ */
+const TELEMETRY_INGEST_PATHS = [
+  '/v1/agent-events',
+  '/v1/logs',
+  '/v1/traces',
+] as const;
+
+/**
+ * Whether a request is telemetry ingest, matched exactly: no prefix, no
+ * trailing slash, POST only. A producer token presented anywhere else is not
+ * recognized as a credential at all.
+ */
+export function isTelemetryIngestRoute(method: string, path: string): boolean {
+  return (
+    method.toUpperCase() === 'POST' &&
+    (TELEMETRY_INGEST_PATHS as readonly string[]).includes(path)
+  );
+}
 
 export interface PairingScopeRouteRule {
   readonly id: string;
@@ -226,6 +298,8 @@ export interface PairingScopeRouteRule {
   readonly prefix: string;
   /** Match this parameterized path only; nested future leaves use their family rule. */
   readonly exact?: boolean;
+  /** Exact person self-service leaf; account Devices still need their current session. */
+  readonly accountBoundPerson?: boolean;
   readonly scope: PairingScope;
   /**
    * archive#1131: `'family'` for a rule generated by the generic
@@ -240,6 +314,12 @@ export interface PairingScopeRouteRule {
    * {@link PAIRING_SCOPE_FAMILY_INHERITED_LEAVES}.
    */
   readonly origin: 'family' | 'explicit';
+  /**
+   * #3557: `'refused'` when a personal access token may never use this
+   * route whatever its scope: a leaked script credential must not, say,
+   * hand a Project to someone. The person uses a device instead.
+   */
+  readonly personalTokens?: 'refused';
 }
 
 /**
@@ -269,6 +349,7 @@ const PAIRING_SCOPE_DOMAIN_PREFIXES: readonly string[] = [
   // updates and removes nothing: the change is taken later on the
   // `/api/plugins` routes, which refuse Station's internal agent caller.
   '/api/plugin-proposals',
+  '/api/tool-library',
   // #2323 S4: local plugin source status. A read the handler answers only
   // for the operator; it installs nothing.
   '/api/plugin-sources',
@@ -398,6 +479,26 @@ export const PAIRING_SCOPE_CATCH_ALL_MOUNT_EXCEPTIONS: readonly string[] = [
 ];
 
 export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
+  ...(['GET', 'POST'] as const).map(
+    (method): PairingScopeRouteRule => ({
+      id: `/api/operator/telemetry-companion/private-usage-preparations:${method}`,
+      method,
+      prefix:
+        '/api/operator/telemetry-companion/private-usage-preparations/:requestId',
+      exact: true,
+      scope: PAIRING_SCOPE_TELEMETRY_MANAGE,
+      origin: 'explicit',
+    }),
+  ),
+  // This leaf mints a mounted plugin capability, rather than ingesting events.
+  // Standard paired clients must not create credentials for another plugin.
+  {
+    id: '/api/telemetry/panes:manage',
+    method: 'POST',
+    prefix: '/api/telemetry/panes',
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
   {
     id: '/api/connections/agent/:id/account-usage:manage',
     method: '*',
@@ -433,12 +534,89 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       origin: 'explicit',
     }),
   ),
+  // #3557: a person's own personal access tokens. The handler also requires
+  // a device tied to a person and caps the minted scope by what it may use.
+  {
+    id: '/api/access/tokens:read',
+    method: 'GET',
+    prefix: '/api/access/tokens',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/access/tokens:mint',
+    method: 'POST',
+    prefix: '/api/access/tokens',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/access/tokens/:tokenId:revoke',
+    method: 'DELETE',
+    prefix: '/api/access/tokens/:tokenId',
+    exact: true,
+    // Revoking only ever reduces access: Read suffices.
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
   {
     id: '/api/operator/accounts:operator-read',
     method: 'GET',
     prefix: '/api/operator/accounts',
     exact: true,
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/operator/telemetry-companion:prerequisites',
+    method: 'GET',
+    prefix: '/api/operator/telemetry-companion',
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/operator/telemetry-companion:archive-preparation',
+    method: 'POST',
+    prefix: '/api/operator/telemetry-companion/archive-preparations',
+    exact: true,
+    scope: PAIRING_SCOPE_TELEMETRY_MANAGE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/operator/telemetry-companion:installation',
+    method: 'POST',
+    prefix: '/api/operator/telemetry-companion/installations',
+    exact: true,
+    scope: PAIRING_SCOPE_TELEMETRY_MANAGE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/operator/telemetry-companion:incident-link',
+    method: 'POST',
+    prefix:
+      '/api/operator/telemetry-companion/product-incidents/:groupId/links',
+    exact: true,
+    scope: PAIRING_SCOPE_TELEMETRY_MANAGE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/operator/telemetry-companion:incident-unlink',
+    method: 'DELETE',
+    prefix:
+      '/api/operator/telemetry-companion/product-incidents/:groupId/links/:linkId',
+    exact: true,
+    scope: PAIRING_SCOPE_TELEMETRY_MANAGE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/operator/telemetry-companion:control',
+    method: 'POST',
+    prefix:
+      '/api/operator/telemetry-companion/installations/:installationId/actions',
+    exact: true,
+    scope: PAIRING_SCOPE_TELEMETRY_MANAGE,
     origin: 'explicit',
   },
   {
@@ -456,6 +634,9 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     exact: true,
     scope: PAIRING_SCOPE_ORCHESTRATION_READ,
     origin: 'explicit',
+    // #3586: who holds a Project, and its open invitations, are not a
+    // script's to read; the person uses a device.
+    personalTokens: 'refused',
   },
   ...[
     '/api/projects/:slug/access/enable',
@@ -471,6 +652,7 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       exact: true,
       scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
       origin: 'explicit',
+      personalTokens: 'refused',
     }),
   ),
   ...[
@@ -487,6 +669,26 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     }),
   ),
 
+  // Issuing or revoking external bearer custody is access administration.
+  // Native file-proven operator enforcement also remains inside both handlers.
+  {
+    id: '/api/orchestration/station-control/external-clients:issue',
+    method: 'POST',
+    prefix: '/api/orchestration/station-control/external-clients',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+    personalTokens: 'refused',
+  },
+  {
+    id: '/api/orchestration/station-control/external-clients/:leaseId:revoke',
+    method: 'DELETE',
+    prefix: '/api/orchestration/station-control/external-clients/:leaseId',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+    personalTokens: 'refused',
+  },
   {
     id: '/api/home-authority/channels/:channelId/owner:administration',
     method: 'POST',
@@ -603,6 +805,227 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
   // carries the token, so a paired phone cannot consent to egress on the
   // operator's behalf. That is the line this scope is drawn to hold.
   {
+    id: '/api/analytics/source-grant-approvals:rotate',
+    method: 'POST',
+    prefix: '/api/analytics/source-grant-approvals/:operationId/rotate',
+    exact: true,
+    accountBoundPerson: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/analytics/source-grant-approvals:delivery',
+    method: 'POST',
+    prefix: '/api/analytics/source-grant-approvals/:operationId/delivery',
+    exact: true,
+    accountBoundPerson: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/analytics/recipient-candidates:source-confirmation',
+    method: 'POST',
+    prefix:
+      '/api/analytics/recipient-candidates/:recipientId/source-confirmation',
+    exact: true,
+    accountBoundPerson: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/analytics/recipient-candidates:source-confirmation-status',
+    method: 'GET',
+    prefix:
+      '/api/analytics/recipient-candidates/:recipientId/source-confirmation/requests/:requestId',
+    exact: true,
+    accountBoundPerson: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  ...(['GET', 'POST', 'PUT', 'DELETE'] as const).flatMap((method) =>
+    (method === 'GET'
+      ? [
+          '/api/analytics/saved-views',
+          '/api/analytics/saved-views/:id',
+          '/api/analytics/saved-views/:id/export',
+        ]
+      : method === 'POST'
+        ? ['/api/analytics/saved-views']
+        : ['/api/analytics/saved-views/:id']
+    ).map((prefix) => ({
+      id: `${prefix}:${method}`,
+      method,
+      prefix,
+      exact: true,
+      accountBoundPerson: true,
+      scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+      origin: 'explicit' as const,
+    })),
+  ),
+  {
+    id: '/api/analytics/recipient-candidates:query',
+    method: 'POST',
+    prefix: '/api/analytics/recipient-candidates/:recipientId/query',
+    exact: true,
+    accountBoundPerson: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/analytics/recipient-candidates:outcomes',
+    method: 'POST',
+    prefix: '/api/analytics/recipient-candidates/:recipientId/outcomes',
+    exact: true,
+    accountBoundPerson: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/analytics/recipient-candidates:storage-preparation',
+    method: 'POST',
+    prefix:
+      '/api/analytics/recipient-candidates/:recipientId/storage-preparation',
+    exact: true,
+    accountBoundPerson: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/analytics/recipient-candidates:sync',
+    method: 'POST',
+    prefix: '/api/analytics/recipient-candidates/:recipientId/sync',
+    exact: true,
+    accountBoundPerson: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/analytics/recipient-candidates:read',
+    method: 'POST',
+    prefix: '/api/analytics/recipient-candidates/:recipientId/read',
+    exact: true,
+    accountBoundPerson: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/analytics/recipient-candidates:credentials',
+    method: 'POST',
+    prefix: '/api/analytics/recipient-candidates/:recipientId/credentials',
+    exact: true,
+    accountBoundPerson: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/analytics/source-grant-approvals:request',
+    method: 'POST',
+    prefix: '/api/analytics/source-grant-approvals',
+    exact: true,
+    accountBoundPerson: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/analytics/source-grant-approvals:status',
+    method: 'GET',
+    prefix: '/api/analytics/source-grant-approvals/requests/:id',
+    exact: true,
+    accountBoundPerson: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/analytics/source-grant-approvals:receipt',
+    method: 'GET',
+    prefix: '/api/analytics/source-grant-approvals/:operationId',
+    exact: true,
+    accountBoundPerson: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/analytics/source-grant-approvals:revoke',
+    method: 'DELETE',
+    prefix: '/api/analytics/source-grant-approvals/:operationId',
+    exact: true,
+    accountBoundPerson: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/analytics/recipient-candidates:list',
+    method: 'GET',
+    prefix: '/api/analytics/recipient-candidates',
+    exact: true,
+    accountBoundPerson: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/analytics/recipient-candidates:prepare',
+    method: 'POST',
+    prefix: '/api/analytics/recipient-candidates',
+    exact: true,
+    accountBoundPerson: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/analytics/recipient-candidates:receipt',
+    method: 'GET',
+    prefix: '/api/analytics/recipient-candidates/:recipientId',
+    exact: true,
+    accountBoundPerson: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/analytics/recipient-candidates:cancel',
+    method: 'DELETE',
+    prefix: '/api/analytics/recipient-candidates/:recipientId',
+    exact: true,
+    accountBoundPerson: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/analytics/source-enrollments:list',
+    method: 'GET',
+    prefix: '/api/analytics/source-enrollments',
+    exact: true,
+    accountBoundPerson: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/analytics/source-enrollments:receipt',
+    method: 'GET',
+    prefix: '/api/analytics/source-enrollments/:operationId',
+    exact: true,
+    accountBoundPerson: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/analytics/source-enrollments:prepare',
+    method: 'POST',
+    prefix: '/api/analytics/source-enrollments',
+    exact: true,
+    accountBoundPerson: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/analytics/source-enrollments:cancel',
+    method: 'DELETE',
+    prefix: '/api/analytics/source-enrollments/:operationId',
+    exact: true,
+    accountBoundPerson: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
     id: '/api/usage-telemetry:disclosure-read',
     method: 'GET',
     prefix: '/api/usage-telemetry',
@@ -614,6 +1037,36 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     method: 'POST',
     prefix: '/api/usage-telemetry/disclosure/acknowledgements',
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/usage-telemetry/feedback:manage',
+    method: 'POST',
+    prefix: '/api/usage-telemetry/feedback',
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/usage-telemetry/lite-notices:manage',
+    method: 'POST',
+    prefix: '/api/usage-telemetry/lite-notices',
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/usage-telemetry/connection-checks:manage',
+    method: 'POST',
+    prefix: '/api/usage-telemetry/connection-checks',
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  // Retaining a capture persists Task data and requires operate scope.
+  {
+    id: '/api/tasks/:taskId/review/captures:operate',
+    method: 'POST',
+    prefix: '/api/tasks/:taskId/review/captures',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
     origin: 'explicit',
   },
   // The preview request uses POST only so the selected file path and line
@@ -635,6 +1088,14 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     id: '/api/projects/:slug/file-preview/download:read',
     method: 'POST',
     prefix: '/api/projects/:slug/file-preview/download',
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/projects/:slug/file-preview/visual:read',
+    method: 'POST',
+    prefix: '/api/projects/:slug/file-preview/visual',
+    exact: true,
     scope: PAIRING_SCOPE_ORCHESTRATION_READ,
     origin: 'explicit',
   },
@@ -807,6 +1268,28 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_TERMINAL_OPERATE,
     origin: 'explicit',
   },
+  // Local tools install onto the host; their routes additionally require the operator.
+  {
+    id: '/api/media-tools:read',
+    method: 'GET',
+    prefix: '/api/media-tools',
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/media-tools:terminal-operate',
+    method: 'POST',
+    prefix: '/api/media-tools',
+    scope: PAIRING_SCOPE_TERMINAL_OPERATE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/transcription:operate',
+    method: 'POST',
+    prefix: '/api/transcription',
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+    origin: 'explicit',
+  },
   // #90 Browser pane (personal hosts only). Reads — Chromium acquisition
   // status, the session list with its action history, one session — sit at
   // read. Every mutation either drives a browser that runs ON the Station host
@@ -832,6 +1315,16 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       origin: 'explicit',
     }),
   ),
+  // Device tools' REST side: only internal requests with bound, opted-in
+  // callers are admitted. Paired credentials need terminal authority even
+  // to reach the route, which then refuses them as non-internal.
+  {
+    id: '/api/device-agent:terminal-operate',
+    method: '*',
+    prefix: '/api/device-agent',
+    scope: PAIRING_SCOPE_TERMINAL_OPERATE,
+    origin: 'explicit',
+  },
   // #90 browser tools' REST side: Station's own station-control tool code
   // is its only caller (the routes answer 404 to anything that is not the
   // internal principal). Declared so no credential reaches it by default;
@@ -856,6 +1349,47 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
     origin: 'explicit',
   },
+  ...[
+    '/api/projects/:slug/terminal-sessions',
+    '/api/projects/:slug/terminal-sessions/:terminalId',
+  ].flatMap((prefix) =>
+    READ_METHODS.map(
+      (method): PairingScopeRouteRule => ({
+        id: `${prefix}:${method}:terminal-observe`,
+        method,
+        prefix,
+        exact: true,
+        scope: PAIRING_SCOPE_TERMINAL_OBSERVE,
+        origin: 'explicit',
+      }),
+    ),
+  ),
+  ...(
+    [
+      { method: 'POST', prefix: '/api/projects/:slug/terminal-sessions' },
+      {
+        method: 'POST',
+        prefix: '/api/projects/:slug/terminal-sessions/:terminalId/input',
+      },
+      {
+        method: 'POST',
+        prefix: '/api/projects/:slug/terminal-sessions/:terminalId/resize',
+      },
+      {
+        method: 'DELETE',
+        prefix: '/api/projects/:slug/terminal-sessions/:terminalId',
+      },
+    ] as const
+  ).map(
+    ({ method, prefix }): PairingScopeRouteRule => ({
+      id: `${prefix}:${method}:terminal-operate`,
+      method,
+      prefix,
+      exact: true,
+      scope: PAIRING_SCOPE_TERMINAL_OPERATE,
+      origin: 'explicit',
+    }),
+  ),
   // Terminal termination kills a PTY process. It must match the dedicated
   // terminal WebSocket's `terminal:operate` authority rather than silently
   // inheriting the broader project mutation tier.
@@ -879,6 +1413,13 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     method: 'GET',
     prefix: '/integrations/:id',
     scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+    origin: 'explicit',
+  },
+  {
+    id: '/integrations/:serverId/ui-tools:read',
+    method: 'GET',
+    prefix: '/integrations/:serverId/ui-tools',
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
     origin: 'explicit',
   },
   {
@@ -949,6 +1490,73 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
   // Pairing/device management (archive#1098's access:manage) — every method,
   // one tier. Registered by `configureDevicePairingHostRoutes`, not via
   // `context.app.route`, so it is not in the prefix list above.
+  ...['/api/operator/session', '/api/operator/passkeys'].map(
+    (prefix): PairingScopeRouteRule => ({
+      id: `${prefix}:operator-session-read`,
+      method: 'GET',
+      prefix,
+      exact: true,
+      scope: PAIRING_SCOPE_ACCESS_MANAGE,
+      origin: 'explicit' as const,
+    }),
+  ),
+  {
+    id: '/api/pairing/device-access-transactions/:id:read',
+    method: 'GET',
+    prefix: '/api/pairing/device-access-transactions/:id',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  // R2a: scopes never replace the additional host-secret proof. Compiled refusal remains until R6.
+  ...[
+    '/api/outside-agent/clients',
+    '/api/outside-agent/redirect-origins',
+    '/api/outside-agent/cors-origins',
+    '/api/outside-agent/requests/:id',
+    '/api/outside-agent/transactions/:id',
+  ].map(
+    (prefix): PairingScopeRouteRule => ({
+      id: `${prefix}:read`,
+      method: 'GET',
+      prefix,
+      exact: true,
+      scope: PAIRING_SCOPE_ACCESS_MANAGE,
+      origin: 'explicit',
+      personalTokens: 'refused',
+    }),
+  ),
+  ...[
+    '/api/outside-agent/requests/:id/approval',
+    '/api/outside-agent/requests/:id/denial',
+    '/api/outside-agent/host/review',
+    '/api/outside-agent/host/confirm',
+    '/api/outside-agent/host/deny',
+    '/api/outside-agent/host/register',
+    '/api/outside-agent/grants/:id/change',
+    '/api/outside-agent/grants/:id/revoke',
+    '/api/outside-agent/redirect-origins/change',
+    '/api/outside-agent/cors-origins/change',
+  ].map(
+    (prefix): PairingScopeRouteRule => ({
+      id: `${prefix}:host`,
+      method: 'POST',
+      prefix,
+      exact: true,
+      scope: PAIRING_SCOPE_ACCESS_MANAGE,
+      origin: 'explicit',
+      personalTokens: 'refused',
+    }),
+  ),
+  {
+    id: '/api/terminal/socket:personal-operator',
+    method: 'GET',
+    prefix: '/api/terminal/socket',
+    exact: true,
+    scope: PAIRING_SCOPE_TERMINAL_OPERATE,
+    origin: 'explicit',
+    personalTokens: 'refused',
+  },
   {
     id: '/api/pairing:manage',
     method: '*',
@@ -1026,6 +1634,49 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       origin: 'explicit',
     }),
   ),
+  // Engine sign-in (acp-sign-in.ts): starting, reading or cancelling one, and
+  // setting or clearing an engine key, sign an engine into an account, the
+  // decision `engine:login` exists for (see the device-code leaves). The
+  // attempt read is gated too because it carries the sign-in link. The view
+  // and its re-check inherit the `/acp` family's read and operate tiers.
+  ...(['sign-in/start', 'sign-in/attempt'] as const).map(
+    (leaf): PairingScopeRouteRule => ({
+      id: `/acp/connections/:id/${leaf}:engine-login`,
+      method: '*',
+      prefix: `/acp/connections/:id/${leaf}`,
+      exact: true,
+      scope: PAIRING_SCOPE_ENGINE_LOGIN,
+      origin: 'explicit',
+    }),
+  ),
+  {
+    id: '/acp/connections/:id/credentials:engine-login',
+    method: '*',
+    prefix: '/acp/connections/:id/credentials',
+    scope: PAIRING_SCOPE_ENGINE_LOGIN,
+    origin: 'explicit',
+  },
+  // Re-detecting engines re-runs the host user's login shell (bounded and
+  // rate-limited), so it is an operate-tier POST, never part of the read-tier
+  // catalogue GET beside it.
+  {
+    id: '/acp/registry/recheck:operate',
+    method: 'POST',
+    prefix: '/acp/registry/recheck',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+    origin: 'explicit',
+  },
+  // Downloading the public agent registry makes this Station reach out to
+  // the network on request, so it takes the same operate tier as the re-check.
+  {
+    id: '/acp/registry/source/refresh:operate',
+    method: 'POST',
+    prefix: '/acp/registry/source/refresh',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+    origin: 'explicit',
+  },
   // archive#1097 review round 2 (HIGH), owner decision "tighten now, loosen
   // later if wanted": GET /api/environments/ssh/sessions aggregates OTHER
   // connected stations' orchestration session titles/projectSlugs/agents/
@@ -1050,6 +1701,15 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       origin: 'explicit',
     }),
   ),
+  // Local canonical facts only; runtime also enforces verified person and owner/tenant scope.
+  {
+    id: '/api/analytics/usage-export:person-read',
+    method: 'GET',
+    prefix: '/api/analytics/usage-export',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
   // The usage rollup normally reads this Station's own receipts, but its
   // default path also queries configured peer Stations with their stored
   // bearer credentials and returns their environment identities, models, and
@@ -1081,6 +1741,30 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
   // event window that hands the caller the reference in the first place, and
   // the route additionally requires the caller to be able to read a session
   // that references the blob.
+  {
+    id: '/api/html-replies/:sessionId/:pageId:GET',
+    method: 'GET',
+    prefix: '/api/html-replies/:sessionId/:pageId',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/html-replies/render:POST',
+    method: 'POST',
+    prefix: '/api/html-replies/render',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/html-replies/preview:POST',
+    method: 'POST',
+    prefix: '/api/html-replies/preview',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+    origin: 'explicit',
+  },
   {
     id: '/api/attachments:GET',
     method: 'GET',
@@ -1213,6 +1897,32 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     id: '/api/shares:manage',
     method: '*',
     prefix: '/api/shares',
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  // Telemetry ingest. A paired credential with the operate tier keeps the
+  // access it had through the `/v1` family. These leaves ALSO admit a
+  // telemetry producer token, the one credential that works nowhere else:
+  // see {@link isTelemetryIngestRoute} and the producer seam in
+  // `runtime-http.ts`. Exact, so a future `/v1/*` leaf is not ingest.
+  ...TELEMETRY_INGEST_PATHS.map(
+    (prefix): PairingScopeRouteRule => ({
+      id: `${prefix}:POST:telemetry-ingest`,
+      method: 'POST',
+      prefix,
+      exact: true,
+      scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+      origin: 'explicit',
+    }),
+  ),
+  // Telemetry producer management mints and revokes ingest credentials.
+  // Same ceiling as the other credential managers (`/api/shares`,
+  // `/api/secret-bindings`); the handlers additionally refuse every caller
+  // but the Station operator.
+  {
+    id: '/api/telemetry-producers:manage',
+    method: '*',
+    prefix: '/api/telemetry-producers',
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
     origin: 'explicit',
   },
@@ -1632,6 +2342,35 @@ export interface PairingScopeCredentialResolver {
   resolveGrantedScope(
     credential: string,
   ): string | undefined | Promise<string | undefined>;
+  /** The paired device (or personal token) a credential identifies, if any. */
+  identifyDevice(credential: string):
+    | {
+        principalBinding?: { readonly kind?: string } | object;
+        credentialKind?: string;
+      }
+    | null
+    | undefined;
+}
+
+/**
+ * #3586: who may never open a terminal or voice WebSocket, whatever its
+ * scope. An account-bound device (or an account-tied token) is confined to
+ * the account-bound HTTP allowlist, which has no terminal or voice; and a
+ * personal access token is not a device, so it opens neither. A WebSocket
+ * session runs outside the HTTP gates (no account check, Project membership
+ * or Agent audience), so admitting either would bypass them.
+ */
+function refusedOnWebSocket(
+  device: ReturnType<PairingScopeCredentialResolver['identifyDevice']>,
+): boolean {
+  if (!device) return false;
+  if (device.credentialKind === 'personal-token') return true;
+  const binding = device.principalBinding;
+  return (
+    binding !== undefined &&
+    'kind' in binding &&
+    (binding as { kind?: string }).kind === 'account'
+  );
 }
 
 /**
@@ -1639,7 +2378,9 @@ export interface PairingScopeCredentialResolver {
  * (`runtime-service-bootstrap.ts`, `runtime-initialize.ts`): a credential
  * must both be valid AND carry `requiredScope` — an invalid credential is
  * rejected before `resolveGrantedScope` is even called (fail fast, and
- * never lets an unresolvable credential probe scope side channels).
+ * never lets an unresolvable credential probe scope side channels). An
+ * account-bound device, an account-tied token and any personal access token
+ * are refused whatever their scope (#3586, see `refusedOnWebSocket`).
  */
 export async function credentialAuthorizedForScope(
   resolver: PairingScopeCredentialResolver,
@@ -1647,6 +2388,7 @@ export async function credentialAuthorizedForScope(
   credential: string,
 ): Promise<boolean> {
   if (!(await resolver.verifyCredential(credential))) return false;
+  if (refusedOnWebSocket(resolver.identifyDevice(credential))) return false;
   const scope = await resolver.resolveGrantedScope(credential);
   return scope !== undefined && pairingScopeIncludes(scope, requiredScope);
 }
@@ -1662,6 +2404,8 @@ export interface ConsentDecisionCredentialResolver {
   identifyDevice(
     candidate: string,
   ): { scope?: string; id?: string; name?: string; createdAt?: number } | null;
+  /** #3557: the scope the credential may actually use (Station group cap). */
+  resolveGrantedScope(candidate: string): string | undefined;
 }
 
 export type ConsentCredentialAuthority =
@@ -1694,7 +2438,7 @@ export function consentDecisionAuthority(
   if (resolver.verifyOperatorCredential(credential)) {
     return 'operator-credential';
   }
-  const scope = resolver.identifyDevice(credential)?.scope;
+  const scope = resolver.resolveGrantedScope(credential);
   if (
     scope !== undefined &&
     pairingScopeIncludes(scope, PAIRING_SCOPE_CONSENT_DECIDE)
@@ -1758,8 +2502,10 @@ export type ExternalSurfaceCapability =
   | 'pairing-scope'
   | 'public'
   | 'mcp-token'
+  | 'outside-mcp-token'
   | 'webhook-token'
   | 'stage-grant'
+  | 'analytics-grant'
   | 'middleware';
 
 export interface ExternalSurfaceCapabilityRule {
@@ -1773,6 +2519,7 @@ export interface ExternalSurfaceCapabilityRule {
     | 'PATCH'
     | 'DELETE'
     | 'CONNECT'
+    | 'OPTIONS'
     | '*';
   readonly prefix: string;
   readonly match: 'exact' | 'prefix';
@@ -1786,15 +2533,204 @@ const STATION_CONTROL_MCP_ENDPOINT_PATH = '/mcp/station-control';
 
 export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabilityRule[] =
   [
+    // UNWIRED(#4115): exact outside resource; its own audience/ingress validator follows the compiled refusal.
+    {
+      id: 'outside-mcp:get',
+      transport: 'http',
+      method: 'GET',
+      prefix: '/mcp',
+      match: 'exact',
+      capability: 'outside-mcp-token',
+      reason:
+        'Outside-agent audience-bound bearer only; no Device or internal token authority',
+    },
+    {
+      id: 'outside-mcp:post',
+      transport: 'http',
+      method: 'POST',
+      prefix: '/mcp',
+      match: 'exact',
+      capability: 'outside-mcp-token',
+      reason:
+        'Outside-agent audience-bound bearer only; no Device or internal token authority',
+    },
+    {
+      id: 'outside-mcp:delete',
+      transport: 'http',
+      method: 'DELETE',
+      prefix: '/mcp',
+      match: 'exact',
+      capability: 'outside-mcp-token',
+      reason:
+        'Outside-agent audience-bound bearer only; no Device or internal token authority',
+    },
+    {
+      id: 'outside-mcp:options',
+      transport: 'http',
+      method: 'OPTIONS',
+      prefix: '/mcp',
+      match: 'exact',
+      capability: 'outside-mcp-token',
+      reason:
+        'Outside-agent audience-bound bearer only; no Device or internal token authority',
+    },
+    {
+      id: 'outside-mcp:head',
+      transport: 'http',
+      method: 'HEAD',
+      prefix: '/mcp',
+      match: 'exact',
+      capability: 'outside-mcp-token',
+      reason: 'Outside MCP authenticates before returning method-not-allowed',
+    },
+    {
+      id: 'outside-mcp:put',
+      transport: 'http',
+      method: 'PUT',
+      prefix: '/mcp',
+      match: 'exact',
+      capability: 'outside-mcp-token',
+      reason: 'Outside MCP authenticates before returning method-not-allowed',
+    },
+    {
+      id: 'outside-mcp:patch',
+      transport: 'http',
+      method: 'PATCH',
+      prefix: '/mcp',
+      match: 'exact',
+      capability: 'outside-mcp-token',
+      reason: 'Outside MCP authenticates before returning method-not-allowed',
+    },
     ...PAIRING_SCOPE_ROUTE_TABLE.map((rule) => ({
       ...rule,
       transport: 'http' as const,
       match: rule.exact ? ('exact' as const) : ('prefix' as const),
       capability: 'pairing-scope' as const,
     })),
+    {
+      id: 'analytics-grant:canonical-export',
+      transport: 'http',
+      method: 'GET',
+      prefix: '/api/analytics/source-grant-export/:approvalId',
+      match: 'exact',
+      capability: 'analytics-grant',
+      reason:
+        'opaque source credential plus receiving delivery proof; current source owner/tenant/approval checked by exact export handler; no general API identity',
+    },
+    {
+      id: 'analytics-grant:current-authorization',
+      transport: 'http',
+      method: 'HEAD',
+      prefix: '/api/analytics/source-grant-export/:approvalId',
+      match: 'exact',
+      capability: 'analytics-grant',
+      reason:
+        'same narrow credential and current approval checks; releases no usage facts or general API identity',
+    },
     // These routes are unauthenticated at the pairing boundary, but each has
     // its own narrow proof, rate limit, loopback-secret, or share-token
     // contract. Keep every exception method-specific and exact.
+    // UNWIRED(#4115): exact OAuth leaves retain their own exposure/PKCE/ticket validators; compiled refusal precedes admission until R6.
+    {
+      id: 'public:outside-oauth-0',
+      transport: 'http',
+      method: 'GET',
+      prefix: '/.well-known/oauth-protected-resource/mcp',
+      match: 'exact',
+      capability: 'public',
+      reason:
+        'Outside OAuth protocol validation; no Device or operator authority',
+    },
+    {
+      id: 'public:outside-oauth-1',
+      transport: 'http',
+      method: 'GET',
+      prefix: '/.well-known/oauth-protected-resource',
+      match: 'exact',
+      capability: 'public',
+      reason:
+        'Outside OAuth protocol validation; no Device or operator authority',
+    },
+    {
+      id: 'public:outside-oauth-2',
+      transport: 'http',
+      method: 'GET',
+      prefix: '/.well-known/oauth-authorization-server',
+      match: 'exact',
+      capability: 'public',
+      reason:
+        'Outside OAuth protocol validation; no Device or operator authority',
+    },
+    {
+      id: 'public:outside-oauth-3',
+      transport: 'http',
+      method: 'POST',
+      prefix: '/oauth/register',
+      match: 'exact',
+      capability: 'public',
+      reason:
+        'Outside OAuth protocol validation; no Device or operator authority',
+    },
+    {
+      id: 'public:outside-oauth-4',
+      transport: 'http',
+      method: 'GET',
+      prefix: '/oauth/authorize',
+      match: 'exact',
+      capability: 'public',
+      reason:
+        'Outside OAuth protocol validation; no Device or operator authority',
+    },
+    {
+      id: 'public:outside-oauth-5',
+      transport: 'http',
+      method: 'GET',
+      prefix: '/oauth/authorize/status',
+      match: 'exact',
+      capability: 'public',
+      reason:
+        'Outside OAuth protocol validation; no Device or operator authority',
+    },
+    {
+      id: 'public:outside-oauth-6',
+      transport: 'http',
+      method: 'POST',
+      prefix: '/oauth/authorize/complete',
+      match: 'exact',
+      capability: 'public',
+      reason:
+        'Outside OAuth protocol validation; no Device or operator authority',
+    },
+    {
+      id: 'public:outside-oauth-7',
+      transport: 'http',
+      method: 'POST',
+      prefix: '/oauth/token',
+      match: 'exact',
+      capability: 'public',
+      reason:
+        'Outside OAuth protocol validation; no Device or operator authority',
+    },
+    {
+      id: 'public:outside-oauth-8',
+      transport: 'http',
+      method: 'OPTIONS',
+      prefix: '/oauth/register',
+      match: 'exact',
+      capability: 'public',
+      reason:
+        'Outside OAuth protocol validation; no Device or operator authority',
+    },
+    {
+      id: 'public:outside-oauth-9',
+      transport: 'http',
+      method: 'OPTIONS',
+      prefix: '/oauth/token',
+      match: 'exact',
+      capability: 'public',
+      reason:
+        'Outside OAuth protocol validation; no Device or operator authority',
+    },
     {
       id: 'public:account-auth-get',
       transport: 'http',
@@ -2011,6 +2947,16 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
       reason: 'explicit HEAD semantics for public liveness probe',
     },
     {
+      id: 'mcp-token:oauth-proxy',
+      transport: 'http',
+      method: '*',
+      prefix: '/mcp/oauth-proxy',
+      match: 'prefix',
+      capability: 'mcp-token',
+      reason:
+        'session and server scoped OAuth MCP credential; direct socket peer must be loopback',
+    },
+    {
       id: 'mcp-token:station-knowledge',
       transport: 'http',
       method: '*',
@@ -2177,6 +3123,21 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
     // it needs a paired-device or operator cookie, STATION_TRUSTED_CONSENT_ORIGIN,
     // an exact Origin on every state change, and a host-confirmed request. The
     // page and its script carry no secret and answer without a cookie.
+    ...[
+      '/operator/sign-in',
+      '/operator/sign-in/options',
+      '/operator/sign-in/complete',
+      '/operator/sign-out',
+    ].map((prefix) => ({
+      id: `consent-http:${prefix}`,
+      transport: 'consent-http' as const,
+      method: '*' as const,
+      prefix,
+      match: 'exact' as const,
+      capability: 'public' as const,
+      reason:
+        'operator sign-in authenticates in-handler: paired cookie, exact origin, single-use render nonce and UV assertion',
+    })),
     {
       id: 'consent-http:operator-passkey-enrollment',
       transport: 'consent-http',
@@ -2477,10 +3438,26 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // verified station-control caller), so a paired credential at the family's
     // tier reaches nothing. Both only read.
     { method: 'GET', path: '/api/orchestration/session-activity' },
+    { method: 'GET', path: '/api/orchestration/session-activity/active-work' },
     {
       method: 'GET',
       path: '/api/orchestration/session-activity/:sessionId/digest',
     },
+    // #3413 part B work claims. The three POST leaves are agent-only at the
+    // route (403 `station_control_caller_required` without a verified
+    // station-control caller), and the claimant is that caller's own Session.
+    // The GET leaf is the UI's read, owner-scoped to the Sessions the
+    // requester may read.
+    { method: 'POST', path: '/api/orchestration/work-claims' },
+    {
+      method: 'POST',
+      path: '/api/orchestration/work-claims/:claimId/renew',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/work-claims/:claimId/release',
+    },
+    { method: 'GET', path: '/api/orchestration/work-claims' },
     // #3161 `declare_pull_request`'s REST side. Internal-only at the route: a
     // request the runtime boundary did not accept as Station's own internal
     // principal gets a 404 whatever its scope, and the session it records on
@@ -2491,12 +3468,84 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'POST',
       path: '/api/orchestration/station-control/declare-pull-request',
     },
+    // Epic #4003 `get_task_brief`'s REST side. Internal-only at the route
+    // (404 otherwise) and keyed on the verified station-control caller's own
+    // Task binding, so a paired credential reaches nothing through it.
+    { method: 'GET', path: '/api/orchestration/station-control/task-brief' },
+    // #4003 `task_summary_update` and `task_record`'s REST side.
+    // Internal-only at the route like the leaf above; the Task they write is
+    // the verified caller Session's own bound Task, and each write is one
+    // bounded Task-memory revision or record version.
+    { method: 'POST', path: '/api/orchestration/station-control/task-summary' },
+    { method: 'POST', path: '/api/orchestration/station-control/task-record' },
+    { method: 'GET', path: '/api/orchestration/station-control/task-threads' },
+    {
+      method: 'POST',
+      path: '/api/orchestration/station-control/task-thread-reply',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/station-control/task-thread-resolve',
+    },
+    // `schedule_wake_up`, `list_wake_ups`, `cancel_wake_up` and `propose_job`:
+    // internal-only at the route (404 to anything the runtime boundary did not
+    // accept as Station's own internal principal), acting only on the
+    // verified caller's own conversation. The family tiers are the tiers of a
+    // read and a mutation there.
+    { method: 'POST', path: '/api/orchestration/station-control/wake-ups' },
+    { method: 'GET', path: '/api/orchestration/station-control/wake-ups' },
+    {
+      method: 'DELETE',
+      path: '/api/orchestration/station-control/wake-ups/:wakeUpId',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/station-control/job-proposals',
+    },
+    // The person's own view of what an agent scheduled in a conversation, and
+    // their Cancel and Decline. Deliberate family inheritance: the GET is
+    // gated on reading the conversation, the POSTs on sending to it (the same
+    // authority as the next turn), and each refuses a request that may be an
+    // agent's.
+    {
+      method: 'GET',
+      path: '/api/orchestration/agent-schedule/:conversationId',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/agent-schedule/:conversationId/wake-ups/:wakeUpId/cancel',
+    },
+    // Approve and Decline of a check-back an unconfined session's agent asked
+    // for: the same gate as Cancel (sending to the conversation, never a
+    // request that may be an agent's).
+    {
+      method: 'POST',
+      path: '/api/orchestration/agent-schedule/:conversationId/wake-ups/:wakeUpId/decline',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/agent-schedule/:conversationId/wake-ups/:wakeUpId/approve',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/agent-schedule/:conversationId/job-proposals/:proposalId/decline',
+    },
     // #2061 Boards: the family read/mutate split is exactly right here —
     // every leaf resolves its owner from the request principal and can reach
     // no other principal's records, so none is more sensitive than the family.
+    { method: 'GET', path: '/api/me/preferences' },
+    { method: 'PATCH', path: '/api/me/preferences' },
+    { method: 'GET', path: '/api/me/boards/:layoutSlug' },
+    { method: 'POST', path: '/api/me/boards/:layoutSlug/proposal' },
+    { method: 'PUT', path: '/api/me/boards/:layoutSlug' },
+    { method: 'DELETE', path: '/api/me/boards/:layoutSlug/proposal' },
     { method: 'GET', path: '/api/me/layouts' },
     { method: 'POST', path: '/api/me/layouts' },
     { method: 'GET', path: '/api/me/layouts/:layoutSlug' },
+    { method: 'GET', path: '/api/me/layouts/:layoutSlug/open' },
+    { method: 'POST', path: '/api/me/layouts/clone-project' },
+    { method: 'POST', path: '/api/me/layouts/:layoutSlug/clone' },
+    { method: 'PUT', path: '/api/projects/:slug/layout-policy' },
     // #488 Explicitly shared Task reads retain the Project family's read tier;
     // exact membership/share/Task checks own resource visibility. Administration
     // retains the family's operate tier and separately requires Station operator.
@@ -2533,8 +3582,22 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // Personal task-room reads disclose only the already-paired operator's
     // own task projection. Mutations are closed room commands and inherit
     // orchestration:operate from /api/tasks.
+    { method: 'GET', path: '/api/tasks/:taskId/children' },
+    { method: 'POST', path: '/api/tasks/:taskId/children' },
+    { method: 'PUT', path: '/api/tasks/:taskId/parent' },
+    { method: 'GET', path: '/api/tasks/:taskId/work-chats' },
+    { method: 'GET', path: '/api/tasks/:taskId/work-chats/:conversationId' },
+    { method: 'POST', path: '/api/tasks/:taskId/work-chats' },
+    { method: 'DELETE', path: '/api/tasks/:taskId/work-chats' },
+    { method: 'GET', path: '/api/tasks/:taskId/kept-pull-requests' },
+    { method: 'PATCH', path: '/api/tasks/:taskId/title' },
     { method: 'GET', path: '/api/tasks/:taskId/room' },
     { method: 'GET', path: '/api/tasks/:taskId/room/history' },
+    { method: 'POST', path: '/api/tasks/:taskId/room/attachments' },
+    {
+      method: 'GET',
+      path: '/api/tasks/:taskId/room/attachments/:attachmentId',
+    },
     { method: 'GET', path: '/api/tasks/:taskId/room/document' },
     { method: 'GET', path: '/api/tasks/:taskId/room/events' },
     { method: 'GET', path: '/api/tasks/:taskId/room/agent-requests' },
@@ -2553,6 +3616,59 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // merge. It mutates only that Task's own record, so the task family's
     // operate tier is the intended scope; no station-control tool reaches it.
     { method: 'PUT', path: '/api/tasks/:taskId/close-on-merge' },
+    // #4003 Start Task on a board item, and the Task's linked-item header.
+    // Both read one tracker item through the Station host's own `gh` login.
+    // The POST reads only a ref the Project's board offers when it is
+    // called, and creates a Task like `POST /api/tasks` at its operate tier.
+    // The GET reads only a Task ref that entered through such a board check
+    // (`TaskRecord.workItemProvenance`), and answers `unsupported` for any
+    // other. The board check is a membership test on the board's current
+    // listing, not proof the requester may see that repository on GitHub.
+    // No station-control tool names either route.
+    { method: 'POST', path: '/api/tasks/from-work-item' },
+    { method: 'GET', path: '/api/tasks/:taskId/work-item' },
+    // Task review exposes Task content and personal comments: sensitive to the
+    // exact room/Project authority. Reads use read standing; append-only person
+    // comments and transitions use operate standing. Send starts an agent turn
+    // through the lead conversation inbox.
+    { method: 'GET', path: '/api/tasks/:taskId/review' },
+    { method: 'GET', path: '/api/tasks/:taskId/review/capture-sessions' },
+    { method: 'POST', path: '/api/tasks/:taskId/review/captures' },
+    {
+      method: 'GET',
+      path: '/api/tasks/:taskId/review/captures/:captureId/content',
+    },
+    { method: 'GET', path: '/api/tasks/:taskId/review/items/:kind/:id' },
+    { method: 'GET', path: '/api/tasks/:taskId/review/threads/:threadId' },
+    { method: 'POST', path: '/api/tasks/:taskId/review/threads' },
+    { method: 'POST', path: '/api/tasks/:taskId/review/send' },
+    {
+      method: 'POST',
+      path: '/api/tasks/:taskId/review/threads/:threadId/replies',
+    },
+    {
+      method: 'POST',
+      path: '/api/tasks/:taskId/review/threads/:threadId/resolve',
+    },
+    {
+      method: 'POST',
+      path: '/api/tasks/:taskId/review/threads/:threadId/reopen',
+    },
+    // #4003 Task memory from the Task workspace: the summary and records of
+    // the exact Task the paired caller's room authority resolves, read at
+    // the read tier and written (one bounded revision or record version,
+    // every earlier one kept) at the operate tier.
+    { method: 'GET', path: '/api/tasks/:taskId/room/memory' },
+    { method: 'GET', path: '/api/tasks/:taskId/room/memory/summary/revisions' },
+    { method: 'PUT', path: '/api/tasks/:taskId/room/memory/summary' },
+    { method: 'POST', path: '/api/tasks/:taskId/room/memory/records' },
+    // #4003 layer 4: a done Task's promotion candidates, read at the read
+    // tier; promoting one (a single knowledge record in a store of the
+    // Task's own Project, never twice for one record version) or dismissing
+    // one (one append-only row) at the operate tier.
+    { method: 'GET', path: '/api/tasks/:taskId/room/memory/learning' },
+    { method: 'POST', path: '/api/tasks/:taskId/room/memory/learning/promote' },
+    { method: 'POST', path: '/api/tasks/:taskId/room/memory/learning/dismiss' },
     { method: 'DELETE', path: '/api/tasks/:taskId/outputs/:outputId' },
     {
       method: 'POST',
@@ -2628,9 +3744,35 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'DELETE', path: '/acp/connections/:id' },
     { method: 'PUT', path: '/acp/connections/:id' },
     { method: 'POST', path: '/acp/connections/:id/reconnect' },
+    // Same sensitivity as their siblings: the unregistered read is
+    // GET /acp/connections' projection for saved connections that never
+    // registered, and check re-probes a saved command (choosing none) and
+    // registers it, as a repeated POST /acp/connections does.
+    { method: 'GET', path: '/acp/connections/unregistered' },
+    { method: 'POST', path: '/acp/connections/:id/check' },
+    // The sign-in view names methods and key NAMES, never a link or a value;
+    // its re-check runs the engine's status command and a handshake, as
+    // check does.
+    { method: 'GET', path: '/acp/connections/:id/sign-in' },
+    { method: 'POST', path: '/acp/connections/:id/sign-in/check' },
     { method: 'GET', path: '/acp/registry' },
+    { method: 'GET', path: '/acp/registry/source' },
     { method: 'POST', path: '/acp/registry/:id/install' },
     { method: 'GET', path: '/acp/status' },
+    { method: 'GET', path: '/api/tool-library/accounts/:id' },
+    { method: 'POST', path: '/api/tool-library/accounts/:id/:action' },
+    { method: 'GET', path: '/api/tool-library/access' },
+    { method: 'GET', path: '/api/tool-library/catalog' },
+    { method: 'GET', path: '/api/tool-library/requests' },
+    { method: 'POST', path: '/api/tool-library/add' },
+    { method: 'POST', path: '/api/tool-library/sources/:id/discover' },
+    { method: 'POST', path: '/api/tool-library/requests' },
+    { method: 'POST', path: '/api/tool-library/requests/:id/:action' },
+    { method: 'PUT', path: '/api/tool-library/projects/:slug/policy' },
+    { method: 'PUT', path: '/api/tool-library/sources/:id/sharing' },
+    { method: 'GET', path: '/api/tool-library/projects/:slug/agents' },
+    { method: 'POST', path: '/api/tool-library/projects/:slug/agents' },
+    { method: 'PUT', path: '/api/tool-library/projects/:slug/agents/:agent' },
     { method: 'GET', path: '/agents' },
     { method: 'POST', path: '/agents' },
     // Find-or-create the ONE Agent definition bound to a locally-detected
@@ -2835,6 +3977,8 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // sensitivity is no greater than the surrounding orchestration-read
     // family.
     { method: 'GET', path: '/api/conversations/search' },
+    // Agent-only work discovery; same read scope and transcript admission.
+    { method: 'GET', path: '/api/conversations/work/search' },
     { method: 'GET', path: '/api/conversations/:id' },
     // Authoritative conversation admission: it reads the same current-session
     // and transcript facts as the ordinary conversation surface and performs
@@ -2919,9 +4063,41 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'POST', path: '/api/knowledge/index/rebuild' },
     { method: 'POST', path: '/api/knowledge/index/search' },
     { method: 'POST', path: '/api/knowledge/migrate' },
+    { method: 'GET', path: '/api/knowledge/capabilities' },
+    { method: 'GET', path: '/api/knowledge/s3-sources/capabilities' },
+    { method: 'GET', path: '/api/knowledge/s3-sources/profiles' },
+    { method: 'GET', path: '/api/knowledge/s3-sources/projects/:projectSlug' },
+    { method: 'POST', path: '/api/knowledge/s3-sources/projects/:projectSlug' },
+    {
+      method: 'POST',
+      path: '/api/knowledge/s3-sources/projects/:projectSlug/:sourceId/disconnect',
+    },
+    {
+      method: 'GET',
+      path: '/api/knowledge/s3-sources/projects/:projectSlug/:sourceId/objects',
+    },
+    {
+      method: 'GET',
+      path: '/api/knowledge/s3-sources/projects/:projectSlug/:sourceId/object',
+    },
+    { method: 'POST', path: '/api/knowledge/document-imports' },
+    {
+      method: 'GET',
+      path: '/api/knowledge/roots/:rootId/document-imports/:requestId',
+    },
+    {
+      method: 'POST',
+      path: '/api/knowledge/roots/:rootId/document-imports/:requestId/resume',
+    },
+    {
+      method: 'GET',
+      path: '/api/knowledge/roots/:rootId/document-imports/:requestId/originals/:index',
+    },
     { method: 'GET', path: '/api/knowledge/roots' },
     { method: 'POST', path: '/api/knowledge/roots' },
     { method: 'DELETE', path: '/api/knowledge/roots/:id' },
+    { method: 'POST', path: '/api/knowledge/roots/:id/disconnect' },
+    { method: 'POST', path: '/api/knowledge/roots/:id/attach-project' },
     {
       method: 'GET',
       path: '/api/knowledge/roots/:rootId/records/:id/source-observation',
@@ -2983,6 +4159,35 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     {
       method: 'GET',
       path: '/api/orchestration/conversations/:conversationId/event-window',
+    },
+    // The foreground delivery lookup: what this Station knows about one keyed
+    // send. Read-only (it never sends, claims or releases), answers only from
+    // this Station's own turn ledger and in-flight sends of the same caller,
+    // and an unreadable conversation answers like an unknown key. A paired
+    // device is its main caller (recovering a send after losing its
+    // connection), so it keeps the family's orchestration:read tier.
+    {
+      method: 'GET',
+      path: '/api/orchestration/conversations/:conversationId/turn-deliveries/:clientTurnId',
+    },
+    // #3568: a conversation's inbox of held follow-ups. Reading it re-checks
+    // the conversation read ACL, so it keeps the family's read tier. Removing
+    // a held message is its sender's own mutation of a send it already made
+    // at the operate tier, which DELETE inherits from the family.
+    {
+      method: 'GET',
+      path: '/api/orchestration/conversations/:conversationId/inbox',
+    },
+    {
+      method: 'DELETE',
+      path: '/api/orchestration/conversations/:conversationId/inbox/:clientTurnId',
+    },
+    // Continue after a memory kill: sends one Station-authored message to a
+    // conversation the caller may read, through its inbox and that inbox's
+    // own sender check, like any other send at the operate tier.
+    {
+      method: 'POST',
+      path: '/api/orchestration/conversations/:conversationId/memory-continuation',
     },
     // A conversation's usage tree: read-only, re-checks the Session read ACL
     // for the conversation and for every session in it, and returns only
@@ -3072,6 +4277,17 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'GET',
       path: '/api/orchestration/sessions/:threadId/event-window',
     },
+    // docs/design/event-content-spill.md: the full value behind a content
+    // reference in an event this family already reads. A paired phone must
+    // load an approval's full content before it can allow it.
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/content/:ref',
+    },
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/requests/:requestId/content-binding',
+    },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId/events' },
     // station#1877: stops ONE provider-reported subagent inside a session the
     // caller already reaches through this family. It mutates, but no more
@@ -3101,6 +4317,16 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     {
       method: 'POST',
       path: '/api/orchestration/sessions/:threadId/usage-limit/cancel',
+    },
+    // The person's per-stop choice of what happens at the reset; the same
+    // gate and tier as Cancel auto-resume.
+    {
+      method: 'POST',
+      path: '/api/orchestration/sessions/:threadId/usage-limit/resume-at-reset',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/sessions/:threadId/usage-limit/hold',
     },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId/flow-run' },
     // archive#2802: a thread's recorded turn-checkpoint outcomes. Deliberate
@@ -3164,6 +4390,12 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'GET',
       path: '/api/orchestration/sessions/:threadId/tool-results/:eventId',
     },
+    // Exact authored input is another bounded Session read, reauthorized
+    // after the owner resolves it; no mutation or attachment bytes.
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/inputs/:eventId',
+    },
     {
       method: 'GET',
       path: '/api/orchestration/sessions/:threadId/turns/:turnId/basis',
@@ -3214,6 +4446,11 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'DELETE', path: '/api/projects/:slug' },
     { method: 'GET', path: '/api/projects/:slug' },
     { method: 'PUT', path: '/api/projects/:slug' },
+    // What a new chat in this Project starts with for the caller: the
+    // Project's own new-chat settings, which `GET /:slug` already returns,
+    // and the model and approval mode the caller's own last chat here
+    // started with. A read of the caller's own history; mutates nothing.
+    { method: 'GET', path: '/api/projects/:slug/chat-defaults' },
     // archive#1502 — the resolution surface. BOTH of its leaves take
     // the `/api/projects` family tier (read for `resolution`, operate for
     // `bind`) as a RECORDED decision, not by omission.
@@ -3239,6 +4476,24 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // this entry.
     { method: 'POST', path: '/api/projects/:slug/bind' },
     { method: 'GET', path: '/api/projects/:slug/conversations' },
+    // Room actions compose these transport tiers with current Project membership.
+    { method: 'GET', path: '/api/projects/:slug/room' },
+    { method: 'POST', path: '/api/projects/:slug/room/init' },
+    { method: 'GET', path: '/api/projects/:slug/room/messages' },
+    { method: 'POST', path: '/api/projects/:slug/room/messages' },
+    { method: 'PUT', path: '/api/projects/:slug/room/note' },
+    { method: 'POST', path: '/api/projects/:slug/room/presence' },
+    { method: 'GET', path: '/api/projects/:slug/room/events' },
+    { method: 'POST', path: '/api/projects/:slug/room/agents' },
+    { method: 'GET', path: '/api/projects/:slug/room/agents/:requestId' },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/room/agents/:requestId/cancel',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/room/agents/:requestId/reconcile',
+    },
     // Epic #2323 S3: plugin draft preview. Status and a retained revision's
     // bytes are reads of this Project's own draft (read tier). Starting a
     // lease runs builds on this host, so it stays at the family's operate
@@ -3294,6 +4549,17 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       path: '/api/projects/:slug/flow/runs/:runId/reviews/discover',
     },
     { method: 'DELETE', path: '/api/projects/:slug/knowledge' },
+    { method: 'POST', path: '/api/projects/:projectSlug/walkthroughs/import' },
+    {
+      method: 'GET',
+      path: '/api/projects/:projectSlug/walkthroughs/imports/:requestId',
+    },
+    { method: 'GET', path: '/api/projects/:projectSlug/walkthroughs' },
+    { method: 'GET', path: '/api/projects/:projectSlug/walkthroughs/:id' },
+    {
+      method: 'GET',
+      path: '/api/projects/:projectSlug/walkthroughs/:id/frames/:frameId',
+    },
     { method: 'GET', path: '/api/projects/:slug/knowledge' },
     { method: 'DELETE', path: '/api/projects/:slug/knowledge/:docId' },
     { method: 'PUT', path: '/api/projects/:slug/knowledge/:docId' },
@@ -3409,6 +4675,24 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/projects/:slug/work-items/claim' },
     { method: 'GET', path: '/api/projects/:slug/workflow/tasks' },
     { method: 'GET', path: '/api/projects/:slug/workflow/tasks/:taskSlug' },
+    // Creation receipts and host Git acquisition remain operator-only at their
+    // owning routes; the paired transport uses the ordinary Project tier.
+    { method: 'GET', path: '/api/projects/creation-requests' },
+    { method: 'GET', path: '/api/projects/creation-requests/:id' },
+    { method: 'POST', path: '/api/projects/repository-acquisitions' },
+    { method: 'GET', path: '/api/projects/repository-acquisitions' },
+    { method: 'POST', path: '/api/projects/:slug/identity/repositories' },
+    { method: 'POST', path: '/api/projects/repository-acquisitions/:id/reuse' },
+    { method: 'GET', path: '/api/projects/repository-providers/:provider' },
+    { method: 'GET', path: '/api/projects/repository-acquisitions/:id' },
+    { method: 'POST', path: '/api/projects/repository-acquisitions/:id/retry' },
+    {
+      method: 'POST',
+      path: '/api/projects/repository-acquisitions/:id/cancel',
+    },
+    { method: 'POST', path: '/api/projects/:slug/operator-setup/preview' },
+    { method: 'GET', path: '/api/projects/:slug/operator-setup/:id' },
+    { method: 'POST', path: '/api/projects/:slug/operator-setup/:id/run' },
     { method: 'GET', path: '/api/projects/icon-candidates' },
     { method: 'GET', path: '/api/projects/layouts/available' },
     { method: 'GET', path: '/api/proposed-changes' },
@@ -3486,10 +4770,25 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // files: no other Station's or Environment's data, nothing written. The
     // /api/system read tier, like the restart-status leaf above.
     { method: 'GET', path: '/api/system/core-update/service-update' },
+    // #3851: the server's own update state (the same install facts the
+    // service-update leaf reads, plus its last release check and intent),
+    // and the running turns a restart would interrupt, listed only as far
+    // as the caller may read those sessions.
+    { method: 'GET', path: '/api/system/core-update/state' },
+    { method: 'GET', path: '/api/system/core-update/running-turns' },
     { method: 'POST', path: '/api/system/core-update' },
+    // #3851: set or cancel applying the downloaded update once no turn runs;
+    // the same authority as applying it now (the POST above).
+    { method: 'PUT', path: '/api/system/core-update/apply-when-idle' },
+    { method: 'DELETE', path: '/api/system/core-update/apply-when-idle' },
     { method: 'GET', path: '/api/system/discover' },
     { method: 'GET', path: '/api/system/identity' },
     { method: 'GET', path: '/api/system/instance' },
+    // Station routes: the addresses this Station is reached on, for a paired
+    // device to learn as routes to the same Station. The read tier, like the
+    // identity read above; every learned route is still checked against the
+    // public handshake before a credential is sent to it.
+    { method: 'GET', path: '/api/system/routes' },
     { method: 'POST', path: '/api/system/push-subscribe' },
     { method: 'POST', path: '/api/system/push-unsubscribe' },
     // Native agent-activity push: like the Web Push leaves above, the
@@ -3498,6 +4797,9 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // sends session titles and project names off the machine to this phone.
     { method: 'POST', path: '/api/system/native-push/register' },
     { method: 'DELETE', path: '/api/system/native-push' },
+    // Whether the caller's own device is still registered (its registration
+    // id, never a token or key): the family read tier, like the reads below.
+    { method: 'GET', path: '/api/system/native-push' },
     // A diagnostic read of this Station's currently observed CPU utilization.
     // No other Environment's or Station's
     // data, no mutation — no more sensitive than the surrounding `/api/system`
@@ -3511,6 +4813,14 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'POST', path: '/api/system/verify-bedrock' },
     { method: 'POST', path: '/api/system/verify-managed-runtime' },
     { method: 'GET', path: '/api/system/voice-port' },
+    // Workload memory budgets of this Station's own host: the budgets, their
+    // sources and host memory (read tier), and the operator's saved budgets
+    // (the family's operate tier, like the feature-preview switch; the write
+    // is also behind its Feature Preview). The session read answers only for
+    // the verified station-control caller's own session.
+    { method: 'GET', path: '/api/system/workload' },
+    { method: 'PUT', path: '/api/system/workload/settings' },
+    { method: 'GET', path: '/api/system/workload/session' },
     { method: 'GET', path: '/api/tasks' },
     { method: 'POST', path: '/api/tasks' },
     { method: 'GET', path: '/api/tasks/:taskId' },
@@ -3583,6 +4893,9 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/starter-work/:starterId/observation' },
     { method: 'POST', path: '/api/starter-work/bind' },
     { method: 'DELETE', path: '/api/starter-work/:starterId/binding' },
+    // Reveal intents expose session metadata, not frames or input authority;
+    // the route separately checks the Project, principal and device view grant.
+    { method: 'GET', path: '/api/mobile-devices/agent-reveals' },
     { method: 'GET', path: '/api/mobile-devices/hosts' },
     { method: 'GET', path: '/api/mobile-devices/hosts/:hostId/devices' },
     { method: 'GET', path: '/api/mobile-devices/hosts/:hostId/sessions' },
@@ -3660,9 +4973,6 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/scheduler/status' },
     { method: 'POST', path: '/scheduler/webhook' },
     { method: 'POST', path: '/tool-approval/:approvalId' },
-    { method: 'POST', path: '/v1/agent-events' },
-    { method: 'POST', path: '/v1/logs' },
-    { method: 'POST', path: '/v1/traces' },
     // archive#1131 review round 1 (HIGH): `createPluginRoutes`
     // (`plugins.ts`) composes five sibling route files by handing each a
     // shared local `const app = new Hono()` — invisible to the scan until

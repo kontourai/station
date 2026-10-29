@@ -1,6 +1,5 @@
 /**
- * Meeting Notes plugin — end-to-end proof for the K5 slice
- * (`s203-knowledge-meeting-notes` plan, Wave 3 Task 6): install the example
+ * Meeting Notes plugin — end-to-end proof: install the example
  * plugin, then exercise the three tabs against mocked `/api/knowledge/*`
  * routes (this repo's own `/api/knowledge/search` and record-CRUD routes
  * are real core routes, not a plugin server module — mocked here the same

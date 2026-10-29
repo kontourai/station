@@ -18,6 +18,7 @@ import {
   type ProjectMetadata,
   type ProjectRunLocations,
 } from '@kontourai/station-contracts/project';
+import type { ProjectChatDefaultsView } from '@kontourai/station-contracts/project-chat-defaults';
 import {
   isWellFormedProjectResolutionView,
   isWellFormedProjectResourceBindOutcome,
@@ -174,6 +175,41 @@ export async function listProjectRunLocations(
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new Error('Invalid Project run locations.');
   return value as ProjectRunLocations;
+}
+
+/**
+ * `GET /api/projects/:slug/chat-defaults` — what a new chat in this Project
+ * starts with for the caller: the Project's model and approval-mode
+ * selections and the caller's own last-used values. The operator, or a shared
+ * member admitted to the Project (their own values only).
+ *
+ * `null`: this Station applies no Project layer to the caller's chat here.
+ * That is a 404 (an older Station without the route, or no such Project, which
+ * a start also treats as no Project layer) or a 501 (a Station that does not
+ * compose it). Any other failure throws.
+ */
+export async function getProjectChatDefaults(
+  apiBase: string,
+  slug: string,
+  opts?: ClientRequestOptions,
+): Promise<ProjectChatDefaultsView | null> {
+  const response = await getJson(
+    `${apiBase}/api/projects/${encodeURIComponent(slug)}/chat-defaults`,
+    opts,
+  );
+  if (response.status === 404 || response.status === 501) {
+    await response.body?.cancel();
+    return null;
+  }
+  const value = await unwrapOrThrow<unknown>(response);
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    (value as { version?: unknown }).version !==
+      'station.project-chat-defaults/v1'
+  )
+    throw new Error('Invalid Project chat defaults.');
+  return value as ProjectChatDefaultsView;
 }
 
 /** `GET /api/projects/:slug` — get a project. */
@@ -529,13 +565,25 @@ export async function applyProjectLayout(
   apiBase: string,
   projectSlug: string,
   layoutId: string,
-  opts?: ClientRequestOptions,
+  opts?: ClientRequestOptions & {
+    creationRequestId?: string;
+    retryUncertain?: boolean;
+  },
 ): Promise<any> {
+  const { creationRequestId, retryUncertain, ...transportOptions } = opts ?? {};
   const response = await mutateJson(
     `${apiBase}/api/projects/${encodeURIComponent(projectSlug)}/layouts/apply`,
     'POST',
-    opts,
-    { layoutId },
+    opts ? transportOptions : undefined,
+    {
+      layoutId,
+      ...(creationRequestId
+        ? {
+            creationRequestId,
+            retryUncertain: retryUncertain === true,
+          }
+        : {}),
+    },
   );
   return unwrapOrThrow(response);
 }

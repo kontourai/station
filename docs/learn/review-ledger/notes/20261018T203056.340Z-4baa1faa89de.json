@@ -1,0 +1,9 @@
+{
+  "revision": "c07b9f52eff94feb4e5b2f98b4a0d01f12d398d8",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"PR #3832 fix round 3 evidence review only: new real-route cases emit SIGINT immediately after integration creation and before a billable send, keeping the process alive by mocking exit so the existing guards and real compensation execute. The name-bound fixture is 128 JavaScript characters / 296 UTF-8 bytes and must be skipped and flagged. ClaudeAdapter now receives actual generated ids from delivery prepare in its opt-in positive control. Existing execution/cleanup/bounded-inventory claims remain accurate; no production behavior or live-provider evidence changed.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/providers/__tests__/claude-adapter-events.test.ts","src-server/providers/__tests__/claude-adapter.test.ts","src-server/routes/orchestration/__tests__/engine-matrix.integration.test.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"PR #3832 fix round 3 scoped evidence review: the ClaudeAdapter opt-in positive control now uses ids produced by the real delivery scenario instead of a parallel naming fixture. Existing MCP-selection versus native-policy limits and diagnostic-only receipt scope remain accurate. This is test-only coverage, with fake setup transport and SDK stream in the adapter test; real setup/cleanup route coverage stays in the matrix integration harness. No production behavior or live-model qualification changed.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/providers/__tests__/claude-adapter.test.ts"]}
+  ]
+}

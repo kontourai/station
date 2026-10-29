@@ -1,0 +1,11 @@
+{
+  "revision": "e131f25ca8642151480b38030f764a6149350a21",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed e131f25ca86 welcome actions: Scan pairing QR remains primary; Enter a pairing code and Find nearby Stations use the canonical two-action row. Other ways to connect now discloses an explanation and Open connection manager; updated guide names that actual step. Focused welcome/settings selection passed10checks; no native layout or physical interaction qualification renewed.","inputs":["docs/user/getting-started.md","src-ui/src/components/MobileWelcomeBoundary.tsx"]},
+
+    {"path":"README.md","note":"Reviewed e131f25ca86 MobileWelcomeBoundary action grouping: root QR-first/optional-nearby guidance still routes correctly to the detailed phone guide. The new Other ways progressive disclosure changes no address trust, pairing authority or release availability; no root prose change needed.","inputs":["README.md","src-ui/src/components/MobileWelcomeBoundary.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Reviewed e131f25ca86 LanDiscoveryControl: pending config read now renders canonical SkeletonBlock and keeps discovery switch disabled; saved intent and observed-status explanation remain accurate. State-primitives/button-cap ratchets and10focusedchecks passed. Connect is private and its separate minor changeset is retained documentation; configured Changesets privatePackages.version=false skips private package versioning, while the Contracts minor participates in the public fixed release group.","inputs":["docs/user/settings.md","src-ui/src/views/settings/LanDiscoveryControl.tsx"]}
+  ]
+}

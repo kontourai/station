@@ -17,6 +17,8 @@ export function ChatDockHeaderMoreMenu(props: {
   triggerRef?: React.RefObject<HTMLButtonElement | null>;
   badgeCount?: number;
   badgeLabel?: string;
+  /** Live state behind the rows with no count on the trigger; see `ActionOverflowMenu`. */
+  status?: string;
 }) {
   return (
     <ActionOverflowMenu

@@ -1,0 +1,7 @@
+{
+  "revision": "1fcb6d72f9ff8cae755198720f40f59e3c88005d",
+
+  "notes": [
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Fix round 2: recorded the owner answers to OPEN-12 (no interim; j depends on SDK-5), OPEN-13 (file preview and PR review as their own default plugins, new slices jF and jP; adoption table maps each legacy id to its owning plugin) and OPEN-14 (lock-listed capabilities pre-approved). Checked main's pull-request rule via gh api repos/kontourai/station/rules/branches/main (require_code_owner_review false, 0 approvals) for the CODEOWNERS prerequisite; .github/CODEOWNERS exists without plugins.lock; PR descriptor id pane:builtin:workspace-pull-request in workspace-pull-request-pane.ts; file-preview state key station:file-preview-pane-state:v1 in filePreviewPaneStateStorage.ts; terminal.md status line on main after #3893. Merged origin/main (banner conflict from #3893 resolved keeping its tracked-by prefix). Design statements are proposals; no test executed.","inputs":["docs/design/shell-plugins-distributions.md"]}
+  ]
+}

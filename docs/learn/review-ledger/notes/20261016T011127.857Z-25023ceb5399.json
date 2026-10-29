@@ -1,0 +1,7 @@
+{
+  "revision": "df7b96310914c8671c3584eb71f0b1a1a1f4af0c",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Re-read the complete smoke guide and manifest claims against the two changed specs. Remote recovery now opens the real Other ways to connect disclosure before the host action; credential ordering, stable identity and secret-leak checks remain. Approval flow uses persistent mobile Coding Chat, requires server resolution and focus return, then explicitly navigates Home to the canonical dock. Geometry test retains real Right-region clicks and both themes. No manifest, worker, retry, deadline or browser-health policy change; full run result retained separately.","inputs":["docs/testing/browser-smoke.md","tests/connect-remote-auth-recovery.spec.ts","tests/orchestration-chat-flow.spec.ts"]}
+  ]
+}

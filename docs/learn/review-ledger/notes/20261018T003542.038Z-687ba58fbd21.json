@@ -1,0 +1,15 @@
+{
+  "revision": "446c8b699576eabdd4a20bd08d073aa6bcebccb9",
+
+  "notes": [
+    {"path":"README.md","note":"Round 3 final polish: Reviewed the linked CLI reference delta: only operator environment-limited human-readable status gets the Full migration hint. The entry point continues to describe conditional exporter exchange and route installation and operating detail to the CLI and privacy references. No change to its claims is needed.","inputs":["README.md","docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Round 3 final polish: Reviewed the CLI reference delta against the retained architectural assessment: only operator environment output receives operator Full guidance. No module extraction, dependency owner, runtime capability or qualification changes.","inputs":["docs/architecture/abstraction-review.md","docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Round 3 final polish: Reviewed status/set command implementation and reference. Restricting the operator Full hint to the operator publisher changes human-readable guidance only. Target/authentication selection, JSON response, command names and triage design remain accurate.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Round 3 final polish: Reviewed linked telemetry and CLI reference deltas: Full re-acknowledgement is reset by accurate pseudonymous wording and operator-only human-readable guidance. The receiver integration row already requires matching source revisions and explicit disclosure; deployment and qualification requirements remain prospective and unchanged.","inputs":["docs/guides/integrating-station.md","docs/reference/cli.md"]},
+
+    {"path":"packages/cli/README.md","note":"Round 3 final polish: Reviewed the linked CLI reference and telemetry command. Only operator environment-limited output receives operator Full migration guidance; installation, target/authentication, existing status/set commands and JSON output stay stable. No package README prose change is needed.","inputs":["packages/cli/README.md","docs/reference/cli.md"]}
+  ]
+}

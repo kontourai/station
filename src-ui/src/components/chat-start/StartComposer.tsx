@@ -1,5 +1,19 @@
-import { type ReactNode, type RefObject, useLayoutEffect, useRef } from 'react';
+import type { ProjectChatApprovalDefault } from '@kontourai/station-contracts/project-chat-defaults';
+import type { STTState } from '@kontourai/station-sdk';
+import {
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
+import { useChatPaneFileDrop } from '../../hooks/useChatPaneFileDrop';
+import { useFileAttachment } from '../../hooks/useFileAttachment';
+import { useDockSlotDevice } from '../../hooks/useIsMobile';
+import type { ApprovalMode } from '../../utils/approvalMode';
+import { filesFromDataTransfer } from '../../utils/attachment-file-transfer';
 import { MODEL_NOT_REPORTED } from '../../utils/modelCapabilities';
 import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
 import { Button } from '../Button';
@@ -7,7 +21,94 @@ import { AgentIcon } from '../icons/AgentIcon';
 import { ArrowDownGlyph, CloseGlyph } from '../icons/Glyph';
 import { displayableProjectIcon, ProjectIcon } from '../icons/ProjectIcon';
 import { Skeleton } from '../state';
+import { VoiceOrb } from '../voice/VoiceOrb';
+import { StartApprovalSummary } from './StartApprovalSummary';
 import './StartComposer.css';
+
+/**
+ * Files for the new chat's first message. They are handed to the chat Start
+ * opens, which stages them under the engine and Model it runs (the same
+ * intake, limits and image check as a reply), so nothing here guesses what
+ * that engine accepts.
+ */
+export interface StartComposerFiles {
+  list: readonly File[];
+  onAdd: (files: File[]) => void;
+  onRemove: (index: number) => void;
+}
+
+function StartFileThumbnail({ file }: { file: File }) {
+  const [preview, setPreview] = useState<string>();
+  useEffect(() => {
+    if (!file.type.startsWith('image/')) return;
+    const url = URL.createObjectURL(file);
+    setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+  return preview ? (
+    <img
+      className="start-composer__file-thumbnail"
+      src={preview}
+      alt={file.name}
+    />
+  ) : null;
+}
+
+/** Dictation into the prompt; the same control the chat composer offers. */
+export interface StartComposerVoice {
+  state: STTState;
+  supported: boolean;
+  unsupportedReason?: string;
+  error?: string;
+  onStart: () => void;
+  onStop: () => void;
+}
+
+// The chat composer's picker list (FileAttachmentInput): images, including
+// HEIF some pickers do not class as image/*, and the document types.
+const START_FILE_ACCEPT = 'image/*,.heic,.heif,.pdf,.txt,.csv,.md,.json';
+
+function StartAttachButton({ onAdd }: { onAdd: (files: File[]) => void }) {
+  const { fileInputRef, attachButtonRef, handleFileSelect, openFilePicker } =
+    useFileAttachment({ onFilesSelected: onAdd });
+  return (
+    <>
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept={START_FILE_ACCEPT}
+        onChange={handleFileSelect}
+        className="attachment-input"
+        tabIndex={-1}
+        aria-hidden="true"
+      />
+      <button
+        type="button"
+        ref={attachButtonRef}
+        className="start-composer__tool"
+        aria-label="Attach files"
+        title="Attach files"
+        onClick={openFilePicker}
+      >
+        <svg
+          aria-hidden="true"
+          focusable="false"
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+        </svg>
+      </button>
+    </>
+  );
+}
 
 /**
  * The Agent chip. `loading` until the start path can say which Agent and
@@ -24,8 +125,22 @@ export type StartAgentChip =
        * gap, not a Model: the chip then names the Agent alone.
        */
       modelLabel?: string;
+      executionAgentId?: string;
+      environmentId?: string;
       /** The Agent shown needs setup before Start can use it. */
       needsSetup: boolean;
+      /** Why this Model, when a `last-used` Project chose or could not use one. */
+      modelNote?: string;
+      /** The selected Project's approval layer, as the server resolved it. */
+      approvalProjectDefault?: ProjectChatApprovalDefault;
+      /** A Project is selected but that layer could not be read. */
+      approvalProjectDefaultUnavailable?: boolean;
+      /** This start's own approval pick, if one was made. */
+      approvalPick?: ApprovalMode;
+      /** Present: the Permissions chip is a picker for `approvalPick`. */
+      onApprovalPick?: (mode: ApprovalMode) => void;
+      /** `dialog` when the composer sits in a dialog. */
+      approvalSheetLayer?: 'dialog' | 'popover';
     };
 
 /** The project chip: the context the start runs in. */
@@ -106,9 +221,11 @@ function fitCompactTextarea(element: HTMLTextAreaElement) {
  */
 export function StartComposer({
   prompt,
+  placeholder = 'Tell Station what you want done…',
   onPromptChange,
   textareaRef,
   compact = false,
+  heading,
   agent,
   onOpenAgents,
   onOpenModel,
@@ -124,13 +241,17 @@ export function StartComposer({
   pending,
   onStart,
   note,
+  files,
+  voice,
   children,
 }: {
   prompt: string;
+  placeholder?: string;
   onPromptChange: (value: string) => void;
   textareaRef?: RefObject<HTMLTextAreaElement | null>;
   /** One line, above a page of work (Home with work). */
   compact?: boolean;
+  heading?: string;
   agent: StartAgentChip;
   onOpenAgents: (trigger: HTMLElement) => void;
   onOpenModel?: (trigger: HTMLElement) => void;
@@ -149,9 +270,26 @@ export function StartComposer({
   onStart: () => void;
   /** One quiet line under the bar: what Start will do when it is unusual. */
   note?: string;
+  /** Attach, paste or drop files for the first message. */
+  files?: StartComposerFiles;
+  voice?: StartComposerVoice;
   /** Feedback and setup that belong to this draft. */
   children?: ReactNode;
 }) {
+  const { coarsePointer } = useDockSlotDevice();
+  const rootRef = useRef<HTMLFormElement>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const drop = useChatPaneFileDrop({
+    rootRef,
+    enabled: !!files && !pending,
+    resetKey: `${project.status === 'ready' ? project.label : ''}|${pending}`,
+    reportError: setFileError,
+    selectFiles: async (selected) => {
+      setFileError(null);
+      files?.onAdd(selected);
+      fieldRef.current?.focus();
+    },
+  });
   const ownTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fieldRef = textareaRef ?? ownTextareaRef;
   // Typed, restored or cleared: the compact box fits what it now holds.
@@ -170,7 +308,17 @@ export function StartComposer({
       : startAgentChipText(agent);
   return (
     <form
+      ref={rootRef}
+      onDragEnter={drop.onDragEnter}
+      onDragOver={drop.onDragOver}
+      onDragLeave={drop.onDragLeave}
+      onDragEnd={drop.onDragEnd}
+      onDrop={(event) => {
+        drop.onDrop(event);
+        if (event.defaultPrevented) event.stopPropagation();
+      }}
       className={`start-composer${compact ? ' start-composer--compact' : ''}`}
+      data-coarse-pointer={coarsePointer || undefined}
       aria-label="Start work"
       onSubmit={(event) => {
         event.preventDefault();
@@ -178,7 +326,9 @@ export function StartComposer({
       }}
     >
       <div className="start-composer__destination">
-        <h2>{compact ? 'Start work' : 'What would you like to do?'}</h2>
+        <h2>
+          {heading ?? (compact ? 'Start work' : 'What would you like to do?')}
+        </h2>
         {project.status === 'ready' && (
           <button
             type="button"
@@ -212,7 +362,14 @@ export function StartComposer({
         )}
         {stationControl}
       </div>
-      <div className="start-composer__box">
+      <div
+        className={`start-composer__box${drop.isDraggingFiles ? ' start-composer__box--file-drag' : ''}`}
+      >
+        {drop.isDraggingFiles && (
+          <div className="start-composer__drop-hint" role="status">
+            Drop images or files to attach
+          </div>
+        )}
         {contextItems && contextItems.length > 0 && (
           <fieldset
             className="start-composer__context"
@@ -242,11 +399,55 @@ export function StartComposer({
           ref={fieldRef}
           className="editor-textarea start-composer__input"
           aria-label="What would you like done?"
-          placeholder="Tell Station what you want done…"
+          placeholder={placeholder}
           rows={compact ? 1 : 3}
           value={prompt}
           onChange={(event) => onPromptChange(event.target.value)}
+          onPaste={(event) => {
+            if (!files) return;
+            const pasted = filesFromDataTransfer(event.clipboardData);
+            if (pasted.length === 0) return;
+            event.preventDefault();
+            setFileError(null);
+            files.onAdd(pasted);
+          }}
         />
+        {files && files.list.length > 0 && (
+          <ul
+            className="start-composer__files"
+            aria-label="Files for this chat"
+          >
+            {files.list.map((file, index) => (
+              <li
+                // Files have no identity of their own; position plus name
+                // tells two same-named files apart.
+                key={`${index}:${file.name}`}
+                className="start-composer__file"
+              >
+                <StartFileThumbnail file={file} />
+                <span className="start-composer__file-name">{file.name}</span>
+                <button
+                  type="button"
+                  className="start-composer__chip-remove"
+                  aria-label={`Remove ${file.name}`}
+                  onClick={() => files.onRemove(index)}
+                >
+                  <CloseGlyph />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {fileError && (
+          <p className="start-composer__alert" role="alert">
+            {fileError}
+          </p>
+        )}
+        {voice?.state === 'error' && voice.error && (
+          <p className="start-composer__alert" role="alert">
+            {voice.error}
+          </p>
+        )}
         <div className="start-composer__bar">
           <fieldset className="start-composer__chips" aria-label="Chat setup">
             {agent.status === 'loading' ? (
@@ -262,7 +463,12 @@ export function StartComposer({
                 type="button"
                 className={`choice-trigger start-composer__chip start-composer__chip--agent${agent.needsSetup ? ' start-composer__chip--attention' : ''}`}
                 aria-haspopup="dialog"
-                aria-label={`Agent: ${startAgentChipText(agent)}${agent.needsSetup ? ', needs setup' : ''}`}
+                aria-label={`Agent: ${startAgentChipText(agent)}${agent.needsSetup ? ', needs setup' : ''}${!onOpenModel && agent.status === 'ready' && agent.modelNote ? `. ${agent.modelNote}` : ''}`}
+                title={
+                  !onOpenModel && agent.status === 'ready'
+                    ? agent.modelNote
+                    : undefined
+                }
                 onClick={(event) => onOpenAgents(event.currentTarget)}
               >
                 {agent.agent && <AgentIcon agent={agent.agent} size="small" />}
@@ -275,7 +481,8 @@ export function StartComposer({
                 type="button"
                 className="choice-trigger start-composer__chip start-composer__chip--model"
                 aria-haspopup="dialog"
-                aria-label={`Model: ${agent.modelLabel ?? MODEL_NOT_REPORTED}`}
+                aria-label={`Model: ${agent.modelLabel ?? MODEL_NOT_REPORTED}${agent.modelNote ? `. ${agent.modelNote}` : ''}`}
+                title={agent.modelNote}
                 disabled={!agent.agent}
                 onClick={(event) => onOpenModel(event.currentTarget)}
               >
@@ -287,6 +494,21 @@ export function StartComposer({
                 <ArrowDownGlyph className="choice-caret" />
               </button>
             )}
+            {agent.status === 'ready' &&
+              (!agent.environmentId || agent.environmentId === 'current') &&
+              agent.agent && (
+                <StartApprovalSummary
+                  agent={agent.agent}
+                  executionAgentId={agent.executionAgentId}
+                  projectDefault={agent.approvalProjectDefault}
+                  projectDefaultUnavailable={
+                    agent.approvalProjectDefaultUnavailable
+                  }
+                  pick={agent.approvalPick}
+                  onPick={agent.onApprovalPick}
+                  sheetLayer={agent.approvalSheetLayer}
+                />
+              )}
             {skill && (
               <span className="start-composer__chip start-composer__chip--skill">
                 <span className="start-composer__chip-text">{skill.title}</span>
@@ -304,13 +526,25 @@ export function StartComposer({
           {/* The rarer options sit with Start, apart from the chips: on a
             phone the chips keep row one and this pair takes row two. */}
           <div className="start-composer__actions">
-            {overflowActions && overflowActions.length > 0 && (
-              <ActionOverflowMenu
-                label="More start options"
-                actions={overflowActions}
-                triggerClassName="action-overflow__trigger start-composer__more"
-              />
-            )}
+            <span className="start-composer__tools">
+              {files && <StartAttachButton onAdd={files.onAdd} />}
+              {voice && (
+                <VoiceOrb
+                  state={voice.state}
+                  supported={voice.supported}
+                  unsupportedReason={voice.unsupportedReason}
+                  onStart={voice.onStart}
+                  onStop={voice.onStop}
+                />
+              )}
+              {overflowActions && overflowActions.length > 0 && (
+                <ActionOverflowMenu
+                  label="More start options"
+                  actions={overflowActions}
+                  triggerClassName="action-overflow__trigger start-composer__more"
+                />
+              )}
+            </span>
             <Button
               type="submit"
               variant="primary"

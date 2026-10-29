@@ -294,7 +294,8 @@ describe('useChatInput send-failure toast visibility (station#1294 review SHOULD
       [],
       undefined,
       undefined,
-      undefined,
+      // The composer always offers the durable-handoff callback.
+      { onDurable: expect.any(Function) },
     );
   });
 
@@ -477,6 +478,62 @@ describe('useChatInput send-failure toast visibility (station#1294 review SHOULD
     expect(chatDraftsStore.get(SESSION_ID)).toBe('');
   });
 
+  test('saves the text it is about to send before the send clears the composer, even inside the draft debounce', async () => {
+    let draftAtSend: string | undefined;
+    sendMessageMock.mockImplementationOnce(async () => {
+      draftAtSend = chatDraftsStore.get(SESSION_ID);
+      return true;
+    });
+    const { result } = renderHook(
+      () =>
+        useChatInput({
+          apiBase: 'http://station.test',
+          sessionId: SESSION_ID,
+          agentSlug: 'dev-agent',
+          availableModels: [],
+        }),
+      { wrapper },
+    );
+    act(() => result.current.handleInputChange('typed just now'));
+    // No 500ms debounce has passed: the draft is not saved yet.
+    expect(chatDraftsStore.get(SESSION_ID)).toBe('');
+    await act(() => result.current.handleSend());
+    expect(draftAtSend).toBe('typed just now');
+  });
+
+  test('lets the saved draft go when the outbox holds the send, before Station answers; a refusal puts it back', async () => {
+    chatDraftsStore.set(SESSION_ID, 'durable now');
+    activeChatsStore.updateChat(SESSION_ID, { input: 'durable now' });
+    let draftWhileInFlight: string | undefined;
+    sendMessageMock.mockImplementationOnce(async (...args: unknown[]) => {
+      const options = args[7] as { onDurable?: () => void };
+      // The send path's order: clear the composer, make the row durable,
+      // then the request.
+      activeChatsStore.updateChat(SESSION_ID, { input: '' });
+      options.onDurable?.();
+      draftWhileInFlight = chatDraftsStore.get(SESSION_ID);
+      // Station refuses; the send path restores the composer.
+      activeChatsStore.updateChat(SESSION_ID, { input: 'durable now' });
+      return false;
+    });
+    const { result } = renderHook(
+      () =>
+        useChatInput({
+          apiBase: 'http://station.test',
+          sessionId: SESSION_ID,
+          agentSlug: 'dev-agent',
+          availableModels: [],
+        }),
+      { wrapper },
+    );
+
+    await act(() => result.current.handleSend());
+
+    expect(draftWhileInFlight).toBe('');
+    expect(chatDraftsStore.get(SESSION_ID)).toBe('durable now');
+    chatDraftsStore.clear(SESSION_ID);
+  });
+
   // #765 A2: a send during a running turn is ENQUEUED
   // (`useActiveChatSessionMessaging` pushes it into `chat.queuedMessages`
   // and returns undefined). The queue owns the text from that point — it
@@ -550,7 +607,8 @@ describe('useChatInput send-failure toast visibility (station#1294 review SHOULD
       [attachment],
       undefined,
       undefined,
-      undefined,
+      // The composer always offers the durable-handoff callback.
+      { onDurable: expect.any(Function) },
     );
     expect(chatDraftsStore.get(SESSION_ID)).toBe('same text');
     expect(activeChatsStore.getSnapshot()[SESSION_ID].input).toBe('same text');

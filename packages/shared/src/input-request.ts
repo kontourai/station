@@ -669,6 +669,26 @@ function formatProblem(
   }
 }
 
+/** Bound on {@link inputRequestSummary}. */
+const INPUT_REQUEST_SUMMARY_MAX_CHARS = 160;
+
+/**
+ * A form's message as one short line: its first non-blank line, cut with an
+ * ellipsis when anything was left out. For the places that name a request
+ * rather than answer it (the transcript record, an announcement); the
+ * request's own card shows the whole message.
+ */
+export function inputRequestSummary(message: string): string {
+  const lines = message.split('\n').map((line) => line.trim());
+  const first = lines.find((line) => line !== '') ?? '';
+  const more = lines.filter((line) => line !== '').length > 1;
+  if (first.length <= INPUT_REQUEST_SUMMARY_MAX_CHARS && !more) return first;
+  let shown = first.slice(0, INPUT_REQUEST_SUMMARY_MAX_CHARS);
+  // Never end on half of a surrogate pair.
+  if (/[\uD800-\uDBFF]$/.test(shown)) shown = shown.slice(0, -1);
+  return `${shown.trimEnd()}…`;
+}
+
 /** The name a person sees for a field, in errors and in the renderer. */
 export function inputRequestFieldLabel(field: InputRequestField): string {
   return field.title?.trim() || field.name;
@@ -919,10 +939,12 @@ export function inputRequestAnswerTexts(
  * #3390: the decision body for a tool approval, derived from the approval
  * request by Station — never read from a payload. `sessionGrantLabel` is
  * what a session answer would grant for this request
- * (`toolRequestGrantLabel`), or undefined where none is offered.
+ * (`toolRequestGrantLabel`), or undefined where none is offered. The optional
+ * server label is supplied only after the adapter authenticated a Station browser call.
  */
 export function approvalDecisionBody(
   sessionGrantLabel: string | undefined,
+  serverGrantLabel?: string,
 ): InputRequestDecisionBody {
   return {
     kind: 'decision',
@@ -938,6 +960,17 @@ export function approvalDecisionBody(
             },
           ]
         : []),
+      ...(serverGrantLabel
+        ? [
+            {
+              id: 'allow-server-session',
+              label: serverGrantLabel,
+              effect: 'allow' as const,
+              scope: 'session' as const,
+              sessionGrantScope: 'server' as const,
+            },
+          ]
+        : []),
       { id: 'deny', label: 'Deny', effect: 'deny', scope: 'once' },
     ],
   };
@@ -945,8 +978,8 @@ export function approvalDecisionBody(
 
 /**
  * The respond decision an option sends. The approval's authority path reads
- * only this, so every surface that answers an approval sends the same
- * decision for the same option.
+ * this effect plus the separate `sessionGrantScope` on the option, so every
+ * surface forwards both the decision and its authorized scope.
  */
 export function decisionOptionResponse(
   option: InputRequestDecisionOption,

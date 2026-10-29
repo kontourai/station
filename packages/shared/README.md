@@ -17,6 +17,13 @@ barrel with selected helpers and contract re-exports, not a browser-safe catalog
 of every export. [package.json](./package.json) is the entry-point inventory;
 Node/filesystem helpers and browser-safe projections have different requirements.
 
+The Node-only `/http-upload` leaf configures receive deadlines for the API and
+serialized CLI listener from the shared media route policy. It observes socket
+bytes without draining bodies before admission and leaves socket timeout values
+intact. Refused uploads half-close and discard input within a one-second/1 MiB
+bound (plus one socket chunk); reads pause at the byte cap.
+See [Walkthrough limits](../../docs/guides/walkthroughs.md#limits-and-storage).
+
 ## Installation
 
 ```bash
@@ -105,6 +112,37 @@ The [signing example](../../examples/registry/signed-package/README.md) uses a
 TS-aware loader, keeps private keys outside the signed package, and leaves host
 trust configuration to the host operator.
 
+## Subpaths without a reference section
+
+The [shared reference](../../docs/reference/shared.md) documents most helpers.
+These subpaths are exported but not described there yet. Several are Node-only;
+read the module before using one in a browser bundle.
+
+- Station home storage (Node): `/durable-json-file` (temp, fsync and rename
+  writes), `/regular-file` (non-blocking regular-file opens), `/temp-dir`
+  (Station-scoped temporary directories), `/checkpoints` (checkpoint refs and
+  retention audits), `/environment-security-record`,
+  `/tool-server-credential-store` (per-principal tool server credential
+  buckets).
+- SQLite integrity (Node): `/sqlite-integrity`, `/sqlite-corruption-marker`,
+  `/sqlite-corruption-watch`, `/sqlite-store-integrity`,
+  `/orchestration-store-quarantine`.
+- Runtime and packaging (Node): `/node-runtime` (supported Node range),
+  `/launch-path` (sanitized `PATH` for launched processes), `/source-watch`
+  (native watching with a bounded polling fallback), `/owned-dependency-installer`,
+  `/prebuilt-archive` (packaged release manifest and archive markers),
+  `/terminal-capability` (missing `node-pty` reasons).
+- Projections and formatting: `/thread-projection` (conversation to the portable
+  `@kontourai/thread` schema), `/usage-measurement` (measured tokens and cost,
+  and what was not reported), `/build-provenance` (build timestamp
+  presentation), `/portability` (guidance and MCP configuration export and
+  import helpers).
+- Browser and identifiers: `/return-focus` (focus restoration for dismissible
+  surfaces), `/native-shell-origin` (packaged shell origins), `/random-id`
+  (correlation ids outside a secure context), `/setup-import-bounds`,
+  `/authored-input` (whether a turn start carries authored input, shared by the
+  Session inventory listing, its exact read, and the SDK).
+
 ## License
 
 Apache-2.0 — see [LICENSE](./LICENSE).
@@ -115,3 +153,18 @@ library inspection and revision-bound author review. Use the
 agent proposal and evaluation process. It checks source/package/transcript bytes
 and reviewer assertions; it grants no runtime authority or model/device/release
 qualification.
+
+
+## Publisher telemetry parsing
+
+The Node-only `@kontourai/station-shared/plugin-telemetry` subpath validates
+publisher declarations and declared `plugin_daily` histograms. See the
+[shared reference](../../docs/reference/shared.md#plugin-publisher-telemetry).
+Broker acceptance and distribution manifest loading are separate work.
+
+The Node-only `/child-workload` leaf lets Station install a process launcher
+before admitting engine, MCP and tool workloads. Its spawn helper preserves
+Node child-process streams and PID ownership, and cleans descendants after leader
+exit. Standalone SDK consumers that install no launcher keep ordinary Node
+process behavior. Resource budgets belong to the server; see
+[Linux service workload budgets](../../docs/guides/development.md#linux-service-workload-budgets).

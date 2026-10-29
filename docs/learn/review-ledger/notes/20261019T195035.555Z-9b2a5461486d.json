@@ -1,0 +1,7 @@
+{
+  "revision": "3f87100e1c94fa38bde5fe753ad2fd4e458137dc",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Second review-round delta to ChatMessageList.tsx: the step announcement is cleared then set a frame later, and cleared on chat switch or loaded-history change. Form submission, draft scope and replay read-only claims are untouched; no prose change.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

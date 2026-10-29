@@ -62,7 +62,31 @@
 
     "src-ui/src/workspace-panes/workspacePaneHostStorage.ts",
 
-    "src-ui/src/workspace-panes/workspacePaneHostTransactions.ts"
+    "src-ui/src/workspace-panes/workspacePaneHostTransactions.ts",
+
+    "src-server/services/projects/workspace-diff-service.ts",
+
+    "src-server/services/projects/__tests__/workspace-diff-service.test.ts",
+
+    "src-server/routes/projects/coding.ts",
+
+    "src-server/routes/projects/__tests__/coding-git-read-confinement.routes.test.ts",
+
+    "src-ui/src/__tests__/TaskWorkspaceView.test.tsx",
+
+    "src-ui/src/components/coding-layout/DiffPanel.tsx",
+
+    "packages/sdk/src/query-domains/chatRuntimeCoding.ts",
+
+    "src-server/routes/projects/__tests__/fixtures/coding-worktree-diff.ts",
+
+    "src-server/routes/projects/__tests__/fixtures/coding-worktree-diff-repository.ts",
+
+    "src-server/routes/projects/__tests__/fixtures/coding-worktree-diff-process.mjs",
+
+    "src-server/routes/projects/__tests__/coding-worktree-diff-process.test.ts",
+
+    "src-ui/src/__tests__/fixtures/coding-diff-process.ts"
   ],
 
   "checks": [

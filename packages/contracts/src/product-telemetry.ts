@@ -1,6 +1,253 @@
+import type {
+  PluginDailyPing,
+  PluginTelemetryBatch,
+  PluginTelemetryEvent,
+} from './plugin-telemetry.js';
 export const PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL = 2;
 export const PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_CAPABILITY =
   'productTelemetryAcknowledgement';
+
+// Revision 2 corrects the disclosure's earlier overstatement of anonymity.
+export const FULL_DISCLOSURE_WORDING_REVISION = 2;
+
+export const TELEMETRY_TIERS = ['off', 'lite', 'full'] as const;
+export type TelemetryTier = (typeof TELEMETRY_TIERS)[number];
+export type TelemetryPublisherId =
+  | 'kontour'
+  | 'operator'
+  | `publisher:${string}`;
+export type TelemetryTierChoices = Partial<
+  Record<TelemetryPublisherId, TelemetryTier>
+>;
+export interface TelemetryTierResolution {
+  tier: TelemetryTier;
+  reason: 'DNT' | 'policy' | 'default' | 'user' | 'disclosure' | 'environment';
+}
+
+/** A publisher's effective resolution alongside its separately saved choice. */
+export interface TelemetryPublisherStatus extends TelemetryTierResolution {
+  userChoice?: TelemetryTier;
+  /** Absent on older servers; consumers must wait for explicit availability. */
+  fullAvailable?: boolean;
+  destination?: string;
+  endpointConfigured?: boolean;
+  liteInventoryRevision?: string;
+  liteInventory?: Record<string, unknown>;
+  fullInventoryRevision?: string;
+  liteNoticeShown?: boolean;
+}
+
+/** Policies affect defaults only; an identifying stream is never a default. */
+export function resolveTelemetryTier(input: {
+  userChoice?: TelemetryTier;
+  distributionDefault?: TelemetryTier;
+  operatorPolicy?: TelemetryTier;
+  doNotTrack?: string;
+  hasFullDisclosure: boolean;
+}): TelemetryTierResolution {
+  if (
+    input.doNotTrack !== undefined &&
+    input.doNotTrack !== '' &&
+    input.doNotTrack !== '0'
+  )
+    return { tier: 'off', reason: 'DNT' };
+  if (input.userChoice !== undefined) {
+    if (input.userChoice === 'full' && !input.hasFullDisclosure)
+      return { tier: 'lite', reason: 'disclosure' };
+    return { tier: input.userChoice, reason: 'user' };
+  }
+  const rank = { off: 0, lite: 1, full: 2 } as const;
+  let tier: TelemetryTier = 'lite';
+  for (const policy of [input.distributionDefault, input.operatorPolicy]) {
+    if (policy !== undefined && rank[policy] < rank[tier]) tier = policy;
+  }
+  return { tier, reason: tier === 'lite' ? 'default' : 'policy' };
+}
+
+export const TELEMETRY_SURFACES = [
+  'desktop',
+  'web',
+  'ios',
+  'android',
+  'cli',
+] as const;
+export const TELEMETRY_ENGINES = [
+  'station',
+  'acp',
+  'bedrock',
+  'claude',
+  'codex',
+  'muse',
+  'ollama',
+  'other',
+] as const;
+export const TELEMETRY_CHANNELS = [
+  'stable',
+  'preview',
+  'nightly',
+  'dev',
+  'source-checkout',
+] as const;
+export const TELEMETRY_SETUP_STEPS = [
+  'none',
+  'welcome',
+  'connection',
+  'engine',
+  'project',
+  'pairing',
+  'finish',
+] as const;
+export const TELEMETRY_COUNT_BUCKETS = ['0', '1', '2-3', '4+'] as const;
+export const TELEMETRY_SETTING_CATEGORIES = [
+  'appearance',
+  'connections',
+  'agents',
+  'projects',
+  'notifications',
+  'privacy',
+  'advanced',
+  'other',
+] as const;
+export const TELEMETRY_FEEDBACK_REASONS = [
+  'privacy',
+  'too-much-data',
+  'performance',
+  'not-useful',
+  'unexpected',
+  'other',
+  'skip',
+] as const;
+export type TelemetryFeedbackReason =
+  (typeof TELEMETRY_FEEDBACK_REASONS)[number];
+export const TELEMETRY_FEEDBACK_ACTIONS = [
+  'tier-lowered',
+  'plugin-uninstalled',
+] as const;
+export interface TelemetryFeedback {
+  publisher: TelemetryPublisherId;
+  action: (typeof TELEMETRY_FEEDBACK_ACTIONS)[number];
+  reason: TelemetryFeedbackReason;
+}
+
+/** Every Lite field, including bounds, participates in the shown-notice revision. */
+export const STATION_DAILY_FIELDS = {
+  event: { domain: ['station_daily'] },
+  event_id: { domain: 'uuid-v4' },
+  version: { domain: 'public-release-version-or-custom', maxLength: 64 },
+  channel: { domain: [...TELEMETRY_CHANNELS, 'unknown'] },
+  platform: {
+    domain: [
+      'aix',
+      'android',
+      'cygwin',
+      'darwin',
+      'freebsd',
+      'haiku',
+      'linux',
+      'netbsd',
+      'openbsd',
+      'sunos',
+      'win32',
+    ],
+  },
+  arch: {
+    domain: [
+      'arm',
+      'arm64',
+      'ia32',
+      'loong64',
+      'mips',
+      'mipsel',
+      'ppc',
+      'ppc64',
+      'riscv64',
+      's390',
+      's390x',
+      'x64',
+    ],
+  },
+  surfaces_today: { domain: TELEMETRY_SURFACES, arrayMax: 5 },
+  first_active_this_week: { domain: 'boolean' },
+  first_active_this_month: { domain: 'boolean' },
+  install_age_bucket: { domain: ['0d', '1-7d', '8-30d', '31-90d', '91d+'] },
+  paired_devices_bucket: { domain: TELEMETRY_COUNT_BUCKETS },
+  engines_used_today: { domain: TELEMETRY_ENGINES, arrayMax: 8 },
+  distribution: {
+    domain: 'public-registry-id-or-none-or-custom-or-unknown',
+    maxLength: 128,
+  },
+  public_plugins_enabled: {
+    domain: 'public-registry-id',
+    arrayMax: 20,
+    maxLength: 128,
+  },
+  private_plugins_bucket: { domain: TELEMETRY_COUNT_BUCKETS },
+  branding_overridden: { domain: 'boolean' },
+  home_replaced: { domain: 'boolean' },
+  layouts_customized: { domain: 'boolean-or-unknown' },
+  setup_abandoned_step: { domain: TELEMETRY_SETUP_STEPS },
+  engine_connect_failures: { domain: 'engine-count-buckets', arrayMax: 8 },
+  safe_mode_entered: { domain: 'count', max: 65535 },
+  plugin_disabled_after_crash: { domain: 'count', max: 65535 },
+} as const;
+
+type DailyDomain<D> = D extends readonly string[]
+  ? D[number]
+  : D extends 'boolean-or-unknown'
+    ? boolean | 'unknown'
+    : D extends 'boolean'
+      ? boolean
+      : D extends 'count'
+        ? number
+        : D extends 'engine-count-buckets'
+          ? {
+              engine: (typeof TELEMETRY_ENGINES)[number];
+              bucket: (typeof TELEMETRY_COUNT_BUCKETS)[number];
+            }
+          : string;
+type DailyField<F extends { domain: unknown }> = F extends { arrayMax: number }
+  ? DailyDomain<F['domain']>[]
+  : DailyDomain<F['domain']>;
+export type StationDailyPing = {
+  [K in keyof typeof STATION_DAILY_FIELDS]: DailyField<
+    (typeof STATION_DAILY_FIELDS)[K]
+  >;
+};
+export interface TelemetryLiteNoticeReceipt {
+  publisher: TelemetryPublisherId;
+  inventoryRevision: string;
+  shownAt: string;
+}
+export const TELEMETRY_OUTBOX_LIMITS = {
+  retentionDays: 30,
+  maxBytes: 5 * 1024 * 1024,
+  eviction: 'oldest-first',
+} as const;
+export interface TelemetryOutboxEntry {
+  publisher: TelemetryPublisherId;
+  tier: 'lite' | 'full';
+  recordedAt: string;
+  outcome: 'sent' | 'dropped';
+  reason:
+    | 'acknowledged'
+    | 'off'
+    | 'DNT'
+    | 'disclosure'
+    | 'notice'
+    | 'unconfigured'
+    | 'overflow'
+    | 'expired'
+    | 'transport'
+    | 'invalid';
+  payload:
+    | StationDailyPing
+    | PluginDailyPing
+    | PluginTelemetryEvent
+    | PluginTelemetryBatch
+    | ProductTelemetryBatch
+    | TelemetryFeedback
+    | { event: 'telemetry_dropped'; count: number };
+}
 
 /** The single public inventory for Station product usage telemetry. */
 export const USAGE_TELEMETRY_EVENTS = {
@@ -103,6 +350,52 @@ export const USAGE_TELEMETRY_EVENTS = {
       },
     },
   },
+  pane_opened: {
+    description: 'A public pane or a custom pane was opened.',
+    properties: { pane: { domain: 'public-registry-id-or-custom' } },
+  },
+  plugin_installed: {
+    description: 'A public or custom plugin was installed.',
+    properties: { plugin: { domain: 'public-registry-id-or-custom' } },
+  },
+  plugin_removed: {
+    description: 'A public or custom plugin was removed.',
+    properties: { plugin: { domain: 'public-registry-id-or-custom' } },
+  },
+  setting_category_changed: {
+    description: 'A setting category changed; no key or value is sent.',
+    properties: { category: { domain: TELEMETRY_SETTING_CATEGORIES } },
+  },
+  client_connected: {
+    description: 'A client connected without a device identifier.',
+    properties: {
+      surface: { domain: TELEMETRY_SURFACES },
+      device_class: {
+        domain: ['desktop', 'phone', 'tablet', 'server', 'other'] as const,
+      },
+      version: {
+        domain: 'public-release-version-or-custom',
+      },
+    },
+  },
+  setup_abandoned: {
+    description: 'Setup was abandoned at a classified step.',
+    properties: { step: { domain: TELEMETRY_SETUP_STEPS } },
+  },
+  engine_connect_failed: {
+    description: 'An engine connection failed without error text.',
+    properties: { engine: { domain: TELEMETRY_ENGINES } },
+  },
+  safe_mode_entered: {
+    description: 'Station entered safe mode.',
+    properties: {
+      reason: { domain: ['startup', 'plugin-crash', 'user', 'other'] as const },
+    },
+  },
+  plugin_disabled_after_crash: {
+    description: 'A public or custom plugin was disabled after a crash.',
+    properties: { plugin: { domain: 'public-registry-id-or-custom' } },
+  },
 } as const;
 
 export type ProductTelemetryEventName = keyof typeof USAGE_TELEMETRY_EVENTS;
@@ -118,7 +411,11 @@ export type ProductTelemetryPropertyDefinition = {
 type UsageTelemetryPropertyValue<D extends ProductTelemetryPropertyDefinition> =
   D['domain'] extends readonly string[]
     ? D['domain'][number]
-    : UsageTelemetrySemVer;
+    : D['domain'] extends
+          | 'public-registry-id-or-custom'
+          | 'public-release-version-or-custom'
+      ? string
+      : UsageTelemetrySemVer;
 export type UsageTelemetryProperties<E extends UsageTelemetryEvent> = {
   [K in keyof (typeof USAGE_TELEMETRY_EVENTS)[E]['properties']]: (typeof USAGE_TELEMETRY_EVENTS)[E]['properties'][K] extends infer D extends
     ProductTelemetryPropertyDefinition
@@ -135,15 +432,16 @@ export const PRODUCT_TELEMETRY_ENVELOPE = {
     inventory_revision:
       'SHA-256 of the disclosed envelope and event inventory.',
     distinct_id:
-      'SHA-256 of a separate random installation UUID; not a person identity.',
+      'SHA-256 of a separate random installation UUID concatenated with the publisher ID and UTC YYYY-MM; rotates monthly and is not a person identity.',
     events: 'One through twenty inventory observations.',
   },
   observation: {
     event_id: 'Random UUID assigned once at observation; unchanged on retry.',
     event: 'One name from the classified event inventory.',
     occurred_at:
-      'Canonical UTC producer wall-clock time when track was called.',
-    observed_at: 'Canonical UTC producer wall-clock time at buffer admission.',
+      'Canonical UTC producer wall-clock time when track was called, rounded down to the minute.',
+    observed_at:
+      'Canonical UTC producer wall-clock time at buffer admission, rounded down to the minute.',
     build:
       'Allowlisted immutable process build metadata; missing facts stay absent.',
     properties: 'Only the event-specific classified properties below.',
@@ -187,4 +485,421 @@ export interface ProductTelemetryBatch {
   inventory_revision: string;
   distinct_id: string;
   events: ProductTelemetryObservation[];
+}
+
+/** Receiver acknowledgement returned only after the bounded storage transaction commits. */
+export interface ProductTelemetryCommitReceipt {
+  protocol: 'station-product-commit/v1';
+  receiptId: string;
+  sourceId: string;
+  eventIds: string[];
+  inserted: number;
+  alreadyPresent: number;
+  storedAt: string;
+}
+
+export interface ProductTelemetryProbeRequest {
+  protocol: 'station-product-probe/v1';
+  inventoryRevision: string;
+}
+
+/** A source-authorized storage query; no product observation or commit receipt is inserted. */
+export interface ProductTelemetryProbeReceipt {
+  protocol: 'station-product-probe/v1';
+  sourceId: string;
+  inventoryRevision: string;
+  checkedAt: string;
+  storage: 'postgres-schema-v1';
+}
+
+/** Received product observations only; this is neither personal usage nor delivery accounting. */
+export interface ProductTelemetryTrends {
+  scope: 'received-product-observations';
+  window: { from: string; to: string };
+  retentionDays: number;
+  eventTime: 'producer-wall-clock';
+  deliveryCoverage: 'unknown';
+  rows: Array<{
+    day: string;
+    event: string;
+    version: string;
+    sha: string | null;
+    shaSource: string | null;
+    engine: string | null;
+    outcome: string | null;
+    count: number;
+  }>;
+}
+
+/** Public product observations only; no personal source or installation identifiers. */
+export interface ProductTelemetryIncidentGroup {
+  id: string;
+  event: 'engine_turn' | 'session_recovery';
+  engine: string | null;
+  failureKind: string;
+  build: ProductTelemetryBuild;
+  firstSeen: string;
+  lastSeen: string;
+  observed: number;
+  observedInstalls: number;
+  affectedInstalls: number;
+  populations: {
+    succeeded: number;
+    failed: number;
+    aborted: number;
+    unresolved: number;
+    unknown: number;
+  };
+}
+
+export interface ProductTelemetryIncidents {
+  protocol: 'station-product-incidents/v1';
+  scope: 'received-product-observations';
+  window: { from: string; to: string };
+  retentionDays: number;
+  eventTime: 'producer-wall-clock';
+  deliveryCoverage: 'unknown';
+  storageProbes: 'not-recorded';
+  rows: ProductTelemetryIncidentGroup[];
+}
+
+export function isProductTelemetryTrendWindow(
+  from: string,
+  to: string,
+): boolean {
+  const start = Date.parse(from),
+    end = Date.parse(to);
+  return (
+    Number.isFinite(start) &&
+    Number.isFinite(end) &&
+    new Date(start).toISOString() === from &&
+    new Date(end).toISOString() === to &&
+    end > start &&
+    end - start <= 365 * 86400000
+  );
+}
+
+/** Reject remote content outside the bounded, content-free receiver query shape. */
+export function isProductTelemetryTrends(
+  value: unknown,
+): value is ProductTelemetryTrends {
+  const object = (v: unknown, keys: string[]): v is Record<string, unknown> =>
+    v !== null &&
+    typeof v === 'object' &&
+    !Array.isArray(v) &&
+    Object.keys(v).length === keys.length &&
+    Object.keys(v).every((k) => keys.includes(k));
+  const text = (v: unknown, max: number) =>
+    typeof v === 'string' &&
+    v.length > 0 &&
+    v.length <= max &&
+    Array.from(v).every(
+      (character) =>
+        character.charCodeAt(0) >= 32 && character.charCodeAt(0) !== 127,
+    );
+  if (
+    !object(value, [
+      'scope',
+      'window',
+      'retentionDays',
+      'eventTime',
+      'deliveryCoverage',
+      'rows',
+    ]) ||
+    value.scope !== 'received-product-observations' ||
+    value.eventTime !== 'producer-wall-clock' ||
+    value.deliveryCoverage !== 'unknown' ||
+    !object(value.window, ['from', 'to']) ||
+    typeof value.window.from !== 'string' ||
+    typeof value.window.to !== 'string' ||
+    !isProductTelemetryTrendWindow(value.window.from, value.window.to) ||
+    typeof value.retentionDays !== 'number' ||
+    !Number.isInteger(value.retentionDays) ||
+    value.retentionDays < 1 ||
+    value.retentionDays > 90 ||
+    !Array.isArray(value.rows) ||
+    value.rows.length > 1000
+  )
+    return false;
+  const disclosed = (event: unknown, property: string, candidate: unknown) => {
+    if (candidate === null) return true;
+    if (typeof event !== 'string' || typeof candidate !== 'string')
+      return false;
+    const definition = Object.entries(USAGE_TELEMETRY_EVENTS).find(
+      ([name]) => name === event,
+    )?.[1];
+    const domain =
+      definition &&
+      Object.entries(definition.properties).find(
+        ([name]) => name === property,
+      )?.[1].domain;
+    return Array.isArray(domain) && domain.includes(candidate);
+  };
+  return value.rows.every(
+    (row) =>
+      object(row, [
+        'day',
+        'event',
+        'version',
+        'sha',
+        'shaSource',
+        'engine',
+        'outcome',
+        'count',
+      ]) &&
+      typeof row.day === 'string' &&
+      /^\d{4}-\d{2}-\d{2}$/.test(row.day) &&
+      Number.isFinite(Date.parse(row.day)) &&
+      new Date(row.day).toISOString().slice(0, 10) === row.day &&
+      typeof row.event === 'string' &&
+      Object.keys(USAGE_TELEMETRY_EVENTS).includes(row.event) &&
+      text(row.version, 128) &&
+      (row.sha === null ||
+        (typeof row.sha === 'string' &&
+          /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(row.sha))) &&
+      (row.sha === null) === (row.shaSource === null) &&
+      (row.shaSource === null ||
+        row.shaSource === 'build-stamp' ||
+        row.shaSource === 'checkout') &&
+      disclosed(row.event, 'engine', row.engine) &&
+      disclosed(row.event, 'outcome', row.outcome) &&
+      typeof row.count === 'number' &&
+      Number.isSafeInteger(row.count) &&
+      row.count > 0,
+  );
+}
+
+function incidentObject(
+  value: unknown,
+  required: readonly string[],
+  optional: readonly string[] = [],
+): value is Record<string, unknown> {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    required.every((key) => {
+      // biome-ignore lint/suspicious/noPrototypeBuiltins: SDK consumers target ES2020, which lacks Object.hasOwn.
+      return Object.prototype.hasOwnProperty.call(value, key);
+    }) &&
+    Object.keys(value).every(
+      (key) => required.includes(key) || optional.includes(key),
+    )
+  );
+}
+function incidentCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+function incidentDate(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    Number.isFinite(Date.parse(value)) &&
+    new Date(value).toISOString() === value
+  );
+}
+function incidentBuild(value: unknown): value is ProductTelemetryBuild {
+  if (
+    !incidentObject(
+      value,
+      ['version', 'platform', 'arch'],
+      ['sha', 'sha_source', 'channel', 'dirty'],
+    )
+  )
+    return false;
+  return (
+    typeof value.version === 'string' &&
+    value.version.length <= 64 &&
+    /^(?:custom|[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/.test(
+      value.version,
+    ) &&
+    USAGE_TELEMETRY_EVENTS.station_started.properties.platform.domain.some(
+      (item) => item === value.platform,
+    ) &&
+    USAGE_TELEMETRY_EVENTS.station_started.properties.arch.domain.some(
+      (item) => item === value.arch,
+    ) &&
+    (value.sha === undefined ||
+      (typeof value.sha === 'string' &&
+        /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(value.sha))) &&
+    (value.sha === undefined) === (value.sha_source === undefined) &&
+    (value.sha_source === undefined ||
+      value.sha_source === 'build-stamp' ||
+      value.sha_source === 'checkout') &&
+    (value.channel === undefined ||
+      ['stable', 'preview', 'nightly', 'dev', 'source-checkout'].some(
+        (item) => item === value.channel,
+      )) &&
+    (value.dirty === undefined || typeof value.dirty === 'boolean')
+  );
+}
+
+/** Reject extra fields and inconsistent denominators before displaying or exporting a report. */
+export function isProductTelemetryIncidents(
+  value: unknown,
+): value is ProductTelemetryIncidents {
+  if (
+    !incidentObject(value, [
+      'protocol',
+      'scope',
+      'window',
+      'retentionDays',
+      'eventTime',
+      'deliveryCoverage',
+      'storageProbes',
+      'rows',
+    ]) ||
+    value.protocol !== 'station-product-incidents/v1' ||
+    value.scope !== 'received-product-observations' ||
+    value.eventTime !== 'producer-wall-clock' ||
+    value.deliveryCoverage !== 'unknown' ||
+    value.storageProbes !== 'not-recorded' ||
+    !incidentObject(value.window, ['from', 'to']) ||
+    typeof value.window.from !== 'string' ||
+    typeof value.window.to !== 'string' ||
+    !isProductTelemetryTrendWindow(value.window.from, value.window.to) ||
+    !incidentCount(value.retentionDays) ||
+    value.retentionDays < 1 ||
+    value.retentionDays > 90 ||
+    !Array.isArray(value.rows) ||
+    value.rows.length > 1000
+  )
+    return false;
+  const from = Date.parse(value.window.from),
+    to = Date.parse(value.window.to),
+    ids = new Set<string>();
+  return value.rows.every((row) => {
+    if (
+      !incidentObject(row, [
+        'id',
+        'event',
+        'engine',
+        'failureKind',
+        'build',
+        'firstSeen',
+        'lastSeen',
+        'observed',
+        'observedInstalls',
+        'affectedInstalls',
+        'populations',
+      ]) ||
+      typeof row.id !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(row.id) ||
+      ids.has(row.id) ||
+      !incidentBuild(row.build) ||
+      !incidentDate(row.firstSeen) ||
+      !incidentDate(row.lastSeen) ||
+      Date.parse(row.firstSeen) < from ||
+      Date.parse(row.lastSeen) >= to ||
+      row.firstSeen > row.lastSeen ||
+      !incidentCount(row.observed) ||
+      row.observed === 0 ||
+      !incidentCount(row.observedInstalls) ||
+      !incidentCount(row.affectedInstalls) ||
+      row.affectedInstalls === 0 ||
+      row.affectedInstalls > row.observedInstalls ||
+      row.observedInstalls > row.observed ||
+      !incidentObject(row.populations, [
+        'succeeded',
+        'failed',
+        'aborted',
+        'unresolved',
+        'unknown',
+      ])
+    )
+      return false;
+    const counts = row.populations;
+    let total = 0;
+    for (const count of Object.values(counts)) {
+      if (!incidentCount(count)) return false;
+      total += count;
+    }
+    if (
+      !incidentCount(counts.succeeded) ||
+      !Number.isSafeInteger(total) ||
+      total !== row.observed ||
+      total - counts.succeeded < row.affectedInstalls
+    )
+      return false;
+    if (row.event === 'engine_turn') {
+      if (
+        row.failureKind !== 'unclassified' ||
+        !(
+          row.engine === null ||
+          USAGE_TELEMETRY_EVENTS.engine_turn.properties.engine.domain.some(
+            (item) => item === row.engine,
+          )
+        )
+      )
+        return false;
+    } else if (row.event === 'session_recovery') {
+      if (
+        row.engine !== null ||
+        !USAGE_TELEMETRY_EVENTS.session_recovery.properties.failure_kind.domain.some(
+          (item) => item === row.failureKind,
+        )
+      )
+        return false;
+    } else return false;
+    ids.add(row.id);
+    return true;
+  });
+}
+
+export interface ProductTelemetryIncidentDraft {
+  title: string;
+  body: string;
+  evidence: {
+    protocol: 'station-product-incidents/v1';
+    groupId: string;
+    window: { from: string; to: string };
+  };
+}
+
+/** Local reviewable text only. This function neither publishes nor grants attachment access. */
+export function createProductTelemetryIncidentDraft(
+  report: unknown,
+  groupId: string,
+): ProductTelemetryIncidentDraft | null {
+  if (!isProductTelemetryIncidents(report)) return null;
+  const group = report.rows.find((row) => row.id === groupId);
+  if (!group) return null;
+  const p = group.populations,
+    b = group.build;
+  return {
+    title: `Observed ${group.event} incident: ${group.engine ?? 'recovery'} · ${b.version}`,
+    evidence: {
+      protocol: report.protocol,
+      groupId,
+      window: { ...report.window },
+    },
+    body: [
+      `Observed incident group: ${groupId}`,
+      `Evidence protocol: ${report.protocol}`,
+      `UTC window: ${report.window.from} to ${report.window.to} (end excluded).`,
+      `First/last problem observation: ${group.firstSeen} / ${group.lastSeen}.`,
+      `Component: ${group.event}; engine: ${group.engine ?? 'unattributed'}; classification: ${group.failureKind}.`,
+      `Process build: ${b.version}; platform: ${b.platform}; architecture: ${b.arch}; channel: ${b.channel ?? 'unknown'}; dirty: ${b.dirty === undefined ? 'unknown' : String(b.dirty)}.`,
+      `Source revision: ${b.sha ?? 'unavailable'}; provenance: ${b.sha_source ?? 'unavailable'}. A checkout revision does not identify served bundle bytes.`,
+      `Received populations: ${p.failed} failed; ${p.aborted} aborted; ${p.unresolved} unresolved; ${p.unknown} unknown; ${p.succeeded} succeeded.`,
+      `Observed denominator: ${group.observed} received source/event observations in this component, classification and build cohort.`,
+      `Reported installation identifiers: ${group.affectedInstalls} affected / ${group.observedInstalls} observed. These are not person or hardware counts.`,
+      `Coverage: retained received product observations; ${report.retentionDays}-day retention. Delivery coverage is unknown. Storage probes create no product observations. Event time uses producer wall clocks.`,
+      'Uncertainty: missing delivery and clock skew can change coverage. Counts alone do not establish a release regression or failure rate across all activity.',
+      'Attachments: none. Review this draft and add reproduction steps. Attach diagnostics only through a separately approved sanitized diagnostic workflow.',
+    ].join('\n\n'),
+  };
+}
+
+/** User-supplied issue reference; existence and external write authority are not inferred. */
+export interface ProductTelemetryIncidentLink {
+  id: string;
+  groupId: string;
+  issue: { provider: 'github'; url: string; workItemRef: string };
+  window: { from: string; to: string };
+  createdAt: string;
+  expiresAt: string;
+}
+export interface ProductTelemetryIncidentLinkReceipt {
+  id: string;
+  state: 'active' | 'deleted';
 }

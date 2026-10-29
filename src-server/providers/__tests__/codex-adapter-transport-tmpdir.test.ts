@@ -40,7 +40,12 @@ describe('createCodexProcess real spawn TMPDIR (station#1908)', () => {
         _options: { env: NodeJS.ProcessEnv },
       ) => new EventEmitter(),
     );
-    vi.doMock('node:child_process', () => ({ spawn: spawnMock }));
+    // Partial: the owned-process registration (#561) probes the owner's
+    // birth with the real `execFileSync`; only the app-server spawn is faked.
+    vi.doMock('node:child_process', async (importOriginal) => ({
+      ...(await importOriginal<typeof import('node:child_process')>()),
+      spawn: spawnMock,
+    }));
     vi.doMock('../auth/cli-auth.js', () => ({
       findCliBinary: () => '/usr/local/bin/codex',
       resolveAugmentedPathSync: () => '/usr/bin:/bin',
@@ -69,7 +74,12 @@ describe('createCodexProcess real spawn TMPDIR (station#1908)', () => {
         _options: { env: NodeJS.ProcessEnv },
       ) => new EventEmitter(),
     );
-    vi.doMock('node:child_process', () => ({ spawn: spawnMock }));
+    // Partial: the owned-process registration (#561) probes the owner's
+    // birth with the real `execFileSync`; only the app-server spawn is faked.
+    vi.doMock('node:child_process', async (importOriginal) => ({
+      ...(await importOriginal<typeof import('node:child_process')>()),
+      spawn: spawnMock,
+    }));
     vi.doMock('../auth/cli-auth.js', () => ({
       findCliBinary: () => '/usr/local/bin/codex',
       resolveAugmentedPathSync: () => '/usr/bin:/bin',
@@ -91,6 +101,31 @@ describe('createCodexProcess real spawn TMPDIR (station#1908)', () => {
     expect(options.env.ANTHROPIC_BASE_URL).toBe('http://127.0.0.1:8318');
   });
 
+  test('chat-host-images: the session TMPDIR replaces the shared one, and env still cannot', async () => {
+    const spawnMock = vi.fn(
+      (
+        _binary: string,
+        _args: string[],
+        _options: { env: NodeJS.ProcessEnv },
+      ) => new EventEmitter(),
+    );
+    vi.doMock('node:child_process', async (importOriginal) => ({
+      ...(await importOriginal<typeof import('node:child_process')>()),
+      spawn: spawnMock,
+    }));
+    vi.doMock('../auth/cli-auth.js', () => ({
+      findCliBinary: () => '/usr/local/bin/codex',
+      resolveAugmentedPathSync: () => '/usr/bin:/bin',
+    }));
+    const { createCodexProcess } = await import(
+      '../adapters/codex-adapter-transport.js'
+    );
+    const own = join(home, 'tmp', 'session-tmp', 'session-1-abc');
+    createCodexProcess(undefined, { TMPDIR: '/ambient/x' }, undefined, own);
+    const [, , options] = spawnMock.mock.calls[0];
+    expect(options.env.TMPDIR).toBe(own);
+  });
+
   test('the spawned env is a scrubbed process.env copy on the augmented PATH, with per-connection overrides winning', async () => {
     vi.stubEnv('STATION_INTERNAL_API_TOKEN', 'boot-internal-secret');
     vi.stubEnv('STATION_TEST_AMBIENT', 'inherited');
@@ -101,7 +136,12 @@ describe('createCodexProcess real spawn TMPDIR (station#1908)', () => {
         _options: { env: NodeJS.ProcessEnv },
       ) => new EventEmitter(),
     );
-    vi.doMock('node:child_process', () => ({ spawn: spawnMock }));
+    // Partial: the owned-process registration (#561) probes the owner's
+    // birth with the real `execFileSync`; only the app-server spawn is faked.
+    vi.doMock('node:child_process', async (importOriginal) => ({
+      ...(await importOriginal<typeof import('node:child_process')>()),
+      spawn: spawnMock,
+    }));
     vi.doMock('../auth/cli-auth.js', () => ({
       findCliBinary: () => '/usr/local/bin/codex',
       resolveAugmentedPathSync: () => '/augmented/by-test:/usr/bin',

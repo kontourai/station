@@ -1,0 +1,11 @@
+{
+  "revision": "ba132183ba3b29ad18eb99763c5c47c44837cafd",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed host-design and shared-reference follow-up: shipped in-process definitions qualify static frame mounting without an MCP client; the current runtime inventory App-read adapters still map found projections to unavailable. The browser evidence uses a seeded saved result from an authorized inventory snapshot and does not qualify production publication. Existing SDK/shipped-docs CSP and qualification limits remain accurate. Shared predicate is only a cheap candidate filter; connected or shipped definition membership remains authoritative.","inputs":["docs/reference/sdk.md","docs/design/mcp-ui-host.md"]},
+
+    {"path":"docs/reference/shared.md","note":"Reviewed host-design and shared-reference follow-up: shipped in-process definitions qualify static frame mounting without an MCP client; the current runtime inventory App-read adapters still map found projections to unavailable. The browser evidence uses a seeded saved result from an authorized inventory snapshot and does not qualify production publication. Existing SDK/shipped-docs CSP and qualification limits remain accurate. Shared predicate is only a cheap candidate filter; connected or shipped definition membership remains authoritative.","inputs":["docs/reference/shared.md","docs/design/mcp-ui-host.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed host-design and shared-reference follow-up: shipped in-process definitions qualify static frame mounting without an MCP client; the current runtime inventory App-read adapters still map found projections to unavailable. The browser evidence uses a seeded saved result from an authorized inventory snapshot and does not qualify production publication. Existing SDK/shipped-docs CSP and qualification limits remain accurate. Shared predicate is only a cheap candidate filter; connected or shipped definition membership remains authoritative.","inputs":["docs/reference/station-docs.md","docs/design/mcp-ui-host.md"]}
+  ]
+}

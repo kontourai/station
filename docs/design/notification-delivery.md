@@ -21,6 +21,34 @@ is not enough: the moment you are looking at something else, the toast has
 nobody to show itself to, and the thing you are being asked to approve expires
 in five minutes.
 
+## In-app outcomes and durable conditions
+
+[ToastContext](../../src-ui/src/contexts/ToastContext.tsx) owns short client
+outcomes, stable operation IDs, explicit deduplication keys, and async action
+feedback. Updating an ID changes the existing card. Actionable messages group
+only when a caller supplies a deduplication key; the current callbacks replace
+the earlier ones. Reading time pauses while a card is hovered, focused, expanded,
+queued, or the app is hidden. Visibility uses viewport intersection and document
+visibility; it does not detect an overlapping dialog or another occluding surface.
+Actions that transfer from Station details close that dialog before reporting their
+outcome in a toast. Failed actions stay available to retry.
+
+[NotificationsPage](../../src-ui/src/pages/NotificationsPage.tsx) shows local
+recent messages separately from server attention. Persistence is opt-in through
+caller-approved `recallText`, bounded by count and age, and scoped to the selected
+Station on this device. Raw messages, metadata, details, and actions are not
+persisted as recall. Switching Stations clears active notices and rejects stale
+scoped callbacks. Approval requests retain their separate server-backed lifecycle.
+
+Durable connection, pairing, local-service, and recovery conditions live in
+[Station details](../../src-ui/src/components/notifications/StationConditions.tsx),
+reachable through the existing Station control. Work restrictions also appear in
+the workspace; setup-return guidance stays inline with the setup journey. The
+client no longer mounts a global banner stack. Updates have a separate unified
+[Updates panel](../../src-ui/src/components/updates/UpdatesPanel.tsx), with distinct
+app and connected-server mechanisms. None of these local surfaces replaces
+background push delivery.
+
 ## External transcripts
 
 Threads followed from another app (`controlMode: read-only-attached`) do not
@@ -47,7 +75,21 @@ conversation. An accepted approval action in notification history or Attention
 also opens that conversation; a runtime Activity link is converted to the chat
 dock for this decision action. Ordinary Open session links keep their original
 destination. These client actions do not add approval buttons to native push or
-change background delivery guarantees.
+change background delivery guarantees. A request answered with a form (a
+harness question) carries no decision actions in notification history or
+Attention: an Allow or Deny there names no answer and no exact request event,
+so the command route would refuse it. Its Open session link leads to the form.
+A request whose content, or the content of a call it gates, was stored out of
+line carries only Deny there: allowing it needs the whole request loaded,
+which the conversation's card does ([event content spill](event-content-spill.md)).
+The same holds when Station cannot read the request back, and a card that
+offered Allow before such content arrived is rewritten when it does, or when
+Station refuses an Allow from it. The rewrite emits `notification:updated`,
+so open notification history and Attention views refetch and stop offering
+Allow. It is not pushed again, so a native notification already delivered is
+not updated; any Allow that still reaches Station is refused.
+While its request is open the item still counts as waiting on you: the
+session's generic composer stays hidden and Dismiss stays secondary.
 
 Failed decisions remain visible with a short explanation and disclosed details.
 An uncertain answer must be inspected before sending another decision. See
@@ -245,7 +287,9 @@ The Station side mirrors Web Push (`push-routes.ts`, `WebPushChannel`):
   whose tokens are not a general signature (connection-broker.md). It is
   created on the first registration, never before.
 - **Registration.** `POST /api/system/native-push/register` from a paired
-  device, body `{ token, packageName, platform: 'android' }`, returns
+  device's own credential (a relay alias is refused with
+  `device_pairing_required`, after the credential gate's read-scope
+  refusal), body `{ token, packageName, platform: 'android' }`, returns
   `{ registrationId, stationId, stationKey, payloadKey }`. `registrationId` is
   128 random bits and is the value the phone checks on every push
   (`device_id`); `stationId` is the environment id (`user_id`); `stationKey`
@@ -264,9 +308,15 @@ The Station side mirrors Web Push (`push-routes.ts`, `WebPushChannel`):
   agent activity is turned on again on the phone. The package must be one the
   gateway delivers to, and the route sits on the `/api/system` operate tier.
   `DELETE /api/system/native-push` clears the caller's own registration only.
+  `GET /api/system/native-push` (`/api/system` read tier) answers
+  `{ registered, registrationId }` for the caller's own device, with no token
+  or key, and 503 when a registration file is unreadable; it is not gated on
+  the gateway URL. The phone's refresh uses it to notice a registration the
+  Station dropped (a gateway "unregistered" answer clears it, and a device
+  paired again is a new device with none).
   Revoking or replacing a device drops its registration, and a registration
   whose device is no longer active is never listed. Hosted-tenant mode
-  disables both routes, as it does Web Push; an invalid gateway URL, or a
+  disables these routes, as it does Web Push; an invalid gateway URL, or a
   corrupt key or registration file, makes registration answer 503.
 - **Sealed card.** Only routing data travels in clear: the FCM data is
   `{ station_kind: 'agent_activity', device_id: <registrationId>, sealed }`,
@@ -413,7 +463,8 @@ The Station side mirrors Web Push (`push-routes.ts`, `WebPushChannel`):
   the session read model once per reading principal: each phone reads with
   the read authority its own device credential carries
   (`pairedDevicePrincipal` — the device's tailnet person binding, else the
-  device itself), so a card never holds a session that credential may not
+  operator for a credential minted with home-possession, else the device
+  itself), so a card never holds a session that credential may not
   read. Only a person's device with `orchestration:read`, not bound to a
   deployment account, may register or be read for; a device narrowed below
   that gets one final empty card and then nothing. A scope change requests
@@ -815,14 +866,14 @@ the route answers 503. The gateway is deployed by hand
 | Push gateway (`deploy/push-gateway`) | built and deployed; FCM only. Verified end to end with a throwaway Station key |
 | Station notifications on Android (#2588: gateway kind, `FcmAlertChannel`, `StationNotifications.kt`) | built; the channel is tested through the production delivery wiring against the gateway's own verifier and request parser, and the phone opens the shared known-answer vector in a JVM unit test. Not yet verified on a device or emulator. The gateway change is deployed |
 | Station publisher (push key, device tokens, card building, session state → gateway) | built; cards are sealed to each phone. Verified against the gateway's own verifier and request parser, and against the phone's opener through a shared known-answer vector. FCM rotates tokens without the app open and the plugin has no `onNewToken` hook, so the app re-registers on start and on return to the foreground |
-| Web registration (`configure`, `pushToken`, settings UI) | built: Settings → Notifications → "Agent activity on this phone", shown only when the host reports `remote-push` enabled: an Android build with all four `STATION_FIREBASE_*` values, or an iOS build with the Live Activity plugin (`STATION_IOS_LIVE_ACTIVITY=1`), where it also stays hidden until the plugin's `status` reports the build signed for push (`pushConfigured`) on iOS 18. iOS registers `{ token, packageName, platform: 'ios', apnsEnvironment }` from the plugin's push-to-start token and the environment it names, and asks for no notification permission. Registrations are kept per Station; the card key goes from the Station's response straight to the plugin (on iOS, into the keychain group shared with the widget) and is never kept in WebView storage. The app re-registers on start and return to the foreground when the token (or its APNs environment) changed or the registration is a day old. The iOS path is unit-tested against the plugin's reply shapes only; no device has run it |
+| Web registration (`configure`, `pushToken`, settings UI) | built: Settings → Notifications → "Agent activity on this phone", shown only when the host reports `remote-push` enabled: an Android build with all four `STATION_FIREBASE_*` values, or an iOS build with the Live Activity plugin (`STATION_IOS_LIVE_ACTIVITY=1`), where it also stays hidden until the plugin's `status` reports the build signed for push (`pushConfigured`) on iOS 18. iOS registers `{ token, packageName, platform: 'ios', apnsEnvironment }` from the plugin's push-to-start token and the environment it names, and asks for no notification permission. Registrations are kept per Station; the card key goes from the Station's response straight to the plugin (on iOS, into the keychain group shared with the widget) and is never kept in WebView storage. The app re-registers on start and return to the foreground when the token (or its APNs environment) changed, the registration is a day old, or the Station's `GET /api/system/native-push` reports no registration or a different `registrationId`; a Station without that route (404/405) or one that cannot answer leaves the first two rules. The iOS path is unit-tested against the plugin's reply shapes only; no device has run it |
 | One card per Station on the phone | built: each registration has its own card, replay state and intents; cards open only with that registration's key and must carry its Station's key thumbprint |
 | APNs in the gateway (`/v1/apns/live-activity`, `/v1/apns/channels`) | built: one broadcast channel per activity, created inside its start, bound to the Station key by `channelAuth`, and recorded in a SQLite-backed Durable Object ledger that a three-minute sweep reconciles against Apple, so a channel left behind is reclaimed about 12 hours after its creation. The Durable Object is chosen for correctness (a strongly consistent single writer: Workers KV's eventual consistency could let the sweep miss a fresh record and delete a live channel); the sweep's cadence and per-run caps are shaped by the Workers Free plan's 50-subrequest limit, and Free's CPU limit is not yet verified. The ledger also keeps a guard of six accepted starts per device per UTC day against a runaway honest Station (not an abuse bound; the per-key and global limiters are); an end may carry the fixed alert. Live on a gateway deployed with the `APNS_AUTH_KEY` and `APNS_CHANNEL_AUTH_SECRET` secrets set, dark without them; the gateway is deployed by hand, no workflow deploys it; tested against a fake APNs only |
 | iOS Station side (registration, `native-push-ios-registrations.json`, planner, tombstones, live-activity and channel requests) | built; every request body is checked against the gateway's own APNs request parsers, and every gateway answer against the Station's handling |
-| iOS Live Activity: widget extension and Swift plugin (#2513 slice C) | built, off by default. Enabling takes both halves: `STATION_IOS_LIVE_ACTIVITY=1` builds the plugin, and `scripts/ensure-ios-agent-activity-extension.mjs` adds the extension and the app's keychain groups to the rendered `gen/apple/project.yml`, followed by `xcodegen generate`. The committed project carries neither half; only the Beta and Nightly TestFlight builds enable it (slice D). The widget shows a card only if it opens and verifies; at or past `activity_expires_at` (or once ActivityKit marks it stale) it shows "Waiting for Station" with no card content. A relay can replay an earlier genuine card until that card's expiry; the phone keeps no record of the last card it accepted. Shared card code is tested on macOS only (`swift test`); no device build has been verified |
-| iOS enablement and App Store signing (#2513 slice D) | enabled in CI for Beta and Nightly; not yet verified on a device. The Beta and Nightly App IDs have Push Notifications and Broadcast. Their App Store profiles carry `aps-environment=production`, and `<app id>.AgentActivity` has its own profile in the `ios-beta` and `ios-nightly` environments. The gateway has its APNs secrets. `testflight-delivery.yml` builds both halves for those channels. It declares `NSSupportsLiveActivities` in the shipped app `Info.plist`, and signs the extension with its own profile. It audits the embedded widget, both profiles, both sets of entitlements, and the compiled plugin class in the IPA ([mobile-release.md](../guides/mobile-release.md#live-activity-in-beta-and-nightly)). Stable builds neither. No TestFlight run has built the Live Activity yet, and no installed build has shown a Live Activity |
+| iOS Live Activity: widget extension and Swift plugin (#2513 slice C) | built, off by default. Enabling takes both halves: `STATION_IOS_LIVE_ACTIVITY=1` builds the plugin, and `scripts/ensure-ios-agent-activity-extension.mjs` adds the extension and the app's keychain groups to the rendered `gen/apple/project.yml`, followed by `xcodegen generate`. The committed project carries neither half; Beta and Nightly TestFlight builds enable it (slice D); Stable uses the same path only after the owner sets `STATION_IOS_STABLE_PUSH_ENABLED=true` in `native-release`. The widget shows a card only if it opens and verifies; at or past `activity_expires_at` (or once ActivityKit marks it stale) it shows "Waiting for Station" with no card content. A relay can replay an earlier genuine card until that card's expiry; the phone keeps no record of the last card it accepted. Shared card code is tested on macOS only (`swift test`); no device build has been verified |
+| iOS enablement and App Store signing (#2513 slice D) | enabled in CI for Beta and Nightly; not yet verified on a device. The Beta and Nightly App IDs have Push Notifications and Broadcast. Their App Store profiles carry `aps-environment=production`, and `<app id>.AgentActivity` has its own profile in the `ios-beta` and `ios-nightly` environments. The gateway has its APNs secrets. `testflight-delivery.yml` builds both halves for those channels. It declares `NSSupportsLiveActivities` in the shipped app `Info.plist`, and signs the extension with its own profile. It audits the embedded widget, both profiles, both sets of entitlements, and the compiled plugin class in the IPA ([mobile-release.md](../guides/mobile-release.md#live-activity-in-beta-and-nightly)). Stable defaults off, with both extensions available behind its environment switch and separate profiles. See the [Stable owner checklist](../guides/mobile-release.md#stable-push-owner-checklist). Signed-package evidence and physical delivery must be obtained separately; #2808 owns physical verification |
 | iOS notification alerts, fixed text (#2589) | built. The Station side is dormant until a phone sends an alert token. Gateway `/v1/apns/alert` is live on a gateway deployed with the APNs secrets set and the `ALERT_PER_TOKEN_LIMITER` binding (without the binding it answers 503); the gateway is deployed by hand, no workflow deploys it; tested against a fake APNs only. Also built: the optional `alertToken` on the iOS registration, `ApnsAlertChannel` in the delivery router, and the plugin's `alert_token` command (off with the rest of the plugin; the delegate hook is tested on macOS only and needs device verification before enabling). See the enablement checklist in "iOS: notification alerts" |
-| iOS Notification Service Extension (#2590) | built, off by default: `scripts/ensure-ios-agent-activity-extension.mjs` with `--notification-service` adds it on top of the Live Activity's project half, a separate switch because it needs a third App ID and profile (`<app>.NotificationService`). The committed project does not carry it; `testflight-delivery.yml` enables it for Beta and Nightly (its own App Store profile in the `ios-beta` and `ios-nightly` environments) and audits its embedded profile and signed entitlements in the IPA. Stable builds none. No TestFlight run has built it yet. The opening logic is tested on macOS only (`swift test`); no simulator or device build has shown a decrypted alert |
+| iOS Notification Service Extension (#2590) | built, off by default: `scripts/ensure-ios-agent-activity-extension.mjs` with `--notification-service` adds it on top of the Live Activity's project half, a separate switch because it needs a third App ID and profile (`<app>.NotificationService`). The committed project does not carry it; `testflight-delivery.yml` enables it for Beta and Nightly (its own App Store profile in the `ios-beta` and `ios-nightly` environments) and audits its embedded profile and signed entitlements in the IPA. Stable defaults off and can opt into the same extension pair after owner provisioning. The opening logic has macOS `swift test` coverage; physical decrypted-alert delivery remains a separate check (#2808) |
 
 The Android plugin builds with or without Firebase. Its Firebase identity comes
 from `STATION_FIREBASE_APP_ID`, `_API_KEY`, `_PROJECT_ID` and `_SENDER_ID` at

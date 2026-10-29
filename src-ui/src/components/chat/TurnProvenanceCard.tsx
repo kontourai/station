@@ -1,12 +1,13 @@
-import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import {
   isSupportedTurnProvenanceEnvelope,
+  type TurnProvenanceEngine,
   type TurnProvenanceEnvelope,
   type TurnProvenanceRefSlot,
   type TurnProvenanceSlot,
   type TurnProvenanceTrustReportRef,
   type TurnProvenanceUnavailableReason,
   type TurnProvenanceUsage,
+  turnProvenanceEngineLabel,
 } from '@kontourai/station-contracts/turn-provenance';
 import {
   cacheInclusivePromptTokens,
@@ -14,6 +15,7 @@ import {
   providerPromptCacheInclusivity,
 } from '@kontourai/station-shared/usage-semantics';
 import { type ReactNode, useId, useState } from 'react';
+import { copyToClipboard } from '../../lib/clipboard';
 import {
   exactTokenCount,
   formatTokenCount,
@@ -277,10 +279,13 @@ function headlineUsage(
  * the slug has no product name yet, the slug IS the honest answer — better a
  * raw identifier than an invented label.
  */
-function engineDisplay(provider: string): { label: string; slug: string } {
+function engineDisplay(engine: TurnProvenanceEngine): {
+  label: string;
+  slug: string;
+} {
   return {
-    label: engineDisplayLabel(provider) ?? provider,
-    slug: provider,
+    label: turnProvenanceEngineLabel(engine),
+    slug: engine.provider,
   };
 }
 
@@ -301,7 +306,7 @@ function contextBoundaryRow(
 function buildRows(envelope: TurnProvenanceEnvelope): ProvenanceRow[] {
   const rows: ProvenanceRow[] = [
     slotRow('Engine', envelope.engine, (engine) => {
-      const { label, slug } = engineDisplay(engine.provider);
+      const { label, slug } = engineDisplay(engine);
       return label === slug ? slug : `${label} (${slug})`;
     }),
     slotRow('Model requested', envelope.requestedModel, (model) => model),
@@ -412,7 +417,7 @@ function summaryText(
   if (!statedInRow.engine) {
     parts.push(
       envelope.engine.state === 'observed'
-        ? engineDisplay(envelope.engine.value.provider).label
+        ? engineDisplay(envelope.engine.value).label
         : 'Engine unknown',
     );
   }
@@ -547,14 +552,9 @@ function TurnIdRow({ turnId }: { turnId: string }) {
   );
 
   const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(turnId);
-      setCopyState('copied');
-    } catch {
-      // Never claim a copy that failed — a browser can refuse the
-      // clipboard outright (same discipline as ShareAnswerButton).
-      setCopyState('failed');
-    }
+    // Never claim a copy that failed — a browser can refuse the clipboard
+    // outright.
+    setCopyState((await copyToClipboard(turnId)) ? 'copied' : 'failed');
   };
 
   return (
@@ -584,8 +584,6 @@ export interface TurnProvenanceCardProps {
   statedInRow?: TurnProvenanceStatedInRow;
   /** Display name of the human accountable for this Station, if available. */
   accountableHuman?: string | null;
-  /** Per-turn evidence navigation belongs inside this disclosure, not beside actions. */
-  basisContent?: ReactNode;
   /** The share entry point is part of the always-visible disclosure line. */
   shareContent?: ReactNode;
   /**
@@ -600,7 +598,6 @@ export function TurnProvenanceCard({
   provenance,
   statedInRow = NOTHING_STATED_IN_ROW,
   accountableHuman,
-  basisContent,
   shareContent,
   defaultOpen = false,
 }: TurnProvenanceCardProps) {
@@ -620,7 +617,7 @@ export function TurnProvenanceCard({
       >
         <p className="turn-provenance__unreadable">
           Provenance was recorded in a format this version of Station cannot
-          read. Nothing about this answer is being claimed from it.
+          read.
         </p>
       </section>
     );
@@ -679,9 +676,6 @@ export function TurnProvenanceCard({
             ))}
           </dl>
 
-          {basisContent && (
-            <div className="turn-provenance__basis">{basisContent}</div>
-          )}
           {shareContent}
 
           {provenance.contextInjection?.state === 'observed' && (

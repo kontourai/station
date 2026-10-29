@@ -132,24 +132,13 @@
   font-size: var(--text-sm);
 }
 
-/* Go to line: an inline popover pinned to the top of the scrolling code. */
+/* Go to line is shown in the tool's contextual floating controls. */
 .workspace-file-preview__goto {
-  position: sticky;
-  top: 0;
-  z-index: 1;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  width: fit-content;
-  max-width: 100%;
-  margin: 0 0 6px auto;
-  padding: 6px 6px 6px 10px;
-  border: 1px solid var(--border-primary);
-  border-radius: 10px;
-  background: var(--bg-secondary);
-  box-shadow: var(--shadow-menu);
-  font-size: var(--text-sm);
+  gap: var(--k-space-2);
+  font-size: var(--k-text-sm);
 }
 .workspace-file-preview__goto label {
   display: inline-flex;

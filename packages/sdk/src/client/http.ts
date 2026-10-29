@@ -88,6 +88,8 @@ export interface ClientRequestOptions {
    * whose response body is deliberately open-ended.
    */
   timeoutMs?: number | null;
+  /** Header/body inactivity bound with a five-minute total cap for JSON GETs. */
+  progressTimeoutMs?: number;
 }
 
 /** Public, non-secret identity of the host authority a request is bound to. */
@@ -219,6 +221,46 @@ function resolveTimeoutMs(opts?: ClientRequestOptions): number | undefined {
   return clientRequestTimeoutMs;
 }
 
+/** Native abort ordering where available, with an iOS 16.4 fallback. */
+function composeRequestSignals(
+  deadline: AbortSignal,
+  ...callers: Array<AbortSignal | null | undefined>
+): { signal: AbortSignal; cleanup: () => void } {
+  const signals = [
+    ...new Set(callers.filter((signal): signal is AbortSignal => !!signal)),
+  ];
+  if (signals.length === 0) return { signal: deadline, cleanup() {} };
+  signals.push(deadline);
+  if (typeof AbortSignal.any === 'function') {
+    return { signal: AbortSignal.any(signals), cleanup() {} };
+  }
+  const controller = new AbortController();
+  const listeners = new Map<AbortSignal, () => void>();
+  const cleanup = () => {
+    for (const [signal, listener] of listeners) {
+      signal.removeEventListener('abort', listener);
+    }
+    listeners.clear();
+  };
+  for (const signal of signals) {
+    const abort = () => {
+      // Reentrant listeners may have aborted several inputs before we run.
+      // Prefer the first aborted input in composition order; ordinary listeners
+      // cannot recover chronological abort order when multiple inputs aborted.
+      const aborted = signals.find((input) => input.aborted) ?? signal;
+      controller.abort(aborted.reason);
+      cleanup();
+    };
+    if (signal.aborted) {
+      abort();
+      break;
+    }
+    listeners.set(signal, abort);
+    signal.addEventListener('abort', abort, { once: true });
+  }
+  return { signal: controller.signal, cleanup };
+}
+
 /**
  * Issues `fetch` with a deadline, translating the resulting abort into a
  * `StationRequestTimeoutError` so callers can tell "the server never answered"
@@ -233,10 +275,11 @@ async function fetchWithDeadline(
 ): Promise<Response> {
   const request = opts?.request ?? fetch;
   const deadline = AbortSignal.timeout(timeoutMs);
-  const signal = init?.signal
-    ? AbortSignal.any([init.signal, deadline])
-    : deadline;
-  signal.throwIfAborted();
+  const { signal, cleanup } = composeRequestSignals(
+    deadline,
+    input instanceof Request ? input.signal : undefined,
+    init?.signal,
+  );
   // `fetch` defaults an init without a method to GET, so reading GET here is a
   // derivation of what was actually sent, not a stand-in for an unknown.
   const method =
@@ -248,12 +291,160 @@ async function fetchWithDeadline(
     });
   let response: Response;
   try {
+    signal.throwIfAborted();
     response = await request(input, { ...(init ?? {}), signal });
   } catch (error) {
-    if (deadline.aborted) throw timedOut();
+    cleanup();
+    if (deadline.aborted && signal.reason === deadline.reason) throw timedOut();
     throw error;
   }
-  return deadlineBoundBody(response, deadline, timedOut);
+  const abortReason = () =>
+    deadline.aborted && signal.reason === deadline.reason
+      ? timedOut()
+      : signal.reason;
+  return deadlineBoundBody(
+    abortBoundBody(response, signal, cleanup, () => {}, abortReason),
+    signal,
+    abortReason,
+  );
+}
+
+// Over seven times the observed ~41s healthy slow-tailnet read, while bounding
+// queue occupancy even when a broken connection keeps trickling bytes.
+const PROGRESS_REQUEST_TOTAL_TIMEOUT_MS = 5 * 60_000;
+
+/** Opt-in header and body-idle bounds, with a five-minute total ceiling. */
+async function fetchWithProgressTimeout(
+  input: Parameters<typeof fetch>[0],
+  init: RequestInit | undefined,
+  timeoutMs: number,
+  url: string,
+  request: ClientAuthenticatedTransport,
+  readOnly?: boolean,
+): Promise<Response> {
+  const deadline = new AbortController();
+  const { signal, cleanup: cleanupSignals } = composeRequestSignals(
+    deadline.signal,
+    input instanceof Request ? input.signal : undefined,
+    init?.signal,
+  );
+  const method =
+    init?.method ?? (input instanceof Request ? input.method : 'GET');
+  const timedOut = (durationMs = timeoutMs) =>
+    new StationRequestTimeoutError(url, durationMs, { method, readOnly });
+  const totalTimer = setTimeout(
+    () => deadline.abort(timedOut(PROGRESS_REQUEST_TOTAL_TIMEOUT_MS)),
+    PROGRESS_REQUEST_TOTAL_TIMEOUT_MS,
+  );
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const reset = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => deadline.abort(timedOut()), timeoutMs);
+  };
+  const clearTimers = () => {
+    clearTimeout(timer);
+    clearTimeout(totalTimer);
+    cleanupSignals();
+  };
+  reset();
+  let onAbort: () => void = () => {};
+  let response: Response;
+  try {
+    signal.throwIfAborted();
+    response = await Promise.race([
+      request(input, { ...init, signal }),
+      new Promise<never>((_resolve, reject) => {
+        onAbort = () => reject(signal.reason);
+        signal.addEventListener('abort', onAbort, { once: true });
+        if (signal.aborted) onAbort();
+      }),
+    ]);
+  } catch (error) {
+    clearTimers();
+    throw error;
+  } finally {
+    signal.removeEventListener('abort', onAbort);
+  }
+  reset();
+  return abortBoundBody(response, signal, clearTimers, reset);
+}
+
+/** Keep cancellation and composition alive until the response body settles. */
+function abortBoundBody(
+  response: Response,
+  signal: AbortSignal,
+  finish: () => void,
+  touch: () => void,
+  abortReason: () => unknown = () => signal.reason,
+): Response {
+  if (!response.body) {
+    finish();
+    return response;
+  }
+  const reader = response.body.getReader();
+  let onAbort: () => void = () => {};
+  const cleanup = () => {
+    finish();
+    signal.removeEventListener('abort', onAbort);
+  };
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      onAbort = () => {
+        cleanup();
+        controller.error(abortReason());
+        // Native transports may leave cancellation pending; settlement must not wait for it.
+        void reader.cancel(abortReason()).catch(() => {});
+      };
+      signal.addEventListener('abort', onAbort, { once: true });
+      if (signal.aborted) onAbort();
+    },
+    async pull(controller) {
+      try {
+        const chunk = await reader.read();
+        if (signal.aborted) return;
+        if (chunk.done) {
+          cleanup();
+          controller.close();
+          reader.releaseLock();
+        } else {
+          if (chunk.value.byteLength > 0) touch();
+          controller.enqueue(chunk.value);
+        }
+      } catch (error) {
+        if (signal.aborted) return;
+        cleanup();
+        controller.error(error);
+        void reader.cancel(error).catch(() => {});
+      }
+    },
+    cancel(reason) {
+      cleanup();
+      void reader.cancel(reason).catch(() => {});
+    },
+  });
+  const bounded = new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+  return new Proxy(bounded, {
+    get(target, property) {
+      if (
+        BODY_READERS.has(property) &&
+        typeof Reflect.get(response, property, response) !== 'function'
+      )
+        return undefined;
+      if (
+        property === 'url' ||
+        property === 'redirected' ||
+        property === 'type'
+      )
+        return response[property];
+      const value = Reflect.get(target, property, target);
+      if (property === 'constructor') return value;
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
 }
 
 const BODY_READERS = new Set<PropertyKey>([
@@ -267,9 +458,9 @@ const BODY_READERS = new Set<PropertyKey>([
 
 /**
  * The deadline also governs the body readers (`json`, `text`, `arrayBuffer`,
- * `blob`, `formData`, `bytes`; not `response.body` streams, which a caller
- * reads itself): `fetch`'s signal aborts a body read still in progress when
- * it fires. A body reader that fails that way raises the same
+ * `blob`, `formData`, `bytes`) in addition to the stream wrapper above.
+ * The composed signal aborts a body read still in progress when it fires. The reader also races that deadline so a transport that leaves
+ * its body pending cannot strand the caller. A deadline raises the same
  * `StationRequestTimeoutError` (with the same `mutation` fact) as a deadline
  * missed before the headers, so a caller can tell "the server answered 200
  * and then stalled" (a write may have been applied) from a malformed body.
@@ -283,8 +474,8 @@ const BODY_READERS = new Set<PropertyKey>([
  */
 function deadlineBoundBody(
   response: Response,
-  deadline: AbortSignal,
-  timedOut: () => StationRequestTimeoutError,
+  signal: AbortSignal,
+  abortReason: () => unknown,
 ): Response {
   return new Proxy(response, {
     get(target, property) {
@@ -292,16 +483,26 @@ function deadlineBoundBody(
       if (BODY_READERS.has(property) && typeof value === 'function') {
         const read = value as () => Promise<unknown>;
         return async () => {
+          let onDeadline: (() => void) | undefined;
           try {
-            return await read.call(target);
+            if (signal.aborted) throw abortReason();
+            return await Promise.race([
+              read.call(target),
+              new Promise<never>((_resolve, reject) => {
+                onDeadline = () => reject(abortReason());
+                signal.addEventListener('abort', onDeadline, { once: true });
+              }),
+            ]);
           } catch (error) {
-            if (deadline.aborted) throw timedOut();
+            if (signal.aborted) throw abortReason();
             throw error;
+          } finally {
+            if (onDeadline) signal.removeEventListener('abort', onDeadline);
           }
         };
       }
       if (property === 'clone' && typeof value === 'function')
-        return () => deadlineBoundBody(target.clone(), deadline, timedOut);
+        return () => deadlineBoundBody(target.clone(), signal, abortReason);
       if (property === 'constructor') return value;
       return typeof value === 'function' ? value.bind(target) : value;
     },
@@ -843,6 +1044,8 @@ async function settleCredentialResponse(
  * pass `timeoutMs: null` to opt out of the host default.
  */
 export type AuthenticatedFetchInit = RequestInit & {
+  /** Opt-in header/body inactivity timeout with a five-minute total cap; supersedes timeoutMs. */
+  progressTimeoutMs?: number;
   timeoutMs?: number | null;
   /** See `ClientRequestOptions['readOnly']` — the same declaration, for the
    * call sites that reach Station through `authenticatedFetch` directly. */
@@ -866,7 +1069,13 @@ async function dispatchAuthenticatedFetch(
   input: Parameters<typeof fetch>[0],
   ...args: [init?: AuthenticatedFetchInit]
 ): Promise<Response> {
-  const { timeoutMs: initTimeoutMs, readOnly, ...rest } = args[0] ?? {};
+  const {
+    timeoutMs: initTimeoutMs,
+    progressTimeoutMs,
+    readOnly,
+    ...rest
+  } = args[0] ?? {};
+  const progressTimeout = normalizeTimeout(progressTimeoutMs);
   const init = args[0] === undefined ? undefined : (rest as RequestInit);
   const hasInitArgument = args.length > 0;
   const url = input instanceof Request ? input.url : input.toString();
@@ -889,6 +1098,15 @@ async function dispatchAuthenticatedFetch(
     // Arity is preserved deliberately: several suites pin `fetch(url)` vs
     // `fetch(url, undefined)` on this path, and adding a deadline must not
     // change the call shape when no deadline is configured.
+    if (progressTimeout !== undefined)
+      return fetchWithProgressTimeout(
+        input,
+        originInit,
+        progressTimeout,
+        url,
+        fetch,
+        readOnly,
+      );
     if (timeoutMs === undefined) {
       return hasInitArgument || originInit !== undefined
         ? fetch(input, originInit)
@@ -970,12 +1188,21 @@ async function dispatchAuthenticatedFetch(
     assertAuthority,
   );
   const response =
-    timeoutMs === undefined
-      ? await request(input, transportInit)
-      : await fetchWithDeadline(input, transportInit, timeoutMs, url, {
+    progressTimeout !== undefined
+      ? await fetchWithProgressTimeout(
+          input,
+          transportInit,
+          progressTimeout,
+          url,
           request,
-          ...(readOnly !== undefined ? { readOnly } : {}),
-        });
+          readOnly,
+        )
+      : timeoutMs === undefined
+        ? await request(input, transportInit)
+        : await fetchWithDeadline(input, transportInit, timeoutMs, url, {
+            request,
+            ...(readOnly !== undefined ? { readOnly } : {}),
+          });
   await settleCredentialResponse(
     url,
     response,
@@ -1064,6 +1291,7 @@ export async function getJson(
     init.headers = headers;
   }
   const timeoutMs = resolveTimeoutMs(requestOptions);
+  const progressTimeout = normalizeTimeout(requestOptions?.progressTimeoutMs);
   const request =
     configured?.transport && sameOrigin(url, configured.origin)
       ? configured.transport
@@ -1081,11 +1309,20 @@ export async function getJson(
     assertAuthority,
   );
   const response =
-    timeoutMs === undefined
-      ? await request(url, dispatchInit)
-      : await fetchWithDeadline(url, dispatchInit, timeoutMs, url, {
+    progressTimeout !== undefined
+      ? await fetchWithProgressTimeout(
+          url,
+          dispatchInit,
+          progressTimeout,
+          url,
           request,
-        });
+          requestOptions?.readOnly,
+        )
+      : timeoutMs === undefined
+        ? await request(url, dispatchInit)
+        : await fetchWithDeadline(url, dispatchInit, timeoutMs, url, {
+            request,
+          });
   await settleCredentialResponse(
     url,
     response,
@@ -1235,24 +1472,12 @@ export interface FetchSseOptions extends ClientRequestOptions {
    */
   healthyConnectionMs?: number;
   /**
-   * station#2301: abandon an attempt whose body has delivered NO bytes for
-   * this long, and reconnect through the ordinary transient-failure path
-   * (Last-Event-ID kept). Unset — the default — waits on `reader.read()`
-   * forever, which is what an open-ended stream with no server heartbeat
-   * needs.
-   *
-   * A socket that dies without an error (doze, NAT rebind, a frozen WebView
-   * resuming onto a dead connection) never rejects that read: the stream
-   * looks open, delivers nothing, and nothing notices. Only a caller whose
-   * server writes a heartbeat can tell silence from death, so only it can
-   * choose this number; set it to a few heartbeat intervals. Any bytes count
-   * as activity, including comments and keepalive frames the caller ignores.
-   *
-   * Checked on a timer and again whenever the page becomes visible, so a
-   * resumed background page — whose timers were frozen — notices at once
-   * rather than one check interval later.
+   * Reconnect after this many milliseconds without any body bytes. Defaults
+   * to 75_000, allowing two missed 30-second Station keepalives. Comments
+   * and ping frames count as activity. Set null for a server without heartbeats.
+   * Visibility, focus and online transitions also check the elapsed silence.
    */
-  stallTimeoutMs?: number;
+  stallTimeoutMs?: number | null;
   onOpen?: (response: Response) => void;
   /** Return false when the frame was rejected and must not advance its checkpoint. */
   onMessage: (message: FetchSseMessage) => unknown;
@@ -1436,18 +1661,29 @@ function interruptibleDelay(
   if (signal.aborted) return { promise: Promise.resolve(), wake: () => {} };
   const startedAt = Date.now();
   let settled = false;
+  let resumeTimer: ReturnType<typeof setTimeout> | undefined;
   let finish = () => {};
   const promise = new Promise<void>((resolve) => {
     const onWake = () => {
       // A hidden tab's `visibilitychange` is the tab LEAVING, not returning.
       if (browserDocument()?.hidden === true) return;
       if (Date.now() - startedAt < minElapsedBeforeWake) return;
-      finish();
+      // Coalesce focus/online/visibility for this wait, while spreading the
+      // independent streams returning from suspension. Explicit retry stays immediate.
+      if (resumeTimer !== undefined) return;
+      resumeTimer = setTimeout(
+        () => {
+          resumeTimer = undefined;
+          if (browserDocument()?.hidden !== true) finish();
+        },
+        100 + Math.floor(Math.random() * 900),
+      );
     };
     finish = () => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      if (resumeTimer !== undefined) clearTimeout(resumeTimer);
       signal.removeEventListener('abort', finish);
       browserDocument()?.removeEventListener('visibilitychange', onWake);
       const scope = browserWindow();
@@ -1692,6 +1928,7 @@ export function fetchSSE(
           // here would tear down a healthy connection on its first quiet
           // minute. Cancellation is `controller`'s job, not a timer's.
           timeoutMs: null,
+          progressTimeoutMs: undefined,
         });
         if (controller.signal.aborted) break;
         attemptOpenedAt = Date.now();
@@ -1725,7 +1962,9 @@ export function fetchSSE(
             }
             opts.onCheckpoint?.(checkpoint);
           },
-          opts.stallTimeoutMs,
+          opts.stallTimeoutMs === null
+            ? undefined
+            : (opts.stallTimeoutMs ?? 75_000),
         );
         if (!controller.signal.aborted) {
           throw new Error('SSE stream ended unexpectedly');

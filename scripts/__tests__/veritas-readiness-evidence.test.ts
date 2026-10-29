@@ -9,6 +9,7 @@ import { persistVerificationOutput } from '../lib/verification-reporter.mjs';
 import { FAST_STATIC_COMMANDS } from '../run-ci-fast.mjs';
 import {
   classifyReadinessEvidence,
+  explicitOnlyEvidenceCheckId,
   resolveEvidenceCheckFailure,
 } from '../veritas-readiness-evidence.mjs';
 
@@ -245,8 +246,60 @@ describe('Station Veritas readiness evidence boundary', () => {
     ).toEqual({ status: 'FAIL', exitCode: 1, reason: 'readiness-failed' });
   });
 
+  test('sets aside only the explicit command’s own requirement when it exits 2', () => {
+    // Veritas 1.11.3 makes the explicit command a required check, so its
+    // exit 2 fails the record; any other unmet requirement must stay red.
+    const explicitId = 'explicit-command-node-e-process-exit-2';
+    const failure = { id: explicitId, exitCode: 2 };
+    const explicitFailed = { id: explicitId, state: 'failed' };
+    expect(
+      classifyReadinessEvidence({
+        evidenceCheckFailure: failure,
+        explicitEvidenceCheckId: explicitId,
+        record: { required_evidence_checks: [explicitFailed] },
+      }),
+    ).toEqual({
+      status: 'NOT_VERIFIED',
+      exitCode: 2,
+      reason: 'evidence-check-not-verified',
+    });
+    expect(
+      classifyReadinessEvidence({
+        evidenceCheckFailure: failure,
+        explicitEvidenceCheckId: explicitId,
+        record: {
+          required_evidence_checks: [
+            explicitFailed,
+            { id: 'repo-governance', state: 'missing' },
+          ],
+        },
+      }),
+    ).toEqual({ status: 'FAIL', exitCode: 1, reason: 'readiness-failed' });
+  });
+
+  test('never sets aside a configured check the explicit command repeats', () => {
+    const command = 'npm run proof:repo-governance';
+    const record = {
+      repo_map: { evidenceChecks: [{ id: 'repo-governance', command }] },
+      selected_evidence_checks: [{ id: 'repo-governance', command }],
+    };
+    expect(explicitOnlyEvidenceCheckId(record, command)).toBeNull();
+    expect(
+      explicitOnlyEvidenceCheckId(
+        {
+          ...record,
+          selected_evidence_checks: [
+            ...record.selected_evidence_checks,
+            { id: 'explicit-command-node', command: 'node' },
+          ],
+        },
+        'node',
+      ),
+    ).toBe('explicit-command-node');
+  });
+
   test('derives the failure of a non-required check the engine only warns about', () => {
-    // Veritas 1.6.0 records an explicit command's nonzero exit in the
+    // Veritas 1.6.0 through 1.11.2 recorded an explicit command's nonzero exit in the
     // per-check results without promoting it to evidenceCheckFailure.
     const explicit = {
       id: 'explicit-command-node-e-process-exit-2',

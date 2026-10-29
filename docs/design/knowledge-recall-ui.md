@@ -8,7 +8,7 @@
 > The extraction's original behavior/packaging claims do not replace current
 > provider, live plugin, or real Knowledge-store verification.
 
-Status: accepted for the Station #528 extraction, 2026-07-19.
+Status: accepted for the archive#528 extraction, 2026-07-19.
 
 This decision follows the generic Knowledge Library pilot with a supported
 first-party boundary that Meeting Notes can also consume. It does not change
@@ -91,8 +91,10 @@ is disclosed rather than fetched under an invented authority.
 ## Lifecycle and cache integrity
 
 A root id alone is not enough to detect changed registration metadata. The
-metadata key includes id, scope, adapter, store root, display name, and creation
-time; changes trigger graph and canonical-record revalidation. It is not an
+metadata key includes id, scope, adapter, store root, display name, creation
+time and, when present, durable `projectId` and server-issued `registrationId`.
+Legacy roots retain their original encoding when both optional fields are absent.
+Changes trigger graph and canonical-record revalidation. It is not an
 immutable incarnation, owner revision, or authorization grant: identically
 restored metadata can produce the same key. Canonical record queries also
 revalidate when the selected record changes; server read authority remains

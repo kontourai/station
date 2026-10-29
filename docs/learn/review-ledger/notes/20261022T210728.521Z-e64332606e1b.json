@@ -1,0 +1,7 @@
+{
+  "revision": "fedf416e75ff7ae763d8dcfd657ca070a2f09c81",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Re-read the useReposQuery claim against the /repos route change (bounded discovery): response shape, admission (Project confinement, operator-in-person without a slug) and the empty-result-on-failure note are unchanged; the paragraph states the 24-repository bound and scan coalescing. Re-recorded after history rewrite.","inputs":["docs/reference/sdk.md","src-server/routes/projects/coding.ts"]}
+  ]
+}

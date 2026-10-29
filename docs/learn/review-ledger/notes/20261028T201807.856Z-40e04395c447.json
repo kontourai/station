@@ -1,0 +1,9 @@
+{
+  "revision": "6414bc0557278256220891ca776c9cfe6d6b79c2",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Review round 3: the fork bullets now name the global space beside Projects (mayAct needs no Project action for a global view or execute target, station-control-dispatch-scope.ts); checked the rest of Forking a conversation against stationControlScopeRefusal and the mounted fork tests.","inputs":["docs/guides/self-configuring-agent.md"]},
+
+    {"path":"docs/reference/session-api.md","note":"self-configuring-agent.md changed only in the Forking a conversation bullets (global space named). session-api.md does not describe fork_conversation scope; its claims are unaffected.","inputs":["docs/reference/session-api.md","docs/guides/self-configuring-agent.md"]}
+  ]
+}

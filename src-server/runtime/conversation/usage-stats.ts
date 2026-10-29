@@ -141,7 +141,7 @@ export async function calculateUsageCost(
   providerType: string | undefined,
   appConfig: AppConfig,
   logger: { warn: (message: string, meta?: unknown) => void },
-  // archive#1557 review round 2 (M6). This defaulted to `appConfig.region`
+  // archive#1557: this used to default to `appConfig.region`
   // while its callers' own enrichment lookups had been routed through the
   // resolver, so with `AWS_REGION=eu-west-1` and nothing stored, one lookup
   // priced a turn from eu-west-1 and the conversation cost stat for the SAME

@@ -425,6 +425,48 @@ describe('a reason is readable in full on every surface', () => {
     expect(screen.queryByTestId('inbox-row-details')).toBeNull();
   });
 
+  it('a hold on a touch-chrome row opens its Details sheet, and does not also open the chat', async () => {
+    const onActivate = vi.fn();
+    const row = rowFor(FAILED);
+    vi.useFakeTimers();
+    try {
+      renderRow(row, { chrome: 'touch', hoverCard: true, onActivate });
+      const open = screen.getByRole('button', {
+        name: /^Migrate sessions table/,
+      });
+      fireEvent.pointerDown(open, {
+        pointerType: 'touch',
+        button: 0,
+        clientX: 10,
+        clientY: 10,
+      });
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
+      fireEvent.pointerUp(open, { pointerType: 'touch' });
+      fireEvent.click(open);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(onActivate).not.toHaveBeenCalled();
+    expect(
+      screen
+        .getByRole('button', { name: 'Details for Migrate sessions table' })
+        .getAttribute('aria-expanded'),
+    ).toBe('true');
+    expect(
+      await screen.findByTestId('inbox-row-details', {}, { timeout: 8000 }),
+    ).toBeTruthy();
+  });
+
+  it('a hover-chrome row leaves the right-click alone: its actions are beside the pointer', () => {
+    renderRow(rowFor(), { hoverCard: true, onSnoozeWake: vi.fn() });
+    const open = screen.getByRole('button', {
+      name: /^Migrate sessions table/,
+    });
+    expect(fireEvent.contextMenu(open)).toBe(true);
+  });
+
   it('hover chrome offers no Details action: its card opens on hover and focus', () => {
     renderRow(rowFor(), { hoverCard: true, onSnoozeWake: vi.fn() });
     expect(screen.queryByRole('button', { name: /^Details for/ })).toBeNull();
@@ -470,6 +512,9 @@ describe('the chip line exists only when a chip does', () => {
 
   it('the chip derivation, fact by fact', () => {
     expect(inboxRowChips({})).toEqual([]);
+    expect(inboxRowChips({ receivedAgentMessage: true })).toEqual([
+      { kind: 'agent-message', label: 'Agent message' },
+    ]);
     expect(
       inboxRowChips({}, { hasUnsentDraft: false, isWoken: false }),
     ).toEqual([]);

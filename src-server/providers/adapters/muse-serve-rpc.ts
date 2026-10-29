@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { isRecord } from '../../utils/is-record.js';
 
 /**
  * #2452: the stdio JSON-RPC connection to one `muse serve` (MSP) host.
@@ -106,10 +107,6 @@ interface PendingRequest {
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
   timer?: ReturnType<typeof setTimeout>;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /**

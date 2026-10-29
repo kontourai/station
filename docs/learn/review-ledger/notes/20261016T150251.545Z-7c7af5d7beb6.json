@@ -1,0 +1,17 @@
+{
+  "revision": "d8e4378d448e110d29bc134adac5cc694ccf322a",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Reviewed verification-policy evidence registration and ci-fast composition against lane description/marker-only changes. Default enforcement, bounded invariant list, prerequisite builds and hosted shard wiring unchanged; optional local invocation does not alter required readiness checks.","inputs":[".veritas/README.md","scripts/verification-lanes.mjs","scripts/verification-policy-gate.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Delta review: generated lane trigger now says optional local / hosted feedback; policy marker names focused local proof, hooks and required hosted checks. Commands, weights and hooks unchanged. Existing routing/policy tests passed 57 cases.","inputs":["docs/guides/code-quality.md","scripts/verification-lanes.mjs","scripts/verification-policy-gate.mjs","AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed marker-aligned ordinary PR sentence and lane descriptor delta; required hosted PR checks and normal hooks retain integration/typecheck authority. No routine broad local pass required; no omitted diagnostic represented as passed.","inputs":["docs/guides/development.md","scripts/verification-lanes.mjs","scripts/verification-policy-gate.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"Regenerated scheduling block from verification-lanes via renderVerificationSchedulingSection. Reviewed optional-local trigger and canonical policy marker against unchanged commands, deadlines, resource weights, completion flags and required hosted checks. Fifty-seven focused policy/routing tests passed.","inputs":["docs/guides/testing.md","scripts/verification-lanes.mjs","scripts/verification-policy-gate.mjs"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed E2E manifest and coverage-lane claims against ci-fast trigger-description-only change. E2E lane scope, buckets, commands and evidence boundaries unchanged; no update needed.","inputs":["docs/guides/e2e-coverage-matrix.md","scripts/verification-lanes.mjs"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"Updated ordinary PR path to focused local evidence, normal hooks and hosted checks with optional local ci-fast. Reviewed unchanged receipt commands, completion classification, source identity and trust-reconcile floor; new lane trigger wording alters no receipt validity rules.","inputs":["docs/reference/verification-receipts.md","scripts/verification-lanes.mjs"]}
+  ]
+}

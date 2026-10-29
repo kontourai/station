@@ -8,7 +8,10 @@ import type {
   SessionAnswerBasisQueryOutcome,
   SessionQueryModule,
 } from '../orchestration/session-query-module.js';
-import { createTaskBasisQueryModule } from './task-basis-module.js';
+import {
+  createTaskBasisQueryModule,
+  type StationBasisCompositionInvariantError,
+} from './task-basis-module.js';
 import type { TaskGraphService } from './task-graph-service.js';
 import { TaskOutputModule } from './task-output-module.js';
 import type { TaskGateEvaluationReferenceRead } from './task-tool-result-reference-read-adapter.js';
@@ -50,6 +53,10 @@ export function createTaskBasisRuntimeComposition(input: {
     request?: Request;
   }) => Promise<ContributionRead>;
   gateEvaluationReferences?: TaskGateEvaluationReferenceRead;
+  reportCompositionInvariant?: (
+    error: StationBasisCompositionInvariantError,
+    taskId?: string,
+  ) => void;
 }) {
   const taskOutputs = new TaskOutputModule({
     homeDir: input.homeDir,
@@ -64,12 +71,13 @@ export function createTaskBasisRuntimeComposition(input: {
   const taskBasis = createTaskBasisQueryModule({
     taskGraph: input.taskGraphService,
     sessionQueries: input.sessionQueries,
-    outputs: taskOutputs,
+    outputs: { list: (taskId) => taskOutputs.listForBasis(taskId) },
     toolResultReferences: taskToolResultReferences,
     gateEvaluationReferences: input.gateEvaluationReferences,
     readAssessment: input.readAssessment,
     readReviewedSource: input.readReviewedSource,
     readNarrative: input.readNarrative,
+    reportCompositionInvariant: input.reportCompositionInvariant,
   });
   return { taskOutputs, taskBasis, taskToolResultReferences };
 }

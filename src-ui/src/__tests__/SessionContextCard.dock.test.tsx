@@ -1,0 +1,1119 @@
+/** @vitest-environment jsdom */
+
+/**
+ * The session context card in the REAL dock (`ChatWorkspacePane` inside
+ * `DockShell`): whether it shows is the conversation surface's own measured
+ * width, and the header items it replaces (the branch badge, the More
+ * trigger's running-count badge) stand down only while it shows. While it is
+ * folded away the header chip opens the same rows as a sheet.
+ *
+ * jsdom has no layout, so the one measurement the fit reads — the
+ * conversation surface's rendered width — is supplied per test; everything
+ * from that number to the DOM is the production path. The Activity line is
+ * the real ladder read over a real inbox row for the active chat.
+ *
+ * Not proved here: CSS geometry (the card's column, the sheet's docking).
+ * The browser screenshots in the PR carry those.
+ */
+
+import { SESSION_STATUS_WORDS } from '@kontourai/station-contracts/session-attention';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { ChatWorkspacePane } from '../components/chat-dock/ChatDock';
+import { DockShell } from '../components/chat-dock/DockShell';
+import {
+  closeSessionInventoryOccurrence,
+  openSessionInventoryOccurrence,
+} from '../components/chat-dock/sessionInventoryOccurrence';
+import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
+import { NavigationProvider } from '../contexts/NavigationContext';
+import { navigationStore } from '../contexts/navigation-store';
+import { deviceSettingsStore } from '../lib/device-settings-store';
+import type { ChatSession } from '../types';
+import type { HomeWorkItem } from '../views/home/home-view-model';
+
+const fixture = vi.hoisted(() => ({
+  session: null as unknown,
+  git: undefined as unknown,
+  inbox: [] as unknown[],
+  backgroundRunning: 0,
+  surfaceWidth: 0,
+  // Width taken from the transcript's column by something beside it in the
+  // surface, as an open Chat inventory aside takes it (#3882).
+  besideTranscript: 0,
+  authority: undefined as unknown,
+  pullRequests: [] as unknown[],
+  // The card chunk's state: `ready` renders the real card; `loading`
+  // suspends forever (a chunk still in flight); `failed` throws (a chunk
+  // that did not load).
+  cardChunk: 'ready' as 'ready' | 'loading' | 'failed',
+  // Renders of the real card's rows, counted through the one hook they call.
+  cardRowRenders: 0,
+  // The session's directory and whether the server reports it as a folder
+  // Station created for the chat (`cwdManagedWorkspace`).
+  cwd: '/work/demo',
+  cwdManaged: false,
+  realExit: false,
+}));
+
+vi.mock('@kontourai/station-connect', () => ({
+  useConnections: () => ({
+    activeConnection: { id: 'test', name: 'Test Station' },
+    captureCredentialEvidence: () => undefined,
+  }),
+}));
+
+// --- Everything NOT under test: mocked to the lightest shape that lets the
+// real ChatWorkspacePane mount without crashing. Navigation, device settings
+// (a real store, no provider needed) and the keyboard-shortcut registry stay
+// real — those are exactly what the shortcut registry exercises.
+
+// `RegionModelProvider` wraps the whole application, so `useShowSurface`
+// requires it. This harness mounts a fragment of that tree, and nothing
+// here asserts a surface reveal, so the command hook is supplied directly.
+const showSurfaceStub = vi.hoisted(() => vi.fn());
+vi.mock('../contexts/useShowSurface', () => ({
+  useShowSurface: () => showSurfaceStub,
+}));
+
+vi.mock('../contexts/ApiBaseContext', () => ({
+  useApiBase: () => ({ apiBase: 'http://test.local' }),
+  useHostRequestAuthorityScope: () => fixture.authority,
+}));
+
+vi.mock(
+  '@kontourai/station-sdk/conversation-pull-request-links',
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import('@kontourai/station-sdk/conversation-pull-request-links')
+    >()),
+    getConversationPullRequestLinks: async () => ({
+      conversationId: 'conversation-1',
+      observedAt: new Date().toISOString(),
+      links: fixture.pullRequests,
+    }),
+  }),
+);
+
+vi.mock('../contexts/AgentsContext', () => ({
+  useAgents: () => [],
+  useAgentsLoaded: () => true,
+}));
+
+vi.mock('../contexts/ConfigContext', () => ({
+  useConfig: () => ({ defaultChatFontSize: 14, defaultModel: undefined }),
+  CONFIG_DEFAULTS: { defaultChatFontSize: 14 },
+}));
+
+vi.mock('../contexts/ModelsContext', () => ({
+  useModelsCatalog: () => ({
+    models: [],
+    isLiveConfirmed: true,
+    modelsLoading: false,
+  }),
+}));
+
+vi.mock('../contexts/ProjectsContext', () => ({
+  useProjects: () => ({ projects: [] }),
+  useScopedProjectsQuery: () => ({ data: [], isSuccess: true }),
+  useScopedProjectQuery: () => ({ data: undefined, isSuccess: true }),
+  useScopedProjectChatDefaultsQuery: () => ({
+    data: undefined,
+    isFetching: false,
+    isPending: false,
+  }),
+  useProject: () => undefined,
+}));
+
+vi.mock('../contexts/ToastContext', () => ({
+  useToast: () => ({ showToast: vi.fn() }),
+}));
+
+vi.mock('../contexts/ActiveChatsContext', () => ({
+  activeChatsStore: {
+    getState: () => ({}),
+    getSnapshot: () => ({}),
+    subscribe: () => () => {},
+  },
+  useActiveChatActions: () => ({
+    initChat: vi.fn(),
+    removeChat: vi.fn(),
+    updateChat: vi.fn(),
+    addEphemeralMessage: vi.fn(),
+    clearEphemeralMessages: vi.fn(),
+  }),
+}));
+
+vi.mock('../contexts/open-chats-store', () => ({
+  openChatsStore: {
+    getState: () => ({}),
+    subscribe: () => () => {},
+    registerNavigation: () => () => {},
+  },
+  useOpenChats: () => [],
+  useOpenChatInbox: () => ({
+    items: [],
+    currentSessionIdByConversation: new Map(),
+  }),
+  countOpenChatAttention: () => 0,
+}));
+
+vi.mock('../hooks/useActiveChatSessions', () => ({
+  useRehydrateSessions: () => () => {},
+  useCancelMessage: () => vi.fn(),
+}));
+
+vi.mock('../hooks/useActiveProject', () => ({
+  useActiveProject: () => ({ projectSlug: undefined }),
+}));
+
+vi.mock('../hooks/useBackgroundTasks', () => ({
+  useChatBackgroundTasksRunningCount: () => fixture.backgroundRunning,
+}));
+
+vi.mock('../hooks/useChatDockActions', () => ({
+  useChatDockActions: () => ({}),
+}));
+
+vi.mock('../hooks/useChatInput', () => ({
+  useChatInput: () => ({
+    input: '',
+    attachments: [],
+    textareaRef: { current: null },
+    currentModel: undefined,
+    canModelSelect: false,
+    modelQuery: null,
+    commandQuery: null,
+    slashCommands: [],
+    handleInputChange: vi.fn(),
+    handleSend: vi.fn(async () => {}),
+    handleCancel: vi.fn(),
+    handleClearInput: vi.fn(),
+    handleAddAttachments: vi.fn(),
+    handleRemoveAttachment: vi.fn(),
+    handleClearAttachments: vi.fn(),
+    handleModelSelect: vi.fn(),
+    handleModelReset: vi.fn(),
+    handleModelClose: vi.fn(),
+    handleModelOpen: vi.fn(),
+    handleModelRuntimeOptionChange: vi.fn(),
+    handleApprovalModeChange: vi.fn(),
+    handleCommandSelect: vi.fn(async () => {}),
+    handleCommandClose: vi.fn(),
+    handleHistoryUp: vi.fn(),
+    handleHistoryDown: vi.fn(),
+    updateFromInput: vi.fn(),
+    closeAll: vi.fn(),
+    setAttachmentError: vi.fn(),
+    selectAttachmentFiles: vi.fn(async () => {}),
+  }),
+}));
+
+vi.mock('../hooks/useDerivedSessions', () => ({
+  useDerivedSessions: () => [],
+}));
+
+// Exits are instant here unless a test asks for the real hook
+// (`fixture.realExit`): most of this file is about WHICH surface shows, not
+// how it leaves.
+vi.mock('../hooks/useExitTransition', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../hooks/useExitTransition')>();
+  return {
+    useExitTransition: (open: boolean, exitMs: number) => {
+      const real = actual.useExitTransition(open, exitMs);
+      return fixture.realExit ? real : { mounted: open, exiting: false };
+    },
+  };
+});
+
+vi.mock('../hooks/orchestration/ensureOrchestrationEventStream', () => ({
+  ensureOrchestrationEventStream: () => {},
+}));
+
+vi.mock('../components/chat-dock/useChatDockViewModel', () => ({
+  useChatDockViewModel: () => ({
+    activeSession: fixture.session,
+    activeChatAgent: undefined,
+    activeChatModelLabel: undefined,
+    activeSessionForHook: null,
+    activeOrchestrationSessionRead: 'present',
+    gitStatus: fixture.git,
+    sessionProjectName: 'Demo project',
+    sessionDisplayCwd: fixture.cwd,
+    sessionCwdManaged: fixture.cwdManaged,
+    sessionCodingLayout: undefined,
+    dockProjectSlug: undefined,
+    mobileProjectName: undefined,
+    availableModels: [],
+    modelSupportsAttachments: false,
+    fileAttachmentsSupported: false,
+  }),
+}));
+
+// The inbox's rows for this harness: one row for the active chat, so the
+// card's Activity line is the real ladder read over a real row.
+vi.mock('../views/home/useInboxWorkItems', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../views/home/useInboxWorkItems')>();
+  return { ...actual, useInboxWorkItems: () => fixture.inbox };
+});
+
+vi.mock('../components/chat-dock/useChatDockActiveChatSync', () => ({
+  useChatDockActiveChatSync: () => {},
+}));
+
+vi.mock('../components/chat/ShareIntakeController', () => ({
+  ShareIntakeController: () => null,
+}));
+
+// `ChatDock.tsx` pre-warms `RegionPaneHost`'s lazy chunk at module
+// load (`void loadRegionPaneHost`), which this test never
+// actually needs (it imports `DockShell` directly, not through the ambient
+// host). Left real, that dynamic import cascades into `HomeWorkspacePane` /
+// `HomeSurface` and can resolve AFTER this test file's environment tears
+// down, throwing an unhandled rejection that Vitest warns can produce false
+// positives elsewhere. Stubbed to a no-op component so the prewarm has
+// nothing async to chase.
+// The transcript and the context meter are other owners' surfaces and need
+// providers this fragment does not mount; neither is under test here.
+vi.mock('../components/chat-dock/ChatDockContentArea', () => ({
+  ChatDockContentArea: () => (
+    <div className="chat-dock__content-area" data-testid="transcript" />
+  ),
+}));
+vi.mock('../components/conversation-stats/ConversationStats', () => ({
+  ContextPercentage: () => null,
+}));
+
+// The inventory's lazily loaded entry, reduced to the one decision under test:
+// which presentation the REAL resolver picks from the props the dock's host
+// handed it. The chunk itself is another lane's surface.
+vi.mock('../components/chat-dock/SessionInventoryEntryPoint', async () => {
+  const { resolveSessionInventoryCompactHost } = await import(
+    '../components/chat-dock/sessionInventoryCompactHost'
+  );
+  return {
+    SessionInventoryEntryPoint: (props: {
+      isMobile: boolean;
+      dockMode: 'bottom' | 'right';
+      fullscreen: boolean;
+    }) => (
+      <div
+        data-testid="inventory-entry"
+        data-host={resolveSessionInventoryCompactHost(props)}
+      />
+    ),
+  };
+});
+
+vi.mock(
+  '../components/pull-requests/useConversationPullRequestLinks',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('../components/pull-requests/useConversationPullRequestLinks')
+      >();
+    return {
+      ...actual,
+      useConversationPullRequestLinks: (conversationId: string) => {
+        fixture.cardRowRenders += 1;
+        return actual.useConversationPullRequestLinks(conversationId);
+      },
+    };
+  },
+);
+
+// The card's module stands as itself unless a test holds its chunk back.
+vi.mock(
+  '../components/chat-dock/SessionContextCard',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('../components/chat-dock/SessionContextCard')
+      >();
+    const never = new Promise<never>(() => {});
+    return {
+      ...actual,
+      SessionContextCard: (
+        props: Parameters<typeof actual.SessionContextCard>[0],
+      ) => {
+        if (fixture.cardChunk === 'loading') throw never;
+        if (fixture.cardChunk === 'failed') throw new Error('chunk failed');
+        return <actual.SessionContextCard {...props} />;
+      },
+    };
+  },
+);
+
+vi.mock('../workspace-panes/RegionPaneHost', () => ({
+  RegionPaneHost: () => null,
+}));
+
+vi.mock('@kontourai/station-sdk', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@kontourai/station-sdk')>();
+  return {
+    ...actual,
+    telemetry: { track: () => {} },
+    useAcknowledgeConversationMutation: () => ({ mutate: () => {} }),
+    useEngineConnectionsQuery: () => ({ data: [] }),
+    useConversationInventoryQuery: () => ({ data: [] }),
+    useGenerateSessionSummaryMutation: () => ({ mutate: () => {} }),
+    useInvalidateQuery: () => () => {},
+    useOrchestrationSessionsQuery: () => ({
+      data: [],
+      status: 'success',
+      refetch: () => {},
+    }),
+  };
+});
+
+const SESSION: ChatSession = {
+  id: 'chat-1',
+  conversationId: 'conversation-1',
+  currentSessionId: 'thread-1',
+  agentSlug: 'codex' as ChatSession['agentSlug'],
+  agentName: 'Codex',
+  title: 'Fix the parser',
+  source: 'dock' as ChatSession['source'],
+  messages: [],
+  input: '',
+  attachments: [],
+  queuedMessages: ['and then run the tests'],
+  status: 'idle',
+  projectSlug: 'demo',
+} as unknown as ChatSession;
+
+const GIT = {
+  isRepo: true,
+  branch: 'feature/parser',
+  changes: [' M src/parser.ts', '?? src/new.ts'],
+  staged: 0,
+  unstaged: 1,
+  untracked: 1,
+  lastCommit: null,
+  ahead: 2,
+  behind: 0,
+};
+
+function inboxRow(overrides: Partial<HomeWorkItem>): HomeWorkItem {
+  return {
+    id: 'conversation-1',
+    kind: 'chat',
+    title: 'Fix the parser',
+    projectLabel: 'Demo project',
+    agentLabel: 'Codex',
+    updatedAt: Date.now(),
+    lifecycleLabel: 'Running',
+    chatSessionId: 'chat-1',
+    conversationId: 'conversation-1',
+    orchestrationThreadId: 'thread-1',
+    ...overrides,
+  } as HomeWorkItem;
+}
+
+function DockedChat() {
+  return (
+    <DockShell>
+      {(shellChrome) => (
+        <ChatWorkspacePane placement="dock" shellChrome={shellChrome} />
+      )}
+    </DockShell>
+  );
+}
+
+const realRect = HTMLElement.prototype.getBoundingClientRect;
+
+/** The conversation surface's ResizeObservers, fired by `resizeSurface`. */
+const surfaceObservers: Array<() => void> = [];
+class SurfaceResizeObserver {
+  constructor(private readonly callback: () => void) {}
+  observe() {
+    surfaceObservers.push(this.callback);
+  }
+  disconnect() {
+    const index = surfaceObservers.indexOf(this.callback);
+    if (index >= 0) surfaceObservers.splice(index, 1);
+  }
+  unobserve() {}
+}
+
+/** Resize the conversation surface the way a dock resize does. */
+async function resizeSurface(width: number) {
+  fixture.surfaceWidth = width;
+  await act(async () => {
+    for (const callback of [...surfaceObservers]) callback();
+  });
+}
+
+beforeEach(() => {
+  window.localStorage.clear();
+  // The dock's project binding is a device setting held in a module store
+  // that outlives a test: a test that opens a project binds the dock, and the
+  // next would no longer see this chat's project as a mismatch.
+  deviceSettingsStore.reset('chatDockProjectSlug');
+  surfaceObservers.length = 0;
+  vi.stubGlobal('ResizeObserver', SurfaceResizeObserver);
+  window.history.replaceState({}, '', '/?dock=open');
+  navigationStore.navigate('/', { dock: 'open', maximize: null });
+  fixture.session = SESSION;
+  fixture.git = GIT;
+  fixture.inbox = [inboxRow({})];
+  fixture.backgroundRunning = 2;
+  fixture.surfaceWidth = 1200;
+  fixture.besideTranscript = 0;
+  fixture.authority = undefined;
+  fixture.pullRequests = [];
+  fixture.cardChunk = 'ready';
+  fixture.cardRowRenders = 0;
+  fixture.cwd = '/work/demo';
+  fixture.cwdManaged = false;
+  fixture.realExit = false;
+  // The one layout fact the fit reads: the transcript column's width. The
+  // surface is the dock body less the card's column while the card shows;
+  // the column is the surface less anything beside the transcript in it.
+  HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+    const rect = realRect.call(this);
+    const surface = fixture.surfaceWidth - (card() ? 280 : 0);
+    const width = this.classList.contains('chat-dock__conversation-surface')
+      ? surface
+      : this.classList.contains('chat-dock__content-area') ||
+          this.classList.contains('split-pane-companion__main')
+        ? surface - fixture.besideTranscript
+        : null;
+    if (width === null) return rect;
+    return {
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      bottom: rect.bottom,
+      height: rect.height,
+      right: width,
+      width,
+      toJSON: () => ({}),
+    } as DOMRect;
+  };
+});
+
+afterEach(() => {
+  HTMLElement.prototype.getBoundingClientRect = realRect;
+  cleanup();
+  window.localStorage.clear();
+  window.history.replaceState({}, '', '/');
+  navigationStore.navigate('/', { dock: null, maximize: null });
+  vi.unstubAllGlobals();
+});
+
+function renderDock(
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+) {
+  render(
+    <QueryClientProvider client={client}>
+      <KeyboardShortcutsProvider>
+        <NavigationProvider>
+          <DockedChat />
+        </NavigationProvider>
+      </KeyboardShortcutsProvider>
+    </QueryClientProvider>,
+  );
+  expect(
+    document.querySelector('.chat-dock__conversation-surface'),
+  ).not.toBeNull();
+}
+
+const card = () =>
+  document.querySelector<HTMLElement>('aside.session-context-card');
+const branchBadge = () => document.querySelector('.git-badge');
+/**
+ * The background-task count on the More trigger: a number badge, or — while
+ * the inbox toggle beside it wears the working count — a dot, so the bar
+ * never shows two numbers side by side. Either way the trigger names it.
+ */
+const moreBadge = () =>
+  document.querySelector(
+    '.chat-dock__more .chat-dock__more-badge, .chat-dock__more .action-overflow__status-dot',
+  );
+const expectMoreCarriesRunning = (count: number) => {
+  expect(moreBadge()).not.toBeNull();
+  expect(
+    screen.getByRole('button', {
+      name: new RegExp(
+        `^More dock actions — .*${count} background tasks running`,
+      ),
+    }),
+  ).toBeTruthy();
+};
+// The header no longer repeats the chat's branch or project at all: the card
+// (or, folded, the chip's sheet) is where they live. Kept as a probe so the
+// tests below fail if either comes back to the bar.
+const mismatchLabel = () =>
+  document.querySelector('.chat-dock__project-session-name');
+const chip = () => screen.queryByRole('button', { name: /^This chat/ });
+
+describe('session context card visibility follows the dock body width', () => {
+  test('a wide dock shows the card and hides the header items it repeats', async () => {
+    fixture.surfaceWidth = 1200;
+    renderDock();
+    await waitFor(() => expect(card()).not.toBeNull());
+    expect(branchBadge()).toBeNull();
+    expect(moreBadge()).toBeNull();
+    expect(mismatchLabel()).toBeNull();
+    expect(chip()).toBeNull();
+    const aside = card()!;
+    expect(aside.textContent).toContain('feature/parser');
+    expect(aside.textContent).toContain('2 changed files');
+    expect(aside.textContent).toContain('Background tasks — 2 running');
+    expect(aside.textContent).toContain('1 pending message');
+    expect(aside.textContent).toContain('Demo project');
+  });
+
+  test('the card counts what the pending list lists: this window’s follow-ups, its outbox and what Station holds', async () => {
+    fixture.authority = AUTHORITY;
+    fixture.session = {
+      ...SESSION,
+      queuedMessages: ['first follow-up', 'second follow-up'],
+      queuedMessageMetadata: [
+        { id: 'local-1', mode: 'queue' },
+        { id: 'local-2', mode: 'queue' },
+      ],
+      outboundQueuedTurns: [
+        {
+          clientTurnId: 'outbox-1',
+          content: 'from a closed window',
+          createdAt: 1,
+          status: 'pending',
+          heldElsewhere: true,
+        },
+      ],
+    } as unknown as ChatSession;
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const held = (clientTurnId: string, state: string) => ({
+      conversationId: 'conversation-1',
+      clientTurnId,
+      message: clientTurnId,
+      state,
+      createdAt: '2026-10-21T00:00:00.000Z',
+    });
+    // The list's own inbox read: Station holds the second follow-up (one
+    // row, not two) and one that may have been sent; a sent one is gone.
+    client.setQueryData(
+      [
+        'conversation-inbox',
+        'http://test.local',
+        'authority-1',
+        'conversation-1',
+      ],
+      [
+        held('local-2', 'queued'),
+        held('station-1', 'unconfirmed'),
+        held('done', 'sent'),
+      ],
+    );
+    renderDock(client);
+    await waitFor(() => expect(card()).not.toBeNull());
+    // 1 local + 2 Station-held + 1 outbox: the list's "4 pending".
+    expect(card()!.textContent).toContain('4 pending messages');
+  });
+
+  test('a narrow dock folds the card behind a chip; the bar keeps only the running count', async () => {
+    // 919px: one short of the 640px transcript floor plus the 280px card.
+    fixture.surfaceWidth = 919;
+    renderDock();
+    await waitFor(() => expect(chip()).not.toBeNull());
+    expect(card()).toBeNull();
+    // The branch is the chip's sheet's, not a header badge.
+    expect(branchBadge()).toBeNull();
+    expect(mismatchLabel()).toBeNull();
+    expectMoreCarriesRunning(2);
+  });
+
+  test.each([
+    ['still loading', 'loading'],
+    ['failed to load', 'failed'],
+  ] as const)(
+    'while the card chunk is %s the More trigger keeps the running count',
+    async (_, state) => {
+      fixture.cardChunk = state;
+      fixture.surfaceWidth = 1200;
+      renderDock();
+      if (state === 'failed')
+        await screen.findByText('Unable to load this part of Station.');
+      else
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        });
+      expect(card()).toBeNull();
+      expectMoreCarriesRunning(2);
+      expect(branchBadge()).toBeNull();
+    },
+  );
+
+  test('a card that unmounts stops counting as present, so a regrow with its chunk held back keeps the running count', async () => {
+    fixture.surfaceWidth = 1200;
+    renderDock();
+    await waitFor(() => expect(card()).not.toBeNull());
+    expect(moreBadge()).toBeNull();
+    // Shrink: the card folds away (and unmounts).
+    await resizeSurface(600);
+    await waitFor(() => expect(card()).toBeNull());
+    expectMoreCarriesRunning(2);
+    // Grow again while the card's chunk is held back: the card is wanted but
+    // not on screen, so the header must still carry the facts.
+    fixture.cardChunk = 'loading';
+    await resizeSurface(1200);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(chip()).toBeNull();
+    expect(card()).toBeNull();
+    expectMoreCarriesRunning(2);
+  });
+
+  test('the threshold is the transcript floor plus the card column', async () => {
+    fixture.surfaceWidth = 920;
+    renderDock();
+    await waitFor(() => expect(card()).not.toBeNull());
+  });
+
+  test('#3882: a column opening beside the transcript (Chat inventory) folds the card though the surface keeps its width', async () => {
+    fixture.surfaceWidth = 1200;
+    renderDock();
+    await waitFor(() => expect(card()).not.toBeNull());
+    // The inventory aside takes 352px beside the transcript: 1200px less it
+    // is 848px, less than the 920px the transcript floor and the card need
+    // together, though the surface itself is unchanged.
+    fixture.besideTranscript = 352;
+    await resizeSurface(1200);
+    await waitFor(() => expect(card()).toBeNull());
+    expect(chip()).not.toBeNull();
+    // The branch is the chip's sheet's, not a header badge.
+    expect(branchBadge()).toBeNull();
+    // Closing it gives the room back.
+    fixture.besideTranscript = 0;
+    await resizeSurface(1200);
+    await waitFor(() => expect(card()).not.toBeNull());
+    expect(chip()).toBeNull();
+  });
+});
+
+describe('the Activity row speaks the status ladder', () => {
+  test.each([
+    ['Running', 'Running'],
+    ['Needs attention', 'Waiting on you'],
+    ['Failed', 'Failed'],
+    ['Completed', 'Done'],
+  ] as const)('%s reads %s', async (lifecycleLabel, word) => {
+    fixture.inbox = [inboxRow({ lifecycleLabel })];
+    renderDock();
+    await waitFor(() => expect(card()).not.toBeNull());
+    const status = card()!.querySelector('.session-context-card__status');
+    expect(status?.textContent).toBe(word);
+    expect(Object.values(SESSION_STATUS_WORDS)).toContain(word);
+  });
+
+  test('the folded chip carries the same ladder word', async () => {
+    fixture.surfaceWidth = 600;
+    fixture.inbox = [inboxRow({ lifecycleLabel: 'Needs attention' })];
+    renderDock();
+    await waitFor(() => expect(chip()).not.toBeNull());
+    expect(chip()!.textContent).toBe('Waiting on you');
+  });
+
+  test('with no inbox row yet the card names no state', async () => {
+    fixture.inbox = [];
+    renderDock();
+    await waitFor(() => expect(card()).not.toBeNull());
+    expect(card()!.querySelector('.session-context-card__status')).toBeNull();
+  });
+});
+
+describe('each row opens the existing surface', () => {
+  test('Branch opens the Active work changed files panel', async () => {
+    renderDock();
+    await waitFor(() => expect(card()).not.toBeNull());
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: /^Changed files — 2 on feature\/parser/,
+      }),
+    );
+    expect(
+      await screen.findByRole('complementary', { name: 'Active work files' }),
+    ).not.toBeNull();
+  });
+
+  test('Activity opens Background tasks', async () => {
+    renderDock();
+    await waitFor(() => expect(card()).not.toBeNull());
+    showSurfaceStub.mockClear();
+    fireEvent.click(
+      screen.getByRole('button', { name: /Background tasks — 2 running/ }),
+    );
+    // A desktop dock places the Agents pane (#2050) rather than the sheet.
+    expect(showSurfaceStub).toHaveBeenCalledWith('workspace-agents');
+  });
+
+  test('Workspace opens the session project', async () => {
+    renderDock();
+    await waitFor(() => expect(card()).not.toBeNull());
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Open project — Demo project' }),
+    );
+    await waitFor(() =>
+      expect(navigationStore.getSnapshot().pathname).toMatch(/demo/),
+    );
+  });
+});
+
+describe('the card and its chip trade places without a snap', () => {
+  test('a folding card plays its exit while the chip enters, then leaves the tree', async () => {
+    fixture.realExit = true;
+    fixture.surfaceWidth = 1200;
+    renderDock();
+    await waitFor(() => expect(card()).not.toBeNull());
+    expect(card()!.classList.contains('session-context-card--exiting')).toBe(
+      false,
+    );
+
+    await resizeSurface(600);
+    // Still mounted, leaving: inert and out of the accessibility tree.
+    expect(card()?.classList.contains('session-context-card--exiting')).toBe(
+      true,
+    );
+    expect(card()!.getAttribute('aria-hidden')).toBe('true');
+    expect(chip()).not.toBeNull();
+    // Gone once its exit has played.
+    await waitFor(() => expect(card()).toBeNull());
+  });
+
+  test('a chip giving way to the card fades where it stands before it unmounts', async () => {
+    fixture.realExit = true;
+    fixture.surfaceWidth = 600;
+    renderDock();
+    await waitFor(() => expect(chip()).not.toBeNull());
+
+    await resizeSurface(1200);
+    await waitFor(() => expect(card()).not.toBeNull());
+    // The leaving chip is hidden from assistive tech, so query it directly.
+    const leaving = document.querySelector('.session-context-chip');
+    expect(leaving?.classList.contains('session-context-chip--exiting')).toBe(
+      true,
+    );
+    expect(leaving?.getAttribute('tabindex')).toBe('-1');
+    await waitFor(() =>
+      expect(document.querySelector('.session-context-chip')).toBeNull(),
+    );
+  });
+
+  test('a regrow mounts the card in the same commit the chip starts leaving: one width change, no gap', async () => {
+    fixture.realExit = true;
+    fixture.surfaceWidth = 1200;
+    renderDock();
+    await waitFor(() => expect(card()).not.toBeNull());
+    await resizeSurface(600);
+    await waitFor(() => expect(card()).toBeNull());
+
+    // Its chunk is loaded now, so the regrow's own commit carries the card,
+    // while the chip is still playing its exit. A synchronous act: no promise
+    // (a lazy that suspends again) gets to settle before the check.
+    fixture.surfaceWidth = 1200;
+    act(() => {
+      for (const callback of [...surfaceObservers]) callback();
+    });
+    expect(card()).not.toBeNull();
+    expect(
+      document
+        .querySelector('.session-context-chip')
+        ?.classList.contains('session-context-chip--exiting'),
+    ).toBe(true);
+  });
+});
+
+describe('a folder Station made for the chat is named, not printed', () => {
+  const MANAGED = `/home/me/.station/runtime/acp-workspaces/session/${'ab12'.repeat(16)}`;
+
+  test('the Workspace row says "Chat workspace" and keeps the hash path out of the text', async () => {
+    fixture.cwd = MANAGED;
+    fixture.cwdManaged = true;
+    renderDock();
+    await waitFor(() => expect(card()).not.toBeNull());
+    const row = card()!.querySelector('.session-context-card__row')!;
+    expect(row.textContent).toContain('Chat workspace');
+    expect(row.textContent).not.toContain('acp-workspaces');
+    // The path is still there for whoever needs it, as the label's tooltip.
+    expect(row.querySelector(`[title="${MANAGED}"]`)).not.toBeNull();
+  });
+
+  test('a folder the server does not flag prints its path, even one shaped like a managed workspace', async () => {
+    // The UI does not match the path itself: only the server's flag names it.
+    fixture.cwd = MANAGED;
+    fixture.cwdManaged = false;
+    renderDock();
+    await waitFor(() => expect(card()).not.toBeNull());
+    const row = card()!.querySelector('.session-context-card__row')!;
+    expect(row.textContent).not.toContain('Chat workspace');
+    expect(row.textContent).toContain(MANAGED);
+  });
+});
+
+describe('the chip opens the rows as a sheet', () => {
+  test('opens and closes; Escape returns focus to the chip', async () => {
+    fixture.surfaceWidth = 600;
+    renderDock();
+    await waitFor(() => expect(chip()).not.toBeNull());
+    fireEvent.click(chip()!);
+    const dialog = await screen.findByRole('dialog', { name: 'This chat' });
+    expect(dialog.textContent).toContain('feature/parser');
+    expect(chip()!.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'This chat' })).toBeNull(),
+    );
+    expect(chip()!.getAttribute('aria-expanded')).toBe('false');
+    await waitFor(() => expect(document.activeElement).toBe(chip()));
+  });
+
+  test('a row action closes the sheet before opening its surface', async () => {
+    fixture.surfaceWidth = 600;
+    renderDock();
+    await waitFor(() => expect(chip()).not.toBeNull());
+    fireEvent.click(chip()!);
+    await screen.findByRole('dialog', { name: 'This chat' });
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: /^Changed files — 2 on feature\/parser/,
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'This chat' })).toBeNull(),
+    );
+    expect(
+      await screen.findByRole('complementary', { name: 'Active work files' }),
+    ).not.toBeNull();
+  });
+});
+
+const AUTHORITY = {
+  apiBase: 'http://test.local',
+  authorityKey: 'authority-1',
+  isCurrent: () => true,
+};
+
+/**
+ * The per-answer Basis chip's own admission call: it names the chat and the
+ * authority, not a host, so it is admitted only when exactly ONE host is
+ * registered for that chat (`matches.length === 1`).
+ */
+function admitBasisOccurrence() {
+  return openSessionInventoryOccurrence({
+    authorityKey: AUTHORITY.authorityKey,
+    activeSessionId: 'chat-1',
+    executionSessionId: 'thread-1',
+    executionRead: 'present',
+    trigger: null,
+  });
+}
+
+function stubPhone() {
+  // The shell's mobile query (`useIsMobile`) matches; nothing else does.
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query.includes('max-width: 768px'),
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    onchange: null,
+    dispatchEvent: () => false,
+  }));
+}
+
+describe('one inventory host per chat', () => {
+  afterEach(() => closeSessionInventoryOccurrence());
+
+  test.each([
+    ['desktop', false],
+    ['phone', true],
+  ] as const)(
+    'on a %s exactly one host registers, so an answer can open Chat inventory',
+    async (_, phone) => {
+      if (phone) stubPhone();
+      fixture.authority = AUTHORITY;
+      renderDock();
+      await waitFor(() => expect(admitBasisOccurrence()).toBe(true));
+      // The admitted occurrence renders through that one host, which hands the
+      // entry the phone/desktop presentation it was mounted for.
+      const entry = await screen.findByTestId('inventory-entry');
+      // One host, so one presentation: a second host under the same id would
+      // render the occurrence twice, and one under another id would make the
+      // admission above refuse.
+      expect(screen.getAllByTestId('inventory-entry')).toHaveLength(1);
+      if (phone) expect(entry.dataset.host).toBe('full-fallback');
+      else expect(entry.dataset.host).not.toBe('full-fallback');
+      // And the card's footer is pressable once that host exists.
+      if (!phone) {
+        await waitFor(() =>
+          expect(
+            within(card()!).getByRole('button', { name: 'Chat inventory' }),
+          ).toHaveProperty('disabled', false),
+        );
+      }
+    },
+  );
+});
+
+describe('the card is not re-rendered by dock renders that change none of its facts', () => {
+  test('a dock re-render leaves the card alone', async () => {
+    fixture.authority = AUTHORITY;
+    renderDock();
+    await waitFor(() =>
+      expect(
+        within(card()!).getByRole('button', { name: 'Chat inventory' }),
+      ).toHaveProperty('disabled', false),
+    );
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    const before = fixture.cardRowRenders;
+    // A route param the card does not read: the dock re-renders.
+    for (const n of [1, 2, 3]) {
+      await act(async () => {
+        navigationStore.navigate('/', { dock: 'open', probe: String(n) });
+      });
+    }
+    expect(fixture.cardRowRenders).toBe(before);
+  });
+});
+
+describe('the Chat inventory footer', () => {
+  test('is absent while no host has registered (no authority yet), never a standing loading label', async () => {
+    fixture.authority = undefined;
+    renderDock();
+    await waitFor(() => expect(card()).not.toBeNull());
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(card()!.textContent).not.toContain('Chat inventory');
+  });
+
+  test('appears, pressable, once the host registers', async () => {
+    fixture.authority = AUTHORITY;
+    renderDock();
+    const footer = await within(card()!).findByRole('button', {
+      name: 'Chat inventory',
+    });
+    expect(footer).toHaveProperty('disabled', false);
+    expect(card()!.contains(footer)).toBe(true);
+  });
+});
+
+describe('linked pull requests', () => {
+  test('a linked pull request shows its row, which opens Chat details', async () => {
+    fixture.authority = AUTHORITY;
+    fixture.pullRequests = [
+      {
+        provider: 'github',
+        host: 'github.com',
+        repository: { owner: 'acme', name: 'parser' },
+        ref: '42',
+        source: 'explicit',
+        observedAt: new Date().toISOString(),
+        status: {
+          state: 'current',
+          title: 'Parser fix',
+          pullRequestState: 'OPEN',
+        },
+      },
+    ];
+    renderDock();
+    const row = await screen.findByRole('button', {
+      name: '1 linked pull request — open chat details',
+    });
+    expect(row.textContent).toContain('#42');
+    expect(row.textContent).toContain('Parser fix');
+    showSurfaceStub.mockClear();
+    fireEvent.click(row);
+    expect(showSurfaceStub).toHaveBeenCalledWith('activity', {
+      session: 'thread-1',
+    });
+  });
+
+  test('nothing linked adds no row', async () => {
+    fixture.authority = AUTHORITY;
+    renderDock();
+    await waitFor(() => expect(card()).not.toBeNull());
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(card()!.textContent).not.toContain('Pull requests');
+  });
+});
+
+describe('on a phone', () => {
+  beforeEach(() => {
+    stubPhone();
+  });
+
+  async function openFromActions() {
+    const actions = await screen.findByRole('button', { name: 'Chat actions' });
+    fireEvent.click(actions);
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: 'This chat — Running' }),
+    );
+    return actions;
+  }
+
+  test('never shows the card inline, whatever the width, and adds no third control to the bar', async () => {
+    fixture.surfaceWidth = 1200;
+    renderDock();
+    await screen.findByRole('button', { name: 'Chat actions' });
+    expect(card()).toBeNull();
+    expect(chip()).toBeNull();
+  });
+
+  test('the actions sheet row opens a bottom sheet; closing it returns to ⋯', async () => {
+    renderDock();
+    const actions = await openFromActions();
+    const dialog = await screen.findByRole('dialog', { name: 'This chat' });
+    expect(
+      dialog.closest('.responsive-surface-overlay')?.hasAttribute('data-sheet'),
+    ).toBe(true);
+    // The branch is a labelled row here, not a bare line in the actions sheet.
+    expect(dialog.textContent).toContain('Branch');
+    expect(dialog.textContent).toContain('feature/parser');
+    fireEvent.click(screen.getByRole('button', { name: 'Close chat context' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'This chat' })).toBeNull(),
+    );
+    await waitFor(() => expect(document.activeElement).toBe(actions));
+  });
+
+  test('a row in the sheet closes it before opening its surface', async () => {
+    renderDock();
+    await openFromActions();
+    await screen.findByRole('dialog', { name: 'This chat' });
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: /^Changed files — 2 on feature\/parser/,
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'This chat' })).toBeNull(),
+    );
+    expect(
+      await screen.findByRole('dialog', { name: 'Active work files' }),
+    ).not.toBeNull();
+  });
+});

@@ -20,6 +20,18 @@ chosen simulator runtime for iOS, or Android SDK/emulator tooling and an image
 for Android. This inventory is for simulators/emulators; do not infer physical
 phone support from it.
 
+Device tools additionally need a user-installed Node.js 24 or later with npm
+on the device host. Station resolves the first executable `node` from the user's
+PATH, follows version-manager shims to that installation, and runs its own npm
+CLI and the device hub with that absolute Node path. A later PATH entry cannot
+supply npm for a different installation. The user's PATH is preserved exactly.
+The desktop's private Node still runs Station's bundled services.
+
+If Node/npm is missing or Node is too old, setup explains the prerequisite.
+An installed helper stays blocked until **Check again** succeeds; it does not
+enter a crash/restart loop. Restart Station after changing its inherited PATH.
+An independently configured helper keeps its own prerequisites and lifecycle.
+
 The operator can enable Station's managed device helper through the Device
 setup UI. The [toolchain service](../../src-server/services/devices/toolchain/device-toolchain-service.ts)
 records consent, installs its pinned helper and starts a supervised process.
@@ -64,6 +76,11 @@ is not completed boot. The current
 [pane](../../src-ui/src/workspace-panes/DeviceWorkspacePane.tsx) renders a
 `LiveSurfaceCanvas`, controller and input status, and device tools. Its bounded
 selection state does not persist captured image bytes or control authority.
+The canvas asks for frames no larger than the pane's size in device pixels,
+rounded up in 320-pixel steps so resizing within a step keeps the stream. On a
+metered or data-saving connection it asks for at most 5 frames per second at
+quality 50 and 960 pixels on each side. See the
+[stream budget](../../src-ui/src/live-surface/liveSurfaceStreamBudget.ts).
 
 Devices belong to the operator. An active admin/owner of a Project may view or
 drive only devices shared with that Project, on the named host. Android shares
@@ -77,15 +94,94 @@ shares, current request credentials and the route's pairing scope all matter.
 The [producer](../../src-server/services/devices/device-live-surface-producer.ts)
 separates video and input liveness. iOS video uses MJPEG. Android video uses
 server-side H.264 decoding when a decoder is available; otherwise it reports a
-PNG screenshot-poll fallback. Controls reflect input-channel status independently
+PNG screenshot-poll fallback. The decoder uses host ffmpeg even without ffprobe,
+or the pinned ffmpeg already acquired through `station media-tools download --yes`.
+Existing decoding stays available with both Feature Previews off. Downloading
+missing tools requires enabling Walkthroughs or Local speech in Settings →
+Advanced → Feature previews and explicit consent. Resolution never downloads;
+see [local speech and media tools](local-speech.md). Controls reflect input-channel status independently
 of the most recent frame. A successful input write proves only that the hub
 socket accepted bytes, not that the device applied the gesture.
 
 Human input follows the shared control lease and stale-epoch/fence checks.
-Device live-surface Agent control is not wired: its authorizer requires a human
-request. The separate toolchain **Agent access** setting installs/enables
-agent-device tooling; it does not establish an Agent grant to this shared live
-surface or prove all tool use participates in the same lease.
+The station-control `device_*` tools admit a bound, verified agent Session with
+its recorded owner and Project. The operator may use local devices; active
+Project admins/owners remain limited to devices shared with that Project. Every
+call rechecks this authority and requires the operator to enable **Agent access**
+in Device setup. Disabling that opt-in also revokes existing surface grants. The in-process device grant targets one host/device
+and cannot be supplied in tool arguments. See the
+[device Agent control decision](../decisions/device-agent-control.md).
+
+`device_list` lists accessible local and configured SSH-host devices and sessions opened by this
+conversation. `device_open` starts a stopped device asynchronously (a `starting`
+answer is not completed boot) or opens/joins its live session. Android boots can
+change the device ID from AVD name to emulator serial: list again and select
+the running row. `device_open` accepts an optional `hostId` (default `local`)
+and never falls back to a different host. Open joins a running session without
+claiming input, including while a person holds control.
+
+By default a successful live open publishes a bounded, ten-minute reveal intent
+for the calling principal, Project and conversation. `reveal: false` opens in
+the background. Repeated opens reuse that intent. The active matching chat polls
+for new intents and opens/reuses the canonical Device pane, subject to current
+Station authority and device view access. Explicit intents survive an initial
+poll failure; opening an existing session by itself creates no historical reveal.
+A bounded, authority/Project/conversation-scoped in-memory history remembers
+handled intents across chat remounts in the same tab, preserving dismissals.
+Reloading the app clears this presentation history; an unexpired explicit intent
+can then be shown again.
+Navigation away, ended sessions, revoked Agent access or credentials, removed
+hosts and revoked device shares prevent delivery. Starting a device alone does
+not enqueue a live reveal: list and open its running target after boot.
+
+The tool returns `revealRequested` separately from `paneRevealed: false`:
+queuing a request cannot prove that a viewer displayed it. A refusal or absent
+viewer leaves the existing session available through Device. Reveal acquires no
+input lease.
+
+`device_input` sends bounded typed pointer, text and key events through the
+existing allowlisted producer, never a shell command. It claims only an
+unclaimed lease or renews its own; a human or another agent holding control
+refuses the action. Human takeover interrupts queued input and the producer
+checks the fence before each send. The grant is rechecked before each event
+in a batch. Concurrent calls from the same agent retain their shared control
+until the last call finishes; it releases in `finally`. Opening or observing a
+device does not leave an idle agent blocking the human Tools drawer. Input
+responses carry the lease after completion/release; it may still name the agent
+if another concurrent call remains active.
+
+Complete pointer/key gestures within one batch: send down/move/up or key down/up
+together. Unmatched presses/releases return `incomplete-gesture` before any event
+is sent. Cross-call holds, drags and held keys are unsupported, and this API has
+no wait/duration event for a timed long press. Unsupported input kinds are also
+refused for the whole batch before delivery. Concurrent input batches run in
+sequence so their pointer/key events cannot interleave; observations can overlap.
+A dispatch failure releases control immediately to cancel uncertain held input
+and can interrupt other operations sharing that fence. `device_snapshot` reads the bounded
+accessibility tree; `device_screenshot` returns PNG through the existing capture
+service (maximum 8 MiB, validated dimensions). Both require the agent lease and
+recheck authority and the fence before publishing. An accepted socket write is
+not proof the device applied it.
+
+`device_close` requires current operator standing and ends only a session this
+conversation created. It ends that shared session for everyone, leaves the device
+running, and refuses while another controller holds it. Project admins cannot
+end a shared session. Operator standing is checked before a close can claim
+control or renew idle grace. Joining a human-opened session does not transfer
+ownership. Successful agent operations renew an
+unwatched session's idle grace. Remote operations use the selected host's
+session, capture and accessibility services with the same ownership ledger and
+lease; host removal or replacement invalidates existing grants. Agent shutdown
+is not included.
+
+Only a credential minted for `sdk-in-process` currently supplies bound assurance.
+Codex's `url-token` and ACP's `http-header-token` sessions are not offered the
+device tools in their tool list, and a call from them is still refused as
+`caller-not-bound`; a stdio connection with no verified caller is refused as
+`caller-required`. Tool visibility grants no authority. The separate toolchain
+**Agent access** setting is the explicit operator opt-in for both managed
+agent-device tooling and these live tools. It does not put external CLI commands
+under the shared lease.
 
 Closing or hiding a pane detaches that viewer. The
 [session service](../../src-server/services/devices/device-session-service.ts)
@@ -160,3 +256,12 @@ Fixture owners include the [single-frame adapter tests](../../src-server/service
 [session-route tests](../../src-server/routes/__tests__/mobile-device-sessions.routes.test.ts),
 and [producer tests](../../src-server/services/devices/__tests__/device-live-surface-producer.test.ts).
 They do not replace an application/build-specific device receipt.
+
+The Agent route fixtures cover colliding local/SSH device IDs, host removal,
+lease-neutral open and reveal admission. The mounted reveal fixture reaches the
+canonical region and Device live surface, checks repeat/dismissal behavior and
+stale authority, and sends no control request. These are synthetic receipts.
+Artifact installation/lifecycle with build provenance, bounded correlated logs,
+recording/reproduction bundles, physical-device and authenticated remote-platform
+qualification remain outstanding under #1967/#1970/#1971/#1973; cloud/EAS providers
+remain #2373. These epics are not complete on fixture evidence alone.

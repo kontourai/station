@@ -1,0 +1,7 @@
+{
+  "revision": "c2aae353d7b00bd5803988216773d9e0c616a090",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed ProjectFileTransactions.mutateDocuments/readDocuments and ProjectDocumentRoot.run, knowledge-storage callback callers, and the four focused files (44 tests). The Project lock orders document operations, but mutateDocuments does not check Project existence, so clarified that legacy writes after deletion remain allowed. Current local ci:fast timed out; focused process recovery and lock compatibility pass; hosted/Windows/merge remain separate.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}

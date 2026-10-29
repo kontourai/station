@@ -1,4 +1,5 @@
 import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
+import { FOREGROUND_MESSAGE_INDETERMINATE_CODE } from '@kontourai/station-contracts/orchestration';
 import type { TurnProvenanceContextInjection } from '@kontourai/station-contracts/turn-provenance-context';
 import { SpanStatusCode } from '@opentelemetry/api';
 import type { Context } from 'hono';
@@ -61,7 +62,23 @@ import {
   ensureChatConversation,
 } from './chat-persistence.js';
 import type { ChatMessage } from './chat-request-preparation.js';
-import type { ChatTurnDedupStore } from './chat-turn-dedup.js';
+import type {
+  ChatTurnDedupClaim,
+  ChatTurnDedupStore,
+} from './chat-turn-dedup.js';
+
+/**
+ * #3581: why a keyed `/chat` retry is refused before any stream starts. Both
+ * use the foreground "may have started" shape (409, `code`
+ * `foreground_message_indeterminate`, `outcome: 'indeterminate'`), which
+ * clients already treat as "do not resend".
+ */
+const CHAT_TURN_REFUSAL_TEXT = {
+  indeterminate:
+    'This message may already have reached the agent before Station stopped. It was not sent again; open the conversation before retrying.',
+  expired:
+    'This message was already sent, and its result is no longer kept for replay. It was not sent again; open the conversation before retrying.',
+} as const;
 
 type ChatOperationContext = Record<string, unknown> & {
   userId?: string;
@@ -186,6 +203,45 @@ export function streamPrimaryAgentChat({
   nativeRuntimeAgent,
   nativeMemory,
 }: StreamPrimaryAgentChatArgs): Response {
+  // archive#1224 (offline) — see chat-turn-dedup.ts. #3581: claimed before
+  // the response starts, so a turn that may already have reached the agent
+  // is refused with a typed status instead of an in-stream error frame.
+  const requestedClientTurnId =
+    typeof restOptions.clientTurnId === 'string' &&
+    restOptions.clientTurnId.length > 0
+      ? restOptions.clientTurnId
+      : undefined;
+  let initialClaim: ChatTurnDedupClaim | undefined;
+  try {
+    initialClaim = requestedClientTurnId
+      ? dedupStore?.claim(requestedClientTurnId)
+      : undefined;
+  } catch (error) {
+    releaseRelayScopes({
+      nativeForeground,
+      nativeWorkspace,
+      nativeOutputGrant,
+    });
+    throw error;
+  }
+  if (initialClaim && !initialClaim.claimed && 'outcome' in initialClaim) {
+    chatTurnDedup.add(1, { outcome: initialClaim.outcome });
+    releaseRelayScopes({
+      nativeForeground,
+      nativeWorkspace,
+      nativeOutputGrant,
+    });
+    return c.json(
+      {
+        success: false,
+        error: CHAT_TURN_REFUSAL_TEXT[initialClaim.outcome],
+        code: FOREGROUND_MESSAGE_INDETERMINATE_CODE,
+        outcome: 'indeterminate',
+      },
+      409,
+    );
+  }
+
   c.header('Content-Type', 'text/event-stream');
   c.header('Cache-Control', 'no-cache');
   c.header('Connection', 'keep-alive');
@@ -216,6 +272,8 @@ export function streamPrimaryAgentChat({
     // archive#1224 (offline) — see chat-turn-dedup.ts.
     let clientTurnId: string | undefined;
     let ownsClientTurnClaim = false;
+    let agentInvoked = false;
+    let streamDrained = false;
     let dedupShortCircuited = false;
     // Populated only when the outer catch below fires — used to persist a
     // reload-safe failure marker when the turn produced zero output (archive#191
@@ -279,14 +337,10 @@ export function streamPrimaryAgentChat({
       // assigned (its `fetch` could have failed locally before that SSE
       // frame arrived), so a duplicate request would otherwise mint a
       // SECOND, unrelated conversation instead of recognizing the original.
-      clientTurnId =
-        typeof operationContext.clientTurnId === 'string' &&
-        operationContext.clientTurnId.length > 0
-          ? operationContext.clientTurnId
-          : undefined;
+      clientTurnId = requestedClientTurnId;
       if (clientTurnId) {
-        const claim = dedupStore?.claim(clientTurnId);
-        if (claim) {
+        const claim = initialClaim;
+        if (claim && !('outcome' in claim)) {
           if (claim.claimed) {
             ownsClientTurnClaim = true;
           } else {
@@ -352,12 +406,17 @@ export function streamPrimaryAgentChat({
       const abortController = new AbortController();
       conversationId = operationContext.conversationId;
 
-      c.req.raw.signal?.addEventListener('abort', () => {
+      const abortFromClient = () => {
         ctx.logger.debug('Client disconnected, aborting operation', {
           conversationId,
         });
         abortController.abort('Client disconnected');
-      });
+      };
+      if (c.req.raw.signal.aborted) abortFromClient();
+      else
+        c.req.raw.signal.addEventListener('abort', abortFromClient, {
+          once: true,
+        });
 
       operationContext.abortSignal = abortController.signal;
       ctx.logger.debug('Abort signal configured', { conversationId });
@@ -501,6 +560,18 @@ export function streamPrimaryAgentChat({
       }
 
       requireCurrentRuntimeConfiguration(ctx, configurationLease);
+      const invokeAgent = () => {
+        if (abortController.signal.aborted) {
+          completionReason = 'aborted';
+          throw new Error('Stream aborted by client');
+        }
+        // The durable marker precedes the physical call inside the final
+        // foreground guard; a guard refusal has invoked nothing.
+        if (clientTurnId && ownsClientTurnClaim)
+          dedupStore?.beginInvocation(clientTurnId);
+        agentInvoked = true;
+        return agent.streamText(input as string, streamOptions);
+      };
       result = nativeForeground
         ? await nativeForeground.invoke(
             {
@@ -508,13 +579,12 @@ export function streamPrimaryAgentChat({
                 return ctx.agentSpecs.get(slug);
               },
               isCurrent: () =>
-                !c.req.raw.signal.aborted &&
                 runtimeConfigurationLeaseIsCurrent(ctx, configurationLease) &&
                 ctx.activeAgents.get(slug) === nativeRuntimeAgent,
             },
-            () => agent.streamText(input as string, streamOptions),
+            invokeAgent,
           )
-        : await agent.streamText(input as string, streamOptions);
+        : await invokeAgent();
       requireCurrentRuntimeConfiguration(ctx, configurationLease);
       ctx.agentStatus.set(slug, 'running');
 
@@ -615,7 +685,6 @@ export function streamPrimaryAgentChat({
       accumulatedText = '';
       reasoningText = '';
 
-      const debugStreaming = process.env.DEBUG_STREAMING === 'true';
       // Read the model BEFORE the pipeline is built: the tool events emitted
       // inside it carry the engine and model (archive#3074), and this is the only
       // construction path, so a value resolved afterwards never reaches them.
@@ -653,7 +722,6 @@ export function streamPrimaryAgentChat({
         toolNames: agentTools.map((tool) => tool.name).slice(0, 5),
         maxTokens: agentModel?.settings?.maxTokens,
         temperature: agentModel?.settings?.temperature,
-        debugStreaming,
       });
 
       const wrappedStream = stripOutputDeclarationHandles(
@@ -688,6 +756,8 @@ export function streamPrimaryAgentChat({
         if (!hasOutput) {
           await saveCancellationMessage();
         }
+      } else {
+        streamDrained = true;
       }
     } catch (error: unknown) {
       chatSpan.setStatus({
@@ -728,16 +798,18 @@ export function streamPrimaryAgentChat({
         chatSpan.end();
       } else {
         if (clientTurnId && ownsClientTurnClaim) {
-          if (
-            !turnFailureText &&
-            completionReason === 'completed' &&
-            conversationId
-          ) {
-            // Only a genuine success is remembered permanently — an
-            // aborted/failed attempt releases the claim so a retry with the
-            // same clientTurnId can actually re-execute rather than being
-            // deduped against nothing.
-            dedupStore?.resolve(clientTurnId, conversationId);
+          if (agentInvoked && streamDrained && conversationId) {
+            try {
+              dedupStore?.resolve(clientTurnId, conversationId);
+            } catch (error) {
+              dedupStore?.retain(clientTurnId);
+              ctx.logger.error('Chat turn resolution failed after invocation', {
+                clientTurnId,
+                error,
+              });
+            }
+          } else if (agentInvoked) {
+            dedupStore?.retain(clientTurnId);
           } else {
             dedupStore?.release(clientTurnId);
           }
@@ -775,12 +847,7 @@ export function streamPrimaryAgentChat({
       try {
         return await writeStream(streamWriter);
       } finally {
-        nativeForeground?.refuse();
-        try {
-          nativeForeground?.close();
-        } finally {
-          nativeWorkspace?.close();
-        }
+        releaseForegroundScopes(nativeForeground, nativeWorkspace);
       }
     };
     const withForeground = () =>
@@ -811,4 +878,30 @@ export function streamPrimaryAgentChat({
         })
       : correlated();
   });
+}
+
+function releaseForegroundScopes(
+  nativeForeground: NativeForegroundRelayCompanion | undefined,
+  nativeWorkspace: NativeExecutionWorkspace | undefined,
+): void {
+  nativeForeground?.refuse();
+  try {
+    nativeForeground?.close();
+  } finally {
+    nativeWorkspace?.close();
+  }
+}
+
+/** The release a streamed turn performs when it ends, for a refused one. */
+function releaseRelayScopes(scopes: {
+  nativeForeground?: NativeForegroundRelayCompanion;
+  nativeWorkspace?: NativeExecutionWorkspace;
+  nativeOutputGrant?: NativeOutputTurnContext;
+}): void {
+  try {
+    releaseForegroundScopes(scopes.nativeForeground, scopes.nativeWorkspace);
+  } finally {
+    if (scopes.nativeOutputGrant)
+      closeNativeOutputTurnContext(scopes.nativeOutputGrant);
+  }
 }

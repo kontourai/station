@@ -14,9 +14,11 @@ import {
   NATIVE_RESUME_IDENTITY_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
 import type {
-  CanonicalRuntimeEvent,
+  ProviderRuntimeEvent as CanonicalRuntimeEvent,
+  ProviderRuntimeErrorEvent,
   ToolOutputReceipt,
 } from '@kontourai/station-contracts/runtime-events';
+import { STATION_BROWSER_MCP_SERVER_ID } from '../../tools/station-browser-policy.js';
 import type { ProviderSession } from '../adapter-shape.js';
 import { reportedModelMetadata } from '../llm/effective-model-metadata.js';
 import {
@@ -24,6 +26,7 @@ import {
   redactInlineData,
   summarizeImageOmissions,
 } from '../model-image-attachments.js';
+import { providerFailure } from '../provider-failure.js';
 import {
   type ClaudeChildWorkContext,
   type ClaudeChildWorkState,
@@ -59,6 +62,10 @@ import {
   observeClaudeRateLimit,
   takeClaudeUsageLimitDetails,
 } from './claude-usage-limit.js';
+import {
+  NATIVE_TURN_IDENTITY_METADATA_KEY,
+  nativeSessionIdentityKey,
+} from './native-resume-binding.js';
 import {
   type ParagraphBoundaryState,
   withParagraphBreak,
@@ -210,10 +217,14 @@ function claudeDeferredToolUse(
 
 export interface ClaudeMessageState extends ClaudeUsageLimitState {
   session: ProviderSession;
+  /** Set only for the temporary delivery Agent and its matching authored MCP server. */
+  deliveryProbeServerId?: string;
   requireNativeResumeIdentity?: true;
   /** Live SDK permission mode; unset until Station sent one or init reported it. */
   currentPermissionMode?: PermissionMode;
   allowsBypassPermissions?: boolean;
+  /** The latest `init` proved the in-process Station browser is the only server of its name (`stationBrowserVerifiedByInit`). */
+  stationBrowserVerified?: boolean;
   /**
    * The turn the SDK is running now, which frames and results attribute to.
    * Derived: only the turn ledger (`sdkTurns`) writes it.
@@ -336,6 +347,8 @@ export interface ClaudeMessageState extends ClaudeUsageLimitState {
   terminalResultObserved?: 'failed' | 'binding-dead';
   /** Captured at query start, never replaced by an init/result session_id. */
   attemptedResumeCursor?: string;
+  /** Captured from this query's configuration home when it starts. */
+  readonly nativeOwnershipBindingKey?: string;
   /**
    * archive#3457: the assistant message currently streaming content blocks,
    * taken from the last `message_start` stream event's `message.id` (the
@@ -411,6 +424,26 @@ interface MapClaudeMessageParams {
  * answer forwards a `setMode` update, so Station's view (and the next turn's
  * "has the mode changed" check, and per-turn metadata) matches the engine.
  */
+/**
+ * Whether the engine's `init` report proves the in-process Station browser is
+ * the ONLY server named `station-browser`: exactly one entry of that name, and
+ * its `source` is `sdk`. The SDK documents `source: 'sdk'` as an in-process
+ * server only the host registers ("Key trust on this, not on the name",
+ * `McpServerStatus.source` in sdk.d.ts). The engine's merge order between an
+ * SDK-registered server and a discovered one of the same name (`.mcp.json`,
+ * user config) lives in the compiled CLI and could not be established from
+ * the installed code, so this fails closed: an absent `source` (an older CLI),
+ * a second entry of the name, or a non-`sdk` source all read as unverified.
+ */
+function stationBrowserVerifiedByInit(
+  mcpServers: readonly { name: string; source?: string }[] | undefined,
+): boolean {
+  const named = (mcpServers ?? []).filter(
+    (server) => server.name === STATION_BROWSER_MCP_SERVER_ID,
+  );
+  return named.length === 1 && named[0].source === 'sdk';
+}
+
 export function reportClaudePermissionMode(
   record: Pick<ClaudeMessageState, 'currentPermissionMode' | 'session'>,
   mode: PermissionMode,
@@ -432,6 +465,38 @@ export function reportClaudePermissionMode(
       ...(approvalMode ? { approvalMode } : {}),
     },
   });
+}
+
+function deliveryProbeInventory(record: ClaudeMessageState, tools: unknown) {
+  const serverId = record.deliveryProbeServerId;
+  if (!serverId) return {};
+  const names: string[] = [];
+  let bytes = 2;
+  let truncated = !Array.isArray(tools);
+  if (Array.isArray(tools)) {
+    for (const name of tools) {
+      if (typeof name !== 'string') {
+        truncated = true;
+        continue;
+      }
+      if (!name.startsWith(`mcp__${serverId}__`)) continue;
+      if (names.length >= 32 || Buffer.byteLength(name, 'utf8') > 128) {
+        truncated = true;
+        continue;
+      }
+      const encodedBytes = Buffer.byteLength(JSON.stringify(name), 'utf8') + 1;
+      if (bytes + encodedBytes > 2048) {
+        truncated = true;
+        continue;
+      }
+      bytes += encodedBytes;
+      names.push(name);
+    }
+  }
+  return {
+    engineToolNames: names,
+    ...(truncated ? { engineToolNamesTruncated: true } : {}),
+  };
 }
 
 export function isClaudeInitMessage(
@@ -480,13 +545,14 @@ export function mapClaudeSdkMessage({
         threadId: record.session.threadId,
         createdAt,
         method: 'runtime.error',
+        ...providerFailure('session_gone'),
         severity: 'error',
         code: ENGINE_SESSION_BINDING_DEAD_CODE,
         retriable: false,
         message:
           'The engine opened a different native conversation; the requested resume was refused.',
         metadata: { [NATIVE_RESUME_IDENTITY_METADATA_KEY]: 'mismatch' },
-      });
+      } satisfies ProviderRuntimeErrorEvent);
       interruptEngine?.();
       return;
     }
@@ -496,6 +562,9 @@ export function mapClaudeSdkMessage({
       : message.session_id;
     record.session.cwd = message.cwd;
     record.session.model = message.model;
+    record.stationBrowserVerified = stationBrowserVerifiedByInit(
+      message.mcp_servers,
+    );
     record.session.status = 'ready';
     record.session.updatedAt = createdAt;
     if (message.permissionMode) {
@@ -517,6 +586,7 @@ export function mapClaudeSdkMessage({
       model: message.model,
       cwd: message.cwd,
       metadata: {
+        ...deliveryProbeInventory(record, message.tools),
         ...(record.attemptedResumeCursor === message.session_id
           ? { [NATIVE_RESUME_IDENTITY_METADATA_KEY]: 'matched' }
           : {}),
@@ -868,6 +938,7 @@ export function mapClaudeSdkMessage({
         ? target.turn
         : undefined;
     const resultTurnId = resultTurn?.turnId;
+    const resultInvocationId = resultTurn?.startEvent?.invocationId;
     // A send the ledger still holds as queued (no lifecycle messages) gets
     // its start before any fact about its end.
     if (resultTurn) ensureClaudeTurnStartPublished(turnContext, resultTurn);
@@ -941,7 +1012,19 @@ export function mapClaudeSdkMessage({
         threadId: record.session.threadId,
         createdAt,
         turnId: resultTurnId,
+        ...(resultInvocationId !== undefined
+          ? { invocationId: resultInvocationId }
+          : {}),
         method: 'runtime.error',
+        ...providerFailure(
+          usageLimit
+            ? 'quota_exhausted'
+            : outcome === 'binding-dead'
+              ? 'session_gone'
+              : 'provider_error',
+          'failed',
+          usageLimit?.resetAt,
+        ),
         severity: 'error',
         code:
           outcome === 'binding-dead'
@@ -955,7 +1038,7 @@ export function mapClaudeSdkMessage({
         ...(resultTurn?.kind === 'provider'
           ? { metadata: claudeTurnTerminalMetadata(resultTurn) }
           : {}),
-      });
+      } satisfies ProviderRuntimeErrorEvent);
       return;
     }
     // Claude emits a successful `result` for resume/init handshakes. It has
@@ -1032,12 +1115,23 @@ export function mapClaudeSdkMessage({
         });
       }
       settleClaudeResultTarget(turnContext, target);
+      const nativeIdentityKey =
+        !deferredTurn && record.nativeOwnershipBindingKey && message.session_id
+          ? nativeSessionIdentityKey(
+              provider,
+              record.nativeOwnershipBindingKey,
+              message.session_id,
+            )
+          : undefined;
       publish({
         eventId: crypto.randomUUID(),
         provider,
         threadId: record.session.threadId,
         createdAt,
         turnId,
+        ...(resultInvocationId !== undefined
+          ? { invocationId: resultInvocationId }
+          : {}),
         method: 'turn.completed',
         // `'other'` — not `'stop'` and not `'tool-calls'` — for a deferral:
         // the turn did not reach a self-reported outcome, and `'other'`
@@ -1059,11 +1153,14 @@ export function mapClaudeSdkMessage({
         // the assistant's own reply. Absent when no assistant message arrived
         // this turn (e.g. an immediate error). #2324: a provider-triggered
         // turn's terminal carries `trigger`, like its start.
-        ...(reportedModel || resultTurn.kind === 'provider'
+        ...(reportedModel || resultTurn.kind === 'provider' || nativeIdentityKey
           ? {
               metadata: {
                 ...(reportedModel ? reportedModelMetadata(reportedModel) : {}),
                 ...claudeTurnTerminalMetadata(resultTurn),
+                ...(nativeIdentityKey
+                  ? { [NATIVE_TURN_IDENTITY_METADATA_KEY]: nativeIdentityKey }
+                  : {}),
               },
             }
           : {}),
@@ -1079,6 +1176,9 @@ export function mapClaudeSdkMessage({
           threadId: record.session.threadId,
           createdAt,
           turnId: folded.turnId,
+          ...(folded.startEvent?.invocationId !== undefined
+            ? { invocationId: folded.startEvent.invocationId }
+            : {}),
           method: 'turn.completed',
           finishReason: 'other',
         });
@@ -1115,10 +1215,8 @@ export function mapClaudeSdkMessage({
     // tools that never emit SDK `tool_progress`. Subagent-internal calls
     // (`parent_tool_use_id != null`) stay out of the main transcript; their
     // model is that subagent's own (#3163).
-    if (message.parent_tool_use_id !== null) {
-      observeClaudeSubagentReply(childWorkContext, message);
-      return;
-    }
+    observeClaudeSubagentReply(childWorkContext, message);
+    if (message.parent_tool_use_id !== null) return;
     const content = message.message?.content;
     if (!Array.isArray(content)) return;
     for (const block of content) {

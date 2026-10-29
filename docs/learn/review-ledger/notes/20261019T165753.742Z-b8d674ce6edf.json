@@ -1,0 +1,7 @@
+{
+  "revision": "764b270379659c09cba29775a5eb939e489eae8f",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed against chat.css (new .answer-basis-chip rules beside the turn footer) and a removed stale mock key in ChatMessageList.subagentCards.test.tsx: placement's pane, region and inventory claims are unaffected; no prose change.","inputs":["docs/design/placement.md","src-ui/src/__tests__/ChatMessageList.subagentCards.test.tsx","src-ui/src/components/chat/chat.css"]}
+  ]
+}

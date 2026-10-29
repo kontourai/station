@@ -53,6 +53,7 @@ import {
   runKnowledgeReindex,
   runKnowledgeSearch,
 } from './knowledge.js';
+import { runWalkthroughCommand } from './walkthrough.js';
 
 /**
  * Surface commands share the CLI's target and authentication contract with
@@ -1066,6 +1067,41 @@ async function runBrandingCommand(args: string[]) {
   await requestAndPrint(apiBase, '/api/branding');
 }
 
+/**
+ * `station workload status`: this Station's engine workload memory budgets,
+ * whether they are enforced, and where each value came from. A Station that
+ * predates the route answers 404, reported as "not supported" with a nonzero
+ * exit rather than as an empty success.
+ */
+/** The only flags `station workload` reads; anything else is refused. */
+const WORKLOAD_FLAGS = ['api-base', 'station', 'credential', 'verbose'];
+
+async function runWorkloadCommand(args: string[]) {
+  const parsed = parseCoreArgs(args);
+  // A target flag this command does not read (--home, --instance) must not
+  // quietly fall back to the device's default Station.
+  const unknown = Object.keys(parsed.flags).filter(
+    (flag) => !WORKLOAD_FLAGS.includes(flag),
+  );
+  if (unknown.length > 0)
+    throw new Error(
+      `station workload does not accept ${unknown.map((flag) => `--${flag}`).join(', ')}. Choose the Station with --station=<name> or --api-base=<url> (a local instance's server address, e.g. http://127.0.0.1:<port>).`,
+    );
+  const apiBase = resolveSurfaceApiBase(parsed);
+  const action = requirePositional(parsed, 0, 'workload action');
+  if (action !== 'status')
+    throw new Error("Unknown workload action. Use 'status'.");
+  try {
+    await requestAndPrint(apiBase, '/api/system/workload');
+  } catch (error) {
+    if ((error as { status?: unknown }).status === 404)
+      throw new Error(
+        'This Station does not report workload budgets (an older or hosted Station). Update Station to use station workload status.',
+      );
+    throw error;
+  }
+}
+
 async function runFeedbackCommand(args: string[]) {
   const parsed = parseCoreArgs(args);
   const apiBase = resolveSurfaceApiBase(parsed);
@@ -1134,6 +1170,14 @@ async function runInsightsCommand(args: string[]) {
   if (action !== 'get' && action !== 'events') {
     throw new Error("Unknown insights action. Use 'get' or 'events'.");
   }
+  // buildQuery drops an empty value, which would turn `--producer=` into the
+  // unfiltered rollup instead of a refusal.
+  if (
+    parsed.flags.producer !== undefined &&
+    (typeof parsed.flags.producer !== 'string' || !parsed.flags.producer)
+  ) {
+    throw new Error('--producer=<name> requires a telemetry producer name.');
+  }
   if (action === 'events') {
     // The rows behind the rollup (station#3076): the same filters, so a
     // number and the events under it are reachable with one vocabulary.
@@ -1172,6 +1216,7 @@ async function runInsightsCommand(args: string[]) {
       { flag: 'tool' },
       { flag: 'engine' },
       { flag: 'conversation' },
+      { flag: 'producer' },
       { flag: 'limit' },
     ]);
     // `--tools` is a bare boolean flag, and buildQuery only forwards string
@@ -1188,6 +1233,7 @@ async function runInsightsCommand(args: string[]) {
     { flag: 'agent' },
     { flag: 'tool' },
     { flag: 'engine' },
+    { flag: 'producer' },
     { flag: 'limit' },
   ]);
   await requestAndPrint(apiBase, `/api/insights/${query}`);
@@ -1556,6 +1602,9 @@ export async function runSurfaceCommand(
     case 'review':
       await runReviewCommand(args);
       return;
+    case 'walkthrough':
+      await runWalkthroughCommand(args);
+      return;
     case 'knowledge':
       await runKnowledgeCommand(args);
       return;
@@ -1564,6 +1613,9 @@ export async function runSurfaceCommand(
       return;
     case 'branding':
       await runBrandingCommand(args);
+      return;
+    case 'workload':
+      await runWorkloadCommand(args);
       return;
     case 'feedback':
       await runFeedbackCommand(args);

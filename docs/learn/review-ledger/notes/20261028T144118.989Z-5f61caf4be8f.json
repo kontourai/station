@@ -1,0 +1,7 @@
+{
+  "revision": "b49b0e2a49e8fade5ce0b7a3f62edca3e68e2a61",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Wording fix from the round-2 delta review: the hold click-window now says it applies on the item or a surface the item renders, and that a menu rendered outside the item (the file tree's) is unaffected; matches useContextMenuGesture's onPointerDown/onClickCapture.","inputs":["docs/guides/responsive-ui.md"]}
+  ]
+}

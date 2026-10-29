@@ -1,0 +1,7 @@
+{
+  "revision": "dc57d356a55b19510bd1d81eee78567c5c307b75",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Re-read after dc57d356a55 moved the portal-target guard in ResponsiveDialogSurface.containFocus below Escape handling, so it scopes Tab only. Stated ownership (portal, initial focus, Tab-boundary handling, Escape/backdrop dismissal when dismissible) is unchanged and accurate; no doc claim depends on the guard's position. Covered by the new ResponsiveDialogSurface test that dismisses on Escape from a portaled child (red when reverted, 36/36 green restored).","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/ResponsiveDialogSurface.tsx"]}
+  ]
+}

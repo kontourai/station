@@ -1,0 +1,7 @@
+{
+  "revision": "66eb652d26cccf96fd669a3d3dbb51bdfa99fef1",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Resume step now states that the session/load history replay is not published while state updates still apply; checked against acp-adapter.ts (loadingHistory guard, ACP_HISTORY_REPLAY_UPDATES, post-load macrotask drain) and its adapter test.","inputs":["docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

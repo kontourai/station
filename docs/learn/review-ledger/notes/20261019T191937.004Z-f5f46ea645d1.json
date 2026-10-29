@@ -1,0 +1,7 @@
+{
+  "revision": "7d2f624081a79b22f4166bb996431ea913d3ec80",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Added that a settled answer's Basis chip sits beside the hover-revealed action row, visible at rest (owner's #926 amendment). Checked against MessageBubble.tsx (.turn-footer__bar) and chat.css; the row-reservation claim still holds because the hidden row keeps its space.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/MessageBubble.tsx","src-ui/src/components/chat/chat.css"]}
+  ]
+}

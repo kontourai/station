@@ -31,6 +31,7 @@ import {
   jwtVerify,
 } from 'jose';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
+import { isRecord } from '../../utils/is-record.js';
 import { readVerifiedVirtualApplicationRequest } from '../connections/virtual-application.js';
 import {
   openRelayEnrollmentJournal,
@@ -97,10 +98,6 @@ function strictPublicKey(
   )
     return undefined;
   return { kty: 'EC', crv: 'P-256', x: key.x, y: key.y };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
 function canonicalRelayJson(value: unknown): string {

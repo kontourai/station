@@ -22,7 +22,10 @@ import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { AssignmentClaimService } from '../../evidence/assignment-claim-service.js';
 import { TaskGraphService } from '../task-graph-service.js';
-import { dispatchTaskForTest } from './task-dispatch-test-helpers.js';
+import {
+  dispatchTaskForTest,
+  FIXTURE_TASK_AGENT,
+} from './task-dispatch-test-helpers.js';
 
 const require = createRequire(import.meta.url);
 // Package "exports" only defines "." and "./package.json" subpaths — the
@@ -627,6 +630,8 @@ describe('TaskGraphService dispatch-as-claim (#584)', () => {
 
     await expect(
       dispatchTaskForTest(service, task.id, {
+        // #4005: an engine start runs as an Agent; the start itself fails.
+        agentId: FIXTURE_TASK_AGENT,
         runtimeConfig: { provider: 'claude' },
       }),
     ).rejects.toThrow(/simulated orchestration dispatch failure/);
@@ -781,6 +786,8 @@ describe('TaskGraphService dispatch-as-claim (#584)', () => {
 
     await expect(
       dispatchTaskForTest(service, task.id, {
+        // #4005: an engine start runs as an Agent; the start itself fails.
+        agentId: FIXTURE_TASK_AGENT,
         runtimeConfig: { provider: 'claude' },
       }),
     ).rejects.toThrow('remote start acknowledgement lost');
@@ -931,6 +938,45 @@ describe('TaskGraphService dispatch-as-claim (#584)', () => {
     // Confirmation-pass finding: per-task evaluation of a SHARED subject let
     // one task's own terminal status release ANOTHER task's genuinely live
     // claim, since `runtime === 'station'` alone is not ownership proof.
+    test("keeps a done Task's claim while an open Task names the same item in another spelling (review round 2, P3-7)", async () => {
+      const workspace = makeTempDir('station-workspace-');
+      const assignmentClaimService = new AssignmentClaimService();
+      const { service, taskGraphPath } = createService({
+        workspace,
+        assignmentClaimService,
+      });
+      const subjectId = 'github:kontourai/station#598';
+      // Task B claimed the item, then reached done without a release.
+      const taskB = await service.createTask({
+        projectId: 'project-alpha',
+        title: 'Done task B',
+        workItemRef: subjectId,
+      });
+      const dispatchB = await dispatchTaskForTest(service, taskB.id, {});
+      expect(dispatchB.dispatch.claim?.outcome).toBe('claimed');
+      const persisted = JSON.parse(readFileSync(taskGraphPath, 'utf-8'));
+      persisted.tasks = persisted.tasks.map(
+        (t: { id: string; status: string }) =>
+          t.id === taskB.id ? { ...t, status: 'done' } : t,
+      );
+      require('node:fs').writeFileSync(
+        taskGraphPath,
+        JSON.stringify(persisted, null, 2),
+      );
+      // Task A is open on the same item, spelled with capitals.
+      await service.createTask({
+        projectId: 'project-alpha',
+        title: 'Open task A',
+        workItemRef: 'github:Kontourai/Station#598',
+      });
+      const artifactRoot = join(workspace, '.kontourai', 'flow-agents');
+      expect(readAssignmentStatus(artifactRoot, subjectId).claimed).toBe(true);
+
+      const sweep = await service.reconcileStaleAssignmentClaims();
+      expect(sweep.releasedSubjects).toEqual([]);
+      expect(readAssignmentStatus(artifactRoot, subjectId).claimed).toBe(true);
+    });
+
     test("does not release an active task's claim just because a SIBLING task sharing the same workItemRef is terminal", async () => {
       const workspace = makeTempDir('station-workspace-');
       const assignmentClaimService = new AssignmentClaimService();
@@ -940,18 +986,10 @@ describe('TaskGraphService dispatch-as-claim (#584)', () => {
       });
       const subjectId = 'github:kontourai/station#597';
 
-      // Task A: dispatched, genuinely holds the live claim, still active
-      // ('ready' — the task-dispatch path never advances past it).
-      const taskA = await service.createTask({
-        projectId: 'project-alpha',
-        title: 'Active task A',
-        workItemRef: subjectId,
-      });
-      const dispatchA = await dispatchTaskForTest(service, taskA.id, {});
-      expect(dispatchA.dispatch.claim?.outcome).toBe('claimed');
-
-      // Task B: a SEPARATE local task that happens to reference the SAME
-      // subject and is already terminal — it never held the claim itself.
+      // Task B: a SEPARATE local task that references the SAME subject and
+      // is already terminal; it never held the claim itself. It is created
+      // first: a work item is the primary item of at most one open Task
+      // (#4003), so the sibling must be done before Task A names it.
       const taskB = await service.createTask({
         projectId: 'project-alpha',
         title: 'Unrelated terminal task B, same subject',
@@ -966,6 +1004,16 @@ describe('TaskGraphService dispatch-as-claim (#584)', () => {
         taskGraphPath,
         JSON.stringify(persisted, null, 2),
       );
+
+      // Task A: dispatched, genuinely holds the live claim, still active
+      // ('ready' — the task-dispatch path never advances past it).
+      const taskA = await service.createTask({
+        projectId: 'project-alpha',
+        title: 'Active task A',
+        workItemRef: subjectId,
+      });
+      const dispatchA = await dispatchTaskForTest(service, taskA.id, {});
+      expect(dispatchA.dispatch.claim?.outcome).toBe('claimed');
 
       const artifactRoot = join(workspace, '.kontourai', 'flow-agents');
       expect(readAssignmentStatus(artifactRoot, subjectId).claimed).toBe(true);

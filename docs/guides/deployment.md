@@ -10,6 +10,20 @@ and [monitoring guide](monitoring.md) own their detailed contracts. The source
 review here covers the named deployment paths; historical platform observations
 and unrun installer/rollback scenarios retain their separate evidence limits.
 
+## Deployment directories
+
+Two top-level directories hold deployment material. The names are historical,
+not a current-versus-legacy split: everything in both is current. Paths are
+cited by workflows, tests and secret-scan rules, so they stay where they are.
+
+| Path | Holds | Run by |
+| --- | --- | --- |
+| `Dockerfile`, `docker-compose.yml` (root) | The Station container image and its Compose template | [Docker Production](#docker-production) |
+| `deploy/public-ingress/` | Caddy overlay that puts one container Station behind one public HTTPS hostname | Its [README](../../deploy/public-ingress/README.md); `container-smoke.yml` runs its protocol smoke |
+| `deploy/push-gateway/` | Cloudflare Worker that relays Station-signed pushes to FCM and APNs | Its [README](../../deploy/push-gateway/README.md); no workflow deploys it |
+| `deployment/self-hosted-broker/` | Caddy and Compose files for a self-hosted connection broker | [Self-hosted broker guide](self-hosted-broker.md) |
+| `deployment/telemetry/` | Private telemetry receiver profile; its developer profile is the local monitoring stack | Its [README](../../deployment/telemetry/README.md) and the [monitoring guide](monitoring.md) |
+
 ## Local Development
 
 Deployment describes how a Station instance is run and reached; it does not
@@ -27,6 +41,35 @@ Use unused ports and a separate home for development. `--clean` deletes the
 selected home and build outputs; it is not just a rebuild flag. The lifecycle
 owner refuses default-home cleaning without its additional explicit override.
 Do not apply that override to make a disposable recipe work on a real home.
+
+## Built UI delivery
+
+The lifecycle UI listener (also used by Docker and hosted tenant ingress) serves
+content-versioned files under `/assets/` with
+`Cache-Control: public, max-age=31536000, immutable`. Other static files
+revalidate with `no-cache` and an ETag. Matching conditional asset requests
+return `304`; HEAD requests return the selected representation's headers.
+
+`npm run build:ui` emits Brotli and gzip sidecars for compressible assets.
+`build:native-client` uses `build:ui:native` to omit these HTTP-only sidecars
+from native packages. The
+listener negotiates `Accept-Encoding`, sets `Vary: Accept-Encoding`, and falls
+back to the original file when sidecars are absent. HTML stays `no-cache` and
+uncompressed: the listener injects a fresh CSP nonce for each response and does
+not return `304` for the shell. The listener passes API responses and
+unbuffered event streams through as the API sends them; the API revalidates its
+own JSON reads (see [conditional JSON reads](../reference/api.md#conditional-json-reads)).
+
+This listener and the API listener keep an idle HTTP connection open for 65
+seconds instead of Node's 5. A client polling every few seconds reuses its
+connection, and a reverse proxy with the common 60-second idle limit closes
+its upstream connection before Station does, rather than reusing one Station
+has just closed.
+
+The built shell preloads its `station-eager-entry` main module while the boot
+module prepares startup recovery. Page and highlight-worker builds share the
+same content-versioned Shiki grammar modules; each context still owns its own
+highlighter instance. The LAN phone helper uses the same static delivery owner.
 
 ## Docker Production
 
@@ -147,7 +190,8 @@ the reusable environment credential:
 On successful completion the browser receives a revocable HttpOnly Device
 session and can reconnect. A paired browser is not automatically an approver:
 approval requires the route's current operator/local-home authority or an
-explicitly promoted `access:approve` Device. Use the connection manager's
+explicitly promoted `access:approve` Device (one tied to a person only while
+that person's Station group is Admin). Use the connection manager's
 **Paired devices** view to revoke access. Registration, successful enrollment
 and an authenticated subsequent request are separate observations.
 
@@ -157,18 +201,61 @@ and hot reload stay outside the published image contract.
 
 ## Monitoring Stack
 
-The standalone stack in `monitoring/` is independently managed from the
-production Station container. It maps OTLP HTTP to 4318, Prometheus to 9090,
-Grafana to 3333 and Jaeger to 16686. The checked-in template uses mutable image
-tags, host port bindings and a development Grafana password/anonymous viewing;
-it is not a hardened public monitoring deployment.
+The optional [private telemetry companion](../../deployment/telemetry/README.md)
+now has an explicit receiver image target and a separate pinned Compose profile.
+It requires private credential files and loopback exposure. Source consumers and
+bounded delivery/restore diagnostics are implemented; their historical receipts
+do not qualify the current installed release or the full private two-Station
+journey. See [the diagnostic profile](../../deployment/telemetry/README.md#artifact-and-private-files)
+for its exact scope and remaining native/release limits. Its source is distinct
+from existing dogfood receipts.
+
+Developer → Monitoring → Companion exposes the operator-only host prerequisite
+check. The in-person operator and an explicitly promoted human operator Device
+can read it. The Device needs read scope, `telemetry:manage` and its current
+operator role; agents and unpromoted paired Devices remain refused. This read
+does not install, start or qualify the deployment.
+See the [prerequisite API](../../deployment/telemetry/README.md#station-host-prerequisite-api)
+for supported container capabilities and explicit failure states.
+
+The same directory provides the only checked-in monitoring stack. Its
+[developer profile](../../deployment/telemetry/README.md#developer-profile) runs
+the digest-pinned Collector, Prometheus, Tempo and Grafana without the product
+receiver, independently of the production Station container. It publishes OTLP
+HTTP on 44482, Prometheus on 44483 and Grafana on 44484, all on loopback, and
+refuses to start without private credential files. It is not a hardened public
+monitoring deployment.
 
 Read [the monitoring guide](monitoring.md) before enabling the stack or setting
 `OTEL_EXPORTER_OTLP_ENDPOINT`. `localhost` in a container names that container,
 not an independently launched collector. Choose the intended reachable endpoint
 and private exposure explicitly. Configured export is not collector receipt;
-the guide records the startup meter-binding limitation and separates telemetry
-from durable product outcomes.
+the guide explains synchronous provider registration and the remaining
+collection, temporality and downstream storage qualification boundaries.
+
+Disclosed product observations use the separate
+[receiver](../../packages/telemetry-broker/README.md), its dedicated PostgreSQL
+store and distinct source/operator keys. They are not accepted by the Collector
+and do not become canonical personal usage receipts. The
+[configuration reference](../reference/config.md#telemetry-destinations)
+describes saved addresses, exact instance key grants and restart activation.
+The receiver's owner analytics (`/v1/operator/lite/daily` and `/weekly`) require
+its private operator `sto_` key and return exact marginals. Keep these routes
+private at the proxy too. The public dashboard and publisher `stq_` keys expose
+only frozen weekly noisy estimates over a fixed public domain, with cursor
+pagination. Configure public release versions/registry IDs independently of
+observed traffic. The current receiver requires schema 9 before serving; a
+schema-8 binary refuses that database. In-place rollback is `NOT_SUPPORTED`, and
+rollback by restoring the original backup remains `NOT_VERIFIED`. Follow the
+[maintained lifecycle profile](../../deployment/telemetry/README.md#backup-restore-and-upgrade-acceptance)
+for exact backup, restore and compatibility boundaries. Back up the entire database including `lite_noise_key`,
+`lite_publications`, and `lite_published`. Never clear publication markers,
+regenerate already released weeks, or restore their cells independently. Review
+the [privacy/utility contract](../../packages/telemetry-broker/README.md#public-aggregates)
+and qualify proxy access-log erasure separately.
+No product or collector destination is enabled by default. The optional stack
+still needs its own pinned-release, outage/restart, retention and backup/restore
+qualification; a successful connection probe is not that acceptance.
 
 ## Private cloud environment
 
@@ -187,8 +274,10 @@ readiness. Application and workspace files need their own retention/backup polic
 ## Offline home recovery drill
 
 Use a disposable home first, with the same Station release on source and target.
-Record a Project, Task, room message, document edit, its durable edit receipt,
-and the published revision link. Make another edit so the first revision is no
+Record a Project, Task, room message, document edit and its durable edit receipt.
+Create a Task Review thread on that Plan revision to freeze a receipt, and record
+the resulting published revision link. Enable the `task-review` feature preview
+for this step; saving alone retains a replaceable candidate. Make another edit so the first revision is no
 longer the current document. Stop every runtime using the source home before
 running the [home backup and restore commands](../reference/cli.md#home-backup)
 from a matching source checkout. These local archive verbs are not a promise
@@ -201,6 +290,10 @@ that the published client can restore a server home:
 ```
 
 The archive contains sensitive home files and is not an encrypted transport.
+Use a v2-capable CLI for newly written home archives; it preserves empty
+directories and can also read older v1 archives. A v1 archive cannot recover
+empty directories it never recorded. This format compatibility does not
+establish post-snapshot effect-history continuity or a safe runtime downgrade.
 Restrict archive access and encrypt off-host storage using your organization's
 backup system. Preserve required evidence-signing keys securely; rotating the
 operator credential is separate from replacing those keys. OS-held credentials,
@@ -237,6 +330,16 @@ provenance metadata, not proof of source shutdown or a transfer certificate.
 Keep one active writer by operational control; automatic cross-host handoff,
 witness-less fork presentation, and per-tenant recovery require separate
 verification before offering those guarantees to customers.
+
+Private analytics uses that recovery record as a negative activation fence.
+Normal restore and supervised in-place update rollback require fresh source
+consent and receiving keys; copied approvals and sync checkpoints cannot renew
+access. Update rollback persists the fence before removing state and preserves
+it if interrupted. Generic EventStore stream identity is not rewritten. Keep
+recovery metadata intact; unreadable startup metadata disables private export
+until repair and restart. These controlled home-restore checks do not establish
+companion PostgreSQL backup reconciliation, canonical clone/mirror identity or
+cross-host authority. See [source recovery limits](monitoring.md#source-approval-review).
 
 ## Reverse Proxy
 
@@ -430,9 +533,13 @@ subscription, and unsubscription routes and delivery are unavailable for the
 same reason: paired-device subscriptions have no durable tenant binding. These
 surfaces return only when their backing storage carries and enforces that
 binding; personal mode retains the existing terminal and Web Push behavior.
-Answer shares are different: their list, mint, view, and revoke operations use
-the existing session authority and remain available only for authorized
-sessions. Personal mode retains its existing scheduler, task, and merged
+Answer shares are partly available. Listing and revoking use the caller's
+session authority within its tenant; without a tenant context, the list is
+empty and a revoke answers as not found. Minting a new share returns 409
+("Answer sharing is not available on a hosted Station yet") because the public
+share view does not yet read as the recorded sharer within that tenant; see
+[the share routes](../../src-server/routes/share/answer-share-routes.ts).
+Personal mode retains its existing scheduler, task, and merged
 file/session conversation behavior.
 
 ## Environment Configuration
@@ -571,6 +678,22 @@ The example port is the Nightly default, not discovery. The
 saved Station targets and verifies local identity/proof before sending the host
 credential.
 
+Device administration can also use an explicitly promoted paired principal.
+On the host, grant `access:devices` to an already-paired CLI/device through
+`environment access scope <device> --add=access:devices` with the correct home
+and loopback endpoint. A person-bound device must also be in the Admin group;
+that group alone never grants administration. The paired CLI can then run
+`environment access devices|scope|revoke|remove --station=<name>` remotely using
+its own credential. Its holder cannot delegate `access:devices`, manage people
+or provision peers. Legacy `access:manage` and `approval:full-access` do not
+confer administration. Update the host and client before using the new scope;
+see the [CLI reference](../reference/cli.md#environment).
+
+Account-bound guest principals remain restricted by their separate route
+allowlist: it excludes device administration even with an Admin group and an
+`access:devices` grant. Use an operator-approved personal Device or the host
+operator channel. The CLI reports this policy refusal distinctly.
+
 When exposing a lifecycle-managed instance over the tailnet, map its configured
 UI proxy port, not an inferred API-plus-offset port. The dogfood installer below
 targets `uiPort`. A native channel's service layout must be inspected separately.
@@ -612,8 +735,10 @@ FQDN): the consent session cookie is host-scoped and is not sent across
 hostnames, so a different name fails closed with `unauthenticated`. Unset, the
 behavior is unchanged. The origin is never added to `ALLOWED_ORIGINS`.
 
-With this origin set, a paired browser can also enroll an operator passkey; see
-[Enroll an operator passkey](operator-passkeys.md).
+With this origin set, a paired browser can enroll an operator passkey and sign
+in for read-only device inventory access; see [Operator passkeys](operator-passkeys.md).
+The host-scoped session cookie also reaches the same-host app origin; it grants
+only the three documented reads. No passkey ceremony runs on the app origin.
 
 #### Troubleshooting the pairing path
 
@@ -983,3 +1108,14 @@ removing files; preserve rollback/diagnostic evidence if shutdown is uncertain.
 Then inspect `tailscale serve status --json`. Remove the HTTPS handler only if
 it still points at this instance and no other required handler shares that
 listener. Never use a blanket `tailscale serve reset` as dogfood cleanup.
+
+
+## Outside-agent OAuth remains inert
+
+The [R3 OAuth protocol contract](../reference/outside-agent-oauth.md) adds an
+isolated server composition behind the compiled R6 release refusal. No setting
+or operator session enables it. Metadata, registration and token routes do not
+create operator authority, and the `/mcp` transport and Connections management
+journey remain later slices. The reference records the exact loopback predicate,
+Serve suspension, HTTPS ingress requirements, quotas and raw-forwarding/cookie
+residuals; it is not a deployment or end-to-end compatibility qualification.

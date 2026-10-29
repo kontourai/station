@@ -300,11 +300,3 @@ export function buildComputerRows(input: ComputerRowInput): ComputerRowModel[] {
     };
   });
 }
-
-export function pairedConnectionIdFor(
-  environment: KnownEnvironment,
-): string | null {
-  return environment.id.startsWith(PAIRED_ID_PREFIX)
-    ? environment.id.slice(PAIRED_ID_PREFIX.length)
-    : null;
-}

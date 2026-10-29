@@ -1,19 +1,23 @@
+import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { agentId, engineId } from '@kontourai/station-contracts/agent-identity';
 import { environmentId } from '@kontourai/station-contracts/execution-target';
 import { PORTABLE_EXECUTION_CONSENT_METADATA_KEY } from '@kontourai/station-contracts/provider';
+import { viewedContentPreimage } from '@kontourai/station-contracts/runtime-event-content';
 import type {
   CanonicalRuntimeEvent,
   TokenUsageUpdatedEvent,
 } from '@kontourai/station-contracts/runtime-events';
 import {
+  INTERNAL_SESSION_READ_SCOPE,
   parseHostedTenantRegistry,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
 import { StationHttpError } from '@kontourai/station-sdk/client';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import type {
   ProviderAdapterMetadata,
   ProviderAdapterShape,
@@ -123,6 +127,7 @@ process.env.STATION_API_BASE = 'http://control-delegation.test';
 process.env.STATION_INTERNAL_API_TOKEN = 'internal-test-token';
 
 const CURRENT_API = 'http://control-delegation.test';
+const makeTempDir = trackTempDirs();
 const REMOTE_API = 'http://127.0.0.1:45123';
 const fetchMock = vi.fn<typeof fetch>();
 
@@ -221,6 +226,8 @@ function localService() {
     ) => sessionCommands.execute(command, context),
   );
   return {
+    prepareInitialConversationForkContext: vi.fn(() => undefined),
+    assertConversationForkContextEnvironment: vi.fn(() => undefined),
     readSession: vi.fn(async (_sessionId?: string) => null),
     currentConversationSessionId: vi.fn(
       (conversationId: string) => conversationId,
@@ -437,6 +444,8 @@ function localDelegatedTaskService(
     tenantExecutionContext?: { tenantId: string };
   }) => authority.tenantExecutionContext?.tenantId === 'alpha';
   return {
+    prepareInitialConversationForkContext: vi.fn(() => undefined),
+    assertConversationForkContextEnvironment: vi.fn(() => undefined),
     listSessionReadModel: vi.fn(async (authority) =>
       canRead(authority) ? [session] : [],
     ),
@@ -1022,7 +1031,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
     },
   );
 
-  // archive#4543 LOW-2: a caller-supplied `sessionId` is stamped into
+  // archive#4543: a caller-supplied `sessionId` is stamped into
   // `metadata.conversationId` via the `conversationIdentity` internal
   // escape hatch — a reserved key whose contract (provider.ts's
   // `CONVERSATION_ID_RESERVED_METADATA_KEY` docblock) promises it is
@@ -1319,7 +1328,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
     expect(fallbackSignal).toBeInstanceOf(AbortSignal);
   });
 
-  // #2377 C2b review: the target Station's words are replaced by this
+  // #2377: the target Station's words are replaced by this
   // Station's fixed copy and the status (they reach an agent's tool result);
   // there is still exactly one request and no fallback.
   test('reports a target-side validation error as fixed copy, without a fallback', async () => {
@@ -1536,7 +1545,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
   });
 
   /**
-   * #2436 HIGH-1: a Station that predates the approval command validates the
+   * #2436: a Station that predates the approval command validates the
    * body with a schema that has no `setApprovalMode`, and zod strips unknown
    * keys. The pick must still reach such a Station through the channel it
    * has always applied: `model.options.approvalMode`.
@@ -2696,7 +2705,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
     );
   });
 
-  // #764 review round 2: the only tool-layer proof of the reserved-unstarted
+  // #764: the only tool-layer proof of the reserved-unstarted
   // tail used the stub double above, whose readSession answers for ANY id and
   // therefore cannot fail. This one builds the real EventStore and real
   // OrchestrationService so the reservation, the lineage read, and the
@@ -2808,19 +2817,21 @@ describe('Station Control canonical Environment + Agent execution', () => {
         ),
       ).rejects.toThrow('no provider call was made');
       expect(stationAgent.startSession).toHaveBeenCalledTimes(1);
-      // The existing trusted lifecycle observer supplies the missing terminal
-      // evidence; elapsed time or the start exception is not enough.
-      expect(
-        eventStore.sessionTurnBoundaryAuthority().observe({
-          eventId: 'confirmed-start-terminal',
-          provider: 'claude',
-          threadId: reservedChildId,
-          sessionId: reservedChildId,
-          method: 'session.exited',
-          exitCode: 0,
-          createdAt: new Date().toISOString(),
-        }),
-      ).toEqual({ kind: 'applied' });
+      // Production observes terminal evidence only after its append commits;
+      // a failed exit is retryable, while exit code 0 would mark this child completed.
+      const exited: CanonicalRuntimeEvent = {
+        eventId: 'confirmed-start-terminal',
+        provider: stationAgent.provider,
+        threadId: reservedChildId,
+        sessionId: reservedChildId,
+        method: 'session.exited',
+        exitCode: 1,
+        createdAt: new Date().toISOString(),
+      };
+      eventStore.appendEvent(exited);
+      expect(eventStore.sessionTurnBoundaryAuthority().observe(exited)).toEqual(
+        { kind: 'applied' },
+      );
 
       // The retry must look through the reserved-unstarted tail to the
       // predecessor's binding and REUSE the same reserved child identity,
@@ -3406,6 +3417,183 @@ describe('Station Control canonical Environment + Agent execution', () => {
     );
   });
 
+  // docs/design/event-content-spill.md: an approval whose bound call holds
+  // spilled arguments (a Codex file change's diff) is answered with the
+  // digest covering them, so the server's content gate admits it.
+  // docs/design/event-content-spill.md: the tool echoes the server's
+  // binding (what an allow must load and the digest the gate checks).
+  test('allows a request with spilled content by echoing the server binding', async () => {
+    installCurrentStationFetch();
+    const authority = hostedAuthority('alpha');
+    const service = Object.assign(localDelegatedTaskService('running'), {
+      readApprovalContentBinding: vi.fn(() => ({
+        requestEventId: 'open-fc',
+        request: {},
+        bound: [],
+        required: true,
+        viewedContentDigest: `sha256-${'d'.repeat(64)}`,
+      })),
+    });
+    const { respondToDelegatedTaskRequest } = await import(
+      '../station-control-delegation.js'
+    );
+    await respondToDelegatedTaskRequest(
+      {
+        taskId: 'task-alpha',
+        requestId: 'request-alpha',
+        decision: 'accept',
+        readAuthority: authority,
+      },
+      service as never,
+    );
+    expect(service.readApprovalContentBinding).toHaveBeenCalledWith(
+      'task-alpha',
+      'request-alpha',
+      authority,
+    );
+    expect(service.dispatchWithReceipt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'respondToRequest',
+        expectedRequestEventId: 'open-fc',
+        viewedContentDigest: `sha256-${'d'.repeat(64)}`,
+      }),
+      expect.anything(),
+      undefined,
+    );
+  });
+
+  test("pins the request event the tool read, not the binding's current one", async () => {
+    installCurrentStationFetch();
+    const authority = hostedAuthority('alpha');
+    const service = Object.assign(localDelegatedTaskService('running'), {
+      readApprovalContentBinding: vi.fn(() => ({
+        requestEventId: 'open-current',
+        request: {},
+        bound: [],
+        required: true,
+        viewedContentDigest: `sha256-${'d'.repeat(64)}`,
+      })),
+    });
+    // The detail the tool reads names the request event it saw.
+    const detail = (await service.readSession('task-alpha', authority))!;
+    Object.assign(detail.events[1]!, { eventId: 'open-read' });
+    const { respondToDelegatedTaskRequest } = await import(
+      '../station-control-delegation.js'
+    );
+    await respondToDelegatedTaskRequest(
+      {
+        taskId: 'task-alpha',
+        requestId: 'request-alpha',
+        decision: 'accept',
+        readAuthority: authority,
+      },
+      service as never,
+    );
+    expect(service.dispatchWithReceipt).toHaveBeenCalledWith(
+      expect.objectContaining({ expectedRequestEventId: 'open-read' }),
+      expect.anything(),
+      undefined,
+    );
+  });
+
+  // The binding comes from the real OrchestrationService over a real
+  // EventStore holding a stored request and its bound tool.started whose
+  // arguments were stored out of line: the digest the tool sends is the one
+  // the server's own binding computes over both, not the request alone.
+  test('echoes the real service binding over a stored request and its spilled bound call', async () => {
+    installCurrentStationFetch();
+    const authority = hostedAuthority('alpha');
+    const eventStore = new EventStore(
+      join(makeTempDir('delegate-binding-'), 'orchestration.sqlite'),
+    );
+    const real = new OrchestrationService({
+      adapterRegistry: { register() {}, get: () => undefined, list: () => [] },
+      eventBus: new EventBus(),
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    try {
+      real.initialize();
+      const at = new Date().toISOString();
+      eventStore.upsertSession({
+        provider: 'codex',
+        threadId: 'task-alpha',
+        status: 'ready',
+        createdAt: at,
+        updatedAt: at,
+      });
+      eventStore.appendEvent({
+        eventId: 'start-fc',
+        provider: 'codex',
+        threadId: 'task-alpha',
+        createdAt: at,
+        method: 'tool.started',
+        itemId: 'item-fc',
+        toolCallId: 'item-fc',
+        toolName: 'apply_patch',
+        arguments: { changes: { 'a.ts': { diff: 'x\n'.repeat(40_000) } } },
+      });
+      eventStore.appendEvent({
+        eventId: 'open-fc',
+        provider: 'codex',
+        threadId: 'task-alpha',
+        createdAt: at,
+        method: 'request.opened',
+        requestId: 'request-alpha',
+        requestType: 'approval',
+        title: 'Approve file changes',
+        payload: { itemId: 'item-fc' },
+      });
+      const binding = real.readApprovalContentBinding(
+        'task-alpha',
+        'request-alpha',
+        INTERNAL_SESSION_READ_SCOPE,
+      )!;
+      expect(binding.required).toBe(true);
+      expect(binding.bound).toHaveLength(1);
+      const service = Object.assign(localDelegatedTaskService('running'), {
+        // Authorization is the stub's; what is bound and digested is real.
+        readApprovalContentBinding: (threadId: string, requestId: string) =>
+          real.readApprovalContentBinding(
+            threadId,
+            requestId,
+            INTERNAL_SESSION_READ_SCOPE,
+          ),
+      });
+      const { respondToDelegatedTaskRequest } = await import(
+        '../station-control-delegation.js'
+      );
+      await respondToDelegatedTaskRequest(
+        {
+          taskId: 'task-alpha',
+          requestId: 'request-alpha',
+          decision: 'accept',
+          readAuthority: authority,
+        },
+        service as never,
+      );
+      const requestOnly = `sha256-${createHash('sha256')
+        .update(viewedContentPreimage(binding.request))
+        .digest('hex')}`;
+      const covering = `sha256-${createHash('sha256')
+        .update(viewedContentPreimage(binding.request, binding.bound))
+        .digest('hex')}`;
+      expect(covering).not.toBe(requestOnly);
+      expect(service.dispatchWithReceipt).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'respondToRequest',
+          expectedRequestEventId: 'open-fc',
+          viewedContentDigest: covering,
+        }),
+        expect.anything(),
+        undefined,
+      );
+    } finally {
+      await real.shutdown();
+      eventStore.close();
+    }
+  });
+
   test('an interrupt on a marked portable session acquires no new authority', async () => {
     installCurrentStationFetch();
     const authority = hostedAuthority('alpha');
@@ -3646,6 +3834,58 @@ describe('Station Control canonical Environment + Agent execution', () => {
         String(url).includes('/api/orchestration/'),
       ),
     ).toBe(false);
+  });
+
+  // #3158: the stop's derived outcome reaches the route, which
+  // undoes a delegated-result cancel when nothing was interrupted.
+  test('reports the outcome the orchestration service derived for the interrupt', async () => {
+    installCurrentStationFetch();
+    const service = localDelegatedTaskService();
+    const authority = hostedAuthority('alpha');
+    const { interruptDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+    service.dispatchWithReceipt.mockResolvedValueOnce({
+      receipt: { commandId: 'command-1', status: 'accepted' },
+      result: { outcome: 'no-active-turn', threadId: 'task-alpha' },
+    } as never);
+    await expect(
+      interruptDelegatedTask(
+        { taskId: 'task-alpha', turnId: 'turn-old', readAuthority: authority },
+        service as never,
+      ),
+    ).resolves.toMatchObject({
+      interruptRequested: true,
+      interruptOutcome: 'no-active-turn',
+    });
+    expect(service.dispatchWithReceipt.mock.calls[0]![0]).toEqual({
+      type: 'interruptTurn',
+      threadId: 'task-alpha',
+      turnId: 'turn-old',
+    });
+
+    service.dispatchWithReceipt.mockResolvedValueOnce({
+      receipt: { commandId: 'command-2', status: 'accepted' },
+      result: { outcome: 'cooperative', threadId: 'task-alpha', turnId: 't' },
+    } as never);
+    await expect(
+      interruptDelegatedTask(
+        { taskId: 'task-alpha', readAuthority: authority },
+        service as never,
+      ),
+    ).resolves.toMatchObject({ interruptOutcome: 'cooperative' });
+
+    // A result that names no known outcome is reported as unknown, not guessed.
+    service.dispatchWithReceipt.mockResolvedValueOnce({
+      receipt: { commandId: 'command-3', status: 'accepted' },
+      result: { outcome: 'stopped-maybe' },
+    } as never);
+    const unknown = await interruptDelegatedTask(
+      { taskId: 'task-alpha', readAuthority: authority },
+      service as never,
+    );
+    expect(unknown.interruptRequested).toBe(true);
+    expect(unknown).not.toHaveProperty('interruptOutcome');
   });
 });
 
@@ -4430,6 +4670,7 @@ describe('observeDelegatedTaskEvents production summary binding (station#2843)',
     expect(readSession).toHaveBeenCalledWith(
       'task-production',
       hostedAuthority('bravo'),
+      expect.any(Object),
     );
     expect(readSessionEventPage).not.toHaveBeenCalled();
   });
@@ -5016,7 +5257,7 @@ describe('readRelayingLocalRefusal', () => {
     });
   });
 
-  // #2377 C2b review: another Station's words are dropped as well as its
+  // #2377: another Station's words are dropped as well as its
   // code; only the status survives, in this Station's fixed copy.
   test.each(['peer', 'ssh'])(
     'a %s Station’s coded refusal loses its code and its words',

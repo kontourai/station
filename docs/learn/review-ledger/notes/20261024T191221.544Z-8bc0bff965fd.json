@@ -1,0 +1,7 @@
+{
+  "revision": "38fea23892fadbce84f55bafd05673fae1dc87e0",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed for the newline-only NDJSON reader change in memory transcripts, usage aggregation and Insights monitoring scans (readline split rows at raw U+2028/U+2029). Daily NDJSON file, retention, malformed-row and scan-coverage claims stay accurate; a row carrying those characters now parses instead of counting as malformed. No prose change.","inputs":["docs/reference/api.md","src-server/adapters/file/memory-adapter-messages.ts","src-server/analytics/usage-aggregator.ts","src-server/routes/operations/insights.ts"]}
+  ]
+}

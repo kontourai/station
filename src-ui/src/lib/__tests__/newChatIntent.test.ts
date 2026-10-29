@@ -116,3 +116,48 @@ describe('an unreadable selection is said, never started on defaults', () => {
     expect(onClosed).toHaveBeenLastCalledWith('dismissed', 'Edited');
   });
 });
+
+describe('files sent with a start', () => {
+  test('travel with the intent the dock reads', () => {
+    const file = new File(['notes'], 'notes.txt', { type: 'text/plain' });
+    expect(
+      readNewChatIntent(event({ initialPrompt: 'x', initialFiles: [file] }))
+        .initialFiles,
+    ).toEqual([file]);
+  });
+
+  test('anything that is not a file is dropped, and none means none', () => {
+    const file = new File(['a'], 'a.txt');
+    expect(
+      readNewChatIntent(event({ initialFiles: ['a.txt', { name: 'b' }, file] }))
+        .initialFiles,
+    ).toEqual([file]);
+    expect(readNewChatIntent(event({ initialFiles: [] }))).not.toHaveProperty(
+      'initialFiles',
+    );
+    expect(readNewChatIntent(event({ initialFiles: 'x' }))).not.toHaveProperty(
+      'initialFiles',
+    );
+  });
+});
+
+describe('the Permissions pick rides the selection', () => {
+  test('a pick is read with the selection', () => {
+    expect(
+      readNewChatIntent(
+        event({ selection: { context: 'alpha', approvalMode: 'never' } }),
+      ).selection,
+    ).toEqual({ context: 'alpha', approvalMode: 'never' });
+  });
+  test('an unknown pick refuses the whole selection, never a default start', () => {
+    const intent = readNewChatIntent(
+      event({
+        startWithDefault: true,
+        selection: { context: 'alpha', approvalMode: 'everything' },
+      }),
+    );
+    expect(intent.selection).toBeUndefined();
+    expect(intent.selectionInvalid).toBe(true);
+    expect(intent.startWithDefault).toBe(false);
+  });
+});

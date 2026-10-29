@@ -37,6 +37,7 @@ import {
   recoverInstalledPlugin,
   resolvePluginRegistryInstall,
 } from '../../services/plugins/plugin-install-transaction.js';
+import type { PluginInstallTrustPolicy } from '../../services/plugins/plugin-install-trust-recording.js';
 import { localPluginInstallationState } from '../../services/plugins/plugin-installation-local.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
@@ -45,6 +46,7 @@ import {
   PluginManifestReadRefusedError,
   readUntrustedPluginManifestSyncWithFormat,
 } from '../../services/plugins/plugin-manifest-bounded-read.js';
+import { PluginManifestValidationError } from '../../services/plugins/plugin-manifest-loader.js';
 import {
   describePluginGrantState,
   getPermissionTier,
@@ -65,6 +67,7 @@ import {
 import { PluginSourceStaging } from '../../services/plugins/plugin-source-staging.js';
 import {
   isRegistryAcquisitionRefusal,
+  pluginRegistryTrust,
   RegistryAcquisitionRefused,
   registryAcquisitionRefusalDetails,
   registryAcquisitionRevision,
@@ -88,11 +91,14 @@ import {
 import { commandChoiceOnly } from '../working-directory-authority.js';
 import { buildPlugin } from './plugin-bundles.js';
 import { capturePluginConfigurationMutation } from './plugin-configuration-activation.js';
+import { pluginInstallTrustErrorResponse } from './plugin-install-trust-errors.js';
 import { personOnly } from './plugin-person-approval.js';
 import { recordProposalCompletion } from './plugin-proposal-routes.js';
 
 interface PluginInstallRouteDeps {
   installationHost?: PluginInstallationHost;
+  /** Install trust policy; absent in production, which uses the default. */
+  installTrust?: PluginInstallTrustPolicy;
   registryTrustPolicyAuthority?: RegistryTrustPolicyAuthority;
   packageMcpJournal?: PackageMcpAdmissionJournal;
   agentsDir: string;
@@ -275,6 +281,15 @@ export function registerPluginInstallRoutes(
             version: manifest.version,
             description: manifest.description,
             installationReadiness: catalog.readiness,
+            // The persisted receipt of the generation this observation bound;
+            // a legacy or journal-less installation has no verified claim.
+            registryTrust: pluginRegistryTrust(
+              catalog.installation
+                ? deps.packageMcpJournal?.registryAcquisition(
+                    catalog.installation,
+                  )
+                : undefined,
+            ),
             hasBundle:
               catalog.readiness.state === 'ready' &&
               existsSync(join(catalog.packageRoot, 'dist', 'bundle.js')),
@@ -451,6 +466,13 @@ export function registerPluginInstallRoutes(
         settled.status as ContentfulStatusCode,
       );
     } catch (error) {
+      // #2998: recovery reinstalls through the transaction, so it answers
+      // install trust refusals exactly as install does.
+      const trustRefusal = pluginInstallTrustErrorResponse(error);
+      if (trustRefusal) {
+        const { status, message, ...fields } = trustRefusal;
+        return c.json({ success: false, ...fields, error: message }, status);
+      }
       return c.json(
         { success: false, error: errorMessage(error) },
         error instanceof PluginGrantsUnavailableError
@@ -813,8 +835,13 @@ export function registerPluginInstallRoutes(
         return c.json({
           valid: true,
           manifest,
+          hasBundle: existsSync(join(tempDir, 'dist', 'bundle.js')),
           installationRevision,
           registryTrustRevision,
+          registryTrust: pluginRegistryTrust({
+            state: 'observed',
+            receipt: registryAcquisition ?? null,
+          }),
           grantRevision: grantRevisions.revisionFor(manifest.name),
           existingDataScope: installationRevision != null,
           components,
@@ -967,6 +994,7 @@ export function registerPluginInstallRoutes(
               registryTrustPolicyAuthority: deps.registryTrustPolicyAuthority,
               packageMcpJournal: deps.packageMcpJournal,
               installationHost: deps.installationHost,
+              ...(deps.installTrust ? { installTrust: deps.installTrust } : {}),
               beginConfigurationMutation: beginMutation,
               buildPlugin: (pluginDir, name, manifest) =>
                 buildPlugin(pluginDir, name, logger, manifest),
@@ -1032,6 +1060,13 @@ export function registerPluginInstallRoutes(
           },
           409,
         );
+      // #2998: a refused bundle, a newer build's record and unreadable
+      // records are closed outcomes, never the generic 500.
+      const trustRefusal = pluginInstallTrustErrorResponse(error);
+      if (trustRefusal) {
+        const { status, message, ...fields } = trustRefusal;
+        return c.json({ success: false, ...fields, error: message }, status);
+      }
       if (error instanceof PluginInstallationPending)
         return c.json(
           {
@@ -1046,6 +1081,8 @@ export function registerPluginInstallRoutes(
           202,
         );
 
+      if (error instanceof PluginManifestValidationError)
+        return c.json({ success: false, error: errorMessage(error) }, 400);
       if (isContextSafetyError(error)) {
         return c.json(
           {

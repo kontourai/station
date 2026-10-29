@@ -51,6 +51,20 @@ function render(ui: Parameters<typeof renderView>[0]) {
   );
 }
 
+vi.mock('../contexts/AccountPreferencesContext', () => ({
+  useAccountPreferences: () => ({
+    status: 'account',
+    saving: false,
+    data: {
+      schemaVersion: 1,
+      values: { interactiveApprovalModes: { claude: 'never', codex: 'never' } },
+    },
+  }),
+}));
+vi.mock('../contexts/ConfigContext', () => ({
+  useConfig: () => ({ defaultApprovalMode: 'auto' }),
+}));
+
 const state = vi.hoisted(() => ({
   agents: [] as unknown[],
   projects: [] as unknown[],
@@ -59,6 +73,10 @@ const state = vi.hoisted(() => ({
   agentConnections: [] as unknown[],
   /** `GET /api/projects/run-locations`; undefined until it answers. */
   runLocations: undefined as Record<string, unknown> | undefined,
+  /** `GET /api/projects/:slug/chat-defaults`, by slug. */
+  chatDefaults: {} as Record<string, unknown>,
+  /** `GET /api/feature-previews`: visual skills on unless a test says not. */
+  featurePreviews: [] as Array<{ id: string; enabled: boolean }>,
 }));
 
 vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
@@ -73,6 +91,7 @@ vi.mock('../hooks/useDevicePresentation', () => ({
   useDevicePresentation: () => undefined,
 }));
 vi.mock('@kontourai/station-sdk', () => ({
+  useFeaturePreviewsQuery: () => ({ data: state.featurePreviews }),
   useSshEnvironmentsQuery: () => ({
     data: [],
     isSuccess: true,
@@ -113,6 +132,11 @@ vi.mock('@kontourai/station-sdk', () => ({
     isSuccess: true,
     error: null,
     refetch: async () => ({}),
+  }),
+  useProjectChatDefaultsQuery: (slug: string) => ({
+    data: state.chatDefaults[slug],
+    isFetching: false,
+    isPending: false,
   }),
   useModelPickerCatalogQuery: () => ({
     data: { agentConnections: state.agentConnections, modelConnections: [] },
@@ -243,6 +267,8 @@ beforeEach(() => {
   state.projectsError = false;
   state.agentConnections = [];
   state.runLocations = undefined;
+  state.chatDefaults = {};
+  state.featurePreviews = [{ id: 'visual-skills', enabled: true }];
   resetHeldHomeDraftsForTests();
 });
 // Every dock listener a test adds, removed even when the test fails, so a
@@ -321,7 +347,266 @@ const agentChip = (root: HTMLElement) =>
 const projectChip = (root: HTMLElement) =>
   within(formOf(root)).getByRole('button', { name: /^Project:/ });
 
+describe('a Project’s new-chat defaults preselect the composer', () => {
+  const CLAUDE_APP = {
+    ...CLAUDE,
+    engineConnectionType: 'claude',
+    execution: { agentConnectionId: 'claude' },
+  };
+  const claudeConnection = (models?: Array<{ id: string; name: string }>) => ({
+    id: 'claude',
+    name: 'Claude',
+    type: 'claude',
+    kind: 'agent',
+    config: {},
+    enabled: true,
+    status: 'ready',
+    capabilities: ['agent-runtime'],
+    ...(models
+      ? {
+          runtimeCatalog: {
+            source: 'live',
+            models: models.map((model) => ({ ...model, originalId: model.id })),
+            builtInModels: [],
+          },
+        }
+      : {}),
+  });
+  const lastUsed = (selection: 'fixed' | 'last-used', modelId: string) => ({
+    version: 'station.project-chat-defaults/v1',
+    projectSlug: 'station',
+    model: {
+      selection,
+      lastUsed: [
+        { agentSlug: 'claude', modelId, startedAt: '2026-10-20T10:00:00Z' },
+      ],
+    },
+    approvalMode: {
+      selection,
+      lastUsed: { approvalMode: 'auto', startedAt: '2026-10-20T10:00:00Z' },
+      resolved:
+        selection === 'last-used'
+          ? { approvalMode: 'auto', source: 'last-used' }
+          : { source: 'none' },
+    },
+  });
+  const startInDock = (dock: HTMLElement) => {
+    fireEvent.change(
+      within(formOf(dock)).getByRole('textbox', {
+        name: 'What would you like done?',
+      }),
+      { target: { value: 'Pick up where I left off' } },
+    );
+    fireEvent.click(
+      within(formOf(dock)).getByRole('button', { name: 'Start' }),
+    );
+  };
+
+  beforeEach(() => {
+    state.agents = [CLAUDE_APP];
+    deviceSettingsStore.set('chatDockProjectSlug', 'station');
+  });
+
+  test('last-used opens on the model and approval mode the last chat here started with', async () => {
+    state.agentConnections = [claudeConnection()];
+    state.chatDefaults = { station: lastUsed('last-used', 'sonnet') };
+    const ui = renderBoth();
+    const dock = ui.dock();
+    const model = await within(formOf(dock)).findByRole('button', {
+      name: /^Model: Sonnet/,
+    });
+    expect(model.getAttribute('title')).toBe(
+      'The model your last chat in this project started with.',
+    );
+    // The Project layer replaces the account default (Full access here).
+    expect(
+      within(formOf(dock)).getByText('Permissions: Auto · last used here'),
+    ).toBeTruthy();
+    startInDock(dock);
+    expect(ui.dockSelect).toHaveBeenCalledTimes(1);
+    expect(ui.dockSelect.mock.calls[0][1]).toBe('station');
+    expect(ui.dockSelect.mock.calls[0][4]).toBe('sonnet');
+    expect(ui.dockSelect.mock.calls[0][5]).toBe('project last used');
+    ui.cleanupListener();
+  });
+
+  test('fixed ignores the history and keeps the existing defaults', async () => {
+    state.agentConnections = [claudeConnection()];
+    state.chatDefaults = { station: lastUsed('fixed', 'sonnet') };
+    const ui = renderBoth();
+    const dock = ui.dock();
+    const model = await within(formOf(dock)).findByRole('button', {
+      name: /^Model: Opus/,
+    });
+    expect(model.getAttribute('title')).toBeNull();
+    expect(
+      within(formOf(dock)).getByText('Permissions: Full access · your default'),
+    ).toBeTruthy();
+    startInDock(dock);
+    expect(ui.dockSelect.mock.calls[0][4]).toBe('opus');
+    ui.cleanupListener();
+  });
+
+  test('a Station with no Project layer here keeps the personal default; an unread answer says set at start', async () => {
+    state.agentConnections = [claudeConnection()];
+    // `null`: the route answered 404/501 (no Project layer applies).
+    state.chatDefaults = { station: null };
+    const ui = renderBoth();
+    expect(
+      await within(formOf(ui.dock())).findByText(
+        'Permissions: Full access · your default',
+      ),
+    ).toBeTruthy();
+    ui.cleanupListener();
+    cleanup();
+    // No answer at all (loading or failed): never a guessed mode.
+    state.chatDefaults = {};
+    const unread = renderBoth();
+    expect(
+      await within(formOf(unread.dock())).findByText(
+        'Permissions: Set when the chat starts',
+      ),
+    ).toBeTruthy();
+    unread.cleanupListener();
+  });
+
+  test('a last-used model no longer offered falls back and says so', async () => {
+    state.agentConnections = [
+      claudeConnection([
+        { id: 'opus', name: 'Opus' },
+        { id: 'sonnet', name: 'Sonnet' },
+      ]),
+    ];
+    state.chatDefaults = { station: lastUsed('last-used', 'retired-model') };
+    const ui = renderBoth();
+    const dock = ui.dock();
+    const model = await within(formOf(dock)).findByRole('button', {
+      name: /^Model: Opus/,
+    });
+    expect(model.getAttribute('title')).toBe(
+      'Your last model in this project (retired-model) is no longer offered, so this chat starts on the Agent default model.',
+    );
+    startInDock(dock);
+    expect(ui.dockSelect.mock.calls[0][4]).toBe('opus');
+    ui.cleanupListener();
+  });
+});
+
 describe('Home and the dock start the same way', () => {
+  test('startup permissions show the saved account default and name its source before Start', async () => {
+    state.agents = [
+      {
+        ...CLAUDE,
+        engineConnectionType: 'claude',
+        execution: { agentConnectionId: 'claude' },
+      },
+    ];
+    state.agentConnections = [
+      {
+        id: 'claude',
+        name: 'Claude',
+        type: 'claude',
+        kind: 'agent',
+        config: {},
+        enabled: true,
+        status: 'ready',
+        capabilities: ['agent-runtime'],
+      },
+    ];
+    const ui = renderBoth();
+    expect(
+      await within(formOf(screen.getByTestId('home'))).findByText(
+        'Permissions: Full access · your default',
+      ),
+    ).toBeTruthy();
+    expect(
+      await within(formOf(ui.dock())).findByText(
+        'Permissions: Full access · your default',
+      ),
+    ).toBeTruthy();
+  });
+
+  test('the Permissions chip picks this start’s mode, and the start carries it', async () => {
+    state.agents = [
+      {
+        ...CLAUDE,
+        engineConnectionType: 'claude',
+        execution: { agentConnectionId: 'claude' },
+      },
+    ];
+    state.agentConnections = [
+      {
+        id: 'claude',
+        name: 'Claude',
+        type: 'claude',
+        kind: 'agent',
+        config: {},
+        enabled: true,
+        status: 'ready',
+        capabilities: ['agent-runtime'],
+      },
+    ];
+    const ui = renderBoth();
+    const home = screen.getByTestId('home');
+    const typeAndStart = async (root: HTMLElement) => {
+      fireEvent.change(
+        within(formOf(root)).getByRole('textbox', {
+          name: 'What would you like done?',
+        }),
+        { target: { value: 'Go' } },
+      );
+      await waitFor(() =>
+        expect(
+          within(formOf(root)).getByRole('button', { name: 'Start' }),
+        ).not.toHaveProperty('disabled', true),
+      );
+      fireEvent.click(
+        within(formOf(root)).getByRole('button', { name: 'Start' }),
+      );
+    };
+
+    // Home: Ask, chosen in the picker, is what the start sends.
+    fireEvent.click(
+      await within(formOf(home)).findByRole('button', {
+        name: /^Permissions: Full access/,
+      }),
+    );
+    fireEvent.click(await screen.findByRole('radio', { name: /^Ask first/ }));
+    expect(
+      await within(formOf(home)).findByRole('button', {
+        name: /^Permissions: Ask\. Chosen for this chat/,
+      }),
+    ).toBeTruthy();
+    await typeAndStart(home);
+    expect(ui.starts.at(-1)!.detail.selection).toMatchObject({
+      agentSlug: 'claude',
+      approvalMode: 'ask',
+    });
+
+    // The dock: full access takes its confirmation, then reaches onSelect.
+    fireEvent.click(
+      within(formOf(ui.dock())).getByRole('button', {
+        name: /^Permissions: /,
+      }),
+    );
+    fireEvent.click(await screen.findByRole('radio', { name: /^Auto/ }));
+    fireEvent.click(
+      within(formOf(ui.dock())).getByRole('button', {
+        name: /^Permissions: Auto/,
+      }),
+    );
+    fireEvent.click(
+      await screen.findByRole('radio', { name: /^Never ask \(full access\)/ }),
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Enable full access' }),
+    );
+    await typeAndStart(ui.dock());
+    await waitFor(() => expect(ui.dockSelect).toHaveBeenCalled());
+    expect(ui.dockSelect.mock.calls.at(-1)![18]).toBe('never');
+    ui.cleanupListener();
+  }, 30_000);
+
   test('a Project page fixes its start context independently of the ambient dock', () => {
     const ui = renderBoth('station');
     const home = screen.getByTestId('home');
@@ -998,6 +1283,15 @@ describe('Home and the dock start the same way', () => {
       }) as HTMLTextAreaElement;
     const startButton = () =>
       screen.getByRole('button', { name: 'Start' }) as HTMLButtonElement;
+    test('with the visual-skills preview off, Home offers no visual skills', () => {
+      state.featurePreviews = [{ id: 'visual-skills', enabled: false }];
+      renderHome();
+      // "Use a visual skill" is the menu's only action, so no menu at all.
+      expect(
+        screen.queryByRole('button', { name: 'More start options' }),
+      ).toBeNull();
+    });
+
     async function handOffSkills() {
       fireEvent.click(
         screen.getByRole('button', { name: 'More start options' }),

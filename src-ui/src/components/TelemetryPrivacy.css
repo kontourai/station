@@ -1,0 +1,69 @@
+.telemetry-sharing {
+  padding-block: var(--k-space-4);
+}
+.telemetry-feedback h3 {
+  margin: 0;
+  font-size: var(--k-text-md);
+}
+.telemetry-feedback p {
+  color: var(--k-text-muted);
+}
+.telemetry-feedback__reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+}
+.telemetry-feedback {
+  padding-block: var(--k-space-4);
+}
+.telemetry-feedback button,
+.telemetry-advanced > summary,
+.telemetry-outbox-disclosure > summary,
+.telemetry-outbox summary {
+  min-height: 44px;
+}
+.telemetry-outbox {
+  min-width: 0;
+  margin-block: var(--k-space-4);
+}
+.telemetry-outbox__list {
+  padding-inline-start: var(--k-space-5);
+}
+.telemetry-outbox__list li {
+  margin-block: var(--k-space-3);
+  overflow-wrap: anywhere;
+}
+.telemetry-outbox pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 24rem;
+  overflow: auto;
+  padding: var(--k-space-3);
+  background: var(--k-bg);
+}
+.telemetry-advanced > summary,
+.telemetry-outbox-disclosure > summary,
+.telemetry-outbox summary {
+  font-size: var(--k-text-sm);
+  line-height: var(--k-leading-normal);
+  cursor: pointer;
+}
+.telemetry-advanced > summary:focus-visible,
+.telemetry-outbox-disclosure > summary:focus-visible,
+.telemetry-outbox summary:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}
+
+.telemetry-outbox p,
+.telemetry-outbox li,
+.telemetry-feedback p {
+  font-size: var(--k-text-sm);
+  line-height: var(--k-leading-normal);
+}
+.telemetry-outbox pre {
+  font-size: var(--k-text-xs);
+}
+.telemetry-publisher {
+  min-width: 0;
+}

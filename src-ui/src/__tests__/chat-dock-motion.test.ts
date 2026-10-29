@@ -44,7 +44,6 @@ const inboxCss = read('components', 'chat-dock', 'ChatDockInboxPanel.css');
 const sheetCss = read('components', 'chat-dock', 'BackgroundTasksSheet.css');
 
 const ANIMATED: Array<[label: string, source: string, selector: string]> = [
-  ['dock header context meter', indexCss, '.chat-dock__header-meter'],
   ['dock header Open/New pair', indexCss, '.chat-dock__tab-actions'],
   ['inbox panel entrance', inboxCss, '.chat-dock-inbox'],
   ['inbox panel exit', inboxCss, '.chat-dock-inbox--exiting'],

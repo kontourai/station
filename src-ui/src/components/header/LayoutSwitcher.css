@@ -3,6 +3,15 @@
   display: inline-flex;
 }
 
+.layout-switcher .layout-switcher__trigger {
+  border: 0;
+  background: transparent;
+}
+
+.layout-switcher__trigger .layout-switcher__icon {
+  display: none;
+}
+
 .layout-switcher__icon {
   font-size: var(--text-md);
 }

@@ -1,0 +1,7 @@
+{
+  "revision": "d3fdd6690c913ddd5a59bf78239122e91ef12404",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"Added the @kontourai/station-shared/release-version-order bullet; checked it against packages/shared/src/release-version-order.ts (compareStationReleaseVersions, clientVersionInHostOrder) and the export map.","inputs":["docs/reference/shared.md","packages/shared/package.json"]}
+  ]
+}

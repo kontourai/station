@@ -66,6 +66,7 @@ describe('createRuntimeServiceBundle', () => {
           authorizeCredential: vi.fn(() => false),
           credentialLocality: vi.fn(() => undefined),
           verifyCredential: vi.fn(() => true),
+          identifyDevice: vi.fn(() => null),
           resolveGrantedScope: vi.fn(() => DEFAULT_GRANT_PAIRING_SCOPE),
         },
         monitoringEvents: {} as any,
@@ -135,8 +136,8 @@ describe('createRuntimeServiceBundle', () => {
     // which probes prepare private connection-scoped workspaces.
     const acpManagerArgs = createACPManager.mock
       .calls[0] as unknown as unknown[];
-    expect(acpManagerArgs[2]).toBe('/tmp/project');
-    expect(acpManagerArgs[2]).not.toBe(process.cwd());
+    expect(acpManagerArgs[1]).toBe('/tmp/project');
+    expect(acpManagerArgs[1]).not.toBe(process.cwd());
     expect(terminalWsServer.start).not.toHaveBeenCalled();
     expect(bundle.storageAdapter).toBe(storageAdapter);
     expect(bundle.agentService).toEqual({ kind: 'agent-service' });
@@ -253,6 +254,7 @@ describe('createRuntimeServiceBundle', () => {
           authorizeCredential: vi.fn(() => false),
           credentialLocality: vi.fn(() => undefined),
           verifyCredential: vi.fn(() => true),
+          identifyDevice: vi.fn(() => null),
           resolveGrantedScope: vi.fn(() => DEFAULT_GRANT_PAIRING_SCOPE),
         },
         monitoringEvents: {} as any,
@@ -324,6 +326,7 @@ describe('createRuntimeServiceBundle', () => {
           authorizeCredential: vi.fn(() => false),
           credentialLocality: vi.fn(() => undefined),
           verifyCredential: vi.fn(() => true),
+          identifyDevice: vi.fn(() => null),
           resolveGrantedScope: vi.fn(() => DEFAULT_GRANT_PAIRING_SCOPE),
         },
         monitoringEvents: {} as any,
@@ -359,12 +362,17 @@ describe('createRuntimeServiceBundle', () => {
 });
 
 describe('terminal WebSocket scope gating (station#1098)', () => {
-  function baseContext(environmentSecurityService: {
+  function baseContext(security: {
     verifyCredential: (credential: string) => boolean | Promise<boolean>;
     resolveGrantedScope: (
       credential: string,
     ) => string | undefined | Promise<string | undefined>;
+    identifyDevice?: (credential: string) => unknown;
   }) {
+    const environmentSecurityService = {
+      identifyDevice: () => null,
+      ...security,
+    };
     return {
       projectHomeDir: '/tmp/project',
       port: 4123,
@@ -431,6 +439,26 @@ describe('terminal WebSocket scope gating (station#1098)', () => {
     );
 
     await expect(getAuth().verifyCredential('device-1')).resolves.toBe(true);
+  });
+
+  test('#3586: an account-bound device is refused the terminal WS despite terminal:operate', async () => {
+    const { factories, getAuth } = captureTerminalAuth();
+    createRuntimeServiceBundle(
+      baseContext({
+        verifyCredential: async () => true,
+        resolveGrantedScope: async () => pairingScopePresetString('standard'),
+        identifyDevice: () => ({
+          principalBinding: {
+            kind: 'account',
+            issuer: 'urn:x',
+            subject: 'dana',
+          },
+        }),
+      }) as any,
+      factories,
+    );
+
+    await expect(getAuth().verifyCredential('device-1')).resolves.toBe(false);
   });
 
   test('a read-only device credential authenticates the boundary but is denied terminal:operate', async () => {

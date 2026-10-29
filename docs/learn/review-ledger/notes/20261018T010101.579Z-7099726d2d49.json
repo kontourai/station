@@ -1,0 +1,7 @@
+{
+  "revision": "d24b0a9bdeaa4c7d6c19083459279b1600645b01",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed the fixture-only button type correction in MCPToolUIFrame.test.tsx: type=button satisfies the accessibility ratchet and leaves the subtree mount/state and transcript-header assertions unchanged. No production behavior or documentation claim changes. Accessibility ratchet is green; the affected frame suite is rerun separately.","inputs":["docs/design/mcp-ui-host.md","src-ui/src/__tests__/MCPToolUIFrame.test.tsx"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "df7b96310914c8671c3584eb71f0b1a1a1f4af0c",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Re-read the full coverage map and Connections row against connect-remote-auth-recovery. The existing spec still exercises credential-free access, explicit consent, stable remote identity and authenticated recovery; the changed entry action opens its real disclosure. No spec ownership, bucket, tier or coverage-completion claim changed. Browser fixtures remain distinct from backend/provider/native proof; no prose change needed.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/connect-remote-auth-recovery.spec.ts"]}
+  ]
+}

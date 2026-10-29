@@ -1,0 +1,7 @@
+{
+  "revision": "c3258feabd79e227d4a54833b954bcbaf219bcea",
+
+  "notes": [
+    {"path":"deploy/gcp-dev/README.md","note":"Re-recorded after a commit-message-only rewrite of the #3851 slice 4 fix round (tree byte-identical; the earlier note's revision no longer exists). Content reviewed in that round: the config-event wiring moved from runtime-routes into the server-update coordinator's optional subscription; no claim in this document about server updates, core-update routes, download policy or config events changed.","inputs":["deploy/gcp-dev/README.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

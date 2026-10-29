@@ -18,6 +18,19 @@ Trusted server modules may also import the re-exported
 event observation. The host retains consumer identity, grants, projection, and
 settlement authority; see the plugin guide's durable operational-event section.
 
+## Build on the core
+
+In Station's default in-process plugin host, `useConfig`, `useModels`,
+`useAvailableModels`, `useConversations(agentSlug)`, and `useActiveChatState(dockId)`
+read the same core query cache and chat store used by the application.
+Navigation, chat launch/send, command dispatch and tool-approval callbacks
+reuse core behavior. A host binding is not a permission grant.
+
+See [default host bindings](../../docs/reference/sdk.md#default-host-bindings-and-custom-hosts)
+for exact return shapes, error-aware query alternatives, remaining optional
+slots and isolated-frame limits. A callable SDK export alone does not establish
+that a custom host supplies its context.
+
 ## Choose an SDK surface
 
 Use the root and documented UI subpaths for plug-in hooks, components, and host
@@ -75,6 +88,43 @@ request authority before a read or mutation.
 Plugin install mutations expose typed current parent/dependency permission status
 through `PluginInstallResult`. See the canonical [Plugin Query Hooks reference](../../docs/reference/sdk.md#plugin-query-hooks)
 for older-server unknown-status handling and registry result types.
+
+## Plugin publisher counts
+
+`useTelemetry()` captures the calling Pane's kernel capability and returns
+`telemetry.count(event, props)`. Non-React clients use
+`createPluginTelemetry(apiBase, paneCapability)`. Both send only to the Station
+kernel; the kernel validates the signed public-registry declaration and applies
+publisher consent before delivery. See the
+[SDK reference](../../docs/reference/sdk.md#plugin-publisher-counts) and
+[author guide](../../docs/guides/plugins.md#publisher-analytics).
+
+## Telemetry delivery and destination grants
+
+The root exports `fetchTelemetryDeliveryStatus`, `checkTelemetryConnection`,
+`useTelemetryDeliveryStatusQuery` and `useCheckTelemetryConnectionMutation`.
+They describe the connected Station's current process. Product commit receipts
+and OTel callback/probe acceptance remain separate from downstream collection
+and personal usage accounting. Unsupported or malformed responses throw;
+refreshing or failed status must not display cached success as current.
+
+`fetchTelemetryCompanionPrerequisites` and
+`useTelemetryCompanionPrerequisitesQuery` read operator-only local container
+capabilities. Pass the captured request authority; a passed host check is not
+installation or ingestion readiness. The hook partitions by Station and
+authority, drops previous data, and does not automatically retry a failed read.
+
+The `/secret-bindings` and `/secret-bindings-query` subpaths expose the separate
+telemetry destination grant operations and hooks. Callers supply the API base,
+captured request authority, exact product/collector address and current binding
+revision. Saving a destination or choosing a reference grants no authority;
+the operator's instance grant is explicit. These APIs read and return reference
+metadata, never key material, and leave MCP consumer APIs separate.
+
+See the [SDK reference](../../docs/reference/sdk.md) and
+[usage telemetry contract](../../docs/reference/usage-telemetry.md#delivery-status-and-connection-checks).
+Use a published package containing these exports and a server supporting their
+response protocol; source availability is not publication or runtime proof.
 
 ## Workspace Pane authoring
 
@@ -406,6 +456,11 @@ function MyComponent() {
 - `loading`: `boolean` - Shows loading state
 - All standard button HTML attributes
 
+Loading preserves the action label, marks the control busy and disables it.
+The SDK and shell share the focused `action-control` export; independent hosts
+need the `@kontourai/ui` token stylesheet. See the [Button contract](../../docs/reference/sdk.md#button)
+for defaults, stylesheet entries and the shared control API.
+
 ### Pill
 
 ```tsx
@@ -625,6 +680,32 @@ Components consume host CSS variables. Common tokens include:
 Station's theme supplies light/dark values. An independent host must provide
 the applicable variables and component styles; importing a component does not
 install Station's theme.
+
+## Subpaths without a reference section
+
+The [SDK reference](../../docs/reference/sdk.md) documents most surfaces. These
+subpaths are exported but not described there yet. Most keep a feature's hooks
+out of the first-paint root barrel.
+
+- Basis and answers: `/task-basis` and `/answer-basis` (Basis queries that take
+  captured host authority), `/answer-support` (support bundles, claims and
+  cards), `/answer-assessment-events` and `/answer-narrative-events` (owner
+  update events and the Basis queries they refresh).
+- Outputs and Session inventory: `/task-outputs`, `/session-outputs`
+  (inspection point queries), `/session-output-actions` (keep a Session output
+  in a Task), `/session-inventory`, `/task-user-input-references`.
+- Activity: `/live-activity` and `/action-operations` (lazy Activity feeds).
+- Event content: `/runtime-event-content` (the full value behind an
+  out-of-line event content reference, and the approval content gate).
+- Flow gates: `/client/flow-gate-evaluations`.
+- Setup and devices: `/setup-imports` and `/setup-imports-query` (existing-setup
+  import), `/mobile-devices-query` (Device pane inventory and sessions),
+  `/core-update-restart-status` (the update watchdog's restart outcome).
+- Workspace Panes: `/workspace-browser-preview` and `/workspace-file-preview`
+  (opt-in, browser-safe pane contracts with no host implementation).
+- Client plumbing: `/client-origin` (request origin headers),
+  `/notification-read` (mark an enveloped notification read), `/error-state`
+  (the shared error state component).
 
 ## Related packages
 

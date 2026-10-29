@@ -1,0 +1,7 @@
+{
+  "revision": "736cc8bfe4aaa5a5b52bc1c35fd9165d6ccf0217",
+
+  "notes": [
+    {"path":"docs/guides/code-hygiene.md","note":"Re-checked the block scalar extent claim against source-text.mjs blockScalarFor: a keyless '- |' entry takes its parent indentation from the dash column (YAML 1.2 8.1.1), a keyed entry from the key column; hygiene-report fixtures cover '- |', '- |2', '- >-' and nested '- key: |', and fail when the fix is reverted.","inputs":["docs/guides/code-hygiene.md","scripts/lib/hygiene/source-text.mjs"]}
+  ]
+}

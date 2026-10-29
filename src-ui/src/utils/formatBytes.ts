@@ -1,17 +1,14 @@
 /**
  * `1048576` → `1.0 MB`.
  *
- * Shared by the composer's attachment strip and its preview popover so the two
- * surfaces describing the same attachment cannot report its size in different
- * units (archive#3375): the popover used to render a resized 1 MB image
- * as `1024.0 KB` beside the strip's `1.0 MB`.
- *
- * Scope is those two surfaces, not the app: `AgentConnectionView` keeps its own
- * private copy, which this change deliberately did not touch.
+ * The UI's one byte-size format, so two surfaces describing the same thing
+ * cannot report it in different units (archive#3375): the composer's preview
+ * popover used to render a resized 1 MB image as `1024.0 KB` beside the
+ * attachment strip's `1.0 MB`.
  */
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
-  const units = ['KB', 'MB', 'GB'];
+  const units = ['KB', 'MB', 'GB', 'TB'];
   let value = bytes / 1024;
   let unitIndex = 0;
   while (value >= 1024 && unitIndex < units.length - 1) {

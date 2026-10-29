@@ -1,0 +1,7 @@
+{
+  "revision": "29d801d7fe618c93520325c1a8a9ba79429d6f7b",
+
+  "notes": [
+    {"path":"docs/design/cli-triage.md","note":"The workflow change adds an optional testflight-delivery input web_build_version (fed from nightly-native-stage's cohort desktop Nightly version and release.yml's preflight version) that only sets STATION_BUILD_VERSION, which only vite.config.ts reads for the web bundle's build identity; Apple marketing/bundle versions, channels, signing and publication described here are unchanged.","inputs":["docs/design/cli-triage.md"]}
+  ]
+}

@@ -1,4 +1,5 @@
 import { useScopedProjectQuery } from '../contexts/ProjectsContext';
+import { useGitStatus } from '../hooks/useGitStatus';
 import { ProjectTasksSection } from '../views/project-page/ProjectTasksSection';
 import './TasksLayout.css';
 
@@ -15,12 +16,18 @@ export function TasksLayout({
 }) {
   const { data: project } = useScopedProjectQuery(projectSlug);
 
+  const { data: gitStatus } = useGitStatus(
+    projectSlug,
+    project?.workingDirectory,
+  );
+
   return (
     <section className="tasks-layout" aria-label="Tasks">
       <ProjectTasksSection
         slug={projectSlug}
         projectId={project?.id}
         projectWorkingDirectory={project?.workingDirectory}
+        gitStatus={gitStatus}
         agents={project?.agents}
         presentation="board"
       />

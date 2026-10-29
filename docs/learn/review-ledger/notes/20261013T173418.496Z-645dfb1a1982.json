@@ -1,0 +1,17 @@
+{
+  "revision": "b6bc87b1e8466a732aa0f95aa375dc57df8659ea",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Delta since the last recorded review: only the counter's declared description text changed and the tail check now swallows its own fs errors. The overview still names neither station-agent transcripts nor the metric; no claim affected.","inputs":["docs/architecture.md","src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Delta: regenerated metrics reference text for the one counter. The review cites no metric descriptions or line numbers for it; no claim affected.","inputs":["docs/architecture/abstraction-review.md","docs/reference/metrics.md"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Delta: the counter description now says it counts reads that observe a torn tail rather than distinct tears, and the read-side tail check no longer can fail a read. The guide covers the daily monitoring NDJSON store and does not enumerate this counter; no prose change.","inputs":["docs/guides/monitoring.md","src-server/adapters/file/memory-adapter-messages.ts","src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Delta is the same counter description edit in telemetry/metrics.ts; the guide names none of the changed instruments.","inputs":["docs/guides/web-push-notifications.md","src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Delta: memory-adapter-messages.ts tail check now returns null on an fs error instead of rejecting; no route request, response or error shape changed and the reference does not describe transcript storage.","inputs":["docs/reference/api.md","src-server/adapters/file/memory-adapter-messages.ts"]},
+
+    {"path":"docs/reference/metrics.md","note":"Regenerated with npm run docs:metrics:generate after the description change; docs:metrics:check passes. The delta is the new counter's description text and the source hash.","inputs":["docs/reference/metrics.md","src-server/telemetry/metrics.ts"]}
+  ]
+}

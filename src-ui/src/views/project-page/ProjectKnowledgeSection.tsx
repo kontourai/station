@@ -39,6 +39,7 @@ import {
 
 export function ProjectKnowledgeSection({
   slug,
+  projectId,
   projectWorkingDirectory,
   docs,
   docsError = false,
@@ -48,6 +49,7 @@ export function ProjectKnowledgeSection({
   knowledgeStatus,
 }: {
   slug: string;
+  projectId?: string;
   projectWorkingDirectory?: string;
   docs: DocMeta[];
   docsError?: boolean;
@@ -242,7 +244,7 @@ export function ProjectKnowledgeSection({
         )}
       </div>
 
-      <ProjectKnowledgeStores slug={slug} />
+      <ProjectKnowledgeStores slug={slug} projectId={projectId} />
 
       {docsError && (
         <ErrorState

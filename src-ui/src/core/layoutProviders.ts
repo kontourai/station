@@ -79,7 +79,6 @@ function findProvider(
 
 /** Get active provider instance for a layout + type */
 export function getProvider<T = any>(layout: string, type: string): T {
-  // Check if already instantiated
   const layoutActive = active.get(layout);
   if (layoutActive?.has(type)) {
     return layoutActive.get(type)!.instance as T;
@@ -103,7 +102,6 @@ export function getProvider<T = any>(layout: string, type: string): T {
 
   const instance = entry.factory();
 
-  // Cache instance
   if (!active.has(layout)) {
     active.set(layout, new Map());
   }

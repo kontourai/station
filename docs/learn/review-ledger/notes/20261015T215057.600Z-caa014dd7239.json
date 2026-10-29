@@ -1,0 +1,7 @@
+{
+  "revision": "03c7f17f236bc2211f737ee276d04f559fd23b74",
+
+  "notes": [
+    {"path":"docs/design/project-task-room-history.md","note":"Second fix-round review for #3701 at 03c7f17f236bc2211f737ee276d04f559fd23b74. Rechecked the post-retirement closed/cooldown fence and rejected termination handling in project-task-room-history.ts against the recovery paragraph. Corrected the paragraph: rejected terminate() is treated as retired, permits later recovery after cooldown, and close() reports unavailable. The permanent real-worker tests cover a read waiting across close and a sibling failure that starts a cooldown while another read is waiting; the existing after-cooldown sibling case remains. The two older recovery tests now offset the monotonic clock after failure instead of sleeping one second; worker, SQLite and response-budget behavior remain real. EXECUTED on Node 24.19.0: focused history suite 77/77; committed clean baseline before each mutation; removing only the post-wait closed half failed the new close test (worker constructed after close: expected 67 to be 66), restored 77/77; removing only the post-wait cooldown half failed the inside-cooldown sibling case (available instead of unavailable), restored 77/77. Production adapter restored byte-for-byte; worker diff against 777d9502ad8 empty. This tests-only delta adds no runtime behavior; other document claims remain unchanged. NOT_VERIFIED: hosted, provider, native/device and release qualification. No push or PR.","inputs":["docs/design/project-task-room-history.md"]}
+  ]
+}

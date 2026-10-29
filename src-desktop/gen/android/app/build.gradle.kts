@@ -75,6 +75,7 @@ android {
             }
         }
         getByName("release") {
+            isShrinkResources = true
             isMinifyEnabled = true
             if (releaseKeystorePath != null) {
                 signingConfig = signingConfigs.getByName("release")

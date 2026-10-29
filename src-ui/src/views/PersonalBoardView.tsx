@@ -5,51 +5,16 @@ import {
   usePersonalLayoutQuery,
 } from '@kontourai/station-sdk';
 import { useState } from 'react';
+import { Button } from '../components/Button';
 import { ErrorState } from '../components/state';
 import { SDKAdapter } from '../core/SDKAdapter';
 import { LayoutRenderer } from '../layouts';
 import { layoutWorkspaceShape } from './layout-workspace-shape';
+import { PersonalBoardWorkspace } from './personal-board/PersonalBoardWorkspace';
 
-/**
- * A Board, rendered (#2062).
- *
- * ## One renderer, two hosts
- *
- * This does NOT reimplement layout rendering. It resolves a Board through
- * `usePersonalLayoutQuery` and hands it to the same `LayoutRenderer`
- * (`src-ui/src/layouts/index.tsx`) that `LayoutView` uses, through the same
- * `layoutWorkspaceShape` derivation. `LayoutRenderer` takes no project and
- * reads none — that is what makes one renderer serve both scopes rather than
- * a second one appearing for the scope without a project.
- *
- * The sharing is by CONSTRUCTION — one import, one derivation — and that is
- * the extent of what is proven. `PersonalBoardView.test.tsx` pins the shape
- * this view hands over, but it stubs the renderer, and so does
- * `LayoutView.test.tsx`; no test renders a Board through the real one
- * (#2062 review L5, #2082). Read the claim as "there is only one renderer
- * here", not as "the renderer is verified against a Board".
- *
- * ## What a Board deliberately does not carry, and why
- *
- * `LayoutView` is a PROJECT host, and several of its affordances are defined
- * in terms of the project: an agent reference is annotated available or not
- * by `agentAvailableInProject`, launching a prompt binds a chat session to a
- * project, and the workspace-pane host actions are read per project. A Board
- * has no project, so none of those questions has an answer here — and
- * answering them with the project machinery's "unknown" is worse than not
- * offering them, because `layoutViewUtils`'s filter fails CLOSED and would
- * render every agent action visibly disabled with no explanation a Board
- * reader could act on.
- *
- * So this host renders the Board's panes and no agent-launch surface:
- * `annotateAgentRef` is identity (nothing to filter against),
- * `hostOwnsGlobalActions` is false (there is no project action bar above
- * this), no `onLaunchPrompt` is supplied, and the renderer is TOLD so through
- * `canLaunchPrompts={false}` (#2171) — omitting the handler alone never was
- * a contract: the SDK header rendered the prompts anyway, wired to a no-op,
- * which is the defect #2171 closed. Agent launches from a Board need the
- * per-principal capability projection decision D2 describes, which is not
- * this slice. The gap is stated rather than approximated.
+/** Dashboard authoring and legacy Layout tabs share one principal-owned Board.
+ * Legacy panes keep their navigation and refresh controls; neither host launches
+ * Project-bound prompts from a Board without a Project capability context.
  */
 export function PersonalBoardView({ boardSlug }: { boardSlug: string }) {
   const {
@@ -59,6 +24,7 @@ export function PersonalBoardView({ boardSlug }: { boardSlug: string }) {
     refetch,
   } = usePersonalLayoutQuery(boardSlug);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [authoring, setAuthoring] = useState(false);
   const [activeTabId, setActiveTabId] = useState<string | undefined>();
 
   const layout = layoutWorkspaceShape(board, {
@@ -100,8 +66,40 @@ export function PersonalBoardView({ boardSlug }: { boardSlug: string }) {
     layout.tabs.find((tab: { id: string }) => tab.id === activeTabId) ??
     layout.tabs[0];
 
+  if (
+    authoring ||
+    board?.config.dashboard ||
+    board?.config.dashboardProposal ||
+    layout.tabs.length === 0
+  )
+    return (
+      <PersonalBoardWorkspace key={boardSlug} slug={boardSlug}>
+        {layout.tabs.length > 0 && (
+          <SDKAdapter layout={layout}>
+            <LayoutNavigationProvider
+              activeTabId={activeTab?.id}
+              layoutSlug={layout.slug}
+            >
+              <LayoutRenderer
+                layout={{ ...layout, dashboard: undefined }}
+                canLaunchPrompts={false}
+                activeTab={activeTab}
+                componentId={activeTab?.component}
+                refreshKey={refreshKey}
+                onRefresh={() => setRefreshKey((key) => key + 1)}
+                loading={isLoading}
+                activeTabId={activeTab?.id}
+                onTabChange={setActiveTabId}
+              />
+            </LayoutNavigationProvider>
+          </SDKAdapter>
+        )}
+      </PersonalBoardWorkspace>
+    );
+
   return (
     <SDKAdapter layout={layout}>
+      <Button onClick={() => setAuthoring(true)}>Build dashboard</Button>
       <LayoutNavigationProvider
         activeTabId={activeTab?.id}
         layoutSlug={layout.slug}

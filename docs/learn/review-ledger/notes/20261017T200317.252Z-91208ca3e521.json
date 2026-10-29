@@ -1,0 +1,7 @@
+{
+  "revision": "67bc2a8a49f731d434757dcc50c76679ecddd671",
+
+  "notes": [
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed notification-service get(id) delta and its route caller at 67bc2a8a49f: lookup uses the existing fresh validated read and clones only the matching public row. Scheduling, delivery events, expiry and router escalation behavior are unchanged; the Web Push guide remains accurate. Notification owner/route suites passed 162 tests; reverted production path fails the unrelated-row cloning assertion. No live push or device evidence.","inputs":["docs/guides/web-push-notifications.md","src-server/services/notifications/notification-service.ts"]}
+  ]
+}

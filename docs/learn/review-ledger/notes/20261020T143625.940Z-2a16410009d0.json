@@ -1,0 +1,7 @@
+{
+  "revision": "69862df3676d70268d0e2b76fbe81bca3a016bec",
+
+  "notes": [
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Fix round 5: added i0 disclosure-on-growth acceptance; reviewing-team text now states it rules out the owner's agent-held account in both the cost list and i0's prerequisite; d2 no longer claims the high-risk exclusion (d3 owns it) and cites decision 3 for the lock format; jG consumes d2's rules and gains a d2 edge, table re-parsed and acyclic; workflow-check objection reworded (unpinned status names, pull_request vs pull_request_target/pull_request_review). Status remains accepted direction. No test executed.","inputs":["docs/design/shell-plugins-distributions.md"]}
+  ]
+}

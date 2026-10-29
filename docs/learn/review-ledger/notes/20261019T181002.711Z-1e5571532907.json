@@ -1,0 +1,13 @@
+{
+  "revision": "addabc739b82207573830758ccb468c67456121f",
+
+  "notes": [
+    {"path":"README.md","note":"Dependency delta: cli.md's station telemetry producers section gained one paragraph on switch values and the lost-reply message. Nothing in this document depends on it.","inputs":["README.md","docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Dependency delta: cli.md's station telemetry producers section gained one paragraph on switch values and the lost-reply message. Nothing in this document depends on it.","inputs":["docs/architecture/abstraction-review.md","docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Dependency delta: cli.md's station telemetry producers section gained one paragraph on switch values and the lost-reply message. Nothing in this document depends on it.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]},
+
+    {"path":"packages/cli/README.md","note":"Dependency delta: cli.md's station telemetry producers section gained one paragraph on switch values and the lost-reply message. Nothing in this document depends on it.","inputs":["packages/cli/README.md","docs/reference/cli.md"]}
+  ]
+}

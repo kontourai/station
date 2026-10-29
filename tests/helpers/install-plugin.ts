@@ -59,9 +59,14 @@ export interface PluginPreviewPayload {
   };
 }
 
+/**
+ * `env` names the Station the request authenticates to (its API and UI
+ * origins and operator credential); omitted, the suite's own Station.
+ */
 export async function previewPluginForInstall(
   apiBase: string,
   source: string,
+  env: NodeJS.ProcessEnv = process.env,
 ): Promise<PluginPreviewPayload> {
   const response = await authenticatedE2EFetch(
     `${apiBase}/api/plugins/preview`,
@@ -70,6 +75,7 @@ export async function previewPluginForInstall(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ source }),
     },
+    env,
   );
   const preview = (await response.json()) as PluginPreviewPayload;
   if (!preview.valid) {
@@ -88,9 +94,10 @@ export async function previewPluginForInstall(
 export async function installPluginWithConsent(
   apiBase: string,
   source: string,
-  options: { skip?: string[] } = {},
+  options: { skip?: string[]; env?: NodeJS.ProcessEnv } = {},
 ): Promise<any> {
-  const preview = await previewPluginForInstall(apiBase, source);
+  const env = options.env ?? process.env;
+  const preview = await previewPluginForInstall(apiBase, source, env);
   const response = await authenticatedE2EFetch(
     `${apiBase}/api/plugins/install`,
     {
@@ -128,6 +135,7 @@ export async function installPluginWithConsent(
         },
       }),
     },
+    env,
   );
   return response.json();
 }

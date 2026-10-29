@@ -195,6 +195,8 @@ async function respondToQuotaRead(
   process.stdout.write(`${JSON.stringify({ id: '2', result: payload })}\n`);
 }
 
+const makeSessionWorkspace = trackTempDirs();
+
 async function startQuotaSession(options: {
   adapter: CodexAdapter;
   connectionId: string;
@@ -205,6 +207,7 @@ async function startQuotaSession(options: {
   const session = options.adapter.startSession({
     provider: 'codex',
     threadId: options.threadId,
+    cwd: makeSessionWorkspace('codex-quota-workspace-'),
     modelId: 'gpt-5-codex',
     metadata: { connectionId: options.connectionId },
     ...(options.credentialProfileRef
@@ -428,6 +431,68 @@ describe('CodexAdapter', () => {
     expect(snapshot?.credits).toBeUndefined();
   });
 
+  test.each([
+    {
+      id: 'primary',
+      primary: {
+        usedPercent: 94,
+        windowDurationMins: 10080,
+        resetsAt: 1791948529,
+      },
+      secondary: null,
+    },
+    {
+      id: 'secondary',
+      primary: null,
+      secondary: {
+        usedPercent: 94,
+        windowDurationMins: 10080,
+        resetsAt: 1791948529,
+      },
+    },
+    {
+      id: 'primary',
+      primary: { usedPercent: 94, windowDurationMins: null, resetsAt: null },
+      secondary: null,
+    },
+  ])(
+    'reads nullable native quota windows without inventing allowance ($id)',
+    async ({ id, primary, secondary }) => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const read = adapter.readQuotaSnapshot({ connectionId: 'codex' });
+      await flushIo();
+      processHandle.stdout.write(
+        `${JSON.stringify({ id: '1', result: {} })}\n`,
+      );
+      await flushIo();
+      processHandle.stdout.write(
+        `${JSON.stringify({ id: '2', result: { rateLimits: { primary, secondary, credits: { hasCredits: false, unlimited: false, balance: null } } } })}\n`,
+      );
+      const result = await read;
+      expect(result.kind).toBe('snapshot');
+      if (result.kind !== 'snapshot')
+        throw new Error('Expected native quota snapshot');
+      expect(result.snapshot.windows).toHaveLength(1);
+      expect(result.snapshot.windows[0]).toMatchObject({ id, usedPercent: 94 });
+      expect(result.snapshot.credits?.value).toEqual({
+        hasCredits: false,
+        unlimited: false,
+      });
+      const window = primary ?? secondary;
+      if (window?.resetsAt === null) {
+        expect(result.snapshot.windows[0]).not.toHaveProperty('resetsAt');
+        expect(result.snapshot.windows[0]?.resetDeadlineAt).toBeUndefined();
+        expect(result.snapshot.windows[0]).not.toHaveProperty(
+          'windowDurationMins',
+        );
+      }
+      await adapter.stopAll();
+    },
+  );
+
   test('returns provider-error when the quota transport fails', async () => {
     processHandle = new FakeCodexProcess();
     const adapter = new CodexAdapter({ processFactory: () => processHandle! });
@@ -478,7 +543,7 @@ describe('CodexAdapter', () => {
       null,
       42,
       { rateLimits: null },
-      { rateLimits: { primary: null } },
+      { rateLimits: { primary: [] } },
       { rateLimits: { secondary: 42 } },
     ]) {
       expect(() =>
@@ -496,7 +561,7 @@ describe('CodexAdapter', () => {
     });
     for (const [process, payload] of [
       [first, { rateLimits: null }],
-      [second, { rateLimits: { primary: null } }],
+      [second, { rateLimits: { primary: [] } }],
     ] as const) {
       const read = adapter.readQuotaSnapshot({ connectionId: 'codex' });
       await flushIo();
@@ -1493,6 +1558,7 @@ describe('CodexAdapter', () => {
   test.each(['home', 'profile'] as const)(
     'a native return refuses a changed %s before starting another Codex process',
     async (changed) => {
+      const cwd = makeSessionWorkspace('codex-binding-workspace-');
       let home = '/profiles/original';
       let profileRef = 'original';
       processHandle = new FakeCodexProcess();
@@ -1506,6 +1572,7 @@ describe('CodexAdapter', () => {
         const source = adapter.startSession({
           provider: 'codex',
           threadId: 'binding-source',
+          cwd,
         });
         await flushIo();
         processHandle.stdout.write(
@@ -1528,14 +1595,19 @@ describe('CodexAdapter', () => {
           }
         }
         if (!bindingKey) throw new Error('No observed source binding');
-        await adapter.stopSession('binding-source');
         if (changed === 'home') home = '/profiles/replacement';
         else profileRef = 'replacement';
+        expect(adapter.preparedTurnBinding('binding-source')).toMatchObject({
+          bindingKey,
+          nativeIdentity: { sessionId: 'native-source' },
+        });
+        await adapter.stopSession('binding-source');
         const invocations = processFactory.mock.calls.length;
         await expect(
           adapter.startSession({
             provider: 'codex',
             threadId: 'binding-return',
+            cwd,
             resumeCursor: { codexThreadId: 'native-source' },
             requireNativeResumeIdentity: true,
             nativeResumeBindingKey: bindingKey,
@@ -1569,6 +1641,7 @@ describe('CodexAdapter', () => {
       const started = adapter.startSession({
         provider: 'codex',
         threadId: 'strict-resume',
+        cwd: makeSessionWorkspace('codex-resume-workspace-'),
         resumeCursor: { codexThreadId: 'native-original' },
         requireNativeResumeIdentity: true,
       });
@@ -2064,6 +2137,7 @@ describe('CodexAdapter', () => {
     const adapter = new CodexAdapter({
       processFactory: () => processHandle!,
     });
+    expect(adapter.metadata.durability.steerPlacement.state).toBe('native');
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
 
     const startSessionPromise = adapter.startSession({
@@ -3024,7 +3098,7 @@ describe('CodexAdapter', () => {
     });
   });
 
-  test('sendTurn keeps the typed displayInput in turn.started while turn/start carries the composed model input (#685)', async () => {
+  test('sendTurn preserves typed displayInput and carries request identity through completion before the send promise settles', async () => {
     processHandle = new FakeCodexProcess();
     const adapter = new CodexAdapter({
       processFactory: () => processHandle!,
@@ -3054,11 +3128,19 @@ describe('CodexAdapter', () => {
       threadId: 'thread-ambient',
       input: '[Timezone: Iceland]\nwhat time is it?',
       displayInput: 'what time is it?',
+      invocationId: 'ambient-invocation',
     });
     await flushIo();
     writeServerMessage(adapter, 'thread-ambient', {
       id: '3',
       result: { turn: { id: 'turn-ambient' } },
+    });
+    writeServerMessage(adapter, 'thread-ambient', {
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-ambient',
+        turn: { id: 'turn-ambient', status: 'completed' },
+      },
     });
     await withTimeout(sendTurnPromise, 'sendTurn');
 
@@ -3069,7 +3151,23 @@ describe('CodexAdapter', () => {
     expect(turnStarted).toMatchObject({
       method: 'turn.started',
       prompt: 'what time is it?',
+      invocationId: 'ambient-invocation',
     });
+    expect(await nextEvent(iterator, 'turn.completed')).toMatchObject({
+      turnId: 'turn-ambient',
+      invocationId: 'ambient-invocation',
+    });
+
+    writeServerMessage(adapter, 'thread-ambient', {
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-ambient',
+        turn: { id: 'unowned-turn', status: 'completed' },
+      },
+    });
+    expect(await nextEvent(iterator, 'turn.completed')).not.toHaveProperty(
+      'invocationId',
+    );
 
     // Model boundary: the JSON-RPC turn/start request carries the composed
     // model input.
@@ -3083,6 +3181,37 @@ describe('CodexAdapter', () => {
         text_elements: [],
       },
     ]);
+
+    // Reused IDs, including a previously unowned observation, cannot confer
+    // invocation identity on native terminal notifications.
+    for (const [index, turnId] of ['turn-ambient', 'unowned-turn'].entries()) {
+      const invocationId = `reused-invocation-${index}`;
+      const send = adapter.sendTurn({
+        threadId: 'thread-ambient',
+        input: 'Next',
+        invocationId,
+      });
+      await flushIo();
+      writeServerMessage(adapter, 'thread-ambient', {
+        id: String(4 + index),
+        result: { turn: { id: turnId } },
+      });
+      writeServerMessage(adapter, 'thread-ambient', {
+        method: 'turn/completed',
+        params: {
+          threadId: 'codex-ambient',
+          turn: { id: turnId, status: 'completed' },
+        },
+      });
+      await withTimeout(send, 'reused sendTurn');
+      expect(await nextEvent(iterator, 'turn.started')).toMatchObject({
+        turnId,
+        invocationId,
+      });
+      expect(await nextEvent(iterator, 'turn.completed')).not.toHaveProperty(
+        'invocationId',
+      );
+    }
 
     await adapter.stopAll();
   });
@@ -4313,6 +4442,7 @@ describe('CodexAdapter', () => {
     const sessionPromise = adapter.startSession({
       provider: 'codex',
       threadId: 'thread-3',
+      cwd: makeSessionWorkspace('codex-json-workspace-'),
     });
     await flushIo();
     writeServerMessage(adapter, 'thread-3', {
@@ -4357,6 +4487,7 @@ describe('CodexAdapter', () => {
     const sessionPromise = adapter.startSession({
       provider: 'codex',
       threadId: 'thread-failed-start',
+      cwd: makeSessionWorkspace('codex-failed-start-workspace-'),
     });
     await flushIo();
     writeServerMessage(adapter, 'thread-failed-start', {
@@ -4630,6 +4761,7 @@ describe('CodexAdapter', () => {
     const sessionPromise = adapter.startSession({
       provider: 'codex',
       threadId: 'thread-4',
+      cwd: makeSessionWorkspace('codex-approval-workspace-'),
     });
     await flushIo();
     writeServerMessage(adapter, 'thread-4', {
@@ -4739,10 +4871,10 @@ describe('CodexAdapter', () => {
     const threadStart = processHandle.stdin.lines
       .map(parseLine)
       .find((line) => line.method === 'thread/start');
-    expect(threadStart.params).toMatchObject({
-      approvalPolicy: 'untrusted',
-      sandbox: 'workspace-write',
-    });
+    expect(threadStart.params).toMatchObject({ approvalPolicy: 'untrusted' });
+    // #3800: outside a host session workspace-write is the permission
+    // profile the spawn selects; a mode would replace it.
+    expect(threadStart.params).not.toHaveProperty('sandbox');
 
     // First turn carries no override — omit knobs so the thread keeps the
     // engine/session policy rather than resetting to Station's old Never
@@ -5039,10 +5171,9 @@ describe('CodexAdapter', () => {
           confinement,
           resume,
         );
-        expect(request?.params).toMatchObject({
-          approvalPolicy: 'never',
-          sandbox: 'workspace-write',
-        });
+        // #3800: the workspace sandbox is the spawn's permission profile.
+        expect(request?.params).toMatchObject({ approvalPolicy: 'never' });
+        expect(request?.params).not.toHaveProperty('sandbox');
         expect(configured.metadata).toMatchObject({
           sandbox: 'workspace-write',
           approvalMode: 'never',
@@ -5383,6 +5514,7 @@ describe('CodexAdapter', () => {
         adapter.startSession({
           provider: 'codex',
           threadId: 'configured-profile-failure',
+          cwd: makeSessionWorkspace('codex-profile-workspace-'),
         }),
       ).rejects.toThrow(
         'Credential profile environment could not be prepared.',
@@ -5468,6 +5600,7 @@ describe('CodexAdapter', () => {
         adapter.startSession({
           provider: 'codex',
           threadId: 'thread-profile-ref-failure',
+          cwd: makeSessionWorkspace('codex-profile-workspace-'),
           credentialProfileRef: 'canary-profile-ref',
         }),
       ).rejects.toThrow(
@@ -5490,6 +5623,7 @@ describe('CodexAdapter', () => {
 
       const startSessionPromise = adapter.startSession({
         provider: 'codex',
+        confinement: 'host',
         threadId: 'thread-app-home',
         cwd: '/tmp/project',
         modelId: 'gpt-5-codex',
@@ -5513,7 +5647,10 @@ describe('CodexAdapter', () => {
       // toolServers config args (undefined here — this session authors no
       // toolServers, so the spawn argv stays byte-identical to before).
       expect(processFactory).toHaveBeenCalledWith(
-        { CODEX_HOME: '/station/app-homes/codex' },
+        {
+          CODEX_HOME: '/station/app-homes/codex',
+          STATION_WORKLOAD_SESSION_ID: 'thread-app-home',
+        },
         undefined,
       );
       await adapter.stopAll();
@@ -5541,6 +5678,7 @@ describe('CodexAdapter', () => {
 
       const started = adapter.startSession({
         provider: 'codex',
+        confinement: 'host',
         threadId: 'thread-profile-with-tools',
         cwd: '/tmp/project',
         credentialProfileRef: profileRef,
@@ -5568,10 +5706,16 @@ describe('CodexAdapter', () => {
       });
       await withTimeout(started, 'startSession');
 
-      expect(processFactory).toHaveBeenCalledWith({ CODEX_HOME: profileHome }, [
-        '-c',
-        `mcp_servers.station-control.url="http://127.0.0.1:3141/mcp/station-control?token=${token}"`,
-      ]);
+      expect(processFactory).toHaveBeenCalledWith(
+        {
+          CODEX_HOME: profileHome,
+          STATION_WORKLOAD_SESSION_ID: 'thread-profile-with-tools',
+        },
+        [
+          '-c',
+          `mcp_servers.station-control.url="http://127.0.0.1:3141/mcp/station-control?token=${token}"`,
+        ],
+      );
       const events = [
         await nextEvent(iterator, 'session.started'),
         await nextEvent(iterator, 'session.configured'),
@@ -5791,6 +5935,7 @@ describe('CodexAdapter', () => {
 
       const startSessionPromise = adapter.startSession({
         provider: 'codex',
+        confinement: 'host',
         threadId: 'thread-connection-env',
         cwd: '/tmp/project',
         modelId: 'gpt-5-codex',
@@ -5814,6 +5959,7 @@ describe('CodexAdapter', () => {
         {
           ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
           CODEX_HOME: '/station/app-homes/codex',
+          STATION_WORKLOAD_SESSION_ID: 'thread-connection-env',
         },
         undefined,
       );
@@ -5832,6 +5978,7 @@ describe('CodexAdapter', () => {
 
       const startSessionPromise = adapter.startSession({
         provider: 'codex',
+        confinement: 'host',
         threadId: 'thread-connection-env-only',
         cwd: '/tmp/project',
         modelId: 'gpt-5-codex',
@@ -5852,7 +5999,10 @@ describe('CodexAdapter', () => {
       await withTimeout(startSessionPromise, 'startSession');
 
       expect(processFactory).toHaveBeenCalledWith(
-        { CODEX_HOME: '/Users/me/.codex_vibe' },
+        {
+          CODEX_HOME: '/Users/me/.codex_vibe',
+          STATION_WORKLOAD_SESSION_ID: 'thread-connection-env-only',
+        },
         undefined,
       );
       await adapter.stopAll();
@@ -5899,7 +6049,7 @@ describe('CodexAdapter', () => {
       const makeTempDir = trackTempDirs();
       const connectionEnv = async () => ({
         OPENAI_BASE_URL: 'http://connection.example.internal',
-        CODEX_HOME: '/Users/brian/.codex_vibe',
+        CODEX_HOME: '/Users/example/.codex_vibe',
         CONNECTION_ONLY: 'kept',
       });
       const resolverFor = (homeDir: string, env: Record<string, string>) =>
@@ -5929,6 +6079,7 @@ describe('CodexAdapter', () => {
 
         const startSessionPromise = adapter.startSession({
           provider: 'codex',
+          confinement: 'host',
           threadId: 'thread-profile-overlay',
           cwd: '/tmp/project',
           modelId: 'gpt-5-codex',
@@ -5956,6 +6107,7 @@ describe('CodexAdapter', () => {
             OPENAI_API_KEY: '',
             CONNECTION_ONLY: 'kept',
             CODEX_HOME: credentialProfileAppHomeDir('codex', 'proxy', homeDir),
+            STATION_WORKLOAD_SESSION_ID: 'thread-profile-overlay',
           },
           undefined,
         );
@@ -6085,6 +6237,85 @@ describe('CodexAdapter', () => {
 });
 
 describe('station#1195: toolServers wire delivery (mcp_servers -c config args)', () => {
+  test('awaits OAuth preparation and delivers only the Station proxy route', async () => {
+    const handle = new FakeCodexProcess();
+    const factory = vi.fn(
+      (_env?: Record<string, string>, _args?: string[]) => handle,
+    );
+    const adapter = new CodexAdapter({
+      processFactory: factory,
+      resolveMcpOAuth: async () =>
+        new Map([
+          [
+            'workspace',
+            'http://127.0.0.1:43143/mcp/oauth-proxy/workspace/oauth-delivery?token=scoped-proxy-credential',
+          ],
+        ]),
+    });
+    const threadId = 'oauth-delivery';
+    const started = adapter.startSession({
+      provider: 'codex',
+      confinement: 'host',
+      threadId,
+      agent: {
+        slug: 'oauth-agent',
+        toolServers: [
+          {
+            id: 'workspace',
+            transport: 'streamable-http',
+            endpoint: 'https://oauth.example/mcp',
+          },
+        ],
+      },
+    });
+    await flushIo();
+    writeServerMessage(adapter, threadId, {
+      id: '1',
+      result: { userAgent: 'test' },
+    });
+    await flushIo();
+    writeServerMessage(adapter, threadId, {
+      id: '2',
+      result: { thread: { id: 'codex-oauth' } },
+    });
+    await withTimeout(started, 'OAuth startSession');
+    const [env, args = []] = factory.mock.calls[0];
+    expect(args).toContain(
+      'mcp_servers.workspace.url="http://127.0.0.1:43143/mcp/oauth-proxy/workspace/oauth-delivery?token=scoped-proxy-credential"',
+    );
+    expect(JSON.stringify(env ?? {})).not.toContain('scoped-proxy-credential');
+    expect(JSON.stringify(env ?? {})).not.toContain('STATION_MCP_OAUTH_');
+    await adapter.stopAll();
+  });
+
+  test('needs-sign-in prevents the Codex app-server spawn', async () => {
+    const factory = vi.fn(() => new FakeCodexProcess());
+    const adapter = new CodexAdapter({
+      processFactory: factory,
+      resolveMcpOAuth: async () => {
+        throw new Error('Integration workspace needs sign-in');
+      },
+    });
+    await expect(
+      adapter.startSession({
+        provider: 'codex',
+        confinement: 'host',
+        threadId: 'oauth-refusal',
+        agent: {
+          slug: 'oauth-agent',
+          toolServers: [
+            {
+              id: 'workspace',
+              transport: 'streamable-http',
+              endpoint: 'https://oauth.example/mcp',
+            },
+          ],
+        },
+      }),
+    ).rejects.toThrow('needs sign-in');
+    expect(factory).not.toHaveBeenCalled();
+  });
+
   test('an unauthored toolServers list never mints a station-control token and passes no extra config args', async () => {
     const processHandle = new FakeCodexProcess();
     const mintStationControlMcpAuth = vi.fn();
@@ -6098,6 +6329,7 @@ describe('station#1195: toolServers wire delivery (mcp_servers -c config args)',
 
     const startSessionPromise = adapter.startSession({
       provider: 'codex',
+      confinement: 'host',
       threadId: 'thread-no-tools',
       cwd: '/tmp/project',
       modelId: 'gpt-5-codex',
@@ -6130,6 +6362,7 @@ describe('station#1195: toolServers wire delivery (mcp_servers -c config args)',
 
     const startSessionPromise = adapter.startSession({
       provider: 'codex',
+      confinement: 'host',
       threadId: 'thread-tools',
       cwd: '/tmp/project',
       modelId: 'gpt-5-codex',
@@ -6196,6 +6429,7 @@ describe('station#1195: toolServers wire delivery (mcp_servers -c config args)',
 
     const startSessionPromise = adapter.startSession({
       provider: 'codex',
+      confinement: 'host',
       threadId: 'thread-station-control',
       cwd: '/tmp/project',
       modelId: 'gpt-5-codex',
@@ -6263,6 +6497,7 @@ describe('station#1195: toolServers wire delivery (mcp_servers -c config args)',
 
     const startSessionPromise = adapter.startSession({
       provider: 'codex',
+      confinement: 'host',
       threadId: 'thread-impostor',
       cwd: '/tmp/project',
       modelId: 'gpt-5-codex',

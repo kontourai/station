@@ -2,8 +2,10 @@
  * Copies pre-index documents into Kit-format roots without cutting over or
  * cleaning up the source corpus. Source snapshots enter transaction recovery,
  * which can repair an interrupted prior write. Existing record IDs are skipped;
- * index writes can repair a prior record-create/index-failure boundary. Vector
- * reuse checks width, not model identity. See docs/guides/knowledge.md.
+ * index writes can repair a prior record-create/index-failure boundary.
+ * Pre-index vectors are never reused: `vectors.json` records no model, so
+ * equal width cannot prove the current embedder produced them (#2727). Every
+ * migrated root is re-embedded. See docs/guides/knowledge.md.
  *
  * Preserve path validation, the source snapshot, and the global migration
  * lock. A failed namespace must not erase the outcomes of successful ones.
@@ -13,7 +15,6 @@ import { join } from 'node:path';
 import type { KnowledgeDocumentMeta } from '@kontourai/station-contracts/knowledge';
 import type {
   IEmbeddingProvider,
-  KnowledgeIndexEntry,
   KnowledgeIndexProvider,
 } from '@kontourai/station-contracts/knowledge-index';
 import type {
@@ -234,7 +235,6 @@ async function ensureMigrationRoot(
 async function migrateNamespace(
   deps: MigratePreIndexKnowledgeDeps,
   ref: PreIndexNamespaceRef,
-  embedderDimensions: number,
 ): Promise<{
   documentsMigrated: number;
   chunksIndexed: number;
@@ -291,21 +291,8 @@ async function migrateNamespace(
   const adapter = await store.adapterFor(root.id);
 
   let namespaceDocsMigrated = 0;
-  let allChunksReusable = preIndexVectorDocs.length > 0;
 
   for (const doc of docs) {
-    const docVectors = preIndexVectorDocs.filter(
-      (v) => v.metadata?.docId === doc.id,
-    );
-    if (
-      docVectors.length === 0 ||
-      docVectors.some(
-        (v) =>
-          !Array.isArray(v.vector) || v.vector.length !== embedderDimensions,
-      )
-    ) {
-      allChunksReusable = false;
-    }
     const existingRecord = await adapter.get(doc.id);
     if (existingRecord) {
       observeMigration('noop', 'already-migrated');
@@ -338,41 +325,12 @@ async function migrateNamespace(
     observeMigration('write', 'created');
   }
 
-  let chunksIndexed = 0;
-  if (allChunksReusable) {
-    // Compatible widths permit reuse; the source model identity is not recorded.
-    const entries: KnowledgeIndexEntry[] = [];
-    for (const doc of docs) {
-      const docVectors = preIndexVectorDocs
-        .filter((v) => v.metadata?.docId === doc.id)
-        .sort(
-          (a, b) =>
-            Number(a.metadata?.chunkIndex ?? 0) -
-            Number(b.metadata?.chunkIndex ?? 0),
-        );
-      docVectors.forEach((v, chunkOrdinal) => {
-        entries.push({
-          recordId: doc.id,
-          rootId: root.id,
-          chunkOrdinal: Number(v.metadata?.chunkIndex ?? chunkOrdinal),
-          text: v.text,
-          vector: v.vector,
-          metadata: v.metadata ?? {},
-        });
-      });
-    }
-    if (entries.length > 0) {
-      await indexProvider.upsert(entries);
-      chunksIndexed = entries.length;
-    }
-  } else {
-    // Missing or incompatible vectors require rebuilding the whole root.
-    const rebuildResult = await indexProvider.rebuildRoot(root.id, {
-      store,
-      embedder,
-    });
-    chunksIndexed = rebuildResult.chunks;
-  }
+  // Re-derive the whole root from its records with the current embedder.
+  const rebuildResult = await indexProvider.rebuildRoot(root.id, {
+    store,
+    embedder,
+  });
+  const chunksIndexed = rebuildResult.chunks;
 
   return {
     documentsMigrated: namespaceDocsMigrated,
@@ -402,7 +360,7 @@ async function migratePreIndexKnowledgeUnguarded(
   deps: MigratePreIndexKnowledgeDeps,
   options: MigratePreIndexKnowledgeOptions,
 ): Promise<MigratePreIndexKnowledgeResult> {
-  const { dataDir, embedder } = deps;
+  const { dataDir } = deps;
   const preIndexRefs = discoverPreIndexNamespaces(dataDir, options.projectSlug);
 
   if (preIndexRefs.length === 0) {
@@ -419,11 +377,10 @@ async function migratePreIndexKnowledgeUnguarded(
   let chunksIndexed = 0;
   const namespacesProcessed: string[] = [];
   const namespaceResults: MigratePreIndexKnowledgeNamespaceResult[] = [];
-  const embedderDimensions = embedder.dimensions();
 
   for (const ref of preIndexRefs) {
     try {
-      const outcome = await migrateNamespace(deps, ref, embedderDimensions);
+      const outcome = await migrateNamespace(deps, ref);
       if (outcome === null) continue;
 
       documentsMigrated += outcome.documentsMigrated;

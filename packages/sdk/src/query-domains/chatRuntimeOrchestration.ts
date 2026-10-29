@@ -15,6 +15,7 @@ import {
 } from '@kontourai/station-contracts/orchestration';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
+import { useContext } from 'react';
 import { apiErrorMessage } from '../api-core';
 import { StationHttpError } from '../client/api-error-message';
 import { ChatHttpError } from '../client/chatHttpError';
@@ -39,7 +40,10 @@ import {
   type ApiRequestScope,
   authenticatedFetch,
   type ClientRequestOptions,
+  DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
+  getJson,
   isApiRequestScope,
+  StationRequestAuthorityError,
 } from '../client/http';
 import {
   getChildWorkTranscript,
@@ -54,12 +58,15 @@ import {
   steerTurn as steerTurnClient,
 } from '../client/orchestration';
 import { StationRequestTimeoutError } from '../client/request-deadline';
+import { hasRecordedTurnFailure } from '../client/sent-turn-key';
 import { isStationAnswer } from '../client/station-envelope';
+import { OrchestrationSessionsContext } from '../orchestrationSessionsContext';
 import {
   type MutationOptions,
   type QueryConfig,
   resolveApiBase,
   useApiQuery,
+  useApiQueryWithSharing,
   useCancelWhenInactive,
 } from '../query-core';
 import { orchestrationQueries } from '../queryFactories';
@@ -75,6 +82,7 @@ import type {
   TerminalProcessDetail,
   TerminalProcessSummary,
 } from './chatRuntimeTypes';
+import { shareSessionReadModel } from './sessionStructuralSharing';
 
 export type {
   DelegatedTaskHandle,
@@ -156,6 +164,33 @@ export async function fetchOrchestrationSessionEventWindow(
     throw new Error('Session history requires a server upgrade');
   }
   return page;
+}
+
+/** Latest turn only; activity reads never paginate or populate session detail. */
+export function useOrchestrationSessionActivityQuery(
+  threadId: string,
+  apiBase?: string,
+  config?: QueryConfig<OrchestrationSessionEventWindow>,
+) {
+  return useApiQuery(
+    ['orchestration-session-activity', apiBase ?? 'default', threadId],
+    (signal) =>
+      fetchOrchestrationSessionEventWindow(
+        threadId,
+        apiBase,
+        { direction: 'newest', turnLimit: 1 },
+        { signal },
+      ),
+    {
+      enabled: Boolean(threadId) && (config?.enabled ?? true),
+      staleTime: config?.staleTime ?? 0,
+      gcTime: config?.gcTime,
+      refetchOnMount: config?.refetchOnMount ?? 'always',
+      refetchInterval: config?.refetchInterval,
+      retry: config?.retry ?? false,
+      cancelWhenInactive: config?.cancelWhenInactive ?? true,
+    },
+  );
 }
 
 export async function fetchOrchestrationConversationEventWindow(
@@ -650,15 +685,16 @@ export async function dispatchOrchestrationCommand<T = unknown>(
 
 /** Create a Station-owned continuation from a read-only attached session. */
 /**
- * True only for failures that PROVE the request never left this client:
- * request-construction errors and the connection-level refusals the runtime
- * names explicitly. A bare TypeError ('Failed to fetch') is NOT proof — the
- * browser uses it for post-send failures too.
+ * Errors recorded by keyed direct chat stay uncertain, even if reused for
+ * another call. Outside that set, only the explicit read-only refusal and
+ * named connection refusals prove no send. SyntaxError can come from parsing
+ * a response, and browsers use TypeError for post-send failures too.
  */
 export function isProvablyNotSent(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
+  if (!(error instanceof Error) || hasRecordedTurnFailure(error)) return false;
   const name = error.name;
-  if (name === 'StationReadOnlyError' || name === 'SyntaxError') return true;
+  if (name === 'SyntaxError') return false;
+  if (name === 'StationReadOnlyError') return true;
   const message = error.message;
   return (
     /ECONNREFUSED|ENOTFOUND|ERR_NAME_NOT_RESOLVED|refused the connection/i.test(
@@ -878,10 +914,12 @@ export async function fetchOrchestrationCommandReceipt(
 
 export async function fetchOrchestrationSessions(
   apiBase?: string,
+  options?: ClientRequestOptions,
 ): Promise<OrchestrationSessionSummary[]> {
   const resolvedApiBase = await resolveApiBase(apiBase);
-  const response = await authenticatedFetch(
+  const response = await getJson(
     `${resolvedApiBase}/api/orchestration/sessions/read-model`,
+    { ...options, progressTimeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS },
   );
   const result = (await response.json()) as {
     success: boolean;
@@ -1092,10 +1130,14 @@ export async function resolveOrchestrationRequest(input: {
   requestId: string;
   expectedRequestEventId?: string;
   decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
-  /** @deprecated since 0.9.0; removed in 0.10.0. Use `content`. */
+  /** With `acceptForSession`: grant the whole Station browser server. */
+  sessionGrantScope?: 'server';
+  /** @deprecated since 0.9.0; retained for compatibility. Use `content`. */
   answers?: HarnessQuestionAnswers;
   /** #3390: accepted content for a form input request. */
   content?: InputRequestContent;
+  /** docs/design/event-content-spill.md: proof the full request was loaded. */
+  viewedContentDigest?: string;
   apiBase?: string;
   /** Deadline for decision admission; a timeout does not cancel the server-side decision. */
   timeoutMs?: number;
@@ -1109,8 +1151,14 @@ export async function resolveOrchestrationRequest(input: {
         ? { expectedRequestEventId: input.expectedRequestEventId }
         : {}),
       decision: input.decision,
+      ...(input.sessionGrantScope
+        ? { sessionGrantScope: input.sessionGrantScope }
+        : {}),
       ...(input.answers ? { answers: input.answers } : {}),
       ...(input.content ? { content: input.content } : {}),
+      ...(input.viewedContentDigest
+        ? { viewedContentDigest: input.viewedContentDigest }
+        : {}),
     },
     input.apiBase,
     input.timeoutMs,
@@ -1268,15 +1316,37 @@ export function useOrchestrationProvidersQuery(
 
 export function useOrchestrationSessionsQuery(
   config?: QueryConfig<OrchestrationSessionSummary[]>,
+  requestScope?: ApiRequestScope | null,
 ) {
-  return useApiQuery(
-    orchestrationQueries.sessions().queryKey,
-    () => fetchOrchestrationSessions(),
+  const host = useContext(OrchestrationSessionsContext);
+  const scope =
+    requestScope === null ? undefined : (requestScope ?? host?.scope);
+  const streamLive =
+    host?.streamLive === true &&
+    host.scope?.apiBase === scope?.apiBase &&
+    host.scope?.authorityKey === scope?.authorityKey;
+  return useApiQueryWithSharing(
+    requestScope === null
+      ? ['orchestration-sessions-unavailable']
+      : orchestrationQueries.sessions(scope).queryKey,
+    (signal) => {
+      if (requestScope === null) throw new StationRequestAuthorityError();
+      return fetchOrchestrationSessions(scope?.apiBase, {
+        signal,
+        ...(scope ? { requestScope: scope } : {}),
+      });
+    },
+    shareSessionReadModel,
     {
-      staleTime: config?.staleTime ?? orchestrationQueries.sessions().staleTime,
+      staleTime: streamLive ? Infinity : (config?.staleTime ?? 60_000),
       gcTime: config?.gcTime,
+      refetchIntervalForError: (error) => (error ? 60_000 : undefined),
+      retry: config?.retry,
+      refetchOnWindowFocus: config?.refetchOnWindowFocus,
       enabled: config?.enabled,
-      refetchInterval: config?.refetchInterval,
+      refetchOnMount: config?.refetchOnMount ?? true,
+      // Peer reconciliation is still read-driven; SSE cannot replace this safety poll.
+      refetchInterval: config?.refetchInterval ?? 60_000,
     },
   );
 }

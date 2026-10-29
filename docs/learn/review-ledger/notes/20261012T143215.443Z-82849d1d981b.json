@@ -1,0 +1,7 @@
+{
+  "revision": "e5787d9428d67bd65d6b38416901f0e0e2f94388",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"ci-health.test.ts only renames a stacked-PR fixture branch to a neutral name; the CI health section claims about fixture coverage and attribution are unchanged.","inputs":["docs/guides/testing.md","scripts/__tests__/ci-health.test.ts"]}
+  ]
+}

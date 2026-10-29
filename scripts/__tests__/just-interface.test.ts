@@ -210,9 +210,15 @@ describe('just contributor Interface', () => {
       expect(guidance).toContain('just --version');
       expect(guidance).toContain('npm run full:regression');
       expect(guidance).toContain('1.44.0');
-      expect(guidance).toContain('brew install just');
-      expect(guidance).toContain('cargo install just --locked');
-      expect(guidance).toContain('winget install --id Casey.Just --exact');
     }
+    // CONTRIBUTING.md owns the per-platform install commands; the development
+    // guide links to that section instead of keeping a second copy.
+    expect(CONTRIBUTING).toContain('brew install just');
+    expect(CONTRIBUTING).toContain('cargo install just --locked');
+    expect(CONTRIBUTING).toContain('winget install --id Casey.Just --exact');
+    expect(DEVELOPMENT_GUIDE).toContain(
+      'CONTRIBUTING.md#optional-just-contributor-interface',
+    );
+    expect(DEVELOPMENT_GUIDE).not.toContain('brew install just');
   });
 });

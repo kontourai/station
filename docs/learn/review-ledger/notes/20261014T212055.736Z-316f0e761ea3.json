@@ -1,0 +1,7 @@
+{
+  "revision": "e88208d9cffe2f47a0252fb051de939a04019a79",
+
+  "notes": [
+    {"path":"docs/guides/deployment.md","note":"Re-read --temp-home claims. helpers.ts change only affects --temp-home minting: a candidate inside the resolved Station root or STATION_HOME, or refused by admission, is removed and retried once under /tmp/station; a refused retry is appended to the error. Other home selections, ports and channel derivation unchanged. Doc names --temp-home usage, not its location; no prose change.","inputs":["docs/guides/deployment.md","packages/cli/src/commands/helpers.ts"]}
+  ]
+}

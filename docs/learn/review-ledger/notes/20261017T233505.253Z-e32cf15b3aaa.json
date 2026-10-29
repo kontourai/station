@@ -1,0 +1,7 @@
+{
+  "revision": "c0811ed99b60c916f54092184abd7d96b8fecd31",
+
+  "notes": [
+    {"path":"docs/reference/deploy-ledger.md","note":"Validated all 265 entry shapes, duplicate ship identities and exact Markdown projection with the existing generator. This binds the checked-in projection only; no release publication, source qualification or artifact availability was independently verified by this telemetry lane.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}

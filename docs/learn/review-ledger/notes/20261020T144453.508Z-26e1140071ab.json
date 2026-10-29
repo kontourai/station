@@ -1,0 +1,7 @@
+{
+  "revision": "c7cdfef9b0d14c663a5a20f2612b0c9698af2d49",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"#3800: only the doc comment of confinement_workspace_incompatible widened (unaccounted engine configuration); its failure-class row (permission_denied, not retriable) is unchanged and still accurate.","inputs":["docs/reference/contracts.md","packages/contracts/src/execution-confinement.ts"]}
+  ]
+}

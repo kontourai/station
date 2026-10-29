@@ -9,10 +9,10 @@ import { createHash } from 'node:crypto';
  * read-only to Station; this module only ever creates/writes inside a
  * profile directory Station itself owns.
  *
- * Wave 1 wired this for Claude Code only (`claude`). Wave 2 wires
- * `codexAppHomeEnv` into `codex-adapter.ts`/`codex-adapter-transport.ts`,
- * so both engines now layer their app-home profile onto the spawned
- * session's process env only (never the server process's own env).
+ * Two engines use it: Claude Code (`claude`), and Codex through
+ * `codexAppHomeEnv` in `codex-adapter.ts`/`codex-adapter-transport.ts`.
+ * Both layer their app-home profile onto the spawned session's process env
+ * only (never the server process's own env).
  *
  * SECURITY posture (matches `claude-skills-materialization.ts`'s, this
  * module writes into `~/.station` rather than a session cwd but the same
@@ -80,10 +80,10 @@ const PROFILE_MARKER_VERSION = 1 as const;
 export const APP_HOME_IMPORT_MAX_FILE_BYTES = 5 * 1024 * 1024;
 
 /**
- * archive#896 wave 2: per-engine import allowlist (docs/design/
+ * archive#896: per-engine import allowlist (docs/design/
  * connections-onboarding.md §1.1) — parameterizes `importGlobalSnapshot`'s
  * shared containment/symlink-refusal/size-cap/transactional-commit
- * machinery (unchanged by this refactor) over which top-level entries of
+ * machinery over which top-level entries of
  * the engine's global config dir are eligible to copy at all.
  */
 export interface AppHomeImportProfile {
@@ -169,8 +169,8 @@ export interface AppHomeFsPort {
    * atomic, exclusive creation semantics. Unlike `mkdirRecursive`, this
    * NEVER adopts a pre-existing directory — it always returns a path
    * this call itself just created (retrying internally on a collision).
-   * Used for the import transaction's stage/backup dirs (item 1,
-   * security review round 4) so an attacker cannot predict — and
+   * Used for the import transaction's stage/backup dirs so an
+   * attacker cannot predict — and
    * therefore cannot pre-plant something at — the path before it's
    * created; `mkdirRecursive` with a caller-computed name is a
    * non-exclusive "create or silently adopt" primitive and was never
@@ -377,7 +377,7 @@ export function claudeAppHomeEnv(dir: string): Record<string, string> {
 }
 
 /**
- * The Codex counterpart of `claudeAppHomeEnv` (archive#896 wave 2: wired into
+ * The Codex counterpart of `claudeAppHomeEnv` (archive#896: wired into
  * `codex-adapter.ts`'s spawn seam via `station-runtime.ts`'s
  * `codexAdapter.getAppHomeEnv` closure).
  */
@@ -404,14 +404,14 @@ export interface AppHomeProfileStatus {
  * Read-only peek at a profile's status — never creates anything (unlike
  * `ensureAppHomeProfile`), so it is safe to call from a `GET` status route.
  *
- * Item 2b (security review round 3): reads the marker through
+ * Reads the marker through
  * `openForRead` (`O_NOFOLLOW` + descriptor-based `fstat`) rather than a
  * path-based `lstat`+`readFile` pair — the same no-follow posture every
  * other marker touch in this module already uses. A symlinked marker (or
  * one swapped in for a symlink between the two former path-based calls)
  * is refused/reported as `exists: false`, never read through.
  *
- * Item 4 (security review round 4): the dispatch `lstat`'s dev/ino is
+ * The dispatch `lstat`'s dev/ino is
  * threaded through as `openForRead`'s `expectedIdentity` — the SAME
  * mechanism `readSourceFileGuarded` already uses for import source
  * reads — so the no-`O_NOFOLLOW` Windows path also gets the
@@ -484,7 +484,7 @@ export interface EnsureAppHomeProfileOptions {
  * prior `importClaudeGlobalSnapshot`'s `seededFrom: 'global-import'` is
  * never clobbered back to `'empty'` by a later plain ensure call).
  *
- * Exact security scope (item 2, security review round 3 — stated
+ * Exact security scope (stated
  * precisely rather than over-claimed): a marker found to be non-regular
  * at EITHER identity check below (the initial `lstat`, or the post-EEXIST
  * re-`lstat`) is refused, never adopted. What this does NOT close: the
@@ -524,7 +524,7 @@ export async function ensureAppHomeProfile(
   const markerPath = join(dir, PROFILE_MARKER_FILENAME);
   const existingMarker = await fs.lstat(markerPath);
   if (existingMarker) {
-    // HIGH (security review): a pre-existing marker is treated as a benign
+    // A pre-existing marker is treated as a benign
     // "another call already won the race" ONLY when THIS `lstat` (never
     // follows) reports it as a genuine regular file right now. A symlink
     // (or any other non-regular type: directory, fifo, device, …) is
@@ -557,7 +557,7 @@ export async function ensureAppHomeProfile(
     Buffer.from(JSON.stringify(marker, null, 2), 'utf-8'),
   );
   if (outcome === 'exists') {
-    // Item 1 (security review round 2): the initial `lstat` above found
+    // The initial `lstat` above found
     // NOTHING at `markerPath`, but something raced into place before our
     // `O_CREAT|O_EXCL` write landed. Re-check identity rather than
     // assuming a benign concurrent winner — the same mistake the initial
@@ -590,7 +590,7 @@ type MarkAppHomeProfileImportedResult =
  * `importClaudeGlobalSnapshot`, recording `seededFrom: 'global-import'` and
  * `importedAt`.
  *
- * HIGH (security review): this is the exact write a planted symlink at the
+ * This is the exact write a planted symlink at the
  * marker path was able to hijack into an arbitrary-file overwrite before
  * this fix — a plain `writeFile` to `markerPath` follows a symlink there
  * like any normal open. Now TOCTOU-safe and no-follow, mirroring
@@ -714,7 +714,7 @@ interface ImportClaudeGlobalSnapshotOptions {
 
 export interface ImportClaudeGlobalSnapshotResult {
   /**
-   * MED-3 (security review): the file-copy loop completing without a
+   * The file-copy loop completing without a
    * caught top-level error is NOT the same thing as the import having
    * actually done anything meaningful — an unreadable/absent `globalDir`
    * used to fall through to a bare `{ copied: [], skipped: [...] }` that
@@ -732,7 +732,7 @@ export interface ImportClaudeGlobalSnapshotResult {
   /**
    * Present only when `outcome === 'failed'` and there is extra
    * human-readable context beyond `reason` — e.g. `'commit-restore'`
-   * failures (item 3, security review round 4) name every unrestored
+   * failures name every unrestored
    * backup's preserved path here, so it's never lost even though it
    * isn't part of the machine-readable `reason` taxonomy.
    */
@@ -742,7 +742,7 @@ export interface ImportClaudeGlobalSnapshotResult {
 }
 
 /**
- * MED-2 (security review) TOCTOU-safe source read: opens `path` with
+ * TOCTOU-safe source read: opens `path` with
  * `O_NOFOLLOW` and treats the OPENED DESCRIPTOR's `fstat` — never an
  * earlier path-based `lstat` — as the sole source of truth for "is this
  * really a regular file" and "how big is it right now". A caller's prior
@@ -759,7 +759,7 @@ async function readSourceFileGuarded(
   const handle = await fs.openForRead(path, expectedIdentity);
   if (!handle) {
     // ENOENT (vanished), ELOOP (a symlink, refused by O_NOFOLLOW), or an
-    // `expectedIdentity` mismatch (item 2: the Windows-only closing move
+    // `expectedIdentity` mismatch (the Windows-only closing move
     // for the same window `O_NOFOLLOW` closes natively elsewhere) — all
     // collapse to the same "refuse, don't read" outcome; a source swapped
     // in after the caller's dispatch `lstat` is the security-relevant case
@@ -803,7 +803,7 @@ async function copyDirTreeGuarded(
       // (mirrors claude-skills-materialization.ts's copy-time posture).
       // This `lstat` only ever decides DISPATCH (recurse vs. read vs.
       // skip); the actual file read below is independently TOCTOU-guarded,
-      // and its own identity (item 2) is what `readSourceFileGuarded`
+      // and its own identity (dev/ino) is what `readSourceFileGuarded`
       // cross-checks against.
       const stat = await fs.lstat(srcPath);
       if (!stat) continue; // vanished mid-copy — nothing left to copy.
@@ -830,7 +830,7 @@ async function copyDirTreeGuarded(
   try {
     result = await walk(srcRoot, destRoot);
   } catch (error) {
-    // Item 4 (security review round 2): an unexpected exception mid-walk
+    // An unexpected exception mid-walk
     // must not leave a partial copy behind either — same best-effort
     // cleanup as the structured `!ok` path below, just reached via a
     // throw instead of a returned refusal, before rethrowing.
@@ -851,7 +851,7 @@ async function copyDirTreeGuarded(
  * fully replaces any prior imported copy at the same name inside
  * `profileDir` (Station owns the profile, so overwrite-in-place is safe —
  * unlike the workspace-overlay channel's per-session manifest bookkeeping).
- * Transactional (item 1, security review round 3): every entry is copied
+ * Transactional: every entry is copied
  * into a staging dir first and only swapped into place, via
  * backup-then-rename, once every entry has copied successfully — a
  * copy-phase failure or a mid-commit rename failure both leave
@@ -925,16 +925,15 @@ async function importGlobalSnapshot(
     };
   }
 
-  // Item 1 (security review round 3, hardened round 4): transactional
-  // stage-then-commit. The OLD flow pre-cleared each EXISTING destination
-  // and then copied (and exception cleanup rm-recursived every recorded
-  // name) — so a failed or partially-failed import could destroy
+  // Transactional stage-then-commit. The OLD flow pre-cleared each EXISTING
+  // destination and then copied (and exception cleanup rm-recursived every
+  // recorded name) — so a failed or partially-failed import could destroy
   // previously imported content that had nothing to do with the failure.
   // Nothing about EXISTING profile content is touched until every staged
   // entry has copied successfully:
   //  (a) COPY PHASE — every allowlisted entry is copied into a fresh
   //      staging dir INSIDE the profile, EXCLUSIVELY created via
-  //      `fs.mkdtemp` (round 4, item 1 — OS-random, atomic, never adopts
+  //      `fs.mkdtemp` (OS-random, atomic, never adopts
   //      a pre-existing/pre-planted directory the way a caller-computed
   //      name handed to `mkdirRecursive` could), with the same
   //      guarded-read/containment checks as before, but they operate on
@@ -946,11 +945,11 @@ async function importGlobalSnapshot(
   //      dir), then the staged entry is renamed into place. If any
   //      rename fails mid-commit, every entry that ALREADY fully swapped
   //      this run is restored from its backup — clearing a non-empty
-  //      committed directory first, since `rename()` cannot replace one
-  //      (round 4, item 2) — before the stage is removed. A backup this
+  //      committed directory first, since `rename()` cannot replace one —
+  //      before the stage is removed. A backup this
   //      call could NOT actually restore from is never deleted — it is
-  //      preserved and named in the log and the failure result (round 4,
-  //      item 3), never silently lost alongside the rest of the backup
+  //      preserved and named in the log and the failure result,
+  //      never silently lost alongside the rest of the backup
   //      dir's cleanup.
   //  (c) On full success, the backup and stage dirs are removed — nothing
   //      but the final committed content remains.
@@ -1062,7 +1061,7 @@ async function importGlobalSnapshot(
           await fs.rename(backupPath, destPath);
         } catch (restoreError) {
           const detailMsg = errorMessage(restoreError);
-          // Item 3 (security review round 4): never delete a backup this
+          // Never delete a backup this
           // call could not actually restore from — it is the ONLY
           // remaining copy of the user's pre-import content.
           logger.warn?.(
@@ -1085,7 +1084,7 @@ async function importGlobalSnapshot(
       const backupPath = join(backupDir, entry.name);
       try {
         if (entry.hadPrior) {
-          // Item 2 (security review round 4): the committed entry may be
+          // The committed entry may be
           // a non-empty DIRECTORY — `rename()` can never replace one, so
           // it must be cleared before the backup can be renamed back
           // into place.
@@ -1097,7 +1096,7 @@ async function importGlobalSnapshot(
       } catch (restoreError) {
         const detailMsg = errorMessage(restoreError);
         if (entry.hadPrior) {
-          // Item 3: same "never delete an unrestored backup" posture as
+          // Same "never delete an unrestored backup" posture as
           // the per-entry restore above.
           logger.warn?.(
             `App home import: could not restore '${entry.name}' during commit rollback — its backup is PRESERVED at '${backupPath}' for manual recovery: ${detailMsg}`,
@@ -1114,7 +1113,7 @@ async function importGlobalSnapshot(
     if (restoreFailures.length === 0) {
       await fs.rmRecursive(backupDir).catch(() => {});
     } else {
-      // Item 3: the backup dir as a whole is preserved whenever ANY entry
+      // The backup dir as a whole is preserved whenever ANY entry
       // inside it could not be restored — never torn down alongside
       // entries that DID restore successfully.
       logger.warn?.(
@@ -1165,7 +1164,7 @@ export async function importClaudeGlobalSnapshot(
 }
 
 /**
- * archive#896 wave 2: the Codex counterpart of `importClaudeGlobalSnapshot` — same
+ * archive#896: the Codex counterpart of `importClaudeGlobalSnapshot` — same
  * shared `importGlobalSnapshot` machinery, parameterized over
  * `CODEX_APP_HOME_IMPORT_PROFILE`'s allowlist instead.
  */
@@ -1179,7 +1178,7 @@ export async function importCodexGlobalSnapshot(
 }
 
 /**
- * archive#896 wave 2: bounded profile GC (docs/design/connections-onboarding.md
+ * archive#896: bounded profile GC (docs/design/connections-onboarding.md
  * §1.1) — a usage report + an explicit clear action, deliberately NO
  * background job/watcher/timer (over-engineering guardrails). A hard cap on
  * entries visited keeps a pathologically large or deeply-nested profile
@@ -1262,7 +1261,7 @@ export type ClearAppHomeProfileResult =
     };
 
 /**
- * HIGH (security review 1a028fde): `isPathContainedOrEqual` above compares
+ * `isPathContainedOrEqual` above compares
  * RESOLVED paths — if the app-homes ROOT itself (or any ancestor between
  * `baseDir` and `targetDir`) is a symlink, BOTH sides of that check resolve
  * through it consistently and containment still reports true, even though

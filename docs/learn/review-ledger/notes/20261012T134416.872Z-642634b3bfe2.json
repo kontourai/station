@@ -1,0 +1,7 @@
+{
+  "revision": "17a0855071a8cbb22e95945f533cddeaeff3ace1",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"#3563: scheduler claimDue now quarantines an unreadable job record and probes a foreign claim owner before its birth. Starter Work claims (exact run binding, pre-invocation reclaim, indeterminate on possible invocation) are unchanged; no prose change.","inputs":["docs/guides/starter-work.md","src-server/services/scheduling/builtin-scheduler.ts","src-server/services/scheduling/scheduler-ledger.ts"]}
+  ]
+}

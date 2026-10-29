@@ -9,6 +9,11 @@ import {
   WORKSPACE_ACTIVITY_PANE_SOURCE_ID,
 } from '../workspace-activity-pane.js';
 import {
+  createWorkspaceActivityReviewPaneInstance,
+  isCanonicalWorkspaceActivityReviewPaneInstance,
+  WORKSPACE_ACTIVITY_REVIEW_PANE_DESCRIPTOR,
+} from '../workspace-activity-review-pane.js';
+import {
   parseWorkspacePaneDescriptor,
   parseWorkspacePaneInstance,
   type WorkspacePaneInstance,
@@ -111,4 +116,36 @@ describe('Activity Workspace Pane instance', () => {
     }) as WorkspacePaneInstance;
     expect(isCanonicalWorkspaceActivityPaneInstance(other)).toBe(false);
   });
+});
+
+test('Activity review admits only docked nonce occurrences without a bound context', () => {
+  expect(WORKSPACE_ACTIVITY_REVIEW_PANE_DESCRIPTOR.placement).toEqual({
+    supportedRegions: ['docked'],
+    preferredRegion: 'docked',
+  });
+  const instance = createWorkspaceActivityReviewPaneInstance(
+    `activity-review:${'a'.repeat(32)}`,
+  );
+  expect(instance).not.toBeNull();
+  if (!instance) throw new Error('Canonical review occurrence missing');
+  expect(isCanonicalWorkspaceActivityReviewPaneInstance(instance)).toBe(true);
+  for (const id of [
+    'activity-review:',
+    'activity-review:abc',
+    `activity-review:${'A'.repeat(32)}`,
+  ])
+    expect(createWorkspaceActivityReviewPaneInstance(id)).toBeNull();
+  const wrongState = parseWorkspacePaneInstance({
+    ...instance,
+    stateKey: 'other-review',
+  });
+  const bound = parseWorkspacePaneInstance({
+    ...instance,
+    boundContext: { projectId: 'project' },
+  });
+  if (!wrongState || !bound) throw new Error('Invalid test occurrence');
+  expect(isCanonicalWorkspaceActivityReviewPaneInstance(wrongState)).toBe(
+    false,
+  );
+  expect(isCanonicalWorkspaceActivityReviewPaneInstance(bound)).toBe(false);
 });

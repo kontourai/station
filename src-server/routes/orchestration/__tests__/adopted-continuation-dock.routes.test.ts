@@ -10,15 +10,19 @@
  * engines record what Station handed them and publish `session.started` with
  * the start metadata, as the real adapters do.
  */
+
 import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import {
   mkdirSync,
   realpathSync,
   renameSync,
   rmSync,
   symlinkSync,
+  writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
@@ -27,6 +31,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { materializeEngineAgent } from '../../../domain/agent-registry.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
+import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { ensureStationHomeSchemaSync } from '../../../domain/home-schema-gate.js';
 import type {
   ProviderAdapterMetadata,
@@ -39,10 +44,14 @@ import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.j
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import { createAgentDispatchActorResolver } from '../../../runtime/mcp/station-control-caller.js';
 import { createAdoptedChildExecutionBindingResolver } from '../../../services/orchestration/adopted-child-execution-binding.js';
+import { AttachmentStagingService } from '../../../services/orchestration/attachment-staging-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { createSessionAgentResolver } from '../../../services/orchestration/session-agent-resolution.js';
+import { ProjectBindingsStore } from '../../../services/projects/project-binding-store.js';
+import { ProjectManifestStore } from '../../../services/projects/project-manifest-store.js';
+import { createProjectSessionDirectoryResolver } from '../../../services/projects/project-session-directory.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
 import { createStarterSessionOwner } from '../../../services/starter-work/starter-session-owner.js';
 import { createLogger } from '../../../utils/logger.js';
@@ -81,7 +90,7 @@ function repository(path: string): string {
  */
 function dockFollowUp(
   agent: string,
-  conversationId: string,
+  conversationId: string | undefined,
   projectSlug: string | undefined,
   message: string,
 ) {
@@ -115,7 +124,8 @@ type Engine = 'claude' | 'codex';
 function installStationDiscovery(
   loader: ConfigLoader,
   security: EnvironmentSecurityService,
-  projects: () => Array<{ slug: string; workingDirectory: string }>,
+  projects: () => Array<{ slug: string; workingDirectory?: string }>,
+  resolveDirectory?: (slug: string) => Promise<string | undefined>,
 ): void {
   fetchMock.mockImplementation(async (input) => {
     const url = String(input);
@@ -137,7 +147,15 @@ function installStationDiscovery(
         (candidate) => candidate.slug === decodeURIComponent(project),
       );
       return found
-        ? json({ success: true, data: found })
+        ? json({
+            success: true,
+            data: {
+              ...found,
+              ...(resolveDirectory
+                ? { workingDirectory: await resolveDirectory(found.slug) }
+                : {}),
+            },
+          })
         : json({ success: false, error: 'Project not found' }, 404);
     }
     const connection = url.match(/\/api\/connections\/([^/]+)$/)?.[1];
@@ -165,9 +183,13 @@ class AdoptingEngine implements ProviderAdapterShape {
   readonly adoptions: ProviderSessionAdoptInput[] = [];
   readonly starts: Array<{ threadId: string; cwd?: string }> = [];
   readonly turns: Array<{ threadId: string; input: string }> = [];
+  readonly turnWorkingDirectories: string[] = [];
   private readonly sessions = new Map<string, ProviderSession>();
 
-  constructor(readonly provider: Engine) {
+  constructor(
+    readonly provider: Engine,
+    private readonly probeWorkingDirectory = false,
+  ) {
     this.metadata = {
       displayName: provider,
       description: `${provider} adopted-dock test engine`,
@@ -238,6 +260,18 @@ class AdoptingEngine implements ProviderAdapterShape {
   }
 
   async sendTurn(input: { threadId: string; input: string }) {
+    if (this.probeWorkingDirectory) {
+      const cwd = this.sessions.get(input.threadId)?.cwd;
+      if (!cwd)
+        throw new Error('The engine has no workspace to execute this turn in.');
+      this.turnWorkingDirectories.push(
+        execFileSync(process.execPath, ['-p', 'process.cwd()'], {
+          cwd,
+          encoding: 'utf8',
+          windowsHide: true,
+        }).trim(),
+      );
+    }
     this.turns.push({ threadId: input.threadId, input: input.input });
     return {
       threadId: input.threadId,
@@ -292,7 +326,11 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
 });
 
-async function fixture(options: { engineAgent: boolean }) {
+async function fixture(options: {
+  engineAgent: boolean;
+  boundResources?: boolean;
+  unqualifiedProject?: boolean;
+}) {
   vi.stubEnv('STATION_HOSTED_TENANT_REGISTRY_FILE', undefined);
   const root = realpathSync.native(makeTempDir('station-adopted-dock-'));
   const home = join(root, 'home');
@@ -325,18 +363,82 @@ async function fixture(options: { engineAgent: boolean }) {
     { slug: 'station', workingDirectory: project },
     { slug: 'other', workingDirectory: otherProject },
   ];
-  const projects = () => projectList;
+  const storage = new FileStorageAdapter(home);
+  const manifests = new ProjectManifestStore(home, storage);
+  const bindings = new ProjectBindingsStore(home);
+  const firstRepo = 'github.com/example/first';
+  const secondRepo = 'gitlab.com/example/second';
+  if (options.boundResources) {
+    git(project, 'remote', 'add', 'origin', `https://${firstRepo}.git`);
+    git(otherProject, 'remote', 'add', 'origin', `https://${secondRepo}.git`);
+    await storage.createProject({
+      id: randomUUID(),
+      slug: 'station',
+      name: 'Station',
+      workingDirectory: project,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    await manifests.ensureProjectManifest(storage.getProject('station'));
+    const record = manifests.readRecord('station')!;
+    await storage.projectRevision('station').replaceManifest!(record, {
+      ...record,
+      repos: [
+        ...record.repos,
+        {
+          kind: 'git',
+          id: secondRepo,
+          canonicalRemote: secondRepo,
+          role: 'secondary',
+        },
+      ],
+      executionRoot: { repoId: firstRepo, path: '.' },
+    });
+    for (const [resourceId, path] of [
+      [firstRepo, project],
+      [secondRepo, otherProject],
+    ])
+      await bindings.upsertProjectBinding({
+        projectId: record.id,
+        resourceId,
+        kind: 'git-checkout',
+        path,
+        remotes: [resourceId],
+        verifiedAt: Date.now(),
+        state: 'bound',
+      });
+  }
+  const resolveDirectory = options.boundResources
+    ? createProjectSessionDirectoryResolver(home, storage)
+    : undefined;
+  const projects = () =>
+    options.boundResources
+      ? storage
+          .listProjects()
+          .map((project) =>
+            options.unqualifiedProject
+              ? { ...project, id: undefined }
+              : project,
+          )
+      : projectList;
+  const selectSecond = async () => {
+    const record = manifests.readRecord('station')!;
+    await storage.projectRevision('station').replaceManifest!(record, {
+      ...record,
+      executionRoot: { repoId: secondRepo, path: '.' },
+    });
+  };
   /** The operator edits the Station's projects. */
   const setProjects = (next: typeof projectList) => {
     projectList = next;
   };
-  installStationDiscovery(loader, security, projects);
+  installStationDiscovery(loader, security, projects, resolveDirectory);
 
   const store = new EventStore(join(root, 'orchestration.sqlite'));
   const eventBus = new EventBus();
   const engines = {
-    claude: new AdoptingEngine('claude'),
-    codex: new AdoptingEngine('codex'),
+    claude: new AdoptingEngine('claude', options.boundResources),
+    codex: new AdoptingEngine('codex', options.boundResources),
   };
   const registry: IProviderAdapterRegistry = {
     register() {},
@@ -349,6 +451,7 @@ async function fixture(options: { engineAgent: boolean }) {
     eventStore: store,
     adoptionLedger: store.createAdoptionLedger(),
     listProjects: projects,
+    resolveProjectSessionDirectory: resolveDirectory,
     // The production session-agent resolver (`runtime-initialize.ts`) over
     // the real Agent store: a fresh engine start runs as an authored Agent.
     resolveSessionAgent: createSessionAgentResolver({
@@ -512,6 +615,13 @@ async function fixture(options: { engineAgent: boolean }) {
   };
 
   return {
+    root,
+    storage,
+    manifests,
+    bindings,
+    firstRepo,
+    secondRepo,
+    selectSecond,
     operator,
     security,
     loader,
@@ -617,6 +727,16 @@ describe('#3429: a continued attached conversation opens in the dock', () => {
       expect(followUp.body.data).toMatchObject({
         conversationId: child,
         sessionId: child,
+        resolution: {
+          workspace: projectSlug
+            ? {
+                kind: 'project',
+                projectSlug,
+                cwd,
+                workspaceIsolation: { mode: 'shared' },
+              }
+            : { kind: 'directory', cwd },
+        },
       });
       // It reached the continuation's own engine session, which runs in the
       // conversation's folder: nothing was started anywhere else, and the
@@ -628,6 +748,240 @@ describe('#3429: a continued attached conversation opens in the dock', () => {
       const other = engine === 'claude' ? 'codex' : 'claude';
       expect(f.engines[other].turns).toEqual([]);
       expect(f.engines[other].starts).toEqual([]);
+    },
+  );
+
+  test.each([
+    ['retained', false],
+    ['reclaimable', false],
+    ['retained', true],
+    ['reclaimable', true],
+  ] as const)(
+    '#3567: production continuation authorizes every materialized Session before staged proof (%s, readable=%s)',
+    async (state, readable) => {
+      const f = await fixture({ engineAgent: true });
+      const root = await f.adopt(f.attached('claude', f.project));
+      const authority = sessionReadAuthorityFromRequest(
+        'operator',
+        undefined,
+        undefined,
+      );
+      const metadata = f.service.firstStartedMetadataOfThread(root);
+      if (!metadata) throw new Error('Expected adopted root binding');
+      let predecessor = root;
+      const middle = `${root}:private-middle`;
+      const current = `${root}:current`;
+      for (const id of [middle, current]) {
+        const now = new Date().toISOString();
+        f.store.reserveNextConversationSession({
+          conversationId: root,
+          predecessorSessionId: predecessor,
+          proposedSessionId: id,
+          createdAt: now,
+        });
+        f.store.upsertSession({
+          provider: 'claude',
+          threadId: id,
+          status: 'ready',
+          cwd: f.project,
+          createdAt: now,
+          updatedAt: now,
+        });
+        f.store.appendEvent({
+          eventId: `${id}:started`,
+          provider: 'claude',
+          threadId: id,
+          sessionId: id,
+          createdAt: now,
+          method: 'session.started',
+          metadata: {
+            ...metadata,
+            conversationId: root,
+            userId: id === middle && !readable ? 'foreign-person' : 'operator',
+          },
+        });
+        predecessor = id;
+      }
+      expect(await f.service.readSession(root, authority)).not.toBeNull();
+      expect(await f.service.readSession(current, authority)).not.toBeNull();
+      expect(Boolean(await f.service.readSession(middle, authority))).toBe(
+        readable,
+      );
+      const peer =
+        state === 'reclaimable'
+          ? new EventStore(join(f.root, 'orchestration.sqlite'), 512, {
+              exact: () => ({ pid: 2147483647, start: 'dead-private-owner' }),
+              probe: () => ({ state: 'dead' as const }),
+            })
+          : undefined;
+      const owner = (peer ?? f.store).createTurnDeduplicator().claim({
+        threadId: middle,
+        clientTurnId: 'private-staged-key',
+        inputDigest: 'original-private-input',
+      });
+      if (owner.kind !== 'owner')
+        throw new Error('Expected original private owner');
+      if (state === 'retained') {
+        owner.claim.beginInvocation();
+        owner.claim.retain();
+      }
+      peer?.close();
+      const staging = new AttachmentStagingService();
+      try {
+        const prepared = staging.prepare(
+          { principalId: 'operator' },
+          {
+            clientAttachmentId: 'authority-stage',
+            kind: 'file',
+            name: 'note.txt',
+            mimeType: 'text/plain',
+            size: 2,
+          },
+        );
+        const reference = staging.upload(
+          prepared.stageId,
+          prepared.uploadGrant,
+          'data:text/plain;base64,aGk=',
+        );
+        const resolveAttachments = vi.fn(
+          (
+            binding: { threadId: string; clientTurnId: string },
+            options?: { inspectOnly?: true },
+          ) =>
+            staging.bindAndHydrate(
+              { principalId: 'operator' },
+              [reference],
+              binding,
+              options,
+            ),
+        );
+        const inspect = vi.spyOn(f.service, 'inspectTurnDelivery');
+        const beforeStarts = f.engines.claude.starts.length;
+        const { continueExecutionTargetMessage } = await import(
+          '../../../tools/station-control-delegation.js'
+        );
+        let failure: unknown;
+        await continueExecutionTargetMessage(
+          {
+            conversationId: root,
+            clientTurnId: 'private-staged-key',
+            message: 'different input',
+            userId: 'operator',
+            readAuthority: authority,
+            resolveAttachments,
+          },
+          f.service,
+        ).catch((error: unknown) => {
+          failure = error;
+        });
+        if (readable)
+          expect(resolveAttachments).toHaveBeenCalledWith(
+            { threadId: middle, clientTurnId: 'private-staged-key' },
+            { inspectOnly: true },
+          );
+        else {
+          expect(resolveAttachments).not.toHaveBeenCalled();
+          expect(inspect).not.toHaveBeenCalled();
+        }
+        expect(failure).toMatchObject(
+          readable
+            ? { code: 'client_turn_input_conflict' }
+            : { message: 'The requested conversation is unavailable.' },
+        );
+        expect(f.engines.claude.starts).toHaveLength(beforeStarts);
+        expect(f.engines.claude.turns).toEqual([]);
+        expect(f.store.conversationSessions(root)).toHaveLength(3);
+      } finally {
+        staging.dispose();
+      }
+    },
+  );
+
+  test('#3567: continuation captures caller intent before its session authorization read', async () => {
+    const f = await fixture({ engineAgent: true });
+    const child = await f.adopt(f.attached('claude', f.project));
+    const { continueExecutionTargetMessage } = await import(
+      '../../../tools/station-control-delegation.js'
+    );
+    const original = {
+      conversationId: child,
+      message: ' A ',
+      clientTurnId: 'retained-K',
+      userId: 'operator',
+      readAuthority: sessionReadAuthorityFromRequest(
+        'operator',
+        undefined,
+        undefined,
+      ),
+    };
+    let entered!: () => void;
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const reached = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const read = f.service.readSession.bind(f.service);
+    const spy = vi
+      .spyOn(f.service, 'readSession')
+      .mockImplementationOnce(async (...args) => {
+        entered();
+        await held;
+        return read(...args);
+      });
+    const pending = continueExecutionTargetMessage(original, f.service);
+    await reached;
+    original.message = 'B';
+    release();
+    const first = await pending;
+    spy.mockRestore();
+    expect(f.engines.claude.turns).toEqual([{ threadId: child, input: 'A' }]);
+    expect(
+      (
+        await continueExecutionTargetMessage(
+          { ...original, message: ' A ' },
+          f.service,
+        )
+      ).providerTurnId,
+    ).toBe(first.providerTurnId);
+    await expect(
+      continueExecutionTargetMessage(original, f.service),
+    ).rejects.toMatchObject({ code: 'client_turn_input_conflict' });
+    expect(f.engines.claude.turns).toHaveLength(1);
+  });
+
+  test.each(['chat', 'chat/background', 'continue'])(
+    '#3567: the production %s executor preserves raw submission identity through auth and dispatch',
+    async (route) => {
+      const f = await fixture({ engineAgent: true });
+      const child = await f.adopt(f.attached('claude', f.project));
+      const path =
+        route === 'continue'
+          ? `/api/orchestration/chat/${encodeURIComponent(child)}/continue`
+          : `/api/orchestration/${route}`;
+      const body = (message: string) => ({
+        ...(route === 'continue'
+          ? {}
+          : dockFollowUp('claude', child, 'station', message)),
+        message,
+        clientTurnId: 'key-3567',
+      });
+      const first = await f.request(path, body(' A '));
+      expect(first.status, first.text).toBe(200);
+      const changed = await f.request(path, body('A'));
+      expect(changed.status, changed.text).toBe(409);
+      expect(changed.body).toMatchObject({
+        success: false,
+        code: 'client_turn_input_conflict',
+      });
+      expect(f.engines.claude.turns).toHaveLength(1);
+      const replay = await f.request(path, body(' A '));
+      expect(replay.status, replay.text).toBe(200);
+      expect(replay.body.data.providerTurnId).toBe(
+        first.body.data.providerTurnId,
+      );
+      expect(f.engines.claude.turns).toHaveLength(1);
     },
   );
 
@@ -717,6 +1071,153 @@ describe('#3429: a continued attached conversation opens in the dock', () => {
       ]);
     },
   );
+
+  test('#4179: the open read says whether the next turn starts a Session, as the send then does', async () => {
+    const f = await fixture({ engineAgent: true });
+    const child = await f.adopt(f.attached('claude', f.worktree));
+    const open = async () => {
+      const opened = await f.request(
+        `/api/conversations/${encodeURIComponent(child)}/open`,
+      );
+      expect(opened.status, opened.text).toBe(200);
+      return opened.body.data;
+    };
+    // A running Session takes the next turn itself.
+    expect(await open()).toMatchObject({
+      status: 'resolved',
+      currentSessionId: child,
+      nextTurnStartsSession: false,
+    });
+
+    f.engines.claude.exit(child);
+    await vi.waitFor(async () => {
+      const read = await f.request(
+        `/api/orchestration/sessions/${encodeURIComponent(child)}`,
+      );
+      expect(read.body.data.session.status).toBe('closed');
+    });
+    // Its engine binding ended: a fresh open learns the next turn starts one.
+    expect(await open()).toMatchObject({
+      status: 'resolved',
+      currentSessionId: child,
+      canContinue: true,
+      nextTurnStartsSession: true,
+    });
+
+    const followUp = await f.request(
+      '/api/orchestration/chat',
+      dockFollowUp('claude', child, 'station', 'pick it up'),
+    );
+    expect(followUp.status, followUp.text).toBe(200);
+    const successor = f.engines.claude.starts.at(-1)!.threadId;
+    expect(successor).not.toBe(child);
+    expect(followUp.body.data).toMatchObject({
+      sessionId: successor,
+      sessionStarted: true,
+    });
+    // The successor now takes the turn after.
+    expect(await open()).toMatchObject({
+      status: 'resolved',
+      currentSessionId: successor,
+      nextTurnStartsSession: false,
+    });
+  });
+
+  test('#4162: a same-key retry says it started a Session only when that send did', async () => {
+    const f = await fixture({ engineAgent: true });
+    const child = await f.adopt(f.attached('claude', f.worktree));
+    const send = (clientTurnId: string, message: string) =>
+      f.request('/api/orchestration/chat', {
+        ...dockFollowUp('claude', child, 'station', message),
+        clientTurnId,
+      });
+
+    // A turn the running Session took: neither the send nor its retry
+    // started anything.
+    const ran = await send('key-ran', 'keep going');
+    expect(ran.status, ran.text).toBe(200);
+    expect(ran.body.data.sessionId).toBe(child);
+    expect(ran.body.data).not.toHaveProperty('sessionStarted');
+    const ranRetry = await send('key-ran', 'keep going');
+    expect(ranRetry.status, ranRetry.text).toBe(200);
+    expect(ranRetry.body.data).toMatchObject({
+      sessionId: child,
+      providerTurnId: ran.body.data.providerTurnId,
+    });
+    expect(ranRetry.body.data).not.toHaveProperty('sessionStarted');
+
+    // A send that started a successor, then its retry, answered from that
+    // successor's turn without sending again.
+    f.engines.claude.exit(child);
+    await vi.waitFor(async () => {
+      const read = await f.request(
+        `/api/orchestration/sessions/${encodeURIComponent(child)}`,
+      );
+      expect(read.body.data.session.status).toBe('closed');
+    });
+    const started = await send('key-started', 'pick it up');
+    expect(started.status, started.text).toBe(200);
+    const successor = started.body.data.sessionId;
+    expect(successor).not.toBe(child);
+    expect(started.body.data.sessionStarted).toBe(true);
+    const turns = f.engines.claude.turns.length;
+    const startedRetry = await send('key-started', 'pick it up');
+    expect(startedRetry.status, startedRetry.text).toBe(200);
+    expect(f.engines.claude.turns).toHaveLength(turns);
+    expect(startedRetry.body.data).toMatchObject({
+      sessionId: successor,
+      providerTurnId: started.body.data.providerTurnId,
+      sessionStarted: true,
+    });
+  });
+
+  test('#4162: a same-key retry after the Agent was repointed does not claim the start', async () => {
+    const f = await fixture({ engineAgent: true });
+    const child = await f.adopt(f.attached('claude', f.worktree));
+    f.engines.claude.exit(child);
+    await vi.waitFor(async () => {
+      const read = await f.request(
+        `/api/orchestration/sessions/${encodeURIComponent(child)}`,
+      );
+      expect(read.body.data.session.status).toBe('closed');
+    });
+    const send = () =>
+      f.request('/api/orchestration/chat', {
+        ...dockFollowUp('claude', child, 'station', 'pick it up'),
+        clientTurnId: 'key-repointed',
+      });
+    const started = await send();
+    expect(started.status, started.text).toBe(200);
+    expect(started.body.data.sessionStarted).toBe(true);
+    expect(started.body.data.resolution.engine).toEqual({
+      kind: 'connection',
+      connectionId: 'claude',
+    });
+    // The Agent now points at another engine; the successor still runs on
+    // the one it started on.
+    await f.loader.updateAgent('claude', {
+      execution: { agentConnectionId: engineConnectionId('codex') },
+    });
+    const turns = {
+      claude: f.engines.claude.turns.length,
+      codex: f.engines.codex.turns.length,
+    };
+    const retry = await send();
+    expect(retry.status, retry.text).toBe(200);
+    expect(retry.body.data).toMatchObject({
+      sessionId: started.body.data.sessionId,
+      providerTurnId: started.body.data.providerTurnId,
+    });
+    // The receipt now names the Agent's new engine, which is not the one
+    // this Session started on, so it must not say the send started it.
+    expect(retry.body.data.resolution.engine).toEqual({
+      kind: 'connection',
+      connectionId: 'codex',
+    });
+    expect(retry.body.data).not.toHaveProperty('sessionStarted');
+    expect(f.engines.claude.turns).toHaveLength(turns.claude);
+    expect(f.engines.codex.turns).toHaveLength(turns.codex);
+  });
 
   /** Adopt a worktree child, then let its engine exit so the next follow-up starts a successor. */
   async function exitedWorktreeChild(f: Awaited<ReturnType<typeof fixture>>) {
@@ -901,4 +1402,251 @@ describe('#3429: a continued attached conversation opens in the dock', () => {
     );
     expect(opened.status).toBe(404);
   });
+});
+
+describe('#4074: attached repository selection preserves existing Sessions', () => {
+  async function started() {
+    const f = await fixture({ engineAgent: true, boundResources: true });
+    const response = await f.request('/api/orchestration/chat', {
+      ...dockFollowUp('claude', undefined, 'station', 'first turn'),
+      clientTurnId: 'first-turn',
+    });
+    expect(response.status, response.text).toBe(200);
+    const conversation = response.body.data.conversationId as string;
+    await vi.waitFor(() =>
+      expect(f.store.readSessionByThread(conversation)?.cwd).toBe(f.project),
+    );
+    await f.selectSecond();
+    return { f, conversation, first: response.body.data };
+  }
+
+  test('old Session and cold successor execute in the original repository; a new Session executes in the selected repository', async () => {
+    const { f, conversation, first } = await started();
+    const firstRetry = await f.request('/api/orchestration/chat', {
+      ...dockFollowUp('claude', conversation, 'station', 'first turn'),
+      clientTurnId: 'first-turn',
+    });
+    expect(firstRetry.status, firstRetry.text).toBe(200);
+    expect(firstRetry.body.data).toMatchObject({
+      sessionId: first.sessionId,
+      providerTurnId: first.providerTurnId,
+      resolution: { workspace: first.resolution.workspace },
+    });
+    expect(first.resolution.workspace).toEqual({
+      kind: 'project',
+      projectSlug: 'station',
+      cwd: f.project,
+      workspaceIsolation: { mode: 'shared' },
+    });
+    const follow = await f.request(
+      '/api/orchestration/chat',
+      dockFollowUp('claude', conversation, 'station', 'old follow-up'),
+    );
+    expect(follow.status, follow.text).toBe(200);
+    expect(follow.body.data.resolution.workspace).toEqual(
+      first.resolution.workspace,
+    );
+    for (const workspace of [
+      { kind: 'directory', cwd: f.otherProject },
+      { kind: 'project', projectSlug: 'other' },
+      { kind: 'project', projectSlug: 'station', cwd: f.ownFolder },
+    ]) {
+      const refused = await f.request('/api/orchestration/chat', {
+        ...dockFollowUp(
+          'claude',
+          conversation,
+          'station',
+          'private wrong workspace',
+        ),
+        target: {
+          environment: { kind: 'current' },
+          agent: 'claude',
+          workspace,
+        },
+      });
+      expect(refused.status, refused.text).toBe(400);
+    }
+    const oldExecution = follow.body.data.sessionId as string;
+    expect(
+      f.engines.claude.starts.find((start) => start.threadId === oldExecution)
+        ?.cwd,
+    ).toBe(f.project);
+    f.engines.claude.exit(oldExecution);
+    await vi.waitFor(() =>
+      expect(f.store.readSessionByThread(oldExecution)?.status).toBe('closed'),
+    );
+    const cold = await f.request(
+      '/api/orchestration/chat',
+      dockFollowUp('claude', conversation, undefined, 'cold follow-up'),
+    );
+    expect(cold.status, cold.text).toBe(200);
+    expect(cold.body.data.resolution.workspace).toEqual(
+      first.resolution.workspace,
+    );
+    expect(
+      f.engines.claude.starts.find(
+        (start) => start.threadId === cold.body.data.sessionId,
+      )?.cwd,
+    ).toBe(f.project);
+    const fresh = await f.request(
+      '/api/orchestration/chat',
+      dockFollowUp('claude', undefined, 'station', 'new conversation'),
+    );
+    expect(fresh.status, fresh.text).toBe(200);
+    expect(fresh.body.data.resolution.workspace).toEqual({
+      kind: 'project',
+      projectSlug: 'station',
+      cwd: f.otherProject,
+      workspaceIsolation: { mode: 'shared' },
+    });
+    expect(
+      f.engines.claude.starts.find(
+        (start) => start.threadId === fresh.body.data.sessionId,
+      )?.cwd,
+    ).toBe(f.otherProject);
+    expect(f.engines.claude.turns.map((turn) => turn.input)).toEqual([
+      'first turn',
+      'old follow-up',
+      expect.stringContaining('cold follow-up'),
+      'new conversation',
+    ]);
+    expect(f.engines.claude.turnWorkingDirectories).toEqual([
+      f.project,
+      f.project,
+      f.project,
+      f.otherProject,
+    ]);
+    expect(f.store.readSessionByThread(conversation)?.cwd).toBe(f.project);
+  });
+
+  test('a Session whose start refused Project identity cannot acquire it on continuation', async () => {
+    const f = await fixture({
+      engineAgent: true,
+      boundResources: true,
+      unqualifiedProject: true,
+    });
+    const conversation = `conversation:${randomUUID()}`;
+    const environmentId = (await f.security.readExistingRecord()).environmentId;
+    await f.service.dispatch({
+      type: 'startSession',
+      input: {
+        threadId: conversation,
+        provider: 'claude',
+        cwd: f.project,
+        metadata: {
+          projectSlug: 'station',
+          userId: 'operator',
+          agentSlug: 'claude',
+          targetKind: 'agent',
+          targetId: 'claude',
+          connectionId: 'claude',
+          environmentId,
+          workspaceIsolation: { mode: 'shared' },
+        },
+      },
+    });
+    await vi.waitFor(() =>
+      expect(
+        f.service.firstStartedMetadataOfThread(conversation)
+          ?.localProjectIdRefused,
+      ).toBe(true),
+    );
+    expect(
+      f.service.firstStartedMetadataOfThread(conversation),
+    ).not.toHaveProperty('localProjectId');
+    await f.selectSecond();
+    for (const projectSlug of ['station', undefined]) {
+      const refused = await f.request(
+        '/api/orchestration/chat',
+        dockFollowUp(
+          'claude',
+          conversation,
+          projectSlug,
+          'private unqualified follow-up',
+        ),
+      );
+      expect(refused.status, refused.text).toBe(400);
+    }
+    expect(f.engines.claude.turns).toEqual([]);
+    expect(JSON.stringify(f.store.listEvents())).not.toContain(
+      'private unqualified follow-up',
+    );
+  });
+
+  test.each([
+    'revoked',
+    'unbound',
+    'drifted',
+    'symlink',
+    'changed Project',
+  ] as const)(
+    '%s refuses before publishing private follow-up text',
+    async (change) => {
+      const { f, conversation } = await started();
+      const record = f.manifests.readRecord('station')!;
+      if (change === 'revoked')
+        await f.storage.projectRevision('station').replaceManifest!(record, {
+          ...record,
+          repos: record.repos
+            .filter((repo) => repo.id !== f.firstRepo)
+            .map((repo) => ({ ...repo, role: 'primary' as const })),
+        });
+      if (change === 'unbound') {
+        await f.storage.projectRevision('station').replace({
+          ...f.storage.getProject('station'),
+          workingDirectory: undefined,
+        });
+        const current = f.bindings.read();
+        writeFileSync(
+          f.bindings.path,
+          JSON.stringify({
+            ...current,
+            bindings: current.bindings.filter(
+              (binding) => binding.resourceId !== f.firstRepo,
+            ),
+          }),
+        );
+      }
+      if (change === 'drifted')
+        git(
+          f.project,
+          'remote',
+          'set-url',
+          'origin',
+          'https://github.com/example/unknown.git',
+        );
+      if (change === 'symlink') {
+        renameSync(f.project, `${f.project}-original`);
+        symlinkSync(f.otherProject, f.project, 'dir');
+      }
+      if (change === 'changed Project') {
+        const original = f.storage.getProject('station');
+        await f.storage.deleteProject('station');
+        await f.storage.createProjectWithIdentity(
+          { ...original, id: randomUUID() },
+          record,
+        );
+      }
+      const starts = f.engines.claude.starts.length;
+      for (const projectSlug of ['station', undefined]) {
+        const refused = await f.request(
+          '/api/orchestration/chat',
+          dockFollowUp(
+            'claude',
+            conversation,
+            projectSlug,
+            'private denied follow-up',
+          ),
+        );
+        expect(refused.status, refused.text).toBe(400);
+      }
+      expect(f.engines.claude.starts).toHaveLength(starts);
+      expect(f.engines.claude.turns.map((turn) => turn.input)).toEqual([
+        'first turn',
+      ]);
+      expect(JSON.stringify(f.store.listEvents())).not.toContain(
+        'private denied follow-up',
+      );
+    },
+  );
 });

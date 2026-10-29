@@ -1,0 +1,13 @@
+{
+  "revision": "19e4716e4b007aae0ec0687244853619552ce0b1",
+
+  "notes": [
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Reviewed only the orchestration.ts delta against this accepted ADR: optional sender on ConversationReadMessage is a recorded transcript attribution field, separate from required RequestAnswerability on Session summaries. The required answerability members, serving-instance/time qualifiers, read-time decoration, pure lifecycle fold and dispatch enforcement are unchanged. Historical investigation remains historical; no new runtime or consumer inventory claimed.","inputs":["docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed ToolCallDisplay delta against approval presentation: original main ToolCallDisplayComponent body is retained as ToolCallRow, and the wrapper excludes both pending and user/policy-denied calls from outgoing-message presentation. Allow/Deny, canonical approval sheet, expanded argument preview, hidden-character disclosure and denial badges remain in the main row. Existing denial regression previously failed intended missing labels then passed after guard repair; current six caller suites69PASS. No native/provider/security-runtime enforcement qualification claimed.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/components/chat/ToolCallDisplay.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed orchestration.ts delta against composer HTTP entry points: only optional sender was added to bounded ConversationReadMessage. Foreground authored-Agent target/message dispatch, approval response command, engine/model handoff, drafts and queue intent are unchanged by this delta. Shared InputRequestRecord/form fields retained through merge. This is a scoped contract review, not a new browser/mobile-device qualification.","inputs":["docs/design/chat-composer.md","packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed canonical ConversationReadMessage/ConversationReadPage and compactMessage caller: optional ClientOriginSender now accompanies preserved Session/model attribution, while versioned conversation provenance, read scope, bounds, stable ids and actor-derived admission remain intact. Added sender explanation and explicit absence/authority limits. Six route/transcript/delivery files69PASS; no settled-child delivery or live visual qualification claimed.","inputs":["docs/reference/contracts.md","packages/contracts/src/orchestration.ts","src-server/routes/chat/conversation-reference-read.ts"]}
+  ]
+}

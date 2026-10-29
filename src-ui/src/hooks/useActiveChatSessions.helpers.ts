@@ -106,6 +106,12 @@ export function buildOutgoingUserMessage(
   currentMessages: ChatMessage[] | undefined,
   content: string,
   attachments?: FileAttachment[],
+  /**
+   * The send's idempotency key, when the caller has minted it: the bubble
+   * then carries the same identity Station stamps on the turn's
+   * `turn.started`, so the two match exactly.
+   */
+  clientId: string = randomCorrelationId(),
 ): {
   messages: ChatMessage[];
   contentParts?: ChatMessage['contentParts'];
@@ -117,21 +123,28 @@ export function buildOutgoingUserMessage(
   }
   if (attachments) {
     for (const attachment of attachments) {
+      // The composer already holds the sent bytes as a data URL; the bubble
+      // shares that same string (no copy) so the chip previews and opens
+      // before the server's transcript, with its blobRef, replaces this row.
+      // Chat messages are never written to sessionStorage
+      // (`serializeActiveChats`), so this stays in memory only.
+      const url = [attachment.data, attachment.preview].find((source) =>
+        source?.startsWith('data:'),
+      );
       contentParts.push({
         type: 'file',
+        ...(url ? { url } : {}),
         mediaType: attachment.type,
         name: attachment.name,
       });
     }
   }
 
-  // archive#1293: a stable client-only id for this optimistic append, so a
+  // archive#1293: `clientId` is a stable id for this optimistic append, so a
   // rejected send's rollback can remove exactly this message by id instead
   // of relying on the whole `messages` array still being the same reference
   // it was at send time (see rejectedSendRollback in
   // useActiveChatSessionMessaging.ts).
-  const clientId = randomCorrelationId();
-
   const nextMessage: ChatMessage = {
     role: 'user',
     content,

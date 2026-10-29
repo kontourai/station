@@ -42,8 +42,7 @@ export function stationTempRoot(): string {
     : join(tmpdir(), STATION_TEMP_ROOT_NAME);
 }
 
-function ensureRootSync(): string {
-  const root = stationTempRoot();
+function ensureRootSync(root: string): string {
   mkdirSync(root, { recursive: true });
   return root;
 }
@@ -53,10 +52,14 @@ function ensureRootSync(): string {
  *
  * `prefix` names the purpose (`'registry-plugin'`, `'plugin-update'`). It is a
  * label, not a path — separators are rejected so a caller cannot escape the
- * root.
+ * root. `root` defaults to {@link stationTempRoot}; a caller that has to
+ * avoid the ambient temp root (see the CLI's `--temp-home`) names another.
  */
-export function createStationTempDirSync(prefix: string): string {
-  return mkdtempSync(join(ensureRootSync(), `${assertLabel(prefix)}-`));
+export function createStationTempDirSync(
+  prefix: string,
+  root: string = stationTempRoot(),
+): string {
+  return mkdtempSync(join(ensureRootSync(root), `${assertLabel(prefix)}-`));
 }
 
 /** Async counterpart to {@link createStationTempDirSync}. */

@@ -1,4 +1,6 @@
+import { MockLanguageModelV3 } from 'ai/test';
 import { describe, expect, test, vi } from 'vitest';
+import { VoltAgentFramework } from '../../../runtime/frameworks/voltagent-adapter.js';
 import {
   conversationIntentRevision,
   generateSessionSummary,
@@ -192,5 +194,41 @@ describe('generateSessionSummary', () => {
     expect(conversationIntentRevision(messages)).not.toBe(
       conversationIntentRevision(changedBoundary as any),
     );
+  });
+});
+
+test('generates through the real VoltAgent adapter with JSON output', async () => {
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => ({
+      content: [
+        {
+          type: 'text',
+          text: '{"overview": "Decision made.", "goals": [], "constraints": [], "progress": [], "nextSteps": [], "reportedCompletion": []}',
+        },
+      ],
+      finishReason: { unified: 'stop', raw: 'stop' },
+      usage: {
+        inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+        outputTokens: { total: 1, text: 1, reasoning: 0 },
+      },
+      warnings: [],
+    }),
+  });
+  const framework = new VoltAgentFramework();
+  vi.spyOn(framework, 'createModel').mockResolvedValue(model);
+  const runtime = ctx({ framework });
+  const result = await generateSessionSummary({
+    ctx: runtime,
+    messages: [
+      {
+        id: 'm1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Deploy the app.' }],
+      },
+    ],
+  });
+  expect(result).toMatchObject({ overview: 'Decision made.', version: 2 });
+  expect(model.doGenerateCalls[0]?.responseFormat).toMatchObject({
+    type: 'json',
   });
 });

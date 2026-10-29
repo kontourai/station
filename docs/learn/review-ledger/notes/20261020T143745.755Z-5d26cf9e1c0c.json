@@ -1,0 +1,7 @@
+{
+  "revision": "e3943527bd498dbd3f28c27432342c30c016723a",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"#3800 fix round: codex-adapter.ts now refuses a non-host start over an unaccounted nested .codex before spawning (confinement_workspace_incompatible). Checked this document for start-refusal, sandbox and .codex claims: session-api's closed refusal-code list already includes the code; nothing else describes the changed mechanism; no prose change needed.","inputs":["docs/guides/agents.md","src-server/providers/adapters/codex-adapter.ts"]}
+  ]
+}

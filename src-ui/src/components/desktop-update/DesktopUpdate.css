@@ -1,0 +1,17 @@
+.desktop-update-dialog p {
+  margin: 0 0 var(--k-space-3);
+}
+.desktop-update-dialog__turns {
+  margin: 0 0 var(--k-space-3);
+  padding-left: var(--k-space-5);
+}
+.desktop-update-settings__progress {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+.desktop-update-settings__progress progress {
+  flex: 1;
+  accent-color: var(--k-action);
+  max-width: 20rem;
+}

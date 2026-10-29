@@ -128,15 +128,20 @@ export function scanForBannedConfirmPrompt(file, content) {
 // ---------------------------------------------------------------------------
 
 export const KNOWN_DIRTY_STATE_EDITORS = [
+  'src-ui/src/views/personal-board/PersonalBoardWorkspace.tsx',
   'src-ui/src/views/ProjectSettingsView.tsx',
   'src-ui/src/views/SkillsView.tsx',
   'src-ui/src/views/agent-editor/useAgentsViewModel.ts',
   'src-ui/src/views/agent-editor/AgentEditorWorkflows.tsx',
+  'src-ui/src/views/agent-editor/AgentToolDiscovery.tsx',
   'src-ui/src/views/KnowledgeConnectionView.tsx',
   'src-ui/src/views/AgentConnectionView.tsx',
   'src-ui/src/views/ProviderSettingsView.tsx',
   'src-ui/src/views/SettingsView.tsx',
   'src-ui/src/views/integrations/SecretBindingsSection.tsx',
+  'src-ui/src/views/task-workspace/TaskLearningPanel.tsx',
+  'src-ui/src/views/task-workspace/TaskMemoryPanel.tsx',
+  'src-ui/src/views/settings/WorkloadBudgetSettings.tsx',
 ];
 
 // Non-editor false positives for the heuristic below. Starts empty by

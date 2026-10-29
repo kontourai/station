@@ -1,0 +1,7 @@
+{
+  "revision": "0e4dc97847df6255e1eeadcad2f82dcf9e233dff",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked against the bubble delivery-state change (MessageDeliveryNote labels and outline, messageDeliveryActions, outboundQueue.dismissUnconfirmed, the send path dropping a stale lookup answer for a resent key, and the module-map Interface note). Searched for outbox, delivery, unconfirmed, bubble and discard claims; none in this document changes. No prose change.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]}
+  ]
+}

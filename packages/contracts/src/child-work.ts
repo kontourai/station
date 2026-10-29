@@ -127,6 +127,9 @@ export const CHILD_WORK_MODEL_SOURCES: readonly ChildWorkModelSource[] = [
 /** Bound on a reported model id; a longer one is not a model id and is dropped. */
 export const CHILD_WORK_MODEL_ID_MAX_CHARS = 200;
 
+/** Bound on a reported tool name; longer values are dropped. */
+export const CHILD_WORK_TOOL_NAME_MAX_CHARS = 200;
+
 export interface ChildWorkModel {
   id: string;
   source: ChildWorkModelSource;
@@ -179,6 +182,12 @@ export function isReportableChildWorkModelId(id: string): boolean {
     trimmed.length <= CHILD_WORK_MODEL_ID_MAX_CHARS &&
     !(trimmed.startsWith('<') && trimmed.endsWith('>'))
   );
+}
+
+/** Whether a reported value can be a bounded tool name. */
+export function isReportableChildWorkToolName(name: string): boolean {
+  const trimmed = name.trim();
+  return trimmed.length > 0 && trimmed.length <= CHILD_WORK_TOOL_NAME_MAX_CHARS;
 }
 
 /**
@@ -302,6 +311,8 @@ export interface ChildWorkItem extends ChildWorkKey {
   backgrounded?: boolean;
   /** Latest one-line status while running. */
   progress?: string;
+  /** Latest reported child tool name, without arguments, paths or inferred activity. */
+  latestTool?: string;
   usage?: ChildWorkUsage;
   /**
    * #3308: present only on a terminal child whose `usage` is still the last
@@ -532,6 +543,9 @@ function normalizeItem(item: ChildWorkItem): ChildWorkItem {
   if (transcript) next.transcript = transcript;
   if (item.backgrounded !== undefined) next.backgrounded = item.backgrounded;
   if (item.progress !== undefined) next.progress = item.progress;
+  const latestTool =
+    typeof item.latestTool === 'string' ? item.latestTool.trim() : '';
+  if (isReportableChildWorkToolName(latestTool)) next.latestTool = latestTool;
   if (usage) next.usage = usage;
   // Only the reducer's settle and snapshot paths derive this, and only a
   // terminal child's usage can be provisional.

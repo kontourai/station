@@ -1508,7 +1508,6 @@ describe('InstallPreviewModal', () => {
             name: 'review-plugin',
             displayName: 'Review Plugin',
             version: '1.0.0',
-            hasBundle: true,
           },
           components: [
             {
@@ -1566,7 +1565,6 @@ describe('InstallPreviewModal', () => {
             name: 'pulse-plugin',
             displayName: 'Pulse Plugin',
             version: '1.0.0',
-            hasBundle: true,
           },
           components: [
             {
@@ -1611,7 +1609,6 @@ describe('InstallPreviewModal', () => {
             name: 'agent-plugin',
             displayName: 'Agent Plugin',
             version: '1.0.0',
-            hasBundle: true,
           },
           components: [{ type: 'agent', id: 'assistant' }],
           conflicts: [],

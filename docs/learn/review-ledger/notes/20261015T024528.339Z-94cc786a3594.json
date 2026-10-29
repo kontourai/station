@@ -1,0 +1,7 @@
+{
+  "revision": "3c8325d0682c86c61316095920d27178a4bc02fd",
+
+  "notes": [
+    {"path":"docs/guides/desktop-build.md","note":"Re-read after scripts/__tests__/tauri-context.test.ts moved the runner process-group lookup before the child spawn (review nit on #3674). The guide's SIGINT/SIGTERM cancellation claim (lines 72-73) is about scripts/tauri-context.mjs, which is unchanged and still asserted by those tests; no prose change needed.","inputs":["docs/guides/desktop-build.md","scripts/__tests__/tauri-context.test.ts"]}
+  ]
+}

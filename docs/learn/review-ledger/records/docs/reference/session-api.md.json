@@ -82,7 +82,73 @@
 
     "src-server/services/agents/agent-definition-fingerprint.ts",
 
-    "src-server/services/agents/agent-profile-capabilities.ts"
+    "src-server/services/agents/agent-profile-capabilities.ts",
+
+    "src-server/providers/sessions/attached-session-source.ts",
+
+    "src-server/providers/sessions/opencode-session-source.ts",
+
+    "src-server/services/orchestration/__tests__/attached-session-initial-anchor.test.ts",
+
+    "src-server/services/turn-idempotency.ts",
+
+    "src-server/services/orchestration/orchestration-service.ts",
+
+    "src-server/services/orchestration/conversation-lineage.ts",
+
+    "src-server/services/__tests__/turn-idempotency.test.ts",
+
+    "src-server/routes/orchestration/__tests__/turn-delivery.routes.test.ts",
+
+    "src-ui/src/components/profile/ToolRequestsPanel.tsx",
+
+    "src-server/routes/tool-library.ts",
+
+    "src-server/services/execution-target/__tests__/execution-target-execution.test.ts",
+
+    "src-server/routes/orchestration/__tests__/conversation-handoff.qualification.test.ts",
+
+    "src-server/services/execution-target/execution-target-execution.ts",
+
+    "src-server/services/orchestration/thread-inbox.ts",
+
+    "src-server/services/orchestration/attachment-staging-service.ts",
+
+    "src-server/runtime/routes/runtime-routes.ts",
+
+    "src-server/services/orchestration/turn-submission-digest.ts",
+
+    "src-server/routes/orchestration/__tests__/thread-inbox.routes.test.ts",
+
+    "docs/guides/self-configuring-agent.md",
+
+    "src-server/routes/mcp/station-control-external-client-routes.ts",
+
+    "packages/contracts/src/station-control-external-client.ts",
+
+    "packages/cli/src/commands/mcp-clients.ts",
+
+    "src-server/routes/mcp/__tests__/station-control-external-client-routes.test.ts",
+
+    "src-server/services/orchestration/conversation-context-seed-witness.ts",
+
+    "src-server/services/orchestration/conversation-start-context.ts",
+
+    "src-server/services/orchestration/conversation-fork-context.ts",
+
+    "src-server/domain/migrations/020-conversation-fork-context.ts",
+
+    "src-server/domain/migrations/021-conversation-start-context.ts",
+
+    "src-server/routes/orchestration/__tests__/conversation-fork.qualification.test.ts",
+
+    "src-server/providers/adapters/claude-adapter-events.ts",
+
+    "src-server/providers/adapters/native-resume-binding.ts",
+
+    "src-server/providers/__tests__/claude-adapter-events.test.ts",
+
+    "src-server/routes/orchestration/events.ts"
   ],
 
   "checks": [

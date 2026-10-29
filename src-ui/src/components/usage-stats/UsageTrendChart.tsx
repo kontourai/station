@@ -39,7 +39,7 @@ function trendBarFraction(value: number, peak: number): number {
 
 function trendDayTitle(day: TrendDay): string {
   if (!day.recorded) return `${dayLabel(day.date)} — No activity recorded`;
-  return `${dayLabel(day.date)} — $${day.cost.toFixed(4)} · ${day.messages} message${
+  return `${dayLabel(day.date)} — ${day.costRecorded || day.cost > 0 ? `$${day.cost.toFixed(4)}` : 'Cost not reported'} · ${day.messages} message${
     day.messages === 1 ? '' : 's'
   }`;
 }

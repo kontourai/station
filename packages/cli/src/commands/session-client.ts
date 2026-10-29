@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from 'node:crypto';
 import {
   type ConnectionConfig,
   type ConnectionRecoveryProjection,
@@ -408,6 +409,17 @@ function createManagedSessionClient(
   };
 }
 
+const chatOperationFailures = new WeakMap<
+  object,
+  { clientTurnId: string; conversationId: string; jsonMode: boolean }
+>();
+
+export function getChatOperationFailure(error: unknown) {
+  return typeof error === 'object' && error !== null
+    ? chatOperationFailures.get(error)
+    : undefined;
+}
+
 /**
  * Canonical #1418 foreground chat surface. The CLI opens the controlling
  * Station's event stream for presentation, but target selection and all
@@ -419,14 +431,37 @@ export async function sendExecutionTargetChat(
   options: {
     message: string;
     conversationId?: string;
+    clientTurnId?: string;
     jsonMode: boolean;
     onRequest?: OnRequestMode;
   },
 ): Promise<void> {
-  return sendOrchestrationChat(apiBase, executionProfileAgentId(target.agent), {
-    ...options,
-    executionTarget: target,
-  });
+  const clientTurnId = options.clientTurnId ?? randomUUID();
+  // A retry of a new chat must retain its conversation as well as its turn key.
+  const threadId =
+    options.conversationId ??
+    `cli:${createHash('sha256').update(clientTurnId).digest('hex')}`;
+  try {
+    await sendOrchestrationChat(
+      apiBase,
+      executionProfileAgentId(target.agent),
+      {
+        ...options,
+        clientTurnId,
+        threadId,
+        executionTarget: target,
+      },
+    );
+  } catch (error) {
+    if (typeof error === 'object' && error !== null) {
+      chatOperationFailures.set(error, {
+        clientTurnId,
+        conversationId: threadId,
+        jsonMode: options.jsonMode,
+      });
+    }
+    throw error;
+  }
 }
 
 async function sendOrchestrationChat(
@@ -435,22 +470,21 @@ async function sendOrchestrationChat(
   {
     message,
     conversationId,
+    clientTurnId,
+    threadId,
     jsonMode,
     onRequest = 'wait',
     executionTarget,
   }: {
     message: string;
     conversationId?: string;
+    clientTurnId: string;
+    threadId: string;
     jsonMode: boolean;
     onRequest?: OnRequestMode;
     executionTarget: ExecutionTarget;
   },
 ): Promise<void> {
-  const threadId =
-    typeof conversationId === 'string'
-      ? conversationId
-      : `cli:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
-
   const abortController = new AbortController();
   const response = await authenticatedFetch(
     `${apiBase}/api/orchestration/events`,
@@ -517,6 +551,7 @@ async function sendOrchestrationChat(
       receipt = await continueExecutionMessage(apiBase, threadId, {
         environment: executionTarget.environment,
         message,
+        clientTurnId,
         ...(executionTarget.model ? { model: executionTarget.model } : {}),
       });
     } else {
@@ -524,6 +559,7 @@ async function sendOrchestrationChat(
         target: executionTarget,
         message,
         conversationId: threadId,
+        clientTurnId,
       });
     }
 
@@ -567,6 +603,7 @@ async function sendOrchestrationChat(
         sessionId: acceptedSessionId,
         providerTurnId: acceptedTurnId,
         conversationId: acceptedConversationId,
+        clientTurnId,
         pendingRequest: {
           requestId: pendingRequest.requestId,
           requestType: pendingRequest.requestType,
@@ -589,6 +626,7 @@ async function sendOrchestrationChat(
       sessionId: acceptedSessionId,
       providerTurnId: acceptedTurnId,
       conversationId: acceptedConversationId,
+      clientTurnId,
       finishReason,
       text: accumulatedText,
       ...(pendingRequest

@@ -364,13 +364,10 @@ describe('shell-conformance-ratchet', () => {
     it('pins the file the signal was built from, inside the declared roots', () => {
       expect(HEADING_SCAN_ROOTS).toEqual(['src-ui/src']);
       expect(HEADING_SCAN_EXTENSIONS).toEqual(['.tsx']);
-      // The pinned inventory is what stops the roots being narrowed to hide a
-      // known instance; assert the exact paths, not just that it is non-empty.
-      // Was two until #2065 deleted `ReviewQueueView.tsx` with the global
-      // review queue; its successor lives outside these roots, so it cannot
-      // be pinned in its place.
+      // Keep a live SplitPaneLayout owner in scope after Task moved its
+      // header to the route's PageFrame.
       expect(HEADING_PINNED_SCOPE_INVENTORY).toEqual([
-        'src-ui/src/views/TaskWorkspaceView.tsx',
+        'src-ui/src/views/AgentsView.tsx',
       ]);
       for (const file of HEADING_PINNED_SCOPE_INVENTORY) {
         expect(file.startsWith(`${HEADING_SCAN_ROOTS[0]}/`)).toBe(true);
@@ -380,8 +377,8 @@ describe('shell-conformance-ratchet', () => {
     it('reads every pinned file as a heading surface carrying no stacked heading', () => {
       for (const file of HEADING_PINNED_SCOPE_INVENTORY) {
         const content = readFileSync(file, 'utf8');
-        // Both still render a canonical header — a file that stopped doing so
-        // would drop out of the count silently, which is the gap this asserts.
+        // A pinned file must retain the canonical-header signal so it cannot
+        // silently drop out of the stacked-heading scan.
         expect(isHeadingSurface(content)).toBe(true);
         expect(countStackedHeadings(content)).toBe(0);
       }

@@ -136,6 +136,41 @@ function containsRouteFulfill(node) {
 }
 
 /**
+ * A route handler that only reads the request and forwards it to the real
+ * Station (`route.request()`, `route.fetch()`), never fulfilling it or handing
+ * the route to anything else: an intercept that holds or observes a real
+ * send, not a receipt mock. Anything else is treated as a mock.
+ */
+function isPassThroughRouteHandler(handler) {
+  if (
+    !handler ||
+    !(ts.isArrowFunction(handler) || ts.isFunctionExpression(handler)) ||
+    handler.parameters.length === 0 ||
+    !ts.isIdentifier(handler.parameters[0].name)
+  )
+    return false;
+  const routeName = handler.parameters[0].name.text;
+  let passThrough = !containsRouteFulfill(handler.body);
+  const visit = (candidate) => {
+    if (!passThrough) return;
+    if (ts.isIdentifier(candidate) && candidate.text === routeName) {
+      const parent = candidate.parent;
+      if (
+        !parent ||
+        !ts.isPropertyAccessExpression(parent) ||
+        parent.expression !== candidate ||
+        !['request', 'fetch'].includes(parent.name.text)
+      )
+        passThrough = false;
+      return;
+    }
+    ts.forEachChild(candidate, visit);
+  };
+  visit(handler.body);
+  return passThrough;
+}
+
+/**
  * archive#3800: a mocked `POST /api/orchestration/chat` is only ACCEPTED when
  * its body carries the exact provider turn identity — `readExecutionReceipt`
  * (`packages/sdk/src/client/execution.ts:126-137`) and the route itself
@@ -179,7 +214,8 @@ export function foregroundReceiptFixtureErrors(filePath, text) {
       ts.isPropertyAccessExpression(node.expression) &&
       node.expression.name.text === 'route' &&
       node.arguments.length > 0 &&
-      isForegroundChatRouteLiteral(node.arguments[0])
+      isForegroundChatRouteLiteral(node.arguments[0]) &&
+      !isPassThroughRouteHandler(node.arguments[1])
     ) {
       mocksChatRoute = true;
     }
@@ -243,10 +279,16 @@ export const PR_BROWSER_SMOKE_CONTRACT = {
   retries: 0,
   isolation: 'temp-home-and-dynamic-loopback-ports',
   flakePolicy: 'fail-and-fix-no-retry',
-  requiredObservations: [320, 390, 412].map((width) => ({
-    path: 'tests/cross-runtime-chat-switching.spec.ts',
-    title: `mobile primary project switcher opens an edge sheet at ${width}x844 with touch-safe actions`,
-  })),
+  requiredObservations: [
+    ...[320, 390, 412].map((width) => ({
+      path: 'tests/cross-runtime-chat-switching.spec.ts',
+      title: `mobile primary project switcher opens an edge sheet at ${width}x844 with touch-safe actions`,
+    })),
+    {
+      path: 'tests/chat-inventory-drilldown-mobile.spec.ts',
+      title: 'reads an authored input and lays it out at 390x844',
+    },
+  ],
   journeys: [
     {
       path: 'tests/connect-modal.spec.ts',
@@ -279,6 +321,11 @@ export const PR_BROWSER_SMOKE_CONTRACT = {
       path: 'tests/pr-smoke-live-chat-send.spec.ts',
       journey:
         'station#4537 item 2: one real turn dispatched through POST /api/orchestration/chat into a real local model server, inside the merge gate itself',
+    },
+    {
+      path: 'tests/chat-inventory-drilldown-mobile.spec.ts',
+      journey:
+        'Chat inventory item drill-down at 390x844: a real authored input read back and measured on a phone',
     },
   ],
 };
@@ -320,14 +367,16 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/branding-theme-boot.spec.ts',
     'tests/buffered-answer-delivery.spec.ts',
     'tests/agents-pane.spec.ts',
+    'tests/subagent-transcript-cards.spec.ts',
     'tests/toolbar-reachability.spec.ts',
     'tests/command-palette.spec.ts',
-    'tests/sidebar-file-intake.spec.ts',
     'tests/composer-file-mentions.spec.ts',
     'tests/attention-file-replies.spec.ts',
     'tests/dialog-return-focus.spec.ts',
-    'tests/banner-stack-bound.spec.ts',
+    'tests/component-style.spec.ts',
+    'tests/server-older-banner.spec.ts',
     'tests/toggle-contrast.spec.ts',
+    'tests/chat-dock-open-helper.spec.ts',
     'tests/agent-editor-geometry.spec.ts',
     'tests/answer-quoting.spec.ts',
     'tests/code-block-actions.spec.ts',
@@ -346,6 +395,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/mcp-ui-layout.spec.ts',
     'tests/default-agent-workflow.spec.ts',
     'tests/chat-replay.spec.ts',
+    'tests/transcript-load-stability.spec.ts',
     'tests/chat-history-reopen.spec.ts',
     'tests/mobile-dock-clearance.spec.ts',
     'tests/accessibility-core.spec.ts',
@@ -354,6 +404,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/overlay-elevation-tokens.spec.ts',
     'tests/builtin-runtime-workflow.spec.ts',
     'tests/pending-message-queue.spec.ts',
+    'tests/composer-capabilities.spec.ts',
     'tests/skills.spec.ts',
     'tests/registry.spec.ts',
     'tests/connections-crud.spec.ts',
@@ -372,6 +423,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/orchestration-chat-flow.spec.ts',
     'tests/mcp-elicitation-form.spec.ts',
     'tests/mobile-request-sheet.spec.ts',
+    'tests/approval-spilled-content.spec.ts',
     'tests/input-request.spec.ts',
     'tests/acp-orchestration-plan.spec.ts',
     'tests/flow-gate-verdicts.spec.ts',
@@ -381,6 +433,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/orchestration-recovery.spec.ts',
     'tests/new-chat-provider-managed.spec.ts',
     'tests/new-chat-mobile-context-sheet.spec.ts',
+    'tests/chat-settings-and-task-notices.spec.ts',
     'tests/cross-runtime-chat-switching.spec.ts',
     'tests/daily-driver-scenarios.spec.ts',
     'tests/daily-driver-switching.spec.ts',
@@ -396,6 +449,8 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/connections-computers-ssh.spec.ts',
   ],
   sharedInstanceExclusive: [
+    // Owns its HTTPS listeners, private home, virtual authenticator and CLI child.
+    'tests/operator-sessions.spec.ts',
     // Owns real receiver pairing state and temporary credential files.
     'tests/connect-modal.spec.ts',
     // Retains reviewed timeline/restore screenshots under .kontourai/chat-563.
@@ -449,6 +504,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     // and re-creates two projects by fixed slug. Both are instance-wide
     // mutations no sibling spec can be running alongside.
     'tests/notifications-attention.spec.ts',
+    'tests/personal-board-authoring.spec.ts',
     'tests/board-visibility.spec.ts',
     // Work Board writes the personal revisioned board through the live API.
     // It cannot share that state with another product browser journey.
@@ -464,6 +520,16 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
 };
 
 export const e2eManifest = [
+  {
+    path: 'tests/operator-sessions.spec.ts',
+    bucket: 'product',
+    surface: 'Operator sessions',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'S3/S4 real paired-browser sign-in and per-action step-up: real pairing and enrollment, CLI host confirmation and independent access read-back, Chromium virtual authenticator, consent-origin review and assertion, UV refusal, non-operator mutation refusal and host revocation. Owns a private home and ephemeral listeners; no provider or runner operator-cookie substitution.',
+    exceptions: [],
+  },
   {
     path: 'tests/agents-readiness-board.spec.ts',
     bucket: 'product',
@@ -525,6 +591,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/chat-inventory-drilldown-mobile.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Chat / Session context',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'The inventory item drill-down shipped broken on phones with its only browser coverage in the dispatch-only extended bucket. A real chat (one turn through a local model fixture) in a real isolated Station; at 390x844 the Chat inventory reader opens from the dock header, the authored input is drilled into, its text must return from the exact input read, and the layout is measured: no horizontal overflow, a label-wide classification chip, the title and its View details cue on one 44px row, and 44px actions below the body. Listed in PR_BROWSER_SMOKE_CONTRACT.journeys so it runs on every PR.',
+    exceptions: [],
+  },
+  {
     path: 'tests/native-conversation-restart.spec.ts',
     bucket: 'smoke-live',
     surface: 'Chat / Orchestration',
@@ -542,6 +618,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       "#3112: a Station-native turn against a model server that fails with HTTP 500, sent the way the composer sends one (typed text, ambient context out-of-band), then reopened from its stored record and resent with Send again on its failure card. The resend's turn.started prompt must equal the original: the Station agent's store also holds the framework's ambient-composed copy of the input, and Send again must not resend it. Live because the store and the event window are written by the real server.",
+    exceptions: [],
+  },
+  {
+    path: 'tests/message-delivery-recovery.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      "A composer send whose page is reloaded (the app closed) while its request is still open: once after Station started the turn and the answer was lost, once before Station received it. The reloaded app must ask the delivery lookup about the same key and end with exactly one turn in the conversation's durable event window: no resend after started, one same-key resend after not-received. Live because the turn ledger, the in-flight record and the event window are the real server's.",
     exceptions: [],
   },
   {
@@ -739,6 +825,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/component-style.spec.ts',
+    bucket: 'product',
+    surface: 'Core accessibility',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real-source component harness for shared shell/SDK actions, notice contrast and touch geometry, confirmation keyboard dismissal and focus return, and pending activation refusal in both themes and narrow/wide viewports. Does not qualify provider or server mutations.',
+    exceptions: [],
+  },
+  {
     path: 'tests/dialog-return-focus.spec.ts',
     bucket: 'product',
     surface: 'Core accessibility',
@@ -746,16 +842,6 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Real-browser focus semantics for dialog return focus: a collapsed surviving ancestor refuses focus and the walk falls through, an open follow-up dialog keeps focus, and a surviving trigger is restored untouched. jsdom reports a hidden .focus() as successful, so station#1206 gap 2 is only falsifiable here. station#1245 adds the real ConnectionManagerModalContent from packages/connect falling back past an inert survivor — the only place the cross-package wiring is exercised in a real bundle.',
-    exceptions: [],
-  },
-  {
-    path: 'tests/sidebar-file-intake.spec.ts',
-    bucket: 'product',
-    surface: 'Sidebar file intake',
-    tierTarget: 'full',
-    primary: true,
-    rationale:
-      'Production sidebar rows, composer receiver and upload staging with exact HTTP fixtures. CDP supplies an external file drag from a test-owned output file; draft preservation and no-send behavior are asserted.',
     exceptions: [],
   },
   {
@@ -867,6 +953,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/activity-related-review.spec.ts',
+    bucket: 'extended',
+    surface: 'Activity',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Exercises Activity quick review through its real caller, Related shell host and SessionDetail: filtered sibling order, source selection/search/scroll preservation, durable Open and kept-target focus, changed results and real phone Back/Up.',
+    exceptions: [],
+  },
+  {
     path: 'tests/device-pane.spec.ts',
     bucket: 'product',
     surface: 'Device',
@@ -917,6 +1013,26 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/related-panes.spec.ts',
+    bucket: 'extended',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Proves an installed plugin opens its own registered panes beside its list through the SDK related-pane capability on a real Station: open, replace, focus, Keep, close, a tool landing with the Tools, the kept occurrence surviving a reload, a removed plugin leaving its pane unavailable without running its code, and a same-version reinstall not bringing it back.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/related-panes-frame.spec.ts',
+    bucket: 'extended',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Proves the same related-pane capability from a plugin running in the sandboxed plugin frame: on a Station the spec owns, reached under a non-loopback name so every plugin is isolated, the real example list (a frame document) opens, replaces, focuses and closes its own report frames and opens a tool, through the real frame bootstrap, frame server, catalog and pairing, with nothing mocked.',
+    exceptions: [],
+  },
+  {
     path: 'tests/plugin-pane-sdk-context.spec.ts',
     bucket: 'extended',
     surface: 'Plugins',
@@ -924,6 +1040,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Proves a test-only plugin installed through real preview and consent receives a server-issued Project Pane occurrence and executes public Agent, navigation, and toast SDK hooks in direct and placed hosts, without migrating first-party examples.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/layout-stack-parity.spec.ts',
+    bucket: 'extended',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Proves the layout contract fields (#2995) are honoured generically: one set of assertions against built-in Coding and a test-only plugin layout installed through real preview and consent that declares primary chat, a stack presentation and two drill-ins — the dock Chat suspended, ⌘D focusing the layout Chat, the rail and breadcrumb drilling in, and browser Back and the stack chord popping. Nothing is intercepted.',
     exceptions: [],
   },
   {
@@ -985,6 +1111,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Cold mobile hydration uses the real bounded SQLite history reader and canonical projector before paging backward within a noisy turn.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/transcript-load-stability.spec.ts',
+    bucket: 'product',
+    surface: 'Chat',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Transcript geometry while a long Markdown-heavy conversation loads on a CPU-throttled 390x844 phone: the conversation-open read and the late row chunks are held behind explicit gates, and a per-frame sampler proves an unscrolled transcript settles at its newest message, a scrolled-up reader keeps their row, the virtualized handoff never blanks the viewport, and Scroll to bottom glides monotonically to the end. Browser-local page.route fixtures only; writes only testInfo outputs.',
     exceptions: [],
   },
   {
@@ -1102,6 +1238,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       '#613: proves mid-turn queue reorder, inline edit, and boundary drain (in the reordered order) for a runtime chat session via the mock orchestration SSE harness.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/composer-capabilities.spec.ts',
+    bucket: 'product',
+    surface: 'Chat composer',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      "One composer capability contract at desktop and 390px: a file attached through the start composer's picker is staged by the new chat and rides its first send, and a running turn keeps the paperclip usable while saying why files cannot steer or queue, blocking the send until the turn ends or they are removed, with Stop at the controls row's edge. Page-scoped HTTP fixtures and the mock orchestration SSE harness.",
     exceptions: [],
   },
   {
@@ -1282,6 +1428,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/chat-dock-open-helper.spec.ts',
+    bucket: 'product',
+    surface: 'Chat',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      '#4175: the shared ensureChatDockOpen helper against the race the PR smoke trace recorded — the product opens the dock itself between the helper resolving "Show Chat" and its click landing, so the click hits "Hide Chat" and closes the dock. A static page puts that open on the first pointer arrival, deterministically; the helper must still end with the dock open, and must not touch a dock that is already open. No live instance or server.',
+    exceptions: [],
+  },
+  {
     path: 'tests/toggle-contrast.spec.ts',
     bucket: 'product',
     surface: 'Shell',
@@ -1292,13 +1448,13 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
-    path: 'tests/banner-stack-bound.spec.ts',
+    path: 'tests/server-older-banner.spec.ts',
     bucket: 'product',
     surface: 'Shell',
     tierTarget: 'full',
     primary: true,
     rationale:
-      'station#3432: proves in a real browser that the collapsed connectionBlocking band and the expanded banner stack actually overflow and scroll (scrollHeight > clientHeight, a real wheel event moves scrollTop, the last control stays hit-testable at its own center) rather than silently compressing content to fit — a gap jsdom cannot see, since mobile-chrome-safety.test.ts can only confirm the CSS text declares max-height/overflow-y/pointer-events, never that they engage. Same real-source-bundled-with-esbuild technique as dialog-return-focus.spec.ts, with the real BannerHost.css attached as an actual stylesheet.',
+      'The real unified Updates panel and ServerOlderLaunchCheck, bundled from production with SDK fixtures, preserve server offers, manual installation guidance, and progress in both themes at desktop and phone widths. No live instance or native updater runs.',
     exceptions: [],
   },
   {
@@ -1426,6 +1582,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/subagent-transcript-cards.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'A subagent spawned by a tool call renders one inline transcript card at its spawn point, folded from child-work.updated events: Running with its live status line and reported model, then Completed with elapsed time and a result preview, expandable to the full summary and usage, and still inside the viewport at 390px.',
+    exceptions: [],
+  },
+  {
     path: 'tests/agents-pane.spec.ts',
     bucket: 'product',
     surface: 'Chat / Orchestration',
@@ -1452,6 +1618,15 @@ export const e2eManifest = [
     tierTarget: 'full',
     rationale:
       '#3284 MCP form elicitation on the pending-requests strip: rendered fields, contrast, touch targets and focus at desktop and 390px in both themes, refusal of a missing required field, and the typed respondToRequest content; an MCP prompt listed in the composer slash menu as /<server>:<prompt> with its MCP badge at desktop and 390px.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/approval-spilled-content.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    rationale:
+      'docs/design/event-content-spill.md: an approval whose content was stored out of line offers only Deny until the card loads the whole request through the content route, then shows the loaded content and offers Allow, and the allow carries viewedContentDigest; desktop 1440 and phone 390 in both themes.',
     exceptions: [],
   },
   {
@@ -1556,7 +1731,17 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'kontourai/station#689, then the one start composer — proves the start composer project chip opens its project list as a contained bottom sheet (not a clipped anchored dropdown) at 390x844, and covers open, list-owned scroll with 44px rows, filter, pick, outside-tap, and Escape dismissal of the sheet alone.',
+      'kontourai/station#689, then the one start composer — proves the start composer project chip opens its project list as a contained bottom sheet (not a clipped anchored dropdown) at 390x844, and covers open, list-owned scroll with 44px rows, filter, pick, outside-tap, and Escape dismissal of the sheet alone. At a keyboard-height 390x560 viewport it proves the start sheet scrolls only its body, never a squeezed header.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/chat-settings-and-task-notices.spec.ts',
+    bucket: 'product',
+    surface: 'Chat',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'At a phone and a desktop width through the real dock: Chat Settings keeps Done inside the panel and hittable at any scroll position, its replay import is a styled button, and backgrounded-task settles arriving over the orchestration SSE seam render as compact, distinct status lines that name their title once.',
     exceptions: [],
   },
   {
@@ -1619,6 +1804,36 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/task-review.spec.ts',
+    bucket: 'extended',
+    surface: 'Task review',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      "Credential-free isolated Station comment, relocation, Send refusal, resolve/reopen and real Chromium capture/pin journeys. The room revision-publication prerequisite passes after #4211. PR-smoke admission remains deferred: the full nine-spec candidate lane failed its existing orchestration-chat approval assertion, and the strict receipt also rejected this spec's explicit live-provider skip. Credential-free Review cases passed, but three clean full-lane runs are not qualified. A separate live-Claude text-reply/commit-verification test is explicitly skipped as NOT_QUALIFIED unless STATION_REVIEW_USE_CLAUDE=1 and signed-in Claude are supplied; there is no ACP fallback. Missing Chromium is explicitly NOT_VERIFIED.",
+    exceptions: [],
+  },
+  {
+    path: 'tests/basis-answer-lifecycle.spec.ts',
+    bucket: 'extended',
+    surface: 'Basis / exact answer retention',
+    tierTarget: 'full',
+    primary: false,
+    rationale:
+      'An isolated real Station, local model fixture, exact answer inspection before Keep, authenticated Task retention, Surface producer publication, process restart, and assessment revocation without rewriting the retained answer. No paid provider or protected route mocks.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/chat-inventory-layout.spec.ts',
+    bucket: 'extended',
+    surface: 'Chat / Session context',
+    tierTarget: 'full',
+    primary: false,
+    rationale:
+      "#3882: a real chat (one turn through a local model fixture) in a wide bottom dock opens Chat inventory from the session context card at 1600px and 1440px and measures the dock: the inventory aside sits flush against the transcript (no dead gutter), the transcript keeps its 640px floor, the card gives way to the inventory (its chip remains) and returns when the inventory closes. Opened with Enter and closed with Close or Escape, focus moves into the panel and returns to the card's Chat inventory button, never the page.",
+    exceptions: [],
+  },
+  {
     path: 'tests/task-answer-support.spec.ts',
     bucket: 'extended',
     surface: 'Durable Tasks / Answer support',
@@ -1646,6 +1861,16 @@ export const e2eManifest = [
     primary: false,
     rationale:
       'Real Station session-inventory tool/resource and bounded owner projection through an independent official MCP Apps host: host theme, compact/full and group selection, exact opaque page capability rotation, terminal removal, fail-closed malformed metadata, Basis reuse, hostile metadata inertness, and no protected App fetch.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/task-room-reload-recovery.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Task room reload recovery',
+    tierTarget: 'full',
+    primary: false,
+    rationale:
+      'Isolated real Station and paired browser: explicit tab-local draft restoration, Cancel/Discard, and exact-proposal retry after a committed message loses its acknowledgement. Theme/width captures qualify rendering only; no live agent/native or master Basis geometry proof.',
     exceptions: [],
   },
   {
@@ -1845,6 +2070,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'station#3806 real browser journey: Project add-pane admission, all-kind references, pointer and keyboard geometry, title/camera, exact missing-only cleanup, undo, and reload persistence through the real board routes.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/personal-board-authoring.spec.ts',
+    bucket: 'product',
+    surface: 'Personal Boards',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real owner-scoped API and desktop/mobile authoring: template, edit, preview-before-save, reload persistence, arriving proposal and explicit Apply.',
     exceptions: [],
   },
   {
@@ -2054,7 +2289,7 @@ export const e2eManifest = [
     tierTarget: 'screenshot',
     primary: false,
     rationale:
-      'Screenshot capture is a visual artifact lane until product assertions are added.',
+      'Full-app gallery: every screen is photographed and audited for hit targets, horizontal overflow and blocking axe violations, judged against a shrink-only allowlist; exact pixels stay advisory.',
     exceptions: ['waitForTimeout'],
   },
   {

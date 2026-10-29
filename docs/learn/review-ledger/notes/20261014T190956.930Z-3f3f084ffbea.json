@@ -1,0 +1,7 @@
+{
+  "revision": "85ca3d9a72220bb18a71d186faeb0c36b71bd8a2",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed against the review-round code: messageDeliveryState (waiting-behind-unsent, waiting-for-station, unanswered), outboundQueueProjection (behindUnsent, retired-key settlement), outboundQueue (rowStatus, retiredKeys, dismissUnconfirmed refusals, undeliverable clearing its lookup answer), MessageDeliveryNote and the bubble ⋯ menu Discard, and useStationOutlivesApp returning unknown without an address.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/chat.css","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]}
+  ]
+}

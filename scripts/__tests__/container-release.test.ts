@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { createServer, type RequestListener } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { dirname, relative, resolve, sep } from 'node:path';
@@ -786,6 +786,48 @@ describe('container source contract', () => {
     expect(
       dockerContextIncludes(ignore, 'scripts/__tests__/unrelated.test.ts'),
     ).toBe(false);
+  });
+
+  test('gives the server build every packaging file esbuild.config.mjs copies', () => {
+    // #3735 made the server build cpSync Cedar's notices out of packaging/,
+    // and the image build died with ENOENT because neither the build context
+    // nor the build stage carried them (#3403). Derive the inputs from the
+    // build config so a new copied notice is covered without editing a list.
+    const config = readFileSync(resolve(root, 'esbuild.config.mjs'), 'utf8');
+    const loopNames = [
+      ...config.matchAll(/for \(const name of \[([^\]]*)\]\)/g),
+    ].flatMap((match) =>
+      [...match[1].matchAll(/'([^']+)'/g)].map((name) => name[1]),
+    );
+    const inputs = [
+      ...config.matchAll(/cpSync\(\s*[`'](packaging\/[^`']+)[`']/g),
+    ]
+      .map((match) => match[1])
+      .flatMap((source) =>
+        /\$\{name\}/.test(source)
+          ? loopNames.map((name) => source.replace(/\$\{name\}/, name))
+          : [source],
+      );
+    expect(
+      inputs,
+      'no packaging/ cpSync sources found in esbuild.config.mjs',
+    ).toContain('packaging/licenses/cedar/LICENSE');
+    const provided = ['dependencies', 'build'].flatMap((stageName) =>
+      parseCopySources(dockerStage(dockerfile, stageName)),
+    );
+    for (const input of inputs) {
+      expect(existsSync(resolve(root, input)), `${input} exists`).toBe(true);
+      expect(
+        dockerContextIncludes(ignore, input),
+        `.dockerignore must admit "${input}", which the server build copies`,
+      ).toBe(true);
+      expect(
+        provided.some(
+          (source) => input === source || input.startsWith(`${source}/`),
+        ),
+        `a dependencies/build stage COPY must provide "${input}", which the server build copies`,
+      ).toBe(true);
+    }
   });
 
   test('COPYs every local module the dependencies stage imports at build time', () => {

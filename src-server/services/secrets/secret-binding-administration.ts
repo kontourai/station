@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -16,6 +17,7 @@ import {
   type SecretBindingGrant,
   type SecretBindingId,
   type SecretBindingView,
+  type TelemetryDestinationGrant,
 } from '@kontourai/station-contracts/secret-binding';
 import {
   isSafeToolServerId,
@@ -27,6 +29,7 @@ import {
   publishJsonFileWithOwnedLock,
   readTextFileBounded,
 } from '../../domain/file-storage-helpers.js';
+import { materializeTelemetryCredential } from '../../domain/telemetry-credential-materialization.js';
 import { secretBindingOperations } from '../../telemetry/metrics.js';
 
 const FILE = 'secret-bindings.json';
@@ -114,7 +117,8 @@ export class SecretBindingResolutionError extends Error {
       | 'backend_unavailable'
       | 'secret_unavailable'
       | 'invalid_binding'
-      | 'owner_mismatch',
+      | 'owner_mismatch'
+      | 'binding_changed',
   ) {
     super('The integration secret binding cannot be established.');
     this.name = 'SecretBindingResolutionError';
@@ -123,13 +127,18 @@ export class SecretBindingResolutionError extends Error {
 
 /** The single authorization predicate for every secret-binding consumer. */
 function secretBindingHasGrant(
-  binding: Pick<SecretBinding, 'grants' | 'acpProviderHeaderGrants'>,
+  binding: Pick<
+    SecretBinding,
+    'grants' | 'acpProviderHeaderGrants' | 'telemetryDestinationGrants'
+  >,
   expected: SecretBindingGrant,
 ): boolean {
   const grants =
     expected.kind === 'mcp-integration-env'
       ? binding.grants
-      : (binding.acpProviderHeaderGrants ?? []);
+      : expected.kind === 'acp-provider-header'
+        ? (binding.acpProviderHeaderGrants ?? [])
+        : (binding.telemetryDestinationGrants ?? []);
   return grants.some((grant) => grantKey(grant) === grantKey(expected));
 }
 
@@ -594,6 +603,16 @@ export interface ACPProviderSecretResolver {
   }): Promise<IntegrationSecretResolution>;
 }
 
+/** Material stays inside a server transport; each request rechecks revision and authority. */
+export interface TelemetrySecretResolver {
+  resolveForTelemetry(input: {
+    id: SecretBindingId;
+    transport: 'product' | 'otel';
+    destination: string;
+    signal?: AbortSignal;
+  }): Promise<{ key: string; revision: number; assertCurrent: () => void }>;
+}
+
 /**
  * The only material-bearing result exposed to a fresh-child establishment.
  * Its settlement capability deliberately closes over a metadata snapshot;
@@ -628,7 +647,8 @@ export class FileSecretBindingAdministration
   implements
     SecretBindingAdministration,
     IntegrationSecretResolver,
-    ACPProviderSecretResolver
+    ACPProviderSecretResolver,
+    TelemetrySecretResolver
 {
   readonly #store: SecretBindingFileStore;
   readonly #now: () => Date;
@@ -779,7 +799,8 @@ export class FileSecretBindingAdministration
             throw new Error('The integration environment is already granted.');
           if (
             current.grants.length +
-              (current.acpProviderHeaderGrants?.length ?? 0) >=
+              (current.acpProviderHeaderGrants?.length ?? 0) +
+              (current.telemetryDestinationGrants?.length ?? 0) >=
             MAX_GRANTS_PER_BINDING
           ) {
             throw new Error('The secret binding grant limit has been reached.');
@@ -792,12 +813,19 @@ export class FileSecretBindingAdministration
                     compareGrant,
                   ),
                 }
-              : {
-                  acpProviderHeaderGrants: [
-                    ...(current.acpProviderHeaderGrants ?? []),
-                    { ...input.grant },
-                  ].sort(compareGrant),
-                }),
+              : input.grant.kind === 'acp-provider-header'
+                ? {
+                    acpProviderHeaderGrants: [
+                      ...(current.acpProviderHeaderGrants ?? []),
+                      { ...input.grant },
+                    ].sort(compareGrant),
+                  }
+                : {
+                    telemetryDestinationGrants: [
+                      ...(current.telemetryDestinationGrants ?? []),
+                      { ...input.grant },
+                    ].sort(compareGrant),
+                  }),
             revision: current.revision + 1,
             updatedAt: this.#now().toISOString(),
           };
@@ -848,16 +876,27 @@ export class FileSecretBindingAdministration
                     (grant) => grantKey(grant) !== grantKey(input.grant),
                   ),
                 }
-              : (() => {
-                  const retained = (
-                    current.acpProviderHeaderGrants ?? []
-                  ).filter(
-                    (grant) => grantKey(grant) !== grantKey(input.grant),
-                  );
-                  return retained.length > 0
-                    ? { acpProviderHeaderGrants: retained }
-                    : { acpProviderHeaderGrants: undefined };
-                })()),
+              : input.grant.kind === 'acp-provider-header'
+                ? (() => {
+                    const retained = (
+                      current.acpProviderHeaderGrants ?? []
+                    ).filter(
+                      (grant) => grantKey(grant) !== grantKey(input.grant),
+                    );
+                    return retained.length > 0
+                      ? { acpProviderHeaderGrants: retained }
+                      : { acpProviderHeaderGrants: undefined };
+                  })()
+                : (() => {
+                    const retained = (
+                      current.telemetryDestinationGrants ?? []
+                    ).filter(
+                      (grant) => grantKey(grant) !== grantKey(input.grant),
+                    );
+                    return retained.length > 0
+                      ? { telemetryDestinationGrants: retained }
+                      : { telemetryDestinationGrants: undefined };
+                  })()),
             revision: current.revision + 1,
             updatedAt: this.#now().toISOString(),
           };
@@ -1150,6 +1189,84 @@ export class FileSecretBindingAdministration
     }
   }
 
+  async resolveForTelemetry(input: {
+    id: SecretBindingId;
+    transport: 'product' | 'otel';
+    destination: string;
+    signal?: AbortSignal;
+  }): ReturnType<TelemetrySecretResolver['resolveForTelemetry']> {
+    const expected: TelemetryDestinationGrant = {
+      kind: 'instance-telemetry-destination',
+      transport: input.transport,
+      destination: input.destination,
+    };
+    try {
+      assertBindingId(input.id);
+      assertGrant(expected);
+      const binding = this.#store.read().bindings[input.id];
+      if (!binding) throw new SecretBindingResolutionError('binding_missing');
+      if (binding.revokedAt)
+        throw new SecretBindingResolutionError('binding_revoked');
+      if (!secretBindingUsableBy(binding, {}))
+        throw new SecretBindingResolutionError('owner_mismatch');
+      if (!secretBindingHasGrant(binding, expected))
+        throw new SecretBindingResolutionError('grant_missing');
+      const assertCurrent = () => {
+        const current = this.#store.read().bindings[input.id];
+        if (
+          !current ||
+          current.revokedAt ||
+          current.revision !== binding.revision ||
+          !secretBindingUsableBy(current, {}) ||
+          !secretBindingHasGrant(current, expected)
+        )
+          throw new SecretBindingResolutionError('binding_changed');
+      };
+      let key: string;
+      try {
+        key =
+          'env' in binding.authRef
+            ? materializeAuthRef(binding.authRef, {
+                env: this.#environment,
+                secretRunner: this.#runner,
+              })
+            : await materializeTelemetryCredential(
+                binding.authRef,
+                this.#environment,
+                input.signal,
+              );
+      } catch (error) {
+        throw new SecretBindingResolutionError(
+          error instanceof DatumError &&
+            error.code === 'SECRET_BACKEND_UNAVAILABLE'
+            ? 'backend_unavailable'
+            : 'secret_unavailable',
+        );
+      }
+      assertCurrent();
+      this.#audit('materialize', {
+        bindingId: binding.id,
+        revision: binding.revision,
+        backend: authBackend(binding.authRef),
+        ...grantAuditIdentifiers(expected),
+        outcome: 'success',
+      });
+      return { key, revision: binding.revision, assertCurrent };
+    } catch (error) {
+      const reason =
+        error instanceof SecretBindingResolutionError
+          ? error.reason
+          : 'invalid_binding';
+      this.#audit('auth-refusal', {
+        bindingId: input.id,
+        transport: input.transport,
+        reason,
+        outcome: 'refused',
+      });
+      throw new SecretBindingResolutionError(reason);
+    }
+  }
+
   async #adminOperation<T>(
     operation: string,
     identifiers: Record<string, unknown>,
@@ -1200,6 +1317,13 @@ export class FileSecretBindingAdministration
       ...binding,
       owner: binding.owner ?? { kind: 'instance' },
       grants: binding.grants.map((grant) => ({ ...grant })),
+      ...(binding.telemetryDestinationGrants
+        ? {
+            telemetryDestinationGrants: binding.telemetryDestinationGrants.map(
+              (grant) => ({ ...grant }),
+            ),
+          }
+        : {}),
       availability: {
         backend: availability.kind,
         available: availability.available,
@@ -1322,6 +1446,7 @@ function validateDocument(value: unknown): SecretBindingDocument {
       'revision',
       'grants',
       'acpProviderHeaderGrants',
+      'telemetryDestinationGrants',
       'createdAt',
       'updatedAt',
       'revokedAt',
@@ -1336,7 +1461,9 @@ function validateDocument(value: unknown): SecretBindingDocument {
       typeof binding.updatedAt !== 'string' ||
       !Array.isArray(binding.grants) ||
       (binding.acpProviderHeaderGrants !== undefined &&
-        !Array.isArray(binding.acpProviderHeaderGrants))
+        !Array.isArray(binding.acpProviderHeaderGrants)) ||
+      (binding.telemetryDestinationGrants !== undefined &&
+        !Array.isArray(binding.telemetryDestinationGrants))
     )
       throw new Error();
     assertTimestamp(binding.createdAt);
@@ -1357,10 +1484,21 @@ function validateDocument(value: unknown): SecretBindingDocument {
         return { ...grant };
       },
     );
+    const telemetryDestinationGrants = (
+      binding.telemetryDestinationGrants ?? []
+    ).map((grant) => {
+      assertExactGrant(grant);
+      if (grant.kind !== 'instance-telemetry-destination') throw new Error();
+      return { ...grant };
+    });
+    const allGrants = [
+      ...grants,
+      ...acpProviderHeaderGrants,
+      ...telemetryDestinationGrants,
+    ];
     if (
-      grants.length + acpProviderHeaderGrants.length > MAX_GRANTS_PER_BINDING ||
-      new Set([...grants, ...acpProviderHeaderGrants].map(grantKey)).size !==
-        grants.length + acpProviderHeaderGrants.length
+      allGrants.length > MAX_GRANTS_PER_BINDING ||
+      new Set(allGrants.map(grantKey)).size !== allGrants.length
     )
       throw new Error();
     const owner = parseOwner(binding.owner);
@@ -1374,6 +1512,12 @@ function validateDocument(value: unknown): SecretBindingDocument {
       ...(acpProviderHeaderGrants.length > 0
         ? {
             acpProviderHeaderGrants: acpProviderHeaderGrants.sort(compareGrant),
+          }
+        : {}),
+      ...(telemetryDestinationGrants.length > 0
+        ? {
+            telemetryDestinationGrants:
+              telemetryDestinationGrants.sort(compareGrant),
           }
         : {}),
       createdAt: binding.createdAt,
@@ -1551,6 +1695,10 @@ function assertGrant(grant: SecretBindingGrant): void {
     assertHeaderName(grant.headerName);
     return;
   }
+  if (grant?.kind === 'instance-telemetry-destination') {
+    telemetryDestinationKey(grant);
+    return;
+  }
   throw new Error('Invalid secret binding grant.');
 }
 function assertExactGrant(grant: unknown): asserts grant is SecretBindingGrant {
@@ -1560,6 +1708,10 @@ function assertExactGrant(grant: unknown): asserts grant is SecretBindingGrant {
     assertOnlyKeys(grant, ['kind', 'integrationId', 'envName']);
   } else if ((grant as { kind?: unknown }).kind === 'acp-provider-header') {
     assertOnlyKeys(grant, ['kind', 'connectionId', 'providerId', 'headerName']);
+  } else if (
+    (grant as { kind?: unknown }).kind === 'instance-telemetry-destination'
+  ) {
+    assertOnlyKeys(grant, ['kind', 'transport', 'destination']);
   } else {
     throw new Error('Invalid secret binding grant.');
   }
@@ -1576,18 +1728,51 @@ function assertTimestamp(value: string): void {
 function grantKey(grant: SecretBindingGrant): string {
   return grant.kind === 'mcp-integration-env'
     ? `${grant.kind}\u0000${grant.integrationId}\u0000${grant.envName}`
-    : `${grant.kind}\u0000${grant.connectionId}\u0000${grant.providerId}\u0000${grant.headerName.toLowerCase()}`;
+    : grant.kind === 'acp-provider-header'
+      ? `${grant.kind}\u0000${grant.connectionId}\u0000${grant.providerId}\u0000${grant.headerName.toLowerCase()}`
+      : `${grant.kind}\u0000${telemetryDestinationKey(grant)}`;
+}
+function telemetryDestinationKey(grant: TelemetryDestinationGrant): string {
+  if (
+    !['product', 'otel'].includes(grant.transport) ||
+    typeof grant.destination !== 'string' ||
+    grant.destination.length > 2048 ||
+    grant.destination !== grant.destination.trim()
+  )
+    throw new Error('Invalid telemetry destination grant.');
+  let destination: URL;
+  try {
+    destination = new URL(grant.destination);
+  } catch {
+    throw new Error('Invalid telemetry destination grant.');
+  }
+  if (
+    !['http:', 'https:'].includes(destination.protocol) ||
+    destination.username ||
+    destination.password ||
+    destination.search ||
+    destination.hash
+  )
+    throw new Error('Invalid telemetry destination grant.');
+  return `${grant.transport}\u0000${destination.href}`;
 }
 function grantAuditIdentifiers(
   grant: SecretBindingGrant,
 ): Record<string, string> {
   return grant.kind === 'mcp-integration-env'
     ? { integrationId: grant.integrationId, envName: grant.envName }
-    : {
-        connectionId: grant.connectionId,
-        providerId: grant.providerId,
-        headerName: grant.headerName,
-      };
+    : grant.kind === 'acp-provider-header'
+      ? {
+          connectionId: grant.connectionId,
+          providerId: grant.providerId,
+          headerName: grant.headerName,
+        }
+      : {
+          transport: grant.transport,
+          destinationDigest: createHash('sha256')
+            .update(telemetryDestinationKey(grant))
+            .digest('hex'),
+        };
 }
 function compareGrant(a: SecretBindingGrant, b: SecretBindingGrant): number {
   return grantKey(a).localeCompare(grantKey(b));

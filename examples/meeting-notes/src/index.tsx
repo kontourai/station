@@ -1,11 +1,7 @@
 /**
- * Meeting Notes plugin — client bundle entry point (`layout.json`'s three
- * tabs: Capture, Library, Ask).
- *
- * Wave 1 shipped the Capture tab. Wave 2 Task 4 replaced the Library stub
- * with the real wikilink graph pane (`GraphPane.tsx`). Wave 2 Task 5 (this
- * change) replaces the Ask stub with the real retrieval-grounded Q&A pane
- * (`AskPane.tsx`) — see that file's module doc for the Q3 scope decision.
+ * Meeting Notes plugin client bundle entry point (`layout.json`'s three tabs):
+ * Capture (`CaptureModal.tsx`), Library (the wikilink graph in
+ * `GraphPane.tsx`) and Ask (retrieval-grounded Q&A in `AskPane.tsx`).
  */
 import './meeting-notes.css';
 import { AskPane } from './AskPane';

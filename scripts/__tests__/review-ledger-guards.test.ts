@@ -16,14 +16,17 @@ import { appendOnlyNoteProblems } from '../lib/documentation-freshness.mjs';
 import {
   compileReviewState,
   noteArchiveFile,
+  notesFileName,
   parseNoteArchive,
   parseReviewLedgerFiles,
   REVIEW_LEDGER_DIR,
   REVIEW_LEDGER_INDEX,
   REVIEW_LEDGER_PATH_BUDGET,
+  readReviewState,
   recordFile,
   serializeLedgerIndex,
   serializeNoteArchive,
+  serializeNotesFile,
   serializeRecordFile,
   writeReviewFiles,
 } from '../lib/review-ledger-store.mjs';
@@ -178,6 +181,109 @@ function prWithBaseNote() {
 }
 
 describe('append-only notes (#3036)', () => {
+  it.each(['together', 'deletion-first', 'addition-first'])(
+    'preserves accumulated staleness across redaction (%s)',
+    (commitOrder) => {
+      const f = fixture();
+      f.write('src/a.ts', 'export const a = 2;\n');
+      commit(f.root, 'source changes before review');
+      expect(
+        record(f.root, [
+          'docs/a.md',
+          '--note',
+          'Reviewed proxy.example.internal access.',
+        ]).status,
+      ).toBe(0);
+      commit(f.root, 'record private host');
+      const [original] = noteFiles(f.root);
+      f.write('src/a.ts', 'export const a = 3;\n');
+      commit(f.root, 'source changes after review');
+      const outstanding = () =>
+        readReviewState(f.root).ledger.records.find(
+          (entry: { path: string }) => entry.path === 'docs/a.md',
+        )?.historyChanges;
+      expect(outstanding()).toEqual(['src/a.ts']);
+      const result = run(f.root, 'record-documentation-review.mjs', [
+        '--redact-private-hosts',
+        original,
+        '--json',
+      ]);
+      expect(result.status, result.stderr).toBe(0);
+      expect(outstanding()).toEqual(['src/a.ts']);
+      if (commitOrder !== 'together') {
+        const added = git(f.root, [
+          'ls-files',
+          '-o',
+          '--exclude-standard',
+          NOTES,
+        ]);
+        git(f.root, [
+          'add',
+          commitOrder === 'deletion-first' ? original : added,
+        ]);
+        git(f.root, ['commit', '-qm', 'partial private note redaction']);
+        expect(outstanding()).toEqual(['src/a.ts']);
+      }
+      commit(f.root, 'redact private host');
+      expect(outstanding()).toEqual(['src/a.ts']);
+    },
+  );
+
+  it('permits only an exact private-host redaction while retaining review claims and identity', () => {
+    const f = fixture();
+    expect(
+      record(f.root, [
+        'docs/a.md',
+        '--note',
+        'Verified access through proxy.example.internal; authentication PASS.',
+      ]).status,
+    ).toBe(0);
+    commit(f.root, 'record private host');
+    git(f.root, ['switch', '-qc', 'redact']);
+    const [original] = noteFiles(f.root);
+    const before = JSON.parse(readFileSync(join(f.root, original), 'utf8'));
+    const result = run(f.root, 'record-documentation-review.mjs', [
+      '--redact-private-hosts',
+      original,
+      '--json',
+    ]);
+    expect(result.status, result.stderr).toBe(0);
+    commit(f.root, 'redact private host');
+    const [replacement] = noteFiles(f.root);
+    const redacted = JSON.parse(
+      readFileSync(join(f.root, replacement), 'utf8'),
+    );
+    expect(redacted).toEqual({
+      ...before,
+      notes: before.notes.map((entry: { note: string }) => ({
+        ...entry,
+        note: 'Verified access through [private host]; authentication PASS.',
+      })),
+    });
+    expect(check(f.root, scoped)).toMatchObject({
+      status: 0,
+      appendOnly: 'verified',
+    });
+
+    // A valid new hash cannot authorize changing the evidence claim.
+    const forged = serializeNotesFile({
+      ...redacted,
+      notes: redacted.notes.map((entry: { note: string }) => ({
+        ...entry,
+        note: entry.note.replace('PASS', 'FAIL'),
+      })),
+    });
+    git(f.root, ['rm', '-q', replacement]);
+    f.write(
+      notesFileName(forged, new Date('2026-01-01T00:00:00.000Z')),
+      forged,
+    );
+    commit(f.root, 'forge redaction claim');
+    expect(check(f.root, scoped).blocking).toContainEqual(
+      expect.objectContaining({ rule: 'note-removed', path: original }),
+    );
+  });
+
   it('blocks a PR that deletes a note the merge base holds', () => {
     const f = prWithBaseNote();
     const [note] = noteFiles(f.root);

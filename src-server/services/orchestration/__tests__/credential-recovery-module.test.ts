@@ -484,6 +484,224 @@ describe('CredentialRecoveryModule', () => {
     restarted.close();
   });
 
+  /** A prior process left one accepted, linked receipt for startup to settle. */
+  async function persistAcceptedLinkedReceipt() {
+    const { eventStore, databasePath, intent } = fixture();
+    const first = createCredentialRecoveryModuleForTest({
+      eventStore,
+      adapter: { stage: vi.fn(async () => credentialAttempt()) },
+      restartResume: vi.fn(async () => ({ turnId: 'turn' })),
+      restoreSession: vi.fn(async () => undefined),
+      now: () => new Date('2026-08-12T00:00:00.000Z'),
+    });
+    await expect(
+      first.recover({
+        intent,
+        replay: {
+          threadId: 'thread',
+          input: 'authoritative',
+          recoveryCorrelationId: 'id',
+          signal: new AbortController().signal,
+        },
+      }),
+    ).resolves.toEqual({ kind: 'restarted', turnId: 'turn' });
+    eventStore.close();
+    return { databasePath, intent };
+  }
+
+  /**
+   * The production coordinator's SQLite read behind both startup scans. A
+   * throw here is what SQLITE_BUSY at boot looks like to RecoveryLedger.
+   */
+  function preparedScan(eventStore: EventStore) {
+    return vi.spyOn(
+      eventStore as unknown as {
+        preparedRecoveryDispatches: (...args: unknown[]) => unknown;
+      },
+      'preparedRecoveryDispatches',
+    );
+  }
+
+  const busy = () => {
+    throw Object.assign(new Error('SQLITE_BUSY: database is locked'), {
+      code: 'SQLITE_BUSY',
+    });
+  };
+
+  test('#2823: a startup scan that fails once does not latch reconciliation, and the retry settles the obligation', async () => {
+    const { databasePath, intent } = await persistAcceptedLinkedReceipt();
+    const restarted = new EventStore(databasePath);
+    const scan = preparedScan(restarted).mockImplementationOnce(busy);
+    const inspectStartup = vi.fn(async () => ({
+      kind: 'already-adopted' as const,
+    }));
+    const module = createCredentialRecoveryModuleForTest({
+      eventStore: restarted,
+      // No `rollbackPending`: the exact path where an empty-looking scan used
+      // to report `reconciled` and consume the startup sweep.
+      adapter: {
+        stage: vi.fn(async () => undefined),
+        inspectStartup,
+        acknowledgeStartup: vi.fn(async () => ({ kind: 'applied' as const })),
+      },
+      restartResume: vi.fn(async () => ({ turnId: 'unexpected' })),
+      restoreSession: vi.fn(async () => undefined),
+      now: () => new Date('2026-08-12T00:00:01.000Z'),
+    });
+
+    await expect(module.reconcile()).resolves.toEqual({ kind: 'unavailable' });
+    expect(inspectStartup).not.toHaveBeenCalled();
+    expect(recoveryLedger(restarted).find(intent.fingerprint)).toMatchObject({
+      outcome: 'resumed',
+    });
+
+    // Storage recovered in the same process: the startup sweep runs again
+    // and settles the exact obligation the failed scan could not see.
+    await expect(module.reconcile()).resolves.toEqual({
+      kind: 'reconciled',
+      recovered: 0,
+    });
+    expect(inspectStartup).toHaveBeenCalledOnce();
+    expect(recoveryLedger(restarted).find(intent.fingerprint)).toMatchObject({
+      outcome: 'succeeded',
+    });
+    expect(scan.mock.calls.length).toBeGreaterThanOrEqual(3);
+    restarted.close();
+  });
+
+  test('#2823: a failed startup scan never authorizes the identity-free orphan sweep', async () => {
+    const { databasePath, intent } = await persistAcceptedLinkedReceipt();
+    const restarted = new EventStore(databasePath);
+    preparedScan(restarted).mockImplementationOnce(busy);
+    const rollbackPending = vi.fn(async () => undefined);
+    const inspectStartup = vi.fn(async () => ({
+      kind: 'already-adopted' as const,
+    }));
+    const module = createCredentialRecoveryModuleForTest({
+      eventStore: restarted,
+      adapter: {
+        stage: vi.fn(async () => undefined),
+        inspectStartup,
+        acknowledgeStartup: vi.fn(async () => ({ kind: 'applied' as const })),
+        rollbackPending,
+      },
+      restartResume: vi.fn(async () => ({ turnId: 'unexpected' })),
+      restoreSession: vi.fn(async () => undefined),
+      now: () => new Date('2026-08-12T00:00:01.000Z'),
+    });
+
+    const first = await module.reconcile();
+    // The hidden linked receipt suppresses broad cleanup; an unreadable scan
+    // cannot prove there is none.
+    expect(rollbackPending).not.toHaveBeenCalledWith(undefined);
+    expect(first).toEqual({ kind: 'unavailable' });
+
+    await expect(module.reconcile()).resolves.toEqual({
+      kind: 'reconciled',
+      recovered: 0,
+    });
+    expect(inspectStartup).toHaveBeenCalledOnce();
+    expect(rollbackPending).not.toHaveBeenCalledWith(undefined);
+    expect(recoveryLedger(restarted).find(intent.fingerprint)).toMatchObject({
+      outcome: 'succeeded',
+    });
+    restarted.close();
+  });
+
+  test('#2823: a startup scan that keeps failing reports unavailable on every attempt, never reconciled', async () => {
+    const { databasePath, intent } = await persistAcceptedLinkedReceipt();
+    const restarted = new EventStore(databasePath);
+    const scan = preparedScan(restarted).mockImplementation(busy);
+    const inspectStartup = vi.fn(async () => ({
+      kind: 'already-adopted' as const,
+    }));
+    const module = createCredentialRecoveryModuleForTest({
+      eventStore: restarted,
+      adapter: {
+        stage: vi.fn(async () => undefined),
+        inspectStartup,
+        acknowledgeStartup: vi.fn(async () => ({ kind: 'applied' as const })),
+      },
+      restartResume: vi.fn(async () => ({ turnId: 'unexpected' })),
+      restoreSession: vi.fn(async () => undefined),
+      now: () => new Date('2026-08-12T00:00:01.000Z'),
+    });
+
+    await expect(module.reconcile()).resolves.toEqual({ kind: 'unavailable' });
+    const afterFirst = scan.mock.calls.length;
+    await expect(module.reconcile()).resolves.toEqual({ kind: 'unavailable' });
+    // Each attempt re-reads storage rather than replaying a cached verdict.
+    expect(scan.mock.calls.length).toBeGreaterThan(afterFirst);
+    expect(inspectStartup).not.toHaveBeenCalled();
+    expect(recoveryLedger(restarted).find(intent.fingerprint)).toMatchObject({
+      outcome: 'resumed',
+    });
+    restarted.close();
+  });
+
+  test('#2823: a failed legacy-row scan alone keeps readiness unknown and suppresses the orphan sweep', async () => {
+    const { eventStore } = fixture();
+    const store = eventStore as unknown as {
+      preparedRecoveryDispatches: (
+        kind?: 'due' | 'profile',
+        unlinkedOnly?: boolean,
+      ) => unknown;
+    };
+    const read = store.preparedRecoveryDispatches.bind(eventStore);
+    let legacyFailures = 1;
+    preparedScan(eventStore).mockImplementation((...args: unknown[]) => {
+      // Only the identity-free legacy read (`unlinkedOnly`) fails, once.
+      if (args[1] === true && legacyFailures-- > 0) busy();
+      return read(...(args as Parameters<typeof read>));
+    });
+    const rollbackPending = vi.fn(async () => undefined);
+    const module = createCredentialRecoveryModuleForTest({
+      eventStore,
+      adapter: { stage: vi.fn(async () => undefined), rollbackPending },
+      restartResume: vi.fn(async () => ({ turnId: 'unexpected' })),
+      restoreSession: vi.fn(async () => undefined),
+      now: () => new Date('2026-08-12T00:00:01.000Z'),
+    });
+
+    const first = await module.reconcile();
+    expect(rollbackPending).not.toHaveBeenCalledWith(undefined);
+    expect(first).toEqual({ kind: 'unavailable' });
+    // Readable again: the sweep reruns, finds nothing, and may now clean up.
+    await expect(module.reconcile()).resolves.toEqual({
+      kind: 'reconciled',
+      recovered: 0,
+    });
+    expect(rollbackPending).toHaveBeenCalledWith(undefined);
+    eventStore.close();
+  });
+
+  test('#2823 control: a genuinely empty startup scan reconciles and latches the sweep', async () => {
+    const { eventStore } = fixture();
+    const scan = preparedScan(eventStore);
+    const module = createCredentialRecoveryModuleForTest({
+      eventStore,
+      adapter: { stage: vi.fn(async () => undefined) },
+      restartResume: vi.fn(async () => ({ turnId: 'unexpected' })),
+      restoreSession: vi.fn(async () => undefined),
+      now: () => new Date('2026-08-12T00:00:01.000Z'),
+    });
+
+    await expect(module.reconcile()).resolves.toEqual({
+      kind: 'reconciled',
+      recovered: 0,
+    });
+    const startupScans = scan.mock.calls.length;
+    // One exact and one legacy read.
+    expect(startupScans).toBe(2);
+    await expect(module.reconcile()).resolves.toEqual({
+      kind: 'reconciled',
+      recovered: 0,
+    });
+    // Latched: a later call drains scoped compensation only, never re-scans.
+    expect(scan.mock.calls.length).toBe(startupScans);
+    eventStore.close();
+  });
+
   test('holds concurrent recovery behind the one startup sweep, then shares its claim and commit', async () => {
     const { eventStore, intent } = fixture();
     let releaseOrphanSweep: (() => void) | undefined;

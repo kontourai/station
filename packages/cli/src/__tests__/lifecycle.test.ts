@@ -30,11 +30,18 @@ import {
   readInstanceRegistry,
   upsertInstance,
 } from '@kontourai/station-shared/instance-registry';
-import { readLifecycleEvents } from '@kontourai/station-shared/lifecycle-events';
+import {
+  acquireFileMutationLock,
+  readLifecycleEvents,
+} from '@kontourai/station-shared/lifecycle-events';
 import {
   admitStationRuntimeHome,
   resolveStationRoot,
 } from '@kontourai/station-shared/runtime-path-resolver';
+import {
+  acquireStationHomeMaintenanceLease,
+  acquireStationHomeRuntimeLease,
+} from '@kontourai/station-shared/station-home-lifecycle';
 import {
   ensureStationHomeSchemaSync,
   STATION_HOME_RESET_COMMAND,
@@ -53,6 +60,9 @@ import {
   INTERNAL_PROXY_CALLER_HEADER,
 } from '../../../../src-server/utils/internal-api-token.js';
 import type { Logger } from '../../../../src-server/utils/logger.js';
+import { renderLaunchdPlist } from '../commands/service-launchd.js';
+import { renderSystemdUnit } from '../commands/service-systemd.js';
+import { plutilJson } from './helpers/launchd-plist-fixture.js';
 import {
   reapAllLongRunningFixtureChildren,
   spawnLongRunningFixtureChild,
@@ -555,16 +565,47 @@ function currentServicePlatform(): 'darwin' | 'linux' | 'win32' {
   throw new Error(`unsupported test platform: ${process.platform}`);
 }
 
-function writeStaleServiceManifest(home: string, instanceId: string): string {
+/**
+ * A service the real unit writers rendered, with a pre-Interactive launchd
+ * ProcessType (systemd's stale Nice= comes from `systemctl cat`, below).
+ * `location` is what the unit runs: by default a source checkout.
+ */
+function writeStaleServiceManifest(
+  home: string,
+  instanceId: string,
+  location: Pick<
+    Parameters<typeof renderSystemdUnit>[0],
+    'installRoot' | 'kind' | 'nodePath' | 'repoPath'
+  > = { nodePath: '/usr/bin/node', repoPath: '/srv/station' },
+  stationRoot?: string,
+): string {
   const platform = currentServicePlatform();
   const serviceDirectory = join(home, 'service');
   const unitPath = join(serviceDirectory, `station-${instanceId}.unit`);
   ensureDir(serviceDirectory);
+  const unit = {
+    ...location,
+    instanceId,
+    lifecycle: {
+      baseDir: home,
+      host: '127.0.0.1',
+      serverPort: 3141,
+      stationRoot,
+      uiPort: 3000,
+    } as Parameters<typeof renderSystemdUnit>[0]['lifecycle'],
+    servicePath: '/usr/bin:/bin',
+  };
   writeFileSync(
     unitPath,
     platform === 'linux'
-      ? '[Service]\nExecStart=/station\nNice=10\n'
-      : '<plist><dict><key>ProcessType</key><string>Background</string></dict></plist>',
+      ? renderSystemdUnit(unit)
+      : renderLaunchdPlist({
+          ...unit,
+          label: `io.kontourai.station.${instanceId}`,
+        }).replace(
+          '<key>ProcessType</key><string>Interactive</string>',
+          '<key>ProcessType</key><string>Background</string>',
+        ),
   );
   writeFileSync(
     join(serviceDirectory, `${instanceId}.json`),
@@ -626,11 +667,7 @@ function staleSchedulingSpawnSync(unitPath: string): Mock {
     const probe = stoppedServiceProbe(command, args);
     if (probe) return probe;
     if (process.platform === 'darwin') {
-      return {
-        status: 0,
-        stderr: '',
-        stdout: JSON.stringify({ ProcessType: 'Background' }),
-      };
+      return { status: 0, stderr: '', stdout: plutilJson(unitPath) };
     }
     if (process.platform === 'win32') {
       return { status: 0, stderr: '', stdout: '7\n' };
@@ -638,7 +675,7 @@ function staleSchedulingSpawnSync(unitPath: string): Mock {
     return {
       status: 0,
       stderr: '',
-      stdout: `# ${unitPath}\n[Service]\nExecStart=/station\nNice=10\n`,
+      stdout: `# ${unitPath}\n${readFileSync(unitPath, 'utf8')}\n[Service]\nNice=10\n`,
     };
   });
 }
@@ -1024,6 +1061,9 @@ describe('lifecycle instance state', () => {
     const previous = process.env.STATION_SUPERVISOR_PID;
     const previousStdoutLogs = process.env.STATION_STDOUT_LOGS;
     process.env.STATION_SUPERVISOR_PID = 'stale-supervisor';
+    // A launcher's birth inherited from wherever this CLI runs names that
+    // launcher, not anything supervising this start.
+    vi.stubEnv('STATION_SUPERVISOR_BIRTH', 'stale-launcher-birth');
     // #2674: the unit's marker, inherited by a terminal inside a
     // service-managed Station, must not make this plain start read as one.
     vi.stubEnv('STATION_SERVICE_MANAGED', '1');
@@ -1051,6 +1091,7 @@ describe('lifecycle instance state', () => {
         'STATION_STDOUT_LOGS',
       );
       for (const call of spawn.mock.calls) {
+        expect(call[2].env).not.toHaveProperty('STATION_SUPERVISOR_BIRTH');
         expect(call[2].env).not.toHaveProperty('STATION_SERVICE_MANAGED');
         expect(call[2].env).not.toHaveProperty('STATION_SERVICE_LAUNCHER');
       }
@@ -1092,19 +1133,30 @@ describe('lifecycle instance state', () => {
       platformOverrides: { sleepSync: vi.fn() },
     });
 
+    // The launcher's own-process fingerprint lookup, as service run resolves it.
+    const supervisorBirth = vi.fn(() => 'launcher-birth-12345');
     await lifecycle.start({
       baseDir: TEST_ALT_HOME,
       instanceName: 'supervised-env-scrub',
       serverPort: 3252,
       supervisorPid: 12345,
+      supervisorBirth,
       uiPort: 5282,
     });
 
+    // No supervisor bundle in this build: the server is started directly,
+    // and its parent watchdog needs the launcher's birth (Windows keeps a
+    // dead parent's pid, so the pid alone never fires there).
     expect(spawn.mock.calls[0][2].env).toMatchObject({
       STATION_SUPERVISOR_PID: '12345',
+      STATION_SUPERVISOR_BIRTH: 'launcher-birth-12345',
       STATION_SERVICE_MANAGED: '1',
       STATION_SERVICE_LAUNCHER: '{"protocol":1}',
     });
+    expect(supervisorBirth).toHaveBeenCalledTimes(1);
+    expect(spawn.mock.calls[1][2].env).not.toHaveProperty(
+      'STATION_SUPERVISOR_BIRTH',
+    );
     expect(spawn.mock.calls[1][2].env).not.toHaveProperty(
       'STATION_SUPERVISOR_PID',
     );
@@ -1113,6 +1165,57 @@ describe('lifecycle instance state', () => {
     );
     expect(spawn.mock.calls[1][2].env).not.toHaveProperty(
       'STATION_SERVICE_LAUNCHER',
+    );
+  });
+
+  it('does not ask for the launcher birth when the supervisor runs the server', async () => {
+    ensureDir(TEST_CWD);
+    ensureDir(TEST_ALT_HOME);
+    ensureBuildOutputs('supervised-no-birth');
+    writeFileSync(
+      join(
+        TEST_CWD,
+        'dist-server-supervised-no-birth',
+        'station-supervisor.js',
+      ),
+      '',
+    );
+    const spawn = vi
+      .fn()
+      .mockReturnValueOnce({ pid: 43031, unref: vi.fn() })
+      .mockReturnValueOnce({ pid: 43032, unref: vi.fn() });
+    vi.spyOn(process, 'kill').mockImplementation(((
+      pid: number,
+      signal?: NodeJS.Signals | number,
+    ) => {
+      if (signal === 0 && (pid === 43031 || pid === 43032)) {
+        return true;
+      }
+      throw new Error(`unexpected process.kill(${pid}, ${String(signal)})`);
+    }) as typeof process.kill);
+    vi.stubGlobal('fetch', vi.fn(readyLifecycleFetch));
+    const { lifecycle } = await loadLifecycleModule({
+      childProcessMock: { execSync: vi.fn(), spawn },
+      platformOverrides: { sleepSync: vi.fn() },
+    });
+    const supervisorBirth = vi.fn(() => 'launcher-birth-12345');
+
+    await lifecycle.start({
+      baseDir: TEST_ALT_HOME,
+      instanceName: 'supervised-no-birth',
+      serverPort: 3253,
+      supervisorPid: 12345,
+      supervisorBirth,
+      uiPort: 5283,
+    });
+
+    // The supervisor bundle ran, and it discards the birth: never probed.
+    expect(String(spawn.mock.calls[0][1][0])).toContain(
+      'station-supervisor.js',
+    );
+    expect(supervisorBirth).not.toHaveBeenCalled();
+    expect(spawn.mock.calls[0][2].env).not.toHaveProperty(
+      'STATION_SUPERVISOR_BIRTH',
     );
   });
 
@@ -1206,55 +1309,82 @@ describe('lifecycle instance state', () => {
     }
   });
 
-  it('fails a managed stop without signaling a reused PID or arbitrary port owner', async () => {
-    ensureDir(TEST_CWD);
-    const journal = join(TEST_ROOT, 'reused-lifecycle.jsonl');
-    writeInstanceState({
-      instanceName: 'reused',
-      serverPid: 42001,
-      uiPid: null,
-      bootId: '11111111-1111-4111-8111-111111111111',
-      lifecycleJournal: journal,
-      serverFingerprint: {
-        pid: 42001,
-        startToken: 'managed-start',
-        commandDigest: 'a'.repeat(64),
-      },
-      build: {
-        branch: 'main',
-        builtAt: '2026-07-10T12:00:00.000Z',
-        sha: 'a'.repeat(40),
-      },
-    });
-    const killProcessTree = vi.fn();
-    const killSpy = vi
-      .spyOn(process, 'kill')
-      .mockImplementation((() => true) as typeof process.kill);
-    const { lifecycle } = await loadLifecycleModule({
-      childProcessMock: { execSync: vi.fn(() => '99999\n') },
-      platformOverrides: {
-        killProcessTree,
-        sleepSync: vi.fn(),
-        inspectProcessFingerprint: (pid: number) => ({
-          pid,
-          startToken: 'unrelated-start',
-          commandDigest: 'b'.repeat(64),
-        }),
-      },
-    });
-    try {
-      expect(() => lifecycle.stop({ instanceName: 'reused' })).toThrow(
-        'process fingerprint mismatch',
-      );
-      expect(killProcessTree).not.toHaveBeenCalled();
-      expect(readLifecycleEvents(journal).at(-1)).toMatchObject({
-        type: 'stop_result',
-        result: 'failed',
+  it.each(['stop', 'forced restart'] as const)(
+    'fails %s without signaling a reused PID or rotating its runtime log',
+    async (operation) => {
+      ensureDir(TEST_CWD);
+      ensureBuildOutputs('reused');
+      const runtimeLog = join(TEST_ROOT, 'refused-runtime.log');
+      writeFileSync(runtimeLog, 'retain runtime diagnostics');
+      const journal = join(TEST_ROOT, 'reused-lifecycle.jsonl');
+      writeInstanceState({
+        instanceName: 'reused',
+        serverPid: 42001,
+        uiPid: null,
+        serverPort: 3242,
+        uiPort: 5274,
+        bootId: '11111111-1111-4111-8111-111111111111',
+        lifecycleJournal: journal,
+        serverFingerprint: {
+          pid: 42001,
+          startToken: 'managed-start',
+          commandDigest: 'a'.repeat(64),
+        },
+        build: {
+          branch: 'main',
+          builtAt: '2026-07-10T12:00:00.000Z',
+          sha: 'a'.repeat(40),
+        },
       });
-    } finally {
-      killSpy.mockRestore();
-    }
-  });
+      const killProcessTree = vi.fn();
+      const spawn = vi.fn();
+      const killSpy = vi
+        .spyOn(process, 'kill')
+        .mockImplementation((() => true) as typeof process.kill);
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: { execSync: vi.fn(() => ''), spawn },
+        platformOverrides: {
+          killProcessTree,
+          sleepSync: vi.fn(),
+          inspectProcessFingerprint: (pid: number) => ({
+            pid,
+            startToken: 'unrelated-start',
+            commandDigest: 'b'.repeat(64),
+          }),
+        },
+      });
+      try {
+        if (operation === 'stop') {
+          expect(() => lifecycle.stop({ instanceName: 'reused' })).toThrow(
+            'process fingerprint mismatch',
+          );
+        } else {
+          await expect(
+            lifecycle.start({
+              instanceName: 'reused',
+              force: true,
+              serverPort: 3242,
+              uiPort: 5274,
+              logFile: runtimeLog,
+              rotateLogOnRestart: true,
+            }),
+          ).rejects.toThrow('process fingerprint mismatch');
+        }
+        expect(killProcessTree).not.toHaveBeenCalled();
+        expect(spawn).not.toHaveBeenCalled();
+        expect(readFileSync(runtimeLog, 'utf8')).toBe(
+          'retain runtime diagnostics',
+        );
+        expect(existsSync(`${runtimeLog}.previous`)).toBe(false);
+        expect(readLifecycleEvents(journal).at(-1)).toMatchObject({
+          type: 'stop_result',
+          result: 'failed',
+        });
+      } finally {
+        killSpy.mockRestore();
+      }
+    },
+  );
 
   it("keeps the state record and refuses to stop when a live process's identity cannot be verified (#2332 item 2)", async () => {
     // A null fingerprint observation (unreadable /proc, a `ps` without a
@@ -1322,6 +1452,318 @@ describe('lifecycle instance state', () => {
     } finally {
       killSpy.mockRestore();
     }
+  });
+
+  describe('on Windows (#2675)', () => {
+    // The real Windows fingerprint probe, with PowerShell replaced by a fake
+    // that answers from a process table. Before #2675 the probe had no
+    // Windows branch and read `ps`, so every Windows record was written
+    // without a fingerprint and stopped on the PID alone.
+    const NODE = 'C:\\Station\\versions\\1.0.0\\runtime\\node.exe';
+    type Entry = { birth: string; image: string };
+    async function windowsProbe(table: Map<number, Entry>) {
+      const real = await vi.importActual<PlatformModule>(
+        '../commands/platform.js',
+      );
+      const exec = (_command: string, args: string[]) => {
+        const pid = Number(
+          /GetProcessById\((\d+)\)/.exec(args.at(-1) ?? '')?.[1],
+        );
+        const entry = table.get(pid);
+        if (!entry) throw Object.assign(new Error('exited 1'), { status: 1 });
+        return `${entry.birth}\r\n${Buffer.from(entry.image, 'utf8').toString('base64')}\r\n`;
+      };
+      const inspect = (pid: number) =>
+        real.inspectProcessFingerprint(pid, {
+          platform: 'win32',
+          exec: exec as never,
+        });
+      const capture = (pid: number) =>
+        real.captureStableProcessFingerprint(pid, {
+          platform: 'win32',
+          inspect,
+        });
+      return { inspect, capture };
+    }
+
+    it('a stop by record does not end a recorded PID Windows reused for another process', async () => {
+      ensureDir(TEST_CWD);
+      const table = new Map<number, Entry>([
+        [47001, { birth: '2026-10-11T09:15:02.1234560Z', image: NODE }],
+      ]);
+      const probe = await windowsProbe(table);
+      const recorded = probe.capture(47001);
+      expect(recorded).not.toBeNull();
+      // Unmanaged: no journal, as the record a launcher's `station stop` by
+      // record finds after the supervisor's own stop.
+      const statePath = writeInstanceState({
+        instanceName: 'win-reused',
+        serverPid: 47001,
+        uiPid: null,
+        serverFingerprint: recorded!,
+      });
+      let alive = true;
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(((
+        pid: number,
+        signal?: NodeJS.Signals | number,
+      ) => {
+        if (signal === 0 && pid === 47001 && !alive) throw new Error('gone');
+        return true;
+      }) as typeof process.kill);
+      const killProcessTree = vi.fn(() => {
+        alive = false;
+      });
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: { execSync: vi.fn(() => '') },
+        platformOverrides: {
+          killProcessTree,
+          sleepSync: vi.fn(),
+          inspectProcessFingerprint: probe.inspect,
+        },
+      });
+      try {
+        // The server exited and Windows gave its PID to a later process.
+        table.set(47001, {
+          birth: '2026-10-11T10:02:44.5000000Z',
+          image: NODE,
+        });
+        // Proven to be another process, so forgetting the record is safe.
+        let refusal = '';
+        try {
+          lifecycle.stop({ instanceName: 'win-reused' });
+        } catch (error) {
+          refusal = (error as Error).message;
+        }
+        expect(refusal).toContain(
+          'Refusing to signal PID 47001: it no longer matches',
+        );
+        expect(refusal).toContain(`remove ${statePath} to forget`);
+        expect(killProcessTree).not.toHaveBeenCalled();
+        expect(existsSync(statePath)).toBe(true);
+
+        // Control: the recorded process itself is ended.
+        table.set(47001, {
+          birth: '2026-10-11T09:15:02.1234560Z',
+          image: NODE,
+        });
+        lifecycle.stop({ instanceName: 'win-reused' });
+        expect(killProcessTree).toHaveBeenCalledWith(47001);
+        expect(existsSync(statePath)).toBe(false);
+      } finally {
+        killSpy.mockRestore();
+      }
+    });
+
+    it('a stop by record that cannot read a live process keeps it and never says to forget it', async () => {
+      ensureDir(TEST_CWD);
+      const table = new Map<number, Entry>([
+        [47021, { birth: '2026-10-11T09:15:02.1234560Z', image: NODE }],
+      ]);
+      const probe = await windowsProbe(table);
+      const recorded = probe.capture(47021);
+      expect(recorded).not.toBeNull();
+      const statePath = writeInstanceState({
+        instanceName: 'win-unread',
+        serverPid: 47021,
+        uiPid: null,
+        serverFingerprint: recorded!,
+      });
+      const killSpy = vi
+        .spyOn(process, 'kill')
+        .mockImplementation((() => true) as typeof process.kill);
+      const killProcessTree = vi.fn();
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: { execSync: vi.fn(() => '') },
+        platformOverrides: {
+          killProcessTree,
+          sleepSync: vi.fn(),
+          inspectProcessFingerprint: probe.inspect,
+        },
+      });
+      try {
+        // Still alive by signal 0, but the probe now fails (a blocked or
+        // timed-out PowerShell, access refused).
+        table.delete(47021);
+        let refusal = '';
+        try {
+          lifecycle.stop({ instanceName: 'win-unread' });
+        } catch (error) {
+          refusal = (error as Error).message;
+        }
+        expect(refusal).toContain(
+          'Refusing to signal PID 47021: it is running, but its identity could not be read',
+        );
+        expect(refusal).toContain('Run `station stop` again.');
+        expect(refusal).not.toContain('remove');
+        expect(refusal).not.toContain(statePath);
+        expect(killProcessTree).not.toHaveBeenCalled();
+        expect(existsSync(statePath)).toBe(true);
+      } finally {
+        killSpy.mockRestore();
+      }
+    });
+
+    it('a supervised stop of a record with no fingerprint says unverified, not mismatch', async () => {
+      ensureDir(TEST_CWD);
+      const journal = join(TEST_ROOT, 'win-unrecorded-lifecycle.jsonl');
+      const table = new Map<number, Entry>([
+        [47031, { birth: '2026-10-11T09:15:02.1000000Z', image: NODE }],
+      ]);
+      const probe = await windowsProbe(table);
+      const statePath = writeInstanceState({
+        instanceName: 'win-unrecorded',
+        serverPid: 47031,
+        uiPid: null,
+        bootId: '11111111-1111-4111-8111-111111111111',
+        lifecycleJournal: journal,
+        build: {
+          branch: 'main',
+          builtAt: '2026-07-10T12:00:00.000Z',
+          sha: 'a'.repeat(40),
+        },
+      });
+      const killSpy = vi
+        .spyOn(process, 'kill')
+        .mockImplementation((() => true) as typeof process.kill);
+      const killProcessTree = vi.fn();
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: { execSync: vi.fn(() => '') },
+        platformOverrides: {
+          killProcessTree,
+          sleepSync: vi.fn(),
+          inspectProcessFingerprint: probe.inspect,
+        },
+      });
+      try {
+        let refusal = '';
+        try {
+          lifecycle.stop({ instanceName: 'win-unrecorded' });
+        } catch (error) {
+          refusal = (error as Error).message;
+        }
+        expect(refusal).toContain(
+          'its server PID 47031 is running, but its identity could not be verified (its start recorded no fingerprint to check it against)',
+        );
+        expect(refusal).not.toContain('mismatch');
+        expect(killProcessTree).not.toHaveBeenCalled();
+        expect(existsSync(statePath)).toBe(true);
+      } finally {
+        killSpy.mockRestore();
+      }
+    });
+
+    it('a supervised stop names every process it could not verify', async () => {
+      ensureDir(TEST_CWD);
+      const journal = join(TEST_ROOT, 'win-both-unread-lifecycle.jsonl');
+      const table = new Map<number, Entry>([
+        [47041, { birth: '2026-10-11T09:15:02.1000000Z', image: NODE }],
+        [47042, { birth: '2026-10-11T09:15:02.3000000Z', image: NODE }],
+      ]);
+      const probe = await windowsProbe(table);
+      const statePath = writeInstanceState({
+        instanceName: 'win-both-unread',
+        serverPid: 47041,
+        uiPid: 47042,
+        bootId: '11111111-1111-4111-8111-111111111111',
+        lifecycleJournal: journal,
+        serverFingerprint: probe.capture(47041) ?? undefined,
+        uiFingerprint: probe.capture(47042) ?? undefined,
+        build: {
+          branch: 'main',
+          builtAt: '2026-07-10T12:00:00.000Z',
+          sha: 'a'.repeat(40),
+        },
+      });
+      const killSpy = vi
+        .spyOn(process, 'kill')
+        .mockImplementation((() => true) as typeof process.kill);
+      const killProcessTree = vi.fn();
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: { execSync: vi.fn(() => '') },
+        platformOverrides: {
+          killProcessTree,
+          sleepSync: vi.fn(),
+          inspectProcessFingerprint: probe.inspect,
+        },
+      });
+      try {
+        // Both still alive, neither readable now.
+        table.clear();
+        let refusal = '';
+        try {
+          lifecycle.stop({ instanceName: 'win-both-unread' });
+        } catch (error) {
+          refusal = (error as Error).message;
+        }
+        expect(refusal).toContain(
+          'its server PID 47041 is running, but its identity could not be verified',
+        );
+        expect(refusal).toContain(
+          'its ui PID 47042 is running, but its identity could not be verified',
+        );
+        expect(refusal).toContain('Check what PID 47041 and PID 47042 are');
+        expect(killProcessTree).not.toHaveBeenCalled();
+        expect(existsSync(statePath)).toBe(true);
+      } finally {
+        killSpy.mockRestore();
+      }
+    });
+
+    it("a supervised stop proves its server and UI and ends both (#3361's refusal)", async () => {
+      ensureDir(TEST_CWD);
+      const journal = join(TEST_ROOT, 'win-supervised-lifecycle.jsonl');
+      const table = new Map<number, Entry>([
+        [47011, { birth: '2026-10-11T09:15:02.1000000Z', image: NODE }],
+        [47012, { birth: '2026-10-11T09:15:02.3000000Z', image: NODE }],
+      ]);
+      const probe = await windowsProbe(table);
+      const statePath = writeInstanceState({
+        instanceName: 'win-supervised',
+        serverPid: 47011,
+        uiPid: 47012,
+        bootId: '11111111-1111-4111-8111-111111111111',
+        lifecycleJournal: journal,
+        serverFingerprint: probe.capture(47011) ?? undefined,
+        uiFingerprint: probe.capture(47012) ?? undefined,
+        build: {
+          branch: 'main',
+          builtAt: '2026-07-10T12:00:00.000Z',
+          sha: 'a'.repeat(40),
+        },
+      });
+      const alive = new Set([47011, 47012]);
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(((
+        pid: number,
+        signal?: NodeJS.Signals | number,
+      ) => {
+        if (signal === 0 && (pid === 47011 || pid === 47012) && !alive.has(pid))
+          throw new Error('gone');
+        return true;
+      }) as typeof process.kill);
+      const killProcessTree = vi.fn((pid: number) => {
+        alive.delete(pid);
+      });
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: { execSync: vi.fn(() => '') },
+        platformOverrides: {
+          killProcessTree,
+          sleepSync: vi.fn(),
+          inspectProcessFingerprint: probe.inspect,
+        },
+      });
+      try {
+        lifecycle.stop({ instanceName: 'win-supervised' });
+        expect(killProcessTree).toHaveBeenCalledWith(47011);
+        expect(killProcessTree).toHaveBeenCalledWith(47012);
+        expect(existsSync(statePath)).toBe(false);
+        expect(readLifecycleEvents(journal).at(-1)).toMatchObject({
+          type: 'stop_result',
+          result: 'completed',
+        });
+      } finally {
+        killSpy.mockRestore();
+      }
+    });
   });
 
   it('still reclaims state when every tracked pid is confirmed dead despite a null fingerprint observation', async () => {
@@ -1953,6 +2395,66 @@ describe('lifecycle instance state', () => {
       admitStationRuntimeHome(TEST_ALT_HOME, childEnv),
     ).not.toThrow();
   });
+
+  it.each([true, false])(
+    'prints a first-start notice before asynchronous server receipt publication (new=%s)',
+    async (fresh) => {
+      ensureDir(TEST_CWD);
+      ensureBuildOutputs('notice-test');
+      ensureDir(join(TEST_ALT_HOME, 'config'));
+      ensureStationHomeSchemaSync(TEST_ALT_HOME);
+      const { LITE_TELEMETRY_INVENTORY_REVISION } = await import(
+        '@kontourai/station-shared/product-telemetry'
+      );
+      const receipt = (shownAt: string) =>
+        writeFileSync(
+          join(TEST_ALT_HOME, 'config', 'telemetry-daily.json'),
+          JSON.stringify({
+            notices: Object.fromEntries(
+              ['kontour', 'operator'].map((publisher) => [
+                publisher,
+                {
+                  publisher,
+                  inventoryRevision: LITE_TELEMETRY_INVENTORY_REVISION,
+                  shownAt,
+                },
+              ]),
+            ),
+          }),
+        );
+      if (!fresh) receipt('2020-01-01T00:00:00.000Z');
+      const spawn = vi
+        .fn()
+        .mockReturnValueOnce({ pid: 41001, unref: vi.fn() })
+        .mockReturnValueOnce({ pid: 41002, unref: vi.fn() });
+      vi.spyOn(process, 'kill').mockImplementation(((
+        pid: number,
+        signal: unknown,
+      ) => {
+        if (signal === 0 && (pid === 41001 || pid === 41002)) return true;
+        throw new Error('Unexpected process signal');
+      }) as typeof process.kill);
+      vi.stubGlobal('fetch', vi.fn(readyLifecycleFetch));
+      vi.spyOn(console, 'log').mockImplementation(() => {});
+      const stderr = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: { execSync: vi.fn(), spawn },
+        platformOverrides: { sleepSync: vi.fn() },
+      });
+      await lifecycle.start({
+        baseDir: TEST_ALT_HOME,
+        homeSource: '--base',
+        instanceName: 'notice-test',
+        serverPort: 43180,
+        uiPort: 43190,
+      });
+      expect(
+        stderr.mock.calls.filter(([message]) =>
+          String(message).includes('Station usage sharing:'),
+        ),
+      ).toHaveLength(fresh ? 1 : 0);
+    },
+  );
 
   it('writes per-instance state and injects instance env on start', async () => {
     vi.stubEnv('STATION_HOME_SOURCE', '--temp-home');
@@ -3797,6 +4299,137 @@ describe('homeReset (station#1913)', () => {
   });
 });
 
+describe('home mutation custody', () => {
+  it.each(['clean', 'reset'] as const)(
+    '%s preserves a leased home, then succeeds after the runtime releases it',
+    async (operation) => {
+      ensureDir(TEST_CWD);
+      ensureOwnerControlledStationHome(TEST_ALT_HOME);
+      ensureBuildOutputs('leased-home');
+      const sentinel = join(TEST_ALT_HOME, 'kept.txt');
+      writeFileSync(sentinel, 'retained runtime state');
+      const { lifecycle } = await loadLifecycleModule();
+      const runtime = acquireStationHomeRuntimeLease(TEST_ALT_HOME);
+      const mutate = async () => {
+        const options = {
+          homeSource: '--base' as const,
+          projectHome: TEST_ALT_HOME,
+          instanceName: 'leased-home',
+          serverPort: 3242,
+          uiPort: 5274,
+        };
+        if (operation === 'clean') {
+          await lifecycle.clean({ ...options, force: true });
+          return undefined;
+        }
+        return lifecycle.homeReset({ ...options, confirm: true });
+      };
+      try {
+        await expect(mutate()).rejects.toMatchObject({
+          code: 'STATION_HOME_ACTIVE',
+        });
+        expect(readFileSync(sentinel, 'utf8')).toBe('retained runtime state');
+        expect(existsSync(join(TEST_CWD, 'dist-server-leased-home'))).toBe(
+          true,
+        );
+        runtime.release();
+        const result = await mutate();
+        expect(existsSync(TEST_ALT_HOME)).toBe(false);
+        if (operation === 'reset') {
+          expect(result?.archived).toBe(true);
+          expect(
+            readFileSync(join(result!.archivePath!, 'kept.txt'), 'utf8'),
+          ).toBe('retained runtime state');
+        } else {
+          expect(existsSync(join(TEST_CWD, 'dist-server-leased-home'))).toBe(
+            false,
+          );
+        }
+      } finally {
+        runtime.release();
+      }
+    },
+  );
+
+  it.each([
+    { operation: 'clean', failMutation: false },
+    { operation: 'reset', failMutation: false },
+    { operation: 'clean', failMutation: true },
+    { operation: 'reset', failMutation: true },
+  ] as const)(
+    '$operation excludes other maintenance through mutation and releases afterward (failure=$failMutation)',
+    async ({ operation, failMutation }) => {
+      ensureDir(TEST_CWD);
+      ensureOwnerControlledStationHome(TEST_ALT_HOME);
+      writeFileSync(join(TEST_ALT_HOME, 'kept.txt'), 'retained runtime state');
+      const actualFs = await vi.importActual<FsModule>('node:fs');
+      const mutationError = new Error('home mutation failed');
+      let inspected = false;
+      const inspectOwnership = () => {
+        inspected = true;
+        let competing:
+          | ReturnType<typeof acquireStationHomeMaintenanceLease>
+          | undefined;
+        let refusal: unknown;
+        try {
+          competing = acquireStationHomeMaintenanceLease(TEST_ALT_HOME, {
+            acquireMutationLock: (path) =>
+              acquireFileMutationLock(path, { timeoutMs: 0 }),
+          });
+        } catch (error) {
+          refusal = error;
+        } finally {
+          competing?.release();
+        }
+        expect(refusal).toMatchObject({
+          message: 'lifecycle journal lock is held by a live process',
+        });
+        if (failMutation) throw mutationError;
+      };
+      const { lifecycle } = await loadLifecycleModule({
+        fsOverrides: {
+          rmSync: (path, options) => {
+            if (operation === 'clean' && path === TEST_ALT_HOME)
+              inspectOwnership();
+            return actualFs.rmSync(path, options);
+          },
+          renameSync: (source, destination) => {
+            if (operation === 'reset' && source === TEST_ALT_HOME)
+              inspectOwnership();
+            return actualFs.renameSync(source, destination);
+          },
+        },
+      });
+      const options = {
+        homeSource: '--base' as const,
+        projectHome: TEST_ALT_HOME,
+        instanceName: 'owned-home',
+        serverPort: 3242,
+        uiPort: 5274,
+      };
+      const mutate = async () => {
+        if (operation === 'clean') {
+          await lifecycle.clean({ ...options, force: true });
+        } else {
+          lifecycle.homeReset({ ...options, confirm: true });
+        }
+      };
+      if (failMutation) {
+        await expect(mutate()).rejects.toBe(mutationError);
+      } else {
+        await mutate();
+      }
+      expect(inspected).toBe(true);
+      expect(existsSync(TEST_ALT_HOME)).toBe(failMutation);
+      const maintenance = acquireStationHomeMaintenanceLease(TEST_ALT_HOME, {
+        acquireMutationLock: (path) =>
+          acquireFileMutationLock(path, { timeoutMs: 0 }),
+      });
+      maintenance.release();
+    },
+  );
+});
+
 describe('home verify (station#3218)', () => {
   it('refuses a home that does not exist instead of reporting it clean', async () => {
     // The operator trap: `--base` with a typo in it holds no stores, every
@@ -4808,12 +5441,20 @@ describe('upgrade', () => {
   });
 
   it.each([
-    { runtimeChannel: 'stable', releaseChannel: 'stable' },
-    { runtimeChannel: 'beta', releaseChannel: 'preview' },
-    { runtimeChannel: 'nightly', releaseChannel: 'nightly' },
+    { runtimeChannel: 'stable', releaseChannel: 'stable', launcher: 'station' },
+    {
+      runtimeChannel: 'beta',
+      releaseChannel: 'preview',
+      launcher: 'station-beta',
+    },
+    {
+      runtimeChannel: 'nightly',
+      releaseChannel: 'nightly',
+      launcher: 'station-nightly',
+    },
   ] as const)(
     'delegates a signed packaged $runtimeChannel upgrade through the installer with the persisted release ring',
-    async ({ runtimeChannel, releaseChannel }) => {
+    async ({ runtimeChannel, releaseChannel, launcher }) => {
       const installRoot = join(TEST_ROOT, `portable-${runtimeChannel}`);
       const release = join(installRoot, 'releases', 'a'.repeat(64));
       const stationHome = join(TEST_ROOT, `home-${runtimeChannel}`);
@@ -4858,9 +5499,18 @@ describe('upgrade', () => {
 
       const execFileSync = vi.fn();
       const execSync = vi.fn();
+      // The unit runs this install's service launcher (#2675 D), installed
+      // through it, so it carries the root that launcher exports.
       const unitPath = writeStaleServiceManifest(
         stationHome,
         'packaged-guidance',
+        {
+          kind: 'archive',
+          installRoot,
+          nodePath: join(installRoot, 'current', 'runtime', 'bin', 'node'),
+          repoPath: join(installRoot, 'current'),
+        },
+        join(TEST_ROOT, `root-${runtimeChannel}`),
       );
       const { lifecycle } = await loadLifecycleModule({
         cwd: release,
@@ -4909,8 +5559,11 @@ describe('upgrade', () => {
         expect(log.mock.calls.flat().join('\n')).toContain(
           'Service scheduling is stale for packaged-guidance',
         );
+        // The reinstall names the ring's launcher, which owns this install
+        // (#4189). A Windows remedy reads the manifest, which this fixture
+        // writes without the archive fields.
         expect(log.mock.calls.flat().join('\n')).toContain(
-          `station service install --instance=packaged-guidance --base=${stationHome} --port=3141 --ui-port=3000 --host=127.0.0.1`,
+          `Run "${process.platform === 'win32' ? 'station' : launcher} service install --instance=packaged-guidance --base=${stationHome} --port=3141 --ui-port=3000 --host=127.0.0.1"`,
         );
         expect(execSync).not.toHaveBeenCalled();
       } finally {
@@ -5409,7 +6062,12 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
     backendPrefixes?: string[];
     backendNavigationPrefixes?: string[];
     readinessFile?: string;
-    identity?: { instanceId: string; sha: string; bootId: string };
+    identity?: {
+      instanceId: string;
+      sha: string;
+      bootId: string;
+      supervised?: boolean;
+    };
     internalApiToken?: string;
     trustedTailscaleServeOrigin?: string;
     hostedTenantAuthorities?: Record<string, string>;
@@ -5432,6 +6090,9 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
       upstreamPort,
       backendPrefixes:
         opts?.backendPrefixes ?? lifecycle.UI_PROXY_BACKEND_PREFIXES,
+      backendExcludedPrefixes: (
+        await import('../commands/ui-proxy-prefixes.js')
+      ).UI_PROXY_EXCLUDED_PREFIXES,
       backendNavigationPrefixes:
         opts?.backendNavigationPrefixes ??
         lifecycle.UI_PROXY_BACKEND_NAVIGATION_PREFIXES,
@@ -5467,6 +6128,42 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
       socket.on('error', reject);
     });
   }
+
+  test('a supervised backend that handed off to a rebuilt bundle stays ready; a direct one with another sha does not', async () => {
+    uiDir = makeTrackedUiDir('station-ui-supervised-');
+    await startUpstream((req, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify(
+          req.url === '/api/system/identity'
+            ? { instanceId: 'work', bootId: 'boot-1', sha: 'b'.repeat(40) }
+            : {},
+        ),
+      );
+    });
+    const started = {
+      instanceId: 'work',
+      bootId: 'boot-1',
+      sha: 'a'.repeat(40),
+    };
+    const readiness = async (
+      identity: typeof started & { supervised?: boolean },
+    ) => {
+      const { server, port } = await startServer({ identity });
+      try {
+        return (await fetch(`http://127.0.0.1:${port}/api/system/readiness`))
+          .status;
+      } finally {
+        server.close();
+      }
+    };
+    expect(await readiness(started)).toBe(503);
+    expect(await readiness({ ...started, supervised: true })).toBe(200);
+    // The boot id still has to be this start's: a lost port race fails.
+    expect(
+      await readiness({ ...started, bootId: 'boot-2', supervised: true }),
+    ).toBe(503);
+  });
 
   afterEach(() => {
     if (uiDir && existsSync(uiDir))
@@ -6273,6 +6970,56 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
     );
     expect(res.status).toBe(200);
     expect(upstreamHits).toEqual(['/observability/status']);
+  });
+
+  it('outside OAuth and MCP paths never reach the UI proxy backend, including well-known and mutation fallbacks', async () => {
+    uiDir = makeTrackedUiDir('station-ui-outside-oauth-');
+    writeFileSync(join(uiDir, 'index.html'), '<head></head><body>app</body>');
+    await startUpstream((_req, res) => {
+      res.writeHead(200);
+      res.end('backend');
+    });
+    serverModule = await startServer();
+    for (const pathname of [
+      '/oauth/register',
+      '/oauth/authorize',
+      '/oauth/token',
+      '/mcp',
+      '/.well-known/oauth-protected-resource',
+      '/.well-known/oauth-protected-resource/mcp',
+      '/.well-known/oauth-authorization-server',
+      '/%6fauth/token',
+      '/.well-known/oauth-protected%2dresource/mcp',
+    ]) {
+      for (const method of ['GET', 'POST', 'OPTIONS']) {
+        const response = await fetch(
+          `http://127.0.0.1:${serverModule.port}${pathname}`,
+          { method, headers: { accept: 'application/json' } },
+        );
+        expect(response.status, `${method} ${pathname}`).toBe(404);
+      }
+    }
+    expect(upstreamHits).toHaveLength(0);
+    const { UI_PROXY_BACKEND_PREFIXES } = await import(
+      '../commands/ui-proxy-prefixes.js'
+    );
+    // A broader ancestor would forward the protected exact leaf too.
+    expect(
+      UI_PROXY_BACKEND_PREFIXES.some((prefix) => '/mcp'.startsWith(prefix)),
+    ).toBe(false);
+    for (const prefix of UI_PROXY_BACKEND_PREFIXES)
+      expect([
+        '/oauth',
+        '/mcp',
+        '/.well-known/oauth-protected-resource',
+        '/.well-known/oauth-authorization-server',
+      ]).not.toContain(prefix);
+    const response = await fetch(
+      `http://127.0.0.1:${serverModule.port}/.well-known/station/v1`,
+      { headers: { accept: 'application/json' } },
+    );
+    expect(response.status).toBe(200);
+    expect(upstreamHits).toEqual(['/.well-known/station/v1']);
   });
 
   it('proxies the public environment handshake through the production UI listener', async () => {

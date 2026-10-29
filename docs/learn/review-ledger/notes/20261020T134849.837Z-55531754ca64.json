@@ -1,0 +1,7 @@
+{
+  "revision": "d9b88f154cb28fb2646edc8552b2d6a70018ecf2",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"#3800: only a comment on the existing codex-project-config.process.test.ts manifest entry changed (it now also runs codex sandbox probes on macOS); its group membership and the manifest rules this document states are unchanged.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "revision": "ebeda186e1c14f121cd134ce3df201a1d5c8b892",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed the accumulated packages/contracts/package.json exports delta: ./station-groups now publicly exports src/station-groups.ts. Read the groups module Admin/Member/default vocabulary, governed scope ceilings, no authority grant cap and assignment/person types; the existing contracts table row accurately describes these exports. No task-room contract or runtime behavior changes, and no browser/provider qualification claimed.","inputs":["docs/reference/contracts.md","packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed the accumulated contracts exports delta adding only ./station-groups. The task-room-work public export is retained with the same target. Read the Task room request owners/transport/read-admission/version-negotiation claims: additive unrelated group export does not change these contracts, durable request path or current acceptance limits. No expanded room/browser/provider qualification claimed.","inputs":["docs/design/task-room-agent-requests.md","packages/contracts/package.json#/exports"]}
+  ]
+}

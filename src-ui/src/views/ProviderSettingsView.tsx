@@ -112,8 +112,13 @@ export function ProviderSettingsView({
       connectionEngineId(connection) !== 'station' &&
       (connection as Partial<AgentConnectionView>).setup?.state === 'available',
   );
+  // Public registry listings are offered only by Add engine, in their own
+  // group and behind the confirm step that shows what they run.
   const commandChoices = acpRegistry.filter(
-    (entry) => !entry.installed && !configuredACPIds.has(entry.id),
+    (entry) =>
+      !entry.installed &&
+      !configuredACPIds.has(entry.id) &&
+      entry.source !== 'registry',
   );
 
   formRef.current = form;
@@ -539,7 +544,7 @@ export function ProviderSettingsView({
       emptyContent={
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {/*
-            M2 (delta review round 3): this panel's own "nothing to select"
+            This panel's own "nothing to select"
             label duplicated whichever fact the list pane had already
             stated — "No model connections yet" (listEmptyTitle, when
             llmEmbeddingProviders is empty) or "Nothing in model

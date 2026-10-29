@@ -1,16 +1,18 @@
 // Slash command plugin system
 import type { QueryClient } from '@tanstack/react-query';
+import type { AgentData } from '../contexts/AgentsContext';
+import type { ChatUIState } from '../contexts/active-chats-state';
 import type { BindingStatus } from '../utils/execution';
 
 export type SlashCommandContext = {
   sessionId: string;
-  chatState: any;
-  agent: any;
+  chatState: ChatUIState;
+  agent: AgentData | undefined;
   args: string[];
   apiBase: string;
   availableModels?: Array<{ id: string; name: string; originalId?: string }>;
   bindingStatus?: BindingStatus;
-  updateChat: (sessionId: string, updates: any) => void;
+  updateChat: (sessionId: string, updates: Partial<ChatUIState>) => void;
   addEphemeralMessage: (
     sessionId: string,
     message: {

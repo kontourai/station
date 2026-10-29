@@ -1,7 +1,10 @@
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { ACPConfig } from '@kontourai/station-contracts/acp';
+import {
+  type ACPConfig,
+  normalizeACPArgs,
+} from '@kontourai/station-contracts/acp';
 import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import type {
   SkillCommand,
@@ -17,6 +20,7 @@ import {
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { normalizePersistedToolServerReason } from '../security/tool-server-reason.js';
 import { IntegrationIconAssets } from '../services/plugins/integration-icon-assets.js';
+import { readIntegrationOrigin } from '../services/plugins/integration-origin.js';
 import {
   removePrincipalToolServerCredentials,
   ToolServerCredentialStore,
@@ -359,6 +363,8 @@ export async function listIntegrationMetadata(
           : {}),
         transport: def.transport,
         source: def.command || def.endpoint,
+        origin: readIntegrationOrigin(projectHomeDir, def),
+        credentialOwnership: def.credentialOwnership,
         enabled: def.enabled !== false,
         disabledTools: def.disabledTools,
         probe: sanitizeProbeProjection(def.probe),
@@ -426,7 +432,7 @@ export async function listSkillConfigs(
  * another skill's identity — `resolveSkillName` would route that skill's legacy
  * ids to it, and an update reads `name` back off the record, so a record
  * claiming `foo` under `<home>/skills/bar` renamed `bar` to `foo` on a request
- * that asked for no rename at all (review round 2, L3).
+ * that asked for no rename at all.
  *
  * THE rule, exported so both readers share it rather than restate it: this
  * loader, and `SkillService`'s read of the record beside a discovered body.
@@ -507,7 +513,14 @@ export async function loadACPConfigFile(
   if (!existsSync(path)) return { connections: [] };
   const parsed = JSON.parse(await readFile(path, 'utf-8')) as unknown;
   assertACPConfig(parsed);
-  return parsed;
+  return {
+    ...parsed,
+    connections: parsed.connections.map((connection) =>
+      connection.args
+        ? { ...connection, args: normalizeACPArgs(connection.args) }
+        : connection,
+    ),
+  };
 }
 
 function assertACPConfig(value: unknown): asserts value is ACPConfig {

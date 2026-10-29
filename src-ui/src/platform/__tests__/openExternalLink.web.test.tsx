@@ -12,7 +12,7 @@ import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('../../contexts/ActiveChatsContext', () => ({
-  useAllActiveChats: () => ({}),
+  useActiveChatIds: () => [],
 }));
 vi.mock('../../contexts/NavigationContext', () => ({
   useNavigationActions: () => ({ navigate: vi.fn() }),

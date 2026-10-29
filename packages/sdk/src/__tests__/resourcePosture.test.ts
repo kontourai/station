@@ -44,7 +44,7 @@ describe('resourcePosture SDK domain', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       1,
       'http://example.test/api/system/resource-posture',
-      { headers: { 'X-Station-Client-Protocol': '2' } },
+      { headers: { 'X-Station-Client-Protocol': '4' } },
     );
     expect(fetch).toHaveBeenCalledTimes(1);
   });

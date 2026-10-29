@@ -1,0 +1,7 @@
+{
+  "revision": "7d2f624081a79b22f4166bb996431ea913d3ec80",
+
+  "notes": [
+    {"path":"docs/user/workspace-checkpoints.md","note":"Reviewed against MessageBubble.tsx: the footer bar wrapper and chip label do not touch changed files, checkpoint restore or settle-only visibility; no prose change.","inputs":["docs/user/workspace-checkpoints.md","src-ui/src/components/chat/MessageBubble.tsx"]}
+  ]
+}

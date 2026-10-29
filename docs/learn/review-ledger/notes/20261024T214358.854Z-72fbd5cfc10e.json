@@ -1,0 +1,7 @@
+{
+  "revision": "70a04765b037271fdbaac05807697ef0f1836db8",
+
+  "notes": [
+    {"path":"docs/contexts/extension-ecosystem/CONTEXT.md","note":"Bounded #1521 delta: catalog installation stays inert discovery; the added installation field feeds only the registryTrust display projection, never invocation or activation authority. No vocabulary change.","inputs":["docs/contexts/extension-ecosystem/CONTEXT.md","src-server/services/plugins/plugin-catalog-installation.ts"]}
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "revision": "4a7b20e5d0285776397239c45974eb90daeb1055",
+
+  "notes": [
+    {"path":".agents/skills/documentation-audit/SKILL.md","note":"Comment-cleanup guidance now sends long rationale to the owning guide or a decision record in docs/decisions/, noting that numbered ADRs are frozen, instead of 'guide or ADR'. Matches docs/guides/documentation.md 'Record a decision' and corpus.json decisions.adr. No other workflow step changed.","inputs":[".agents/skills/documentation-audit/SKILL.md"]},
+
+    {"path":".veritas/README.md","note":"The documentation-audit skill changed only its rationale destination (a decision record instead of an ADR). The Veritas evidence checks, the documentation-truth route and the delivery-conduct rules described here are unchanged.","inputs":[".veritas/README.md",".agents/skills/documentation-audit/SKILL.md"]},
+
+    {"path":"AGENTS.md","note":"The routing row was shortened to 'Documentation, decisions', still pointing at docs/guides/documentation.md, which carries the frozen-ADR rule. AGENTS.md is 8130 bytes against the 8192-byte budget (8119 on main). The documentation-audit skill link is unchanged.","inputs":["AGENTS.md",".agents/skills/documentation-audit/SKILL.md"]},
+
+    {"path":"CLAUDE.md","note":"Imports AGENTS.md, whose routing row now reads 'Documentation, decisions'. CLAUDE.md itself is unchanged.","inputs":["CLAUDE.md","AGENTS.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"AGENTS.md's routing row and the documentation-audit skill's rationale destination changed (decision records instead of ADRs). Neither touches this guide's gates, pre-push table or code-health rules.","inputs":["docs/guides/code-quality.md",".agents/skills/documentation-audit/SKILL.md","AGENTS.md"]},
+
+    {"path":"docs/guides/development.md","note":"The documentation-audit skill now names decision records instead of ADRs for long rationale. This guide's development workflow and ci:fast description are unaffected.","inputs":["docs/guides/development.md",".agents/skills/documentation-audit/SKILL.md"]},
+
+    {"path":"docs/guides/testing.md","note":"The documentation-audit skill this guide routes to changed only where it sends long rationale (decision records, ADRs frozen). The testing workflow, lane schedule and fixture rules are unchanged.","inputs":["docs/guides/testing.md",".agents/skills/documentation-audit/SKILL.md"]},
+
+    {"path":"docs/pages/README.md","note":"Rewrapped the exclude-list bullet that names docs/decisions/** to the file's line width. The content still matches corpus.json's exclude list exactly.","inputs":["docs/pages/README.md"]}
+  ]
+}

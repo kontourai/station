@@ -71,7 +71,10 @@ host** (`station environment access approve <request-id>` there, with the
 existing Station home selected). When they do,
 the CLI stores the issued bearer credential in the operating-system keyring and
 saves only its reference with the Station entry. That Station becomes the
-default only after pairing succeeds.
+default only after pairing succeeds. On macOS the Keychain is reached through
+`/usr/bin/security`, so one **Always Allow** survives upgrades. A Keychain wait
+that nobody can answer fails with a remedy instead of hanging; see
+[the CLI reference](../../docs/reference/cli.md).
 
 That is the whole point of pairing: from then on, nothing needs a flag.
 
@@ -79,6 +82,14 @@ That is the whole point of pairing: from then on, nothing needs a flag.
 station agents list
 station chat my-agent 'what changed today?'
 ```
+
+Chat assigns a fresh turn key before sending. Use `--json` to retain
+`clientTurnId` and `conversationId` in success, pending, or failure output, or
+choose a key before sending with `--client-turn-id=<key>`. Reuse that key only
+for a deliberate retry of the same operation; keep the original conversation
+flag for a continuation. Inspect uncertain outcomes first. The CLI never
+resends automatically. See [chat identity and retry](../../docs/reference/cli.md#chat)
+for the error format and new-chat conversation binding.
 
 From a Station checkout, local setup installs its durable per-user service and
 then selects the conventional `kontour` Station:
@@ -189,8 +200,8 @@ Station; see the reference.
 ## What this CLI does not do
 
 **It does not build or install a backend.** Source-oriented commands such as
-`build`, `dev`, `fresh`, `home`, `link`, `shortcut`, `start`, `stop`, and
-`upgrade`, plus `setup local` and service installation, require a Station
+`build`, `dev`, `fresh`, `home`, `link`, `restart`, `shortcut`, `start`,
+`stop`, `supervisor`, and `upgrade`, plus `setup local` and service installation, require a Station
 repository checkout, not this published CLI. (A prebuilt server archive that
 `install.sh` installed carries its own lifecycle CLI, which can also install a
 service and run `upgrade`; see the reference.) Use the checkout's launcher:
@@ -208,6 +219,20 @@ The published CLI drives Stations that are already running — see `station stat
 `environment access list|approve|deny|devices|scope|revoke|remove`, `environment operator passkeys`, and `service status|start|stop` support
 an existing local installation. Local authorization validates the selected
 owner-only home and the loopback listener; it does not create a missing home.
+Bare host-approval commands prefer the live listener in the selected local home
+before project or saved-default Stations; explicit targets keep their precedence.
+`environment offer` creates a single-use invitation with Standard access. Choose
+ordinary Device-use permissions; protected management and consent permissions
+require a separate operator promotion after pairing. Choose
+`--scope` to change that access, `--require-approval` to review the recipient first,
+or `--browser-url=<web-origin>` to print a link for the web UI.
+For a saved paired Station, `environment access devices|scope|revoke|remove`
+use its paired credential and work remotely when the operator explicitly grants
+`access:devices`. This is separate from using full access. Only the operator can
+grant or remove this administrative scope; legacy `access:manage` does not
+qualify. See [device administration](../../docs/reference/cli.md#environment) for
+setup, revocation and mixed-version limits.
+
 Service start/stop controls an existing OS service rather than building or
 installing a backend. See the [availability table](../../docs/reference/cli.md)
 for the full boundary and prerequisites.

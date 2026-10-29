@@ -1,0 +1,20 @@
+Station optional local media and speech tools
+
+NVIDIA Parakeet TDT 110M, English, int8 ONNX export
+Original model: https://huggingface.co/nvidia/parakeet-tdt_ctc-110m
+Copyright NVIDIA Corporation. Licensed under Creative Commons Attribution 4.0
+International: https://creativecommons.org/licenses/by/4.0/
+ONNX conversion and int8 quantization distributed by the sherpa-onnx project:
+https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models
+Asset: sherpa-onnx-nemo-parakeet_tdt_transducer_110m-en-36000-int8.tar.bz2
+Station does not modify the model. Recognition output is generated locally.
+
+sherpa-onnx v2.0.0: Copyright k2-fsa contributors; Apache-2.0.
+https://github.com/k2-fsa/sherpa-onnx/tree/v2.0.0
+Bundled ONNX Runtime: Copyright Microsoft Corporation; MIT.
+https://github.com/microsoft/onnxruntime
+
+FFmpeg/ffprobe b6.1.1: GPL-3.0, invoked as separate executables.
+https://github.com/eugeneware/ffmpeg-static/releases/tag/b6.1.1
+The exact platform license is verified and installed beside the executables.
+These components are fetched only after explicit operator consent.

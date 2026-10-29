@@ -1,0 +1,13 @@
+{
+  "revision": "df62180ce063a6007ae58e1c820a1a893217fee1",
+
+  "notes": [
+    {"path":"docs/design/instance-registry.md","note":"#3563 fix round 1: process-identity.mjs keeps EPERM unavailable on win32, makes the Windows PowerShell birth command stop on its first error, and rejects pre-1601 (DateTime.MinValue) birth output; POSIX EPERM still reads the birth (merged with main's processBirthPredatesCurrentBoot, untouched). Re-read the liveness claims: 'Unknown liveness or a failed birth lookup retains the record' and 'pid + birth prove it gone' still hold, and a rejected Windows birth now reads as a failed lookup; unchanged.","inputs":["docs/design/instance-registry.md","packages/shared/src/process-identity.mjs"]},
+
+    {"path":"docs/guides/native-releases.md","note":"#3563 fix round 1: process-identity.mjs keeps EPERM unavailable on win32, makes the Windows PowerShell birth command stop on its first error, and rejects pre-1601 (DateTime.MinValue) birth output; POSIX EPERM still reads the birth (merged with main's processBirthPredatesCurrentBoot, untouched). This guide makes no claim about signal-0 or birth-lookup semantics; unchanged.","inputs":["docs/guides/native-releases.md","packages/shared/src/process-identity.mjs"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"#3563 fix round 1: process-identity.mjs keeps EPERM unavailable on win32, makes the Windows PowerShell birth command stop on its first error, and rejects pre-1601 (DateTime.MinValue) birth output; POSIX EPERM still reads the birth (merged with main's processBirthPredatesCurrentBoot, untouched). Its unelevated PowerShell step concerns the permission-helper regression, not process birth probes; no claim about birth lookup or EPERM; unchanged.","inputs":["docs/guides/native-shell-verification.md","packages/shared/src/process-identity.mjs"]},
+
+    {"path":"docs/guides/nightly.md","note":"#3563 fix round 1: process-identity.mjs keeps EPERM unavailable on win32, makes the Windows PowerShell birth command stop on its first error, and rejects pre-1601 (DateTime.MinValue) birth output; POSIX EPERM still reads the birth (merged with main's processBirthPredatesCurrentBoot, untouched). No claim about signal-0 or birth-lookup semantics; unchanged.","inputs":["docs/guides/nightly.md","packages/shared/src/process-identity.mjs"]}
+  ]
+}

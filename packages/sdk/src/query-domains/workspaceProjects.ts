@@ -42,6 +42,7 @@ import {
   deleteProjectLayout,
   deleteProject as deleteProjectRaw,
   getProject,
+  getProjectChatDefaults,
   getProjectLayout,
   getProjectResolution,
   isRepositoryBusyError,
@@ -258,6 +259,69 @@ export function useProjectRunLocationsQuery(
       return listProjectRunLocations(apiBase, { signal });
     },
     { ...config, enabled: !unavailable && (config?.enabled ?? true) },
+  );
+}
+
+/**
+ * `GET /api/projects/:slug/chat-defaults`, scoped like {@link
+ * useProjectRunLocationsQuery} and, like it, outside the persisted
+ * `'projects'` prefix: the last-used values change with every chat start, so
+ * a reload must never replay an old answer.
+ */
+export const PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX = 'project-chat-defaults';
+
+/**
+ * The scoped cache key {@link useProjectChatDefaultsQuery} reads under: the
+ * Station, the authority's identity and the slug. Exported so a host can read
+ * or seed exactly that entry (Station's first send consults it).
+ */
+export function projectChatDefaultsQueryKey(
+  requestScope: { apiBase: string; authorityKey: string },
+  durableAuthorityId: string | undefined,
+  slug: string,
+): string[] {
+  return [
+    PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX,
+    requestScope.apiBase,
+    stableAuthoritySegment(requestScope.authorityKey, durableAuthorityId),
+    slug,
+  ];
+}
+
+export function useProjectChatDefaultsQuery(
+  slug: string,
+  config?: ProjectReadQueryConfig<any>,
+) {
+  const requestScope = captureProjectScope(config?.requestScope);
+  const scoped = requestScope !== undefined;
+  const unavailable = config?.requireRequestScope === true && !scoped;
+  const queryKey = unavailable
+    ? [PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX, 'unavailable', slug]
+    : scoped
+      ? [
+          ...projectChatDefaultsQueryKey(
+            requestScope,
+            config?.durableAuthorityId,
+            slug,
+          ),
+        ]
+      : [PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX, slug];
+  return useApiQuery(
+    queryKey,
+    async (signal) => {
+      if (unavailable) throw new StationRequestAuthorityError();
+      if (scoped)
+        return getProjectChatDefaults(requestScope.apiBase, slug, {
+          requestScope,
+          signal,
+        });
+      const apiBase = await _getApiBase();
+      return getProjectChatDefaults(apiBase, slug, { signal });
+    },
+    {
+      ...config,
+      enabled: !unavailable && !!slug && (config?.enabled ?? true),
+    },
   );
 }
 
@@ -479,15 +543,49 @@ export function useProjectWorkspacePanesQuery(
  */
 export function useProjectResolutionQuery(
   projectSlug: string,
-  config?: QueryConfig<ProjectResolutionView>,
+  config?: QueryConfig<ProjectResolutionView> & {
+    requestScope?: ApiRequestScope;
+    requireRequestScope?: boolean;
+  },
 ) {
+  const scope = captureProjectScope(config?.requestScope);
+  const required = Boolean(
+    config?.requireRequestScope || config?.requestScope !== undefined,
+  );
   return useApiQuery<ProjectResolutionView>(
-    ['projects', projectSlug, 'resolution'],
+    [
+      'projects',
+      projectSlug,
+      'resolution',
+      ...(scope
+        ? [scope.apiBase, scope.authorityKey]
+        : required
+          ? ['missing-authority']
+          : []),
+    ],
     async () => {
-      const apiBase = await _getApiBase();
-      return getProjectResolution(apiBase, projectSlug);
+      if (required && !scope) throw new StationRequestAuthorityError();
+      const apiBase = scope?.apiBase ?? (await _getApiBase());
+      return getProjectResolution(
+        apiBase,
+        projectSlug,
+        scope ? { requestScope: scope } : undefined,
+      );
     },
-    { ...config, enabled: !!projectSlug && (config?.enabled ?? true) },
+    {
+      ...config,
+      enabled:
+        !!projectSlug &&
+        (!required || Boolean(scope)) &&
+        (config?.enabled ?? true),
+      ...(scope
+        ? {
+            staleTime: 0,
+            refetchOnMount: 'always' as const,
+            keepPreviousData: false,
+          }
+        : {}),
+    },
   );
 }
 
@@ -587,12 +685,21 @@ export function useBindProjectResourceMutation(
     ProjectResourceBindOutcome,
     BindProjectResourceVariables
   >,
+  requestScope?: ApiRequestScope,
 ) {
+  const scope = captureProjectScope(requestScope);
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (variables: BindProjectResourceVariables) => {
-      const apiBase = await _getApiBase();
-      return bindProjectResource(apiBase, projectSlug, variables);
+      if (requestScope !== undefined && !scope)
+        throw new StationRequestAuthorityError();
+      const apiBase = scope?.apiBase ?? (await _getApiBase());
+      return bindProjectResource(
+        apiBase,
+        projectSlug,
+        variables,
+        scope ? { requestScope: scope } : undefined,
+      );
     },
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({
@@ -746,7 +853,8 @@ export function useDeleteProjectLayoutMutation(
   });
 }
 
-export function useCreateProjectMutation() {
+export function useCreateProjectMutation(requestScope?: ApiRequestScope) {
+  const scope = captureProjectScope(requestScope);
   return useApiMutation(
     async (data: {
       name: string;
@@ -754,11 +862,20 @@ export function useCreateProjectMutation() {
       description?: string;
       icon?: string;
       workingDirectory?: string;
+      /** Retained acquisition reverified by Station before Project creation. */
+      repositoryAcquisitionId?: string;
+      /** Operator-only durable creation identity; reuse after uncertain responses. */
+      creationRequestId?: string;
+      starterLayoutId?: string | null;
       /** Per-Project override of the Station's workspace isolation. */
       defaultWorkspaceIsolation?: 'shared' | 'worktree';
     }) => {
-      const apiBase = await _getApiBase();
-      return createProjectRaw(apiBase, data);
+      const apiBase = scope?.apiBase ?? (await _getApiBase());
+      return createProjectRaw(
+        apiBase,
+        data,
+        scope ? { requestScope: scope } : undefined,
+      );
     },
     { invalidateKeys: [['projects']] },
   );
@@ -825,6 +942,10 @@ export function useUpdateProjectMutation(
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
       queryClient.invalidateQueries({ queryKey: ['projects', variables.slug] });
+      // The selections it returns are the Project's own fields.
+      queryClient.invalidateQueries({
+        queryKey: [PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX],
+      });
       options?.onSuccess?.(data, variables);
     },
     onError: (error, variables) => {

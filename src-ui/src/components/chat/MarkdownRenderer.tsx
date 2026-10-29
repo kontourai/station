@@ -1,10 +1,19 @@
-import { memo, useEffect, useMemo } from 'react';
+import {
+  Children,
+  type ComponentPropsWithoutRef,
+  isValidElement,
+  memo,
+  type ReactNode,
+  useEffect,
+  useMemo,
+} from 'react';
 import type { Options } from 'react-markdown';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { quoteFromHref } from '../../utils/answer-quotes';
 import { ChatMarkdownAnchor } from './ChatMarkdownAnchor';
 import { markdownCodeComponents } from './HighlightedCodeBlock';
+import { useMarkdownLinkContext } from './MarkdownLinkContext';
 import {
   type MarkdownBlock,
   markdownBlocksRequireWholeParse,
@@ -13,6 +22,7 @@ import {
 import { chatUrlTransform, MarkdownImage } from './markdown-images';
 import { QuoteSourceLink } from './QuoteSourceLink';
 import { remarkPathMentions } from './remarkPathMentions';
+import { workspaceVisualPath } from './WorkspaceFileReply';
 
 export type MarkdownRenderProbe = {
   onBlockMount?: (startLine: number) => void;
@@ -33,6 +43,34 @@ export type MarkdownRendererProps = Options & {
   renderProbe?: MarkdownRenderProbe;
 };
 
+function MarkdownParagraph({
+  children,
+  ...props
+}: ComponentPropsWithoutRef<'p'>) {
+  const link = useMarkdownLinkContext();
+  const hasVisual = (content: ReactNode): boolean =>
+    Children.toArray(content).some((child) => {
+      if (
+        !isValidElement<{ href?: string; src?: string; children?: ReactNode }>(
+          child,
+        )
+      )
+        return false;
+      return (
+        workspaceVisualPath(child.props.href ?? child.props.src) !== null ||
+        hasVisual(child.props.children)
+      );
+    });
+  const containsVisual = link?.projectSlug && hasVisual(children);
+  return containsVisual ? (
+    <div {...props} className="markdown-visual-paragraph">
+      {children}
+    </div>
+  ) : (
+    <p {...props}>{children}</p>
+  );
+}
+
 const sourceAwareComponents: NonNullable<Options['components']> = {
   ...markdownCodeComponents,
   // The override lives HERE rather than in a caller-supplied `components`
@@ -50,6 +88,7 @@ const sourceAwareComponents: NonNullable<Options['components']> = {
     );
   },
   img: MarkdownImage,
+  p: ({ node: _node, ...props }) => <MarkdownParagraph {...props} />,
   // A table scrolls sideways inside its own box instead of squeezing to the
   // message width. Squeezed, the message's `overflow-wrap: anywhere` let
   // every cell shrink to one character, so a phone showed "Dire / ctor / y".

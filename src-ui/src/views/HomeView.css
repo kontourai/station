@@ -361,3 +361,17 @@
 .home-view__start .start-composer {
   grid-column: 1 / -1;
 }
+
+.home-view__welcome {
+  margin-bottom: var(--k-space-5);
+}
+.home-view__welcome h1 {
+  margin: 0 0 var(--k-space-3);
+  font-size: var(--k-text-2xl);
+  line-height: var(--k-leading-tight);
+}
+.home-view__welcome p {
+  margin: 0;
+  color: var(--k-text-muted);
+  line-height: var(--k-leading-normal);
+}

@@ -33,6 +33,7 @@ import {
   NON_RUNTIME_ARTIFACT,
   RUNTIME_DEPENDENCY_EXCLUSIONS,
   RUNTIME_PACKAGE_PRUNE_RULES,
+  stageDesktopServerBundle,
   stageDesktopServerRuntime,
   WINDOWS_DESKTOP_RUNTIME_TAURI_CONFIG,
 } from '../lib/desktop-server-runtime.mjs';
@@ -635,8 +636,6 @@ function assertRealRuntimePrune(release: string) {
     const kept = existsSync(stagedPrebuilds)
       ? readdirSync(stagedPrebuilds).sort()
       : [];
-    // Every arch of this OS survives (the desktop app runs the user's own
-    // node, whose arch can differ from the build's); no other OS does.
     expect(kept).toEqual(source.filter(sameOs));
     expect(kept.includes(host)).toBe(source.includes(host));
   }
@@ -937,9 +936,12 @@ describe('server build package portability', () => {
   });
 
   it('pins the declarative prune rule lists (#2694)', () => {
-    // Every id here has its own behavioural test below. A new rule must add
+    // Every id has a behavioral keeper here or in desktop-runtime-pruning. A new rule must add
     // one; a dropped rule fails its test rather than only this list.
     expect(RUNTIME_PACKAGE_PRUNE_RULES.map((rule) => rule.id)).toEqual([
+      'compiled-sdk-development-sources',
+      'cedar-node-runtime-only',
+      'rxjs-node-runtime-only',
       'node-pty-foreign-prebuilds',
       'flow-agents-harness-bundles',
     ]);
@@ -948,65 +950,96 @@ describe('server build package portability', () => {
     ]);
   });
 
-  it('stages every arch of the target OS node-pty prebuilds and no other OS (node-pty-foreign-prebuilds)', () => {
-    const root = makeTempDir('station-runtime-pty-');
+  it('ships compiled SDK entrypoints without their development sources and keeps Node Cedar assets', async () => {
+    const root = makeTempDir('station-runtime-production-');
     const project = join(root, 'project');
-    const files: Record<string, string> = {
-      'lib/utils.js': 'module.exports = {};',
-      'build/Release/pty.node': 'source build',
-      LICENSE: 'MIT',
-    };
-    for (const prebuild of [
-      'darwin-arm64',
-      'darwin-x64',
-      'linux-x64',
-      'win32-arm64',
-      'win32-x64',
-    ]) {
-      files[`prebuilds/${prebuild}/pty.node`] = prebuild;
+    const output = join(root, 'release');
+    const zod = join(project, 'node_modules/zod');
+    writeFixturePackage(zod, {
+      name: 'zod',
+      version: '4.0.0',
+      main: 'index.js',
+    });
+    writeFileSync(join(zod, 'index.js'), 'exports.parse = (value) => value;');
+    mkdirSync(join(zod, 'src/tests'), { recursive: true });
+    writeFileSync(
+      join(zod, 'src/index.ts'),
+      'export const parse = (v: unknown) => v;',
+    );
+    writeFileSync(
+      join(zod, 'src/tests/parse.test.ts'),
+      'throw new Error("test only");',
+    );
+    writeFileSync(join(zod, 'index.test.js'), 'throw new Error("test only");');
+    writeFileSync(join(zod, 'LICENSE'), 'fixture license');
+    const cedar = join(project, 'node_modules/@cedar-policy/cedar-wasm');
+    writeFixturePackage(cedar, {
+      name: '@cedar-policy/cedar-wasm',
+      version: '4.0.0',
+      exports: { './nodejs': './nodejs/index.cjs' },
+    });
+    for (const variant of ['nodejs', 'esm', 'web']) {
+      mkdirSync(join(cedar, variant), { recursive: true });
+      writeFileSync(join(cedar, variant, 'cedar.wasm'), 'fixture wasm');
     }
-    writeFixturePackage(
-      join(project, 'node_modules/node-pty'),
-      { name: 'node-pty', version: '1.1.0' },
-      files,
+    writeFileSync(
+      join(cedar, 'nodejs/index.cjs'),
+      'exports.asset = require("node:fs").readFileSync(require("node:path").join(__dirname, "cedar.wasm"), "utf8");',
     );
-    // A different package with the same layout is not node-pty's to prune.
-    writeFixturePackage(
-      join(project, 'node_modules/other-native'),
-      { name: 'other-native', version: '1.0.0' },
-      { 'prebuilds/darwin-x64/addon.node': 'other' },
+    stageDesktopServerRuntime({
+      projectRoot: project,
+      outputRoot: output,
+      packages: ['zod', '@cedar-policy/cedar-wasm'],
+    });
+    const probe = await execFileAsync(
+      process.execPath,
+      [
+        '-e',
+        'const z = require("zod"); const c = require("@cedar-policy/cedar-wasm/nodejs"); console.log(JSON.stringify([z.parse("value"), c.asset]));',
+      ],
+      { cwd: output, windowsHide: true },
     );
-    for (const [platform, arch] of [
-      ['win32', 'x64'],
-      ['linux', 'arm64'],
-    ] as const) {
-      const output = join(root, `release-${platform}-${arch}`);
-      stageDesktopServerRuntime({
-        projectRoot: project,
-        outputRoot: output,
-        packages: ['node-pty', 'other-native'],
-        platform,
-        arch,
-      });
-      const pty = join(output, 'node_modules/node-pty');
-      const kept = readdirSync(join(pty, 'prebuilds'));
-      // Both win32 arches: an x64 MSI can run under an arm64 node on
-      // Windows-on-ARM. linux has only the one arch in the fixture.
-      expect(kept.sort()).toEqual(
-        platform === 'win32' ? ['win32-arm64', 'win32-x64'] : ['linux-x64'],
-      );
-      expect(existsSync(join(pty, 'build/Release/pty.node'))).toBe(true);
-      expect(existsSync(join(pty, 'lib/utils.js'))).toBe(true);
-      expect(existsSync(join(pty, 'LICENSE'))).toBe(true);
+    expect(JSON.parse(probe.stdout)).toEqual(['value', 'fixture wasm']);
+    expect(existsSync(join(output, 'node_modules/zod/src'))).toBe(false);
+    expect(existsSync(join(output, 'node_modules/zod/index.test.js'))).toBe(
+      false,
+    );
+    expect(readFileSync(join(output, 'node_modules/zod/LICENSE'), 'utf8')).toBe(
+      'fixture license',
+    );
+    for (const variant of ['esm', 'web'])
       expect(
         existsSync(
-          join(
-            output,
-            'node_modules/other-native/prebuilds/darwin-x64/addon.node',
-          ),
+          join(output, 'node_modules/@cedar-policy/cedar-wasm', variant),
         ),
-      ).toBe(true);
-    }
+      ).toBe(false);
+  });
+
+  it('omits server source maps from the installed tree while retaining the debug build output', async () => {
+    const project = makeTempDir('station-desktop-server-maps-');
+    mkdirSync(join(project, 'dist-server'));
+    writeFileSync(
+      join(project, 'dist-server/command-station.js'),
+      'console.log("packaged server");',
+    );
+    writeFileSync(
+      join(project, 'dist-server/command-station.js.map'),
+      '{"sourcesContent":["debug only"]}',
+    );
+    const output = join(project, 'release');
+    stageDesktopServerBundle(project, output);
+    const probe = await execFileAsync(
+      process.execPath,
+      [join(output, 'dist-server/command-station.js')],
+      { cwd: output, windowsHide: true },
+    );
+    expect(probe.stdout.trim()).toBe('packaged server');
+    expect(existsSync(join(output, 'dist-server/command-station.js.map'))).toBe(
+      false,
+    );
+    expect(
+      existsSync(join(project, 'dist-server/command-station.js.map')),
+    ).toBe(true);
   });
 
   it('drops flow-agents harness bundles and their esbuild edge but keeps what Station reads', () => {
@@ -1026,6 +1059,8 @@ describe('server build package portability', () => {
         'scripts/hooks/run-hook.js': '',
         'skills/example/SKILL.md': '# skill',
         'kits/builder/skills/deliver/SKILL.md': '# kit skill',
+        'kits/builder/evals/workflow.test.mjs':
+          'export const evaluation = true;',
         'schemas/workflow.schema.json': '{}',
         'context/settings/backlog-provider-settings.json': '{}',
         'dist/codex/build/src/index.js': 'bundle',
@@ -1073,6 +1108,12 @@ describe('server build package portability', () => {
       expect(existsSync(join(staged, kept)), kept).toBe(true);
     }
     expect(existsSync(join(staged, 'node_modules/esbuild'))).toBe(false);
+    expect(
+      readFileSync(
+        join(staged, 'kits/builder/evals/workflow.test.mjs'),
+        'utf8',
+      ),
+    ).toContain('evaluation = true');
     // A stray import from flow-agents still resolves, to Station's copy.
     expect(
       JSON.parse(

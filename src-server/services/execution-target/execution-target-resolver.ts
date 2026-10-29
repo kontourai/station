@@ -14,6 +14,7 @@ import type {
   WorkspaceTarget,
 } from '@kontourai/station-contracts/execution-target';
 import {
+  EXECUTION_ENGINE_CHANGED_CODE,
   EXECUTION_RESOLUTION_RECEIPT_SCHEMA_VERSION,
   environmentId,
   executionBindingAgentId,
@@ -149,7 +150,7 @@ export interface ExecutionTargetResolverDependencies {
   now?: () => Date;
 }
 
-interface ResolvedExecutionTarget {
+export interface ResolvedExecutionTarget {
   /** Private access authority. Never serialize this object. */
   access: EnvironmentAccess;
   agentId: AgentId;
@@ -306,6 +307,30 @@ export function matchVerifiedRemoteProjectPath(
         matches: false,
         reason: 'configured project path differs from verified path',
       };
+}
+
+/**
+ * The caller's `expectedEngine` precondition did not hold. Nothing was
+ * started or reserved; the message names only engine identities, which a
+ * receipt already discloses.
+ */
+export class ExecutionEngineChangedError extends Error {
+  readonly code = EXECUTION_ENGINE_CHANGED_CODE;
+
+  constructor(
+    agentSlug: string,
+    readonly expected: ResolvedExecutionEngine,
+    readonly actual: ResolvedExecutionEngine,
+  ) {
+    const name = (engine: ResolvedExecutionEngine) =>
+      engine.kind === 'station'
+        ? "Station's own engine"
+        : `engine connection '${engine.connectionId}'`;
+    super(
+      `Agent '${agentSlug}' now runs on ${name(actual)}, not ${name(expected)} as this request expected. Re-read the Agent and choose again.`,
+    );
+    this.name = 'ExecutionEngineChangedError';
+  }
 }
 
 /**
@@ -518,6 +543,44 @@ function launchCapabilities(
 }
 
 /**
+ * The Agent and Environment binding a Session started for `resolved` records
+ * in its start metadata. Continuations (`/chat` follow-ups, the conversation
+ * inbox) read exactly these fields back from `session.started` /
+ * `session.configured` before they send a turn, and the session-start Agent
+ * resolution reads `agentSlug` to apply the Agent's prompt, skills and tools.
+ * Every writer of an Agent Session's start uses this one shape (#4005).
+ */
+export function agentExecutionBindingMetadata(
+  resolved: Pick<
+    ResolvedExecutionTarget,
+    | 'access'
+    | 'agentId'
+    | 'engine'
+    | 'executionAgentId'
+    | 'expectedDefinitionFingerprint'
+  >,
+): Record<string, string> {
+  return {
+    agentId: resolved.agentId,
+    agentSlug: resolved.agentId,
+    ...(resolved.expectedDefinitionFingerprint
+      ? {
+          expectedDefinitionFingerprint: resolved.expectedDefinitionFingerprint,
+        }
+      : {}),
+    ...(resolved.executionAgentId
+      ? { executionAgentId: resolved.executionAgentId }
+      : {}),
+    targetKind: 'agent',
+    targetId: resolved.agentId,
+    ...(resolved.engine.kind === 'connection'
+      ? { connectionId: resolved.engine.connectionId }
+      : {}),
+    environmentId: resolved.access.environmentId,
+  };
+}
+
+/**
  * Resolve the complete execution binding on the selected Environment.
  *
  * The caller controls only Environment + Agent + optional model/workspace.
@@ -588,6 +651,28 @@ export async function resolveExecutionTarget(
   ) {
     throw new Error(
       'This execution override cannot deliver the selected Agent profile on the Station engine',
+    );
+  }
+  // A precondition only: it can refuse, never choose. Checked on the binding
+  // alone, before readiness, since a different engine's readiness is moot.
+  const resolvedBinding: ResolvedExecutionEngine = boundConnectionId
+    ? {
+        kind: 'connection',
+        connectionId: engineConnectionId(String(boundConnectionId)),
+      }
+    : { kind: 'station' };
+  const expectedEngine = target.expectedEngine;
+  if (
+    expectedEngine &&
+    (expectedEngine.kind !== resolvedBinding.kind ||
+      (expectedEngine.kind === 'connection' &&
+        resolvedBinding.kind === 'connection' &&
+        expectedEngine.connectionId !== resolvedBinding.connectionId))
+  ) {
+    throw new ExecutionEngineChangedError(
+      resolvedAgentId,
+      expectedEngine,
+      resolvedBinding,
     );
   }
   let engine: ResolvedExecutionEngine;

@@ -1,0 +1,7 @@
+{
+  "revision": "c6c7abc36946001aeeebec69d23eced6c871f880",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed after the browser fixtures' server update check stub moved from page.route('**/api/system/core-update') to routeCoreUpdateCheck (tests/helpers/core-update-route.ts), a path predicate that also matches the SDK's ?staged=1 query. The stubbed responses are unchanged. Searched this document for core-update, update-check, route and skeleton claims; none describes that stub, so its claims still hold.","inputs":["docs/design/chat-composer.md","tests/cross-runtime-chat-switching.spec.ts"]}
+  ]
+}

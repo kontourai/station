@@ -1,0 +1,21 @@
+{
+  "revision": "4c8e52754d92c67233ab4abf4ae4bbb1c638b2ab",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the SettingsView delta only: descriptions, scope caption wording and card styles change; topic and canonical navigation, keyboard shortcut ownership, account preference dispatch and project override calls are unchanged. No module contract claim changed; this is not a module-map-wide re-audit.","inputs":["docs/architecture/module-map.md","src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed current SettingsView, SettingsPageRow, AccountPreferencesSection and SettingDescription against the current presentation/account-scope sections. Added the nine-topic presentation description, shared control/supporting type scale and sound/account disclosures. Existing persistence, approval confirmations and precedence actions are unchanged. Focused Settings tests passed; browser layout checked at phone and desktop widths. Historical July inventory remains historical.","inputs":["docs/design/settings-architecture.md","src-ui/src/views/SettingsView.tsx","src-ui/src/views/settings/AccountPreferencesSection.tsx","src-ui/src/views/settings/SettingDescription.tsx","src-ui/src/views/settings/SettingsPageRow.tsx"]},
+
+    {"path":"docs/guides/android-build.md","note":"Reviewed the changed SystemSection bytes: only the log-level help sentence changed. Installed-app and connected-server provenance, native capability gating, update component calls and build identity display are unchanged. No Android build or device proof is claimed by this copy/style pass.","inputs":["docs/guides/android-build.md","src-ui/src/views/settings/SystemSection.tsx"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Reviewed the SystemSection delta against the documented separate desktop-app and connected-server update controls. Only logging help wording changed; update handlers, desktop-only gating and provenance display remain unchanged. Native updater behavior was not re-exercised.","inputs":["docs/guides/desktop-build.md","src-ui/src/views/settings/SystemSection.tsx"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Reviewed the SystemSection copy-only delta; log-level help now says choose how much detail Station logs. Tray and updater code, controls and handlers are unchanged, so this source change does not affect the documented tray behavior. No tray runtime verification claimed.","inputs":["docs/guides/desktop-tray.md","src-ui/src/views/settings/SystemSection.tsx"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Reviewed the SystemSection delta and retained update/provenance composition. Logging-help wording is the only change in this linked source; no launch, port, channel, service or upgrade code changed. Existing guide claims remain unaffected by this UI-copy delta; no fresh release qualification claimed.","inputs":["docs/guides/release-channel-ports.md","src-ui/src/views/settings/SystemSection.tsx"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed VoiceFeaturesSection diff: shorter browser-notification and voice wording; subscribe/unsubscribe controls, capability checks and handlers are unchanged. Notification sound controls now use a separate native disclosure and still call device-local update plus preview; focused notification tests passed. No real push-service or device delivery claim.","inputs":["docs/guides/web-push-notifications.md","src-ui/src/views/settings/VoiceFeaturesSection.tsx"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Reviewed SettingsView copy/style changes against topic navigation, catalog IDs and highlight/unsaved-change handling. IDs, URL parsing, reveal logic and persistence handlers are unchanged. New disclosures remain native details and setting rows stay mounted; documentation remains accurate for this delta. No blanket deep-link re-audit.","inputs":["docs/reference/settings-deep-links.md","src-ui/src/views/SettingsView.tsx"]}
+  ]
+}

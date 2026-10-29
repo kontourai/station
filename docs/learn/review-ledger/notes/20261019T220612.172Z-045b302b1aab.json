@@ -1,0 +1,7 @@
+{
+  "revision": "aae0550beac8af8246a0753aa880e52a2c2148d4",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"Merge of origin/main into the turn-completion notification fix. This branch's only station-runtime.ts change rewords the orchestration-stream-presence comment (it no longer feeds push-on-completion); the doc makes no claim about presence or notifications. Main's MCP app resource resolver change in the same file was reviewed for this doc in cf7521ba9e7; its claims (resource URI read, sandbox proxy messages) are unchanged.","inputs":["docs/design/mcp-ui-host.md","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}

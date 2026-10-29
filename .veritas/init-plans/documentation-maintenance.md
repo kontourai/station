@@ -140,5 +140,5 @@ ledger contract validates current data and exact rendering without refreshing
 human review hashes; its generator and validator remain review-bound. Missing
 classified changeset notes retain an explicit absent historical state. Other
 source/doc drift, corrupt projections and malformed records still fail. The
-[maintenance guide](../../docs/guides/documentation.md#generated-release-records-and-removed-notes)
+[maintenance guide](../../docs/guides/documentation-review-ledger.md#generated-release-records-and-removed-notes)
 records these lifecycle distinctions and their limits.

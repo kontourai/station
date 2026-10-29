@@ -144,7 +144,7 @@ describe.skipIf(!chromiumIsInstalled(REPO_ROOT))(
       await browser?.close();
     });
 
-    test('every project name starts at the same x, and an icon-less row leaves the reserved slot empty', async () => {
+    test('project names align across artwork and initials tiles', async () => {
       for (const viewport of [
         { width: 1280, height: 800 },
         { width: 390, height: 844 },
@@ -162,7 +162,6 @@ describe.skipIf(!chromiumIsInstalled(REPO_ROOT))(
               const name = row.querySelector('.sidebar__project-name');
               const icon = row.querySelector('.sidebar__project-icon');
               const slot = row.querySelector('.sidebar__project-icon-slot');
-              const bar = row.querySelector('.sidebar__project-accent');
               return {
                 name: name?.textContent,
                 nameLeft: name?.getBoundingClientRect().left ?? null,
@@ -170,7 +169,6 @@ describe.skipIf(!chromiumIsInstalled(REPO_ROOT))(
                   icon?.querySelector('img, .brand-icon__glyph'),
                 ),
                 slotWidth: slot?.getBoundingClientRect().width ?? 0,
-                barLeft: bar?.getBoundingClientRect().left ?? null,
                 active: row.classList.contains('sidebar__project-btn--active'),
                 slotChildren: slot?.childElementCount ?? null,
                 rowHeight: row.getBoundingClientRect().height,
@@ -191,8 +189,6 @@ describe.skipIf(!chromiumIsInstalled(REPO_ROOT))(
             `${label} names drawn: ${lefts}`,
           ).toBe(true);
           expect(new Set(lefts).size, `${label} name x: ${lefts}`).toBe(1);
-          // The fixture includes the selected row, and its bar sits where
-          // every other row's does.
           expect(rows.map((row) => row.active)).toEqual([
             false,
             true,
@@ -200,17 +196,15 @@ describe.skipIf(!chromiumIsInstalled(REPO_ROOT))(
             false,
             false,
           ]);
-          const bars = rows.map((row) => row.barLeft);
-          expect(new Set(bars).size, `${label} bar x: ${bars}`).toBe(1);
-          // Every row reserves the same slot; only the iconed rows fill it.
+          // Artwork and initials share one fixed mark slot.
           expect(
             rows.map((row) => row.slotWidth),
             `${label} slot widths`,
-          ).toEqual([18, 18, 18, 18, 18]);
+          ).toEqual([22, 22, 22, 22, 22]);
           expect(
             rows.map((row) => row.slotChildren),
             `${label} slot contents`,
-          ).toEqual([1, 0, 1, 0, 0]);
+          ).toEqual([1, 1, 1, 1, 1]);
           // An icon changes no row's height.
           expect(new Set(rows.map((row) => row.rowHeight)).size).toBe(1);
         } finally {
@@ -273,7 +267,7 @@ describe.skipIf(!chromiumIsInstalled(REPO_ROOT))(
       }
     });
 
-    test('the collapsed rail reserves no slot: an icon-less project keeps its bar alone', async () => {
+    test('the collapsed rail reserves no expanded slot and gives every project an identity', async () => {
       const page = await browser.newPage();
       try {
         await page.setContent(
@@ -282,7 +276,9 @@ describe.skipIf(!chromiumIsInstalled(REPO_ROOT))(
         expect(await page.locator('.sidebar__project-icon-slot').count()).toBe(
           0,
         );
-        expect(await page.locator('.sidebar__project-icon').count()).toBe(2);
+        expect(await page.locator('.sidebar__project-icon').count()).toBe(
+          CASES.length,
+        );
       } finally {
         await page.close();
       }

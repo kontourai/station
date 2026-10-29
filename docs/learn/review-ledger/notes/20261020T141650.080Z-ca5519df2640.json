@@ -1,0 +1,7 @@
+{
+  "revision": "fc71bf357b85673bb077f68723cfda4d07c874c8",
+
+  "notes": [
+    {"path":"docs/guides/code-hygiene.md","note":"Read the guide's script references (hygiene:report and the six hygiene:* checks, lines 51-60, 121, 136) against package.json#/scripts on this branch. The only script this change adds is gen:color-themes (the color-theme stylesheet generator), which is not a hygiene check; every hygiene script the guide names exists unchanged.","inputs":["docs/guides/code-hygiene.md","package.json#/scripts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "a67a63fa6fafb31ef5fea485df93fe8483e130e3",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Added that a disabled inventory hook reads when it becomes enabled. Checked against the readKey effect in useProtected (packages/sdk/src/session-inventory.ts) and the enable-transition and per-key latch tests.","inputs":["docs/reference/sdk.md","packages/sdk/src/session-inventory.ts"]}
+  ]
+}

@@ -68,13 +68,6 @@ export function getTenantRequestContext(
   return contexts.get(request);
 }
 
-/** Convert trusted execution authority into the sole internal tenant header. */
-export function internalTenantHeaderForExecutionContext(
-  context: TenantExecutionContext | undefined,
-): Record<string, string> {
-  return context ? { [INTERNAL_TENANT_HEADER]: context.tenantId } : {};
-}
-
 export function tenantExecutionContextForRequest(
   request: Request,
 ): TenantExecutionContext | undefined {

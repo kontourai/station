@@ -1,0 +1,7 @@
+{
+  "revision": "09becfe8debb31db925720559fc23bc121d8f87e",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the OutboundDispatchModule section against round-seven outboundQueue.ts and useOutboundQueueFlush.ts. Its durable claims, exact-key reconciliation, Station binding and send-only flush descriptions remain accurate; it declares no cross-tab reconciliation lease. No prose change needed. EXECUTED: all 347 focused tests across nine files and typecheck:ui passed. Rust and device qualification remain separate.","inputs":["docs/architecture/module-map.md","src-ui/src/hooks/useOutboundQueueFlush.ts","src-ui/src/lib/outboundQueue.ts"]}
+  ]
+}

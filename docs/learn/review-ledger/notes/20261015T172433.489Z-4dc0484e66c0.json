@@ -1,0 +1,7 @@
+{
+  "revision": "2462bdbc9fd105e71c4c28c37e53d6d68c6e2f3a",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed account versus device scope, canonical principal and tenant partition, atomic patches and composite conflict refusal, explicit import, authority-bound pending writes, personal first-send defaults and existing-session limits. Focused behavioral evidence covers storage, authenticated two-device admission, client isolation, rapid favorites and startup previews; no physical-device or cross-Station sync claim.","inputs":["docs/design/settings-architecture.md","docs/reference/settings-deep-links.md","packages/contracts/src/settings-registry.ts","src-ui/src/lib/device-settings-store.ts","src-ui/src/views/SettingsView.tsx","src-ui/src/views/settings/settings-catalog.ts","src-ui/src/views/settings/settings-pages.ts","packages/contracts/src/account-preferences.ts","src-server/services/identity/account-preferences.ts","src-server/routes/me/account-preferences.ts","src-ui/src/contexts/AccountPreferencesContext.tsx","src-ui/src/lib/account-preference-values.ts","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]}
+  ]
+}

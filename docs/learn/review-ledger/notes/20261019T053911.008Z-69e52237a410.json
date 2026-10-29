@@ -1,0 +1,7 @@
+{
+  "revision": "d9b446e76bb36d51a2229541c7c7210324b75c28",
+
+  "notes": [
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Reviewed the Activity latest-open, follow-until-reading, and Jump-to-latest claims against the committed session hook and both callers. The unchanged reported Chromium case failed 1/50 on main and 0/50 with the fix under 14 busy CPU workers; identical original-hook reversions failed 3/100 across two 50-run controls (3/50 and 0/50). Tracing showed follow remained true at the failed read, so mutation-checkpoint pinning addresses the observed gap before ResizeObserver delivery. Pending upward movement is left to the scroll handler. Deterministic growth and upward-guard faults failed for their intended geometry assertions, then the restored 28 Chromium cases and 95 related jsdom tests passed. Existing prose remains accurate; no shipped MCP topic or public API changed. Full-app, device, and live-provider qualification remain outside this evidence.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/__tests__/session-follow-reader.browser.test.tsx","src-ui/src/components/session-detail/useSessionTranscriptScroll.ts"]}
+  ]
+}

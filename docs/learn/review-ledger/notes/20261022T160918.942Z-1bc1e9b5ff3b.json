@@ -1,0 +1,23 @@
+{
+  "revision": "9e344e202a4e871806c7e09d3603e3558a79f484",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed combined in-pane engine catalogue and sign-in integration after the final L3 lifecycle merge: new catalogue choices confirm; saved retries run directly; Ready result survives registration until Done; registered engine, saved not-connected engine and Setup required result expose sign-in; account panel state resets across host, authority and connection identity. Built is source/focused-test evidence only; real vendor-account sign-in remains unverified.","inputs":["docs/design/connections-onboarding.md"]},
+
+    {"path":"docs/guides/connections.md","note":"Traced EngineAddFlow public catalogue grouping and unavailable listing inspection through SetupPanel and setup owner to exact confirmCommand SDK payload; both public source routes and sign-in routes remain composed. Reviewed registered sign-in, saved repair disclosure and Setup required result ID handoff. Owning caller tests passed; removing confirmed transport or result ID failed the intended assertions, then restored tests passed. No live account/provider/browser qualification.","inputs":["docs/guides/connections.md","src-ui/src/views/EngineAddFlow.tsx","src-ui/src/views/NotConnectedEngineDetail.tsx","src-ui/src/components/acp-connections/ACPConnectionSetupPanel.tsx","src-ui/src/components/acp-connections/useACPConnectionSetupOwner.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed only combined SetupStages delta: shared ActionRow and sign-in disclosure on Setup required do not change approval policy, plan review labeling, approval choices or plan persistence. No impact to those documented claims; real provider behavior remains outside this source review.","inputs":["docs/guides/agent-configuration.md","src-server/providers/adapters/acp-adapter.ts","src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed only combined SetupStages delta and real setup caller: sign-in disclosure renders human account actions and does not change Station Control tool definitions, agent dispatch authority, durable receipt semantics or SDK configuration paths. No impact to the cited control-tool claims.","inputs":["docs/guides/self-configuring-agent.md"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed combined AgentConnectionView mount and new setup/repair controls: first-contact readiness and sign-in still do not claim a completed turn; Check connection remains the explicit smoke action. Start chat only selects the engine Agent in the composer. No new smoke/provider qualification.","inputs":["docs/reference/agent-smoke-confidence.md"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed combined AgentConnectionView sign-in insertion and ConnectionsSectionFrame tab inset against retained capture scenario descriptions. Recordings are explicitly historical and not replayed/recaptured; new account controls do not establish current visual or provider evidence. Existing historical qualification remains accurate.","inputs":["docs/learn/walkthroughs.md"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed only combined SetupStages delta: account disclosure for failed setup does not change the attended Station-engine example, its four read capabilities, binding absence, or declared child-policy limits. No example runtime/provider execution performed.","inputs":["examples/self-configuring-agent/README.md"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Reviewed final in-pane/sign-in integration source delta. This retained screenshot shows Models, so AgentConnectionView account-panel insertion does not render in its named scenario. Earlier tab-inset change means this remains a historical capture, as its walkthrough states; no recapture, current appearance, real provider or native qualification claimed.","inputs":["docs/learn/media/connections-models.png"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Reviewed final in-pane/sign-in integration source delta. The engine inspection now has account controls and different action hierarchy, so the retained recording is historical, as the walkthrough explicitly states. No replay, recapture or current-appearance qualification; old sample-response and no-account-login limits remain.","inputs":["docs/learn/media/connections-tour.webm"]}
+  ]
+}

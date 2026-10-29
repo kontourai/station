@@ -1,0 +1,9 @@
+{
+  "revision": "209bbf21e9049e50a0913567e6d29aaaa7002b9f",
+
+  "notes": [
+    {"path":"src-ui/AGENTS.md","note":"#3565: testing.md changed only by replacing a stale 'twelve-lane aggregate' count with 'typecheck aggregate'; the routes this file takes into testing.md are unaffected.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"#3565: testing.md changed only by replacing a stale 'twelve-lane aggregate' count with 'typecheck aggregate'; the routes this file takes into testing.md are unaffected.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

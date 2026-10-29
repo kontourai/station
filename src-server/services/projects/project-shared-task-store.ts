@@ -24,6 +24,20 @@ export class ProjectSharedTaskStore {
       `CREATE TABLE IF NOT EXISTS project_shared_tasks (share_id TEXT PRIMARY KEY, station_id TEXT NOT NULL, local_project_id TEXT NOT NULL, local_project_slug TEXT NOT NULL, portable_project_id TEXT NOT NULL, task_id TEXT NOT NULL UNIQUE, task_created_at TEXT NOT NULL, shared_at TEXT NOT NULL, shared_by TEXT NOT NULL) STRICT;`,
     );
   }
+  /** Excludes sharing/membership writers until the short publication commits. */
+  withPublicationFence<T>(operation: () => T): T {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const result = operation();
+      if (result && typeof (result as { then?: unknown }).then === 'function')
+        throw new ProjectSharedTaskRefusal('unavailable');
+      this.db.exec('COMMIT');
+      return result;
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
   share(input: Omit<ProjectSharedTaskAdmission, 'shareId' | 'sharedAt'>) {
     validateInput(input);
     const existing = this.admission(input.taskId);

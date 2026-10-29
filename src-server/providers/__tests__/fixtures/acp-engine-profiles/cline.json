@@ -1,0 +1,30 @@
+{
+  "engine": "cline",
+  "registry": {
+    "id": "cline",
+    "version": "3.0.73",
+    "distribution": "npx",
+    "package": "cline@3.0.73",
+    "args": ["--acp"]
+  },
+  "initialize": {
+    "protocolVersion": 1,
+    "agentInfo": {
+      "name": "cline",
+      "title": "Cline",
+      "version": "3.0.73"
+    },
+    "agentCapabilities": {
+      "loadSession": true,
+      "promptCapabilities": {
+        "image": true
+      }
+    },
+    "authMethods": [
+      {
+        "id": "openai-codex",
+        "name": "OpenAI Codex"
+      }
+    ]
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "f5e07fdcb99bade18e236f04c8e6251de93a55a5",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Resume step rewritten for the fix round: session/resume preferred when sessionCapabilities.resume is advertised, session/load fallback on non-advertisement or method-not-found, other failures fail the start, replay suppression while reattaching, turn refusal while reattaching, and upstream restore eligibility still gated on loadSession. Checked against acp-adapter.ts (acpReattachMethod, reattaching guard, sendTurn refusal) and acp-resume-cursor-support.ts.","inputs":["docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

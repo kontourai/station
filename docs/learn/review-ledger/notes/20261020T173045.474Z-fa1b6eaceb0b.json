@@ -1,0 +1,7 @@
+{
+  "revision": "f601a4238cca7c16cedfc302da33c432defc0a75",
+
+  "notes": [
+    {"path":"docs/guides/discord-gateway.md","note":"Merge of origin/main into the turn-completion notification fix. This branch's only station-runtime.ts edit rewords the orchestration-stream-presence comment; the guide only states that the runtime starts the Discord gateway there, which is unchanged.","inputs":["docs/guides/discord-gateway.md","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}

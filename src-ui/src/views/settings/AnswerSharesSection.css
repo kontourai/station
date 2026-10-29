@@ -4,17 +4,17 @@
    its sibling settings sections. */
 
 .answer-shares__intro {
-  margin: 0 0 var(--space-3, 0.75rem);
+  margin: 0 0 var(--k-space-3);
   color: var(--text-secondary);
-  font-size: 0.85rem;
+  font-size: var(--k-text-sm);
 }
 
 .answer-shares__row {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: var(--space-3, 0.75rem);
-  padding: var(--space-3, 0.75rem) 0;
+  gap: var(--k-space-3);
+  padding: var(--k-space-3) 0;
   /* --border-subtle chained onto --border until archive#1254 (re-seeded here by
      station#1423/#1492) — neither token exists, so the fallback resolved to
      nothing and the rows had no separator. --border-primary is the subtle
@@ -28,18 +28,18 @@
 
 .answer-shares__name {
   color: var(--text-primary);
-  font-size: 0.9rem;
+  font-size: var(--k-text-md);
   word-break: break-word;
 }
 
 .answer-shares__meta {
   color: var(--text-secondary);
-  font-size: 0.8rem;
+  font-size: var(--k-text-sm);
   word-break: break-word;
 }
 
 .answer-shares__actions {
   display: flex;
   flex-shrink: 0;
-  gap: var(--space-2, 0.5rem);
+  gap: var(--k-space-2);
 }

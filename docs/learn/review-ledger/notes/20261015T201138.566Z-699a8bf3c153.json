@@ -1,0 +1,41 @@
+{
+  "revision": "cfff4786d636510317ba19e10abcbd3f8675d00a",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Reviewed the final runtime-http delta: removed only the unused export keyword from the legacy secure-cookie name; its three internal issuer/parser uses and all security decisions are unchanged. Existing onboarding source review remains applicable. No new behavior or platform qualification.","inputs":["docs/architecture.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the final runtime-http delta: removed only the unused export keyword from the legacy secure-cookie name; its three internal issuer/parser uses and all security decisions are unchanged. Existing onboarding source review remains applicable. No new behavior or platform qualification.","inputs":["docs/architecture/module-map.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Reviewed the final runtime-http delta: removed only the unused export keyword from the legacy secure-cookie name; its three internal issuer/parser uses and all security decisions are unchanged. Existing onboarding source review remains applicable. No new behavior or platform qualification.","inputs":["docs/design/connection-broker.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Reviewed the final runtime-http delta: removed only the unused export keyword from the legacy secure-cookie name; its three internal issuer/parser uses and all security decisions are unchanged. Existing onboarding source review remains applicable. No new behavior or platform qualification.","inputs":["docs/design/local-bootstrap-token.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the final runtime-http delta: removed only the unused export keyword from the legacy secure-cookie name; its three internal issuer/parser uses and all security decisions are unchanged. Existing onboarding source review remains applicable. No new behavior or platform qualification.","inputs":["docs/guides/connections.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Reviewed the final runtime-http delta: removed only the unused export keyword from the legacy secure-cookie name; its three internal issuer/parser uses and all security decisions are unchanged. Existing onboarding source review remains applicable. No new behavior or platform qualification.","inputs":["docs/guides/deployment-authentication.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Reviewed the final runtime-http delta: removed only the unused export keyword from the legacy secure-cookie name; its three internal issuer/parser uses and all security decisions are unchanged. Existing onboarding source review remains applicable. No new behavior or platform qualification.","inputs":["docs/guides/local-collaboration-lab.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed the final runtime-http delta: removed only the unused export keyword from the legacy secure-cookie name; its three internal issuer/parser uses and all security decisions are unchanged. Existing onboarding source review remains applicable. No new behavior or platform qualification.","inputs":["docs/guides/machine-relationships.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the final runtime-http delta: removed only the unused export keyword from the legacy secure-cookie name; its three internal issuer/parser uses and all security decisions are unchanged. Existing onboarding source review remains applicable. No new behavior or platform qualification.","inputs":["docs/guides/responsive-ui.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed the final runtime-http delta: removed only the unused export keyword from the legacy secure-cookie name; its three internal issuer/parser uses and all security decisions are unchanged. Existing onboarding source review remains applicable. No new behavior or platform qualification.","inputs":["docs/guides/theming.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed the final runtime-http delta: removed only the unused export keyword from the legacy secure-cookie name; its three internal issuer/parser uses and all security decisions are unchanged. Existing onboarding source review remains applicable. No new behavior or platform qualification.","inputs":["docs/guides/web-push-notifications.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed the final runtime-http delta: removed only the unused export keyword from the legacy secure-cookie name; its three internal issuer/parser uses and all security decisions are unchanged. Existing onboarding source review remains applicable. No new behavior or platform qualification.","inputs":["docs/patterns/backend.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed the final runtime-http delta: removed only the unused export keyword from the legacy secure-cookie name; its three internal issuer/parser uses and all security decisions are unchanged. Existing onboarding source review remains applicable. No new behavior or platform qualification.","inputs":["docs/patterns/frontend.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the final runtime-http delta: removed only the unused export keyword from the legacy secure-cookie name; its three internal issuer/parser uses and all security decisions are unchanged. Existing onboarding source review remains applicable. No new behavior or platform qualification.","inputs":["docs/reference/api.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the final runtime-http delta: removed only the unused export keyword from the legacy secure-cookie name; its three internal issuer/parser uses and all security decisions are unchanged. Existing onboarding source review remains applicable. No new behavior or platform qualification.","inputs":["docs/reference/config.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Reviewed the final runtime-http delta: removed only the unused export keyword from the legacy secure-cookie name; its three internal issuer/parser uses and all security decisions are unchanged. Existing onboarding source review remains applicable. No new behavior or platform qualification.","inputs":["docs/reference/connect.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed the final runtime-http delta: removed only the unused export keyword from the legacy secure-cookie name; its three internal issuer/parser uses and all security decisions are unchanged. Existing onboarding source review remains applicable. No new behavior or platform qualification.","inputs":["docs/reference/env-vars.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed the final runtime-http delta: removed only the unused export keyword from the legacy secure-cookie name; its three internal issuer/parser uses and all security decisions are unchanged. Existing onboarding source review remains applicable. No new behavior or platform qualification.","inputs":["docs/security/remote-access-threat-model.md","src-server/runtime/bootstrap/runtime-http.ts"]}
+  ]
+}

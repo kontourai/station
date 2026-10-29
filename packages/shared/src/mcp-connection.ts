@@ -7,6 +7,7 @@
 
 import { AsyncLocalStorage } from 'node:async_hooks';
 import {
+  type AuthProvider,
   Client,
   type ElicitResult,
   type FetchLike,
@@ -18,6 +19,7 @@ import {
   type Transport,
 } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { spawnChildWorkload } from './child-workload.js';
 import {
   type ClaudeDesktopConfig,
   normalizeMcpToolDef,
@@ -34,6 +36,7 @@ export interface MCPToolInfo {
   originalName: string; // raw name from MCP server
   serverId: string;
   description?: string;
+  readOnly?: boolean;
   inputSchema?: any;
   _meta?: Record<string, unknown>;
   ui?: MCPToolUIMetadata;
@@ -139,7 +142,7 @@ export interface MCPNegotiation {
 
 export interface MCPManagerOptions {
   /** OAuth provider for remote HTTP transports. */
-  authProvider?: OAuthClientProvider;
+  authProvider?: OAuthClientProvider | AuthProvider;
   /** Internal OAuth seam used to complete a browser redirect round trip. */
   onTransport?: (transport: Transport) => void;
   /** Called when a server connects or fails */
@@ -499,6 +502,7 @@ export function prepareMCPConnection(
               originalName: t.name,
               serverId: def.id,
               description: t.description,
+              readOnly: t.annotations?.readOnlyHint,
               inputSchema: t.inputSchema,
               _meta: isRecord((t as { _meta?: unknown })._meta)
                 ? (t as { _meta: Record<string, unknown> })._meta
@@ -712,9 +716,20 @@ function originBoundLiteralHeaderFetch(
   };
 }
 
+function createStdioTransport(
+  parameters: ConstructorParameters<typeof StdioClientTransport>[0],
+): StdioClientTransport {
+  // The pinned SDK patch retains this spawn boundary on negotiation siblings.
+  const ownedParameters = {
+    ...parameters,
+    spawnProcess: spawnChildWorkload,
+  };
+  return new StdioClientTransport(ownedParameters);
+}
+
 export function createMCPTransport(
   def: ToolDef,
-  authProvider?: OAuthClientProvider,
+  authProvider?: OAuthClientProvider | AuthProvider,
 ): Transport {
   const transport = def.transport || (def.command ? 'stdio' : undefined);
 
@@ -722,7 +737,7 @@ export function createMCPTransport(
     case 'stdio':
       if (!def.command)
         throw new Error(`Tool '${def.id}': stdio transport requires 'command'`);
-      return new StdioClientTransport({
+      return createStdioTransport({
         command: def.command,
         args: def.args,
         env: { ...process.env, ...(def.env || {}) } as Record<string, string>,
@@ -749,7 +764,7 @@ export function createMCPTransport(
 
     default:
       if (def.command) {
-        return new StdioClientTransport({
+        return createStdioTransport({
           command: def.command,
           args: def.args,
           env: { ...process.env, ...(def.env || {}) } as Record<string, string>,

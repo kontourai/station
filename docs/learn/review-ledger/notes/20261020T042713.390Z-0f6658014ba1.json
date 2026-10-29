@@ -1,0 +1,37 @@
+{
+  "revision": "61777c98b0162b7e729ebc04be975222af2a2aaf",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"#3290 merge with main: checked module claims against the branch's changes to active-chats-state, execution-target-execution, station-control-delegation and its test (an ACP approval-control field and pass-through); no module ownership claim changes.","inputs":["docs/architecture/module-map.md","src-ui/src/contexts/active-chats-state.ts","src-server/services/execution-target/execution-target-execution.ts","src-server/tools/station-control-delegation.ts","src-server/services/execution-target/__tests__/execution-target-execution.test.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"#3290 merge with main: the ACP partial-coverage paragraph stays true; added that the engine's configuration decides which calls reach requestPermission and that Station sets it for OpenCode, linking the ACP guide. approvalMode.ts changes add the ACP disclosure, not a new interception seam.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/utils/approvalMode.ts"]},
+
+    {"path":"docs/design/automations.md","note":"#3290 merge with main: approval-posture-server-ordered.md gained a #3290 note on ACP connections; no automation claim depends on it.","inputs":["docs/design/automations.md","docs/design/approval-posture-server-ordered.md"]},
+
+    {"path":"docs/design/chat-composer.md","note":"#3290 merge with main: conversationOpenController and active-chats-state carry the ACP approval answer; the #3290 composer section was updated to main's chip labels (Engine default — OpenCode's own settings; Ask — Ask first).","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/conversationOpenController.ts","src-ui/src/contexts/active-chats-state.ts"]},
+
+    {"path":"docs/design/isolated-agent-runs.md","note":"#3290 merge with main: execution-target test adds an ACP approval-control case; isolated-run claims unchanged.","inputs":["docs/design/isolated-agent-runs.md","src-server/services/execution-target/__tests__/execution-target-execution.test.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"#3290 merge with main: event-store adds a read of engine-reported approval modes; no MCP UI host claim touches it.","inputs":["docs/design/mcp-ui-host.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"#3290 merge with main: orchestration-service changes are ACP approval-knob resolution and the governance refusal code passthrough; notification delivery claims unchanged.","inputs":["docs/design/notification-delivery.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"#3290 merge with main: useActiveChatSessionMessaging withholds Retry for acp_approval_governance_refused; settings and personal approval-default claims unchanged.","inputs":["docs/design/settings-architecture.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"#3290 merge with main: vitest-resource-manifest registers the #3290 process test as a spawning test; testing guide claims unchanged.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"#3290 merge with main: adapter-shape (ApprovalGovernanceRefusedError, preflightStart), provider.ts codes and orchestration changes reviewed; smoke-confidence claims unchanged.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/providers/adapter-shape.ts","src-server/services/orchestration/orchestration-service.ts","src-server/tools/station-control-delegation.ts","packages/contracts/src/provider.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#3290 merge with main: active-chats-state adds the ACP approval answer for the composer; no API route claim changes.","inputs":["docs/reference/api.md","src-ui/src/contexts/active-chats-state.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"#3290 merge with main: added acp-approval-takeover-failed (warning) and acp_approval_governance_refused (permission_denied) to the diagnostic-code table, matching PROVIDER_FAILURE_KINDS and the pinned wire test; engine-capability-matrix row already names acpApprovalControl.","inputs":["docs/reference/contracts.md","packages/contracts/src/provider.ts","src-server/providers/adapter-shape.ts","packages/contracts/src/provider-failure.ts","packages/contracts/src/__tests__/provider-failure.test.ts","src-ui/src/utils/chatErrorTranslation.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"#3290 merge with main: provider-failure registry gained two #3290 codes; SDK reference claims about failure kinds remain true.","inputs":["docs/reference/sdk.md","packages/contracts/src/provider-failure.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"#3290 merge with main: both refusal paragraphs kept (acp_approval_governance_refused and main's model_not_advertised); execution-target and orchestration changes match them.","inputs":["docs/reference/session-api.md","src-server/services/execution-target/__tests__/execution-target-execution.test.ts","src-server/services/execution-target/execution-target-execution.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"#3290 merge with main: ChatDockBody and conversationOpenController pass the ACP approval answer to the composer; concept claims unchanged.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDockBody.tsx","src-ui/src/components/chat-dock/conversationOpenController.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"#3290 merge with main: active-chats-state adds the ACP approval answer; getting-started claims unchanged.","inputs":["docs/user/getting-started.md","src-ui/src/contexts/active-chats-state.ts"]}
+  ]
+}

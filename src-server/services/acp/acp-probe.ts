@@ -11,6 +11,12 @@ import { acpProbeCleanupRetention } from '../../telemetry/metrics.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
 import { expandTilde } from '../../utils/paths.js';
+import { registryLaunchEnvFor } from './acp-engine-descriptors.js';
+import {
+  type AcpDeclaredHandshake,
+  parseAcpSessionModelState,
+  projectAcpDeclaredHandshake,
+} from './acp-handshake-facts.js';
 import {
   type AcpInboundExtensionHandler,
   createAcpInboundExtensionRequestHandler,
@@ -20,11 +26,19 @@ import {
   PROBE_SESSION_REFRESH_MS,
 } from './acp-probe-session.js';
 import {
+  ACPCommandNotFoundError,
   ACPProcess,
+  type AcpSessionModelState,
   assertACPProviderRouteSupported,
   type InitializeResult,
 } from './acp-process.js';
+import {
+  isAcpAuthRequired,
+  recordEngineSignInRefused,
+} from './engine-auth-status.js';
+import { engineCredentialEnvFor } from './engine-credentials.js';
 import { prepareManagedAcpWorkspace } from './managed-acp-workspace.js';
+import { engineFacingProbeMessage } from './probe-messages.js';
 
 /**
  * The minimum shape needed to destroy a process with escalation. `ACPProcess`
@@ -97,8 +111,24 @@ export async function destroyProcessWithEscalation(
 /** Default cleanup deadline: comfortably above SIGTERM → 1s → SIGKILL → 1s. */
 const DESTROY_ESCALATION_UPPER_BOUND_MS = 5_000;
 
+/** The command was not found, or the OS refused to spawn it. */
+function isLaunchFailure(error: unknown): boolean {
+  if (error instanceof ACPCommandNotFoundError) return true;
+  const { code, syscall } = (error ?? {}) as {
+    code?: unknown;
+    syscall?: unknown;
+  };
+  return typeof syscall === 'string' && syscall.startsWith('spawn')
+    ? code === 'ENOENT' || code === 'EACCES'
+    : false;
+}
+
 class ACPProbeDeadlineError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    /** The handshake budget that ran out; people are told this wait. */
+    readonly budgetMs: number,
+  ) {
     super(message);
     this.name = 'ACPProbeDeadlineError';
   }
@@ -187,7 +217,7 @@ export type ACPProbeInitiator = 'request' | 'background';
  * Not covered by that arithmetic: workspace preparation is filesystem work
  * with no deadline of its own.
  */
-const COLD_START_OPERATION_TIMEOUT_MS = 60_000;
+export const COLD_START_OPERATION_TIMEOUT_MS = 60_000;
 
 /**
  * archive#3441: how many times a single survivor's destroy is retried before
@@ -403,8 +433,13 @@ export const MAX_PENDING_CLEANUP_SIZE = MAX_CLEANUP_RETRY_ATTEMPTS - 1;
  * scrubbed answers nothing. So this is a weaker guarantee than the log's, by
  * choice: secrets out, operator-owned paths kept.
  */
-function probeErrorMessage(err: unknown): string {
-  return redactSecrets(errorMessage(err));
+function probeErrorMessage(
+  err: unknown,
+  engine?: { name: string; command: string },
+): string {
+  return redactSecrets(
+    engine ? engineFacingProbeMessage(err, engine) : errorMessage(err),
+  );
 }
 
 /**
@@ -424,7 +459,9 @@ function probeErrorMessage(err: unknown): string {
  * refuses with JSON-RPC `-32601`; none can return a plausible empty/success
  * value if an agent sends an undeclared request during the handshake.
  */
-function createProbeClient(onExtMethod: AcpInboundExtensionHandler): Client {
+export function createProbeClient(
+  onExtMethod: AcpInboundExtensionHandler,
+): Client {
   const unsupported = (method: string): never => {
     throw RequestError.methodNotFound(method);
   };
@@ -490,6 +527,10 @@ export class ACPProbe {
   cachedAgentCapabilities: InitializeResult['agentCapabilities'] | null = null;
   /** `null` means providers/list was not observed; an empty array is observed negative data. */
   cachedProviderRouting: ProviderInfo[] | null = null;
+  /** ADR 0013 Layer 2: the last successful handshake's declared facts. */
+  cachedDeclaredHandshake: AcpDeclaredHandshake | null = null;
+  /** #352: the probe session's `models` list; `null` when it sent none. */
+  cachedSessionModels: AcpSessionModelState | null = null;
   /**
    * archive#1549: the instant of the last SUCCESSFUL `initialize` handshake,
    * NOT `lastProbeAt`. The two differ exactly where it matters: a failed
@@ -529,6 +570,8 @@ export class ACPProbe {
    * which is what makes it projectable — not the absence of a stack.
    */
   lastError: { message: string; phase: string } | null = null;
+  /** Whether the most recent failed run ran out of its handshake budget. */
+  private lastFailureWasDeadline = false;
   /**
    * ONE inbound-extension handler for the whole probe's lifetime, not one
    * per probe run. `acp-manager.ts` re-probes every connection every 60s
@@ -814,9 +857,10 @@ export class ACPProbe {
       this.lastProbeAt = Date.now();
       this.lastSuccess = false;
       this.lastError = {
-        message: probeErrorMessage(error),
+        message: probeErrorMessage(error, this.config),
         phase: 'workspace preparation',
       };
+      this.lastFailureWasDeadline = false;
       this.logger.warn(
         'ACPProbe workspace preparation failed; skipping spawn',
         {
@@ -836,6 +880,8 @@ export class ACPProbe {
         command: this.config.command,
         args: this.config.args,
         cwd,
+        launchEnv: registryLaunchEnvFor(this.config),
+        credentialEnv: () => engineCredentialEnvFor(this.config),
         createClient: () => createProbeClient(this.inboundExtensionPolicy),
         clientCapabilities: {},
         logger: this.logger,
@@ -849,9 +895,10 @@ export class ACPProbe {
       this.lastProbeAt = Date.now();
       this.lastSuccess = false;
       this.lastError = {
-        message: probeErrorMessage(err),
+        message: probeErrorMessage(err, this.config),
         phase: probePhase,
       };
+      this.lastFailureWasDeadline = false;
       throw err;
     }
     this.pendingCleanup.set(process, 0);
@@ -930,10 +977,29 @@ export class ACPProbe {
         initResult.agentCapabilities?.promptCapabilities ?? null;
       this.cachedAgentCapabilities = initResult.agentCapabilities ?? null;
       this.cachedProviderRouting = initResult.providerRouting ?? null;
+      const declaredHandshake = projectAcpDeclaredHandshake(initResult);
+      const sessionModels = parseAcpSessionModelState(sessionResult.models);
+      this.cachedSessionModels =
+        sessionModels.kind === 'listed' ? sessionModels.state : null;
+      const refused = [
+        ...(declaredHandshake.refused ?? []),
+        ...(sessionModels.kind === 'refused' ? (['models'] as const) : []),
+      ];
+      this.cachedDeclaredHandshake = {
+        ...declaredHandshake,
+        ...(refused.length > 0 ? { refused } : {}),
+      };
+      if (refused.length > 0) {
+        this.logger.warn(
+          'ACPProbe refused engine-declared facts beyond Station bounds',
+          { id: this.config.id, refused },
+        );
+      }
       this.providerRoutingObservationGeneration = providerObservationGeneration;
       this.lastHandshakeObservedAt = Date.now();
       this.lastSuccess = true;
       this.lastError = null;
+      this.lastFailureWasDeadline = false;
       try {
         this.onHandshakeObserved?.(this.config);
       } catch {
@@ -966,10 +1032,15 @@ export class ACPProbe {
         this.lastSuccess = false;
         return false;
       }
+      // The engine's own "sign in first" answer is sign-in evidence.
+      if (isAcpAuthRequired(err)) recordEngineSignInRefused(this.config);
       this.lastError = {
-        message: probeErrorMessage(err),
-        phase: probePhase,
+        message: probeErrorMessage(err, this.config),
+        // `process.start()` both launches and initializes; a command that
+        // never launched failed at spawn, not while initializing.
+        phase: isLaunchFailure(err) ? 'spawn' : probePhase,
       };
+      this.lastFailureWasDeadline = err instanceof ACPProbeDeadlineError;
       // archive#3404: "has this connection ever handshaked" is
       // `lastHandshakeObservedAt > 0`, NOT `lastSuccess`. `lastSuccess` holds
       // the PREVIOUS run's outcome here (nothing resets it at run entry), so
@@ -994,6 +1065,8 @@ export class ACPProbe {
         this.cachedCapabilities = null;
         this.cachedAgentCapabilities = null;
         this.cachedProviderRouting = null;
+        this.cachedDeclaredHandshake = null;
+        this.cachedSessionModels = null;
       }
       this.lastSuccess = false;
     } finally {
@@ -1088,6 +1161,7 @@ export class ACPProbe {
               // after `remainingMs`, and the reason it had only that much is
               // the `budgetMs` total the earlier phase drew from.
               `ACP probe ${phase} did not settle within its ${remainingMs}ms share of the ${budgetMs}ms probe budget.`,
+              budgetMs,
             ),
           ),
         remainingMs,
@@ -1144,6 +1218,14 @@ export class ACPProbe {
   getAgentCapabilities(): InitializeResult['agentCapabilities'] | null {
     return this.cachedAgentCapabilities;
   }
+  getDeclaredHandshake(): AcpDeclaredHandshake | null {
+    return this.cachedDeclaredHandshake;
+  }
+
+  getSessionModels(): AcpSessionModelState | null {
+    return this.cachedSessionModels;
+  }
+
   getProviderRouting(): ProviderInfo[] | null {
     return this.cachedProviderRouting;
   }
@@ -1185,6 +1267,8 @@ export class ACPProbe {
       command: this.config.command,
       args: this.config.args,
       cwd,
+      launchEnv: registryLaunchEnvFor(this.config),
+      credentialEnv: () => engineCredentialEnvFor(this.config),
       createClient: () => createProbeClient(this.inboundExtensionPolicy),
       clientCapabilities: {},
       logger: this.logger,
@@ -1247,6 +1331,20 @@ export class ACPProbe {
    */
   getHandshakeObservedAt(): number {
     return this.lastHandshakeObservedAt;
+  }
+
+  /**
+   * A connection that has never handshaked, whose last run ran out of time
+   * rather than failing outright: the case a cold engine start produces on
+   * the short request budget, and the only one worth a cold-budget retry.
+   */
+  firstContactTimedOut(): boolean {
+    return (
+      !this.disposed &&
+      this.lastHandshakeObservedAt === 0 &&
+      !this.lastSuccess &&
+      this.lastFailureWasDeadline
+    );
   }
   isAvailable() {
     return this.lastSuccess;

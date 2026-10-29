@@ -10,8 +10,127 @@
  * { title, body, category, notificationId, actions?, apiBase }
  */
 
-self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
+// Replaced by the web build; development and native shells never cache.
+// The build injects the listener's own asset and document rules
+// (packages/shared/src/ui-document-policy.ts), so the two cannot drift.
+const OFFLINE_BUILD = /* STATION_OFFLINE_BUILD */ null;
+const SHELL_CACHE = `station-shell-${OFFLINE_BUILD?.version}`;
+const IMMUTABLE_ASSET = OFFLINE_BUILD && new RegExp(OFFLINE_BUILD.immutable);
+
+async function anonymousResponse(url) {
+  const response = await fetch(url, {
+    credentials: 'omit',
+    cache: 'no-cache',
+    redirect: 'error',
+  });
+  if (!response.ok || response.type === 'opaque')
+    throw new Error('Offline shell unavailable');
+  return response;
+}
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    (async () => {
+      if (OFFLINE_BUILD) {
+        const cache = await caches.open(SHELL_CACHE);
+        // Each stored response is fetched without cookies, bearer headers or a query.
+        await Promise.all(
+          OFFLINE_BUILD.precache.map(async (url) => {
+            const response = await anonymousResponse(url);
+            if (url === '/offline-shell.json') {
+              const headers = new Headers({
+                'Content-Type': 'text/html; charset=utf-8',
+                'Referrer-Policy': 'no-referrer',
+                'X-Content-Type-Options': 'nosniff',
+              });
+              headers.set('Content-Security-Policy', OFFLINE_BUILD.csp);
+              headers.set('Cache-Control', 'no-store');
+              const { html } = await response.json();
+              if (typeof html !== 'string')
+                throw new Error('Invalid offline shell');
+              await cache.put('/offline.html', new Response(html, { headers }));
+            } else await cache.put(url, response);
+          }),
+        );
+        // Best effort, after the required shell: a missing warm chunk never
+        // fails the install, and Save-Data keeps them to first use.
+        if (!self.navigator.connection?.saveData)
+          await Promise.allSettled(
+            OFFLINE_BUILD.warm.map(async (url) =>
+              cache.put(url, await anonymousResponse(url)),
+            ),
+          );
+      }
+      await self.skipWaiting();
+    })(),
+  );
+});
+self.addEventListener('activate', (event) =>
+  event.waitUntil(
+    (async () => {
+      for (const name of await caches.keys()) {
+        if (name.startsWith('station-shell-') && name !== SHELL_CACHE)
+          await caches.delete(name);
+      }
+      await self.clients.claim();
+    })(),
+  ),
+);
+
+self.addEventListener('fetch', (event) => {
+  if (!OFFLINE_BUILD) return;
+  const request = event.request;
+  const url = new URL(request.url);
+  if (
+    request.method !== 'GET' ||
+    url.origin !== self.location.origin ||
+    url.search ||
+    request.headers.has('authorization') ||
+    request.headers.has('range')
+  )
+    return;
+  // Navigation responses can carry auth redirects and per-request CSP nonces.
+  // Pass them through unchanged; fallback uses ONLY the generated static shell.
+  if (request.mode === 'navigate') {
+    if (
+      /^\/(?:api|events|auth|account|sign-in|sign-out|register|\.well-known)(?:\/|$)/.test(
+        url.pathname,
+      )
+    )
+      return;
+    event.respondWith(
+      (async () => {
+        try {
+          const response = await fetch(request);
+          if (![502, 503, 504].includes(response.status)) return response;
+          const cached = await (await caches.open(SHELL_CACHE)).match(
+            '/offline.html',
+          );
+          return cached || response;
+        } catch {
+          const cached = await (await caches.open(SHELL_CACHE)).match(
+            '/offline.html',
+          );
+          return cached || Response.error();
+        }
+      })(),
+    );
+    return;
+  }
+  const immutable = IMMUTABLE_ASSET.test(url.pathname.slice(1));
+  const staticShell = OFFLINE_BUILD.precache.includes(url.pathname);
+  if (!immutable && !staticShell) return;
+  event.respondWith(
+    (async () => {
+      const cache = await caches.open(SHELL_CACHE);
+      const cached = await cache.match(url.pathname);
+      if (cached) return cached;
+      const response = await anonymousResponse(url.href);
+      await cache.put(url.pathname, response.clone());
+      return response;
+    })(),
+  );
+});
 
 self.addEventListener('push', (event) => {
   let data = {};
@@ -65,10 +184,14 @@ self.addEventListener('notificationclick', (event) => {
 
   event.notification.close();
 
+  // Requests go to this worker's own Station, never to a base the payload
+  // names elsewhere.
+  const stationBase = sameOriginApiBase(apiBase);
+
   // Tool-approval actions
   if (approvalId && (action === 'allow' || action === 'deny')) {
     event.waitUntil(
-      fetch(`${apiBase}/api/tools/approve`, {
+      fetch(`${stationBase}/api/tools/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ approvalId, agentSlug, action }),
@@ -80,10 +203,13 @@ self.addEventListener('notificationclick', (event) => {
   // Generic notification actions
   if (notificationId && action) {
     event.waitUntil(
-      fetch(`${apiBase}/notifications/${notificationId}/action/${action}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      }).catch(() => {}),
+      fetch(
+        `${stationBase}/notifications/${encodeURIComponent(notificationId)}/action/${encodeURIComponent(action)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        },
+      ).catch(() => {}),
     );
     return;
   }
@@ -91,7 +217,7 @@ self.addEventListener('notificationclick', (event) => {
   // Default tap — focus an existing tab (navigating it to the deep link) or
   // open a new one. Defaults to the attention inbox (/notifications) since
   // that's the canonical landing surface for an approval-request push.
-  const targetUrl = url || '/notifications';
+  const targetUrl = sameOriginTarget(url);
   event.waitUntil(
     self.clients
       .matchAll({ type: 'window', includeUncontrolled: true })
@@ -109,3 +235,52 @@ self.addEventListener('notificationclick', (event) => {
       }),
   );
 });
+
+/**
+ * The tap's destination as an absolute URL on this worker's own origin, or
+ * the inbox. The server already keeps push links on Station; this refuses
+ * anything else (an absolute URL, `//host`, a path whose dot segments
+ * resolve off-origin) in case a payload ever carries one. The absolute,
+ * resolved URL is used as is, so it is never re-parsed as `//host`.
+ */
+function sameOriginTarget(url) {
+  const origin = self.location.origin;
+  if (typeof url === 'string' && url && !url.includes('\\')) {
+    try {
+      const target = new URL(url, `${origin}/`);
+      if (
+        (target.protocol === 'https:' || target.protocol === 'http:') &&
+        target.origin === origin &&
+        !target.pathname.startsWith('//')
+      )
+        return target.href;
+    } catch {
+      // Unparseable: the inbox.
+    }
+  }
+  return new URL('/notifications', `${origin}/`).href;
+}
+
+/**
+ * The API base for a tap's request: the payload's `apiBase` only when it is
+ * on this worker's own origin (an http(s) URL, any path, no trailing slash),
+ * else this origin. A payload can name where its request goes, never a
+ * different host.
+ */
+function sameOriginApiBase(apiBase) {
+  const origin = self.location.origin;
+  if (typeof apiBase === 'string' && apiBase && !apiBase.includes('\\')) {
+    try {
+      const base = new URL(apiBase, `${origin}/`);
+      if (
+        (base.protocol === 'https:' || base.protocol === 'http:') &&
+        base.origin === origin &&
+        !base.pathname.startsWith('//')
+      )
+        return `${base.origin}${base.pathname.replace(/\/+$/, '')}`;
+    } catch {
+      // Unparseable: this origin.
+    }
+  }
+  return origin;
+}

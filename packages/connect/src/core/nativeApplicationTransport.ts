@@ -512,6 +512,7 @@ export function createNativeVerifiedPeerTransport(
       await assertCurrent(authority, 'checkpoint', owned);
 
       let answer: NativeApplicationPeerAnswer | undefined;
+      let pollDelay = 100;
       while (!answer) {
         const value = validatePeerAnswer(
           await raceOwnedLifetime(
@@ -532,14 +533,15 @@ export function createNativeVerifiedPeerTransport(
             throw new Error('native_application_signal_invalid');
           answer = value;
         } else {
-          if (now() + 100 >= expiresAt)
+          if (now() + pollDelay >= expiresAt)
             throw new Error('native_application_signal_expired');
-          const poll = composeOwnedSignal(owned, 1_000);
+          const poll = composeOwnedSignal(owned, pollDelay + 1_000);
           try {
-            await delayBrowserTransport(poll.signal, 100);
+            await delayBrowserTransport(poll.signal, pollDelay);
           } finally {
             poll.dispose();
           }
+          pollDelay = Math.min(pollDelay * 2, 1_000);
           await assertCurrent(authority, 'checkpoint', owned);
         }
       }

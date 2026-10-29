@@ -5,15 +5,30 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { IEmbeddingProvider } from '@kontourai/station-contracts/knowledge-index';
 import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
+import { getLoadablePath } from 'sqlite-vec';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { SqliteVecIndexProvider } from '../../../knowledge-index/sqlite-vec-index-provider.js';
 import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
 import { createKnowledgeIndexRoutes } from '../knowledge-index-routes.js';
+
+const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
+  DatabaseSync: new (
+    path: string,
+    options?: { allowExtension?: boolean },
+  ) => {
+    exec(sql: string): void;
+    prepare(sql: string): { run: (...args: unknown[]) => unknown };
+    loadExtension(path: string): void;
+    close(): void;
+  };
+};
 
 /** In-memory fake mirroring the FileStorageAdapter root-persistence methods —
  * same fixture shape used by `knowledge-store-provider.test.ts` and
@@ -57,10 +72,19 @@ class StubEmbedder implements IEmbeddingProvider {
   readonly id = 'stub-embedder';
   readonly displayName = 'Deterministic stub embedder';
 
-  constructor(private readonly dim: number = 4) {}
+  /** `model` changes only the declared identity, never the vectors: a
+   * same-width model swap must be caught by identity, not by vector drift. */
+  constructor(
+    private readonly dim: number = 4,
+    private readonly model: string = 'stub-v1',
+  ) {}
 
   dimensions(): number {
     return this.dim;
+  }
+
+  embeddingIdentity(): string {
+    return `stub-embedder:model=${this.model}`;
   }
 
   async embed(texts: string[]): Promise<number[][]> {
@@ -474,18 +498,22 @@ describe('knowledge-index routes', () => {
       const app = routesApp({
         id: 'fault',
         displayName: 'Fault',
-        dimensions: () => {
+        dimensions: () => 4,
+        embed: async () => {
           throw new Error('/private/station/knowledge/metadata.json');
         },
-        embed: async () => [],
       });
 
       const res = await app.request('/migrate', { method: 'POST' });
       expect(res.status).toBe(500);
-      expect(await readJson(res)).toEqual({
-        success: false,
-        error: 'Pre-index knowledge migration failed',
-      });
+      const body = await readJson<{ success: boolean; error: string }>(res);
+      expect(body).toEqual(
+        expect.objectContaining({
+          success: false,
+          error: 'Pre-index knowledge migration failed',
+        }),
+      );
+      expect(JSON.stringify(body)).not.toContain('/private/');
     });
 
     test('returns 400 for an invalid projectSlug', async () => {
@@ -701,6 +729,267 @@ describe('knowledge-index routes', () => {
       expect(body.data.every((hit) => hit.rootId === rootA.id)).toBe(true);
 
       rmSync(projectDir, { recursive: true, force: true });
+    });
+  });
+
+  describe('POST /index/search currency (#2727, #2728) and refill', () => {
+    interface SearchBody {
+      success: boolean;
+      data: Array<{
+        recordId: string;
+        rootId: string;
+        title: string;
+        excerpt: string;
+      }>;
+      index: {
+        staleRoots: Array<{ rootId: string; reason: string }>;
+        staleRecords: number;
+        scanLimitReached: boolean;
+      };
+    }
+
+    const makeRootDirectory = trackTempDirs();
+
+    async function createRoot(displayName: string, projectSlug?: string) {
+      const dir = makeRootDirectory('knowledge-index-currency-');
+      return store.createRoot({
+        scope: projectSlug
+          ? { kind: 'project', projectSlug }
+          : { kind: 'personal' },
+        adapterId: 'kit-default-store',
+        storeRoot: dir,
+        displayName,
+      });
+    }
+
+    async function addRecord(rootId: string, title: string, body: string) {
+      const adapter = await store.adapterFor(rootId);
+      return adapter.create({
+        type: 'raw',
+        title,
+        body,
+        category: 'personal',
+        provenance: { agent: 'test' },
+      });
+    }
+
+    function appWith(
+      activeEmbedder: IEmbeddingProvider,
+      mayReadHitRoot?: (request: Request, root: KnowledgeStoreRoot) => boolean,
+    ) {
+      return createKnowledgeIndexRoutes({
+        store,
+        indexProvider,
+        dataDir,
+        getEmbedder: () => activeEmbedder,
+        ...(mayReadHitRoot ? { mayReadHitRoot } : {}),
+      });
+    }
+
+    async function rebuild(
+      app: ReturnType<typeof appWith>,
+      rootId?: string,
+    ): Promise<void> {
+      const res = await app.request('/index/rebuild', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(rootId ? { rootId } : {}),
+      });
+      expect(res.status).toBe(200);
+    }
+
+    async function search(
+      app: ReturnType<typeof appWith>,
+      query: string,
+      topK = 10,
+    ): Promise<SearchBody> {
+      const res = await app.request('/index/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, topK }),
+      });
+      expect(res.status).toBe(200);
+      return readJson<SearchBody>(res);
+    }
+
+    test('a same-width model change withholds the old generation and reports the root; the same identity still answers', async () => {
+      const root = await createRoot('Personal knowledge');
+      await addRecord(root.id, 'Roadmap', 'roadmap discussion body');
+      const v1 = new StubEmbedder(4, 'model-a');
+      const v2 = new StubEmbedder(4, 'model-b');
+      await rebuild(appWith(v1), root.id);
+
+      // Control: the generation that built the index still answers.
+      const control = await search(appWith(v1), 'roadmap discussion body');
+      expect(control.data.map((r) => r.title)).toEqual(['Roadmap']);
+      expect(control.index.staleRoots).toEqual([]);
+
+      // Same width, different model: the vectors are byte-identical here,
+      // so only the identity can keep them out.
+      const swapped = await search(appWith(v2), 'roadmap discussion body');
+      expect(swapped.data).toEqual([]);
+      expect(swapped.index.staleRoots).toEqual([
+        { rootId: root.id, reason: 'embedding-changed' },
+      ]);
+
+      await rebuild(appWith(v2), root.id);
+      const recovered = await search(appWith(v2), 'roadmap discussion body');
+      expect(recovered.data.map((r) => r.title)).toEqual(['Roadmap']);
+      expect(recovered.index.staleRoots).toEqual([]);
+    });
+
+    test('a partial rebuild never mixes generations, and the split survives a restart', async () => {
+      const rootA = await createRoot('Personal knowledge');
+      const rootB = await createRoot('Acme knowledge', 'acme');
+      await addRecord(rootA.id, 'A note', 'shared search text');
+      await addRecord(rootB.id, 'B note', 'shared search text');
+      const v1 = new StubEmbedder(4, 'model-a');
+      const v2 = new StubEmbedder(4, 'model-b');
+      await rebuild(appWith(v1));
+      await rebuild(appWith(v2), rootA.id);
+
+      const assertSplit = async () => {
+        const result = await search(appWith(v2), 'shared search text');
+        expect(result.data.map((r) => r.rootId)).toEqual([rootA.id]);
+        expect(result.index.staleRoots).toEqual([
+          { rootId: rootB.id, reason: 'embedding-changed' },
+        ]);
+      };
+      await assertSplit();
+
+      indexProvider.close();
+      indexProvider = new SqliteVecIndexProvider({ dbPath: indexDbPath });
+      await assertSplit();
+    });
+
+    test('an index file from before embedding generations is reported unknown and replaced by the next rebuild', async () => {
+      const root = await createRoot('Personal knowledge');
+      await addRecord(root.id, 'Legacy', 'legacy indexed body');
+      indexProvider.close();
+      // The exact table and metadata the previous index format wrote.
+      const legacy = new DatabaseSync(indexDbPath, { allowExtension: true });
+      legacy.loadExtension(getLoadablePath());
+      legacy.exec(
+        'CREATE TABLE IF NOT EXISTS index_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)',
+      );
+      legacy.exec(`CREATE VIRTUAL TABLE vec_items USING vec0(
+        store TEXT partition key,
+        embedding float[4] distance_metric=cosine,
+        +recordId TEXT,
+        +chunkOrdinal INTEGER,
+        +text TEXT,
+        +metadata TEXT
+      )`);
+      legacy
+        .prepare("INSERT INTO index_meta(key, value) VALUES ('dimension', '4')")
+        .run();
+      const [vector] = await embedder.embed(['legacy indexed body']);
+      const record = (
+        await (await store.adapterFor(root.id)).listByType('raw')
+      )[0];
+      legacy
+        .prepare(
+          'INSERT INTO vec_items(rowid, store, embedding, recordId, chunkOrdinal, text, metadata) VALUES (null, ?, ?, ?, ?, ?, ?)',
+        )
+        .run(
+          root.id,
+          new Uint8Array(new Float32Array(vector).buffer),
+          record.id,
+          0n,
+          'legacy indexed body',
+          '{}',
+        );
+      legacy.close();
+      indexProvider = new SqliteVecIndexProvider({ dbPath: indexDbPath });
+
+      const before = await search(appWith(embedder), 'legacy indexed body');
+      expect(before.data).toEqual([]);
+      expect(before.index.staleRoots).toEqual([
+        { rootId: root.id, reason: 'unknown-generation' },
+      ]);
+
+      await rebuild(appWith(embedder), root.id);
+      const after = await search(appWith(embedder), 'legacy indexed body');
+      expect(after.data.map((r) => r.title)).toEqual(['Legacy']);
+      expect(after.index.staleRoots).toEqual([]);
+    });
+
+    test('an edited body withholds the old excerpt until rebuild; a title edit stays current', async () => {
+      const root = await createRoot('Personal knowledge');
+      const id = await addRecord(root.id, 'Plan', 'original plan body');
+      const app = appWith(embedder);
+      await rebuild(app, root.id);
+      const adapter = await store.adapterFor(root.id);
+
+      await adapter.update(id, { title: 'Plan, renamed' }, { agent: 'test' });
+      const renamed = await search(app, 'original plan body');
+      expect(renamed.data).toEqual([
+        expect.objectContaining({
+          recordId: id,
+          title: 'Plan, renamed',
+          excerpt: 'original plan body',
+        }),
+      ]);
+      expect(renamed.index.staleRecords).toBe(0);
+
+      await adapter.update(
+        id,
+        { body: 'rewritten plan body' },
+        { agent: 'test' },
+      );
+      const edited = await search(app, 'original plan body');
+      expect(edited.data).toEqual([]);
+      expect(edited.index.staleRecords).toBe(1);
+
+      await rebuild(app, root.id);
+      const rebuilt = await search(app, 'rewritten plan body');
+      expect(rebuilt.data).toEqual([
+        expect.objectContaining({
+          recordId: id,
+          excerpt: 'rewritten plan body',
+        }),
+      ]);
+      expect(rebuilt.index.staleRecords).toBe(0);
+    });
+
+    test('unreadable hits ranked above readable ones are refilled: topK returns min(topK, readable)', async () => {
+      const readable = await createRoot('Personal knowledge');
+      const hidden = await createRoot('Hidden knowledge', 'hidden');
+      // Five hidden records match the query exactly, so they hold the top
+      // five ranks; the three readable ones rank below all of them.
+      for (let i = 0; i < 5; i += 1) {
+        await addRecord(hidden.id, `Hidden ${i}`, 'quarterly revenue forecast');
+      }
+      for (let i = 0; i < 3; i += 1) {
+        await addRecord(readable.id, `Readable ${i}`, `readable note ${i}`);
+      }
+      // Explicit vectors: every readable note is similar to the query, but
+      // less similar than the exact hidden matches.
+      const ranked: IEmbeddingProvider = {
+        id: 'ranked-stub',
+        displayName: 'Ranked stub',
+        dimensions: () => 4,
+        embed: async (texts) =>
+          texts.map((text) => {
+            const match = /^readable note (\d)$/.exec(text);
+            return match
+              ? [1, 0.2 * (Number(match[1]) + 1), 0, 0]
+              : [1, 0, 0, 0];
+          }),
+      };
+      const app = appWith(ranked, (_request, root) => root.id !== hidden.id);
+      await rebuild(app);
+
+      const two = await search(app, 'quarterly revenue forecast', 2);
+      expect(two.data).toHaveLength(2);
+      expect(two.data.every((r) => r.rootId === readable.id)).toBe(true);
+
+      const all = await search(app, 'quarterly revenue forecast', 10);
+      expect(all.data).toHaveLength(3);
+      expect(all.data.every((r) => r.rootId === readable.id)).toBe(true);
+      expect(all.index.scanLimitReached).toBe(false);
+      // Roots the caller cannot read are never named, stale or not.
+      expect(JSON.stringify(all)).not.toContain(hidden.id);
     });
   });
 });

@@ -1,0 +1,7 @@
+{
+  "revision": "76766fd0391094e0d6a144b32ce50e02028e7822",
+
+  "notes": [
+    {"path":"docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","note":"Reviewed Layer 1 inbound claims: refusal stays the default and the Cursor entries are reviewed allowlisted handlers keyed by exact name; no Station credential is answered. Dated survey left as history; no prose change.","inputs":["docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","src-server/providers/adapters/acp-adapter.ts","src-server/services/acp/__tests__/acp-inbound-extension-policy.test.ts","src-server/services/acp/acp-inbound-extension-policy.ts","src-shared/extension-notification-bindings.ts"]}
+  ]
+}

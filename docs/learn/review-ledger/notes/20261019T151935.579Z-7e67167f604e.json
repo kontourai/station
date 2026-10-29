@@ -1,0 +1,7 @@
+{
+  "revision": "3a4d7160bd6f7d8b317740769f9a637fb5e3e33d",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Round 3 PR #3850 delta only: reviewed the paired-device all-Off/no-endpoint suppression claim against useDisclosureDecision and the real recovery-scope UI test. Extended its existing case across explicit Off and DNT with saved Lite/Full choices while effective tiers remain Off. Both cases passed, both failed on a rendered dialog when the suppression guard was disabled, and both passed after restoration. Existing suppression prose remains accurate; no production or prose change. Full hosted gallery and live paired-device behavior not established.","inputs":["docs/reference/usage-telemetry.md","src-ui/src/__tests__/authorityRecoveryScope.test.tsx"]}
+  ]
+}

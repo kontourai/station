@@ -24,6 +24,8 @@ export const PERMISSION_LABELS: Record<string, string> = {
   'plugin.server': 'Run server-side plugin code inside Station',
   'navigation.dock': 'Add items to the navigation dock',
   'ui.confirm': 'Interrupt you with a confirmation dialog in Station chrome',
+  'layout.primaryChat':
+    'Put Chat in its layout’s centre, in place of the dock’s Chat',
   'events.subscribe': 'Subscribe to Station events',
   'events.read-payload': 'Read the contents of Station events',
 };

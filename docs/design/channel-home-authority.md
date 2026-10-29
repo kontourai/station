@@ -366,6 +366,13 @@ returns the same seal; a changed intent conflicts. History and document workers
 consult that seal inside their commit transactions. Reads and exact duplicate
 receipts remain available. There is no unseal operation.
 
+Task memory (#4003: the Task summary and keyed records in the event store's
+migration-020 tables, with Learning's dismissal and promotion rows from
+migrations 021 and 022) is written through the room's request authority but is
+not room history. It does not consult the source seal, and the seal's document
+digest does not cover it. Fencing it, or carrying it as transferred content,
+remains part of target activation.
+
 `ProjectTaskRoomHistory.readSourceSeal` lets the target inspect a copied
 closing seal using a read grant. It validates the retained history and exact
 closing checkpoint in one read transaction, bounds stored seal fields before

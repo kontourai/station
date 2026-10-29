@@ -1,18 +1,32 @@
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync, renameSync, rmSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+} from 'node:fs';
 import { basename, delimiter, dirname, join } from 'node:path';
 import {
+  compareStationReleaseVersions,
   installerInheritedEnv,
   packagedInstallerCommand,
 } from '@kontourai/station-shared/prebuilt-archive';
 import {
+  isServiceStagePhase,
   parseServiceUpdateRequest,
   readServiceLauncherContext,
   type ServiceLauncherContext,
+  type ServiceStageProgress,
   type ServiceUpdateRequest,
   type ServiceUpdateRequestResult,
   serviceUpdatePaths,
+  serviceVersionIsStaged,
   writeJsonAtomically,
+  writeServiceStageProgress,
 } from '@kontourai/station-shared/service-launcher-protocol';
 import type { ServiceFs } from './service.js';
 
@@ -30,6 +44,12 @@ import type { ServiceFs } from './service.js';
  *     for a trial. When the launcher accepts, it re-points the service's
  *     liveness entry at the launcher before it is stopped.
  *   trial child: reports `prepared` once its server has proven its identity.
+ *
+ * A request's mode (#3851) decides how far the active child takes it: a
+ * `stage` request ends `staged` once its installer sealed the version, and
+ * the launcher is never asked; an `apply` request goes straight to the
+ * launcher with a version that must already be staged, and nothing is
+ * downloaded; a request without a mode does both, as before.
  *
  * Requests the launcher never sees (nothing newer, staging failed, rejected)
  * are answered in `runtime/update-request-result.json`; the launcher records
@@ -74,6 +94,93 @@ function stagingInheritedEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   );
 }
 
+/** What staging reports while it runs (#3851); see `ServiceStageProgress`. */
+export type StageProgressReport = Omit<
+  ServiceStageProgress,
+  'requestId' | 'at'
+>;
+
+/** How often a download's size on disk is sampled. */
+const DOWNLOAD_SAMPLE_MS = 500;
+
+/**
+ * Reads install.sh's stage-only progress lines (#3851) from its stdout as
+ * they arrive: `STATION_STAGE_PHASE=<phase>`, and before a download its
+ * signed size and the file curl writes (`STATION_STAGE_DOWNLOAD_SIZE=`,
+ * `STATION_STAGE_DOWNLOAD_FILE=`). While downloading, the file's size on disk
+ * is the downloaded byte count: measured, not estimated. An installer that
+ * reports nothing (install.ps1 today) reports nothing here either.
+ */
+function createStageProgressReader(
+  onProgress: ((report: StageProgressReport) => void) | undefined,
+) {
+  let pending = '';
+  let downloadSize: number | undefined;
+  let downloadFile: string | undefined;
+  let sampler: ReturnType<typeof setInterval> | undefined;
+  let lastBytes = -1;
+  const stopSampling = () => {
+    if (sampler !== undefined) clearInterval(sampler);
+    sampler = undefined;
+  };
+  const sample = () => {
+    if (!downloadFile || downloadSize === undefined) return;
+    let bytes = 0;
+    try {
+      bytes = statSync(downloadFile).size;
+    } catch {
+      // curl has not created it yet.
+    }
+    if (bytes === lastBytes) return;
+    lastBytes = bytes;
+    onProgress?.({
+      phase: 'downloading',
+      downloadedBytes: bytes,
+      totalBytes: downloadSize,
+    });
+  };
+  const line = (text: string) => {
+    const match =
+      /^STATION_STAGE_(PHASE|DOWNLOAD_SIZE|DOWNLOAD_FILE)=(.*)$/.exec(text);
+    if (!match) return;
+    const [, key, value] = match;
+    if (key === 'DOWNLOAD_SIZE') {
+      const size = Number(value);
+      downloadSize = Number.isSafeInteger(size) && size > 0 ? size : undefined;
+      return;
+    }
+    if (key === 'DOWNLOAD_FILE') {
+      downloadFile = value || undefined;
+      return;
+    }
+    if (!isServiceStagePhase(value)) return;
+    // The download ended: its final size is read once more before the next
+    // step, so a download faster than one sample still reports its bytes.
+    if (sampler !== undefined) sample();
+    stopSampling();
+    if (value === 'downloading' && downloadFile && downloadSize !== undefined) {
+      lastBytes = -1;
+      sample();
+      sampler = setInterval(sample, DOWNLOAD_SAMPLE_MS);
+      sampler.unref?.();
+      return;
+    }
+    onProgress?.({ phase: value });
+  };
+  return {
+    write(chunk: string) {
+      pending += chunk;
+      let newline = pending.indexOf('\n');
+      while (newline !== -1) {
+        line(pending.slice(0, newline).replace(/\r$/, ''));
+        pending = pending.slice(newline + 1);
+        newline = pending.indexOf('\n');
+      }
+    },
+    close: stopSampling,
+  };
+}
+
 /**
  * Stages a version with this version's own installer in stage-only mode
  * (install.sh, or install.ps1 on Windows, #2675 W3; the choice is
@@ -88,6 +195,7 @@ export function stageServiceUpdate(input: {
   targetVersion?: string;
   env?: NodeJS.ProcessEnv;
   platform?: NodeJS.Platform;
+  onProgress?: (report: StageProgressReport) => void;
 }): Promise<string> {
   const versionDir = join(input.installRoot, 'versions', input.version);
   const env = input.env ?? process.env;
@@ -146,14 +254,21 @@ export function stageServiceUpdate(input: {
     });
     let stdout = '';
     let stderr = '';
-    child.stdout.on('data', (chunk) => {
+    const progress = createStageProgressReader(input.onProgress);
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (chunk: string) => {
       stdout += chunk;
+      progress.write(chunk);
     });
     child.stderr.on('data', (chunk) => {
       stderr = `${stderr}${chunk}`.slice(-4096);
     });
-    child.on('error', reject);
+    child.on('error', (error) => {
+      progress.close();
+      reject(error);
+    });
     child.on('close', (code) => {
+      progress.close();
       const staged = /^STATION_STAGED_VERSION=(\S+)$/m.exec(stdout)?.[1];
       if (code === 0 && staged) resolvePromise(staged);
       else
@@ -167,19 +282,47 @@ export function stageServiceUpdate(input: {
   });
 }
 
-/** The same completion check the launcher makes before a trial. */
-function stagedVersionIsComplete(
+/** Installed versions are sealed read-only; a removal needs write bits back. */
+function makeWritable(dir: string): void {
+  chmodSync(dir, 0o700);
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isDirectory() && !entry.isSymbolicLink())
+      makeWritable(join(dir, entry.name));
+  }
+}
+
+/**
+ * Removes staged versions a newer stage superseded (#3851 review F7): every
+ * version directory NEWER than the running one except `keep`. The running
+ * version, and every older one (the launcher's rollback target among them),
+ * are never touched, nor are installer stages (dot entries). Best effort.
+ */
+function pruneSupersededStagedVersions(
   installRoot: string,
-  version: string,
-): boolean {
-  const dir = join(installRoot, 'versions', version);
+  running: string,
+  keep: string,
+  log: (message: string) => void = () => undefined,
+): void {
+  const versions = join(installRoot, 'versions');
+  let names: string[];
   try {
-    return (
-      readFileSync(join(dir, '.station-install-complete'), 'utf8').trim() !==
-        '' && existsSync(join(dir, 'bin', 'station.mjs'))
-    );
+    names = readdirSync(versions);
   } catch {
-    return false;
+    return;
+  }
+  for (const name of names) {
+    if (name.startsWith('.') || name === keep || name === running) continue;
+    if (compareStationReleaseVersions(name, running) !== 1) continue;
+    const dir = join(versions, name);
+    try {
+      if (!lstatSync(dir).isDirectory()) continue;
+      makeWritable(dir);
+      rmSync(dir, { recursive: true, force: true });
+    } catch (error) {
+      log(
+        `Station could not remove the superseded ${dir}: ${(error as Error).message}`,
+      );
+    }
   }
 }
 
@@ -228,6 +371,7 @@ function settleOrphanedClaim(
       `Station could not record the interrupted update request: ${(error as Error).message}`,
     );
   }
+  rmSync(paths.stageProgress, { force: true });
   rmSync(paths.processing, { force: true });
 }
 
@@ -343,20 +487,50 @@ export function createServiceLauncherLink(
         return;
       }
       const requestId = request.id;
+      const mode = request.mode;
       pendingRequestId = requestId;
+      const alreadyStaged =
+        !!request.targetVersion &&
+        serviceVersionIsStaged(context.installRoot, request.targetVersion);
+      if (mode === 'apply' && !alreadyStaged) {
+        // An apply never downloads: it applies what a stage request (or
+        // `station upgrade`) already verified, or nothing.
+        finishRequest({
+          requestId,
+          status: 'failed',
+          reason: `Station ${request.targetVersion} is not downloaded and verified on this host; download it again, then restart.`,
+          at: new Date().toISOString(),
+        });
+        return;
+      }
+      const reportProgress = (report: StageProgressReport) => {
+        try {
+          writeServiceStageProgress(context.installRoot, {
+            requestId,
+            ...report,
+            at: new Date().toISOString(),
+          });
+        } catch (error) {
+          log(
+            `Station could not record staging progress: ${(error as Error).message}`,
+          );
+        }
+      };
       // A version install.sh already staged (a `station upgrade` handing the
-      // switch to this service) needs no second download.
+      // switch to this service, or an earlier stage request) needs no second
+      // download.
       const staging =
-        request.targetVersion &&
-        stagedVersionIsComplete(context.installRoot, request.targetVersion)
+        alreadyStaged && request.targetVersion
           ? Promise.resolve(request.targetVersion)
           : stage({
               installRoot: context.installRoot,
               version: context.version,
               targetVersion: request.targetVersion,
+              onProgress: reportProgress,
             });
       staging.then(
         (staged) => {
+          rmSync(paths.stageProgress, { force: true });
           if (staged === context.version) {
             finishRequest({
               requestId,
@@ -366,15 +540,34 @@ export function createServiceLauncherLink(
             });
             return;
           }
+          if (mode === 'stage') {
+            // Downloaded and verified; the running version keeps running
+            // until someone applies it. An older stage it supersedes goes.
+            pruneSupersededStagedVersions(
+              context.installRoot,
+              context.version,
+              staged,
+              log,
+            );
+            finishRequest({
+              requestId,
+              status: 'staged',
+              version: staged,
+              at: new Date().toISOString(),
+            });
+            return;
+          }
           send({ type: 'request-update', targetVersion: staged, requestId });
         },
-        (error: Error) =>
+        (error: Error) => {
+          rmSync(paths.stageProgress, { force: true });
           finishRequest({
             requestId,
             status: 'failed',
             reason: error.message,
             at: new Date().toISOString(),
-          }),
+          });
+        },
       );
     },
   };

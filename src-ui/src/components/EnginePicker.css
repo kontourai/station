@@ -21,8 +21,12 @@
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(circle at top, rgba(37, 99, 235, 0.16), transparent 45%),
-    rgba(4, 7, 12, 0.68);
+    radial-gradient(
+      circle at top,
+      color-mix(in srgb, var(--k-brand) 16%, transparent),
+      transparent 45%
+    ),
+    var(--overlay-modal);
   backdrop-filter: blur(8px);
 }
 
@@ -31,14 +35,16 @@
   z-index: 1;
   width: min(560px, calc(100vw - 32px));
   border-radius: 22px;
-  border: 1px solid rgba(96, 165, 250, 0.22);
+  /* Was a fixed navy panel with pale-blue text, so it stayed dark under the
+     light theme. Same brand-tinted lift, derived from the active palette. */
+  border: 1px solid color-mix(in srgb, var(--k-brand) 28%, transparent);
   background: linear-gradient(
     180deg,
-    rgba(12, 18, 30, 0.98),
-    rgba(9, 13, 22, 0.98)
+    color-mix(in srgb, var(--k-brand) 8%, var(--k-panel-raised)),
+    var(--k-panel-raised)
   );
-  color: #e5eefc;
-  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.42);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-modal);
   padding: 24px;
 }
 
@@ -47,7 +53,7 @@
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: #93c5fd;
+  color: color-mix(in srgb, var(--k-brand) 60%, var(--k-text));
   margin-bottom: 12px;
 }
 
@@ -68,7 +74,7 @@
 .engine-picker__description {
   font-size: var(--text-md);
   line-height: 1.6;
-  color: rgba(229, 238, 252, 0.82);
+  color: var(--text-secondary);
   margin-bottom: 18px;
 }
 
@@ -81,7 +87,7 @@
   border: none;
   border-radius: var(--radius-pill);
   background: transparent;
-  color: rgba(229, 238, 252, 0.72);
+  color: var(--text-tertiary);
   cursor: pointer;
   font-size: var(--text-4xl);
 }
@@ -98,8 +104,8 @@
   align-items: center;
   gap: 12px;
   border-radius: 14px;
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-primary);
+  background: color-mix(in srgb, var(--k-text) 3%, transparent);
   padding: 12px 14px;
   cursor: pointer;
 }
@@ -109,12 +115,12 @@
 .engine-picker__option--pending {
   cursor: default;
   border-style: dashed;
-  background: rgba(255, 255, 255, 0.015);
+  background: transparent;
 }
 
 .engine-picker__option--selected {
-  border-color: rgba(96, 165, 250, 0.6);
-  background: rgba(37, 99, 235, 0.12);
+  border-color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 12%, transparent);
 }
 
 .engine-picker__option-body {
@@ -129,7 +135,7 @@
 
 .engine-picker__option-detail {
   font-size: var(--text-sm);
-  color: rgba(229, 238, 252, 0.68);
+  color: var(--text-tertiary);
   margin-top: 2px;
 }
 
@@ -137,8 +143,8 @@
   width: 100%;
   border: none;
   border-radius: 12px;
-  background: #2563eb;
-  color: #fff;
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
   font-weight: 600;
   font-size: var(--text-md);
   padding: 12px 16px;
@@ -153,9 +159,9 @@
 
 .engine-picker__secondary {
   width: 100%;
-  border: 1px solid rgba(255, 255, 255, 0.22);
+  border: 1px solid var(--border-secondary);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--k-text) 8%, transparent);
   color: inherit;
   cursor: pointer;
   font-size: var(--text-sm);

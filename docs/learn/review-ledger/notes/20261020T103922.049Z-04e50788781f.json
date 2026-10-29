@@ -1,0 +1,9 @@
+{
+  "revision": "27740919b237e0e3017f329941ddfd68390ca502",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Round-2 re-check: tests/e2e-manifest.mjs only re-quoted the chat-inventory-layout rationale (biome format). No claim here changes.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/e2e-manifest.mjs"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Round-2 re-check: tests/e2e-manifest.mjs only re-quoted the chat-inventory-layout rationale (biome format). No claim here changes.","inputs":["docs/testing/browser-smoke.md","tests/e2e-manifest.mjs"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "df2dd1c758948a39a2b5fecc80be52e25009badd",
+
+  "notes": [
+    {"path":"docs/design/outside-agent-mcp-r4a-evidence.md","note":"Merge of origin/main into feat/walkthroughs: the branch changes runtime-http.ts only for the two exact media-upload POST paths (lazy streamed body after admission) and the per-request ordinary receive total; it adds Walkthrough/media-tools/transcription rows to pairing-route-scopes.ts without changing outside-agent OAuth/MCP leaves. On the combined tree, runtime-http, outside-agent mcp-routes, mcp-audience, oauth-routes and pairing-route-scopes suites passed (5 files, 345 tests).","inputs":["docs/design/outside-agent-mcp-r4a-evidence.md","src-server/security/pairing-route-scopes.ts","src-server/runtime/bootstrap/runtime-http.ts"]}
+  ]
+}

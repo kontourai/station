@@ -1,0 +1,7 @@
+{
+  "revision": "1422bcf8ed7884a958b9d48f5d3c3bc6305fe946",
+
+  "notes": [
+    {"path":"docs/reference/env-vars.md","note":"Re-checked the STATION_SUPERVISOR_IPC row against supervisor.ts (fork launcher still sets STATION_SUPERVISOR_IPC and STATION_SUPERVISOR_GENERATION, children still do not inherit) and supervisor-link.ts (parkUnderSupervisor still refuses IPC=1 without a channel). The protocol 1.1 connection-catching change adds only STATION_SUPERVISOR_TEST_CATCH_CONNECTIONS, a test hook like the other unlisted STATION_SUPERVISOR_TEST_* variables, so no row changes.","inputs":["docs/reference/env-vars.md","packages/supervisor/src/supervisor.ts","src-server/runtime/bootstrap/supervisor-link.ts"]}
+  ]
+}

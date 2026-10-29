@@ -1,6 +1,6 @@
+import './runtime/bootstrap/server-compile-cache.js';
 import { assertSupportedNodeVersion } from '@kontourai/station-shared/node-runtime';
 import { sweepStationTempRoot } from '@kontourai/station-shared/temp-dir';
-import 'dotenv/config';
 import './telemetry.js';
 
 /**
@@ -8,13 +8,18 @@ import './telemetry.js';
  * Main entry point
  */
 
+import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { LifecycleShutdownReason } from '@kontourai/station-shared/lifecycle-events';
 import { installNodeHttpCompatibility } from '@kontourai/station-shared/node-http-compat';
+import { HANDOFF_DEFAULTS } from '@kontourai/station-supervisor/protocol';
+import { consumeHomeRestoreMarkerAtBoot } from './domain/home-restore-marker-boot.js';
 import { ensureStationHomeSchemaSync } from './domain/home-schema-gate.js';
 import { writeBootRecord } from './routes/system/boot-history.js';
 import { captureBuildProvenance } from './routes/system/build-provenance.js';
 import { reportSelfUpdateRestartAtBoot } from './routes/system/self-update-boot-report.js';
+import { installSupervisedRestartResolver } from './routes/system/self-update-handoff.js';
 import { allocateFreePortBlock } from './runtime/bootstrap/allocate-port-block.js';
 import {
   installCrashHandlers,
@@ -33,11 +38,25 @@ import type { SelfHostedBrokerStatus } from './runtime/bootstrap/self-hosted-bro
 import { loadSelfHostedBrokerConnectorConfig } from './runtime/bootstrap/self-hosted-connector-config.js';
 import { StationRuntime } from './runtime/bootstrap/station-runtime.js';
 import { armSupervisedParentWatchdog } from './runtime/bootstrap/supervised-parent-watchdog.js';
+import {
+  createSigtermHandler,
+  runSupervisorDrain,
+} from './runtime/bootstrap/supervisor-drain.js';
+import {
+  allowHomeAccess,
+  installListenerLink,
+  parkUnderSupervisor,
+  type SupervisorLink,
+} from './runtime/bootstrap/supervisor-link.js';
 import { sweepOrphanedOwnedProcesses } from './services/infra/process-utils.js';
 import {
   getInstalledServerLogSink,
   installServerLogSink,
 } from './services/infra/server-log-store.js';
+import {
+  initializeWorkloadResources,
+  stopWorkloadResources,
+} from './services/infra/workload-resources.js';
 import { lifecycleService } from './telemetry/metrics.js';
 import { createLogger, resolveLogLevel } from './utils/logger.js';
 import { resolveHomeDir } from './utils/paths.js';
@@ -61,7 +80,41 @@ function flushLogSink(): void {
   }
 }
 
+async function parkOrExit(): Promise<SupervisorLink | null> {
+  try {
+    return await parkUnderSupervisor();
+  } catch (error) {
+    console.error('Station could not start under its supervisor:', error);
+    process.exit(1);
+  }
+}
+
 async function main() {
+  // Under the process supervisor this generation is loaded while the previous
+  // one still serves and owns the home, so it parks before anything below:
+  // the temp and orphan sweeps (which could kill the live generation's
+  // engines), the schema gate, the log sink, and the lifecycle journal.
+  const supervisorLink = await parkOrExit();
+  if (supervisorLink) installListenerLink(supervisorLink);
+  allowHomeAccess();
+  await initializeWorkloadResources({ homeDir: resolveHomeDir() });
+  // Set as boot reaches them; a drain before then exits without them.
+  let runtimeForDrain: StationRuntime | undefined;
+  let gracefulShutdown:
+    | ((
+        signal: LifecycleShutdownReason,
+        forcedExitCode?: number,
+      ) => Promise<void>)
+    | undefined;
+  supervisorLink?.onDrain((request) => {
+    void runSupervisorDrain(request, {
+      link: supervisorLink,
+      runtime: () => runtimeForDrain,
+      shutdown: () => gracefulShutdown,
+      exit: (code) => process.exit(code),
+    });
+  });
+
   if (process.env.STATION_SERVICE_MANAGED === '1') {
     lifecycleService.add(1, { action: 'boot', platform: process.platform });
   }
@@ -85,7 +138,47 @@ async function main() {
     process.env.PORT,
     process.env.STATION_PORT_MODE,
   );
+  // A later generation serves on the sockets its supervisor holds, so their
+  // base port wins over PORT (and over allocating a fresh block for PORT=0).
+  const adoptedApiPort = supervisorLink?.adoptedPort('api') ?? null;
+  if (adoptedApiPort !== null) {
+    if (port !== AUTO_ALLOCATE_PORT && port !== adoptedApiPort) {
+      console.warn(
+        `[station] PORT ${port} differs from the supervisor-held API port ${adoptedApiPort}; serving on ${adoptedApiPort}`,
+      );
+    }
+    port = adoptedApiPort;
+  }
   const projectHomeDir = resolveHomeDir();
+
+  // #3851: a rolled-back update handoff restores the home it left BEFORE the
+  // schema gate reads it (the target may have migrated it); a marker this
+  // release cannot account for refuses boot. No marker: nothing happens.
+  try {
+    consumeHomeRestoreMarkerAtBoot(projectHomeDir);
+  } catch (error) {
+    // The normal fatal path (review F9). The durable log sink is installed
+    // only now: a marked home is not a fresh one, and `logs` is a live root
+    // the restore never touches.
+    processLifecycle.observeShutdown('startup_failure');
+    processLifecycle.observeExit(1);
+    console.error('Failed to start Station:', error);
+    try {
+      installServerLogSink({
+        directory: join(projectHomeDir, 'logs', 'server'),
+      });
+    } catch {
+      // The console line above is all that can be recorded.
+    }
+    logFatalAndFlush(
+      createLogger({ name: 'station', level: resolveLogLevel() }),
+      'Failed to start Station',
+      { err: error },
+      flushLogSink,
+      buildProvenanceSnapshot,
+    );
+    process.exit(1);
+  }
 
   // The schema gate must own the first write to a Station home. In
   // particular, installing the durable log sink first creates logs/server in
@@ -144,11 +237,9 @@ async function main() {
         }
       : {}),
   });
+  runtimeForDrain = runtime;
 
   let stdoutBrokenPipe = false;
-  let gracefulShutdown:
-    | ((signal: string, forcedExitCode?: number) => Promise<void>)
-    | undefined;
   // Install before runtime initialization: boot logs are still stdout writes,
   // and Desktop can disappear while initialization is in flight.
   installStdoutEpipeGuard(process.stdout, () => {
@@ -178,17 +269,22 @@ async function main() {
     console.log('═══════════════════════════════════════════════════\\n');
     logger.info('Station started', { port, host, agents: loadedAgents });
 
-    gracefulShutdown = async (signal: string, forcedExitCode?: number) => {
+    gracefulShutdown = async (
+      signal: LifecycleShutdownReason,
+      forcedExitCode?: number,
+    ) => {
       if (shuttingDown) return;
       shuttingDown = true;
-      processLifecycle.observeShutdown(
-        signal as 'SIGINT' | 'SIGTERM' | 'uncaughtException',
-      );
+      processLifecycle.observeShutdown(signal);
       console.log(`\n\nShutting down gracefully (${signal})...`);
       logger.info('Station shutting down', { signal });
       let exitCode = forcedExitCode ?? (signal === 'uncaughtException' ? 1 : 0);
       try {
-        await runtime.shutdown();
+        try {
+          await runtime.shutdown();
+        } finally {
+          await stopWorkloadResources();
+        }
         logger.info('Station shutdown complete', { signal, exitCode });
       } catch (error) {
         exitCode = 1;
@@ -199,11 +295,23 @@ async function main() {
         });
       }
       processLifecycle.observeExit(exitCode);
+      if (supervisorLink?.draining) await supervisorLink.reportDrained();
       process.exit(exitCode);
     };
 
     process.on('SIGINT', () => void gracefulShutdown?.('SIGINT'));
-    process.on('SIGTERM', () => void gracefulShutdown?.('SIGTERM'));
+    process.on(
+      'SIGTERM',
+      createSigtermHandler({
+        link: supervisorLink,
+        shutdown: () => gracefulShutdown,
+        killGraceMs: HANDOFF_DEFAULTS.killGraceMs,
+      }),
+    );
+    // The supervisor's IPC channel closing means it is gone (protocol).
+    supervisorLink?.setShutdownHandler(() =>
+      gracefulShutdown?.('supervisor_disconnect', 1),
+    );
     armSupervisedParentWatchdog({
       logger,
       onSupervisorGone: () => gracefulShutdown?.('SIGTERM', 1),
@@ -233,6 +341,18 @@ async function main() {
     }
     // Cover both an earlier async EPIPE and a synchronous handshake refusal.
     if (stdoutBrokenPipe) void gracefulShutdown('stdout_epipe', 1);
+    // The supervisor's readiness, sent once every listener has settled. The
+    // boot id is per generation: STATION_BOOT_ID is inherited unchanged by
+    // every generation a supervisor forks.
+    // A supervised in-app update is resolved by the generation its handoff
+    // leaves serving, which hears the outcome once it is ready.
+    if (supervisorLink) {
+      installSupervisedRestartResolver(
+        dirname(fileURLToPath(import.meta.url)),
+        logger,
+      );
+    }
+    await supervisorLink?.ready(randomUUID(), port);
   } catch (error) {
     processLifecycle.observeShutdown('startup_failure');
     processLifecycle.observeExit(1);

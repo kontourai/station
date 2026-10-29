@@ -1,4 +1,8 @@
-import type { ToolPolicyDelivery } from '@kontourai/station-contracts/engine-capability-matrix';
+import type {
+  AcpApprovalControl,
+  ToolPolicyDelivery,
+} from '@kontourai/station-contracts/engine-capability-matrix';
+import type { ProjectChatApprovalDefault } from '@kontourai/station-contracts/project-chat-defaults';
 import {
   EXECUTION_MODE,
   type ExecutionMode,
@@ -37,6 +41,7 @@ import {
 } from '../../utils/modelCapabilities';
 import { Button } from '../Button';
 import { ApprovalModeChip } from '../badges/ApprovalModeChip';
+import { EngineApprovalDisclosureChip } from '../badges/EngineApprovalDisclosureChip';
 import {
   ComposerActionsMenu,
   type ComposerActionsMenuProps,
@@ -61,6 +66,10 @@ import {
   draggedConversationReference,
   endConversationReferenceDrag,
 } from './conversationReferenceDrag';
+import {
+  UnconfirmedDiscardConfirm,
+  useUnconfirmedDiscardDisclosure,
+} from './UnconfirmedDiscardConfirm';
 import './chat.css';
 import { SkeletonBlock, SkeletonList } from '../state';
 
@@ -134,6 +143,12 @@ function isPortableDraftShortcut(event: {
 interface ChatInputAreaProps {
   activity?: React.ReactNode;
   activityRef?: React.Ref<HTMLDivElement>;
+  /**
+   * The context-window meter for the chat on screen, shown beside the model
+   * picker it measures. It moved here from the dock header, which is for the
+   * chat's identity and the dock's own controls.
+   */
+  contextMeter?: React.ReactNode;
   // Session info
   /**
    * The active chat session's stable identity (thread id) — used only to
@@ -163,11 +178,11 @@ interface ChatInputAreaProps {
   mentionAuthority?: string | null;
   attachments: FileAttachment[];
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
+  onEnabledChange?: (element: HTMLTextAreaElement | null) => void;
   // Status
   disabled: boolean;
   /** A busy continuation may accept a draft while sends remain blocked. */
   allowDraftWhileDisabled?: boolean;
-  isSending: boolean;
   /**
    * A turn is outstanding — see `isTurnInFlight` (active-chats-state.ts) for
    * the derivation. Renamed from `hasAbortController` in the fix:
@@ -199,6 +214,15 @@ interface ChatInputAreaProps {
    */
   modelProviderLabel?: string;
   executionEngineLabel?: string;
+  /**
+   * The engine this chat's Agent is configured for now, when it differs from
+   * the engine `executionEngineLabel` names for the live Session.
+   */
+  agentEngineMove?: {
+    to: string;
+    /** The Session's engine binding has ended, so the next turn starts on `to`. */
+    nextTurn: boolean;
+  };
   // Display
   fontSize: number;
   dockHeight: number;
@@ -221,7 +245,12 @@ interface ChatInputAreaProps {
   modelRuntimeOptions?: Record<string, unknown>;
   // Approval mode (archive#727) — External-agent sessions only
   executionMode?: ExecutionMode;
+  approvalModeIsNewSession?: boolean;
   approvalModeAgentDefault?: unknown;
+  /** A new chat's Project approval layer (`ProjectChatApprovalDefault`). */
+  approvalModeProjectDefault?: ProjectChatApprovalDefault;
+  /** The new chat's Project layer could not be read (or is still loading). */
+  approvalModeProjectDefaultUnavailable?: boolean;
   /** This Station's `AppConfig.defaultApprovalMode` (#2144 slice 6). */
   approvalModeStationDefault?: unknown;
   toolPolicyDelivery?: ToolPolicyDelivery;
@@ -234,6 +263,17 @@ interface ChatInputAreaProps {
   approvalModeOverride?: SessionApprovalOverride;
   acpSessionModes?: AdvertisedAcpMode[];
   acpCurrentModeId?: string;
+  /**
+   * #3290: an ACP session's approval control, from its connection
+   * (`acpApprovalControl`). `engineId` is the engine identity the approval
+   * surfaces read (`acpApprovalFor`), `null` when the engine decides.
+   * Absent for every other engine, which uses `agentConnectionId`.
+   */
+  acpApproval?: {
+    control: AcpApprovalControl;
+    engineId: string | null;
+    engineName?: string;
+  };
   // Slash commands
   commandQuery: string | null;
   slashCommands: SlashCommand[];
@@ -270,7 +310,12 @@ interface ChatInputAreaProps {
    * the notice's words are its description. A queued send is not a failure, so
    * this is not the send-failure line.
    */
-  queuedRetryNotice?: { text: string; onDiscard: () => void };
+  queuedRetryNotice?: {
+    text: string;
+    onDiscard: () => void;
+    /** Ask first with the shared unconfirmed-message discard. */
+    confirm?: boolean;
+  };
   onRetryAttachmentStage?: (id: string) => void | Promise<void>;
   onCancelAttachmentStage?: (id: string) => void | Promise<void>;
   onReplaceAttachmentFile?: (id: string, files: File[]) => void | Promise<void>;
@@ -315,11 +360,23 @@ interface ChatInputAreaProps {
   secondaryActions?: ComposerActionsMenuProps;
   /** The visible, context-preserving Agent handoff entry point. */
   agentLabel?: string;
+  /**
+   * How the Agent is reached ("via model-proxy (home-server)"), when it is
+   * not direct. Kept apart from the name so a narrow composer drops it first
+   * (#3050); the accessible name always carries it.
+   */
+  agentRoute?: string;
   onOpenAgentHandoff?: () => void;
   agentHandoffTriggerRef?: React.RefObject<HTMLButtonElement | null>;
   agentHandoffDisabled?: boolean;
   agentHandoffDisabledReason?: string;
   workspaceRefused?: boolean;
+  /**
+   * The conversation's open read is still in flight: the composer is disabled
+   * and its placeholder names the wait. It occupies no new space, so the
+   * transcript above keeps its height.
+   */
+  loadingConversation?: boolean;
   onStartNewChat?: (
     initialMessage?: string,
     attachments?: FileAttachment[],
@@ -336,17 +393,33 @@ interface ChatInputAreaProps {
  * draft nobody has typed, at the transcript's expense.
  */
 function sizeDraft(textarea: HTMLTextAreaElement, availableHeight: number) {
-  textarea.style.height = 'auto';
-  const rows = textarea.rows;
-  textarea.rows = 1;
-  const contentHeight = textarea.scrollHeight;
-  textarea.rows = rows;
-  const maxHeight = Math.min(160, Math.max(88, availableHeight * 0.3));
-  const height = Math.min(textarea.scrollHeight, maxHeight);
-  textarea.style.height = `${height}px`;
-  textarea.style.overflowY =
-    textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
+  // Measure out of flow: collapsing the live draft lets the browser clamp
+  // the pinned transcript while the composer is temporarily shorter (#3661).
+  const mirror = textarea.cloneNode(false) as HTMLTextAreaElement;
+  mirror.removeAttribute('id');
+  mirror.removeAttribute('name');
+  mirror.setAttribute('aria-hidden', 'true');
+  mirror.tabIndex = -1;
+  mirror.value = textarea.value;
   const style = getComputedStyle(textarea);
+  Object.assign(mirror.style, {
+    position: 'fixed',
+    visibility: 'hidden',
+    pointerEvents: 'none',
+    width: style.width,
+    height: 'auto',
+    minHeight: '0',
+    maxHeight: 'none',
+  });
+  textarea.parentElement?.appendChild(mirror);
+  const draftHeight = mirror.scrollHeight;
+  mirror.rows = 1;
+  const contentHeight = mirror.scrollHeight;
+  mirror.remove();
+  const maxHeight = Math.min(160, Math.max(88, availableHeight * 0.3));
+  const height = Math.min(draftHeight, maxHeight);
+  textarea.style.height = `${height}px`;
+  textarea.style.overflowY = draftHeight > maxHeight ? 'auto' : 'hidden';
   const fontSize = Number.parseFloat(style.fontSize) || 16;
   const line = Number.parseFloat(style.lineHeight) || fontSize * 1.2;
   const chrome =
@@ -362,6 +435,7 @@ function sizeDraft(textarea: HTMLTextAreaElement, availableHeight: number) {
 export function ChatInputArea({
   activity,
   activityRef,
+  contextMeter,
   sessionId,
   activeConversationId,
   input,
@@ -374,9 +448,9 @@ export function ChatInputArea({
   quoteContext,
   attachments,
   textareaRef,
+  onEnabledChange,
   disabled,
   allowDraftWhileDisabled = false,
-  isSending,
   turnInFlight,
   busySteeringKind = 'native',
   busyFollowUp = 'queue',
@@ -386,6 +460,7 @@ export function ChatInputArea({
   fileAttachmentsSupported = modelSupportsAttachments,
   modelProviderLabel,
   executionEngineLabel,
+  agentEngineMove,
   fontSize,
   dockHeight,
   currentModel,
@@ -405,12 +480,16 @@ export function ChatInputArea({
   agentConnectionId,
   modelRuntimeOptions,
   executionMode,
+  approvalModeIsNewSession,
   approvalModeAgentDefault,
+  approvalModeProjectDefault,
+  approvalModeProjectDefaultUnavailable,
   approvalModeStationDefault,
   toolPolicyDelivery,
   lastAppliedApprovalMode,
   approvalModeOverride,
   acpSessionModes = [],
+  acpApproval,
   acpCurrentModeId,
   commandQuery,
   slashCommands,
@@ -425,9 +504,9 @@ export function ChatInputArea({
   queuedRetryNotice,
   attachUnavailableReason,
   onAttachUnavailable,
-  removalUnblocksSend = false,
+  removalUnblocksSend: removalUnblocksSendProp = false,
   attachmentStages = [],
-  sendBlockedReason,
+  sendBlockedReason: sendBlockedReasonProp,
   onRetryAttachmentStage,
   onCancelAttachmentStage,
   onReplaceAttachmentFile,
@@ -456,18 +535,51 @@ export function ChatInputArea({
   onVoiceStop,
   secondaryActions,
   agentLabel,
+  agentRoute,
   onOpenAgentHandoff,
   agentHandoffTriggerRef,
   agentHandoffDisabled = false,
   agentHandoffDisabledReason,
   workspaceRefused = false,
+  loadingConversation = false,
   onStartNewChat,
 }: ChatInputAreaProps) {
+  const textareaDisabled = disabled && !allowDraftWhileDisabled;
+  useEffect(() => {
+    onEnabledChange?.(textareaDisabled ? null : textareaRef.current);
+    return () => onEnabledChange?.(null);
+  }, [textareaDisabled, textareaRef, onEnabledChange]);
   const isMobile = useIsMobile();
   const hasSendableDraft = Boolean(
     input.trim() || hasQuotedContext || attachments.length,
   );
   const hideMobileSubmit = isMobile && !hasSendableDraft;
+  // #3290: while Station governs OpenCode (it reports running a Station
+  // mode), only build and plan are offered: the server refuses the user's own
+  // agents then. On OpenCode's own settings the full list stays.
+  const modeChoices =
+    acpApproval?.control === 'station' &&
+    lastAppliedApprovalMode &&
+    lastAppliedApprovalMode !== 'connection-default'
+      ? acpSessionModes.filter((mode) => /^(build|plan)$/.test(mode.id))
+      : acpSessionModes;
+  // #3290: an ACP session's approval identity comes from its connection's
+  // command, never the connection id.
+  const approvalEngineId = acpApproval
+    ? acpApproval.engineId
+    : (agentConnectionId ?? null);
+  // Steering takes text only (`steerTurn` carries an input string) and the
+  // mid-turn follow-up queue holds text only, so a draft with files cannot
+  // join a running turn. The paperclip stays usable — the next message can
+  // be prepared now — and this says why it waits, with the way out.
+  const busyAttachmentReason =
+    turnInFlight && (attachments.length > 0 || attachmentStages.length > 0)
+      ? 'Files can’t be added to a running turn: Steer and Queue carry text only. Send when this turn ends, or remove them.'
+      : undefined;
+  const sendBlockedReason = sendBlockedReasonProp ?? busyAttachmentReason;
+  const removalUnblocksSend =
+    removalUnblocksSendProp ||
+    (sendBlockedReasonProp === undefined && busyAttachmentReason !== undefined);
   const [sendMode, setSendMode] = useState<'queue' | 'steer'>('queue');
   const [sendModeOpen, setSendModeOpen] = useState(false);
   useEffect(() => {
@@ -589,6 +701,11 @@ export function ChatInputArea({
   const modelAccessibleLabel = [
     'Engine & model:',
     executionEngineLabel,
+    agentEngineMove
+      ? agentEngineMove.nextTurn
+        ? `This conversation's ${executionEngineLabel ?? 'engine'} session has ended; its next turn starts on ${agentEngineMove.to}, where its Agent now points.`
+        : `This conversation runs on ${executionEngineLabel ?? 'its current engine'}. Its Agent now uses ${agentEngineMove.to}.`
+      : '',
     currentExecutionAgentId ? 'Conversation override.' : '',
     modelProviderLabel
       ? `${modelProviderLabel} — ${fullModelIdentity}`
@@ -602,7 +719,7 @@ export function ChatInputArea({
     .join(' ');
   // The shared handoff reason names no action ("Send a message first."), so
   // the refused state names it here, where the action is known.
-  const agentAccessibleLabel = `Agent: ${agentLabel ?? 'current Agent'}. ${
+  const agentAccessibleLabel = `Agent: ${[agentLabel ?? 'current Agent', agentRoute].filter(Boolean).join(' · ')}. ${
     agentHandoffDisabled
       ? `Can’t change Agent yet.${agentHandoffDisabledReason ? ` ${agentHandoffDisabledReason}` : ''}`
       : 'Change Agent'
@@ -615,19 +732,21 @@ export function ChatInputArea({
       : null;
   const placeholder = workspaceRefused
     ? 'This conversation continues from its original workspace — start a new chat to work here'
-    : allowDraftWhileDisabled
-      ? turnInFlight
-        ? 'Draft a follow-up while this turn finishes…'
-        : 'Waiting on this chat — check again above to send…'
-      : turnInFlight
-        ? sendMode === 'steer' && busyFollowUp === 'steer'
-          ? busySteeringKind === 'native'
-            ? 'Steer this turn…'
-            : 'Send at a safe boundary…'
-          : 'Queue a follow-up…'
-        : mentionLocation && mentionRequestScope
-          ? 'Type a message — @ files, / for commands…'
-          : 'Type a message — / for commands…';
+    : loadingConversation
+      ? 'Loading chat…'
+      : allowDraftWhileDisabled
+        ? turnInFlight
+          ? 'Draft a follow-up while this turn finishes…'
+          : 'Waiting on this chat — check again above to send…'
+        : turnInFlight
+          ? sendMode === 'steer' && busyFollowUp === 'steer'
+            ? busySteeringKind === 'native'
+              ? 'Steer this turn…'
+              : 'Send at a safe boundary…'
+            : 'Queue a follow-up…'
+          : mentionLocation && mentionRequestScope
+            ? 'Type a message — @ files, / for commands…'
+            : 'Type a message — / for commands…';
   const composerTokens = parseComposerTokens(input);
   const displayInput = composerDisplayValue(input, composerTokens);
 
@@ -662,6 +781,10 @@ export function ChatInputArea({
   );
 
   const queuedRetryText = queuedRetryNotice?.text;
+  // The queued notice's Discard opens the shared confirmation first; it
+  // closes again whenever the notice goes.
+  const queuedDiscard = useUnconfirmedDiscardDisclosure();
+  if (!queuedRetryText && queuedDiscard.open) queuedDiscard.close();
   const queuedRetryDescriptionId = React.useId();
   const composerRootRef = useRef<HTMLDivElement | null>(null);
   // The draft's two-line floor, written by the per-keystroke sizing below and
@@ -693,17 +816,24 @@ export function ChatInputArea({
         root.style.minHeight,
         root.style.flexShrink,
         root.style.maxHeight,
-        textarea.style.height,
       ] as const;
+      // The draft's floor is applied by arithmetic, not by shrinking the
+      // textarea to it: a layout with the composer even one line shorter
+      // hands that line to the transcript above, and the browser clamps a
+      // transcript pinned to its newest message to the taller box. Restoring
+      // the textarea does not restore the scroll position, so the frame
+      // painted with a one-line gap under the newest message.
       const measure = () => {
         root.style.minHeight = '';
         root.style.flexShrink = '0';
         root.style.maxHeight = 'none';
-        textarea.style.height = `${floor}px`;
-        const height = Math.ceil(root.getBoundingClientRect().height);
+        const height = Math.ceil(
+          root.getBoundingClientRect().height -
+            textarea.getBoundingClientRect().height +
+            floor,
+        );
         root.style.flexShrink = saved[1];
         root.style.maxHeight = saved[2];
-        textarea.style.height = saved[3];
         return height;
       };
       if (!body?.classList.contains('chat-dock__body')) {
@@ -731,7 +861,14 @@ export function ChatInputArea({
       for (const child of body.children) {
         if (child === root || !(child instanceof HTMLElement)) continue;
         const style = getComputedStyle(child);
-        if (style.display === 'none') continue;
+        // Out of flow (the dock's visually hidden status region, an overlay):
+        // it takes no room from the composer.
+        if (
+          style.display === 'none' ||
+          style.position === 'absolute' ||
+          style.position === 'fixed'
+        )
+          continue;
         const edge = (name: string) =>
           Number.parseFloat(style.getPropertyValue(name)) || 0;
         const margins = edge('margin-top') + edge('margin-bottom');
@@ -745,6 +882,15 @@ export function ChatInputArea({
             edge('padding-bottom') +
             edge('border-top-width') +
             edge('border-bottom-width');
+        } else if (child.classList.contains('queued-messages-presence')) {
+          // The pending list yields down to its toggle row and, while open,
+          // its first row whole; the rest scroll.
+          const kept = child.querySelectorAll(
+            '.queued-messages__toggle, .queued-messages__content:not([hidden]) .queued-messages__list > :first-child',
+          );
+          for (const part of kept)
+            yielding += part.getBoundingClientRect().height;
+          yielding += margins;
         } else {
           others += child.getBoundingClientRect().height + margins;
         }
@@ -806,6 +952,12 @@ export function ChatInputArea({
         // height must still be re-measured.
         for (const sibling of body.children)
           if (sibling !== root) observer.observe(sibling);
+        // A shrunk pending list keeps its box when it opens or closes, so
+        // its panel is watched instead: opening changes what it keeps.
+        for (const panel of body.querySelectorAll(
+          ':scope > .queued-messages-presence .queued-messages',
+        ))
+          observer.observe(panel);
       }
       for (const row of root.querySelectorAll(observed)) observer.observe(row);
     };
@@ -933,6 +1085,17 @@ export function ChatInputArea({
 
       {/* Settings stay in a scrollable rail; activity and reader controls move together. */}
       <div className="chat-input__meta">
+        {agentEngineMove?.nextTurn && (
+          // A narrow composer's chip cannot hold a destination name, so the
+          // one fact that changes what the next send does gets its own line
+          // there; a wide composer says it in the chip caption.
+          <p className="chat-input__next-turn-notice">
+            Next turn starts on{' '}
+            <span className="chat-input__next-turn-destination">
+              {agentEngineMove.to}
+            </span>
+          </p>
+        )}
         <div className="chat-input__settings">
           {onOpenAgentHandoff && (
             <button
@@ -951,6 +1114,12 @@ export function ChatInputArea({
                 </span>
                 <span className="chat-input__agent-name">
                   {agentLabel ?? 'Current Agent'}
+                  {agentRoute && (
+                    <span className="chat-input__agent-route">
+                      {' · '}
+                      {agentRoute}
+                    </span>
+                  )}
                 </span>
               </span>
               <ArrowDownGlyph className="choice-caret" />
@@ -969,8 +1138,33 @@ export function ChatInputArea({
           >
             <span className="chat-input__chip-stack">
               <span className="chat-input__chip-caption" aria-hidden="true">
-                {executionEngineLabel ?? 'Engine & model'}
-                {currentExecutionAgentId ? ' · Conversation override' : ''}
+                {/* The engine name gives way first, so a narrow chip keeps
+                    the move hint rather than cutting it to an ellipsis. */}
+                <span className="chat-input__chip-caption-engine">
+                  {executionEngineLabel ?? 'Engine & model'}
+                </span>
+                {agentEngineMove && (
+                  <>
+                    <span className="chat-input__engine-moved--full">
+                      {agentEngineMove.nextTurn
+                        ? ` · Next turn on ${agentEngineMove.to}`
+                        : ` · Agent now on ${agentEngineMove.to}`}
+                    </span>
+                    {/* A narrow composer states the next-turn move in the
+                        notice above the chips instead (no chip has room for
+                        a destination name). */}
+                    {!agentEngineMove.nextTurn && (
+                      <span className="chat-input__engine-moved--short">
+                        {' · Agent moved'}
+                      </span>
+                    )}
+                  </>
+                )}
+                {currentExecutionAgentId ? (
+                  <span className="chat-input__chip-caption-engine">
+                    {' · Conversation override'}
+                  </span>
+                ) : null}
               </span>
               <span className="chat-input__model-name" aria-hidden="true">
                 {modelLabel}
@@ -992,11 +1186,12 @@ export function ChatInputArea({
               Use {modelResetSourceLabel(defaultModelSource)}
             </button>
           )}
-          {acpSessionModes.length > 0 && onAcpSessionModeChange ? (
+          {contextMeter}
+          {modeChoices.length > 0 && onAcpSessionModeChange ? (
             <React.Suspense fallback={null}>
               <AcpSessionModeChip
                 key={sessionId}
-                modes={acpSessionModes}
+                modes={modeChoices}
                 currentModeId={
                   typeof modelRuntimeOptions?.mode === 'string'
                     ? modelRuntimeOptions.mode
@@ -1005,20 +1200,42 @@ export function ChatInputArea({
                 onChange={onAcpSessionModeChange}
               />
             </React.Suspense>
+          ) : null}
+          {/* #3290: an ACP engine's Mode (OpenCode's build or plan agent) is a
+              choice beside the approval control, not a second one: an engine
+              Station governs gets Station's modes, and one that decides for
+              itself says so instead of offering a mode nothing applies. */}
+          {executionMode === EXECUTION_MODE.EXTERNAL &&
+          acpApproval?.control === 'engine' ? (
+            <EngineApprovalDisclosureChip
+              key={sessionId}
+              engineName={acpApproval.engineName}
+              engineHasModes={acpSessionModes.length > 0}
+            />
           ) : (
             executionMode === EXECUTION_MODE.EXTERNAL &&
-            approvalModeKnobSupported(agentConnectionId) && (
+            approvalModeKnobSupported(approvalEngineId) && (
               <ApprovalModeChip
                 // Structural reset (not blur-dependent) for the chip's local
                 // confirm state when the active session changes — this
                 // subtree persists across session switches with no natural
                 // remount otherwise (archive#727 3).
                 key={sessionId}
-                engineConnectionId={agentConnectionId}
+                engineConnectionId={approvalEngineId}
                 toolPolicyDelivery={toolPolicyDelivery}
                 sessionOverride={approvalModeOverride?.mode}
                 sessionOverrideState={approvalModeOverride?.state}
+                isNewSession={approvalModeIsNewSession}
                 agentDefault={approvalModeAgentDefault}
+                projectDefault={
+                  approvalModeIsNewSession
+                    ? approvalModeProjectDefault
+                    : undefined
+                }
+                projectDefaultUnavailable={
+                  approvalModeIsNewSession &&
+                  approvalModeProjectDefaultUnavailable
+                }
                 stationDefault={approvalModeStationDefault}
                 lastAppliedApprovalMode={lastAppliedApprovalMode}
                 onChange={onApprovalModeChange}
@@ -1035,6 +1252,7 @@ export function ChatInputArea({
         <fieldset
           className="chat-input__textarea-wrapper"
           aria-label="Message composer"
+          tabIndex={-1}
         >
           {(attachments.length > 0 || attachmentStages.length > 0) && (
             <React.Suspense
@@ -1188,7 +1406,7 @@ export function ChatInputArea({
             }
             placeholder={placeholder}
             value={displayInput}
-            disabled={disabled && !allowDraftWhileDisabled}
+            disabled={textareaDisabled}
             tabIndex={0}
             onFocus={(e) => {
               setShortcutContext('composerFocused', true);
@@ -1458,16 +1676,17 @@ export function ChatInputArea({
               onFilesSelected={selectAttachmentFiles}
               onRemove={onRemoveAttachment}
               onClearAll={onClearAttachments}
+              // A running turn does not disable the paperclip: files join the
+              // draft for the next message (`busyAttachmentReason` says why
+              // they cannot steer or queue). Only a composer that cannot
+              // take input at all, or a model that takes nothing, refuses.
               disabled={
                 disabled ||
-                isSending ||
                 (!modelSupportsAttachments && !fileAttachmentsSupported)
               }
               supportsImages={modelSupportsAttachments}
               supportsFiles={fileAttachmentsSupported}
-              unavailableReason={
-                disabled || isSending ? undefined : attachUnavailableReason
-              }
+              unavailableReason={disabled ? undefined : attachUnavailableReason}
               onUnavailable={onAttachUnavailable}
             />
           </React.Suspense>
@@ -1476,7 +1695,9 @@ export function ChatInputArea({
               state={voiceState}
               supported={voiceSupported ?? false}
               unsupportedReason={voiceUnsupportedReason}
-              disabled={disabled || isSending}
+              // Dictation only writes the draft, so a running turn is no
+              // reason to refuse it.
+              disabled={disabled && !allowDraftWhileDisabled}
               onStart={onVoiceStart}
               onStop={onVoiceStop}
             />
@@ -1518,21 +1739,38 @@ export function ChatInputArea({
           )}
           {queuedRetryNotice && (
             <span className="chat-input__queued-retry-actions">
-              <button
-                type="button"
-                aria-describedby={queuedRetryDescriptionId}
-                onClick={queuedRetryNotice.onDiscard}
-              >
-                Discard
-              </button>
+              {queuedRetryNotice.confirm ? (
+                <button
+                  type="button"
+                  aria-describedby={queuedRetryDescriptionId}
+                  {...queuedDiscard.triggerProps}
+                >
+                  Discard…
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  aria-describedby={queuedRetryDescriptionId}
+                  onClick={queuedRetryNotice.onDiscard}
+                >
+                  Discard
+                </button>
+              )}
               <span id={queuedRetryDescriptionId} className="sr-only">
                 {queuedRetryNotice.text}
               </span>
             </span>
           )}
           <span className="chat-controls-row__spacer" />
-          <div className="chat-input__send-group">
-            {turnInFlight && (
+          {/* On a phone Send/Queue hide (keeping their width) until there is
+              something to send, so typing never moves Stop. Stop therefore
+              sits after them, at the row's edge: before them it floated
+              beside an empty reserved gap. Desktop keeps Stop first. */}
+          <div
+            className="chat-input__send-group"
+            data-stop-placement={isMobile ? 'trailing' : undefined}
+          >
+            {turnInFlight && !isMobile && (
               <ComposerStopButton
                 onCancel={onCancel}
                 stopPending={stopPending}
@@ -1642,6 +1880,12 @@ export function ChatInputArea({
                 </button>
               )}
             </div>
+            {turnInFlight && isMobile && (
+              <ComposerStopButton
+                onCancel={onCancel}
+                stopPending={stopPending}
+              />
+            )}
           </div>
           {sendModeOpen && (
             <ResponsiveDialogSurface
@@ -1679,6 +1923,30 @@ export function ChatInputArea({
             </ResponsiveDialogSurface>
           )}
         </div>
+        {/* The composer clips what overflows it in a short dock, which is
+            the only dock that shows this Discard…. Its question opens as the
+            composer's own popover (a sheet on a phone): above everything,
+            after the button in reading order, Escape or a tap outside keeps
+            the message. */}
+        {queuedRetryNotice?.confirm && queuedDiscard.open && (
+          <ResponsiveDialogSurface
+            layer="popover"
+            role="alertdialog"
+            ariaLabel="Discard this message?"
+            onClose={queuedDiscard.confirmProps.onKeep}
+            anchorRef={queuedDiscard.triggerProps.ref}
+            overlayClassName="composer-popover-overlay composer-popover-overlay--start"
+            panelClassName="composer-popover-panel chat-input__queued-retry-confirm"
+          >
+            <UnconfirmedDiscardConfirm
+              {...queuedDiscard.confirmProps}
+              onConfirm={() => {
+                queuedDiscard.close();
+                queuedRetryNotice.onDiscard();
+              }}
+            />
+          </ResponsiveDialogSurface>
+        )}
         {sessionReferencesOpen && (
           <React.Suspense
             fallback={<SkeletonBlock label="Conversation reference picker" />}

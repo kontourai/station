@@ -1,0 +1,7 @@
+{
+  "revision": "7fda2eee6d29d9c0b4993ce8510cc9fd637f28c9",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Project activity section: added the own-conversation exception to the narrowing/scope paragraph (current Session listed and marked self even when the caller's Project is unreadable or the Session runs host, as get_session_digest reads it). Checked against session-project-activity.ts and the route tests; the rest of the section is unchanged and still accurate.","inputs":["docs/guides/self-configuring-agent.md","src-server/tools/station-control-policy.ts"]}
+  ]
+}

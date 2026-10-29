@@ -128,7 +128,7 @@
   width: 220px;
 }
 
-/* GraphPane (Wave 2 Task 4) — dependency-free SVG wikilink renderer. */
+/* GraphPane — dependency-free SVG wikilink renderer. */
 
 .mn-graph-shell {
   max-width: 960px;
@@ -256,7 +256,7 @@
   gap: 0.75rem;
 }
 
-/* AskPane (Wave 2 Task 5) — retrieval-grounded Q&A, answer cards + a
+/* AskPane — retrieval-grounded Q&A, answer cards + a
  * self-contained provenance detail panel. */
 
 .mn-ask-field__query {

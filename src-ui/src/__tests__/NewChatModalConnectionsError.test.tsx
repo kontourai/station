@@ -21,6 +21,10 @@ vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
+  // The visual-skills Feature Preview on, so the start composer offers them.
+  useFeaturePreviewsQuery: () => ({
+    data: [{ id: 'visual-skills', enabled: true }],
+  }),
   useSkillExperienceInventoryQuery: () => ({
     data: { experiences: [], diagnostics: [] },
     refetch: vi.fn(),
@@ -29,7 +33,10 @@ vi.mock('@kontourai/station-sdk', () => ({
   authenticatedFetch: vi.fn(async () => ({ ok: false })),
 }));
 
-vi.mock('../hooks/useIsMobile', () => ({ useIsMobile: () => false }));
+vi.mock('../hooks/useIsMobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useIsMobile')>()),
+  useIsMobile: () => false,
+}));
 vi.mock('../hooks/useDevicePresentation', () => ({
   useDevicePresentation: () => undefined,
 }));

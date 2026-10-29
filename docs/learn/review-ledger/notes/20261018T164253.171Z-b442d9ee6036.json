@@ -1,0 +1,7 @@
+{
+  "revision": "55c6318b8f46347771da109597e233f158e04e4e",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed #3824 delivery extension against the capability matrix, skill create/read/delete routes, integration reconnect/discovered tools/disable/enable/delete routes, Agent metadata resolution, and Claude/Codex/ACP passthrough. The shared runner supplies engine scope, pre-start setup, reverse cleanup and exact-turn evaluation. Documented co-located bundled-script writes because the skill API has no resource-upload endpoint; only MCP selection is probed. The 57 focused tests pass; a clean-commit mutation of the unknown-id guard fails its named assertion and restores green (19/19). Fixture MCP transport and generated script execute locally; real Station lifecycle, provider loading, native policy and UI remain NOT_VERIFIED.","inputs":["docs/reference/agent-smoke-confidence.md","scripts/lib/engine-matrix.mjs","scripts/station-engine-matrix.mjs","scripts/engine-delivery-probes.ts","scripts/fixtures/delivery-probe-mcp.mjs","scripts/__tests__/engine-delivery-probes.test.ts"]}
+  ]
+}

@@ -27,43 +27,46 @@ export function NotificationSoundSettings() {
   const { settings, update } = useFeatureSettings();
 
   return (
-    <fieldset className="settings__notification-sounds">
-      <legend>Notification sounds</legend>
-      <p className="settings__notification-sounds-help">
-        Choose a sound for each notification category. Changes play a local
-        preview only; they do not send a notification.
-      </p>
-      <div className="settings__notification-sounds-grid">
-        {NOTIFICATION_SOUND_CATEGORIES.map((category) => {
-          const id = `notification-sound-${category}`;
-          return (
-            <label key={category} className="settings__notification-sound">
-              <span>{CATEGORY_LABELS[category]}</span>
-              <select
-                id={id}
-                aria-label={`${CATEGORY_LABELS[category]} sound`}
-                value={settings.notificationSounds[category]}
-                onChange={(event) => {
-                  const sound = event.currentTarget.value as NotificationSound;
-                  update({
-                    notificationSounds: {
-                      ...settings.notificationSounds,
-                      [category]: sound,
-                    },
-                  });
-                  previewNotificationSound(sound);
-                }}
-              >
-                {NOTIFICATION_SOUND_OPTIONS.map((sound) => (
-                  <option key={sound.value} value={sound.value}>
-                    {sound.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          );
-        })}
-      </div>
-    </fieldset>
+    <details className="settings__subsection">
+      <summary>Notification sounds</summary>
+      <fieldset className="settings__notification-sounds">
+        <legend className="sr-only">Notification sounds</legend>
+        <p className="settings__notification-sounds-help">
+          Changes play a preview on this device without sending a notification.
+        </p>
+        <div className="settings__notification-sounds-grid">
+          {NOTIFICATION_SOUND_CATEGORIES.map((category) => {
+            const id = `notification-sound-${category}`;
+            return (
+              <label key={category} className="settings__notification-sound">
+                <span>{CATEGORY_LABELS[category]}</span>
+                <select
+                  id={id}
+                  aria-label={`${CATEGORY_LABELS[category]} sound`}
+                  value={settings.notificationSounds[category]}
+                  onChange={(event) => {
+                    const sound = event.currentTarget
+                      .value as NotificationSound;
+                    update({
+                      notificationSounds: {
+                        ...settings.notificationSounds,
+                        [category]: sound,
+                      },
+                    });
+                    previewNotificationSound(sound);
+                  }}
+                >
+                  {NOTIFICATION_SOUND_OPTIONS.map((sound) => (
+                    <option key={sound.value} value={sound.value}>
+                      {sound.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            );
+          })}
+        </div>
+      </fieldset>
+    </details>
   );
 }

@@ -1,3 +1,4 @@
+import { useConnections } from '@kontourai/station-connect';
 import { ANSWER_SHARE_PERMALINK_PATH } from '@kontourai/station-contracts/answer-share';
 import { setClientOriginResolver } from '@kontourai/station-sdk/client-origin';
 import React, { lazy } from 'react';
@@ -6,6 +7,7 @@ import { buildInfo } from './build-info';
 import { BrandingThemeBridge } from './components/BrandingThemeBridge';
 import { LazyBoundary } from './components/LazyBoundary';
 import { SkeletonBlock } from './components/state';
+import { AccountPreferencesProvider } from './contexts/AccountPreferencesProvider';
 import { installPluginSharedRuntime } from './core/pluginSharedRuntime';
 import { installVisualViewportInset } from './hooks/useMobileVisualViewport';
 import { installAndroidSafeArea } from './platform/androidSafeArea';
@@ -30,6 +32,9 @@ installAndroidSafeArea();
 installVisualViewportInset();
 
 import App from './App';
+import { MobileWelcomeBoundary } from './components/MobileWelcomeBoundary';
+import { OfflineReadingBoundary } from './components/OfflineReadingBoundary';
+import { WebOfflineShell } from './components/WebOfflineShell';
 import './components/editor-controls.css';
 import './components/NewChatAction.css';
 import './index.css';
@@ -41,7 +46,9 @@ import {
 } from '@tanstack/react-query';
 import { DeferredCapabilityBoundary } from './components/DeferredCapabilityBoundary';
 import { NotificationContainer } from './components/notifications/NotificationContainer';
+import { StartupHandoff } from './components/StartupHandoff';
 import { ActiveChatsProvider } from './contexts/ActiveChatsContext';
+import { ActivityReviewProvider } from './contexts/ActivityReviewContext';
 import { AnalyticsProvider } from './contexts/AnalyticsContext';
 import { ApiBaseProvider } from './contexts/ApiBaseContext';
 import { AuthProvider } from './contexts/AuthContext';
@@ -50,27 +57,38 @@ import { ConversationsProvider } from './contexts/ConversationsContext';
 import { KeyboardShortcutsProvider } from './contexts/KeyboardShortcutsContext';
 import { MessageContextContext } from './contexts/MessageContextContext';
 import { NavigationProvider } from './contexts/NavigationContext';
+import { PaneRelationsProvider } from './contexts/PaneRelationsContext';
 import { PreviewProvider } from './contexts/PreviewContext';
 import { RecoveryQueryBoundary } from './contexts/RecoveryQueryBoundary';
 import { RegionModelProvider } from './contexts/RegionModelContext';
 import { SyntaxHighlighterProvider } from './contexts/SyntaxHighlighterContext';
 import { ToastProvider } from './contexts/ToastContext';
+import { TranscriptAppWorkspaceProvider } from './contexts/TranscriptAppWorkspaceProvider';
 import { VoiceProviderContext } from './contexts/VoiceProviderContext';
+import { WorkClaimsProvider } from './contexts/WorkClaimsContext';
 import { PermissionManager } from './core/PermissionManager';
 import { EXTENSIONS_UNAVAILABLE_LABEL } from './core/pluginRegistryCopy';
 import { LocaleProvider, resolveDevelopmentLocale } from './i18n/LocaleContext';
 import { applyAccentColor } from './lib/accent-contrast';
+import { readAppearanceCache } from './lib/appearance-cache';
 import {
   applyBrandingTheme,
   BRANDING_THEME_STORAGE_KEY,
   resolveCachedBrandingTheme,
 } from './lib/branding-theme';
 import {
+  bindColorThemeToSettings,
+  renderWhenColorThemeSettled,
+} from './lib/color-theme-apply';
+import {
+  deviceSettingsStore,
   resolveBootAccentColor,
   resolveBootTheme,
 } from './lib/device-settings-store';
-import { stationQueryDefaults } from './lib/queryDefaults';
-import { releaseInitialStartupAnimation } from './lib/startup-animation';
+import {
+  stationMutationDefaults,
+  stationQueryDefaults,
+} from './lib/queryDefaults';
 import {
   PlatformBootstrap,
   usePlatformProfile,
@@ -143,6 +161,17 @@ const developmentLocale = resolveDevelopmentLocale(
   import.meta.env.DEV,
 );
 
+function ScopedToastProvider({ children }: { children: React.ReactNode }) {
+  const { activeConnection, apiBase } = useConnections();
+  return (
+    <ToastProvider
+      stationScope={JSON.stringify([activeConnection?.id, apiBase])}
+    >
+      {children}
+    </ToastProvider>
+  );
+}
+
 function ClientOriginProfileBridge() {
   const profile = usePlatformProfile();
   const surface = clientOriginSurfaceForProfile(profile);
@@ -173,7 +202,10 @@ const bootstrapQueryClient = new QueryClient({
         console.error(`[query:${query.queryKey}]`, error);
     },
   }),
-  defaultOptions: { queries: stationQueryDefaults() },
+  defaultOptions: {
+    queries: stationQueryDefaults(),
+    mutations: stationMutationDefaults(),
+  },
 });
 
 // Debug: Track all hash changes globally with more detail
@@ -212,6 +244,7 @@ const _envelopeRaw = localStorage.getItem('station-device-settings-v1');
 const _bootTheme = resolveBootTheme(
   _envelopeRaw,
   localStorage.getItem('theme'),
+  readAppearanceCache(),
 );
 document.documentElement.setAttribute('data-theme', _bootTheme);
 const _bootAccent = resolveBootAccentColor(
@@ -229,12 +262,16 @@ const _bootBrandingTheme = resolveCachedBrandingTheme(
 );
 if (_bootBrandingTheme)
   applyBrandingTheme(document.documentElement, _bootBrandingTheme);
+// The color theme follows the resolved settings for the page's lifetime:
+// device settings now (startup-theme.js already stamped them before first
+// paint), account preferences once they bind. See lib/color-theme-apply.ts.
+bindColorThemeToSettings(document.documentElement, deviceSettingsStore);
 
 function renderApp(): void {
-  releaseInitialStartupAnimation();
   ReactDOM.createRoot(document.getElementById('root')!).render(
     isAccountPath ? (
       <React.StrictMode>
+        <StartupHandoff />
         <NativeRendererMountCommit />
         <LazyBoundary
           load={loadAccountEntry}
@@ -244,6 +281,7 @@ function renderApp(): void {
       </React.StrictMode>
     ) : isSharedAnswerPath ? (
       <React.StrictMode>
+        <StartupHandoff />
         <NativeRendererMountCommit />
         {/* The boundary is eager (it must exist to catch the page's own chunk
           failing to load) and carries no stylesheet, so the entry cost is a
@@ -254,15 +292,18 @@ function renderApp(): void {
       </React.StrictMode>
     ) : (
       <React.StrictMode>
+        <StartupHandoff />
         <NativeRendererMountCommit />
         <PlatformBootstrap>
+          <WebOfflineShell />
           <NativeRelayLinkIntake>
             <ClientOriginProfileBridge />
             <ApiBaseProvider>
               <NativeRelayEntryBoundary>
-                <PlatformSessionGate apiBase={localUiApiBase}>
-                  <QueryClientProvider client={bootstrapQueryClient}>
-                    {/* COMPOSITION BOUNDARY (hosted connect-modal regression):
+                <OfflineReadingBoundary>
+                  <PlatformSessionGate apiBase={localUiApiBase}>
+                    <QueryClientProvider client={bootstrapQueryClient}>
+                      {/* COMPOSITION BOUNDARY (hosted connect-modal regression):
                   navigation, toasts, and the connection recovery shell are
                   STABLE across authority activation transitions.
                   `AuthorityQueryProvider` below replaces its entire
@@ -272,79 +313,94 @@ function renderApp(): void {
                   shell keeps component/flow state in `RecoveryQueryBoundary`
                   (own nonpersisted client, switch-scoped cache drop) while
                   protected data stays fully quarantined per authority.
-                  Toasts now survive a connection switch instead of being
-                  cleared by the provider remount; nothing below may rely
-                  on that reset. */}
-                    <NavigationProvider>
-                      <ToastProvider>
-                        <RecoveryQueryBoundary>
-                          <DeferredCapabilityBoundary
-                            id="connection-recovery"
-                            load={loadOnboardingGate}
-                            copy={{
-                              // The title renders as the banner's badge, which
-                              // is uppercased and sits beside two-word badges —
-                              // a sentence here reads as shouting. The full
-                              // statement is the message below.
-                              failureTitle: 'Recovery unavailable',
-                              failure:
-                                'Saved-Station recovery did not start. The workspace stays usable; reload to verify or restore saved Stations.',
-                            }}
-                          />
-                        </RecoveryQueryBoundary>
-                        <AuthorityQueryProvider localUiApiBase={localUiApiBase}>
-                          <SyntaxHighlighterProvider>
-                            <AuthProvider>
-                              {/* extension-registry stays in the protected
+                  ScopedToastProvider clears live notices and callbacks when
+                  the selected Station changes. */}
+                      <NavigationProvider>
+                        <ScopedToastProvider>
+                          <RecoveryQueryBoundary>
+                            <DeferredCapabilityBoundary
+                              id="connection-recovery"
+                              load={loadOnboardingGate}
+                              copy={{
+                                // The title renders as the banner's badge, which
+                                // is uppercased and sits beside two-word badges —
+                                // a sentence here reads as shouting. The full
+                                // statement is the message below.
+                                failureTitle: 'Recovery unavailable',
+                                failure:
+                                  'Saved-Station recovery did not start. The workspace stays usable; reload to verify or restore saved Stations.',
+                              }}
+                            />
+                          </RecoveryQueryBoundary>
+                          <MobileWelcomeBoundary>
+                            <AuthorityQueryProvider
+                              localUiApiBase={localUiApiBase}
+                            >
+                              <TranscriptAppWorkspaceProvider>
+                                <AccountPreferencesProvider>
+                                  <SyntaxHighlighterProvider>
+                                    <AuthProvider>
+                                      {/* extension-registry stays in the protected
                             query/auth boundary: PluginRegistryBootstrap
                             invalidates ['layouts'] on the authority client
                             and must never run against the observation
                             bootstrap client. Navigation/toast read from
                             the stable providers above. */}
-                              <PermissionManager>
-                                <KeyboardShortcutsProvider>
-                                  <ConversationsProvider>
-                                    <ActiveChatsProvider>
-                                      <VoiceProviderContext>
-                                        <MessageContextContext>
-                                          <AnalyticsProvider>
-                                            <PreviewProvider>
-                                              <LocaleProvider
-                                                developmentLocale={
-                                                  developmentLocale
-                                                }
-                                              >
-                                                <RegionModelProvider>
-                                                  <BrandingThemeBridge />
-                                                  <App />
-                                                </RegionModelProvider>
-                                                <NotificationContainer />
-                                              </LocaleProvider>
-                                            </PreviewProvider>
-                                          </AnalyticsProvider>
-                                        </MessageContextContext>
-                                      </VoiceProviderContext>
-                                    </ActiveChatsProvider>
-                                  </ConversationsProvider>
-                                </KeyboardShortcutsProvider>
-                              </PermissionManager>
-                              <DeferredCapabilityBoundary
-                                id="extension-registry"
-                                failurePresentation="notification"
-                                load={loadPluginRegistryBootstrap}
-                                copy={{
-                                  failureTitle: EXTENSIONS_UNAVAILABLE_LABEL,
-                                  failure:
-                                    'Station could not start the extension registry. Plugin-provided panes and capabilities remain unavailable until Station is reloaded.',
-                                }}
-                              />
-                            </AuthProvider>
-                          </SyntaxHighlighterProvider>
-                        </AuthorityQueryProvider>
-                      </ToastProvider>
-                    </NavigationProvider>
-                  </QueryClientProvider>
-                </PlatformSessionGate>
+                                      <PermissionManager>
+                                        <KeyboardShortcutsProvider>
+                                          <ConversationsProvider>
+                                            <ActiveChatsProvider>
+                                              <VoiceProviderContext>
+                                                <MessageContextContext>
+                                                  <AnalyticsProvider>
+                                                    <PreviewProvider>
+                                                      <LocaleProvider
+                                                        developmentLocale={
+                                                          developmentLocale
+                                                        }
+                                                      >
+                                                        <RegionModelProvider>
+                                                          <PaneRelationsProvider>
+                                                            <ActivityReviewProvider>
+                                                              <BrandingThemeBridge />
+                                                              <WorkClaimsProvider>
+                                                                <App />
+                                                              </WorkClaimsProvider>
+                                                            </ActivityReviewProvider>
+                                                          </PaneRelationsProvider>
+                                                        </RegionModelProvider>
+                                                        <NotificationContainer />
+                                                      </LocaleProvider>
+                                                    </PreviewProvider>
+                                                  </AnalyticsProvider>
+                                                </MessageContextContext>
+                                              </VoiceProviderContext>
+                                            </ActiveChatsProvider>
+                                          </ConversationsProvider>
+                                        </KeyboardShortcutsProvider>
+                                      </PermissionManager>
+                                      <DeferredCapabilityBoundary
+                                        id="extension-registry"
+                                        failurePresentation="notification"
+                                        load={loadPluginRegistryBootstrap}
+                                        copy={{
+                                          failureTitle:
+                                            EXTENSIONS_UNAVAILABLE_LABEL,
+                                          failure:
+                                            'Station could not start the extension registry. Plugin-provided panes and capabilities remain unavailable until Station is reloaded.',
+                                        }}
+                                      />
+                                    </AuthProvider>
+                                  </SyntaxHighlighterProvider>
+                                </AccountPreferencesProvider>
+                              </TranscriptAppWorkspaceProvider>
+                            </AuthorityQueryProvider>
+                          </MobileWelcomeBoundary>
+                        </ScopedToastProvider>
+                      </NavigationProvider>
+                    </QueryClientProvider>
+                  </PlatformSessionGate>
+                </OfflineReadingBoundary>
               </NativeRelayEntryBoundary>
             </ApiBaseProvider>
           </NativeRelayLinkIntake>
@@ -354,4 +410,13 @@ function renderApp(): void {
   );
 }
 
-renderApp();
+// A themed person's family sheet was requested by startup-theme.js; the first
+// render waits for it (at most a few seconds) so the app never appears in
+// Station's colours after a themed splash. Without a theme this renders
+// synchronously, as before. boot.ts awaits `rendered`, so a deferred render
+// that throws reaches the same "could not finish loading" recovery as a
+// failed module load (see renderWhenColorThemeSettled for what counts).
+export const rendered: Promise<void> = renderWhenColorThemeSettled(
+  document,
+  renderApp,
+);

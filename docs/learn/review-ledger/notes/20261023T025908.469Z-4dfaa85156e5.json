@@ -1,0 +1,7 @@
+{
+  "revision": "c3566bfa0d9cea678df4d4d6fe902f7e66977c05",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the HTML preview process suite routing against vitest-resource-manifest.mjs, run-vitest-corpus.mjs, and run-changed-verification.mjs. Preview now runs once in the one-worker process-exclusive group; real render and effective-policy deadlines and fail-closed assertions remain unchanged. Local same-workload diagnostic failed with a sibling plugin restart in process-heavy and passed all 11 tests after partitioning; 239 routing assertions passed. Hosted qualification remains pending.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

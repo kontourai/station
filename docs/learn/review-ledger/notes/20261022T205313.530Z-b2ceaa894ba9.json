@@ -1,0 +1,7 @@
+{
+  "revision": "89fe4546f29e6c7e432242b40c097f90b845d0d1",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Reviewed the code-quality guide's claims that cite AGENTS.md after the router gained a handoff-link bullet: the guide's governance, evidence and documentation-maintenance claims are unaffected by the new bullet; no prose change.","inputs":["docs/guides/code-quality.md","AGENTS.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "2ba9dfffd31731fc8f6ed80c8b0eddbbace22bf4",
+
+  "notes": [
+    {"path":"packages/sdk/AGENTS.md","note":"Round 9: re-read complete SDK scope and canonical SDK reference request-options section. Public SDK exports/options unchanged; default UI resolver stops adding a deadline or signal. Cache observation and waiting-caller/focus behavior asserted by new real-SDK tests for pruning, epoch replacement, no-any and progressive hydration. No instruction change needed.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

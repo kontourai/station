@@ -1,0 +1,31 @@
+{
+  "revision": "eb485f5b6df80776d14494a37cd7d24ec1a69dbd",
+
+  "notes": [
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"#3667 Fix round 3: Checked authenticated fetch-SSE and replay ownership: the five-minute cap remains confined to progressTimeoutMs, which fetchSSE does not select. Existing stream/replay claims remain accurate.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#3667 Fix round 3: Checked transport ownership and the session read-model caller: the cap changes only the opt-in finite JSON read; routing, credential reporters, mutation authority and event ownership remain unchanged. No module-map duration claim conflicts with the cap.","inputs":["docs/architecture/module-map.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/guides/agent-development.md","note":"#3667 Fix round 3: Checked Agent dispatch/cancellation guidance against the helper delta: cancellation now preserves Request input reasons as well as init.signal; typed timeout classification and mutation uncertainty are retained. No grant, execution or retry policy changes.","inputs":["docs/guides/agent-development.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#3667 Fix round 3: Checked the SDK integration route against the updated canonical SDK session-read section: the opt-in cap is documented there; deployment setup and authorization instructions remain accurate. No new live deployment or physical-device evidence.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"#3667 Fix round 3: Checked interaction/rendering guidance against the transport delta: no viewport, focus, dismissal, approval or component behavior changes. The request signal repair and opt-in cap require no responsive UI prose change.","inputs":["docs/guides/responsive-ui.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"#3667 Fix round 3: Checked branding/token/cascade guidance against the transport delta: no style or theme request selects progressTimeoutMs. No theming prose change is required.","inputs":["docs/guides/theming.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"#3667 Fix round 3: Checked common HTTP admission, typed transport failures and server/SSE ownership: the SDK still classifies finite-read timeout as StationRequestTimeoutError, and changes no server budget, wire response, admission or authorization behavior.","inputs":["docs/patterns/backend.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"#3667 Fix round 3: Checked query/cache ownership and cancellation guidance: Request reasons reach waiting body readers; session-read timeout still settles through the existing query scheduler. No React Query ownership, cache-key or UI lifecycle change.","inputs":["docs/patterns/frontend.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#3667 Fix round 3: Checked API timeout and streaming claims against the SDK delta: no route or response schema changes, and the opt-in finite-read cap does not change server admission deadlines or SSE keepalives.","inputs":["docs/reference/api.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"#3667 Fix round 3: Checked request-deadline and stream-exemption guidance: the older total helper now retains Request cancellation, while default deadlines and exemptions remain unchanged. The new five-minute cap belongs only to progressTimeoutMs, whose sole production caller is the session read-model SDK fetcher.","inputs":["docs/reference/cli.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"#3667 Fix round 3: Checked connection health, transport authority and mutationAllowed guidance: both timeout helpers now preserve Request and explicit init cancellation; connection selection, redaction, health probes and mutation admission are unchanged.","inputs":["docs/reference/connect.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"#3667 Fix round 3: Checked the SDK route and cancellation-test guidance against the canonical reference update: the route remains correct and new tests assert waiting body-reader outcomes and caller reasons. No instruction update is needed.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"#3667 Fix round 3: Reviewed the session read-model contract against http.ts and its sole progressTimeoutMs production caller: the cap is five minutes, header/body inactivity remains 30 seconds, Request and init signals both remain authoritative, and total-cap errors report timeoutMs 300000. Nine regression tests cover both helpers and trickling response settlement; all three clean-tree mutations failed for the intended reason.","inputs":["docs/reference/sdk.md","packages/sdk/src/client/http.ts"]}
+  ]
+}

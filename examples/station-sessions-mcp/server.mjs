@@ -7,8 +7,9 @@ import {
   registerAppResource,
   registerAppTool,
 } from '@modelcontextprotocol/ext-apps/server';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { McpServer } from '@modelcontextprotocol/server';
+import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
+import { z } from 'zod';
 import { renderSessionsPanel } from './panel.mjs';
 
 const RESOURCE_URI = 'ui://station-sessions/panel';
@@ -34,7 +35,7 @@ registerAppTool(
     description:
       'Render a live panel of Station orchestration sessions (state, provider, project, last activity).',
     _meta: { ui: { resourceUri: RESOURCE_URI, visibility: ['model', 'app'] } },
-    inputSchema: {},
+    inputSchema: z.object({}),
   },
   async () => {
     const sessions = await fetchSessions();

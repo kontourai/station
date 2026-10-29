@@ -12,11 +12,6 @@ import {
   getAnswerBasis,
 } from '../client/answer-basis';
 import {
-  AnswerNarrativeBindingRequestError,
-  getAnswerNarrativeTarget,
-  removeAnswerNarrative,
-} from '../client/answer-narrative-binding';
-import {
   AnswerSupportRequestError,
   listAnswerSupportBundles,
 } from '../client/answer-support';
@@ -194,18 +189,6 @@ const opaque: ReadonlyArray<readonly [...Row, (status: number) => string]> = [
     () => getAnswerBasis(API, 's1', 't1'),
     AnswerBasisRequestError,
     () => 'Answer basis unavailable',
-  ],
-  [
-    'answer narrative read',
-    () => getAnswerNarrativeTarget(API, 's1', 't1'),
-    AnswerNarrativeBindingRequestError,
-    () => 'Answer narrative binding unavailable',
-  ],
-  [
-    'answer narrative removal',
-    () => removeAnswerNarrative(API, 's1', 't1', 1),
-    AnswerNarrativeBindingRequestError,
-    () => 'Answer narrative binding unavailable',
   ],
   [
     'gate evaluations',
@@ -484,10 +467,6 @@ describe('#2708 A-3b fetchers throw typed refusals', () => {
 
   it.each([
     [AnswerBasisRequestError, 'Answer basis unavailable'],
-    [
-      AnswerNarrativeBindingRequestError,
-      'Answer narrative binding unavailable',
-    ],
     [FlowGateEvaluationRequestError, 'Gate evaluation unavailable'],
   ] as const)(
     '%o: a bare status still builds the same error, and a transport failure is status 0',
@@ -500,7 +479,6 @@ describe('#2708 A-3b fetchers throw typed refusals', () => {
 
   it.each([
     ['answer basis', () => getAnswerBasis(API, 's1', 't1')],
-    ['answer narrative', () => getAnswerNarrativeTarget(API, 's1', 't1')],
     ['gate evaluations', () => getTaskFlowGateEvaluations(API, 't1')],
   ] as const)(
     '%s: a transport failure observed no response: status 0, no code',

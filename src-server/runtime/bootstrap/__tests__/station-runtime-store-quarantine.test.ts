@@ -15,9 +15,16 @@ import {
   readCorruptionMarker,
   recordCorruptionObserved,
 } from '@kontourai/station-shared/sqlite-corruption-marker';
-import { acquireStationHomeRuntimeLease } from '@kontourai/station-shared/station-home-lifecycle';
+import {
+  acquireStationHomeMaintenanceLease,
+  acquireStationHomeRuntimeLease,
+  StationHomeActiveError,
+} from '@kontourai/station-shared/station-home-lifecycle';
 import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+
+const makeTempDir = trackTempDirs();
 
 /**
  * The placement proof for archive#3217.
@@ -31,17 +38,42 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
  */
 const runtimeMocks = vi.hoisted(() => ({
   eventStore: vi.fn(),
+  closeKind: 'closed' as 'closed' | 'pending' | 'unavailable',
+  leases: [] as Array<{ release(): void }>,
 }));
+
+vi.mock(
+  '@kontourai/station-shared/station-home-lifecycle',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('@kontourai/station-shared/station-home-lifecycle')
+      >();
+    return {
+      ...actual,
+      acquireStationHomeRuntimeLease: (
+        ...args: Parameters<typeof actual.acquireStationHomeRuntimeLease>
+      ) => {
+        const lease = actual.acquireStationHomeRuntimeLease(...args);
+        runtimeMocks.leases.push(lease);
+        return lease;
+      },
+    };
+  },
+);
 
 vi.mock('../../../services/orchestration/event-store.js', () => ({
   EventStore: class {
     constructor(path: string) {
       runtimeMocks.eventStore(path);
     }
+    bindUsageExportActivation() {}
     createOperationalEventPublisher() {
       return {};
     }
-    close() {}
+    close() {
+      return { kind: runtimeMocks.closeKind };
+    }
   },
 }));
 
@@ -69,6 +101,8 @@ vi.mock(
 const directories: string[] = [];
 
 afterEach(() => {
+  runtimeMocks.closeKind = 'closed';
+  for (const lease of runtimeMocks.leases.splice(0)) lease.release();
   for (const directory of directories.splice(0))
     rmSync(directory, { recursive: true, force: true });
 });
@@ -117,6 +151,40 @@ function corruptHome(): { homeDir: string; store: string; bytes: Buffer } {
 
   return { homeDir, store, bytes };
 }
+
+describe('StationRuntime constructor failure and store custody', () => {
+  it.each(['pending', 'unavailable'] as const)(
+    'retains the real home lease when failed construction leaves its store %s',
+    { timeout: 120_000 },
+    async (kind) => {
+      const directory = makeTempDir('station-constructor-close-');
+      const homeDir = join(directory, 'home');
+      ensureStationHomeSchemaSync(homeDir);
+      runtimeMocks.closeKind = kind;
+      const { StationRuntime } = await import('../station-runtime.js');
+      let failure: unknown;
+      try {
+        new StationRuntime({ projectHomeDir: homeDir });
+      } catch (error) {
+        failure = error;
+      }
+      expect(() => {
+        const maintenance = acquireStationHomeMaintenanceLease(homeDir);
+        maintenance.release();
+      }).toThrow(StationHomeActiveError);
+      expect(failure).toBeInstanceOf(AggregateError);
+      if (!(failure instanceof AggregateError)) throw failure;
+      expect(failure.errors).toEqual([
+        expect.objectContaining({
+          message: 'runtime construction stopped by the test',
+        }),
+        expect.objectContaining({
+          message: `Orchestration EventStore did not close: ${kind}`,
+        }),
+      ]);
+    },
+  );
+});
 
 describe('StationRuntime acts on a recorded corruption before it opens the store', () => {
   // The dynamic import pulls the whole station-runtime graph; the boundary

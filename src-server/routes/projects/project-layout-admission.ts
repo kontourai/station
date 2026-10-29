@@ -1,3 +1,7 @@
+import {
+  type LayoutWorkspaceBinding,
+  layoutUsesRepositoryWorkspace,
+} from '@kontourai/station-contracts/layout';
 /**
  * What a project's layout store will accept, decided in ONE place (#2062
  * review BLOCKING-2).
@@ -52,13 +56,14 @@ import type {
 } from '@kontourai/station-contracts/project-reference-integrity';
 import { validateLayoutAgentReferences } from '@kontourai/station-contracts/project-reference-integrity';
 import {
-  codingLayoutRepoId,
+  layoutRepositoryId,
   withoutPersistedWorkingDirectory,
 } from './layout-working-directory.js';
 
 /** The structural minimum both checks read. */
 export interface AdmittableProjectLayout extends LayoutAgentReferenceShape {
   type?: string;
+  workspaceBinding?: LayoutWorkspaceBinding;
   config?: Record<string, unknown>;
 }
 
@@ -111,14 +116,14 @@ function refuseConflictingWorkingDirectory(
   layout: AdmittableProjectLayout,
   derivedWorkingDirectory: string | undefined,
 ): ProjectLayoutRefusalBody | undefined {
-  if (layout.type !== 'coding') return undefined;
+  if (!layoutUsesRepositoryWorkspace(layout)) return undefined;
   const supplied = layout.config?.workingDirectory;
   if (supplied === undefined || supplied === derivedWorkingDirectory) {
     return undefined;
   }
   return {
     success: false,
-    error: `A coding layout's config.workingDirectory is derived from its project and cannot be set independently. Project '${projectSlug}' resolves to ${derivedWorkingDirectory ? `'${derivedWorkingDirectory}'` : 'no working directory'}; change the project's working directory instead.`,
+    error: `A ${layout.type === 'coding' ? 'coding' : 'repository-bound'} layout's config.workingDirectory is derived from its project and cannot be set independently. Project '${projectSlug}' resolves to ${derivedWorkingDirectory ? `'${derivedWorkingDirectory}'` : 'no working directory'}; change the project's working directory instead.`,
   };
 }
 
@@ -178,7 +183,7 @@ export async function deriveProjectLayoutWorkingDirectory(input: {
     resourceId: string,
   ) => Promise<string | undefined>;
 }): Promise<string | undefined> {
-  const repoId = codingLayoutRepoId(input.layout);
+  const repoId = layoutRepositoryId(input.layout);
   if (repoId === undefined) return input.projectWorkingDirectory;
   if (!input.resolveWorkspacePath) return undefined;
   return await input.resolveWorkspacePath(input.projectSlug, repoId);

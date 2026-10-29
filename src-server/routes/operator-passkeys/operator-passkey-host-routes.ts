@@ -24,6 +24,7 @@ import {
 
 export interface OperatorPasskeyHostRouteDeps {
   readonly service: OperatorPasskeyEnrollmentService;
+  readonly stepUpRevoke?: (c: Context) => Response | null;
   /** The caller is the operator credential and its principal is still current. */
   readonly isOperator: (context: unknown) => boolean;
 }
@@ -140,7 +141,11 @@ export function createOperatorPasskeyHostRoutes(
 
   app.delete(
     '/:id',
-    guarded((c) => c.json(deps.service.revokePasskey(c.req.param('id')))),
+    (c) =>
+      deps.stepUpRevoke?.(c) ??
+      guarded((context) =>
+        context.json(deps.service.revokePasskey(context.req.param('id'))),
+      )(c),
   );
 
   return app;

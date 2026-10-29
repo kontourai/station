@@ -1,0 +1,7 @@
+{
+  "revision": "3d96ef1053aec36aeae3167b317486c2e4975afd",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Checked placement.md against the chat.css change: it adds horizontal padding to the dock body's direct .session-history-controls rows (the long-load and stale-busy rows) so they match the transcript gutter. No dock placement, region, edge or sizing rule described here changes. No prose change needed.","inputs":["docs/design/placement.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

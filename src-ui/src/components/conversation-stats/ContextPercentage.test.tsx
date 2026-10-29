@@ -14,10 +14,6 @@ vi.mock('../../contexts/StatsContext', () => ({
   useStats: () => ({ stats: harness.stats, refetch: harness.refetch }),
 }));
 
-vi.mock('../../contexts/ConversationsContext', () => ({
-  useConversationStatus: () => ({ status: 'idle' }),
-}));
-
 import { ContextPercentage } from './ContextPercentage';
 
 const props = {
@@ -44,15 +40,16 @@ describe('ContextPercentage live ACP usage', () => {
       />,
     );
 
-    expect(screen.getByText('(50.0%)')).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Context 50.0% used' }),
+    ).toBeTruthy();
+    expect(screen.getByText('50%')).toBeTruthy();
   });
 
   test('paints the meter fill and its rest tint through theme rungs, never a pigment (#2140)', () => {
-    // The fill used to be a hex from `getContextWindowColor`, and the rest
-    // tint an `rgba(var(--accent-primary-rgb, 0, 102, 204), …)` whose token
-    // is defined in no theme -- so every render painted the blue fallback
-    // beside a teal/green brand. What is pinned is that both NAME a rung;
-    // `theme-rung-contrast.test.ts` measures what the rung resolves to.
+    // The fill used to be a hex from `getContextWindowColor`. What is pinned
+    // is that it NAMES a rung; `theme-rung-contrast.test.ts` measures what the
+    // rung resolves to. The rest of the chip is styled by its stylesheet.
     const { container } = render(
       <ContextPercentage
         {...props}
@@ -60,13 +57,11 @@ describe('ContextPercentage live ACP usage', () => {
       />,
     );
     const button = container.querySelector(
-      'button.context-indicator',
+      'button.context-meter',
     ) as HTMLElement;
-    expect(button.style.background).toBe('var(--accent-subtle)');
-    const fill = [...container.querySelectorAll('div')].find(
-      (node) => (node as HTMLElement).style.width === '60%',
-    ) as HTMLElement;
-    expect(fill, 'the 60% meter fill').toBeTruthy();
+    expect(button.getAttribute('style')).toBeNull();
+    const fill = container.querySelector('.context-meter__fill') as HTMLElement;
+    expect(fill.style.transform).toBe('scaleX(0.6)');
     expect(fill.style.background).toBe('var(--meter-mid)');
   });
 
@@ -78,7 +73,10 @@ describe('ContextPercentage live ACP usage', () => {
       />,
     );
 
-    expect(screen.getByText('(0.0%)')).toBeTruthy();
+    expect(screen.getByText('0%')).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Context 0.0% used' }),
+    ).toBeTruthy();
   });
 
   test('falls back to refetched stats when the live pair is invalid', () => {
@@ -89,7 +87,7 @@ describe('ContextPercentage live ACP usage', () => {
       />,
     );
 
-    expect(screen.getByText('(25.0%)')).toBeTruthy();
+    expect(screen.getByText('25%')).toBeTruthy();
   });
 
   test.each([undefined, Number.NaN, -1])(

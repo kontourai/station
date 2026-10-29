@@ -5,7 +5,13 @@ import path from 'node:path';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { type Alias, defineConfig, type ProxyOptions } from 'vite';
-import { UI_PROXY_BACKEND_PREFIXES } from './packages/cli/src/commands/ui-proxy-prefixes';
+import {
+  UI_PROXY_BACKEND_PREFIXES,
+  UI_PROXY_EXCLUDED_PREFIXES,
+} from './packages/cli/src/commands/ui-proxy-prefixes';
+import { offlineShell } from './scripts/vite-offline-shell';
+import { thirdPartyLicenses } from './scripts/vite-third-party-licenses';
+import { sharedShikiGrammars, uiAssetDelivery } from './scripts/vite-ui-assets';
 import tauriConfig from './src-desktop/tauri.conf.json';
 
 // Build identity is injected into index.html rather than the JavaScript module
@@ -36,6 +42,12 @@ const TAURI_NONCE_TOKEN = '__TAURI_SCRIPT_NONCE__';
 export interface StationBuildIdentity {
   version: string;
   commit: string;
+  /**
+   * A release pipeline stamped this build's version (STATION_BUILD_VERSION).
+   * Only then is `version` a client release identity a client may compare
+   * with its host; a local or dev build carries the bare package version.
+   */
+  release?: boolean;
 }
 
 /**
@@ -58,6 +70,14 @@ export function buildVersion(
   return effective;
 }
 
+/** A production build whose version a release pipeline stamped. */
+export function isReleaseStampedBuild(
+  command: 'build' | 'serve',
+  override = process.env.STATION_BUILD_VERSION,
+): boolean {
+  return command === 'build' && Boolean(override?.trim());
+}
+
 function escapeHtmlAttribute(value: string): string {
   return value
     .replaceAll('&', '&amp;')
@@ -78,9 +98,12 @@ export function injectBuildIdentity(
   }
   const version = escapeHtmlAttribute(identity.version);
   const commit = escapeHtmlAttribute(identity.commit);
+  const release = identity.release
+    ? '\n  <meta name="station-build-release" content="true">'
+    : '';
   return html.replace(
     /<\/head>/i,
-    `  <meta name="station-build-version" content="${version}">\n  <meta name="station-build-commit" content="${commit}">\n</head>`,
+    `  <meta name="station-build-version" content="${version}">\n  <meta name="station-build-commit" content="${commit}">${release}\n</head>`,
   );
 }
 
@@ -227,6 +250,18 @@ export function stationDevProxy(
     changeOrigin: true,
     ws: true,
     bypass(req) {
+      let pathname: string;
+      try {
+        pathname = decodeURIComponent((req.url ?? '/').split('?')[0]!);
+      } catch {
+        return false;
+      }
+      if (
+        UI_PROXY_EXCLUDED_PREFIXES.some(
+          (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+        )
+      )
+        return false;
       const method = (req.method ?? 'GET').toUpperCase();
       const accept = String(req.headers.accept ?? '');
       if (
@@ -266,19 +301,35 @@ export function stationDevIdentity(
   };
 }
 
-export default defineConfig(({ command }) => {
+export default defineConfig(({ command, mode }) => {
   const devNonce =
     command === 'serve' ? randomBytes(16).toString('base64') : undefined;
   const desktopCsp = tauriConfig.app.security.csp as Record<string, string>;
   const buildIdentity: StationBuildIdentity = {
     version: buildVersion(pkg.version),
     commit: gitShortSha(),
+    release: isReleaseStampedBuild(command),
   };
   const performanceReferenceBuild =
     process.env.VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE === '1';
 
   return {
     plugins: [
+      sharedShikiGrammars(),
+      ...(mode === 'native'
+        ? []
+        : [
+            offlineShell({
+              // Chat is the surface a phone opens first after a dropped link.
+              warmModules: [
+                'src-ui/src/components/chat-dock/ChatDock.tsx',
+                'src-ui/src/components/chat/ChatMessageList.tsx',
+                'src-ui/src/components/chat/ChatInputArea.tsx',
+              ].map((module) => path.resolve(__dirname, module)),
+            }),
+          ]),
+      thirdPartyLicenses(),
+      uiAssetDelivery({ precompress: mode !== 'native' }),
       tailwindcss(),
       react(),
       {
@@ -342,7 +393,7 @@ export default defineConfig(({ command }) => {
     ],
     // ES-module workers so code-splitting workers (e.g. @pierre/diffs, which
     // lazy-loads Shiki languages) can bundle — Vite's default `iife` rejects them.
-    worker: { format: 'es' },
+    worker: { format: 'es', plugins: () => [sharedShikiGrammars()] },
     root: './src-ui',
     resolve: {
       // Vite accepts either an object of aliases (string keys only, matched as

@@ -89,6 +89,7 @@ export const BINARY_EXCLUDES = [
   ':!*.jpeg',
   ':!*.gif',
   ':!*.webp',
+  ':!*.tiff',
   ':!*.ico',
   ':!*.icns',
   ':!*.woff',

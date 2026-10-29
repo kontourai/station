@@ -28,7 +28,12 @@ import {
 } from '@kontourai/station-shared/ports';
 import { resolveStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
 import { readServiceUpdateProgress } from '@kontourai/station-shared/service-launcher-protocol';
+import { HANDOFF_DEFAULTS } from '@kontourai/station-supervisor/protocol';
 import { type Context, Hono } from 'hono';
+import {
+  isSupervisedEnvironment,
+  requestSupervisorHandoff,
+} from '../../runtime/bootstrap/supervisor-link.js';
 import { systemOps } from '../../telemetry/metrics.js';
 import { execGit } from '../../utils/git-exec.js';
 import { isRecord } from '../../utils/is-record.js';
@@ -37,6 +42,7 @@ import { errorMessage } from '../schemas/schemas.js';
 import {
   type ArchiveUpdateOptions,
   applyArchiveUpdate,
+  applyStagedServerUpdate,
   archiveApplyMethod,
   archiveUpdateStatus,
 } from './archive-update.js';
@@ -61,6 +67,8 @@ import {
 import type { SystemStatusDeps } from './system-route-types.js';
 
 const execFileAsync = promisify(execFileCb);
+/** The launcher's VERSION_PATTERN: an exact version a request may name. */
+const EXACT_VERSION = /^[0-9A-Za-z][0-9A-Za-z.+-]*$/;
 const DEFAULT_INSTANCE_ID = 'default';
 
 /**
@@ -94,6 +102,11 @@ const DEFAULT_INSTANCE_ID = 'default';
 function coreUpdateSupervision(
   env: NodeJS.ProcessEnv = process.env,
 ): SelfUpdateUnavailableCode | null {
+  // Under the process supervisor nothing exits: the update rebuilds and asks
+  // for a handoff, which replaces this generation in place whatever started
+  // the supervisor (the service included). The PID below is the supervisor's
+  // own then, set on every generation it forks.
+  if (isSupervisedEnvironment(env)) return null;
   if (env.STATION_SERVICE_MANAGED === '1') return 'service-managed';
   if (env.STATION_SUPERVISOR_PID?.trim()) return 'supervised';
   return null;
@@ -479,13 +492,17 @@ export function performGitPullRestart(input: GitPullRestartInput): void {
   // not its parent, and correctness during an in-place update wins over this
   // watchdog backstop.
   delete serverEnv.STATION_SUPERVISOR_PID;
-  const child = input.spawnFn('node', ['dist-server/command-station.js'], {
-    cwd: input.gitRoot,
-    stdio: 'ignore',
-    detached: true,
-    env: serverEnv,
-    windowsHide: true,
-  });
+  const child = input.spawnFn(
+    process.execPath,
+    ['dist-server/command-station.js'],
+    {
+      cwd: input.gitRoot,
+      stdio: 'ignore',
+      detached: true,
+      env: serverEnv,
+      windowsHide: true,
+    },
+  );
   child.unref();
 
   if (
@@ -544,6 +561,94 @@ export function performGitPullRestart(input: GitPullRestartInput): void {
 }
 
 /**
+ * How long the update waits for its handoff to start. A trial that has not
+ * parked within the supervisor's park timeout is rolled back, which this
+ * generation hears, so past this margin nothing is still on its way.
+ */
+const SUPERVISED_HANDOFF_ANSWER_MS = HANDOFF_DEFAULTS.parkTimeoutMs + 15_000;
+
+/**
+ * The supervised restart (#3851): asks the supervisor for a handoff instead
+ * of spawning a replacement and exiting. The pending record is already
+ * written; the generation the handoff leaves serving resolves it
+ * (`resolveSupervisedRestart`). Here only the outcomes this generation
+ * survives are settled: a refusal, or no answer within
+ * SUPERVISED_HANDOFF_ANSWER_MS, is recorded as failed; a rollback was
+ * already recorded by this generation's own outcome listener. `handedOff`
+ * says this generation is draining into the new build.
+ */
+async function restartUnderSupervisor(
+  c: Context,
+  input: {
+    restartStatePath: string;
+    pending: {
+      instanceId: string;
+      hash: string;
+      port: number;
+      startedAt: string;
+    };
+    deadlineAt: string;
+    restartStateWriter: typeof writeSelfUpdateRestartRecord;
+    logger: any;
+  },
+): Promise<{ response: Response; handedOff: boolean }> {
+  const { pending } = input;
+  const outcome = await requestSupervisorHandoff({
+    timeoutMs: SUPERVISED_HANDOFF_ANSWER_MS,
+  });
+  if (outcome.status === 'draining') {
+    input.logger.info('Core restart: supervisor handoff started', {
+      hash: pending.hash,
+    });
+    const response = c.json({
+      success: true,
+      hash: pending.hash,
+      message: `Build succeeded (${pending.hash}). Handing over to the new build and verifying it comes up healthy…`,
+      restarting: true,
+      restart: {
+        expectedHash: pending.hash,
+        expectedInstanceId: pending.instanceId,
+        deadlineAt: input.deadlineAt,
+      },
+    });
+    return { response, handedOff: true };
+  }
+  if (outcome.status !== 'rolled-back') {
+    input.restartStateWriter(input.restartStatePath, {
+      ...pending,
+      pid: process.pid,
+      status: 'failed',
+      resolvedAt: new Date().toISOString(),
+      failureCode:
+        outcome.status === 'refused' ? 'handoff-refused' : 'handoff-unanswered',
+    });
+  }
+  input.logger.warn('Core restart: supervisor handoff did not start', {
+    hash: pending.hash,
+    status: outcome.status,
+    ...('reason' in outcome && outcome.reason
+      ? { reason: outcome.reason }
+      : {}),
+  });
+  const detail =
+    outcome.status === 'refused'
+      ? `the supervisor refused the handoff (${outcome.reason})`
+      : outcome.status === 'rolled-back'
+        ? `the new build failed to start${outcome.reason ? ` (${outcome.reason})` : ''}`
+        : outcome.status === 'unanswered'
+          ? 'the supervisor did not answer the handoff request'
+          : 'no supervisor runs this server';
+  const response = c.json(
+    {
+      success: false,
+      error: `Build succeeded (${pending.hash}), but ${detail}. This server keeps running its current build; restart Station to run the new one.`,
+    },
+    outcome.status === 'unanswered' ? 504 : 409,
+  );
+  return { response, handedOff: false };
+}
+
+/**
  * Output ceiling for the install and build subprocesses. `execFile` buffers
  * stdout/stderr and kills the child when the default 1 MiB is exceeded — a
  * full dependency install plus a Vite build prints far more than that, which
@@ -557,7 +662,10 @@ const CORE_UPDATE_STEP_MAX_BUFFER = 64 * 1024 * 1024;
  * this fails, but the install may already have replaced dependencies under
  * the running server — which is why the message says so.
  */
-async function runInstallAndBuild(gitRoot: string): Promise<string | null> {
+async function runInstallAndBuild(
+  gitRoot: string,
+  buildInstance: string,
+): Promise<string | null> {
   const stepOptions = {
     cwd: gitRoot,
     timeout: 600000,
@@ -575,11 +683,13 @@ async function runInstallAndBuild(gitRoot: string): Promise<string | null> {
     // CLI is the one that knows how to build the pulled tree, and the server
     // does not reach into the CLI package. `--instance=default` targets
     // dist-server/dist-ui — the same directories the raw builds wrote and
-    // the restart below launches.
+    // the restart below launches. A supervised server builds its own
+    // instance instead: the handoff reruns the entry it runs, which lives in
+    // that instance's build directory.
     step = 'building';
     await execFileAsync(
       join(gitRoot, 'station'),
-      ['build', `--instance=${DEFAULT_INSTANCE_ID}`],
+      ['build', `--instance=${buildInstance}`],
       stepOptions,
     );
     return null;
@@ -602,6 +712,15 @@ export interface SystemUpdateRouteOptions extends ArchiveUpdateOptions {
   moduleDir?: string;
 }
 
+/**
+ * This server's install provenance, from this module's own location (the
+ * install the running bundle belongs to): what `createSystemUpdateRoutes`
+ * resolves by default, for the runtime's update coordinator (#3851).
+ */
+export function resolveThisServerProvenance(): InstallProvenance {
+  return resolveInstallProvenance(dirname(fileURLToPath(import.meta.url)));
+}
+
 export function createSystemUpdateRoutes(
   deps: SystemStatusDeps,
   logger: any,
@@ -612,6 +731,12 @@ export function createSystemUpdateRoutes(
   const moduleDir =
     options.moduleDir ?? dirname(fileURLToPath(import.meta.url));
   const provenanceOfThisServer = () => resolveInstallProvenance(moduleDir);
+  /**
+   * A supervised update between its pull and its handoff, or handed off and
+   * draining: another apply would pull and build under it, then report a
+   * restart that is already happening.
+   */
+  let supervisedUpdateInFlight = false;
 
   const verifyManagedRuntime = async (c: any) => {
     try {
@@ -798,7 +923,14 @@ export function createSystemUpdateRoutes(
     }
 
     if (provenance.installKind === 'archive') {
-      const status = await archiveUpdateStatus(provenance, options);
+      const status = await archiveUpdateStatus(provenance, {
+        ...options,
+        includeStaged: c.req.query('staged') === '1',
+      });
+      // A client's fresh check is this server's check too (#3851): it
+      // refreshes the cache and lets the download policy act on it.
+      if (status.applyMethod === 'service-update')
+        void deps.serverUpdate?.recordCheck(status);
       if (status.technicalDetail) {
         logger.warn('Core update check: release manifest check failed', {
           releaseCheck: status.releaseCheck,
@@ -994,7 +1126,86 @@ export function createSystemUpdateRoutes(
     ) {
       return c.json({ state: 'unavailable' });
     }
-    return c.json(readServiceUpdateProgress(provenance.installRoot));
+    // `staged` only for a client that says it knows it (#3851): an older
+    // client's parser would read it as unreadable progress.
+    return c.json(
+      readServiceUpdateProgress(provenance.installRoot, {
+        includeStaged: c.req.query('staged') === '1',
+      }),
+    );
+  });
+
+  /**
+   * The server's own update state (#3851): what the coordinator checked,
+   * staged and intends. The same body is pushed as `server-update:changed`.
+   */
+  app.get('/core-update/state', async (c) => {
+    if (!deps.serverUpdate)
+      return c.json({
+        supported: false,
+        currentVersion: null,
+        availability: null,
+        progress: { state: 'unavailable' },
+        downloadPolicy: 'after-24h',
+        autoDownloadAt: null,
+        autoDownloadPausedReason: null,
+        applyWhenIdle: null,
+      });
+    return c.json(await deps.serverUpdate.state());
+  });
+
+  /**
+   * The agent turns a restart would interrupt right now (#3851), for a
+   * confirmation to name. Only sessions the caller may read are listed.
+   */
+  app.get('/core-update/running-turns', async (c) => {
+    if (!deps.listRunningTurnsFor) return c.json({ turns: [], hiddenCount: 0 });
+    try {
+      return c.json(await deps.listRunningTurnsFor(c));
+    } catch (error) {
+      logger.warn('Core update: could not list running turns', {
+        error: errorMessage(error),
+      });
+      return c.json(
+        { success: false, error: 'Could not list the running turns.' },
+        500,
+      );
+    }
+  });
+
+  /** Apply the staged version once no agent turn runs (#3851). */
+  app.put('/core-update/apply-when-idle', async (c) => {
+    if (!deps.serverUpdate)
+      return c.json(
+        { success: false, error: 'This server cannot update itself.' },
+        409,
+      );
+    const body = (await c.req.json().catch(() => null)) as {
+      version?: unknown;
+    } | null;
+    const version = body?.version;
+    if (typeof version !== 'string' || !EXACT_VERSION.test(version))
+      return c.json(
+        { success: false, error: 'version must be an exact Station version' },
+        400,
+      );
+    const result = await deps.serverUpdate.setApplyWhenIdle(version);
+    if (!result.ok)
+      return c.json({ success: false, error: result.error }, result.status);
+    logger.info('Core update: apply when idle requested', { version });
+    return c.json({ success: true, state: result.state });
+  });
+
+  app.delete('/core-update/apply-when-idle', async (c) => {
+    if (!deps.serverUpdate)
+      return c.json(
+        { success: false, error: 'This server cannot update itself.' },
+        409,
+      );
+    const result = await deps.serverUpdate.cancelApplyWhenIdle();
+    if (!result.ok)
+      return c.json({ success: false, error: result.error }, result.status);
+    return c.json({ success: true, state: result.state });
   });
 
   app.post('/core-update', async (c) => {
@@ -1018,21 +1229,80 @@ export function createSystemUpdateRoutes(
       return applyDesktopSelfUpdate(c, eligibility);
     }
     if (provenance.installKind === 'archive') {
-      const result = await applyArchiveUpdate(provenance, options);
+      // #3851: `{ action: 'stage' }` downloads only; `{ action: 'apply',
+      // version }` restarts into a staged version. No body (every client
+      // before #3851) is the one-click update that does both.
+      const body = (await c.req.json().catch(() => null)) as {
+        action?: unknown;
+        version?: unknown;
+      } | null;
+      const action = body?.action ?? 'update';
+      if (action !== 'stage' && action !== 'apply' && action !== 'update')
+        return c.json(
+          {
+            success: false,
+            error: 'action must be "stage", "apply" or "update"',
+          },
+          400,
+        );
+      const version = body?.version;
+      if (
+        version !== undefined &&
+        (typeof version !== 'string' || !EXACT_VERSION.test(version))
+      )
+        return c.json(
+          { success: false, error: 'version must be an exact Station version' },
+          400,
+        );
+      if (action === 'apply' && version === undefined)
+        return c.json(
+          {
+            success: false,
+            error: 'an apply names the downloaded version it restarts into',
+          },
+          400,
+        );
+      // The coordinator follows and pushes progress for what it requests;
+      // without one (tests, the capabilities probe) the request is the same.
+      const result =
+        deps.serverUpdate && action === 'stage'
+          ? await deps.serverUpdate.stage()
+          : deps.serverUpdate && action === 'apply'
+            ? await deps.serverUpdate.apply(version as string)
+            : action === 'apply'
+              ? await applyStagedServerUpdate(
+                  provenance,
+                  options,
+                  version as string,
+                )
+              : await applyArchiveUpdate(provenance, options, {
+                  intent: action,
+                });
       if (!result.ok) {
         return c.json({ success: false, error: result.error }, result.status);
       }
+      const requestId = result.requestId;
+      if (!requestId)
+        return c.json(
+          { success: false, error: 'The update request was not recorded.' },
+          500,
+        );
       systemOps.add(1, { op: 'apply_service_update' });
       logger.info('Service update requested', {
-        requestId: result.requestId,
+        requestId,
+        intent: action,
         version: provenance.version,
       });
       return c.json(
         {
           success: true,
-          serviceUpdate: { requestId: result.requestId },
+          serviceUpdate: { requestId, intent: action },
           message:
-            'Update requested. The Station service downloads and verifies the release, then trials it and keeps the current version if the trial fails.',
+            action === 'stage'
+              ? 'Download requested. The Station service downloads and verifies the release; the server keeps running until you restart it into the update.'
+              : action === 'apply'
+                ? 'Restart requested. The Station service trials the downloaded release and keeps the current version if the trial fails.'
+                : 'Update requested. The Station service downloads and verifies the release, then trials it and keeps the current version if the trial fails.',
         },
         202,
       );
@@ -1061,6 +1331,20 @@ export function createSystemUpdateRoutes(
       );
     }
 
+    const supervised = isSupervisedEnvironment();
+    if (supervised && supervisedUpdateInFlight) {
+      return c.json(
+        {
+          success: false,
+          error:
+            'An update is already restarting this server into a new build. Read the restart status for its outcome.',
+          restarting: true,
+        },
+        409,
+      );
+    }
+    if (supervised) supervisedUpdateInFlight = true;
+    let handedOff = false;
     try {
       systemOps.add(1, { op: 'apply_update' });
       const { gitRoot } = provenance;
@@ -1095,7 +1379,10 @@ export function createSystemUpdateRoutes(
           500,
         );
       }
-      const installAndBuildFailure = await runInstallAndBuild(gitRoot);
+      const installAndBuildFailure = await runInstallAndBuild(
+        gitRoot,
+        supervised ? currentInstanceId : DEFAULT_INSTANCE_ID,
+      );
       if (installAndBuildFailure !== null) {
         return c.json({ success: false, error: installAndBuildFailure }, 500);
       }
@@ -1121,8 +1408,9 @@ export function createSystemUpdateRoutes(
       // Written BEFORE anything is scheduled, so a crash before the watchdog
       // even spawns still leaves a durable, non-silent `pending` trail
       // (self-update-boot-report.ts ages an unresolved `pending` into a
-      // boot-time warning rather than reading it as fine). The watchdog is
-      // the only thing that ever moves this to `verified`/`failed`.
+      // boot-time warning rather than reading it as fine). Only the watchdog
+      // moves this to `verified`/`failed`, or, under the process supervisor,
+      // the generation the handoff leaves serving (self-update-handoff.ts).
       const restartStateWrite = restartStateWriter(restartStatePath, {
         instanceId: currentInstanceId,
         hash: newHash,
@@ -1140,6 +1428,23 @@ export function createSystemUpdateRoutes(
             hash: newHash,
           },
         );
+      }
+
+      if (supervised) {
+        const restart = await restartUnderSupervisor(c, {
+          restartStatePath,
+          pending: {
+            instanceId: currentInstanceId,
+            hash: newHash,
+            port: Number(port),
+            startedAt,
+          },
+          deadlineAt,
+          restartStateWriter,
+          logger,
+        });
+        handedOff = restart.handedOff;
+        return restart.response;
       }
 
       setTimeout(() => {
@@ -1177,6 +1482,9 @@ export function createSystemUpdateRoutes(
       });
     } catch (error: unknown) {
       return c.json({ success: false, error: errorMessage(error) }, 500);
+    } finally {
+      // Draining into the new build: stay in flight until this process exits.
+      if (!handedOff) supervisedUpdateInFlight = false;
     }
   });
 

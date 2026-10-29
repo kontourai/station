@@ -1,0 +1,17 @@
+{
+  "revision": "36515b919394b89a3d2629fac3ebd904e8491aa2",
+
+  "notes": [
+    {"path":"AGENTS.md","note":"Review fix: restored the clause that a selector explanation, deferred selection (test:changed exit 3), or rerun is not completion evidence. Root is 4218 bytes, inside the 6144 budget; agent-instructions gate passes.","inputs":["AGENTS.md"]},
+
+    {"path":"CLAUDE.md","note":"Unchanged wrapper; root AGENTS.md gained one clause and still passes the gate.","inputs":["CLAUDE.md","AGENTS.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Stopped calling fast-checks a required check at the hook-composition and hosted-CI paragraphs. Checked live rules/branches/main: fast-checks is not a required context; scripts/source-verification-policy.mjs reconciles the fast-checks jobs into the required Source verification policy context.","inputs":["docs/guides/code-quality.md","AGENTS.md"]},
+
+    {"path":"docs/guides/development.md","note":"Verification paragraph no longer calls fast-checks required: it is reconciled by the required Source verification policy context (scripts/source-verification-policy.mjs), and the ruleset link owns the required list. Checked against live rules/branches/main.","inputs":["docs/guides/development.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Dependency code-quality.md changed only in how it names the required context for fast-checks; the code-health route this file cites is unchanged.","inputs":["scripts/AGENTS.md","docs/guides/code-quality.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Dependency development.md changed only in the fast-checks required-context wording; the lifecycle and security conventions this file routes to are unchanged.","inputs":["src-server/AGENTS.md","docs/guides/development.md"]}
+  ]
+}

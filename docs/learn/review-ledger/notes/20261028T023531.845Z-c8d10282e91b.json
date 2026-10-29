@@ -1,0 +1,9 @@
+{
+  "revision": "3b05762e2a34b6ac882b3a8fec99efec23f94533",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed Coding phone picker and ToolControls guidance against shared Dialog, useIsMobile, codingPanels and FilePreviewPane. Mounted Chromium passed full-width phone room, bottom-sheet geometry, sticky containment, dismissal and focus in both themes. Keyboard/device integration not qualified.","inputs":["docs/guides/responsive-ui.md"]},
+
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"Reviewed changed FilePreviewPane Go to line caller: existing form now uses ToolControls. Pane identity, source/changes rendering, host storage and authority remain unchanged; existing context claims remain accurate. FilePreviewPane focused suite passed 56 tests; browser fixture proves ToolControls geometry with fixture occupants.","inputs":["docs/contexts/workspace-surfaces/CONTEXT.md","src-ui/src/workspace-panes/FilePreviewPane.tsx"]}
+  ]
+}

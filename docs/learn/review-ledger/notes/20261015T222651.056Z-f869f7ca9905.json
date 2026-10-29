@@ -1,0 +1,7 @@
+{
+  "revision": "9484ba2e472fd1d3c030a6141279ed5187849b57",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"Reviewed canonical loading and Empty states, intrinsic tool-approval/profile/request wrapping and dirty-connection guard registration after static-gate refusal. The guide retains its described selection, approval, discovery and Project authority behavior; no new runtime capability. Focused UI suites passed 19 tests; dedicated current-layout narrow screenshots are pending.","inputs":["docs/guides/agents.md","src-ui/src/components/attention/AttentionCard.css","src-ui/src/components/profile/MyAccessPanel.css","src-ui/src/components/profile/MyAccessPanel.tsx","src-ui/src/components/profile/ToolRequestsPanel.css","src-ui/src/views/agent-editor/AgentToolCatalog.tsx","src-ui/src/views/agent-editor/AgentToolLibrary.tsx","src-ui/src/views/agent-editor/AgentToolPicker.css","src-ui/src/views/project-settings/ProjectAgentsPanel.tsx"]}
+  ]
+}

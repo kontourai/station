@@ -1,36 +1,7 @@
 name: "PR: Install smoke"
 
 on:
-  pull_request_target:
-    paths:
-      - 'install.sh'
-      - 'install.ps1'
-      - 'packages/shared/src/installer/**'
-      # Bundled into install.ps1's installer core (#2675 W2).
-      - 'packages/shared/src/windows-path-trust.ts'
-      - 'packages/shared/src/windows-system-utility.mjs'
-      # Which installer packaged `station upgrade` runs.
-      - 'packages/shared/src/prebuilt-archive.ts'
-      - 'scripts/smoke-install-ps1.mjs'
-      - 'scripts/install-smoke-file-server.mjs'
-      - 'scripts/install-script-generated.mjs'
-      - '.gitattributes'
-      - 'scripts/package-portable-release.sh'
-      - 'scripts/build-portable-server-archive.mjs'
-      - 'scripts/lib/bounded-capture.mjs'
-      - 'scripts/lib/portable-server-archive.mjs'
-      - 'scripts/smoke-install-prebuilt-archive.sh'
-      - 'packaging/portable-server/**'
-      - 'config/portable-server-node-runtime.json'
-      - 'config/release-manifest-keys.json'
-      - 'scripts/ecosystem-manifest.mjs'
-      - 'packages/shared/src/portable-server-targets.mjs'
-      - 'packages/shared/src/release-manifest.mjs'
-      # The CLI the archive bundles and packaged `station upgrade` runs.
-      - 'packages/cli/src/**'
-      - 'scripts/station-cli.ts'
-      - '.github/workflows/install-smoke.yml'
-      - '.github/workflows/release.yml'
+  workflow_call:
   workflow_dispatch:
 
 permissions:
@@ -45,283 +16,59 @@ jobs:
         # These legs install the SOURCE release (station-portable.tar.gz,
         # schema 1 manifest), built on the host. The prebuilt per-platform
         # archive path, which nightly uses, is install-prebuilt-archive below.
-        channel: [stable, preview]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
-    env:
-      RELEASE_TAG: ${{ matrix.channel == 'preview' && 'v0.0.0-preview.1' || 'v0.0.0' }}
-      RELEASE_CHANNEL: ${{ matrix.channel }}
-      RUNTIME_CHANNEL: ${{ matrix.channel == 'preview' && 'beta' || 'stable' }}
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - id: setup-node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
 
-      - name: Package portable release
-        run: |
-          scripts/package-portable-release.sh \
-            --output-dir "$RUNNER_TEMP/release" \
-            --ref "$RELEASE_TAG"
-
-      - name: Install, diagnose, and serve without a clone
+      - name: Install, upgrade, and uninstall stable source release
+        if: ${{ !cancelled() && steps.setup-node.outcome == 'success' }}
         env:
-          SMOKE_HOME: ${{ runner.temp }}/station-home
-          RELEASE_DIR: ${{ runner.temp }}/release
-          # The sha the checkout and packager actually used; GITHUB_SHA is the
-          # base tip under pull_request_target.
+          SMOKE_HOME: ${{ runner.temp }}/station-home-stable
+          RELEASE_DIR: ${{ runner.temp }}/release-stable
+          RELEASE_TAG: v0.0.0
+          RELEASE_CHANNEL: stable
+          RUNTIME_CHANNEL: stable
           EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: |
-          set -euo pipefail
-          runtime_channel="$RUNTIME_CHANNEL"
-          release_channel="$RELEASE_CHANNEL"
-          launcher_name=station
-          if [ "$runtime_channel" = beta ]; then launcher_name=station-beta; fi
-          launcher="$SMOKE_HOME/.local/bin/$launcher_name"
-          # Mirror install.sh's default roots for HOME=$SMOKE_HOME without
-          # overrides: $station_root/installs|instances/$runtime_channel.
-          station_root="$SMOKE_HOME/.station"
-          install_root="$station_root/installs/$runtime_channel"
-          station_home="$station_root/instances/$runtime_channel"
-          mkdir -p "$SMOKE_HOME/fake-bin"
-          cat >"$SMOKE_HOME/fake-bin/codex" <<'EOF'
-          #!/bin/sh
-          echo 'codex-cli 1.0.0-smoke'
-          EOF
-          cat >"$SMOKE_HOME/fake-bin/claude" <<'EOF'
-          #!/bin/sh
-          echo 'claude 1.0.0-smoke'
-          EOF
-          cat >"$SMOKE_HOME/fake-bin/kiro-cli" <<'EOF'
-          #!/bin/sh
-          echo 'kiro-cli 1.0.0-smoke'
-          EOF
-          cat >"$SMOKE_HOME/fake-bin/rustc" <<'EOF'
-          #!/bin/sh
-          echo 'rustc 1.90.0-smoke'
-          EOF
-          # The public manifest path must stay unauthenticated; a reachable gh
-          # here would hide a regression back onto the authenticated path.
-          cat >"$SMOKE_HOME/fake-bin/gh" <<'EOF'
-          #!/bin/sh
-          echo 'gh must not run in the public installer path' >&2
-          exit 99
-          EOF
-          chmod +x "$SMOKE_HOME/fake-bin/"*
+          ARTIFACT_PORT: '8765'
+          MANIFEST_PORT: '8766'
+          KEY_PORT: '8767'
+          OLLAMA_PORT: '11434'
+          SERVER_PORT: '3341'
+          UI_PORT: '3200'
+        run: bash scripts/smoke-install-source.sh
 
-          # install.sh's public manifest path requires three distinct fixture
-          # origins: artifacts, the signed manifest, and its verification key.
-          serve_dir="$RUNNER_TEMP/fixture-serve"
-          manifests_dir="$RUNNER_TEMP/fixture-manifests"
-          keys_dir="$RUNNER_TEMP/fixture-keys"
-          mkdir -p "$serve_dir" "$manifests_dir" "$keys_dir"
-          cp "$RELEASE_DIR/station-portable.tar.gz" "$serve_dir/"
-          provenance="$(tar -xOzf "$serve_dir/station-portable.tar.gz" station/.station-release.json)"
-          source_sha="$(printf '%s' "$provenance" | jq -r .sha)"
-          release_tag="$(printf '%s' "$provenance" | jq -r .ref)"
-          version="${release_tag#v}"
-          printf 'install-smoke macOS cask fixture\n' >"$serve_dir/station-$version-macos-universal.dmg"
-          node -e '
-            const { generateKeyPairSync } = require("node:crypto");
-            const fs = require("node:fs");
-            const [privatePath, publicPath] = process.argv.slice(1);
-            const { privateKey, publicKey } = generateKeyPairSync("ed25519");
-            fs.writeFileSync(privatePath, privateKey.export({ format: "pem", type: "pkcs8" }));
-            fs.writeFileSync(publicPath, publicKey.export({ format: "pem", type: "spki" }));
-          ' "$RUNNER_TEMP/manifest-private.pem" "$keys_dir/public.pem"
-
-          write_manifest_payload() {
-            node -e '
-              const crypto = require("node:crypto");
-              const fs = require("node:fs");
-              const [output, serveDir, channel, version, releaseTag, sourceSha] = process.argv.slice(1);
-              const digest = (name) => crypto.createHash("sha256").update(fs.readFileSync(`${serveDir}/${name}`)).digest("hex");
-              const macos = `station-${version}-macos-universal.dmg`;
-              fs.writeFileSync(output, `${JSON.stringify({
-                schemaVersion: 1,
-                channel,
-                version,
-                releaseTag,
-                sourceSha,
-                publishedAt: new Date().toISOString(),
-                artifacts: {
-                  macos: { name: macos, url: `http://127.0.0.1:8765/${macos}`, sha256: digest(macos) },
-                  portable: { name: "station-portable.tar.gz", url: "http://127.0.0.1:8765/station-portable.tar.gz", sha256: digest("station-portable.tar.gz") },
-                },
-              }, null, 2)}\n`);
-            ' "$RUNNER_TEMP/manifest-payload.json" "$serve_dir" "$release_channel" "$version" "$release_tag" "$source_sha"
-            # The keyId must name a pinned installer key; the throwaway key
-            # stands in for its bytes only through the test-only
-            # STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL override below.
-            STATION_ECOSYSTEM_ALLOW_INSECURE_TEST_URLS=1 node "$GITHUB_WORKSPACE/scripts/ecosystem-manifest.mjs" create \
-              --payload "$RUNNER_TEMP/manifest-payload.json" \
-              --private-key "$RUNNER_TEMP/manifest-private.pem" \
-              --key-id station-portable-release-2026-09 \
-              --output "$manifests_dir/manifest.json"
-          }
-          write_manifest_payload
-
-          node -e '
-            require("node:http").createServer((request, response) => {
-              response.setHeader("content-type", "application/json");
-              response.end(JSON.stringify({ models: [] }));
-            }).listen(11434, "127.0.0.1");
-          ' >/tmp/station-ollama-fixture.log 2>&1 &
-          ollama_pid=$!
-          node scripts/install-smoke-file-server.mjs 8765 "$serve_dir" >/tmp/station-artifact-server.log 2>&1 &
-          artifact_pid=$!
-          node scripts/install-smoke-file-server.mjs 8766 "$manifests_dir" >/tmp/station-manifest-server.log 2>&1 &
-          manifest_pid=$!
-          node scripts/install-smoke-file-server.mjs 8767 "$keys_dir" >/tmp/station-key-server.log 2>&1 &
-          key_pid=$!
-          cleanup() {
-            "$launcher" stop --base="$station_home" >/dev/null 2>&1 || true
-            kill "$ollama_pid" "$artifact_pid" "$manifest_pid" "$key_pid" >/dev/null 2>&1 || true
-          }
-          trap cleanup EXIT
-
-          wait_for_fixture() {
-            local label=$1 pid=$2 url=$3 log=$4
-            local deadline=$((SECONDS + 30))
-            while [ "$SECONDS" -lt "$deadline" ]; do
-              if ! kill -0 "$pid" 2>/dev/null; then
-                echo "Fixture $label exited before readiness (pid=$pid)." >&2
-                tail -100 "$log" >&2 || true
-                return 1
-              fi
-              if curl --noproxy '*' --silent --fail --head --connect-timeout 1 --max-time 2 "$url" >/dev/null; then
-                echo "Fixture $label ready (pid=$pid)."
-                return 0
-              fi
-              sleep 0.2
-            done
-            echo "Fixture $label did not become reachable within 30 seconds (pid=$pid)." >&2
-            ps -p "$pid" -o pid=,ppid=,stat=,comm= >&2 || true
-            tail -100 "$log" >&2 || true
-            return 1
-          }
-          wait_for_fixture artifact "$artifact_pid" http://127.0.0.1:8765/station-portable.tar.gz /tmp/station-artifact-server.log
-          wait_for_fixture manifest "$manifest_pid" http://127.0.0.1:8766/manifest.json /tmp/station-manifest-server.log
-          wait_for_fixture key "$key_pid" http://127.0.0.1:8767/public.pem /tmp/station-key-server.log
-          wait_for_fixture ollama "$ollama_pid" http://127.0.0.1:11434/api/tags /tmp/station-ollama-fixture.log
-
-          public_install_env=(
-            STATION_INSTALL_PUBLIC_MANIFEST_URL=http://127.0.0.1:8766/manifest.json
-            STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL=http://127.0.0.1:8767/public.pem
-            STATION_INSTALL_ALLOW_INSECURE_TEST_URLS=1
-            STATION_INSTALL_SERVER_PORT=3341
-            STATION_INSTALL_UI_PORT=3200
-          )
-
-          curl -fsSL "file://$GITHUB_WORKSPACE/install.sh" | env \
-            HOME="$SMOKE_HOME" \
-            PATH="$SMOKE_HOME/fake-bin:$PATH" \
-            STATION_CHANNEL="$RUNTIME_CHANNEL" \
-            "${public_install_env[@]}" \
-            sh 2>&1 | tee "$RUNNER_TEMP/install.log"
-
-          # #2703: install.sh must build the release under the lifecycle
-          # instance id its start uses. Otherwise the start after install
-          # prints a second "Building application" and rebuilds, leaving the
-          # install-time build orphaned beside the one it serves.
-          build_count=$(grep -c 'Building application' "$RUNNER_TEMP/install.log" || true)
-          if [ "$build_count" != 1 ]; then
-            echo "Expected one build (at install, none at start); saw $build_count" >&2
-            exit 1
-          fi
-          for build_output in dist-server dist-ui; do
-            outputs=$(find "$install_root/current/" -maxdepth 1 -name "$build_output*" | wc -l | tr -d ' ')
-            if [ "$outputs" != 1 ]; then
-              echo "Expected one $build_output build in the release; saw $outputs" >&2
-              exit 1
-            fi
-          done
-
-          previous_current=$(readlink "$install_root/current")
-          env \
-            HOME="$SMOKE_HOME" \
-            PATH="$SMOKE_HOME/fake-bin:$SMOKE_HOME/.local/bin:$PATH" \
-            "${public_install_env[@]}" \
-            "$launcher" upgrade
-          node -e '
-            const fs = require("node:fs");
-            const state = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-            if (state.channel !== process.argv[2]) process.exit(1);
-          ' "$install_root/.station-release-state.json" "$RUNTIME_CHANNEL"
-
-          bad_release="$RUNNER_TEMP/release-fails-start"
-          bad_work="$RUNNER_TEMP/release-fails-start-work"
-          mkdir -p "$bad_release" "$bad_work"
-          tar -xzf "$RELEASE_DIR/station-portable.tar.gz" -C "$bad_work"
-          mv "$bad_work/station/station" "$bad_work/station/station.real"
-          cat >"$bad_work/station/station" <<'EOF'
-          #!/bin/bash
-          if [ "${1:-}" = start ]; then exit 97; fi
-          exec "$(dirname "$0")/station.real" "$@"
-          EOF
-          chmod +x "$bad_work/station/station"
-          tar -czf "$bad_release/station-portable.tar.gz" -C "$bad_work" station
-          # Swap the served fixture and re-sign the manifest so the packaged
-          # upgrade verifies the bad candidate, fails its start, and rolls back.
-          # The bad candidate reuses the installed version with new bytes, which
-          # the installer refuses as a possible replay unless the exact version
-          # is named with STATION_INSTALL_ALLOW_ROLLBACK=1.
-          cp "$bad_release/station-portable.tar.gz" "$serve_dir/station-portable.tar.gz"
-          write_manifest_payload
-          if env \
-            HOME="$SMOKE_HOME" \
-            PATH="$SMOKE_HOME/fake-bin:$SMOKE_HOME/.local/bin:$PATH" \
-            "${public_install_env[@]}" \
-            STATION_VERSION="$release_tag" \
-            STATION_INSTALL_ALLOW_ROLLBACK=1 \
-            "$launcher" upgrade 2>"$RUNNER_TEMP/bad-upgrade.err"
-          then
-            echo "Expected failed candidate start" >&2
-            exit 1
-          fi
-          test "$(readlink "$install_root/current")" = "$previous_current"
-          # Fail for the reason under test, not an earlier refusal.
-          cat "$RUNNER_TEMP/bad-upgrade.err" >&2
-          grep -q 'the new release did not start' "$RUNNER_TEMP/bad-upgrade.err"
-          node -e '
-            const fs = require("node:fs");
-            const state = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-            if (state.channel !== process.argv[2]) process.exit(1);
-          ' "$install_root/.station-release-state.json" "$RUNTIME_CHANNEL"
-
-          test ! -e "$install_root/current/.git"
-          HOME="$SMOKE_HOME" \
-            PATH="$SMOKE_HOME/fake-bin:$SMOKE_HOME/.local/bin:$PATH" \
-            "$launcher" doctor --json >"$RUNNER_TEMP/doctor.json"
-          jq -e '.exitReady == {chatReady:true,runtimeReady:true}' \
-            "$RUNNER_TEMP/doctor.json"
-          curl -fsS --retry 10 --retry-connrefused --retry-delay 1 \
-            -o "$RUNNER_TEMP/station-ui.html" http://127.0.0.1:3200/
-          grep -q '<div id="root"' "$RUNNER_TEMP/station-ui.html"
-          # EXPECTED_SHA, not GITHUB_SHA: under pull_request_target GITHUB_SHA
-          # is the BASE tip while the checkout and packager use the PR head.
-          curl -fsS http://127.0.0.1:3200/__station/identity \
-            | jq -e --arg sha "$EXPECTED_SHA" '.sha == $sha and (.bootId | length > 0)'
-
-          curl -fsSL "file://$GITHUB_WORKSPACE/install.sh" | env \
-            HOME="$SMOKE_HOME" \
-            STATION_CHANNEL="$RUNTIME_CHANNEL" \
-            sh -s uninstall
-          test ! -e "$install_root"
-          test -d "$station_home"
+      - name: Install, upgrade, and uninstall preview source release
+        if: ${{ !cancelled() && steps.setup-node.outcome == 'success' }}
+        env:
+          SMOKE_HOME: ${{ runner.temp }}/station-home-preview
+          RELEASE_DIR: ${{ runner.temp }}/release-preview
+          RELEASE_TAG: v0.0.0-preview.1
+          RELEASE_CHANNEL: preview
+          RUNTIME_CHANNEL: beta
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          ARTIFACT_PORT: '8775'
+          MANIFEST_PORT: '8776'
+          KEY_PORT: '8777'
+          OLLAMA_PORT: '11434'
+          SERVER_PORT: '3351'
+          UI_PORT: '3210'
+        run: bash scripts/smoke-install-source.sh
 
       - name: Dump Station instance logs on failure
         if: failure()
-        env:
-          SMOKE_HOME: ${{ runner.temp }}/station-home
         run: |
           set -uo pipefail
-          for log in "$SMOKE_HOME"/.station/instances/*/logs/*.log /tmp/station-*.log; do
+          for log in "$RUNNER_TEMP"/station-home-*/.station/instances/*/logs/*.log "$RUNNER_TEMP"/install-source-*/station-*.log; do
             [ -f "$log" ] || continue
             echo "===== $log (last 200 lines) ====="
             tail -200 "$log"
@@ -333,6 +80,8 @@ jobs:
   # settings, reads them back through the task XML, and records that Task
   # Scheduler does not rerun a wrapper that exits non-zero.
   windows-task-scheduler:
+    needs: install-prebuilt-archive
+    if: ${{ always() && !cancelled() }}
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -342,9 +91,9 @@ jobs:
           repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
       - name: Setup pinned pnpm
-        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
@@ -363,6 +112,8 @@ jobs:
   # preview ring exercises this install/upgrade path; Nightly publication
   # has its own signed-manifest workflow and evidence.
   install-prebuilt-archive:
+    needs: install-without-clone
+    if: ${{ always() && !cancelled() }}
     strategy:
       fail-fast: false
       matrix:
@@ -383,10 +134,10 @@ jobs:
           repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
       - name: Setup pinned pnpm
-        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
       # Node.js builds and signs; install.sh and the launcher never see it.
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
@@ -459,6 +210,8 @@ jobs:
   # (#2484), and refuses tampered bytes and a foreign signature. Stage-only
   # is all install.ps1 does so far; the full install joins in slice W2.
   install-ps1-windows:
+    needs: install-prebuilt-archive
+    if: ${{ always() && !cancelled() }}
     name: install.ps1 (win32-x64)
     runs-on: windows-latest
     timeout-minutes: 90
@@ -472,11 +225,11 @@ jobs:
           repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
       - name: Setup pinned pnpm
-        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
       # Node.js builds and signs; install.ps1 never sees it (the smoke runs it
       # with a PATH that has no node.exe).
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           package-manager-cache: false

@@ -1,3 +1,7 @@
+import { TRANSCRIPT_LINE_SKIPPED_CODE } from '@kontourai/station-contracts/provider-failure';
+
+export { TRANSCRIPT_LINE_SKIPPED_CODE } from '@kontourai/station-contracts/provider-failure';
+
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, opendirSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -5,6 +9,7 @@ import { join, relative, resolve, sep } from 'node:path';
 import type { ProviderSessionSourceAffinity } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { isRecord } from '../../utils/is-record.js';
+import { createLogger } from '../../utils/logger.js';
 import {
   claudeToolResultOutputReceipt,
   summarizeClaudeToolResult,
@@ -58,9 +63,10 @@ const PROMPT_SOURCE = 'claude-transcript';
  */
 const DEFAULT_READ_YIELD_EVERY_LINES = 256;
 /** `runtime.warning` code for a transcript record skipped by `maxLineBytes`. */
-export const TRANSCRIPT_LINE_SKIPPED_CODE = 'transcript-line-skipped';
+
 const EPOCH = '1970-01-01T00:00:00.000Z';
 const SOURCE_HOME_NAMESPACE = 'claude-config-home';
+const logger = createLogger({ name: 'claude-transcript-session-source' });
 
 interface ClaudeTranscriptSessionSourceOptions {
   /** Claude config directory, not its projects child. */
@@ -226,6 +232,31 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
     return { outcome, sessions };
   }
 
+  async initialCursor(
+    session: AttachedSessionDescriptor,
+  ): Promise<AttachedSessionCursor | undefined> {
+    const file = this.handles.get(session.sourceHandle);
+    const home = this.resolveSourceHome(session.affinity);
+    const root = home ? this.canonicalProjectsRoot(home) : null;
+    const canonical =
+      file && root ? this.canonicalRegularFile(root, file) : null;
+    if (!canonical || session.provider !== this.provider) return undefined;
+    try {
+      const offset = Math.max(0, lstatSync(canonical).size - this.maxBytes);
+      return {
+        offset,
+        usageAggregationVersion: 1,
+        ...(offset > 0 ? { usageDeferred: true } : {}),
+        sourceState: {
+          ...encodeRecordTurns(new Map()),
+          ...(offset > 0 ? { skipPartialLine: true } : {}),
+        },
+      };
+    } catch {
+      return undefined;
+    }
+  }
+
   async read(
     session: AttachedSessionDescriptor,
     previousCursor: AttachedSessionCursor = 0,
@@ -245,7 +276,11 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
     const root = this.canonicalProjectsRoot(sourceHome);
     const canonical = root ? this.canonicalRegularFile(root, file) : null;
     if (!canonical) {
-      return { outcome: 'rejected_candidate', events: [], cursor: 0 };
+      return {
+        outcome: 'rejected_candidate',
+        events: [],
+        cursor: previousCursor,
+      };
     }
     const cursorOffset =
       typeof previousCursor === 'number'
@@ -285,8 +320,23 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
     let byteLimited = false;
     try {
       const stat = lstatSync(canonical);
+      if (cursorOffset > stat.size) {
+        logger.warn('Claude transcript shrank; resetting its replay anchor', {
+          threadId: session.threadId,
+          previousOffset: cursorOffset,
+          size: stat.size,
+        });
+        // The follower persists zero, then pins a fresh bounded window before
+        // reading again. Deleted bytes cannot be replayed.
+        return {
+          outcome: 'rejected_candidate',
+          events: [],
+          cursor: 0,
+        };
+      }
       windowStart =
-        cursorOffset > 0 && cursorOffset <= stat.size
+        (cursorOffset > 0 || typeof previousCursor !== 'number') &&
+        cursorOffset <= stat.size
           ? cursorOffset
           : Math.max(0, stat.size - this.maxBytes);
       if (
@@ -316,10 +366,26 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
       };
     }
     let start = 0;
-    if (windowStart > 0 && cursorOffset === 0) {
+    const skipPartialLine =
+      (windowStart > 0 && cursorOffset === 0) ||
+      (typeof previousCursor !== 'number' &&
+        previousCursor.sourceState?.skipPartialLine === true);
+    if (skipPartialLine) {
       const firstNewline = content.indexOf(0x0a);
       if (firstNewline < 0) {
-        return { outcome: 'byte_limit', events: [], cursor: windowStart };
+        return {
+          outcome: 'byte_limit',
+          events: [],
+          cursor: {
+            offset: windowStart + content.length,
+            usageAggregationVersion: 1,
+            usageDeferred: true,
+            sourceState: {
+              ...encodeRecordTurns(recordTurns),
+              skipPartialLine: true,
+            },
+          },
+        };
       }
       start = firstNewline + 1;
     }
@@ -745,6 +811,8 @@ function decodeRecordTurns(
   if (
     !isRecord(raw) ||
     raw.version !== 1 ||
+    (raw.skipPartialLine !== undefined &&
+      typeof raw.skipPartialLine !== 'boolean') ||
     !Array.isArray(raw.recordTurns) ||
     raw.recordTurns.length > MAX_RECORD_TURNS ||
     Buffer.byteLength(JSON.stringify(raw), 'utf8') > MAX_RECORD_TURN_STATE_BYTES

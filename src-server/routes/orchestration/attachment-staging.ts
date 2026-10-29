@@ -60,6 +60,7 @@ export function createAttachmentStagingRoutes(
   const app = new Hono();
   const capability: AttachmentStagingCapability = {
     state: 'supported',
+    delegationFiles: true,
     version: ATTACHMENT_STAGING_PROTOCOL_VERSION,
     maxConcurrentUploads: ATTACHMENT_STAGING_MAX_CONCURRENT_UPLOADS,
   };

@@ -1,0 +1,7 @@
+{
+  "revision": "c551cb9c22ede35fa5f962a6bc0c325b09cbdba9",
+
+  "notes": [
+    {"path":"deployment/telemetry/README.md","note":"Reviewed the retention SQL delta in store.ts: each independent batch now materializes at most 2000 selected tuple IDs and deletes only that array, then decrements Lite capacity in the same transaction. Product namespaces, private mounts, key handling, existing storage bounds and complete-schema backup/upgrade instructions remain accurate. No deployment or production execution is established by the synthetic PostgreSQL controls.","inputs":["deployment/telemetry/README.md","packages/telemetry-broker/src/store.ts"]}
+  ]
+}

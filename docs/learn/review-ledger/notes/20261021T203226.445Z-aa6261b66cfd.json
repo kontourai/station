@@ -1,0 +1,7 @@
+{
+  "revision": "a72e45dbd3394fcda5a42662ad1471ef0bc4e2ab",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"L1 merge of #3991: re-verified against the merged tree. The guide covers Agent authoring, engine picker, tool approvals and ACP plan-exit/autoApprove behaviour; the branch's acp-adapter.ts changes (unverified optional login row, auth_required as a typed engine-sign-in-required refusal, plain failure copy) and ACPConnectionSetupStages.tsx setup-dialog wording touch none of those claims; ACP switch_mode/ExitPlanMode handling is unchanged in the merged adapter. No prose change.","inputs":["docs/guides/agent-configuration.md","packages/cli/src/commands/profile-store.ts","scripts/examples-conformance.mjs","src-server/domain/config-loader-agents.ts","src-server/routes/system/system-status-routes.ts","src-server/runtime/agents/runtime-default-agent.ts","src-server/runtime/bootstrap/native-engine-adoption.ts","src-server/runtime/mcp/mcp-manager.ts","src-server/services/agents/skill-service.ts","src-server/services/approvals/approval-guardian.ts","src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx","src-ui/src/views/agent-editor/AgentEditorApprovalDefault.tsx","src-ui/src/views/connections-hub/RelayRouteKeyApproval.tsx","src-ui/src/views/connections-hub/connection-sections.ts","src-ui/src/views/provider-settings/providerCatalog.tsx","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

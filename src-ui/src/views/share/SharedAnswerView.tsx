@@ -59,12 +59,11 @@ const REFUSAL_TITLE: Record<AnswerShareRefusalReason, string> = {
 const REFUSAL_DETAIL: Record<AnswerShareRefusalReason, string> = {
   'share-not-found':
     'Station has no share matching this link. Ask whoever sent it for a new one.',
-  'share-revoked':
-    'The person who created this link turned it off. Nothing about the answer is being shown.',
+  'share-revoked': 'The person who created this link turned it off.',
   'share-expired':
     'Share links stop working after their expiry. Ask for a fresh link.',
   'answer-no-longer-available':
-    'The share is still live, but the answer it points at can no longer be read on this Station.',
+    'The link is live, but its answer can no longer be read on this Station.',
 };
 
 /**
@@ -83,7 +82,7 @@ const REFUSAL_DETAIL: Record<AnswerShareRefusalReason, string> = {
 const UNRECOGNIZED_REFUSAL = {
   title: 'This share cannot be opened',
   detail:
-    "Station refused it for a reason this version of the page doesn't recognize. Nothing about the answer is being shown, and nothing about it is being claimed.",
+    "Station refused it for a reason this version of the page doesn't recognize.",
 } as const;
 
 function describeRefusal(reason: AnswerShareRefusalReason): {
@@ -131,13 +130,13 @@ const CHANNEL_UNAVAILABLE_DETAIL: Record<
   string
 > = {
   'not-in-channel':
-    'This Station reports that this answer was not committed to a channel log, so there is no channel position for it. Nothing is missing from what you can see here.',
+    'This answer was not committed to a channel log, so it has no channel position.',
   'predates-channel-addressing':
-    'This share was created before this Station recorded channel positions, so none was observed when it was made. That is not a statement that the answer sits outside a channel — it is that nobody looked.',
+    'Unknown: this share was created before this Station recorded channel positions.',
   'history-not-served':
-    'This share records a channel position, but this Station does not serve channel history to this page, so that position is not being reported here.',
+    "This Station doesn't serve channel history to this page.",
   'coordinate-mismatch':
-    'This share records a channel position that disagrees with what this Station reports for that record now. Nothing about its place in the log is being claimed, and nothing else has been put in its place.',
+    "The share's channel position disagrees with what this Station reports now.",
 };
 
 /**
@@ -147,7 +146,7 @@ const CHANNEL_UNAVAILABLE_DETAIL: Record<
  * prototype member as a React child.
  */
 const UNRECOGNIZED_CHANNEL_DETAIL =
-  "This Station said something about this answer's place in a channel log that this version of the page doesn't recognize. Nothing about it is being claimed.";
+  "This version of the page doesn't recognize what this Station reported about the channel log.";
 
 function describeChannelUnavailable(
   reason: AnswerShareChannelUnavailableReason,
@@ -180,7 +179,7 @@ function SharedAnswerChannelPanel({
           {channel.coordinate.epoch}, entry {channel.coordinate.seq}, in channel{' '}
           <code>{channel.coordinate.channelId}</code>.
           {channel.supersession === 'superseded'
-            ? ' It also reports a later entry superseding that one. The words above are the ones that were shared; the later version is not being shown.'
+            ? ' A later entry supersedes it; the shared version is shown above.'
             : ''}
         </p>
       </section>
@@ -306,21 +305,21 @@ function SharedAnswerBody({ state }: { state: ViewState }) {
         // first, so the copy names both and asks for the original link.
         <SharedAnswerNotice
           title="This page no longer has the share token"
-          detail="Station clears the token out of the address bar once it has been read, so reopening or refreshing this address on its own cannot find it again. Open the original share link — the part after the # is what carries it."
+          detail="Station removes it after reading, so refreshing can't find it. Open the original share link again."
         />
       );
     case 'unreachable':
       return (
         <SharedAnswerNotice
           title="This Station could not be reached"
-          detail="The share may still be valid. Nothing about the answer is being shown, because nothing was read."
+          detail="The share may still be valid. Try again later."
         />
       );
     case 'unsupported':
       return (
         <SharedAnswerNotice
           title="This share was written in a format this page cannot read"
-          detail={`It reports schema version ${state.schemaVersion}. Nothing about the answer is being claimed from it.`}
+          detail={`It reports schema version ${state.schemaVersion}.`}
         />
       );
     case 'refused': {
@@ -362,8 +361,7 @@ function SharedAnswerContent({
       <article className="shared-answer__body">
         {result.answer.blocks.length === 0 ? (
           <p className="shared-answer__status">
-            This turn recorded provenance but committed nothing readable as
-            text.
+            This answer has no readable text.
           </p>
         ) : (
           result.answer.blocks.map((block, index) => (
@@ -386,17 +384,14 @@ function SharedAnswerContent({
       </article>
 
       {result.provenance === undefined ? (
-        <p className="shared-answer__status">
-          This answer carries no provenance envelope, so nothing is being
-          claimed about how it was produced.
-        </p>
+        <p className="shared-answer__status">This share has no provenance.</p>
       ) : (
         <TurnProvenanceCard provenance={result.provenance} />
       )}
 
       {/* Absent only when the payload came from a Station older than
           station#1598. Rendering a panel then would mean inventing a status
-          on the client, which is the read-time derivation this slice
+          on the client, which is the read-time derivation this view
           refuses. */}
       {result.channel !== undefined && (
         <SharedAnswerChannelPanel channel={result.channel} />

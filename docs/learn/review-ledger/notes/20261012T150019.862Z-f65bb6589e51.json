@@ -1,0 +1,7 @@
+{
+  "revision": "757b510858ea116c0e722d5eda68c5d30b95739a",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"#561: runShellCommand now writes an owned-process registry record for its detached command group (registerDetachedOwnedChild), released after the group exits; the record carries a label, not the command line. Re-read the terminal process versus command evidence statement; still accurate. No prose change.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/services/flow/flow-run-service.ts"]}
+  ]
+}

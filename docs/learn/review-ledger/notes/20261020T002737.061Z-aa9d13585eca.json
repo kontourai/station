@@ -1,0 +1,13 @@
+{
+  "revision": "b15fee4f40b267c83ff007585b5d38c893b9403e",
+
+  "notes": [
+    {"path":"docs/guides/discord-gateway.md","note":"New guide. Traced DiscordGatewayService construction and start in station-runtime.ts, the configuration store (path, validation, missing/invalid file), authorization (guild/channel allowlist, identity mapping, revokedAt, capabilities), inbound filtering, session bindings, refusal replies, relay store and turn.completed delivery, reconnect/resume, delivery failure handling, and the Default approval mode description in settings-registry.ts. Live Discord behaviour is marked unverified.","inputs":["docs/guides/discord-gateway.md","packages/contracts/src/settings-registry.ts","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/inbound-webhooks.md","note":"New guide. Traced the inbound route (path, size and message limits, per-token and global rate limits, response bodies), the authorization module (headers, timestamp window, HMAC-SHA256 input, grant matching, replay ledger) and the store (file paths, secret length, audit ring).","inputs":["docs/guides/inbound-webhooks.md"]},
+
+    {"path":"docs/user/settings.md","note":"New page. Traced Settings page placement (settings-pages.ts), section catalog and gating, the feature-preview route/registry and the one bound preview, the developer-tools device setting definition, and the device-host panel and store limits.","inputs":["docs/user/settings.md","packages/contracts/src/device-settings.ts","src-ui/src/views/settings/DeviceHostsPanel.tsx","src-ui/src/views/settings/FeaturePreviewsSection.tsx","src-ui/src/views/settings/settings-catalog.ts","src-ui/src/views/settings/settings-pages.ts"]},
+
+    {"path":"docs/user/sharing-answers.md","note":"New page. Traced the share entry point (TurnActionsMenu Turn provenance, ShareAnswerButton), share contracts (lifetimes, record cap), projection limits, hosted refusal in answer-share routes, the public view route, and AnswerSharesSection revoke flow.","inputs":["docs/user/sharing-answers.md","src-ui/src/components/chat/TurnActionsMenu.tsx"]}
+  ]
+}

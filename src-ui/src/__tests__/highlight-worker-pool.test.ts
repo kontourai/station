@@ -92,7 +92,7 @@ describe('HighlightWorkerPool (station#3354)', () => {
     const tokens = pool.tokenize('b', 'ts');
     const tokenRequest = workers[0].messages[1] as Record<string, unknown>;
     expect(tokenRequest.format).toBe('tokens');
-    const lines = [[{ content: 'b', color: '#F97583' }]];
+    const lines = [[{ content: 'b', color: 'var(--syntax-keyword)' }]];
     workers[0].onmessage?.({
       data: { id: REQ_ID(tokenRequest), tokens: lines },
     } as MessageEvent);

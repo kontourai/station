@@ -33,12 +33,19 @@ import {
   type RecoveryLedger,
   type RecoveryTransition,
 } from './recovery-ledger.js';
+import type {
+  UsageLimitResumeChoice,
+  UsageLimitResumeChoices,
+} from './usage-limit-resume-choices.js';
 
 /**
  * A recorded turn start everything of which can be sent again: it has the
  * prompt a send carried (see `replayableSource`).
  */
-type ReplayableTurnStart = TurnStartedEvent & { prompt: string };
+type ReplayableTurnStart = TurnStartedEvent & {
+  prompt: string;
+  ambientContext?: string;
+};
 
 /**
  * #3157: what a user action on a waiting usage-limit stop did. `not-waiting`
@@ -52,6 +59,8 @@ export type UsageLimitRecoveryActionResult =
   | { kind: 'failed' }
   | { kind: 'canceled' }
   | { kind: 'retired'; reason: ConnectionRecoveryOutcomeReason }
+  /** A person chose, for this stop, what happens at its reset. */
+  | { kind: 'chosen'; choice: UsageLimitResumeChoice }
   | { kind: 'not-waiting' };
 
 /**
@@ -73,6 +82,13 @@ const MAX_CONSECUTIVE_REARMS = 3;
 const DEFAULT_MAX_ATTEMPTS = 1;
 const RECOVERY_SHUTDOWN_SETTLEMENT_MS = 250;
 const CANCELLATION_RETRY_MS = 100;
+
+/**
+ * #3563: when a timer fires and the per-intent source-terminal fence cannot
+ * be read, the dispatch waits this long and asks again, for as long as it
+ * takes. It never dispatches on an unread fence and never gives up.
+ */
+const SOURCE_TERMINAL_FENCE_RETRY_MS = 60_000;
 
 /**
  * Small recovery owner for the orchestration event seam. It schedules only
@@ -133,6 +149,12 @@ export class SessionRecoveryCoordinator {
        * it.
        */
       autoResume?: () => boolean | Promise<boolean>;
+      /**
+       * A person's choice on one stop ("Resume at <reset>" / "Don't
+       * resume"), which decides it instead of `autoResume`. Absent: the
+       * setting decides every stop, as before.
+       */
+      resumeChoices?: UsageLimitResumeChoices;
     },
   ) {
     this.credentialRecovery = options.credentialRecovery;
@@ -165,7 +187,7 @@ export class SessionRecoveryCoordinator {
     // The source terminal is durable even if the original cancellation CAS
     // returned unavailable. Repair it before deriving timers, so restart can
     // never re-dispatch a recovery that the source already ended.
-    this.ledger.cancelSourceTerminated(this.now().toISOString());
+    const repair = this.ledger.cancelSourceTerminated(this.now().toISOString());
     // CredentialRecoveryModule is the only owner that can turn a prepared
     // profile attempt into candidate-profile compensation.  This coordinator
     // may settle ordinary recovery only; otherwise it would erase the
@@ -174,13 +196,77 @@ export class SessionRecoveryCoordinator {
       this.now().toISOString(),
       'due',
     );
-    for (const intent of unsettled)
-      this.recordIntentOutcome(intent, 'indeterminate');
+    // An unreadable scan fences nothing, so there is no outcome to record.
+    // Its prepared rows stay durable for the next startup; this due-path
+    // sweep has no in-process retry (#2823 scopes that to credentials).
+    if (unsettled.kind === 'available')
+      for (const intent of unsettled.obligations)
+        this.recordIntentOutcome(intent, 'indeterminate');
+    // #3563: the bulk repair is defence in depth. Each timer re-checks the
+    // same rule for its own intent before it can dispatch, so a failed
+    // repair only needs to be said, not to pause every recovery.
+    if (repair.kind === 'unavailable' || repair.kind === 'invalid') {
+      this.options.logger?.warn(
+        'Recovery source-terminal repair is unavailable at startup; each recovery is checked when its timer fires',
+        { result: repair.kind },
+      );
+    }
     for (const intent of this.ledger.pending()) {
       if (intent.outcome !== 'armed' || !intent.dueAt) continue;
       this.schedule(intent.fingerprint, intent.dueAt);
     }
     void this.credentialRecovery?.reconcile();
+  }
+
+  /**
+   * #3563: the fire-time half of the source-terminal rule. Returns true when
+   * this timer may go on to claim. A canceled intent stops here; an unread
+   * fence re-arms the timer and asks again later.
+   */
+  private passesSourceTerminalFence(fingerprint: string): boolean {
+    // `undefined` means the read itself failed; `null` means the intent is gone.
+    let intent: ReturnType<RecoveryLedger['find']> | undefined;
+    let fenced: RecoveryTransition;
+    try {
+      intent = this.ledger.find(fingerprint);
+      fenced = this.ledger.cancelIfSourceTerminated(
+        fingerprint,
+        this.now().toISOString(),
+      );
+    } catch {
+      fenced = { kind: 'unavailable' };
+    }
+    if (fenced.kind === 'stale') return true;
+    if (fenced.kind === 'applied') {
+      if (intent) this.recordIntentOutcome(intent, 'canceled');
+      return false;
+    }
+    // An unread intent is re-armed too: the claim is a compare-and-set, so a
+    // timer for an intent that is no longer armed can never dispatch.
+    if (intent === undefined || intent?.outcome === 'armed') {
+      this.deferUnreadFence(fingerprint);
+    }
+    return false;
+  }
+
+  /**
+   * #3563: a fire-time read that failed. The dispatch waits and asks again.
+   * Never while stopping: shutdown owns every timer from that point. A store
+   * closed without disposing this coordinator keeps re-arming every 60s;
+   * production disposes first, and the timers are unref'd.
+   */
+  private deferUnreadFence(fingerprint: string): void {
+    this.options.logger?.warn(
+      'Recovery fire-time source-terminal check is unavailable; the dispatch waits and retries',
+      { retryInMs: SOURCE_TERMINAL_FENCE_RETRY_MS },
+    );
+    if (this.stopping || this.disposed) return;
+    this.schedule(
+      fingerprint,
+      new Date(
+        this.now().getTime() + SOURCE_TERMINAL_FENCE_RETRY_MS,
+      ).toISOString(),
+    );
   }
 
   async dispose(): Promise<void> {
@@ -491,6 +577,7 @@ export class SessionRecoveryCoordinator {
     autoResumeAllowed = true,
   ): Promise<void> {
     if (this.disposed) return;
+    if (!this.passesSourceTerminalFence(fingerprint)) return;
     // A reconstructed due intent still gets the same credential-recovery
     // Module before ordinary replay. Its durable claim remains the authority.
     if (this.credentialRecovery) {
@@ -819,19 +906,28 @@ export class SessionRecoveryCoordinator {
   }
 
   private trackClaimAndResume(fingerprint: string): void {
-    if (
-      !this.options.autoResume ||
-      !this.ledger.find(fingerprint)?.usageLimit
-    ) {
+    // This runs in the timer callback itself, so a throwing read must not
+    // escape it (#3563 review M1): it is an unread fence like any other.
+    let usageLimit: boolean | undefined;
+    try {
+      usageLimit = this.options.autoResume
+        ? this.ledger.find(fingerprint)?.usageLimit
+        : undefined;
+    } catch {
+      this.deferUnreadFence(fingerprint);
+      return;
+    }
+    if (!this.options.autoResume || !usageLimit) {
       this.enqueueLifecycle(fingerprint, () =>
         this.claimAndResume(fingerprint),
       );
       return;
     }
     // #3157: the setting is read before the claim's serialized turn, so the
-    // claim itself keeps its synchronous path to dispatch.
+    // claim itself keeps its synchronous path to dispatch. A person's choice
+    // on this stop decides it instead.
     this.trackOperation(
-      this.autoResumeAllowed().then((allowed) => {
+      this.autoResumeAllowedFor(fingerprint).then((allowed) => {
         if (this.disposed) return;
         void this.enqueueLifecycle(fingerprint, () =>
           this.claimAndResume(fingerprint, allowed),
@@ -985,6 +1081,14 @@ export class SessionRecoveryCoordinator {
     source: TurnStartedEvent | undefined,
   ): source is ReplayableTurnStart {
     if (!source || source.prompt === undefined) return false;
+    // A reference left unresolved (its content row is gone) is never replayed
+    // as its preview.
+    if (
+      typeof source.prompt !== 'string' ||
+      (source.ambientContext !== undefined &&
+        typeof source.ambientContext !== 'string')
+    )
+      return false;
     // #2324: never replay a turn the engine opened on its own.
     if (isProviderTriggeredTurn(source)) return false;
     if (!source.attachments?.length) return true;
@@ -1232,6 +1336,67 @@ export class SessionRecoveryCoordinator {
     );
   }
 
+  /** The person's choice on this stop, else the setting. */
+  private async autoResumeAllowedFor(fingerprint: string): Promise<boolean> {
+    let choice: UsageLimitResumeChoice | undefined;
+    try {
+      choice = this.options.resumeChoices?.read(fingerprint);
+    } catch {
+      // An unreadable choice falls back to the setting, which itself fails
+      // closed.
+      choice = undefined;
+    }
+    if (choice === 'resume') return true;
+    if (choice === 'hold') return false;
+    return this.autoResumeAllowed();
+  }
+
+  /**
+   * The person's choice on the stop still waiting for its reset in this
+   * Session, if they made one.
+   */
+  usageLimitResumeChoice(threadId: string): UsageLimitResumeChoice | undefined {
+    const waiting = this.waitingUsageLimitIntent(threadId);
+    if (waiting?.outcome !== 'armed') return undefined;
+    try {
+      return this.options.resumeChoices?.read(waiting.fingerprint);
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * The banner's "Resume at <reset>" (`resume`) and "Don't resume"
+   * (`hold`) on a stop still waiting for its reset. Nothing is sent now:
+   * the choice decides what happens at the reset, in place of the setting.
+   */
+  async chooseUsageLimitResume(
+    threadId: string,
+    choice: UsageLimitResumeChoice,
+  ): Promise<UsageLimitRecoveryActionResult> {
+    if (this.stopping || this.disposed || !this.options.resumeChoices)
+      return { kind: 'not-waiting' };
+    const waiting = this.waitingUsageLimitIntent(threadId);
+    if (!waiting) return { kind: 'not-waiting' };
+    let result: UsageLimitRecoveryActionResult = { kind: 'not-waiting' };
+    await this.enqueueLifecycle(waiting.fingerprint, async () => {
+      const current = this.ledger.find(waiting.fingerprint);
+      if (
+        !current?.usageLimit ||
+        current.outcome !== 'armed' ||
+        current.decision !== 'wait-until-reset'
+      )
+        return;
+      this.options.resumeChoices!.write(
+        current.fingerprint,
+        choice,
+        this.now().getTime(),
+      );
+      result = { kind: 'chosen', choice };
+    });
+    return result;
+  }
+
   private async autoResumeAllowed(): Promise<boolean> {
     const autoResume = this.options.autoResume;
     if (!autoResume) return true;
@@ -1400,7 +1565,11 @@ export class SessionRecoveryCoordinator {
       intent.threadId,
       intent.sourceEventId,
     )?.payload;
-    return event?.method === 'turn.started' ? event : undefined;
+    // Replay re-sends the prompt to the engine, so a prompt or ambient
+    // context stored out of line is resolved here (exact, never a preview).
+    return event?.method === 'turn.started'
+      ? (this.options.eventStore.resolveCanonicalEventContent?.(event) ?? event)
+      : undefined;
   }
 
   private findResumedIntent(threadId: string, turnId?: string) {

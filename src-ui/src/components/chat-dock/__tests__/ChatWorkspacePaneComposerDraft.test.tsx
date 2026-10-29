@@ -34,6 +34,11 @@ import { ConversationsProvider } from '../../../contexts/ConversationsContext';
 import { KeyboardShortcutsProvider } from '../../../contexts/KeyboardShortcutsContext';
 import { NavigationProvider } from '../../../contexts/NavigationContext';
 import { navigationStore } from '../../../contexts/navigation-store';
+import {
+  PaneRelationsProvider,
+  type PaneRelationsValue,
+  usePaneRelations,
+} from '../../../contexts/PaneRelationsContext';
 import { RegionModelProvider } from '../../../contexts/RegionModelContext';
 import { ToastProvider } from '../../../contexts/ToastContext';
 import { useShowSurface } from '../../../contexts/useShowSurface';
@@ -260,6 +265,12 @@ function renderDockedPane() {
   );
 }
 
+let relations: PaneRelationsValue | undefined;
+function CaptureRelations() {
+  relations = usePaneRelations();
+  return null;
+}
+
 function renderInProviders(pane: ReactNode) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -272,8 +283,11 @@ function renderInProviders(pane: ReactNode) {
             <ConversationsProvider>
               <ActiveChatsProvider>
                 <RegionModelProvider>
-                  <CaptureShowSurface />
-                  {pane}
+                  <PaneRelationsProvider>
+                    <CaptureShowSurface />
+                    <CaptureRelations />
+                    {pane}
+                  </PaneRelationsProvider>
                 </RegionModelProvider>
               </ActiveChatsProvider>
             </ConversationsProvider>
@@ -475,16 +489,16 @@ function openForeignChatInPulseBoundDock() {
   renderDockedPane();
 }
 
-test('the docked badge names the bound Project and reports a foreign chat’s own Project and directory', async () => {
+test('the docked destination names the bound Project, never the foreign chat on screen', async () => {
   openForeignChatInPulseBoundDock();
   await act(async () => {});
 
-  const badge = screen.getByRole('button', { name: 'Pulse' });
-  // The directory is the chat's, not the bound Project's.
-  expect(badge.getAttribute('title')).toBe('This chat (Other) — /work/other');
-  expect(
-    document.querySelector('.chat-dock__project-session-name')?.textContent,
-  ).toBe('This chat: Other');
+  // New's destination: the bound Project. Its tooltip is where a NEW chat
+  // runs, not the foreign chat's directory, and the bar prints no "This
+  // chat" contrast beside it (the chat's own project is its context card).
+  const badge = screen.getByRole('button', { name: 'New chats: Pulse' });
+  expect(badge.getAttribute('title')).not.toContain('/work/other');
+  expect(document.querySelector('.chat-dock__project-session-name')).toBeNull();
 
   // The switcher marks the bound Project as current.
   fireEvent.click(badge);
@@ -503,14 +517,15 @@ test('the docked badge names the bound Project and reports a foreign chat’s ow
   ).toBeNull();
 });
 
-test('a foreign chat’s git state and code layout are its own Project’s, not the badge’s (archive#4525 review HIGH-2)', async () => {
+test('a foreign chat’s code layout is its own Project’s, not the badge’s (archive#4525 review HIGH-2)', async () => {
   openForeignChatInPulseBoundDock();
   await act(async () => {});
 
+  // The bar carries no branch badge any more (the context card's Branch row
+  // does); the More menu's Open in Coding still follows the chat's Project.
   expect(
-    document.querySelector('.chat-dock__project-context .git-badge__branch')
-      ?.textContent,
-  ).toContain('other-branch');
+    document.querySelector('.chat-dock__project-context .git-badge'),
+  ).toBeNull();
 
   fireEvent.click(screen.getByRole('button', { name: 'More dock actions' }));
   fireEvent.click(
@@ -533,14 +548,14 @@ test('switching Project rebinds the dock and opens no New Chat picker (archive#4
   openForeignChatInPulseBoundDock();
   await act(async () => {});
 
-  fireEvent.click(screen.getByRole('button', { name: 'Pulse' }));
+  fireEvent.click(screen.getByRole('button', { name: 'New chats: Pulse' }));
   fireEvent.click(
     await screen.findByRole('button', { name: 'Switch to Other' }),
   );
   await act(async () => {});
 
   expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('other');
-  expect(screen.getByRole('button', { name: 'Other' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'New chats: Other' })).toBeTruthy();
   expect(screen.queryByRole('dialog', { name: 'New chat picker' })).toBeNull();
   expect(pickerProps).toHaveLength(0);
   expect(createChatSession).not.toHaveBeenCalled();
@@ -753,5 +768,72 @@ test("a dismissed hand-off returns the dock's edited draft", async () => {
   expect(onClosed).toHaveBeenCalledExactlyOnceWith(
     'dismissed',
     'First words, then more',
+  );
+});
+
+test('a Personal Board draft opens one projectless chat picker and stays unsent after Agent selection', async () => {
+  renderDockedPane();
+  let claimed = false;
+  act(() => {
+    claimed = requestProjectChat({
+      projectSlug: null,
+      source: 'personal-board',
+      composerDraft: {
+        ...draft,
+        message: 'Use propose_personal_board for /boards/daily.',
+      },
+    });
+  });
+  expect(claimed).toBe(true);
+  await screen.findByRole('dialog', { name: 'New chat picker' });
+  const props = pickerProps.at(-1)!;
+  expect(props.activeProjectSlug).toBeNull();
+  expect(props.draftContext.items[0].messageLine).toBe(
+    'Use propose_personal_board for /boards/daily.',
+  );
+  expect(createChatSession).not.toHaveBeenCalled();
+  expect(sendMessage).not.toHaveBeenCalled();
+  act(() =>
+    props.onSelect(
+      { slug: 'assistant', name: 'Assistant' },
+      undefined,
+      undefined,
+      props.draftContext.items[0].messageLine,
+    ),
+  );
+  expect(createChatSession).toHaveBeenCalled();
+  expect(updateChat).toHaveBeenCalledWith(
+    'new-session',
+    expect.objectContaining({
+      input: 'Use propose_personal_board for /boards/daily.',
+    }),
+  );
+  expect(sendMessage).not.toHaveBeenCalled();
+});
+
+/**
+ * The real docked pane publishes the conversation it shows as its pane-opener
+ * selection (docs/design/pane-relationships.md), so a preview it opened for
+ * one conversation hides while another is on screen. Outside a region pane
+ * the opener occurrence is the workspace Chat. Removing the pane's
+ * `usePublishOpenerSelection` call fails both assertions.
+ */
+test('the docked pane publishes the conversation it shows, and follows the selection', async () => {
+  dockProbe.sessions = [
+    { ...chatSession('chat-a'), conversationId: 'conversation-a' },
+    { ...chatSession('chat-b'), conversationId: 'conversation-b' },
+  ];
+  navigationStore.navigate('/', { dock: 'open', chat: 'chat-a' });
+  renderDockedPane();
+  await waitFor(() =>
+    expect(relations?.currentSelection('chat-workspace')).toBe(
+      'conversation:conversation-a',
+    ),
+  );
+  act(() => navigationStore.setActiveChat('chat-b'));
+  await waitFor(() =>
+    expect(relations?.currentSelection('chat-workspace')).toBe(
+      'conversation:conversation-b',
+    ),
   );
 });

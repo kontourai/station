@@ -10,7 +10,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 // @ts-expect-error -- @kontourai/veritas ships untyped ESM
-import { classifyNodes } from '@kontourai/veritas';
+import { classifyNodes, loadRepoStandards } from '@kontourai/veritas';
 import { describe, expect, it } from 'vitest';
 import {
   codexHookFeatureFindings,
@@ -26,8 +26,8 @@ function readJson(relativePath: string) {
 }
 
 const repoMap = readJson('.veritas/repo-map.json');
-const standards = readJson(
-  '.veritas/repo-standards/default.repo-standards.json',
+const standards = loadRepoStandards(
+  resolve(rootDir, '.veritas/repo-standards/default.repo-standards.json'),
 );
 const inventory = readJson(
   '.veritas/proof-families/repo-guardrails.families.json',
@@ -111,7 +111,7 @@ describe('veritas repo map (1.5)', () => {
     expect(result.unmatchedFiles).toEqual(['package.json.backup']);
   });
 
-  it('keeps repo-governance, the style standard and documentation truth required, verification-policy default-only', () => {
+  it('keeps governance, style, documentation and hygiene required, verification-policy default-only', () => {
     // #2220: the style standard is a REQUIRED evidence check — the readiness
     // verdict carries the style standard, so a lint violation reads as
     // not-ready (owner-approved 2026-09-17, attested policy-change
@@ -123,6 +123,8 @@ describe('veritas repo map (1.5)', () => {
       'repo-governance',
       'style-standard',
       'documentation-truth',
+      'code-hygiene',
+      'component-style-hygiene',
     ]);
     expect(repoMap.evidence.defaultEvidenceCheckIds).toContain(
       'repo-governance',
@@ -164,10 +166,11 @@ describe('veritas repo map (1.5)', () => {
   });
 
   it('keeps Veritas and Surface on compatible contracts and authors claim facets', () => {
-    // This assertion IS the compatibility declaration — nothing else in the
-    // repo records which majors Station is built against — so a major bump
-    // SHOULD red it until a human acknowledges the migration here. Surface
-    // 2 -> 3 was that acknowledgement (station#4440).
+    // Keep the reviewed root majors explicit: the next major bump must red
+    // this migration tripwire. For #3683, Veritas 1's schema-5/facet output
+    // and Station's Surface 6 reader were source-reviewed; Veritas keeps its
+    // own Surface 2 dependency. This is not full runtime qualification.
+    // The earlier Surface 2 -> 3 acknowledgement was station#4440.
     //
     // What it must NOT red on is where the dependency is declared or how it
     // is pinned. It went stale three ways at once: Veritas moved
@@ -177,7 +180,7 @@ describe('veritas repo map (1.5)', () => {
     // (conduit, dispatch, flow, thread, ... are all exact). So resolve from
     // either section and compare the major, not the range syntax.
     expect(dependencyMajor(packageJson, '@kontourai/veritas')).toBe(1);
-    expect(dependencyMajor(packageJson, '@kontourai/surface')).toBe(3);
+    expect(dependencyMajor(packageJson, '@kontourai/surface')).toBe(6);
     expect(claimStore.claims.length).toBeGreaterThan(0);
     for (const claim of claimStore.claims) {
       expect(claim.facet).toEqual(expect.any(String));

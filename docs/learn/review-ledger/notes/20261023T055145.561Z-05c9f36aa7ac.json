@@ -1,0 +1,13 @@
+{
+  "revision": "d1615b1fe36c58e65a12d4a73dd05dd04ed34498",
+
+  "notes": [
+    {"path":"docs/learn/media/project-with-task.png","note":"Replaced the capture with an inspected real isolated production UI frame at5bd968d773d. Project capture shows one API-created Task under Backlog. Plan capture was typed in UI, awaited Saved, then reloaded/reopened. Current later UI diffs change recovery/error handling and unused selectors; pictured resting states remain accurate. Captured revision and digest updated to actual bytes. No provider/native/hosted/release qualification inferred.","inputs":["docs/learn/media/project-with-task.png","src-ui/src/views/ProjectPage.css","src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"Replaced the capture with an inspected real isolated production UI frame at5bd968d773d. Project capture shows one API-created Task under Backlog. Plan capture was typed in UI, awaited Saved, then reloaded/reopened. Current later UI diffs change recovery/error handling and unused selectors; pictured resting states remain accurate. Captured revision and digest updated to actual bytes. No provider/native/hosted/release qualification inferred.","inputs":["docs/learn/media/shared-task-document.png","src-ui/src/views/TaskWorkspaceView.css","src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/learn/media/project-start-before.png","note":"Inspected the retained390px light-theme historical before/after composer frames. They depict the historical direct-work composer, not current Project Room/navigation. Current ProjectPage removes that composer in favor of explicit Room and dock paths; the captions/evidence already mark the comparison historical. Original capture bytes, digest and capturedRevision preserved; this note reviews historical presentation only and does not requalify old runtime evidence.","inputs":["docs/learn/media/project-start-before.png","src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/media/project-start-after.png","note":"Inspected the retained390px light-theme historical before/after composer frames. They depict the historical direct-work composer, not current Project Room/navigation. Current ProjectPage removes that composer in favor of explicit Room and dock paths; the captions/evidence already mark the comparison historical. Original capture bytes, digest and capturedRevision preserved; this note reviews historical presentation only and does not requalify old runtime evidence.","inputs":["docs/learn/media/project-start-after.png","src-ui/src/views/ProjectPage.tsx"]}
+  ]
+}

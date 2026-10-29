@@ -1,3 +1,4 @@
+import { isTaskRoomAttachments } from '@kontourai/station-contracts/project-task-room';
 import {
   TASK_ROOM_CONTEXT_VERSION,
   TASK_ROOM_WORK_VERSION,
@@ -71,6 +72,8 @@ function workRecord(
 ): value is TaskRoomWorkRecord {
   if (!object(value)) return false;
   return (
+    (value.attachments === undefined ||
+      isTaskRoomAttachments(value.attachments)) &&
     value.version === TASK_ROOM_WORK_VERSION &&
     value.taskId === taskId &&
     (value.expectedDefinitionFingerprint === undefined ||
@@ -211,11 +214,23 @@ export async function submitTaskRoomAgentRequest(
         taskId,
         taskCreatedAt,
         operationId: input.operationId,
+        ...(input.attachments?.length
+          ? { attachments: input.attachments }
+          : {}),
         ...(input.context ? { context: input.context } : {}),
       },
     },
   );
   const acknowledgement: unknown = await response.json();
+  if (
+    response.status === 409 &&
+    object(acknowledgement) &&
+    acknowledgement.success === false &&
+    acknowledgement.code === 'task_room_attachments_unavailable'
+  )
+    throw new TaskRoomWorkNotSentError(
+      'Task attachments are unavailable. Choose the files again. Nothing was sent.',
+    );
   if (
     input.context &&
     response.status === 409 &&
@@ -251,6 +266,19 @@ export async function submitTaskRoomAgentRequest(
       input.expectedDefinitionFingerprint &&
     value.record.modelId === modelId &&
     value.record.modelOptionsDigest === modelOptionsDigest &&
+    (value.record.attachments ?? []).length ===
+      (input.attachments ?? []).length &&
+    (value.record.attachments ?? []).every((attachment, index) => {
+      const other = input.attachments?.[index];
+      return (
+        other &&
+        attachment.id === other.id &&
+        attachment.kind === other.kind &&
+        attachment.name === other.name &&
+        attachment.mimeType === other.mimeType &&
+        attachment.size === other.size
+      );
+    }) &&
     value.record.prompt === input.prompt.trim() &&
     value.record.taskCreatedAt === taskCreatedAt &&
     value.record.context?.digest === input.context?.digest

@@ -1,0 +1,7 @@
+{
+  "revision": "60af3e3cd1735d94e93c81c6a6a9ba05195da5e1",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed VerificationCoordinator fast-diagnostics paragraph against the one-predicate reconciliation fix. Binding remains digest/provenance checked; error classifications now agree with producer countsFor. Attachment retention preserves owner infrastructure status/counts and complete:false; no receipt promotion, timeout/admission or historical e37 evidence change. Existing paragraph remains accurate;32 owner-boundary tests and intended-red/restored-green evidence retained.","inputs":["docs/architecture/module-map.md","scripts/__tests__/verification-terminal-receipt.test.ts","scripts/lib/verification-ci-fast-diagnostics.mjs"]}
+  ]
+}

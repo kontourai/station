@@ -12,6 +12,10 @@ import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenanc
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import type { ProviderSession } from '../../providers/adapter-shape.js';
 import { errorMessage } from '../../utils/error-message.js';
+import {
+  type ApprovalContentBinding,
+  approvalContentBinding,
+} from './event-content-spill.js';
 import type { EventStore, PersistedRuntimeEvent } from './event-store.js';
 import {
   type RequestReplayOutcome,
@@ -157,7 +161,7 @@ export class SessionEventReads {
       // convergence sweep expires its notification.
       return requestIdsSettledByTurnAbort(
         eventStore
-          .listSessionProjectionEvents(threadId)
+          .listSessionProjectionEvents(threadId, { hydrateAttachments: false })
           .map((event) => event.payload),
       ).has(requestId)
         ? { state: 'resolved', status: TURN_ABORT_SETTLED_REQUEST_STATUS }
@@ -197,7 +201,9 @@ export class SessionEventReads {
 
     if (!this.deps.canReadSession(threadId, options.authority)) return null;
     const projectionEvents =
-      this.deps.eventStore?.listSessionProjectionEvents(threadId) ?? [];
+      this.deps.eventStore?.listSessionProjectionEvents(threadId, {
+        hydrateAttachments: false,
+      }) ?? [];
     const page = this.deps.eventStore?.listEventPage(threadId, options) ?? {
       events: [],
       hasMore: false,
@@ -228,6 +234,59 @@ export class SessionEventReads {
       hasMore: page.hasMore,
       nextSequence: page.nextSequence,
     };
+  }
+
+  /**
+   * One out-of-line event content body (docs/design/event-content-spill.md),
+   * under exactly the authority a window read of the same session uses, so
+   * it works wherever the window does (hosted tenant scope included). The
+   * lookup is by `(threadId, digest)`: a digest from another thread is not
+   * found.
+   */
+  readEventContent(
+    threadId: string,
+    digest: string,
+    authority: SessionReadScope,
+  ): { kind: 'string' | 'json'; body: string; bytes: number } | null {
+    const persisted = this.deps.eventStore?.readSessionByThread(threadId);
+    if (persisted) this.deps.hydratePersistedTenantContexts([persisted]);
+    const loaded = this.deps.loadedSessionForThread(threadId);
+    if (
+      (!persisted && !loaded) ||
+      !this.deps.canReadSession(threadId, authority)
+    )
+      return null;
+    return this.deps.eventStore?.readEventContentBody(threadId, digest) ?? null;
+  }
+
+  /**
+   * docs/design/event-content-spill.md: everything an allow of this request
+   * must load, as the server defines it: the stored request, the stored
+   * `tool.started` events bound to it, and the viewed-content digest the
+   * server's gate will check. A client loads every reference in these and
+   * echoes the digest; it never derives the bound set itself.
+   */
+  readApprovalContentBinding(
+    threadId: string,
+    requestId: string,
+    authority: SessionReadScope,
+  ): ApprovalContentBinding | null {
+    const persisted = this.deps.eventStore?.readSessionByThread(threadId);
+    if (persisted) this.deps.hydratePersistedTenantContexts([persisted]);
+    const loaded = this.deps.loadedSessionForThread(threadId);
+    if (
+      (!persisted && !loaded) ||
+      !this.deps.canReadSession(threadId, authority)
+    )
+      return null;
+    const store = this.deps.eventStore;
+    const current = store?.readCurrentRequestEvent(threadId, requestId);
+    if (current?.state !== 'found') return null;
+    const request = current.event.payload;
+    if (request.method !== 'request.opened') return null;
+    return approvalContentBinding(request, (callIds) =>
+      store!.boundToolStartedEvents(threadId, callIds),
+    );
   }
 
   async readSessionEventWindow(
@@ -265,7 +324,9 @@ export class SessionEventReads {
     // stand in for the authoritative session summary: bindings and policy
     // facts may be older than the requested turn window.
     const projectionEvents =
-      this.deps.eventStore?.listSessionProjectionEvents(threadId) ?? [];
+      this.deps.eventStore?.listSessionProjectionEvents(threadId, {
+        hydrateAttachments: false,
+      }) ?? [];
     options.signal?.throwIfAborted();
     const fullSession = buildOrchestrationSessionSummary({
       persisted,
@@ -288,6 +349,11 @@ export class SessionEventReads {
     return {
       protocolVersion: 1,
       session: eventWindowSessionSummary(fullSession),
+      latestTool:
+        this.deps.eventStore?.readCurrentTurnLatestTool(
+          threadId,
+          window.watermark,
+        ) ?? null,
       events: window.events.map((event) => ({
         // The GLOBAL sequence, in the same space as `watermark` (the
         // thread-filtered stream head) and as the live SSE ids a reader
@@ -305,6 +371,7 @@ export class SessionEventReads {
       })),
       hasMore: window.hasMore,
       ...(window.nextCursor ? { nextCursor: window.nextCursor } : {}),
+      ...(window.turnStartDetached ? { turnStartDetached: true as const } : {}),
       watermark: window.watermark,
     };
   }
@@ -450,6 +517,7 @@ export class SessionEventReads {
       })),
       hasMore: window.hasMore,
       ...(window.nextCursor ? { nextCursor: window.nextCursor } : {}),
+      ...(window.turnStartDetached ? { turnStartDetached: true as const } : {}),
       watermark: window.watermark,
     };
   }
@@ -532,6 +600,45 @@ export class SessionEventReads {
     return candidates.filter((persisted) =>
       this.deps.canUserReadSession(persisted.threadId, authority),
     );
+  }
+
+  /** Bounded overflow recovery; advance across denied rows without publishing their ids. */
+  readEventStreamReplayPage(
+    afterGlobalSequence: number,
+    options: { threadId?: string; through: number },
+    authority: SessionReadScope,
+  ): { events: PersistedRuntimeEvent[]; scannedThrough: number } {
+    const store = this.deps.eventStore;
+    if (!store) return { events: [], scannedThrough: options.through };
+    const descriptors = store
+      .listEventReplayDescriptors(afterGlobalSequence, {
+        ...(options.threadId ? { threadId: options.threadId } : {}),
+        limit: 64,
+      })
+      .filter((entry) => entry.globalSequence <= options.through);
+    let bytes = 0;
+    let limit = 0;
+    for (const descriptor of descriptors) {
+      // A single ingress-bounded event may exceed the page budget.
+      if (limit > 0 && bytes + descriptor.serializedFrameBytes > 1024 * 1024)
+        break;
+      bytes += descriptor.serializedFrameBytes;
+      limit++;
+    }
+    if (limit === 0) return { events: [], scannedThrough: options.through };
+    const candidates = store.listEventsAfterGlobalSequence(
+      afterGlobalSequence,
+      {
+        ...(options.threadId ? { threadId: options.threadId } : {}),
+        limit,
+      },
+    );
+    return {
+      events: candidates.filter((event) =>
+        this.deps.canUserReadSession(event.threadId, authority),
+      ),
+      scannedThrough: candidates.at(-1)?.globalSequence ?? options.through,
+    };
   }
 
   readEventStreamReplayPlan(

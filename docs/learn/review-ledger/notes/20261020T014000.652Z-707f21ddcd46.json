@@ -1,0 +1,13 @@
+{
+  "revision": "fcabd2ca9d434bb77e3b56dc5f8b0050601910cc",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"docs-index-reachability.test.ts now asserts the root-level records architecture.md and glossary.md are present instead of a greater-than-three count floor; the reachability rule this document describes (every root-level docs/*.md is linked from docs/README.md) is unchanged.","inputs":[".veritas/README.md","scripts/__tests__/docs-index-reachability.test.ts"]},
+
+    {"path":"docs/guides/code-quality.md","note":"docs-index-reachability.test.ts now asserts the root-level records architecture.md and glossary.md are present instead of a greater-than-three count floor; the reachability rule this document describes (every root-level docs/*.md is linked from docs/README.md) is unchanged.","inputs":["docs/guides/code-quality.md","scripts/__tests__/docs-index-reachability.test.ts"]},
+
+    {"path":"docs/guides/development.md","note":"docs-index-reachability.test.ts now asserts the root-level records architecture.md and glossary.md are present instead of a greater-than-three count floor; the reachability rule this document describes (every root-level docs/*.md is linked from docs/README.md) is unchanged.","inputs":["docs/guides/development.md","scripts/__tests__/docs-index-reachability.test.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"docs-index-reachability.test.ts now asserts the root-level records architecture.md and glossary.md are present instead of a greater-than-three count floor; the reachability rule this document describes (every root-level docs/*.md is linked from docs/README.md) is unchanged.","inputs":["docs/guides/testing.md","scripts/__tests__/docs-index-reachability.test.ts"]}
+  ]
+}

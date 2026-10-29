@@ -17,8 +17,10 @@ function containedRegularFile(root: string, candidate: string): string | null {
   if (!existsSync(candidate)) return null;
   const candidateStat = lstatSync(candidate);
   if (candidateStat.isSymbolicLink() || !candidateStat.isFile()) return null;
-  const rootPath = realpathSync(root);
-  const candidatePath = realpathSync(candidate);
+  // Native resolution follows `..` after a symlink the way the read does
+  // (#1502); the JS realpath can return an inside decoy for such a chain.
+  const rootPath = realpathSync.native(root);
+  const candidatePath = realpathSync.native(candidate);
   if (
     candidatePath !== rootPath &&
     !candidatePath.startsWith(`${rootPath}${sep}`)

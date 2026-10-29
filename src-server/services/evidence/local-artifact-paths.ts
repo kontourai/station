@@ -134,10 +134,6 @@ export function flowRunArtifactReference(
   return [STATION_ARTIFACT_ROOTS.flowRuns, runId, ...segments].join('/');
 }
 
-export function workflowSidecarTaskDir(cwd: string, taskSlug: string): string {
-  return join(flowAgentsRoot(cwd), taskSlug);
-}
-
 export function workflowSidecarTaskReference(taskSlug: string): string {
   return `${STATION_ARTIFACT_ROOTS.flowAgents}/${taskSlug}`;
 }
@@ -216,26 +212,6 @@ export function workflowSidecarTaskPaths(
       : legacyTrustBundleFile,
     compatibilityStateMirrorFile: legacyStateFile,
   };
-}
-
-function veritasGeneratedRoot(cwd: string): string {
-  return stationArtifactPath(cwd, STATION_ARTIFACT_ROOTS.veritas);
-}
-
-export function veritasGeneratedPath(
-  cwd: string,
-  kind: VeritasGeneratedKind,
-  ...segments: string[]
-): string {
-  return join(veritasGeneratedRoot(cwd), kind, ...segments);
-}
-
-export function legacyVeritasGeneratedPath(
-  cwd: string,
-  kind: VeritasGeneratedKind,
-  ...segments: string[]
-): string {
-  return join(cwd, STATION_LEGACY_ROOTS.veritas, kind, ...segments);
 }
 
 export function remapGeneratedArtifactReference(reference: string): string {

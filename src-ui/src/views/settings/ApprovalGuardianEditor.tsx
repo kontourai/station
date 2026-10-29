@@ -1,7 +1,7 @@
 /**
  * archive#settings-revamp: custom composite editor for
  * `approvalGuardian` (docs/design/settings-architecture.md's "Config with
- * no UI" list — this field had zero Settings UI before this slice).
+ * no UI" list — this field had no Settings UI before this editor).
  * Toggle + review/enforce select + model text + instructions textarea, on
  * the existing AgentDefaultsSection bespoke-editor pattern (plain
  * label/control markup, not the generic per-kind row renderer — composite
@@ -11,11 +11,11 @@
  */
 import type { ApprovalGuardianConfig } from '@kontourai/station-contracts/config';
 import { InfoTip } from '../../components/InfoTip';
-import { PageRow } from '../../components/PageRow';
 import { ProvenanceBadge } from '../../components/ProvenanceBadge';
 import { Toggle } from '../../components/Toggle';
 import type { RegistryRowComponentProps } from './registry-row-types';
 import { SettingDescription } from './SettingDescription';
+import { SettingsPageRow as PageRow } from './SettingsPageRow';
 
 export function ApprovalGuardianEditor({
   definition,
@@ -54,7 +54,7 @@ export function ApprovalGuardianEditor({
         <>
           <PageRow
             label="Guardian mode"
-            description="In both modes, calls the guardian clears run without asking you. Review still brings the guardian's denials to you to decide; Enforce blocks them outright."
+            description="Calls the guardian clears run without asking. Review sends its denials to you; Enforce blocks them."
             control={
               <select
                 className="editor-select"

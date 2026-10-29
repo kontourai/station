@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest';
 import { decideOrchestrationTransferScope } from '../check-prepush-orchestration-transfer.mjs';
 import { decideSdkBarrelScope } from '../check-prepush-sdk-barrel.mjs';
 import { decideStaticGateScope } from '../check-prepush-static-gates.mjs';
-import { decideTypecheckScope } from '../check-prepush-typecheck.mjs';
 import {
   gatePlan,
   gateScopes,
@@ -80,7 +79,7 @@ describe('gate-for report', () => {
     );
   });
 
-  it('marks every scoped gate as running for a surface that feeds all four, each a command the hook runs', () => {
+  it('marks every scoped gate as running for a surface that feeds all three, each a command the hook runs', () => {
     const scopes = gateScopes({
       changedPaths: [
         'src-ui/src/App.tsx',
@@ -106,7 +105,6 @@ describe('gate-for report', () => {
         decideOrchestrationTransferScope,
         decideStaticGateScope,
         decideSdkBarrelScope,
-        decideTypecheckScope,
       ].map((decide) => decide({ baseSha, changedPaths }).reason),
     );
   });

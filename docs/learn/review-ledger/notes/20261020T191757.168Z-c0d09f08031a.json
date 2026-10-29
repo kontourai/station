@@ -1,0 +1,35 @@
+{
+  "revision": "6cb659adb08a4f8a9bb9d796a844783aab82f65d",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed classification delta: cancelled-run exception requires both PR metadata labels, one matching trusted main-policy SHA/reference, immutable base CI header/run-name, completed cancelled title and skipped aggregate/all other jobs. Attempt/head/workflow checks precede classification. Ambiguous metadata and genuine cancelled source remain nonpassing; pending genuine source remains pending. Paragraph matches this strict exception and does not claim source success. No tests/status writes here; readonly live6e PENDING is not success or full qualification.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts","scripts/source-verification-policy.mjs","scripts/__tests__/source-verification-policy.test.ts"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Read Source policy publication trust/status-write boundary and traced source-policy owner delta. Exception only identifies proven metadata, never substitutes candidate execution or an older success for failed/cancelled genuine source. Trusted workflow checkout, exact owner/base/attempt reconciliation, no candidate-test launch and non-release status scope remain accurate. No permission, provider or advisory policy changed; no prose update required.","inputs":["docs/guides/dependency-security.md","pnpm-lock.yaml#/packages","scripts/source-verification-policy.mjs"]},
+
+    {"path":"docs/guides/releasing.md","note":"Reviewed source-admission rollout and qualification boundary. New trusted cancelled-metadata classification implements metadata-only suites not owning source proof; genuine failed/cancelled/missing/unfinished source cannot borrow older success. Context activation, exact-SHA reconciliation and independent Beta/stable receipts remain required. PENDING dry-run selection of actual Source39477519649 is not publication, activation, current3982 qualification or release acceptance.","inputs":["docs/guides/releasing.md","scripts/source-verification-policy.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed hosted aggregate receipt/source identity and canonical testing/completion routing for cancelled-metadata classification. Metadata exemption creates no test pass or completion receipt; real cancelled source remains nonpassing. Normal hooks, exact merge-group composition and diagnostic evidence boundaries unchanged.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Reviewed common slice behavioral/migration/documentation acceptance. Trusted CI metadata discrimination does not alter shell/plugin trust or distribution contracts and does not satisfy persisted-state or real test evidence requirements. Historical design status remains unchanged.","inputs":["docs/design/shell-plugins-distributions.md"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed components/evidence limitations: source metadata classification changes no theme/token/startup/contrast behavior and produces no visual/platform evidence. Existing actual-surface verification and NOT_VERIFIED guidance remains accurate.","inputs":["docs/guides/theming.md"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed focused verification and real caller evidence guidance. Metadata status classification changes no frontend logger/query/navigation contracts; genuine source outcome and real layout/native/provider evidence remain separate. No frontend prose change warranted.","inputs":["docs/patterns/frontend.md","pnpm-lock.yaml#/packages"]},
+
+    {"path":"scripts/AGENTS.md","note":"Read scripts fail-closed and evidence requirements against strict metadata gate. Immutable workflow identity and negative controls preserve fail-closed policy; no test rerun, allowlist widening or executed proof implied by labels alone. Focused validation, resource classification and process exit status obligations remain applicable.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed server authority/freshness and focused evidence routing against CI classification-only delta. No route/domain/logger/request-batching or integrity authority changes. Selecting a pending source run is not server runtime proof.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed UI canonical navigation/query ownership and mounted evidence boundaries. Metadata discrimination changes no UI state/guard/style contract and cannot qualify real interaction or geometry. Existing testing-guide route remains accurate.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Reviewed observable-contract and non-completion rules against strict metadata exception and API-boundary controls. Exception cannot turn genuine failed/cancelled source into pass; existing hermetic fixture, resource and real-action requirements remain accurate. Tests reviewed but not executed by this task.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"scripts/CLAUDE.md","note":"Read @AGENTS.md forwarding file; paired scripts authority/evidence instructions remain accurate for strict cancelled-metadata identification. No duplicate source-verdict policy exists here.","inputs":["scripts/CLAUDE.md"]},
+
+    {"path":"src-server/CLAUDE.md","note":"Read @AGENTS.md forwarding file; paired src-server authority/evidence instructions remain accurate for strict cancelled-metadata identification. No duplicate source-verdict policy exists here.","inputs":["src-server/CLAUDE.md"]},
+
+    {"path":"src-ui/CLAUDE.md","note":"Read @AGENTS.md forwarding file; paired src-ui authority/evidence instructions remain accurate for strict cancelled-metadata identification. No duplicate source-verdict policy exists here.","inputs":["src-ui/CLAUDE.md"]},
+
+    {"path":"tests/CLAUDE.md","note":"Read @AGENTS.md forwarding file; paired tests authority/evidence instructions remain accurate for strict cancelled-metadata identification. No duplicate source-verdict policy exists here.","inputs":["tests/CLAUDE.md"]}
+  ]
+}

@@ -148,7 +148,8 @@ describe('TrustBundleService', () => {
         0,
       );
       expect(statusTotal).toBe(1);
-      expect(result[0].transparencyGapCount).toBe(0);
+      expect(result[0].claimsByStatus).toMatchObject({ proposed: 1 });
+      expect(result[0].transparencyGapCount).toBe(1);
     });
 
     test('includes station-home plugin bundles with plugin attribution', async () => {

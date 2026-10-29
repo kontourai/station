@@ -1,0 +1,13 @@
+{
+  "revision": "62e3ce430f8e8100d8382e50b6e14d812ab579b4",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed typed ConfigLoader method access after sign-in integration: only redundant assertion removed; typeof guard, first-handshake registration and owning module boundaries unchanged.","inputs":["docs/architecture/module-map.md","src-server/routes/connections/acp.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Bind the documented engine sign-in journey to its actual new route, service, evidence, credential store and panel owners. Reviewed status evidence, scoped methods, terminal attachment, cancellation/replacement and key cleanup limitations; no runtime behavior changed by keeping implementation exports private. No live provider or fresh browser claim.","inputs":["docs/guides/connections.md","src-server/routes/connections/acp-sign-in.ts","src-server/services/acp/engine-auth-status.ts","src-server/services/acp/engine-credentials.ts","src-server/services/acp/engine-sign-in.ts","src-ui/src/components/engine-sign-in/EngineSignInPanel.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Bind additive engine-sign-in subpath documentation to the SDK producer. Reviewed scoped request/status/method/credential/attempt functions; server-private predicates, constants and link parser are not SDK API.","inputs":["docs/reference/sdk.md","packages/sdk/src/engine-sign-in.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Bind additive engine-sign-in method/status/attempt contract documentation to its producer. Unknown evidence and attempt outcomes remain distinct; internal server export cleanup changes no contract shape.","inputs":["docs/reference/contracts.md","packages/contracts/src/engine-sign-in.ts"]}
+  ]
+}

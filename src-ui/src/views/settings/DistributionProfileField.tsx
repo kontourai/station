@@ -6,9 +6,10 @@
  * kinds never get a generic editor — see `registry-row.tsx`).
  */
 import type { DistributionProfileSelection } from '@kontourai/station-contracts/distribution';
-import { PageRow } from '../../components/PageRow';
 import { ProvenanceBadge } from '../../components/ProvenanceBadge';
 import type { RegistryRowComponentProps } from './registry-row-types';
+import { SettingDescription } from './SettingDescription';
+import { SettingsPageRow as PageRow } from './SettingsPageRow';
 
 export function DistributionProfileField({
   definition,
@@ -23,7 +24,7 @@ export function DistributionProfileField({
     return (
       <PageRow
         label={definition.label}
-        description={definition.description}
+        description={<SettingDescription definition={definition} />}
         status={badge}
       >
         <span className="settings__field-hint">
@@ -39,7 +40,7 @@ export function DistributionProfileField({
   return (
     <PageRow
       label={definition.label}
-      description={definition.description}
+      description={<SettingDescription definition={definition} />}
       status={badge}
       control={
         <select
@@ -54,12 +55,6 @@ export function DistributionProfileField({
           <option value="minimal">Minimal — no layout sources</option>
         </select>
       }
-    >
-      <span className="settings__field-hint">
-        Changes take effect after the next Station restart. This is
-        project-layout configuration: it does not build or distribute Station,
-        set the Registry URL, or fetch or execute declared remote sources.
-      </span>
-    </PageRow>
+    />
   );
 }

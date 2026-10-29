@@ -1,10 +1,12 @@
 import type { ReactNode, RefObject } from 'react';
 import { useState } from 'react';
+import { useAccountPreferences } from '../../contexts/AccountPreferencesContext';
 import {
   APPROVAL_MODE_OPTIONS,
   type ApprovalMode,
   approvalModeDescription,
 } from '../../utils/approvalMode';
+import { Button } from '../Button';
 import { EngineGlyph, HandGlyph, ReturnGlyph } from '../icons/Glyph';
 import {
   ResponsiveDialogHeader,
@@ -30,6 +32,15 @@ interface ComposerModeSheetProps {
   engineConnectionId?: string | null;
   onClose: () => void;
   onSelect: (mode: ApprovalMode) => void;
+  sourceNote?: string;
+  pendingNote?: string;
+  activeMode?: string;
+  isNewSession?: boolean;
+  /**
+   * `dialog` when the trigger sits in a dialog (the dock's New chat), so the
+   * picker opens above it, as that dialog's other menus do.
+   */
+  layer?: 'dialog' | 'popover';
 }
 
 /**
@@ -57,25 +68,47 @@ export function ComposerModeSheet({
   engineConnectionId,
   onClose,
   onSelect,
+  sourceNote,
+  pendingNote,
+  activeMode,
+  isNewSession,
+  layer = 'popover',
 }: ComposerModeSheetProps) {
-  const [pendingEscalation, setPendingEscalation] = useState(false);
-
-  const choose = (mode: ApprovalMode) => {
-    if (mode === effectiveMode) {
-      onClose();
-      return;
-    }
-    if (mode === 'never' && effectiveMode !== 'never') {
-      setPendingEscalation(true);
-      return;
+  const account = useAccountPreferences();
+  const [saveAsDefault, setSaveAsDefault] = useState(false);
+  const apply = (mode: ApprovalMode) => {
+    if (
+      saveAsDefault &&
+      (engineConnectionId === 'codex' ||
+        engineConnectionId === 'claude' ||
+        engineConnectionId === 'muse')
+    ) {
+      account.save({
+        interactiveApprovalModes: {
+          [engineConnectionId]: mode === 'connection-default' ? null : mode,
+        },
+      });
     }
     onSelect(mode);
     onClose();
   };
+  const [pendingEscalation, setPendingEscalation] = useState(false);
+
+  const choose = (mode: ApprovalMode) => {
+    if (mode === effectiveMode && !saveAsDefault) {
+      onClose();
+      return;
+    }
+    if (mode === 'never' && (effectiveMode !== 'never' || saveAsDefault)) {
+      setPendingEscalation(true);
+      return;
+    }
+    apply(mode);
+  };
 
   return (
     <ResponsiveDialogSurface
-      layer="popover"
+      layer={layer}
       ariaLabel="Approval mode"
       onClose={onClose}
       historyMode="entry"
@@ -90,6 +123,32 @@ export function ComposerModeSheet({
         closeLabel="Close mode picker"
         onClose={onClose}
       />
+      <div className="composer-mode-sheet__notes">
+        <p className="composer-mode-sheet__confirm-body">{sourceNote}</p>
+        <p className="composer-mode-sheet__confirm-body">
+          {pendingNote?.includes('restart')
+            ? 'Restart required'
+            : isNewSession
+              ? 'Applies on start'
+              : 'Applies next turn'}
+          {activeMode ? ` · Active: ${activeMode}` : ''}
+        </p>
+        {account.status === 'account' && (
+          <label className="composer-mode-sheet__confirm-body">
+            <input
+              type="checkbox"
+              checked={saveAsDefault}
+              onChange={(event) => setSaveAsDefault(event.target.checked)}
+            />{' '}
+            Save as my {engineConnectionId} default
+          </label>
+        )}
+        {saveAsDefault && (
+          <Button onClick={() => choose(effectiveMode)}>
+            Save current mode as my default
+          </Button>
+        )}
+      </div>
 
       {pendingEscalation ? (
         <div className="composer-mode-sheet__confirm" role="alertdialog">
@@ -112,8 +171,7 @@ export function ComposerModeSheet({
               className="composer-mode-sheet__confirm-accept"
               onClick={() => {
                 setPendingEscalation(false);
-                onSelect('never');
-                onClose();
+                apply('never');
               }}
             >
               Enable full access

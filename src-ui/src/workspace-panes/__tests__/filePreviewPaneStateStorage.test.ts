@@ -1,5 +1,6 @@
 import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
 import { describe, expect, test } from 'vitest';
+import { readPaneFence, writePaneFence } from '../../regions/pane-fence';
 import { createFilePreviewPaneInstance } from '../filePreviewPaneInstance';
 import {
   filePreviewPaneStateStorageKey,
@@ -115,11 +116,12 @@ describe('File Preview pane state storage', () => {
         filePreviewPaneStateStorageKey(entry.instance.stateKey),
         JSON.stringify(entry.state),
       );
+      // A related occurrence's Station fence lives and goes with its state.
+      writePaneFence(target, entry.instance.stateKey, 'station-a');
     }
-    target.values.set(
-      filePreviewPaneStateStorageKey(`file-preview:${'f'.repeat(32)}`),
-      '{corrupt',
-    );
+    const corrupt = `file-preview:${'f'.repeat(32)}`;
+    target.values.set(filePreviewPaneStateStorageKey(corrupt), '{corrupt');
+    writePaneFence(target, corrupt, 'station-a');
     const next = preview(25);
     expect(
       writeFilePreviewPaneState(target, next.instance.stateKey, next.state),
@@ -132,6 +134,65 @@ describe('File Preview pane state storage', () => {
         key.startsWith('station:file-preview-pane-state:v1:'),
       ),
     ).toHaveLength(1);
+    expect(
+      [...target.values.keys()].filter((key) =>
+        key.startsWith('station:pane-fence:v1:'),
+      ),
+    ).toEqual([]);
+  });
+
+  test('a state that cannot be removed keeps its fence, explicitly or when the cap is reclaimed', () => {
+    const target = storage();
+    const stuck = preview(1);
+    const stuckKey = filePreviewPaneStateStorageKey(stuck.instance.stateKey);
+    target.values.set(stuckKey, JSON.stringify(stuck.state));
+    writePaneFence(target, stuck.instance.stateKey, 'station-a');
+    // Delegating, not spread: `length` must stay live for the reclaim to
+    // see every record.
+    const failing = {
+      getItem: target.getItem,
+      setItem: target.setItem,
+      key: target.key,
+      get length() {
+        return target.length;
+      },
+      removeItem: (key: string) => {
+        if (key === stuckKey) throw new Error('storage refused');
+        return target.removeItem(key);
+      },
+    };
+    expect(removeFilePreviewPaneState(failing, stuck.instance.stateKey)).toBe(
+      false,
+    );
+    expect(readPaneFence(failing, stuck.instance.stateKey)).toEqual({
+      status: 'fenced',
+      stationId: 'station-a',
+    });
+    // An unreferenced orphan the cap reclaims, whose removal also fails.
+    for (let index = 2; index <= 24; index += 1) {
+      const entry = preview(index);
+      target.values.set(
+        filePreviewPaneStateStorageKey(entry.instance.stateKey),
+        JSON.stringify(entry.state),
+      );
+      writePaneFence(target, entry.instance.stateKey, 'station-a');
+    }
+    const next = preview(30);
+    expect(
+      writeFilePreviewPaneState(failing, next.instance.stateKey, next.state),
+    ).toBe(true);
+    // The reclaim ran: every other orphan, and its fence, is gone.
+    expect(
+      [...target.values.keys()].filter((key) =>
+        key.startsWith('station:pane-fence:v1:'),
+      ),
+    ).toEqual([
+      `station:pane-fence:v1:${encodeURIComponent(stuck.instance.stateKey)}`,
+    ]);
+    expect(target.values.has(stuckKey)).toBe(true);
+    expect(readPaneFence(failing, stuck.instance.stateKey).status).toBe(
+      'fenced',
+    );
   });
 
   test('preserves references owned by persisted and live hosts in other layouts and projects', () => {

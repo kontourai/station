@@ -3,6 +3,7 @@ import { once } from 'node:events';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { SCHEDULER_EXECUTION_LIMITS } from '@kontourai/station-contracts/scheduler';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../__test-utils__/read-json.js';
@@ -252,6 +253,45 @@ describe('BuiltinScheduler', () => {
       });
     } finally {
       await deferred.stop();
+    }
+  });
+
+  // #3563: the ledger skips an unreadable job record instead of failing the
+  // tick; the scheduler is what has to say so, once.
+  test('reports a quarantined job record once instead of failing the tick', async () => {
+    const logger = { ...mockLogger, error: vi.fn(), warn: vi.fn() };
+    const scheduler = createBuiltin({ logger });
+    const database = new DatabaseSync(
+      join(tempDir, 'scheduler', 'scheduler.sqlite'),
+    );
+    try {
+      database
+        .prepare(
+          `INSERT INTO scheduler_jobs(name, job_id, revision, data, created_at, last_run_ms)
+           VALUES ('damaged', 'damaged-job-id', 1, '{"name":', '2025-01-01T00:00:00.000Z', NULL)`,
+        )
+        .run();
+    } finally {
+      database.close();
+    }
+    try {
+      scheduler.start();
+      expect(logger.error).toHaveBeenCalledWith(
+        'Scheduler job record is unreadable; it will not run until it is repaired or removed',
+        {
+          job: 'damaged',
+          jobId: 'damaged-job-id',
+          revision: 1,
+          reason: 'malformed-record',
+        },
+      );
+      expect(logger.error).toHaveBeenCalledTimes(1);
+      expect(logger.warn).not.toHaveBeenCalledWith(
+        'Scheduler storage unavailable during tick',
+        expect.anything(),
+      );
+    } finally {
+      await scheduler.stop();
     }
   });
 

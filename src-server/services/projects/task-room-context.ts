@@ -29,6 +29,17 @@ export function createTaskRoomContext(
   scope: Scope,
   source: TaskRoomContextSource,
 ): TaskRoomContextSnapshot | undefined {
+  if (typeof source.text === 'string' && source.text.length > 16000) {
+    let shortened = '';
+    for (const point of source.text) {
+      if (shortened.length + point.length > 15700) break;
+      shortened += point;
+    }
+    source = {
+      ...source,
+      text: `${shortened}\n\n> Brief shortened to fit the agent context limit (16,000 characters). Read the full Brief tab for the remaining text.`,
+    };
+  }
   if (!validSource(source)) return undefined;
   const digest = createHash('sha256')
     .update(
@@ -64,4 +75,11 @@ export function validTaskRoomContext(
     row.version === TASK_ROOM_CONTEXT_VERSION &&
     row.digest === createTaskRoomContext(scope, row)?.digest
   );
+}
+
+export function formatTaskRoomPrompt(
+  prompt: string,
+  context: TaskRoomContextSnapshot,
+): string {
+  return `${prompt}\n\n---\n# Task brief: ${context.title}\n\n${context.description}\n\n${context.text}`;
 }

@@ -45,6 +45,7 @@ import { UNIFIED_SEARCH_V1 } from '@kontourai/station-contracts/unified-search';
 import { rmDirSyncRetrying } from '@kontourai/station-shared/fs-windows-compat';
 import { createStationHomeBackup } from '@kontourai/station-shared/station-home-archive';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../domain/config-loader.js';
 import { ensureStationHomeSchema } from '../../domain/home-schema-gate.js';
 import { getOrchestrationDatabasePath } from '../../domain/migrations/003-orchestration-events.js';
@@ -58,8 +59,9 @@ import type { RegistryTrustPolicyAuthority } from '../../services/plugins/regist
 import { openRelayEnrollmentJournal } from '../../services/relay/relay-enrollment-journal.js';
 import type { RuntimeSearch } from '../../services/search/runtime-search.js';
 import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
-import { USAGE_TELEMETRY_INVENTORY_REVISION } from '../../services/usage-telemetry-inventory.js';
+import { FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION } from '../../services/usage-telemetry-inventory.js';
 import { UsageTelemetryService } from '../../services/usage-telemetry-service.js';
+import * as fakeGh from '../../services/work-item-providers/__tests__/fixtures/fake-gh.js';
 import { installSignedStartupProvider } from './fixtures/signed-provider-startup.js';
 
 const TEST_PORT = 31_141;
@@ -128,6 +130,27 @@ const routeMocks = vi.hoisted(() => {
 
 vi.mock('../routes/runtime-routes.js', () => routeMocks);
 
+// #4005: a Task dispatch's engine start resolves its Agent through Station's
+// own HTTP reads, which this file's mocked routes do not serve. The dispatch
+// case below observes the brief, not Agent resolution (covered by
+// task-dispatch-agent-binding.routes.test.ts), so that one export answers as
+// the shared fixture does; the rest of the module is real.
+vi.mock('../../tools/station-control-delegation.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../../tools/station-control-delegation.js')
+    >();
+  const { fixtureAgentStartResolver } = await import(
+    '../../services/projects/__tests__/task-dispatch-test-helpers.js'
+  );
+  const resolve = fixtureAgentStartResolver('codex');
+  return {
+    ...actual,
+    resolveTaskDispatchAgentStart: (input: Parameters<typeof resolve>[0]) =>
+      resolve(input),
+  };
+});
+
 // `config-loader.ts` is the only chokidar consumer in the tree, so this
 // replaces exactly one thing: the OS handle behind `ConfigLoader`'s config
 // hot-reload watcher. See the header note for the measurements.
@@ -187,8 +210,8 @@ vi.mock('@voltagent/core', async (importOriginal) => {
   };
 });
 
-vi.mock('@voltagent/server-hono', () => ({
-  honoServer: vi.fn((config: any) => () => {
+vi.mock('../frameworks/voltagent-hono-runtime.js', () => ({
+  stationHonoServer: vi.fn((config: any) => () => {
     return {
       start: vi.fn(async () => {
         if (routeMocks.deferServerFactory) {
@@ -361,7 +384,9 @@ const { OllamaLLMProvider } = await import(
 const { checkBedrockCredentials } = await import(
   '../../providers/llm/bedrock.js'
 );
-const { honoServer } = await import('@voltagent/server-hono');
+const { stationHonoServer } = await import(
+  '../frameworks/voltagent-hono-runtime.js'
+);
 const { attachVoiceWebSocket } = await import(
   '../../routes/operations/voice.js'
 );
@@ -471,6 +496,9 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
   let home: string;
   let runtime: InstanceType<typeof StationRuntime> | undefined;
   let releaseKitDiscovery: (() => void) | undefined;
+  // Created before the afterEach below, so its directories are removed after
+  // that hook has shut the runtime down (after-hooks run in reverse order).
+  const makeTempDir = trackTempDirs();
 
   afterEach(async () => {
     releaseKitDiscovery?.();
@@ -811,7 +839,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
         join(home, 'config', 'usage-telemetry-disclosure.json'),
         JSON.stringify({
           acknowledgedAt: new Date().toISOString(),
-          inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+          inventoryRevision: FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION,
         }),
       );
       writeFileSync(
@@ -1037,12 +1065,17 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
         }
       ).bedrockClient.config.region(),
     ).resolves.toBe('eu-west-1');
-    expect(honoServer).toHaveBeenCalledWith(
+    expect(stationHonoServer).toHaveBeenCalledWith(
       expect.objectContaining({
         hostname: '127.0.0.1',
         port,
         enableWebSocket: false,
         configureFullApp: expect.any(Function),
+      }),
+      undefined,
+      expect.objectContaining({
+        bound: expect.any(Function),
+        stop: expect.any(Function),
       }),
     );
     expect(attachVoiceWebSocket).toHaveBeenCalledWith(
@@ -1085,6 +1118,152 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     resolveModelId.mockRestore();
     runtime = undefined;
   });
+
+  // The fake `gh` is a POSIX shell script.
+  it.skipIf(process.platform === 'win32')(
+    "dispatch reads the linked item through the runtime's own tracker observer into the Task brief (#4003)",
+    async () => {
+      // Nothing here injects an observer: the runtime's GitHubWorkItemObserver
+      // runs `gh` from PATH, and PATH finds the fake first.
+      const ghDir = makeTempDir('station-dispatch-fake-gh-');
+      fakeGh.installFakeGh(ghDir);
+      const ref = 'github:acme/widgets#42';
+      const issuePath = 'repos/acme/widgets/issues/42';
+      fakeGh.answer(
+        ghDir,
+        issuePath,
+        fakeGh.issue({ title: 'Widgets jam at dispatch', comments: 2 }),
+      );
+      fakeGh.answer(ghDir, `${issuePath}/comments?per_page=30&page=1`, [
+        fakeGh.comment(1, '2000-01-01T00:00:00Z', 'Older than the Task.'),
+        fakeGh.comment(2, '2999-01-01T00:00:00Z', 'Newer than the Task.'),
+      ]);
+      const originalPath = process.env.PATH;
+      process.env.PATH = `${ghDir}:${originalPath ?? ''}`;
+      try {
+        home = await createSchemaHome('station-dispatch-tracker-');
+        runtime = new StationRuntime({
+          projectHomeDir: home,
+          port: TEST_PORT,
+          host: '127.0.0.1',
+        });
+        replaceTerminalListener(runtime);
+        // A namespaced workItemRef routes dispatch through the assignment
+        // claim; stub that gate (and the workspace it needs) so this case
+        // observes the brief. Both are read when the dispatcher is composed.
+        Reflect.set(runtime, 'taskDispatchAssignmentClaims', {
+          claim: vi.fn(async () => ({
+            outcome: 'claimed',
+            record: { claimed_at: '2026-10-21T00:00:00.000Z' },
+          })),
+          release: vi.fn(),
+          status: vi.fn(),
+        });
+        Reflect.set(runtime, 'resolveTaskDispatchWorkspace', () => home);
+        await expect(runtime.initialize()).resolves.toBeUndefined();
+
+        // The engine start is the boundary: record what dispatch hands it.
+        const orchestration = Reflect.get(runtime, 'orchestrationService') as {
+          dispatch(...args: unknown[]): Promise<unknown>;
+        };
+        const starts: unknown[][] = [];
+        const realDispatch = orchestration.dispatch.bind(orchestration);
+        vi.spyOn(orchestration, 'dispatch').mockImplementation(
+          async (...args: unknown[]) => {
+            const command = args[0] as {
+              type: string;
+              input: { threadId: string };
+            };
+            if (command.type !== 'startSession') return realDispatch(...args);
+            starts.push(args);
+            const now = new Date().toISOString();
+            return {
+              provider: 'codex',
+              threadId: command.input.threadId,
+              status: 'ready',
+              createdAt: now,
+              updatedAt: now,
+            };
+          },
+        );
+
+        const graph = Reflect.get(runtime, 'taskGraphService') as {
+          createTask(
+            input: object,
+            clientOrigin?: undefined,
+            taskId?: undefined,
+            authorize?: undefined,
+            options?: { workItemProvenance?: 'project-board' },
+          ): Promise<{ id: string; createdAt: string }>;
+          readTaskView(id: string): { workItemObservedAt?: string } | null;
+          sameProject(a: string, b: string): boolean;
+        };
+        const projects = Reflect.get(runtime, 'projectService') as {
+          createProject(input: object): Promise<{ slug: string; id: string }>;
+        };
+        const project = await projects.createProject({
+          name: 'Tracker project',
+          slug: 'tracker-project',
+          workingDirectory: home,
+        });
+        // The runtime's task graph compares Projects as one identity, slug
+        // or id (review round 3, F4). A real create resolves the Project by
+        // slug, so the comparison is read directly; the runtime wires it.
+        expect(project.id).not.toBe(project.slug);
+        expect(graph.sameProject(project.slug, project.id)).toBe(true);
+        expect(graph.sameProject(project.slug, 'another-project')).toBe(false);
+        // As a board-checked `POST /api/tasks` records it (#4003 review F4).
+        const task = await graph.createTask(
+          {
+            projectId: project.slug,
+            title: 'Unjam the widgets',
+            sourceProvider: 'github',
+            workItemRef: ref,
+          },
+          undefined,
+          undefined,
+          undefined,
+          { workItemProvenance: 'project-board' },
+        );
+        const dispatcher = Reflect.get(runtime, 'taskDispatcher') as {
+          dispatch(taskId: string, input: object): Promise<{ kind: string }>;
+        };
+        await expect(
+          dispatcher.dispatch(task.id, {
+            agentId: 'tracker-agent',
+            ownerUserId: 'human:local:operator',
+            fullAccessGrant: null,
+            runtimeConfig: { provider: 'codex', cwd: home },
+          }),
+        ).resolves.toMatchObject({ kind: 'dispatched' });
+
+        expect(starts).toHaveLength(1);
+        const internal = starts[0]![2] as {
+          taskBrief?: { digest: string; text: string };
+        };
+        const brief = internal.taskBrief?.text ?? '';
+        expect(brief).toContain('Title: Widgets jam at dispatch');
+        expect(brief).toContain('Labels: bug, P1');
+        // Comments since the Task's creation (it has no earlier read).
+        expect(brief).toContain('Newer than the Task.');
+        expect(brief).not.toContain('Older than the Task.');
+        expect(brief).not.toContain('linked item not re-read');
+        // The read is the runtime's observer, through gh on PATH.
+        expect(fakeGh.calls(ghDir).map((call) => call.split('|')[3])).toEqual([
+          `api --hostname github.com -H Accept: application/vnd.github+json ${issuePath}`,
+          `api --hostname github.com -H Accept: application/vnd.github+json ${issuePath}/comments?per_page=30&page=1`,
+        ]);
+        // Dispatch recorded the read as the Task's new "comments since" mark.
+        const observedAt = graph.readTaskView(task.id)?.workItemObservedAt;
+        expect(observedAt).toBeDefined();
+        expect(Date.parse(observedAt!)).toBeGreaterThanOrEqual(
+          Date.parse(task.createdAt),
+        );
+      } finally {
+        process.env.PATH = originalPath;
+      }
+    },
+  );
 
   it('wires the shared unattended-grant resolver into default and persisted agent hooks (#2365)', async () => {
     // This deliberately boots StationRuntime rather than constructing either
@@ -1239,6 +1418,89 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     await runtime.shutdown();
     runtime = undefined;
     expect(storeIntegrityVerification.stop).toHaveBeenCalled();
+  });
+
+  // #3586 security review: through the real runtime composition, (1) the
+  // voice listener's credential check refuses account-bound devices and
+  // personal tokens, and (2) loading local accounts installs the account
+  // directory on device pairing, and shutdown removes it.
+  it('voice refuses account-bound devices and tokens; local accounts install and remove the account directory', async () => {
+    home = await createSchemaHome('station-coldstart-account-tokens-');
+    runtime = new StationRuntime({
+      projectHomeDir: home,
+      port: TEST_PORT,
+      host: '127.0.0.1',
+      projectSharing: true,
+      localAccounts: { publicOrigin: `http://localhost:${TEST_PORT}` },
+    });
+    replaceTerminalListener(runtime);
+    vi.mocked(attachVoiceWebSocket).mockClear();
+    await expect(runtime.initialize()).resolves.toBeUndefined();
+
+    const security = (
+      runtime as unknown as {
+        environmentSecurityService: EnvironmentSecurityService;
+      }
+    ).environmentSecurityService;
+    const pairing = security.devicePairing;
+    const issuer = `urn:station:local-accounts:${
+      (await security.initialize()).environmentId
+    }`;
+    const accountBinding = {
+      kind: 'account',
+      issuer,
+      subject: 'nobody',
+      displayName: 'Nobody',
+      approvedAt: 1,
+      approvalId: 'approval-1',
+      approvedBy: 'human:local:operator',
+    } as const;
+    expect(pairing.canHoldPersonalToken(accountBinding)).toBe(true);
+
+    const pair = (account: boolean) => {
+      const offer = pairing.createOffer({
+        endpoint: 'https://station.example.test',
+        scope: 'orchestration:read orchestration:operate terminal:operate',
+      });
+      const request = pairing.requestPairing({
+        requesterPosition: 'off-box',
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        deviceName: account ? 'Account laptop' : 'Laptop',
+        source: 'same-origin',
+        ...(account
+          ? {
+              requireAccountBinding: true,
+              accountCandidate: {
+                issuer,
+                subject: 'dana',
+                displayName: 'Dana',
+              },
+              accountCandidateSessionId: 'candidate-proof',
+            }
+          : {}),
+      });
+      pairing.confirmRequest(
+        request.requestId,
+        { kind: 'presented-credential' },
+        account
+          ? { principalId: 'human:deployment:dana', kind: 'account' }
+          : undefined,
+      );
+      return pairing.exchange({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        requestId: request.requestId,
+      }).credential;
+    };
+    const voice = vi.mocked(attachVoiceWebSocket).mock.calls.at(-1)?.[3];
+    expect(voice).toBeDefined();
+    await expect(voice!.verifyCredential(pair(false))).resolves.toBe(true);
+    await expect(voice!.verifyCredential(pair(true))).resolves.toBe(false);
+
+    await runtime.shutdown();
+    runtime = undefined;
+    expect(pairing.canHoldPersonalToken(accountBinding)).toBe(false);
   });
 
   it('hosted tenant isolation never binds the unauthorised terminal port', async () => {

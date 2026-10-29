@@ -1,0 +1,7 @@
+{
+  "revision": "dd1cb7943df0b67af172c5e4e0565f9a2c7fc338",
+
+  "notes": [
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Integration review: the dependency change is the agent-configuration guide's Cursor question/plan prose, which touches no identity claim. First-add registration still creates the same-ID default Agent only on registration (after handshake). Ran npm run agent-identity:inventory -- --require-zero on the combined tree: 0 findings, 0 unclassified, 0 stale. No prose change.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/guides/agent-configuration.md"]}
+  ]
+}

@@ -3,6 +3,7 @@ import {
   type EngineConnectionId,
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
+import { projectLastUsedModelFor } from '@kontourai/station-contracts/project-chat-defaults';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import {
@@ -29,10 +30,12 @@ import { useConfig } from '../contexts/ConfigContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import {
   type ProjectMetadata,
+  useScopedProjectChatDefaultsQuery,
   useScopedProjectQuery,
   useScopedProjectsQuery,
 } from '../contexts/ProjectsContext';
 import {
+  acpAdvertisedModels,
   defaultManagedRuntimeConnection,
   guaranteeConcreteModel,
   resolveEffectiveModel,
@@ -87,12 +90,15 @@ export interface ACPSelectionConnection {
     /** ACP select options are { value, name } objects; bare strings tolerated. */
     options?: Array<string | { value: string; name?: string }>;
   }>;
+  /** The served model catalog (config option, else the `models` list). */
+  advertisedModels?: Array<{ id: string; name: string }>;
 }
 
 /**
- * #3028: an ACP engine's model catalog arrives on the connection's config
- * options (category "model"), a channel neither the runtime catalog nor
- * `agent.modelOptions` carries. Exported pure so the contract — an engine
+ * #3028: an ACP engine's model catalog arrives on the connection's served
+ * `advertisedModels` (its model config option, else its `models` list; from
+ * an older server, its model config option), a channel neither the runtime
+ * catalog nor `agent.modelOptions` carries. Exported pure so the contract — an engine
  * advertising models yields selectable models — is directly testable.
  */
 export function acpCatalogModelOptions(
@@ -100,18 +106,9 @@ export function acpCatalogModelOptions(
   agentConnectionId: string | undefined,
 ): Array<{ id: string; name: string }> {
   if (!agentConnectionId) return [];
-  return (
-    acpConnections.find((acp) => acp.id === agentConnectionId)?.configOptions ??
-    []
-  )
-    .filter((option) => option.category === 'model')
-    .flatMap((option) => option.options ?? [])
-    .map((entry) =>
-      typeof entry === 'string'
-        ? { id: entry, name: entry }
-        : { id: entry.value, name: entry.name ?? entry.value },
-    )
-    .filter((model) => model.id.length > 0);
+  return acpAdvertisedModels(
+    acpConnections.find((acp) => acp.id === agentConnectionId),
+  );
 }
 
 /**
@@ -275,6 +272,13 @@ export function useNewChatSelectionModel({
     };
   };
 
+  // What `last-used` would preselect in this Project, recorded server-side
+  // by each successful chat start (`project-chat-defaults.ts`).
+  const projectChatDefaultsQuery =
+    useScopedProjectChatDefaultsQuery(selectedProjectSlug);
+  // `null`: this Station applies no Project layer here (an older Station, or
+  // one that does not compose it); `undefined`: no answer yet.
+  const projectChatDefaults = projectChatDefaultsQuery.data ?? undefined;
   const globalProviderManagedExecution = useMemo(
     () => resolveGlobalProviderManagedExecution(appConfig, modelConnections),
     [appConfig, modelConnections],
@@ -392,6 +396,7 @@ export function useNewChatSelectionModel({
     modelConnections,
     acpConnections,
     projectDefaultModel: selectedProjectConfig?.defaultModel,
+    projectChatDefaults: selectedProjectSlug ? projectChatDefaults : undefined,
     preferredAgentSlug:
       rememberedAgentSlug ??
       getRecentAgentSlugsForContext(
@@ -444,10 +449,11 @@ export function useNewChatSelectionModel({
     const connectionModels = connection
       ? runtimeCatalogVisibleModels(connection)
       : [];
-    // #3028: an ACP engine's catalog arrives on the connection's config
-    // options (category "model"), a channel neither the runtime catalog nor
-    // agent.modelOptions carries — OpenCode advertised a full model select
-    // while this picker rendered no affordance at all.
+    // #3028: an ACP engine's catalog arrives on the connection's served
+    // `advertisedModels` (its model config option, else its #352 `models`
+    // list), a channel neither the runtime catalog nor agent.modelOptions
+    // carries — OpenCode advertised a full model select while this picker
+    // rendered no affordance at all.
     const acpModelOptions = acpCatalogModelOptions(
       acpConnections,
       agent.execution?.agentConnectionId,
@@ -538,10 +544,15 @@ export function useNewChatSelectionModel({
           runtimeCurrentMode: acpConnection?.configOptions?.find(
             (option) => option.category === 'mode',
           )?.currentValue,
+          advertisedModels: acpAdvertisedModels(acpConnection),
           projectDefaultModel: newChatProjectDefaultModel(
             agent,
             selectedProjectConfig?.defaultModel,
           ),
+          projectLastUsedModel: selectedProjectSlug
+            ? projectLastUsedModelFor(projectChatDefaults, agent.slug)?.modelId
+            : undefined,
+          newChat: true,
           lastChosenModel: newChatLastChosenModel(
             agent,
             lastChosenModelByBinding,
@@ -616,6 +627,11 @@ export function useNewChatSelectionModel({
     acpConnections,
     refreshACPConnections,
     selectedProjectConfig,
+    /** The selected Project's new-chat defaults; absent for No project. */
+    projectChatDefaults: selectedProjectSlug ? projectChatDefaults : undefined,
+    /** A Project is selected and its new-chat defaults could not be read. */
+    projectChatDefaultsUnavailable:
+      !!selectedProjectSlug && projectChatDefaultsQuery.data === undefined,
     runtimeLoading,
     modelsLoading,
     runtimeFetching,
@@ -626,11 +642,14 @@ export function useNewChatSelectionModel({
     /**
      * True once `defaultSelection` reflects `selectedContext`: always for the
      * global context, and for a project only after its detail (default
-     * Model, default Agent, Agents filter) has loaded. Until then the default
+     * Model, default Agent, Agents filter) and its new-chat defaults have
+     * answered (a failed read counts: the Project's fixed chain then
+     * applies). Until then the default
      * selection is the global one, which a project chat would not use.
      */
     selectedContextResolved:
-      !selectedProjectSlug || selectedProjectQuery.isSuccess,
+      !selectedProjectSlug ||
+      (selectedProjectQuery.isSuccess && !projectChatDefaultsQuery.isPending),
     setupError,
     refreshSetup,
     // archive#771: both flow into a single `flatList.length === 0` gate in

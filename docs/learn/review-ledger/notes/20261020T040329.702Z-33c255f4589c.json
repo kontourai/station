@@ -1,0 +1,9 @@
+{
+  "revision": "21c373aa82f64d15d2fb79f4f236070bda486b8a",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"keyboard-shortcuts.md only reworded which palette items keep the palette open; this dated audit is unchanged.","inputs":["docs/architecture/abstraction-review.md","docs/guides/keyboard-shortcuts.md"]},
+
+    {"path":"docs/user/sharing-answers.md","note":"TurnActionsMenu.tsx changed upstream in #3855 (Basis on the answer); the share path is unchanged: More answer actions (line 198), Turn provenance (234), and shareContent passed to the provenance card (294).","inputs":["docs/user/sharing-answers.md","src-ui/src/components/chat/TurnActionsMenu.tsx"]}
+  ]
+}

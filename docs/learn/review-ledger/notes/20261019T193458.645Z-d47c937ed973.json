@@ -1,0 +1,7 @@
+{
+  "revision": "7d2f624081a79b22f4166bb996431ea913d3ec80",
+
+  "notes": [
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed against the sdk.md addition: SDK scope rules were followed (behavior documented in the reference; lost authority tested with an observable control); no prose change.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

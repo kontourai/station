@@ -1,0 +1,7 @@
+{
+  "revision": "6f56eb0aa2cf95a042538aff7bf873d5b9b31199",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Fix-round 10 delta: MonitoringWidgets.css lets the producer group and the event row data column shrink (min-width 0, wrap) so the producer pill truncates with an ellipsis. Layout only; no coverage claim changes.","inputs":["docs/guides/e2e-coverage-matrix.md","src-ui/src/views/MonitoringWidgets.css"]}
+  ]
+}

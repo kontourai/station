@@ -22,19 +22,18 @@ import {
 } from './station-control-shared.js';
 
 /**
- * archive#167 Wave 3: `list_integrations`/`get_integration`/`create_integration`/
- * `delete_integration` now run through `@kontourai/station-sdk/client`'s
+ * archive#167: `list_integrations`/`get_integration`/`create_integration`/
+ * `delete_integration` run through `@kontourai/station-sdk/client`'s
  * canonical `client/integrations.ts` fetchers instead of this file's own
- * inline `api()` calls, mirroring Wave 2B's approach. `apiBase` is resolved
- * once at module load (station-control is a long-lived MCP server process —
- * see the matching note in `station-control-agent-tools.ts` and archive#167 plan
- * Risk 3).
+ * inline `api()` calls, the same approach as
+ * `station-control-agent-tools.ts`. `apiBase` is resolved on every call;
+ * see `controlApiBase` below (archive#1195).
  *
  * `list_registry_integrations`/`install_registry_integration` are left on
  * the pre-#167 `api()` passthrough: no canonical `@kontourai/station-sdk/client`
  * fetcher exists for `GET /api/registry/integrations` or
- * `POST /api/registry/integrations/install` (Wave 1's audited triplication
- * table only named the 6 bare `/integrations` operations for
+ * `POST /api/registry/integrations/install` (the archive#167 audit's
+ * triplication table only named the 6 bare `/integrations` operations for
  * `client/integrations.ts` — the only registry-integrations consumer today,
  * `packages/sdk/src/query-domains/catalogRequests.ts`, resolves its own
  * `apiBase` via the React-coupled `_getApiBase()` singleton and is not part

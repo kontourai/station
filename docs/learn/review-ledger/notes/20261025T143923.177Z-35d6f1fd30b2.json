@@ -1,0 +1,7 @@
+{
+  "revision": "60decc2891c511485e8d5e7ba95f5ce9474c7a78",
+
+  "notes": [
+    {"path":"docs/guides/browser-workspace.md","note":"BrowserPane.css now sizes the tab strip's touch targets from the pane's data-coarse/data-narrow state instead of a media query; presentational only, no claim in the guide changes.","inputs":["docs/guides/browser-workspace.md","src-ui/src/workspace-panes/browser-pane/BrowserPane.css"]}
+  ]
+}

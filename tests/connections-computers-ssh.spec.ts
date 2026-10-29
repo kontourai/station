@@ -277,7 +277,7 @@ test.describe('Add a computer — SSH branch', () => {
       }),
     ).toBeVisible();
     await expect(
-      chooser.getByRole('button', { name: /Reach another Station/ }),
+      chooser.getByRole('button', { name: /^Connect a Station/ }),
     ).toBeVisible();
     const delegateOption = chooser.getByRole('button', {
       name: /Run work on another computer over SSH/,

@@ -13,8 +13,8 @@
  * a server field would only cover one of the three kinds, producing
  * inconsistent snooze semantics by item kind for the majority (chat/session)
  * of what gets triaged live. `SnoozeStore` below is the seam: every read/
- * write goes through this module, so a later slice can swap the localStorage
- * body for a server-backed one (Task-only, falling back to local for
+ * write goes through this module, so the localStorage body can be swapped
+ * for a server-backed one (Task-only, falling back to local for
  * chat/session) without touching call sites.
  */
 

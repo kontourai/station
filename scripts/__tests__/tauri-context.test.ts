@@ -1,4 +1,5 @@
-import { spawn, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import {
   copyFileSync,
   existsSync,
@@ -11,6 +12,8 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
+import { scaleLivenessMs } from '../lib/liveness-scale.mjs';
+import { redactVerificationOutput } from '../lib/verification-redaction.mjs';
 import {
   cargoDependencyVersion,
   collectFindings,
@@ -23,7 +26,35 @@ import {
 describe('tauri context', () => {
   const root = fileURLToPath(new URL('../..', import.meta.url));
   const makeTempDir = trackTempDirs();
+  const reportTimeoutMs = 60_000;
+  // A caller must outlive its 60s child (or two 30s children), the 10s
+  // Windows fixture compile, and assertion/cleanup overhead.
+  const callerTimeoutMs = scaleLivenessMs(reportTimeoutMs + 20_000);
+  function probeDiagnostics() {
+    const output = join(root, '.kontourai', 'verification-output');
+    mkdirSync(output, { recursive: true });
+    const directory = join(output, `tauri-context-test-${randomUUID()}`);
+    mkdirSync(directory);
+    process.stderr.write(`Tauri context probe evidence: ${directory}\n`);
+    return (phase: string, detail: object = {}) => {
+      const redacted = Buffer.from(
+        redactVerificationOutput(JSON.stringify(detail)),
+      );
+      const limit = 64 * 1024;
+      writeFileSync(
+        join(directory, `${phase}.json`),
+        JSON.stringify({
+          phase,
+          at: new Date().toISOString(),
+          detail: redacted.subarray(0, limit).toString('utf8'),
+          truncated: redacted.length > limit,
+        }),
+      );
+    };
+  }
   function reportFor(contextRoot = root, env = process.env) {
+    const diagnostic = probeDiagnostics();
+    diagnostic('report-start');
     const result = spawnSyncBounded(
       process.execPath,
       [
@@ -39,11 +70,17 @@ describe('tauri context', () => {
         encoding: 'utf8',
         // Above the version probes' 30s bound so a slow-but-healthy probe
         // never turns into a harness timeout of the whole report.
-        timeout: 60_000,
+        timeout: reportTimeoutMs,
         windowsHide: true,
         env,
       },
     );
+    diagnostic('report-return', {
+      status: result.status,
+      signal: result.signal,
+      error: result.error?.message,
+      probeTrace: result.stderr,
+    });
     expect(result.error, result.stderr).toBeUndefined();
     expect(result.status).toBe(0);
     return { report: JSON.parse(result.stdout), probeTrace: result.stderr };
@@ -90,9 +127,16 @@ describe('tauri context', () => {
       }
     } else {
       for (const tool of tools) {
+        // The pid file is renamed into place, so a reader never sees it
+        // half-written. The stub exits on its own after 11s, so a cleanup
+        // that never ran leaks nothing for long.
+        const pidFile = pidDirectory ? join(pidDirectory, tool) : undefined;
+        const reportPid = pidFile
+          ? `const fs = require('node:fs');\nfs.writeFileSync(${JSON.stringify(`${pidFile}.tmp`)}, process.pid + '\\n');\nfs.renameSync(${JSON.stringify(`${pidFile}.tmp`)}, ${JSON.stringify(pidFile)});\n`
+          : '';
         writeFileSync(
           join(directory, tool),
-          `#!${process.execPath}\n${pidDirectory ? `require('node:fs').writeFileSync(${JSON.stringify(join(pidDirectory, tool))}, String(process.pid));\n` : ''}setTimeout(() => {}, 11000);\n`,
+          `#!${process.execPath}\n${reportPid}setTimeout(() => {}, 11000);\n`,
           { mode: 0o755 },
         );
       }
@@ -109,35 +153,83 @@ describe('tauri context', () => {
     return env;
   }
 
-  test('a report retains real npm and Tauri versions and honest failures when three independent tools stall', () => {
-    const { report, probeTrace } = reportFor(root, stalledToolEnvironment());
-    const tauri = JSON.parse(
-      readFileSync(
-        join(root, 'node_modules/@tauri-apps/cli/package.json'),
-        'utf8',
-      ),
-    );
-    expect(
-      report.checks.npm.status,
-      JSON.stringify({ npmCheck: report.checks.npm, probeTrace }),
-    ).toBe('checked');
-    expect(report.checks.npm.value).toMatch(/^\d+\.\d+\.\d+$/);
-    expect(report.checks.tauriCli.status).toBe('checked');
-    expect(report.checks.tauriCli.value).toBe(`tauri-cli ${tauri.version}`);
-    for (const [key, id] of [
-      ['rustc', 'rustc'],
-      ['cargo', 'cargo'],
-      ['rustTargets', 'rust-targets'],
-    ] as const) {
-      expect(report.checks[key].status).toBe('failed');
-      expect(report.checks[key].value).toBeUndefined();
-      expect(report.findings).toContainEqual(
-        expect.objectContaining({ code: `check-failed-${id}` }),
+  test(
+    'a report retains real npm and Tauri versions and honest failures when three independent tools stall',
+    () => {
+      const { report, probeTrace } = reportFor(root, stalledToolEnvironment());
+      const tauri = JSON.parse(
+        readFileSync(
+          join(root, 'node_modules/@tauri-apps/cli/package.json'),
+          'utf8',
+        ),
       );
-    }
-  });
+      expect(
+        report.checks.npm.status,
+        JSON.stringify({ npmCheck: report.checks.npm, probeTrace }),
+      ).toBe('checked');
+      expect(report.checks.npm.value).toMatch(/^\d+\.\d+\.\d+$/);
+      expect(report.checks.tauriCli.status).toBe('checked');
+      expect(report.checks.tauriCli.value).toBe(`tauri-cli ${tauri.version}`);
+      for (const [key, id] of [
+        ['rustc', 'rustc'],
+        ['cargo', 'cargo'],
+        ['rustTargets', 'rust-targets'],
+      ] as const) {
+        expect(report.checks[key].status).toBe('failed');
+        expect(report.checks[key].reason, probeTrace).toBe(
+          `${id} timed out after 10000ms`,
+        );
+        expect(report.checks[key].value).toBeUndefined();
+        expect(report.findings).toContainEqual(
+          expect.objectContaining({ code: `check-failed-${id}` }),
+        );
+      }
+    },
+    callerTimeoutMs,
+  );
 
-  function stopFixture(pid: number) {
+  /**
+   * Only an integer pid above 1 that is not this process names one other
+   * process. `process.kill(0, …)` signals this runner's whole process group,
+   * and an empty pid file parses as `Number('') === 0`: an attached CI shell
+   * would be killed and the failure hidden (#3623).
+   */
+  function isSignalablePid(pid: number): boolean {
+    return Number.isInteger(pid) && pid > 1 && pid !== process.pid;
+  }
+
+  /** A pid file holds exactly one integer and a newline, or nothing usable. */
+  function parsePidFile(file: string): number {
+    if (!existsSync(file)) return Number.NaN;
+    const text = readFileSync(file, 'utf8');
+    return /^\d+\n$/.test(text) ? Number(text.trim()) : Number.NaN;
+  }
+
+  /** Wait for a stub's pid file to hold one complete, signalable pid. */
+  async function readPidFile(file: string, context: () => string) {
+    const deadline = Date.now() + 5_000;
+    let pid = parsePidFile(file);
+    while (!isSignalablePid(pid) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      pid = parsePidFile(file);
+    }
+    expect(isSignalablePid(pid), `pid file ${file}: ${context()}`).toBe(true);
+    return pid;
+  }
+
+  function processGroupOf(pid: number): number {
+    return Number(
+      execFileSync('ps', ['-o', 'pgid=', '-p', String(pid)], {
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 5_000,
+      }).trim(),
+    );
+  }
+
+  /** Kill one stub by exact pid, never this runner or its group's leader. */
+  function stopFixture(pid: number, ownGroup: number) {
+    if (!isSignalablePid(pid) || pid === ownGroup) return;
     try {
       process.kill(pid, 'SIGKILL');
     } catch (error) {
@@ -154,6 +246,8 @@ describe('tauri context', () => {
     'settles active owned probes before exiting on %s',
     async (signal) => {
       const directory = makeTempDir('station-tauri-cancelled-');
+      // Resolved before spawning: a failing `ps` must not strand the child.
+      const ownGroup = processGroupOf(process.pid);
       const child = spawn(
         process.execPath,
         [
@@ -186,17 +280,14 @@ describe('tauri context', () => {
       const tools = ['rustc', 'cargo', 'rustup'];
       const pids: number[] = [];
       try {
-        const deadline = Date.now() + 5_000;
-        while (!tools.every((tool) => existsSync(join(directory, tool)))) {
-          if (Date.now() >= deadline)
-            throw new Error(`Stalled probes did not start: ${stderr}`);
-          await new Promise((resolve) => setTimeout(resolve, 25));
+        for (const tool of tools) {
+          pids.push(
+            await readPidFile(
+              join(directory, tool),
+              () => `no signalable stub pid; probe trace: ${stderr}`,
+            ),
+          );
         }
-        pids.push(
-          ...tools.map((tool) =>
-            Number(readFileSync(join(directory, tool), 'utf8')),
-          ),
-        );
         expect(child.kill(signal)).toBe(true);
         let timer: ReturnType<typeof setTimeout> | undefined;
         let status: number | null;
@@ -216,6 +307,9 @@ describe('tauri context', () => {
         }
         expect(stdout).toBe('');
         for (const pid of pids) {
+          // readPidFile admitted only signalable pids; signal 0 to pid 0
+          // would probe this runner's own group and never throw.
+          expect(isSignalablePid(pid) && pid !== ownGroup).toBe(true);
           expect(() => process.kill(pid, 0)).toThrow(
             expect.objectContaining({ code: 'ESRCH' }),
           );
@@ -233,11 +327,11 @@ describe('tauri context', () => {
       } finally {
         if (child.exitCode === null && child.signalCode === null)
           child.kill('SIGKILL');
-        for (const tool of tools) {
-          if (!existsSync(join(directory, tool))) continue;
-          const pid = Number(readFileSync(join(directory, tool), 'utf8'));
-          stopFixture(pid);
-        }
+        // Pids recorded before a failure, plus any whose file landed since;
+        // stopFixture refuses anything that is not one other process.
+        for (const tool of tools)
+          pids.push(parsePidFile(join(directory, tool)));
+        for (const pid of new Set(pids)) stopFixture(pid, ownGroup);
         await closed;
       }
     },
@@ -261,6 +355,7 @@ describe('tauri context', () => {
       expect(report.checks.tauriCli.status).toBe('checked');
       expect(report.checks.tauriCli.value).toBe(`tauri-cli ${tauri.version}`);
     },
+    callerTimeoutMs,
   );
 
   test.skipIf(process.platform !== 'win32')(
@@ -280,6 +375,7 @@ describe('tauri context', () => {
         expect.objectContaining({ code: 'check-failed-npm' }),
       );
     },
+    callerTimeoutMs,
   );
 
   test.skipIf(process.platform !== 'win32')(
@@ -292,75 +388,88 @@ describe('tauri context', () => {
       expect(report.checks.tauriCli.reason).toBe('command-not-found');
       expect(report.checks.tauriCli.value).toBeUndefined();
     },
+    callerTimeoutMs,
   );
 
-  test('probe tracing preserves JSON stdout and failure status while naming the failed child', () => {
-    const directory = contextFixture();
-    const cli = join(
-      directory,
-      'node_modules',
-      ...(process.platform === 'win32'
-        ? ['@tauri-apps', 'cli', 'tauri.js']
-        : ['.bin', 'tauri']),
-    );
-    mkdirSync(dirname(cli), { recursive: true });
-    writeFileSync(
-      cli,
-      `#!${process.execPath}\nprocess.stderr.write('fixture refusal\\n'); process.exit(7);\n`,
-      { mode: 0o755 },
-    );
-    for (const trace of [false, true]) {
-      const result = spawnSyncBounded(
-        process.execPath,
-        [
-          fileURLToPath(new URL('../tauri-context.mjs', import.meta.url)),
-          '--json',
-          '--platform',
-          'windows',
-          '--root',
-          directory,
-          '--strict',
-          ...(trace ? ['--trace-probes'] : []),
-        ],
-        {
-          encoding: 'utf8',
-          timeout: 30_000,
-          windowsHide: true,
-          env: { ...process.env, PATH: '' },
-        },
+  test(
+    'probe tracing preserves JSON stdout and failure status while naming the failed child',
+    () => {
+      const directory = contextFixture();
+      const cli = join(
+        directory,
+        'node_modules',
+        ...(process.platform === 'win32'
+          ? ['@tauri-apps', 'cli', 'tauri.js']
+          : ['.bin', 'tauri']),
       );
-      expect(result.error, result.stderr).toBeUndefined();
-      expect(result.status).toBe(2);
-      const report = JSON.parse(result.stdout);
-      expect(report.checks.rustTargets.status).toBe('skipped');
-      expect(report.checks.rustTargets.reason).toBe('command-not-found');
-      expect(report.checks.rustTargets.value).toBeUndefined();
-      expect(report.checks.tauriCli.status).toBe('failed');
-      expect(report.checks.tauriCli.reason).toBe('fixture refusal');
-      expect(report.findings).toContainEqual(
-        expect.objectContaining({ code: 'check-failed-tauri-cli' }),
+      mkdirSync(dirname(cli), { recursive: true });
+      writeFileSync(
+        cli,
+        `#!${process.execPath}\nprocess.stderr.write('fixture refusal\\n'); process.exit(7);\n`,
+        { mode: 0o755 },
       );
-      if (!trace) {
-        expect(result.stderr).toBe('');
-        continue;
+      const diagnostic = probeDiagnostics();
+      for (const trace of [false, true]) {
+        diagnostic(`trace-${trace}-start`);
+        const result = spawnSyncBounded(
+          process.execPath,
+          [
+            fileURLToPath(new URL('../tauri-context.mjs', import.meta.url)),
+            '--json',
+            '--platform',
+            'windows',
+            '--root',
+            directory,
+            '--strict',
+            ...(trace ? ['--trace-probes'] : []),
+          ],
+          {
+            encoding: 'utf8',
+            timeout: 30_000,
+            windowsHide: true,
+            env: { ...process.env, PATH: '' },
+          },
+        );
+        diagnostic(`trace-${trace}-return`, {
+          status: result.status,
+          signal: result.signal,
+          error: result.error?.message,
+          probeTrace: result.stderr,
+        });
+        expect(result.error, result.stderr).toBeUndefined();
+        expect(result.status).toBe(2);
+        const report = JSON.parse(result.stdout);
+        expect(report.checks.rustTargets.status).toBe('skipped');
+        expect(report.checks.rustTargets.reason).toBe('command-not-found');
+        expect(report.checks.rustTargets.value).toBeUndefined();
+        expect(report.checks.tauriCli.status).toBe('failed');
+        expect(report.checks.tauriCli.reason).toBe('fixture refusal');
+        expect(report.findings).toContainEqual(
+          expect.objectContaining({ code: 'check-failed-tauri-cli' }),
+        );
+        if (!trace) {
+          expect(result.stderr).toBe('');
+          continue;
+        }
+        const events = result.stderr
+          .trim()
+          .split('\n')
+          .filter(Boolean)
+          .map((line) => JSON.parse(line));
+        expect(events.filter((event) => event.id === 'tauri-cli')).toEqual([
+          { id: 'tauri-cli', phase: 'start', elapsedMs: 0, status: 'running' },
+          {
+            id: 'tauri-cli',
+            phase: 'end',
+            elapsedMs: expect.any(Number),
+            status: 'failed',
+          },
+        ]);
+        expect(events.every((event) => event.elapsedMs >= 0)).toBe(true);
       }
-      const events = result.stderr
-        .trim()
-        .split('\n')
-        .filter(Boolean)
-        .map((line) => JSON.parse(line));
-      expect(events.filter((event) => event.id === 'tauri-cli')).toEqual([
-        { id: 'tauri-cli', phase: 'start', elapsedMs: 0, status: 'running' },
-        {
-          id: 'tauri-cli',
-          phase: 'end',
-          elapsedMs: expect.any(Number),
-          status: 'failed',
-        },
-      ]);
-      expect(events.every((event) => event.elapsedMs >= 0)).toBe(true);
-    }
-  });
+    },
+    callerTimeoutMs,
+  );
 
   test.each(['--help', '-h'])(
     '%s prints usage and exits without a report',

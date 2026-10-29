@@ -3,8 +3,8 @@ import {
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
 
-import { useMemo, useRef, useSyncExternalStore } from 'react';
-import { useAllActiveChats } from '../contexts/ActiveChatsContext';
+import { useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
+import { activeChatsStore } from '../contexts/ActiveChatsContext';
 import { type AgentData, useAgents } from '../contexts/AgentsContext';
 import type { ChatUIState } from '../contexts/active-chats-state';
 import { conversationsStore } from '../contexts/ConversationsContext';
@@ -250,6 +250,7 @@ function deriveSession(
     skillExperienceDraftInvalid: chatState.skillExperienceDraftInvalid,
     skillExperienceActive: chatState.skillExperienceActive,
     skillExperienceMode: chatState.skillExperienceMode,
+    taskShaping: chatState.taskShaping,
     conversationOpenState: chatState.conversationOpenState,
     conversationOpenPending: chatState.conversationOpenPending,
     conversationOpenFailed: chatState.conversationOpenFailed,
@@ -278,6 +279,7 @@ function deriveSession(
     providerOptions: chatState.providerOptions,
     lastAppliedApprovalMode: chatState.lastAppliedApprovalMode,
     approvalEscalationRejected: chatState.approvalEscalationRejected,
+    approvalTakeoverFailed: chatState.approvalTakeoverFailed,
     queuedApprovalMode: chatState.queuedApprovalMode,
     approvalPosture: chatState.approvalPosture,
     approvalPostureSequence: chatState.approvalPostureSequence,
@@ -290,6 +292,7 @@ function deriveSession(
     agentConnectionId: chatState.agentConnectionId
       ? engineConnectionId(chatState.agentConnectionId)
       : undefined,
+    agentConnectionObservedFor: chatState.agentConnectionObservedFor,
     providerId: chatState.providerId,
     defaultProviderId: chatState.defaultProviderId,
     orchestrationProvider: chatState.orchestrationProvider,
@@ -301,6 +304,10 @@ function deriveSession(
     openTurnShellSuperseded: chatState.openTurnShellSuperseded,
     conversationActivity: chatState.conversationActivity,
     sendAwaitingTurnStart: chatState.sendAwaitingTurnStart,
+    pendingSendStationHasIt:
+      chatState.sendAwaitingTurnStart === true &&
+      chatState.pendingClientTurnId !== undefined &&
+      chatState.deliveryChecks?.[chatState.pendingClientTurnId] === 'received',
     stopSettledTurnId: chatState.stopSettledTurnId,
     queueDrainSettling: chatState.queueDrainSettling,
     queuedMessageMetadata: chatState.queuedMessageMetadata,
@@ -333,6 +340,33 @@ type SessionCacheEntry = {
   derived: ChatSession;
 };
 
+/** Session metadata subscription; composer drafts and live text have their own readers. */
+export function useSessionChats() {
+  const selection = useRef<{
+    raw: ReturnType<typeof activeChatsStore.getSnapshot>;
+    value: ReturnType<typeof activeChatsStore.getSnapshot>;
+  } | null>(null);
+  const getChats = useCallback(() => {
+    const raw = activeChatsStore.getSnapshot();
+    const previous = selection.current;
+    if (previous?.raw === raw) return previous.value;
+    const keys = Object.keys(raw);
+    const priorKeys = previous ? Object.keys(previous.raw) : [];
+    const unchanged =
+      previous &&
+      keys.length === priorKeys.length &&
+      keys.every(
+        (key, index) =>
+          key === priorKeys[index] &&
+          relevantChatStateFieldsEqual(previous.raw[key]!, raw[key]!),
+      );
+    const value = unchanged ? previous.value : raw;
+    selection.current = { raw, value };
+    return value;
+  }, []);
+  return useSyncExternalStore(activeChatsStore.subscribe, getChats, getChats);
+}
+
 // Hook to get all open tabs (with messages loaded from backend)
 export function useDerivedSessions(
   _apiBase: string,
@@ -340,7 +374,7 @@ export function useDerivedSessions(
   projectSlug?: string | null,
 ): ChatSession[] {
   const agents = useAgents();
-  const allChats = useAllActiveChats();
+  const allChats = useSessionChats();
 
   // Subscribe to conversations store for messages
   const conversationsSnapshot = useSyncExternalStore(
@@ -375,7 +409,6 @@ export function useDerivedSessions(
 
       const agent = agents.find((a) => a.slug === chatState.agentSlug);
 
-      // Get conversation metadata for title
       const conversationsList =
         conversationsSnapshot.conversations[chatState.agentSlug!] ||
         EMPTY_CONVERSATIONS_LIST;
@@ -383,7 +416,6 @@ export function useDerivedSessions(
         (c) => c.id === chatState.conversationId,
       );
 
-      // Get messages from backend
       const messagesKey = chatState.conversationId
         ? `messages:${chatState.agentSlug}:${chatState.conversationId}`
         : null;

@@ -1,0 +1,33 @@
+{
+  "path": "docs/user/sharing-answers.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "User page traced from the chat answer menu (More answer actions, Turn provenance, Share answer) through the share mint/list/revoke routes, store, projection and public view route, and the Settings Shared answers section.",
+
+  "limits": "Source evidence only; no rendered UI check, no remote recipient reachability check, and no hosted deployment check.",
+
+  "sources": [
+    "packages/contracts/src/answer-share.ts",
+
+    "packages/shared/src/answer-share-projection.ts",
+
+    "src-server/routes/share/answer-share-routes.ts",
+
+    "src-server/services/share/answer-share-service.ts",
+
+    "src-server/services/share/answer-share-store.ts",
+
+    "src-ui/src/components/chat/ShareAnswerButton.tsx",
+
+    "src-ui/src/components/chat/TurnActionsMenu.tsx",
+
+    "src-ui/src/views/settings/AnswerSharesSection.tsx"
+  ],
+
+  "checks": [
+    "Checked UI labels, default and maximum lifetime, record cap, block limits, hosted refusal and revoke behaviour against source."
+  ]
+}

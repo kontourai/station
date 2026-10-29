@@ -1,0 +1,7 @@
+{
+  "revision": "764b270379659c09cba29775a5eb939e489eae8f",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed against the answer Basis chip change in MessageBubble.tsx and chat.css: the document's claims cover the composer, inbox footer, inventory reads and authority resets; none describe the answer action row or the per-answer Basis entry, so no prose change.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/MessageBubble.tsx","src-ui/src/components/chat/chat.css"]}
+  ]
+}

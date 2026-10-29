@@ -52,23 +52,9 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
   'connections-model-edit': SPLIT_PANE,
   'connections-engines': SPLIT_PANE,
   'connections-engine-edit': SPLIT_PANE,
-  // The Engines section (CONNECTION_SECTIONS): the frame names the section,
-  // so this default must agree with it rather than introduce a second title
-  // for the same destination.
-  //
-  // The eyebrow is the PARENT only ('Connections'), not the retired
-  // 'Connections / Engines' breadcrumb-as-eyebrow — the title already says
-  // 'Engines' as its own `<h1>`. `ConnectionsSectionFrame` publishes the
-  // live (linked) version of this once it mounts; this is only the brief
-  // fallback shown before that chunk arrives. (#592 slice 2: the sibling
-  // 'connections-acp' route this comment used to justify agreeing with is
-  // retired — this is now the only frame naming Engines this way.)
-  'connections-engine-new': {
-    eyebrow: 'Connections',
-    title: 'Engines',
-    subtitle: 'AI apps and other engines that run your agents.',
-    width: 'narrow',
-  },
+  // A deep link into Add engine renders the same split pane as the rest of
+  // the Engines section, so it shares its frame.
+  'connections-engine-new': SPLIT_PANE,
   'connections-tools': SPLIT_PANE,
   'connections-tool-edit': SPLIT_PANE,
   'connections-knowledge': {
@@ -103,6 +89,11 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
     // naming rule), and the tiers are each box's own caption to state.
     width: 'narrow',
   },
+  appearance: {
+    title: 'Appearance',
+    subtitle: 'Mode, color theme and accent.',
+    width: 'narrow',
+  },
   profile: {
     title: 'Profile',
     subtitle: 'Your account, usage, and achievements on this Station',
@@ -134,14 +125,16 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
   // docs/design/shell-skeletons.md §2.2.
   'project-edit': null,
 
+  // Tasks use the shared compact workspace header above their room.
+  task: { ...SPLIT_PANE, className: 'page-frame--workspace' },
+
   // The project surfaces below are workspaces, not management pages. Each
   // one's own identity header IS its content (a project's avatar/name/path
-  // row, a task's status header, a layout or pane rendering a plugin's
+  // row, a layout or pane rendering a plugin's
   // viewport edge-to-edge). Framing them would put a second title above a
   // surface that already answers "where am I" — and for panes and layouts,
   // steal viewport from a renderer that was handed the whole area.
   project: null,
-  task: null,
   layout: null,
   // #2062: a Board renders through the SAME layout renderer as a project
   // Layout, so it takes the same answer for the same reason — the renderer is
@@ -171,6 +164,7 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
 const UNSURFACED_FALLBACK_TITLES: Partial<
   Record<NavigationView['type'], string>
 > = {
+  task: 'Task',
   'project-session-board': 'Board',
   'project-flow-console': 'Flow console',
 };

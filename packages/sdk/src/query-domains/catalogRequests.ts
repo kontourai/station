@@ -219,7 +219,37 @@ export async function requestRegistryLayoutAction({
 }
 
 import { apiErrorMessage } from '../api-core';
-import { authenticatedFetch, readEnvelopeOrThrow } from '../client/http';
+import {
+  type ApiRequestScope,
+  authenticatedFetch,
+  getJson,
+  mutateJson,
+  readEnvelopeOrThrow,
+} from '../client/http';
+
+export async function requestIntegrationAccount<T>(
+  path: string,
+  scope: ApiRequestScope | undefined,
+  method = 'GET',
+  body?: Record<string, unknown>,
+): Promise<T> {
+  if (!scope)
+    return requestIntegration(path, {
+      method,
+      ...(body
+        ? {
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          }
+        : {}),
+    });
+  const url = `${scope.apiBase}/integrations${path}`;
+  const response =
+    method === 'GET'
+      ? await getJson(url, { requestScope: scope })
+      : await mutateJson(url, method, { requestScope: scope }, body);
+  return (await readEnvelopeOrThrow<T>(response)) as T;
+}
 
 export interface RegistrySourceAction {
   action: 'add' | 'enable' | 'disable' | 'remove' | 'refresh';

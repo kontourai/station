@@ -36,7 +36,7 @@ export interface AiSdkProviderConfig {
 }
 
 /**
- * archive#3545 review HIGH: `AiSdkLLMProvider.createStream` used to omit
+ * archive#3545: `AiSdkLLMProvider.createStream` used to omit
  * `finishReason` from its `finish` chunk unconditionally, even though
  * ai-sdk's `StreamTextResult.finishReason` (`Promise<FinishReason>`,
  * `'stop' | 'length' | 'content-filter' | 'tool-calls' | 'error' | 'other'`
@@ -65,7 +65,7 @@ export interface AiSdkProviderConfig {
  * still stay absence, exactly as archive#3545's original fix established one
  * layer up.
  *
- * archive#3586 (was archive#3545 review round 2 MEDIUM, corrected here): a
+ * archive#3586 (first raised under archive#3545, corrected here): a
  * genuine mid-stream failure IS now guaranteed to surface as a thrown
  * `{ type: 'error' }` chunk rather than landing here as `reason: 'error'`.
  * `createStream` used to consume only `result.textStream` (whose transform

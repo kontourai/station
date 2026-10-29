@@ -40,8 +40,6 @@
 
     "docs/plans/documentation-code-audit.md",
 
-    "package.json",
-
     "packages/cli/src/commands/helpers.ts",
 
     "packages/cli/src/commands/lifecycle-code-root.ts",
@@ -65,8 +63,6 @@
     "scripts/ecosystem-manifest.mjs",
 
     "scripts/fast-checks-shard.mjs",
-
-    "scripts/gh-app-token.mjs",
 
     "scripts/just-interface.mjs",
 
@@ -100,7 +96,65 @@
 
     "src-server/__test-utils__/sse-helpers.ts",
 
-    "src-server/routes/spatial-board.ts"
+    "src-server/routes/spatial-board.ts",
+
+    "package.json#/scripts",
+
+    "package.json#/engines",
+
+    "package.json#/packageManager",
+
+    "src-ui/src/components/chat/transcriptLayoutTrace.ts",
+
+    "src-ui/src/components/chat/transcriptLayoutTracer.ts",
+
+    "tests/transcript-load-stability.spec.ts",
+
+    "packages/monument/src/index.ts",
+
+    "packages/monument/src/session-message-delivery.ts",
+
+    "packages/basis-pane/package.json",
+
+    "packages/board-pane/package.json",
+
+    "src-server/services/infra/workload-resources.ts",
+
+    "packages/shared/src/child-workload.ts",
+
+    "packages/shared/src/mcp-connection.ts",
+
+    "patches/modelcontextprotocol-client-2.3.1.patch",
+
+    "src-server/index.ts",
+
+    "src-server/routes/system/resource-posture-routes.ts",
+
+    "src-server/services/infra/process-utils.ts",
+
+    "src-server/adapters/node-pty-adapter.ts",
+
+    "src-server/providers/adapters/claude-code-spawn.ts",
+
+    "src-server/providers/adapters/claude-adapter.ts",
+
+    "src-server/routes/projects/coding.ts",
+
+    "src-server/services/evidence/veritas-readiness-service.ts",
+
+    "scripts/lib/live-service-verification.mjs",
+
+    "src-server/services/infra/__tests__/workload-resources.process.test.ts",
+
+    "src-server/services/acp/opencode-approval-verify.ts",
+
+    "src-server/providers/auth/cli-auth.ts",
+
+    ".github/actions/setup-verified-pnpm/action.yml",
+
+    ".github/actions/setup-verified-pnpm/bootstrap.mjs",
+
+    "scripts/__tests__/verified-pnpm-bootstrap.test.ts"
   ],
 
   "checks": [

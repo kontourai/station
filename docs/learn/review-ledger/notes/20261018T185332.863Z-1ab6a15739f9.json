@@ -1,0 +1,7 @@
+{
+  "revision": "f77da32e462d2433f32a7a414211ba82750c41a9",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Merge-current-main review for #3825/#3831: the ledger tooling preserved the exact union of 329 lane and 325 main sources (331 unique), including both new structural-sharing sources and all six failure-classification/attachment sources. Inspected the merged SDK failure-classification section and main structural-sharing source/callers: optional kind/phase and computed retryability retain their wire and no-automatic-replay semantics; the main change types the existing sharing callback without changing this failure contract. This is a bounded merge delta review, not a new exhaustive SDK or live-runtime qualification. Both parents retain their append-only review notes.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

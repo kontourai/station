@@ -61,11 +61,13 @@ export function useScrollRestoration(
   // record the NEW route's scroll under the OLD route's key for the frames
   // between a route change and the listener being re-registered.
   const activeKeyRef = useRef(routeKey);
+  const pendingKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     const element = containerRef.current;
     if (!element) return;
     const save = () => {
+      if (pendingKeyRef.current === activeKeyRef.current) return;
       remember(activeKeyRef.current, element.scrollTop);
     };
     element.addEventListener('scroll', save, { passive: true });
@@ -100,6 +102,7 @@ export function useScrollRestoration(
     activeKeyRef.current = routeKey;
 
     const target = positions.get(routeKey) ?? 0;
+    pendingKeyRef.current = target > 0 ? routeKey : null;
     element.scrollTop = target;
     if (target === 0) return;
 
@@ -124,9 +127,11 @@ export function useScrollRestoration(
         clearInterval(poll);
         poll = 0;
       }
-      for (const type of userEvents) {
-        element.removeEventListener(type, stop);
-      }
+    };
+
+    const interrupt = () => {
+      pendingKeyRef.current = null;
+      stop();
     };
 
     // A user who scrolls while the restore is still waiting owns the scroll
@@ -134,7 +139,7 @@ export function useScrollRestoration(
     // Only genuine user input stops it; the container's own `scroll` events
     // are what this restore causes.
     for (const type of userEvents) {
-      element.addEventListener(type, stop, { passive: true });
+      element.addEventListener(type, interrupt, { passive: true });
     }
 
     /** The route's content is the thing that grows; the container's own box
@@ -155,12 +160,14 @@ export function useScrollRestoration(
     const attempt = () => {
       if (settled) return;
       if (performance.now() >= deadline) {
+        pendingKeyRef.current = null;
         stop();
         return;
       }
       observeContent();
       if (element.scrollHeight < target + element.clientHeight) return;
       element.scrollTop = target;
+      pendingKeyRef.current = null;
       stop();
     };
 
@@ -172,6 +179,11 @@ export function useScrollRestoration(
     poll = window.setInterval(attempt, RESTORE_POLL_MS);
     attempt();
 
-    return stop;
+    return () => {
+      stop();
+      for (const type of userEvents) {
+        element.removeEventListener(type, interrupt);
+      }
+    };
   }, [containerRef, routeKey]);
 }

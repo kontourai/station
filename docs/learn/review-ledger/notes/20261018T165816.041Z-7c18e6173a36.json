@@ -1,0 +1,11 @@
+{
+  "revision": "b262d0dd70c139b1f767609a46e865f4c3ee6dce",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed unchanged ProductTelemetryReceiver overview after retaining the scoped documentation edit: it describes public source mapping, strict StationDailyPing admission, HMAC contributor semantics and separate entrypoint composition without asserting forwarded headers are ignored forever. Proxy defaults and sentinels are specified in the owning receiver README and monitoring guide; no broad module-map prose change is needed.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed unchanged product telemetry contract overview after narrowing prose edits: event/batch ownership and receiver validation delegation remain accurate. The generated Lite inventory and receiver README own the explicit unknown/custom domains; no Full contract change or additional reference prose is needed.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the monitoring citation against the added trusted-proxy paragraph: the retained observation-path findings concern OTel registration, scheduler populations, dashboard queries and failed-span semantics, none of which this receiver-only client-address change alters. Kept the historical transport/deployment qualification distinctions unchanged.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md","docs/guides/monitoring.md"]}
+  ]
+}

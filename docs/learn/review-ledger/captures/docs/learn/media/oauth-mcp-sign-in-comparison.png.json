@@ -1,0 +1,15 @@
+{
+  "path": "docs/learn/media/oauth-mcp-sign-in-comparison.png",
+
+  "sources": [
+    "src-ui/src/views/integrations/IntegrationEditorPanel.tsx",
+
+    "src-ui/src/views/integrations/IntegrationAccountSection.tsx",
+
+    "src-ui/src/views/integrations/__tests__/IntegrationAccountSection.test.tsx",
+
+    "src-ui/src/index.css"
+  ],
+
+  "reviewNotes": []
+}

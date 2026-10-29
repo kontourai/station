@@ -5,6 +5,9 @@ import { RouteError } from '../../utils/route-error.js';
 
 interface ValidationOptions {
   maxBodyBytes?: number;
+  refusal?: (
+    issues: z.ZodIssue[],
+  ) => { code: string; error: string } | undefined;
 }
 
 /**
@@ -82,10 +85,12 @@ export function validate<T>(
     }
     const result = schema.safeParse(raw);
     if (!result.success) {
+      const refusal = options.refusal?.(result.error.issues);
       return c.json(
         {
           success: false,
-          error: 'Validation failed',
+          error: refusal?.error ?? 'Validation failed',
+          ...(refusal ? { code: refusal.code } : {}),
           details: result.error.flatten(),
         },
         400,

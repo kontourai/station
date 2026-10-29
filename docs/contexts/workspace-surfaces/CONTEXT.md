@@ -36,12 +36,18 @@ A durable Project-owned work identity that can retain a workspace binding and ex
 _Avoid_: chat or Session
 
 **Task workspace**:
-The broader `/tasks/:taskId` Workspace Surface composition for one Task's identity, references, local files and diffs, receipts, and exact execution correlation. It may contain several Workspace Panes; it is not itself one Pane.
+The broader `/tasks/:taskId` Workspace Surface composition for one Task's identity, references, linked tracker item, Task memory, local files and diffs, receipts, and exact execution correlation. It may contain several Workspace Panes; it is not itself one Pane.
 _Avoid_: Session detail
 
 **Task experience**:
-A named mode inside one Task workspace. Direct mounts Station's inspection and
-room composition. Deliver, Learn and Operate name external product boundaries.
+A named inspection mode inside the Task workspace Details tab. Overview,
+Conversation, Review (while the `task-review` preview is enabled), Work chats
+and Plan remain independent of that selection.
+Overview shows status, completion criteria, subtasks and kept deliverables;
+Conversation hosts the shared Task room, Review keeps anchored discussion
+separate from its document, Work chats links canonical Agent conversations,
+and Plan edits the shared document. See [the Review preview](../../user/settings.md#feature-previews). Direct mounts Station's
+local inspection composition. Deliver, Learn and Operate name external product boundaries.
 The current UI shows those optional modes when an enabled installed plugin
 declares the corresponding capability; selecting one renders an explanatory
 boundary and alternative link, not a product renderer or verified owner state.
@@ -140,7 +146,10 @@ layout's navigation stack (`CodingWorkbench`, see
 occurrence gets `CodingChatPane`: the Chat position's effects and the Browser
 launcher. Files, diff, terminal, plan, readiness, trust and Flow run console
 are separate registered Pane renderers that a workspace can compose; they are
-not all children of one monolithic Coding pane.
+not all children of one monolithic Coding pane. Plan/Flow delivery, Veritas
+readiness and Trust UI are independent, default-off device previews under
+Settings → Advanced → Developer tools; Coding, files, diff, terminal and chat
+remain available without them. See [Settings](../../design/settings-architecture.md#experimental-project-tools).
 _Avoid_: IDE
 
 **File Preview pane**:
@@ -163,8 +172,35 @@ path and Session rules (`file-preview/changes`), through the same confined
 repository read as the coding diff (the Project's own repository, a judged
 copy of its config, the output discarded when the repository changed under
 the read; a repository being written answers busy, which the pane offers to
-ask again), and refuses an oversized patch.
+ask again), and refuses an oversized patch. A preview opened from a
+conversation, or from a docked Files pane, while the Station is verified is a
+related occurrence ([pane relationships](../../design/pane-relationships.md)):
+it also carries its own Station fence, and it renders, reading nothing before,
+only while the verified Station is exactly that one. Without a verified
+Station such an open is refused rather than minting an unfenced preview.
 _Avoid_: an editor, browser, native file handle, or renderer supplied by persistence
+
+**Worktree diff**:
+The shared diff pane, including a Task's **Inspect worktree diff** action, reads
+tracked unstaged changes against the index plus non-ignored untracked regular
+file additions. Staged-only changes remain excluded; this is not a comparison
+against HEAD or a per-turn baseline. New empty files remain file entries and
+binary additions have a binary marker, without invented text hunks. File Preview's
+separate per-file Changes view retains its explicit `untracked` state.
+
+The [reader](../../../src-server/services/projects/workspace-diff-service.ts)
+uses the coding route's confined repository/config snapshot and never stages
+files or writes the member's index or objects. It refuses the complete read,
+rather than returning a partial patch, for unsafe paths, symlinks, hardlinks,
+special files, credential-like names, changing files or exceeded limits. Limits
+are 128 untracked files, 256 KiB per new file, 2 MiB of new contents, 4 MiB of
+patch output, 64 KiB of path-list output and a 30-second service deadline.
+The special-file scan skips ignored directories and indexed submodule markers,
+refuses other nested `.git` markers without entering them, and
+caps traversal at 16,384 entries, 4,096 entries per directory and 128 pending
+directories. Refusals reach the pane's error and Retry state. Path/descriptor
+identity checks detect observed races; they are not an atomic filesystem snapshot.
+These are source and focused-test contracts, not installed-release qualification.
 
 **Readiness panel**:
 The Station pane that shows Veritas merge readiness and the evidence behind it.
@@ -221,8 +257,10 @@ _Avoid_: raw route push for project layout navigation
   [CodingChatPane](../../../src-ui/src/workspace-panes/CodingChatPane.tsx),
   run by the stack while its Chat page is on screen. Neither owns the pane
   renderers or their state.
-- File Tree opens File Preview through the provider-neutral Workspace Pane host
-  open/focus seam. Preview state is separately bounded and keyed by opaque
+- A layout's File Tree opens File Preview through the provider-neutral
+  Workspace Pane host open/focus seam; a docked Files pane opens it as a
+  related preview through the region model, one reusable preview per Project
+  until it is kept. Preview state is separately bounded and keyed by opaque
   `stateKey`; corrupt and unreferenced interrupted state records are reclaimed
   without evicting state referenced by another live or persisted host. Source
   and plain-text content remains inert React text. The initial image allowlist
@@ -247,7 +285,10 @@ _Avoid_: raw route push for project layout navigation
 - File Preview open/rollback durability currently assumes one writer in the
   renderer context. Multi-tab or cross-context host single-writer coordination
   is `NOT_VERIFIED` and belongs to #1371; this slice does not claim distributed
-  serialization through browser storage.
+  serialization through browser storage. The one exception is the pane
+  relations record related previews share: it is written under an exclusive
+  Web Lock over a fresh read, and a contended or unavailable lock refuses the
+  open rather than writing ([pane relationships](../../design/pane-relationships.md)).
 - Proposed changes retain Session/Project correlations and a persisted decision
   history. [ProposedChangeService](../../../src-server/services/projects/proposed-change-service.ts)
   records approval/rejection/supersession; that decision store does not itself

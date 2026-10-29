@@ -1,8 +1,6 @@
-import { EventEmitter } from 'node:events';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { PassThrough } from 'node:stream';
 import {
   ENGINE_CAPABILITY_MATRICES,
   resolveEngineCapabilityMatrix,
@@ -17,11 +15,20 @@ import {
   resolveModelLaunchPlan,
   unsupportedModelOptionKeys,
 } from '@kontourai/station-contracts/provider';
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import {
+  installSessionTmpDirPolicy,
+  ownedDirTestHooks,
+  sessionTempRoot,
+  sessionTmpDirPath,
+} from '../../services/infra/session-tmpdir.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
+import { HostImageTurnCapture } from '../../services/orchestration/host-image-turn-capture.js';
 import type { ProviderAdapterShape } from '../adapter-shape.js';
 import { SendTurnRefusedError } from '../adapter-shape.js';
 import type { MuseAdapterOptions } from '../adapters/muse-adapter.js';
@@ -87,43 +94,7 @@ vi.mock('../../telemetry/metrics.js', () => ({
   providerOps: { add: mockProviderOpsAdd },
 }));
 
-/**
- * Structural stand-in for one `muse exec --json` child.
- *
- * Deliberately NOT a real spawn and deliberately not typed against
- * `node:child_process`: a direct import of that module here would require an
- * explicit process-heavy classification in `scripts/vitest-resource-manifest.mjs`,
- * and this suite has no reason to start a process at all.
- */
-class FakeMuseProcess extends EventEmitter {
-  readonly stdout = new PassThrough();
-  readonly stderr = new PassThrough();
-  readonly pid = 4242;
-  killed = false;
-  exitCode: number | null = null;
-  signalCode: NodeJS.Signals | null = null;
-  readonly killSignals: Array<NodeJS.Signals | number> = [];
-
-  constructor() {
-    super();
-    this.stdout.setEncoding('utf8');
-    this.stderr.setEncoding('utf8');
-  }
-
-  kill(signal: NodeJS.Signals | number = 'SIGTERM'): boolean {
-    this.killed = true;
-    this.killSignals.push(signal);
-    this.exit(null);
-    return true;
-  }
-
-  /** Emit the child's exit exactly as the real per-turn process would. */
-  exit(code: number | null): void {
-    if (this.exitCode !== null) return;
-    this.exitCode = code ?? 0;
-    this.emit('exit', code);
-  }
-}
+import { FakeMuseProcess } from './fake-muse-process.js';
 
 async function flushIo(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -214,6 +185,7 @@ interface Harness {
   processes: FakeMuseProcess[];
   spawnArgs: string[][];
   spawnCwds: Array<string | undefined>;
+  spawnTmpDirs: Array<string | undefined>;
   released: number;
   logger: { warn: ReturnType<typeof vi.fn>; info: ReturnType<typeof vi.fn> };
 }
@@ -222,19 +194,22 @@ function createHarness(overrides: Partial<MuseAdapterOptions> = {}): Harness {
   const processes: FakeMuseProcess[] = [];
   const spawnArgs: string[][] = [];
   const spawnCwds: Array<string | undefined> = [];
+  const spawnTmpDirs: Array<string | undefined> = [];
   const logger = { warn: vi.fn(), info: vi.fn() };
   const harness = {
     processes,
     spawnArgs,
     spawnCwds,
+    spawnTmpDirs,
     released: 0,
     logger,
   } as Harness;
   const adapter = new MuseAdapter({
     newSessionId: () => 'muse-session-fixed',
-    processFactory: (args, cwd) => {
+    processFactory: (args, cwd, tmpDir) => {
       spawnArgs.push(args);
       spawnCwds.push(cwd);
+      spawnTmpDirs.push(tmpDir);
       const processHandle = new FakeMuseProcess();
       processes.push(processHandle);
       return {
@@ -256,6 +231,8 @@ function createHarness(overrides: Partial<MuseAdapterOptions> = {}): Harness {
   harness.iterator = adapter.streamEvents()[Symbol.asyncIterator]();
   return harness;
 }
+
+const makeSessionHome = trackTempDirs();
 
 describe('MuseAdapter', () => {
   afterEach(() => {
@@ -323,6 +300,142 @@ describe('MuseAdapter', () => {
     harness.processes[0].exit(0);
     await flushIo();
     expect(existsSync(path)).toBe(false);
+  });
+
+  test('chat-host-images: an exec session records its temp folder at start, before any turn', async () => {
+    const home = makeSessionHome('muse-session-tmp-');
+    vi.stubEnv('STATION_HOME', home);
+    const uninstall = installSessionTmpDirPolicy(() => true);
+    try {
+      const harness = createHarness();
+      await harness.adapter.startSession({
+        provider: 'muse',
+        threadId: 'thread-muse-tmp',
+        cwd: '/tmp/project',
+        modelId: 'muse-spark-1.2-contributor',
+      });
+      expect(harness.processes).toHaveLength(0);
+      expect(sessionTempRoot('thread-muse-tmp')).toBe(
+        sessionTmpDirPath('thread-muse-tmp', home),
+      );
+    } finally {
+      uninstall();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  test('chat-host-images: stopping the session removes its recorded temp folder, through its own exit', async () => {
+    const home = makeSessionHome('muse-session-stop-');
+    vi.stubEnv('STATION_HOME', home);
+    const uninstall = installSessionTmpDirPolicy(() => true);
+    try {
+      const harness = createHarness();
+      await harness.adapter.startSession({
+        provider: 'muse',
+        threadId: 'thread-muse-stop',
+        cwd: '/tmp/project',
+        modelId: 'muse-spark-1.2-contributor',
+      });
+      const dir = sessionTempRoot('thread-muse-stop')!;
+      expect(existsSync(dir)).toBe(true);
+      await harness.adapter.stopSession('thread-muse-stop');
+      let exited: CanonicalRuntimeEvent | undefined;
+      while (!exited) {
+        const next = await harness.iterator.next();
+        if (next.done) break;
+        if (next.value.method === 'session.exited') exited = next.value;
+      }
+      if (!exited) throw new Error('no session.exited published');
+      const capture = new HostImageTurnCapture({
+        preview: undefined,
+        eventStore: undefined,
+        sessionCwd: () => undefined,
+        publish: () => {},
+        logger: { warn: () => {} },
+      });
+      capture.observe(exited);
+      await capture.settled();
+      expect(sessionTempRoot('thread-muse-stop')).toBeUndefined();
+      expect(existsSync(dir)).toBe(false);
+    } finally {
+      uninstall();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  test('chat-host-images: an exec turn uses the start folder and never creates one later', async () => {
+    const home = makeSessionHome('muse-turn-tmp-');
+    vi.stubEnv('STATION_HOME', home);
+    let admitted = false;
+    const uninstall = installSessionTmpDirPolicy(() => admitted);
+    try {
+      const harness = createHarness();
+      // Started while the preview was off; turned on before the turn.
+      await harness.adapter.startSession({
+        provider: 'muse',
+        threadId: 'late-on',
+        cwd: '/tmp/project',
+      });
+      admitted = true;
+      void harness.adapter
+        .sendTurn({ threadId: 'late-on', input: 'hi' })
+        .catch(() => undefined);
+      await vi.waitFor(() => expect(harness.spawnTmpDirs).toHaveLength(1));
+      expect(harness.spawnTmpDirs[0]).toBeUndefined();
+      expect(existsSync(sessionTmpDirPath('late-on', home))).toBe(false);
+      // Admitted at start: every turn gets that same folder.
+      await harness.adapter.startSession({
+        provider: 'muse',
+        threadId: 'on',
+        cwd: '/tmp/project',
+      });
+      void harness.adapter
+        .sendTurn({ threadId: 'on', input: 'hi' })
+        .catch(() => undefined);
+      await vi.waitFor(() => expect(harness.spawnTmpDirs).toHaveLength(2));
+      expect(harness.spawnTmpDirs[1]).toBe(sessionTmpDirPath('on', home));
+      // A second turn of the same session reuses that same root.
+      await writeLines(harness.processes[1], MUSE_META_RUN_TERMINAL);
+      harness.processes[1].exit(0);
+      await flushIo();
+      await harness.adapter.sendTurn({ threadId: 'on', input: 'again' });
+      expect(harness.spawnTmpDirs[2]).toBe(sessionTmpDirPath('on', home));
+      expect(sessionTempRoot('on')).toBe(harness.spawnTmpDirs[2]);
+    } finally {
+      uninstall();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  test('chat-host-images: a folder gone before the start commits leaves exec turns with no session TMPDIR', async () => {
+    const home = makeSessionHome('muse-gone-tmp-');
+    vi.stubEnv('STATION_HOME', home);
+    const uninstall = installSessionTmpDirPolicy(() => true);
+    let opens = 0;
+    ownedDirTestHooks.afterOpen = (dir) => {
+      // 1st: prepared at start; 2nd: the commit. An earlier session's queued
+      // removal deletes the folder in between.
+      opens += 1;
+      if (opens === 2) rmSync(dir, { recursive: true, force: true });
+    };
+    try {
+      const harness = createHarness();
+      await harness.adapter.startSession({
+        provider: 'muse',
+        threadId: 'gone',
+        cwd: '/tmp/project',
+      });
+      expect(sessionTempRoot('gone')).toBeUndefined();
+      void harness.adapter
+        .sendTurn({ threadId: 'gone', input: 'hi' })
+        .catch(() => undefined);
+      await vi.waitFor(() => expect(harness.spawnTmpDirs).toHaveLength(1));
+      expect(harness.spawnTmpDirs[0]).toBeUndefined();
+    } finally {
+      ownedDirTestHooks.afterOpen = undefined;
+      uninstall();
+      vi.unstubAllEnvs();
+    }
   });
 
   test('startSession spawns nothing and publishes the canonical lifecycle', async () => {
@@ -470,7 +583,7 @@ describe('MuseAdapter', () => {
     const events = await drain(harness.iterator, 4, 'first-turn-prompt');
     const started = events.find((event) => event.method === 'turn.started');
     expect(started.prompt).toBe('Hello');
-    // Independent review MEDIUM-1: the marker rides THIS turn's own
+    // The marker rides THIS turn's own
     // persisted metadata, so the delegate-seam disclosure can derive
     // 'delivered' from this turn's own record, not merely from having
     // started.
@@ -562,7 +675,7 @@ describe('MuseAdapter', () => {
     expect(harness.processes).toHaveLength(2);
   });
 
-  // archive#3450 review (FIX 3): `muse-exit-without-terminal` and
+  // archive#3450: `muse-exit-without-terminal` and
   // `muse-terminal-not-completed` were the only two `error`-outcome call
   // sites with test coverage; `muse-spawn-failed` and
   // `muse-terminal-not-completed` had none. This covers `muse-spawn-failed`
@@ -610,7 +723,7 @@ describe('MuseAdapter', () => {
     expect(harness.processes).toHaveLength(2);
   });
 
-  // archive#3450 review (FIX 3 + the FIX 1 sub-case): `run_terminal` with a
+  // archive#3450: `run_terminal` with a
   // non-`completed` terminal and NO deltas streamed is the narrow case where
   // `effect.text` is the ONLY carrier of muse's reported text anywhere in
   // the event stream — `settleTurn`'s `outputTextDetail` folds it into
@@ -661,7 +774,7 @@ describe('MuseAdapter', () => {
     expect(error.message).toContain(
       'Muse turn ended without completing (terminal: failed, reason: model_error).',
     );
-    // The FIX 1 sub-case: `run_terminal.text` was the only carrier of this
+    // `run_terminal.text` was the only carrier of this
     // text (no deltas streamed) and it must not vanish.
     expect(error.message).toContain(
       'the model refused to respond: content policy violation',
@@ -704,7 +817,7 @@ describe('MuseAdapter', () => {
     expect(harness.logger.info).toHaveBeenCalledWith(
       expect.stringContaining('stderr'),
     );
-    // archive#3450 review round 2 (FIX C): the `completed` arm needs the
+    // archive#3450: the `completed` arm needs the
     // same ceiling as the `error` arm — a stray `runtime.error` appended
     // after `turn.completed` (the exact mirror of archive#3450's original defect)
     // would otherwise be invisible here.
@@ -748,7 +861,7 @@ describe('MuseAdapter', () => {
     await expectNoFurtherEvent(harness.iterator, 'stderr flood');
   });
 
-  // archive#3450 review round 2 (FIX D): MUSE_OUTPUT_TEXT_DETAIL_MAX_CHARS
+  // archive#3450: MUSE_OUTPUT_TEXT_DETAIL_MAX_CHARS
   // had no test proving its rejection path runs — the sibling stderr-tail
   // bound above does. Mirrors that test's shape exactly, against
   // `outputTextDetail` instead of `stderrDetail`.
@@ -790,7 +903,7 @@ describe('MuseAdapter', () => {
     await expectNoFurtherEvent(harness.iterator, 'output text flood');
   });
 
-  // archive#3450 review round 2, post-merge follow-up (commit b3ff4eb4c):
+  // archive#3450 follow-up (commit b3ff4eb4c):
   // outputTextDetail now redacts BEFORE truncating. The scrub test above uses
   // a 64-char secret, well under MUSE_OUTPUT_TEXT_DETAIL_MAX_CHARS (500) — for
   // a short string, redact-then-slice and slice-then-redact are IDENTICAL, so
@@ -853,7 +966,7 @@ describe('MuseAdapter', () => {
     await expectNoFurtherEvent(harness.iterator, 'output text straddle');
   });
 
-  // archive#3450 review round 2 (FIX A): `effect.terminal`/`effect.reason`
+  // archive#3450: `effect.terminal`/`effect.reason`
   // come from `extractString` — a bare `typeof` check with no length cap of
   // its own — and interpolate into `muse-terminal-not-completed`'s
   // `runtime.error.message` PREFIX, which neither `outputTextDetail`'s nor
@@ -957,7 +1070,7 @@ describe('MuseAdapter', () => {
     await expectNoFurtherEvent(harness.iterator, 'stderr secret');
   });
 
-  // archive#3450 review round 2 (FIX B): outputTextDetail folds
+  // archive#3450: outputTextDetail folds
   // run_terminal.text into the SAME runtime.error.message string
   // stderrDetail's redacted tail lands in — it must be scrubbed too, or an
   // unredacted secret would sit right next to a redacted one in one string.
@@ -993,7 +1106,7 @@ describe('MuseAdapter', () => {
     await expectNoFurtherEvent(harness.iterator, 'output text secret');
   });
 
-  // archive#3450 review round 2, post-merge follow-up (commit b3ff4eb4c):
+  // archive#3450 follow-up (commit b3ff4eb4c):
   // boundedTerminalField now scrubs too — `reason` is the field an engine is
   // most likely to fill with an auth error. Kept well under
   // MUSE_TERMINAL_FIELD_MAX_CHARS (200, ~66 chars here) so the clamp's own
@@ -1129,7 +1242,7 @@ describe('MuseAdapter', () => {
     });
     // Still one session, still no session.exited from a killed turn child.
     expect(await harness.adapter.hasSession('thread-interrupt')).toBe(true);
-    // archive#3450 review round 2 (FIX C): the `aborted` arm needs the same
+    // archive#3450: the `aborted` arm needs the same
     // ceiling as the `error` arm — this test's own name claims "exactly
     // once", which the fixed-count drain above does not compute on its own.
     await expectNoFurtherEvent(harness.iterator, 'interrupt');
@@ -1270,7 +1383,7 @@ describe('MuseAdapter', () => {
     // Without a `stopped` guard the exit handler has already re-opened the
     // turn slot, so this spawns a second `muse exec` that bills tokens and
     // publishes `content.text-delta`/`turn.completed` AFTER `session.exited`.
-    // #2300 round 4: a pre-effect refusal, so the orchestration layer
+    // #2300: a pre-effect refusal, so the orchestration layer
     // retires the dispatch cleanly instead of recording it indeterminate.
     const refusal = await harness.adapter
       .sendTurn({ threadId: 'thread-stop-race', input: 'two' })
@@ -1786,7 +1899,7 @@ describe('Muse startup-provider override', () => {
   });
 
   /**
-   * MEDIUM-1: under `echo` no `--model` is ever passed, so a session that
+   * Under `echo` no `--model` is ever passed, so a session that
    * reports a model would be asserting something nothing applied.
    */
   describe('the session reports the model that actually ran', () => {
@@ -2113,7 +2226,7 @@ describe('MuseAdapter owned-child registration', () => {
 
     // The original handle remains in the slot. A replacement cannot steal the
     // forced-stop target while the old child is still alive.
-    // #2300 round 3: Station already failed to confirm this child stopped,
+    // #2300: Station already failed to confirm this child stopped,
     // so nothing frees the slot on its own — a definitive pre-effect
     // refusal, never the retryable slot-releasing one.
     const refusal = await Promise.race([
@@ -2129,6 +2242,11 @@ describe('MuseAdapter owned-child registration', () => {
     expect(refusal).toBeInstanceOf(SendTurnRefusedError);
     expect(refusal).not.toBeInstanceOf(MuseTurnSlotReleasingError);
     expect((refusal as Error).message).toContain('could not confirm');
+    expect(refusal).toMatchObject({
+      kind: 'conflict',
+      retryable: false,
+      failurePhase: 'refused',
+    });
 
     await expect(
       harness.adapter.stopSession('thread-survivor'),
@@ -3002,7 +3120,7 @@ describe('Muse turn supervision (#2269)', () => {
       expect(error).toMatchObject({
         code: MUSE_TURN_IDLE_TIMEOUT_CODE,
       });
-      // #2308 review: one completion per call id per turn — the replayed
+      // #2308: one completion per call id per turn — the replayed
       // receipt is dropped rather than published as a second outcome row,
       // and (as before) never buys idle time.
       expect(

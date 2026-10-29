@@ -1,0 +1,7 @@
+{
+  "revision": "f24a85ec27cf890abef4ff261950d68caf5f8a8d",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"#3800 round 4: orchestration-service.ts adds withSessionConfinementRoot, which stamps a server-owned confinementRoot start-metadata key (replacing caller input) for the Codex adapter's pre-start .codex check; codex-adapter.ts reads it. Searched this document for start-metadata, Project-binding, session-start and Codex sandbox claims: none enumerate stamped keys or describe this check, so nothing it states changed; no prose change needed.","inputs":["docs/reference/station-docs.md","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}
