@@ -2169,6 +2169,48 @@ describe('CLI core commands over HTTP', () => {
     );
   });
 
+  test('approvals list without --agent lists pending requests from every engine', async () => {
+    const { runCli } = await import('../cli.js');
+
+    const session = (provider: string) => ({
+      provider,
+      threadId: `${provider}-thread`,
+      status: 'running',
+      isLoaded: true,
+      isPersisted: true,
+      eventCount: 1,
+      createdAt: '2026-04-18T00:00:00.000Z',
+      updatedAt: '2026-04-18T00:00:00.000Z',
+      lastEventMethod: 'request.opened',
+    });
+    const opened = (provider: string) => ({
+      provider,
+      threadId: `${provider}-thread`,
+      eventId: `evt-${provider}`,
+      createdAt: '2026-04-18T00:00:00.000Z',
+      method: 'request.opened',
+      requestId: `req-${provider}`,
+      requestType: 'approval',
+      title: `Approve ${provider} work`,
+    });
+    state.runtimeSessions = [
+      ...state.runtimeSessions,
+      session('claude'),
+      session('codex'),
+    ];
+    state.runtimeSessionEvents['claude-thread'] = [opened('claude')];
+    state.runtimeSessionEvents['codex-thread'] = [opened('codex')];
+
+    await runCli(['approvals', 'list', `--api-base=${apiBase}`]);
+
+    expect(_consoleLog).toHaveBeenCalledWith(
+      expect.stringContaining('"requestId": "req-claude"'),
+    );
+    expect(_consoleLog).toHaveBeenCalledWith(
+      expect.stringContaining('"requestId": "req-codex"'),
+    );
+  });
+
   test('approvals list surfaces a server failure from the agents lookup instead of misreporting it as an unsupported slug', async () => {
     const { runCli } = await import('../cli.js');
 
