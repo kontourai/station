@@ -5619,6 +5619,22 @@ export function configureRuntimeRoutes(
             )
           : roomRuntime.readPlanForReview(taskId, request);
       },
+      readPlanOrdinals: (taskId, request, revision, revisions) => {
+        const authority = stationControlRequestAuthority(request);
+        return authority?.kind === 'caller'
+          ? roomRuntime.readPlanOrdinalsForSessionReview(
+              taskId,
+              authority.caller.sessionId,
+              revision,
+              revisions,
+            )
+          : roomRuntime.readPlanOrdinalsForReview(
+              taskId,
+              request,
+              revision,
+              revisions,
+            );
+      },
       readAnswers: async (taskId, request, itemId) => {
         const scope =
           context.taskGraphService.readTaskTurnReferenceScope(taskId);

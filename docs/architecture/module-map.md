@@ -5649,8 +5649,9 @@ indexed Session engine and recorded-owner reads after Session read admission;
 no full transcript or People-management request is needed. Missing identity
 facts fall back to Teammate or Agent. The local operator's profile name wins;
 when only the OS alias is available, its initial is capitalized for display.
-Opaque working-state plan
-revisions are hidden because the room does not expose ordinal plan history.
+Plan revision chips count committed, revision-changing settle batches (saves),
+starting at v1. Multi-operation saves advance once; retries do not advance.
+Opaque digest identity remains separate from the displayed version.
 
 Task review keeps anchored comments in its own append-only store, outside the
 shared room's document and history. Plan references freeze revision evidence
@@ -5679,7 +5680,23 @@ lists metadata and counts for the plan, Task summary (Brief), kept outputs,
 linked answers and captures. List threads are summaries with state, anchor,
 event count, opening-comment preview and latest delivery event alongside the
 last event; a separate thread-detail GET supplies full history. Summary event
-bodies are capped at 500 UTF-16 code units without partial surrogates.
+bodies are capped at 500 UTF-16 code units without partial surrogates by the
+shared contracts `summarizeThreadView` projection. Plan item metadata includes
+`revisionOrdinals` for only the current revision and the threads' anchored plan
+revisions. The working-state worker persists final save revisions in a separate
+SQLite index, in the settle transaction. Operation pruning and operation encoding
+never determine these ordinals; restart preserves them. Existing documents are
+backfilled from committed batch receipts in insertion order, using the historical
+revision format for v0 and counting consecutive unchanged identities once. A
+malformed receipt leaves that document's ordinals unavailable and retryable at
+startup without blocking other documents or inventing versions on later saves.
+Intermediate operation states have no version.
+The Review module caches requested ordinals, including missing identities, per
+Task incarnation, document and latest revision. New anchors fetch only missing
+identities; a new latest revision invalidates that cache. Entries share the
+bounded ReviewCache accounting (UTF-16 serialized payload, keys and allowance),
+with at most 16 entries / 1 MiB. Current document and authority reads still run.
+Unknown historical identities receive no invented version.
 Corrupt rows are logged once per thread/event count within the bounded warning
 cache and projected as unavailable entries while healthy
 threads remain readable. Unavailable entries are omitted from aggregate counts.
