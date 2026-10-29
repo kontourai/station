@@ -1780,6 +1780,24 @@ describe("the dock's New chat is a draft, not a dialog", () => {
     ).toBe(false);
   });
 
+  // The line is an empty draft's hint: once there is text, the chips say
+  // where it goes and a short dock keeps the room for the composer.
+  test('the draft line steps aside once the draft holds text', async () => {
+    deviceSettingsStore.set('chatDockProjectSlug', 'station');
+    state.device = { hostName: 'Kontour' };
+    const dock = renderBoth().dock();
+    const line = 'Start a chat in Station on Kontour';
+    expect(await within(dock).findByText(line)).toBeTruthy();
+    fireEvent.change(within(formOf(dock)).getByRole('textbox'), {
+      target: { value: 'Tidy the sidebar' },
+    });
+    expect(within(dock).queryByText(line)).toBeNull();
+    fireEvent.change(within(formOf(dock)).getByRole('textbox'), {
+      target: { value: '' },
+    });
+    expect(within(dock).getByText(line)).toBeTruthy();
+  });
+
   // Like the dialog it replaced, the draft takes a history entry, so a
   // phone's Back dismisses it; leaving it returns focus to its opener.
   test('Back and Escape dismiss the draft, and focus returns to the control that opened it', async () => {
