@@ -1736,7 +1736,9 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
       .click();
     await expect(chatList).toBeVisible();
     // Compare inbox conversation identities so replacing a chat cannot hide behind an equal count.
-    const openChatRows = chatList.getByRole('button', { name: /^Dismiss .* from inbox$/ });
+    const openChatRows = chatList.getByRole('button', {
+      name: /^Dismiss .* from inbox$/,
+    });
     await expect(openChatRows).toHaveCount(6);
     const readOpenChats = () =>
       openChatRows.evaluateAll((rows) =>
