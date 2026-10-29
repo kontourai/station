@@ -1448,7 +1448,13 @@
 
     "tests/task-review.spec.ts",
 
-    "packages/shared/src/__tests__/station-home-update-backup.test.ts"
+    "packages/shared/src/__tests__/station-home-update-backup.test.ts",
+
+    "src-server/runtime/routes/task-member-admission.ts",
+
+    "src-server/domain/migrations/028-project-task-room-members.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-task-room-members.test.ts"
   ],
 
   "checks": [
