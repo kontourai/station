@@ -2146,10 +2146,10 @@ block historical reads or replay. Current operator authority is checked through
 awaits and again before HTTP release. Independent advisory and explicitly selected
 Flow-run topology share this custody. The source owner privately supplies the
 workspace, definition and actor; published Flow rounds own readiness, claims,
-joins and evaluation. Published Flow Agents 9.8.0, Flow 5.3.0 and Dispatch 0.8.0
-are installed byte-exact from their registry tarballs and resolve to shared
-module instances. The controlled composed consumer suites pass 40 cases at the
-merged source; positive execution uses a 240-second input. The earlier 120-second
+joins and evaluation. Station selects Flow Agents 9.9.0 and Flow 5.4.0.
+The installed rounds module and types match the 9.9.0 registry artifact.
+Earlier controlled composed consumer suites passed 40 cases at their
+recorded source; positive execution uses a 240-second input. The earlier 120-second
 Flow input exhausted its deadline, so this is functional qualification rather
 than performance recovery. Profiling identified repeated durability and
 prepared-source checks at storage boundaries. Current request authority now

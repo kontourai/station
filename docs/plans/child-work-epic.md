@@ -5,6 +5,15 @@ master consolidation in #3991. It starts at published
 `d96f54887837be058c5e5119b8028daab0befea1`. Merge subsequent master/main
 normally before publication. Open one PR when the combined work is ready.
 
+## Published Flow 9.9.0 pin (#91)
+
+Station selects the registry Flow Agents 9.9.0 and Flow 5.4.0 packages. The
+installed rounds module and type bytes match the 9.9.0 artifact. The private
+continuation metadata finalizer is not yet composed: signed historical report
+admission does not retain the Flow working-directory locator, and the live
+source-preparation owner is not metadata-only authority. Missing locator must
+refuse; no provider execution or #91 completion follows from the pin.
+
 ## Private publication lifetime (#91)
 
 Bootstrap captures the exact current home runtime lease into a private publication
@@ -2247,7 +2256,7 @@ These controls remain local evidence, not provider/device or full recovery proof
 
 ### Published recovery contract and coherent authority validation
 
-Station selects published Flow Agents 9.8.0, Flow 5.3.0 and Dispatch 0.8.0 together.
+At that historical checkpoint Station selected Flow Agents 9.8.0, Flow 5.3.0 and Dispatch 0.8.0 together.
 Registry tarballs and every installed package file were compared byte-for-byte;
 all 201 included Flow Agents source files match release commit
 `e2baf1e292d7d35fdc9ca68591ddb549ba02d82a`. Station and Flow Agents resolve the

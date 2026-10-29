@@ -2134,8 +2134,7 @@ Flow 5.2.2 and Flow Agents 9.5.1 loaded a separate Flow 5.2.0 module. Their
 actual `loadRun` and mutation-lock references differed; a timeout alone did not
 establish whether an attempt reached the provider. A prior returning-session
 attempt stopped before initial release under the positive-sync ACK policy.
-Published Flow Agents 9.8.0 is now installed with matching runtime identity,
-and the controlled returning-session test passes with explicit initial-request
+At the earlier 9.8.0 checkpoint, the controlled returning-session test passed with explicit initial-request
 admission. These local results do not qualify live providers or the complete
 serving composition. Independent advisory receipts do not qualify this path. Full group capability remains disabled while the remaining
 continuation/live obligations are open.
@@ -2313,8 +2312,7 @@ private context observations allow 512 KiB. Neither allowance changes token,
 attempt or inference-micro reservations.
 
 
-This serving composition is not live-qualified. Published Flow Agents 9.8.0
-supplies the adopted initial-request policy and public reservation identities;
+This serving composition is not live-qualified. The earlier Flow Agents 9.8.0 checkpoint supplied the adopted initial-request policy and public reservation identities;
 Station's actual Flow references pass its same-realm assertion. A controlled
 returning request runs an initial report and a fresh no-tools context ACK in the
 same actual Session, and exact replay sends nothing. The controlled three-seat
