@@ -231,11 +231,12 @@ describe('chat app boundary contracts', () => {
       expect(parseChatDeliveryLogEntry({ ...delivery, outcome })).toBeNull();
   });
 
-  test('refuses cross-variant extra keys on refused and failed delivery outcomes', () => {
-    for (const outcome of [
-      { state: 'refused', reason: 'unlinked-sender' },
-      { state: 'failed', reason: 'disconnected' },
-    ]) {
+  test.each([
+    { state: 'refused', reason: 'unlinked-sender' },
+    { state: 'failed', reason: 'disconnected' },
+  ])(
+    'refuses cross-variant extra keys on $state delivery outcomes',
+    (outcome) => {
       expect(
         parseChatDeliveryLogEntry({ ...delivery, outcome }),
       ).not.toBeNull();
@@ -246,8 +247,8 @@ describe('chat app boundary contracts', () => {
           outcome: { ...outcome, externalMessageId: snowflake },
         }),
       ).toBeNull();
-    }
-  });
+    },
+  );
 
   test('unlinked-sender cannot claim an attributed principal', () => {
     expect(parseChatDeliveryLogEntry(delivery)).toEqual(delivery);
