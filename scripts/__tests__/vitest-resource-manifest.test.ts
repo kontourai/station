@@ -105,6 +105,19 @@ function worstCaseOrdinaryCommand(excludes: readonly string[]): string[] {
 }
 
 describe('Vitest resource manifest', () => {
+  it('names the files missing from and unexpectedly in a compact ordinary selection', () => {
+    const groups = {
+      ordinary: ['scripts/__tests__/expected.test.ts'],
+    } as ReturnType<typeof buildVitestResourceGroups>;
+    const spawnSync = (() => ({
+      status: 0,
+      stdout: 'scripts/__tests__/unexpected.test.ts\n',
+      stderr: '',
+    })) as never;
+    expect(() => assertOrdinaryVitestSelection(groups, { spawnSync })).toThrow(
+      /missing from selection \(1\): scripts\/__tests__\/expected\.test\.ts; unexpected in selection \(1\): scripts\/__tests__\/unexpected\.test\.ts/,
+    );
+  });
   it('partitions Vitest discovery exactly once with no omitted files', () => {
     const discovered = repositoryDiscovery.files;
     const groups = repositoryDiscovery.groups;
