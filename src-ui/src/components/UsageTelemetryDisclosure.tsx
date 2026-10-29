@@ -549,6 +549,23 @@ export function usageSharingChoiceAuthority(
   return state.data?.capabilities;
 }
 
+/**
+ * The destination line in Settings. The main read reports the destination; a
+ * failed Kontour author read says nothing about it. `null` while unsettled.
+ */
+export function telemetryDestinationHint(
+  state: Pick<UsageTelemetryDisclosureState, 'settled' | 'readError' | 'data'>,
+): string | null {
+  if (!state.settled) return null;
+  if (state.readError)
+    return 'Could not read whether a destination is configured.';
+  if (state.data?.endpointConfigured === false)
+    return 'No additional destination configured.';
+  if (state.data?.endpointConfigured === true)
+    return 'Additional destination configured.';
+  return 'This Station has not reported whether a destination is configured.';
+}
+
 function useAcknowledgeDisclosure(onAcknowledged?: () => void) {
   const { apiBase } = useApiBase();
   const queryClient = useQueryClient();

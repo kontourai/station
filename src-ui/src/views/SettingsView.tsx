@@ -44,6 +44,7 @@ import {
 } from '../components/state';
 import { Toggle } from '../components/Toggle';
 import {
+  telemetryDestinationHint,
   usageSharingChoiceAuthority,
   useUsageTelemetryDisclosureState,
 } from '../components/UsageTelemetryDisclosure';
@@ -1345,19 +1346,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                             description="Sharing uses configured destinations only."
                             control={
                               <span className="settings__field-hint">
-                                {telemetryDisclosure.settled
-                                  ? // The main read reports the destination;
-                                    // a failed Kontour read says nothing here.
-                                    telemetryDisclosure.readError
-                                    ? 'Could not read whether a destination is configured.'
-                                    : telemetryDisclosure.data
-                                          ?.endpointConfigured === false
-                                      ? 'No additional destination configured.'
-                                      : telemetryDisclosure.data
-                                            ?.endpointConfigured === true
-                                        ? 'Additional destination configured.'
-                                        : 'This Station has not reported whether a destination is configured.'
-                                  : null}
+                                {telemetryDestinationHint(telemetryDisclosure)}
                               </span>
                             }
                           />

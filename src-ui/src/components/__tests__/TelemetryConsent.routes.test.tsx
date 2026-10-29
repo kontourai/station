@@ -124,6 +124,7 @@ import { firstRunStore } from '../first-run/first-run-store';
 import { SHARING_LABELS } from '../UsageSharingChoices';
 import {
   resetUsageTelemetryDisclosureDismissal,
+  telemetryDestinationHint,
   UsageTelemetryDisclosure,
   UsageTelemetryDisclosureStep,
   usageSharingChoiceAuthority,
@@ -1779,16 +1780,21 @@ test('a failed Kontour author read alone leaves Settings offering what the capab
     if (state.settled && state.data)
       seen.push({ isError: state.isError, readError: state.readError });
     return (
-      <StationConfigSection
-        section="telemetry"
-        containerScope="station"
-        config={bridge.config}
-        savedTelemetryChoices={bridge.config.telemetryTier}
-        telemetryPublishers={status.publishers}
-        telemetryDisclosure={state.data}
-        telemetryChoiceAuthority={usageSharingChoiceAuthority(state)}
-        onChange={() => {}}
-      />
+      <>
+        <StationConfigSection
+          section="telemetry"
+          containerScope="station"
+          config={bridge.config}
+          savedTelemetryChoices={bridge.config.telemetryTier}
+          telemetryPublishers={status.publishers}
+          telemetryDisclosure={state.data}
+          telemetryChoiceAuthority={usageSharingChoiceAuthority(state)}
+          onChange={() => {}}
+        />
+        <span data-testid="destination-hint">
+          {telemetryDestinationHint(state)}
+        </span>
+      </>
     );
   }
   const view = render(
@@ -1814,6 +1820,10 @@ test('a failed Kontour author read alone leaves Settings offering what the capab
     ).toHaveProperty('disabled', true);
     expect(screen.getByTestId('usage-sharing-limit').textContent).toBe(
       'This device can keep or reduce sharing. More sharing is chosen on the host computer.',
+    );
+    // The destination is the main read's answer, which arrived.
+    expect(screen.getByTestId('destination-hint').textContent).toBe(
+      'Additional destination configured.',
     );
     expect(seen.at(-1)?.readError, 'the main read reported an error').toBe(
       false,
