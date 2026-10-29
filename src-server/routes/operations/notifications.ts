@@ -336,7 +336,7 @@ export function createNotificationRoutes(
   return app;
 }
 
-function readerSurfaceId(request: Request): SurfaceId | undefined {
+export function readerSurfaceId(request: Request): SurfaceId | undefined {
   const origin = resolveClientOriginForRequest(request);
   if (origin.actor.kind === 'device') return `device:${origin.actor.deviceId}`;
   const clientSession = request.headers.get('x-station-client-session');

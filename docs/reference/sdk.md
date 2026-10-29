@@ -3932,6 +3932,19 @@ interface ProviderMetadata {
 
 ## Notifications API
 
+### Person notification query domain
+
+`fetchPersonNotifications`, `markPersonNotificationRead`,
+`dismissPersonNotification` and their `usePersonNotificationsQuery`,
+`useMarkPersonNotificationReadMutation` and
+`useDismissPersonNotificationMutation` hooks use `/api/me/notifications`.
+They require a captured `{ apiBase, authorityKey, isCurrent }` request scope;
+cache keys include that authority and late responses are refused after it
+changes. Read and dismiss take an id and an optional `clientSessionId`: callers
+without a paired Device identity must supply the session id. A host without the
+list route reports that person notifications are unsupported and suggests an
+update. See [person notification routes](api.md#person-notifications).
+
 ### `NotificationsAPI`
 
 Imperative REST wrapper with `schedule`, `list`, `dismiss`, `action`, `snooze`,

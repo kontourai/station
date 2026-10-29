@@ -98,6 +98,24 @@ unset choices under the write lock. Preferences grant no execution access.
 See [account preference contracts](contracts.md#account-preferences) and
 [the SDK](sdk.md#account-preferences).
 
+## Person notifications
+
+`GET /api/me/notifications` returns `{ success: true, data: Notification[] }`
+for the authenticated request's resolved person. The server never accepts a
+person identifier from the caller. An operator sees that operator's personal
+feed here; the existing `/notifications` route remains the separate owner feed.
+Internal Agent callers and unbound Device identities cannot use the person feed.
+Account-bound Devices need the normal current account session and pairing scope.
+
+`POST /api/me/notifications/:id/read` returns the read outcome in
+`data.outcome`; `DELETE /api/me/notifications/:id` dismisses the entry. Both
+operate only on the caller's feed and return 404 when the id is absent there,
+including when another person owns it. The server records the verified paired
+Device as the surface, or requires a valid `X-Station-Client-Session` for a
+caller without one. Responses carry `Cache-Control: no-store`. The feed is
+durable on this Station and keeps the latest 100 entries per person; push
+delivery and person-notification producers are separate work.
+
 ## Endpoint Legend
 
 - Method and path identify the route, not its permission tier.
