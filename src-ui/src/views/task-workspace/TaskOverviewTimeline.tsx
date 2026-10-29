@@ -21,6 +21,7 @@ import {
   useApiBase,
   useHostRequestAuthorityScope,
 } from '../../contexts/ApiBaseContext';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import './TaskOverviewTimeline.css';
 
 const TIMELINE_PAGE_SIZE = 12;
@@ -227,6 +228,7 @@ function Timeline({
   onOpenCapture: (id: string) => void;
   scope: string;
 }) {
+  const mobile = useIsMobile();
   const [limit, setLimit] = useState(TIMELINE_PAGE_SIZE);
   const admit = useMemo(createContentAdmission, []);
   const review = useTaskReviewQuery(taskId, { staleTime: 0 });
@@ -249,7 +251,11 @@ function Timeline({
         a.captureId.localeCompare(b.captureId),
     );
   return (
-    <section className="task-timeline" aria-label="Timeline">
+    <section
+      className="task-timeline"
+      data-mobile={mobile || undefined}
+      aria-label="Timeline"
+    >
       <h3>
         <CameraGlyph />
         Timeline
