@@ -1165,6 +1165,7 @@ interface OrchestrationServiceOptions {
    * agent. Optional — omitted in installations/tests that don't wire it, in
    * which case `startSession` input reaches the adapter exactly as before.
    */
+  coordinatorGenerationForSession?: (threadId: string) => number;
   resolveSessionAgent?: (
     input: ProviderSessionStartInput,
     captured?: { agentId: string; spec: AgentSpec },
@@ -2055,6 +2056,7 @@ export class OrchestrationService {
   private readonly interruptedTurns: InterruptedTurnRecovery;
   private adapterRegistryUnsubscribe?: () => void;
   private readonly sessionAdapters = new Map<string, ProviderAdapterShape>();
+  private readonly coordinatorToolGenerations = new Map<string, number>();
   /**
    * Turn progress + turn-stall observation (epic archive#4024, archive#4116):
    * owns the stall watchdog, per-thread windows, and the process-local
@@ -2996,6 +2998,15 @@ export class OrchestrationService {
         if (adapter?.coordinatorToolsNeedSuccessor?.(detail.session.threadId))
           return true;
         if (adapter?.coordinatorToolsRefresh) return false;
+        const currentGeneration = options.coordinatorGenerationForSession?.(
+          detail.session.threadId,
+        );
+        if (
+          currentGeneration !== undefined &&
+          this.coordinatorToolGenerations.get(detail.session.threadId) !==
+            currentGeneration
+        )
+          return true;
         const ports = coordinatorDeliveryPorts({
           eventStore: store,
           service: this,
@@ -3828,6 +3839,22 @@ export class OrchestrationService {
     const resolved = this.options.resolveSessionAgent
       ? await this.options.resolveSessionAgent(withCredentialProfile, captured)
       : withCredentialProfile;
+    const derivedServer = resolved.agent?.toolServers?.find(
+      (server) => server.coordinatorDerived,
+    );
+    const conversationId =
+      typeof input.metadata?.conversationId === 'string'
+        ? input.metadata.conversationId
+        : (this.options.eventStore?.conversationForSession(input.threadId)
+            ?.conversationId ?? input.threadId);
+    const generation =
+      derivedServer?.coordinatorGeneration ??
+      (this.options.eventStore?.isCoordinatorConversation(conversationId)
+        ? this.options.coordinatorGenerationForSession?.(input.threadId)
+        : undefined);
+    if (generation !== undefined)
+      this.coordinatorToolGenerations.set(input.threadId, generation);
+    else this.coordinatorToolGenerations.delete(input.threadId);
     const unavailableReason = sessionAgentStartUnavailableReason({
       agentSlug,
       // Providers with no session-delivery concept — Station's own engine

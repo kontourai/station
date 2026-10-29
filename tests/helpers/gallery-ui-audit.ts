@@ -30,14 +30,22 @@ const DOCK_OCCLUSION_AUDIT = `(() => {
     if (docks.some((dock) => dock.contains(control))) continue;
     if (typeof control.checkVisibility === 'function' && !control.checkVisibility({ visibilityProperty: true })) continue;
     const r = control.getBoundingClientRect();
+    // A control entirely clipped by an ancestor is not dock-occluded. A
+    // partly visible control can still extend beneath a dock outside that
+    // ancestor, so use its original rectangle for the overlap itself.
+    let visible = { left: Math.max(r.left, 0), right: Math.min(r.right, innerWidth), top: Math.max(r.top, 0), bottom: Math.min(r.bottom, innerHeight) };
+    for (let ancestor = control.parentElement; ancestor && ancestor !== document.body; ancestor = ancestor.parentElement) {
+      const style = getComputedStyle(ancestor), clip = ancestor.getBoundingClientRect();
+      if (style.overflowX !== 'visible') { visible.left = Math.max(visible.left, clip.left); visible.right = Math.min(visible.right, clip.right); }
+      if (style.overflowY !== 'visible') { visible.top = Math.max(visible.top, clip.top); visible.bottom = Math.min(visible.bottom, clip.bottom); }
+    }
+    if (visible.right - visible.left <= 1 || visible.bottom - visible.top <= 1) continue;
     for (const dock of docks) {
       const d = dock.getBoundingClientRect();
       const left = Math.max(r.left, d.left, 0), right = Math.min(r.right, d.right, innerWidth);
       const top = Math.max(r.top, d.top, 0), bottom = Math.min(r.bottom, d.bottom, innerHeight);
       if (right - left <= 1 || bottom - top <= 1) continue;
-      const stack = document.elementsFromPoint((left + right) / 2, (top + bottom) / 2);
-      if (stack[0] && dock.contains(stack[0]) && stack.some((element) => element === control || control.contains(element)))
-        findings.push({ anchor: stableAnchor(control) });
+      findings.push({ anchor: stableAnchor(control) });
     }
   }
   return findings;

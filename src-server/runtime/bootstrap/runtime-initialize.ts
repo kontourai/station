@@ -750,6 +750,11 @@ export async function initializeRuntime(
     agentPolicyService: getAgentPolicyService(logger),
     workflowSidecarService: new WorkflowSidecarService({ logger }),
     resolveSessionAgent,
+    coordinatorGenerationForSession: (threadId) =>
+      coordinatorGeneration(
+        orchestrationEventStore.conversationForSession(threadId)
+          ?.conversationId ?? threadId,
+      ),
     loadAgentPresentation: async (slug) => {
       const spec =
         (await loadSessionAgentSpec(slug)) ?? builtinStationAgentSpec(slug);
