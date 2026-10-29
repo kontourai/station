@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { NotificationService } from '../../notifications/notification-service.js';
 import { EventBus } from '../../orchestration/event-bus.js';
 import { BuiltinScheduler } from '../builtin-scheduler.js';
@@ -107,9 +108,10 @@ test('a refused terminal bell stays owed, retries once, and encodes its Schedule
   expect(schedule).toHaveBeenCalledOnce();
 });
 
+const makeTempDir = trackTempDirs();
+
 test('a replayed monitor notification exposes only generic content', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'station-monitor-private-'));
-  roots.push(root);
+  const root = makeTempDir('station-monitor-private-');
   const bus = new EventBus();
   const frames: unknown[] = [];
   bus.subscribe((frame) => frames.push(frame));
