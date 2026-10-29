@@ -20,7 +20,8 @@ For runtime helpers, use explicit subpaths:
 - `@kontourai/station-shared/visual-viewport` — browser-safe visual viewport geometry (height, page offset and the inset above the keyboard or Android system bars, intersected with the Android shell's reported visible height) as one subscription per window; the app's surfaces and the SDK and Connect modals read the same snapshot through `useSyncExternalStore`
 - `@kontourai/station-shared/strict-indexeddb` — one transaction against a single-store IndexedDB database that refuses a `readwrite` the browser would not commit with strict durability, closes on a version change and rejects with the caller's own errors; the browser relay authority and TURN credential custody and Connect's broker routing grants use it
 - `@kontourai/station-shared/git`
-- `@kontourai/station-shared/mcp`
+- `@kontourai/station-shared/mcp` — also `setRemoteTransportFetchPolicy`, through which the server pins catalog-supplied remote servers to checked addresses
+- `@kontourai/station-shared/remote-address-guard` — Node-only private and loopback address rules and `createAddressPinnedFetch`, which resolves each hostname once per connection, refuses any private answer unless allowed, and connects only to the checked addresses
 - `@kontourai/station-shared/mcp-tool-selection` — browser-safe original/qualified/runtime MCP identities and selection matching
 - `@kontourai/station-shared/thread-usage-tree` — the conversation usage tree fold and the per-engine rules for how a subagent's usage relates to its parent's
 - `@kontourai/station-shared/display-text` — browser-safe display form for untrusted text on a one-line surface: bidi controls removed, control characters as spaces, the line split approval surfaces share, and code-point truncation

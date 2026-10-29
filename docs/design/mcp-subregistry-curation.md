@@ -193,7 +193,9 @@ can change, not a fixed gate.
   (`*` clears every mark and the saturation) records a receipt with the
   time and the person, and
   `GET /api/integrations/untrusted-content/conversations/:id` shows the mark
-  and its receipts. There is no button for this yet.
+  and its receipts
+  ([routes](../../src-server/routes/agents/untrusted-content-routes.ts)).
+  There is no button for this yet.
 
 The [staged pre-tool evaluator](../../src-server/runtime/agents/pre-tool-policy.ts)
 answers the permission before tool grants:
@@ -235,7 +237,8 @@ for person review; the definition and its history are retained, and the
 integration does not load. The integration list and
 `GET /api/integrations/:id` show it with `trustReview` (the stored values,
 not applied) and without those settings; Connections → Tools shows **Needs
-your review** whether or not the trust settings preview is on.
+your review** whether or not the trust settings preview is on
+([review panel](../../src-ui/src/views/integrations/IntegrationTrustReview.tsx)).
 `POST /api/integrations/:id/trust-review` with `keep` or `reset` (operator,
 signed in as a person) publishes the overlay under the integration lock with
 the kept values or Station's defaults and a receipt naming the person; the

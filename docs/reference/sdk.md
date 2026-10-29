@@ -183,6 +183,16 @@ Both mutations also accept `requestScope` in their input.
 disconnects the authenticated caller's selected account and refreshes account and
 integration queries. It does not delete the integration or disconnect other people.
 
+
+`IntegrationViewModel.engineCoverage` says, per external engine, whether
+Station applies the untrusted-content permission to its calls to that server
+(`station-gated`), the engine reaches the server itself (`engine-direct`), or
+Station does not deliver it (`not-delivered`); older hosts omit it.
+`trustReview` lists legacy trust settings waiting for a person; offer
+`useDecideIntegrationTrustReviewMutation({ id, decision: "keep" | "reset" })`
+only for an integration whose `trustReview` this host returned. It
+invalidates the integrations queries.
+
 ## Project tool library
 
 `@kontourai/station-sdk/tool-library` exposes `ToolLibraryClient` with explicit

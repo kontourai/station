@@ -1351,7 +1351,11 @@ Engine OAuth MCP delivery uses the internal loopback transport
 session-and-server-scoped Station credential; a paired API credential cannot
 replace it. Station injects the remote bearer and owns refresh. See
 [OAuth MCP setup](../guides/connections.md#connect-an-oauth-mcp-server-to-an-agent)
-for lifetime and failure behavior.
+for lifetime and failure behavior. For a server a catalog added, the proxy
+connects only to addresses it checked, and in a session that read untrusted
+content a `tools/call` takes the tool's untrusted-content permission; a
+refusal is a JSON-RPC error with HTTP 403
+([coverage](../design/mcp-subregistry-curation.md#coverage-and-gaps)).
 
 These routes manage MCP integration definitions through the
 [MCP service](../../src-server/services/plugins/mcp-service.ts) and
@@ -1420,6 +1424,22 @@ known, the new value; last 50 kept), even when the value already equals the defa
 Receipts in the request are ignored and the stored history survives a replacement
 while the integration remains present
 ([design](../design/mcp-subregistry-curation.md#untrusted-content-and-outbound-tools)).
+
+The list and read responses carry `engineCoverage`: for each external engine
+(`claude`, `codex`, `acp`), `station-gated`, `engine-direct` or
+`not-delivered`, derived from the transport and how Station delivers the
+server. An integration whose legacy trust settings could widen what runs and
+whose ownership cannot be verified is listed and read with `trustReview`
+(`fields`: the stored values, not applied) and stays unloaded.
+`POST /integrations/:id/trust-review` with `{"decision": "keep" | "reset"}`
+resolves it for the operator signed in as a person (403 otherwise; 409 when
+there is nothing to review) and records a receipt naming them.
+
+`GET /integrations/untrusted-content/conversations/:conversationId` returns
+whether a conversation is marked as having read untrusted content, and its
+clearance receipts. `POST .../:conversationId/clear` (`*` clears every
+mark) clears it for the operator signed in as a person and returns the
+receipt; agents' station-control calls cannot reach either route.
 
 ### Connected accounts (#3279)
 

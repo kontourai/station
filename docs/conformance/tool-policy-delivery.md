@@ -196,8 +196,9 @@ Managed calls without an approval channel are denied.
 
 ## Outbound tools after untrusted content
 
-On the Station engine only, a turn that has read a tool result from an
-integration with `contentTrust: "untrusted"` runs one more stage after the
+On the Station engine, a turn that has read a tool result from an
+integration with `contentTrust: "untrusted"` (or whose conversation was
+marked by an earlier turn) runs one more stage after the
 Project tool policy and before authored Ask rules: the called tool's
 `untrustedContentPermissions` entry, then its integration default, then
 `ask`. A read-only hint exempts a tool only when no entry is set and the
@@ -205,8 +206,13 @@ server's hints are trusted (not an `untrusted` server, or
 `trustReadOnlyHints`). Delegation shares the mark between parent and child
 conversations. `ask` is answered exactly like an effective
 authored Ask above, `deny` refuses with `untrusted_content_denied`, and
-`allow` leaves the decision to the later stages. External engines build their
-evaluator without this stage, so Claude Code, Codex and ACP do not deliver it
+`allow` leaves the decision to the later stages. External engines' staged
+evaluator runs the same stage for `mcp__<server>__<tool>` calls in a session
+marked at a Station seam, so Claude Code and ACP ask for them. Enforcement for
+Claude Code, Codex and ACP is at the Station seams that carry their MCP calls
+(the station-control authority guard and the OAuth proxy), where `ask`
+passes only on a person's recorded approval of that tool. Calls an engine
+makes to a server it connects to itself are not enforced
 ([design](../design/mcp-subregistry-curation.md#coverage-and-gaps)).
 
 Claude's staged evaluator returns a required Ask as a `PreToolUse` permission
