@@ -398,9 +398,10 @@ describe('prepared file mutation owner', () => {
     }
     if (guardDescriptor === undefined)
       throw new Error('guard descriptor was not opened');
-    expect(() => stat(guardDescriptor)).not.toThrow();
+    const heldDescriptor = guardDescriptor;
+    expect(() => stat(heldDescriptor)).not.toThrow();
     await owner.settlePendingCleanup();
-    expect(() => stat(guardDescriptor)).toThrow();
+    expect(() => stat(heldDescriptor)).toThrow();
     expect(existsSync(lock)).toBe(false);
     expect(
       readdirSync(join(lock, '..')).filter((name) => name.endsWith('.tmp')),
