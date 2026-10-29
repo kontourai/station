@@ -545,19 +545,29 @@ export class DiscordGatewayService {
     }
     const replyId = randomUUID();
     for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+      const replyChunk: NonNullable<ChatDeliveryLogEntry['replyChunk']> = {
+        replyId,
+        chunkIndex,
+        chunkCount: chunks.length,
+        ...(overflow && chunkIndex === chunks.length - 1
+          ? { overflow: true }
+          : {}),
+      };
+      const authorization = this.authorization.authorize({
+        discordUserId: relay.discordUserId,
+        guildId: relay.guildId,
+        channelId: relay.channelId,
+        capability: 'transcript:read',
+        expectedSessionId: relay.sessionId,
+        replyChunk,
+      });
+      if (!authorization.allowed) return;
       const delivered = await this.deliverAcknowledgement(
         relay.guildId,
         relay.channelId,
         chunks[chunkIndex],
         {
-          replyChunk: {
-            replyId,
-            chunkIndex,
-            chunkCount: chunks.length,
-            ...(overflow && chunkIndex === chunks.length - 1
-              ? { overflow: true }
-              : {}),
-          },
+          replyChunk,
         },
       );
       if (!delivered) return;

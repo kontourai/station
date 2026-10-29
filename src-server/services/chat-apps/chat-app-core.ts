@@ -16,7 +16,10 @@ import type {
   DiscordGatewayConfiguration,
 } from '@kontourai/station-contracts/discord';
 import { createLogger } from '../../utils/logger.js';
-import { isDiscordGatewayConfiguration } from '../discord/discord-gateway-config-store.js';
+import {
+  findDiscordChannelSessionBinding,
+  isDiscordGatewayConfiguration,
+} from '../discord/discord-gateway-config-store.js';
 import { ChatAppStore, readChatRecord } from './chat-app-store.js';
 import { ChatIdentityLinks } from './chat-identity-links.js';
 
@@ -26,6 +29,8 @@ export interface LegacyDiscordRequest {
   channelId: string;
   capability: DiscordCapability;
   projectSlug?: string;
+  expectedSessionId?: string;
+  replyChunk?: ChatDeliveryLogEntry['replyChunk'];
 }
 
 export type LegacyDiscordAuthorization =
@@ -186,6 +191,10 @@ export class ChatAppCore {
             request.capability === 'project-files:read'
               ? 'notify'
               : 'continue',
+          ...(request.expectedSessionId
+            ? { conversationId: request.expectedSessionId }
+            : {}),
+          ...(request.replyChunk ? { replyChunk: request.replyChunk } : {}),
           outcome: { state: 'refused', reason: logReason },
           createdAt: new Date().toISOString(),
         });
@@ -206,6 +215,24 @@ export class ChatAppCore {
       }));
       if (!imported || !allowedIn(imported.guilds) || !allowedIn(currentGuilds))
         return refuse('outside_allowed_scope', 'channel-unbound');
+      if (request.expectedSessionId) {
+        const currentBinding = findDiscordChannelSessionBinding(
+          configuration,
+          request.guildId,
+          request.channelId,
+        );
+        const retained = this.resolveBindingIn(db, {
+          app: 'discord',
+          externalWorkspaceId: request.guildId,
+          externalChannelId: request.channelId,
+        });
+        if (
+          currentBinding?.sessionId !== request.expectedSessionId ||
+          retained?.target.kind !== 'conversation' ||
+          retained.target.conversationId !== request.expectedSessionId
+        )
+          return refuse('outside_allowed_scope', 'channel-unbound');
+      }
       const lookup = this.links.lookupIn(db, 'discord', request.discordUserId);
       if (lookup.state === 'unlinked')
         return refuse('unmapped_identity', 'unlinked-sender');
@@ -470,32 +497,4 @@ export function* splitChatText(text: string, limit: number): Generator<string> {
     chunk = segment.slice(offset);
   }
   if (chunk) yield chunk;
-}
-
-/** Discord retains its one-message truncation/disclosure policy on the shared renderer. */
-export function renderChatTranscript(
-  output: string,
-  limit: number,
-  pointer: string,
-): string {
-  if (!Number.isSafeInteger(limit) || limit < 1)
-    throw new Error('Invalid chat text limit');
-  const content = output || 'Station completed the turn.';
-  if (content.length <= limit) return content;
-  const disclosure = `\n\n[Truncated — view the full response in Station: ${pointer}]`;
-  const room = limit - disclosure.length;
-  if (room < 2)
-    throw new Error('Chat text limit cannot contain the disclosure');
-  const candidate = splitChatText(content, room - 1).next().value ?? '';
-  const sentenceEnd = Math.max(
-    candidate.lastIndexOf('. '),
-    candidate.lastIndexOf('! '),
-    candidate.lastIndexOf('? '),
-    candidate.lastIndexOf('\n'),
-  );
-  const text =
-    sentenceEnd >= Math.floor(room / 2)
-      ? candidate.slice(0, sentenceEnd + 1)
-      : `${candidate.trimEnd()}…`;
-  return `${text}${disclosure}`;
 }

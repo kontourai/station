@@ -10,11 +10,7 @@ import { createLogger } from '../../../utils/logger.js';
 import { DiscordAuthorizationService } from '../../discord/discord-authorization.js';
 import { DiscordGatewayConfigurationStore } from '../../discord/discord-gateway-config-store.js';
 import { DiscordGatewayService } from '../../discord/discord-gateway-service.js';
-import {
-  ChatAppCore,
-  renderChatTranscript,
-  splitChatText,
-} from '../chat-app-core.js';
+import { ChatAppCore, splitChatText } from '../chat-app-core.js';
 
 const makeTempDir = trackTempDirs();
 const guildId = '1' + '23456789' + '012345678';
@@ -519,17 +515,7 @@ describe('chat text boundaries', () => {
     },
   );
 
-  test('the single-message renderer preserves Discord disclosure and the hard limit at an astral boundary', () => {
-    const pointer = '/?surface=activity&session=conversation-a';
-    const disclosure = `\n\n[Truncated — view the full response in Station: ${pointer}]`;
-    const prefix = 'x'.repeat(2000 - disclosure.length - 2);
-    const rendered = renderChatTranscript(
-      prefix + '😀' + 'z'.repeat(2000),
-      2000,
-      pointer,
-    );
-    expect(rendered).toBe(prefix + '…' + disclosure);
-    expect(rendered.length).toBeLessThanOrEqual(2000);
+  test('rejects a limit smaller than a code point', () => {
     expect(() => Array.from(splitChatText('😀', 1))).toThrow('code point');
   });
 });
@@ -729,6 +715,88 @@ test.each(['overflow', 'failure'] as const)(
         ]);
         expect(receipts[1].replyChunk?.chunkIndex).toBe(1);
       }
+    } finally {
+      await service.stop();
+    }
+  },
+);
+
+test.each(['capability', 'kill-switch'] as const)(
+  'stops a reply when %s is revoked between chunks',
+  async (scenario) => {
+    const { homeDir, config, core } = fixture();
+    const socket = new GatewaySocket();
+    let emit!: (event: {
+      event: string;
+      data?: Record<string, unknown>;
+    }) => void;
+    const sent: string[] = [];
+    const service = new DiscordGatewayService({
+      homeDir,
+      logger: createLogger({ name: 'chunk-authorization-test' }),
+      socketFactory: () => socket,
+      executeForegroundMessage: async () => ({ providerTurnId: 'chunk-turn' }),
+      eventBus: {
+        subscribe(listener) {
+          emit = listener;
+          return () => {};
+        },
+      },
+      readTranscript: () => 'x'.repeat(4001),
+      deliverMessage: async ({ content }) => {
+        sent.push(content);
+        if (sent.length === 1) {
+          if (scenario === 'capability') {
+            const current = config.read();
+            current.identities![0].capabilities = ['turn:start'];
+            config.write(current);
+          } else {
+            core.setKillSwitch(
+              {
+                app: 'discord',
+                disabled: true,
+                updatedAt: now,
+                updatedByPrincipalId: 'operator-principal',
+              },
+              () => true,
+            );
+          }
+        }
+        return { externalMessageId: '8'.repeat(18) };
+      },
+    });
+    try {
+      service.start();
+      reviewMessage(socket, '4'.repeat(18));
+      await reviewFlush();
+      const { SERVER_EVENTS } = await import(
+        '@kontourai/station-contracts/runtime-events'
+      );
+      emit({
+        event: SERVER_EVENTS.ORCHESTRATION_EVENT,
+        data: { event: { method: 'turn.completed', turnId: 'chunk-turn' } },
+      });
+      await reviewFlush();
+      expect(sent.map((part) => part.length)).toEqual([2000]);
+      const receipts = new ChatAppCore(homeDir)
+        .deliveryLog()
+        .filter((entry) => entry.replyChunk)
+        .reverse();
+      expect(receipts.map((entry) => entry.outcome)).toEqual([
+        { state: 'delivered', externalMessageId: '8'.repeat(18) },
+        {
+          state: 'refused',
+          reason:
+            scenario === 'capability'
+              ? 'capability-unavailable'
+              : 'app-disabled',
+        },
+      ]);
+      expect(receipts.map((entry) => entry.replyChunk?.chunkIndex)).toEqual([
+        0, 1,
+      ]);
+      expect(receipts[1].replyChunk?.chunkCount).toBe(3);
+      expect(JSON.stringify(receipts)).not.toContain('x'.repeat(100));
     } finally {
       await service.stop();
     }

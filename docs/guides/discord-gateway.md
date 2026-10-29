@@ -210,7 +210,10 @@ Station answers in the channel when it cannot run a turn:
 - **Pending replies:** Station records each turn it is waiting on in
   `<STATION_HOME>/runtime/discord-turn-relays.json` so a reply survives a
   restart. The record is cleared before the completion reply is sent, so a
-  crash during delivery does not replay earlier or uncertain chunks. A turn that is
+  crash between chunks leaves the remaining chunks unsent and they are not retried;
+  the full reply remains in Station. Receipts show confirmed sends and any
+  pending or refused attempt, but no receipt is created for an unattempted chunk.
+  A turn that is
   aborted rather than completed may leave its record behind, and the channel
   then keeps answering that a turn is already running.
 - **Hosted Stations:** a Station running in hosted tenant mode cannot start
