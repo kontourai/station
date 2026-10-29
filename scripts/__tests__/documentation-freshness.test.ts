@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   buildFreshnessReport,
   SWEEP_BODY_LIMIT,
@@ -63,6 +63,39 @@ import {
 forbidAmbientFreshnessMode();
 
 describe('scoped documentation freshness (#2923)', () => {
+  it('reuses an equal base state but rereads the mutable base when it advances', () => {
+    const f = fixture();
+    expect(
+      run(f.root, 'migrate-review-ledger.mjs', ['--path-only']).status,
+    ).toBe(0);
+    commit(f.root, 'migrate review ledger');
+    git(f.root, ['switch', '-qc', 'feature']);
+    f.write('src/a.ts', 'export const a = 2;\n');
+    commit(f.root, 'change source');
+    const trace = join(makeTempDir('freshness-git-trace-'), 'trace.log');
+    vi.stubEnv('GIT_TRACE', trace);
+    const first = resolveDocumentationFreshness({ root: f.root, env: scoped });
+    expect(first.appendOnly).toBe('verified');
+    const firstTrace = readFileSync(trace, 'utf8');
+    expect(firstTrace).toMatch(
+      /ls-tree -r -z --name-only [a-f0-9]{40} -- docs\/learn\/review-ledger/,
+    );
+    expect(firstTrace).not.toMatch(
+      /ls-tree -r -z --name-only main -- docs\/learn\/review-ledger/,
+    );
+
+    git(f.root, ['switch', 'main']);
+    f.write('docs/base-advance.md', '# Base advanced\n');
+    const advanced = commit(f.root, 'advance main');
+    git(f.root, ['switch', 'feature']);
+    writeFileSync(trace, '');
+    const second = resolveDocumentationFreshness({ root: f.root, env: scoped });
+    expect(second.appendOnly).toBe('verified');
+    expect(second.mergeBase).not.toBe(advanced);
+    expect(readFileSync(trace, 'utf8')).toMatch(
+      /ls-tree -r -z --name-only main -- docs\/learn\/review-ledger/,
+    );
+  });
   function classifiedNote({
     path = '.changeset/release-fixture.md',
     kind = 'release-note',
