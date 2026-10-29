@@ -10,6 +10,10 @@ import {
   CodexAdapterTransport,
   createCodexSessionRecord,
 } from '../adapters/codex-adapter-transport.js';
+import {
+  CODEX_COLLAB_V1_CLIENT_TURN_INTERRUPT,
+  codexCaptureIds,
+} from './codex-collab-fixtures.js';
 
 class FakeWritable extends Writable {
   readonly lines: string[] = [];
@@ -187,6 +191,47 @@ describe('CodexAdapterTransport', () => {
     expect(JSON.stringify(onStderr.mock.calls)).not.toContain(
       'must-not-persist',
     );
+  });
+
+  test('a configWarning on stdout is one user-facing warning carrying its message', () => {
+    const transport = new CodexAdapterTransport(
+      () => new Date('2026-10-27T18:02:11Z'),
+    );
+    const events: any[] = [];
+    transport.publish = (event) => {
+      events.push(event);
+    };
+    const processHandle = new FakeCodexProcess();
+    const record = createCodexSessionRecord({
+      externalThreadId: 'thread-config-warning',
+      process: processHandle,
+      provider: 'codex',
+      threadId: 'thread-config-warning',
+      model: 'gpt-5-codex',
+      nowIso: () => '2026-10-27T18:02:11Z',
+    });
+    transport.handleStdoutLine(
+      record,
+      JSON.stringify({
+        method: 'configWarning',
+        params: {
+          summary: 'Project config was not loaded: the folder is not trusted.',
+          details: 'Mark /workspace/repo trusted to load .codex/config.toml.',
+          path: '/workspace/repo/.codex/config.toml',
+        },
+      }),
+    );
+    expect(events).toEqual([
+      expect.objectContaining({
+        method: 'runtime.warning',
+        code: 'codex-config-warning',
+        message: 'Project config was not loaded: the folder is not trusted.',
+        details: {
+          details: 'Mark /workspace/repo trusted to load .codex/config.toml.',
+          path: '/workspace/repo/.codex/config.toml',
+        },
+      }),
+    ]);
   });
 
   test('confirms process-tree cleanup before publishing a natural exit', async () => {
@@ -887,6 +932,124 @@ describe('CodexAdapterTransport', () => {
         'runtime.error',
         'session.exited',
       ]);
+    });
+  });
+
+  /**
+   * A Codex child is a thread inside the app-server process, so when that
+   * process is gone the child ended with it: `interrupted`, never the
+   * pending-looking `unresolved` ("No result"). A door that cannot say the
+   * process is gone keeps `unresolved`.
+   */
+  describe('running children when the app-server ends', () => {
+    const CHILD = '00000000-0000-7000-8000-000000000004';
+
+    function recordWithRunningChild(threadId: string) {
+      const transport = new CodexAdapterTransport(
+        () => new Date('2026-10-24T16:04:50Z'),
+        async () => {},
+      );
+      const processHandle = new FakeCodexProcess();
+      const record = createCodexSessionRecord({
+        externalThreadId: threadId,
+        process: processHandle,
+        provider: 'codex',
+        threadId,
+        model: 'gpt-5.5',
+        nowIso: () => '2026-10-24T16:04:50Z',
+      });
+      // Every published event, in order (the replay harness's own seam).
+      const events: any[] = [];
+      transport.publish = (event) => {
+        events.push(event);
+      };
+      transport.registerSession(record);
+      transport.handleProcess(record);
+      const capture = CODEX_COLLAB_V1_CLIENT_TURN_INTERRUPT;
+      const { parentThreadId, parentTurnId } = codexCaptureIds(capture);
+      transport.setCodexThreadId(record, parentThreadId);
+      record.activeTurnId = parentTurnId;
+      // The real capture, up to the child's own end: it is running.
+      for (const line of capture) {
+        const { dir, msg } = JSON.parse(line);
+        if (msg.method === 'turn/completed' && msg.params?.threadId === CHILD)
+          break;
+        if (dir === 'server->client')
+          transport.handleStdoutLine(record, JSON.stringify(msg));
+      }
+      return { transport, processHandle, record, events };
+    }
+
+    function childSettles(events: any[]): string[] {
+      return events.flatMap((event) =>
+        event.method === 'child-work.updated' &&
+        event.delta.kind === 'settle' &&
+        event.delta.childId === CHILD
+          ? [
+              // The wire status, and what a current client shows for it.
+              `${event.delta.status}${event.delta.endedBy ? `:${event.delta.endedBy}` : ''}`,
+            ]
+          : [],
+      );
+    }
+
+    test('an exit by signal settles the running child interrupted, before session.exited', async () => {
+      const { processHandle, events } = recordWithRunningChild(
+        'thread-child-sigkill',
+      );
+      expect(childSettles(events)).toEqual([]);
+
+      processHandle.emit('exit', null, 'SIGKILL');
+
+      await vi.waitFor(() =>
+        expect(events.map((event) => event.method)).toContain('session.exited'),
+      );
+      // Wire status `unresolved`, which every client knows; `endedBy` makes
+      // a current client show it interrupted.
+      expect(childSettles(events)).toEqual(['unresolved:engine-exit']);
+      const settleAt = events.findIndex(
+        (event) => event.method === 'child-work.updated',
+      );
+      expect(settleAt).toBeLessThan(
+        events.findIndex((event) => event.method === 'session.exited'),
+      );
+    });
+
+    test('a memory-exhausted exit settles the running child interrupted', async () => {
+      const observation = vi
+        .spyOn(workload, 'childWorkloadOutcome')
+        .mockReturnValue(
+          Promise.resolve({
+            result: 'oom-kill',
+            memoryMaxBytes: 3072 * 1024 * 1024,
+            oomKills: 1,
+          } as never),
+        );
+      try {
+        const { processHandle, events } =
+          recordWithRunningChild('thread-child-oom');
+        processHandle.emit('exit', null, 'SIGKILL');
+        await vi.waitFor(() =>
+          expect(events.map((event) => event.method)).toContain(
+            'session.exited',
+          ),
+        );
+        expect(childSettles(events)).toEqual(['unresolved:engine-exit']);
+        expect(
+          events.find((event) => event.method === 'session.exited'),
+        ).toMatchObject({ reason: 'memory-exhausted' });
+      } finally {
+        observation.mockRestore();
+      }
+    });
+
+    test('a process error cannot say the process is gone, so the child stays unresolved', async () => {
+      const { processHandle, events } =
+        recordWithRunningChild('thread-child-error');
+      processHandle.emit('error', new Error('kill EPERM'));
+      expect(events.map((event) => event.method)).toContain('session.exited');
+      // No `endedBy`: a bare unresolved, "No result".
+      expect(childSettles(events)).toEqual(['unresolved']);
     });
   });
 

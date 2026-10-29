@@ -262,7 +262,6 @@
 
 /* A local reminder, outlined rather than filled so it does not read as a
  * state of the work. */
-.inbox-row__chip--draft,
 .inbox-row__chip--woke {
   flex-shrink: 0;
   background: transparent;
@@ -506,6 +505,46 @@
   margin: 0;
   padding: var(--k-space-2) var(--k-space-3);
   color: var(--k-text-muted);
+}
+
+/* ── Identity marks (#4266) ────────────────────────────────────────────── */
+
+/* The engines that ran the row, overlapping left to right in the order they
+   first ran. Each mark after the first tucks under the one before it, ringed
+   in the row's background so the edges stay legible in both themes. */
+.identity-marks {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.identity-marks__mark + .identity-marks__mark {
+  margin-left: calc(var(--k-space-1) * -1);
+  box-shadow: 0 0 0 var(--k-border-thick) var(--k-bg);
+}
+
+.identity-marks__more {
+  margin-left: var(--k-space-1);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The unsent-draft marker: a pencil on the project line. The row's accessible
+   name already says ", unsent draft", so the marker itself is hidden from
+   assistive tech and carries a tooltip for pointer users. */
+.inbox-row__draft-marker {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  margin-left: var(--k-space-2);
+  color: var(--k-text-muted);
+  vertical-align: middle;
+}
+
+.inbox-row__draft-marker svg {
+  width: 12px;
+  height: 12px;
 }
 
 .inbox-row--swipe {
