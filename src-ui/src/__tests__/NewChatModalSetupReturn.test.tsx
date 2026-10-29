@@ -54,6 +54,9 @@ vi.mock('@kontourai/station-sdk', () => ({
     refetch: experienceRead.refetch,
   }),
   useMaterializeEngineAgentMutation: () => ({ mutateAsync: vi.fn() }),
+  // The Station choice's reads; nothing here lists another Station.
+  useSshEnvironmentsQuery: () => ({ data: [], isSuccess: true, isError: false }),
+  usePeerCredentialsQuery: () => ({ data: [], isSuccess: true, isError: false }),
 }));
 const screenSize = vi.hoisted(() => ({ mobile: false }));
 vi.mock('../hooks/useIsMobile', () => ({
