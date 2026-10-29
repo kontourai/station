@@ -75,6 +75,8 @@ const state = vi.hoisted(() => ({
   runLocations: undefined as Record<string, unknown> | undefined,
   /** `GET /api/projects/:slug/chat-defaults`, by slug. */
   chatDefaults: {} as Record<string, unknown>,
+  /** `GET /api/feature-previews`: visual skills on unless a test says not. */
+  featurePreviews: [] as Array<{ id: string; enabled: boolean }>,
 }));
 
 vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
@@ -89,6 +91,7 @@ vi.mock('../hooks/useDevicePresentation', () => ({
   useDevicePresentation: () => undefined,
 }));
 vi.mock('@kontourai/station-sdk', () => ({
+  useFeaturePreviewsQuery: () => ({ data: state.featurePreviews }),
   useSshEnvironmentsQuery: () => ({
     data: [],
     isSuccess: true,
@@ -265,6 +268,7 @@ beforeEach(() => {
   state.agentConnections = [];
   state.runLocations = undefined;
   state.chatDefaults = {};
+  state.featurePreviews = [{ id: 'visual-skills', enabled: true }];
   resetHeldHomeDraftsForTests();
 });
 // Every dock listener a test adds, removed even when the test fails, so a
@@ -1279,6 +1283,15 @@ describe('Home and the dock start the same way', () => {
       }) as HTMLTextAreaElement;
     const startButton = () =>
       screen.getByRole('button', { name: 'Start' }) as HTMLButtonElement;
+    test('with the visual-skills preview off, Home offers no visual skills', () => {
+      state.featurePreviews = [{ id: 'visual-skills', enabled: false }];
+      renderHome();
+      // "Use a visual skill" is the menu's only action, so no menu at all.
+      expect(
+        screen.queryByRole('button', { name: 'More start options' }),
+      ).toBeNull();
+    });
+
     async function handOffSkills() {
       fireEvent.click(
         screen.getByRole('button', { name: 'More start options' }),
