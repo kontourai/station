@@ -109,7 +109,8 @@ on the host instead.
 
 To approve an invited person's browser, open pairing management and choose the
 account's Project access. Approve opens a separate passkey review naming the
-browser, account, issuer, subject and requested access. Confirm with a fresh
+browser, Station account and read-only access; account details expose the
+provider and account ID. Confirm with a fresh
 passkey; the request stays pending until that confirmation succeeds. If needed,
 enroll and sign in as described above, then return and approve again. Without a
 configured HTTPS consent origin, use the host CLI's `--bind-account` path.

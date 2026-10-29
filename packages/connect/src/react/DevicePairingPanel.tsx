@@ -637,10 +637,10 @@ export function JoinDevicePairingPanel({
         deviceName,
         // A device asks for everything a device can have, never the default
         // grant's `access:manage`; the operator limits it when approving. An
-        // account-bound guest request asks for the plain Standard preset:
-        // its elevated grants are the operator's call.
+        // account-bound guest request starts read-only; wider access needs
+        // an explicit operator promotion after pairing.
         scope: accountBoundDeviceRequest
-          ? pairingScopePresetString(DEFAULT_PAIRING_SCOPE_PRESET)
+          ? 'orchestration:read'
           : FULL_DEVICE_ACCESS_SCOPE,
         ...(accountBoundDeviceRequest
           ? {
@@ -1328,7 +1328,9 @@ export function HostDevicePairingPanel({
     url: string;
   } | null>(null);
   const [accountSignInUrl, setAccountSignInUrl] = useState<string | null>(null);
-  const [accountPasskeyRequired, setAccountPasskeyRequired] = useState(false);
+  const [accountPasskeyRequired, setAccountPasskeyRequired] = useState<
+    string | null
+  >(null);
   const [reconnecting, setReconnecting] = useState(false);
   // #2228 slice 3: a remembered reachable address (the tailnet or LAN URL the
   // operator last created an offer with for this Station) outranks the active
@@ -1568,7 +1570,7 @@ export function HostDevicePairingPanel({
             reviewWindow?.close();
             throw new Error('Invalid consent review');
           }
-          setAccountPasskeyRequired(false);
+          setAccountPasskeyRequired(null);
           setAccountReview({ requestId: request.requestId, url: url.href });
           if (reviewWindow) {
             reviewWindow.opener = null;
@@ -1590,7 +1592,7 @@ export function HostDevicePairingPanel({
           } catch {
             setAccountSignInUrl(null);
           }
-          setAccountPasskeyRequired(true);
+          setAccountPasskeyRequired(request.requestId);
           return;
         }
         setError(
@@ -1932,13 +1934,18 @@ export function HostDevicePairingPanel({
               ) : (
                 <RequestedScopeChecklist
                   deviceName={request.deviceName}
-                  requestedScope={request.scope}
+                  requestedScope={
+                    request.requireAccountBinding ||
+                    accountBindingRequests.has(request.requestId)
+                      ? 'orchestration:read'
+                      : request.scope
+                  }
                   // An account binding confirms the request as asked, so its
                   // list shows everything kept, not an earlier untick.
                   kept={
                     request.requireAccountBinding ||
                     accountBindingRequests.has(request.requestId)
-                      ? new Set(requestedScopeTokens(request.scope))
+                      ? new Set(requestedScopeTokens('orchestration:read'))
                       : keptScopeOf(request)
                   }
                   disabled={
@@ -2098,16 +2105,17 @@ export function HostDevicePairingPanel({
                         {request.requireAccountBinding
                           ? 'The invitee requested account-bound access. Approval can create only this account-bound Device. The pilot can view permitted Projects; editing and running work are unavailable.'
                           : 'Requires this account to sign in again. This pilot can view permitted Projects; editing and running work are unavailable. It does not grant membership.'}
-                        <span
-                          style={{ display: 'block', overflowWrap: 'anywhere' }}
-                        >
-                          Issuer: {request.accountCandidate.issuer}
-                          <br />
-                          Subject: {request.accountCandidate.subject}
-                        </span>
                       </small>
                     </span>
                   </label>
+                  <details>
+                    <summary>Account details</summary>
+                    <div style={{ overflowWrap: 'anywhere' }}>
+                      Account provider: {request.accountCandidate.issuer}
+                      <br />
+                      Account ID: {request.accountCandidate.subject}
+                    </div>
+                  </details>
                   {!request.requireAccountBinding &&
                     request.source === 'tailnet' &&
                     request.requester && (
@@ -2312,6 +2320,17 @@ export function HostDevicePairingPanel({
                     enroll an owner passkey
                   </a>
                   , then approve again.{' '}
+                </>
+              )}
+              {!accountSignInUrl && (
+                <>
+                  Set <code>STATION_TRUSTED_CONSENT_ORIGIN</code> to the
+                  Station’s HTTPS consent origin, then restart. Or run{' '}
+                  <code>
+                    station environment access approve {accountPasskeyRequired}{' '}
+                    --force --bind-account
+                  </code>{' '}
+                  on the Station host.{' '}
                 </>
               )}
               <a

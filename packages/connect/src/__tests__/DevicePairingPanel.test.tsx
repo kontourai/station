@@ -3526,6 +3526,59 @@ describe('explicit verified-person pairing consent', () => {
       screen.getByRole('link', { name: 'Sign in as operator' }),
     ).toBeTruthy();
   });
+
+  test('without a trusted consent origin the guidance names configuration and host CLI', async () => {
+    const pending = {
+      requestId: 'member-no-origin',
+      deviceName: 'Member browser',
+      status: 'pending',
+      source: 'pairing-code',
+      requireAccountBinding: true,
+      accountCandidate: {
+        issuer: 'urn:station:test',
+        subject: 'member',
+        displayName: 'Member',
+      },
+      expiresAt: Date.now() + 60_000,
+    };
+    vi.spyOn(window, 'open').mockReturnValue(null);
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/api/pairing/requests')
+        return response({ requests: [pending] });
+      if (path === '/api/pairing/devices') return response({ devices: [] });
+      if (path.endsWith('/account-consent'))
+        return response(
+          { error: { code: 'operator_session_required' }, signInUrl: null },
+          403,
+        );
+      return response({}, 500);
+    });
+    render(
+      <HostDevicePairingPanel
+        apiBase="https://station.example.test"
+        publicEndpoint="https://station.example.test"
+        getCredential={() => undefined}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.click(
+      await screen.findByRole('radio', { name: /Use Member’s Project access/ }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    expect(
+      await screen.findByText('STATION_TRUSTED_CONSENT_ORIGIN'),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        'station environment access approve member-no-origin --force --bind-account',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Passkey setup' })).toBeTruthy();
+    expect(
+      screen.queryByRole('link', { name: 'enroll an owner passkey' }),
+    ).toBeNull();
+  });
 });
 
 test('refuses an HTTP LAN pairing code before posting an offer and preserves explicit HTTPS entry', async () => {

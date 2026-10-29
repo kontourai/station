@@ -1528,7 +1528,10 @@ describe('project guest administration over the production composition', () => {
 
   test('passkey consent approves a member browser that can read its shared Project', async () => {
     const h = await setup(false, false, true);
-    await h.shareWithGuestAdmin('consent-project', 'Consent Project');
+    const shared = await h.shareWithGuestAdmin(
+      'consent-project',
+      'Consent Project',
+    );
     const pairing = h.security.devicePairing;
     const operatorOffer = pairing.createOffer({
       endpoint: ORIGIN,
@@ -1586,20 +1589,28 @@ describe('project guest administration over the production composition', () => {
       }),
     );
     const cookie = `__Host-station-device=${owner.credential}; __Host-station-operator=${signed.secret}`;
-    const offer = pairing.createOffer({ endpoint: ORIGIN, scope: GUEST_GRANT });
-    const pending = pairing.requestPairing({
-      offerId: offer.offerId,
-      proof: offer.challenge,
-      deviceName: 'Member browser',
-      requesterPosition: 'unproven',
-      accountCandidate: {
-        issuer: PROVIDER_ISSUER,
-        subject: GUEST_SUBJECT,
-        displayName: 'Guest Person',
+    const access = await h.request(
+      '/.well-known/station/v1/pairing/access-request',
+      {
+        method: 'POST',
+        headers: {
+          cookie: 'fixture_account=guest',
+          origin: ORIGIN,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          deviceName: 'Member browser',
+          scope: 'orchestration:read orchestration:operate terminal:operate',
+          requireAccountBinding: true,
+        }),
       },
-      accountCandidateSessionId: `session-${GUEST_SUBJECT}`,
-      requireAccountBinding: true,
-    });
+    );
+    expect(access.status, await access.clone().text()).toBe(202);
+    const pending = await readJson<{
+      requestId: string;
+      offerId: string;
+      proof: string;
+    }>(access);
     const requested = await h.request(
       `/api/pairing/requests/${pending.requestId}/account-consent`,
       {
@@ -1634,6 +1645,8 @@ describe('project guest administration over the production composition', () => {
     });
     expect(page.status).toBe(200);
     const html = await page.text();
+    expect(html).toContain('Read');
+    expect(html).not.toContain('Terminal');
     const nonce = html.match(/name="nonce" value="([^"]+)"/)![1];
     const options = JSON.parse(
       html
@@ -1662,8 +1675,8 @@ describe('project guest administration over the production composition', () => {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          offerId: offer.offerId,
-          proof: offer.challenge,
+          offerId: pending.offerId,
+          proof: pending.proof,
           requestId: pending.requestId,
         }),
       },
@@ -1675,6 +1688,39 @@ describe('project guest administration over the production composition', () => {
       h.guestHeaders(credential)(),
     );
     expect(read.status, await read.clone().text()).toBe(200);
+    expect(pairing.identifyDevice(credential)?.scope).toBe(
+      'orchestration:read',
+    );
+    expect(pairing.effectiveScope(credential)).toBe('orchestration:read');
+    const guest = h.guestHeaders(credential);
+    const invite = await h.request(
+      '/api/projects/consent-project/access/invitations',
+      guest({
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          scope: shared.scope,
+          email: null,
+          role: 'viewer',
+          expiresAt: new Date(Date.now() + 3600000).toISOString(),
+        }),
+      }),
+    );
+    expect(invite.status).toBe(403);
+    const terminal = await h.request(
+      '/api/projects/consent-project/terminals/terminal-nope',
+      guest({ method: 'DELETE' }),
+    );
+    expect(terminal.status).toBe(403);
+    const execute = await h.request(
+      '/api/orchestration/chat',
+      guest({
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      }),
+    );
+    expect(execute.status).toBe(403);
   });
 
   test('account-bound pairing exchange refuses a provider session revoked after approval', async () => {

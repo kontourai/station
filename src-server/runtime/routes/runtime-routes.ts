@@ -269,6 +269,7 @@ import {
   type FullAccessRevocationReport,
   isDeviceRequestableScope,
   PAIRING_SCOPE_DESCRIPTIONS,
+  PAIRING_SCOPE_ORCHESTRATION_READ,
   PAIRING_SCOPE_PRESETS,
   PAIRING_SCOPE_TERMINAL_OPERATE,
   PAIRING_SCOPES,
@@ -11770,6 +11771,9 @@ export function configureDevicePairingPublicRoutes(
         proof: body.proof,
         requestId: body.requestId,
         clientInstanceId: body.clientInstanceId as string | undefined,
+        ...(browserCookieDelivery && candidate
+          ? { sessionScope: PAIRING_SCOPE_ORCHESTRATION_READ }
+          : {}),
       });
       deviceSessionExchanges.add(1, {
         outcome: 'issued',
@@ -12177,6 +12181,7 @@ export function configureDevicePairingHostRoutes(
     forbiddenPasskeyId?: string,
     items: readonly { label: string; detail: string }[] = [],
     warning?: string,
+    details?: readonly { label: string; detail: string }[],
   ) => {
     const session = operatorSession(c.req.raw);
     const channel = options.consentChannel;
@@ -12202,6 +12207,7 @@ export function configureDevicePairingHostRoutes(
         title: 'Review access change',
         summary,
         items,
+        ...(details ? { details } : {}),
         ...(warning ? { warning } : {}),
         approveLabel: 'Confirm with passkey',
         denyLabel: 'Cancel',
@@ -12631,7 +12637,12 @@ export function configureDevicePairingHostRoutes(
       )
         return null;
       const scope = parsePairingScope(request.scope);
-      if (!scope || scope.some(isProtectedPairingPromotionScope)) return null;
+      if (
+        !scope ||
+        !scope.includes(PAIRING_SCOPE_ORCHESTRATION_READ) ||
+        scope.some(isProtectedPairingPromotionScope)
+      )
+        return null;
       return {
         kind: 'device-access-change',
         subject: requestId,
@@ -12639,6 +12650,7 @@ export function configureDevicePairingHostRoutes(
           request,
           account,
           bindAccountIdentity: true,
+          approvedScope: PAIRING_SCOPE_ORCHESTRATION_READ,
         }),
       };
     };
@@ -12676,23 +12688,25 @@ export function configureDevicePairingHostRoutes(
           requestId,
           { kind: 'presented-credential' },
           { principalId: LOCAL_OPERATOR_PRINCIPAL_ID, kind: 'account' },
+          { scope: PAIRING_SCOPE_ORCHESTRATION_READ },
         );
         return { ...confirmation, personBindingApproved: true };
       },
       undefined,
       [
         { label: 'Browser', detail: request.deviceName },
-        { label: 'Account', detail: account.candidate.displayName },
-        { label: 'Issuer', detail: account.candidate.issuer },
-        { label: 'Subject', detail: account.candidate.subject },
+        { label: 'Station account', detail: account.candidate.displayName },
         {
           label: 'Access',
-          detail: (parsePairingScope(request.scope) ?? [])
-            .map((scope) => PAIRING_SCOPE_DESCRIPTIONS[scope]?.label ?? scope)
-            .join(', '),
+          detail:
+            PAIRING_SCOPE_DESCRIPTIONS[PAIRING_SCOPE_ORCHESTRATION_READ].label,
         },
       ],
       'Account and Project permissions limit this Device’s access.',
+      [
+        { label: 'Account provider', detail: account.candidate.issuer },
+        { label: 'Account ID', detail: account.candidate.subject },
+      ],
     );
   });
   app.post('/api/pairing/requests/:requestId/confirm', async (c) => {

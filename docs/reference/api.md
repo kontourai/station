@@ -6027,11 +6027,20 @@ origin commits the pinned request and account only after rechecking their state
 and the operator session. The existing `confirm` endpoint remains the host CLI
 path for `bindAccountIdentity`; ordinary unbound approvals are unchanged.
 
-A successful binding response includes `personBindingApproved: true`; callers
-must require that acknowledgement. The subsequent one-time exchange persists
+Host `POST .../confirm` returns `personBindingApproved: true` and the binding
+receipt. The browser's consent decision returns `status: 'approved'`; the
+owning session can read the effect, including `personBindingApproved` and
+`principalBinding`, from `GET /api/pairing/device-access-transactions/:id`.
+The subsequent one-time exchange returns the Device with its binding and persists
 the binding with the Device credential, including provider/subject and approval
 provenance. A Tailscale-person binding changes identity resolution; it does not
 add wire scope or Project membership, or relabel existing history.
+
+An account-bound public access request is capped to `orchestration:read` at
+creation and checked again at confirmation and exchange. A browser-cookie
+exchange of another account binding also issues at most read scope. Project
+administration requires an eligible membership role and a separately promoted
+Device with `orchestration:operate`.
 
 The [principal owner](../../src-server/runtime/bootstrap/orchestration-request-principal.ts)
 uses that approved binding on direct requests and rejects a conflicting live
