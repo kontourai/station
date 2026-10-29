@@ -149,8 +149,9 @@ can change, not a fixed gate.
   turn, every later call in that turn takes the called tool's permission.
   The turn ends when the invocation ends, however it ends: each Station
   engine framework calls `endInvocation` on success, error and abort. At
-  most 10,000 turns are held; past that the longest-idle turn (no call for
-  an hour) is forgotten, and an active turn never is. A result whose server
+  most 10,000 turns are held. If that capacity is exhausted, Station treats
+  all turns as marked until restart, preserving active marks without tracking
+  unbounded overflow. A result whose server
   definition cannot be read counts as untrusted, and a called tool whose
   definition cannot be read asks.
 - **Delegation.** A conversation that has read untrusted content marks every

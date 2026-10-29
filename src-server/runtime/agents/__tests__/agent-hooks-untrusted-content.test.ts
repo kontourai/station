@@ -611,28 +611,24 @@ describe('ended turns leave nothing behind', () => {
     expect(ledger.turnCount).toBe(0);
   });
 
-  test('the turn bound forgets only idle turns, never an active one', async () => {
-    let now = 0;
-    const ledger = new UntrustedContentLedger(() => now);
+  test('saturation bounds turn storage and conservatively marks overflow until restart', async () => {
+    const ledger = new UntrustedContentLedger();
     const mark = (conversationId: string) =>
       ledger.mark({ agentSlug: 'a', conversationId }, Promise.resolve(true));
     for (let index = 0; index < 10_000; index += 1) mark(`active-${index}`);
     await new Promise((resolve) => setImmediate(resolve));
-    // Everything is active: the bound is exceeded rather than a mark dropped.
     mark('one-more');
-    expect(ledger.turnCount).toBe(10_001);
+    expect(ledger.turnCount).toBe(10_000);
     expect(
       await ledger.hasRead({ agentSlug: 'a', conversationId: 'active-0' }),
     ).toBe(true);
-    // An hour later they are idle except one that just saw a call.
-    now = 60 * 60 * 1000 + 1;
+    ledger.clear({ agentSlug: 'a', conversationId: 'active-0' });
     expect(
-      await ledger.hasRead({ agentSlug: 'a', conversationId: 'active-5' }),
+      await ledger.hasRead({ agentSlug: 'a', conversationId: 'one-more' }),
     ).toBe(true);
-    mark('newest');
-    expect(ledger.turnCount).toBe(10_001);
+    expect(ledger.turnCount).toBe(9_999);
     expect(
-      await ledger.hasRead({ agentSlug: 'a', conversationId: 'active-5' }),
+      await ledger.hasRead({ agentSlug: 'a', conversationId: 'newest' }),
     ).toBe(true);
   });
 });
