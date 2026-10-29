@@ -549,17 +549,22 @@ describe('ChatDockInboxPanel', () => {
     expect(document.activeElement).not.toBe(document.body);
   });
 
-  it('moves focus to the adjacent row before closing the focused row (#1054)', () => {
+  it('moves focus to the adjacent row before dismissing the focused row (#1054)', () => {
     const onCloseChat = vi.fn();
     renderPanel({ onCloseChat });
     const close = screen.getByRole('button', {
-      name: 'Close attention title',
+      name: 'Dismiss attention title from inbox',
     });
     close.focus();
 
     fireEvent.click(close);
 
-    expect(onCloseChat).toHaveBeenCalledWith('attention');
+    expect(onCloseChat).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole('button', {
+        name: 'attention title, attention project',
+      }),
+    ).toBeNull();
     expect(document.activeElement).toBe(
       screen.getByRole('button', {
         name: 'active title, active project',
@@ -571,7 +576,9 @@ describe('ChatDockInboxPanel', () => {
   it('focuses the inbox panel when the removed row has no neighbor (#1054)', () => {
     renderPanel({ items: [items[0]], openChatSessionIds: ['active'] });
     const panel = screen.getByRole('complementary', { name: 'Inbox chats' });
-    const close = screen.getByRole('button', { name: 'Close active title' });
+    const close = screen.getByRole('button', {
+      name: 'Dismiss active title from inbox',
+    });
     close.focus();
 
     fireEvent.click(close);

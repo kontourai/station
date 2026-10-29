@@ -442,6 +442,25 @@ cases in `FileTreePanel.test.tsx` and `InboxRow.test.tsx`, and was rendered in
 Chromium. It has not been verified in WKWebView or WebView2, or on an iOS or
 Android device.
 
+### Inbox swipe actions
+
+The Sheet gestures device preview also enables a left swipe on touch inbox rows
+in the dock panel and mobile switcher. The shared row reveals the existing clock
+and × with labels and 72px-wide targets. A swipe only reveals the controls; the
+clock opens Snooze choices and × dismisses with Undo. A right swipe closes the
+rail. Vertical movement stays available to the scroll container, and the swipe’s
+trailing click cannot open the conversation. Details and long press retain the
+same actions with the preview off.
+
+Dismissal is browser-local inbox visibility, separate from tab teardown, stopping
+work, or deleting a draft. The Dismissed section offers Restore. Lifecycle changes
+use the existing debounce; running progress does not restore a dismissed row.
+The swipe Snooze picker uses the dialog layer above its mobile inbox host.
+The Chromium journey in `inbox-swipe.browser.test.tsx` exercises touch reveal,
+hit targets, Snooze, Dismiss/Undo, preview-off recovery and desktop hover controls,
+and renders 390px and 1440px in both themes. Physical-device behavior remains
+unverified.
+
 ### Coding on a phone
 
 The built-in Coding layout keeps Chat in its workbench at phone widths, with

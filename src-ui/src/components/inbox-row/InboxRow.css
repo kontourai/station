@@ -546,3 +546,73 @@
   width: 12px;
   height: 12px;
 }
+
+.inbox-row--swipe {
+  overflow: hidden;
+  touch-action: pan-y;
+  min-height: 76px;
+}
+.inbox-row--swipe > .inbox-row__open,
+.inbox-row--swipe > .inbox-row__actions {
+  transition: transform var(--k-dur) var(--k-ease);
+}
+.inbox-row--swipe > .inbox-row__open {
+  position: relative;
+  z-index: 1;
+  min-height: 76px;
+  background: var(--k-panel);
+}
+.inbox-row--swiped > .inbox-row__open,
+.inbox-row--swiped > .inbox-row__actions {
+  transform: translateX(-144px);
+}
+.inbox-row__swipe-actions {
+  position: absolute;
+  inset: 0 0 0 auto;
+  display: flex;
+  width: 144px;
+  background: var(--k-panel-raised);
+}
+.inbox-row__swipe-actions[hidden] {
+  display: none;
+}
+.inbox-row__swipe-actions > button {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: var(--k-space-2);
+  width: 72px;
+  height: auto;
+  min-height: 44px;
+  padding: var(--k-space-2);
+  border: 0;
+  border-inline-start: 1px solid var(--k-line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+}
+.inbox-row__swipe-actions > button::after {
+  content: none;
+}
+.inbox-row__swipe-actions > .inbox-row__swipe-dismiss {
+  color: var(--k-action);
+  background: color-mix(in srgb, var(--k-action) 12%, var(--k-panel-raised));
+}
+.inbox-row__swipe-actions svg {
+  width: 22px;
+  height: 22px;
+}
+.chat-dock-inbox__dismiss-notice {
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--k-space-2);
+  padding: var(--k-space-2) var(--k-space-3);
+  border-top: 1px solid var(--k-line);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
