@@ -49,7 +49,6 @@ async function main([label, script, ...args] = process.argv.slice(2)) {
     // Node flags given to this runner apply to the check it becomes.
     args: [...process.execArgv, script, ...args],
     label,
-    holdsSlot: !slot.reentrant && !slot.skipped,
   });
 }
 
