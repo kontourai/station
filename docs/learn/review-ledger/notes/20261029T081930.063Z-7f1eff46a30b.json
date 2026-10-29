@@ -1,0 +1,9 @@
+{
+  "revision": "f08cabd60b5d86081b3e0ed0488d5924315363ee",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"usage-telemetry-disclosure.ts f08cabd60b5 only drops a type cast when reading the presented pairing scope; the disclosure capabilities this document names are computed and returned exactly as before.","inputs":["docs/reference/api.md","src-server/routes/operations/usage-telemetry-disclosure.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"usage-telemetry-disclosure.ts f08cabd60b5 only drops a type cast when reading the presented pairing scope; capability values, the no-prompt rule and disabled choices described here are unchanged and still pinned by config-telemetry-paired.routes.test.ts and TelemetryConsent.routes.test.tsx.","inputs":["docs/reference/usage-telemetry.md","src-server/routes/operations/usage-telemetry-disclosure.ts"]}
+  ]
+}

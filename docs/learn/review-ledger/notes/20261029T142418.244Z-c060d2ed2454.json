@@ -1,0 +1,7 @@
+{
+  "revision": "d00b8f40f6948501b190b7c074a1d09de87deeef",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Corrected: the composer reset chip stays in place disabled for every temporary shared handoff block (running turn, unresolved queued/offline messages, queue state checking or unavailable), not only a turn; matches useConversationBoundaryDialogs handoffDisabledReason.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/chat.css"]}
+  ]
+}
