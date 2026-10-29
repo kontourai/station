@@ -1558,6 +1558,14 @@ to select the repo-local browser; the suite runner sets this itself. The reusabl
 `.github/workflows/full-regression.yml` provides the browser
 prerequisite for hosted completion; do not infer it from dependency installation.
 
+On Linux, an explicit `PLAYWRIGHT_BROWSERS_PATH` also binds installed-browser
+Vitest fixtures to that installed Playwright revision. Global setup places a
+`google-chrome` link in the run-owned temporary directory ahead of ambient
+browsers; ordinary system-Chrome discovery otherwise takes precedence over a
+`chromium` link. Missing pinned files fail the prerequisite. Teardown removes
+the link with that run root and restores its PATH. This does not disable the
+Chromium sandbox or qualify an unconfigured system browser.
+
 `npm test` is the named focused pre-push test tier. Station's own
 `.githooks/pre-push` has its separate check list; it does not invoke this alias. Its checked-in manifest covers repository guardrails, public contracts,
 authentication/connection boundaries, orchestration state, and core
