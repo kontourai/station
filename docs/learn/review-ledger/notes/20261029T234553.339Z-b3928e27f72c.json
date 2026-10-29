@@ -1,0 +1,7 @@
+{
+  "revision": "d43a9ed25c38e5bb2613c8d358253d89f1ce6a60",
+
+  "notes": [
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Scoped runtime-route impact review at d43a9ed25c3. Read the complete dated decision, its current-reading notice and explicit NOT_VERIFIED list. Traced the current personal-host gate, BrowserService construction, project/operator authorization, listener observations and live-surface composition; inspected pending browser-related runtime hunks including TaskBrowserCapture using the existing registry and authorized Project owner. Group/report, analytics and media additions do not select desktop CEF or Electron, replace the server Chromium host, introduce a browser profile from caller data, or make a capture receipt prove control/visibility/hostile-page acceptance. The existing notice correctly separates implemented personal-host routes and v2 pane migration from historical planned modules, token observations, connection estimates and platform claims. No prose change required for this named composition input. Source reasoning only: no browser/native/device/provider execution, listener-denial test, throughput, clipboard, profile-security, consent UX, release or platform qualification; the historical NOT_VERIFIED statements remain and no baseline/classification/capture change.","inputs":["docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}
