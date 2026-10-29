@@ -1079,9 +1079,54 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     expect(chatInputPropsMock.current?.sendBlockedReason).toBe(
       "You can read this chat but can't send to it.",
     );
+    // No "Type a message" placeholder on a composer that cannot send.
+    expect(chatInputPropsMock.current?.sendRefused).toBe(true);
     expect(
       screen.getByTestId('chat-dock-session-failure').textContent,
     ).not.toMatch(/send a message|send again/i);
+  });
+
+  test('a busy wait keeps a draft open only for a caller who may send later', async () => {
+    const busy = {
+      ...openState({ continue: false, startChat: false }, false),
+      continuationPending: true,
+    };
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'idle',
+        lifecycleState: 'idle',
+      }),
+      session: buildSession({
+        conversationId: 'cool',
+        conversationOpenState: busy,
+      }),
+    });
+    await screen.findByTestId('chat-input-area');
+    await waitFor(() =>
+      expect(chatInputPropsMock.current?.disabled).toBe(true),
+    );
+    expect(chatInputPropsMock.current?.allowDraftWhileDisabled).toBe(false);
+  });
+
+  test('a busy wait still keeps the draft open for a caller who may send', async () => {
+    // Mirror, so a draft withheld from everyone fails.
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'idle',
+        lifecycleState: 'idle',
+      }),
+      session: buildSession({
+        conversationId: 'cool',
+        conversationOpenState: {
+          ...openState({ continue: true, startChat: true }, false),
+          continuationPending: true,
+        },
+      }),
+    });
+    await screen.findByTestId('chat-input-area');
+    await waitFor(() =>
+      expect(chatInputPropsMock.current?.allowDraftWhileDisabled).toBe(true),
+    );
   });
 
   test('an empty chat invites no typing for a caller who may not send', async () => {
@@ -1139,7 +1184,11 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
 
   test.each([
     [true, false, undefined],
-    [false, true, 'This conversation continues from its original workspace.'],
+    [
+      false,
+      true,
+      "This chat can only continue in its original workspace, and you can't start a new chat here.",
+    ],
   ] as const)(
     'a refused workspace offers Start new chat only to a caller allowed one (startChat=%s)',
     async (startChat, disabled, reason) => {

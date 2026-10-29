@@ -299,6 +299,13 @@ const LOADING_ESCAPE_DELAY_MS = 6_000;
  */
 const CALLER_CANNOT_SEND_REASON =
   "You can read this chat but can't send to it.";
+/**
+ * A refused workspace (the server refused this conversation's queued turn
+ * here) for a caller the server also refused a new chat: both halves of why
+ * nothing can be sent from this composer.
+ */
+const WORKSPACE_REFUSED_WITHOUT_NEW_CHAT_REASON =
+  "This chat can only continue in its original workspace, and you can't start a new chat here.";
 const LOADING_LONG_MESSAGE =
   'This conversation is taking longer to load. Waiting for Station.';
 
@@ -1417,7 +1424,7 @@ export function ChatDockBody({
         const displayContent = memoryContinued
           ? MEMORY_EXHAUSTION_CONTINUING_DISPLAY
           : translation
-            ? formatChatErrorDisplay(translation)
+            ? formatChatErrorDisplay(translation, callerAccess)
             : (turnInterruptedMatch?.[1] ?? eventBody);
         // #797: the failed turn's own user message now survives the failure,
         // so the marker can offer to send it again — text and attachments
@@ -1443,9 +1450,16 @@ export function ChatDockBody({
         // A start Station could not confirm may have created the session;
         // a resend then collides with it ("thread … already has an active
         // writer"). No blind Send again — the hint says to check first.
+        // Nor for a session that cannot take another message
+        // (`terminalSession`: its contract is "retrying cannot help; offer a
+        // fresh chat") — with New chat withheld from a caller the server
+        // refused one, the chain below used to fall through to Send again.
+        // Nor for a caller the server said may not send at all.
         const canRetry =
           chatErrorCode !== SESSION_START_INDETERMINATE_CODE &&
           translation?.retryable !== false &&
+          !translation?.terminalSession &&
+          callerMayContinue &&
           !!retryTurn &&
           (!!retryTurn.text.trim() || retryTurn.attachments.length > 0);
         return (
@@ -1479,12 +1493,16 @@ export function ChatDockBody({
                               onClick: () => void chatInput.handleCancel(),
                             }
                           : undefined
-                        : {
-                            // Not a resend: Station's continuation, whose
-                            // model input carries the recovery note.
-                            label: 'Continue',
-                            onClick: () => void continueAfterMemoryKill(),
-                          }
+                        : callerMayContinue
+                          ? {
+                              // Not a resend: Station's continuation, whose
+                              // model input carries the recovery note. It
+                              // posts a turn, so a caller the server refused
+                              // a send is not offered it.
+                              label: 'Continue',
+                              onClick: () => void continueAfterMemoryKill(),
+                            }
+                          : undefined
                       : translation?.retryable === false &&
                           chatErrorCode !== SESSION_START_INDETERMINATE_CODE &&
                           onNewChat
@@ -1536,6 +1554,8 @@ export function ChatDockBody({
       continueAfterMemoryKill,
       activeSession,
       chatInput.handleCancel,
+      callerAccess,
+      callerMayContinue,
     ],
   );
 
@@ -2546,7 +2566,12 @@ export function ChatDockBody({
               !callerMayContinue ||
               workspaceRefusedWithoutNewChat
             }
-            allowDraftWhileDisabled={busyWaitBlocksSend && !!agent}
+            // A busy wait keeps the draft open for a later send; a caller
+            // the server refused a send has no later send to draft for.
+            allowDraftWhileDisabled={
+              busyWaitBlocksSend && !!agent && callerMayContinue
+            }
+            sendRefused={!callerMayContinue || workspaceRefusedWithoutNewChat}
             turnInFlight={isTurnInFlight(activeSession)}
             busyFollowUp={busyFollowUp}
             busySteeringKind={nativeSteering ? 'native' : 'safe-stop'}
@@ -2649,7 +2674,7 @@ export function ChatDockBody({
                     // say so instead of leaving Send to fail with a 403.
                     CALLER_CANNOT_SEND_REASON
                   : workspaceRefusedWithoutNewChat
-                    ? 'This conversation continues from its original workspace.'
+                    ? WORKSPACE_REFUSED_WITHOUT_NEW_CHAT_REASON
                     : recoveryOpen || resolvingOpen || busyWaitBlocksSend
                       ? // The banner above already says this; repeating the SENTENCE
                         // under the composer is what made one ordinary reload read as

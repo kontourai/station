@@ -703,3 +703,126 @@ describe('ChatDockBody memory-exhaustion marker', () => {
     expect(sdk.continueAfterMemoryExhaustion).not.toHaveBeenCalled();
   });
 });
+
+/*
+ * The marker's action follows what THIS caller may do, as the server's open
+ * read reported it (`callerAccess`). Three callers: full access (no answer,
+ * so unknown shows everything), one the server refused a new chat, and a
+ * read-only caller refused both. A session that cannot take another message
+ * (`session_ended`, `terminalSession`) offers Send again to nobody.
+ */
+describe('ChatDockBody marker actions follow callerAccess', () => {
+  const CALLERS = {
+    full: undefined,
+    noNewChat: { continue: true, startChat: false },
+    readOnly: { continue: false, startChat: false },
+  } as const;
+
+  function sessionWith(
+    marker: string,
+    callerAccess: { continue: boolean; startChat: boolean } | undefined,
+  ) {
+    return buildSession({
+      conversationId: 'conversation-access',
+      status: 'idle',
+      messages: [
+        { role: 'user', content: 'are you still there?', timestamp: 1 } as any,
+        { role: 'user', content: marker, timestamp: 2 } as any,
+      ],
+      ...(callerAccess
+        ? {
+            conversationOpenState: {
+              status: 'resolved',
+              conversation: {
+                id: 'conversation-access',
+                source: 'runtime',
+                agentSlug: agentId('codex'),
+                title: 'Access chat',
+                createdAt: '2026-10-01T00:00:00.000Z',
+                updatedAt: '2026-10-01T00:01:00.000Z',
+                messageCount: 2,
+                mutable: false,
+                answerability: { answerable: true },
+              },
+              currentSessionId: 'conversation-access',
+              transcript: {
+                available: true,
+                owner: 'runtime',
+                messageCount: 2,
+              },
+              canContinue: true,
+              answerability: { answerable: true },
+              recoveryActions: [],
+              callerAccess,
+            },
+          }
+        : {}),
+    } as Partial<ChatSession>);
+  }
+
+  const ACTIONS = ['New chat', 'Send again', 'Switch agent', 'Continue'];
+  async function actionsFor(
+    marker: string,
+    caller: keyof typeof CALLERS,
+    headline: RegExp,
+  ) {
+    renderDock(sessionWith(marker, CALLERS[caller]), vi.fn());
+    await screen.findByText(
+      headline,
+      {},
+      { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+    );
+    return ACTIONS.filter((name) => screen.queryByRole('button', { name }));
+  }
+
+  const ENDED =
+    '[SYSTEM_EVENT] [CHAT_ERROR:session_ended] This session has already ended.';
+  test.each([
+    ['full', ['New chat']],
+    ['noNewChat', []],
+    ['readOnly', []],
+  ] as const)(
+    'an ended session offers %s caller %j, never Send again',
+    async (caller, expected) => {
+      expect(await actionsFor(ENDED, caller, /This chat has ended/)).toEqual(
+        expected,
+      );
+      // The hint names a new chat only to a caller allowed one.
+      expect(Boolean(screen.queryByText(/Start a new chat to continue/))).toBe(
+        caller === 'full',
+      );
+    },
+  );
+
+  const LOST = `[SYSTEM_EVENT] [CHAT_ERROR:engine-session-binding-dead] ${RAW_MESSAGE}`;
+  test.each([
+    ['full', ['Send again'], true],
+    ['noNewChat', ['Send again'], false],
+    ['readOnly', [], false],
+  ] as const)(
+    'a lost engine session offers %s caller %j',
+    async (caller, expected, namesNewChat) => {
+      expect(
+        await actionsFor(LOST, caller, /engine session was lost/i),
+      ).toEqual(expected);
+      expect(Boolean(screen.queryByText(/or start a new chat/))).toBe(
+        namesNewChat,
+      );
+    },
+  );
+
+  const OOM =
+    '[SYSTEM_EVENT] [CHAT_ERROR:engine-memory-exhausted] Codex ran out of memory and was stopped.';
+  test.each([
+    ['full', ['Continue']],
+    ['noNewChat', ['Continue']],
+    ['readOnly', []],
+  ] as const)(
+    'an out-of-memory stop offers %s caller %j',
+    async (caller, expected) => {
+      expect(
+        await actionsFor(OOM, caller, /engine ran out of memory/i),
+      ).toEqual(expected);
+    },
+  );
+});

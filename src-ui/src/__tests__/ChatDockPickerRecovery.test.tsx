@@ -292,10 +292,10 @@ function mountChat() {
   );
 }
 
-async function pick() {
+async function pick(picked: { id: string } = conversation) {
   await waitFor(() => expect(registeredNavigation.current).not.toBeNull());
   await act(async () => {
-    await registeredNavigation.current?.openConversation(conversation);
+    await registeredNavigation.current?.openConversation(picked);
   });
 }
 
@@ -320,6 +320,32 @@ describe('ChatDock picker recovery follows the server on Start new chat', () => 
     );
     expect(await screen.findByRole('button', { name: 'Retry' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Start new chat' })).toBeNull();
+  });
+
+  // The answer is per conversation: a refusal for one chat must not follow
+  // the caller to a different chat whose own read failed.
+  test("a failed read of another conversation does not inherit the first one's refusal", async () => {
+    resolveConversationOpen.mockResolvedValueOnce(
+      unavailable({ continue: false, startChat: false }),
+    );
+    mountChat();
+    await pick();
+    await screen.findByRole('button', { name: 'Retry' });
+    expect(screen.queryByRole('button', { name: 'Start new chat' })).toBeNull();
+
+    resolveConversationOpen.mockRejectedValueOnce(new Error('offline'));
+    await pick({
+      ...conversation,
+      id: 'conversation-other',
+      title: 'Other chat',
+    } as typeof conversation);
+    await waitFor(() =>
+      expect(resolveConversationOpen).toHaveBeenCalledTimes(2),
+    );
+    // Nothing is known about this caller here, so the action shows.
+    expect(
+      await screen.findByRole('button', { name: 'Start new chat' }),
+    ).toBeTruthy();
   });
 
   test('a caller the server allows is offered Start new chat', async () => {

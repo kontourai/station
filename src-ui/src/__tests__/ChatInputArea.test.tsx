@@ -221,6 +221,19 @@ describe('ChatInputArea', () => {
     expect(textarea.placeholder).toBe('Loading chat…');
   });
 
+  test('a composer whose sending the server refused invites no typing', () => {
+    renderChatInputArea({
+      disabled: true,
+      sendRefused: true,
+      sendBlockedReason: "You can read this chat but can't send to it.",
+    });
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    expect(textarea.placeholder).toBe('');
+    expect(
+      screen.getByText("You can read this chat but can't send to it."),
+    ).toBeTruthy();
+  });
+
   test('keeps a busy continuation draft focusable without sending or queueing it', () => {
     const onInputChange = vi.fn();
     const onSend = vi.fn(async () => {});

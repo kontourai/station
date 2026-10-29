@@ -67,6 +67,13 @@ export interface ChatErrorTranslation {
    */
   retryable?: boolean;
   /**
+   * The hint for a caller the server says may not start a new chat
+   * (`callerAccess.startChat === false`), when `hint` recommends one. `null`
+   * means no hint at all. Unset means `hint` names no new chat and stands.
+   * Read through {@link chatErrorHintFor}, never directly.
+   */
+  hintWithoutNewChat?: string | null;
+  /**
    * True when the raw engine message should be available behind a Details
    * control, never as the card body. Callers that still inline markdown
    * (formatChatErrorDisplay) must not dump it there.
@@ -370,6 +377,7 @@ export function translateChatError(
         text ||
         'This session has already ended, so it cannot take another message.',
       hint: 'Start a new chat to continue.',
+      hintWithoutNewChat: null,
       terminalSession: true,
     };
   }
@@ -522,6 +530,7 @@ export function translateChatError(
       title: "Can't resume",
       body: text || 'Unsafe workspace.',
       hint: 'New chat.',
+      hintWithoutNewChat: null,
       terminalSession: true,
     };
   }
@@ -570,6 +579,7 @@ export function translateChatError(
       title: 'Sign in to this engine',
       body: text || 'This engine needs you to sign in before it can run.',
       hint: "Sign in from the engine's page in Connections, then start a new chat.",
+      hintWithoutNewChat: "Sign in from the engine's page in Connections.",
       retryable: false,
     };
   }
@@ -597,6 +607,8 @@ export function translateChatError(
       title: "This conversation's engine session was lost",
       body: 'The engine could not reopen the native session behind this conversation, so this turn failed.',
       hint: 'Send your message again — the conversation continues in a fresh engine session — or start a new chat.',
+      hintWithoutNewChat:
+        'Send your message again — the conversation continues in a fresh engine session.',
       disclosureRaw: true,
     };
   }
@@ -768,12 +780,32 @@ export const MEMORY_EXHAUSTION_CONTINUE_TEXT =
  * Renders a `ChatErrorTranslation` as the markdown chat copy shown to the
  * user. Raw engine text is not inlined — `disclosureRaw` is a Details control.
  */
+/**
+ * The hint to show THIS caller: a hint recommending a new chat is replaced
+ * by `hintWithoutNewChat` when the server's open read said the caller may
+ * not start one (`callerAccess.startChat === false`). Unknown access shows
+ * the full hint; the server still enforces.
+ */
+export function chatErrorHintFor(
+  translation: ChatErrorTranslation,
+  callerAccess?: { startChat?: boolean },
+): string | undefined {
+  if (
+    callerAccess?.startChat === false &&
+    translation.hintWithoutNewChat !== undefined
+  )
+    return translation.hintWithoutNewChat ?? undefined;
+  return translation.hint;
+}
+
 export function formatChatErrorDisplay(
   translation: ChatErrorTranslation,
+  callerAccess?: { startChat?: boolean },
 ): string {
   const lines = [`**${translation.title}**`, '', translation.body];
-  if (translation.hint) {
-    lines.push('', translation.hint);
+  const hint = chatErrorHintFor(translation, callerAccess);
+  if (hint) {
+    lines.push('', hint);
   }
   return lines.join('\n');
 }
