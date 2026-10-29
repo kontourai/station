@@ -1,0 +1,1505 @@
+{
+  "app": {},
+  "cli": {
+    "acp command-options": {
+      "missing": 4286,
+      "want": "List_acp_command_options"
+    },
+    "acp commands": {
+      "missing": 4286,
+      "want": "List_acp_commands"
+    },
+    "acp connections": {
+      "missing": 4286,
+      "want": "List|create|update|delete|reconnect_acp_connection"
+    },
+    "acp status": {
+      "missing": 4286,
+      "want": "Acp_status"
+    },
+    "agents chat": {
+      "tools": ["send_message"]
+    },
+    "agents conversations": {
+      "tools": ["list_conversations"]
+    },
+    "agents create": {
+      "tools": ["create_agent"]
+    },
+    "agents delete": {
+      "tools": ["delete_agent"]
+    },
+    "agents get": {
+      "tools": ["get_agent"],
+      "note": "Route differs."
+    },
+    "agents list": {
+      "tools": ["list_agents"],
+      "note": "Route differs (/api/agents vs /agents)."
+    },
+    "agents messages": {
+      "tools": ["get_conversation_messages"]
+    },
+    "agents update": {
+      "tools": ["update_agent"]
+    },
+    "agents workflows": {
+      "missing": 4286,
+      "want": "List_agent_workflows / get|create|update|delete_agent_workflow"
+    },
+    "approvals list": {
+      "exempt": "person-only",
+      "reason": "A person answers approval prompts; an agent sees its own delegated task's pending request through get_task."
+    },
+    "approvals respond": {
+      "exempt": "person-only",
+      "reason": "Answering an approval needs a bound operator (route rule approval-commands-need-bound-operator); an agent never answers approval prompts."
+    },
+    "auth renew": {
+      "exempt": "person-only",
+      "reason": "The person's own auth session."
+    },
+    "auth status": {
+      "exempt": "person-only",
+      "reason": "The person's own auth session."
+    },
+    "auth terminal": {
+      "exempt": "person-only",
+      "reason": "The person's own auth session."
+    },
+    "auth users": {
+      "exempt": "person-only",
+      "reason": "Person directory lookup (/api/users/search)."
+    },
+    "branding get": {
+      "exempt": "presentation",
+      "reason": "Whitelabel branding for UI chrome (/api/branding)."
+    },
+    "build": {
+      "exempt": "local-host",
+      "reason": "Acts on this machine's install, not a Station API."
+    },
+    "chat": {
+      "tools": ["send_message", "send_to_session"],
+      "note": "`chat --session` is the person's own send (POST /api/orchestration/chat); send_to_session uses the agent-only session-control leaf."
+    },
+    "checkpoints history": {
+      "missing": 4281,
+      "want": "a tool for the restore history the server serves at GET /api/orchestration/sessions/:threadId/checkpoint-restores"
+    },
+    "checkpoints prune": {
+      "exempt": "local-host",
+      "reason": "Reads or prunes git checkpoint refs in this Station home on disk."
+    },
+    "checkpoints restore": {
+      "missing": 4281,
+      "want": "a tool that previews and restores a turn checkpoint"
+    },
+    "checkpoints retention": {
+      "exempt": "local-host",
+      "reason": "Reads the checkpoint retention record (checkpoint-retention.json) in this Station home on disk."
+    },
+    "checkpoints status": {
+      "exempt": "local-host",
+      "reason": "Reads git checkpoint refs in this Station home on disk."
+    },
+    "claims list": {
+      "tools": ["list_project_activity"],
+      "note": "A person lists claims over GET /api/orchestration/work-claims; agents read the same claims through list_project_activity. Claim, renew and release stay agent-only until a person can be a claimant (#3427)."
+    },
+    "cloud import-project": {
+      "exempt": "local-host",
+      "reason": "Cloud deployment packaging/keys on this machine."
+    },
+    "cloud inspect-workspace": {
+      "exempt": "local-host",
+      "reason": "Cloud deployment packaging/keys on this machine."
+    },
+    "cloud keygen": {
+      "exempt": "local-host",
+      "reason": "Cloud deployment packaging/keys on this machine."
+    },
+    "cloud pack-workspace": {
+      "exempt": "local-host",
+      "reason": "Cloud deployment packaging/keys on this machine."
+    },
+    "cloud preview": {
+      "exempt": "local-host",
+      "reason": "Cloud deployment packaging/keys on this machine."
+    },
+    "cloud template": {
+      "exempt": "local-host",
+      "reason": "Cloud deployment packaging/keys on this machine."
+    },
+    "cloud unpack-workspace": {
+      "exempt": "local-host",
+      "reason": "Cloud deployment packaging/keys on this machine."
+    },
+    "cloud verify-target": {
+      "exempt": "local-host",
+      "reason": "Cloud deployment packaging/keys on this machine."
+    },
+    "cloud verify-workspace": {
+      "exempt": "local-host",
+      "reason": "Cloud deployment packaging/keys on this machine."
+    },
+    "config get": {
+      "tools": ["get_config"]
+    },
+    "config set": {
+      "tools": ["update_config"]
+    },
+    "connections create": {
+      "tools": ["create_provider"],
+      "note": "Route differs; tool is personOnly:always."
+    },
+    "connections delete": {
+      "missing": 4286,
+      "want": "Delete_connection"
+    },
+    "connections get": {
+      "missing": 4286,
+      "want": "Get_connection"
+    },
+    "connections list": {
+      "tools": ["list_providers"],
+      "note": "Route differs (/api/connections vs /api/providers)."
+    },
+    "connections models": {
+      "tools": ["list_models"],
+      "note": "Route differs."
+    },
+    "connections profile-apply": {
+      "exempt": "person-only",
+      "reason": "Engine credential-recovery profiles and enrolment (/api/connections/agent/:id/credential-recovery/*)."
+    },
+    "connections profile-delete": {
+      "exempt": "person-only",
+      "reason": "Engine credential-recovery profiles and enrolment (/api/connections/agent/:id/credential-recovery/*)."
+    },
+    "connections profile-enroll": {
+      "exempt": "person-only",
+      "reason": "Engine credential-recovery profiles and enrolment (/api/connections/agent/:id/credential-recovery/*)."
+    },
+    "connections profile-env": {
+      "exempt": "person-only",
+      "reason": "Engine credential-recovery profiles and enrolment (/api/connections/agent/:id/credential-recovery/*)."
+    },
+    "connections profile-import": {
+      "exempt": "person-only",
+      "reason": "Engine credential-recovery profiles and enrolment (/api/connections/agent/:id/credential-recovery/*)."
+    },
+    "connections profile-unenroll": {
+      "exempt": "person-only",
+      "reason": "Engine credential-recovery profiles and enrolment (/api/connections/agent/:id/credential-recovery/*)."
+    },
+    "connections profile-upsert": {
+      "exempt": "person-only",
+      "reason": "Engine credential-recovery profiles and enrolment (/api/connections/agent/:id/credential-recovery/*)."
+    },
+    "connections profiles": {
+      "exempt": "person-only",
+      "reason": "Engine credential-recovery profiles and enrolment (/api/connections/agent/:id/credential-recovery/*)."
+    },
+    "connections recovery": {
+      "exempt": "person-only",
+      "reason": "Engine credential-recovery profiles and enrolment (/api/connections/agent/:id/credential-recovery/*)."
+    },
+    "connections recovery-policy": {
+      "exempt": "person-only",
+      "reason": "Engine credential-recovery profiles and enrolment (/api/connections/agent/:id/credential-recovery/*)."
+    },
+    "connections runtimes": {
+      "missing": 4286,
+      "want": "List_agent_connections"
+    },
+    "connections test": {
+      "missing": 4286,
+      "want": "Test_connection"
+    },
+    "connections update": {
+      "missing": 4286,
+      "want": "Update_connection"
+    },
+    "conversation export": {
+      "tools": ["get_conversation_messages", "read_conversation"],
+      "note": "Export endpoint GET /agents/:slug/conversations/:id/export?format= has no tool; transcript read is covered."
+    },
+    "conversation fork": {
+      "tools": ["fork_conversation"]
+    },
+    "delegate attempt": {
+      "exempt": "client-local",
+      "reason": "Looks up a CLI invocation's lost handle by client attempt id (GET /api/orchestration/delegations/attempts/:id); MCP returns the handle synchronously."
+    },
+    "delegate continue": {
+      "tools": ["continue_task"]
+    },
+    "delegate events": {
+      "tools": ["get_task_events"]
+    },
+    "delegate interrupt": {
+      "tools": ["interrupt_task"]
+    },
+    "delegate list": {
+      "tools": ["list_delegated_tasks"]
+    },
+    "delegate respond": {
+      "tools": ["respond_to_task_request"]
+    },
+    "delegate status": {
+      "tools": ["get_task"]
+    },
+    "delegate targets": {
+      "tools": ["list_delegation_targets"]
+    },
+    "delegate wait": {
+      "tools": ["get_task"],
+      "note": "Agent polls get_task; no server-side wait."
+    },
+    "dev": {
+      "exempt": "local-host",
+      "reason": "Acts on this machine's install, not a Station API."
+    },
+    "doctor": {
+      "exempt": "local-host",
+      "reason": "Acts on this machine's install, not a Station API."
+    },
+    "environment access": {
+      "exempt": "person-only",
+      "reason": "Pairing offers, device access approval, peer credentials (/api/pairing/*)."
+    },
+    "environment add": {
+      "tools": ["create_ssh_environment"]
+    },
+    "environment connect": {
+      "tools": ["connect_ssh_environment"]
+    },
+    "environment credential": {
+      "exempt": "person-only",
+      "reason": "Pairing offers, device access approval, peer credentials (/api/pairing/*)."
+    },
+    "environment hosts": {
+      "missing": 4286,
+      "want": "List_ssh_hosts"
+    },
+    "environment list": {
+      "tools": ["list_delegation_environments"]
+    },
+    "environment offer": {
+      "exempt": "person-only",
+      "reason": "Pairing offers, device access approval, peer credentials (/api/pairing/*)."
+    },
+    "environment peers": {
+      "exempt": "person-only",
+      "reason": "Pairing offers, device access approval, peer credentials (/api/pairing/*)."
+    },
+    "environment remove": {
+      "tools": ["remove_ssh_environment"]
+    },
+    "environment reset": {
+      "exempt": "person-only",
+      "reason": "Pairing offers, device access approval, peer credentials (/api/pairing/*)."
+    },
+    "environment show": {
+      "tools": ["get_ssh_environment"],
+      "note": "With an id only; bare `show` reports local environment security (local)."
+    },
+    "environment stop": {
+      "tools": ["disconnect_ssh_environment"]
+    },
+    "export": {
+      "exempt": "client-local",
+      "reason": "Writes agents-md/claude-desktop config from local config."
+    },
+    "feedback analyze": {
+      "exempt": "person-only",
+      "reason": "The person's ratings of replies and the analysis of them; agents grading their own output is not the design."
+    },
+    "feedback clear-analysis": {
+      "exempt": "person-only",
+      "reason": "The person's ratings of replies and the analysis of them; agents grading their own output is not the design."
+    },
+    "feedback delete": {
+      "exempt": "person-only",
+      "reason": "The person's ratings of replies and the analysis of them; agents grading their own output is not the design."
+    },
+    "feedback guidelines": {
+      "exempt": "person-only",
+      "reason": "The person's ratings of replies and the analysis of them; agents grading their own output is not the design."
+    },
+    "feedback rate": {
+      "exempt": "person-only",
+      "reason": "The person's ratings of replies and the analysis of them; agents grading their own output is not the design."
+    },
+    "feedback ratings": {
+      "exempt": "person-only",
+      "reason": "The person's ratings of replies and the analysis of them; agents grading their own output is not the design."
+    },
+    "feedback status": {
+      "exempt": "person-only",
+      "reason": "The person's ratings of replies and the analysis of them; agents grading their own output is not the design."
+    },
+    "feedback test": {
+      "exempt": "person-only",
+      "reason": "The person's ratings of replies and the analysis of them; agents grading their own output is not the design."
+    },
+    "feedback unrate": {
+      "exempt": "person-only",
+      "reason": "The person's ratings of replies and the analysis of them; agents grading their own output is not the design."
+    },
+    "flow attach-command": {
+      "missing": 4288,
+      "want": "Flow_attach_command"
+    },
+    "flow definitions": {
+      "missing": 4288,
+      "want": "Flow_definitions"
+    },
+    "flow evaluate": {
+      "missing": 4288,
+      "want": "Flow_evaluate"
+    },
+    "flow get": {
+      "missing": 4288,
+      "want": "Flow_get"
+    },
+    "flow report": {
+      "missing": 4288,
+      "want": "Flow_report"
+    },
+    "flow runs": {
+      "missing": 4288,
+      "want": "Flow_runs"
+    },
+    "flow start": {
+      "missing": 4288,
+      "want": "Flow_start"
+    },
+    "fresh": {
+      "exempt": "local-host",
+      "reason": "Acts on this machine's install, not a Station API."
+    },
+    "home backup": {
+      "exempt": "local-host",
+      "reason": "Station home backup/restore/reset on disk."
+    },
+    "home recovery-plan": {
+      "exempt": "local-host",
+      "reason": "Station home backup/restore/reset on disk."
+    },
+    "home reset": {
+      "exempt": "local-host",
+      "reason": "Station home backup/restore/reset on disk."
+    },
+    "home restore": {
+      "exempt": "local-host",
+      "reason": "Station home backup/restore/reset on disk."
+    },
+    "home verify": {
+      "exempt": "local-host",
+      "reason": "Station home backup/restore/reset on disk."
+    },
+    "import": {
+      "exempt": "client-local",
+      "reason": "Imports local config into this home."
+    },
+    "insights events": {
+      "tools": ["read_monitoring_events"]
+    },
+    "insights get": {
+      "missing": 4284,
+      "want": "Get_insights"
+    },
+    "knowledge docs": {
+      "missing": 4283,
+      "want": "Knowledge document tools"
+    },
+    "knowledge documents": {
+      "missing": 4283,
+      "want": "Knowledge document tools"
+    },
+    "knowledge migrate": {
+      "tools": ["migrate_knowledge"]
+    },
+    "knowledge namespaces": {
+      "missing": 4283,
+      "want": "List|create|update|delete_knowledge_namespace"
+    },
+    "knowledge reindex": {
+      "tools": ["reindex_knowledge"]
+    },
+    "knowledge search": {
+      "tools": ["search_knowledge"]
+    },
+    "knowledge status": {
+      "missing": 4283,
+      "want": "Knowledge_status"
+    },
+    "link": {
+      "exempt": "local-host",
+      "reason": "Acts on this machine's install, not a Station API."
+    },
+    "mcp-clients authorize": {
+      "exempt": "person-only",
+      "reason": "External MCP client credentials (/api/orchestration/station-control/external-clients)."
+    },
+    "mcp-clients create": {
+      "exempt": "person-only",
+      "reason": "External MCP client credentials (/api/orchestration/station-control/external-clients)."
+    },
+    "mcp-clients revoke": {
+      "exempt": "person-only",
+      "reason": "External MCP client credentials (/api/orchestration/station-control/external-clients)."
+    },
+    "media-tools download": {
+      "exempt": "local-host",
+      "reason": "Downloads/inspects transcription binaries for this host."
+    },
+    "media-tools status": {
+      "exempt": "local-host",
+      "reason": "Downloads/inspects transcription binaries for this host."
+    },
+    "monitoring events": {
+      "tools": ["read_monitoring_events"]
+    },
+    "monitoring metrics": {
+      "missing": 4284,
+      "want": "Get_monitoring_metrics"
+    },
+    "monitoring stats": {
+      "missing": 4284,
+      "want": "Get_monitoring_stats"
+    },
+    "notifications action": {
+      "exempt": "person-only",
+      "reason": "The person's own notification queue; agents only post via notify_user."
+    },
+    "notifications clear": {
+      "exempt": "person-only",
+      "reason": "The person's own notification queue; agents only post via notify_user."
+    },
+    "notifications create": {
+      "tools": ["notify_user"],
+      "note": "Route differs: POST /notifications vs agent-attributed POST /api/notifications/agent."
+    },
+    "notifications delete": {
+      "exempt": "person-only",
+      "reason": "The person's own notification queue; agents only post via notify_user."
+    },
+    "notifications dismiss": {
+      "exempt": "person-only",
+      "reason": "The person's own notification queue; agents only post via notify_user."
+    },
+    "notifications list": {
+      "exempt": "person-only",
+      "reason": "The person's own notification queue; agents only post via notify_user."
+    },
+    "notifications providers": {
+      "exempt": "person-only",
+      "reason": "The person's own notification queue; agents only post via notify_user."
+    },
+    "notifications snooze": {
+      "exempt": "person-only",
+      "reason": "The person's own notification queue; agents only post via notify_user."
+    },
+    "open": {
+      "exempt": "person-only",
+      "reason": "Mints a single-use sign-in link / opens the browser for a person."
+    },
+    "operate": {
+      "exempt": "interactive",
+      "reason": "Operate TUI."
+    },
+    "plugin build": {
+      "exempt": "local-host",
+      "reason": "Plugin authoring on the local filesystem / dev server."
+    },
+    "plugin create": {
+      "exempt": "local-host",
+      "reason": "Plugin authoring on the local filesystem / dev server."
+    },
+    "plugin dev": {
+      "exempt": "local-host",
+      "reason": "Plugin authoring on the local filesystem / dev server."
+    },
+    "plugin experience": {
+      "exempt": "local-host",
+      "reason": "Plugin authoring on the local filesystem / dev server."
+    },
+    "plugin info": {
+      "missing": 4285,
+      "want": "Get_plugin"
+    },
+    "plugin init": {
+      "exempt": "local-host",
+      "reason": "Plugin authoring on the local filesystem / dev server."
+    },
+    "plugin install": {
+      "tools": ["propose_plugin_install"],
+      "note": "Materially different authority: CLI installs (POST /api/plugins/install with consent); an agent can only propose (install_plugin refuses)."
+    },
+    "plugin list": {
+      "tools": ["list_plugins"]
+    },
+    "plugin preview": {
+      "exempt": "person-only",
+      "reason": "Preview yields the permission set/digest a person approves; agents must not echo it into an install."
+    },
+    "plugin registry": {
+      "missing": 4285,
+      "want": "List_registry_plugins"
+    },
+    "plugin remove": {
+      "tools": ["remove_plugin"],
+      "note": "MCP is a proposal; CLI removes directly."
+    },
+    "plugin update": {
+      "tools": ["update_plugin"],
+      "note": "The tool proposes the update; the CLI applies it."
+    },
+    "projects attach": {
+      "exempt": "person-only",
+      "reason": "Binds a Project to a checkout/path on the Station host (/api/projects/:slug/identity*, /api/projects/attach); a host path binding is a person step."
+    },
+    "projects create": {
+      "missing": 4286,
+      "want": "Create_project"
+    },
+    "projects delete": {
+      "missing": 4286,
+      "want": "Delete_project"
+    },
+    "projects execution-root": {
+      "exempt": "person-only",
+      "reason": "Binds a Project to a checkout/path on the Station host (/api/projects/:slug/identity*, /api/projects/attach); a host path binding is a person step."
+    },
+    "projects get": {
+      "tools": ["get_project"]
+    },
+    "projects identity": {
+      "exempt": "person-only",
+      "reason": "Binds a Project to a checkout/path on the Station host (/api/projects/:slug/identity*, /api/projects/attach); a host path binding is a person step."
+    },
+    "projects layouts": {
+      "tools": ["list_project_layouts"],
+      "note": "Only list/get covered; layout create/update/delete/from-plugin/available have no tool."
+    },
+    "projects list": {
+      "tools": ["list_projects"]
+    },
+    "projects prepare-identity": {
+      "exempt": "person-only",
+      "reason": "Binds a Project to a checkout/path on the Station host (/api/projects/:slug/identity*, /api/projects/attach); a host path binding is a person step."
+    },
+    "projects update": {
+      "missing": 4286,
+      "want": "Update_project"
+    },
+    "registry agents": {
+      "missing": 4285,
+      "want": "List_registry_agents / install_registry_agent"
+    },
+    "registry install": {
+      "tools": ["propose_plugin_install"],
+      "note": "CLI installs a registry plugin directly (POST /api/registry/plugins/install); agent can only propose."
+    },
+    "registry integrations": {
+      "tools": ["list_registry_integrations", "install_registry_integration"],
+      "note": "Remove (DELETE /api/registry/integrations/:id) has no tool; delete_integration uses DELETE /integrations/:id."
+    },
+    "registry plugins": {
+      "missing": 4285,
+      "want": "List_registry_plugins"
+    },
+    "registry skills": {
+      "tools": ["list_registry_skills", "install_skill", "uninstall_skill"],
+      "note": "`installed` action (GET /api/registry/skills/installed) has no tool."
+    },
+    "restart": {
+      "exempt": "local-host",
+      "reason": "Acts on this machine's install, not a Station API."
+    },
+    "review list": {
+      "tools": ["list_review_receipts"]
+    },
+    "review read": {
+      "tools": ["get_review_receipt"]
+    },
+    "review run": {
+      "tools": ["run_independent_review"]
+    },
+    "review status": {
+      "tools": ["get_review_request"]
+    },
+    "runs list": {
+      "missing": 4284,
+      "want": "List_runs"
+    },
+    "runs output": {
+      "missing": 4284,
+      "want": "Get_run_output"
+    },
+    "runs read": {
+      "missing": 4284,
+      "want": "Get_run"
+    },
+    "schedule create": {
+      "tools": ["add_job"]
+    },
+    "schedule delete": {
+      "tools": ["delete_job"]
+    },
+    "schedule disable": {
+      "tools": ["disable_job"]
+    },
+    "schedule enable": {
+      "tools": ["enable_job"]
+    },
+    "schedule jobs": {
+      "tools": ["list_jobs"]
+    },
+    "schedule list": {
+      "tools": ["list_jobs"]
+    },
+    "schedule logs": {
+      "tools": ["get_job_logs"]
+    },
+    "schedule preview": {
+      "tools": ["preview_schedule"]
+    },
+    "schedule providers": {
+      "tools": ["list_scheduler_providers"]
+    },
+    "schedule run": {
+      "tools": ["run_job"]
+    },
+    "schedule stats": {
+      "tools": ["get_scheduler_stats"]
+    },
+    "schedule status": {
+      "tools": ["get_scheduler_status"]
+    },
+    "schedule update": {
+      "tools": ["update_job"]
+    },
+    "secret-bindings bind": {
+      "exempt": "person-only",
+      "reason": "Secret bindings hold credentials; only a person creates, reads or binds them."
+    },
+    "secret-bindings create": {
+      "exempt": "person-only",
+      "reason": "Secret bindings hold credentials; only a person creates, reads or binds them."
+    },
+    "secret-bindings get": {
+      "exempt": "person-only",
+      "reason": "Secret bindings hold credentials; only a person creates, reads or binds them."
+    },
+    "secret-bindings list": {
+      "exempt": "person-only",
+      "reason": "Secret bindings hold credentials; only a person creates, reads or binds them."
+    },
+    "secret-bindings migrate-stored-env": {
+      "exempt": "person-only",
+      "reason": "Secret bindings hold credentials; only a person creates, reads or binds them."
+    },
+    "secret-bindings replace": {
+      "exempt": "person-only",
+      "reason": "Secret bindings hold credentials; only a person creates, reads or binds them."
+    },
+    "secret-bindings revoke": {
+      "exempt": "person-only",
+      "reason": "Secret bindings hold credentials; only a person creates, reads or binds them."
+    },
+    "secret-bindings unbind": {
+      "exempt": "person-only",
+      "reason": "Secret bindings hold credentials; only a person creates, reads or binds them."
+    },
+    "service install": {
+      "exempt": "local-host",
+      "reason": "Launchd/systemd/Windows service management."
+    },
+    "service run": {
+      "exempt": "local-host",
+      "reason": "Launchd/systemd/Windows service management."
+    },
+    "service start": {
+      "exempt": "local-host",
+      "reason": "Launchd/systemd/Windows service management."
+    },
+    "service status": {
+      "exempt": "local-host",
+      "reason": "Launchd/systemd/Windows service management."
+    },
+    "service stop": {
+      "exempt": "local-host",
+      "reason": "Launchd/systemd/Windows service management."
+    },
+    "service uninstall": {
+      "exempt": "local-host",
+      "reason": "Launchd/systemd/Windows service management."
+    },
+    "sessions inspect": {
+      "missing": 3427,
+      "want": "Get_session_tool_result"
+    },
+    "sessions interrupt": {
+      "tools": ["interrupt_session"],
+      "note": "Route differs: /api/orchestration/commands interruptTurn vs session-control/interrupt."
+    },
+    "sessions list": {
+      "missing": 3427,
+      "want": "list_active_work lists active work in scope, not the session read model this lists"
+    },
+    "sessions read": {
+      "missing": 3427,
+      "want": "read_conversation reads the transcript, not the orchestration session snapshot this reads"
+    },
+    "setup existing": {
+      "exempt": "local-host",
+      "reason": "First-run setup of this machine/hosted target."
+    },
+    "setup hosted": {
+      "exempt": "local-host",
+      "reason": "First-run setup of this machine/hosted target."
+    },
+    "setup import": {
+      "exempt": "local-host",
+      "reason": "First-run setup of this machine/hosted target."
+    },
+    "setup local": {
+      "exempt": "local-host",
+      "reason": "First-run setup of this machine/hosted target."
+    },
+    "shortcut": {
+      "exempt": "local-host",
+      "reason": "Acts on this machine's install, not a Station API."
+    },
+    "skills create": {
+      "missing": 4286,
+      "want": "Create_skill"
+    },
+    "skills delete": {
+      "missing": 4286,
+      "want": "Delete_skill"
+    },
+    "skills get": {
+      "missing": 4286,
+      "want": "Get_skill"
+    },
+    "skills install": {
+      "tools": ["install_skill"],
+      "note": "Route differs: POST /api/skills {name} vs POST /api/registry/skills/install."
+    },
+    "skills list": {
+      "tools": ["list_skills"],
+      "note": "Route differs (/api/skills vs /api/system/skills)."
+    },
+    "skills update": {
+      "tools": ["update_skill"]
+    },
+    "start": {
+      "exempt": "local-host",
+      "reason": "Acts on this machine's install, not a Station API."
+    },
+    "stations add": {
+      "exempt": "client-local",
+      "reason": "Saved Station list on this device."
+    },
+    "stations edit": {
+      "exempt": "client-local",
+      "reason": "Saved Station list on this device."
+    },
+    "stations export": {
+      "exempt": "client-local",
+      "reason": "Saved Station list on this device."
+    },
+    "stations forget": {
+      "exempt": "client-local",
+      "reason": "Saved Station list on this device."
+    },
+    "stations list": {
+      "exempt": "client-local",
+      "reason": "Saved Station list on this device."
+    },
+    "stations pair": {
+      "exempt": "person-only",
+      "reason": "Pairing a device to a Station."
+    },
+    "stations project": {
+      "exempt": "client-local",
+      "reason": "Saved Station list on this device."
+    },
+    "stations show": {
+      "exempt": "client-local",
+      "reason": "Saved Station list on this device."
+    },
+    "stations use": {
+      "exempt": "client-local",
+      "reason": "Saved Station list on this device."
+    },
+    "stop": {
+      "exempt": "local-host",
+      "reason": "Acts on this machine's install, not a Station API."
+    },
+    "supervisor status": {
+      "exempt": "local-host",
+      "reason": "Local supervisor process state."
+    },
+    "target": {
+      "exempt": "client-local",
+      "reason": "Default target config on this device."
+    },
+    "tasks attach-input": {
+      "missing": 4287,
+      "want": "Task_attach_input"
+    },
+    "tasks attach-result": {
+      "missing": 4287,
+      "want": "Task_attach_result"
+    },
+    "tasks attach-support": {
+      "missing": 4287,
+      "want": "Task_attach_support"
+    },
+    "tasks attach-turn": {
+      "missing": 4287,
+      "want": "Task_attach_turn"
+    },
+    "tasks basis": {
+      "tools": ["get_basis", "get_task_basis"]
+    },
+    "tasks create": {
+      "missing": 4287,
+      "want": "Task_create"
+    },
+    "tasks delete-output": {
+      "missing": 4287,
+      "want": "Task_delete_output"
+    },
+    "tasks download-output": {
+      "missing": 4287,
+      "want": "Task_download_output"
+    },
+    "tasks get": {
+      "missing": 4287,
+      "want": "Task_get"
+    },
+    "tasks get-output": {
+      "missing": 4287,
+      "want": "Task_get_output"
+    },
+    "tasks keep-output": {
+      "missing": 4287,
+      "want": "Task_keep_output"
+    },
+    "tasks list": {
+      "missing": 4287,
+      "want": "Task_list"
+    },
+    "tasks list-outputs": {
+      "missing": 4287,
+      "want": "Task_list_outputs"
+    },
+    "tasks list-support-bundles": {
+      "missing": 4287,
+      "want": "Task_list_support_bundles"
+    },
+    "tasks list-support-claims": {
+      "missing": 4287,
+      "want": "Task_list_support_claims"
+    },
+    "tasks remove-support": {
+      "missing": 4287,
+      "want": "Task_remove_support"
+    },
+    "tasks replace-support": {
+      "missing": 4287,
+      "want": "Task_replace_support"
+    },
+    "tasks show-inputs": {
+      "missing": 4287,
+      "want": "Task_show_inputs"
+    },
+    "tasks show-results": {
+      "missing": 4287,
+      "want": "Task_show_results"
+    },
+    "tasks show-support": {
+      "missing": 4287,
+      "want": "Task_show_support"
+    },
+    "tasks show-turn": {
+      "missing": 4287,
+      "want": "Task_show_turn"
+    },
+    "telemetry producers": {
+      "exempt": "person-only",
+      "reason": "Telemetry opt-in and producer config (/api/telemetry-producers, /api/usage-telemetry) are the person's consent."
+    },
+    "telemetry set": {
+      "exempt": "person-only",
+      "reason": "Telemetry opt-in and producer config (/api/telemetry-producers, /api/usage-telemetry) are the person's consent."
+    },
+    "telemetry status": {
+      "exempt": "person-only",
+      "reason": "Telemetry opt-in and producer config (/api/telemetry-producers, /api/usage-telemetry) are the person's consent."
+    },
+    "tools create": {
+      "tools": ["create_integration"]
+    },
+    "tools delete": {
+      "tools": ["delete_integration"]
+    },
+    "tools get": {
+      "tools": ["get_integration"]
+    },
+    "tools list": {
+      "tools": ["list_integrations"]
+    },
+    "tools reconnect": {
+      "missing": 4286,
+      "want": "Reconnect_integration"
+    },
+    "tools update": {
+      "missing": 4286,
+      "want": "Update_integration"
+    },
+    "triage": {
+      "exempt": "local-host",
+      "reason": "Collects a diagnostics bundle (GET /api/diagnostics/bundle) plus local state."
+    },
+    "upgrade": {
+      "exempt": "local-host",
+      "reason": "Acts on this machine's install, not a Station API."
+    },
+    "version": {
+      "exempt": "local-host",
+      "reason": "Acts on this machine's install, not a Station API."
+    },
+    "voice agent": {
+      "exempt": "interactive",
+      "reason": "Realtime voice sessions for a person's microphone (/api/voice/*)."
+    },
+    "voice create-session": {
+      "exempt": "interactive",
+      "reason": "Realtime voice sessions for a person's microphone (/api/voice/*)."
+    },
+    "voice delete-session": {
+      "exempt": "interactive",
+      "reason": "Realtime voice sessions for a person's microphone (/api/voice/*)."
+    },
+    "voice status": {
+      "exempt": "interactive",
+      "reason": "Realtime voice sessions for a person's microphone (/api/voice/*)."
+    },
+    "walkthrough import": {
+      "missing": 4284,
+      "want": "Import_walkthrough"
+    },
+    "walkthrough list": {
+      "tools": ["list_walkthroughs"]
+    },
+    "walkthrough show": {
+      "tools": ["get_walkthrough"]
+    },
+    "workload status": {
+      "missing": 4284,
+      "want": "a tool for the Station-wide workload (GET /api/system/workload)"
+    }
+  },
+  "tools": {
+    "add_job": {
+      "cli": ["schedule create"]
+    },
+    "add_knowledge_record": {
+      "missing": 4283,
+      "want": "Knowledge records add"
+    },
+    "board_move": {
+      "missing": 4282,
+      "want": "Board move"
+    },
+    "board_pin": {
+      "missing": 4282,
+      "want": "Board pin"
+    },
+    "board_read": {
+      "missing": 4282,
+      "want": "Board read"
+    },
+    "board_unpin": {
+      "missing": 4282,
+      "want": "Board unpin"
+    },
+    "cancel_wake_up": {
+      "exempt": "agent-self",
+      "reason": "Cancels the caller's own wake-up."
+    },
+    "check_plugin_updates": {
+      "missing": 4285,
+      "want": "Plugin check-updates"
+    },
+    "claim_work": {
+      "missing": 3427,
+      "want": "Claims claim"
+    },
+    "connect_ssh_environment": {
+      "cli": ["environment connect"]
+    },
+    "continue_task": {
+      "cli": ["delegate continue"]
+    },
+    "create_agent": {
+      "cli": ["agents create"]
+    },
+    "create_integration": {
+      "cli": ["tools create"],
+      "note": "Tool is personOnly:always, so an agent is refused; parity is person-to-person."
+    },
+    "create_provider": {
+      "cli": ["connections create"],
+      "note": "Different route (/api/providers vs /api/connections); MCP is personOnly:always."
+    },
+    "create_ssh_environment": {
+      "cli": ["environment add"]
+    },
+    "declare_pull_request": {
+      "exempt": "agent-self",
+      "reason": "Needs the caller's active engine turn (issue #3427 out of scope)."
+    },
+    "delegate_task": {
+      "cli": ["delegate"],
+      "note": "Bare `station delegate <agent> <message>` creates (not a listed action)."
+    },
+    "delete_agent": {
+      "cli": ["agents delete"]
+    },
+    "delete_conversation": {
+      "missing": 4281,
+      "want": "Agents delete-conversation"
+    },
+    "delete_integration": {
+      "cli": ["tools delete"]
+    },
+    "delete_job": {
+      "cli": ["schedule delete"]
+    },
+    "device_close": {
+      "exempt": "agent-self",
+      "reason": "Computer use inside the calling agent's own turn; the route refuses every non-internal request, and a person drives devices in the UI pane."
+    },
+    "device_input": {
+      "exempt": "agent-self",
+      "reason": "Computer use inside the calling agent's own turn; the route refuses every non-internal request, and a person drives devices in the UI pane."
+    },
+    "device_list": {
+      "exempt": "agent-self",
+      "reason": "Computer use inside the calling agent's own turn; the route refuses every non-internal request, and a person drives devices in the UI pane."
+    },
+    "device_open": {
+      "exempt": "agent-self",
+      "reason": "Computer use inside the calling agent's own turn; the route refuses every non-internal request, and a person drives devices in the UI pane."
+    },
+    "device_screenshot": {
+      "exempt": "agent-self",
+      "reason": "Computer use inside the calling agent's own turn; the route refuses every non-internal request, and a person drives devices in the UI pane."
+    },
+    "device_snapshot": {
+      "exempt": "agent-self",
+      "reason": "Computer use inside the calling agent's own turn; the route refuses every non-internal request, and a person drives devices in the UI pane."
+    },
+    "disable_job": {
+      "cli": ["schedule disable"]
+    },
+    "disconnect_ssh_environment": {
+      "cli": ["environment stop"]
+    },
+    "enable_job": {
+      "cli": ["schedule enable"]
+    },
+    "fork_conversation": {
+      "cli": ["conversation fork"]
+    },
+    "get_achievements": {
+      "missing": 4284,
+      "want": "Achievements"
+    },
+    "get_agent": {
+      "cli": ["agents get"],
+      "note": "Different route: MCP GET /agents (filters list), CLI GET /api/agents/:slug."
+    },
+    "get_answer_assessment_target": {
+      "exempt": "agent-self",
+      "reason": "Machine-produced Surface trust bundle for an answer; no person workflow publishes one."
+    },
+    "get_basis": {
+      "cli": ["tasks basis"],
+      "note": "CLI covers only the Task leaf (GET /api/tasks/:taskId/basis); the per-turn leaf GET /api/orchestration/sessions/:id/turns/:turnId/basis has no CLI action (SDK answer-basis.ts has the fetcher)."
+    },
+    "get_config": {
+      "cli": ["config get"]
+    },
+    "get_conversation_messages": {
+      "cli": ["agents messages"]
+    },
+    "get_integration": {
+      "cli": ["tools get"]
+    },
+    "get_job_logs": {
+      "cli": ["schedule logs"]
+    },
+    "get_knowledge_record": {
+      "missing": 4283,
+      "want": "Knowledge records get"
+    },
+    "get_personal_board": {
+      "missing": 4282,
+      "want": "Boards get"
+    },
+    "get_project": {
+      "cli": ["projects get"]
+    },
+    "get_review_receipt": {
+      "cli": ["review read"]
+    },
+    "get_review_request": {
+      "cli": ["review status"]
+    },
+    "get_scheduler_stats": {
+      "cli": ["schedule stats"]
+    },
+    "get_scheduler_status": {
+      "cli": ["schedule status"]
+    },
+    "get_session_digest": {
+      "missing": 3427,
+      "want": "Sessions digest"
+    },
+    "get_session_inventory": {
+      "missing": 3427,
+      "want": "Sessions inventory"
+    },
+    "get_ssh_environment": {
+      "cli": ["environment show"],
+      "note": "`environment show <id>`; bare `show` is local environment security."
+    },
+    "get_task": {
+      "cli": ["delegate status", "delegate wait"],
+      "note": "CLI wait polls status client-side; no MCP wait for delegated tasks."
+    },
+    "get_task_basis": {
+      "cli": ["tasks basis"],
+      "note": "Different route: MCP uses the MCP-app channel POST/DELETE /api/tasks/:id/basis/app-read (needs a caller binding); CLI GET /api/tasks/:id/basis."
+    },
+    "get_task_brief": {
+      "exempt": "agent-self",
+      "reason": "Brief for the caller's own dispatched session (route uses authority.caller.sessionId)."
+    },
+    "get_task_events": {
+      "cli": ["delegate events"]
+    },
+    "get_usage": {
+      "missing": 4284,
+      "want": "Usage"
+    },
+    "get_walkthrough": {
+      "cli": ["walkthrough show"],
+      "note": "MCP also reads frames; CLI shows the record only."
+    },
+    "html_preview": {
+      "exempt": "agent-ui",
+      "reason": "Previews into the agent's own chat surface."
+    },
+    "html_render": {
+      "exempt": "agent-ui",
+      "reason": "Renders into the agent's own chat surface."
+    },
+    "install_plugin": {
+      "exempt": "agent-proposal",
+      "reason": "Routes:[]; tool only explains that a person must install and points at propose_plugin_install."
+    },
+    "install_registry_integration": {
+      "cli": ["registry integrations"],
+      "note": "The tool is personOnly: always."
+    },
+    "install_skill": {
+      "cli": ["registry skills"],
+      "note": "`registry skills install <id>`; `skills install` instead POSTs /api/skills {name}."
+    },
+    "interrupt_session": {
+      "cli": ["sessions interrupt"],
+      "note": "Different route: MCP POST /api/orchestration/session-control/interrupt; CLI POST /api/orchestration/commands (interruptTurn)."
+    },
+    "interrupt_task": {
+      "cli": ["delegate interrupt"]
+    },
+    "list_active_work": {
+      "missing": 3427,
+      "want": "Activity --active"
+    },
+    "list_agents": {
+      "cli": ["agents list"],
+      "note": "Different route: MCP GET /agents, CLI GET /api/agents."
+    },
+    "list_conversations": {
+      "cli": ["agents conversations"]
+    },
+    "list_delegated_tasks": {
+      "cli": ["delegate list"]
+    },
+    "list_delegation_environments": {
+      "cli": ["environment list"]
+    },
+    "list_delegation_targets": {
+      "cli": ["delegate targets"]
+    },
+    "list_integrations": {
+      "cli": ["tools list"]
+    },
+    "list_jobs": {
+      "cli": ["schedule list", "schedule jobs"]
+    },
+    "list_knowledge_records": {
+      "missing": 4283,
+      "want": "Knowledge records list"
+    },
+    "list_knowledge_roots": {
+      "missing": 4283,
+      "want": "Knowledge roots"
+    },
+    "list_models": {
+      "cli": ["connections models"],
+      "note": "Different route: MCP GET /api/models, CLI GET /api/connections/models."
+    },
+    "list_personal_boards": {
+      "missing": 4282,
+      "want": "Boards list"
+    },
+    "list_plugins": {
+      "cli": ["plugin list"]
+    },
+    "list_project_activity": {
+      "missing": 3427,
+      "want": "Activity --project"
+    },
+    "list_project_layouts": {
+      "cli": ["projects layouts"],
+      "note": "CLI layouts also creates/updates/deletes layouts; MCP is read-only."
+    },
+    "list_project_s3_objects": {
+      "missing": 4283,
+      "want": "Knowledge s3 objects"
+    },
+    "list_project_s3_sources": {
+      "missing": 4283,
+      "want": "Knowledge s3 sources"
+    },
+    "list_projects": {
+      "cli": ["projects list"]
+    },
+    "list_providers": {
+      "cli": ["connections list"],
+      "note": "Different route: MCP GET /api/providers (legacy provider endpoints), CLI GET /api/connections. The legacy route answers from the same connection service."
+    },
+    "list_registry_integrations": {
+      "cli": ["registry integrations"]
+    },
+    "list_registry_skills": {
+      "cli": ["registry skills"],
+      "note": "`registry skills list`."
+    },
+    "list_review_receipts": {
+      "cli": ["review list"]
+    },
+    "list_scheduler_providers": {
+      "cli": ["schedule providers"]
+    },
+    "list_skills": {
+      "cli": ["skills list"],
+      "note": "Different route: MCP GET /api/system/skills, CLI GET /api/skills (SDK keeps both fetchers deliberately; installed vs system catalogue)."
+    },
+    "list_wake_ups": {
+      "exempt": "agent-self",
+      "reason": "Lists the caller's own wake-ups."
+    },
+    "list_walkthroughs": {
+      "cli": ["walkthrough list"]
+    },
+    "migrate_knowledge": {
+      "cli": ["knowledge migrate"]
+    },
+    "navigate_to": {
+      "exempt": "agent-ui",
+      "reason": "Drives the person's open UI via POST /api/ui."
+    },
+    "notify_user": {
+      "cli": ["notifications create"],
+      "note": "The tool posts an agent-attributed notification (POST /api/notifications/agent); the CLI posts as the person (POST /notifications)."
+    },
+    "preview_schedule": {
+      "cli": ["schedule preview"]
+    },
+    "propose_job": {
+      "exempt": "agent-proposal",
+      "reason": "Agent asks a person; a person creates directly with `schedule create`."
+    },
+    "propose_personal_board": {
+      "exempt": "agent-proposal",
+      "reason": "An agent proposes, the person edits the board directly in the UI."
+    },
+    "propose_plugin_install": {
+      "exempt": "agent-proposal",
+      "reason": "Person completes with `plugin install` / `registry install`."
+    },
+    "publish_answer_assessment": {
+      "exempt": "agent-self",
+      "reason": "See get_answer_assessment_target."
+    },
+    "read_conversation": {
+      "missing": 3427,
+      "want": "Sessions read --around/--cursor"
+    },
+    "read_logs": {
+      "missing": 4284,
+      "want": "Logs"
+    },
+    "read_monitoring_events": {
+      "cli": ["monitoring events", "insights events"]
+    },
+    "read_project_s3_object": {
+      "missing": 4283,
+      "want": "Knowledge s3 read"
+    },
+    "read_pull_request_guide": {
+      "missing": 4286,
+      "want": "Pr guide read"
+    },
+    "record_skill_outcome": {
+      "exempt": "agent-self",
+      "reason": "Records the outcome of the calling agent's own skill run."
+    },
+    "reindex_knowledge": {
+      "cli": ["knowledge reindex"]
+    },
+    "release_claim": {
+      "missing": 3427,
+      "want": "Claims release"
+    },
+    "remove_answer_assessment": {
+      "exempt": "agent-self",
+      "reason": "See get_answer_assessment_target."
+    },
+    "remove_plugin": {
+      "exempt": "agent-proposal",
+      "reason": "POST /api/plugin-proposals; person runs `plugin remove` (DELETE /api/plugins/:name)."
+    },
+    "remove_ssh_environment": {
+      "cli": ["environment remove"]
+    },
+    "rename_session": {
+      "exempt": "agent-self",
+      "reason": "Agent-title leaf names the caller's own session; a person renames via PATCH /agents/:slug/conversations/:id (issue #3427 out of scope)."
+    },
+    "renew_claim": {
+      "missing": 3427,
+      "want": "Claims renew"
+    },
+    "respond_to_task_request": {
+      "cli": ["delegate respond"]
+    },
+    "run_independent_review": {
+      "cli": ["review run"]
+    },
+    "run_job": {
+      "cli": ["schedule run"]
+    },
+    "schedule_wake_up": {
+      "exempt": "agent-self",
+      "reason": "Wake-up is bound to the caller's own conversation (route rule wake-up-stays-in-own-conversation)."
+    },
+    "search_conversations": {
+      "missing": 4281,
+      "want": "Conversations search"
+    },
+    "search_knowledge": {
+      "cli": ["knowledge search"]
+    },
+    "search_sessions": {
+      "missing": 3427,
+      "want": "Sessions search"
+    },
+    "send_message": {
+      "cli": ["chat", "agents chat"],
+      "note": "Both reach POST /api/orchestration/chat; MCP may also POST /api/ui to open the result."
+    },
+    "send_to_session": {
+      "cli": ["chat"],
+      "note": "Different route and authority: MCP POST /api/orchestration/session-control/send (agent-to-agent, caller required, sender named); `chat --session <id>` is the person's own send via POST /api/orchestration/chat. Issue #3427 says the person send is the intended CLI equivalent. Modes (steer/auto/requestKey) not exposed by CLI."
+    },
+    "system_status": {
+      "missing": 4284,
+      "want": "Status"
+    },
+    "task_record": {
+      "exempt": "agent-self",
+      "reason": "Records into the caller's task from its live turn."
+    },
+    "task_summary_update": {
+      "exempt": "agent-self",
+      "reason": "Updates the caller session's task summary."
+    },
+    "task_thread_list": {
+      "exempt": "agent-self",
+      "reason": "Task threads of the caller's own task."
+    },
+    "task_thread_reply": {
+      "exempt": "agent-self",
+      "reason": "Replies as the caller session."
+    },
+    "task_thread_resolve": {
+      "exempt": "agent-self",
+      "reason": "Resolves as the caller session."
+    },
+    "track_skill_run": {
+      "exempt": "agent-self",
+      "reason": "Records the calling agent's own use of a skill."
+    },
+    "uninstall_skill": {
+      "cli": ["registry skills"],
+      "note": "`registry skills remove <id>` (same DELETE /api/registry/skills/:id)."
+    },
+    "update_agent": {
+      "cli": ["agents update"]
+    },
+    "update_config": {
+      "cli": ["config set"]
+    },
+    "update_job": {
+      "cli": ["schedule update"]
+    },
+    "update_plugin": {
+      "exempt": "agent-proposal",
+      "reason": "POST /api/plugin-proposals; person runs `plugin update` (POST /api/plugins/:name/update)."
+    },
+    "update_skill": {
+      "cli": ["skills update"]
+    },
+    "validate_plugin": {
+      "missing": 4285,
+      "want": "Plugin validate"
+    },
+    "wait_session": {
+      "missing": 3427,
+      "want": "Sessions wait"
+    },
+    "workload_status": {
+      "exempt": "agent-self",
+      "reason": "Reads the calling Session's own workload budget (GET /api/system/workload/session), which refuses a request without a caller."
+    },
+    "write_pull_request_guides": {
+      "missing": 4286,
+      "want": "Pr guide write"
+    }
+  }
+}
