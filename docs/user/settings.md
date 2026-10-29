@@ -42,7 +42,8 @@ from the Task's Project and capture it. Commit workspace changes first. Place a
 region pin with the pointer, or focus the image target, use the arrow keys and
 press Enter, then comment. Captures retain the commit and appear through the
 Task's authorized image route. Overview shows captured Screens in the Timeline;
-select a thumbnail to open it in Review. A bound agent can also capture an
+select a thumbnail to open it in Review. **Show more** reveals older Screens
+after the latest 12. A bound agent can also capture an
 authorized device Screen; see [device capture](https://github.com/kontourai/station/blob/main/docs/guides/mobile-device-workspace.md#capture-a-device-screen-to-a-task).
 Turning the preview off hides Review and Timeline; a
 `taskView=review` link then opens Overview.

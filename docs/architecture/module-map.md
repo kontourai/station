@@ -5600,8 +5600,9 @@ and explicit recognition, hosted and publication limits.
 The [Overview Timeline](../../src-ui/src/views/task-workspace/TaskOverviewTimeline.tsx)
 is gated by the same `task-review` preview. It reads capture items from the
 Task-scoped Review projection backed by `task_review_captures`, orders them by
-capture time, and fetches each thumbnail through the authorized capture-content
-route. Each Screen shows its label, commit, time and source icon. A gate chip
+capture time, and initially shows the most recent 12. Show more admits older
+entries. Nearby thumbnails use the authorized capture-content route, with at most
+four reads in flight and one shared read per content digest. Each Screen shows its label, commit, time and source icon. A gate chip
 uses the existing server-verified evidence on a summary's latest agent reply
 only when that reply references this capture and commit. Missing or unverified
 references say **claimed**; a label is never gate evidence. Selecting a thumbnail
