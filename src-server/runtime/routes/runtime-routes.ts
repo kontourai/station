@@ -8079,7 +8079,9 @@ export function configureRuntimeRoutes(
           preview: checkoutFreshnessPreview,
           read: async (project) =>
             checkoutFreshnessReader.read(
-              project.workingDirectory,
+              project.workingDirectory?.trim()
+                ? resolve(expandTilde(project.workingDirectory.trim()))
+                : undefined,
               resolveProjectCheckoutStaleThresholds(
                 await context.configLoader.loadAppConfig(),
               ),
