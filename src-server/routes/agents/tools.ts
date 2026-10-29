@@ -225,9 +225,11 @@ export function createToolRoutes(
 ) {
   const app = new Hono();
   // #3483: who a definition write is attributed to, when known.
-  const attribution = (c: Context): [] | [{ changedBy: string }] => {
+  const attribution = (
+    c: Context,
+  ): [{ changedBy?: string; personChange: true }] => {
     const changedBy = mcpUiCallDeps.resolveRequestPrincipalId?.(c);
-    return changedBy ? [{ changedBy }] : [];
+    return [{ ...(changedBy ? { changedBy } : {}), personChange: true }];
   };
   app.use('*', async (c, next) => {
     const path = c.req.path.replace(/^\/integrations/, '') || '/';

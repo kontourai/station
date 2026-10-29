@@ -141,6 +141,10 @@ export interface ToolDef {
   trustReadOnlyHints?: boolean;
   /** Server-written receipts for changes to the three fields above. */
   untrustedContentChanges?: UntrustedContentChange[];
+  /** Storage-owned record of person-controlled fields, retained beyond receipt history. */
+  untrustedContentPersonOwned?: Array<
+    'contentTrust' | 'permissions' | 'trustReadOnlyHints'
+  >;
 }
 
 /**
@@ -164,12 +168,26 @@ export interface UntrustedContentChange {
   at: string;
   /** Principal id of the person who made the change, when known. */
   by?: string;
+  /** An import made through the local CLI, without a verified Station principal. */
+  source?: 'local-cli-operator';
   contentTrust?: 'untrusted' | 'trusted';
   permissions?: UntrustedContentPermissions;
   trustReadOnlyHints?: boolean;
 }
 
 const UNTRUSTED_CONTENT_CHANGE_LIMIT = 50;
+
+export function personOwnedUntrustedContentFields(stored: ToolDef | undefined) {
+  const owned = new Set(stored?.untrustedContentPersonOwned ?? []);
+  for (const receipt of stored?.untrustedContentChanges ?? []) {
+    if (!receipt.by && receipt.source !== 'local-cli-operator') continue;
+    if (Object.hasOwn(receipt, 'contentTrust')) owned.add('contentTrust');
+    if (Object.hasOwn(receipt, 'permissions')) owned.add('permissions');
+    if (Object.hasOwn(receipt, 'trustReadOnlyHints'))
+      owned.add('trustReadOnlyHints');
+  }
+  return owned;
+}
 
 function sameValue(a: unknown, b: unknown): boolean {
   return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
@@ -187,9 +205,12 @@ export function withUntrustedContentChange(
   next: ToolDef,
   by: string | undefined,
   now: Date,
+  options?: { localCliImport?: boolean; personChange?: boolean },
 ): ToolDef {
   const result: ToolDef = { ...next };
   delete result.untrustedContentChanges;
+  delete result.untrustedContentPersonOwned;
+  const owned = personOwnedUntrustedContentFields(stored);
   if (stored?.untrustedContentChanges?.length)
     result.untrustedContentChanges = stored.untrustedContentChanges;
   const trustChanged =
@@ -201,16 +222,34 @@ export function withUntrustedContentChange(
   const hintsChanged =
     (stored?.trustReadOnlyHints ?? false) !==
     (next.trustReadOnlyHints ?? false);
-  if (!trustChanged && !permissionsChanged && !hintsChanged) return result;
+  if (by || options?.personChange || options?.localCliImport) {
+    if (trustChanged || options?.localCliImport) owned.add('contentTrust');
+    if (permissionsChanged || options?.localCliImport) owned.add('permissions');
+    if (hintsChanged || options?.localCliImport)
+      owned.add('trustReadOnlyHints');
+  }
+  if (owned.size) result.untrustedContentPersonOwned = [...owned];
+  if (
+    !trustChanged &&
+    !permissionsChanged &&
+    !hintsChanged &&
+    !options?.localCliImport
+  )
+    return result;
   const change: UntrustedContentChange = {
     at: now.toISOString(),
     ...(by ? { by } : {}),
+    ...(options?.localCliImport
+      ? { source: 'local-cli-operator' as const }
+      : {}),
     // Absent classification means trusted, so a removal records `trusted`.
-    ...(trustChanged ? { contentTrust: next.contentTrust ?? 'trusted' } : {}),
-    ...(permissionsChanged
+    ...(trustChanged || options?.localCliImport
+      ? { contentTrust: next.contentTrust ?? 'trusted' }
+      : {}),
+    ...(permissionsChanged || options?.localCliImport
       ? { permissions: next.untrustedContentPermissions ?? {} }
       : {}),
-    ...(hintsChanged
+    ...(hintsChanged || options?.localCliImport
       ? { trustReadOnlyHints: next.trustReadOnlyHints ?? false }
       : {}),
   };

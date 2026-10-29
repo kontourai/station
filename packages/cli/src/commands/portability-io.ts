@@ -16,6 +16,7 @@ import {
   isSafeToolServerCredentialKey,
   isSafeToolServerId,
   type ToolDef,
+  withUntrustedContentChange,
 } from '@kontourai/station-contracts/tool';
 import { publishJsonFileWithOwnedLock } from '@kontourai/station-shared/json-file-storage';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
@@ -197,7 +198,15 @@ export async function writeIntegration(
     const previous = existsSync(path)
       ? (JSON.parse(readFileSync(path, 'utf8')) as ToolDef)
       : undefined;
-    const persisted = { ...def };
+    const persisted = withUntrustedContentChange(
+      previous,
+      def,
+      undefined,
+      new Date(),
+      {
+        localCliImport: true,
+      },
+    );
     const previousNames = previous?.storedEnvNames ?? [];
     const refs = new Set(previousNames);
     for (const [name, secret] of Object.entries(secrets)) {

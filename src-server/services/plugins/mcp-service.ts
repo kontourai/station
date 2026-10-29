@@ -444,7 +444,7 @@ export class MCPService {
 
   async saveIntegration(
     def: ToolDef,
-    options?: { changedBy?: string },
+    options?: { changedBy?: string; personChange?: boolean },
   ): Promise<void> {
     if (
       (def as OwnershipTaggedToolDef)[CONTRIBUTED_INTEGRATION_DEFINITION] ===

@@ -12,6 +12,22 @@ import { execGitSync } from '../../../utils/git-exec.js';
 import type { Logger } from '../../../utils/logger.js';
 
 const build = vi.hoisted(() => ({ fail: false }));
+const providerFault = vi.hoisted(() => ({ failOnce: false }));
+vi.mock('../plugin-loader.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../plugin-loader.js')>();
+  return {
+    ...actual,
+    loadPluginProviders: async (
+      ...args: Parameters<typeof actual.loadPluginProviders>
+    ) => {
+      if (providerFault.failOnce) {
+        providerFault.failOnce = false;
+        throw new Error('injected provider failure');
+      }
+      return actual.loadPluginProviders(...args);
+    },
+  };
+});
 vi.mock('../plugin-bundles.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../plugin-bundles.js')>();
   return {
@@ -125,7 +141,7 @@ function mailPlugin() {
     }),
   );
   git(origin, 'commit', '-q', '-am', 'v2');
-  return { home };
+  return { home, origin };
 }
 
 const stored = (home: string) =>
@@ -172,6 +188,26 @@ describe('plugin update and rollback publish integrations through the locked wri
       });
     } finally {
       build.fail = false;
+    }
+  });
+
+  test('a late failure restores a retired integration with person history', async () => {
+    const { home, origin } = mailPlugin();
+    git(origin, 'rm', '-q', 'integrations/mail/integration.json');
+    git(origin, 'commit', '-q', '-m', 'retire integration');
+    const app = withOperatorPrincipal(createPluginRoutes(home, makeLogger()));
+    providerFault.failOnce = true;
+    try {
+      const response = await app.request('/mail-plugin/update', {
+        method: 'POST',
+      });
+      expect(await response.json()).toMatchObject({ success: false });
+      expect(stored(home)).toMatchObject({
+        untrustedContentPermissions: { tools: { send_reply: 'deny' } },
+        untrustedContentChanges: HISTORY,
+      });
+    } finally {
+      providerFault.failOnce = false;
     }
   });
 });

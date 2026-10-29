@@ -351,6 +351,12 @@
       "type": "boolean",
       "description": "Honor this server's read-only tool hints for the untrusted-content permission even when contentTrust is untrusted (#3483)."
     },
+    "untrustedContentPersonOwned": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "enum": ["contentTrust", "permissions", "trustReadOnlyHints"] },
+      "description": "Storage-owned fields controlled by a person; incoming values are ignored."
+    },
     "untrustedContentChanges": {
       "type": "array",
       "maxItems": 50,
@@ -361,6 +367,7 @@
         "properties": {
           "at": { "type": "string" },
           "by": { "type": "string" },
+          "source": { "const": "local-cli-operator" },
           "contentTrust": {
             "type": "string",
             "enum": ["untrusted", "trusted"]

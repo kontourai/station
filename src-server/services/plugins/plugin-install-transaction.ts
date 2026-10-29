@@ -2613,7 +2613,7 @@ function readPluginOwnedIntegrationIds(
   return [...ids];
 }
 
-function backupPluginOwnedIntegrations(
+export function backupPluginOwnedIntegrations(
   projectIntegrationsDir: string,
   pluginName: string,
   backupRoot: string,

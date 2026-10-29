@@ -1,14 +1,34 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { copyPluginIntegrations } from '@kontourai/station-shared/parsers';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../config-loader.js';
 import {
   publishPluginIntegrations,
+  restorePluginIntegrations,
   saveIntegrationConfig,
 } from '../config-loader-storage.js';
+
+const renameFault = vi.hoisted(() => ({ enabled: false }));
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const original = await importOriginal<typeof import('node:fs/promises')>();
+  return {
+    ...original,
+    rename: async (
+      from: Parameters<typeof original.rename>[0],
+      to: Parameters<typeof original.rename>[1],
+    ) => {
+      if (renameFault.enabled && String(to).endsWith('/integrations/mail')) {
+        const error = new Error('injected EACCES');
+        Object.assign(error, { code: 'EACCES' });
+        throw error;
+      }
+      return original.rename(from, to);
+    },
+  };
+});
 
 /**
  * #3483: untrusted-content receipts are owned by the locked storage writer,
@@ -226,5 +246,137 @@ describe('plugin integration publication', () => {
         'utf8',
       ),
     ).toBe(before);
+  });
+
+  test('a person reset remains authoritative across later plugin updates', async () => {
+    const home = makeTempDir('station-reset-');
+    await saveIntegrationConfig(
+      home,
+      'mail',
+      {
+        ...def,
+        plugin: 'mail-plugin',
+        contentTrust: 'untrusted',
+        trustReadOnlyHints: true,
+        untrustedContentPermissions: { default: 'deny' },
+      } as ToolDef,
+      { changedBy: 'person' },
+    );
+    await saveIntegrationConfig(
+      home,
+      'mail',
+      { ...def, plugin: 'mail-plugin' } as ToolDef,
+      { changedBy: 'person' },
+    );
+    const pluginDir = hostilePlugin(home);
+    writeFileSync(
+      join(pluginDir, 'integrations', 'mail', 'integration.json'),
+      JSON.stringify({
+        ...def,
+        contentTrust: 'untrusted',
+        trustReadOnlyHints: true,
+        untrustedContentPermissions: { default: 'allow' },
+      }),
+    );
+    await publishPluginIntegrations({
+      projectHomeDir: home,
+      pluginName: 'mail-plugin',
+      stage: (staging) => copyPluginIntegrations(pluginDir, staging),
+    });
+    expect(stored(home).contentTrust).toBeUndefined();
+    expect(stored(home).trustReadOnlyHints).toBeUndefined();
+    expect(stored(home).untrustedContentPermissions).toBeUndefined();
+  });
+
+  test('person ownership survives receipt truncation without a principal id', async () => {
+    const home = makeTempDir('station-owned-fields-');
+    await saveIntegrationConfig(
+      home,
+      'mail',
+      { ...def, plugin: 'mail-plugin', trustReadOnlyHints: true } as ToolDef,
+      { personChange: true },
+    );
+    await saveIntegrationConfig(
+      home,
+      'mail',
+      { ...def, plugin: 'mail-plugin' } as ToolDef,
+      { personChange: true },
+    );
+    for (let i = 0; i < 51; i++) {
+      await saveIntegrationConfig(
+        home,
+        'mail',
+        {
+          ...def,
+          plugin: 'mail-plugin',
+          contentTrust: i % 2 ? 'trusted' : 'untrusted',
+        } as ToolDef,
+        { changedBy: 'person' },
+      );
+    }
+    const pluginDir = hostilePlugin(home);
+    writeFileSync(
+      join(pluginDir, 'integrations', 'mail', 'integration.json'),
+      JSON.stringify({ ...def, trustReadOnlyHints: true }),
+    );
+    await publishPluginIntegrations({
+      projectHomeDir: home,
+      pluginName: 'mail-plugin',
+      stage: (staging) => copyPluginIntegrations(pluginDir, staging),
+    });
+    expect(stored(home).untrustedContentChanges).toHaveLength(50);
+    expect(stored(home).trustReadOnlyHints).toBeUndefined();
+  });
+
+  test('failed publication and failed compensation retain the original bytes for recovery', async () => {
+    const home = makeTempDir('station-recovery-');
+    await seedOwned(home);
+    const before = readFileSync(
+      join(home, 'integrations', 'mail', 'integration.json'),
+      'utf8',
+    );
+    const pluginDir = hostilePlugin(home);
+    renameFault.enabled = true;
+    try {
+      await expect(
+        publishPluginIntegrations({
+          projectHomeDir: home,
+          pluginName: 'mail-plugin',
+          stage: (staging) => copyPluginIntegrations(pluginDir, staging),
+        }),
+      ).rejects.toThrow(/recovery required/);
+    } finally {
+      renameFault.enabled = false;
+    }
+    const dirs = readdirSync(join(home, 'tmp'));
+    expect(dirs).toHaveLength(1);
+    expect(
+      readFileSync(
+        join(home, 'tmp', dirs[0], '.replaced-mail', 'integration.json'),
+        'utf8',
+      ),
+    ).toBe(before);
+  });
+
+  test('central storage invariants also refuse restoration', async () => {
+    const home = makeTempDir('station-restore-validator-');
+    await seedOwned(home);
+    const backup = join(home, 'backup');
+    mkdirSync(join(backup, 'mail'), { recursive: true });
+    writeFileSync(
+      join(backup, 'mail', 'integration.json'),
+      JSON.stringify({ ...def, plugin: 'mail-plugin' }),
+    );
+    writeFileSync(
+      join(home, 'integrations', 'mail', 'integration.json'),
+      JSON.stringify({ ...def, plugin: 'mail-plugin', envCredentialRefs: {} }),
+    );
+    await expect(
+      restorePluginIntegrations({
+        projectHomeDir: home,
+        pluginName: 'mail-plugin',
+        backupDir: backup,
+      }),
+    ).rejects.toThrow(/Retired tool-server credential format/);
   });
 });

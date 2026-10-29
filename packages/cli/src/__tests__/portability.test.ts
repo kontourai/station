@@ -51,6 +51,44 @@ describe('portability commands', () => {
     }
   });
 
+  test('integration import rejects supplied history and records local operator changes', async () => {
+    const { writeIntegration } = await import('../commands/portability-io.js');
+    const initial = {
+      id: 'mail',
+      kind: 'mcp',
+      command: 'mail',
+      contentTrust: 'untrusted',
+    } as const;
+    await writeIntegration('mail', initial, home);
+    await writeIntegration(
+      'mail',
+      {
+        ...initial,
+        untrustedContentPermissions: { default: 'deny' },
+        untrustedContentChanges: [
+          { at: '2000-01-01T00:00:00.000Z', by: 'forged' },
+        ],
+      },
+      home,
+    );
+    const value = JSON.parse(
+      readFileSync(
+        join(home, 'integrations', 'mail', 'integration.json'),
+        'utf8',
+      ),
+    );
+    expect(value.untrustedContentChanges).toHaveLength(2);
+    expect(value.untrustedContentChanges[1]).toMatchObject({
+      source: 'local-cli-operator',
+      permissions: { default: 'deny' },
+    });
+    expect(
+      value.untrustedContentChanges.some(
+        (row: { by?: string }) => row.by === 'forged',
+      ),
+    ).toBe(false);
+  });
+
   test('export writes an AGENTS.md document with the Station machine block', async () => {
     mkdirSync(join(home, 'config'), { recursive: true });
     mkdirSync(join(home, 'agents', 'writer'), { recursive: true });

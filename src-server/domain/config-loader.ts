@@ -978,7 +978,7 @@ export class ConfigLoader {
   async saveIntegration(
     id: string,
     def: ToolDef,
-    options: { changedBy?: string } = {},
+    options: { changedBy?: string; personChange?: boolean } = {},
   ): Promise<void> {
     this.assertIntegrationDefinitionWritable(id);
     // #3483: the storage writer owns untrusted-content receipts under its
@@ -995,6 +995,7 @@ export class ConfigLoader {
       def,
       options.changedBy,
       new Date(),
+      { personChange: options.personChange },
     );
     // archive#3063: a registered built-in's spawn identity never reaches
     // disk — projected out BEFORE the byte comparison so the compare runs

@@ -199,6 +199,12 @@ same lock, retaining edits made since the earlier backup. A whole-definition
 replacement or a concurrent save cannot erase or drop a receipt. The last 50 are kept. The
 rule itself is `withUntrustedContentChange` in the tool contract.
 
+Person ownership is recorded per field, so a reset to an absent default stays
+authoritative even after older receipts leave the 50-entry history. CLI imports
+write through the same receipt rule at their own filesystem writer, under the
+integration lock. Their receipt identifies a local CLI operator action; it does
+not assert a verified Station principal.
+
 ### Coverage and gaps
 
 - **Enforced:** tools the Station engine dispatches through its hooks

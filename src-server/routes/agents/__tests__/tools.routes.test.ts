@@ -269,6 +269,7 @@ describe('Tool Routes', () => {
     expect(body.success).toBe(true);
     expect(svc.saveIntegration).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'new', enabled: false }),
+      { personChange: true },
     );
   });
 
@@ -306,12 +307,15 @@ describe('Tool Routes', () => {
         env: { API_TOKEN: 'write-boundary-canary' },
       }),
     });
-    expect(svc.saveIntegration).toHaveBeenCalledWith({
-      id: 'secure',
-      kind: 'mcp',
-      secretEnv: { API_TOKEN: 'write-boundary-canary' },
-      enabled: false,
-    });
+    expect(svc.saveIntegration).toHaveBeenCalledWith(
+      {
+        id: 'secure',
+        kind: 'mcp',
+        secretEnv: { API_TOKEN: 'write-boundary-canary' },
+        enabled: false,
+      },
+      { personChange: true },
+    );
     expect(svc.saveIntegration.mock.calls[0]?.[0]).not.toHaveProperty('env');
   });
 
@@ -722,14 +726,17 @@ describe('Tool Routes', () => {
     });
 
     expect(response.status).toBe(200);
-    expect(svc.saveIntegration).toHaveBeenCalledWith({
-      id: 'mcp-1',
-      kind: 'mcp',
-      transport: 'stdio',
-      command: 'example-mcp',
-      description: 'After',
-      env: { API_TOKEN: 'secret-value' },
-    });
+    expect(svc.saveIntegration).toHaveBeenCalledWith(
+      {
+        id: 'mcp-1',
+        kind: 'mcp',
+        transport: 'stdio',
+        command: 'example-mcp',
+        description: 'After',
+        env: { API_TOKEN: 'secret-value' },
+      },
+      { personChange: true },
+    );
   });
 
   test('PUT /:id ignores caller probe replacement and preserves service-owned state', async () => {
@@ -767,6 +774,7 @@ describe('Tool Routes', () => {
         description: 'After',
         probe: serviceProbe,
       }),
+      { personChange: true },
     );
   });
 
@@ -824,11 +832,14 @@ describe('Tool Routes', () => {
       body: JSON.stringify({ env: { API_TOKEN: 'replacement-secret' } }),
     });
 
-    expect(svc.saveIntegration).toHaveBeenCalledWith({
-      id: 'mcp-1',
-      kind: 'mcp',
-      secretEnv: { API_TOKEN: 'replacement-secret' },
-    });
+    expect(svc.saveIntegration).toHaveBeenCalledWith(
+      {
+        id: 'mcp-1',
+        kind: 'mcp',
+        secretEnv: { API_TOKEN: 'replacement-secret' },
+      },
+      { personChange: true },
+    );
   });
 
   test('PUT /:id treats an explicit empty env object as a no-op', async () => {
@@ -845,11 +856,14 @@ describe('Tool Routes', () => {
       body: JSON.stringify({ env: {} }),
     });
 
-    expect(svc.saveIntegration).toHaveBeenCalledWith({
-      id: 'mcp-1',
-      kind: 'mcp',
-      secretEnv: {},
-    });
+    expect(svc.saveIntegration).toHaveBeenCalledWith(
+      {
+        id: 'mcp-1',
+        kind: 'mcp',
+        secretEnv: {},
+      },
+      { personChange: true },
+    );
   });
 
   test('PUT /:id removes only explicitly named secret keys', async () => {
@@ -865,12 +879,15 @@ describe('Tool Routes', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ removeSecretEnvKeys: ['TOKEN_A'] }),
     });
-    expect(svc.saveIntegration).toHaveBeenCalledWith({
-      id: 'mcp-1',
-      kind: 'mcp',
-      env: { TOKEN_A: 'a', TOKEN_B: 'b' },
-      removeSecretEnvKeys: ['TOKEN_A'],
-    });
+    expect(svc.saveIntegration).toHaveBeenCalledWith(
+      {
+        id: 'mcp-1',
+        kind: 'mcp',
+        env: { TOKEN_A: 'a', TOKEN_B: 'b' },
+        removeSecretEnvKeys: ['TOKEN_A'],
+      },
+      { personChange: true },
+    );
   });
 
   test('GET /:serverId/ui/:toolName resolves MCP UI metadata', async () => {
@@ -1474,6 +1491,7 @@ describe('untrusted-content permission changes (#3483)', () => {
     ).toBe(200);
     expect(svc.saveIntegration.mock.calls[0][1]).toEqual({
       changedBy: 'person-1',
+      personChange: true,
     });
     expect(
       (
@@ -1488,6 +1506,7 @@ describe('untrusted-content permission changes (#3483)', () => {
     ).toBe(200);
     expect(svc.saveIntegration.mock.calls[1][1]).toEqual({
       changedBy: 'person-1',
+      personChange: true,
     });
   });
 

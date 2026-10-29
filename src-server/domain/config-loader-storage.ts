@@ -22,6 +22,7 @@ import type {
 } from '@kontourai/station-contracts/catalog';
 import {
   isSafeToolServerId,
+  personOwnedUntrustedContentFields,
   type ToolDef,
   type ToolMetadata,
   withUntrustedContentChange,
@@ -168,7 +169,7 @@ export async function saveIntegrationConfig(
   id: string,
   def: ToolDef,
   /** #3483: who an untrusted-content permission change is attributed to. */
-  options: { changedBy?: string } = {},
+  options: { changedBy?: string; personChange?: boolean } = {},
 ): Promise<void> {
   assertSafeIntegrationId(id);
   await mkdir(join(projectHomeDir, 'integrations'), { recursive: true });
@@ -188,6 +189,7 @@ export async function saveIntegrationConfig(
       def,
       current,
       options.changedBy,
+      options.personChange,
     );
   } finally {
     await release();
@@ -245,18 +247,43 @@ export type PluginIntegrationValidator = (input: {
   current: ToolDef | undefined;
 }) => void;
 
+// Invariants owned by Station run on both plugin publication and restoration.
+// Add shared rules here, not at individual callers.
+const pluginIntegrationValidators: readonly PluginIntegrationValidator[] = [
+  ({ id, current, next }) => {
+    rejectRetiredIntegrationCredentialFormat(current, id);
+    rejectRetiredIntegrationCredentialFormat(next, id);
+  },
+];
+
 /**
  * The person-facing untrusted-content settings a stored definition holds win
  * over a plugin's: a plugin update cannot downgrade a classification or
  * reopen a tool the person closed.
  */
 function carryPersonIntegrationFields(stored: ToolDef, next: ToolDef): void {
-  if (Object.hasOwn(stored, 'contentTrust'))
-    next.contentTrust = stored.contentTrust;
-  if (Object.hasOwn(stored, 'untrustedContentPermissions'))
-    next.untrustedContentPermissions = stored.untrustedContentPermissions;
-  if (Object.hasOwn(stored, 'trustReadOnlyHints'))
-    next.trustReadOnlyHints = stored.trustReadOnlyHints;
+  const owned = personOwnedUntrustedContentFields(stored);
+  if (owned.has('contentTrust') || Object.hasOwn(stored, 'contentTrust')) {
+    if (Object.hasOwn(stored, 'contentTrust'))
+      next.contentTrust = stored.contentTrust;
+    else delete next.contentTrust;
+  }
+  if (
+    owned.has('permissions') ||
+    Object.hasOwn(stored, 'untrustedContentPermissions')
+  ) {
+    if (Object.hasOwn(stored, 'untrustedContentPermissions'))
+      next.untrustedContentPermissions = stored.untrustedContentPermissions;
+    else delete next.untrustedContentPermissions;
+  }
+  if (
+    owned.has('trustReadOnlyHints') ||
+    Object.hasOwn(stored, 'trustReadOnlyHints')
+  ) {
+    if (Object.hasOwn(stored, 'trustReadOnlyHints'))
+      next.trustReadOnlyHints = stored.trustReadOnlyHints;
+    else delete next.trustReadOnlyHints;
+  }
 }
 
 function storedIntegration(path: string): ToolDef | undefined {
@@ -353,6 +380,7 @@ async function publishPluginIntegrationsLocked(
   const stagingDir = options.stage
     ? await mkdtemp(join(projectHomeDir, 'tmp', 'integration-publish-'))
     : undefined;
+  let retainStaging = false;
   try {
     const staged = options.stage && stagingDir ? options.stage(stagingDir) : [];
     for (const id of staged) assertSafeIntegrationId(id);
@@ -435,11 +463,6 @@ async function publishPluginIntegrationsLocked(
         const person = current ?? (restoring ? { ...incoming } : undefined);
         delete incoming.secretEnvRefs;
         if (person) {
-          if (restoring && current) {
-            delete incoming.contentTrust;
-            delete incoming.untrustedContentPermissions;
-            delete incoming.trustReadOnlyHints;
-          }
           carryPersonIntegrationFields(person, incoming);
           if (restoring && person.secretEnvRefs)
             incoming.secretEnvRefs = person.secretEnvRefs;
@@ -450,7 +473,10 @@ async function publishPluginIntegrationsLocked(
           undefined,
           now,
         );
-        for (const validate of options.validators ?? [])
+        for (const validate of [
+          ...pluginIntegrationValidators,
+          ...(options.validators ?? []),
+        ])
           validate({ id, next, current });
         await writeFile(stagedPath, JSON.stringify(next, null, 2));
       }
@@ -476,12 +502,24 @@ async function publishPluginIntegrationsLocked(
           }
         }
       } catch (error) {
+        const failures: unknown[] = [];
         for (const step of replaced.reverse()) {
           const target = join(integrationsDir, step.id);
-          if (step.published)
-            await rm(target, { recursive: true, force: true });
-          if (step.backup && existsSync(step.backup))
-            await rename(step.backup, target);
+          try {
+            if (step.published)
+              await rm(target, { recursive: true, force: true });
+            if (step.backup && existsSync(step.backup))
+              await rename(step.backup, target);
+          } catch (failure) {
+            failures.push(failure);
+          }
+        }
+        if (failures.length) {
+          retainStaging = true;
+          throw new AggregateError(
+            [error, ...failures],
+            `Integration publication recovery required; retained at ${stagingDir}`,
+          );
         }
         throw error;
       }
@@ -490,7 +528,8 @@ async function publishPluginIntegrationsLocked(
       for (const release of releases.reverse()) await release();
     }
   } finally {
-    if (stagingDir) await rm(stagingDir, { recursive: true, force: true });
+    if (stagingDir && !retainStaging)
+      await rm(stagingDir, { recursive: true, force: true });
   }
 }
 
@@ -522,6 +561,7 @@ async function writeIntegrationConfigLocked(
   incoming: ToolDef,
   current: ToolDef | undefined,
   changedBy: string | undefined,
+  personChange?: boolean,
 ): Promise<ToolDef> {
   rejectRetiredIntegrationCredentialFormat(current, id);
   // The spread inside keeps the enumerable in-memory enabled marker read
@@ -531,6 +571,7 @@ async function writeIntegrationConfigLocked(
     incoming,
     changedBy,
     new Date(),
+    { personChange },
   );
   const persisted = { ...def };
   delete persisted.secretEnv;

@@ -19,7 +19,10 @@ import { copyPluginIntegrations } from '@kontourai/station-shared/parsers';
 import { createStationTempDirSync } from '@kontourai/station-shared/temp-dir';
 import { Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
-import { publishPluginIntegrations } from '../../domain/config-loader-storage.js';
+import {
+  publishPluginIntegrations,
+  restorePluginIntegrations,
+} from '../../domain/config-loader-storage.js';
 import {
   capturePluginProviderGeneration,
   preparePluginProviderGeneration,
@@ -51,6 +54,7 @@ import {
 import { resolveInstalledPluginRoot } from '../../services/plugins/plugin-incarnation.js';
 import {
   assertPluginNameSegment,
+  backupPluginOwnedIntegrations,
   capturePersistedAgentOwnership,
   ensureCanonicalRegistryInstallAliases,
   installPluginFromSource,
@@ -796,6 +800,7 @@ export function registerPluginLifecycleRoutes(
     }
 
     let backupRoot: string | null = null;
+    let retainBackup = false;
     try {
       // archive#3677 review HIGH 1: the whole tree mutation holds the
       // per-plugin content lock the consent decision's revalidate → commit
@@ -826,6 +831,11 @@ export function registerPluginLifecycleRoutes(
                 join(backupDir, 'plugin.json'),
               );
               const originalIdentity = originalManifest.name || name;
+              backupPluginOwnedIntegrations(
+                join(projectHomeDir, 'integrations'),
+                originalIdentity,
+                backupRoot,
+              );
               const persistedAgentOwnership = capturePersistedAgentOwnership(
                 agentsDir,
                 originalIdentity,
@@ -928,6 +938,7 @@ export function registerPluginLifecycleRoutes(
                   await publishPluginIntegrations({
                     projectHomeDir,
                     pluginName: originalIdentity,
+                    backupRetiredTo: join(backupRoot, 'integrations'),
                     ...(manifestFormat !== 'agent-plugin-1.0'
                       ? {
                           stage: (stagingDir: string) =>
@@ -1034,15 +1045,10 @@ export function registerPluginLifecycleRoutes(
                     // would compare them, derive `changed`, and reload the
                     // restored plugin with no providers at all.
                     forgetPluginContentDigest(pluginsDir, originalIdentity);
-                    await publishPluginIntegrations({
+                    await restorePluginIntegrations({
                       projectHomeDir,
                       pluginName: originalIdentity,
-                      ...(originalManifestFormat !== 'agent-plugin-1.0'
-                        ? {
-                            stage: (stagingDir: string) =>
-                              copyPluginIntegrations(pluginDir, stagingDir),
-                          }
-                        : {}),
+                      backupDir: join(backupRoot, 'integrations'),
                     });
                     // The tree is back to the reviewed bytes, so the consent
                     // recorded against them comes back with it — digest
@@ -1079,9 +1085,10 @@ export function registerPluginLifecycleRoutes(
                     await deps.reconcileEngineConnections?.(originalIdentity);
                     await settleProviderAdapterRetirements?.();
                   } catch (rollbackError) {
+                    retainBackup = true;
                     throw new AggregateError(
                       [error, rollbackError],
-                      'Plugin update and rollback both failed.',
+                      `Plugin update and rollback both failed; recovery required at ${backupRoot}`,
                     );
                   }
                   throw error;
@@ -1149,7 +1156,7 @@ export function registerPluginLifecycleRoutes(
       });
       return c.json({ success: false, error: errorMessage(error) }, 500);
     } finally {
-      if (backupRoot) {
+      if (backupRoot && !retainBackup) {
         rmSync(backupRoot, { recursive: true, force: true });
       }
     }
