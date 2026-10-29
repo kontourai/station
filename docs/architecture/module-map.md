@@ -1918,6 +1918,30 @@ refresh combines copied parent rows with subsequent runtime turns. Deletion
 before first send tombstones the context under the lifecycle guard before file
 cleanup, so failed cleanup cannot reactivate the seed.
 
+Native-fork persistence has a separate, fail-closed recovery boundary. Its
+[private SQLite intent](../../src-server/services/orchestration/event-store.ts)
+joins the existing Session-start claim before invocation. A possible native
+effect cannot be published as a replay fork or deleted as an unstarted context.
+Committing a native child binds its exact owner, workspace, Agent, tenant,
+identity and canonical started/configured/fork facts in one transaction.
+Event and lineage observers run only after the outer commit is confirmed;
+rollback or an uncertain commit publishes no live success.
+
+Recovery reads verify the retained receipt and current stored child separately.
+They admit SQL byte and row budgets before transferring payloads, and bind reads
+to the runtime's original Request, principal, current credential scope and
+release lifetime. The cached activity path accepts only already-warm singleton
+source/child lineages with an actual child-work report. Cold caches, growing
+lineages and missing affected tenant facts refuse without loading history or
+inventing an empty seed. A warm observation is not activation authority.
+
+This is a persistence and read foundation, not built-in native-fork dispatch.
+Retained native attempts still return a context-unavailable response at the fork
+route, including after a successful warm read; they cannot fall through to
+replay success. Native provider activation, general successor-lineage recovery
+and live provider/account qualification remain separate work. Ordinary saved
+replay forks retain their existing behavior.
+
 A turn's outcome
 never ends its session. A finished turn rests it `idle` (at rest and reusable,
 not the terminal `completed`), and a failed or stopped turn rests it `failed`
@@ -3937,7 +3961,10 @@ Callers use these operations rather than mutating leases or output ownership.
 owns coordinator roots, request/output/receipt paths and execution-equivalence
 keys. [Request context](../../scripts/lib/verification-request-context.mjs)
 validates lane/time/capacity, binds revision/worktree and exact Node/npm toolchain
-provenance, and checks a submitted request at admission. Provenance is checked
+provenance, and checks a submitted request at admission. Once admitted, an
+owner executing a lane, or each full-regression phase, first takes a
+[host heavy-check slot](../guides/testing.md#host-heavy-check-slots) and runs its
+children under it. Reuse and join take none. Provenance is checked
 again before execution and each non-reused completion phase. A same-name lane
 or green sentinel alone is not reusable evidence.
 

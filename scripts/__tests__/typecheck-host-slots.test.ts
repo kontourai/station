@@ -910,6 +910,8 @@ describe('tsc-slot runner', () => {
         'scripts/lib/bounded-capture.mjs',
         'scripts/lib/module-entry.mjs',
         'scripts/lib/typecheck-host-slots.mjs',
+        'scripts/lib/slot-holder-exec.mjs',
+        'scripts/lib/heavy-check-slots.mjs',
         'packages/shared/src/process-identity.mjs',
         'packages/shared/src/windows-system-utility.mjs',
       ]) {
@@ -1184,6 +1186,64 @@ describe('tsc-slot runner', () => {
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/^Version \d+\.\d+\.\d+/);
     expect(result.stderr).not.toMatch(/typecheck slot/);
+  });
+
+  test('the runner does not start the compiler while every heavy-check slot is held', {
+    timeout: 60_000,
+  }, () => {
+    // A compile is a heavy check: another worktree's heavy check holding the
+    // only heavy-check slot keeps it from starting, typecheck slots free.
+    const project = tempDir('tc-heavy-held-project-');
+    const heavyDir = tempDir('tc-heavy-held-');
+    const slotDir = tempDir('tc-heavy-typecheck-slots-');
+    const cache = tempDir('tc-heavy-held-cache-');
+    writeFileSync(
+      join(project, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: { strict: true, noEmit: true, types: [] },
+        files: ['a.ts'],
+      }),
+    );
+    writeFileSync(join(project, 'a.ts'), 'export const a: number = "x";\n');
+    writeRecord(heavyDir, 0, {
+      pid: process.pid,
+      start: null,
+      nonce: 'another-worktree',
+      acquiredAt: Date.now(),
+      label: 'docs:truth:gate',
+    });
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      STATION_TSBUILDINFO_DIR: cache,
+      STATION_TYPECHECK_SLOT_DIR: slotDir,
+      STATION_TYPECHECK_SLOTS: '1',
+      STATION_HEAVY_CHECK_SLOT_DIR: heavyDir,
+      STATION_HEAVY_CHECK_SLOTS: '1',
+      STATION_HEAVY_CHECK_SLOT_WAIT_MS: '0',
+      [SLOT_HELD_ENV]: '',
+    };
+    delete env.GITHUB_ACTIONS;
+    delete env.STATION_HEAVY_CHECK_SLOT_HELD;
+    const result = spawnSync(
+      process.execPath,
+      [
+        join(REPO_ROOT, 'scripts', 'tsc-slot.mjs'),
+        '-p',
+        join(project, 'tsconfig.json'),
+      ],
+      { cwd: project, encoding: 'utf8', windowsHide: true, env },
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(
+      new RegExp(
+        `^FAIL: waited 0s for a heavy-check slot for typecheck .*all 1 are held: pid ${process.pid} \\(docs:truth:gate\\)`,
+        'm',
+      ),
+    );
+    expect(result.stdout).not.toMatch(/error TS/);
+    expect(readdirSync(cache)).toEqual([]);
+    // It never reached the typecheck pool either.
+    expect(readdirSync(slotDir)).toEqual([]);
   });
 
   test('the runner does not start the compiler while every slot is held', {
