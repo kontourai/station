@@ -111,3 +111,16 @@ f5e4ad873375a1ffbb0123c1c56f24ffb0cd070b:src-server/routes/connections/__tests__
 # Synthetic Discord snowflake fixture IDs at exact historical locations.
 610a5d1c626ba1481f29437914e77ab69f247239:packages/contracts/src/__tests__/discord-compatibility.test.ts:discord-client-id:15
 610a5d1c626ba1481f29437914e77ab69f247239:packages/contracts/src/__tests__/discord-compatibility.test.ts:discord-client-id:42
+
+# Synthetic test snowflakes in the prepared commit; current fixtures build IDs at runtime.
+# Exact historical fingerprints only.
+5ab772af8a605bc18bb7adc0de23a1c00ced0ebc:src-server/services/chat-apps/__tests__/chat-app-core.test.ts:discord-client-id:114
+5ab772af8a605bc18bb7adc0de23a1c00ced0ebc:src-server/services/chat-apps/__tests__/chat-app-core.test.ts:discord-client-id:140
+5ab772af8a605bc18bb7adc0de23a1c00ced0ebc:src-server/services/chat-apps/__tests__/chat-app-core.test.ts:discord-client-id:141
+5ab772af8a605bc18bb7adc0de23a1c00ced0ebc:src-server/services/chat-apps/__tests__/chat-app-core.test.ts:discord-client-id:142
+5ab772af8a605bc18bb7adc0de23a1c00ced0ebc:src-server/services/chat-apps/__tests__/chat-app-core.test.ts:discord-client-id:143
+5ab772af8a605bc18bb7adc0de23a1c00ced0ebc:src-server/services/chat-apps/__tests__/chat-app-core.test.ts:discord-client-id:159
+5ab772af8a605bc18bb7adc0de23a1c00ced0ebc:src-server/services/chat-apps/__tests__/chat-app-core.test.ts:discord-client-id:160
+5ab772af8a605bc18bb7adc0de23a1c00ced0ebc:src-server/services/chat-apps/__tests__/chat-app-core.test.ts:discord-client-id:168
+5ab772af8a605bc18bb7adc0de23a1c00ced0ebc:src-server/services/chat-apps/__tests__/chat-app-core.test.ts:discord-client-id:186
+5ab772af8a605bc18bb7adc0de23a1c00ced0ebc:src-server/services/chat-apps/__tests__/chat-app-core.test.ts:discord-client-id:190

@@ -103,7 +103,7 @@ function configuration(
 ): DiscordGatewayConfiguration {
   return {
     schemaVersion: 1,
-    guilds: [{ guildId: 'guild-a', channelIds: ['channel-a'] }],
+    guilds: [{ guildId: '1'.repeat(18), channelIds: ['2'.repeat(18)] }],
     identities: [],
     ...overrides,
   };
@@ -113,9 +113,9 @@ function request(
   capability: DiscordAuthorizationRequest['capability'],
 ): DiscordAuthorizationRequest {
   return {
-    discordUserId: 'user-a',
-    guildId: 'guild-a',
-    channelId: 'channel-a',
+    discordUserId: '3'.repeat(18),
+    guildId: '1'.repeat(18),
+    channelId: '2'.repeat(18),
     capability,
   };
 }
@@ -132,9 +132,9 @@ function emitMessage(
       d: {
         id: 'message-a',
         content: 'hello Station',
-        author: { id: 'user-a' },
-        guild_id: 'guild-a',
-        channel_id: 'channel-a',
+        author: { id: '3'.repeat(18) },
+        guild_id: '1'.repeat(18),
+        channel_id: '2'.repeat(18),
         ...overrides,
       },
     }),
@@ -161,7 +161,7 @@ describe('Discord authorization', () => {
       configuration({
         identities: [
           {
-            discordUserId: 'mapped-user',
+            discordUserId: '4'.repeat(18),
             stationIdentity: 'station-user',
           },
         ],
@@ -176,7 +176,7 @@ describe('Discord authorization', () => {
     expect(
       authorization.authorize({
         ...request('turn:start'),
-        discordUserId: 'mapped-user',
+        discordUserId: '4'.repeat(18),
       }),
     ).toEqual({ allowed: false, reason: 'not_permitted' });
   });
@@ -187,7 +187,7 @@ describe('Discord authorization', () => {
       configuration({
         identities: [
           {
-            discordUserId: 'user-a',
+            discordUserId: '3'.repeat(18),
             stationIdentity: 'station-user',
             capabilities: ['turn:start'],
           },
@@ -205,7 +205,7 @@ describe('Discord authorization', () => {
       configuration({
         identities: [
           {
-            discordUserId: 'user-a',
+            discordUserId: '3'.repeat(18),
             stationIdentity: 'station-user',
             capabilities: ['turn:start'],
             revokedAt: '2026-08-16T00:00:00.000Z',
@@ -226,12 +226,12 @@ describe('Discord authorization', () => {
       configuration({
         identities: [
           {
-            discordUserId: 'user-a',
+            discordUserId: '3'.repeat(18),
             stationIdentity: 'station-user',
             capabilities: ['turn:start'],
           },
           {
-            discordUserId: 'empty-user',
+            discordUserId: '5'.repeat(18),
             stationIdentity: 'empty-station-user',
           },
         ],
@@ -253,7 +253,7 @@ describe('Discord authorization', () => {
     expect(
       authorization.authorize({
         ...request('turn:start'),
-        discordUserId: 'empty-user',
+        discordUserId: '5'.repeat(18),
       }),
     ).toEqual({ allowed: false, reason: 'not_permitted' });
   });
@@ -264,7 +264,7 @@ describe('Discord authorization', () => {
       configuration({
         identities: [
           {
-            discordUserId: 'user-a',
+            discordUserId: '3'.repeat(18),
             stationIdentity: 'station-user',
             capabilities: ['project-files:read'],
             projectFileProjects: ['project-a'],
@@ -321,7 +321,7 @@ describe('DiscordGatewayService', () => {
         token: 'test-token',
         identities: [
           {
-            discordUserId: 'user-a',
+            discordUserId: '3'.repeat(18),
             stationIdentity: 'station-user',
             capabilities: ['turn:start'],
           },
@@ -385,7 +385,7 @@ describe('DiscordGatewayService', () => {
         token: 'test-token',
         identities: [
           {
-            discordUserId: 'user-a',
+            discordUserId: '3'.repeat(18),
             stationIdentity: 'station-user',
             capabilities: ['turn:start'],
             revokedAt: '2026-08-16T00:00:00.000Z',
@@ -438,18 +438,21 @@ describe('DiscordGatewayService', () => {
         token: 'test-token',
         sessionBindings: [
           {
-            guildId: 'guild-a',
-            channelId: 'channel-a',
+            guildId: '1'.repeat(18),
+            channelId: '2'.repeat(18),
             sessionId: 'session-a',
           },
         ],
         identities: [
           {
-            discordUserId: 'user-a',
+            discordUserId: '3'.repeat(18),
             stationIdentity: 'station-user',
             capabilities: ['turn:start'],
           },
-          { discordUserId: 'ungranted', stationIdentity: 'station-ungranted' },
+          {
+            discordUserId: '6'.repeat(18),
+            stationIdentity: 'station-ungranted',
+          },
         ],
       }),
     );
@@ -481,7 +484,7 @@ describe('DiscordGatewayService', () => {
     });
     emitMessage(sockets[0], {
       id: 'message-ungranted',
-      author: { id: 'ungranted' },
+      author: { id: '6'.repeat(18) },
     });
     await settle();
 
@@ -504,11 +507,15 @@ describe('DiscordGatewayService', () => {
       enabled: true,
       token: 'test-token',
       sessionBindings: [
-        { guildId: 'guild-a', channelId: 'channel-a', sessionId: 'session-a' },
+        {
+          guildId: '1'.repeat(18),
+          channelId: '2'.repeat(18),
+          sessionId: 'session-a',
+        },
       ],
       identities: [
         {
-          discordUserId: 'user-a',
+          discordUserId: '3'.repeat(18),
           stationIdentity: 'station-user',
           capabilities: ['turn:start'],
         },
@@ -556,7 +563,7 @@ describe('DiscordGatewayService', () => {
         ...base,
         identities: [
           {
-            discordUserId: 'user-a',
+            discordUserId: '3'.repeat(18),
             stationIdentity: 'station-user',
             capabilities: ['turn:start'],
             revokedAt: '2026-08-16T00:00:00.000Z',
@@ -578,14 +585,14 @@ describe('DiscordGatewayService', () => {
         token: 'test-token',
         sessionBindings: [
           {
-            guildId: 'guild-a',
-            channelId: 'channel-a',
+            guildId: '1'.repeat(18),
+            channelId: '2'.repeat(18),
             sessionId: 'session-a',
           },
         ],
         identities: [
           {
-            discordUserId: 'user-a',
+            discordUserId: '3'.repeat(18),
             stationIdentity: 'station-user',
             capabilities: ['turn:start'],
           },
@@ -628,7 +635,7 @@ describe('DiscordGatewayService', () => {
     await service.stop();
   });
 
-  test('discloses truncation and refuses concurrent channel turns without using the device-local queue', async () => {
+  test('delivers complete chunks and refuses concurrent channel turns without using the device-local queue', async () => {
     const directory = home();
     new DiscordGatewayConfigurationStore(directory).write(
       configuration({
@@ -636,14 +643,14 @@ describe('DiscordGatewayService', () => {
         token: 'test-token',
         sessionBindings: [
           {
-            guildId: 'guild-a',
-            channelId: 'channel-a',
+            guildId: '1'.repeat(18),
+            channelId: '2'.repeat(18),
             sessionId: 'session-a',
           },
         ],
         identities: [
           {
-            discordUserId: 'user-a',
+            discordUserId: '3'.repeat(18),
             stationIdentity: 'station-user',
             capabilities: ['turn:start', 'transcript:read'],
           },
@@ -672,6 +679,7 @@ describe('DiscordGatewayService', () => {
       readTranscript: () => `${'A complete sentence. '.repeat(200)}`,
       deliverMessage: async ({ content }) => {
         delivered.push(content);
+        return { externalMessageId: '8'.repeat(18) };
       },
     });
 
@@ -688,11 +696,14 @@ describe('DiscordGatewayService', () => {
     await settle();
     eventBus.emitTurnCompleted('turn-a', 'session-a', 'ignored event output');
     await settle();
-    expect(delivered).toHaveLength(2);
-    expect(delivered[1]).toContain(
-      `[Truncated — view the full response in Station: ${activityDeepLink({ sessionId: 'session-a' })}]`,
+    await settle();
+    expect(delivered).toHaveLength(4);
+    expect(delivered.slice(1).join('')).toBe(
+      'A complete sentence. '.repeat(200),
     );
-    expect(delivered[1].length).toBeLessThanOrEqual(2_000);
+    expect(delivered.slice(1).every((chunk) => chunk.length <= 2_000)).toBe(
+      true,
+    );
     await service.stop();
   });
 });

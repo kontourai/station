@@ -379,6 +379,15 @@ empty lists deny all. A binding must never bypass that check. Unrepresentable
 legacy records refuse the entire projection rather than silently skipping them.
 The runtime owns one-time persistence, revocation, and token transfer to secrets.
 
+Delivery entries admit a `busy` refusal. An outbound acknowledgement may name
+its inbound refusal with `refusalId`, independently of `retryOf` (which names a
+prior attempt). Outbound reply chunks may carry `replyChunk` with a bounded
+`replyId`, zero-based `chunkIndex`, and `chunkCount` from 1 through 10; the
+index must be smaller than the count. Only the last chunk of a ten-chunk reply
+may set `overflow: true`. Refusal links and chunk metadata cannot occur on
+inbound entries or together on one entry. These references describe receipts;
+the parser cannot establish that a referenced record exists.
+
 Raw confirmation codes use 10–128 symbols from
 `23456789ABCDEFGHJKLMNPQRSTUVWXYZ` (32 unambiguous symbols). The runtime must use
 uniform cryptographic randomness with at least 50 bits of entropy; format
