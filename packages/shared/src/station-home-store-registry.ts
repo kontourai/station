@@ -93,6 +93,7 @@ export const STATION_HOME_ROOTS: Readonly<
   // Versioned, pinned downloads are re-acquirable; trials retain older pins.
   'media-tools': 'external',
   'notifications.json': 'state',
+  'principal-notifications.json': 'state',
   // Reviewed commands and started-effect receipts must survive maintenance.
   'operator-setup': 'state',
   'plugin-grants.json': 'state',
