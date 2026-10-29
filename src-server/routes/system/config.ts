@@ -1,6 +1,5 @@
 import type { TelemetryPublisherId } from '@kontourai/station-contracts/product-telemetry';
 import { isTelemetryPublisherId } from '@kontourai/station-shared/plugin-telemetry';
-import { requestFromPluginPane } from '../../security/plugin-pane-context.js';
 import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
 /**
  * Config Routes - app configuration management
@@ -56,6 +55,7 @@ import {
   type PairingScopeContextStore,
 } from '../../security/pairing-route-scopes.js';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
+import { mayRaiseTelemetryChoice } from '../../security/telemetry-choice-authority.js';
 import {
   LOG_LEVELS,
   type LogLevel,
@@ -813,11 +813,12 @@ export function createConfigRoutes(
       const writesTelemetryChoice = ['telemetryTier', 'telemetryEnabled'].some(
         (key) => Object.hasOwn(body as object, key),
       );
-      const mayRaiseTelemetry =
-        !requestMayBeAnAgent(c.req.raw) &&
-        (isOperatorInPersonNotAgent(c.req.raw) ||
-          (presentedScope !== undefined &&
-            pairingScopeIncludes(presentedScope, 'access:manage')));
+      // Shared with the disclosure read's `capabilities.raise`, so the
+      // choice a client offers and the raise this refuses cannot drift.
+      const mayRaiseTelemetry = mayRaiseTelemetryChoice(
+        c.req.raw,
+        presentedScope,
+      );
       const priorConfig = await configLoader.loadAppConfig();
       // #2436: the Station default applies to every session start, the
       // unattended ones included, so raising it to full access needs the
@@ -878,8 +879,7 @@ export function createConfigRoutes(
             }
             if (
               requestMayBeAnAgent(c.req.raw) ||
-              (raisesTelemetry &&
-                (!mayRaiseTelemetry || requestFromPluginPane(c.req.raw)))
+              (raisesTelemetry && !mayRaiseTelemetry)
             )
               throw new Error('TELEMETRY_CHOICE_NOT_GRANTED');
             if (

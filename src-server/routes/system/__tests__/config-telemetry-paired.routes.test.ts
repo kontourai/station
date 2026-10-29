@@ -455,3 +455,182 @@ test('a config route without the runtime author consent capability still refuses
     await f.cleanup();
   }
 });
+
+/**
+ * The disclosure read reports, per caller, which usage-sharing writes the
+ * server will accept. Each reported capability is checked against the real
+ * route's answer for the same credential, so a capability can only be true
+ * when the write succeeds and false when it is refused — including the
+ * per-direction rule inside `PUT /config/app` (lower allowed, raise refused).
+ */
+test.each([
+  {
+    preset: 'read-only',
+    expected: {
+      acknowledge: false,
+      recordNotice: false,
+      lower: false,
+      raise: false,
+    },
+  },
+  {
+    preset: 'standard',
+    expected: {
+      acknowledge: false,
+      recordNotice: false,
+      lower: true,
+      raise: false,
+    },
+  },
+  {
+    preset: 'standard+access:manage',
+    expected: {
+      acknowledge: true,
+      recordNotice: true,
+      lower: true,
+      raise: true,
+    },
+  },
+] as const)(
+  'the disclosure reports what a $preset device may do, and every write agrees',
+  async ({ preset, expected }) => {
+    vi.stubEnv('DO_NOT_TRACK', '');
+    vi.stubEnv('STATION_TELEMETRY_TIER', undefined);
+    vi.stubEnv('STATION_PRODUCT_TELEMETRY_ENDPOINT', undefined);
+    vi.stubEnv('STATION_TELEMETRY_ENDPOINT', undefined);
+    const home = makeTempDir('station-telemetry-capabilities-');
+    ensureStationHomeSchemaSync(home);
+    await saveAppConfigFile(home, {
+      defaultModel: '',
+      invokeModel: '',
+      structureModel: '',
+      telemetryTier: { kontour: 'lite', operator: 'lite' },
+    });
+    const loader = new ConfigLoader({
+      projectHomeDir: home,
+      watchFiles: false,
+    });
+    const logger = createLogger({
+      name: 'telemetry-capabilities',
+      level: 'error',
+    });
+    const service = new UsageTelemetryService({
+      homeDir: home,
+      appConfig: await loader.loadAppConfig(),
+      version: '1.2.3',
+      logger,
+      env: {},
+    });
+    const security = new EnvironmentSecurityService({ homeDir: home });
+    await security.initialize();
+    const scope =
+      preset === 'standard+access:manage'
+        ? `${pairingScopePresetString('standard')} access:manage`
+        : pairingScopePresetString(preset);
+    const offer = security.devicePairing.createOffer({
+      endpoint: 'https://station.example.test',
+      scope,
+    });
+    const pending = security.devicePairing.requestPairing({
+      requesterPosition: 'off-box',
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Capability test device',
+    });
+    security.devicePairing.confirmRequest(pending.requestId, {
+      kind: 'presented-credential',
+    });
+    const device = security.devicePairing.exchange({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: pending.requestId,
+    });
+    const app = new Hono<{ Bindings: HttpBindings }>();
+    configureRuntimeHttp({
+      app: app as never,
+      logger,
+      eventBus: { emit() {} } as unknown as EventBus,
+      security: {
+        verifyCredential: (credential, request) =>
+          request
+            ? security.authorizeCredential(credential, request)
+            : security.verifyCredential(credential),
+        resolveGrantedScope: (credential) =>
+          security.resolveGrantedScope(credential),
+        resolveCredentialAuthority: () => 'device-credential',
+        resolveCredentialDeviceId: (credential) =>
+          security.identifyDevice(credential)?.id,
+        resolveCredentialDeviceKind: () => 'device',
+        allowedOrigins: [],
+      },
+    });
+    app.route('/config', createConfigRoutes(loader, logger));
+    app.route(
+      '/api/usage-telemetry',
+      createUsageTelemetryDisclosureRoutes(service, security),
+    );
+    const call = (path: string, method = 'GET', body?: unknown) =>
+      app.request(
+        path,
+        {
+          method,
+          headers: {
+            Authorization: `Bearer ${device.credential}`,
+            'content-type': 'application/json',
+          },
+          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        },
+        {
+          incoming: { socket: { remoteAddress: '127.0.0.1' } },
+        } as HttpBindings,
+      );
+    try {
+      const disclosure = await readJson<{
+        data: { inventoryRevision: string; capabilities: unknown };
+      }>(await call('/api/usage-telemetry/disclosure'));
+      expect(disclosure.data.capabilities).toEqual(expected);
+      const status = await readJson<{
+        data: { liteInventoryRevision: string };
+      }>(await call('/api/usage-telemetry/status'));
+
+      const outcomes = {
+        lower: (
+          await call('/config/app', 'PUT', {
+            telemetryTier: { operator: 'off' },
+          })
+        ).ok,
+        raise: await (async () => {
+          await loader.updateAppConfig({ telemetryTier: { operator: 'off' } });
+          return (
+            await call('/config/app', 'PUT', {
+              telemetryTier: { operator: 'lite' },
+            })
+          ).ok;
+        })(),
+        recordNotice: (
+          await call('/api/usage-telemetry/lite-notices', 'POST', {
+            publisher: 'operator',
+            inventoryRevision: status.data.liteInventoryRevision,
+          })
+        ).ok,
+        acknowledge: (
+          await call(
+            '/api/usage-telemetry/disclosure/acknowledgements',
+            'POST',
+            {
+              acknowledgementProtocol: 2,
+              inventoryRevision: disclosure.data.inventoryRevision,
+            },
+          )
+        ).ok,
+      };
+      expect(
+        outcomes,
+        'a reported capability disagreed with its route',
+      ).toEqual(expected);
+    } finally {
+      await service.shutdown();
+      loader.dispose();
+    }
+  },
+);

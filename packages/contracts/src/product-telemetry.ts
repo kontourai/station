@@ -19,6 +19,25 @@ export type TelemetryPublisherId =
 export type TelemetryTierChoices = Partial<
   Record<TelemetryPublisherId, TelemetryTier>
 >;
+/**
+ * What the CALLING credential may do with the shared usage-sharing choice,
+ * decided by the same gates the server applies to each write. Reported per
+ * request on `GET /api/usage-telemetry/disclosure` so a client offers only
+ * actions that can succeed: a paired device may lower or keep tiers but not
+ * raise them, and a QR-paired device cannot acknowledge or record a notice.
+ * Absent on older servers.
+ */
+export interface TelemetryChoiceCapabilities {
+  /** `POST /api/usage-telemetry/disclosure/acknowledgements` (confirms Full). */
+  acknowledge: boolean;
+  /** `POST /api/usage-telemetry/lite-notices` (records the shown notice). */
+  recordNotice: boolean;
+  /** `PUT /config/app` with tiers that keep or lower every publisher. */
+  lower: boolean;
+  /** `PUT /config/app` with a tier that raises any publisher. */
+  raise: boolean;
+}
+
 export interface TelemetryTierResolution {
   tier: TelemetryTier;
   reason: 'DNT' | 'policy' | 'default' | 'user' | 'disclosure' | 'environment';

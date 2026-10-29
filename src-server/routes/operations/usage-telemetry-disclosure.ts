@@ -4,10 +4,16 @@ import {
 } from '@kontourai/station-contracts/product-telemetry';
 import { isTelemetryPublisherId } from '@kontourai/station-shared/plugin-telemetry';
 import { parseTelemetryFeedback } from '@kontourai/station-shared/product-telemetry';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { requestMayBeAnAgent } from '../../security/coding-authority.js';
+import {
+  grantedPairingScope,
+  type PairingScopeContextStore,
+} from '../../security/pairing-route-scopes.js';
 import { requestFromPluginPane } from '../../security/plugin-pane-context.js';
+import type { CurrentRuntimeRequestPrincipalSecurity } from '../../security/runtime-request-security.js';
+import { telemetryChoiceCapabilities } from '../../security/telemetry-choice-authority.js';
 import type { UsageTelemetryService } from '../../services/usage-telemetry-service.js';
 import {
   checkOtelTelemetryConnection,
@@ -26,9 +32,26 @@ export function createUsageTelemetryDisclosureRoutes(
   serviceOrGetter:
     | UsageTelemetryService
     | (() => UsageTelemetryService | undefined),
+  /**
+   * The runtime's credential authority. With it, every disclosure answer
+   * carries `capabilities` for THIS caller, so a client never offers a choice
+   * the server would refuse. Unit harnesses without ingress omit it.
+   */
+  security?: CurrentRuntimeRequestPrincipalSecurity,
 ) {
   const resolve = () =>
     typeof serviceOrGetter === 'function' ? serviceOrGetter() : serviceOrGetter;
+  const forCaller = <T extends object>(c: Context, disclosure: T) =>
+    security
+      ? {
+          ...disclosure,
+          capabilities: telemetryChoiceCapabilities(
+            c.req.raw,
+            security,
+            grantedPairingScope(c as unknown as PairingScopeContextStore),
+          ),
+        }
+      : disclosure;
   const app = new Hono();
   for (const path of ['/feedback', '/lite-notices']) {
     app.on('POST', path, async (c, next) => {
@@ -215,7 +238,10 @@ export function createUsageTelemetryDisclosureRoutes(
         { success: false, error: { code: 'telemetry_publisher_invalid' } },
         400,
       );
-    return c.json({ success: true, data: await service.disclosure(publisher) });
+    return c.json({
+      success: true,
+      data: forCaller(c, await service.disclosure(publisher)),
+    });
   });
   app.post('/disclosure/acknowledgements', async (c) => {
     if (requestMayBeAnAgent(c.req.raw) || requestFromPluginPane(c.req.raw))
@@ -321,7 +347,11 @@ export function createUsageTelemetryDisclosureRoutes(
         disclosure.destination,
       );
     else await service.acknowledgeDisclosure(body.inventoryRevision);
-    return c.json({ success: true, data: await service.disclosure(publisher) });
+    // The client caches this in place of the GET's answer.
+    return c.json({
+      success: true,
+      data: forCaller(c, await service.disclosure(publisher)),
+    });
   });
   return app;
 }
