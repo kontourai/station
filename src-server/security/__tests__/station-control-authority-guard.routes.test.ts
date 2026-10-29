@@ -713,16 +713,17 @@ const ROWS: readonly Row[] = [
     },
   },
   {
-    // Decision 2: an operator-wide read.
+    // The guard forwards every channel; the scheduler route admits each run
+    // against its recorded target (agent-schedule-authority.routes.test.ts).
     tool: 'get_job_logs',
     args: { name: 'nightly' },
     route: 'GET /scheduler/jobs/:target/logs',
     expect: {
       'bound op-': 'allowed',
-      'bound person-': 'station_control_role_required',
-      'delegated-custody op-': 'station_control_assurance_insufficient',
-      'bearer-exposed op-': 'station_control_assurance_insufficient',
-      'pooled none': 'station_control_caller_required',
+      'bound person-': 'allowed',
+      'delegated-custody op-': 'allowed',
+      'bearer-exposed op-': 'allowed',
+      'pooled none': 'allowed',
     },
   },
   {
@@ -819,14 +820,15 @@ describe('tools/list offers only tools the credential could ever be allowed', ()
 
   // Literal pins beside the table-derived sweep below, so a table edit that
   // loosened these tools could not silently pass the derived check.
-  const OPERATOR_ONLY = [
-    'add_job',
-    'update_config',
-    'disable_job',
-    'get_job_logs',
-  ];
+  const OPERATOR_ONLY = ['add_job', 'update_config', 'disable_job'];
   const PERSON_ONLY = ['create_provider', 'create_integration'];
-  const ANY_CALLER = ['list_agents', 'list_jobs', 'board_pin', 'notify_user'];
+  const ANY_CALLER = [
+    'list_agents',
+    'list_jobs',
+    'get_job_logs',
+    'board_pin',
+    'notify_user',
+  ];
 
   for (const channel of ['delegated-custody', 'bearer-exposed'] as const)
     test(`a ${channel} session is not offered operator-only or person-only tools`, async () => {
