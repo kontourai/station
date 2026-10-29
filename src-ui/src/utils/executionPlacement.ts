@@ -1,3 +1,4 @@
+import { PAIRING_SCOPE_ORCHESTRATION_OPERATE } from '@kontourai/station-contracts/environment-security';
 import type { PeerCredentialSummary } from '@kontourai/station-sdk';
 
 /**
@@ -33,12 +34,13 @@ export function sshPlacementRefusals(
 
 /**
  * Starting work on a paired Station is an operate-tier request there, so the
- * stored credential's scope must include `orchestration:operate`.
+ * stored credential's scope must include `orchestration:operate` as a whole
+ * token. Unknown tokens beside it are ignored, never a reason to refuse.
  */
 export function peerPlacementRefusals(
   peer: Pick<PeerCredentialSummary, 'scope'>,
 ): PlacementRefusal[] {
-  return peer.scope.split(/\s+/).includes('orchestration:operate')
+  return peer.scope.split(/\s+/).includes(PAIRING_SCOPE_ORCHESTRATION_OPERATE)
     ? []
     : ['peer-cannot-operate'];
 }

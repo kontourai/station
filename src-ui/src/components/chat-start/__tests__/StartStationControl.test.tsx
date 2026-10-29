@@ -276,6 +276,23 @@ describe('StartStationControl', () => {
     ).toBeTruthy();
   });
 
+  test.each([
+    ['orchestration:operate-x', false],
+    ['orchestration:read orchestration:operate-x', false],
+    ['orchestration:operate some:future-token', true],
+  ] as const)(
+    'a paired Station credential scoped %j is offered: %s (whole tokens only)',
+    (scope, offered) => {
+      reads.peers = {
+        isSuccess: true,
+        isError: false,
+        data: [{ ...PAIRED, scope }],
+      };
+      render(<StartStationControl canChoose onOpen={vi.fn()} />);
+      expect(Boolean(screen.queryByRole('button'))).toBe(offered);
+    },
+  );
+
   test('offers nothing while the caller\u2019s authority is still being read', () => {
     caller.read = 'pending';
     reads.peers = { isSuccess: true, isError: false, data: [PAIRED] };

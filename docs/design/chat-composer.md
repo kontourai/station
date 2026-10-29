@@ -172,9 +172,10 @@ accepts, through one shared rule set: a verified SSH environment when no
 Project is selected (a Project is never placed over SSH), or a paired Station
 the caller may list whose credential holds `orchestration:operate`. A caller
 whose authority observation reports a grant without `orchestration:operate`
-is offered This Station only; an observation that cannot be read (an older
-Station, or a failed read) hides nothing, since the launcher and the server
-still refuse what is not allowed. It only chooses the destination: This Station
+is offered This Station only; any failed read of the observation (an older
+Station without it, a refusal, a server error or an unreadable body) hides
+nothing, since starting the task still needs `orchestration:operate` and the
+launcher and the server refuse what is not allowed. It only chooses the destination: This Station
 closes the list, and another Station continues into that Station's Engine &
 model picker, because a remote route needs a verified engine there. **Start**
 then opens the task launcher with the message, Project, Agent and selection,

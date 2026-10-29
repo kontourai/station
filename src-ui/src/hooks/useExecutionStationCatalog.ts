@@ -1,3 +1,4 @@
+import { PAIRING_SCOPE_ORCHESTRATION_OPERATE } from '@kontourai/station-contracts/environment-security';
 import type { EnvironmentRef } from '@kontourai/station-contracts/execution-target';
 import {
   usePeerCredentialsQuery,
@@ -39,9 +40,11 @@ export type ExecutionStation = {
  *
  * Another Station runs the work as a task, which needs
  * `orchestration:operate` here, so a caller whose authority observation
- * reports a grant without it is offered This Station only. An observation
- * that cannot be read (an older Station without it, or a failed read) hides
- * nothing: the launcher and the server still refuse what is not allowed.
+ * reports a grant without it is offered This Station only. Any failed read
+ * of the observation (an older Station without it, a refusal, a server error,
+ * an unreadable body, or a stale authority) hides nothing: starting the task
+ * still needs `orchestration:operate`, so the launcher and the server refuse
+ * what is not allowed.
  * `settled` is false until every read has answered, so nothing is offered
  * before it is known.
  *
@@ -82,7 +85,7 @@ export function useExecutionStations({
     ? true
     : grant?.kind === 'operator' ||
       (grant?.kind === 'device' &&
-        grant.grantedScopes.includes('orchestration:operate'));
+        grant.grantedScopes.includes(PAIRING_SCOPE_ORCHESTRATION_OPERATE));
   const saved = environments.isSuccess ? (environments.data ?? []) : [];
   const paired = peers.isSuccess
     ? selectablePeerStations(peers.data, saved)
