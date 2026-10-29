@@ -241,6 +241,13 @@ Previously verified cookie sessions require the provider's synchronous live witn
 relationship commit/delivery seams; missing support, revoked/expired sessions and
 pending enrollment fail closed. A historical authenticated result alone is insufficient.
 
+A currently witnessed local-account session supplies the acting person for
+account and membership operations. A verified Serve WhoIs identity on that
+request is ingress provenance and does not establish membership or link people.
+Device and account bindings must agree, and an account cannot borrow an operator
+or another Device grant. Revoked sessions fail closed. Without an account
+session, existing WhoIs and Device attribution remains unchanged.
+
 The account-authentication exception is specified in the
 [deployment authentication guide](../guides/deployment-authentication.md).
 With authentication unconfigured, that router reports unavailable (`501`),

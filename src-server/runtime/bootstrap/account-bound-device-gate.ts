@@ -116,6 +116,7 @@ function isAccountBoundLayoutLeaf(path: string, method: string): boolean {
 }
 
 export interface AccountBoundDeviceGateDeps {
+  accountSessionOwnsPerson?(request: Request): boolean;
   currentRelationshipAccountDevice?(
     request: Request,
     binding: Extract<DevicePrincipalBinding, { kind: 'account' }>,
@@ -357,7 +358,14 @@ export function installAccountBoundDeviceGate(
           { error: { code: 'account_authentication_invalid' } },
           401,
         );
-      const ingress = deps.identifyIngress(c);
+      let accountOwnsPerson = false;
+      try {
+        accountOwnsPerson = deps.accountSessionOwnsPerson?.(c.req.raw) === true;
+      } catch (error) {
+        if (!(error instanceof PrincipalUnresolvedError)) throw error;
+        return c.json({ error: { code: 'account_identity_conflict' } }, 401);
+      }
+      const ingress = accountOwnsPerson ? null : deps.identifyIngress(c);
       if (accountBinding && ingress) {
         return c.json({ error: { code: 'account_identity_conflict' } }, 401);
       }

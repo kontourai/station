@@ -165,7 +165,12 @@ explains that cookie caching can delay revocation visibility. Session renewal
 belongs to an explicit operation that can deliver its cookie response; ordinary
 verification must not consume the destination body or silently refresh cookies.
 Original device/person bindings and historical authorship are preserved. A
-conflicting verified ingress person or device/person binding is refused.
+current, synchronously witnessed local-account session is the person for account
+and membership operations even when Tailscale Serve supplies a WhoIs identity;
+WhoIs is ingress provenance, not a linked account. A Device credential must
+still be bound to that exact account, and an account session cannot use operator
+authority. Other providers retain their existing ingress agreement checks.
+Without an account session, WhoIs attribution is unchanged.
 
 ## HTTP behavior
 

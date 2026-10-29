@@ -1878,7 +1878,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
             headers: {
               Origin: 'http://localhost:4321',
               'Content-Type': 'application/json',
-              ...(serve && !headers.Authorization
+              ...(serve && headers.Authorization !== `Bearer ${OPERATOR_SECRET}`
                 ? {
                     [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
                     [INTERNAL_INGRESS_IDENTITY_HEADER]: Buffer.from(
@@ -1893,7 +1893,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
             },
             ...(body === undefined ? {} : { body: JSON.stringify(body) }),
           },
-          serve && !headers.Authorization
+          serve && headers.Authorization !== `Bearer ${OPERATOR_SECRET}`
             ? LOOPBACK_SERVE_PROXY_ENV
             : REMOTE_TAILNET_ENV,
         );
@@ -1980,6 +1980,20 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           await invoke('/api/projects/example/access', undefined, operator),
         );
         expect(before.members).toHaveLength(1);
+        // Neither WhoIs alone nor a foreign unbound Device may consume the invitation.
+        const alone = await invoke('/api/account-auth/accept-invitation', {
+          token,
+        });
+        expect(alone.status).not.toBe(200);
+        const borrowed = await invoke(
+          '/api/account-auth/accept-invitation',
+          { token },
+          {
+            Cookie,
+            Authorization: `Bearer ${h.paired.credential}`,
+          },
+        );
+        expect([401, 403]).toContain(borrowed.status);
         const authenticate = vi.spyOn(h.localAccounts!.service, 'authenticate');
         const accept = vi.spyOn(h.membership!.service, 'accept');
         const accepted = await invoke(
@@ -2036,7 +2050,13 @@ describe('device-session chat principal resolution over the REAL auth path (stat
             status: 'active',
           }),
         );
-        expect(h.pairing.listDevices()).toEqual(devicesBefore);
+        expect(
+          h.pairing
+            .listDevices()
+            .map(({ lastUsedAt: _lastUsedAt, ...grant }) => grant),
+        ).toEqual(
+          devicesBefore.map(({ lastUsedAt: _lastUsedAt, ...grant }) => grant),
+        );
         expect(
           (await invoke('/api/account-auth/invitation-preview', { token }))
             .status,

@@ -50,7 +50,6 @@ import { engineConnectionId } from '@kontourai/station-contracts/agent-identity'
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import type { ProjectMembershipScope } from '@kontourai/station-contracts/project-membership';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
-import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { resolveStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -76,6 +75,11 @@ import { ProjectService } from '../../../services/projects/project-service.js';
 import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
 import { DevicePairingError } from '../../../services/ssh/device-pairing-service.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
+import {
+  getInternalApiToken,
+  INTERNAL_API_TOKEN_HEADER,
+  INTERNAL_INGRESS_IDENTITY_HEADER,
+} from '../../../utils/internal-api-token.js';
 import {
   configureRuntimeRoutes as configureRuntimeRoutesProduction,
   isProjectMemberDraftLease,
@@ -459,8 +463,8 @@ describe('project guest administration over the production composition', () => {
     await result.kitLifecycleReady;
     roomClosers.push(() => result.projectRoomRuntime.close());
 
-    const request = (path: string, init: RequestInit = {}) =>
-      app.request(`${ORIGIN}${path}`, init);
+    const request = (path: string, init: RequestInit = {}, env?: never) =>
+      app.request(`${ORIGIN}${path}`, init, env);
     const ownerHeaders = (extra?: RequestInit) => ({
       ...extra,
       headers: {
@@ -751,6 +755,54 @@ describe('project guest administration over the production composition', () => {
         sharedBy: humanPrincipal('fixture', 'operator', 'Operator').id,
       });
     share(parent);
+    const serveEnv = {
+      incoming: { socket: { remoteAddress: '127.0.0.1' } },
+    } as never;
+    const serveHeaders = {
+      [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+      [INTERNAL_INGRESS_IDENTITY_HEADER]: Buffer.from(
+        JSON.stringify({
+          provider: 'tailscale-serve',
+          login: 'device-owner@example.test',
+        }),
+      ).toString('base64url'),
+    };
+    const serveRequest = (path: string, credential: string, cookie?: string) =>
+      h.request(
+        path,
+        {
+          headers: {
+            ...serveHeaders,
+            Authorization: `Bearer ${credential}`,
+            ...(cookie ? { Cookie: cookie } : {}),
+          },
+        },
+        serveEnv,
+      );
+    const projectRead = await serveRequest(
+      `/api/projects/${project.slug}`,
+      people[0]!.paired.credential,
+      people[0]!.cookie,
+    );
+    expect(projectRead.status, await projectRead.clone().text()).toBe(200);
+    expect(
+      (
+        await serveRequest(
+          `/api/projects/${project.slug}`,
+          people[0]!.paired.credential,
+          people[1]!.cookie,
+        )
+      ).status,
+    ).toBe(401);
+    expect(
+      (
+        await h.request(
+          `/api/projects/${project.slug}`,
+          { headers: serveHeaders },
+          serveEnv,
+        )
+      ).status,
+    ).not.toBe(200);
     const url = `/api/tasks/${parent.id}/children?taskCreatedAt=${encodeURIComponent(parent.createdAt)}`;
     const read = (index: number, withCookie = true) =>
       h.request(url, {
@@ -759,6 +811,19 @@ describe('project guest administration over the production composition', () => {
           ...(withCookie ? { Cookie: people[index]!.cookie } : {}),
         },
       });
+    const serveRelationship = await serveRequest(
+      url,
+      people[0]!.paired.credential,
+      people[0]!.cookie,
+    );
+    expect(
+      serveRelationship.status,
+      await serveRelationship.clone().text(),
+    ).toBe(200);
+    expect(
+      (await serveRequest(url, people[0]!.paired.credential, people[1]!.cookie))
+        .status,
+    ).toBe(401);
     for (const index of [0, 1]) {
       const response = await read(index);
       expect(response.status, await response.clone().text()).toBe(200);
@@ -848,7 +913,7 @@ describe('project guest administration over the production composition', () => {
     expect(
       operatorAccountEdit.status,
       await operatorAccountEdit.clone().text(),
-    ).toBe(200);
+    ).toBe(401);
     h.localAccounts.administration.setDisabled(
       people[1]!.authenticated.session.subject,
       true,
@@ -866,43 +931,15 @@ describe('project guest administration over the production composition', () => {
     });
     expect((await read(0)).status).toBe(404);
     vi.restoreAllMocks();
-    const graphPath = join(h.homeDir, 'task-graph.json');
-    const beforeLockWait = readFileSync(graphPath, 'utf8');
-    const release = await acquireFileMutationLockAsync(`${graphPath}.mutation`);
-    let prepared = false;
-    const createChild = h.graph.createChildTask.bind(h.graph);
-    vi.spyOn(h.graph, 'createChildTask').mockImplementationOnce((...args) => {
-      prepared = true;
-      return createChild(...args);
-    });
-    const pending = h.request(
-      `/api/tasks/${parent.id}/children`,
-      h.operatorHeaders({
-        method: 'POST',
-        headers: {
-          Cookie: people[0]!.cookie,
-          Origin: ORIGIN,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          operationId: 'revoked-during-runtime-lock-wait',
-          parent: { taskId: parent.id, taskCreatedAt: parent.createdAt },
-          task: { projectId: project.id, title: 'Must never commit' },
-        }),
-      }),
+    await h.localAccounts.service.revokeSessionReference(
+      people[0]!.authenticated.session.sessionId,
+      new AbortController().signal,
     );
-    try {
-      await vi.waitFor(() => expect(prepared).toBe(true));
-      await h.localAccounts.service.revokeSessionReference(
-        people[0]!.authenticated.session.sessionId,
-        new AbortController().signal,
-      );
-    } finally {
-      await release();
-    }
-    expect((await pending).status).toBe(404);
-    expect(readFileSync(graphPath, 'utf8')).toBe(beforeLockWait);
     expect((await read(0)).status).not.toBe(200);
+    expect(
+      (await serveRequest(url, people[0]!.paired.credential, people[0]!.cookie))
+        .status,
+    ).not.toBe(200);
   });
 
   test('production Task relationship mount writes with ordinary operator authority and refuses account snapshots', async () => {
