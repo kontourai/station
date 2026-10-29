@@ -135,8 +135,6 @@ function receiptFailureLabel(outcome: ReceiptFailureOutcome): string {
 export async function executeSchedulerJobAttempt({
   job,
   id,
-  attempt,
-  maxAttempts,
   startedAt,
   receipt,
   turnAdapter,
@@ -294,12 +292,9 @@ export async function executeSchedulerJobAttempt({
         announcedRunIds,
       });
       observe(() =>
-        logger?.warn(
-          'Scheduler job failed',
-          job.target
-            ? { errorClass: 'SchedulerNotInvoked' }
-            : { error: notInvokedError, attempt, maxAttempts },
-        ),
+        logger?.warn('Scheduler job failed', {
+          errorClass: 'SchedulerNotInvoked',
+        }),
       );
       return {
         logId: id,
@@ -350,10 +345,12 @@ export async function executeSchedulerJobAttempt({
       };
     }
     observe(() =>
-      schedulerJobRuns.add(1, { job: job.name, status: 'success' }),
+      schedulerJobRuns.add(1, { job_id: receipt.jobId, status: 'success' }),
     );
     observe(() =>
-      schedulerJobDuration.record(durationSecs * 1000, { job: job.name }),
+      schedulerJobDuration.record(durationSecs * 1000, {
+        job_id: receipt.jobId,
+      }),
     );
     observe(() =>
       broadcast({
@@ -365,12 +362,7 @@ export async function executeSchedulerJobAttempt({
         duration_secs: durationSecs,
       }),
     );
-    observe(() =>
-      logger?.info(
-        'Scheduler job completed',
-        job.target ? {} : { durationSecs, attempt, maxAttempts },
-      ),
-    );
+    observe(() => logger?.info('Scheduler job completed'));
 
     return {
       logId: id,
@@ -413,9 +405,13 @@ export async function executeSchedulerJobAttempt({
         durationSecs,
       };
     }
-    observe(() => schedulerJobRuns.add(1, { job: job.name, status: 'error' }));
     observe(() =>
-      schedulerJobDuration.record(durationSecs * 1000, { job: job.name }),
+      schedulerJobRuns.add(1, { job_id: receipt.jobId, status: 'error' }),
+    );
+    observe(() =>
+      schedulerJobDuration.record(durationSecs * 1000, {
+        job_id: receipt.jobId,
+      }),
     );
     await announceSchedulerJobFailure({
       job: job.name,
@@ -427,12 +423,9 @@ export async function executeSchedulerJobAttempt({
       announcedRunIds,
     });
     observe(() =>
-      logger?.warn(
-        'Scheduler job failed',
-        job.target
-          ? { errorClass: 'SchedulerRunFailure' }
-          : { error: errorMessage, attempt, maxAttempts },
-      ),
+      logger?.warn('Scheduler job failed', {
+        errorClass: 'SchedulerRunFailure',
+      }),
     );
 
     return {

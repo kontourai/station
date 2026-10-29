@@ -20,7 +20,6 @@ import {
   schedulerConcurrencyDeferrals,
   schedulerHealthy,
 } from '../../telemetry/metrics.js';
-import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
 import { schedulerJobCorrelationBindings } from '../../utils/logger-correlation.js';
 import { SSEBroadcaster } from '../infra/sse-broadcaster.js';
@@ -781,19 +780,14 @@ export class BuiltinScheduler implements ISchedulerProvider {
     }
     this.lastTickAt = Date.now();
     for (const receipt of receipts) {
-      void this.executeJob(receipt).catch((error) =>
+      void this.executeJob(receipt).catch(() =>
         this.observe(() =>
-          this.options.logger?.warn(
-            'Scheduler execution lifecycle failed',
-            receipt.job.target
-              ? {
-                  jobId: receipt.jobId,
-                  runId: receipt.id,
-                  targetKind: receipt.job.target.kind,
-                  errorClass: 'SchedulerExecutionError',
-                }
-              : { error: errorMessage(error) },
-          ),
+          this.options.logger?.warn('Scheduler execution lifecycle failed', {
+            jobId: receipt.jobId,
+            runId: receipt.id,
+            targetKind: receipt.job.target?.kind ?? 'untargeted',
+            errorClass: 'SchedulerExecutionError',
+          }),
         ),
       );
     }
@@ -996,26 +990,13 @@ export class BuiltinScheduler implements ISchedulerProvider {
         ) {
           if (attempt > 1) {
             const reason = SCHEDULER_EXECUTION_LIMITS.concurrencyDeferralReason;
-            const waitingSince = Date.now();
             this.observe(() =>
               this.options.logger?.warn(
                 'Scheduler retry waiting for invocation capacity',
                 {
-                  ...(targeted
-                    ? {
-                        jobId: receipt.jobId,
-                        runId: id,
-                        targetKind: job.target!.kind,
-                      }
-                    : {
-                        job: job.name,
-                        id,
-                        attempt,
-                        maxAttempts,
-                        reason,
-                        maxConcurrentJobs:
-                          SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs,
-                      }),
+                  jobId: receipt.jobId,
+                  runId: id,
+                  targetKind: job.target?.kind ?? 'untargeted',
                 },
               ),
             );
@@ -1037,21 +1018,9 @@ export class BuiltinScheduler implements ISchedulerProvider {
               this.options.logger?.info(
                 'Scheduler retry invocation capacity wait ended',
                 {
-                  ...(targeted
-                    ? {
-                        jobId: receipt.jobId,
-                        runId: id,
-                        targetKind: job.target!.kind,
-                      }
-                    : {
-                        job: job.name,
-                        id,
-                        attempt,
-                        maxAttempts,
-                        reason,
-                        disposition: admitted ? 'admitted' : 'stopped',
-                        waitMs: Date.now() - waitingSince,
-                      }),
+                  jobId: receipt.jobId,
+                  runId: id,
+                  targetKind: job.target?.kind ?? 'untargeted',
                 },
               ),
             );
@@ -1073,19 +1042,12 @@ export class BuiltinScheduler implements ISchedulerProvider {
               this.observe(() =>
                 this.options.logger?.warn(
                   'Scheduler occurrence deferred by concurrency limit',
-                  targeted
-                    ? {
-                        jobId: receipt.jobId,
-                        runId: id,
-                        targetKind: job.target!.kind,
-                        errorClass: 'SchedulerCapacityDeferred',
-                      }
-                    : {
-                        job: job.name,
-                        reason,
-                        maxConcurrentJobs:
-                          SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs,
-                      },
+                  {
+                    jobId: receipt.jobId,
+                    runId: id,
+                    targetKind: job.target?.kind ?? 'untargeted',
+                    errorClass: 'SchedulerCapacityDeferred',
+                  },
                 ),
               );
               this.recordConcurrencyDeferral('released');
@@ -1110,14 +1072,12 @@ export class BuiltinScheduler implements ISchedulerProvider {
             this.observe(() =>
               this.options.logger?.warn(
                 'Scheduler concurrency deferral receipt was indeterminate',
-                targeted
-                  ? {
-                      jobId: receipt.jobId,
-                      runId: id,
-                      targetKind: job.target!.kind,
-                      errorClass: 'SchedulerDeferralIndeterminate',
-                    }
-                  : { job: job.name, id, reason, receiptKind: released.kind },
+                {
+                  jobId: receipt.jobId,
+                  runId: id,
+                  targetKind: job.target?.kind ?? 'untargeted',
+                  errorClass: 'SchedulerDeferralIndeterminate',
+                },
               ),
             );
             this.recordConcurrencyDeferral('indeterminate');
@@ -1138,26 +1098,16 @@ export class BuiltinScheduler implements ISchedulerProvider {
         let jobLogger: Logger | undefined;
         try {
           jobLogger = this.options.logger?.child(
-            targeted
-              ? {
-                  'station.scheduler.job_id': receipt.jobId,
-                  'station.scheduler.job_run_id': id,
-                  'station.scheduler.target_kind': job.target!.kind,
-                }
-              : schedulerJobCorrelationBindings({
-                  jobName: job.name,
-                  jobRunId: id,
-                }),
+            schedulerJobCorrelationBindings({
+              jobId: receipt.jobId,
+              jobRunId: id,
+              targetKind: job.target?.kind ?? 'untargeted',
+            }),
           );
         } catch {
           // Logging is observer-only and cannot prevent durable invocation.
         }
-        this.observe(() =>
-          jobLogger?.info(
-            'Scheduler job started',
-            targeted ? {} : { manual: receipt.manual, attempt, maxAttempts },
-          ),
-        );
+        this.observe(() => jobLogger?.info('Scheduler job started', {}));
         this.observe(() =>
           this.broadcast({
             event: 'job.started',

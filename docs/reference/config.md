@@ -339,10 +339,8 @@ retain it.
 | Station user id | `station.user.id` | `station.user.id` | `POST /api/orchestration/chat` |
 
 [Scheduler attempts](../../src-server/services/scheduling/builtin-scheduler.ts)
-bind `station.scheduler.job_run_id` and, for untargeted jobs,
-`station.scheduler.job_name`. A conversation-targeted job instead logs its
-opaque job id and target kind; its name and engine error remain in admitted
-run records. These are scheduler-local keys: a run ID is not a conversation ID. The
+bind `station.scheduler.job_run_id`, an opaque job id and target kind for
+all jobs. Job names and engine errors remain in admitted run records. These are scheduler-local keys: a run ID is not a conversation ID. The
 [execution owner](../../src-server/services/scheduling/builtin-scheduler-execution.ts)
 invokes the scheduled-turn adapter after durable admission; a job with a
 `target` uses the conversation runner instead, whose turn carries the key

@@ -1396,7 +1396,7 @@ domain operations, so their totals are not counts of one business action.
 | <a id="providers--infrastructure"></a>`station.provider.operations` | Provider management and adapter outcomes | `op` or `operation`, plus `type`, `provider`, `reason`, `model_options`, `outcome`, `status` where supplied |
 | `station.notification.operations` | Notification service/route operations | `op` |
 | `station.notification.agent_operations` | Agent notification admission outcomes; no content or Session identity | `result`, `urgency` |
-| `station.scheduler.job.runs` | Actual job outcomes **and** management requests; currently not an execution-only count | `job`, `status`, or `op` |
+| `station.scheduler.job.runs` | Actual job outcomes **and** management requests; currently not an execution-only count | opaque `job_id` on built-in execution, `status`, or `op` |
 | `station.scheduler.concurrency.deferrals` | Invocation-capacity lifecycle outcomes | `reason`, `disposition` |
 | `station.mcp.lifecycle` | MCP connection lifecycle observations | `event`, `server` |
 | `station.mcp.negotiation.total` | Negotiation outcomes | `era`, `protocol_version`, `fallback`, `extensions`, `outcome`, and failure-only `error_class` |
@@ -1440,7 +1440,7 @@ a confirmed deferral.
 | --- | --- | --- | --- |
 | `station.chat.duration` | Primary-chat duration | `agent`, `plugin` | ms |
 | `station.tool.duration` | Matched call/result elapsed time from MetadataHandler **and** the external-engine bridge | `tool` when reported, `plugin` | ms |
-| `station.scheduler.job.duration` | Scheduler execution duration | `job` | ms |
+| `station.scheduler.job.duration` | Scheduler execution duration | opaque `job_id` on built-in execution | ms |
 | `station.approval.duration` | Explicit registry settlement time | `action` | ms |
 | `station.skill.activation.duration` | `activate_skill` call duration, including failed reads | `skill` | ms |
 | `station.mcp.negotiation.duration` | Negotiation plus discovery duration | Negotiation attributes above | ms |

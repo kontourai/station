@@ -2909,3 +2909,94 @@ describe('round3 independent reviewer probes', () => {
     }
   });
 });
+
+describe('legacy scheduler diagnostics privacy', () => {
+  const makeTempDir = trackTempDirs();
+  test('an agent refused untargeted run history must not receive it from read_logs', async () => {
+    const directory = makeTempDir('pr4289-r4-legacy-');
+    const logDirectory = join(directory, 'logs');
+    installServerLogSink({ directory: logDirectory });
+    const scheduler = new SchedulerService({
+      logger: createLogger({
+        name: 'round4-independent-legacy',
+        level: 'info',
+      }),
+      builtin: {
+        ledger: createSchedulerLedger({ directory }),
+        turnAdapter: {
+          invoke: async () => ({
+            kind: 'failed',
+            error: 'round4-legacy-private-engine-answer',
+          }),
+        },
+      },
+    });
+    const served = await boot({
+      hosted: false,
+      scheduler,
+      logDirectory,
+      retargetsGrantedJob: () => false,
+    });
+    try {
+      await scheduler.addJob({
+        name: 'round4-legacy-private-job',
+        schedule: { kind: 'every', everyMs: 3_600_000 },
+        prompt: 'round4-legacy-private-prompt',
+      });
+      await scheduler.runJob('round4-legacy-private-job');
+      const at = { baseUrl: served.baseUrl, port: served.port };
+      const listed = await agent(
+        'bound',
+        'other',
+        'GET',
+        '/scheduler/jobs',
+        undefined,
+        at,
+      );
+      expect(listed.status).toBe(200);
+      expect(listed.body.data).toEqual([]);
+      const protectedLogs = await agent(
+        'bound',
+        'other',
+        'GET',
+        '/scheduler/jobs/round4-legacy-private-job/logs',
+        undefined,
+        at,
+      );
+      expect(protectedLogs.status).toBe(404);
+      const raw = await scheduler.getJobLogs('round4-legacy-private-job');
+      expect(raw[0]!.runTarget).toBeNull();
+      expect(raw[0]!.error).toContain('round4-legacy-private-engine-answer');
+      const allLogs = await createServerLogReader({
+        directory: logDirectory,
+      }).query({});
+      expect(
+        allLogs.entries.some(
+          (entry) =>
+            entry.msg === 'Scheduler job failed' &&
+            entry['station.scheduler.target_kind'] === 'untargeted' &&
+            entry.errorClass === 'SchedulerRunFailure' &&
+            typeof entry['station.scheduler.job_id'] === 'string' &&
+            typeof entry['station.scheduler.job_run_id'] === 'string',
+        ),
+      ).toBe(true);
+      expect(JSON.stringify(allLogs)).not.toContain('round4-legacy-private');
+      const diagnostics = await agent(
+        'bound',
+        'other',
+        'GET',
+        '/api/diagnostics/logs?q=round4-legacy-private',
+        undefined,
+        at,
+      );
+      expect(diagnostics.status).toBe(200);
+      expect(JSON.stringify(diagnostics.body)).not.toContain(
+        'round4-legacy-private',
+      );
+    } finally {
+      await served.close();
+      await scheduler.stop();
+      resetServerLogSinkForTests();
+    }
+  });
+});
