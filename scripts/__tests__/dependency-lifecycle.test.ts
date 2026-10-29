@@ -18,6 +18,7 @@ import { delimiter, join, resolve } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { describe, expect, it, vi } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   describeFailure,
   INERT_INSTALL_TIMEOUT_ENV,
@@ -67,6 +68,7 @@ import {
 } from '../lib/workspace-dependency-satisfaction.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
+const makeTempDir = trackTempDirs();
 const policy = JSON.parse(
   readFileSync(
     resolve(root, 'config/dependency-lifecycle-allowlist.json'),
@@ -1476,9 +1478,7 @@ describe('dependency lifecycle policy', () => {
   it.skipIf(process.platform !== 'linux')(
     'builds a reviewed native hook from the CI Node headers without a header download',
     () => {
-      const fixtureRoot = mkdtempSync(
-        resolve(tmpdir(), 'station-native-headers-'),
-      );
+      const fixtureRoot = makeTempDir('station-native-headers-');
       const packageRoot = resolve(fixtureRoot, 'node_modules/header-probe');
       const variables = [
         'GITHUB_ACTIONS',
@@ -1562,7 +1562,6 @@ describe('dependency lifecycle policy', () => {
           if (value === undefined) delete process.env[key];
           else process.env[key] = value;
         }
-        rmSync(fixtureRoot, { recursive: true, force: true });
       }
     },
     150_000,
