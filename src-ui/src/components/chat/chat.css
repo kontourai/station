@@ -613,7 +613,7 @@
    reuses `.message__copy-btn`) are one chip family, the same 28px square.
    Doubled so it outranks the footer's own padding rule further down. */
 :is(.turn-footer__actions, .message__user-actions)
-.message__copy-btn.message__copy-btn {
+  .message__copy-btn.message__copy-btn {
   display: inline-grid;
   place-items: center;
   box-sizing: border-box;
@@ -2799,7 +2799,7 @@
    trigger borrows `.message__copy-btn`'s filled chip elsewhere; here it
    matches the rating buttons beside it. */
 .message-details__actions
-:is(.turn-footer__overflow-trigger, .message__rating-btn) {
+  :is(.turn-footer__overflow-trigger, .message__rating-btn) {
   position: static;
   display: inline-grid;
   place-items: center;
@@ -3596,7 +3596,7 @@
   /* In a dock too short for the transcript the Scroll to bottom button is not
      shown (see data-composer-priority), so it cannot hold this row open. */
   .chat-dock__body[data-composer-priority]
-  .chat-input__activity:not(:has(.chat-status-pill)) {
+    .chat-input__activity:not(:has(.chat-status-pill)) {
     display: none;
   }
 

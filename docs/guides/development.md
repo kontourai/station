@@ -425,7 +425,7 @@ when mount namespaces do not share the default temporary directory. This bounds
 these script entry points, not arbitrary commands or direct Biome invocations.
 
 
-The pinned MCP client 2.3.1 patch adds a spawn callback at the physical process
+The pinned MCP client 2.4.0 patch adds a spawn callback at the physical process
 boundary. Its protocol-negotiation sibling inherits that callback, so probe and
 session processes each own a fresh scope. Retain the patch until the upstream
 client supports equivalent process ownership across negotiation and session

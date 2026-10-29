@@ -5154,9 +5154,9 @@ button.tool-call__line:hover {
    its wrapper is shown only when the composer has priority, and this rule's
    `display: flex` would keep it on screen in every dock. */
 .chat-controls-row
-> *:not(.voice-orb):not(.chat-controls-row__spacer):not(.send-button):not(
-  .responsive-surface-overlay
-):not(.chat-input__queued-retry-actions) {
+  > *:not(.voice-orb):not(.chat-controls-row__spacer):not(.send-button):not(
+    .responsive-surface-overlay
+  ):not(.chat-input__queued-retry-actions) {
   flex: 0 0 auto;
   display: flex;
   align-items: center;

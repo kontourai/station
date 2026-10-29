@@ -266,10 +266,10 @@ policy is changed.
 
 ## Shell quoting and MCP credential issuer advisories (2026-10)
 
-The workspace pins `shell-quote` 1.11.0, `@modelcontextprotocol/client` 2.3.1
-in the root and Shared importer, and `@modelcontextprotocol/sdk` 1.32.1.
+The workspace pins `shell-quote` 1.11.0, `@modelcontextprotocol/client` 2.4.0
+in the root and Shared importer, and `@modelcontextprotocol/sdk` 1.32.2.
 Exact overrides cover transitive client/SDK consumers. The client brings its
-exact core 2.3.1 dependency; server 2.3.1 brings its exact core 2.3.1 dependency.
+exact core 2.4.0 dependency; server 2.4.0 brings its exact core 2.4.0 dependency.
 No Station code imports core directly.
 
 The [shell-quote advisory](https://github.com/advisories/GHSA-pqg4-j6r4-53mv)

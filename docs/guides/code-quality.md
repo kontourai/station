@@ -53,6 +53,14 @@ non-success statics result, and the required `Source verification policy`
 context reconciles that aggregate. Local pushes retain cheap lint/governance and
 commit checks plus scoped transfer, static and SDK checks.
 
+Biome 2.6 keeps Markdown and YAML formatting disabled in `biome.json`,
+preserving their existing documentation and fixture formatting. The new
+`noComponentHookFactories` and `usePlaywrightValidDescribeCallback` rules
+are warnings during adoption. Their diagnostics include test-local React
+harnesses, module-initialized component factories, Zod `.describe()` calls
+and ordinary helpers named `describe`; review them before changing code.
+Existing error-level lint rules remain enforced.
+
 The hook runs the transfer, static and SDK checks through
 `node scripts/heavy-check-slot.mjs <label> <script>`. Each one first waits for a
 [host heavy-check slot](testing.md#host-heavy-check-slots), so pushes from

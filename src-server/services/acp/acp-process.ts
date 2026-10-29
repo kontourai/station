@@ -9,20 +9,20 @@ import { EventEmitter } from 'node:events';
 import { existsSync } from 'node:fs';
 import { Readable, Writable } from 'node:stream';
 import {
-  type Client,
-  ClientSideConnection,
+  type ClientContext,
   type ContentBlock,
   type DisableProviderResponse,
   type InitializeResponse,
   type ListProvidersResponse,
   type McpServer,
+  methods,
   ndJsonStream,
   PROTOCOL_VERSION,
   type PromptResponse,
   type ProviderInfo,
   type SetProviderRequest,
   type SetProviderResponse,
-} from '@agentclientprotocol/sdk';
+} from '@agentclientprotocol/sdk/unstable';
 import type { ExactProcessIdentityProbe } from '@kontourai/station-shared/process-identity';
 import {
   lookupProcessBirthFingerprintAsync,
@@ -34,6 +34,8 @@ import {
 } from '../../providers/auth/cli-auth.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { forceKillProcess, spawnOwnedChild } from '../infra/process-utils.js';
+import { createACPClientApp } from './acp-bridge-client.js';
+import type { ACPClientCallbacks } from './acp-bridge-types.js';
 
 /**
  * archive#3441 MEDIUM-2: the identity probe `survivesCleanup()` and
@@ -53,7 +55,7 @@ export interface ACPProcessOptions {
   args?: string[];
   cwd: string;
   /** Factory for the Client callbacks — called during connection setup */
-  createClient: (agent: any) => Client;
+  createClient: () => ACPClientCallbacks;
   /**
    * Capabilities Station truthfully offers to this ACP peer. Interactive
    * sessions use the managed filesystem and terminal bridge by default;
@@ -216,11 +218,12 @@ export function assertACPProviderRouteSupported(
 
 /** Capability-gated unstable provider discovery; absence is an ordinary no-op. */
 export async function observeACPProviderRouting(
-  connection: Pick<ClientSideConnection, 'unstable_listProviders'>,
+  connection: Pick<ClientContext, 'request'>,
   initResult: InitializeResult,
 ): Promise<ProviderInfo[] | undefined> {
   if (initResult.agentCapabilities?.providers == null) return undefined;
-  const response = (await connection.unstable_listProviders(
+  const response = (await connection.request(
+    methods.agent.providers.list,
     {},
   )) as ListProvidersResponse;
   return response.providers;
@@ -304,7 +307,7 @@ export class ACPProcess extends EventEmitter {
   private spawnedBirth: string | null = null;
   private readonly probeIdentity: AsyncProcessIdentityProbe;
   private releaseOwnedChild: (() => void) | null = null;
-  private connection: ClientSideConnection | null = null;
+  private connection: ClientContext | null = null;
   private _sessionId: string | null = null;
   private _initResult: InitializeResult | null = null;
   private destroyed = false;
@@ -507,13 +510,12 @@ export class ACPProcess extends EventEmitter {
     ) as ReadableStream<Uint8Array>;
     const acpStream = ndJsonStream(input, output);
 
-    this.connection = new ClientSideConnection(
-      (agent) => this.opts.createClient(agent),
+    this.connection = createACPClientApp(this.opts.createClient()).connect(
       acpStream,
-    );
+    ).agent;
 
     this._initResult = (await Promise.race([
-      this.connection.initialize({
+      this.connection.request(methods.agent.initialize, {
         protocolVersion: PROTOCOL_VERSION,
         clientCapabilities: this.opts.clientCapabilities ?? {
           fs: { readTextFile: true, writeTextFile: true },
@@ -548,7 +550,7 @@ export class ACPProcess extends EventEmitter {
       params.providerId,
       params.apiType,
     );
-    return this.connection.unstable_setProvider(params);
+    return this.connection.request(methods.agent.providers.set, params);
   }
 
   /** Disable one optional agent-owned provider route. */
@@ -563,7 +565,9 @@ export class ACPProcess extends EventEmitter {
       )
     )
       throw new ACPRequiredProviderDisableError(providerId);
-    return this.connection.unstable_disableProvider({ providerId });
+    return this.connection.request(methods.agent.providers.disable, {
+      providerId,
+    });
   }
 
   /**
@@ -580,7 +584,7 @@ export class ACPProcess extends EventEmitter {
     if (!method) throw new Error('The engine does not offer that sign-in.');
     if ('type' in method && method.type === 'terminal')
       throw new Error('That sign-in runs in a terminal.');
-    await this.connection.authenticate({ methodId });
+    await this.connection.request(methods.agent.authenticate, { methodId });
   }
 
   /** Create a new ACP session. */
@@ -589,7 +593,7 @@ export class ACPProcess extends EventEmitter {
     mcpServers: McpServer[] = [],
   ): Promise<SessionResult> {
     if (!this.connection) throw new Error('ACPProcess not started');
-    const result = (await this.connection.newSession({
+    const result = (await this.connection.request(methods.agent.session.new, {
       cwd,
       mcpServers,
     })) as SessionResult;
@@ -608,7 +612,7 @@ export class ACPProcess extends EventEmitter {
     mcpServers: McpServer[] = [],
   ): Promise<Omit<SessionResult, 'sessionId'>> {
     if (!this.connection) throw new Error('ACPProcess not started');
-    const result = (await this.connection.loadSession({
+    const result = (await this.connection.request(methods.agent.session.load, {
       sessionId,
       cwd,
       mcpServers,
@@ -627,11 +631,14 @@ export class ACPProcess extends EventEmitter {
     mcpServers: McpServer[] = [],
   ): Promise<Omit<SessionResult, 'sessionId'>> {
     if (!this.connection) throw new Error('ACPProcess not started');
-    const result = (await this.connection.resumeSession({
-      sessionId,
-      cwd,
-      mcpServers,
-    })) as Omit<SessionResult, 'sessionId'> | undefined;
+    const result = (await this.connection.request(
+      methods.agent.session.resume,
+      {
+        sessionId,
+        cwd,
+        mcpServers,
+      },
+    )) as Omit<SessionResult, 'sessionId'> | undefined;
     this._sessionId = sessionId;
     return result ?? {};
   }
@@ -639,7 +646,7 @@ export class ACPProcess extends EventEmitter {
   /** Delete a stored session (`session/delete`, gated on `sessionCapabilities.delete`). */
   async deleteSession(sessionId: string): Promise<void> {
     if (!this.connection) throw new Error('ACPProcess not started');
-    await this.connection.deleteSession({ sessionId });
+    await this.connection.request(methods.agent.session.delete, { sessionId });
     if (this._sessionId === sessionId) this._sessionId = null;
   }
 
@@ -647,7 +654,7 @@ export class ACPProcess extends EventEmitter {
   async setMode(modeId: string): Promise<void> {
     if (!this.connection || !this._sessionId)
       throw new Error('No active session');
-    await this.connection.setSessionMode({
+    await this.connection.request(methods.agent.session.setMode, {
       sessionId: this._sessionId,
       modeId,
     });
@@ -657,7 +664,7 @@ export class ACPProcess extends EventEmitter {
   async setConfigOption(configId: string, value: string): Promise<any> {
     if (!this.connection || !this._sessionId)
       throw new Error('No active session');
-    return this.connection.setSessionConfigOption({
+    return this.connection.request(methods.agent.session.setConfigOption, {
       sessionId: this._sessionId,
       configId,
       value,
@@ -682,7 +689,7 @@ export class ACPProcess extends EventEmitter {
   async prompt(content: ContentBlock[]): Promise<PromptResponse> {
     if (!this.connection || !this._sessionId)
       throw new Error('No active session');
-    return (await this.connection.prompt({
+    return (await this.connection.request(methods.agent.session.prompt, {
       sessionId: this._sessionId,
       prompt: content,
     })) as PromptResponse;
@@ -691,7 +698,9 @@ export class ACPProcess extends EventEmitter {
   /** Cancel the current prompt. */
   async cancel(): Promise<void> {
     if (!this.connection || !this._sessionId) return;
-    await this.connection.cancel({ sessionId: this._sessionId });
+    await this.connection.notify(methods.agent.session.cancel, {
+      sessionId: this._sessionId,
+    });
   }
 
   /** Call an extension method on the connection. */
@@ -700,7 +709,7 @@ export class ACPProcess extends EventEmitter {
     params: Record<string, unknown>,
   ): Promise<any> {
     if (!this.connection) throw new Error('ACPProcess not started');
-    return (this.connection as any).extMethod(method, params);
+    return this.connection.request(method, params);
   }
 
   /** Send an extension notification on the connection (fire-and-forget). */
@@ -709,7 +718,7 @@ export class ACPProcess extends EventEmitter {
     params: Record<string, unknown>,
   ): Promise<void> {
     if (!this.connection) throw new Error('ACPProcess not started');
-    return (this.connection as any).extNotification(method, params);
+    return this.connection.notify(method, params);
   }
 
   /** Destroy the process: SIGTERM → 1s → SIGKILL. */

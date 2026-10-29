@@ -1,11 +1,12 @@
 import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/runtime-events';
+import type { ACPClientCallbacks } from '../../services/acp/acp-bridge-types.js';
 import { providerFailure } from '../provider-failure.js';
 /**
  * AcpAdapter — ProviderAdapterShape implementation for ACP-connected agent
  * apps (e.g. Kiro), driven through the canonical adapter seam (ADR-0008).
  *
  * This file owns: connection resolution, lazy ACPProcess lifecycle per
- * threadId, Client construction (reusing createACPBridgeClient's
+ * threadId, client callback construction (reusing createACPBridgeClient's
  * fs/terminal/ext-* handlers, with a canonical `requestPermission`
  * override), turn start/complete/abort, and getCommands()/getPrerequisites()
  * aggregation. It does not translate events itself: native ACP events are
@@ -15,14 +16,13 @@ import { providerFailure } from '../provider-failure.js';
  * Reused substrate (called, not rewritten): ACPProcess (spawn/initialize/
  * newSession/prompt/cancel/setMode/setConfigOption/extMethod/destroy),
  * createACPBridgeClient (fs/terminal/
- * ext-notification/ext-method Client handlers), ApprovalRegistry (satisfies
+ * ext-notification/ext-method handlers), ApprovalRegistry (satisfies
  * createACPBridgeClient's parameter type only), ACPConnectionConfig/ACPConfig.
  */
 
 import crypto from 'node:crypto';
 import { resolve } from 'node:path';
 import {
-  type Client,
   type ContentBlock,
   type McpServer,
   type PermissionOption,
@@ -30,7 +30,7 @@ import {
   type RequestPermissionRequest,
   type RequestPermissionResponse,
   type SessionNotification,
-} from '@agentclientprotocol/sdk';
+} from '@agentclientprotocol/sdk/unstable';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
 import {
@@ -503,7 +503,7 @@ interface AcpSlashCommand {
 /**
  * A pending mid-turn `session/request_permission` call, keyed by requestId.
  * `resolve` is invoked by `respondToRequest` with the adapter-level decision;
- * the `Client.requestPermission` handler built in this file awaits this and
+ * the `requestPermission` handler built in this file awaits this and
  * maps the decision + `options` into the ACP `RequestPermissionOutcome` via
  * `mapAcpDecisionToOutcome` (acp-adapter-events.ts).
  */
@@ -2826,7 +2826,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       nextTerminalId: () => string;
       logger: AcpLogger;
     },
-  ): Client {
+  ): ACPClientCallbacks {
     const client = createACPBridgeClient({
       cwd: context.cwd,
       terminals: context.terminals,
