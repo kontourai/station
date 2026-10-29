@@ -1,5 +1,18 @@
 /* IntegrationsView — integration-specific overrides + mobile */
 
+.integration-trust-hints {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.integration-trust-history {
+  padding-inline-start: var(--k-space-5);
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
   /* Form / Raw JSON toggle: full-width, equal halves, 44px tap targets.
      Desktop keeps the compact fit-content pill from editor-layout.css. */

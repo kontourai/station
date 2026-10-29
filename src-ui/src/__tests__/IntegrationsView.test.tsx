@@ -8,6 +8,8 @@ let integrations: unknown[] = [];
 let integrationsError: Error | null = null;
 const refetchIntegrations = vi.fn();
 let pathname = '/connections/tools';
+let detail: any;
+let trustPreview = false;
 
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   // The REAL save hook, so a refusal travels the real integrations fetcher
@@ -21,7 +23,12 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
     error: integrationsError,
     refetch: refetchIntegrations,
   }),
-  useIntegrationQuery: () => ({ data: undefined }),
+  useIntegrationQuery: () => ({ data: detail }),
+  useFeaturePreviewsQuery: () => ({
+    data: trustPreview
+      ? [{ id: 'integration-content-trust', enabled: true }]
+      : [],
+  }),
   useDeleteIntegrationMutation: () => ({ mutate: vi.fn() }),
   useReconnectIntegrationMutation: () => ({ mutate: vi.fn() }),
   useSetIntegrationRenderPermissionMutation: () => ({ mutate: vi.fn() }),
@@ -89,6 +96,8 @@ describe('IntegrationsView (#771)', () => {
     integrations = [];
     integrationsError = null;
     pathname = '/connections/tools';
+    detail = undefined;
+    trustPreview = false;
     refetchIntegrations.mockReset();
   });
 
@@ -175,6 +184,51 @@ describe('IntegrationsView (#771)', () => {
     renderView();
 
     expect(screen.getByText('No tool servers yet')).toBeTruthy();
+  });
+
+  test('saves the edited trust policy through the integration API', async () => {
+    const { _setApiBase } = await vi.importActual<
+      typeof import('@kontourai/station-sdk')
+    >('@kontourai/station-sdk');
+    _setApiBase('http://localhost');
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ success: true }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    pathname = '/connections/tools/mail';
+    trustPreview = true;
+    detail = {
+      id: 'mail',
+      kind: 'mcp',
+      transport: 'stdio',
+      command: 'node',
+      contentTrust: 'untrusted',
+      probe: {
+        ok: true,
+        toolCount: 1,
+        checkedAt: '2026-01-01T00:00:00Z',
+        tools: [{ name: 'send_reply' }],
+      },
+    };
+    integrations = [detail];
+    renderView();
+    fireEvent.change(
+      await screen.findByLabelText('send_reply after untrusted content'),
+      { target: { value: 'deny' } },
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [url, request] = fetchMock.mock.calls[0];
+    expect(url).toBe('http://localhost/integrations/mail');
+    expect(JSON.parse(request.body)).toMatchObject({
+      untrustedContentPermissions: { tools: { send_reply: 'deny' } },
+    });
+    expect(JSON.parse(request.body)).not.toHaveProperty('contentTrust');
   });
 
   test('renders the tool list before advanced secret bindings and uses user-facing unchecked copy', () => {

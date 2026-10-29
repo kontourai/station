@@ -3,10 +3,80 @@
  */
 
 import { fireEvent, render, screen } from '@testing-library/react';
+import { useState } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 import { IntegrationEditorPanel } from '../views/integrations/IntegrationEditorPanel';
 
 describe('IntegrationEditorPanel', () => {
+  test('edits trust policy and shows recorded person changes', () => {
+    const save = vi.fn();
+    function Fixture() {
+      const [form, setForm] = useState<any>({
+        id: 'mail',
+        kind: 'mcp',
+        contentTrust: 'untrusted',
+        probe: {
+          ok: true,
+          toolCount: 1,
+          checkedAt: '2026-01-01T00:00:00Z',
+          tools: [{ name: 'send_reply' }],
+        },
+        untrustedContentChanges: [
+          {
+            at: '2026-01-01T00:00:00Z',
+            by: 'person',
+            contentTrust: 'untrusted',
+          },
+        ],
+      });
+      return (
+        <IntegrationEditorPanel
+          editForm={form}
+          isNew={false}
+          locked={false}
+          message={null}
+          viewMode="form"
+          rawJson=""
+          rawError={null}
+          savePending={false}
+          reconnectPending={false}
+          trustControlsEnabled
+          onReconnect={vi.fn()}
+          onDelete={vi.fn()}
+          onSave={() => save(form)}
+          onSwitchToForm={vi.fn()}
+          onSwitchToRaw={vi.fn()}
+          onRawJsonChange={vi.fn()}
+          onUpdate={setForm}
+          onUnlock={vi.fn()}
+        />
+      );
+    }
+    render(<Fixture />);
+    fireEvent.change(screen.getByLabelText('Content classification'), {
+      target: { value: 'trusted' },
+    });
+    fireEvent.change(screen.getByLabelText('Default after untrusted content'), {
+      target: { value: 'deny' },
+    });
+    fireEvent.change(
+      screen.getByLabelText('send_reply after untrusted content'),
+      { target: { value: 'allow' } },
+    );
+    fireEvent.click(screen.getByLabelText('Trust read-only hints'));
+    expect(screen.getByText(/person/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contentTrust: 'trusted',
+        trustReadOnlyHints: true,
+        untrustedContentPermissions: {
+          default: 'deny',
+          tools: { send_reply: 'allow' },
+        },
+      }),
+    );
+  });
   test('uses user-facing copy before a tool server has been checked', () => {
     render(
       <IntegrationEditorPanel

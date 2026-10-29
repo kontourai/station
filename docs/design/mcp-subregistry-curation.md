@@ -241,5 +241,6 @@ checks newer state and stale grants is follow-up work, not an available command.
   available. An unknown tool without verified identity asks by default.
 - **Earlier turns.** Content read in an earlier turn stays in the
   conversation history but no longer marks the turn.
-- **No settings UI yet.** The fields are edited through the tool's settings
-  (Raw JSON) or the API.
+- **Settings UI.** The Content trust settings Feature Preview exposes the
+  classification, permissions, hint trust, and receipts in Connections →
+  Tools. The operator API remains available independently of the preview.

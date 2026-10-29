@@ -1557,10 +1557,13 @@ Your trust settings and receipts survive a plugin retiring and later
 reintroducing the same integration. Deleting an integration yourself removes
 its saved trust settings and receipts.
 
-There is no settings UI for these fields today. For a writable integration,
-save its definition with `contentTrust: "untrusted"` through the operator-gated
-`PUT /api/integrations/:id` API. The API records a receipt for the person making
-the change. Integration JSON can also be edited locally, without a receipt.
+Enable **Content trust settings** under **Settings → Advanced → Feature previews**,
+then open a server in **Connections → Tools** to change its classification,
+default, individual tool permissions, and read-only hints. The panel shows
+the recorded change history. For a writable integration, you can also save
+`contentTrust: "untrusted"` through the operator-gated `PUT /api/integrations/:id`
+API. The API records a receipt for the person making the change. Integration
+JSON can also be edited locally, without a receipt.
 An unrecorded local edit is not protected from a later plugin publication;
 use the API for a persistent person choice.
 Live Agent Plugin contributions accept these trust fields through the same API;

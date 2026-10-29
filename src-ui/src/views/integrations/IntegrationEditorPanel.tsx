@@ -4,6 +4,7 @@ import { LockGlyph } from '../../components/icons/Glyph';
 import { IntegrationGlyph } from '../../components/icons/IntegrationGlyph';
 import { LazyBoundary } from '../../components/LazyBoundary';
 import { IntegrationAccountSection } from './IntegrationAccountSection';
+import { IntegrationTrustSection } from './IntegrationTrustSection';
 
 const loadSecretBindingPicker = () =>
   import('./SecretBindingPicker').then((module) => ({
@@ -43,6 +44,7 @@ export function IntegrationEditorPanel({
   onRawJsonChange,
   onUpdate,
   onUnlock,
+  trustControlsEnabled = false,
 }: {
   editForm: IntegrationViewModel;
   isNew: boolean;
@@ -74,6 +76,7 @@ export function IntegrationEditorPanel({
     updater: (form: IntegrationViewModel) => IntegrationViewModel,
   ) => void;
   onUnlock: () => void;
+  trustControlsEnabled?: boolean;
 }) {
   const isBuiltin = editForm.kind === 'builtin';
   /**
@@ -245,6 +248,13 @@ export function IntegrationEditorPanel({
             requireSave={secretBindingRequireSave}
           />
         )}
+      {!isNew && trustControlsEnabled && (isBuiltin || viewMode === 'form') && (
+        <IntegrationTrustSection
+          form={editForm}
+          locked={locked}
+          onUpdate={onUpdate}
+        />
+      )}
       {!isNew && !isRuntimeManaged && (
         <LazyBoundary
           load={loadSecretBindingPicker}
