@@ -532,6 +532,11 @@ describe('chat app boundary contracts', () => {
 
   test('issues only a hash and attempt budget before the authenticated principal is known', () => {
     expect(parseChatLinkCode(linkCode)).toEqual(linkCode);
+    const { challengeId: _challengeId, ...withoutChallenge } = confirm;
+    const { challengeId: _storedChallengeId, ...withoutStoredChallenge } =
+      linkCode;
+    expect(parseChatLinkConfirmRequest(withoutChallenge)).toBeNull();
+    expect(parseChatLinkCode(withoutStoredChallenge)).toBeNull();
     for (const challengeId of [
       undefined,
       '',
@@ -544,8 +549,6 @@ describe('chat app boundary contracts', () => {
         parseChatLinkConfirmRequest({ ...confirm, challengeId }),
       ).toBeNull();
     }
-    const { challengeId: _challengeId, ...withoutChallenge } = confirm;
-    expect(parseChatLinkConfirmRequest(withoutChallenge)).toBeNull();
     expect(parseChatLinkCode({ ...linkCode, code: confirm.code })).toBeNull();
     expect(
       parseChatLinkCode({ ...linkCode, principalId: 'person-1' }),
