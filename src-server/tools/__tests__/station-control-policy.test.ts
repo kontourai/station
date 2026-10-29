@@ -1038,7 +1038,6 @@ describe('station-control authority table: fork_conversation', () => {
       })?.code,
     ).toBe('station_control_caller_required');
   });
-
 });
 
 /**
