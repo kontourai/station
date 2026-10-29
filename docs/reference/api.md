@@ -2741,8 +2741,11 @@ Station Control offers `create_session_group`,
 `create_session_group_from_ensemble`, `list_session_groups`,
 `get_session_group`, `get_session_group_events`, `run_session_group`,
 `cancel_session_group` and `sync_session_group` to a bound caller with a
-recorded owner. Each group is bound to that caller's credential; another
-caller cannot continue it. Ensemble creation accepts inline preset JSON only.
+recorded owner. New groups bind to the verified Session and its recorded
+principal, so a newly issued credential for that same Session can resume them.
+Each request still requires a current bound credential; a different Session or
+principal cannot continue them. Older credential-bound groups retain their
+original ownership and are not automatically rebound. Ensemble creation accepts inline preset JSON only.
 The event tool reads a bounded page using `afterRevision`; repeat with
 `nextRevision` to observe later changes. It does not run supervision.
 Unavailable hosts and current-authority failures are returned as refusals.
@@ -2815,7 +2818,7 @@ partial page or disclose which group was unreadable.
 
 - `POST /api/orchestration/session-groups`: create or replay an operation.
 - `POST /api/orchestration/session-groups/from-ensemble`: create from a preset and explicit receiver bindings.
-- `GET /api/orchestration/session-groups?afterGroupId=<cursor>`: list credential-owned groups in bounded pages.
+- `GET /api/orchestration/session-groups?afterGroupId=<cursor>`: list caller-owned groups in bounded pages.
 - `GET /api/orchestration/session-groups/:groupId`: inspect its durable members.
 - `GET /api/orchestration/session-groups/:groupId/events?afterRevision=0`: read retained group revision deltas.
 - `GET /api/orchestration/session-groups/:groupId/events/stream?afterRevision=0`: stream those deltas with resumable SSE checkpoints.

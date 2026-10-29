@@ -4520,7 +4520,7 @@ export function createOrchestrationRoutes(
     const bindingForRequest =
       deps.sessionGroupBindingForRequest ?? deps.callerBindingForRequest;
     const binding = bindingForRequest?.(c.req.raw);
-    const actor = resolveActorPrincipal(deps, c);
+    const actor = resolveDispatchActor(deps, c);
     const callerCurrent = deps.bindSessionGroupCallerCurrent?.(c.req.raw);
     const assertCurrent = () => {
       if (
@@ -4529,7 +4529,7 @@ export function createOrchestrationRoutes(
           callerCurrent?.() !== true) ||
         deps.isRequestPrincipalCurrent?.(c.req.raw) !== true ||
         bindingForRequest?.(c.req.raw) !== binding ||
-        resolveActorPrincipal(deps, c).userId !== actor.userId
+        resolveDispatchActor(deps, c).userId !== actor.userId
       )
         throw new CliSessionGroupUnavailable('group_authority_required');
     };
@@ -4577,7 +4577,7 @@ export function createOrchestrationRoutes(
       assertCurrent();
       if (!deps.authenticateEnsembleSessionGroup)
         throw new CliSessionGroupUnavailable('ensemble_auth_unsupported');
-      const principal = resolveActorPrincipal(deps, c).principal;
+      const principal = resolveDispatchActor(deps, c).principal;
       if (!principal)
         throw new CliSessionGroupUnavailable('group_authority_required');
       const resolveMembers = () =>
@@ -4948,7 +4948,7 @@ export function createOrchestrationRoutes(
         })
         .strict();
       const parsed = schema.parse(JSON.parse(body.body));
-      const principal = resolveActorPrincipal(deps, c).principal;
+      const principal = resolveDispatchActor(deps, c).principal;
       if (!principal)
         throw new CliSessionGroupUnavailable('group_authority_required');
       const input = await deps.prepareEnsembleSessionGroup(

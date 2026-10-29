@@ -2224,8 +2224,9 @@ cannot substitute the first turn on the same Session.
 retains personal-host group definitions, seat launch intents, actual session and
 initial-turn identities, and bounded revision events in the configured Station
 home. Bound Station Control callers use the same routes with their verified
-caller token as group custody; request-time caller revalidation fences long
-operations. Event tools read bounded pages rather than holding a stream. The [orchestration route](../../src-server/routes/orchestration/orchestration.ts)
+verified Session and recorded principal as durable group custody; request-time
+caller-token revalidation fences long operations. Older credential-bound groups
+retain their original ownership. Event tools read bounded pages rather than holding a stream. The [orchestration route](../../src-server/routes/orchestration/orchestration.ts)
 binds every operation to the current credential and reuses the single-task
 `dispatchAuthorizedDelegation` path. Group creation starts no engine. Run
 supervision calls published Flow Agents `orchestrateFlowMultiCursor`; Flow owns

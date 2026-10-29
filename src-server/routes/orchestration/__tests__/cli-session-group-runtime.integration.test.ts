@@ -1710,7 +1710,16 @@ test('bound Station Control operates its real session group and cannot read anot
     },
   });
   expect(ensemble.body.success, JSON.stringify(ensemble)).toBe(true);
-  const cancel = await owner('cancel_session_group', { groupId });
+  const samePrincipalForeign = await open('op-foreign-session');
+  const foreignSession = await samePrincipalForeign('get_session_group', {
+    groupId,
+  });
+  expect(foreignSession.isError).toBe(true);
+  expect(foreignSession.body.code).toBe('group_not_found');
+  const rotated = await open('op-group-integration');
+  const reopened = await rotated('get_session_group', { groupId });
+  expect(reopened.body.data.groupId).toBe(groupId);
+  const cancel = await rotated('cancel_session_group', { groupId });
   expect(cancel.body.success, JSON.stringify(cancel)).toBe(true);
   const revocable = await open('op-group-revoke');
   const second = await revocable('create_session_group', {
@@ -1724,7 +1733,23 @@ test('bound Station Control operates its real session group and cannot read anot
     revoked = true;
     revokeStationControlMcpToken('op-group-revoke', 'station-control');
   });
-  await revocable('run_session_group', { groupId: second.body.data.groupId });
+  const refusedRun = await revocable('run_session_group', {
+    groupId: second.body.data.groupId,
+  });
   expect(revoked).toBe(true);
+  expect(refusedRun.isError).toBe(true);
+  expect(refusedRun.body.code).toBe('group_authority_required');
   expect(f.adapter.starts).toHaveLength(startsBefore);
+  const resumed = await open('op-group-revoke');
+  const recovered = await resumed('get_session_group', {
+    groupId: second.body.data.groupId,
+  });
+  expect(recovered.body.data.members[0].handle).toBeUndefined();
+  expect(
+    (
+      await resumed('cancel_session_group', {
+        groupId: second.body.data.groupId,
+      })
+    ).body.success,
+  ).toBe(true);
 }, 30_000);

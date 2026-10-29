@@ -1,6 +1,5 @@
-import { createHash } from 'node:crypto';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
-import { STATION_CONTROL_CALLER_TOKEN_HEADER } from '../../tools/station-control-shared.js';
+import { INTERNAL_TENANT_HEADER } from '../../utils/internal-api-token.js';
 import {
   resolveStationControlCallerForRequest,
   type StationControlCallerRecordResolver,
@@ -16,9 +15,18 @@ export function createSessionGroupRequestAuthority(
     sessionGroupBindingForRequest(request: Request) {
       if (stationControlRequestAuthority(request)?.kind !== 'caller')
         return fallbackBinding(request);
-      const token = request.headers.get(STATION_CONTROL_CALLER_TOKEN_HEADER);
-      if (!token || !resolve(request)) return undefined;
-      return createHash('sha256').update(token).digest('base64url');
+      const caller = resolve(request);
+      if (
+        caller?.assurance !== 'bound' ||
+        caller.principal?.source !== 'session-owner'
+      )
+        return undefined;
+      return JSON.stringify([
+        'station-control-session/v1',
+        request.headers.get(INTERNAL_TENANT_HEADER),
+        caller.sessionId,
+        caller.principal.id,
+      ]);
     },
     bindSessionGroupCallerCurrent(request: Request) {
       const original = resolve(request);
