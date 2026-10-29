@@ -149,20 +149,19 @@ describe('withConversationInventory (#4266)', () => {
 describe('session rows carry the recorded finish time', () => {
   const session = (
     over: Partial<OrchestrationSessionSummary>,
-  ): OrchestrationSessionSummary =>
-    ({
-      provider: 'codex',
-      threadId: 'thread-1',
-      status: 'ready',
-      controlMode: 'station-owned',
-      answerability: { answerable: true },
-      isLoaded: false,
-      isPersisted: true,
-      eventCount: 3,
-      createdAt: '2026-10-25T09:00:00.000Z',
-      updatedAt: '2026-10-28T12:00:00.000Z',
-      ...over,
-    });
+  ): OrchestrationSessionSummary => ({
+    provider: 'codex',
+    threadId: 'thread-1',
+    status: 'ready',
+    controlMode: 'station-owned',
+    answerability: { answerable: true },
+    isLoaded: false,
+    isPersisted: true,
+    eventCount: 3,
+    createdAt: '2026-10-25T09:00:00.000Z',
+    updatedAt: '2026-10-28T12:00:00.000Z',
+    ...over,
+  });
 
   it('takes terminalAt from lifecycleChangedAt for finished work only', () => {
     const [finished] = buildOrchestrationItems(
