@@ -30,6 +30,7 @@ import {
 import type { ReactNode } from 'react';
 import { afterEach, beforeAll, expect, test, vi } from 'vitest';
 import { ActiveChatsProvider } from '../../../contexts/ActiveChatsContext';
+import { registerDialogHistory } from '../../dialog-history';
 import { ConversationsProvider } from '../../../contexts/ConversationsContext';
 import { KeyboardShortcutsProvider } from '../../../contexts/KeyboardShortcutsContext';
 import { NavigationProvider } from '../../../contexts/NavigationContext';
@@ -1320,6 +1321,47 @@ test('a phone draft left for another chat keeps the dock open on that chat', asy
   expect(regionModel!.regions.bottom.visible).toBe(true);
   expect(screen.getByTestId('active-chat-body')).toBeTruthy();
   expect(screen.getByTestId('active-chat-body').closest('[hidden]')).toBeNull();
+});
+
+// Start navigates to its new chat while the draft still holds its Back entry;
+// that navigation collapses the entry through the draft's own close. The
+// draft has already started by then, so the close must not restore the
+// phone dock's earlier (closed) size or tell the requester 'dismissed'.
+test('a phone draft started from a closed dock stays open on its new chat', async () => {
+  dockProbe.mobile = true;
+  dockProbe.sessions = [chatSession('new-session')];
+  navigationStore.navigate('/', { dock: null });
+  renderDockedPane();
+  await act(async () => {});
+  act(() => regionModel!.setRegion('bottom', { visible: false }));
+  const outcomes: string[] = [];
+  act(() => {
+    dispatchNewChatIntent({ onClosed: (outcome) => outcomes.push(outcome) });
+  });
+  await screen.findByRole('region', { name: 'New chat picker' });
+  expect(regionModel!.regions.bottom.visible).toBe(true);
+  // The real draft holds a Back entry closed by its own onClose.
+  const draft = pickerProps.at(-1)!;
+  const release = registerDialogHistory('draft-under-test', () =>
+    draft.onClose(),
+  );
+  act(() => {
+    pickerProps
+      .at(-1)!
+      .onSelect(
+        { slug: 'assistant', name: 'Assistant' },
+        undefined,
+        undefined,
+        'Go',
+      );
+  });
+  release();
+  await act(async () => {});
+  expect(outcomes).toEqual(['started']);
+  expect(regionModel!.regions.bottom.visible).toBe(true);
+  expect(new URL(window.location.href).searchParams.get('chat')).toBe(
+    'new-session',
+  );
 });
 
 // Start hands focus to the new chat's composer (`requestComposerFocus`),

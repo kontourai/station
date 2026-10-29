@@ -3572,12 +3572,18 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                             throw new Error(
                               'The chat could not be opened. Check the selected Agent and try again.',
                             );
-                          navigate(pathname, { chat: sessionId });
                           // The new chat's composer takes focus once it can, as
                           // choosing a working chat does; the draft hands it over
                           // rather than returning focus to its opener.
                           requestComposerFocus(sessionId, { whileBusy: true });
+                          // Started before navigating: the navigation collapses
+                          // the draft's history entry through its dismissal,
+                          // which must find no dock size to restore (a phone
+                          // would close the dock on the new chat) and no
+                          // request left to tell 'dismissed'.
+                          dockBeforeDraft.current = null;
                           setShowNewChatModal(false, undefined, 'started');
+                          navigate(pathname, { chat: sessionId });
                           setNewChatProjectOverride(null);
                           setHandoffSource(null);
                         },
@@ -3687,15 +3693,19 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                                 hydrateMessages: true,
                                 signal: controller.signal,
                                 revealDock: !isFullscreenPlacement,
-                                beforeFocus: () =>
-                                  commitForkOpenBoundary({
+                                beforeFocus: () => {
+                                  // The fork's open navigates, which dismisses
+                                  // the draft's history entry: nothing to restore.
+                                  dockBeforeDraft.current = null;
+                                  return commitForkOpenBoundary({
                                     signal: controller.signal,
                                     generation,
                                     currentGeneration: () =>
                                       forkGenerationRef.current,
                                     route: () =>
                                       routeToScopedChatProject(projectSlug),
-                                  }),
+                                  });
+                                },
                               },
                             );
                             if (generation !== forkGenerationRef.current)
