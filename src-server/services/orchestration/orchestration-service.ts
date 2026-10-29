@@ -153,7 +153,9 @@ import type { OrchestrationSessionUsage } from '../../analytics/usage-aggregator
 import {
   readAuthorizedUsageExport,
   UsageExportRejected,
+  usageExportOwnerIds,
 } from '../../analytics/usage-export-reader.js';
+import { readAuthorizedUsageInvalidations } from '../../analytics/usage-invalidation-reader.js';
 import type { UsagePricingSnapshotCapture } from '../../analytics/usage-pricing-snapshot-capture.js';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
 import { engineIdForAdapter } from '../../providers/adapter-identity.js';
@@ -261,6 +263,7 @@ import {
 } from '../evidence/orchestration-workflow-sidecar.js';
 import type { VeritasReadinessService } from '../evidence/veritas-readiness-service.js';
 import type { WorkflowSidecarService } from '../evidence/workflow-sidecar-service.js';
+import type { FeaturePreviewSelector } from '../feature-previews/feature-preview-registry.js';
 import type {
   AttachFlowEvidenceOptions,
   FlowRunService,
@@ -273,6 +276,7 @@ import {
   ConcurrentEngineStartCapacityError,
   type RuntimeResourcePostureProbe,
 } from '../infra/resource-posture.js';
+import { workloadBudgetEngineContext } from '../infra/workload-budget.js';
 import { withEngineMcpAccountOwner } from '../plugins/engine-mcp-oauth.js';
 import {
   isPersonChatStart,
@@ -309,6 +313,10 @@ import {
 } from './attached-session-adoption.js';
 import { resolveContinuationPlace } from './attached-session-continuation-place.js';
 import { type AttachedProjectRoot } from './attached-session-follow-service.js';
+import {
+  canonicalTerminalOutcome,
+  terminalEngineFamily,
+} from './canonical-terminal-outcome.js';
 import { ChildWorkProjection } from './child-work-projection.js';
 import {
   type ChildWorkTranscriptModule,
@@ -353,6 +361,7 @@ import {
   createCredentialRecoveryModule,
 } from './credential-recovery-module.js';
 import { DeltaCoalescer, isCoalescableDelta } from './delta-coalescer.js';
+import { splitOversizedDeltas } from './delta-splitting.js';
 import {
   assertDispatchCwdUnmoved,
   DISPATCH_CANONICAL_CWD_METADATA_KEY,
@@ -364,11 +373,16 @@ import {
   withoutDispatchCanonicalCwd,
 } from './dispatch-cwd-admission.js';
 import type { EventBus } from './event-bus.js';
-import type {
-  CommandRefusalPhase,
-  ConversationForkProvenance,
-  EventStore,
-  PersistedRuntimeEvent,
+import {
+  type ApprovalContentBinding,
+  approvalContentBinding,
+} from './event-content-spill.js';
+import {
+  type CommandRefusalPhase,
+  type ConversationForkProvenance,
+  type EventStore,
+  EventStoreIngressError,
+  type PersistedRuntimeEvent,
 } from './event-store.js';
 import {
   type ExecutionWorkspaceBinding,
@@ -379,11 +393,13 @@ import {
   type ForegroundInvocationAdmission,
   ForegroundInvocationUnavailableError,
 } from './foreground-invocation-admission.js';
+import { HostImageTurnCapture } from './host-image-turn-capture.js';
 import { InternalStopSuppression } from './internal-stop-suppression.js';
 import {
   type InterruptedTurnMemoryAdapter,
   InterruptedTurnRecovery,
 } from './interrupted-turn-recovery.js';
+import { memoryExhaustionRecoveryNote } from './memory-exhaustion-recovery.js';
 import {
   listLaunchableAdapterModels,
   ModelLaunchPlanning,
@@ -535,13 +551,9 @@ type UsageTelemetryObserver = {
 function telemetryEngine(
   provider: string,
 ): UsageTelemetryProperties<'engine_turn'>['engine'] {
-  return (
-    ['station', 'acp', 'bedrock', 'claude', 'codex', 'muse', 'ollama'].includes(
-      provider,
-    )
-      ? provider
-      : 'other'
-  ) as UsageTelemetryProperties<'engine_turn'>['engine'];
+  return terminalEngineFamily(
+    provider,
+  ) satisfies UsageTelemetryProperties<'engine_turn'>['engine'];
 }
 
 /**
@@ -943,6 +955,16 @@ interface OrchestrationServiceOptions {
   eventBus: EventBus;
   eventStore?: EventStore;
   /**
+   * The workload limits an engine launched now receives, or undefined where
+   * no workload scope is enforced (`enforcedWorkloadLimits`). Read at each
+   * first turn so a settings change or unavailable enforcement is current.
+   */
+  workloadEngineLimits?: (
+    sessionId: string,
+  ) =>
+    | { memoryMaxBytes: number; swapMaxBytes: number; tasksMax: number }
+    | undefined;
+  /**
    * Optional write-time catalog authority. The service calls it only while a
    * token event is entering the canonical log; read paths use the persisted
    * snapshot and never perform a current-price lookup.
@@ -975,6 +997,12 @@ interface OrchestrationServiceOptions {
    * {@link IDLE_SESSION_PARK_AFTER_MS}.
    */
   idleSessionParkAfterMs?: number;
+  /**
+   * The `chat-host-images` Feature Preview: host images a settled reply
+   * names are copied into the attachment store, and agents are told how to
+   * name them. Absent means off.
+   */
+  hostImagesPreview?: FeaturePreviewSelector;
   /** How often idle sessions are checked. Default {@link IDLE_SESSION_SWEEP_MS}. */
   idleSessionSweepMs?: number;
   /**
@@ -1427,6 +1455,11 @@ function taskBriefStartRecord(brief: { digest: string; text: string }) {
     digest: brief.digest,
     text: brief.text,
   };
+}
+
+/** No turn has started in this session yet (the first-turn rule above). */
+function isGenuineFirstTurn(events: readonly { method?: unknown }[]): boolean {
+  return !events.some((event) => event.method === 'turn.started');
 }
 
 /**
@@ -1977,6 +2010,7 @@ export class OrchestrationService {
   readonly sessionLifecycles: SessionLifecycleModule;
   private usageTelemetry?: UsageTelemetryObserver;
   private readonly sessionExecutionCoordinator: SessionExecutionCoordinator;
+  private readonly hostImages: HostImageTurnCapture;
   private readonly workspaceExecutionBarrier = new WorkspaceExecutionBarrier();
   private readonly sessionStartBoundaries: SessionTurnBoundaryAuthority;
   /** Private native-output authority; no public Session/Thread API exposes it. */
@@ -2525,6 +2559,14 @@ export class OrchestrationService {
           ?.conversationId ?? threadId,
       listEventPayloads: (threadId) =>
         this.options.eventStore?.listEventPayloads(threadId) ?? [],
+      listResolvedEventPayloads: (threadId) => {
+        const store = this.options.eventStore;
+        return store
+          ? store
+              .resolveEventContent(store.listEvents(threadId))
+              .map((event) => event.payload)
+          : [];
+      },
       readUsageRevision: (threadId) =>
         this.options.eventStore?.readUsageRevision(threadId) ?? 'empty',
       listUsageEventPayloads: (threadId) =>
@@ -2634,6 +2676,17 @@ export class OrchestrationService {
       this.sessionStartBoundaries,
       this.workspaceExecutionBarrier,
     );
+    this.hostImages = new HostImageTurnCapture({
+      preview: options.hostImagesPreview,
+      eventStore: options.eventStore,
+      sessionCwd: (threadId) =>
+        this.sessionReadModel.get(threadId)?.cwd ??
+        options.eventStore?.readSessionByThread(threadId)?.cwd,
+      publish: (event) => {
+        this.projectAndPublishEvent(event);
+      },
+      logger: options.logger,
+    });
     this.turnDeduplicator =
       options.turnDeduplicator ?? options.eventStore?.createTurnDeduplicator();
     this.adoptionLedger =
@@ -2866,14 +2919,23 @@ export class OrchestrationService {
         this.options.eventStore?.listBasisEventsForTurn(threadId, turnId) ?? {
           status: 'over-budget' as const,
         },
-      listEventsForTurn: (threadId, turnId) =>
-        (
-          this.options.eventStore?.listEventsForTurn(
-            threadId,
-            turnId,
-            MAX_ASSISTANT_TURN_EVENTS + 1,
-          ) ?? []
-        ).map((event) => event.payload),
+      // An assistant turn read owes its caller the exact reply (Basis,
+      // quote sources, room publication), so it opts in to resolving
+      // out-of-line content (docs/design/event-content-spill.md). It is
+      // bounded to one turn.
+      listEventsForTurn: (threadId, turnId) => {
+        const store = this.options.eventStore;
+        if (!store) return [];
+        return store
+          .resolveEventContent(
+            store.listEventsForTurn(
+              threadId,
+              turnId,
+              MAX_ASSISTANT_TURN_EVENTS + 1,
+            ),
+          )
+          .map((event) => event.payload);
+      },
       projectSlugForSession: (_session, threadId) =>
         this.options.eventStore?.readConversationProjectSlug(threadId),
       reportUnavailable: (query, error) => {
@@ -2971,6 +3033,8 @@ export class OrchestrationService {
         this.readSession(threadId, authority),
       readSessionMessages: (threadId, authority) =>
         this.readSessionMessages(threadId, authority),
+      readSessionSeedMessages: (threadId, authority) =>
+        this.readSessionSeedMessages(threadId, authority),
       listSessionReadModel: (authority) => this.listSessionReadModel(authority),
       canReadSession: (threadId, authority) =>
         this.sessionAuthz.canReadSession(threadId, authority),
@@ -4024,6 +4088,10 @@ export class OrchestrationService {
     // #3562: boot recovery retries on a backoff; none of it may publish once
     // the publish path below starts coming down. Its rows stay for next boot.
     this.interruptedTurns.stop();
+    // A capture still reading files must not publish into a closing store.
+    // Synchronous on purpose: an await here would reorder the rest of this
+    // shutdown's synchronous prefix.
+    this.hostImages.close();
     if (this.idleSweepTimer) clearInterval(this.idleSweepTimer);
     this.idleSweepTimer = undefined;
     this.transcriptSearchStopped = true;
@@ -5875,6 +5943,30 @@ export class OrchestrationService {
     return this.sessionEventReads.readSessionEventPage(threadId, options);
   }
 
+  /** See {@link SessionEventReads.readApprovalContentBinding}. */
+  readApprovalContentBinding(
+    threadId: string,
+    requestId: string,
+    authority: SessionReadScope,
+  ): ApprovalContentBinding | null {
+    this.initialize();
+    return this.sessionEventReads.readApprovalContentBinding(
+      threadId,
+      requestId,
+      authority,
+    );
+  }
+
+  /** See {@link SessionEventReads.readEventContent}. */
+  readEventContent(
+    threadId: string,
+    digest: string,
+    authority: SessionReadScope,
+  ): { kind: 'string' | 'json'; body: string; bytes: number } | null {
+    this.initialize();
+    return this.sessionEventReads.readEventContent(threadId, digest, authority);
+  }
+
   async readSessionEventWindow(
     threadId: string,
     options: {
@@ -5973,6 +6065,22 @@ export class OrchestrationService {
     return [
       ...this.forkContexts.copiedForSession(threadId, authority),
       ...this.transcriptReads.readSessionMessages(threadId, authority),
+    ];
+  }
+
+  /**
+   * {@link readSessionMessages} for engine-facing transcript seeds, with
+   * content stored out of line resolved. UI and history reads keep the
+   * reference-bearing projection.
+   */
+  private readSessionSeedMessages(
+    threadId: string,
+    authority: SessionReadScope,
+  ): ConversationMessage[] {
+    this.initialize();
+    return [
+      ...this.forkContexts.copiedForSession(threadId, authority),
+      ...this.transcriptReads.readSessionSeedMessages(threadId, authority),
     ];
   }
 
@@ -6318,10 +6426,48 @@ export class OrchestrationService {
     );
   }
 
+  usageExportOwnerIds(
+    authority: SessionReadAuthority,
+    scope: import('@kontourai/station-contracts/usage-export').UsageExportScope,
+  ) {
+    return usageExportOwnerIds(authority, scope, () =>
+      this.options.personalConversationAccess?.ownerIds(authority.userId),
+    );
+  }
+
+  usageExportRevision(): number {
+    this.initialize();
+    const store = this.options.eventStore;
+    if (!store) throw new UsageExportRejected('usage_export_unavailable', 503);
+    return store.usageExportRevision();
+  }
+
+  readUsageReceiptInvalidations(
+    authority: SessionReadAuthority,
+    stationId: string,
+    request: import('@kontourai/station-contracts/usage-export').UsageInvalidationRequest,
+    authorizationContext: string,
+  ) {
+    this.initialize();
+    const store = this.options.eventStore;
+    if (!store) throw new UsageExportRejected('usage_export_unavailable', 503);
+    return readAuthorizedUsageInvalidations({
+      store,
+      authority,
+      stationId,
+      request,
+      authorizationContext,
+      personalOwnerIds: () =>
+        this.options.personalConversationAccess?.ownerIds(authority.userId),
+    });
+  }
+
   readUsageReceiptExport(
     authority: SessionReadAuthority,
     stationId: string,
     request: import('@kontourai/station-contracts/usage-export').UsageExportRequest,
+    authorizationContext?: string,
+    operationalConsent?: import('@kontourai/station-contracts/usage-export').AnalyticsOperationalConsent,
   ) {
     this.initialize();
     const store = this.options.eventStore;
@@ -6331,6 +6477,8 @@ export class OrchestrationService {
       authority,
       stationId,
       request,
+      authorizationContext,
+      ...(operationalConsent ? { operationalConsent } : {}),
       personalOwnerIds: () =>
         this.options.personalConversationAccess?.ownerIds(authority.userId),
     });
@@ -8215,15 +8363,46 @@ export class OrchestrationService {
           const pendingBrief = current
             ? pendingTaskBrief(current.events)
             : undefined;
+          // Station's own first-turn context, on every engine whose adapter
+          // declares a bounded engine scope: the workload budget it runs
+          // under (only while enforcement is live), and after a memory kill
+          // of the predecessor Session, what was interrupted.
+          const genuineFirstTurn =
+            !!current &&
+            !current.events.some((event) => event.method === 'turn.started');
+          const workloadLimits =
+            genuineFirstTurn &&
+            adapter.metadata.workloadScope === 'engine-process'
+              ? this.options.workloadEngineLimits?.(submittedInput.threadId)
+              : undefined;
+          const recoveryNote = genuineFirstTurn
+            ? this.predecessorMemoryExhaustionNote(submittedInput.threadId)
+            : undefined;
+          const stationContext = [
+            workloadLimits
+              ? workloadBudgetEngineContext(workloadLimits)
+              : undefined,
+            recoveryNote,
+          ].filter((part): part is string => part !== undefined);
+          // The chat-host-images preview's one line, on the same first turn.
+          const pendingHostImageGuide =
+            current && isGenuineFirstTurn(current.events)
+              ? await this.hostImages.instructionFor(submittedInput.threadId)
+              : undefined;
           const firstTurnContext = [
+            ...stationContext,
             pendingPrompt,
             pendingBrief?.text,
+            pendingHostImageGuide,
             publicTurnInput.ambientContext?.trim()
               ? publicTurnInput.ambientContext
               : undefined,
           ].filter((part): part is string => part !== undefined);
           const turnInputWithFirstTurnPrompt =
-            pendingPrompt || pendingBrief
+            pendingPrompt ||
+            pendingBrief ||
+            pendingHostImageGuide ||
+            stationContext.length > 0
               ? {
                   ...publicTurnInput,
                   ambientContext: firstTurnContext.join('\n'),
@@ -9827,6 +10006,51 @@ export class OrchestrationService {
           // and is refused with a reason otherwise; never coerced or cut to
           // fit. This runs whatever the client checked: a client is not
           // trusted to have run the same validator.
+          // docs/design/event-content-spill.md: a request whose content was
+          // stored out of line is allowed only by a client that loaded it
+          // whole. The digest binds this exact stored event (references hash
+          // their bodies); decline and cancel never need it.
+          //
+          // A form is exempt. Its answer is the person's content, validated
+          // below against the form itself (`inputRequest`, `mcpElicitation`
+          // or `questionnaire`), which the planner never spills, so every
+          // form surface shows the whole form. Accepting runs nothing the
+          // spilled fields describe: they are the asker's own copy of the
+          // questions (Claude's `toolInput` for AskUserQuestion) or display
+          // text, and the engine receives only the validated answer. A form
+          // cannot be answered `acceptForSession` (refused below).
+          const contentRequest =
+            currentQuestionRequest?.state === 'found' &&
+            currentQuestionRequest.event.payload.method === 'request.opened'
+              ? currentQuestionRequest.event.payload
+              : undefined;
+          //
+          // The gate also covers content bound to the request: a gated tool
+          // call's spilled arguments (a Codex file change's diff lives only in
+          // its `tool.started`), so the digest then covers their references.
+          // The one definition (approvalContentBinding) is also what the
+          // binding route serves to clients.
+          const contentStore = this.options.eventStore;
+          const binding =
+            contentRequest && contentStore
+              ? approvalContentBinding(contentRequest, (callIds) =>
+                  contentStore.boundToolStartedEvents(
+                    command.threadId,
+                    callIds,
+                  ),
+                )
+              : undefined;
+          if (
+            binding?.required &&
+            (command.decision === 'accept' ||
+              command.decision === 'acceptForSession') &&
+            (command.expectedRequestEventId !== binding.requestEventId ||
+              command.viewedContentDigest !== binding.viewedContentDigest)
+          )
+            throw new RequestEventGuardError(
+              'request_content_not_loaded',
+              'Load the full request before allowing it.',
+            );
           const inputForm = inputRequestFromRequestEvent(
             currentQuestionRequest?.state === 'found' &&
               currentQuestionRequest.event.payload.method === 'request.opened'
@@ -11359,10 +11583,24 @@ export class OrchestrationService {
     let lastThreadId: string | undefined;
     let restart = false;
     try {
-      for await (let event of adapter.streamEvents({
-        signal: controller.signal,
-      })) {
+      // Oversized deltas are split here, before publishing, so each chunk
+      // gets its own #3560 publish retry and none is ever stored out of
+      // line (docs/design/event-content-spill.md).
+      for await (let event of splitOversizedDeltas(
+        adapter.streamEvents({
+          signal: controller.signal,
+        }),
+      )) {
         if (!this.isAdapterCurrent(adapter)) continue;
+        if (event.method === ('content.host-images' as string)) {
+          // Station derives this from files it read itself; an engine's
+          // version would map paths to images Station never admitted.
+          this.options.logger.warn('Ignored adapter-provided host images', {
+            provider: adapter.provider,
+            threadId: event.threadId,
+          });
+          continue;
+        }
         if (event.method === 'session.stop-settled') {
           // This is an orchestration-owned derivation. Accepting it from an
           // adapter would let an engine label a forced stop cooperative.
@@ -11594,6 +11832,8 @@ export class OrchestrationService {
         try {
           return this.offerOrPublishEvent(attempt);
         } catch (error) {
+          if (error instanceof EventStoreIngressError)
+            return await this.publishResidualRefusal(attempt, adapter, error);
           if (
             delayMs === undefined ||
             !this.isRetryablePublishFailure(admitted, error)
@@ -11638,6 +11878,125 @@ export class OrchestrationService {
         this.deltaCoalescer.resumeRetained(admitted.threadId);
       }
     }
+  }
+
+  /**
+   * docs/design/event-content-spill.md#residual-refusal: an event EventStore
+   * still cannot store after spilling (content over the per-event ceiling, a
+   * hostile shape, or adapter-built fields over the backstop). It is handled
+   * here, per event, so the adapter stream keeps running:
+   *
+   * - a `request.opened` is declined to the engine with a warning, so no
+   *   approval waits invisibly;
+   * - another event whose content roots were over the ceiling is stored with
+   *   those roots marked unavailable, so a turn terminal is never lost;
+   * - anything else is skipped with a warning naming it.
+   *
+   * The refusal must be about THIS event. A coalescer flush ahead of it can
+   * surface a different event's refusal; that one is reported, and this
+   * event is offered once more, never declined on the other's account.
+   */
+  private async publishResidualRefusal(
+    event: CanonicalRuntimeEvent,
+    adapter: ProviderAdapterShape,
+    error: EventStoreIngressError,
+    reoffered = false,
+  ): Promise<boolean> {
+    const warn = (code: string, message: string) => {
+      this.options.logger.warn('Runtime event could not be stored', {
+        provider: adapter.provider,
+        threadId: event.threadId,
+        method: error.subject.method,
+        eventId: error.subject.eventId,
+        error: error.message,
+      });
+      try {
+        this.projectAndPublishEvent({
+          eventId: crypto.randomUUID(),
+          provider: adapter.provider,
+          threadId: event.threadId,
+          createdAt: new Date().toISOString(),
+          method: 'runtime.warning',
+          severity: 'warning',
+          code,
+          message,
+        });
+      } catch (surfacingError) {
+        this.options.logger.warn('Failed to surface an unstorable event', {
+          threadId: event.threadId,
+          error: errorMessage(surfacingError),
+        });
+      }
+    };
+    if (error.subject.eventId !== event.eventId) {
+      warn(
+        'event-not-stored',
+        'Station could not store part of this agent’s output, and skipped it.',
+      );
+      if (reoffered) return true;
+      try {
+        return this.offerOrPublishEvent(event);
+      } catch (retryError) {
+        if (retryError instanceof EventStoreIngressError)
+          return this.publishResidualRefusal(event, adapter, retryError, true);
+        throw retryError;
+      }
+    }
+    if (event.method === 'request.opened') {
+      warn(
+        'request-too-large-to-show',
+        'The agent asked for approval of something too large for Station to show in full, so Station declined it and told the agent.',
+      );
+      try {
+        await adapter.respondToRequest(
+          event.threadId,
+          event.requestId,
+          'decline',
+        );
+      } catch (declineError) {
+        this.options.logger.warn('Could not decline an unstorable request', {
+          threadId: event.threadId,
+          requestId: event.requestId,
+          error: errorMessage(declineError),
+        });
+      }
+      return true;
+    }
+    const reduced = this.options.eventStore?.markContentUnavailable(event);
+    if (reduced && !reoffered) {
+      try {
+        const published = this.offerOrPublishEvent(reduced);
+        warn(
+          'event-content-too-large',
+          'Part of this agent output was too large for Station to keep; it is marked as unavailable.',
+        );
+        return published;
+      } catch (reducedError) {
+        if (!(reducedError instanceof EventStoreIngressError))
+          throw reducedError;
+      }
+    }
+    // A turn terminal is never lost: past everything else, its identity and
+    // outcome persist alone, its reply marked unavailable.
+    const terminal = this.options.eventStore?.minimalTurnTerminal(event);
+    if (terminal) {
+      try {
+        const published = this.offerOrPublishEvent(terminal);
+        warn(
+          'event-content-too-large',
+          'This turn’s result was too large for Station to keep; the turn is recorded as finished without it.',
+        );
+        return published;
+      } catch (terminalError) {
+        if (!(terminalError instanceof EventStoreIngressError))
+          throw terminalError;
+      }
+    }
+    warn(
+      'event-not-stored',
+      'Station could not store part of this agent’s output, and skipped it.',
+    );
+    return true;
   }
 
   /**
@@ -12018,7 +12377,13 @@ export class OrchestrationService {
       return false;
     }
     if (current?.state !== 'found') return false;
-    const opened = current.event.payload;
+    // The grant derives from the whole request: a spilled argument subtree
+    // can hold what escalates it (docs/design/event-content-spill.md).
+    const opened = current.event.payload.spilledContent
+      ? (this.options.eventStore?.resolveCanonicalEventContent(
+          current.event.payload,
+        ) ?? current.event.payload)
+      : current.event.payload;
     return (
       opened.method === 'request.opened' &&
       toolRequestSessionGrantFromPayload(opened.payload) === 'edit-mode'
@@ -13287,22 +13652,14 @@ export class OrchestrationService {
     // the deferred case is not a terminal outcome yet, so counting it now
     // would both undercount the eventual real terminal and, if one never
     // arrives, over-attribute failures that were really still retrying.
-    if (
-      projectedEvent.method === 'turn.completed' ||
-      projectedEvent.method === 'turn.aborted' ||
-      (projectedEvent.method === 'runtime.error' &&
-        projectedEvent.turnId &&
-        !isDeferredRetriableTurnError(projectedEvent))
-    ) {
+    // #3460: the consented private operational export reuses this exact
+    // classifier, so product telemetry and private outcomes cannot disagree.
+    const terminalOutcome = canonicalTerminalOutcome(projectedEvent);
+    if (terminalOutcome) {
       try {
         this.usageTelemetry?.trackEngineTurn({
           engine: telemetryEngine(projectedEvent.provider),
-          outcome:
-            projectedEvent.method === 'turn.completed'
-              ? 'completed'
-              : event.method === 'turn.aborted'
-                ? 'aborted'
-                : 'failed',
+          outcome: terminalOutcome,
         });
       } catch {
         // Terminal event projection remains authoritative when telemetry fails.
@@ -13311,6 +13668,7 @@ export class OrchestrationService {
     // Recovery observes only after canonical persistence, so a restart can
     // reconstruct the source turn without copying its content into recovery.
     this.recoveryCoordinator?.observe(projectedEvent);
+    this.hostImages.observe(projectedEvent);
     // archive#1120: invalidate the session-owner cache BEFORE emitting on
     // the event bus, so any subscriber reacting to this same event (e.g.
     // the /events route's canUserReadSession gate) that re-derives
@@ -13848,6 +14206,35 @@ export class OrchestrationService {
           : withSessionConfinementRoot(resolved, this.options.listProjects);
       },
     };
+  }
+
+  /**
+   * The recovery note for a successor whose predecessor Session's newest turn
+   * ended because its engine exhausted its workload memory budget. Reads only
+   * that one turn window of the predecessor recorded in this conversation's
+   * lineage; any read failure composes nothing rather than failing the turn.
+   */
+  private predecessorMemoryExhaustionNote(
+    threadId: string,
+  ): string | undefined {
+    const store = this.options.eventStore;
+    const predecessor =
+      store?.conversationForSession(threadId)?.predecessorSessionId;
+    if (!store || !predecessor) return undefined;
+    try {
+      return memoryExhaustionRecoveryNote(
+        store.listEventWindowByTurn(predecessor, {
+          turnLimit: 1,
+          direction: 'newest',
+        }).events,
+      );
+    } catch (error) {
+      this.options.logger.warn('Could not read the predecessor failure', {
+        threadId,
+        error,
+      });
+      return undefined;
+    }
   }
 
   /**

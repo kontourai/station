@@ -39,6 +39,7 @@ import {
   loadHostedTenantRegistryFromEnvironment,
 } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import * as ConversationManager from '../../runtime/conversation/conversation-manager.js';
+import type { StationControlDispatchScope } from '../../runtime/mcp/station-control-dispatch-scope.js';
 import type { RuntimeContext } from '../../runtime/types.js';
 import { isPrincipalScopedAgentRequest } from '../../security/station-control-request-authority.js';
 import {
@@ -80,6 +81,7 @@ import {
   conversationOps,
 } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
+import { refuseOutOfScopeDispatch } from '../orchestration/dispatch-scope.js';
 import {
   contextActionSchema,
   conversationUpdateSchema,
@@ -747,6 +749,13 @@ export function createConversationRoutes(
     }): Promise<SummaryRelatedEvidenceObservation[]>;
   },
   resolveForkReadAuthority?: (context: Context) => SessionReadAuthority,
+  /**
+   * The scope a Station Control caller's fork is held to
+   * (`fork_conversation`): the source is a conversation it may view, and the
+   * new conversation lands where it could start a Session. Absent, a
+   * station-control caller's fork is refused; other callers are not decided.
+   */
+  stationControlDispatchScope?: StationControlDispatchScope,
   nativeForkStoredRead?: NativeForkStoredRoutePorts,
 ) {
   const app = new Hono();
@@ -1056,6 +1065,20 @@ export function createConversationRoutes(
       try {
         let sourceAgent: string;
         let targetAgent: string;
+        // `fork_conversation`: a fork lands only where the caller could start
+        // a Session itself (the dispatch rule, Project `execute`), so forking
+        // never reaches a scope the caller could not otherwise reach.
+        const refuseOutOfScopeTarget = (projectSlug: string | undefined) =>
+          refuseOutOfScopeDispatch(c, stationControlDispatchScope, (ownerId) =>
+            ownerId
+              ? {
+                  kind: 'new',
+                  ownerId,
+                  ...(projectSlug ? { projectSlug } : {}),
+                  remote: false,
+                }
+              : undefined,
+          );
         try {
           sourceAgent = agentId(param(c, 'slug'));
           const rawTarget = getBody(c).targetAgent;
@@ -1076,6 +1099,19 @@ export function createConversationRoutes(
             400,
           );
         }
+        // The source is a conversation the caller's scope admits (Project
+        // `view`), decided before anything of it is read.
+        const sourceRefused = refuseOutOfScopeDispatch(
+          c,
+          stationControlDispatchScope,
+          () => ({
+            kind: 'conversation',
+            conversationId: sourceConversationId,
+            remote: false,
+          }),
+          'view',
+        );
+        if (sourceRefused) return sourceRefused;
         const body = getBody(c);
         const requestedBranchPoint =
           typeof body.branchPointTurnId === 'string'
@@ -1159,6 +1195,8 @@ export function createConversationRoutes(
               throw new ConversationForkContextError(
                 'Saved fork context is unavailable.',
               );
+            const replayRefused = refuseOutOfScopeTarget(saved.projectSlug);
+            if (replayRefused) return replayRefused;
             if (previous.state === 'ready') {
               guardSavedNativeFork(c, saved, authority);
               return forkReply(c, saved, true);
@@ -1318,6 +1356,8 @@ export function createConversationRoutes(
             404,
           );
         }
+        const targetRefused = refuseOutOfScopeTarget(targetProjectSlug);
+        if (targetRefused) return targetRefused;
         if (targetProjectSlug || ownedTargetProject) {
           try {
             const target =

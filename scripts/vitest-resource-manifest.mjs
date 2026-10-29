@@ -143,6 +143,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/runtime/frameworks/__tests__/http-receive.integration.test.ts',
   // Runs the preview-docs CLI against private source/doc fixtures and the real repo.
   'scripts/__tests__/feature-preview-docs-check.test.ts',
+  // Drives a fake `security` binary through the macOS keyring store's child processes.
+  'packages/cli/src/__tests__/profile-keyring-macos.test.ts',
   // Native archive tools and owned recognizer/process fixtures; every home is disposable.
   'src-server/services/media-tools/__tests__/media-tools-acquisition.test.ts',
   'src-server/services/transcription/__tests__/sherpa-transcriber.test.ts',
@@ -162,6 +164,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/adapters/__tests__/node-pty-adapter.test.ts',
   // Real node-pty shells in isolated homes; no shared ports or host state.
   'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+  // Production route/auth composition opens real terminal PTYs in a private home.
+  'src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts',
+  'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
   // Two disposable workers contend on private SQLite connections; no shared host output or timing assertion.
   'src-server/services/outside-agent/__tests__/oauth-concurrency.test.ts',
   // Two cache-enabled server bootstrap processes drive real MCP, Strands, CLI and shell children.
@@ -170,8 +175,14 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/server-scenario.test.ts',
   // Tiny disposable user-service/scope budgets exercise actual OOM containment.
   'src-server/services/infra/__tests__/workload-resources.process.test.ts',
+  // A real detached engine-shaped process and the scope holder Station spawns.
+  'src-server/services/infra/__tests__/workload-scope-holder.process.test.ts',
+  // Fake systemd manager; one case starts and reaps a real short-lived process.
+  'src-server/services/infra/__tests__/workload-budget.test.ts',
   'scripts/__tests__/run-biome.process.test.ts',
   'scripts/__tests__/component-style-hygiene.process.test.ts',
+  // Runs the UI copy length gate as a node child against a disposable Git tree.
+  'scripts/__tests__/ui-copy-length.process.test.ts',
   // Real second-process Task/share writers contend with the publication fence.
   'src-server/services/projects/project-room-agent-task-context.test.ts',
   // Reviewed setup launches real bounded commands and verifies durable outcomes.
@@ -630,6 +641,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/dogfood-reconcile-scenario-parity.test.ts',
   // One bounded node child proving the cli-doc parity entry point.
   'scripts/__tests__/cli-doc-parity.test.ts',
+  // Bounded node children run the CLI ↔ Station Control parity entry point
+  // against fixture manifests, and read the ratchet base through git.
+  'scripts/__tests__/cli-mcp-parity.test.ts',
   // Bounded node children prove generation and check failures in disposable roots.
   'scripts/__tests__/metric-reference.test.ts',
   // Regenerate-and-diff plus real-entry-point runs: docs-index --check and
@@ -1345,6 +1359,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-ui/src/components/notifications/__tests__/NotificationContainer.touch-target.test.tsx',
   // Runs real canvas/React startup handoffs with Chromium's controlled clock.
   'src-ui/src/__tests__/startup-presentation.browser.test.tsx',
+  // Mounted Coding tool navigation and sticky controls own a Chromium instance.
+  'src-ui/src/__tests__/coding-mobile-tools.browser.test.tsx',
   // Owns Chromium and a local HTTP fixture for SW offline reload and real IndexedDB.
   'src-ui/src/__tests__/offline-reading.browser.test.ts',
   // Owns Chromium and a local HTTP fixture for strict-durability IndexedDB custody.

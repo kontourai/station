@@ -1,15 +1,34 @@
+import { createHash, generateKeyPairSync, randomUUID } from 'node:crypto';
 import {
+  cp,
   mkdir,
   readFile,
   rename,
   rm,
+  stat,
   symlink,
   writeFile,
 } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import type { ReleaseManifestKeyTable } from '@kontourai/station-shared/release-manifest';
 import { load } from 'js-yaml';
-import { beforeAll, expect, test } from 'vitest';
+import { afterEach, beforeAll, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import type { InstallProvenance } from '../../src-server/routes/system/install-provenance.js';
+import { managedCompanionFixture } from '../../src-server/services/__tests__/fixtures/telemetry-companion-managed.js';
+import {
+  CompanionArchivePreparationBusyError,
+  prepareTelemetryCompanionArchive,
+  readTelemetryCompanionArchivePreparation,
+  readTelemetryCompanionPreparationState,
+} from '../../src-server/services/telemetry-companion-archive.js';
+import { verifyTelemetryCompanionFiles } from '../../src-server/services/telemetry-companion-artifact.mjs';
+import { captureTelemetryCompanionPrivateUsageTarget } from '../../src-server/services/telemetry-companion-control.js';
+import {
+  installTelemetryCompanion,
+  readTelemetryCompanionInstallation,
+} from '../../src-server/services/telemetry-companion-install.js';
+import { readTelemetryCompanionArtifactEvidence } from '../../src-server/services/telemetry-companion-release.js';
 import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
 import {
   archiveTool,
@@ -19,8 +38,901 @@ import {
   packageTelemetryCompanion,
   verifyTelemetryCompanion,
 } from '../package-telemetry-companion.mjs';
+import {
+  platformPayload,
+  signEnvelope,
+} from './fixtures/release-manifest-v2.js';
+
+const { docker, fixtureKeys } = vi.hoisted(() => {
+  const fixtureKeys: ReleaseManifestKeyTable = { keys: [] };
+  return { docker: vi.fn(), fixtureKeys };
+});
+vi.mock(
+  '../../src-server/utils/process-group-exec.js',
+  async (importOriginal) => {
+    const original =
+      await importOriginal<
+        typeof import('../../src-server/utils/process-group-exec.js')
+      >();
+    return {
+      ...original,
+      runInProcessGroup: (
+        ...args: Parameters<typeof original.runInProcessGroup>
+      ) =>
+        args[0] === 'docker'
+          ? docker(...args)
+          : original.runInProcessGroup(...args),
+    };
+  },
+);
+vi.mock('../../src-server/services/telemetry-companion.js', () => ({
+  readTelemetryCompanionHost: async () => ({
+    kind: 'available',
+    endpoint: 'unix:///fixture.sock',
+    architecture: 'arm64',
+  }),
+}));
+vi.mock('../../config/release-manifest-keys.json', () => ({
+  default: fixtureKeys,
+}));
 
 const makeTempDir = trackTempDirs();
+afterEach(() => {
+  fixtureKeys.keys = [];
+  docker.mockReset();
+});
+
+async function qualifiedPackageFixture() {
+  const root = makeTempDir('companion-qualified-package-');
+  const candidate = await packageTelemetryCompanion(join(root, 'base'));
+  const manifest = candidate.manifest;
+  // Controlled declarations exercise metadata consistency, not execution or release qualification.
+  const receipt = {
+    protocol: 'station-companion-qualification/v1',
+    profile: 'station-companion-product-diagnostics/v1',
+    source: manifest.source,
+    contentSha256: createHash('sha256')
+      .update(
+        JSON.stringify({
+          source: manifest.source,
+          target: manifest.target,
+          images: manifest.images,
+          files: manifest.files,
+        }),
+      )
+      .digest('hex'),
+    installationAuthority: false,
+    qualifications: [
+      {
+        containerOs: 'linux',
+        architecture: 'arm64',
+        evidenceSha256: 'e'.repeat(64),
+        checks: [
+          'real-station-metric-query',
+          'real-station-trace-query',
+          'diagnostic-privacy',
+          'delta-counter-rate-histogram',
+          'station-collector-restart',
+          'product-commit-deduplication',
+          'real-station-product-query',
+          'product-disclosure-and-destination-separation',
+          'receiver-store-restart',
+          'fresh-backup-restore-fence',
+          'publisher-privacy-reconciliation',
+          'version-upgrade-rollback',
+          'credential-network-isolation',
+        ].map((id) => ({ id, state: 'passed' })),
+      },
+    ],
+  };
+  const receiptPath = join(root, 'qualification.json');
+  await writeFile(receiptPath, JSON.stringify(receipt));
+  const qualified = await packageTelemetryCompanion(join(root, 'qualified'), {
+    qualificationReceiptPath: receiptPath,
+  });
+  return { root, manifest, receipt, receiptPath, qualified };
+}
+
+test('packaging validates payload-bound qualification metadata and refuses diagnostic-only receipts', async () => {
+  const { root, manifest, receipt, receiptPath, qualified } =
+    await qualifiedPackageFixture();
+  expect(await verifyTelemetryCompanion(qualified.directory)).toHaveProperty(
+    'qualification',
+    receipt,
+  );
+
+  const suppressed = {
+    ...receipt,
+    profile:
+      'station-companion-product-diagnostics-permanent-publication-suppression/v2',
+    qualifications: receipt.qualifications.map((qualification) => ({
+      ...qualification,
+      checks: qualification.checks.map((check) => ({
+        ...check,
+        id:
+          check.id === 'publisher-privacy-reconciliation'
+            ? 'publisher-permanent-publication-suppression'
+            : check.id,
+      })),
+    })),
+  };
+  await writeFile(receiptPath, JSON.stringify(suppressed));
+  const suppressedPackage = await packageTelemetryCompanion(
+    join(root, 'suppressed'),
+    { qualificationReceiptPath: receiptPath },
+  );
+  expect(
+    (await verifyTelemetryCompanion(suppressedPackage.directory)).qualification,
+  ).toEqual(suppressed);
+  const invalid = [
+    { ...receipt, source: '0'.repeat(40) },
+    { ...receipt, contentSha256: '0'.repeat(64) },
+    { ...receipt, installationAuthority: true },
+    { ...receipt, qualifications: [] },
+    {
+      ...receipt,
+      qualifications: [{ ...receipt.qualifications[0], architecture: 'x64' }],
+    },
+    {
+      ...receipt,
+      qualifications: [
+        {
+          ...receipt.qualifications[0],
+          checks: receipt.qualifications[0].checks.slice(1),
+        },
+      ],
+    },
+    {
+      ...receipt,
+      qualifications: [
+        {
+          ...receipt.qualifications[0],
+          checks: receipt.qualifications[0].checks.map((check, index) =>
+            index === 0 ? { ...check, state: 'failed' } : check,
+          ),
+        },
+      ],
+    },
+    {
+      protocol: 'station-companion-runtime-diagnostic/v1',
+      state: 'passed',
+      scope: 'source-Station-OTel-and-component-runtime-only',
+      installationAuthority: false,
+    },
+  ];
+  invalid.push(
+    { ...suppressed, profile: receipt.profile },
+    { ...receipt, profile: suppressed.profile },
+    { ...suppressed, profile: 'unrecognized-profile/v2' },
+    { ...suppressed, source: '0'.repeat(40) },
+    { ...suppressed, contentSha256: '0'.repeat(64) },
+    {
+      ...suppressed,
+      qualifications: [
+        { ...suppressed.qualifications[0], architecture: 'x64' },
+      ],
+    },
+    {
+      ...suppressed,
+      qualifications: [
+        {
+          ...suppressed.qualifications[0],
+          checks: suppressed.qualifications[0].checks.filter(
+            (check) => check.id !== 'version-upgrade-rollback',
+          ),
+        },
+      ],
+    },
+    {
+      ...suppressed,
+      qualifications: [
+        {
+          ...suppressed.qualifications[0],
+          checks: suppressed.qualifications[0].checks.map((check) =>
+            check.id === 'version-upgrade-rollback'
+              ? { ...check, state: 'NOT_SUPPORTED' }
+              : check,
+          ),
+        },
+      ],
+    },
+  );
+  for (const [index, value] of invalid.entries()) {
+    await writeFile(receiptPath, JSON.stringify(value));
+    await expect(
+      packageTelemetryCompanion(join(root, `invalid-${index}`), {
+        qualificationReceiptPath: receiptPath,
+      }),
+    ).rejects.toThrow(/Companion install/);
+  }
+  await writeFile(
+    join(qualified.directory, 'companion-manifest.json'),
+    JSON.stringify({
+      ...manifest,
+      qualification: invalid[5],
+    }),
+  );
+  await expect(verifyTelemetryCompanion(qualified.directory)).rejects.toThrow(
+    'profile is incomplete',
+  );
+});
+
+test.skipIf(process.platform === 'win32')(
+  'the real installer refuses a private target lease and reaches retained installation refusal only after release',
+  async () => {
+    const { root, manifest, qualified } = await qualifiedPackageFixture();
+    const stage = join(root, 'signed-stage');
+    await mkdir(stage);
+    await mkdir(join(stage, 'station'));
+    await cp(qualified.directory, join(stage, 'station/telemetry-companion'), {
+      recursive: true,
+    });
+    const archive = join(root, 'qualified-parent.tar.gz');
+    const packed = spawnSyncBounded(
+      archiveTool(),
+      ['-czf', archive, '-C', stage, 'station'],
+      {
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 30000,
+        env: { ...process.env, COPYFILE_DISABLE: '1' },
+      },
+    );
+    expect(packed.error).toBeUndefined();
+    expect(packed.status, packed.stderr).toBe(0);
+    const bytes = await readFile(archive);
+    const name = `station-server-${process.platform}-${process.arch}.tar.gz`;
+    const artifact = {
+      os: process.platform,
+      arch: process.arch,
+      name,
+      url: `https://github.com/kontourai/station/releases/download/v0.7.0-nightly.12/${name}`,
+      format: 'tar.gz',
+      size: bytes.length,
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+    };
+    const payload = platformPayload({
+      sourceSha: manifest.source,
+      artifacts: [artifact],
+    });
+    const signing = generateKeyPairSync('ed25519');
+    const keys = {
+      keys: [
+        {
+          keyId: 'fixture-prepared-profile',
+          algorithm: 'ed25519',
+          channels: ['nightly'],
+          publicKeySpkiPem: signing.publicKey
+            .export({ type: 'spki', format: 'pem' })
+            .toString(),
+        },
+      ],
+    };
+    // Signed fixture declarations are metadata evidence, not installed-release qualification.
+    fixtureKeys.keys = keys.keys;
+    const { home, directory, containers } = await managedCompanionFixture(
+      makeTempDir,
+      docker,
+      {
+        source: manifest.source,
+        version: '0.7.0-nightly.12',
+        manifestSha256: createHash('sha256')
+          .update(
+            await readFile(
+              join(qualified.directory, 'companion-manifest.json'),
+            ),
+          )
+          .digest('hex'),
+        artifactSha256: artifact.sha256,
+        channel: 'nightly',
+      },
+    );
+    await cp(qualified.directory, join(directory, 'payload'), {
+      recursive: true,
+    });
+    await writeFile(
+      join(directory, 'intent.json'),
+      JSON.stringify({
+        envelope: signEnvelope(
+          payload,
+          'fixture-prepared-profile',
+          signing.privateKey,
+        ),
+      }),
+      { mode: 0o600 },
+    );
+    for (const container of containers) {
+      container.State.Running = true;
+      container.State.Status = 'running';
+      container.NetworkSettings.Ports = container.HostConfig.PortBindings;
+    }
+    const archiveRoot = join(home, 'version');
+    await mkdir(archiveRoot);
+    await writeFile(
+      join(archiveRoot, '.station-signed-release-manifest.json'),
+      JSON.stringify(
+        signEnvelope(payload, 'fixture-prepared-profile', signing.privateKey),
+      ),
+    );
+    const provenance: InstallProvenance = {
+      installKind: 'archive',
+      archiveRoot,
+      installRoot: home,
+      version: '0.7.0-nightly.12',
+      release: {
+        schemaVersion: 2,
+        sha: manifest.source,
+        ref: 'v0.7.0-nightly.12',
+        createdAt: '2026-09-25T00:00:00.000Z',
+        channel: 'nightly',
+        releaseChannel: 'nightly',
+        prerelease: true,
+      },
+    };
+    const prepared = await prepareTelemetryCompanionArchive(provenance, {
+      home,
+      operationId: randomUUID(),
+      verification: { keys },
+      requireOperator: async () => {},
+      fetchFn: async () => new Response(Uint8Array.from(bytes)),
+    });
+    expect(prepared).toMatchObject({
+      phase: 'authenticated',
+      payloadPrepared: true,
+      qualifiedArchitectures: ['arm64'],
+      installationAuthority: false,
+    });
+    const authority = Object.assign(async () => {}, {
+      assertLocalCurrent() {},
+    });
+    const target = await captureTelemetryCompanionPrivateUsageTarget(
+      home,
+      authority,
+      authority,
+      new AbortController().signal,
+    );
+    if (!target.acquireReleaseLease)
+      throw new Error('Managed private target must expose its release lease');
+    const lease = await target.acquireReleaseLease();
+    const installationId = randomUUID();
+    const installations = join(home, 'telemetry-companion/installations');
+    const lockPath = join(installations, 'installation.lock');
+    const lockBytes = await readFile(lockPath);
+    const lockIdentity = await stat(lockPath);
+    const currentPath = join(installations, 'current.json');
+    const currentBytes = await readFile(currentPath);
+    const selectedReceiptPath = join(directory, 'receipt.json');
+    const selectedReceipt = await readFile(selectedReceiptPath);
+    const install = () =>
+      installTelemetryCompanion(provenance, {
+        home,
+        installationId,
+        preparationId: prepared.operationId,
+        requireOperator: authority,
+        verification: { keys },
+      });
+    docker.mockClear();
+    try {
+      await expect(install()).rejects.toMatchObject({
+        reason: 'reconciliation-required',
+      });
+      expect(docker).not.toHaveBeenCalled();
+      await expect(
+        stat(join(installations, installationId)),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(await readFile(currentPath)).toEqual(currentBytes);
+      expect(await readFile(selectedReceiptPath)).toEqual(selectedReceipt);
+      expect(await readFile(lockPath)).toEqual(lockBytes);
+      expect(await stat(lockPath)).toMatchObject({
+        dev: lockIdentity.dev,
+        ino: lockIdentity.ino,
+      });
+      lease.assertLocalCurrent();
+      // A non-file selection proves which guard runs without observing helper calls.
+      const retainedPointer = `${currentPath}.retained`;
+      await rename(currentPath, retainedPointer);
+      await mkdir(currentPath, { mode: 0o700 });
+      await expect(install()).rejects.toMatchObject({
+        reason: 'reconciliation-required',
+      });
+      await lease.release();
+      await expect(install()).rejects.toThrow('bounded regular file');
+      await rm(currentPath, { recursive: true });
+      await rename(retainedPointer, currentPath);
+      await expect(stat(lockPath)).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(install()).rejects.toMatchObject({
+        reason: 'reconciliation-required',
+      });
+      expect(docker).not.toHaveBeenCalled();
+      await expect(
+        stat(join(installations, installationId)),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(await readFile(currentPath)).toEqual(currentBytes);
+      expect(await readFile(selectedReceiptPath)).toEqual(selectedReceipt);
+      await expect(stat(lockPath)).rejects.toMatchObject({ code: 'ENOENT' });
+      const replacedLease = await target.acquireReleaseLease();
+      try {
+        await rename(lockPath, join(installations, 'retained-owned.lock'));
+        await writeFile(lockPath, 'foreign replacement owner', {
+          mode: 0o600,
+          flag: 'wx',
+        });
+        const foreignIdentity = await stat(lockPath);
+        await replacedLease.release();
+        expect(await readFile(lockPath, 'utf8')).toBe(
+          'foreign replacement owner',
+        );
+        expect(await stat(lockPath)).toMatchObject({
+          dev: foreignIdentity.dev,
+          ino: foreignIdentity.ino,
+        });
+      } finally {
+        await replacedLease.release();
+      }
+    } finally {
+      await lease.release();
+      fixtureKeys.keys = [];
+    }
+  },
+);
+
+test('the byte verifier refuses a coercible source array rather than returning a falsely typed manifest', async () => {
+  const { directory, manifest } = await packageTelemetryCompanion(
+    join(makeTempDir('companion-source-type-'), 'output'),
+  );
+  await writeFile(
+    join(directory, 'companion-manifest.json'),
+    JSON.stringify({ ...manifest, source: [manifest.source] }),
+  );
+  await expect(verifyTelemetryCompanionFiles(directory)).rejects.toThrow(
+    'Invalid build-only companion manifest',
+  );
+});
+
+test.runIf(process.platform === 'win32')(
+  'refuses Windows preparation before authority or download work',
+  async () => {
+    const home = makeTempDir('companion-windows-preparation-');
+    const requireOperator = vi.fn(async () => {});
+    const fetchFn = vi.fn(async () => new Response('must not download'));
+    await expect(
+      prepareTelemetryCompanionArchive(
+        {
+          installKind: 'source-checkout',
+          gitRoot: home,
+          branch: 'fixture',
+          sha: 'a'.repeat(40),
+        },
+        { home, operationId: randomUUID(), requireOperator, fetchFn },
+      ),
+    ).rejects.toThrow('preparation unsupported');
+    expect(requireOperator).not.toHaveBeenCalled();
+    expect(fetchFn).not.toHaveBeenCalled();
+  },
+);
+
+test.skipIf(process.platform === 'win32')(
+  'Unix preparation authenticates exact signed bytes after durable intent, retains failures and never repeats an operation',
+  async () => {
+    const home = makeTempDir('companion-archive-preparation-');
+    const archiveRoot = join(home, 'installed-version');
+    await mkdir(archiveRoot);
+    const candidate = await packageTelemetryCompanion(join(home, 'candidate'));
+    const stage = join(home, PORTABLE_ARCHIVE_ROOT);
+    await mkdir(stage);
+    await rename(candidate.directory, join(stage, 'telemetry-companion'));
+    const archive = join(home, 'parent.tar.gz');
+    const packed = spawnSyncBounded(
+      archiveTool(),
+      ['-czf', archive, '-C', home, PORTABLE_ARCHIVE_ROOT],
+      { encoding: 'utf8', windowsHide: true, timeout: 30_000 },
+    );
+    expect(packed.error).toBeUndefined();
+    expect(packed.status, packed.stderr).toBe(0);
+    const bytes = await readFile(archive);
+    const key = generateKeyPairSync('ed25519');
+    const keys = {
+      keys: [
+        {
+          keyId: 'fixture-preparation',
+          algorithm: 'ed25519',
+          channels: ['nightly'],
+          publicKeySpkiPem: key.publicKey
+            .export({ type: 'spki', format: 'pem' })
+            .toString(),
+        },
+      ],
+    };
+    const artifact = {
+      os: 'linux',
+      arch: 'x64',
+      name: 'station-server-linux-x64.tar.gz',
+      url: 'https://github.com/kontourai/station/releases/download/v0.7.0-nightly.12/station-server-linux-x64.tar.gz',
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+      size: bytes.length,
+      format: 'tar.gz',
+    };
+    const payload = platformPayload({
+      artifacts: [artifact],
+      sourceSha: candidate.manifest.source,
+    });
+    const envelope = signEnvelope(
+      payload,
+      'fixture-preparation',
+      key.privateKey,
+    );
+    const envelopeFile = join(
+      archiveRoot,
+      '.station-signed-release-manifest.json',
+    );
+    await writeFile(envelopeFile, JSON.stringify(envelope));
+    const provenance: InstallProvenance = {
+      installKind: 'archive',
+      archiveRoot,
+      installRoot: home,
+      version: '0.7.0-nightly.12',
+      release: {
+        schemaVersion: 2,
+        sha: candidate.manifest.source,
+        ref: 'v0.7.0-nightly.12',
+        createdAt: '2026-09-25T00:00:00.000Z',
+        channel: 'nightly',
+        releaseChannel: 'nightly',
+        prerelease: true,
+      },
+    };
+    const root = join(home, 'telemetry-companion', 'archive-preparations');
+    const verification = { keys, platform: 'linux', arch: 'x64' };
+    for (const fault of [
+      'none',
+      'digest',
+      'oversize',
+      'truncated',
+      'redirect',
+      'revoked',
+      'aborted',
+    ] as const) {
+      const operationId = randomUUID();
+      let authorized = true;
+      const controller = new AbortController();
+      if (fault === 'aborted') controller.abort();
+      const fetchFn = vi.fn(async () => {
+        expect(
+          JSON.parse(
+            await readFile(join(root, operationId, 'intent.json'), 'utf8'),
+          ),
+        ).toMatchObject({ operationId, envelope, artifact });
+        expect(
+          await readTelemetryCompanionArchivePreparation(home, operationId),
+        ).toMatchObject({ phase: 'pending', installationAuthority: false });
+        expect(
+          await readTelemetryCompanionPreparationState(home),
+        ).toMatchObject({
+          hasOperationLock: true,
+          latestOperationId: operationId,
+          latest: { phase: 'pending' },
+        });
+        if (fault === 'revoked') authorized = false;
+        if (fault === 'redirect')
+          return new Response(null, {
+            status: 302,
+            headers: { location: 'http://private.test/archive' },
+          });
+        const body =
+          fault === 'digest'
+            ? Buffer.alloc(bytes.length, 120)
+            : fault === 'oversize'
+              ? Buffer.concat([bytes, Buffer.from('x')])
+              : fault === 'truncated'
+                ? bytes.subarray(1)
+                : bytes;
+        return new Response(Uint8Array.from(body));
+      });
+      const input = {
+        home,
+        operationId,
+        verification,
+        fetchFn,
+        signal: controller.signal,
+        requireOperator: async () => {
+          if (!authorized) throw new Error('withdrawn');
+        },
+      };
+      const receipt = await prepareTelemetryCompanionArchive(provenance, input);
+      expect(receipt.phase).toBe(fault === 'none' ? 'authenticated' : 'failed');
+      expect(receipt.installationAuthority).toBe(false);
+      expect(
+        (await stat(join(root, operationId, 'parent-archive.tar.gz'))).size,
+      ).toBeLessThanOrEqual(bytes.length);
+      expect((await stat(join(root, operationId))).mode & 0o077).toBe(0);
+      expect(
+        await readTelemetryCompanionArchivePreparation(home, operationId),
+      ).toEqual(receipt);
+      expect(await readTelemetryCompanionPreparationState(home)).toEqual({
+        hasOperationLock: false,
+        latestOperationId: operationId,
+        latest: receipt,
+      });
+      if (fault === 'none') {
+        expect(
+          await readFile(join(root, operationId, 'parent-archive.tar.gz')),
+        ).toEqual(bytes);
+        expect(receipt).toMatchObject({ payloadPrepared: true });
+        const prepared = join(root, operationId, 'payload');
+        expect(await verifyTelemetryCompanionFiles(prepared)).toEqual(
+          candidate.manifest,
+        );
+        expect((await stat(prepared)).mode & 0o077).toBe(0);
+        const installationId = randomUUID();
+        await expect(
+          installTelemetryCompanion(provenance, {
+            home,
+            installationId,
+            preparationId: operationId,
+            verification,
+            requireOperator: input.requireOperator,
+          }),
+        ).rejects.toMatchObject({ reason: 'qualification-required' });
+        expect(
+          await readTelemetryCompanionInstallation(home, installationId),
+        ).toBeNull();
+        await expect(
+          stat(join(home, 'telemetry-companion', 'installations')),
+        ).rejects.toMatchObject({ code: 'ENOENT' });
+      }
+      const calls = fetchFn.mock.calls.length;
+      authorized = true;
+      expect(await prepareTelemetryCompanionArchive(provenance, input)).toEqual(
+        receipt,
+      );
+      expect(fetchFn).toHaveBeenCalledTimes(calls);
+      expect(calls).toBe(fault === 'aborted' ? 0 : 1);
+    }
+    const untouched = randomUUID();
+    await mkdir(join(root, untouched), { mode: 0o700 });
+    await writeFile(
+      join(root, untouched, 'intent.json'),
+      'retain operator evidence',
+    );
+    const fetchFn = vi.fn(async () => new Response(Uint8Array.from(bytes)));
+    const input = {
+      home,
+      operationId: untouched,
+      verification,
+      fetchFn,
+      requireOperator: async () => {},
+    };
+    await expect(
+      prepareTelemetryCompanionArchive(provenance, input),
+    ).rejects.toBeInstanceOf(CompanionArchivePreparationBusyError);
+    expect(await readFile(join(root, untouched, 'intent.json'), 'utf8')).toBe(
+      'retain operator evidence',
+    );
+    expect(fetchFn).not.toHaveBeenCalled();
+    const outside = join(home, 'outside');
+    await writeFile(outside, 'retain outside data');
+    for (const fault of [
+      'corrupt',
+      'foreign-source',
+      'link',
+      'image-pins',
+      'foreign-image',
+    ] as const) {
+      const variant = join(home, fault);
+      await mkdir(variant);
+      await cp(stage, join(variant, PORTABLE_ARCHIVE_ROOT), {
+        recursive: true,
+      });
+      const companion = join(
+        variant,
+        PORTABLE_ARCHIVE_ROOT,
+        'telemetry-companion',
+      );
+      if (fault === 'corrupt')
+        await writeFile(join(companion, 'dist/main.mjs'), 'changed bundle');
+      else if (fault === 'foreign-source')
+        await writeFile(
+          join(companion, 'companion-manifest.json'),
+          JSON.stringify({ ...candidate.manifest, source: '0'.repeat(40) }),
+        );
+      else if (fault === 'image-pins')
+        await writeFile(
+          join(companion, 'companion-manifest.json'),
+          JSON.stringify({
+            ...candidate.manifest,
+            images: [...candidate.manifest.images].reverse(),
+          }),
+        );
+      else if (fault === 'foreign-image')
+        await writeFile(
+          join(companion, 'companion-manifest.json'),
+          JSON.stringify({
+            ...candidate.manifest,
+            images: candidate.manifest.images
+              .map((image, index) =>
+                index === 0
+                  ? image.replace(
+                      /sha256:[a-f0-9]{64}$/,
+                      `sha256:${'0'.repeat(64)}`,
+                    )
+                  : image,
+              )
+              .sort(),
+          }),
+        );
+      else {
+        await rm(join(companion, 'dist/main.mjs'));
+        await symlink(outside, join(companion, 'dist/main.mjs'));
+      }
+      const variantArchive = join(variant, 'parent.tar.gz');
+      const packedVariant = spawnSyncBounded(
+        archiveTool(),
+        ['-czf', variantArchive, '-C', variant, PORTABLE_ARCHIVE_ROOT],
+        { encoding: 'utf8', windowsHide: true, timeout: 30_000 },
+      );
+      expect(packedVariant.error).toBeUndefined();
+      expect(packedVariant.status, packedVariant.stderr).toBe(0);
+      const variantBytes = await readFile(variantArchive);
+      const variantArtifact = {
+        ...artifact,
+        size: variantBytes.length,
+        sha256: createHash('sha256').update(variantBytes).digest('hex'),
+      };
+      await writeFile(
+        envelopeFile,
+        JSON.stringify(
+          signEnvelope(
+            { ...payload, artifacts: [variantArtifact] },
+            'fixture-preparation',
+            key.privateKey,
+          ),
+        ),
+      );
+      const rejected = await prepareTelemetryCompanionArchive(provenance, {
+        ...input,
+        operationId: randomUUID(),
+        fetchFn: async () => new Response(Uint8Array.from(variantBytes)),
+      });
+      expect(rejected, fault).toMatchObject({
+        phase: 'failed',
+        receivedBytes: variantBytes.length,
+        artifactSha256: variantArtifact.sha256,
+        installationAuthority: false,
+      });
+      expect(rejected).not.toHaveProperty('payloadPrepared');
+      expect(await readFile(outside, 'utf8')).toBe('retain outside data');
+    }
+    const lockPath = join(root, 'preparation.lock');
+    await writeFile(lockPath, 'retain interrupted owner', {
+      mode: 0o600,
+      flag: 'wx',
+    });
+    await expect(
+      prepareTelemetryCompanionArchive(provenance, {
+        ...input,
+        operationId: randomUUID(),
+      }),
+    ).rejects.toBeInstanceOf(CompanionArchivePreparationBusyError);
+    expect(await readFile(lockPath, 'utf8')).toBe('retain interrupted owner');
+    expect(fetchFn).not.toHaveBeenCalled();
+    await rm(lockPath);
+    await writeFile(
+      envelopeFile,
+      JSON.stringify({
+        ...envelope,
+        signature: Buffer.alloc(64).toString('base64'),
+      }),
+    );
+    const rejectedId = randomUUID();
+    await expect(
+      prepareTelemetryCompanionArchive(provenance, {
+        ...input,
+        operationId: rejectedId,
+      }),
+    ).rejects.toThrow('parent archive unavailable');
+    expect(
+      await readTelemetryCompanionArchivePreparation(home, rejectedId),
+    ).toBeNull();
+    expect(fetchFn).not.toHaveBeenCalled();
+  },
+);
+
+test('retained parent signature and build inventory remain distinct from companion installation authority', async () => {
+  const root = makeTempDir('companion-release-evidence-');
+  const { directory, manifest } = await packageTelemetryCompanion(
+    join(root, 'output'),
+  );
+  const archiveRoot = join(root, 'archive');
+  await mkdir(archiveRoot);
+  await rename(directory, join(archiveRoot, 'telemetry-companion'));
+  const key = generateKeyPairSync('ed25519');
+  const keys = {
+    keys: [
+      {
+        keyId: 'fixture-companion',
+        algorithm: 'ed25519',
+        channels: ['nightly'],
+        publicKeySpkiPem: key.publicKey
+          .export({ type: 'spki', format: 'pem' })
+          .toString(),
+      },
+    ],
+  };
+  const payload = platformPayload({ sourceSha: manifest.source });
+  const envelope = signEnvelope(payload, 'fixture-companion', key.privateKey);
+  const file = join(archiveRoot, '.station-signed-release-manifest.json');
+  const provenance: InstallProvenance = {
+    installKind: 'archive',
+    archiveRoot,
+    installRoot: root,
+    version: '0.7.0-nightly.12',
+    release: {
+      schemaVersion: 2,
+      sha: manifest.source,
+      ref: 'v0.7.0-nightly.12',
+      createdAt: '2026-09-25T00:00:00.000Z',
+      channel: 'nightly',
+      releaseChannel: 'nightly',
+      prerelease: true,
+    },
+  };
+  const options = { keys, platform: 'linux', arch: 'x64' };
+  expect(
+    await readTelemetryCompanionArtifactEvidence(provenance, options),
+  ).toEqual({ kind: 'unavailable', reason: 'release-envelope-missing' });
+  await writeFile(file, JSON.stringify(envelope));
+  expect(
+    await readTelemetryCompanionArtifactEvidence(provenance, options),
+  ).toEqual({
+    kind: 'parent-envelope-verified',
+    version: provenance.version,
+    source: manifest.source,
+    artifactSha256: '4'.repeat(64),
+    qualification: 'build-only',
+    installationAuthority: false,
+  });
+  expect(await readTelemetryCompanionArtifactEvidence(provenance)).toEqual({
+    kind: 'unavailable',
+    reason: 'release-envelope-invalid',
+  });
+  expect(
+    await readTelemetryCompanionArtifactEvidence(provenance, {
+      ...options,
+      platform: 'freebsd',
+    }),
+  ).toEqual({ kind: 'unavailable', reason: 'release-envelope-invalid' });
+  await writeFile(
+    file,
+    JSON.stringify({
+      ...envelope,
+      signature: Buffer.alloc(64).toString('base64'),
+    }),
+  );
+  expect(
+    await readTelemetryCompanionArtifactEvidence(provenance, options),
+  ).toEqual({ kind: 'unavailable', reason: 'release-envelope-invalid' });
+  await writeFile(
+    file,
+    JSON.stringify(
+      signEnvelope(
+        { ...payload, sourceSha: 'a'.repeat(40) },
+        'fixture-companion',
+        key.privateKey,
+      ),
+    ),
+  );
+  expect(
+    await readTelemetryCompanionArtifactEvidence(provenance, options),
+  ).toEqual({ kind: 'unavailable', reason: 'release-envelope-invalid' });
+  await writeFile(file, JSON.stringify(envelope));
+  await writeFile(
+    join(archiveRoot, 'telemetry-companion/dist/main.mjs'),
+    'corrupted',
+  );
+  expect(
+    await readTelemetryCompanionArtifactEvidence(provenance, options),
+  ).toEqual({ kind: 'unavailable', reason: 'companion-payload-invalid' });
+});
 beforeAll(() => {
   const result = spawnSyncBounded(
     process.execPath,
@@ -256,3 +1168,136 @@ test.each(['corrupt', 'foreign-source'] as const)(
     );
   },
 );
+
+test('prior transition options require the companion, signed manifest and original parent together', async () => {
+  const { parsePriorCompanionOptions } = await import(
+    '../lib/telemetry-companion-lifecycle.mjs'
+  );
+  expect(parsePriorCompanionOptions([])).toBeUndefined();
+  for (const args of [
+    ['--prior-companion', '/tmp/prior'],
+    ['--prior-signed-manifest', '/tmp/report.json'],
+    ['--prior-companion'],
+    ['--prior-companion', '--prior-parent-archive'],
+    ['--arbitrary-path', '/tmp/prior'],
+    ['--prior-companion', '/tmp/a', '--prior-companion', '/tmp/b'],
+  ])
+    expect(() => parsePriorCompanionOptions(args)).toThrow();
+  expect(
+    parsePriorCompanionOptions([
+      '--prior-companion',
+      '/tmp/prior',
+      '--prior-parent-archive',
+      '/tmp/parent.tar.gz',
+      '--prior-signed-manifest',
+      '/tmp/signed.json',
+    ]),
+  ).toEqual({
+    '--prior-companion': resolve('/tmp/prior'),
+    '--prior-parent-archive': resolve('/tmp/parent.tar.gz'),
+    '--prior-signed-manifest': resolve('/tmp/signed.json'),
+  });
+});
+
+test('prior transition refuses a self-signed parent before extraction or execution', async () => {
+  const { authenticatePriorCompanion } = await import(
+    '../lib/telemetry-companion-lifecycle.mjs'
+  );
+  const output = makeTempDir('companion-untrusted-prior-');
+  const manifest = join(output, 'untrusted-envelope.json');
+  const signing = generateKeyPairSync('ed25519');
+  await writeFile(
+    manifest,
+    JSON.stringify(
+      signEnvelope(
+        platformPayload(),
+        'untrusted-qualification-fixture',
+        signing.privateKey,
+      ),
+    ),
+  );
+  const command = vi.fn();
+  await expect(
+    authenticatePriorCompanion({
+      options: {
+        '--prior-signed-manifest': manifest,
+        '--prior-companion': join(output, 'arbitrary-companion'),
+        '--prior-parent-archive': join(output, 'arbitrary-parent.tar.gz'),
+      },
+      output,
+      command,
+      env: {},
+    }),
+  ).rejects.toThrow(/key/i);
+  expect(command).not.toHaveBeenCalled();
+});
+
+test('lifecycle migration comparison retains prior digests and permits only exact current history for both schemas', async () => {
+  const { assertMigrationTransition } = await import(
+    '../lib/telemetry-companion-lifecycle.mjs'
+  );
+  const prior = {
+    'station_telemetry.migrations': [{ version: 1, digest: 'product-old' }],
+    'station_private_usage.migrations': [{ version: 4, digest: 'private-old' }],
+  };
+  const current = {
+    'station_telemetry.migrations': [
+      ...prior['station_telemetry.migrations'],
+      { version: 2, digest: 'product-new' },
+    ],
+    'station_private_usage.migrations': [
+      ...prior['station_private_usage.migrations'],
+      { version: 5, digest: 'private-five' },
+      { version: 6, digest: 'private-six' },
+    ],
+  };
+  expect(() =>
+    assertMigrationTransition(prior, structuredClone(current), current),
+  ).not.toThrow();
+  const withoutPrivate = { ...prior, 'station_private_usage.migrations': [] };
+  expect(() =>
+    assertMigrationTransition(withoutPrivate, current, current),
+  ).not.toThrow();
+  expect(() =>
+    assertMigrationTransition(
+      { ...withoutPrivate, 'station_telemetry.migrations': [] },
+      current,
+      current,
+    ),
+  ).toThrow();
+  expect(() =>
+    assertMigrationTransition(
+      withoutPrivate,
+      { ...current, 'station_private_usage.migrations': [] },
+      current,
+    ),
+  ).toThrow();
+  for (const table of Object.keys(prior) as (keyof typeof prior)[]) {
+    for (const fault of [
+      'altered',
+      'missing',
+      'unexpected-version',
+      'missing-addition',
+    ]) {
+      const upgraded = structuredClone(current);
+      if (fault === 'altered') upgraded[table][0].digest = 'tampered';
+      if (fault === 'missing') upgraded[table].shift();
+      if (fault === 'unexpected-version')
+        upgraded[table].push({ version: 99, digest: 'unknown' });
+      if (fault === 'missing-addition') upgraded[table].pop();
+      expect(() =>
+        assertMigrationTransition(prior, upgraded, current),
+      ).toThrow();
+    }
+    // Even matching upgraded/current rows must retain the authenticated prior history.
+    const changedCurrent = structuredClone(current);
+    changedCurrent[table][0].digest = 'rewritten-old';
+    expect(() =>
+      assertMigrationTransition(prior, changedCurrent, changedCurrent),
+    ).toThrow();
+    changedCurrent[table].shift();
+    expect(() =>
+      assertMigrationTransition(prior, changedCurrent, changedCurrent),
+    ).toThrow();
+  }
+});

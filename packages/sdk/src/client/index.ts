@@ -109,6 +109,7 @@ export * from './relay-enrollment';
 export * from './request-inspection';
 export * from './reviews';
 export * from './runs';
+export * from './runtime-event-content';
 export * from './scheduler';
 export * from './send-execution-message';
 export { sentTurnKey } from './sent-turn-key';
@@ -129,6 +130,7 @@ export * from './task-user-input-references';
 export * from './unified-search';
 export * from './usage-export';
 export * from './walkthroughs';
+export * from './work-claims';
 export {
   executeWorkspacePaneHostAction,
   getWorkspacePaneHostActions,

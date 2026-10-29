@@ -197,6 +197,13 @@
 
 .approval-sheet__requests .tool-call__actions {
   flex-basis: 100%;
+  /* The decision stays in view however long the request: it sticks to the
+     bottom of the sheet's scrolling body while its row is on screen. */
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  padding-block: var(--k-space-2);
+  background: var(--k-panel-raised);
 }
 
 .approval-sheet__requests .button {
@@ -205,7 +212,11 @@
 
 .approval-sheet__requests .tool-call__details {
   margin-inline: 0;
-  max-height: none;
+  /* A long request (a loaded diff or file) scrolls inside its own box, so
+     the row's decision stays close to it. */
+  max-height: 50dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .request-sheet .tool-call__approve-error,

@@ -24,6 +24,8 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | Module | Intent | Primary source |
 | [WalkthroughService](#walkthroughservice) | Import a local recording into an immutable validated manifest and selected frames. | `src-server/services/walkthroughs/walkthrough-service.ts` |
 | --- | --- | --- |
+| [AnalyticsSavedViews](#analyticssavedviews) | Persist principal-owned query definitions and render scoped private Insights without granting source access. | `src-server/analytics/saved-views.ts` |
+| [PrivateUsageStorage](#privateusagestorage) | Store canonical private pages and checkpoints atomically under an opaque storage capability; Core owns person/source authority. | `packages/telemetry-broker/src/private-usage-store.ts` |
 | [Local speech and media tools](#local-speech-and-media-tools) | Resolve consented media tools and transcribe bounded local audio/video. | `src-server/services/media-tools/media-tools-resolver.ts` |
 | [TerminalSessions](#terminalsessions) | Authorize Project/binding terminal operations and preserve bounded numbered output across reconnects. | `src-server/services/terminal/terminal-sessions.ts` |
 | [ProductTelemetryReceiver](#producttelemetryreceiver) | Commit and query disclosed product observations with scoped source credentials and explicit delivery coverage. | `packages/telemetry-broker/src/store.ts` |
@@ -1399,7 +1401,7 @@ This is the read boundary for a Session’s messages and exact answer/input/resu
 **Code and evidence.** `OrchestrationService` composes the Module from private session lookup, authorization, and event-reader Adapters. The migrated callers are the orchestration conversation route and `knowledge-store/adapters/conversation-store.ts`; runtime composition passes that same Interface to hosted callers. Quote-source, answer, tool-result, and Basis callers use the corresponding exact-read operation. The connected Chat inventory also reopens exact authored inputs through
 `GET /sessions/:threadId/inputs/:eventId?turnId=...`, with route-level current
 principal and Session checks adjacent to publication. Its selected-row reader
-uses scoped SDK queries; bodies stay outside inventory descriptors. Other inventories remain with their owning modules. Conversation replay carries stored attachment references; the attachment route fetches retained bytes on demand. Internal binding and lifecycle readers select their event methods, and inbox existence gates use an authorized session point read. Usage polling keeps a per-session projection keyed by the durable event head, rereading SQL-selected usage facts only when that head changes (or another SQLite connection changes the database). Token, cost, activity, attribution and relay-mirror rules still belong to the shared usage fold. These caches hold read results, never authorization. The message-list route maps `not-found` to an empty list; exact-answer routes use non-disclosing refusals. The focused real contract is `src-server/services/orchestration/__tests__/session-query-module.test.ts`. **Do not reintroduce:** route-local authorization plus event replay, or expose the event store as a query Interface.
+uses scoped SDK queries; bodies stay outside inventory descriptors. Other inventories remain with their owning modules. Conversation replay carries stored attachment references; the attachment route fetches retained bytes on demand. Large runtime event content is stored out of line in `orchestration_event_content` and the event keeps a typed reference ([event content spill](../design/event-content-spill.md)); readers that owe exact content opt in to `EventStore.resolveEventContent` or join the table in SQL, and the session content route serves a body on demand under the window read's authority. The request content-binding route returns the server's single definition of what an allow must load (the request and its bound `tool.started` events) and the digest the gate expects. Internal binding and lifecycle readers select their event methods, and inbox existence gates use an authorized session point read. Usage polling keeps a per-session projection keyed by the durable event head, rereading SQL-selected usage facts only when that head changes (or another SQLite connection changes the database). Token, cost, activity, attribution and relay-mirror rules still belong to the shared usage fold. These caches hold read results, never authorization. The message-list route maps `not-found` to an empty list; exact-answer routes use non-disclosing refusals. The focused real contract is `src-server/services/orchestration/__tests__/session-query-module.test.ts`. **Do not reintroduce:** route-local authorization plus event replay, or expose the event store as a query Interface.
 
 ## StationControlDispatchScope
 
@@ -1457,6 +1459,13 @@ caller to the same rule for a stored conversation, which has no Session record
 to read: it asks `target` for the Project named in the conversation's own
 metadata (global when it names none) and passes that to the shared rule, after
 the owner check (which a bound operator caller skips). A named Project Station cannot read refuses.
+The [fork route](../../src-server/routes/chat/conversations.ts)
+(`fork_conversation`) applies the rule twice before it writes: the source as a
+Conversation target with Project `view`, then the fork's Project as a new
+Session target with `execute`, so an agent forks only what its scope admits
+and only into a scope where it could start a Session. The
+[mounted fork test](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-fork-conversation.test.ts)
+drives each caller kind through it.
 
 **Start-time repeat.** The resolved directory is still a string when the engine
 starts. For a new Session and any caller except a bound operator, the route
@@ -1600,7 +1609,12 @@ and principal, which is no more than `send_to_session` allows the same caller.
 A child transition (today `settled`) is read from the persisted lifecycle fold
 after the event bus publishes it, and again at startup. Each transition is one
 durable row in `EventStore`, holding the text composed from the child's stored
-output. That row is the consumption record shared with `get_task`: the recorded
+output. A dispatched child turn that a Station restart interrupted settles nothing, so
+it gets its own row instead, keyed by the recovery abort's event id: it tells
+the parent the task was cut off and quotes no output, since that turn's text
+cannot be attributed to the run without inferring an invocation from a turn
+id; a turn the engine opened on its own gets none. Every transition row,
+settled or interrupted, is the consumption record shared with `get_task`: the recorded
 parent's read of its own child at rest consumes it. `interrupt_task` from the
 recorded parent, or from the delegating owner in person, cancels it and
 suppresses the one turn it stops. An interrupt that names a turn suppresses only
@@ -2540,7 +2554,10 @@ owners do not retry or fall back to PID-only authority. The lease can represent
 multiple runtime owners, while individual callers can impose stricter same-home policy.
 [StationRuntime](../../src-server/runtime/bootstrap/station-runtime.ts) retains
 its lease through persistence shutdown. CLI wrappers also check lifecycle
-observations for useful offline diagnostics. These checks do not stop an
+observations for useful offline diagnostics. CLI clean and reset hold maintenance
+ownership through their home removal or archive rename; clean also keeps it
+through owned build-output cleanup. A live or unverifiable runtime lease refuses
+these mutations. These checks do not stop an
 unrelated external writer that ignores Station's ownership protocol.
 
 Traversal is sorted and rejects symlinks/non-regular entries. Defaults cap an
@@ -3247,15 +3264,16 @@ and nested byte budgets are bounded, including sparse arrays and surrogate
 escaping; element and member counts are bounded by the byte budget itself, not
 a fixed count (a 4,096-element cap refused Task documents of more than 4,096
 atoms, [#4007](https://github.com/kontourai/station/issues/4007)). The room
-working-state worker applies the same bounds before it commits a write
-(`revisionEvidenceAdmission`), counting stored receipts plus every publication
-admitted but not yet frozen, so a room write is refused as `document-full` or
-`evidence-ledger-full` instead of being admitted and then never frozen.
-A Task document's capacity is therefore per document (about 5,400 plain
-characters ever typed, deleted ones included) and also bounded by this
-Station-wide ledger: 256 receipts / 4 MiB, each holding a full snapshot of the
-document it records. A few hundred small saves, or a few saves of a large
-document, fill it for every Task; retiring receipts is [#4055](https://github.com/kontourai/station/issues/4055). Missing compatible attribution is `attribution_unverified`; a portable
+working-state worker applies the same per-document bounds before it commits a
+write (`revisionEvidenceAdmission`). Ordinary person and agent saves replace an
+unclaimed full-snapshot candidate rather than reserving or freezing a receipt.
+Task Review claims the exact working revision before creating a plan anchor;
+only requested references consume the shared 256-receipt / 4 MiB ledger. A Task
+document still holds about 5,400 plain characters ever typed, deleted ones
+included. A full ledger refuses new references; a deterministic freeze refusal
+releases the unmarked claim so later saves can replace the candidate. See the
+[freeze policy](../decisions/revision-evidence-freeze-policy.md).
+Missing compatible attribution is `attribution_unverified`; a portable
 file alone grants no trust. Returned records, exports and projections are cloned.
 
 [EventStore](../../src-server/services/orchestration/event-store.ts) composes the
@@ -3275,9 +3293,10 @@ projection so reentrant close cannot refill or disclose a closed module's cache.
 
 **Production connection.** [ProjectTaskRoomRevisionEvidenceBridge](../../src-server/services/orchestration/project-task-room-revision-evidence-bridge.ts)
 uses bounded freeze grants and domain-separated EnvironmentSecurityService HMAC
-attribution in the personal Task room. After an authorized working-state commit,
-it freezes that exact private snapshot and publishes a scope-bound revision
-link. Evidence failure adds an explicit gap without overturning the edit receipt.
+attribution in the personal Task room. A consumer requests a specific working
+revision; the worker claims it durably before the bridge freezes that exact
+private snapshot and publishes a scope-bound revision link. A save alone does
+not request evidence. Unknown freeze failures retain the recovery obligation.
 Its reader omits full snapshots and attestations; it is not a general ledger
 CRUD/import endpoint. Room shutdown closes the bridge before EventStore.
 
@@ -4003,6 +4022,24 @@ owns budgets, failure behavior and platform limits; the
 [process fixture](../../src-server/services/infra/__tests__/workload-resources.process.test.ts)
 exercises OOM containment, descriptor/PTY behavior and lifecycle cleanup.
 
+Memory budgets resolve in [workload-budget.ts](../../src-server/services/infra/workload-budget.ts)
+(environment, then [saved settings](../../src-server/services/infra/workload-budget-settings.ts),
+then a host-sized default). The launcher attributes a scope to the Session an
+engine launch names, which the [workload routes](../../src-server/routes/system/workload-routes.ts)
+and the [workload_status tool](../../src-server/tools/station-control-workload-tools.ts)
+read from cgroup v2 files, including each scope's kernel `oom_kill` count
+(scopes launch with `OOMPolicy=continue`, so a command, not the engine, is
+normally killed). Orchestration's first-turn composition adds the
+budget statement for adapters declaring `workloadScope: 'engine-process'` and
+the [memory-exhaustion recovery note](../../src-server/services/orchestration/memory-exhaustion-recovery.ts)
+for a successor of a memory-killed Session; the
+[continuation module](../../src-server/services/orchestration/memory-exhaustion-continuation.ts)
+sends that successor's turn through the conversation inbox, automatically
+(capped) or on a person's Continue, once per dead turn. The
+[budget tests](../../src-server/services/infra/__tests__/workload-budget.test.ts)
+drive the real launcher against a fake systemd manager; they are not Linux
+enforcement evidence.
+
 
 ## OutboundDispatchModule
 
@@ -4325,7 +4362,7 @@ route tests cover the surrounding authority and lifecycle behavior.
 and [proposal card](../../src-ui/src/components/chat/TaskProposalCard.tsx) own
 Station's conversational intake. [Task routes](../../src-server/routes/orchestration/tasks.ts)
 authorize the exact completed source turn and require its parsed proposal to match the acceptance payload; `TaskGraphService.createTask`
-commits the Goal sentence and source Session link in one store mutation, without assigning an Agent or execution Session. The room runtime then seeds the complete proposal markdown through its human edit-plan/batch authority. A transient seed failure returns a visible recovery error; retrying reuses the Task and preserves populated documents. Document-capacity refusals require a shorter proposal; revision-history refusals require available history capacity. A history refusal after creation names the existing Task so the card can offer Open Task. The normal shared start composer owns New Task's existing project/agent chips and removable mode; New Task from this sends immediately in the source conversation. A persisted chat flag supplies shaping context on every turn until acceptance or explicit mode removal. Successful brief seeding marks the source link so a reloaded card opens the accepted Task; a transient seed failure keeps acceptance retryable.
+commits the Goal sentence and source Session link in one store mutation, without assigning an Agent or execution Session. The room runtime then seeds the complete proposal markdown through its human edit-plan/batch authority. A transient seed failure returns a visible recovery error; retrying reuses the Task and preserves populated documents. Document-capacity refusals require a shorter proposal; proposal seeding does not reserve revision-history capacity. A seed refusal after creation names the existing Task so the card can offer Open Task. The normal shared start composer owns New Task's existing project/agent chips and removable mode; New Task from this sends immediately in the source conversation. A persisted chat flag supplies shaping context on every turn until acceptance or explicit mode removal. Successful brief seeding marks the source link so a reloaded card opens the accepted Task; a transient seed failure keeps acceptance retryable.
 The [VoltAgent adapter](../../src-server/runtime/frameworks/voltagent-adapter.ts) binds model-only input composition to the registered Agent as well as its wrapper, so shaping instructions reach the model while authored messages remain unchanged in storage. The real Agent/model/file-store proof lives in `src-server/runtime/frameworks/__tests__/voltagent-model-input.test.ts`.
 The source link also deduplicates repeated acceptance. Tests in
 `task-proposal-acceptance.test.ts`, `TaskProposalFlow.test.tsx` and
@@ -4594,7 +4631,12 @@ Missing files/history can yield no events; other filesystem failures propagate.
 Malformed JSON or invalid timestamps are skipped, so a successful read does not
 prove every stored line was included. The current query returns no skipped-line
 completeness receipt. HTTP history pushes visibility, dimension filters and the
-requested limit into the reader. A bounded heap retains the newest matching
+requested limit into the reader. Without an explicitly named user, history and
+`/api/insights` read the rows owned by the request principal's session-owner
+set (itself plus, in personal mode, the operator and paired devices of its
+personal conversation account); the live stream applies the same set to owned
+rows. Personal account members also read rows OTLP ingest stamps with the
+host's OS alias. A bounded heap retains the newest matching
 rows by timestamp, up to 10,000 rows and 8 MiB, while a chunk reader caps work
 at 32 MiB scanned and 1 MiB per line before parsing. Dropped rows or an exhausted
 scan/line budget return `truncated: true`. A truncated scan identifies the latest
@@ -5124,14 +5166,287 @@ and cost-budget defects. Focused real EventStore/mounted-route and runtime
 composition controls have exercised paging, owner/tenant selection and queued
 revocation with controlled identity fixtures. The scoped SDK fetcher and lazy
 query leaf validate page facts and refuse changed waiting selections; their
-focused controls have executed. Source bounds are not measured latency
-or full runtime acceptance. Coverage remains unknown. Narrow grants, destination
-credential custody, deletion invalidations, restore-generation fencing,
-receiver index/checkpoint transactions, clone identity and deployment remain
-open. A backed-up stream epoch is not a restore fence. See
+focused controls have executed. Source bounds are not measured latency or full
+runtime acceptance. Coverage remains unknown. The grant, credential custody and
+narrow admission owners are described below. The [source invalidation
+migration](../../src-server/domain/migrations/023-usage-export-invalidations.ts)
+records bounded deletion and scope metadata under actual history mutations.
+EventStore snapshots, continuations and queued release bind its revision. A
+changed schema or lost retained journal evidence refuses export. Core replay,
+receiver index/checkpoint transactions and current-query checks are implemented
+in the private usage owners below. The physical-home/recovery activation owner
+supplies a separate negative restore fence. Arbitrary clone/mirror identity and
+real deployment qualification remain open. The [scoped replay
+owner](../../src-server/analytics/usage-invalidation-reader.ts) serves the
+existing narrow grant leaf's explicit invalidations mode. It binds cursor
+authority and a fixed journal high water, filters exact owner/tenant, omits
+private scope fields, and refuses retained-floor gaps. Historical replay remains
+distinct from current fact permission and durable materialization. A backed-up
+stream epoch is not a restore fence. See
 [monitoring](../guides/monitoring.md#canonical-usage-export-source).
 
+The [enrollment intent owner](../../src-server/analytics/source-enrollment-store.ts)
+and [routes](../../src-server/routes/operations/source-enrollments.ts) persist
+metadata-only proposals under the same verified-person ingress and owner-selection
+policy. The source derives private owner/tenant bindings, checks current authority
+through storage and queued delivery, and retains cancellation/idempotency receipts
+in a bounded private file. Proposed destinations remain unverified; no source
+credential, active grant or copied usage is created by preparing an intent.
+The approval, credential custody and export owners below are separate steps;
+requester approval, address confirmation and foreground receiving sync are
+implemented downstream. The proposal activates none of them; background sync and
+real two-Station acceptance remain pending.
+
+The [recipient key owner](../../src-server/analytics/recipient-store.ts) and
+[protected routes](../../src-server/routes/operations/recipient-candidates.ts)
+create separate person-owned analytics encryption/proof keys and return public
+candidates only. Both enrollment owners share bounded, non-repairing
+[private-file mechanics](../../src-server/analytics/private-analytics-file.ts).
+The [candidate codec](../../src-server/analytics/recipient-candidate.ts) verifies
+signature integrity, not remote identity or authorization. Receiving role derives
+from the same canonical person capture; private key materialization remains
+owner/tenant scoped and queued replies revalidate current authority. Independent
+destination confirmation, source approval and encrypted credential delivery are
+still required before any source sync can begin.
+
+The [source approval controller](../../src-server/routes/operations/source-grant-approvals.ts)
+uses the existing consent transaction/listener with an actor-scoped partition and
+requester-session-only decision policy. It revalidates the saved source-owner
+snapshot and receiving-key binding under the intent's mutation lock before
+[recording source consent](../../src-server/analytics/source-grant-store.ts).
+Ordinary operator consent cannot override that personal decision. Approval is
+revocable, but remains distinct from credential issuance and export admission.
+A receiving key signature is not promoted to remote-person identity. Browser
+cookie-host/listener prerequisites refuse explicitly; native operator consent
+is not reused for this personal approval family.
+
+The [credential envelope owner](../../src-server/analytics/source-credential.ts)
+seals an approved source credential to the receiving X25519 key. The source
+approval store keeps a hash plus recoverable ciphertext; the recipient owner
+checks owner/tenant and exact intent/context before private decryption/storage.
+Neither API returns plaintext. Custody does not verify the source or activate
+export. The [narrow export controller](../../src-server/routes/operations/source-grant-export.ts)
+checks the opaque credential and receiving delivery proof against current source
+approval, Device/account standing, tenant and owner set. It shares the canonical
+usage reader, binds cursors to the grant generation and fences queued bytes on
+revocation. The receiving owner now records a separate requester-session consent for the
+exact HTTPS source origin and credential generation. Its
+[page reader](../../src-server/analytics/recipient-source-read.ts) checks that
+origin's public Station identity before sending the private narrow credential,
+rejects redirects, and validates bounded pages through the shared contract
+decoder. Source HEAD authorization and receiving custody/person checks fence
+queued release; the receiving reader also requires the captured source mutation
+revision rather than accepting a later snapshot. Rotation clears address
+confirmation. Explicit receiving sync and bounded durable index/checkpoint owners
+are described below; no background synchronization is implied. Live TLS and
+installed/native qualification remain separate. Source rotation uses the same guarded mutation owner, with an expected
+revision, bounded retained operation IDs and atomic hash/envelope replacement;
+receiving materialization rejects revision rollback. Existing personal-token,
+peer, MCP and F1 signing authorities
+are not reused as analytics credentials.
+
+The [analytics activation owner](../../src-server/analytics/analytics-activation.ts)
+binds private grants, receiving custody and export epochs to the physical home
+and its recovery record. The [home archive owner](../../packages/shared/src/station-home-archive.ts)
+publishes fresh recovery provenance for normal restore and before destructive
+in-place rollback; interruption preserves that negative fence. Runtime bootstrap
+binds the private EventStore epoch independently of generic stream identity.
+An unreadable startup activation disables private export until restart; it does
+not stop generic Station startup. Recovery provenance grants no identity or
+permission, and arbitrary raw clones or verified mirrors remain unqualified.
+
+## AnalyticsSavedViews
+
+The [saved-view store](../../src-server/analytics/saved-views.ts) keeps definitions
+in a private analytics file under the receiving Station. Verified person, tenant
+and Station ownership are checked before reads and writes. Source IDs refer only
+to that person's owned recipient metadata; they never grant a usage read.
+Selection permits at most one connection per advertised Station identity.
+Independent identities can overlap; differently identified clones are undetectable
+and no cross-source deduplication occurs. This guard does not verify provenance.
+Create IDs are idempotent, updates/deletes use expected revisions, and deletion
+retains only a minimal ownership/revision tombstone rather than the definition.
+The [routes](../../src-server/routes/operations/analytics-saved-views.ts) reject
+agent/plugin callers and body identities. Export returns a checked definition,
+not usage or credentials. Runtime composition reuses the same analytics person
+capture as enrollment and queries.
+
+The [view contract](../../packages/contracts/src/analytics-views.ts) supports up
+to four source references with actual attribution filters, UTC relative/fixed
+windows, previous/fixed comparison, grouping and canonical usage measures. The
+[SDK client](../../packages/sdk/src/client/private-insights.ts) uses scoped
+transport and bounded decoders; [hooks](../../packages/sdk/src/query-domains/privateInsights.ts)
+partition every selection and principal. A source validation refusal invalidates
+older snapshots across windows and remounts; an older in-flight success cannot
+undo it. Only a newer successful source check can restore display eligibility.
+Explicit retained-copy history can be dated and shown separately on service
+failure while its validity remains; it never becomes a healthy/current result.
+
+The [Personal Insights
+component](../../src-ui/src/components/monitoring/PersonalInsights.tsx) is
+shared through the existing Insights dashboard, including Profile. It owns
+source/date/group/measure/comparison controls, revision-aware saves and export,
+unsaved-change guards, foreground sync/cancellation and progressive
+receipt/price details. Saved outcome definitions use completed/aborted/failed
+measures with engine/day grouping; the SDK checks `privateOperationalOutcomes`
+and the mounted component displays per-source counts and unknown retained
+coverage. The full consent-to-PostgreSQL/UI execution journey remains
+unverified. Changed selections withhold earlier business rows until applied.
+Controlled store/SDK/mounted/browser tests are separate from real source
+sign-in, TLS, managed deployment, installed/native and release qualification.
+Source enrollment UI and physical-home/recovery negative fencing are implemented
+in the owners described here. Background sync, incident handoff, arbitrary
+clone/mirror qualification and real two-Station acceptance remain open.
+
+## PrivateUsageStorage
+
+The [private receiver repository](../../packages/telemetry-broker/src/private-usage-store.ts)
+uses a separate PostgreSQL namespace and opaque storage capability; the operator
+service can register an empty key hash but cannot read its facts. Its
+[HTTP owner](../../packages/telemetry-broker/src/private-usage-routes.ts) accepts
+strict canonical page commits, checkpoint/receipt recovery, bounded historical
+observation reads and owner erasure. Product/Lite queries never join this data.
+
+Observation/checkpoint/receipt commits are atomic and expected revisions reject
+stale writers. Retained operation evidence detects lost checkpoint state; schema
+and capacity evidence fail closed. A recreated store changes receiver epoch,
+while copied-backup restoration still needs explicit reconciliation. Retention
+pruning runs through the existing receiver maintenance lifecycle.
+
+The [canonical contract decoder](../../packages/contracts/src/usage-export.ts)
+preserves source facts, currencies and immutable pricing provenance without
+creating another accounting model. The broker does not resolve persons or
+validate current source grants. The receiving owner now supplies a page-bounded
+Core consumer: it derives a private storage capability from owned analytics
+custody, chooses only the current managed target, records exact write intent and
+recovers by original operation receipt. The [bound
+client](../../src-server/analytics/private-usage-client.ts) exposes fixed
+operations without keys/URLs in wire results. The managed target retains
+operator permission only for empty-bucket provisioning; data methods use private
+caps and a final source check. The recipient owner now retains short-lived
+preparation requests bound to the actual receiving actor, slot, source
+credential revision and managed companion custody. Separate Companion operator
+GET/POST leaves review and prepare that exact vault without impersonating the
+person. Provisioning allocates only an empty vault and capacity, without source
+export, transfer, query authority, source credentials or usage data. The shared
+installation lock excludes cooperating install/start/stop during bounded
+operations and chunk release. Target and operator probes precede the final
+source HEAD; synchronous local person/operator/preparation and held-lease
+assertions run at dispatch and enqueue without an intervening await. A source
+refusal after allocation withholds success without rolling back the empty vault.
+Remote revocation after HEAD is outside this protocol's atomicity; external
+Docker administration, filesystem replacement and daemon failure are outside the
+cooperating lock guarantee. Preparation responses retain the actual person,
+request, source fingerprint and credential revision, expiry, target custody and
+current operator checks through first-byte and every-chunk release, using the
+shared authority observation response guard. Reading a response never
+reprovisions. Restart, expiry, changed authority or changed custody refuses the
+request; subsequent person sync uses the already prepared vault. Real
+HTTPS/person/PostgreSQL/UI enrollment, native execution, current visual
+verification at 390px and 1440px in both themes, and publication remain
+unverified. Account-bound Device access uses exact marked leaves in the existing
+pairing-scope owner, not an analytics prefix. Generic account-bound
+orchestration commands remain closed pending an execution permission policy;
+session readability alone is insufficient. Expired outbox bodies are discarded
+by runtime health housekeeping and sync actions, with only receipt expectations
+retained. The private schema-v2 transaction now applies source invalidations
+atomically with capacity, replay checkpoint and recovery receipt. It preserves
+newer source captures and fences delayed older writes across windows. Existing
+v1 data keeps its receiver epoch and starts replay conservatively at zero.
+Missing journal witnesses refuse. Core's same sync action now replays one
+bounded journal page before fact advancement, persists private intent and
+recovers the original invalidation receipt. Its shared approved-origin transport
+rechecks current source permission immediately before writes; retained gaps
+return 410. Incomplete replay returns metadata for the next action. Completed
+mutations restart the selected fact snapshot. The [private receipt
+index](../../packages/telemetry-broker/src/private-receipt-index.ts) now derives
+a selected window in bounded transactions using shared canonical receipt
+reconciliation. Its schema-v3 state witnesses progress/counts and never returns
+partial-index rows. Core's receiving query pins the current source and captured
+checkpoint, keeps private capabilities server-side and fences queued release.
+Explicit continuations retain their snapshot during append-only updates;
+retention and source withdrawal invalidate derived copies. The [grouped query
+owner](../../packages/telemetry-broker/src/private-usage-summary.ts) now
+advances at most 1,000 normalized receipts per transaction, with atomic
+accumulator/cursor state and no partial totals released. Schema v4 permits four
+independent window caches and bounded per-index group/filter caches. It shares
+row arithmetic with the existing interactive fold while retaining that fold's
+separate cap. Principal-owned definitions and a shared personal Insights surface
+now consume these results. End-to-end installed/native qualification remains
+open. Focused PGlite controls prove transaction/HTTP behavior, not real
+TCP/fsync, provider, native or release outcomes.
+
 ## ProductTelemetryReceiver
+
+The Station-side [companion route](../../src-server/routes/system/telemetry-companion-routes.ts)
+is mounted under `/api/operator/telemetry-companion`. Its prerequisite read uses
+the current operator authority at both sides of the asynchronous
+[local container probe](../../src-server/services/telemetry-companion.ts), with
+an additional `orchestration:read` pairing scope. The bounded probe pins the selected
+local Docker endpoint and returns the shared telemetry-delivery capability
+shape. It launches no deployment and grants no artifact, export, source or
+personal analytics authority. Installation and ingestion readiness are separate
+from this host-capability observation.
+
+The negotiated [parent-envelope check](../../src-server/services/telemetry-companion-release.ts)
+re-verifies pinned channel/source/version/host identity and the shared
+[byte inventory, receiver provenance and deployment-image consistency checks](../../src-server/services/telemetry-companion-artifact.mjs),
+without inferring install authority. The
+[archive preparation owner](../../src-server/services/telemetry-companion-archive.ts)
+adds a human-operator management POST with a caller operation UUID. Existing
+operator identities act directly; other person devices need explicit
+`telemetry:manage` promotion and current operator role. Home continuity and
+ordinary operation grants do not confer companion authority. It records
+private synced intent before download, exact signed size/digest checks and
+retained failure receipts. It selects the URL from the signed envelope, accepts
+no caller command/path/key policy, and never resumes a pending record or replaces
+interrupted data. Receipt reads recheck operator authority. Its
+[fixed-file materializer](../../src-server/services/telemetry-companion-extract.ts)
+rehashes the archive, reads fixed members through bounded tar stdout and writes
+only private fixed paths. File/directory sync and full payload verification
+precede the optional prepared-file receipt. The SDK and pane recover the same
+operation after a lost reply or reopening; a pending receipt or lock is not
+process liveness. Preparation activates no deployment. Conditional install/start
+and product-view owners below compose separate admission and observations;
+official qualification and the complete personal source enrollment/sync journey
+remain unfinished.
+
+The [conditional installation owner](../../src-server/services/telemetry-companion-install.ts)
+re-extracts authenticated archive bytes, requires matching profile qualification
+metadata and current operator authority, and journals Docker effects under a
+private server-generated namespace. It prepares service-owned secret copies and
+creates stopped containers, retaining data and uncertain outcomes. Installation
+receipts are historical operation results. The
+[managed controller](../../src-server/services/telemetry-companion-control.ts)
+checks current local home/daemon custody against immutable Docker witnesses,
+retained signing trust and snapshot/image identity before explicit start. It
+uses exact owned container IDs, waits for authenticated storage readiness and
+stops without deleting volumes. A copied cache, pending receipt or lock is not
+current authority or liveness.
+
+The [SDK lifecycle/query domain](../../packages/sdk/src/query-domains/telemetryCompanion.ts)
+provides captured-authority query keys, strict bounded response validation and
+one-shot mutations. The [managed pane](../../src-ui/src/views/developer/CompanionManaged.tsx)
+requires explicit storage selection for installation, recovers retained operation
+outcomes and derives controls from fresh runtime observations. The
+[product view](../../src-ui/src/views/developer/CompanionProductTrends.tsx) reads
+Core-mediated received-product aggregates only after current runtime/storage
+readiness. Core retains the receiver operator credential and verifies managed
+custody/artifact identity before its fixed loopback query. Time/release filters
+and bounded group pages preserve producer-clock, retention and unknown coverage
+labels; failed refreshes hide earlier results. These are not personal usage or
+billing. Mounted route/SDK/UI and simulated browser fixtures are distinct from
+real receiver-to-rendered-view acceptance. Official qualified release production,
+remote connection, managed upgrade/rollback and the complete installed journey
+remain unfinished.
+
+The [diagnostic qualifier](../../scripts/qualify-telemetry-companion.mjs) exercises
+authenticated component queries and same-volume diagnostic restart. Its
+[source Station fixture](../../scripts/lib/telemetry-station-export.mjs) additionally
+boots the real entrypoint with private home/temp/process-registry roots, verifies
+actual OTel boot and HTTP observations, and requires owned process settlement.
+That source/component evidence is not installed-release qualification or an
+installation permit.
 
 **Purpose.** The optional [receiver](../../packages/telemetry-broker/README.md)
 accepts the shared disclosed product envelope. Its
@@ -5143,6 +5458,16 @@ compatible permanent tables and constraints inside every transaction, fences
 revocation against ingestion, deduplicates retained source/event UUIDs, and
 returns acceptance only after acknowledged durable commit. Database waits and
 request concurrency are bounded; uncertainty returns a failure.
+
+The [product incident query](../../packages/telemetry-broker/src/product-incidents.ts)
+folds retained product observations into bounded build/classification cohorts.
+Core's managed controller keeps operator storage credentials out of the renderer;
+its [incident-link routes](../../src-server/routes/system/telemetry-incident-link-routes.ts)
+and [private link owner](../../src-server/services/telemetry-incident-links.ts)
+store only explicitly supplied issue references under current installation and
+operator authority. [The incident view](../../src-ui/src/views/developer/CompanionProductIncidents.tsx)
+refreshes before drafting/copying, and never publishes externally. These aggregate
+reads do not expose private source incident detail or establish delivery coverage.
 
 The separate [Lite boundary](../../packages/telemetry-broker/src/lite-routes.ts)
 accepts the foundation's strict `station_daily` contract through public source
@@ -5299,15 +5624,16 @@ when only the OS alias is available, its initial is capitalized for display.
 Opaque working-state plan
 revisions are hidden because the room does not expose ordinal plan history.
 
-Task review keeps anchored comments outside the shared room's document and
-history, and outside revision-bound evidence (#4007, #4055). The
+Task review keeps anchored comments in its own append-only store, outside the
+shared room's document and history. Plan references freeze revision evidence
+through the room bridge (#4055). The
 [review contract](../../packages/contracts/src/task-review.ts) owns shapes,
 bounds, quote relocation and state derivation. Personal
 [routes](../../src-server/routes/orchestration/task-review.ts) obtain current
 request authority from `ProjectTaskRoomRuntime.personTaskReviewAccess`;
 `sessionTaskReviewAccess` requires the caller's bound Session to be the Task's
 lead, without requiring Task memory. Its transaction callback rechecks the
-binding, incarnation, lead and workspace. `readPlanForReview` and the caller-bound
+binding, incarnation, lead and workspace. A new plan thread first freezes its exact working revision through the room evidence bridge; output anchors use the output's retained digest snapshot. `readPlanForReview` and the caller-bound
 `readPlanForSessionReview` read the same working-state owner. Agent list filters
 and person reads share `TaskReviewModule` artifact resolution and freshness.
 The agent list resolves artifacts once, reads thread histories in one store
@@ -5421,7 +5747,8 @@ and [SDK reference](../reference/sdk.md#task-review-threads). Evidence owners:
 and [composed runtime routes](../../src-server/runtime/routes/__tests__/runtime-routes-task-review.test.ts).
 They cover durable reopening, append-only enforcement, idempotency, capacity
 refusals, incarnation isolation, plan editing, unavailable working state and
-review writes preserving room content, history and revision evidence. They do
+plan reference creation freezing exact evidence, and later review replies/resolution
+preserving room content, history and revision evidence. They do
 not qualify a real provider, browser capture, a UI journey or a release.
 [Capture route tests](../../src-server/routes/__tests__/browser-agent-capture.test.ts)
 exercise real Git, SQLite, room binding authority and blob storage with a CDP
@@ -5509,7 +5836,24 @@ socket and process projections retain their current owner during migration.
 
 The [design boundary](../design/terminal.md#first-implementation-boundary-3994-part-a)
 separates this foundation from supervisor survival, retention Settings, the
-public observe grant, same-origin transport, SDK runtime and Ghostty. The
+live paired-device admission, SDK runtime and Ghostty. The
+[same-origin gateway](../../src-server/services/terminal/terminal-gateway.ts)
+mounts on the API listener through the Station Hono provider; its
+[channel runtime](../../src-server/services/terminal/terminal-channel-connection.ts)
+owns per-channel byte credit, replay acknowledgement and a bounded command
+queue. It uses the same personal-operator admission limit as the HTTP seam.
+Global reservations bound retained record/journal instances, disk storage and raw
+tail payload. Ended/failed records can expire; request-triggered eviction checks
+operate authority on the victim's stored Project/binding, while live sessions
+remain pinned. The [POSIX backend](../../src-server/adapters/pty-process-groups.ts)
+freezes and terminates discovered owned job-control groups. The
+[production route test](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts)
+opens real PTYs through HTTP admission, checks both configured Project roots and
+refuses cross-Project/binding access. Its credential fixture is not live pairing
+or account admission qualification.
+The [socket suite](../../src-server/services/terminal/__tests__/terminal-gateway.process.test.ts)
+qualifies real PTY/socket resume, credit, scope refusals and resize ordering;
+its injected identity seam does not qualify live pairing or remote egress. The
 [real PTY suite](../../src-server/services/terminal/__tests__/terminal-sessions.process.test.ts)
 checks durable replay, scope/cwd refusals, service-level observer refusal,
 journal bounds and history migration. It does not qualify Windows, native

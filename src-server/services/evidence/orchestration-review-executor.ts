@@ -10,6 +10,7 @@ import type {
   ProviderSessionStartInput,
   ProviderTurnStartResult,
 } from '@kontourai/station-contracts/provider';
+import { isRuntimeEventContentRef } from '@kontourai/station-contracts/runtime-event-content';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import type { OrchestrationService } from '../orchestration/orchestration-service.js';
 import type {
@@ -29,6 +30,8 @@ interface ReviewOrchestrationPort {
     context?: ReviewOrchestrationContext,
   ): Promise<unknown>;
   readSessionEventPage: OrchestrationService['readSessionEventPage'];
+  /** Resolves a reply EventStore stored out of line (event-content-spill). */
+  readEventContent?: OrchestrationService['readEventContent'];
 }
 
 interface ReviewOrchestrationContext {
@@ -203,7 +206,16 @@ export class OrchestrationReviewExecutor implements ReadOnlyReviewExecutor {
         const event = entry.event;
         if (event.turnId && event.turnId !== turnId) continue;
         if (event.method === 'turn.completed' && event.turnId === turnId) {
-          if (typeof event.outputText !== 'string') {
+          // A long reply arrives as a reference; the review parses the
+          // exact text, never its preview.
+          const outputText = isRuntimeEventContentRef(event.outputText)
+            ? this.#orchestration.readEventContent?.(
+                threadId,
+                event.outputText.ref,
+                INTERNAL_SESSION_READ_SCOPE,
+              )?.body
+            : event.outputText;
+          if (typeof outputText !== 'string') {
             return {
               kind: 'completed',
               output: null,
@@ -213,7 +225,7 @@ export class OrchestrationReviewExecutor implements ReadOnlyReviewExecutor {
           try {
             return {
               kind: 'completed',
-              output: JSON.parse(event.outputText),
+              output: JSON.parse(outputText),
               workspaceRelease: 'safe',
             };
           } catch {

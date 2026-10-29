@@ -1,0 +1,7 @@
+{
+  "revision": "316adc3ad0a6fbf6daf8ca468b52f24c86d94512",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Reworded the stall-field interpretation after review: CPU is process-wide across threads, GC totals are main-thread pause time, major faults include evicted code and mapped files, and the low-CPU/low-fault case is stated as such. Checked against runtime-health.ts.","inputs":["docs/guides/monitoring.md"]}
+  ]
+}

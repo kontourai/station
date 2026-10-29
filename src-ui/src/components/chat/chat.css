@@ -881,6 +881,37 @@
     background-color var(--motion-base) var(--ease-standard),
     outline-color var(--motion-base) var(--ease-standard);
 }
+/* docs/design/event-content-spill.md: "Load full content" under a preview.
+   Inside the person's filled bubble the default secondary button is the
+   accent on the accent; it takes the bubble's own foreground instead. */
+.load-full-content {
+  margin-top: var(--k-space-1);
+}
+.message.user .load-full-content {
+  color: inherit;
+  border-color: currentColor;
+}
+.message.user .load-full-content:hover:not(:disabled) {
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  border-color: currentColor;
+}
+/* The wait for spilled content is a line-high placeholder on its own row,
+   not a region beside the approval's Deny. */
+.tool-call__approval-loading {
+  flex: 1 0 100%;
+}
+.tool-call__approval-loading .skeleton-block > *,
+.load-full-content__status.skeleton-block > * {
+  height: 2rem;
+  /* The shared raised-panel fill disappears on the light approval sheet. */
+  background: var(--k-line);
+  border-color: var(--k-line-strong);
+}
+/* A multi-line text argument (a file body) reads like a command block. */
+.tool-call__code--text {
+  font-family: var(--k-font-mono);
+  font-size: 0.85em;
+}
 /* A check-back Station sent: sent as the person, written by nobody. A
    quiet panel with Station's label instead of the person's filled bubble. */
 .message.user.message--station-check-back {
@@ -1454,6 +1485,11 @@
   /* A related pane's Up and Keep controls (`RelatedPaneStrip`). */
   .related-pane-strip__up.related-pane-strip__up,
   .related-pane-strip .button.button {
+    min-height: 44px;
+  }
+  /* Qualified to outrank the base rule, which comes later in this file. */
+  .station-switcher__item .station-switcher__remove {
+    min-width: 44px;
     min-height: 44px;
   }
 }
@@ -2447,6 +2483,15 @@
     opacity: 1;
     pointer-events: auto;
   }
+  /* The Station switcher's forget control appears with its row; without
+     hover it stays visible, since there is nothing to reveal it. */
+  .station-switcher__remove:not(.station-switcher__remove--armed) {
+    opacity: 0;
+  }
+  .station-switcher__item:hover .station-switcher__remove,
+  .station-switcher__item:focus-within .station-switcher__remove {
+    opacity: 1;
+  }
 }
 
 /* The footer's controls are nested inside their own components, so the
@@ -2845,11 +2890,28 @@
 .app-toolbar__station-switcher {
   position: fixed;
   z-index: var(--layer-navigation);
-  width: min(280px, calc(100vw - 24px));
+  width: min(300px, calc(100vw - 24px));
+}
+.station-switcher__filter {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 36px;
+  margin-bottom: var(--k-space-1);
+  padding: 0 var(--k-space-3);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-control);
+  background: var(--k-bg);
+  color: var(--k-text);
+  font: inherit;
 }
 .station-switcher__profiles {
   max-height: min(52vh, calc(100dvh - 180px));
   overflow-y: auto;
+}
+.station-switcher__item {
+  position: relative;
+  display: flex;
+  align-items: center;
 }
 .station-switcher__row {
   min-height: 44px;
@@ -2858,10 +2920,61 @@
   display: grid;
   flex: 1;
   min-width: 0;
-  overflow-wrap: anywhere;
+}
+.station-switcher__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The check mark says which is current; the shared accent text on the
+   selected fill is under contrast in the light theme. */
+.station-switcher__row[aria-checked="true"] .station-switcher__name {
+  color: var(--k-text);
 }
 .station-switcher__status {
   font-size: var(--k-text-xs);
+  color: var(--k-text-muted);
+}
+/* Over the row's trailing edge, so the row keeps its full hit area. */
+.station-switcher__remove {
+  position: absolute;
+  right: var(--k-space-1);
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0 var(--k-space-2);
+  border: 0;
+  border-radius: var(--k-radius-sm);
+  background: transparent;
+  color: var(--k-text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+.station-switcher__remove:hover {
+  background: color-mix(in srgb, var(--k-text) 5%, var(--k-bg));
+  color: var(--status-error);
+}
+.station-switcher__remove--armed,
+.station-switcher__remove--armed:hover {
+  background: var(--error-fill);
+  color: #fff;
+}
+.station-switcher__item:has(.station-switcher__remove) .station-switcher__row {
+  padding-right: 44px;
+}
+.station-switcher__bulk--armed,
+.station-switcher__bulk--armed:hover,
+.station-switcher__bulk--armed:focus-visible {
+  background: var(--error-fill);
+  color: #fff;
+}
+.station-switcher__footer {
+  display: flex;
+  margin-top: var(--k-space-2);
+}
+.station-switcher__footer > .menu-row {
+  flex: 1;
+  justify-content: center;
+  padding: 0 var(--k-space-2);
   color: var(--k-text-muted);
 }
 

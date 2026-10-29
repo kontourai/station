@@ -353,23 +353,25 @@ The project selector appears only alongside model/workspace defaults and
 permissions. Device settings still save immediately; Station and Project drafts
 keep their existing Save and discard guard.
 
-The sidebar footer groups **Schedule**, **Customize**, and **Settings** beside
-live work in one compact row. In the desktop app, a desktop-update control sits
-above that row while an update is available, downloading or ready to install
-(#3851); it is hidden otherwise. A collapsed workspace map puts these utilities
-in its Sidebar utilities popup. The obsolete Open chats/Drafts section toggles
-no longer appear in Appearance; existing device values remain compatible.
+The sidebar footer places **Schedule** and **Customize** on the left, with
+an icon-only **Updates** control immediately before the profile button on the
+right. Updates keeps its status in its accessible name and tooltip and shows
+an indicator when update details need attention. Live work and the separate
+Settings gear no longer appear in the footer. A collapsed workspace map puts
+Schedule and Customize in its Sidebar utilities popup, while Updates and the
+profile button remain on the rail. The obsolete Open chats/Drafts section
+toggles no longer appear in Appearance; existing device values remain compatible.
 Customize opens Agents, Skills, Connections, Plugins, Appearance and Settings
 at their existing routes. Developer joins that chooser, before Settings, when
-enabled. Settings stays reachable from the footer gear, its keyboard shortcut
-and the command palette. The Appearance page owns light/dark mode, the color
+enabled. Settings stays reachable from the profile menu, Customize, its keyboard
+shortcut and the command palette. The Appearance page owns light/dark mode, the color
 theme, its flavor and its accent; Settings' Appearance topic keeps the mode
 toggle, the phone-only haptics row, and Theme and Accent color rows that link
 to the page. The footer replaces its
 command-palette chip and duplicate notification bell; the header bell and
 command-palette shortcut remain available.
-The Settings rail and phone picker stay within Settings; the panel's Settings
-gear remains available from management screens. Long permission and checkpoint
+The Settings rail and phone picker stay within Settings; from management screens
+Settings remains reachable through the account menu and Customize. Long permission and checkpoint
 explanations keep their full text under Details, with a short consequence visible
 on the row. Registry remains reachable from Plugins and the command palette.
 

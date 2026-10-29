@@ -25,7 +25,10 @@ only when this Station's build can run it; if none is, the section says
 | `fleet-consumer-probes` | Fleet consumer probes | Sends a test request to a peer-contributed model before routing work to it. | Can spend a completion on another Station. |
 | `walkthroughs` | Walkthroughs | Imports narrated screen recordings into transcripts and frames agents can read, using local processing. | One-time consented media/speech tool download; CPU use; recordings may contain private information. |
 | `local-speech` | Local speech | Offers Station (local) in Voice → Speech-to-text: record a message, then transcribe it on this Station. | One-time consented tool/model download; English batch dictation only; microphone permission; shares one recognizer and a bounded wait queue with Walkthroughs. |
+| `chat-host-images` | Chat images from the host | Shows images an agent saves on this Station and names by absolute path in its reply, on any device, and tells agents where to save them. | Station copies each admitted image (up to 5 per reply, 512 KiB each) into the chat's attachment storage; engines started while it is on get a per-session temporary folder. |
 | `task-review` | Task review | Adds a Review tab to Tasks for anchored comments on plans, outputs, answers and Screens, which can be sent to the lead agent. | Sending starts or queues a lead-agent turn; Screen capture needs a committed workspace. |
+| `visual-skills` | Visual skills | Offers installed visual skills in the start composer (**⋯ → Use a visual skill**) and the New Chat agent list. | Only the entry points are the preview: installing, validating and authoring visual skills work either way, and a chat already started with one keeps its skill view and any unsent next stage. Turning it off mid-draft stops New Chat showing or starting a chosen, unsent visual skill; turning it back on restores that choice. |
+| `workload-budget-settings` | Workload budget settings | Shows a memory budget editor under **Settings → Advanced → Host options**: per-engine and total memory for engine workloads, beside the host's memory and where each value comes from. | Only the editor is the preview; budgets themselves are enforced either way. On a Linux Station service a lower budget kills memory-heavy commands sooner, and a total below current use is refused; an environment variable still overrides the saved value; elsewhere the values are only saved. Turning the preview off keeps saved values in force (save empty fields first to clear them). |
 
 **Task review** (`task-review`): turn this on in **Settings → Advanced →
 Feature previews**, then open a Task and choose **Review**, after Conversation.
@@ -40,6 +43,14 @@ region pin with the pointer, or focus the image target, use the arrow keys and
 press Enter, then comment. Captures retain the commit and appear through the
 Task's authorized image route. Turning the preview off hides Review; a
 `taskView=review` link then opens Overview.
+
+**Chat images from the host** (`chat-host-images`): when a reply finishes,
+Station copies the PNG, JPEG, GIF and WebP images it names by absolute path or
+`file:` URL, from the chat's working folder, a verified worktree of it, or the
+chat's own temporary folder, and shows them in the reply on every device. See
+[visual replies](html-replies.md#images-saved-on-the-host) for what is admitted
+and what each "not available" message means. Turning it off stops new copies;
+copies already made stay with their chat.
 
 Turning a preview on affects everyone who uses this Station.
 

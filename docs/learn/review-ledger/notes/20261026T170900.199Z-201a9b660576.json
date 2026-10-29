@@ -1,0 +1,7 @@
+{
+  "revision": "2a897e14fa67206d4c35018e2cc2ef978460b8d5",
+
+  "notes": [
+    {"path":"scripts/fixtures/orchestration-transfer/README.md","note":"Updated for the heavy turn's 15 KiB outputs (orchestration-transfer-fixture.ts): checked the new paragraph against the fixture constant and the passing transfer gate and budget integration test. Supersedes this change's earlier note that the fallback phase failed; it is exercised again. Ceilings unchanged.","inputs":["scripts/fixtures/orchestration-transfer/README.md"]}
+  ]
+}

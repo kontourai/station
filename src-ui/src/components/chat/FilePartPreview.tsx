@@ -1,5 +1,5 @@
 import { authenticatedFetch } from '@kontourai/station-sdk';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { usePreview } from '../../contexts/PreviewContext';
 import { DocumentGlyph } from '../icons/Glyph';
@@ -7,9 +7,12 @@ import {
   type AttachmentObjectUrlSize,
   acquireAttachmentObjectUrl,
   attachmentBlobForObjectUrl,
+  attachmentObjectUrlKey,
   attachmentObjectUrlSize,
+  attachmentThumbnailKey,
   peekAttachmentObjectUrl,
   releaseAttachmentObjectUrl,
+  retireAttachmentObjectUrl,
   storeAttachmentObjectUrl,
 } from './attachment-object-urls';
 import {
@@ -34,16 +37,6 @@ interface FilePartPreviewProps {
 }
 
 /**
- * The cache key is the reference AND the declared type, because the object URL
- * carries the type into the Blob. Content addressing alone would let two parts
- * that share bytes but declare different types resolve to one URL typed after
- * whichever rendered first.
- */
-function cacheKey(ref: string, mediaType: string | undefined): string {
-  return `${ref} ${mediaType ?? ''}`;
-}
-
-/**
  * Fetch an attachment's bytes and hold an object URL for as long as this
  * component is displaying them (archive#3385). `<img src>` cannot carry a
  * bearer token, so the bytes come through `authenticatedFetch` and the URL is
@@ -57,15 +50,28 @@ function useAttachmentObjectUrl(
   ref: string | undefined,
   mediaType: string | undefined,
 ): string | undefined {
+  return useAttachmentObjectUrlState(ref, mediaType).url;
+}
+
+/**
+ * The same fetch, also saying whether it failed, so a caller that has no
+ * chip to fall back to can tell "still loading" from "not available".
+ */
+export function useAttachmentObjectUrlState(
+  ref: string | undefined,
+  mediaType: string | undefined,
+): { url: string | undefined; failed: boolean } {
   const { apiBase } = useApiBase();
   const [objectUrl, setObjectUrl] = useState<string | undefined>(undefined);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
+    setFailed(false);
     if (!ref) {
       setObjectUrl(undefined);
       return;
     }
-    const key = cacheKey(ref, mediaType);
+    const key = attachmentObjectUrlKey(ref, mediaType);
     let active = true;
     let held = false;
 
@@ -100,7 +106,10 @@ function useAttachmentObjectUrl(
           held = true;
           setObjectUrl(url);
         } catch {
-          if (active) setObjectUrl(undefined);
+          if (active) {
+            setObjectUrl(undefined);
+            setFailed(true);
+          }
         }
       })();
     }
@@ -111,7 +120,15 @@ function useAttachmentObjectUrl(
     };
   }, [ref, mediaType, apiBase]);
 
-  return objectUrl;
+  // Bytes already cached under this reference show on the very first render,
+  // before the effect above claims its hold. A sent bubble switches from its
+  // inline bytes to the recorded reference at `turn.started` (the bytes are
+  // seeded here then), and waiting a frame for the effect would flash the
+  // chip to an untappable placeholder.
+  const cached = ref
+    ? peekAttachmentObjectUrl(attachmentObjectUrlKey(ref, mediaType))
+    : undefined;
+  return { url: cached ?? objectUrl, failed: !cached && failed };
 }
 
 type ChipThumbnail = AttachmentObjectUrlSize & { url: string };
@@ -138,10 +155,20 @@ function useAttachmentThumbnail(
     key: string;
     value: ChipThumbnail | 'failed';
   } | null>(null);
+  // The latest run, so a run can learn that this chip moved on to other bytes
+  // (as opposed to unmounting, or StrictMode re-running the same key).
+  const lastRun = useRef<{ key: string; switched: boolean } | null>(null);
 
   useEffect(() => {
-    if (!key || !url) return;
-    const thumbnailKey = `thumbnail ${key}`;
+    if (lastRun.current && lastRun.current.key !== key)
+      lastRun.current.switched = true;
+    if (!key || !url) {
+      lastRun.current = null;
+      return;
+    }
+    const thumbnailKey = attachmentThumbnailKey(key);
+    const run = { key, switched: false };
+    lastRun.current = run;
     let active = true;
     let held = false;
     const settle = (objectUrl: string) => {
@@ -173,6 +200,12 @@ function useAttachmentThumbnail(
         );
         if (!active) {
           releaseAttachmentObjectUrl(thumbnailKey);
+          // This chip switched from inline bytes to their recorded reference
+          // while the thumbnail was being made: it will not ask for the
+          // data-URL name again, and keeping that name would retain the bytes
+          // as the key. Another chip holding it keeps it until it lets go.
+          if (run.switched && key.startsWith('data:'))
+            retireAttachmentObjectUrl(thumbnailKey);
           return;
         }
         settle(objectUrl);
@@ -185,7 +218,15 @@ function useAttachmentThumbnail(
   }, [key, url]);
 
   if (!key || !url) return undefined;
-  if (made?.key !== key) return 'pending';
+  if (made?.key !== key) {
+    // A thumbnail already cached for these bytes shows on the first render,
+    // as the full bytes do above: a sent bubble's thumbnail moves to its
+    // reference at `turn.started`, and a 'pending' frame would flash the icon.
+    const cachedKey = attachmentThumbnailKey(key);
+    const cachedUrl = peekAttachmentObjectUrl(cachedKey);
+    const size = attachmentObjectUrlSize(cachedKey);
+    return cachedUrl && size ? { url: cachedUrl, ...size } : 'pending';
+  }
   return made.value === 'failed' ? undefined : made.value;
 }
 
@@ -198,7 +239,7 @@ function thumbnailKey(
   if (part.mediaType?.startsWith('image/') !== true) return undefined;
   const shape = imageSourceShape(resolvedUrl, part.mediaType);
   if (!shape || !thumbnailWorthMaking(shape)) return undefined;
-  return part.url ?? cacheKey(part.blobRef ?? '', part.mediaType);
+  return part.url ?? attachmentObjectUrlKey(part.blobRef ?? '', part.mediaType);
 }
 
 /**
@@ -216,7 +257,9 @@ function previewGallery(allParts: FilePart[] | undefined) {
       const url =
         p.url ??
         (p.blobRef
-          ? peekAttachmentObjectUrl(cacheKey(p.blobRef, p.mediaType))
+          ? peekAttachmentObjectUrl(
+              attachmentObjectUrlKey(p.blobRef, p.mediaType),
+            )
           : undefined);
       return url
         ? [{ url, mediaType: p.mediaType as string, name: p.name }]

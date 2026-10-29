@@ -13,13 +13,11 @@ test.describe('Desktop Regression', () => {
   }) => {
     await page.goto('/');
 
-    // The desktop route to Settings is the sidebar footer: its Settings button
-    // and the account menu beside Live work. The header carries no
-    // standalone gear at any viewport, so `getByTitle(/Settings/)` is not a
-    // safe shell-presence probe here. That is why
-    // matching on title alone is not a safe way to ask "is the shell
-    // present" (#1322). Reaching Settings through the menu is covered by
-    // `openHeaderSettings` in tests/helpers/orchestration.
+    // The desktop route to Settings is the sidebar footer's account menu.
+    // Neither the header nor the footer carries a standalone gear at any
+    // viewport, so matching on `getByTitle(/Settings/)` is not a safe way to
+    // ask "is the shell present" (#1322). Reaching Settings through the menu
+    // is covered by `openHeaderSettings` in tests/helpers/orchestration.
     await expect(
       page.getByRole('button', { name: /^Profile and settings:/ }),
     ).toBeVisible({ timeout: 10_000 });

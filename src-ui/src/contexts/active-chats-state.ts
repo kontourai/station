@@ -1,3 +1,4 @@
+import type { ChatHostImageMap } from '@kontourai/station-contracts/chat-host-images';
 import type {
   ChildWorkModel,
   ChildWorkTerminalStatus,
@@ -141,6 +142,12 @@ export type ChatContentPart = {
   approvalThreadId?: string;
   /** #2316: see `MessagePart.approvalEventId`. */
   approvalEventId?: string;
+  /** See `MessagePart.approvalContentEvent`. */
+  approvalContentEvent?: import('@kontourai/station-contracts/runtime-events').CanonicalRuntimeEvent;
+  /** See `MessagePart.spilledText`. */
+  spilledText?: import('@kontourai/station-shared/conversation-message').MessagePart['spilledText'];
+  /** See `MessagePart.contentThreadId`. */
+  contentThreadId?: string;
   /** See `MessagePart.approvalToolName`. */
   approvalToolName?: string;
   /** #2915: see `MessagePart.approvalSessionGrant`. */
@@ -179,6 +186,8 @@ export type ChatMessage = {
   steerInterruptedRun?: boolean;
   /** See `ChatMessage.stationCheckBack` in types.ts. */
   stationCheckBack?: boolean;
+  /** See `ChatMessage.stationMemoryContinuation` in types.ts. */
+  stationMemoryContinuation?: boolean;
   /** See `ChatMessage.sender` in types.ts. */
   sender?: ClientOriginSender;
   model?: string;
@@ -208,6 +217,8 @@ export type ChatMessage = {
    */
   provenance?: unknown;
   changedFiles?: TurnChangedFiles;
+  /** See `ChatMessage.hostImages` in types.ts. */
+  hostImages?: ChatHostImageMap;
 };
 
 /**

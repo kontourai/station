@@ -1,0 +1,7 @@
+{
+  "revision": "5cb6367dff22d6da5beac4dbf75819cc0c865e37",
+
+  "notes": [
+    {"path":"docs/design/process-supervisor.md","note":"Checked: this change only deletes an unused, unexported type alias (WorkloadEnforcementState) from workload-resources.ts; no claim in this document names it or changes.","inputs":["docs/design/process-supervisor.md","src-server/services/infra/workload-resources.ts"]}
+  ]
+}

@@ -206,11 +206,11 @@ test('one panel offers independently labelled app and server downloads, and open
     within(panel).getByRole('heading', { name: 'Desktop app' }),
   ).toBeTruthy();
   expect(
-    within(panel).getByRole('heading', { name: 'Connected server' }),
+    within(panel).getByRole('heading', { name: 'Server · Test Station' }),
   ).toBeTruthy();
   expect(within(panel).queryByLabelText('Automatic download')).toBeNull();
   fireEvent.click(
-    within(panel).getByRole('button', { name: 'Download 0.8.0-preview.2' }),
+    within(panel).getByRole('button', { name: 'Download server update' }),
   );
   expect(serverAction.mock.calls[0]?.[0]).toEqual({ action: 'stage' });
   expect(fake.commands()).toEqual([]);
@@ -247,7 +247,7 @@ test('the built-in server has one app update path and retains source installatio
     await within(panel).findByText(/including the built-in server/),
   ).toBeTruthy();
   expect(
-    within(panel).queryByRole('button', { name: /Download 0.8/ }),
+    within(panel).queryByRole('button', { name: 'Download server update' }),
   ).toBeNull();
   expect(within(panel).getByText('Source installation details')).toBeTruthy();
 });
@@ -312,11 +312,11 @@ test('closing Updates retains the server request follower and rechecks its outco
   const historyBeforeOpen = window.history.state;
   fireEvent.click(screen.getByRole('button', { name: 'Updates' }));
   await screen.findByRole('button', {
-    name: 'Restart server to update to 0.8.0-preview.2',
+    name: 'Restart server',
   });
   fireEvent.click(
     screen.getByRole('button', {
-      name: 'Restart server to update to 0.8.0-preview.2',
+      name: 'Restart server',
     }),
   );
   expect(serverAction).not.toHaveBeenCalled();
@@ -380,8 +380,8 @@ test.each(
     const offer = desktop
       ? 'Restart to update…'
       : target === 'staged-server'
-        ? 'Restart server to update to 0.8.0-preview.2'
-        : 'Update server to 0.8.0-preview.2';
+        ? 'Restart server'
+        : 'Update server';
     const confirmationTitle = desktop
       ? 'Restart Station to install 0.1.12?'
       : target === 'staged-server'

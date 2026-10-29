@@ -411,6 +411,7 @@ const CORE_COMMANDS = [
   'secret-bindings',
   'mcp-clients',
   'conversation',
+  'claims',
   'chat',
 ] as const;
 
@@ -431,6 +432,7 @@ const SURFACE_COMMANDS = [
   'insights',
   'acp',
   'voice',
+  'workload',
 ] as const;
 
 const INDIVIDUAL_COMMANDS = [

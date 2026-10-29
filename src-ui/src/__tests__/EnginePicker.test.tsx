@@ -351,7 +351,7 @@ describe('EnginePicker component', () => {
     ).toBeTruthy();
     expect(
       screen.getByText(
-        "Kiro can chat, but it can't operate Station — creating agents, running jobs, changing settings — so it can't run the built-in assistant.",
+        "Kiro can chat and answer questions about Station, but can't run the assistant.",
       ),
     ).toBeTruthy();
     // Nothing to choose, and nothing is ever written from this state: an
@@ -379,17 +379,13 @@ describe('EnginePicker component', () => {
 
     render(<EnginePicker onChosen={() => {}} onDismiss={() => {}} />);
 
+    // One sentence carries both halves: what the engine CAN do (docs) and
+    // that it can't run the assistant. An assistant that answers confidently
+    // while silently unable to act is the assert-then-retract failure
+    // delivery-protocol §6 forbids.
     expect(
       screen.getByText(
-        "Kiro still gets Station's documentation, so it can explain how Station works, answer questions about it, and help you plan — it just can't create agents, run jobs, or change settings.",
-      ),
-    ).toBeTruthy();
-    // The "can't operate it" half has to stay in the same breath: an
-    // assistant that answers confidently while silently unable to act is the
-    // assert-then-retract failure delivery-protocol §6 forbids.
-    expect(
-      screen.getByText(
-        "Kiro can chat, but it can't operate Station — creating agents, running jobs, changing settings — so it can't run the built-in assistant.",
+        "Kiro can chat and answer questions about Station, but can't run the assistant.",
       ),
     ).toBeTruthy();
   });
@@ -407,7 +403,7 @@ describe('EnginePicker component', () => {
     expect(screen.getByTestId('engine-picker-none-capable')).toBeTruthy();
     expect(
       screen.getByText(
-        "They still get Station's documentation, so they can explain how Station works, answer questions about it, and help you plan — they just can't create agents, run jobs, or change settings.",
+        "Kiro and OpenCode can chat and answer questions about Station, but can't run the assistant.",
       ),
     ).toBeTruthy();
   });
@@ -419,15 +415,12 @@ describe('EnginePicker component', () => {
 
     render(<EnginePicker onChosen={() => {}} onDismiss={() => {}} />);
 
-    // Deliberately NOT "any engine you connect": a capable engine receives
-    // documentation by way of the built-in assistant it can actually run,
-    // not by the ACP grant, so the broader sentence would claim a delivery
-    // path that does not exist for it. The panel says what ships.
-    expect(
-      screen.getByText(
-        "An engine that can't run the built-in assistant still gets Station's documentation, so it can explain how Station works, answer questions about it, and help you plan — it just can't create agents, run jobs, or change settings.",
-      ),
-    ).toBeTruthy();
+    // No docs claim at all here: a capable engine receives documentation by
+    // way of the built-in assistant it can actually run, not by the ACP
+    // grant, so a docs sentence would claim a delivery path that does not
+    // exist for it. The panel says what ships.
+    expect(screen.getByText('No engine is connected yet.')).toBeTruthy();
+    expect(screen.queryByText(/questions about Station/i)).toBeNull();
     expect(screen.queryByText(/any engine you connect/i)).toBeNull();
   });
 
@@ -445,9 +438,7 @@ describe('EnginePicker component', () => {
     expect(names.length).toBeGreaterThan(1);
     const list = `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
     expect(
-      screen.getByText(
-        `Engines that can run it today: ${list}. Add one in Connections, then come back here.`,
-      ),
+      screen.getByText(`Engines that can: ${list}. Add one in Connections.`),
     ).toBeTruthy();
   });
 
@@ -464,11 +455,7 @@ describe('EnginePicker component', () => {
     render(<EnginePicker onChosen={() => {}} onDismiss={() => {}} />);
 
     expect(screen.getByTestId('engine-picker-none-capable')).toBeTruthy();
-    expect(
-      screen.getByText(
-        'You have no engine connected yet, so nothing can run the built-in assistant — the assistant that operates Station for you: creating agents, running jobs, changing settings.',
-      ),
-    ).toBeTruthy();
+    expect(screen.getByText('No engine is connected yet.')).toBeTruthy();
     expect(screen.queryAllByRole('radio')).toHaveLength(0);
     expect(mutate).not.toHaveBeenCalled();
   });

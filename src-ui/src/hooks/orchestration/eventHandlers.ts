@@ -45,6 +45,7 @@ import {
   handleSessionStopSettledEvent,
 } from './sessionHandlers';
 import {
+  handleHostImagesEvent,
   handleReasoningDeltaEvent,
   handleTextDeltaEvent,
   handleToolCompletedEvent,
@@ -378,6 +379,9 @@ function dispatchProjectedOrchestrationEvent(
       return;
     case 'conversation.forked':
       handleConversationForkedEvent(event);
+      return;
+    case 'content.host-images':
+      handleHostImagesEvent(event);
       return;
     default: {
       const _exhaustive: never = event;

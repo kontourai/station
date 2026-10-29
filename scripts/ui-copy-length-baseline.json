@@ -1,0 +1,496 @@
+{
+  "version": 1,
+  "files": {
+    "src-ui/src/components/EnvironmentPicker.tsx": {
+      "long-copy:literal:const": 2
+    },
+    "src-ui/src/components/ImageInspector.tsx": {
+      "multi-sentence:text:p": 1
+    },
+    "src-ui/src/components/MobileWelcomeBoundary.tsx": {
+      "long-copy:text:p": 1,
+      "multi-sentence:text:p": 1
+    },
+    "src-ui/src/components/OfflineReadingBoundary.tsx": {
+      "multi-sentence:text:p": 1,
+      "long-copy:text:p": 1
+    },
+    "src-ui/src/components/PendingPairingReconciler.tsx": {
+      "multi-sentence:literal:call:finish": 1
+    },
+    "src-ui/src/components/UsageSharingChoices.tsx": {
+      "long-copy:text:p": 2,
+      "multi-sentence:text:small": 1
+    },
+    "src-ui/src/components/UsageSharingPrompt.tsx": {
+      "multi-sentence:text:p": 1,
+      "multi-sentence:text:PageCallout": 1
+    },
+    "src-ui/src/components/UsageTelemetryDisclosure.tsx": {
+      "long-copy:text:p": 3,
+      "multi-sentence:text:p": 3
+    },
+    "src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx": {
+      "long-copy:text:p": 1
+    },
+    "src-ui/src/components/badges/EngineApprovalDisclosureSheet.tsx": {
+      "long-copy:text:p": 1
+    },
+    "src-ui/src/components/chat-dock/ConversationContextResetDialog.tsx": {
+      "long-copy:text:p": 1
+    },
+    "src-ui/src/components/chat-dock/DelegationLauncher.tsx": {
+      "long-copy:literal:const": 1
+    },
+    "src-ui/src/components/chat/ChatSettingsPanel.tsx": {
+      "multi-sentence:text:p": 1,
+      "long-copy:text:p": 1
+    },
+    "src-ui/src/components/chat/CheckpointRestoreButton.tsx": {
+      "multi-sentence:literal:return": 1
+    },
+    "src-ui/src/components/chat/ContextInjectionDisclosure.tsx": {
+      "long-copy:text:p": 1
+    },
+    "src-ui/src/components/chat/FullAccessRefusalCard.tsx": {
+      "long-copy:text:p": 1
+    },
+    "src-ui/src/components/chat/MessageBubble.tsx": {
+      "long-copy:text:p": 1
+    },
+    "src-ui/src/components/chat/ShareAnswerPairingPrompt.tsx": {
+      "long-copy:text:span": 1,
+      "long-copy:text:fragment": 1
+    },
+    "src-ui/src/components/chat/TaskProposalCard.tsx": {
+      "multi-sentence:literal:call:setFailure": 1
+    },
+    "src-ui/src/components/chat/UnconfirmedDiscardConfirm.tsx": {
+      "long-copy:text:p": 1
+    },
+    "src-ui/src/components/coding-layout/PullRequestGuide.tsx": {
+      "multi-sentence:text:p": 1
+    },
+    "src-ui/src/components/engine-install/PublicRegistry.tsx": {
+      "long-copy:text:p": 1,
+      "long-copy:text:div": 1
+    },
+    "src-ui/src/components/first-run/AboutYouStep.tsx": {
+      "long-copy:text:p": 2,
+      "multi-sentence:text:p": 2
+    },
+    "src-ui/src/components/first-run/UnpairedSampleWorkspace.tsx": {
+      "long-copy:literal:prop:content": 1,
+      "multi-sentence:literal:prop:content": 1
+    },
+    "src-ui/src/components/first-run/tour-steps.ts": {
+      "long-copy:prop:body": 3
+    },
+    "src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx": {
+      "long-copy:literal:attr:reason": 1
+    },
+    "src-ui/src/components/modals/NewProjectRepositorySource.tsx": {
+      "long-copy:text:p": 3,
+      "multi-sentence:text:p": 2
+    },
+    "src-ui/src/components/monitoring/AnalyticsSourceSetup.tsx": {
+      "long-copy:text:p": 4,
+      "multi-sentence:text:p": 3
+    },
+    "src-ui/src/components/monitoring/InsightsDashboard.tsx": {
+      "long-copy:literal:prop:reason": 1
+    },
+    "src-ui/src/components/monitoring/PersonalInsights.tsx": {
+      "multi-sentence:text:p": 2,
+      "long-copy:text:p": 1
+    },
+    "src-ui/src/components/people/InviteFlow.tsx": {
+      "long-copy:text:p": 1,
+      "multi-sentence:text:p": 1
+    },
+    "src-ui/src/components/registry/MarketplaceSources.tsx": {
+      "long-copy:text:p": 2,
+      "multi-sentence:text:p": 2
+    },
+    "src-ui/src/components/registry/StationExtensionsAccess.tsx": {
+      "long-copy:attr:message": 2,
+      "long-copy:text:p": 1,
+      "multi-sentence:text:p": 1
+    },
+    "src-ui/src/components/registry/registryCatalogModel.ts": {
+      "long-copy:literal:return": 1
+    },
+    "src-ui/src/components/report-problem/ReportProblemDialog.tsx": {
+      "long-copy:text:p": 1
+    },
+    "src-ui/src/components/scheduler/JobDetail.tsx": {
+      "long-copy:text:p": 1
+    },
+    "src-ui/src/components/scheduler/JobFormModal.tsx": {
+      "long-copy:text:label": 1
+    },
+    "src-ui/src/components/session-detail/AttachedSessionDetail.tsx": {
+      "multi-sentence:text:p": 1
+    },
+    "src-ui/src/components/skill-experiences/SkillExperiencePanel.tsx": {
+      "long-copy:text:p": 1
+    },
+    "src-ui/src/components/usage-stats/StationUsagePanel.tsx": {
+      "long-copy:text:p": 2,
+      "multi-sentence:text:p": 2
+    },
+    "src-ui/src/lib/compatibility.ts": {
+      "long-copy:literal:prop:reason": 3,
+      "multi-sentence:literal:prop:reason": 2
+    },
+    "src-ui/src/lib/local-ui-bootstrap.ts": {
+      "multi-sentence:literal:return": 1
+    },
+    "src-ui/src/lib/task-shaping.ts": {
+      "long-copy:literal:const": 1,
+      "multi-sentence:literal:const": 1
+    },
+    "src-ui/src/platform/native/NativeRelayConnectionRecovery.tsx": {
+      "long-copy:text:p": 1,
+      "multi-sentence:text:p": 1
+    },
+    "src-ui/src/providers/voice/LocalSpeechSTTProvider.ts": {
+      "long-copy:literal:call:this.fail": 1,
+      "multi-sentence:literal:call:this.fail": 1,
+      "long-copy:literal:const": 1
+    },
+    "src-ui/src/utils/approvalMode.ts": {
+      "long-copy:prop:description": 1,
+      "long-copy:literal:prop:codex": 1,
+      "long-copy:literal:prop:opencode": 1,
+      "multi-sentence:literal:prop:opencode": 1
+    },
+    "src-ui/src/utils/errorAgentDraft.ts": {
+      "multi-sentence:literal:return": 1
+    },
+    "src-ui/src/utils/steerTurn.ts": {
+      "long-copy:literal:return": 1
+    },
+    "src-ui/src/views/EngineAccountOverview.tsx": {
+      "long-copy:text:details": 1
+    },
+    "src-ui/src/views/EngineProxySettings.tsx": {
+      "multi-sentence:text:p": 1
+    },
+    "src-ui/src/views/HomeView.tsx": {
+      "long-copy:text:p": 1
+    },
+    "src-ui/src/views/PluginManagementView.tsx": {
+      "long-copy:attr:message": 1,
+      "multi-sentence:attr:message": 1
+    },
+    "src-ui/src/views/ProjectSettingsView.tsx": {
+      "long-copy:attr:message": 1,
+      "multi-sentence:attr:message": 1
+    },
+    "src-ui/src/views/ProviderSettingsView.tsx": {
+      "multi-sentence:attr:message": 1
+    },
+    "src-ui/src/views/SettingsView.tsx": {
+      "multi-sentence:literal:const": 1,
+      "long-copy:attr:message": 1,
+      "multi-sentence:attr:message": 1
+    },
+    "src-ui/src/views/SkillsView.tsx": {
+      "long-copy:text:p": 1,
+      "multi-sentence:text:p": 1
+    },
+    "src-ui/src/views/TaskWorkspaceView.tsx": {
+      "long-copy:text:p": 1
+    },
+    "src-ui/src/views/account/GuestProjectAccessView.tsx": {
+      "long-copy:literal:return": 1,
+      "long-copy:literal:call:setBanner": 1,
+      "long-copy:literal:const": 2
+    },
+    "src-ui/src/views/agent-editor/AgentEditorApprovalDefault.tsx": {
+      "long-copy:text:span": 1,
+      "multi-sentence:text:span": 1
+    },
+    "src-ui/src/views/agent-editor/AgentEditorCredentialProfile.tsx": {
+      "long-copy:text:div": 1,
+      "long-copy:text:span": 1
+    },
+    "src-ui/src/views/agent-editor/AgentEditorPromptTab.tsx": {
+      "long-copy:literal:const": 1
+    },
+    "src-ui/src/views/agent-editor/utils.ts": {
+      "multi-sentence:literal:return": 1
+    },
+    "src-ui/src/views/connections-hub/AddMachineModal.tsx": {
+      "long-copy:text:button": 1
+    },
+    "src-ui/src/views/connections-hub/BrowserRelayEnrollmentDialog.tsx": {
+      "long-copy:text:p": 1
+    },
+    "src-ui/src/views/connections-hub/BrowserRelayRoutes.tsx": {
+      "long-copy:text:p": 2,
+      "multi-sentence:attr:subtitle": 1
+    },
+    "src-ui/src/views/connections-hub/BrowserStationTrustApproval.tsx": {
+      "long-copy:text:p": 2,
+      "multi-sentence:text:p": 2,
+      "long-copy:text:div": 1,
+      "long-copy:text:label": 1
+    },
+    "src-ui/src/views/connections-hub/ComputersSection.tsx": {
+      "long-copy:text:PageRow": 1
+    },
+    "src-ui/src/views/connections-hub/ConnectStationDialog.tsx": {
+      "long-copy:literal:new:Error": 1,
+      "multi-sentence:literal:call:setError": 1
+    },
+    "src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx": {
+      "long-copy:text:p": 1
+    },
+    "src-ui/src/views/connections-hub/RelayOperatorPanel.tsx": {
+      "long-copy:text:p": 1
+    },
+    "src-ui/src/views/connections-hub/RelayRouteKeyApproval.tsx": {
+      "long-copy:text:p": 1,
+      "multi-sentence:text:p": 1
+    },
+    "src-ui/src/views/connections-hub/RelayRouteProfileDialog.tsx": {
+      "long-copy:text:p": 1,
+      "multi-sentence:text:p": 1
+    },
+    "src-ui/src/views/connections-hub/RelayRouteProfiles.tsx": {
+      "long-copy:text:p": 1,
+      "multi-sentence:text:p": 1
+    },
+    "src-ui/src/views/connections-hub/SshComputerCreatorDialog.tsx": {
+      "long-copy:text:label": 1
+    },
+    "src-ui/src/views/developer/CompanionArchivePreparation.tsx": {
+      "long-copy:text:p": 2
+    },
+    "src-ui/src/views/developer/CompanionManaged.tsx": {
+      "long-copy:text:p": 1,
+      "multi-sentence:text:p": 1
+    },
+    "src-ui/src/views/developer/CompanionProductIncidents.tsx": {
+      "long-copy:text:p": 2,
+      "multi-sentence:text:p": 4
+    },
+    "src-ui/src/views/developer/CompanionProductTrends.tsx": {
+      "multi-sentence:text:p": 2
+    },
+    "src-ui/src/views/developer/TelemetryCompanion.tsx": {
+      "long-copy:text:p": 1
+    },
+    "src-ui/src/views/integrations/IntegrationAccountSection.tsx": {
+      "long-copy:text:p": 1
+    },
+    "src-ui/src/views/integrations/TelemetryDestinationGrants.tsx": {
+      "long-copy:text:p": 1
+    },
+    "src-ui/src/views/learning-review/LearningSourceDialog.tsx": {
+      "long-copy:text:p": 1,
+      "multi-sentence:text:p": 1,
+      "long-copy:attr:description": 1
+    },
+    "src-ui/src/views/monitoring/ContextDiagnostics.tsx": {
+      "multi-sentence:text:p": 1
+    },
+    "src-ui/src/views/personal-board/PersonalBoardWorkspace.tsx": {
+      "long-copy:literal:const": 1,
+      "multi-sentence:literal:const": 1
+    },
+    "src-ui/src/views/plugin-management/InstallPreviewModal.tsx": {
+      "long-copy:literal:return": 1
+    },
+    "src-ui/src/views/plugin-management/PluginDetailPanel.tsx": {
+      "long-copy:text:p": 1
+    },
+    "src-ui/src/views/plugin-management/PluginPermissionsSection.tsx": {
+      "long-copy:text:p": 2,
+      "multi-sentence:text:p": 1
+    },
+    "src-ui/src/views/plugin-management/useNewPluginFlow.ts": {
+      "long-copy:literal:const": 1,
+      "multi-sentence:literal:const": 1
+    },
+    "src-ui/src/views/project-page/PluginPublishDialog.tsx": {
+      "long-copy:text:p": 3,
+      "multi-sentence:text:p": 1
+    },
+    "src-ui/src/views/project-page/ProjectKnowledgeScanModal.tsx": {
+      "long-copy:text:div": 1
+    },
+    "src-ui/src/views/project-page/ProjectKnowledgeStores.tsx": {
+      "long-copy:text:InfoTip": 1,
+      "multi-sentence:text:InfoTip": 1
+    },
+    "src-ui/src/views/project-page/ProjectRoom.tsx": {
+      "multi-sentence:text:p": 1,
+      "long-copy:literal:call:setText": 1,
+      "multi-sentence:literal:call:setText": 1
+    },
+    "src-ui/src/views/project-page/ProjectTaskSharingControl.tsx": {
+      "long-copy:text:p": 1,
+      "multi-sentence:text:p": 1
+    },
+    "src-ui/src/views/project-page/ProjectTasksSection.tsx": {
+      "long-copy:text:p": 2
+    },
+    "src-ui/src/views/project-settings/NewChatDefaultsSection.tsx": {
+      "long-copy:literal:const": 2
+    },
+    "src-ui/src/views/project-settings/ProjectDocumentImport.tsx": {
+      "multi-sentence:text:p": 2,
+      "long-copy:text:p": 1
+    },
+    "src-ui/src/views/project-settings/ProjectKnowledgeSources.tsx": {
+      "long-copy:text:p": 1,
+      "multi-sentence:text:p": 1,
+      "multi-sentence:attr:message": 1
+    },
+    "src-ui/src/views/project-settings/ProjectOperatorSetup.tsx": {
+      "long-copy:text:p": 3,
+      "multi-sentence:text:p": 4
+    },
+    "src-ui/src/views/project-settings/ProjectRepositoryAttachment.tsx": {
+      "multi-sentence:text:p": 1
+    },
+    "src-ui/src/views/project-settings/ProjectS3Sources.tsx": {
+      "long-copy:text:p": 1,
+      "long-copy:attr:message": 1,
+      "multi-sentence:attr:message": 1
+    },
+    "src-ui/src/views/project-settings/ProjectWorkspaceSelection.tsx": {
+      "long-copy:text:p": 2,
+      "multi-sentence:text:p": 2
+    },
+    "src-ui/src/views/project-settings/ResourcesSection.tsx": {
+      "long-copy:text:p": 1,
+      "long-copy:text:div": 1,
+      "multi-sentence:text:div": 1
+    },
+    "src-ui/src/views/project-settings/ToolsSection.tsx": {
+      "long-copy:text:InfoTip": 1,
+      "multi-sentence:text:InfoTip": 1
+    },
+    "src-ui/src/views/provider-settings/ProviderConnectionForm.tsx": {
+      "long-copy:text:p": 2,
+      "multi-sentence:text:p": 2
+    },
+    "src-ui/src/views/settings/AccountPreferencesSection.tsx": {
+      "long-copy:text:p": 2
+    },
+    "src-ui/src/views/settings/AgentDefaultsSection.tsx": {
+      "long-copy:text:div": 1,
+      "multi-sentence:text:div": 1
+    },
+    "src-ui/src/views/settings/AnswerSharesSection.tsx": {
+      "long-copy:text:p": 1
+    },
+    "src-ui/src/views/settings/ApprovalGuardianEditor.tsx": {
+      "long-copy:text:InfoTip": 1,
+      "multi-sentence:text:InfoTip": 1
+    },
+    "src-ui/src/views/settings/CoreUpdateCheck.tsx": {
+      "long-copy:text:div": 1
+    },
+    "src-ui/src/views/settings/DeviceHostsPanel.tsx": {
+      "long-copy:text:p": 2
+    },
+    "src-ui/src/views/settings/DistributionProfileField.tsx": {
+      "long-copy:text:PageRow": 1,
+      "multi-sentence:text:PageRow": 1
+    },
+    "src-ui/src/views/settings/KnowledgeStoreSection.tsx": {
+      "long-copy:text:p": 1,
+      "multi-sentence:text:p": 1
+    },
+    "src-ui/src/views/settings/LanDiscoveryControl.tsx": {
+      "long-copy:text:div": 1,
+      "multi-sentence:text:div": 1
+    },
+    "src-ui/src/views/settings/LocalAccountsSection.tsx": {
+      "long-copy:text:p": 1,
+      "multi-sentence:text:p": 1
+    },
+    "src-ui/src/views/settings/OfflineReadingSection.tsx": {
+      "long-copy:text:p": 1,
+      "multi-sentence:text:p": 1
+    },
+    "src-ui/src/views/settings/PairingSection.tsx": {
+      "multi-sentence:text:div": 1
+    },
+    "src-ui/src/views/settings/PersonalTokens.tsx": {
+      "long-copy:literal:const": 1,
+      "long-copy:literal:return": 1
+    },
+    "src-ui/src/views/settings/PluginVisibilitySection.tsx": {
+      "long-copy:text:p": 1,
+      "multi-sentence:text:p": 1
+    },
+    "src-ui/src/views/settings/SystemSection.tsx": {
+      "long-copy:text:div": 2,
+      "multi-sentence:text:div": 2,
+      "long-copy:text:span": 1,
+      "long-copy:attr:message": 1
+    },
+    "src-ui/src/views/settings/TelemetryDelivery.tsx": {
+      "multi-sentence:text:p": 1
+    },
+    "src-ui/src/views/settings/TelemetryOutbox.tsx": {
+      "long-copy:text:p": 1,
+      "multi-sentence:text:p": 1
+    },
+    "src-ui/src/views/settings/TelemetryTierSettings.tsx": {
+      "multi-sentence:attr:description": 1
+    },
+    "src-ui/src/views/settings/VoiceFeaturesSection.tsx": {
+      "long-copy:text:SettingsSection": 1,
+      "multi-sentence:text:SettingsSection": 1
+    },
+    "src-ui/src/views/settings/coreUpdatePresentation.tsx": {
+      "long-copy:prop:text": 3,
+      "multi-sentence:prop:text": 3
+    },
+    "src-ui/src/views/share/SharedAnswerBoundary.tsx": {
+      "long-copy:text:p": 1
+    },
+    "src-ui/src/views/task-workspace/TaskMemoryPanel.tsx": {
+      "long-copy:text:p": 1,
+      "multi-sentence:text:p": 1
+    },
+    "src-ui/src/views/task-workspace/TaskTurnReferenceView.tsx": {
+      "long-copy:literal:return": 1
+    },
+    "src-ui/src/workspace-panes/FilePreviewPane.tsx": {
+      "long-copy:text:p": 1
+    },
+    "src-ui/src/workspace-panes/SessionInventoryItemDetails.tsx": {
+      "long-copy:attr:description": 2,
+      "multi-sentence:attr:description": 2
+    },
+    "src-ui/src/workspace-panes/TaskRoomComposer.tsx": {
+      "multi-sentence:text:p": 1
+    },
+    "src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx": {
+      "long-copy:text:p": 1,
+      "multi-sentence:text:p": 1
+    },
+    "src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx": {
+      "long-copy:text:div": 1,
+      "multi-sentence:text:div": 1
+    },
+    "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx": {
+      "multi-sentence:text:p": 1
+    },
+    "src-ui/src/workspace-panes/device/DeviceSetupWizard.tsx": {
+      "long-copy:text:p": 1,
+      "multi-sentence:text:p": 1
+    },
+    "src-ui/src/workspace-panes/deviceOutcome.ts": {
+      "long-copy:prop:description": 4
+    }
+  }
+}

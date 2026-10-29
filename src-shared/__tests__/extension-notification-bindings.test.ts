@@ -220,6 +220,13 @@ describe('extension notification bindings', () => {
         observedAgainst: ['grok-session-source'],
         evidence: 'station-session-source-emitter',
       },
+      {
+        namespace: 'station-workload',
+        type: 'command-oom-killed',
+        consumer: 'transcript.marker',
+        observedAgainst: ['codex-adapter-transport'],
+        evidence: 'station-session-source-emitter',
+      },
     ]);
   });
 

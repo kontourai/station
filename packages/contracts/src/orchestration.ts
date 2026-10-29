@@ -153,6 +153,16 @@ export type OrchestrationCommand =
        */
       sessionGrantScope?: 'server';
       /**
+       * docs/design/event-content-spill.md: required to allow a request whose
+       * content EventStore stored out of line (`spilledContent` set). The
+       * `sha256-<hex>` digest of the stored request event exactly as
+       * delivered (`JSON.stringify` of the reference-bearing payload), which
+       * the client computes only after loading every reference. With it,
+       * `expectedRequestEventId` must name the same event. Decline and
+       * cancel never need it.
+       */
+      viewedContentDigest?: string;
+      /**
        * #3390: accepted content for a form input request (a harness question
        * or a tool server's elicitation), keyed by field name. Only with
        * `accept`; the server validates it against the exact opened event.
@@ -1406,6 +1416,13 @@ export interface OrchestrationSessionEventWindow {
   events: OrchestrationSequencedEvent[];
   hasMore: boolean;
   nextCursor?: string;
+  /**
+   * The page's oldest event is its oldest turn's `turn.started`, re-added
+   * across events the page's budget left out: the page is not contiguous, and
+   * `nextCursor` reads that gap first. Absent when the page is contiguous, and
+   * from hosts that predate the field.
+   */
+  turnStartDetached?: true;
   /** Thread-filtered stream watermark at the snapshot transaction boundary. */
   watermark: number;
   /**
