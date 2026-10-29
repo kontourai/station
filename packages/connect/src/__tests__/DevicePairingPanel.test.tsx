@@ -3368,6 +3368,11 @@ describe('explicit verified-person pairing consent', () => {
     fireEvent.click(account);
     expect((account as HTMLInputElement).checked).toBe(true);
     expect((person as HTMLInputElement).checked).toBe(false);
+    fireEvent.click(screen.getByText('Account details'));
+    expect(
+      screen.getByText(/Account provider: https:\/\/accounts\.example\.test/),
+    ).toBeTruthy();
+    expect(screen.getByText(/Account ID: account-123/)).toBeTruthy();
     expect((approve as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(approve);
     await waitFor(() => expect(requested).toBe(true));

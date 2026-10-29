@@ -1579,8 +1579,28 @@ export function HostDevicePairingPanel({
           return;
         }
         reviewWindow?.close();
-        if (response.status === 401 || response.status === 403) {
+        if (response.status === 401) {
+          setAuthBlocked(true);
+          setError(
+            "This device's access to this Station needs review. Reconnect it, then try again.",
+          );
+          return;
+        }
+        if (response.status === 403) {
           const result = await response.json().catch(() => null);
+          const code =
+            typeof result?.error === 'string'
+              ? result.error
+              : result?.error?.code;
+          if (
+            code !== 'operator_session_required' &&
+            code !== 'insufficient_scope'
+          ) {
+            setError(
+              'This Station refused the account access review. Check the connection and try again.',
+            );
+            return;
+          }
           try {
             const url = new URL(result?.signInUrl);
             setAccountSignInUrl(
@@ -2324,8 +2344,9 @@ export function HostDevicePairingPanel({
               )}
               {!accountSignInUrl && (
                 <>
-                  Set <code>STATION_TRUSTED_CONSENT_ORIGIN</code> to the
-                  Station’s HTTPS consent origin, then restart. Or run{' '}
+                  Set <code>STATION_TRUSTED_CONSENT_ORIGIN</code> to the HTTPS
+                  DNS origin serving the consent listener on this Station’s
+                  browser host, then restart. Or run{' '}
                   <code>
                     station environment access approve {accountPasskeyRequired}{' '}
                     --force --bind-account

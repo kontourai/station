@@ -1647,6 +1647,10 @@ describe('project guest administration over the production composition', () => {
     const html = await page.text();
     expect(html).toContain('Read');
     expect(html).not.toContain('Terminal');
+    expect(html).toContain('Station account');
+    expect(html).toContain('<summary>Account details</summary>');
+    expect(html).toContain('Account provider');
+    expect(html).toContain('Account ID');
     const nonce = html.match(/name="nonce" value="([^"]+)"/)![1];
     const options = JSON.parse(
       html
@@ -1707,6 +1711,9 @@ describe('project guest administration over the production composition', () => {
       }),
     );
     expect(invite.status).toBe(403);
+    expect(await invite.json()).toMatchObject({
+      error: { code: 'insufficient_scope' },
+    });
     const terminal = await h.request(
       '/api/projects/consent-project/terminals/terminal-nope',
       guest({ method: 'DELETE' }),
@@ -1721,6 +1728,55 @@ describe('project guest administration over the production composition', () => {
       }),
     );
     expect(execute.status).toBe(403);
+  });
+
+  test('browser-cookie exchange narrows an older account-bound offer independently', async () => {
+    const h = await setup();
+    const pairing = h.security.devicePairing;
+    const offer = pairing.createOffer({
+      endpoint: ORIGIN,
+      scope: 'orchestration:read orchestration:operate terminal:operate',
+    });
+    const pending = pairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Legacy member browser',
+      requesterPosition: 'unproven',
+      accountCandidate: {
+        issuer: PROVIDER_ISSUER,
+        subject: GUEST_SUBJECT,
+        displayName: 'Guest Person',
+      },
+      accountCandidateSessionId: `session-${GUEST_SUBJECT}`,
+      requireAccountBinding: true,
+    });
+    const approved = await h.request(
+      `/api/pairing/requests/${pending.requestId}/confirm`,
+      h.operatorHeaders({
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ bindAccountIdentity: true }),
+      }),
+    );
+    expect(approved.status, await approved.clone().text()).toBe(200);
+    const exchange = await h.request(
+      '/.well-known/station/v1/pairing/exchange',
+      {
+        method: 'POST',
+        headers: { origin: ORIGIN, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          offerId: offer.offerId,
+          proof: offer.challenge,
+          requestId: pending.requestId,
+          delivery: 'browser-cookie',
+        }),
+      },
+    );
+    expect(exchange.status, await exchange.clone().text()).toBe(200);
+    expect(await exchange.json()).toMatchObject({
+      device: { scope: 'orchestration:read' },
+      delivery: 'browser-cookie',
+    });
   });
 
   test('account-bound pairing exchange refuses a provider session revoked after approval', async () => {
