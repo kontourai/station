@@ -334,11 +334,11 @@ describe('integration status route', () => {
       (await read(app)).connections.find((item) => item.provider === 'webhook')!
         .actions[0];
     expect(await webhook()).toMatchObject({
-      state: 'unsupported',
+      state: 'not-configured',
       reason: 'Inbound webhooks are not enabled.',
     });
     expect(await webhook()).toMatchObject({
-      state: 'unsupported',
+      state: 'not-configured',
       reason: 'No active webhook token has a start grant.',
     });
     expect(await webhook()).toMatchObject({
@@ -346,6 +346,38 @@ describe('integration status route', () => {
       reason: 'Inbound webhook configuration could not be read.',
     });
     expect(readWebhook).toHaveBeenCalledTimes(3);
+  });
+
+  test('distinguishes an unconfigured Discord gateway from unavailable actions', async () => {
+    const app = route(
+      createIntegrationStatusReader(
+        createIntegrationStatusProbes({
+          exec: vi.fn<typeof execGitContextCommand>(async () => ({
+            stdout: '',
+            stderr: '',
+          })),
+          readDiscord: () => ({
+            state: 'not-configured',
+            reason: 'Discord is not configured or enabled.',
+          }),
+          readWebhook: () => ({ schemaVersion: 1, enabled: false }),
+        }),
+      ),
+    );
+    const discord = (await read(app)).connections.find(
+      (item) => item.provider === 'discord',
+    )!;
+    expect(
+      discord.actions.find((item) => item.action === 'notify'),
+    ).toMatchObject({
+      state: 'not-configured',
+      reason: 'Discord is not configured or enabled.',
+    });
+    expect(
+      discord.actions.find((item) => item.action === 'approve'),
+    ).toMatchObject({
+      state: 'unsupported',
+    });
   });
 
   test('reads the real webhook store without exposing its secret', async () => {
@@ -392,7 +424,7 @@ describe('integration status route', () => {
       tokens: [{ ...token, revokedAt: '2026-01-01' }],
     });
     expect(await webhook()).toMatchObject({
-      state: 'unsupported',
+      state: 'not-configured',
       reason: 'No active webhook token has a start grant.',
     });
     writeFileSync(join(home, 'security', 'inbound-webhooks.json'), '{invalid');

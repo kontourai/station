@@ -75,7 +75,7 @@ type GatewayEnvelope = {
 };
 
 export type DiscordGatewayStatus = {
-  state: 'connected' | 'unavailable' | 'failed';
+  state: 'connected' | 'not-configured' | 'unavailable' | 'failed';
   reason: string;
 };
 
@@ -184,7 +184,7 @@ export class DiscordGatewayService {
       const configuration = this.configurationStore.read();
       if (configuration.enabled !== true || !configuration.token)
         return {
-          state: 'unavailable',
+          state: 'not-configured',
           reason: 'Discord is not configured or enabled.',
         };
       if (this.token && configuration.token !== this.token)

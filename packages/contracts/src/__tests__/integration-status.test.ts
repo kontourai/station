@@ -23,6 +23,7 @@ describe('integration status boundary', () => {
   test.each([
     'works',
     'unverified',
+    'not-configured',
     'waiting-on-provider',
     'unsupported',
     'failed',

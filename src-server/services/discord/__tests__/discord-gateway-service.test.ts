@@ -305,6 +305,10 @@ describe('DiscordGatewayService', () => {
     service.start();
 
     expect(sockets).toHaveLength(0);
+    expect(service.getGatewayStatus()).toEqual({
+      state: 'not-configured',
+      reason: 'Discord is not configured or enabled.',
+    });
   });
 
   test('uses the configured gateway ingress to authorize a message and resumes after reconnect', async () => {

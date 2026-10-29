@@ -160,7 +160,9 @@ export function createIntegrationStatusProbes(deps: {
             ? 'failed'
             : gateway.state === 'connected'
               ? 'unverified'
-              : 'unsupported';
+              : gateway.state === 'not-configured'
+                ? 'not-configured'
+                : 'unsupported';
         return {
           connectionId: 'discord',
           provider: 'discord',
@@ -207,7 +209,7 @@ export function createIntegrationStatusProbes(deps: {
         try {
           const configuration = deps.readWebhook();
           if (configuration.enabled !== true) {
-            state = 'unsupported';
+            state = 'not-configured';
             reason = 'Inbound webhooks are not enabled.';
           } else if (
             !configuration.tokens?.some(
@@ -216,7 +218,7 @@ export function createIntegrationStatusProbes(deps: {
                 (token.starts?.length ?? 0) > 0,
             )
           ) {
-            state = 'unsupported';
+            state = 'not-configured';
             reason = 'No active webhook token has a start grant.';
           } else {
             state = 'unverified';
