@@ -182,10 +182,11 @@ The WhoIs exception applies to these exact surfaces:
 
 Other leaves retain their existing ingress-agreement behavior. This exception
 changes person attribution only; each route still enforces its own admission and
-resource permissions. A conflicting account and operator or Device remains
-refused with `403 account_identity_conflict`. The local account's `POST
-/api/account-auth/sign-out` remains available to end that account session;
-it does not revoke the Device credential.
+resource permissions. A conflicting operator or Device caught by the scoped
+local-account rule is refused with `403 account_identity_conflict`. The local
+account's `POST /api/account-auth/sign-out` remains available to end that
+account session; it does not revoke the Device credential. Account-tied
+personal tokens retain their separate conflict refusal described below.
 
 
 ## HTTP behavior
