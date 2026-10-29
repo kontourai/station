@@ -9,6 +9,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { SoftwareAuthenticator } from '../../../__test-utils__/software-authenticator.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { createDeploymentAuthenticationRoutes } from '../../../routes/system/deployment-authentication-routes.js';
+import { createLocalAccountAdministrationRoutes } from '../../../routes/system/local-account-administration-routes.js';
 import { createLogger } from '../../../utils/logger.js';
 import { FeaturePreviewRegistry } from '../../feature-previews/feature-preview-registry.js';
 import {
@@ -58,6 +59,7 @@ class Browser {
 
 async function station(
   input: {
+    mayRegister?: () => Promise<boolean>;
     origin?: string;
     stationId?: string;
     invitations?: Set<string>;
@@ -90,7 +92,10 @@ async function station(
         : {}),
     },
     { stationId: input.stationId ?? 'passkey-station', homeDirectory },
-    { mayRegister: async ({ invitation }) => invitations.has(invitation) },
+    {
+      mayRegister: async ({ invitation }) =>
+        input.mayRegister ? input.mayRegister() : invitations.has(invitation),
+    },
     { memberPasskeys: preview },
   );
   loaded.push(accounts);
@@ -496,6 +501,98 @@ describe('member passkeys over the production account routes', () => {
     ).toMatchObject({ status: 401, error: { code: 'passkey_rejected' } });
     expect(await target.session(browser)).toBeUndefined();
   });
+
+  test.each(['disable', 'revoke-sessions'] as const)(
+    'operator %s refuses an unrelated registration transaction and commits on retry',
+    async (action) => {
+      let armed = false;
+      let calls = 0;
+      let enter!: () => void;
+      let release!: () => void;
+      const entered = new Promise<void>((resolve) => {
+        enter = resolve;
+      });
+      const barrier = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const target = await station({
+        mayRegister: async () => {
+          if (armed && ++calls === 3) {
+            enter();
+            await barrier;
+          }
+          return true;
+        },
+      });
+      const first = new Browser(ORIGIN);
+      const second = new Browser(ORIGIN);
+      const headers = { 'x-station-invitation': INVITATION };
+      const options = await target.call(
+        second,
+        '/passkey/sign-up',
+        { step: 'options', username: 'COLLISION' },
+        headers,
+      );
+      expect(options.status).toBe(200);
+      expect(
+        (await signUp(target, first, new Device(), 'collision')).status,
+      ).toBe(200);
+      const id = accountId(target, 'collision');
+      const admitted = new Request(ORIGIN, {
+        headers: { Cookie: first.header() },
+      });
+      expect((await target.accounts.service.authenticate(admitted)).kind).toBe(
+        'authenticated',
+      );
+      const witness = target.accounts.service.captureCurrentSession(admitted);
+      const mintedAt = Date.now();
+      const admin = createLocalAccountAdministrationRoutes(
+        target.accounts,
+        undefined,
+        async () => {},
+      );
+      const change = () =>
+        admin.request(`https://station.example.test/${id}/actions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action }),
+        });
+      armed = true;
+      const pending = target.call(
+        second,
+        '/passkey/sign-up',
+        {
+          step: 'verify',
+          response: new Device().register(
+            options.data!.options as Record<string, unknown>,
+            ORIGIN,
+          ),
+        },
+        headers,
+      );
+      try {
+        await entered;
+        const refused = await change();
+        expect(refused.status).toBe(503);
+        expect(await refused.json()).toMatchObject({
+          error: { code: 'account_operation_unavailable' },
+        });
+      } finally {
+        release();
+      }
+      expect((await pending).status).not.toBe(200);
+      const committed = await change();
+      expect(committed.status).toBe(200);
+      expect(witness()).toBe(false);
+      expect((await target.verified(first)).kind).toBe('invalid');
+      expect(target.accounts.accountDirectory.standing(id, mintedAt)).toBe(
+        'disabled',
+      );
+      expect(target.accounts.administration.list()).toHaveLength(1);
+      if (action === 'disable')
+        expect(target.accounts.administration.list()[0].disabled).toBe(true);
+    },
+  );
 
   test('disabling the account refuses passkey sign-in and ends passkey sessions exactly like password sessions', async () => {
     const target = await station();

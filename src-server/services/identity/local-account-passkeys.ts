@@ -672,6 +672,8 @@ export function createMemberPasskeys(host: MemberPasskeyHost): MemberPasskeys {
       if (!input.success) return refuse(400, 'invalid_request');
       const account = await runtime.currentAccount(request);
       if (!account) return refuse(401, 'authentication_required');
+      if (host.database.isTransaction)
+        return refuse(503, 'passkey_unavailable');
       const owned = host.database
         .prepare('SELECT 1 AS found FROM passkey WHERE id = ? AND userId = ?')
         .get(input.data.id, account.userId);

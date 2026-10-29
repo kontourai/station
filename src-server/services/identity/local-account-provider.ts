@@ -138,7 +138,7 @@ export async function createLocalAccountProvider(
       attempt: PendingEnrollmentAttemptState,
     ): boolean {
       if (!attempt.cleanupRequested) return true;
-      if (!localUsername || closed) return false;
+      if (!localUsername || closed || database.isTransaction) return false;
       try {
         if (attempt.cleanupAll) {
           database
@@ -1015,6 +1015,10 @@ export async function createLocalAccountProvider(
                     throw new Error(
                       'Pending enrollment promotion is unavailable.',
                     );
+                  if (database.isTransaction)
+                    throw new Error(
+                      'Pending enrollment promotion is unavailable.',
+                    );
                   const changed = database
                     .prepare(
                       `UPDATE session SET stationPendingEnrollmentId = NULL
@@ -1029,7 +1033,7 @@ export async function createLocalAccountProvider(
                 async discard(enrollmentId, sessionId, signal) {
                   const attempt = pendingAttempt(enrollmentId);
                   if (!attempt) {
-                    if (closed || signal.aborted)
+                    if (closed || signal.aborted || database.isTransaction)
                       throw new Error(
                         'Pending enrollment cleanup is unconfirmed.',
                       );
