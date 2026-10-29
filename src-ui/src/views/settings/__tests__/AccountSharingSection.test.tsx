@@ -192,7 +192,9 @@ test('an unsupervised Station cannot apply, and a rolled-back change is reported
   );
   const apply = screen.getByRole('button', { name: 'Apply and restart' });
   expect((apply as HTMLButtonElement).disabled).toBe(true);
-  expect(screen.getByText(/started with `station start`/)).toBeTruthy();
+  expect(
+    screen.getByText(/only when its process supervisor runs it/),
+  ).toBeTruthy();
   expect(screen.getByText(/last change was rolled back/)).toBeTruthy();
 });
 

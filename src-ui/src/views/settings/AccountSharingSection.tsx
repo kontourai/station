@@ -306,7 +306,7 @@ function SharingControls({
           )}
           {!canRestart && (
             <p className="settings__field-hint" role="status">
-              Station can apply this only when started with `station start`.
+              Station can apply this only when its process supervisor runs it.
             </p>
           )}
         </>
