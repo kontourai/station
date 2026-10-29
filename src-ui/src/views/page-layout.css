@@ -582,10 +582,10 @@
   font-size: 0.8rem;
   font-weight: 500;
   text-decoration: none;
-  transition:
-    background-color var(--motion-fast) var(--ease-standard),
-    border-color var(--motion-fast) var(--ease-standard),
-    color var(--motion-fast) var(--ease-standard);
+  /* Only the hover border eases. Fill and text colour switch in one frame:
+     fading them made a tab that just lost `--active` read as a second
+     selected tab (accent fill, dim text) for the length of the fade. */
+  transition: border-color var(--motion-fast) var(--ease-standard);
 }
 
 .page__tab:hover {
