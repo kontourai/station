@@ -637,8 +637,10 @@ describe('project task room working state', () => {
     try {
       for (const target of [scope, healthy]) {
         const before = await legacy.read({ scope: target });
-        if (target === healthy && before.kind === 'snapshot')
+        if (target === healthy && before.kind === 'snapshot') {
+          if (!before.revision) throw new Error('missing initial revision');
           healthyInitial = before.revision;
+        }
         const saved = await legacy.settle({
           scope: target,
           intentId: target.taskId,
