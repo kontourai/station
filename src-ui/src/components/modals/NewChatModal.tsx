@@ -1814,10 +1814,15 @@ export function NewChatModal({
         <>
           <div className="chat-start__body new-chat-draft__body">
             <div className="new-chat-draft__lead">
-              <p>
-                {shaping ? 'Shape a Task' : 'Start a chat'}
-                {draftDestination}
-              </p>
+              {/* An empty draft's hint, like an empty chat's; once the draft
+                  holds something, the chips say where it goes and a short
+                  dock keeps its room for the composer. */}
+              {!prompt.trim() && startFiles.length === 0 && (
+                <p>
+                  {shaping ? 'Shape a Task' : 'Start a chat'}
+                  {draftDestination}
+                </p>
+              )}
               {shaping && (
                 <Button
                   className="task-chat-start__chip"

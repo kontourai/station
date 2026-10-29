@@ -459,7 +459,8 @@ Home and the chat dock use the same start composer. On Home it sits under
 **What would you like to do?**. **New chat** opens it in the chat dock as a
 draft, like an empty chat: the dock opens if it was collapsed, a quiet line
 names where the chat will start (for example **Start a chat in Pulse on
-Kontour**), and the composer sits where a reply would. Write what you want done
+studio-mac**) until you write something, and the composer sits where a reply
+would. Write what you want done
 and choose **Start**. You do not need to choose anything first; the controls
 show what **Start** will use:
 
@@ -615,11 +616,10 @@ current layout default or Station’s runnable suggestion. A remembered Agent
 needing repair stays visible with its setup action; a removed choice asks you
 to choose another.
 
-Leaving the draft for another chat, pressing Escape in it, or Back discards it.
-Collapsing the dock keeps it as you left it, and Back while it is hidden does
-not discard it. On a phone the draft opens full screen, and dismissing it gives
-the dock its earlier size back; leaving it for a chat keeps that chat open. Drop files anywhere on the draft to attach them. Choosing **New chat** again while a
-draft is open returns you to that draft. To resume earlier work, choose it in
+Escape, Back, or opening another chat closes the draft; collapsing the dock
+keeps it. On a phone the draft opens full screen, and closing it restores the
+dock's size. Drop files anywhere on the draft to attach them. **New chat**
+while a draft is open returns you to it. To resume earlier work, choose it in
 the dock’s chat list.
 
 At the end of first-run setup, **Take the tour** and **Connect another device**

@@ -65,6 +65,10 @@
   margin-block: auto;
   text-align: center;
 }
+.new-chat-draft__lead .button.task-chat-start__chip {
+  align-self: center;
+  margin-inline: 0;
+}
 .chat-start__body .new-chat-draft__lead p {
   margin: 0;
   color: var(--k-text-muted);
@@ -87,10 +91,16 @@
   min-height: 2.75rem;
   height: clamp(2.75rem, 100cqh - 25rem, 6rem);
 }
-/* A file dragged over the draft: the whole draft takes it. */
-.new-chat-modal[data-file-drag] {
-  outline: 2px dashed var(--k-focus);
-  outline-offset: -4px;
+/* A file dragged over the draft: the whole draft takes it. Drawn above the
+   pinned composer, whose background would otherwise cover the frame. */
+.new-chat-modal[data-file-drag]::after {
+  content: '';
+  position: absolute;
+  inset: var(--k-space-1);
+  z-index: 2;
+  border: 2px dashed var(--k-focus);
+  border-radius: var(--k-radius-md);
+  pointer-events: none;
 }
 /* While a setup panel shows, Start cannot run yet: setup and the composer
    scroll together in the draft (one scroller) instead of a squeezed body

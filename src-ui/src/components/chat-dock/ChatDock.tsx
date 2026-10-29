@@ -1152,9 +1152,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   useEffect(() => {
     if (!showNewChatModal) dockBeforeDraft.current = null;
   }, [showNewChatModal]);
-  // The draft shows in place of the chat on screen, so going to a chat (a
-  // tab, an inbox row, a shortcut, an opened conversation) leaves it: the
-  // request hears 'dismissed' with its text, as closing the dialog did.
+  // The draft covers the chat on screen, so going to a chat (a tab, an inbox
+  // row, a shortcut, an opened conversation) leaves it as 'dismissed', with
+  // its text.
   const newChatDraftOpen = useRef(showNewChatModal);
   newChatDraftOpen.current = showNewChatModal;
   const leaveNewChatDraft = useCallback(() => {
