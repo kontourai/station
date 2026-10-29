@@ -1234,18 +1234,50 @@ export function ChatDockBody({
           model.available !== false,
       ),
   );
-  const pickerModels = executionModels?.map((model) =>
-    model.executionAgentId === activeSession.executionAgentId &&
-    !chatInput.canModelSelect
-      ? {
-          ...model,
-          available: false,
-          unavailableReason:
-            chatInput.modelSelectionReason ??
-            'This engine cannot change its model in this conversation.',
-        }
-      : model,
-  );
+  // Another engine is offered only when this caller can switch to it: the
+  // dock passes no `onExecutionModelSelect` when the server's open resolution
+  // denies changes to this conversation, and an engine this client cannot
+  // start (not ready, incompatible) is left out rather than listed. While a
+  // turn or queued message blocks the switch, the engines stay listed but
+  // disabled with that reason, and so is the reset that would return an
+  // engine override to the Agent's defaults: both open the same dialog, so
+  // neither opens it only for its submit to refuse a blocked switch. Pending
+  // attachments are not known here; the dialog disables its submit for them.
+  // An engine override with no engine change offered (the conversation is
+  // read-only, unverified, busy or still resolving) refuses its reset too:
+  // the model-only reset would leave the override in place while reading as
+  // "Use Agent defaults".
+  const engineChangeBlockedReason = secondaryActions?.handoffDisabledReason;
+  const engineResetBlockedReason = activeSession.executionAgentId
+    ? onExecutionModelSelect
+      ? engineChangeBlockedReason
+      : 'This conversation can’t change its engine right now.'
+    : undefined;
+  const pickerModels = executionModels
+    ?.filter(
+      (model) =>
+        model.executionAgentId === activeSession.executionAgentId ||
+        (onExecutionModelSelect && model.available !== false),
+    )
+    .map((model) =>
+      model.executionAgentId === activeSession.executionAgentId
+        ? chatInput.canModelSelect
+          ? model
+          : {
+              ...model,
+              available: false,
+              unavailableReason:
+                chatInput.modelSelectionReason ??
+                'This engine cannot change its model in this conversation.',
+            }
+        : engineChangeBlockedReason
+          ? {
+              ...model,
+              available: false,
+              unavailableReason: engineChangeBlockedReason,
+            }
+          : model,
+    );
   // `chatExecutionBinding` and `chatEngineIdentity` (utils/engine.ts) own
   // which Agent runs this chat and which engine it names; the dock header
   // reads the same two rules.
@@ -2630,13 +2662,20 @@ export function ChatDockBody({
               }
             }}
             onModelReset={() => {
-              if (activeSession.executionAgentId && onExecutionModelSelect) {
+              if (activeSession.executionAgentId) {
+                if (engineResetBlockedReason || !onExecutionModelSelect) return;
                 chatInput.handleModelClose();
                 onExecutionModelSelect();
               } else {
                 chatInput.handleModelReset();
               }
             }}
+            modelResetDisabledReason={engineResetBlockedReason}
+            // The server denied changes (no engine change offered): the
+            // composer offers no reset. A turn or queue wait only disables it.
+            modelResetOffered={
+              !(activeSession.executionAgentId && !onExecutionModelSelect)
+            }
             onModelClose={chatInput.handleModelClose}
             onModelOpen={
               hasExecutionAlternatives

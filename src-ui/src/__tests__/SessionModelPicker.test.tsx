@@ -227,6 +227,19 @@ describe('SessionModelPicker', () => {
     expect(props.onReset).toHaveBeenCalledOnce();
   });
 
+  test('a refused reset is disabled and states why', () => {
+    const props = renderPicker({
+      currentExecutionAgentId: 'codex-proxy',
+      resetDisabledReason: 'Wait for the current turn to finish.',
+    });
+    const reset = screen.getByRole('button', {
+      name: 'Use Agent defaults · Wait for the current turn to finish.',
+    }) as HTMLButtonElement;
+    expect(reset.disabled).toBe(true);
+    fireEvent.click(reset);
+    expect(props.onReset).not.toHaveBeenCalled();
+  });
+
   test('owns Escape when nested in a parent dialog', () => {
     const onOuterClose = vi.fn();
     renderNestedPicker(onOuterClose);

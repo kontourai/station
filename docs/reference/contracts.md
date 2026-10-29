@@ -75,6 +75,8 @@ from observed runtime and authenticated storage state. Unavailable custody or
 runtime evidence does not imply an empty or healthy installation.
 
 `@kontourai/station-contracts/product-telemetry` also owns
+`TelemetryChoiceCapabilities` (what the calling credential may do with the
+usage-sharing choice, reported on the disclosure read),
 `ProductTelemetryTrends`, `isProductTelemetryTrendWindow` and
 `isProductTelemetryTrends`. The bounded receiver aggregate contains received
 product groups, source build provenance, a UTC window, retention and explicitly
