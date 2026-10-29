@@ -60,22 +60,28 @@ in **Settings → Advanced → Feature previews** first. While the preview is of
 the route refuses with `feature_preview_disabled`, but a saved choice stays in
 force, so turning the preview off never signs invited people out.
 
-- **Who.** Only the Station operator: the route uses the same operator check as
-  **Accounts and sign-in** (`projectMembershipAuthority(request).operator()`,
-  an operator credential or a home-possession Device). A paired Device with
-  `access:manage`, a Project administrator, or an agent cannot read or change
-  it. Any operator step-up added to that check applies here too.
+- **Who and confirmation.** The operator can request a change with an operator
+  credential or a home-possession Device. A paired Device with `access:manage`
+  alone or a Project administrator cannot request one. App-origin scripts
+  with the host browser session can request a review but cannot decide it. Open the
+  separate confirmation page and approve the displayed choice. On the same
+  machine, the browser's transaction-bound consent session permits that review;
+  the page's one-use nonce and origin keep app-origin scripts from deciding it.
+  The listener and browser must be able to use the consent session on its host.
+  A device-bound operator passkey session is not accepted by this setting yet.
 - **Sign-in address.** You choose the public origin from addresses this Station
-  already knows: `ALLOWED_ORIGINS`, its own loopback origins, its bound host,
-  `STATION_TRUSTED_TAILSCALE_SERVE_ORIGIN` and Tailscale Serve origins reported
-  by the local daemon. An address is selectable only when it is HTTPS (or HTTP
-  loopback) and the API already admits it as a browser origin. The server
-  accepts only a selectable address, so `127.0.0.1` cannot be confused with
-  `localhost`. To offer another address, add it to `ALLOWED_ORIGINS`.
-- **Applying.** Station saves the change in
+  knows serves the UI: its UI listener, Tailscale Serve mappings to that
+  listener, and allowed origins witnessed at the UI proxy. The API listener is
+  not offered. An address is selectable only when it is HTTPS (or HTTP
+  loopback) and the API admits it as a browser origin. For a proxy address, add
+  it to `ALLOWED_ORIGINS` and open Settings through that UI ingress. This is
+  configuration and ingress evidence, not proof another device can reach it.
+  The localhost choice works only on this computer.
+- **Applying.** Confirmation stages the change in
   `<STATION_HOME>/config/account-sharing.json` and asks the
   [process supervisor](../design/process-supervisor.md) to hand off to a new
-  generation. Open requests drain and clients reconnect. A Station started
+  generation. A staged choice is not eligible for boot until the handoff
+  starts draining. Open requests drain and clients reconnect. A Station started
   without the supervisor (`STATION_DIRECT_LAUNCH=1`, `--watch`, the desktop
   sidecar) refuses the change instead of applying half of it.
 - **Rollback.** The new generation marks the change as attempted before it uses
@@ -83,7 +89,15 @@ force, so turning the preview off never signs invited people out.
   example, an account store whose authority secret is missing), Station starts
   with sharing off and records why. If the generation dies before committing,
   the next start discards the change and uses the previous one. A refused or
-  unanswered restart withdraws the change. Settings shows the outcome.
+  unanswered restart attempts to withdraw the unarmed change. If withdrawal
+  cannot be confirmed, the pending state remains visible; an unarmed choice is
+  never adopted. A published arm whose directory sync fails has an uncertain
+  durability outcome, so check the setting after restart.
+- **File custody.** On POSIX, the `config` directory and the setting file must
+  be owned by the current user and private; symlinks, hard-linked files and
+  special files are refused. Existing nonprivate directories need operator
+  permission repair. Windows does not enforce POSIX ownership or mode bits,
+  and skips directory fsync; the same symlink and regular-file checks apply.
 - **Precedence.** If any of `STATION_PROJECT_SHARING`, `STATION_LOCAL_ACCOUNTS`,
   `STATION_AUTHENTICATION_MODULE`, `STATION_AUTHENTICATION_ORIGIN`,
   `STATION_AUTHENTICATION_BROWSER_ORIGINS`, `STATION_LOCAL_ACCOUNT_OIDC_FILE` or

@@ -5763,12 +5763,14 @@ for precedence, rollback and what turning it off keeps.
 
 | Method | Body | Success `data` |
 | --- | --- | --- |
-| `GET` | none | `AccountSharingSettingView`: `source` (`setting` or `deployment`), `lockedBy`, `active`, `stored`, `lastApply`, `startupFailure`, the offered `origins` and `restart` (`supervised` or `unavailable`). |
-| `PUT` | `{ "enabled": false }` or `{ "enabled": true, "publicOrigin": "<offered origin>" }`, at most 4 KiB | `{ "changed": false }`, or `{ "changed": true, "restarting": true }` once the supervisor has started the handoff. |
+| `GET` | none | `AccountSharingSettingView`: `source`, `lockedBy`, `active`, `stored`, unresolved `pending`, `lastApply`, `startupFailure`, offered `origins` and `restart`. |
+| `PUT` | `{ "enabled": false }` or `{ "enabled": true, "publicOrigin": "<offered origin>" }`, at most 4 KiB | `{ "changed": false }`, or HTTP 202 with `{ "changed": true, "confirmation": { "id": "<id>", "reviewUrl": "<url>", "expiresAt": 0 } }` (`expiresAt` is an epoch timestamp in milliseconds). |
 
 Both require the same operator authority as `/api/operator/accounts` (an
 operator credential or a home-possession Device; a device-bound operator
-session is not accepted) and the `access:manage` pairing scope. Responses are
+session is not accepted) and the `access:manage` pairing scope. The transaction's
+distinct-origin review binds the exact choice and revalidates authority and
+state before staging and requesting a handoff. Responses are
 `Cache-Control: no-store`. Refusals use the `success: false` envelope with a
 `code`:
 
@@ -5780,9 +5782,13 @@ session is not accepted) and the `access:manage` pairing scope. Responses are
 | 400 | `origin_not_offered` | `publicOrigin` is not a selectable offered origin. |
 | 409 | `set_by_deployment` | Deployment variables decide; the message names them. |
 | 409 | `restart_unavailable` | No process supervisor runs this Station. |
-| 409 | `apply_in_flight` | A previous change is already restarting this Station. |
-| 409/504 | `restart_failed` | The supervisor refused, rolled back (409) or did not answer (504); the staged change is withdrawn. |
-| 503 | `setting_unavailable` | The change could not be saved. |
+| 503 | `consent_unavailable` | The separate review listener, address, session or transaction is unavailable. |
+
+The consent decision reports a refusal if staging or handoff fails. Withdrawal
+is attempted, but a failed withdrawal can leave an unarmed pending choice;
+the read exposes it and boot does not adopt it. A post-rename sync failure
+while arming is an indeterminate publication and is not reported as a failed
+decision, because the new generation may observe it.
 
 ## Create a device invitation
 

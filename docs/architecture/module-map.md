@@ -395,13 +395,15 @@ providers or persisted Project caches.
 
 Without deployment configuration, the operator can also choose the built-in provider in
 Settings (#4305). `account-sharing-setting.ts` owns the stored choice in
-`<home>/config/account-sharing.json` and its boot protocol: `StationRuntime` marks a
-staged change attempted before using it, commits it after initialization, and rolls back
+`<home>/config/account-sharing.json` and its boot protocol: a change is staged unarmed,
+armed after supervisor drain begins, then `StationRuntime` marks it attempted before use,
+commits it after initialization, and rolls back
 an attempted change that never committed; a stored choice that fails to load starts the
 Station with sharing off. `account-sharing-origins.ts` derives the offered sign-in
-origins from the browser origins the API admits. `account-sharing-routes.ts`
+origins from UI ingress and UI-targeted Serve evidence, filtered by browser admission. `account-sharing-routes.ts`
 (`/api/operator/account-sharing`, operator only, `project-sharing-setting` Feature
-Preview) validates and stages a change and asks the process supervisor for a handoff.
+Preview) creates an action-bound consent transaction; its separate-origin approval
+validates and stages a change and asks the process supervisor for a handoff.
 Deployment variables lock the setting; the stored shape cannot name a module.
 
 **Evidence and limits.** External-module HTTP fixtures and the real runtime

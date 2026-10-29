@@ -2729,9 +2729,10 @@ The same subpath exports `getAccountSharingSetting(apiBase, options)` and
 `applyAccountSharingSetting(apiBase, choice, options)` for the operator-only
 [Project sharing setting](../guides/deployment-authentication.md#turn-it-on-from-settings).
 The read reports who decides (the stored setting or the deployment), what is
-active, and the sign-in origins the operator may choose. A `changed` apply
-result means the Station is restarting into the change; read the setting again
-for its outcome.
+active, any unresolved pending choice, and the sign-in origins the operator may
+choose. A changed apply returns a transaction and separate review URL. The
+operator confirms there; read the setting again for the restart outcome. Older
+servers can return a direct `restarting` result.
 
 `@kontourai/station-sdk/authority-observation` exports
 `getAuthorityObservation(apiBase, options)` for the closed, credential-bound
