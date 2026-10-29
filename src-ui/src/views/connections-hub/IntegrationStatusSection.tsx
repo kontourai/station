@@ -163,7 +163,7 @@ function IntegrationStatusForAuthority({
         ) : status.data?.connections.length ? (
           <>
             <div className="integration-status__heading">
-              <p>Choose a status for its reason.</p>
+              <p>Select a status to see details.</p>
               <Button variant="ghost" onClick={() => void status.refetch()}>
                 Refresh
               </Button>

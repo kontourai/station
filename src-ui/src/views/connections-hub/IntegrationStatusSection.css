@@ -38,6 +38,10 @@
   margin: 0;
 }
 
+.integration-status__heading p {
+  color: var(--k-text-muted);
+}
+
 .integration-status__connections {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
