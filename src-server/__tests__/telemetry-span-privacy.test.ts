@@ -78,6 +78,13 @@ test('the installed HTTP span hook removes automation job names from trace field
     expect(span.name).toBe('POST /scheduler/jobs/:target/run');
     expect(JSON.stringify(span.attributes)).not.toContain('private');
   }
+  const unrelated = provider.getTracer('test').startSpan('POST');
+  hook(unrelated, {
+    method: 'POST',
+    path: '/unrelated/private',
+  } as ClientRequest);
+  unrelated.end();
+  expect(exporter.getFinishedSpans()[2].name).toBe('POST /');
   await provider.shutdown();
   await telemetry
     .configuredTelemetryShutdownTask()

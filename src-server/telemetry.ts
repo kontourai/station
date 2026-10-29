@@ -190,7 +190,7 @@ function createSdk(
             });
             return;
           }
-          const route = url
+          const route = (('url' in request ? request.url : undefined) || '/')
             .split('?')[0]
             .replace(/\/[0-9a-f]{8,}|\/[^/]*:[^/]+|\/[^/]+%3A[^/]*/gi, '/:id');
           span.updateName(`${method} ${route}`);
