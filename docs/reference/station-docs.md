@@ -216,6 +216,12 @@ A task carries typed references — to files, artifacts, receipts, sessions, run
 
 The Task workspace opens on **Overview**, with status, completion criteria, subtasks and kept deliverables. **Conversation** is the shared Task discussion, **Plan** holds the autosaved document, and **Work chats** opens separately authorized Agent conversations. **Details** retains workspace bindings, changed files, on-demand Basis, receipts and exact Session correlation. Opening the Task makes the viewer present. Explicit Agent requests can publish answers into the personal Task conversation; shared-member Task projection includes human messages and the document, not private Agent execution or answers. Linking a child Task or work chat does not publish it, grant access or complete its parent.
 
+With the **Chat apps** Feature Preview on, expand **Details → Written to the
+issue** to load Station-recorded outbound attempts and linked retries. Empty
+history does not prove that no external write happened. Task-bound chat and
+tracker producers are pending; existing unbound PR actions and external `gh`
+commands do not populate this log. See [Task guidance](../guides/starter-work.md#start-your-first-task).
+
 A Task's captured workspace is re-evaluated as `available`, `ambiguous`, or
 `unavailable` when reopened. Available bindings permit the relevant local
 inspection paths; changed or missing bindings preserve the recorded identity

@@ -303,7 +303,8 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/task-memory` | Task memory (#4003): the Task summary revision and keyed record shapes, limits, default importance, the stateless write check (`checkTaskRecordWrite`, `taskSummaryRefusal`), refusal wording, the person's views, `taskAwaitsAnswer` for the Tasks list's `openQuestionCount`, and the Learning shapes (`TaskLearningView`, candidates, promotion and dismissal input, limits) for a done Task's promotion candidates. Every bound is a refusal |
 | `@kontourai/station-contracts/task-review` | Task review thread, event, evidence and capture shapes; person and caller-bound station-control DTOs; strict boundary parsing, append-transition checks, derived views/counts, quote relocation and freshness. [Contract source](../../packages/contracts/src/task-review.ts) and [pure contract tests](../../packages/contracts/src/__tests__/task-review.test.ts). Runtime integration and evidence belong to the Task review API and SDK references |
 | `@kontourai/station-contracts/chat-app` | Discord/Slack chips sharing status action shapes, principal links and explicit legacy import provenance, Project/conversation channel bindings, approval-correlated delivery attempts, per-app kill switches, hashed two-step link-code records and confirmation requests; [source](../../packages/contracts/src/chat-app.ts), [boundary tests](../../packages/contracts/src/__tests__/chat-app.test.ts) |
-| `@kontourai/station-contracts/integration-status` | Per-connection actions for GitHub, Discord, Slack, webhooks, Linear and Jira. Each action requires a `computedBy` probe ID, `works`, `unverified`, `waiting-on-provider`, `unsupported` or `failed` state, and a diagnostic/upstream reason; [source](../../packages/contracts/src/integration-status.ts), [boundary tests](../../packages/contracts/src/__tests__/integration-status.test.ts) |
+| `@kontourai/station-contracts/integration-status` | Per-connection actions for GitHub, Discord, Slack, webhooks, Linear and Jira. Each action requires a `computedBy` probe ID, `works`, `unverified`, `not-configured`, `waiting-on-provider`, `unsupported` or `failed` state, and a diagnostic/upstream reason; [source](../../packages/contracts/src/integration-status.ts), [boundary tests](../../packages/contracts/src/__tests__/integration-status.test.ts) |
+| `@kontourai/station-contracts/task-write-back` | Bounded Task-bound outbound attempts, targets, initiators, outcomes and retry chains; [source](../../packages/contracts/src/task-write-back.ts), [store tests](../../src-server/services/orchestration/__tests__/task-write-back-store.test.ts) |
 | `@kontourai/station-contracts/task-approval` | Task approval decisions, first-winner outcomes and refusal codes; bounded, closed `parseTaskApprovalDecision` and `parseTaskApprovalOutcome`. [Contract source](../../packages/contracts/src/task-approval.ts) and [parser tests](../../packages/contracts/src/__tests__/task-approval.test.ts). Store arbitration, admission and engine settlement are separate runtime work |
 | `@kontourai/station-contracts/work-claims` | A Session's work claim as Station's routes answer it (#3413): information, not a lock. The view shape, its parser and the subject labels the Session-row chip uses |
 | `@kontourai/station-contracts/tool` | Tool definitions, permissions, connection configs |
@@ -313,10 +314,14 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/workspace-pane-host-contract` | The transport-independent Pane-host capability interface: navigation, notices, confirmation, device facts, the optional Skill experience and the optional, occurrence-bound related-pane capability (`PaneRelatedPanesHost`, see [Related panes](sdk.md#related-panes)) |
 | `@kontourai/station-contracts/workspace-pane-host-contribution` | Package-level Pane-host actions and explicit owner-relative/default Agent selection |
 
+## Integration status and Task write-back
+
 The chat-app subpath publishes contracts ahead of its runtime lanes (#4143–#4145).
 Integration status has an operator-only runtime read and an SDK query. A parsed
 probe ID alone does not prove that a live probe ran or that its action is authorized;
-`unverified` means the probe did not establish action-level availability.
+`unverified` means the probe did not establish action-level availability;
+`not-configured` records missing or disabled configuration. Both are additive
+states: clients with a closed older parser must update to consume them.
 Existing Discord v1 configuration remains unchanged, including optional grants
 and its permissive handling of extra keys. The
 [compatibility tests](../../packages/contracts/src/__tests__/discord-compatibility.test.ts)
@@ -340,6 +345,14 @@ action set is `notify`, `start`, `continue`, `approve`, `read`, `write`, `link-p
 with at most 100 distinct connections. This vocabulary describes status, not
 an authorization grant. Delivery entries may retain an `approval` reference
 `{sessionId, requestId}`. An `unlinked-sender` refusal cannot name a principal.
+
+`parseTaskWriteBackLog` accepts at most 256 ordered entries for one Task
+incarnation. Each retry names the original attempt, keeps its target and may
+follow only a failed latest attempt. Pending entries have no settlement or
+failure reason; failed entries require both, and succeeded entries require a
+settlement without a failure reason. Malformed chains and unknown fields are
+refused. The contract describes retained attempts, not evidence that all
+provider writes use the log; see the [API](api.md#integration-capability-status-and-task-write-back).
 
 New identity links require a real `linkedAt`, and revocation cannot predate it.
 Imported Discord links instead carry `importedAt` and legacy provenance, so an

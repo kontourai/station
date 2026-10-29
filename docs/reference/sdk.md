@@ -183,6 +183,25 @@ Both mutations also accept `requestScope` in their input.
 disconnects the authenticated caller's selected account and refreshes account and
 integration queries. It does not delete the integration or disconnect other people.
 
+## Integration capability status and Task write-back
+
+The SDK root exports `fetchIntegrationStatus(apiBase, options?)` and
+`useIntegrationStatusQuery(apiBase, config?)`, plus
+`fetchTaskWriteBack(apiBase, taskId, options?)` and
+`useTaskWriteBackQuery(apiBase, taskId, config?)`. Pass the captured
+`requestScope`; queries partition by Station and authority, discard unused
+cache data, refresh on mount, do not retain previous results, and do not retry
+automatically. The Task query also partitions by Task ID and may be disabled
+until the history is opened.
+
+Both readers validate the bounded response and reject malformed data. The
+status reader throws `IntegrationStatusUnsupportedError` on 404; the Task
+reader's 404 can mean a refused or absent Task, or an older host. Neither
+reader substitutes an empty or working result for a failure. These exports
+require an SDK version and Station host containing them. See the
+[API](api.md#integration-capability-status-and-task-write-back) for authority,
+probe limits and the current lack of outbound producers.
+
 ## Project tool library
 
 `@kontourai/station-sdk/tool-library` exposes `ToolLibraryClient` with explicit
