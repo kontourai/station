@@ -83,6 +83,17 @@ A standard paired device may lower or keep tiers. Only the operator or
 a device with `access:manage` may raise tiers. Agent-originated requests cannot
 change telemetry choices or acknowledge the
 disclosure, even with `access:manage`.
+`GET /api/usage-telemetry/disclosure` (and the acknowledgement response) reports
+`capabilities` for the calling credential, decided by the same gates as each
+write: `acknowledge` (the acknowledgement POST), `recordNotice` (the Lite notice
+POST), `lower` (a tier write that keeps or lowers every destination) and `raise`
+(a tier write that raises any destination). The usage-sharing prompt does not
+open for a caller that cannot complete it: outside DNT every way it resolves
+records the notice, and under DNT a kept or lowered choice needs `lower`. A
+QR-paired device therefore is not prompted. The prompt, Settings and Advanced
+controls disable each choice the server would refuse and say that more sharing
+is chosen on the host computer. Hosts that do not report `capabilities` keep
+the earlier behavior.
 `STATION_TELEMETRY_TIER` and the legacy boolean environment aliases supply
 defaults, reported as `environment`, and cannot grant Full. Hosts that previously
 relied on `STATION_PRODUCT_TELEMETRY_ENABLED=true` (or its legacy alias) plus a
