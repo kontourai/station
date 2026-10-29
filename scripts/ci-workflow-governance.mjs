@@ -372,8 +372,9 @@ function hasExecutableNoDiffNotVerified(shell) {
 
 /**
  * `continue-on-error` on a step that runs the code under test would let a
- * real failure report green. Artifact uploads are observational and are the
- * sole exemption: an upload quota failure must not rewrite the work verdict.
+ * real failure report green. An observational artifact upload or the exact
+ * optional Chromium restore may fail without rewriting the work verdict;
+ * Chromium installation and all tests remain required.
  */
 export function findVerdictBearingContinueOnError(workflowText) {
   const lines = workflowText.split('\n');
@@ -528,7 +529,7 @@ function sameList(left, right) {
 
 /**
  * A job- or step-level continue-on-error, except on a diagnostics-only
- * artifact upload (the same exemption as findVerdictBearingContinueOnError).
+ * artifact upload or the exact optional Chromium restore.
  * The plan and receipt uploads are verdict-bearing and checked by name.
  */
 export const MERGE_INTEGRATION_DECISION_STEP = Object.freeze({

@@ -615,8 +615,8 @@ const BASE_CONTROLLED_PR_WORKFLOWS = new Set([
  * The ONLY shared-cache access a pull-request or merge-queue workflow may have:
  * a SHA-pinned restore in a named job. Untrusted candidate code runs in those
  * workflows, so a save there would let a pull request poison an entry that
- * later runs restore. The writer is a trusted main-only warmer
- * (ios-rust-cache-warm.yml). GitHub also issues pull_request_target a
+ * later runs restore. The writers are trusted main-only workflows: the iOS
+ * Rust warmer and Nightly's Chromium source gate. GitHub also issues pull_request_target a
  * read-only cache token by default (changelog 2026-06-26), but a workflow- or
  * job-level `cache-mode` can widen that again, so it is refused outright.
  */
