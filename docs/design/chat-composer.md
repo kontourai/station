@@ -16,6 +16,11 @@
 
 ## Interaction stability and conversation continuity
 
+For a memory-exhausted turn restored from history, the dock offers Continue
+only when the conversation window reports that turn eligible. An older server
+without that fact leaves the failure visible without the action. The server
+checks eligibility again when Continue is requested.
+
 Every conversation uses the chat dock's reading surface and header, including
 conversations discovered in another coding app. A quiet "Started in Claude Code"
 (or the observed app name) identifies origin. Discovery is not evidence of running
@@ -231,6 +236,14 @@ polite announcement. Waiting drafts are kept in the tab's session storage, so
 they survive a reload but not closing the tab.
 The inbox, mobile switcher, and start surface share their row anatomy. Touch
 cards allow two title lines while status and metadata keep predictable positions.
+Inbox dismissal is independent of an open tab: desktop keeps its hover-revealed
+clock and ×, while × hides any conversation without stopping work or deleting
+history. Undo and the collapsed Dismissed section restore it on this device.
+With Sheet gestures preview enabled, mobile rows reveal the same clock and ×
+on a left swipe, with larger targets and short labels. Swiping only reveals;
+Snooze still opens its duration picker, and Details retains the same actions.
+The implementation is shared by the dock panel and mobile switcher; Home and
+sidebar hosts retain their own actions.
 When Continue holds Home's only item of work, Recent work is not shown and
 View Activity sits beside the Continue heading.
 Home's Recent work rows are the same row: a decorative mark before the Project
@@ -906,9 +919,12 @@ The **Chats and tasks** picker keeps the shared **New chat** action at the lower
 right, outside the scrolling list. Its accessible name and hover label are
 **New chat**; the mobile header uses its icon-only chat-bubble-plus form.
 It uses the same direct-chat or agent-choice flow as Chat actions;
-opening it sends no message. Rows show the catalog's Agent icon, conversation
-title, Project with its icon (or its sidebar colour dot), and a right-aligned status/time. Unresolved Agents retain their
-name. The status line is the ladder's own words (`Needs answer`, `Needs
+opening it sends no message. Rows lead with the marks of the engines that ran
+the conversation (up to three, overlapping, then "+N"; the Agent's own mark
+when no engine with a mark is recorded) beside the Agent's name, then the
+conversation title, the Project with its icon (or a folder when it has none),
+a pencil when this device holds an unsent draft for it, and a right-aligned
+status/time. Unresolved Agents retain their name. The status line is the ladder's own words (`Needs answer`, `Needs
 approval`, …, the same words the dock row prints), prefixed with "Last known:"
 when its latest observation failed. Verified running time uses the
 recorded open-turn start; without one, the row's compact time trails the status

@@ -606,7 +606,13 @@
 
     "src-server/routes/orchestration/task-review-station-control.ts",
 
-    "src-server/runtime/routes/__tests__/runtime-routes-task-review-engine.test.ts"
+    "src-server/runtime/routes/__tests__/runtime-routes-task-review-engine.test.ts",
+
+    "src-server/routes/me/person-notifications.ts",
+
+    "src-server/services/notifications/notification-service.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-account-personal-tokens.test.ts"
   ],
 
   "checks": [
