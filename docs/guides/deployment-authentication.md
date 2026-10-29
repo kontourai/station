@@ -20,8 +20,13 @@ live witness for a previously verified session. It must re-read session existenc
 subject and timestamps, expiry and account policy, and reject pending enrollment. It
 does not authenticate a caller-supplied session ID and is not part of the public
 descriptor. The local-account provider implements it; adapters without it fail closed at
-synchronous authority seams. `captureCurrentSession` also pins the verified identity and
-cookie and refuses continuation-only authority.
+synchronous authority seams. `captureCurrentSession` pins the verified identity and
+transport. For a proof-admitted application or native continuation, the application-session
+owner also re-reads the exact stored grant, Device and alias or trusted native target.
+The provider witness receives the original provider session, before the continuation
+clips its projected expiry. Revoking either grant or provider session invalidates the
+witness; missing provider currentness or trusted native facts fail closed. Capturing or
+checking a witness does not consume another request proof.
 
 Task relationship routes compose current transport authority with a live local-account
 session or supported account-bound Device standing witness. Account members may read

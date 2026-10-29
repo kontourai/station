@@ -1094,8 +1094,13 @@ live witness for a previously verified session. It must re-read session existenc
 subject and timestamps, expiry and account policy, and reject pending enrollment. It
 does not authenticate a caller-supplied session ID and is not part of the public
 descriptor. The local-account provider implements it; adapters without it fail closed at
-synchronous authority seams. `captureCurrentSession` also pins the verified identity and
-cookie and refuses continuation-only authority.
+synchronous authority seams. `captureCurrentSession` pins the verified identity and
+transport. An admitted application/native proof additionally needs the application-session
+owner's current exact stored grant, Device and alias or trusted native target. Provider
+currentness uses the original provider session, before projected continuation expiry
+clipping. Revocation of either grant or provider session refuses the witness; absent
+provider currentness or trusted native facts also refuse. These server-private witnesses
+do not consume another request proof or grant Project membership.
 
 The [relay-management contract](../../packages/contracts/src/relay-management.ts)
 exports `RelayInvitationLifetime`, `RelaySetupApproval`, `RelayPendingDevice`
