@@ -72,6 +72,8 @@ type ServerOptions = {
   mixUp?: boolean;
   /** The scope the registration endpoint grants, when fewer than asked. */
   registeredScope?: string;
+  /** The honest issuer lists its token endpoint on this other host. */
+  tokenHost?: string;
 };
 
 type TokenRequest = {
@@ -124,7 +126,10 @@ function startAuthorizationServer(options: ServerOptions) {
           ...(options.issAdvertised
             ? { authorization_response_iss_parameter_supported: true }
             : {}),
-          token_endpoint: `${url.origin}/token`,
+          token_endpoint:
+            options.tokenHost && url.origin === ORIGIN
+              ? `${options.tokenHost}/token`
+              : `${url.origin}/token`,
           ...(options.dcr
             ? { registration_endpoint: `${url.origin}/register` }
             : {}),
@@ -1602,6 +1607,36 @@ describe('round 6: no check-then-send gap around the issuer pin', () => {
         );
       } finally {
         paused.restore();
+        await as.close();
+      }
+    },
+  );
+});
+
+describe('a token endpoint on another host than the issuer', () => {
+  const TOKEN_HOST = 'https://oauth2.fixture-tokens.example';
+  test.each([
+    {
+      label: 'a declared issuer (pre-registered client)',
+      extra: { oauthClient: { clientId: CLIENT_ID, issuer: ORIGIN } },
+      dcr: false,
+    },
+    { label: 'a pinned issuer (dynamic registration)', extra: {}, dcr: true },
+  ])(
+    'is allowed when discovery lists it, with $label',
+    async ({ extra, dcr }) => {
+      const as = startAuthorizationServer({ dcr, tokenHost: TOKEN_HOST });
+      const env = setup();
+      try {
+        await createIntegration(env, extra);
+        await consent(env);
+        // Pinned (or declared) now; sign in again through the pin.
+        await consent(env);
+        expect(as.tokenRequests.map((request) => request.origin)).toEqual([
+          TOKEN_HOST,
+          TOKEN_HOST,
+        ]);
+      } finally {
         await as.close();
       }
     },

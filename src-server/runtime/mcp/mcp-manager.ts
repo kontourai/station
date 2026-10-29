@@ -807,7 +807,9 @@ async function principalScopedConnection(
   provider: StationToolServerOAuthProvider,
   onConnected: (connection: MCPConnection) => void,
 ): Promise<MCPConnection> {
-  const authProvider = await provider.forTransport();
+  // The provider's fetch guard goes with it: if the account's tokens vanish
+  // before this connect, `forTransport` hands the SDK the full provider.
+  const connectOptions = await runtimeOAuthConnectOptions(provider);
   let pool = principalConnectionPools.get(custody);
   if (!pool) {
     pool = new Map();
@@ -826,9 +828,7 @@ async function principalScopedConnection(
   const claim = custody.acquire(toolId, 'managed');
   const entry = { claim } as PrincipalConnectionEntry;
   entry.creation = claim
-    .connect(withResolvedMCPEnvironment(toolId, toolDef), {
-      authProvider,
-    })
+    .connect(withResolvedMCPEnvironment(toolId, toolDef), connectOptions)
     .then(
       (connection) => {
         if (!claim.isCurrent()) throw new MCPLocalCustodyError('stale');

@@ -737,11 +737,31 @@ function createStdioTransport(
   return new StdioClientTransport(ownedParameters);
 }
 
+/**
+ * Set on an OAuth provider whose authorization-server requests must pass
+ * through its own fetch guard. The transport factory refuses such a provider
+ * without `authorizationFetch`, so no caller can build an unguarded OAuth
+ * transport by omission.
+ */
+export const REQUIRES_AUTHORIZATION_FETCH = Symbol.for(
+  'kontourai.station.oauth.requiresAuthorizationFetch',
+);
+
 export function createMCPTransport(
   def: ToolDef,
   authProvider?: OAuthClientProvider | AuthProvider,
   authorizationFetch?: (fetch: FetchLike) => FetchLike,
 ): Transport {
+  if (
+    authProvider &&
+    (authProvider as { [REQUIRES_AUTHORIZATION_FETCH]?: unknown })[
+      REQUIRES_AUTHORIZATION_FETCH
+    ] === true &&
+    !authorizationFetch
+  )
+    throw new Error(
+      `Tool '${def.id}': this OAuth provider requires its authorization fetch guard`,
+    );
   const remoteFetch = (base?: FetchLike) =>
     authorizationFetch
       ? { fetch: authorizationFetch(base ?? globalThis.fetch.bind(globalThis)) }

@@ -7,6 +7,7 @@ import {
   type ToolDef,
   toolServerOAuthResourceIdentity,
 } from '@kontourai/station-contracts/tool';
+import { REQUIRES_AUTHORIZATION_FETCH } from '@kontourai/station-shared/mcp';
 import type {
   AuthProvider,
   FetchLike,
@@ -737,6 +738,8 @@ const accountRefreshCooldowns = new Map<
 >();
 
 export class StationToolServerOAuthProvider implements OAuthClientProvider {
+  /** Every transport built with this provider must carry its fetch guard. */
+  readonly [REQUIRES_AUTHORIZATION_FETCH] = true;
   private authorizationUrl?: URL;
   private get refreshKey(): string {
     return JSON.stringify([
