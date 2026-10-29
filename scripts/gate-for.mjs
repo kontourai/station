@@ -106,17 +106,20 @@ export function gateScopes({ changedPaths, baseSha }) {
     {
       name: 'orchestration transfer budgets',
       decision: transfer,
-      command: 'node scripts/check-prepush-orchestration-transfer.mjs',
+      command:
+        'node scripts/heavy-check-slot.mjs pre-push:transfer-budgets scripts/check-prepush-orchestration-transfer.mjs',
     },
     {
       name: 'static gates (UI contracts, content)',
       decision: statics,
-      command: 'node scripts/check-prepush-static-gates.mjs',
+      command:
+        'node scripts/heavy-check-slot.mjs pre-push:static-gates scripts/check-prepush-static-gates.mjs',
     },
     {
       name: 'SDK public barrel',
       decision: barrel,
-      command: 'node scripts/check-prepush-sdk-barrel.mjs',
+      command:
+        'node scripts/heavy-check-slot.mjs pre-push:sdk-barrel scripts/check-prepush-sdk-barrel.mjs',
     },
   ].map(({ name, decision, command }) => ({
     name,
