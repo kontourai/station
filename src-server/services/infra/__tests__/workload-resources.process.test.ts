@@ -4,6 +4,7 @@ import { once } from 'node:events';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { createServer } from 'node:net';
+import { totalmem } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
@@ -109,7 +110,9 @@ describe.skipIf(!manager)('running server workload containment', () => {
         `--unit=${unit}`,
         `--working-directory=${root}`,
         '--property=MemoryMax=536870912',
-        '--property=MemorySwapMax=0',
+        // Near-zero swap, but a value boot never writes, so the boot
+        // protection test can tell boot's MemorySwapMax from the launch one.
+        '--property=MemorySwapMax=1048576',
         '--property=NoNewPrivileges=yes',
         '--property=PrivateTmp=yes',
         `--setenv=PATH=${process.env.PATH}`,
@@ -200,6 +203,43 @@ describe.skipIf(!manager)('running server workload containment', () => {
     expect(
       Number(await readFile(`/sys/fs/cgroup${leaf}/memory.max`, 'utf8')),
     ).toBe(64 * 1024 * 1024);
+  });
+
+  test('boot protects the server unit and lowers the workload slice CPU weight', () => {
+    const show = (target: string, properties: string[]) => {
+      const shown = spawnSyncBounded(
+        '/usr/bin/systemctl',
+        [
+          '--user',
+          'show',
+          target,
+          ...properties.map((property) => `--property=${property}`),
+        ],
+        { encoding: 'utf8', windowsHide: true, timeout: 15_000 },
+      );
+      expect(shown.status, shown.stderr).toBe(0);
+      return Object.fromEntries(
+        shown.stdout
+          .trim()
+          .split('\n')
+          .map((line) => [
+            line.slice(0, line.indexOf('=')),
+            line.slice(line.indexOf('=') + 1),
+          ]),
+      );
+    };
+    // The fixture unit launches with MemorySwapMax=1048576 and no MemoryLow,
+    // so each expected value is one only boot writes.
+    const MIB = 1024 * 1024;
+    const share = Math.floor(totalmem() / MIB / 8) * MIB;
+    expect(
+      show(unit, ['MemoryLow', 'MemorySwapMax', 'ManagedOOMPreference']),
+    ).toEqual({
+      MemoryLow: String(Math.min(1536 * MIB, share)),
+      MemorySwapMax: share >= 1536 * MIB ? '0' : 'infinity',
+      ManagedOOMPreference: 'avoid',
+    });
+    expect(show(slice, ['CPUWeight'])).toEqual({ CPUWeight: '25' });
   });
 
   test('a real workload OOM leaves the answering server and sibling engine alive and records its cause', async () => {

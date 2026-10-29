@@ -85,6 +85,15 @@ export class FeaturePreviewRegistry {
       description:
         'Review Task plans, outputs and Screens with anchored comments and send them to the lead agent.',
     });
+    // Consumed by the start composers' "Use a visual skill" entry points. The
+    // inventory route and authoring contract stay unconditional: hiding the
+    // entry points does not change what an installed plugin may declare.
+    this.rememberConsumer({
+      id: 'visual-skills',
+      label: 'Visual skills',
+      description:
+        'Offer installed visual skills when starting a chat: guided question rounds and optional plugin panes around a bundled Skill.',
+    });
     this.state = new GrantsFileStore<FeaturePreviewState>({
       filePath: featurePreviewStatePath(homeDir),
       storeLabel: 'feature-previews',

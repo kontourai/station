@@ -482,7 +482,8 @@ first; the controls show what **Start** will use:
   can be chosen too. Its chats run in your home folder, or, for an ACP
   engine, in that engine's own Working Directory or else a private folder
   Station makes for the chat; the chip and list say which.
-- **⋯** holds **Use a visual skill**.
+- **⋯** holds **Use a visual skill** while the **Visual skills** Feature
+  Preview is on; with it off there is no **⋯**.
 
 **Run a task…** opens **Run on a Station** with your message, Project and any explicit
 Station/engine/model/options choice kept. Its tooltip names the current Station
@@ -669,6 +670,10 @@ initials. A row for work on another Station shows
 neither, since its project belongs to that Station.
 
 ### Prepare a visual skill
+
+Visual skills are a Feature Preview: turn on **Visual skills** in
+**Settings → Advanced → Feature previews** first. Off, the start composer and
+the agent list offer none, even if one is installed.
 
 Choose **⋯** then **Use a visual skill** in the start composer to browse
 installed visual skills, including when only one Agent is ready. A card describes its purpose, example and owning plugin. Choose
