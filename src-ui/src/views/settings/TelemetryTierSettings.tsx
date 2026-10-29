@@ -40,7 +40,9 @@ export function TelemetryTierSettings({
   noticeError,
   onDetailedIntent,
   choiceAuthority,
+  onChoiceRetry,
 }: {
+  onChoiceRetry?: () => void;
   /**
    * What the server says this caller may choose. `'loading'`/`'error'` offer
    * nothing; absent is an older host (or a caller that does not gate).
@@ -142,7 +144,10 @@ export function TelemetryTierSettings({
           selectable={(tier) => may(tier, ['kontour', 'operator'])}
           confirmation={detailedConfirmation(choiceAuthority)}
         />
-        <TelemetryChoiceLimit authority={choiceAuthority} />
+        <TelemetryChoiceLimit
+          authority={choiceAuthority}
+          onRetry={onChoiceRetry}
+        />
         {primaryChoice !== 'full' &&
           (kontourChoice === 'full' || additionalChoice === 'full') &&
           disclosure && (

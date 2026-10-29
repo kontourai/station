@@ -644,15 +644,35 @@ test.each([
  * a write against the saved choice or, with none saved, the default with DNT
  * ignored. The disclosure reports that baseline (`capabilities.defaults`), and
  * the route's lower/raise answer for a standard device agrees with it,
- * including when the environment default is not Lite.
+ * including when the environment default or the operator's destination
+ * policy (`telemetryPublisherPolicy`) makes it something other than Lite.
  */
 test.each([
-  { environmentTier: undefined, baseline: 'lite', keepStatus: 200 },
-  { environmentTier: 'off', baseline: 'off', keepStatus: 403 },
+  {
+    environmentTier: undefined,
+    policy: undefined,
+    doNotTrack: '1',
+    baseline: 'lite',
+    keepStatus: 200,
+  },
+  {
+    environmentTier: 'off',
+    policy: undefined,
+    doNotTrack: '1',
+    baseline: 'off',
+    keepStatus: 403,
+  },
+  {
+    environmentTier: undefined,
+    policy: { kontour: 'off', operator: 'off' },
+    doNotTrack: '',
+    baseline: 'off',
+    keepStatus: 403,
+  },
 ] as const)(
-  'under DNT the reported baseline is the one PUT /config/app uses (environment tier $environmentTier)',
-  async ({ environmentTier, baseline, keepStatus }) => {
-    vi.stubEnv('DO_NOT_TRACK', '1');
+  'the reported baseline is the one PUT /config/app uses (environment tier $environmentTier, policy $policy, DNT "$doNotTrack")',
+  async ({ environmentTier, policy, doNotTrack, baseline, keepStatus }) => {
+    vi.stubEnv('DO_NOT_TRACK', doNotTrack);
     vi.stubEnv('STATION_TELEMETRY_TIER', environmentTier);
     vi.stubEnv('STATION_PRODUCT_TELEMETRY_ENABLED', undefined);
     vi.stubEnv('STATION_TELEMETRY_ENABLED', undefined);
@@ -660,11 +680,13 @@ test.each([
     vi.stubEnv('STATION_TELEMETRY_ENDPOINT', undefined);
     const home = makeTempDir('station-telemetry-dnt-baseline-');
     ensureStationHomeSchemaSync(home);
-    // No saved choice: the baseline is the DNT-ignored default.
+    // No saved choice: the baseline is the DNT-ignored default. The operator
+    // sets a destination policy in person; it is written here directly.
     await saveAppConfigFile(home, {
       defaultModel: '',
       invokeModel: '',
       structureModel: '',
+      ...(policy ? { telemetryPublisherPolicy: policy } : {}),
     });
     const loader = new ConfigLoader({
       projectHomeDir: home,
@@ -748,10 +770,11 @@ test.each([
         };
       }>(await call('/api/usage-telemetry/disclosure'));
       // DNT forces the effective tier Off; that is NOT the write baseline.
-      expect(disclosure.data.publishers.operator).toMatchObject({
-        tier: 'off',
-        reason: 'DNT',
-      });
+      if (doNotTrack)
+        expect(disclosure.data.publishers.operator).toMatchObject({
+          tier: 'off',
+          reason: 'DNT',
+        });
       expect(disclosure.data.capabilities.defaults).toEqual({
         kontour: baseline,
         operator: baseline,

@@ -1299,13 +1299,20 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       telemetryPublishers={telemetryStatus.data?.publishers}
                       telemetryDisclosure={telemetryDisclosure.data}
                       // Nothing is offered until the disclosure has settled:
-                      // its capabilities say what this caller may choose.
+                      // its capabilities say what this caller may choose. Only
+                      // the MAIN read decides that; a failed Kontour author
+                      // read does not. Capabilities from an earlier successful
+                      // read still hold while a refetch fails.
                       telemetryChoiceAuthority={
                         !telemetryDisclosure.settled
                           ? 'loading'
-                          : telemetryDisclosure.isError
+                          : telemetryDisclosure.readError &&
+                              !telemetryDisclosure.data?.capabilities
                             ? 'error'
                             : telemetryDisclosure.data?.capabilities
+                      }
+                      onTelemetryChoiceRetry={() =>
+                        void invalidate(['usage-telemetry-disclosure'])
                       }
                       telemetryCounts={telemetryStatus.data?.liteInventory}
                       telemetryNoticeRef={telemetryNotice.element}

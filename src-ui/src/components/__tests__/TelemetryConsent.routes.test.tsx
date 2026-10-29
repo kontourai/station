@@ -143,6 +143,8 @@ async function publisherFixture(
      * let the disclosure report that caller's capabilities.
      */
     callerScope?: string;
+    /** The operator's destination policy (`telemetryPublisherPolicy`). */
+    policy?: AppConfig['telemetryPublisherPolicy'];
   } = {},
 ) {
   const home = makeTempDir('station-telemetry-ui-');
@@ -150,6 +152,7 @@ async function publisherFixture(
   await loader.loadAppConfig();
   bridge.config = await loader.updateAppConfig({
     telemetryTier: options.choices ?? { operator: 'lite', kontour: 'lite' },
+    ...(options.policy ? { telemetryPublisherPolicy: options.policy } : {}),
     ...(endpointFromEnv || options.endpoint === false
       ? {}
       : { productTelemetryEndpoint: 'https://receiver.test/events' }),
@@ -1610,10 +1613,12 @@ async function pairedSettings(
   callerScope: string,
   doNotTrack: string | undefined,
   choices: AppConfig['telemetryTier'],
+  policy?: AppConfig['telemetryPublisherPolicy'],
 ) {
   const fixture = await publisherFixture(doNotTrack, undefined, {
     choices,
     callerScope,
+    policy,
   });
   const disclosure = (
     await (
@@ -1711,3 +1716,40 @@ test.each([
     }
   },
 );
+
+test('with an Off destination default and no saved choice, a standard device is not offered Anonymous counts', async () => {
+  // The baseline is the server-reported default, not a client guess of Lite:
+  // the operator's destination policy makes it Off, so Anonymous counts is a
+  // raise this device may not make.
+  const f = await pairedSettings(
+    STANDARD_SCOPE,
+    undefined,
+    {},
+    { kontour: 'off', operator: 'off' },
+  );
+  try {
+    expect(
+      screen.getByRole('radio', { name: SHARING_LABELS.off }),
+    ).toHaveProperty('disabled', false);
+    expect(
+      screen.getByRole('radio', { name: SHARING_LABELS.lite }),
+      'offered a raise above the Off default',
+    ).toHaveProperty('disabled', true);
+    expect(
+      screen
+        .getByRole('combobox', { name: 'Kontour telemetry' })
+        .querySelector<HTMLOptionElement>('option[value="lite"]')?.disabled,
+    ).toBe(true);
+    // And the same device's write of it is refused by the real route.
+    const raise = await bridge.request('http://station.test/config/app', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        telemetryTier: { kontour: 'lite', operator: 'lite' },
+      }),
+    });
+    expect(raise.status).toBe(403);
+  } finally {
+    f.cleanup();
+  }
+});

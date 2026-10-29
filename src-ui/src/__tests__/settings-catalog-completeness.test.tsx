@@ -330,6 +330,8 @@ let telemetryDisclosureSettled = true;
 let telemetryDisclosureIsError = false;
 /** What the disclosure reports this caller may choose; absent = older host. */
 let telemetryCapabilities: TelemetryChoiceCapabilities | undefined;
+/** Only the MAIN disclosure read failed (`isError` also covers the author read). */
+let telemetryDisclosureReadError = false;
 let telemetryDnt = false;
 let telemetryStatusFailed = false;
 vi.mock('../hooks/useTelemetryStatus', async (importOriginal) => {
@@ -400,6 +402,7 @@ vi.mock('../components/UsageTelemetryDisclosure', async (importOriginal) => {
               },
             },
       isError: telemetryDisclosureIsError,
+      readError: telemetryDisclosureReadError,
       settled: telemetryDisclosureSettled,
       outstanding: false,
     }),
@@ -581,6 +584,7 @@ describe('settings catalog completeness', () => {
     telemetryDisclosureSettled = true;
     telemetryDisclosureIsError = false;
     telemetryCapabilities = undefined;
+    telemetryDisclosureReadError = false;
     setDeviceSetting.mockClear();
     resetDeviceSetting.mockClear();
     resetDeviceSettings.mockClear();
@@ -3002,10 +3006,31 @@ describe('settings catalog completeness', () => {
         disabled: [true, true, true],
       },
       {
-        state: 'errored',
+        // Withdrawing must stay possible: the server still enforces.
+        state: 'the main read failed',
         settled: true,
         isError: true,
-        disabled: [true, true, true],
+        readError: true,
+        disabled: [false, true, true],
+        limit:
+          'Sharing options could not be loaded. You can still turn sharing off. Try again',
+      },
+      {
+        // The author read says nothing about what this caller may choose.
+        state: 'only the Kontour author read failed',
+        settled: true,
+        isError: true,
+        readError: false,
+        capabilities: {
+          acknowledge: false,
+          recordNotice: false,
+          lower: true,
+          raise: false,
+          defaults: { kontour: 'lite', operator: 'lite' },
+        } satisfies TelemetryChoiceCapabilities,
+        disabled: [false, false, true],
+        limit:
+          'This device can keep or reduce sharing. More sharing is chosen on the host computer.',
       },
       {
         state: 'settled on an older host',
@@ -3026,25 +3051,61 @@ describe('settings catalog completeness', () => {
         } satisfies TelemetryChoiceCapabilities,
         disabled: [false, false, true],
       },
-    ])('$state', async ({ settled, isError, capabilities, disabled }) => {
+    ] as {
+      state: string;
+      settled: boolean;
+      isError: boolean;
+      readError?: boolean;
+      capabilities?: TelemetryChoiceCapabilities;
+      disabled: boolean[];
+      limit?: string;
+    }[])(
+      '$state',
+      async ({
+        settled,
+        isError,
+        readError = false,
+        capabilities,
+        disabled,
+        limit,
+      }) => {
+        telemetryEndpointConfigured = false;
+        telemetryDisclosureSettled = settled;
+        telemetryDisclosureIsError = isError;
+        telemetryDisclosureReadError = readError;
+        telemetryCapabilities = capabilities;
+        window.history.replaceState({}, '', '/settings?view=telemetry');
+        configSnapshot = {
+          config: {
+            ...INITIAL_CONFIG,
+            telemetryTier: { kontour: 'lite', operator: 'lite' },
+          },
+          dataUpdatedAt: 1,
+        };
+        await renderSettings();
+        expect(radios()).toEqual(disabled);
+        if (limit)
+          expect(screen.getByTestId('usage-sharing-limit').textContent).toBe(
+            limit,
+          );
+      },
+    );
+
+    test('after a failed main read, Try again re-reads the disclosure', async () => {
       telemetryEndpointConfigured = false;
-      telemetryDisclosureSettled = settled;
-      telemetryDisclosureIsError = isError;
-      telemetryCapabilities = capabilities;
+      telemetryDisclosureIsError = true;
+      telemetryDisclosureReadError = true;
       window.history.replaceState({}, '', '/settings?view=telemetry');
-      configSnapshot = {
-        config: {
-          ...INITIAL_CONFIG,
-          telemetryTier: { kontour: 'lite', operator: 'lite' },
-        },
-        dataUpdatedAt: 1,
-      };
       await renderSettings();
-      expect(radios()).toEqual(disabled);
-      if (isError)
-        expect(screen.getByTestId('usage-sharing-limit').textContent).toBe(
-          "Sharing choices are unavailable: this device's access could not be loaded.",
-        );
+      invalidateQuery.mockClear();
+      fireEvent.click(
+        within(screen.getByTestId('usage-sharing-limit')).getByRole('button', {
+          name: 'Try again',
+        }),
+      );
+      expect(invalidateQuery).toHaveBeenCalledWith([
+        'usage-telemetry-disclosure',
+      ]);
     });
   });
 

@@ -320,7 +320,13 @@ async function acknowledgementData(response: Response): Promise<Disclosure> {
  */
 export interface UsageTelemetryDisclosureState {
   data: Disclosure | undefined;
+  /** The main read OR the Kontour author read failed. */
   isError: boolean;
+  /**
+   * The main disclosure read failed. The author read can fail on its own; it
+   * says nothing about what this caller may choose.
+   */
+  readError: boolean;
   /** The query has answered — with an inventory or with a failure. */
   settled: boolean;
   /** There is an unacknowledged inventory this page has not dismissed. */
@@ -507,6 +513,7 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
       : undefined,
     dismissalRevision,
     isError: query.isError || author.isError,
+    readError: query.isError,
     settled:
       !query.isLoading &&
       (!query.data?.publishers || !status.isLoading) &&

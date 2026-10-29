@@ -5,6 +5,7 @@ import type {
   TelemetryTierChoices,
 } from '@kontourai/station-contracts/product-telemetry';
 import { type Ref, useId } from 'react';
+import { Button } from './Button';
 import { PageCallout } from './PageCallout';
 import './UsageTelemetryDisclosure.css';
 
@@ -18,10 +19,10 @@ const TIER_RANK = { off: 0, lite: 1, full: 2 } as const;
 
 /**
  * What the server has said this caller may do with the usage-sharing choice.
- * `'loading'` and `'error'` mean the disclosure has not settled successfully,
- * so nothing is known yet and nothing is offered; `undefined` means an older
- * host that settled without reporting capabilities, which keeps the earlier,
- * ungated behaviour.
+ * `'loading'`: not known yet, so nothing is offered. `'error'`: the read
+ * failed; only Don't share is offered, because withdrawing must stay possible
+ * (the server still enforces whether this caller may write). `undefined`: an
+ * older host that settled without capabilities, ungated as before.
  */
 export type TelemetryChoiceAuthority =
   | TelemetryChoiceCapabilities
@@ -61,7 +62,8 @@ export function canChooseTelemetryTier(
   dnt: boolean,
 ): boolean {
   if (authority === undefined) return true;
-  if (authority === 'loading' || authority === 'error') return false;
+  if (authority === 'loading') return false;
+  if (authority === 'error') return tier === 'off';
   if (!authority.lower) return false;
   if (tier === 'full' && !dnt && !authority.acknowledge) return false;
   return (
@@ -86,19 +88,29 @@ export function detailedConfirmation(
 /** One line saying why some choices are unavailable, or nothing. */
 export function TelemetryChoiceLimit({
   authority,
+  onRetry,
 }: {
   authority: TelemetryChoiceAuthority;
+  onRetry?: () => void;
 }) {
   if (authority === undefined || authority === 'loading') return null;
-  if (authority !== 'error' && authority.raise && authority.acknowledge)
-    return null;
+  if (authority === 'error')
+    return (
+      <p data-testid="usage-sharing-limit">
+        Sharing options could not be loaded. You can still turn sharing off.{' '}
+        {onRetry && (
+          <Button variant="secondary" onClick={onRetry}>
+            Try again
+          </Button>
+        )}
+      </p>
+    );
+  if (authority.raise && authority.acknowledge) return null;
   return (
     <p data-testid="usage-sharing-limit">
-      {authority === 'error'
-        ? "Sharing choices are unavailable: this device's access could not be loaded."
-        : authority.lower
-          ? 'This device can keep or reduce sharing. More sharing is chosen on the host computer.'
-          : 'Usage sharing is chosen on the host computer.'}
+      {authority.lower
+        ? 'This device can keep or reduce sharing. More sharing is chosen on the host computer.'
+        : 'Usage sharing is chosen on the host computer.'}
     </p>
   );
 }

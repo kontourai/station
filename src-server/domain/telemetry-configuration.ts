@@ -115,7 +115,6 @@ export function resolveTelemetryConfiguration(
   };
 }
 
-/** Compatibility projection for the existing acknowledged operator event stream. */
 /**
  * The tier each destination's usage-sharing write is compared against when it
  * has no saved choice: its default with Do Not Track ignored, because DNT
@@ -144,6 +143,7 @@ export function telemetryChoiceDefaults(
   );
 }
 
+/** Compatibility projection for the existing acknowledged operator event stream. */
 export function resolveProductTelemetryEnabled(
   config: AppConfig,
   environment: NodeJS.ProcessEnv,

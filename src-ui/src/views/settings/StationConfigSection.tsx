@@ -171,6 +171,7 @@ export function StationConfigSection({
   telemetryPublishers,
   telemetryDisclosure,
   telemetryChoiceAuthority,
+  onTelemetryChoiceRetry,
   savedTelemetryChoices,
   telemetryStatusError,
   onTelemetryFeedback,
@@ -208,6 +209,8 @@ export function StationConfigSection({
   telemetryDisclosure?: SharingDisclosure;
   /** See `TelemetryTierSettings`'s `choiceAuthority`. */
   telemetryChoiceAuthority?: TelemetryChoiceAuthority;
+  /** Re-reads the disclosure after `telemetryChoiceAuthority` is `'error'`. */
+  onTelemetryChoiceRetry?: () => void;
   telemetryPublishers?: Partial<
     Record<TelemetryPublisherId, TelemetryPublisherStatus>
   >;
@@ -293,6 +296,7 @@ export function StationConfigSection({
         publishers={telemetryPublishers}
         disclosure={telemetryDisclosure}
         choiceAuthority={telemetryChoiceAuthority}
+        onChoiceRetry={onTelemetryChoiceRetry}
         counts={telemetryCounts}
         noticeRef={telemetryNoticeRef}
         noticeError={telemetryNoticeError}

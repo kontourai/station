@@ -97,8 +97,10 @@ QR-paired device therefore is not prompted. The prompt, Settings and Advanced
 controls disable each choice the server would refuse and say that more sharing
 is chosen on the host computer. A device that cannot acknowledge is told that
 Detailed is confirmed on the host computer instead of being asked to save it.
-Settings offers no choice until the disclosure has loaded; if it fails to load,
-choices stay unavailable. Hosts that do not report `capabilities` keep the
+Settings offers no choice until the disclosure has loaded. If that read fails,
+only Don't share is offered, with Try again; the server still decides whether
+the write is allowed. A failed read of the Kontour destination's disclosure
+alone does not limit the choices. Hosts that do not report `capabilities` keep the
 earlier behavior.
 `STATION_TELEMETRY_TIER` and the legacy boolean environment aliases supply
 defaults, reported as `environment`, and cannot grant Full. Hosts that previously
