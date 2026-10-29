@@ -755,7 +755,10 @@ describe('ChatDockBody memory-exhaustion marker', () => {
     ])(
       'the newest turn’s kill (%s) gets the card, current copy and Continue',
       async (_label, code, reason) => {
-        sdk.fetchWindow.mockResolvedValue(stored(code, reason));
+        sdk.fetchWindow.mockResolvedValue({
+          ...stored(code, reason),
+          memoryContinuation: { eligible: true, turnId: 'turn-1' },
+        });
         sdk.continueAfterMemoryExhaustion.mockResolvedValue('queued');
         renderDock(reopened(), vi.fn());
         expect(
@@ -780,6 +783,21 @@ describe('ChatDockBody memory-exhaustion marker', () => {
         );
       },
     );
+
+    test('an older server leaves the translated failure visible without Continue', async () => {
+      sdk.fetchWindow.mockResolvedValue(
+        stored('engine-memory-exhausted', message),
+      );
+      renderDock(reopened(), vi.fn());
+      expect(
+        await screen.findByText(
+          /engine ran out of memory/i,
+          {},
+          { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+        ),
+      ).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+    });
 
     test('a kill a person has moved on from reads in current copy, with no Continue', async () => {
       sdk.fetchWindow.mockResolvedValue(
