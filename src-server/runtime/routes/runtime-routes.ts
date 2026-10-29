@@ -32,6 +32,7 @@ import { createHomeTransferRoomRoutes } from '../../routes/environments/home-tra
 import { createLiveSurfaceRoutes } from '../../routes/live-surface.js';
 import { createEngineOAuthProxyRoutes } from '../../routes/mcp/engine-oauth-proxy-route.js';
 import { createAccountPreferencesRoutes } from '../../routes/me/account-preferences.js';
+import { createPersonNotificationRoutes } from '../../routes/me/person-notifications.js';
 import { createMediaToolsRoutes } from '../../routes/media-tools.js';
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
 import { createAnalyticsSavedViewRoutes } from '../../routes/operations/analytics-saved-views.js';
@@ -1084,6 +1085,7 @@ export interface ConfigureRuntimeRoutesContext {
   /** The Project board aggregate; composed here when absent. */
   workItemProviderService?: Pick<WorkItemProviderService, 'listWorkItems'>;
   orchestrationService: OrchestrationService;
+  nativeForkStoredReadBinder?: import('../../security/native-fork-read-admission.js').NativeForkReadAdmissionDomain['bindAtConversationMount'];
   /** Diagnostics sampler and orchestration's independent engine-start lease. */
   resourcePosture?: import('../../services/infra/resource-posture.js').RuntimeResourcePostureProbe;
   /** Runtime-owned durable operation authority shared with fleet dispatch. */
@@ -9519,6 +9521,13 @@ export function configureRuntimeRoutes(
       },
     }),
   );
+  // Bind the SAME domain as the constructor's verifier to the real final-Request
+  // resolver. Only retained native intents consume handles; replay stays ordinary.
+  const nativeForkStoredReadMount = context.nativeForkStoredReadBinder?.(
+    conversationReadAuthorityForRequest,
+  );
+  if (nativeForkStoredReadMount?.kind === 'unavailable')
+    context.logger.warn('Native fork stored-read mount unavailable');
   context.app.route(
     '/agents',
     createConversationRoutes(
@@ -9564,6 +9573,13 @@ export function configureRuntimeRoutes(
       }),
       conversationReadAuthorityForContext,
       stationControlDispatchScope,
+      {
+        admission:
+          nativeForkStoredReadMount?.kind === 'bound'
+            ? nativeForkStoredReadMount
+            : undefined,
+        service: context.orchestrationService,
+      },
     ),
   );
   // The bytes behind a transcript's attachment chips. Separate from
@@ -10073,6 +10089,14 @@ export function configureRuntimeRoutes(
       context.logger,
       conversationReadAuthorityForRequest,
     ),
+  );
+  context.app.route(
+    '/api/me',
+    createPersonNotificationRoutes({
+      service: notificationService,
+      resolvePrincipal: resolveOrchestrationRequestPrincipal,
+      isInternal: (request) => !!stationControlRequestAuthority(request),
+    }),
   );
   context.app.route(
     '/notifications',
