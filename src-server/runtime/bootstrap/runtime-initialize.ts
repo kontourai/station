@@ -56,6 +56,10 @@ import {
 import type { AttachedSessionSource } from '../../providers/sessions/attached-session-source.js';
 import { attachVoiceWebSocket } from '../../routes/operations/voice.js';
 import {
+  createRuntimeNativeForkReadAdmissionDomain,
+  type NativeForkReadAdmissionDomain,
+} from '../../security/native-fork-read-admission.js';
+import {
   assertRuntimeHttpRouteCoverage,
   credentialAuthorizedForScope,
   PAIRING_WS_SCOPES,
@@ -185,6 +189,7 @@ export interface InitializeRuntimeDeps {
   environmentSecurityService: Pick<
     EnvironmentSecurityService,
     | 'verifyCredential'
+    | 'authorizeCredential'
     | 'resolveGrantedScope'
     // #3586: the voice WebSocket refuses account-bound devices and tokens.
     | 'identifyDevice'
@@ -313,12 +318,14 @@ export interface InitializeRuntimeDeps {
   /** Publishes services captured by route registration before VoltAgent calls configureFullApp. */
   onRouteServicesReady: (services: {
     orchestrationService: OrchestrationService;
+    nativeForkStoredReadBinder?: NativeForkReadAdmissionDomain['bindAtConversationMount'];
     usageAggregator?: UsageAggregator;
   }) => void | Promise<void>;
   onVoltAgentCreated: (voltAgent: VoltAgent) => void;
 }
 
 interface InitializeRuntimeResult {
+  nativeForkStoredReadBinder: NativeForkReadAdmissionDomain['bindAtConversationMount'];
   registryPolicyApplication?: RegistryTrustPolicyApplication;
   appConfig: AppConfig;
   framework: RuntimeFramework;
@@ -568,7 +575,11 @@ export async function initializeRuntime(
   const idleSessionParkAfterMs = parseNonNegativeIntegerEnv(
     process.env.STATION_IDLE_SESSION_PARK_AFTER_MS,
   );
+  const nativeForkStoredReadDomain = createRuntimeNativeForkReadAdmissionDomain(
+    deps.environmentSecurityService,
+  );
   const orchestrationService = new OrchestrationService({
+    nativeForkStoredReadVerifier: nativeForkStoredReadDomain.verifyForService,
     ...(deps.hostImagesPreview
       ? { hostImagesPreview: deps.hostImagesPreview }
       : {}),
@@ -918,6 +929,8 @@ export async function initializeRuntime(
   // service that configureRoutes captures before constructing it.
   await onRouteServicesReady({
     orchestrationService,
+    nativeForkStoredReadBinder:
+      nativeForkStoredReadDomain.bindAtConversationMount,
     usageAggregator: nextUsageAggregator,
   });
 
@@ -1185,6 +1198,8 @@ export async function initializeRuntime(
 
   return {
     registryPolicyApplication,
+    nativeForkStoredReadBinder:
+      nativeForkStoredReadDomain.bindAtConversationMount,
     appConfig,
     framework,
     orchestrationService,

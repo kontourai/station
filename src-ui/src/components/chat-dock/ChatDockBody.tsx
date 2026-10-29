@@ -65,6 +65,7 @@ import {
 } from '../../utils/approvalMode';
 import { ambientContextForSend } from '../../utils/chatAmbientContext';
 import {
+  currentChatError,
   formatChatErrorDisplay,
   MEMORY_EXHAUSTION_CONTINUE_TEXT,
   MEMORY_EXHAUSTION_CONTINUING_DISPLAY,
@@ -1367,8 +1368,16 @@ export function ChatDockBody({
         const chatErrorMatch = eventBody.match(
           /^\[CHAT_ERROR(?::([\w-]+))?\]\s*([\s\S]*)$/,
         );
-        const chatErrorCode = chatErrorMatch?.[1];
-        const chatErrorText = chatErrorMatch?.[2];
+        // A failure stored in an older vocabulary reads as today's (#4266).
+        const chatError =
+          chatErrorMatch?.[2] !== undefined
+            ? currentChatError({
+                code: chatErrorMatch[1],
+                message: chatErrorMatch[2],
+              })
+            : undefined;
+        const chatErrorCode = chatError?.code;
+        const chatErrorText = chatError?.message;
         const translation =
           chatErrorText !== undefined
             ? translateChatError({

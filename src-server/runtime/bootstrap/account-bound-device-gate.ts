@@ -218,6 +218,20 @@ function isAccountBoundOwnTokenLeaf(path: string, method: string): boolean {
   );
 }
 
+/** A person's own notification feed and its read/dismiss mutations. */
+function isAccountBoundPersonNotificationLeaf(
+  path: string,
+  method: string,
+): boolean {
+  return (
+    ((method === 'GET' || method === 'HEAD') &&
+      path === '/api/me/notifications') ||
+    (method === 'POST' &&
+      /^\/api\/me\/notifications\/[^/]+\/read$/.test(path)) ||
+    (method === 'DELETE' && /^\/api\/me\/notifications\/[^/]+$/.test(path))
+  );
+}
+
 /**
  * #3586: what an account-tied personal access token may never reach, even
  * inside the account-bound allowlist: the account's own sign-in surface,
@@ -477,6 +491,7 @@ export function installAccountBoundDeviceGate(
         isAccountBoundLayoutLeaf(path, method) ||
         isTaskRelationshipHttpLeaf(method, path) ||
         isAccountBoundOwnTokenLeaf(path, method) ||
+        isAccountBoundPersonNotificationLeaf(path, method) ||
         (path === '/api/me/preferences' &&
           (method === 'GET' || method === 'HEAD' || method === 'PATCH')) ||
         path === '/api/account-auth' ||

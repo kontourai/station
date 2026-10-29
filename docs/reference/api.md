@@ -98,6 +98,25 @@ unset choices under the write lock. Preferences grant no execution access.
 See [account preference contracts](contracts.md#account-preferences) and
 [the SDK](sdk.md#account-preferences).
 
+## Person notifications
+
+`GET /api/me/notifications` returns `{ success: true, data: Notification[] }`
+for the authenticated request's resolved person. The server never accepts a
+person identifier from the caller. An operator sees that operator's personal
+feed here; the existing `/notifications` route remains the separate owner feed.
+Internal Agent callers and unbound Device identities cannot use the person feed.
+Account-bound Devices need the normal current account session and pairing scope.
+
+`POST /api/me/notifications/:id/read` returns the read outcome in
+`data.outcome`; `DELETE /api/me/notifications/:id` dismisses the entry. Both
+operate only on the caller's feed and return 404 when the id is absent there,
+including when another person owns it. The server records the verified
+device-credential identity as the surface, including the headless identity of
+a personal access token, or requires a valid `X-Station-Client-Session` for a
+caller without one. Responses carry `Cache-Control: no-store`. The feed is
+durable on this Station and keeps the latest 100 entries per person; push
+delivery and person-notification producers are separate work.
+
 ## Endpoint Legend
 
 - Method and path identify the route, not its permission tier.
@@ -2002,6 +2021,11 @@ there is no author confirmation to review. `GET /api/usage-telemetry/disclosure`
 `additionalHost` for an additional destination, including an environment-derived
 address. `GET /api/usage-telemetry/disclosure?publisher=kontour` returns the exact
 build destination for its separate, revision-bound acknowledgement.
+Each disclosure response, and the acknowledgement response, also carries
+`capabilities: { acknowledge, recordNotice, lower, raise, defaults }` for the
+calling credential, decided by the same gates as those writes (`defaults` is
+the DNT-ignored baseline a tier write is compared against); see
+[Usage telemetry](usage-telemetry.md).
 The two Lite sinks send independently after notice; the default Full receipt
 covers operator only; author Full uses a separate destination-bound receipt. `GET /api/usage-telemetry/outbox[?publisher=operator]`
 returns the bounded local payload ledger with `orchestration:read` authority. The optional `limit` is an integer from 1 to 200, defaults to 50, and selects the newest records after publisher filtering; invalid values return 400.
@@ -4701,8 +4725,15 @@ Hosted deployments mount only the session read; the first two answer 404 there.
 
 ### Continue after a memory kill
 
+An authorized `GET /api/orchestration/conversations/:conversationId/event-window`
+may include `memoryContinuation: { eligible, turnId? }`. This is the current
+server decision for a person's Continue, independent of the page's event cap.
+An absent field does not authorize a stored-event action. The POST checks
+current state and sender permission again.
+
 `POST /api/orchestration/conversations/:conversationId/memory-continuation`
 continues a conversation whose latest turn ended with `engine-memory-exhausted`
+(or a Codex memory kill stored before that code, as `isEngineMemoryExhaustedFailure` recognises)
 ([continuation module](../../src-server/services/orchestration/memory-exhaustion-continuation.ts)).
 It sends one Station-authored turn through the conversation inbox as the caller,
 under a key derived from the dead Session and turn, and answers 202 with that
