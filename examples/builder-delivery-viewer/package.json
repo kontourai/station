@@ -15,7 +15,7 @@
     "build": "../../station plugin build"
   },
   "dependencies": {
-    "@kontourai/flow-agents": "6.5.1",
+    "@kontourai/flow-agents": "9.7.0",
     "@kontourai/surface": "^6.2.1",
     "ajv": "^8.12.0"
   },
