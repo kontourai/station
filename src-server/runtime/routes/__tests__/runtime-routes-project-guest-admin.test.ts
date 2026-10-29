@@ -1964,7 +1964,7 @@ describe('project guest administration over the production composition', () => {
     }
     expect(calls).toBe(3);
     expect(response.status).toBe(403);
-    expect((await response.json()).details).toEqual({
+    expect((await readJson<{ details: unknown }>(response)).details).toEqual({
       sharing: 'undisclosed',
       canEnable: false,
     });
