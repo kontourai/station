@@ -687,8 +687,10 @@ codes (`CoordinatorRefusalCode`), `CoordinatorAttentionKind` (`needs-you`,
 `COORDINATOR_WAKE_MAX_ITEMS_PER_TURN`, `COORDINATOR_WAKE_MAX_PENDING_ITEMS`,
 the retry delays `COORDINATOR_WAKE_RETRY_DELAYS_MS`, the dedupe window
 `COORDINATOR_WAKE_DEDUPE_WINDOW_MS` and the queued-wake age limit
-`COORDINATOR_WAKE_QUEUED_MAX_AGE_MS`), `CoordinatorDelivery` (whether wakes are
-blocked and Station tools pending, returned with a designation), and
+`COORDINATOR_WAKE_QUEUED_MAX_AGE_MS`), `CoordinatorDelivery` (wake state,
+pending or unavailable tools, and whether the current Session restarted for
+tools, returned with a designation), the bounded `CoordinatorPictureItem`
+and its status and limits, and
 `coordinatorWakeClientTurnId` with its predicate
 `isCoordinatorWakeClientTurnId`. The handshake advertises the routes as
 `StationCapabilityFlags.coordinatorSession`, withdrawn on a hosted Station.
