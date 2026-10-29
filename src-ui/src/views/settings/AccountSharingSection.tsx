@@ -73,6 +73,11 @@ function sameChoice(a: AccountSharingChoice, b: AccountSharingChoice) {
     : !b.enabled;
 }
 
+function isLoopbackOrigin(origin: string): boolean {
+  const host = new URL(origin).hostname;
+  return ['localhost', '127.0.0.1', '[::1]'].includes(host);
+}
+
 function SharingControls({
   authority,
 }: {
@@ -220,6 +225,11 @@ function SharingControls({
     : undefined;
   const defaultOrigin =
     selectable.find((option) => option.origin === storedOrigin)?.origin ??
+    selectable.find(
+      (option) =>
+        !isLoopbackOrigin(option.origin) &&
+        new URL(option.origin).protocol === 'https:',
+    )?.origin ??
     selectable[0]?.origin ??
     '';
   const changed = !sameChoice(choice, active);
@@ -305,6 +315,12 @@ function SharingControls({
                       {option.unavailable &&
                         ` · ${UNAVAILABLE_LABEL[option.unavailable]}`}
                     </span>
+                    {isLoopbackOrigin(option.origin) && (
+                      <span className="settings__field-hint">
+                        This address works only on this computer; people on
+                        other devices can't reach it.
+                      </span>
+                    )}
                   </span>
                 </label>
               ))}

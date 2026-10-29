@@ -70,10 +70,64 @@ const off: AccountSharingSettingView = {
       sources: ['allowed-origin'],
       unavailable: 'requires-https',
     },
-    { origin: 'http://localhost:3141', sources: ['station-loopback'] },
+    { origin: 'http://localhost:3000', sources: ['station-loopback'] },
   ],
   restart: 'supervised',
 };
+
+test('prefers a reachable HTTPS address and labels loopback as local only', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () =>
+      reply({ ...off, origins: [off.origins[2], off.origins[0]] }),
+    ),
+  );
+  mount();
+  fireEvent.click(
+    await screen.findByRole('switch', {
+      name: 'Project sharing with local accounts',
+    }),
+  );
+  expect(
+    (
+      screen.getByRole('radio', {
+        name: new RegExp(OFFERED),
+      }) as HTMLInputElement
+    ).checked,
+  ).toBe(true);
+  expect(
+    screen.getByText(
+      "This address works only on this computer; people on other devices can't reach it.",
+    ),
+  ).toBeTruthy();
+});
+
+test('retains a remembered loopback address with its reachability warning', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () =>
+      reply({
+        ...off,
+        stored: { enabled: true, publicOrigin: 'http://localhost:3000' },
+      }),
+    ),
+  );
+  mount();
+  fireEvent.click(
+    await screen.findByRole('switch', {
+      name: 'Project sharing with local accounts',
+    }),
+  );
+  expect(
+    (screen.getByRole('radio', { name: /localhost:3000/ }) as HTMLInputElement)
+      .checked,
+  ).toBe(true);
+  expect(
+    screen.getByText(
+      "This address works only on this computer; people on other devices can't reach it.",
+    ),
+  ).toBeTruthy();
+});
 
 test('shows an unresolved pending change from the server', async () => {
   vi.stubGlobal(
@@ -184,7 +238,7 @@ test('the operator picks an offered address, confirms, and Station restarts into
   // The first selectable address is preselected; pick another, then back.
   const tailnet = screen.getByRole('radio', { name: new RegExp(OFFERED) });
   expect((tailnet as HTMLInputElement).checked).toBe(true);
-  fireEvent.click(screen.getByRole('radio', { name: /localhost:3141/ }));
+  fireEvent.click(screen.getByRole('radio', { name: /localhost:3000/ }));
   fireEvent.click(tailnet);
   fireEvent.click(screen.getByRole('button', { name: 'Review change' }));
   await waitFor(() =>

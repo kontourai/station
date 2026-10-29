@@ -246,7 +246,8 @@ describe('project guest administration over the production composition', () => {
     mkdirSync(join(owned, 'data'));
     process.env.STATION_HOME = join(owned, 'home');
     process.env.STATION_ROOT = join(owned, 'root');
-    process.env.ALLOWED_ORIGINS = ORIGIN;
+    process.env.ALLOWED_ORIGINS = `${ORIGIN},http://localhost:4322`;
+    vi.stubEnv('STATION_UI_PORT', '4322');
   });
   const roomClosers: (() => Promise<void>)[] = [];
   const agentClosers: (() => Promise<void>)[] = [];
@@ -260,6 +261,7 @@ describe('project guest administration over the production composition', () => {
     if (ambientOrigins === undefined) delete process.env.ALLOWED_ORIGINS;
     else process.env.ALLOWED_ORIGINS = ambientOrigins;
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     for (const directory of directories.splice(0))
       rmSync(directory, { recursive: true, force: true });
   });
@@ -3460,7 +3462,7 @@ describe('project guest administration over the production composition', () => {
     });
     for (const response of [
       await h.request(path, phone()),
-      await h.request(path, phone(apply('http://localhost:4321'))),
+      await h.request(path, phone(apply('http://localhost:4322'))),
     ]) {
       const body = await response.text();
       expect(response.status, body).toBe(403);
@@ -3474,8 +3476,8 @@ describe('project guest administration over the production composition', () => {
     const view = (await read.json()).data;
     expect(view.source).toBe('setting');
     expect(view.origins).toContainEqual({
-      origin: 'http://localhost:4321',
-      sources: ['station-loopback'],
+      origin: 'http://localhost:4322',
+      sources: ['allowed-origin', 'station-loopback'],
     });
     // A hand-typed origin Station does not offer is refused.
     const typed = await h.request(
@@ -3487,7 +3489,7 @@ describe('project guest administration over the production composition', () => {
     // An offered one is valid, but this test process has no supervisor.
     const unsupervised = await h.request(
       path,
-      h.operatorHeaders(apply('http://localhost:4321')),
+      h.operatorHeaders(apply('http://localhost:4322')),
     );
     expect(unsupervised.status).toBe(409);
     expect((await unsupervised.json()).code).toBe('restart_unavailable');
@@ -3530,7 +3532,7 @@ describe('project guest administration over the production composition', () => {
       },
       body: JSON.stringify({
         enabled: true,
-        publicOrigin: 'http://localhost:4321',
+        publicOrigin: 'http://localhost:4322',
       }),
     });
     const file = join(h.homeDir, 'config', 'account-sharing.json');
@@ -3592,7 +3594,7 @@ describe('project guest administration over the production composition', () => {
     expect(approved.status, await approved.clone().text()).toBe(200);
     expect(handoff).toHaveBeenCalledTimes(1);
     expect(JSON.parse(readFileSync(file, 'utf8')).pending).toMatchObject({
-      choice: { enabled: true, publicOrigin: 'http://localhost:4321' },
+      choice: { enabled: true, publicOrigin: 'http://localhost:4322' },
       ready: true,
     });
   });

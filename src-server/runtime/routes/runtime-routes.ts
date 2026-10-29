@@ -6857,22 +6857,29 @@ export function configureRuntimeRoutes(
         state: accountSharingState,
         preview: context.accountSharingPreview,
         origins: async () => {
-          const configured = process.env.STATION_TRUSTED_TAILSCALE_SERVE_ORIGIN;
-          const detected = await publicIngressOriginResolver(
-            context.port,
-          ).resolve();
+          const configuredUiPort = Number(process.env.STATION_UI_PORT);
+          const uiPort =
+            Number.isInteger(configuredUiPort) &&
+            configuredUiPort > 0 &&
+            configuredUiPort <= 65535
+              ? configuredUiPort
+              : undefined;
+          const detected = uiPort
+            ? await publicIngressOriginResolver(uiPort, {
+                ...process.env,
+                STATION_UI_PORT: String(uiPort),
+              }).resolve()
+            : undefined;
           return accountSharingOriginOptions({
             allowedOrigins: (process.env.ALLOWED_ORIGINS ?? '')
               .split(',')
               .map((origin) => origin.trim())
               .filter(Boolean),
             browserOrigins: resolveConfiguredRuntimeOrigins(context),
-            port: context.port,
+            apiPort: context.port,
+            uiPort,
             host: context.host,
-            tailscaleServeOrigins: [
-              ...(configured ? [configured] : []),
-              ...(detected ?? []),
-            ],
+            tailscaleServeOrigins: detected ?? [],
           });
         },
         supervised: () => isSupervisedEnvironment(),

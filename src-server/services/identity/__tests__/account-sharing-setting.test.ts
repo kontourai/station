@@ -193,7 +193,8 @@ describe('stored Project sharing setting (#4305)', () => {
 
 describe('offered sign-in origins (#4305)', () => {
   const base = {
-    port: 3141,
+    apiPort: 3141,
+    uiPort: 3000,
     browserOrigins: [
       'http://localhost:3141',
       'http://127.0.0.1:3141',
@@ -225,15 +226,15 @@ describe('offered sign-in origins (#4305)', () => {
         sources: ['tailscale-serve'],
         unavailable: 'not-a-browser-origin',
       },
-      { origin: 'http://localhost:3000', sources: ['allowed-origin'] },
+      {
+        origin: 'http://localhost:3000',
+        sources: ['allowed-origin', 'station-loopback'],
+      },
       {
         origin: 'http://192.168.1.20:3000',
         sources: ['allowed-origin'],
         unavailable: 'requires-https',
       },
-      { origin: 'http://localhost:3141', sources: ['station-loopback'] },
-      { origin: 'http://127.0.0.1:3141', sources: ['station-loopback'] },
-      { origin: 'http://[::1]:3141', sources: ['station-loopback'] },
     ]);
   });
 
@@ -252,7 +253,7 @@ describe('offered sign-in origins (#4305)', () => {
       expect(offeredAccountSharingOrigin(options, refused)).toBeUndefined();
   });
 
-  test('a bound host offers both schemes, and an allowed origin spelled differently is not admitted', () => {
+  test('a bound UI host is unavailable without HTTPS, and spelling must be admitted exactly', () => {
     const options = accountSharingOriginOptions({
       ...base,
       host: '100.64.0.7',
@@ -267,16 +268,41 @@ describe('offered sign-in origins (#4305)', () => {
         unavailable: 'not-a-browser-origin',
       },
       {
-        origin: 'https://100.64.0.7:3141',
-        sources: ['bound-host'],
-        unavailable: 'not-a-browser-origin',
-      },
-      {
-        origin: 'http://100.64.0.7:3141',
+        origin: 'http://100.64.0.7:3000',
         sources: ['bound-host'],
         unavailable: 'requires-https',
       },
+      {
+        origin: 'http://localhost:3000',
+        sources: ['station-loopback'],
+        unavailable: 'not-a-browser-origin',
+      },
     ]);
+  });
+
+  test('does not offer API listener origins even when allowed', () => {
+    const options = accountSharingOriginOptions({
+      ...base,
+      allowedOrigins: [
+        ...base.allowedOrigins,
+        'http://localhost:3141',
+        'https://station.example.test:3141',
+        'http://127.0.0.1:3000',
+        'http://[::1]:3000',
+      ],
+    });
+    expect(options.map((option) => option.origin)).not.toContain(
+      'http://localhost:3141',
+    );
+    expect(options.map((option) => option.origin)).not.toContain(
+      'https://station.example.test:3141',
+    );
+    expect(options.map((option) => option.origin)).not.toContain(
+      'http://127.0.0.1:3000',
+    );
+    expect(options.map((option) => option.origin)).not.toContain(
+      'http://[::1]:3000',
+    );
   });
 });
 

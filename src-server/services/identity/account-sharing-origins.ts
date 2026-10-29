@@ -19,7 +19,10 @@ export interface AccountSharingOriginInput {
   allowedOrigins: readonly string[];
   /** Every browser origin the API admits (`resolveStationBrowserOrigins`). */
   browserOrigins: readonly string[];
-  port: number;
+  /** The API listener is never a sign-in application. */
+  apiPort: number;
+  /** The UI listener, when its launcher reported one. */
+  uiPort?: number;
   host?: string;
   /** `STATION_TRUSTED_TAILSCALE_SERVE_ORIGIN` and daemon-detected Serve origins. */
   tailscaleServeOrigins: readonly string[];
@@ -45,6 +48,9 @@ export function accountSharingOriginOptions(
   const add = (value: string, source: AccountSharingOriginSource) => {
     const origin = bareOrigin(value);
     if (!origin) return;
+    const parsed = new URL(origin);
+    if (Number(parsed.port) === input.apiPort) return;
+    if (['127.0.0.1', '[::1]'].includes(parsed.hostname)) return;
     const known = sources.get(origin) ?? new Set();
     known.add(source);
     sources.set(origin, known);
@@ -52,16 +58,20 @@ export function accountSharingOriginOptions(
   for (const origin of input.tailscaleServeOrigins)
     add(origin, 'tailscale-serve');
   for (const origin of input.allowedOrigins) add(origin, 'allowed-origin');
-  if (input.host && input.host !== '0.0.0.0' && input.host !== '::') {
+  if (
+    input.uiPort &&
+    input.host &&
+    input.host !== '0.0.0.0' &&
+    input.host !== '::' &&
+    !['127.0.0.1', 'localhost', '[::1]', '::1'].includes(input.host)
+  ) {
     const authority =
       input.host.includes(':') && !input.host.startsWith('[')
         ? `[${input.host}]`
         : input.host;
-    add(`https://${authority}:${input.port}`, 'bound-host');
-    add(`http://${authority}:${input.port}`, 'bound-host');
+    add(`http://${authority}:${input.uiPort}`, 'bound-host');
   }
-  for (const host of ['localhost', '127.0.0.1', '[::1]'])
-    add(`http://${host}:${input.port}`, 'station-loopback');
+  if (input.uiPort) add(`http://localhost:${input.uiPort}`, 'station-loopback');
   // The gate compares exact strings, so admission is checked on the
   // configured spelling, not the normalized one.
   const admitted = new Set(input.browserOrigins);

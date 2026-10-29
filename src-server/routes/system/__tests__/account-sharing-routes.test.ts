@@ -77,10 +77,12 @@ async function harness(
           OFFERED,
           'http://192.168.1.20:3000',
           'http://localhost:3141',
+          'http://localhost:3000',
           'http://127.0.0.1:3141',
           'http://[::1]:3141',
         ],
-        port: 3141,
+        apiPort: 3141,
+        uiPort: 3000,
         tailscaleServeOrigins: [],
       }),
     supervised: () => options.supervised ?? true,
@@ -193,7 +195,7 @@ describe('Project sharing settings route (#4305)', () => {
     for (const publicOrigin of [
       'http://192.168.1.20:3000',
       'https://station.tailnet.ts.net/',
-      'http://localhost:3000',
+      'http://localhost:3141',
       'javascript:alert(1)',
     ]) {
       const response = await h.call('PUT', { enabled: true, publicOrigin });
