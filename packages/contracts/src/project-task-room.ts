@@ -8,6 +8,11 @@ import {
   type ChatAttachmentMimeType,
   validatePersistedChatAttachmentDescriptor,
 } from './chat-attachment.js';
+import {
+  boundaryText,
+  timestamp as canonicalTimestamp,
+  sha256,
+} from './contract-validation.js';
 
 export const PROJECT_TASK_ROOM_SCHEMA_VERSION =
   'station.project-task-room/v5' as const;
@@ -519,7 +524,7 @@ function roomId(value: unknown): value is string {
 }
 /** New collaboration IDs are exact; legacy room IDs retain their wire rules. */
 function memberId(value: unknown): value is string {
-  return roomId(value) && value.trim() === value && !hasExtendedControl(value);
+  return boundaryText(value, 256);
 }
 function roomFile(value: unknown): value is string {
   return (
@@ -548,19 +553,11 @@ function roomText(value: unknown, max: number): value is string {
   }
   return true;
 }
-function sha256(value: unknown): value is string {
-  return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
-}
 function nonnegative(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }
 function positive(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 1;
-}
-function canonicalTimestamp(value: unknown): value is string {
-  if (typeof value !== 'string' || value.length !== 24) return false;
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) && new Date(parsed).toISOString() === value;
 }
 export type ProjectTaskRoomOpenOutcome =
   | {
