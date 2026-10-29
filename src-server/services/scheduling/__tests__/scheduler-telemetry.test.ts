@@ -9,7 +9,7 @@ import { expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 
 const makeTempDir = trackTempDirs();
-test('scheduler metrics export opaque job ids instead of private job names', async () => {
+test('scheduler metrics use bounded attributes without per-job identifiers', async () => {
   const exporter = new InMemoryMetricExporter(
     AggregationTemporality.CUMULATIVE,
   );
@@ -53,8 +53,6 @@ test('scheduler metrics export opaque job ids instead of private job names', asy
       schedule: { kind: 'every', everyMs: 3_600_000 },
       prompt: 'round5-legacy-private-prompt',
     });
-    const jobs = await scheduler.listJobs();
-    const ids = jobs.map((job) => job.unattendedPrincipal!.jobId);
     await scheduler.runJob('round4-metrics-private-job');
     await scheduler.runJob('round5-legacy-private-job');
     await provider.forceFlush();
@@ -66,8 +64,7 @@ test('scheduler metrics export opaque job ids instead of private job names', asy
     const points = schedulerMetrics.flatMap((metric) =>
       metric.dataPoints.map((point) => point.attributes),
     );
-    for (const id of ids)
-      expect(points.some((point) => point.job_id === id)).toBe(true);
+    expect(points.every((point) => !Object.hasOwn(point, 'job_id'))).toBe(true);
     expect(points.some((point) => point.status === 'success')).toBe(true);
     expect(points.some((point) => point.status === 'error')).toBe(true);
     expect(points.every((point) => !Object.hasOwn(point, 'job'))).toBe(true);

@@ -344,14 +344,8 @@ export async function executeSchedulerJobAttempt({
         durationSecs,
       };
     }
-    observe(() =>
-      schedulerJobRuns.add(1, { job_id: receipt.jobId, status: 'success' }),
-    );
-    observe(() =>
-      schedulerJobDuration.record(durationSecs * 1000, {
-        job_id: receipt.jobId,
-      }),
-    );
+    observe(() => schedulerJobRuns.add(1, { status: 'success' }));
+    observe(() => schedulerJobDuration.record(durationSecs * 1000));
     observe(() =>
       broadcast({
         event: 'job.completed',
@@ -405,14 +399,8 @@ export async function executeSchedulerJobAttempt({
         durationSecs,
       };
     }
-    observe(() =>
-      schedulerJobRuns.add(1, { job_id: receipt.jobId, status: 'error' }),
-    );
-    observe(() =>
-      schedulerJobDuration.record(durationSecs * 1000, {
-        job_id: receipt.jobId,
-      }),
-    );
+    observe(() => schedulerJobRuns.add(1, { status: 'error' }));
+    observe(() => schedulerJobDuration.record(durationSecs * 1000));
     await announceSchedulerJobFailure({
       job: job.name,
       id,
