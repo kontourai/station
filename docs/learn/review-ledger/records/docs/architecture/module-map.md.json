@@ -1456,7 +1456,15 @@
 
     "src-server/services/orchestration/__tests__/conversation-native-fork-effect.test.ts",
 
-    "scripts/lib/heavy-check-slots.mjs"
+    "scripts/lib/heavy-check-slots.mjs",
+
+    "src-server/services/projects/task-browser-recording.ts",
+
+    "src-server/services/walkthroughs/task-walkthrough-store.ts",
+
+    "src-ui/src/views/task-workspace/review/TaskReviewClips.tsx",
+
+    "src-ui/src/views/task-workspace/review/ReviewItemList.tsx"
   ],
 
   "checks": [

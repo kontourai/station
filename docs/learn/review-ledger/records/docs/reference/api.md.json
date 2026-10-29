@@ -606,7 +606,13 @@
 
     "src-server/routes/orchestration/task-review-station-control.ts",
 
-    "src-server/runtime/routes/__tests__/runtime-routes-task-review-engine.test.ts"
+    "src-server/runtime/routes/__tests__/runtime-routes-task-review-engine.test.ts",
+
+    "src-server/services/projects/task-browser-recording.ts",
+
+    "src-server/services/walkthroughs/task-walkthrough-store.ts",
+
+    "src-server/tools/station-control-browser-tools.ts"
   ],
 
   "checks": [
