@@ -454,15 +454,15 @@ export class ProjectTaskRoomRuntime {
     const agents = new Set<string>();
     const sessions = new Set<string>();
     for (const record of result.records) {
-      if (
-        record.principal.kind === 'operator' &&
-        !people.has(record.principal.operatorId)
-      ) {
-        people.add(record.principal.operatorId);
-        const name = await this.#deps.readDisplayName?.(
-          record.principal.operatorId,
-        );
-        if (name) this.#displayNames.set(record.principal.operatorId, name);
+      if (record.principal.kind !== 'agent') {
+        const personId =
+          record.principal.kind === 'member'
+            ? record.principal.principalId
+            : record.principal.operatorId;
+        if (people.has(personId)) continue;
+        people.add(personId);
+        const name = await this.#deps.readDisplayName?.(personId);
+        if (name) this.#displayNames.set(personId, name);
       } else if (record.principal.kind === 'agent') {
         if (!agents.has(record.principal.agentId)) {
           agents.add(record.principal.agentId);
@@ -4525,11 +4525,7 @@ export class ProjectTaskRoomRuntime {
           receiptId: issued.receiptId,
           capability: required,
           scope: currentScope,
-          principal: {
-            kind: 'operator',
-            operatorId: principal.operatorId,
-            deviceId: principal.deviceId,
-          },
+          principal: roomPersonPrincipal(principal),
           policyRevision: this.#roomPolicyRevision(currentScope),
         },
       };
@@ -4559,11 +4555,7 @@ export class ProjectTaskRoomRuntime {
         receiptId: issued.receiptId,
         capability: required,
         scope: settledScope,
-        principal: {
-          kind: 'operator',
-          operatorId: currentPrincipal.operatorId,
-          deviceId: currentPrincipal.deviceId,
-        },
+        principal: roomPersonPrincipal(currentPrincipal),
         policyRevision: this.#roomPolicyRevision(settledScope),
       },
     };
@@ -4607,6 +4599,21 @@ function roomRequestCapability(capability: RoomCapability): RequestCapability {
     ? capability
     : 'other';
 }
+function roomPersonPrincipal(
+  principal: RequestPrincipal,
+): ProjectTaskRoomPrincipal {
+  return principal.member
+    ? {
+        kind: 'member',
+        principalId: principal.operatorId,
+        deviceId: principal.deviceId,
+      }
+    : {
+        kind: 'operator',
+        operatorId: principal.operatorId,
+        deviceId: principal.deviceId,
+      };
+}
 function samePrincipal(a: RequestPrincipal, b: RequestPrincipal) {
   return (
     a.member === b.member &&
@@ -4626,9 +4633,15 @@ function sameDocument(
   );
 }
 /** A live actor is a paired-device identity, never the first room caller. */
-function actorIdFor(principal: RequestPrincipal) {
+function actorIdFor(
+  principal:
+    | RequestPrincipal
+    | Extract<ProjectTaskRoomPrincipal, { kind: 'operator' | 'member' }>,
+) {
+  const personId =
+    principal.kind === 'member' ? principal.principalId : principal.operatorId;
   return `human:${createHash('sha256')
-    .update(`${principal.operatorId}\u0000${principal.deviceId}`)
+    .update(`${personId}\u0000${principal.deviceId}`)
     .digest('hex')}`;
 }
 
@@ -4710,6 +4723,7 @@ function parsePersistedRecovery(value: unknown):
         ...(Object.hasOwn(item.principal, 'displayName')
           ? ['displayName']
           : []),
+        ...(Object.hasOwn(item.principal, 'member') ? ['member'] : []),
       ]) ||
       item.principal.kind !== 'granted' ||
       !boundedId(item.principal.operatorId) ||
@@ -4717,6 +4731,7 @@ function parsePersistedRecovery(value: unknown):
       !boundedId(item.principal.policyRevision) ||
       (item.principal.displayName !== undefined &&
         !boundedId(item.principal.displayName)) ||
+      (item.principal.member !== undefined && item.principal.member !== true) ||
       authorities.has(item.token)
     )
       return undefined;
@@ -4726,6 +4741,7 @@ function parsePersistedRecovery(value: unknown):
         operatorId: item.principal.operatorId,
         deviceId: item.principal.deviceId,
         policyRevision: item.principal.policyRevision,
+        ...(item.principal.member === true ? { member: true as const } : {}),
         ...(typeof item.principal.displayName === 'string'
           ? { displayName: item.principal.displayName }
           : {}),
@@ -4893,8 +4909,17 @@ function projectHistory(
                   : (agentName(record.principal.agentId) ??
                     record.principal.agentId)
                 : guest
-                  ? `Participant ${createHash('sha256').update(`${record.principal.operatorId}\u0000${record.principal.deviceId}`).digest('hex').slice(-12)}`
-                  : (displayName(record.principal.operatorId) ?? 'Teammate'),
+                  ? `Participant ${createHash('sha256')
+                      .update(
+                        `${record.principal.kind === 'member' ? record.principal.principalId : record.principal.operatorId}\u0000${record.principal.deviceId}`,
+                      )
+                      .digest('hex')
+                      .slice(-12)}`
+                  : (displayName(
+                      record.principal.kind === 'member'
+                        ? record.principal.principalId
+                        : record.principal.operatorId,
+                    ) ?? 'Teammate'),
           },
           sequence: record.envelope.seq,
           occurredAt: record.envelope.proposal.happenedAt,
@@ -4977,6 +5002,7 @@ function projectBody(value: any): unknown {
       kind: value.kind,
       text: value.text,
       ...(value.attachments ? { attachments: value.attachments } : {}),
+      ...(value.mentions ? { mentions: value.mentions } : {}),
     };
   if (value?.kind === 'live-work-started')
     return {
