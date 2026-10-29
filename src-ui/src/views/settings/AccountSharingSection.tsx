@@ -15,6 +15,7 @@ import { useId, useState } from 'react';
 import { Button } from '../../components/Button';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { PageSection } from '../../components/PageSection';
+import { ResponsiveSurfaceActions } from '../../components/ResponsiveDialogSurface';
 import { ErrorState, SkeletonBlock } from '../../components/state';
 import { Toggle } from '../../components/Toggle';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
@@ -302,7 +303,7 @@ function SharingControls({
               Station is restarting to apply this…
             </p>
           ) : (
-            <div className="account-sharing__actions">
+            <ResponsiveSurfaceActions className="account-sharing__actions">
               <Button
                 variant="primary"
                 disabled={
@@ -317,7 +318,7 @@ function SharingControls({
               {changed && (
                 <Button onClick={() => setDraft(undefined)}>Cancel</Button>
               )}
-            </div>
+            </ResponsiveSurfaceActions>
           )}
           {!canRestart && (
             <p className="settings__field-hint" role="status">

@@ -1541,16 +1541,17 @@
 }
 
 /* #4305: Project sharing with local accounts. */
-.account-sharing__toggle,
-.account-sharing__actions {
+.account-sharing__toggle {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: space-between;
   gap: var(--k-space-3);
   padding-block: var(--k-space-2);
 }
-.account-sharing__toggle {
-  justify-content: space-between;
+/* Layout comes from ResponsiveSurfaceActions; only spacing here. */
+.account-sharing__actions {
+  padding-block: var(--k-space-2);
 }
 .account-sharing__origins {
   display: grid;
