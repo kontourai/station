@@ -94,7 +94,7 @@
 /* A file dragged over the draft: the whole draft takes it. Drawn above the
    pinned composer, whose background would otherwise cover the frame. */
 .new-chat-modal[data-file-drag]::after {
-  content: '';
+  content: "";
   position: absolute;
   inset: var(--k-space-1);
   z-index: 2;
