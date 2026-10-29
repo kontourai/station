@@ -3016,6 +3016,15 @@ describe('settings catalog completeness', () => {
           'Sharing options could not be loaded. You can still turn sharing off. Try again',
       },
       {
+        // An older host that reports no capabilities keeps every choice even
+        // when its Kontour author read fails: that read is not the main one.
+        state: 'only the Kontour author read failed, on an older host',
+        settled: true,
+        isError: true,
+        readError: false,
+        disabled: [false, false, false],
+      },
+      {
         // The author read says nothing about what this caller may choose.
         state: 'only the Kontour author read failed',
         settled: true,
