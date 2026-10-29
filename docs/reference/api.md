@@ -2737,6 +2737,16 @@ running resolve and authorize current configuration again.
 
 The personal runtime exposes an initial Station-authorized session-group path:
 
+Station Control offers `create_session_group`,
+`create_session_group_from_ensemble`, `list_session_groups`,
+`get_session_group`, `get_session_group_events`, `run_session_group`,
+`cancel_session_group` and `sync_session_group` to a bound caller with a
+recorded owner. Each group is bound to that caller's credential; another
+caller cannot continue it. Ensemble creation accepts inline preset JSON only.
+The event tool reads a bounded page using `afterRevision`; repeat with
+`nextRevision` to observe later changes. It does not run supervision.
+Unavailable hosts and current-authority failures are returned as refusals.
+
 The Agents inspector (`/agents?tab=ensembles`) has an explicit **Show session
 groups** action. Its bounded inventory displays the persisted members, their
 Flow dependencies, observed turn outcomes and unresolved starts. A read-only

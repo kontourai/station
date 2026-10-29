@@ -160,6 +160,41 @@ const GUIDE_TARGET = {
 
 /** Arguments that pass each tool's own schema, so it reaches Station. */
 const ARGS: Record<string, Record<string, unknown>> = {
+  create_session_group: {
+    operationId: 'op',
+    maxConcurrent: 1,
+    deadlineAt: 2000000000000,
+    members: [
+      {
+        seatId: 'seat',
+        prompt: 'work',
+        target: {
+          agent: 'writer',
+          expectedEngine: { kind: 'connection', connectionId: 'engine' },
+        },
+      },
+    ],
+  },
+  create_session_group_from_ensemble: {
+    operationId: 'op',
+    maxConcurrent: 1,
+    deadlineAt: 2000000000000,
+    presetJson: '{}',
+    expectedPresetHash: `sha256:${HEX64}`,
+    brief: 'work',
+    bindings: {},
+  },
+  get_session_group: { groupId: 'group' },
+  get_session_group_events: { groupId: 'group' },
+  run_session_group: { groupId: 'group' },
+  cancel_session_group: { groupId: 'group' },
+  sync_session_group: {
+    groupId: 'group',
+    operationId: 'op',
+    runId: 'run',
+    content: 'context',
+    deadlineAt: 2000000000000,
+  },
   list_walkthroughs: { projectSlug: 'project-a' },
   get_walkthrough: { projectSlug: 'project-a', id: 'walkthrough-1' },
   read_pull_request_guide: { target: GUIDE_TARGET },

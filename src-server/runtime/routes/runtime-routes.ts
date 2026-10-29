@@ -930,6 +930,7 @@ import {
   tenantExecutionContextForRequest,
 } from '../bootstrap/runtime-tenant-context.js';
 import { nativeRuntimeSpecMatches } from '../conversation/native-foreground-invocation.js';
+import { createSessionGroupRequestAuthority } from '../mcp/session-group-request-authority.js';
 import {
   createAgentDispatchActorResolver,
   createStationControlCallerRecordResolver,
@@ -6382,6 +6383,10 @@ export function configureRuntimeRoutes(
       sessionInventory,
       sessionInventoryAppRead,
       callerBindingForRequest: taskBasisCallerBinding,
+      ...createSessionGroupRequestAuthority(
+        resolveStationControlCallerRecord,
+        taskBasisCallerBinding,
+      ),
       listThreadCheckpoints: (threadId) =>
         listThreadRecordsWithObjectStatus(
           checkpointIndexStore,

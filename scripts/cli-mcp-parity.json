@@ -265,6 +265,10 @@
       "exempt": "local-host",
       "reason": "Acts on this machine's install, not a Station API."
     },
+    "ensemble inspect": {
+      "exempt": "local-host",
+      "reason": "Inspects a preset file on the CLI machine, including its path; it does not call a Station API or launch members."
+    },
     "environment access": {
       "exempt": "person-only",
       "reason": "Pairing offers, device access approval, peer credentials (/api/pairing/*)."
@@ -379,6 +383,32 @@
     "fresh": {
       "exempt": "local-host",
       "reason": "Acts on this machine's install, not a Station API."
+    },
+    "group session-cancel": {
+      "tools": ["cancel_session_group"]
+    },
+    "group session-create": {
+      "tools": ["create_session_group"]
+    },
+    "group session-events": {
+      "tools": ["get_session_group_events"],
+      "note": "Follow is observation-only; the tool reads bounded pages using afterRevision."
+    },
+    "group session-from-ensemble": {
+      "tools": ["create_session_group_from_ensemble"],
+      "note": "Tool accepts inline preset JSON only; server file paths remain operator-only."
+    },
+    "group session-get": {
+      "tools": ["get_session_group"]
+    },
+    "group session-list": {
+      "tools": ["list_session_groups"]
+    },
+    "group session-run": {
+      "tools": ["run_session_group"]
+    },
+    "group session-sync": {
+      "tools": ["sync_session_group"]
     },
     "home backup": {
       "exempt": "local-host",
@@ -1032,6 +1062,9 @@
       "missing": 4282,
       "want": "Board unpin"
     },
+    "cancel_session_group": {
+      "cli": ["group session-cancel"]
+    },
     "cancel_wake_up": {
       "exempt": "agent-self",
       "reason": "Cancels the caller's own wake-up."
@@ -1060,6 +1093,12 @@
     "create_provider": {
       "cli": ["connections create"],
       "note": "Different route (/api/providers vs /api/connections); MCP is personOnly:always."
+    },
+    "create_session_group": {
+      "cli": ["group session-create"]
+    },
+    "create_session_group_from_ensemble": {
+      "cli": ["group session-from-ensemble"]
     },
     "create_ssh_environment": {
       "cli": ["environment add"]
@@ -1175,6 +1214,12 @@
     "get_session_digest": {
       "missing": 3427,
       "want": "Sessions digest"
+    },
+    "get_session_group": {
+      "cli": ["group session-get"]
+    },
+    "get_session_group_events": {
+      "cli": ["group session-events"]
     },
     "get_session_inventory": {
       "missing": 3427,
@@ -1315,6 +1360,9 @@
     "list_scheduler_providers": {
       "cli": ["schedule providers"]
     },
+    "list_session_groups": {
+      "cli": ["group session-list"]
+    },
     "list_skills": {
       "cli": ["skills list"],
       "note": "Different route: MCP GET /api/system/skills, CLI GET /api/skills (SDK keeps both fetchers deliberately; installed vs system catalogue)."
@@ -1414,6 +1462,9 @@
     "run_job": {
       "cli": ["schedule run"]
     },
+    "run_session_group": {
+      "cli": ["group session-run"]
+    },
     "schedule_wake_up": {
       "exempt": "agent-self",
       "reason": "Wake-up is bound to the caller's own conversation (route rule wake-up-stays-in-own-conversation)."
@@ -1436,6 +1487,9 @@
     "send_to_session": {
       "cli": ["chat"],
       "note": "Different route and authority: MCP POST /api/orchestration/session-control/send (agent-to-agent, caller required, sender named); `chat --session <id>` is the person's own send via POST /api/orchestration/chat. Issue #3427 says the person send is the intended CLI equivalent. Modes (steer/auto/requestKey) not exposed by CLI."
+    },
+    "sync_session_group": {
+      "cli": ["group session-sync"]
     },
     "system_status": {
       "missing": 4284,

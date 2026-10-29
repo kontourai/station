@@ -33,6 +33,7 @@ import {
 import { registerProjectActivityTools } from './station-control-project-activity-tools.js';
 import { registerReviewGuideTools } from './station-control-review-guide-tools.js';
 import { registerScheduleTools } from './station-control-schedule-tools.js';
+import { registerSessionGroupTools } from './station-control-session-group-tools.js';
 import { registerSessionInventoryTools } from './station-control-session-inventory-tools.js';
 import { registerSessionSearchTools } from './station-control-session-search-tools.js';
 import { registerSessionTools } from './station-control-session-tools.js';
@@ -328,6 +329,7 @@ export function createSelectedStationControlMcpServer(
   registerAssessmentTools(registry);
   registerBasisTools(registry);
   registerSessionInventoryTools(registry);
+  registerSessionGroupTools(registry);
   registerSessionSearchTools(registry);
   registerSessionTools(registry);
   registerProjectActivityTools(registry);

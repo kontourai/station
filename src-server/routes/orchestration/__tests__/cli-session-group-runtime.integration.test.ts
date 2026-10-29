@@ -49,12 +49,21 @@ import {
   retainNativeAuthenticationContinuation,
 } from '../../../providers/auth/native-authentication-context.js';
 import { createOrchestrationRequestPrincipalResolver } from '../../../runtime/bootstrap/orchestration-request-principal.js';
+import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
+import { createSessionGroupRequestAuthority } from '../../../runtime/mcp/session-group-request-authority.js';
+import { resolveStationControlCallerForRequest } from '../../../runtime/mcp/station-control-caller.js';
+import { claudeInProcessStationControlOptions } from '../../../runtime/mcp/station-control-in-process.js';
+import { revokeStationControlMcpToken } from '../../../runtime/mcp/station-control-mcp-token.js';
 import {
   bindRuntimeLocalOperator,
   getRuntimeAuthenticatedRequestPrincipal,
   isRuntimeRequestPrincipalCurrent,
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../../security/runtime-request-security.js';
+import { createStationControlAuthorityGuard } from '../../../security/station-control-authority-guard.js';
+import { stationControlRequestAuthority } from '../../../security/station-control-request-authority.js';
+import { runAsStationServer } from '../../../security/station-server-scope.js';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { createRuntimeResourcePostureController } from '../../../services/infra/resource-posture.js';
 import { EnsembleCliSessionGroupPreparation } from '../../../services/orchestration/ensemble-cli-session-group.js';
 import { createLocalEnsembleInventory } from '../../../services/orchestration/ensemble-execution-context.js';
@@ -325,7 +334,7 @@ class MemberAdapter extends GateTestAdapter {
   }
 }
 
-async function fixture(operatorInspection = false) {
+async function fixture(operatorInspection = false, stationControl = false) {
   const root = realpathSync(temporary('station-real-cli-group-'));
   const actor = humanPrincipal('test', 'group-owner', 'Group owner');
   const security = operatorInspection
@@ -418,8 +427,48 @@ async function fixture(operatorInspection = false) {
     peers: { get: () => null },
   });
   const pendingDispatches: Promise<unknown>[] = [];
+  const groupWarnings: unknown[] = [];
   const app = new Hono();
-  if (security)
+  const resolveCallerRecord = (sessionId: string) => ({
+    principal: {
+      id: sessionId.startsWith('other')
+        ? 'human:test:other'
+        : LOCAL_OPERATOR_PRINCIPAL_ID,
+      source: 'session-owner' as const,
+    },
+  });
+  if (stationControl && security) {
+    configureRuntimeHttp({
+      app: app as never,
+      logger: {
+        debug() {},
+        warn() {},
+        info() {},
+        error() {},
+        child() {
+          return this;
+        },
+      } as never,
+      eventBus: bus,
+      security: {
+        verifyCredential: () => false,
+        resolveGrantedScope: () => undefined,
+        maxFailures: 100,
+        windowMs: 60000,
+        audit() {},
+        allowedOrigins: [],
+      },
+    } as Parameters<typeof configureRuntimeHttp>[0]);
+    app.use(
+      '*',
+      createStationControlAuthorityGuard({
+        resolveCaller: (request) =>
+          resolveStationControlCallerForRequest(request, resolveCallerRecord),
+        isOperatorPrincipal: (id) => id === LOCAL_OPERATOR_PRINCIPAL_ID,
+      }),
+    );
+  }
+  if (security && !stationControl)
     app.use('/api/orchestration/*', async (c, next) => {
       const credential =
         c.req.header('Authorization')?.replace(/^Bearer /, '') ?? '';
@@ -493,8 +542,30 @@ async function fixture(operatorInspection = false) {
           }
         : {}),
       eventBus: bus,
-      logger: { debug() {}, warn() {} },
+      logger: {
+        debug() {},
+        warn(message, meta) {
+          groupWarnings.push({ message, meta });
+        },
+      },
       resolvePrincipal,
+      ...(stationControl
+        ? {
+            ...createSessionGroupRequestAuthority(
+              resolveCallerRecord,
+              () => undefined,
+            ),
+            resolveAgentDispatchActor: (request: Request) => {
+              const authority = stationControlRequestAuthority(request);
+              return authority?.kind === 'caller' && authority.caller.principal
+                ? {
+                    kind: 'verified' as const,
+                    principalId: authority.caller.principal.id,
+                  }
+                : { kind: 'unattributed' as const };
+            },
+          }
+        : {}),
       callerBindingForRequest: (request) =>
         security
           ? getRuntimeAuthenticatedRequestPrincipal(request)?.credential
@@ -502,18 +573,28 @@ async function fixture(operatorInspection = false) {
       isRequestPrincipalCurrent: (request) =>
         security ? isRuntimeRequestPrincipalCurrent(request, security) : true,
       delegateTask: (input) => {
-        const pending = delegateTask(input, service, remote);
+        const pending = stationControl
+          ? runAsStationServer(() => delegateTask(input, service, remote))
+          : delegateTask(input, service, remote);
         pendingDispatches.push(pending);
         return pending;
       },
       observeDelegatedTask: (input) =>
-        observeDelegatedTask(input, service, remote),
+        stationControl
+          ? runAsStationServer(() =>
+              observeDelegatedTask(input, service, remote),
+            )
+          : observeDelegatedTask(input, service, remote),
       observeDelegatedTaskEvents: (input) =>
         observeDelegatedTaskEvents(input, service, remote),
       respondToDelegatedTaskRequest: (input) =>
         respondToDelegatedTaskRequest(input, service, remote),
       interruptDelegatedTask: (input) =>
-        interruptDelegatedTask(input, service, remote),
+        stationControl
+          ? runAsStationServer(() =>
+              interruptDelegatedTask(input, service, remote),
+            )
+          : interruptDelegatedTask(input, service, remote),
     }),
   );
   const server = serve({ fetch: app.fetch, port: 0, hostname: '127.0.0.1' });
@@ -538,6 +619,8 @@ async function fixture(operatorInspection = false) {
     adapter,
     store,
     pendingDispatches,
+    groupWarnings,
+    resolveCallerRecord,
     changeInventory: () => {
       inventoryRevision++;
     },
@@ -600,7 +683,9 @@ test('registered CLI sync reaches the retained session through HTTP, durable res
       deadlineAt: Date.now() + 60_000,
     }),
   );
-  f.adapter.syncOutputs.push('ACK SYNC run-one\n', 'ACK SYNC run-one');
+  const spilledOutput = 'x'.repeat(32 * 1024);
+  const syncResults = vi.spyOn(f.service, 'syncRetainedSession');
+  f.adapter.syncOutputs.push(spilledOutput, 'ACK SYNC run-one');
   const argv = [
     'group',
     'session-sync',
@@ -617,6 +702,12 @@ test('registered CLI sync reaches the retained session through HTTP, durable res
     members: [{ seatId: 'seat-0', attempts: 2, status: 'acknowledged' }],
   });
   expect(f.adapter.turns).toHaveLength(3);
+  const firstResult = await syncResults.mock.results[0]!.value;
+  expect(firstResult.output).toBe(spilledOutput);
+  const stored = f.store
+    .listEvents(f.adapter.turns[1]!.threadId)
+    .find(({ payload }) => payload.eventId === firstResult.terminalEventId);
+  expect(stored?.payload.spilledContent).toBeDefined();
   expect(new Set(f.adapter.turns.map((turn) => turn.threadId)).size).toBe(1);
   expect(f.adapter.turns[1].input).toContain('private complete folded result');
   expect(JSON.stringify(result)).not.toContain(
@@ -1502,4 +1593,138 @@ test('a preset authenticates all members before starts, fences canceled or chang
   } finally {
     writeFileSync(recordPath, originalRecord);
   }
+}, 30_000);
+
+test('bound Station Control operates its real session group and cannot read another caller group', async () => {
+  const f = await fixture(true, true);
+  const open = async (sessionId: string) => {
+    const instance = claudeInProcessStationControlOptions(
+      () => f.resolveCallerRecord,
+    ).createInProcessStationControl(sessionId);
+    const sent: any[] = [];
+    const transport: any = {
+      start: async () => {},
+      close: async () => {},
+      send: async (message: unknown) => sent.push(message),
+    };
+    await instance.connect(transport);
+    cleanup.push(() => instance.close());
+    let id = 0;
+    const request = async (method: string, params: unknown) => {
+      const current = ++id;
+      setImmediate(() =>
+        transport.onmessage({ jsonrpc: '2.0', id: current, method, params }),
+      );
+      await vi.waitFor(() =>
+        expect(sent.some((message) => message.id === current)).toBe(true),
+      );
+      return sent.find((message) => message.id === current);
+    };
+    await request('initialize', {
+      protocolVersion: '2025-06-18',
+      capabilities: {},
+      clientInfo: { name: 'integration', version: '1' },
+    });
+    return async (name: string, args: unknown) => {
+      const response = await request('tools/call', { name, arguments: args });
+      const result = response.result;
+      return {
+        isError: result?.isError,
+        body: JSON.parse(result.content[0].text),
+      };
+    };
+  };
+  const owner = await open('op-group-integration');
+  const other = await open('other-group-integration');
+  const created = await owner('create_session_group', groupInput(1));
+  expect(created.body.success, JSON.stringify(created)).toBe(true);
+  const groupId = created.body.data.groupId;
+  const listed = await owner('list_session_groups', {});
+  expect(
+    listed.body.data.groups.map((group: CliSessionGroupView) => group.groupId),
+  ).toContain(groupId);
+  expect(
+    (await owner('get_session_group', { groupId })).body.data.groupId,
+  ).toBe(groupId);
+  const foreign = await other('get_session_group', { groupId });
+  expect(foreign.isError).toBe(true);
+  expect(foreign.body.code).toBe('group_not_found');
+  const run = await owner('run_session_group', { groupId });
+  expect(run.body.success, JSON.stringify(run)).toBe(true);
+  expect(
+    f.adapter.turns,
+    JSON.stringify({ body: run.body, warnings: f.groupWarnings }),
+  ).toHaveLength(1);
+  const events = await owner('get_session_group_events', {
+    groupId,
+    afterRevision: 0,
+  });
+  expect(events.body.data.events.length).toBeGreaterThan(0);
+  expect(events.body.data.groupId).toBe(groupId);
+  f.adapter.syncOutputs.push('ACK SYNC run-one');
+  const synced = await owner('sync_session_group', {
+    groupId,
+    operationId: 'sync-one',
+    runId: 'run-one',
+    content: 'retained context',
+    deadlineAt: Date.now() + 60000,
+  });
+  expect(synced.body.data.contextSync?.status, JSON.stringify(synced)).toBe(
+    'acknowledged',
+  );
+  const preset = JSON.stringify({
+    version: 'station.ensemble/v1',
+    id: 'team',
+    name: 'Team',
+    stationmaster: 'lead',
+    members: [
+      {
+        id: 'lead',
+        codename: 'Lead',
+        color: '#123ABC',
+        role: 'Review',
+        engine: 'claude',
+        model: 'fixture-model',
+        reasoning: null,
+        options: {},
+        promptAppends: [],
+      },
+    ],
+  });
+  const ensemble = await owner('create_session_group_from_ensemble', {
+    operationId: 'inline-one',
+    maxConcurrent: 1,
+    deadlineAt: Date.now() + 60000,
+    presetJson: preset,
+    expectedPresetHash: `sha256:${createHash('sha256').update(preset).digest('hex')}`,
+    brief: 'Review',
+    bindings: {
+      lead: {
+        target: {
+          agent: 'reviewer',
+          expectedEngine: { kind: 'connection', connectionId: 'claude' },
+          workspace: { kind: 'directory', cwd: f.root },
+        },
+        needs: [],
+      },
+    },
+  });
+  expect(ensemble.body.success, JSON.stringify(ensemble)).toBe(true);
+  const cancel = await owner('cancel_session_group', { groupId });
+  expect(cancel.body.success, JSON.stringify(cancel)).toBe(true);
+  const revocable = await open('op-group-revoke');
+  const second = await revocable('create_session_group', {
+    ...groupInput(1),
+    operationId: 'revoked-group',
+  });
+  expect(second.body.success).toBe(true);
+  const startsBefore = f.adapter.starts.length;
+  let revoked = false;
+  f.setPreparation(async () => {
+    revoked = true;
+    revokeStationControlMcpToken('op-group-revoke', 'station-control');
+  });
+  await revocable('run_session_group', { groupId: second.body.data.groupId });
+  expect(revoked).toBe(true);
+  expect(f.adapter.starts).toHaveLength(startsBefore);
 }, 30_000);

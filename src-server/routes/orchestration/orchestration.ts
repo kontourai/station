@@ -2206,6 +2206,8 @@ export function createOrchestrationRoutes(
     /** Bounded caller-bound MCP App occurrences for session inventory. */
     sessionInventoryAppRead?: SessionInventoryAppReadModule;
     callerBindingForRequest?: (request: Request) => string | undefined;
+    bindSessionGroupCallerCurrent?: (request: Request) => () => boolean;
+    sessionGroupBindingForRequest?: (request: Request) => string | undefined;
     /**
      * Immutable deployment registry supplied by runtime wiring. Its presence,
      * rather than any request field, selects hosted authorization semantics.
@@ -4515,13 +4517,18 @@ export function createOrchestrationRoutes(
       .optional(),
   });
   const groupAuthority = (c: Context) => {
-    const binding = deps.callerBindingForRequest?.(c.req.raw);
+    const bindingForRequest =
+      deps.sessionGroupBindingForRequest ?? deps.callerBindingForRequest;
+    const binding = bindingForRequest?.(c.req.raw);
     const actor = resolveActorPrincipal(deps, c);
+    const callerCurrent = deps.bindSessionGroupCallerCurrent?.(c.req.raw);
     const assertCurrent = () => {
       if (
         !binding ||
+        (stationControlRequestAuthority(c.req.raw)?.kind === 'caller' &&
+          callerCurrent?.() !== true) ||
         deps.isRequestPrincipalCurrent?.(c.req.raw) !== true ||
-        deps.callerBindingForRequest?.(c.req.raw) !== binding ||
+        bindingForRequest?.(c.req.raw) !== binding ||
         resolveActorPrincipal(deps, c).userId !== actor.userId
       )
         throw new CliSessionGroupUnavailable('group_authority_required');

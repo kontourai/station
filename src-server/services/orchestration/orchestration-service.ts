@@ -2222,6 +2222,11 @@ export class OrchestrationService {
             if (event.method === 'turn.completed') {
               if (event.finishReason !== 'stop')
                 throw new Error('group_sync_turn_failed');
+              const terminal =
+                this.options.eventStore?.resolveCanonicalEventContent(event) ??
+                event;
+              if (typeof terminal.outputText !== 'string')
+                throw new Error('group_sync_output_unavailable');
               const observedNative = adapter.nativeSessionIdentity?.(
                 this.sessionReadModel.get(threadId)?.resumeCursor,
               );
@@ -2245,7 +2250,7 @@ export class OrchestrationService {
                   .digest('hex')}`,
                 turnId,
                 terminalEventId: event.eventId,
-                output: event.outputText ?? '',
+                output: terminal.outputText,
                 toolCalls,
               };
             }
