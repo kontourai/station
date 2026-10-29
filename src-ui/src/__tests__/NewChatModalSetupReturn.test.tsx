@@ -49,6 +49,10 @@ vi.mock('../contexts/AuthorityPersistenceContext', () => ({
   }),
 }));
 vi.mock('@kontourai/station-sdk', () => ({
+  // The visual-skills Feature Preview on, so the start composer offers them.
+  useFeaturePreviewsQuery: () => ({
+    data: [{ id: 'visual-skills', enabled: true }],
+  }),
   useAgentsQuery: () => ({ data: [] }),
   useConfigQuery: () => ({ data: {}, dataUpdatedAt: 1, refetch: vi.fn() }),
   useSkillExperienceInventoryQuery: () => ({

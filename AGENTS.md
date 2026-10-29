@@ -11,6 +11,7 @@
 - Never `git push --no-verify`: no required CI check re-runs the pre-push gates. The transfer gate uses `STATION_TRANSFER_BASELINE_ROOT`; slow captures use `STATION_TRANSFER_CAPTURE_TIMEOUT_MS` ([testing](docs/guides/testing.md#pre-push-orchestration-transfer-gate)).
 - Ordinary PRs use focused evidence and normal hooks; hosted checks and the merge queue own broad integration and full typechecking. A selector explanation, deferred selection (`test:changed` exit 3), or rerun is not completion evidence. Run local `ci:fast` only for a specific failure or explicit request, never `full:regression` merely because `main` moved. Never background a full `typecheck` or `ci:fast` to poll its sentinel. [Verification](docs/guides/development.md#verification) owns lane selection and exact-SHA receipts; focused evidence, hosted qualification, and Nightly usability remain distinct.
 - Diagnose the failure rather than rerun-to-green: a red lane is a signal to diagnose, not a request to rerun until green. For a redundant same-digest run, join or reuse the existing lease.
+- A new Station Control tool or `station` CLI action needs a counterpart or exemption in `scripts/cli-mcp-parity.json` ([parity](docs/guides/development.md#cli-and-station-control-parity)).
 - If an explicit submission handoff is active, freeze the worktree. Never use shell background or relaunch loops, and do not edit or remove a worktree with a live handoff.
 
 ## Landing a pull request
