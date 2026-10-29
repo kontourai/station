@@ -954,6 +954,7 @@ import {
   createRuntimeSystemRouteDeps,
 } from './runtime-route-support.js';
 import { createTaskBasisMcpInitialRead } from './task-basis-mcp-initial-read.js';
+import { createTaskMemberAdmission } from './task-member-admission.js';
 import { createTaskRelationshipAuthority } from './task-relationship-authority.js';
 import {
   createRuntimeWorkspacePaneHostActions,
@@ -4831,10 +4832,18 @@ export function configureRuntimeRoutes(
       context.logger,
     );
   const relationshipRequestWitnesses = new WeakMap<Request, () => boolean>();
-  const relationshipRequestShares = new WeakMap<
-    Request,
-    Map<string, string | undefined>
-  >();
+  const taskMemberAdmission = createTaskMemberAdmission({
+    task: (id) => context.taskGraphService.readTask(id),
+    share: (id) => context.projectSharedTasks?.admission(id),
+    projects: () => context.projectService.listProjects(),
+    portableId: (slug) => {
+      const manifest = contributionResolution.manifests.readRecord(slug);
+      return manifest ? parseProjectPortableIdentity(manifest).id : undefined;
+    },
+    admissions: (id) =>
+      context.projectMembership?.admissionsForResolvedPrincipal(id) ?? [],
+    principalId: (request) => roomRequestPrincipals.get(request)?.id,
+  });
   context.app.use('/api/tasks/*', primeRoomRequestPrincipal);
   context.app.route(
     '/api/tasks',
@@ -4965,47 +4974,7 @@ export function configureRuntimeRoutes(
             isOperatorInPersonNotAgent(request)
           )
             return true;
-          const task = context.taskGraphService.readTask(id);
-          const share = context.projectSharedTasks?.admission(id);
-          let shares = relationshipRequestShares.get(request);
-          if (!shares) {
-            shares = new Map();
-            relationshipRequestShares.set(request, shares);
-          }
-          if (!shares.has(id)) shares.set(id, share?.shareId);
-          if (!task || !share || share.taskCreatedAt !== task.createdAt)
-            return false;
-          if (shares.get(id) !== share.shareId) return false;
-          const projects = context.projectService
-            .listProjects()
-            .filter(
-              (p) => p.id === task.projectId || p.slug === task.projectId,
-            );
-          if (
-            projects.length !== 1 ||
-            projects[0]!.id !== share.scope.localProjectId ||
-            projects[0]!.slug !== share.scope.localProjectSlug
-          )
-            return false;
-          const manifest = contributionResolution.manifests.readRecord(
-            share.scope.localProjectSlug,
-          );
-          if (
-            !manifest ||
-            parseProjectPortableIdentity(manifest).id !==
-              share.scope.portableProjectId
-          )
-            return false;
-          return (
-            context.projectMembership
-              ?.admissionsForResolvedPrincipal(person.id)
-              .some(
-                ({ scope, member }) =>
-                  isDeepStrictEqual(scope, share.scope) &&
-                  member.status === 'active' &&
-                  member.actions.includes('view'),
-              ) === true
-          );
+          return !!taskMemberAdmission.admit(request, id, 'view');
         },
         mayEdit: (request, id) =>
           (!isDeploymentAccountPrincipalId(
