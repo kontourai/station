@@ -214,7 +214,6 @@ const CHIP_GLYPHS: Record<
 > = {
   'agent-message': InboxGlyph,
   remote: MonitorGlyph,
-  draft: EditGlyph,
   woke: TimeGlyph,
   claim: TargetGlyph,
 };

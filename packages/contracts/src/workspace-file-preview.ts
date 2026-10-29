@@ -484,3 +484,86 @@ export function parseWorkspaceVisualFile(value: unknown): WorkspaceVisualFile {
   }
   throw new Error('Invalid visual file response');
 }
+
+/**
+ * Why the visual-file read refused a path. The server checks in an order that
+ * never reveals whether a file exists outside the allowed folders: the path's
+ * form and extension first, then a path-only containment check, and only then
+ * the filesystem. A link that leads out of the allowed folders, dangling or
+ * not, is `outside-project`.
+ */
+export type WorkspaceVisualFileRefusal =
+  /** Inside the allowed folders, but nothing is there. */
+  | 'missing'
+  /** Outside the Project workspace and its verified worktrees, or not a plain path. */
+  | 'outside-project'
+  /** Not a PNG image or an HTML page this reader can show. */
+  | 'unsupported-type'
+  /** Larger than {@link WORKSPACE_FILE_PREVIEW_MAX_BYTES} or the image raster bounds. */
+  | 'too-large'
+  /** The Project (or the requested session) has no readable workspace. */
+  | 'no-workspace'
+  /** Present and allowed, but the host could not read it. */
+  | 'unreadable';
+
+export const WORKSPACE_VISUAL_FILE_REFUSALS: readonly WorkspaceVisualFileRefusal[] =
+  [
+    'missing',
+    'outside-project',
+    'unsupported-type',
+    'too-large',
+    'no-workspace',
+    'unreadable',
+  ];
+
+/** The HTTP status the visual-file route answers each refusal with. */
+export const WORKSPACE_VISUAL_FILE_REFUSAL_STATUS: Readonly<
+  Record<WorkspaceVisualFileRefusal, number>
+> = {
+  missing: 404,
+  'no-workspace': 404,
+  'outside-project': 403,
+  'unsupported-type': 415,
+  'too-large': 413,
+  unreadable: 422,
+};
+
+/**
+ * Why a client could not show a visual file: a server refusal, or a failure
+ * the client observed itself. `unauthorized` is a 401, or a 403 without a
+ * refusal reason (the authorization layer, not the reader). `server-error` is
+ * a 5xx. `unavailable` is any other answer without a reason, such as an older
+ * host's single 404.
+ */
+export type WorkspaceVisualFileUnavailableReason =
+  | WorkspaceVisualFileRefusal
+  | 'unauthorized'
+  | 'server-error'
+  | 'unavailable';
+
+/** The refusal a visual-file response body names, or undefined. */
+export function parseWorkspaceVisualFileRefusal(
+  body: unknown,
+): WorkspaceVisualFileRefusal | undefined {
+  if (!isRecord(body) || typeof body.reason !== 'string') return undefined;
+  return (WORKSPACE_VISUAL_FILE_REFUSALS as readonly string[]).includes(
+    body.reason,
+  )
+    ? (body.reason as WorkspaceVisualFileRefusal)
+    : undefined;
+}
+
+/** The reason a failed visual-file response stands for. */
+export function workspaceVisualFileUnavailableReason(
+  status: number,
+  body: unknown,
+): WorkspaceVisualFileUnavailableReason {
+  const refusal = parseWorkspaceVisualFileRefusal(body);
+  // A refusal is believed only with the status the route pairs it with, so a
+  // proxy's or the auth layer's answer is never read as the reader's.
+  if (refusal && WORKSPACE_VISUAL_FILE_REFUSAL_STATUS[refusal] === status)
+    return refusal;
+  if (status === 401 || status === 403) return 'unauthorized';
+  if (status >= 500) return 'server-error';
+  return 'unavailable';
+}

@@ -689,7 +689,10 @@ import { actionOperationActorForRequest } from '../../services/operations/action
 import type { ActionOperationService } from '../../services/operations/action-operation-service.js';
 import { AttachmentStagingService } from '../../services/orchestration/attachment-staging-service.js';
 import { recoverCompletedTaskDispatches } from '../../services/orchestration/completed-task-dispatch-recovery.js';
-import { FileConversationAcknowledgementStore } from '../../services/orchestration/conversation-acknowledgement-store.js';
+import {
+  FileConversationAcknowledgementStore,
+  ownerDevicePredicate,
+} from '../../services/orchestration/conversation-acknowledgement-store.js';
 import {
   type DelegationAttemptClaimStore,
   delegationAttemptClaimKey,
@@ -6297,6 +6300,15 @@ export function configureRuntimeRoutes(
       resolveAgentDispatchActor,
       stationControlDispatchScope,
       isRequestPrincipalCurrent,
+      mayRequestMemoryContinuation: (request, id) =>
+        runtimeRequestPrincipalMayAccessHttpRoute(
+          request,
+          context.environmentSecurityService,
+          {
+            method: 'POST',
+            path: `/api/orchestration/conversations/${encodeURIComponent(id)}/memory-continuation`,
+          },
+        ),
       answerAssessmentModule,
       answerNarrativeBindingModule,
       reviewedSourceBasisResolver,
@@ -9704,6 +9716,9 @@ export function configureRuntimeRoutes(
       undefined,
       new FileConversationAcknowledgementStore(
         context.configLoader.getProjectHomeDir(),
+        ownerDevicePredicate(() =>
+          context.environmentSecurityService.devicePairing.listDevices(),
+        ),
       ),
       conversationReadAuthorityForRequest,
       context.orchestrationService,

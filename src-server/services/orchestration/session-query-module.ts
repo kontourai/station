@@ -2,6 +2,7 @@ import type {
   TaskUserInputAttachmentProjection,
   TaskUserInputProjection,
 } from '@kontourai/station-contracts';
+import { isLowContentPrompt } from '@kontourai/station-contracts/conversation-title';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
   createStationAnswerBinding,
@@ -205,6 +206,10 @@ interface SessionConversationQuerySource<Session> {
   ): {
     assignedAgentSlug?: string;
     delegationTitle?: string;
+    /** The conversation's durable history title (#4266). */
+    historyTitle?: string;
+    /** The session summary's `displayTitle` (#4266). */
+    displayTitle?: string;
     conversationId?: string;
     environmentId?: string;
     acceptedModel?: string;
@@ -317,19 +322,32 @@ const UNTITLED_CONVERSATION_TITLE = 'New chat';
  * titled yet. It used to fall back to `${agentSlug} chat`, which put a
  * lowercase engine id ("opencode chat", "grok-build chat") in the chat
  * header directly above the agent's real name.
+ *
+ * #4266: `messages` are ONE thread's, and a continuation child's first one
+ * is often "Continue". A low-content message (`isLowContentPrompt`) is
+ * skipped; failing any message that names something, `conversationTitle`
+ * (the session's own `displayTitle`, which already reaches back to the
+ * conversation's first prompt) is next, and only then the first low-content
+ * message.
  */
 export function conversationTitle(
   messages: readonly ConversationMessage[],
+  fallbackTitle?: string,
 ): string {
+  let lowContent: string | undefined;
   for (const message of messages) {
     if (message.role !== 'user') continue;
     for (const part of message.parts) {
       if (part.type !== 'text') continue;
       const title = derivedConversationTitle(part.text);
-      if (title) return title;
+      if (!title) continue;
+      if (!isLowContentPrompt(title)) return title;
+      lowContent ??= title;
     }
   }
-  return UNTITLED_CONVERSATION_TITLE;
+  const fallback = derivedConversationTitle(fallbackTitle);
+  if (fallback && !isLowContentPrompt(fallback)) return fallback;
+  return lowContent ?? fallback ?? UNTITLED_CONVERSATION_TITLE;
 }
 
 function isCompletedAssistantAnswer(
@@ -519,7 +537,11 @@ export function createSessionQueryModule<Session>(
               : {}),
             title:
               derivedConversationTitle(conversationSession.delegationTitle) ??
-              conversationTitle(messages),
+              (conversationSession.historyTitle &&
+              !isLowContentPrompt(conversationSession.historyTitle)
+                ? conversationSession.historyTitle
+                : undefined) ??
+              conversationTitle(messages, conversationSession.displayTitle),
             ...(model ? { model } : {}),
             ...(conversationSession.acceptedModel
               ? { acceptedModel: conversationSession.acceptedModel }

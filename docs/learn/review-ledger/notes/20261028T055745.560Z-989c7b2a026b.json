@@ -1,0 +1,7 @@
+{
+  "revision": "8f6cb99fc8e0d5b831c7b273e35d9e265d9282c5",
+
+  "notes": [
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"Checked the File Preview pane, Changes, exists and download claims against workspace-pane-previews.ts: only the /visual route changed (reasoned refusals). The context does not describe /visual; no prose change.","inputs":["docs/contexts/workspace-surfaces/CONTEXT.md","packages/contracts/src/workspace-file-preview.ts","src-server/routes/projects/workspace-pane-previews.ts"]}
+  ]
+}
