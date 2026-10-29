@@ -152,9 +152,12 @@ point](../../src-ui/src/components/chat-dock/ChatDockBody.tsx),
 On an engine override, **Use Agent defaults** returns to the authored engine and
 model through that handoff when the switch is open. Whenever it is not, the
 picker's reset is disabled with the reason (the open resolution's refusal reads
-"This conversation can’t change its engine right now.") and the composer's
-reset chip is not shown; it never falls back to a model-only reset that would
-leave the engine override in place. In a new-start
+"This conversation can’t change its engine right now."). The composer's reset
+chip is not shown when the open resolution denies changes; while a turn runs or
+queued messages are checked it stays in place, unavailable, with the reason as
+its accessible description, so the row does not shift each turn. It never falls
+back to a model-only reset that would leave the engine override in place. In a
+new-start
 picker, resetting also clears an explicit Station choice, restoring configured
 placement defaults rather than leaving a remote destination without its verified
 binding. An explicit This Station choice is carried independently of engine

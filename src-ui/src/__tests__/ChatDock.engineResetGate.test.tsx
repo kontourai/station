@@ -400,19 +400,16 @@ describe('ChatWorkspacePane engine-override reset gate', () => {
   test.each([
     ['read-only', session(resolved({ canContinue: false }))],
     [
-      'busy on the server',
+      'server-busy',
       session(resolved({ canContinue: false, continuationPending: true })),
     ],
     [
-      'still loading',
+      'still-loading',
       session(resolved({ canContinue: true }), {
         conversationOpenPending: true,
       }),
     ],
-    [
-      'unchecked after a failed check',
-      session(undefined, { conversationOpenFailed: true }),
-    ],
+    ['check-failed', session(undefined, { conversationOpenFailed: true })],
   ])(
     'a %s conversation offers no reset and never resets only the model',
     async (_label, active) => {
