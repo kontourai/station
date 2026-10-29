@@ -323,7 +323,10 @@ interface ChatInputAreaProps {
   onClearAttachments: () => void;
   onModelSelect: (model: SelectableModel) => void;
   onModelReset: () => void;
-  /** Why the model/engine reset is refused right now; set, it is disabled. */
+  /**
+   * Why the model/engine reset is refused right now. Set, the composer's
+   * reset chip is not offered and the picker's reset is disabled with it.
+   */
   modelResetDisabledReason?: string;
   onModelClose: () => void;
   onModelOpen: () => void;
@@ -1172,16 +1175,15 @@ export function ChatInputArea({
             </span>
             <ArrowDownGlyph className="choice-caret" />
           </button>
-          {isOverride && (
+          {/* A refused reset is not offered here: the composer row has no room
+              for its reason, and a title never reaches a touch user. The
+              picker keeps the same reset, disabled with the reason visible. */}
+          {isOverride && !modelResetDisabledReason && (
             <button
               type="button"
               className="chat-input__model-reset"
-              disabled={Boolean(modelResetDisabledReason)}
               onClick={onModelReset}
-              title={
-                modelResetDisabledReason ??
-                'Reset this chat to its default model'
-              }
+              title="Reset this chat to its default model"
             >
               Use {modelResetSourceLabel(defaultModelSource)}
             </button>

@@ -1255,22 +1255,19 @@ describe('ChatInputArea', () => {
     expect(onModelReset).toHaveBeenCalledOnce();
   });
 
-  test('a refused reset chip is disabled and says why', () => {
-    const onModelReset = vi.fn();
+  test('a refused reset is not offered as a composer chip', () => {
     renderChatInputArea({
       currentModel: 'override-model',
       currentModelSource: 'session override',
-      onModelReset,
+      onModelReset: vi.fn(),
       modelResetDisabledReason: 'Wait for the current turn to finish.',
     });
 
-    const reset = screen.getByRole('button', {
-      name: 'Use default model',
-    }) as HTMLButtonElement;
-    expect(reset.disabled).toBe(true);
-    expect(reset.title).toBe('Wait for the current turn to finish.');
-    fireEvent.click(reset);
-    expect(onModelReset).not.toHaveBeenCalled();
+    // The reason has no visible place in the composer row; the picker's own
+    // reset states it (SessionModelPicker "a refused reset is disabled…").
+    expect(screen.queryByRole('button', { name: 'Use default model' })).toBe(
+      null,
+    );
   });
 
   test.each([
