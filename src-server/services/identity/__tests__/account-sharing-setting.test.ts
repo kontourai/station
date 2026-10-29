@@ -307,7 +307,7 @@ describe('offered sign-in origins (#4305)', () => {
 });
 
 test.skipIf(process.platform === 'win32')(
-  'refuses a linked config directory for reads and writes',
+  'does not adopt a choice through a linked config directory',
   () => {
     const path = home();
     const outside = home();
@@ -322,11 +322,17 @@ test.skipIf(process.platform === 'win32')(
     expect(resolveAccountSharingAtBoot(path).choice).toEqual({
       enabled: false,
     });
+  },
+);
+
+test.skipIf(process.platform === 'win32')(
+  'does not write through a linked config directory',
+  () => {
+    const path = home();
+    const outside = home();
+    symlinkSync(outside, join(path, 'config'));
     expect(() => stageAccountSharingChange(path, on)).toThrow();
-    expect(
-      JSON.parse(readFileSync(join(outside, 'account-sharing.json'), 'utf8'))
-        .committed,
-    ).toEqual(on);
+    expect(existsSync(join(outside, 'account-sharing.json'))).toBe(false);
   },
 );
 
