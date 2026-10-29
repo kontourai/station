@@ -8,7 +8,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join, sep } from 'node:path';
 import {
   type ACPConfig,
   normalizeACPArgs,
@@ -321,6 +321,45 @@ async function writeIntegrationConfigLocked(
 export const INTEGRATION_INSTANCE_FILE = '.station-instance';
 const INTEGRATION_INSTANCE_ID = /^[0-9a-f-]{36}$/;
 
+const RESERVED_SIDECAR_KEYS = new Set(
+  ['.station-instance', '.station-oauth-issuer'].map(sidecarNameKey),
+);
+
+/** Case- and Unicode-folded, as case-insensitive filesystems compare names. */
+function sidecarNameKey(name: string): string {
+  return name.normalize('NFKC').toLowerCase().normalize('NFKC');
+}
+
+/** Whether a file name could resolve to one of Station's own sidecars. */
+export function isReservedIntegrationSidecarName(name: string): boolean {
+  return RESERVED_SIDECAR_KEYS.has(sidecarNameKey(name));
+}
+
+/**
+ * A sidecar is trusted only as a regular file whose directory entry is
+ * spelled exactly as Station writes it. On a case-insensitive filesystem a
+ * differently cased file resolves to the same path; it was not written by
+ * Station, so it reads as absent.
+ */
+function sidecarPresentExactly(path: string): boolean {
+  if (!existsSync(path) || lstatSync(path).isSymbolicLink()) return false;
+  const name = path.slice(path.lastIndexOf(sep) + 1);
+  return readdirSync(dirname(path)).includes(name);
+}
+
+/**
+ * Before Station writes a sidecar, remove any entry spelled differently that
+ * the filesystem would resolve to it, so the written file carries Station's
+ * exact name.
+ */
+function removeVariantSidecars(path: string): void {
+  const name = path.slice(path.lastIndexOf(sep) + 1);
+  const dir = dirname(path);
+  for (const entry of readdirSync(dir))
+    if (entry !== name && sidecarNameKey(entry) === sidecarNameKey(name))
+      rmSync(join(dir, entry), { force: true });
+}
+
 function integrationInstancePath(projectHomeDir: string, id: string): string {
   assertSafeIntegrationId(id);
   return join(projectHomeDir, 'integrations', id, INTEGRATION_INSTANCE_FILE);
@@ -332,7 +371,7 @@ export function readIntegrationInstanceId(
   id: string,
 ): string | undefined {
   const path = integrationInstancePath(projectHomeDir, id);
-  if (!existsSync(path) || lstatSync(path).isSymbolicLink()) return undefined;
+  if (!sidecarPresentExactly(path)) return undefined;
   const value = readFileSync(path, 'utf8').trim();
   return INTEGRATION_INSTANCE_ID.test(value) ? value : undefined;
 }
@@ -344,6 +383,7 @@ function ensureIntegrationInstanceIdLocked(
   const existing = readIntegrationInstanceId(projectHomeDir, id);
   if (existing) return existing;
   const minted = randomUUID();
+  removeVariantSidecars(integrationInstancePath(projectHomeDir, id));
   writeFileSync(integrationInstancePath(projectHomeDir, id), minted, {
     mode: 0o600,
   });
@@ -398,7 +438,7 @@ export function readIntegrationOAuthIssuerPin(
   resource: string,
 ): string | undefined {
   const path = integrationOAuthIssuerPath(projectHomeDir, id);
-  if (!existsSync(path) || lstatSync(path).isSymbolicLink()) return undefined;
+  if (!sidecarPresentExactly(path)) return undefined;
   try {
     const pin = JSON.parse(readFileSync(path, 'utf8')) as {
       schemaVersion?: unknown;
@@ -438,6 +478,7 @@ export async function claimIntegrationOAuthIssuerPin(
     );
     if (existing) return existing;
     if (!existsSync(integrationConfigPath(projectHomeDir, id))) return issuer;
+    removeVariantSidecars(integrationOAuthIssuerPath(projectHomeDir, id));
     writeFileSync(
       integrationOAuthIssuerPath(projectHomeDir, id),
       JSON.stringify({ schemaVersion: 1, resource, issuer }),
@@ -762,12 +803,11 @@ export function assertPluginIntegrationsWritable(
   for (const entry of readdirSync(bundled, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     assertSafeIntegrationId(entry.name);
-    // A bundle cannot bring Station's own sidecars; the copy would carry them.
+    // A bundle cannot bring Station's own sidecars in any spelling the
+    // filesystem may resolve to them; the copy would carry them.
     if (
-      readdirSync(join(bundled, entry.name)).some(
-        (name) =>
-          String(name) === INTEGRATION_INSTANCE_FILE ||
-          String(name) === INTEGRATION_OAUTH_ISSUER_FILE,
+      readdirSync(join(bundled, entry.name)).some((name) =>
+        isReservedIntegrationSidecarName(String(name)),
       )
     )
       throw new Error(

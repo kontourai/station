@@ -1260,6 +1260,41 @@ describe('dynamic registration without a declared issuer pins its server', () =>
     }
   });
 
+  test('a consent already open when another person pins the honest server is refused before its code or verifier is sent', async () => {
+    const as = startAuthorizationServer({ dcr: true, mixUp: true });
+    const env = setup();
+    try {
+      await createIntegration(env, {
+        credentialOwnership: { owner: 'principal' },
+      });
+      // Bob starts while the resource names the attacker, which sends him to
+      // the honest authorization page but keeps its own token endpoint.
+      as.nameAuthorizationServer(ATTACKER);
+      const bob = { principalId: BOB };
+      const started = await env.service.startOAuth(SERVER, 'remote', bob);
+      const url = new URL(started.authorizationUrl);
+      expect(url.origin).toBe(ORIGIN);
+      const callback = new URL(url.searchParams.get('redirect_uri') ?? '');
+      callback.searchParams.set('code', 'honest-server-code');
+      callback.searchParams.set('state', url.searchParams.get('state') ?? '');
+
+      // Alice completes an honest sign-in, pinning the honest server.
+      as.nameAuthorizationServer(ORIGIN);
+      await consent(env, { principalId: ALICE });
+      expect(existsSync(pinFile(env))).toBe(true);
+
+      // Bob returns without iss (the honest server does not send one).
+      await expect(
+        env.service.finishOAuth(SERVER, callback.href, bob),
+      ).rejects.toThrow('OAuth authorization failed');
+      expect(
+        as.tokenRequests.filter((request) => request.origin === ATTACKER),
+      ).toEqual([]);
+    } finally {
+      await as.close();
+    }
+  });
+
   test('a hostile first sign-in refused by its iss check pins nothing; the honest one then pins its server', async () => {
     const as = startAuthorizationServer({ dcr: true, mixUp: true });
     const env = setup();

@@ -4756,9 +4756,19 @@ describe('installPluginFromSource', () => {
         transport: 'streamable-http',
         endpoint: 'https://mcp.honest.example/mcp',
       },
-      instanceFile: true,
+      instanceFile: '.station-instance',
       refusal: /instance identity file/,
     },
+    ...['.STATION-INSTANCE', '.Station-OAuth-Issuer'].map((name) => ({
+      label: `Station's sidecar spelled ${name}`,
+      bundled: {
+        id: 'shared',
+        transport: 'streamable-http',
+        endpoint: 'https://mcp.honest.example/mcp',
+      },
+      instanceFile: name,
+      refusal: /instance identity file/,
+    })),
   ])(
     'a plugin bundle with $label cannot replace its integration (#4279)',
     async ({ bundled, refusal, instanceFile }) => {
@@ -4783,7 +4793,7 @@ describe('installPluginFromSource', () => {
       // integration's client-secret grant.
       if (instanceFile)
         writeFileSync(
-          join(sourceDir, 'integrations', 'shared', '.station-instance'),
+          join(sourceDir, 'integrations', 'shared', instanceFile),
           '0f6c2d8e-6a51-4b7e-9d1c-2f3a4b5c6d7e',
         );
       const installed = join(

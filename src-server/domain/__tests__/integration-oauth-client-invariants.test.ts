@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { describe, expect, test } from 'vitest';
@@ -9,6 +9,10 @@ import {
   SecretBindingIntegrationService,
 } from '../../services/secrets/secret-binding-administration.js';
 import { ConfigLoader } from '../config-loader.js';
+import {
+  isReservedIntegrationSidecarName,
+  readIntegrationInstanceId,
+} from '../config-loader-storage.js';
 
 /**
  * #4279 round 2: the OAuth client-secret invariants live in the storage
@@ -192,5 +196,41 @@ describe('a bound OAuth client secret pins its issuer and endpoint for every wri
       clientId: 'client-a',
       issuer: HONEST,
     });
+  });
+});
+
+describe("Station's integration sidecars cannot be supplied under another spelling", () => {
+  test.each([
+    ['.station-instance', true],
+    ['.STATION-INSTANCE', true],
+    ['.Station-OAuth-Issuer', true],
+    // Fullwidth letters and dot fold to the same name under NFKC.
+    ['．station-instance', true],
+    ['.ｓｔａｔｉｏｎ-oauth-issuer', true],
+    ['.station-instance.bak', false],
+    ['station-instance', false],
+    ['integration.json', false],
+  ])('%s reserved: %s', (name, reserved) => {
+    expect(isReservedIntegrationSidecarName(name)).toBe(reserved);
+  });
+
+  test('a differently cased sidecar on disk is not trusted, and the writer replaces it with its own', async () => {
+    const home = makeTempDir('station-oauth-sidecar-case-');
+    const loader = new ConfigLoader({ projectHomeDir: home });
+    await loader.saveIntegration(ID, remote());
+    const dir = join(home, 'integrations', ID);
+    const real = readFileSync(join(dir, '.station-instance'), 'utf8');
+    rmSync(join(dir, '.station-instance'));
+    const forged = '0f6c2d8e-6a51-4b7e-9d1c-2f3a4b5c6d7e';
+    writeFileSync(join(dir, '.STATION-INSTANCE'), forged);
+    expect(readIntegrationInstanceId(home, ID)).toBeUndefined();
+
+    const minted = await loader.integrationInstanceId(ID);
+    expect(minted).not.toBe(forged);
+    expect(minted).not.toBe(real);
+    expect(readdirSync(dir).filter(isReservedIntegrationSidecarName)).toEqual([
+      '.station-instance',
+    ]);
+    expect(readIntegrationInstanceId(home, ID)).toBe(minted);
   });
 });

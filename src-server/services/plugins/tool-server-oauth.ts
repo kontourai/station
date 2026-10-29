@@ -1031,7 +1031,14 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
         if (key === 'clientInformation')
           return async (ctx?: OAuthClientInformationContext) => {
             if (target.client?.clientId) return target.clientInformation(ctx);
-            if (flowClient) return flowClient;
+            if (flowClient) {
+              // The SDK reads the client again for the code exchange. The
+              // declared issuer or pin may have changed since this flow
+              // started (another person's sign-in pinned the server), so it
+              // is checked here, before the code or verifier is sent.
+              if (ctx) target.requireDeclaredIssuer(ctx.issuer);
+              return flowClient;
+            }
             startedFrom = target.storedRecord(KEYS.client);
             const value = await target.clientInformation(ctx);
             if (!ctx) return value;

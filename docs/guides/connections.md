@@ -1734,9 +1734,12 @@ is refused.
 and no declared **Authorization server**, the first sign-in that completes
 pins the authorization server it used, for that MCP server URL. The pin is
 kept beside the integration where no definition, registry, plugin or import
-can set it, and it is shared by everyone who signs in. After that, any other
+can set it (a plugin file with the same name in any letter case or Unicode
+form is refused), and it is shared by everyone who signs in. After that, any other
 server is refused before Station registers a client or redirects anyone, for
 every person, after disconnects and across overlapping sign-ins. A sign-in
+that was already open when the pin was set is checked again at its code
+exchange and refused before its code or verifier is sent. A sign-in
 pins only when its code exchange succeeds, so a hostile first attempt that
 fails the `iss` check pins nothing. The first completed sign-in is still
 trust-on-first-use: if the resource is already compromised then, and the
