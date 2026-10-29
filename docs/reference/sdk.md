@@ -3941,6 +3941,20 @@ interface ProviderMetadata {
 
 ## Notifications API
 
+### Person notification query domain
+
+`fetchPersonNotifications`, `markPersonNotificationRead`,
+`dismissPersonNotification` and their `usePersonNotificationsQuery`,
+`useMarkPersonNotificationReadMutation` and
+`useDismissPersonNotificationMutation` hooks use `/api/me/notifications`.
+They require a captured `{ apiBase, authorityKey, isCurrent }` request scope;
+cache keys include that authority and late responses are refused after it
+changes. Read and dismiss take an id and an optional `clientSessionId`: callers
+without a paired Device identity must supply the session id. A host without the
+list route reports that person notifications are unsupported and suggests an
+update. A mutation's 404 can also mean the notification was not found, so it
+reports both possibilities. See [person notification routes](api.md#person-notifications).
+
 ### `NotificationsAPI`
 
 Imperative REST wrapper with `schedule`, `list`, `dismiss`, `action`, `snooze`,
@@ -5844,7 +5858,10 @@ Pass the render-captured request scope and abort signal in `options`. The
 read-only POST returns a validated HTML page plus isolated frame origin, or a
 bounded raster preview. `thread` selects an authorized Session workspace;
 verified Git worktrees of that repository are also eligible. The returned bytes
-are display data, not permission to navigate to a host filesystem URL.
+are display data, not permission to navigate to a host filesystem URL. A failed
+read throws `WorkspaceVisualFileError` with `status` and a `reason`
+(`WorkspaceVisualFileUnavailableReason`): the server's refusal, `unauthorized`,
+`server-error` or `unavailable`. Branch on `reason`, not the message.
 
 ## Walkthroughs
 

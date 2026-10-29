@@ -3,6 +3,7 @@ import {
   parseEngineId,
 } from '@kontourai/station-contracts/agent-identity';
 import { clientOriginSender } from '@kontourai/station-contracts/client-origin';
+import { isLowContentPrompt } from '@kontourai/station-contracts/conversation-title';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { unanswerableRequestNotice } from '@kontourai/station-contracts/orchestration';
 import {
@@ -62,8 +63,20 @@ export interface HomeWorkItem {
   model?: string;
   /** Present only when this row is represented by the canonical conversation inventory. */
   conversationUpdatedAt?: string;
-  /** Epoch ms of the inventory version the current user has opened. */
+  /** Epoch ms of the inventory version the current user last viewed. */
   acknowledgedAt?: number;
+  /**
+   * Epoch ms the work entered its current terminal state, from the server's
+   * `lifecycleChangedAt` (#4266). Absent for live work and for hosts that do
+   * not report it; `finishedAtOf` then falls back to `updatedAt`.
+   */
+  terminalAt?: number;
+  /**
+   * The engines the conversation actually ran on, in the order they first
+   * ran (`ConversationListItem.executionProviders`). The row draws one mark
+   * per engine; `provider` remains the current execution's engine.
+   */
+  executionProviders?: readonly EngineId[];
   /** Compact display-only working-directory hint for orchestration rows. */
   cwdLabel?: string;
   /**
@@ -171,6 +184,27 @@ export interface HomeWorkItem {
    */
   environmentId?: string;
   environmentLabel?: string;
+}
+
+/**
+ * Settled for lane purposes — deliberately NOT including `'Unanswerable'`
+ * (archive#1783). The settled/"Just finished" lane asserts the work FINISHED,
+ * and an unanswerable session did not; it stopped being reachable. So it
+ * stays in the live lanes (under Idle, see `workStatus`), with its basis on
+ * the row.
+ *
+ * archive#3227 A6: `partitionHomeWorkItems` is the ONE live/finished
+ * classifier for every surface — desktop Home lanes, the Sessions lanes
+ * (`sessions-lane-model.ts`), the project live-work badge, and the chat dock
+ * inbox / mobile activity groups (`mobile-activity-groups.ts`).
+ *
+ * Lives here, not in `home-lane-model.ts` (which re-exports it), because the
+ * item builders below stamp `terminalAt` only on terminal work.
+ */
+export function isTerminalLifecycle(
+  label: HomeWorkItem['lifecycleLabel'],
+): boolean {
+  return label === 'Completed' || label === 'Failed' || label === 'Stopped';
 }
 
 export function chatTaskSessionId(task: HomeWorkItem): string {
@@ -443,6 +477,10 @@ function buildSessionWorkItem(
         ? Date.parse(session.createdAt) || sessionRecency(session)
         : sessionRecency(session),
     lifecycleLabel,
+    ...(isTerminalLifecycle(lifecycleLabel) &&
+    Number.isFinite(Date.parse(session.lifecycleChangedAt ?? ''))
+      ? { terminalAt: Date.parse(session.lifecycleChangedAt!) }
+      : {}),
     // The basis behind an `'Unanswerable'` chip. Carried on the item rather
     // than recomputed at render so the row and the label come from one read
     // of one decoration.
@@ -665,8 +703,14 @@ function mergeHomeWorkItems(
       // A chat's title is the durable conversation projection. The current
       // execution can supply Agent/model/status without replacing it with a
       // child-session fallback such as "Claude Code session" after handoff.
+      // #4266: unless it is low-content ("Continue"); then the server's
+      // title for the execution, which skips such prompts, names it.
       title:
-        chat?.title && chat.title !== 'New chat' ? chat.title : display.title,
+        chat?.title &&
+        chat.title !== 'New chat' &&
+        !isLowContentPrompt(chat.title)
+          ? chat.title
+          : display.title,
       ...(existing.conversationId || item.conversationId
         ? { conversationId: existing.conversationId ?? item.conversationId }
         : {}),

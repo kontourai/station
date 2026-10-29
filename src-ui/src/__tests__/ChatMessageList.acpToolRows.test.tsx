@@ -302,28 +302,31 @@ describe('ACP (OpenCode) tool rows', () => {
     await renderTranscript();
 
     const terminal = glyphPath(TerminalGlyph);
-    await waitFor(() => expect(rowFor('Ran echo')).toBeTruthy());
+    // #4266: the engine's description leads; the command follows it.
+    await waitFor(() => expect(rowFor('List processes · echo')).toBeTruthy());
     // Item 1: the command's own text, flags and all.
-    expect(rowFor('Ran echo').textContent).toContain(
+    expect(rowFor('List processes · echo').textContent).toContain(
       'ps -o pid,lstart,etime,rss,cmd',
     );
     // Item 2: a command that writes a file is a command, not "Read"/"Search".
-    expect(rowFor('Ran cd /tmp && gh api').textContent).toContain(
+    expect(rowFor('Fetch the file · cd /tmp && gh api').textContent).toContain(
       'base64 -d > gsd.mjs',
     );
-    expect(rowFor('Ran git status --short; echo; grep')).toBeTruthy();
+    expect(
+      rowFor('Check the tree · git status --short; echo; grep'),
+    ).toBeTruthy();
     // Item 4: leading env assignments give way to the command; `--` and the
     // hyphenated path survive.
-    expect(rowFor('Ran npm run gate:for -- Dockerfile').textContent).toContain(
-      'docs/user/getting-started.md',
-    );
-    expect(rowFor('Ran ls -la /tmp')).toBeTruthy();
+    expect(
+      rowFor('Gate · npm run gate:for -- Dockerfile').textContent,
+    ).toContain('docs/user/getting-started.md');
+    expect(rowFor('List · ls -la /tmp')).toBeTruthy();
     for (const label of [
-      'Ran echo',
-      'Ran cd /tmp',
-      'Ran git status',
-      'Ran npm run gate:for',
-      'Ran ls -la',
+      'List processes · echo',
+      'Fetch the file · cd /tmp',
+      'Check the tree · git status',
+      'Gate · npm run gate:for',
+      'List · ls -la',
     ]) {
       expect(rowGlyph(rowFor(label)), label).toBe(terminal);
     }

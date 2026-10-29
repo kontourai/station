@@ -115,8 +115,9 @@ and where to start reading; it is a pointer, not a reviewed interface contract.
 | `src-server/services/access/` | Station groups, personal access tokens, and the principal a paired device is tied to (#3557) | [Principals](../design/principals.md) |
 | `src-server/services/automation/` | Foundation only: config validation, store and a delivery ledger for Station Automations. No route or runtime wiring calls it yet (#3439) | [Automations proposal](../design/automations.md) |
 | `src-server/services/board/` | The Board store for one Task or Session (tabs and ordinal widgets; contract in `packages/contracts/src/board.ts`), behind `src-server/routes/board.ts`, which authorizes the owning reference before any store read | Source |
+| `src-server/services/chat-apps/` | Messaging bindings, identity links, kill switches and delivery receipts in the orchestration database; Discord imports its legacy authority once. Live Discord validation remains outstanding. | [Messaging core](../../src-server/services/chat-apps/chat-app-core.ts) |
 | `src-server/services/config/` | The idempotent log-level edit with retained terminal receipts | [Logging configuration](../reference/config.md#logging) |
-| `src-server/services/discord/` | The Discord gateway: private configuration in `<home>/security/discord-gateway.json`, allowlist and identity authorization, channel-to-session bindings and reply relay | [Gateway service](../../src-server/services/discord/discord-gateway-service.ts) |
+| `src-server/services/discord/` | Discord transport and ordered, bounded reply chunks with separate receipts and linked busy refusals; the private token stays in `<home>/security/discord-gateway.json`, whose live policy remains an additional authority ceiling | [Gateway service](../../src-server/services/discord/discord-gateway-service.ts) |
 | `src-server/services/feature-previews/` | The registry of opt-in feature previews this build can run, persisted per Station and shown under Settings → Advanced; served by `src-server/routes/system/feature-previews.ts`. [Contributor workflow](../guides/feature-previews.md) | Source |
 | `src-server/services/kits/` | Installed-Kit observability lifecycle and persistence for the host | Source |
 | `src-server/services/presence/` | Process-local, non-durable focus presence per paired device or client session (#2585) | Source |
@@ -1930,6 +1931,30 @@ creates the actual Session and carries the saved text projection; canonical
 refresh combines copied parent rows with subsequent runtime turns. Deletion
 before first send tombstones the context under the lifecycle guard before file
 cleanup, so failed cleanup cannot reactivate the seed.
+
+Native-fork persistence has a separate, fail-closed recovery boundary. Its
+[private SQLite intent](../../src-server/services/orchestration/event-store.ts)
+joins the existing Session-start claim before invocation. A possible native
+effect cannot be published as a replay fork or deleted as an unstarted context.
+Committing a native child binds its exact owner, workspace, Agent, tenant,
+identity and canonical started/configured/fork facts in one transaction.
+Event and lineage observers run only after the outer commit is confirmed;
+rollback or an uncertain commit publishes no live success.
+
+Recovery reads verify the retained receipt and current stored child separately.
+They admit SQL byte and row budgets before transferring payloads, and bind reads
+to the runtime's original Request, principal, current credential scope and
+release lifetime. The cached activity path accepts only already-warm singleton
+source/child lineages with an actual child-work report. Cold caches, growing
+lineages and missing affected tenant facts refuse without loading history or
+inventing an empty seed. A warm observation is not activation authority.
+
+This is a persistence and read foundation, not built-in native-fork dispatch.
+Retained native attempts still return a context-unavailable response at the fork
+route, including after a successful warm read; they cannot fall through to
+replay success. Native provider activation, general successor-lineage recovery
+and live provider/account qualification remain separate work. Ordinary saved
+replay forks retain their existing behavior.
 
 A turn's outcome
 never ends its session. A finished turn rests it `idle` (at rest and reusable,
@@ -3950,7 +3975,10 @@ Callers use these operations rather than mutating leases or output ownership.
 owns coordinator roots, request/output/receipt paths and execution-equivalence
 keys. [Request context](../../scripts/lib/verification-request-context.mjs)
 validates lane/time/capacity, binds revision/worktree and exact Node/npm toolchain
-provenance, and checks a submitted request at admission. Provenance is checked
+provenance, and checks a submitted request at admission. Once admitted, an
+owner executing a lane, or each full-regression phase, first takes a
+[host heavy-check slot](../guides/testing.md#host-heavy-check-slots) and runs its
+children under it. Reuse and join take none. Provenance is checked
 again before execution and each non-reused completion phase. A same-name lane
 or green sentinel alone is not reusable evidence.
 
@@ -5634,8 +5662,9 @@ indexed Session engine and recorded-owner reads after Session read admission;
 no full transcript or People-management request is needed. Missing identity
 facts fall back to Teammate or Agent. The local operator's profile name wins;
 when only the OS alias is available, its initial is capitalized for display.
-Opaque working-state plan
-revisions are hidden because the room does not expose ordinal plan history.
+Plan revision chips count committed, revision-changing settle batches (saves),
+starting at v1. Multi-operation saves advance once; retries do not advance.
+Opaque digest identity remains separate from the displayed version.
 
 Task review keeps anchored comments in its own append-only store, outside the
 shared room's document and history. Plan references freeze revision evidence
@@ -5664,7 +5693,23 @@ lists metadata and counts for the plan, Task summary (Brief), kept outputs,
 linked answers and captures. List threads are summaries with state, anchor,
 event count, opening-comment preview and latest delivery event alongside the
 last event; a separate thread-detail GET supplies full history. Summary event
-bodies are capped at 500 UTF-16 code units without partial surrogates.
+bodies are capped at 500 UTF-16 code units without partial surrogates by the
+shared contracts `summarizeThreadView` projection. Plan item metadata includes
+`revisionOrdinals` for only the current revision and the threads' anchored plan
+revisions. The working-state worker persists final save revisions in a separate
+SQLite index, in the settle transaction. Operation pruning and operation encoding
+never determine these ordinals; restart preserves them. Existing documents are
+backfilled from committed batch receipts in insertion order, using the historical
+revision format for v0 and counting consecutive unchanged identities once. A
+malformed receipt leaves that document's ordinals unavailable and retryable at
+startup without blocking other documents or inventing versions on later saves.
+Intermediate operation states have no version.
+The Review module caches requested ordinals, including missing identities, per
+Task incarnation, document and latest revision. New anchors fetch only missing
+identities; a new latest revision invalidates that cache. Entries share the
+bounded ReviewCache accounting (UTF-16 serialized payload, keys and allowance),
+with at most 16 entries / 1 MiB. Current document and authority reads still run.
+Unknown historical identities receive no invented version.
 Corrupt rows are logged once per thread/event count within the bounded warning
 cache and projected as unavailable entries while healthy
 threads remain readable. Unavailable entries are omitted from aggregate counts.

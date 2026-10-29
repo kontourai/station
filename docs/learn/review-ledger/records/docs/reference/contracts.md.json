@@ -312,6 +312,18 @@
 
     "packages/contracts/src/task-review-matcher.ts",
 
+    "packages/contracts/src/chat-app.ts",
+
+    "packages/contracts/src/integration-status.ts",
+
+    "packages/contracts/src/__tests__/chat-app.test.ts",
+
+    "packages/contracts/src/__tests__/integration-status.test.ts",
+
+    "packages/contracts/src/__tests__/discord-compatibility.test.ts",
+
+    "packages/contracts/src/contract-validation.ts",
+
     "packages/contracts/src/project-task-room.ts",
 
     "packages/contracts/src/task-approval.ts",
