@@ -72,10 +72,18 @@ describe('scoped documentation freshness (#2923)', () => {
     git(f.root, ['switch', '-qc', 'feature']);
     f.write('src/a.ts', 'export const a = 2;\n');
     commit(f.root, 'change source');
+    expect(
+      record_(f.root, ['docs/a.md', '--note', 'Reviewed the changed source.'])
+        .status,
+    ).toBe(0);
+    const noteCommit = commit(f.root, 'review changed source');
     const trace = join(makeTempDir('freshness-git-trace-'), 'trace.log');
     vi.stubEnv('GIT_TRACE', trace);
     const first = resolveDocumentationFreshness({ root: f.root, env: scoped });
     expect(first.appendOnly).toBe('verified');
+    expect(first.sourceDrops).not.toContainEqual(
+      expect.objectContaining(stale('review', 'docs/a.md', ['src/a.ts'])),
+    );
     const firstTrace = readFileSync(trace, 'utf8');
     expect(firstTrace).toMatch(
       /ls-tree -r -z --name-only [a-f0-9]{40} -- docs\/learn\/review-ledger/,
@@ -85,13 +93,16 @@ describe('scoped documentation freshness (#2923)', () => {
     );
 
     git(f.root, ['switch', 'main']);
-    f.write('docs/base-advance.md', '# Base advanced\n');
-    const advanced = commit(f.root, 'advance main');
+    git(f.root, [...identity, 'cherry-pick', noteCommit]);
+    const advanced = git(f.root, ['rev-parse', 'HEAD']);
     git(f.root, ['switch', 'feature']);
     writeFileSync(trace, '');
     const second = resolveDocumentationFreshness({ root: f.root, env: scoped });
     expect(second.appendOnly).toBe('verified');
     expect(second.mergeBase).not.toBe(advanced);
+    expect(second.sourceDrops).toContainEqual(
+      expect.objectContaining(stale('review', 'docs/a.md', ['src/a.ts'])),
+    );
     expect(readFileSync(trace, 'utf8')).toMatch(
       /ls-tree -r -z --name-only main -- docs\/learn\/review-ledger/,
     );
