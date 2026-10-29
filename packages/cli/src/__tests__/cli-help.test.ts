@@ -117,20 +117,18 @@ describe('--version', () => {
 });
 
 test('plugin recovery-backups prints the inventory returned by the Station API', async () => {
-  const fetchMock = vi
-    .spyOn(globalThis, 'fetch')
-    .mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          success: true,
-          data: {
-            backups: [{ id: 'plugin-install-abc123' }],
-            instructions: ['Review backup'],
-          },
-        }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } },
-      ),
-    );
+  const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        success: true,
+        data: {
+          backups: [{ id: 'plugin-install-abc123' }],
+          instructions: ['Review backup'],
+        },
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ),
+  );
   const { runCli, printed } = await loadCli();
   await runCli([
     'plugin',
