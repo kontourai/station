@@ -18,6 +18,7 @@ import { delimiter, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import { lookupProcessBirthFingerprint } from '../../packages/shared/src/process-identity.mjs';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   latestE2EEvidenceBinding,
   projectLatestE2EEvidence,
@@ -60,7 +61,9 @@ const FULL_PHASE_IDS = FULL_REGRESSION_PHASES.map((phase) => phase.id);
 // this worker holds in a private pool, not the host pool or whichever runner
 // started Vitest; the heavy-check admission tests below use their own pools.
 const inheritedHeavyCheckMarker = process.env[HEAVY_CHECK_HELD_ENV];
-const fileHeavyCheckClaim = mkdtempSync(join(tmpdir(), 'coordinator-claim-'));
+const fileHeavyCheckClaim = trackTempDirs({ lifetime: 'file' })(
+  'coordinator-claim-',
+);
 beforeAll(() => {
   writeFileSync(
     join(fileHeavyCheckClaim, 'slot-0.lock'),
@@ -81,7 +84,6 @@ afterAll(() => {
   if (inheritedHeavyCheckMarker === undefined)
     delete process.env[HEAVY_CHECK_HELD_ENV];
   else process.env[HEAVY_CHECK_HELD_ENV] = inheritedHeavyCheckMarker;
-  rmSync(fileHeavyCheckClaim, { recursive: true, force: true });
 });
 const ORDINARY_FULL_PHASE_IDS = FULL_PHASE_IDS.filter((id) =>
   id.startsWith('test-full-ordinary-'),
