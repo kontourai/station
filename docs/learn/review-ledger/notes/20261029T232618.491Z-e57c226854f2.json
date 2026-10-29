@@ -1,0 +1,7 @@
+{
+  "revision": "1f3b291a1dbd057283db41847700220f4f093504",
+
+  "notes": [
+    {"path":"docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","note":"Scoped source-impact review at 1f3b291a1db. Read the complete historical ADR and dated probe appendix, then the pending runtime-routes knowledge hunks and current store/index composition. KnowledgeStoreProvider remains the canonical adapter/root owner; sqlite-vec remains a derived index. Runtime passes the canonical store into separate explicit rebuild/migration and root-management routes. Changed Project/root authorization is asynchronous, guards outgoing root identity and current read access, and restricts root registration/validation to the current in-person operator; the document-import path uses the canonical store rather than treating retrieval chunks as records. The existing reading notice already distinguishes multiple roots/conversation root, explicit rebuild and migration/recovery limits from the historical one-root target and disposable-index wording. No prose change required for this named composition impact. SOURCE/REASONED only: no re-execution of July probes, rebuild/recall, provider, migration, platform, live authorization or performance qualification; historical versions/results preserved and no ledger classification or coverage-baseline change.","inputs":["docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}
