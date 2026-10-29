@@ -20,6 +20,7 @@ import {
 } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { CoordinatorToolsNotice } from '../components/chat-dock/CoordinatorToolsNotice';
 import { useCoordinatorDockActions } from '../components/chat-dock/useCoordinatorDockActions';
 import { HomeCoordinatorCard } from '../components/home/HomeCoordinatorCard';
 import { COORDINATOR_PRODUCT_NAME } from '../lib/productNames';
@@ -142,6 +143,51 @@ function wrapper() {
 }
 
 describe('Home coordinator card', () => {
+  test('the designated chat explains a completed tools restart', async () => {
+    designation = {
+      conversationId: 'chat-houston',
+      designatedAt: '2026-10-28T09:00:00.000Z',
+    };
+    delivery = { wakes: 'ready', toolsPending: false, toolsRestarted: true };
+    render(<CoordinatorToolsNotice conversationId="chat-houston" />, {
+      wrapper: wrapper(),
+    });
+    expect(
+      await screen.findByText(/restarted its session to pick up Station tools/),
+    ).toBeTruthy();
+  });
+
+  test('unsupported tools stay visible on the card and in the designated chat, and clear when supported', async () => {
+    designation = {
+      conversationId: 'chat-houston',
+      designatedAt: '2026-10-28T09:00:00.000Z',
+    };
+    delivery = { wakes: 'ready', toolsPending: false, toolsUnavailable: true };
+    const view = render(
+      <>
+        <HomeCoordinatorCard />
+        <CoordinatorToolsNotice conversationId="chat-houston" />
+      </>,
+      { wrapper: wrapper() },
+    );
+    expect(
+      await screen.findAllByText(/This engine can’t use Station tools/),
+    ).toHaveLength(2);
+    expect(
+      screen.getAllByText(/Choose Claude Code for Station tools/),
+    ).toHaveLength(2);
+    view.unmount();
+    const callsBefore = calls.length;
+    delivery = { wakes: 'ready', toolsPending: false };
+    render(<CoordinatorToolsNotice conversationId="chat-houston" />, {
+      wrapper: wrapper(),
+    });
+    await waitFor(() => expect(calls.length).toBeGreaterThan(callsBefore));
+    expect(
+      screen.queryByText(/This engine can’t use Station tools/),
+    ).toBeNull();
+  });
+
   test('shows the readable working picture when its preview is enabled', async () => {
     picturePreview.enabled = true;
     designation = {
@@ -251,7 +297,7 @@ describe('what the person is told about delivery', () => {
     ],
     [
       { wakes: 'ready', toolsPending: true },
-      'It hears when your work needs you. Station tools arrive with its next session.',
+      'It hears when your work needs you. Station will add its tools on the next turn.',
     ],
     [
       { wakes: 'ready', toolsPending: false },
@@ -264,7 +310,7 @@ describe('what the person is told about delivery', () => {
     expect(await screen.findByText(line)).toBeTruthy();
   });
 
-  test('designating a running chat says its tools arrive with the next session', async () => {
+  test('designating a running chat says its tools arrive on the next turn', async () => {
     delivery = { wakes: 'ready', toolsPending: true };
     const { result } = renderHook(() => useCoordinatorDockActions('chat-a'), {
       wrapper: wrapper(),
@@ -273,7 +319,7 @@ describe('what the person is told about delivery', () => {
     result.current[0]!.onSelect(document.createElement('button'));
     await waitFor(() =>
       expect(showToast).toHaveBeenCalledWith(
-        `This chat is ${COORDINATOR_PRODUCT_NAME}. It hears when your work needs you. Station tools arrive with its next session.`,
+        `This chat is ${COORDINATOR_PRODUCT_NAME}. It hears when your work needs you. Station will add its tools on the next turn.`,
         undefined,
         undefined,
         undefined,

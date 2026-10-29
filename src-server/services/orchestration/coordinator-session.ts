@@ -81,6 +81,7 @@ import {
   coordinatorWakeClientTurnId,
   isCoordinatorWakeClientTurnId,
 } from '@kontourai/station-contracts/coordinator';
+import { ENGINE_CAPABILITY_MATRICES } from '@kontourai/station-contracts/engine-capability-matrix';
 import {
   isPrincipalRef,
   type PrincipalRef,
@@ -1217,6 +1218,7 @@ export function readCoordinatorDelivery(
   const threadId = ports.currentSessionId(conversationId);
   let live = false;
   let engine: string | undefined;
+  let toolsRestarted = false;
   let requested: readonly unknown[] | undefined;
   for (const event of ports.lifecycleEvents(threadId)) {
     if (event.method === 'session.exited') {
@@ -1226,6 +1228,9 @@ export function readCoordinatorDelivery(
     if (event.method === 'session.started') {
       live = true;
       requested = undefined;
+      toolsRestarted =
+        (event.metadata as Record<string, unknown> | undefined)
+          ?.coordinatorToolsRestart === true;
       if (typeof event.provider === 'string') engine = event.provider;
     }
     const report = (event.metadata as Record<string, unknown> | undefined)?.[
@@ -1236,9 +1241,20 @@ export function readCoordinatorDelivery(
   }
   const blocked =
     ports.lastTurnEnded(threadId) && ports.boundaryActive(threadId);
+  const capability = engine
+    ? ENGINE_CAPABILITY_MATRICES[
+        engine as keyof typeof ENGINE_CAPABILITY_MATRICES
+      ]?.toolServers
+    : undefined;
+  const toolsUnavailable = capability?.state === 'unsupported';
   return {
     wakes: blocked ? 'blocked' : 'ready',
-    toolsPending: live && !(requested ?? []).includes('station-control'),
+    toolsPending:
+      live &&
+      !toolsUnavailable &&
+      !(requested ?? []).includes('station-control'),
+    ...(toolsUnavailable ? { toolsUnavailable: true } : {}),
+    ...(toolsRestarted ? { toolsRestarted: true } : {}),
     ...(engine ? { engine } : {}),
   };
 }

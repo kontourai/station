@@ -47,6 +47,10 @@ export interface CoordinatorDesignation {
 export interface CoordinatorDelivery {
   readonly wakes: 'ready' | 'blocked';
   readonly toolsPending: boolean;
+  /** The engine declares no tool-server channel. */
+  readonly toolsUnavailable?: boolean;
+  /** The current Session started as a successor to pick up coordinator tools. */
+  readonly toolsRestarted?: boolean;
   readonly engine?: string;
 }
 

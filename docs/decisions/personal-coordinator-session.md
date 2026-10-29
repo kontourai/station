@@ -129,8 +129,9 @@ still held (for example, if a terminal lacks its invocation id). It
 does not use `hasActiveTurn`, which reads that same boundary and so cannot
 tell a stuck one from a running turn; a long turn, an approval wait, or a
 Codex retry in progress reads `ready`. `toolsPending` holds while the live Session
-started without the Station tools. This is derived rather than keyed to engine
-names, so it stops reporting `blocked` when the boundary retires.
+started without the Station tools; an engine declaring tool servers unsupported
+instead reports that tools are unavailable. These states follow declared
+capabilities and Session events, not an engine-name exception.
 
 ## Working picture
 
@@ -146,13 +147,19 @@ The preview is off by default; enabling it does not grant additional access.
 
 ## Provisioning and permissions
 
-A coordinator's Sessions get the built-in Station tool servers and their
-default auto-approvals on any Agent and engine. Delivery follows each engine's
+A coordinator's Sessions request the built-in Station tool servers and their
+default auto-approvals on any Agent. Delivery follows each engine's
 existing rule: an ACP connection without HTTP MCP support gets an
 `engine-capability-absent` receipt instead. This is the same list the
 reserved Station role gets, and the person's designation is the opt-in. What
 the Agent authored is kept and wins on conflict, its own `autoApprove`
-included. No other restriction or grant is added.
+included. A running Claude Session refreshes its own server set before its next
+turn. A supported engine without per-Session refresh starts a successor using
+the existing continuity path; the restart reason is recorded with the
+reservation and shown in the chat after the successor starts. Codex never uses
+a host-wide reload. If the engine declares tool servers unsupported, the
+designation remains valid and the card and chat explain the limitation. No
+other restriction or grant is added.
 
 ## Not in this decision
 

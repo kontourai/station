@@ -10,7 +10,7 @@ happened and bring you the result or the decision.
 
 ## Set up Houston
 
-1. Open a chat on a supported engine.
+1. Open a chat.
 2. Open the chat's **More** menu (the **⋯** sheet on a phone) and choose
    **Make this Houston**.
 
@@ -20,13 +20,18 @@ the menu offers **Make this Houston instead**, which replaces it. **Stop using
 as Houston** removes it. If you delete Houston's chat, you can choose another
 without replacing anything.
 
-Houston gets Station's own tools (Station Control) whatever Agent it runs, so
-it can delegate work to other engines, read Sessions and Tasks, and message
-you. An ACP agent receives them only if it supports HTTP MCP servers;
-otherwise the chat works without them and Station records that they were not
-delivered. The tools arrive when Houston's next session starts. If the chat
-was already running when you chose it, Station says so, and the Houston card
-reads "Station tools arrive with its next session" until then.
+On an engine that supports Station's tools (Station Control), Houston can
+delegate work, read Sessions and Tasks, and message you. A running chat picks
+up the tools on its next turn: Claude refreshes its own Session, while engines
+that cannot refresh start a successor Session with the conversation carried
+forward. The chat says when Houston restarted to pick up its tools. An ACP
+agent receives them only if it supports HTTP MCP servers; Station records when
+they were not delivered.
+
+You can also choose a chat whose engine does not support tool servers. Houston
+can still receive updates, but cannot act on Station. Its card and chat show
+this limitation and suggest an engine that supports Station's tools. The notice
+follows the engine's declared capability.
 
 Houston acts with your normal permissions and approval mode, and asks you for
 approvals as any chat does. Anything your Agent configures, including its own

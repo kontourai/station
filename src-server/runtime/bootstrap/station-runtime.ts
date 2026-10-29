@@ -805,6 +805,20 @@ export class StationRuntime {
   private readonly openCodeSessionSource = new OpenCodeSessionSource();
   private bedrockAdapter = new BedrockAdapter();
   private claudeAdapter = new ClaudeAdapter({
+    isCoordinatorSession: (threadId) => {
+      const principal =
+        this.orchestrationService?.resolveSessionActingPrincipal(threadId);
+      if (!principal || principal.source !== 'session-owner') return false;
+      const conversationId =
+        this.orchestrationEventStore.conversationForSession(threadId)
+          ?.conversationId ?? threadId;
+      return (
+        this.orchestrationEventStore
+          .coordinatorStore()
+          .designationForConversation(conversationId)?.actor.userId ===
+        principal.id
+      );
+    },
     resolveMcpOAuth: (input) => this.resolveExternalMcpOAuth(input),
     nativeSessionOwnership: {
       assertMutable: (sessionId) =>

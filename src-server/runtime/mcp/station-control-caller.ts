@@ -44,6 +44,8 @@ import {
 } from './station-control-mcp-token.js';
 
 export interface StationControlCallerRecord {
+  /** Rechecked only for a coordinator-scoped in-process credential. */
+  readonly coordinatorCurrent?: () => boolean;
   readonly principal?: SessionActingPrincipal;
   readonly localProjectId?: string;
   readonly projectIdSource?: 'session-record' | 'slug-lookup';
@@ -100,6 +102,7 @@ export interface StationControlCallerRecordSources {
   /** `ProjectConfig.id` for a local slug, or undefined when there is none. */
   localProjectId(slug: string): string | undefined;
   conversationId(sessionId: string): string | undefined;
+  coordinatorOwner?(conversationId: string): string | undefined;
 }
 
 /**
@@ -156,6 +159,13 @@ export function createStationControlCallerRecordResolver(
         : {}),
       ...(projectSlug ? { projectSlug } : {}),
       ...(conversationId ? { conversationId } : {}),
+      ...(sources.coordinatorOwner && principal
+        ? {
+            coordinatorCurrent: () =>
+              sources.coordinatorOwner?.(conversationId ?? sessionId) ===
+              principal.id,
+          }
+        : {}),
     };
   };
 }
@@ -175,6 +185,11 @@ export function stationControlCallerRecordSources(runtime: {
     conversationForSession(
       sessionId: string,
     ): { readonly conversationId: string } | undefined;
+    coordinatorStore?(): {
+      designationForConversation(
+        id: string,
+      ): { actor: { userId: string } } | undefined;
+    };
   };
   getProject(slug: string): { readonly id: string };
 }): StationControlCallerRecordSources {
@@ -194,6 +209,10 @@ export function stationControlCallerRecordSources(runtime: {
     },
     conversationId: (sessionId) =>
       runtime.eventStore?.conversationForSession(sessionId)?.conversationId,
+    coordinatorOwner: (conversationId) =>
+      runtime.eventStore
+        ?.coordinatorStore?.()
+        .designationForConversation(conversationId)?.actor.userId,
   };
 }
 
@@ -217,7 +236,8 @@ function resolveVerifiedStationControlCaller(
   if (
     !verified ||
     (verified.serverId !== 'station-control' &&
-      verified.serverId !== 'station-knowledge')
+      verified.serverId !== 'station-knowledge' &&
+      verified.serverId !== 'coordinator-control')
   )
     return null;
   let record: StationControlCallerRecord | undefined;
@@ -225,6 +245,11 @@ function resolveVerifiedStationControlCaller(
   try {
     assurance = stationControlTokenAssurance(verified.channel);
     record = resolveRecord?.(verified.sessionId);
+    if (
+      verified.serverId === 'coordinator-control' &&
+      record?.coordinatorCurrent?.() !== true
+    )
+      return null;
   } catch {
     return null;
   }

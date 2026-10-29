@@ -840,6 +840,65 @@ describe('station-control verified caller (in-process Claude delivery)', () => {
     expect(revoked.rest).toBeNull();
   });
 
+  test('a coordinator-only in-process server keeps other credentials and loses authority on replacement', async () => {
+    process.env.STATION_API_BASE = baseUrl;
+    let designated = true;
+    resolveRecord.mockImplementation((sessionId) => ({
+      ...productionResolver(sessionId),
+      coordinatorCurrent: () => designated,
+    }));
+    const options = claudeInProcessStationControlOptions(
+      () => resolveRecord,
+      createProbeServer,
+      createProbeServer,
+    );
+    const browser = sdkSideTransport();
+    const coordinator = sdkSideTransport();
+    try {
+      await options
+        .createInProcessStationBrowser('session-a')
+        .connect(browser.transport);
+      await options
+        .createInProcessCoordinatorStationControl('session-a')
+        .connect(coordinator.transport);
+      for (const side of [browser, coordinator])
+        await side.request(1, 'initialize', {
+          protocolVersion: '2025-06-18',
+          capabilities: {},
+          clientInfo: { name: 'claude-code', version: '2' },
+        });
+      const before = await coordinator.request(2, 'tools/call', {
+        name: 'probe_caller',
+        arguments: {},
+      });
+      expect(JSON.parse(before.result.content[0].text).rest).toEqual({
+        ...SESSION_A,
+        assurance: 'bound',
+      });
+      designated = false;
+      const revoked = await coordinator.request(3, 'tools/call', {
+        name: 'probe_caller',
+        arguments: {},
+      });
+      expect(JSON.parse(revoked.result.content[0].text)).toMatchObject({
+        inProcess: null,
+        rest: null,
+      });
+      const stillBrowser = await browser.request(2, 'tools/call', {
+        name: 'probe_caller',
+        arguments: {},
+      });
+      expect(JSON.parse(stillBrowser.result.content[0].text).rest).toEqual({
+        ...SESSION_A,
+        assurance: 'bound',
+      });
+    } finally {
+      resolveRecord.mockImplementation((sessionId) =>
+        productionResolver(sessionId),
+      );
+    }
+  });
+
   test('#90 D14: the station-browser server shares the session credential with station-control; revoking the session removes both', async () => {
     process.env.STATION_API_BASE = baseUrl;
     const options = claudeInProcessStationControlOptions(

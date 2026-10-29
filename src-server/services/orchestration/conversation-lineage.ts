@@ -236,6 +236,10 @@ interface ConversationLineageDeps {
    * the idle session is reused as-is.
    */
   perTurnModelOverride?: (provider: EngineId) => boolean;
+  needsCoordinatorToolsSuccessor?: (
+    conversationId: string,
+    detail: OrchestrationSessionDetail,
+  ) => boolean;
   nativeReturnSupported?: (provider: EngineId) => boolean;
   nativeMemoryOwnsTranscriptFor?: (provider: EngineId) => boolean;
   nativeIdentityRequiredFor?: (provider: EngineId) => boolean;
@@ -371,6 +375,7 @@ export class ConversationLineage {
     nativeResumeBindingKey?: string;
     contextBoundary?: ConversationContextBoundaryProjection;
     retirePredecessorSessionId?: string;
+    coordinatorToolsRestart?: boolean;
   }> {
     const store = this.deps.eventStore;
     if (!store) {
@@ -403,6 +408,9 @@ export class ConversationLineage {
         return {
           sessionId: current.sessionId,
           startRequired: true,
+          ...(store.isCoordinatorToolsRestart(current.sessionId)
+            ? { coordinatorToolsRestart: true }
+            : {}),
           contextBoundary: projectConversationContextBoundary(contextBoundary),
           ...(contextBoundary.policy === 'continue-from-history' && predecessor
             ? await this.pinnedContinuationLaunchContext(
@@ -429,6 +437,9 @@ export class ConversationLineage {
       return {
         sessionId: current.sessionId,
         startRequired: true,
+        ...(store.isCoordinatorToolsRestart(current.sessionId)
+          ? { coordinatorToolsRestart: true }
+          : {}),
         ...(predecessor
           ? await this.pinnedContinuationLaunchContext(
               predecessor,
@@ -466,7 +477,14 @@ export class ConversationLineage {
       !!requestedModel &&
       requestedModel !== detail.session.model?.trim() &&
       this.deps.perTurnModelOverride?.(requested.provider) === false;
-    if (sessionTakesNextTurn(detail.session) && !needsModelRestart) {
+    const needsToolsSuccessor =
+      this.deps.needsCoordinatorToolsSuccessor?.(conversationId, detail) ===
+      true;
+    if (
+      sessionTakesNextTurn(detail.session) &&
+      !needsModelRestart &&
+      !needsToolsSuccessor
+    ) {
       observeConversationContinuation('current_open');
       return { sessionId: current.sessionId, startRequired: false };
     }
@@ -475,11 +493,15 @@ export class ConversationLineage {
       predecessorSessionId: current.sessionId,
       proposedSessionId: `${conversationId}:session:${crypto.randomUUID()}`,
       createdAt: new Date().toISOString(),
+      ...(needsToolsSuccessor ? { coordinatorToolsRestart: true } : {}),
     });
     observeConversationContinuation(child.outcome);
     return {
       sessionId: child.lineage.sessionId,
       startRequired: true,
+      ...(store.isCoordinatorToolsRestart(child.lineage.sessionId)
+        ? { coordinatorToolsRestart: true }
+        : {}),
       // A model change on a session that never ran a turn leaves its engine
       // process resident for nothing; name it so the start seam can end it
       // once the successor is up. Any session with turn facts keeps today's
@@ -555,7 +577,11 @@ export class ConversationLineage {
       () => true,
     );
     if (refused) return undefined;
-    return !sessionTakesNextTurn(described.session);
+    return (
+      !sessionTakesNextTurn(described.session) ||
+      this.deps.needsCoordinatorToolsSuccessor?.(conversationId, described) ===
+        true
+    );
   }
 
   /**

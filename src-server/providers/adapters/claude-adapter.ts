@@ -42,6 +42,7 @@ import {
   NATIVE_RESUME_BINDING_METADATA_KEY,
   NATIVE_RESUME_IDENTITY_METADATA_KEY,
   readApprovalMode,
+  SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
   SYSTEM_PROMPT_CAPABILITY_ID,
 } from '@kontourai/station-contracts/provider';
 import { CONFINED_FULL_ACCESS_UNAVAILABLE_CODE } from '@kontourai/station-contracts/provider-failure';
@@ -76,6 +77,7 @@ import {
   type PreToolPolicyDecision,
   type StagedPreToolPolicyEvaluator,
 } from '../../runtime/agents/pre-tool-policy.js';
+import { builtinStationApiServerId } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import {
   canonicalizeExternalToolName,
   isAuthenticStationBrowserCall,
@@ -163,6 +165,7 @@ import {
 } from '../sessions/chat-attachments.js';
 import { snapshotSessionSourceAffinity } from '../sessions/session-source-affinity.js';
 import { resolveConfigHomeAffinity } from '../sessions/transcript-file-io.js';
+import { toPassthroughToolDef } from './agent-tool-server-mapping.js';
 import {
   assertExecutionOverrideDelivery,
   mergeCapabilityDeliveryMetadata,
@@ -704,6 +707,11 @@ type ClaudeSessionRecord = {
   engineStderrTail?: () => string;
   promptQueue: AsyncUserMessageQueue;
   query: Query;
+  mcpServers: Record<string, McpServerConfig>;
+  tenantExecutionContext?: TenantExecutionContext;
+  configuredMetadata?: Record<string, unknown>;
+  coordinatorControlState?: 'pending' | 'ready' | 'uncertain';
+  stationControlBuiltin: boolean;
   pendingRequests: Map<string, PendingRequest>;
   /** Mirrors `ClaudeMessageState.activeTurnId`; derived from `sdkTurns`. */
   activeTurnId?: string;
@@ -1011,6 +1019,13 @@ export interface ClaudeAdapterOptions {
     threadId: string,
     tenantExecutionContext?: TenantExecutionContext,
     allowedTools?: readonly string[],
+  ) => unknown;
+  /** Current designation, resolved from Station's durable ownership. */
+  isCoordinatorSession?: (threadId: string) => boolean;
+  /** Separate, designation-scoped in-process credential for a live refresh. */
+  createInProcessCoordinatorStationControl?: (
+    threadId: string,
+    tenantExecutionContext?: TenantExecutionContext,
   ) => unknown;
   createInProcessStationKnowledge?: (
     threadId: string,
@@ -1393,7 +1408,25 @@ async function evaluateClaudePreToolPolicy(
   }
 }
 
+async function coordinatorMcpDeadline<T>(operation: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error('Coordinator tool refresh timed out')),
+          10_000,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export class ClaudeAdapter implements ProviderAdapterShape {
+  readonly coordinatorToolsRefresh = true as const;
   readonly provider = 'claude' as const;
   readonly adoptionLifecycle = 'reported' as const;
   private readonly continuity: ProviderContinuityCapabilities = {
@@ -2172,6 +2205,18 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         (nativeId && this.options.nativeSessionOwnership ? true : undefined),
       promptQueue,
       query: sdkQuery,
+      mcpServers: { ...toolServers.mcpServers, ...builtinServers },
+      stationControlBuiltin:
+        input.agent?.toolServers?.some(
+          (server) =>
+            builtinStationApiServerId(
+              server.id,
+              toPassthroughToolDef(server),
+            ) === 'station-control',
+        ) === true,
+      ...(input.tenantExecutionContext
+        ? { tenantExecutionContext: input.tenantExecutionContext }
+        : {}),
       pendingRequests: new Map(),
       approvedTools: new Set(),
       serverGrants: new Set(),
@@ -2343,6 +2388,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
 
       configuredMetadata[MODEL_SELECTION_RECEIPT_METADATA_KEY] =
         modelSelectionReceipt(input.modelId, record.session.model);
+      record.configuredMetadata = configuredMetadata;
 
       this.publish({
         eventId: crypto.randomUUID(),
@@ -2428,7 +2474,149 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         'busy',
       );
     this.refuseSendWhileTurnOwed(record);
+    if (this.options.isCoordinatorSession?.(input.threadId)) {
+      await this.ensureCoordinatorControl(record);
+      this.refuseSendWhileTurnOwed(record);
+    }
     return this.dispatchTurn(record, input, crypto.randomUUID());
+  }
+
+  private async ensureCoordinatorControl(
+    record: ClaudeSessionRecord,
+  ): Promise<void> {
+    const threadId = record.session.threadId;
+    if (
+      !this.options.isCoordinatorSession?.(threadId) ||
+      record.coordinatorControlState === 'ready'
+    )
+      return;
+    if (
+      record.mcpServers['station-control'] &&
+      !record.coordinatorControlState
+    ) {
+      if (record.stationControlBuiltin) return;
+      throw new SendTurnRefusedError(
+        'A different station-control server is configured. Choose another name before enabling coordinator tools.',
+        'provider_error',
+      );
+    }
+    const refuse = () =>
+      new SendTurnRefusedError(
+        'Station could not confirm the coordinator tools are connected. Restart this Session and try again.',
+        'provider_error',
+      );
+    if (
+      !this.options.createInProcessCoordinatorStationControl ||
+      typeof record.query.setMcpServers !== 'function' ||
+      typeof record.query.mcpServerStatus !== 'function'
+    )
+      throw refuse();
+    if (record.coordinatorControlState === 'uncertain') throw refuse();
+    if (!record.coordinatorControlState) {
+      // Fence concurrent turns before the first asynchronous SDK request.
+      // Failure leaves the result uncertain, so no later turn repeats it.
+      record.coordinatorControlState = 'uncertain';
+      // A same-named server discovered from another configuration source is
+      // not ours to replace, even if it reports itself connected.
+      let existing: Awaited<ReturnType<Query['mcpServerStatus']>>;
+      try {
+        existing = await coordinatorMcpDeadline(record.query.mcpServerStatus());
+      } catch {
+        throw refuse();
+      }
+      if (existing.some((entry) => entry.name === 'station-control'))
+        throw new SendTurnRefusedError(
+          'A different station-control server is configured. Choose another name before enabling coordinator tools.',
+          'provider_error',
+        );
+      const instance = this.options.createInProcessCoordinatorStationControl(
+        threadId,
+        record.tenantExecutionContext,
+      );
+      const next = {
+        ...record.mcpServers,
+        'station-control': {
+          type: 'sdk' as const,
+          name: 'station-control',
+          instance: instance as never,
+        },
+      };
+      try {
+        const result = await coordinatorMcpDeadline(
+          record.query.setMcpServers(next),
+        );
+        if (
+          Object.keys(result.errors).length ||
+          result.removed.length ||
+          !result.added.includes('station-control')
+        )
+          throw refuse();
+        record.mcpServers = next;
+        record.coordinatorControlState = 'pending';
+      } catch {
+        throw refuse();
+      }
+    }
+    let status: Awaited<ReturnType<Query['mcpServerStatus']>>;
+    try {
+      status = await coordinatorMcpDeadline(record.query.mcpServerStatus());
+    } catch {
+      throw refuse();
+    }
+    const server = status.find((entry) => entry.name === 'station-control');
+    if (
+      server?.source !== 'sdk' ||
+      server.status !== 'connected' ||
+      !server.tools?.some(
+        (tool) =>
+          tool.name === 'delegate_task' ||
+          tool.name.endsWith('__delegate_task'),
+      )
+    )
+      throw refuse();
+    if (!this.options.isCoordinatorSession?.(threadId)) throw refuse();
+    record.coordinatorControlState = 'ready';
+    const previous = record.configuredMetadata?.[
+      SESSION_CAPABILITY_DELIVERY_METADATA_KEY
+    ] as
+      | {
+          toolServers?: {
+            source?: string;
+            requested?: string[];
+            delivered?: string[];
+            undelivered?: unknown[];
+          };
+          [key: string]: unknown;
+        }
+      | undefined;
+    const tools = previous?.toolServers;
+    const metadata = {
+      ...record.configuredMetadata,
+      [SESSION_CAPABILITY_DELIVERY_METADATA_KEY]: {
+        ...previous,
+        toolServers: {
+          ...tools,
+          source: tools?.source ?? 'agent',
+          requested: [
+            ...new Set([...(tools?.requested ?? []), 'station-control']),
+          ],
+          delivered: [
+            ...new Set([...(tools?.delivered ?? []), 'station-control']),
+          ],
+          undelivered: tools?.undelivered ?? [],
+        },
+      },
+    };
+    record.configuredMetadata = metadata;
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId,
+      sessionId: threadId,
+      createdAt: new Date().toISOString(),
+      method: 'session.configured',
+      metadata,
+    });
   }
 
   /**

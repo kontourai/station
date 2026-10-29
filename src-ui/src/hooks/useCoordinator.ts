@@ -5,9 +5,12 @@ import type {
   CoordinatorPictureItem,
   CoordinatorRefusalCode,
 } from '@kontourai/station-contracts/coordinator';
+import { ENGINE_CAPABILITY_MATRICES } from '@kontourai/station-contracts/engine-capability-matrix';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { getJson, mutateJson } from '@kontourai/station-sdk';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
+import { COORDINATOR_PRODUCT_NAME } from '../lib/productNames';
 
 /**
  * #3628: the person's coordinator designation. An older host answers the
@@ -170,9 +173,18 @@ export function useCoordinatorPicture(enabled: boolean) {
 export function coordinatorStatusLine(
   delivery: CoordinatorDelivery | undefined,
 ): string {
+  if (delivery?.toolsUnavailable) {
+    const alternative = Object.values(ENGINE_CAPABILITY_MATRICES).find(
+      (entry) =>
+        entry.toolServers.state === 'session' &&
+        entry.toolServers.builtinStationControlDelivery?.basis === 'declared',
+    );
+    const name = alternative ? engineDisplayLabel(alternative.engineId) : null;
+    return `This engine can’t use Station tools, so ${COORDINATOR_PRODUCT_NAME} can’t delegate or check work. ${name ? `Choose ${name} for Station tools.` : 'Choose an engine that supports Station tools.'} ${delivery.wakes === 'ready' ? 'It can still receive updates.' : 'Updates are also blocked.'}`;
+  }
   if (delivery?.wakes === 'blocked')
     return "Updates can't reach this chat yet: its engine doesn't report when a turn ends.";
   if (delivery?.toolsPending)
-    return 'It hears when your work needs you. Station tools arrive with its next session.';
+    return 'It hears when your work needs you. Station will add its tools on the next turn.';
   return 'Your personal agent. It hears when your work needs you.';
 }

@@ -63,6 +63,7 @@ export const STATION_KNOWLEDGE_MCP_PATH = '/mcp/station-knowledge';
 export type BuiltinStationApiMcpId = 'station-control' | 'station-knowledge';
 export type StationMcpCredentialPurpose =
   | BuiltinStationApiMcpId
+  | 'coordinator-control'
   | `oauth-proxy:${string}`;
 
 /** Default lifetime — 12 hours: generous enough for a long-running Codex or

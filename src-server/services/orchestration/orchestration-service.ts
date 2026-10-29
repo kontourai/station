@@ -353,6 +353,10 @@ import {
 } from './conversation-start-context.js';
 import { ConversationTurnActivityProjection } from './conversation-turn-activity.js';
 import { CooperativeStop } from './cooperative-stop.js';
+import {
+  coordinatorDeliveryPorts,
+  readCoordinatorDelivery,
+} from './coordinator-session.js';
 import { CredentialProfileRecovery } from './credential-profile-recovery.js';
 import {
   type CredentialProfileRecoveryAdapter,
@@ -2978,6 +2982,29 @@ export class OrchestrationService {
       perTurnModelOverride: (provider) =>
         options.adapterRegistry.get(provider)?.metadata.modelLaunch
           ?.overridePerTurn !== false,
+      needsCoordinatorToolsSuccessor: (conversationId, detail) => {
+        const store = options.eventStore;
+        const provider = detail.session.provider;
+        const adapter = options.adapterRegistry.get(provider);
+        if (
+          !store ||
+          adapter?.coordinatorToolsRefresh ||
+          ENGINE_CAPABILITY_MATRICES[provider]?.toolServers.state !==
+            'session' ||
+          !store.isCoordinatorConversation(conversationId)
+        )
+          return false;
+        const ports = coordinatorDeliveryPorts({
+          eventStore: store,
+          service: this,
+        });
+        return readCoordinatorDelivery(conversationId, {
+          ...ports,
+          currentSessionId: () => detail.session.threadId,
+          lastTurnEnded: () => false,
+          boundaryActive: () => false,
+        }).toolsPending;
+      },
       nativeReturnSupported: (provider) => {
         const adapter = options.adapterRegistry.get(provider);
         const continuity = adapter?.metadata.continuity;
@@ -5262,6 +5289,7 @@ export class OrchestrationService {
     nativeSourceSessionId?: string;
     nativeResumeBindingKey?: string;
     contextBoundary?: ConversationContextBoundaryProjection;
+    coordinatorToolsRestart?: boolean;
   }> {
     this.initialize();
     return this.conversationLineage.resolveConversationContinuation(

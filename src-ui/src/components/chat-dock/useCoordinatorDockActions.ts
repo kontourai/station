@@ -10,7 +10,11 @@ import type { DockMoreAction } from './ChatDockHeaderMoreMenu';
 
 /** What the person is told once the chat is the coordinator. */
 function designatedMessage(delivery: CoordinatorDelivery | undefined): string {
-  if (delivery?.wakes === 'blocked' || delivery?.toolsPending)
+  if (
+    delivery?.wakes === 'blocked' ||
+    delivery?.toolsPending ||
+    delivery?.toolsUnavailable
+  )
     return `This chat is ${COORDINATOR_PRODUCT_NAME}. ${coordinatorStatusLine(delivery)}`;
   return `This chat is ${COORDINATOR_PRODUCT_NAME}.`;
 }

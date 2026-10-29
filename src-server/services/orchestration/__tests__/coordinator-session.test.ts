@@ -642,6 +642,35 @@ describe('readCoordinatorDelivery', () => {
     expect(readCoordinatorDelivery('c', ports({})).wakes).toBe('ready');
   });
 
+  test('a declared unsupported tool-server channel is unavailable, not pending', () => {
+    expect(
+      readCoordinatorDelivery('c', ports({ events: [started([], 'muse')] })),
+    ).toMatchObject({ toolsUnavailable: true, toolsPending: false });
+    expect(
+      readCoordinatorDelivery('c', ports({ events: [started([], 'codex')] }))
+        .toolsUnavailable,
+    ).not.toBe(true);
+  });
+
+  test('a started successor records that it restarted to acquire coordinator tools', () => {
+    const event = {
+      ...started(['station-control']),
+      metadata: {
+        coordinatorToolsRestart: true,
+        capabilityDelivery: { toolServers: { requested: ['station-control'] } },
+      },
+    };
+    expect(
+      readCoordinatorDelivery('c', ports({ events: [event] })).toolsRestarted,
+    ).toBe(true);
+    expect(
+      readCoordinatorDelivery(
+        'c',
+        ports({ events: [started(['station-control'])] }),
+      ).toolsRestarted,
+    ).toBeUndefined();
+  });
+
   test('tools are pending only while a live Session started without station-control', () => {
     expect(
       readCoordinatorDelivery('c', ports({ events: [started(['github'])] })),

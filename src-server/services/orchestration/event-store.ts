@@ -12087,6 +12087,7 @@ export class EventStore {
     predecessorSessionId: string;
     proposedSessionId: string;
     createdAt: string;
+    coordinatorToolsRestart?: boolean;
   }): {
     lineage: Readonly<ConversationSessionLineage>;
     outcome: 'created' | 'existing';
@@ -12097,6 +12098,38 @@ export class EventStore {
       reserved.lineage.sessionId,
     );
     return reserved;
+  }
+
+  isCoordinatorToolsRestart(sessionId: string): boolean {
+    const exists = this.db
+      .prepare(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'orchestration_coordinator_tools_restarts'",
+      )
+      .get();
+    return (
+      !!exists &&
+      !!this.db
+        .prepare(
+          'SELECT 1 FROM orchestration_coordinator_tools_restarts WHERE session_id = ?',
+        )
+        .get(sessionId)
+    );
+  }
+
+  isCoordinatorConversation(conversationId: string): boolean {
+    const exists = this.db
+      .prepare(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'coordinator_designations'",
+      )
+      .get();
+    return (
+      !!exists &&
+      !!this.db
+        .prepare(
+          'SELECT 1 FROM coordinator_designations WHERE conversation_id = ?',
+        )
+        .get(conversationId)
+    );
   }
 
   /**
@@ -12798,6 +12831,16 @@ export class EventStore {
                 throw new Error('Conversation continuation was not durable');
               this.db.exec('COMMIT');
               return { lineage: read(existing), outcome: 'existing' as const };
+            }
+            if (input.coordinatorToolsRestart) {
+              this.db.exec(
+                'CREATE TABLE IF NOT EXISTS orchestration_coordinator_tools_restarts (session_id TEXT PRIMARY KEY)',
+              );
+              this.db
+                .prepare(
+                  'INSERT INTO orchestration_coordinator_tools_restarts (session_id) VALUES (?)',
+                )
+                .run(lineage.sessionId);
             }
             this.db.exec('COMMIT');
             return { lineage, outcome: 'created' as const };
@@ -15273,6 +15316,19 @@ export class EventStore {
       `DELETE FROM orchestration_conversation_context_boundaries
        WHERE successor_session_id = ?1 OR predecessor_session_id = ?1`,
     ].map((sql) => this.db.prepare(sql));
+    if (
+      this.db
+        .prepare(
+          "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'orchestration_coordinator_tools_restarts'",
+        )
+        .get()
+    ) {
+      statements.push(
+        this.db.prepare(
+          'DELETE FROM orchestration_coordinator_tools_restarts WHERE session_id = ?',
+        ),
+      );
+    }
     this.db.exec('BEGIN IMMEDIATE');
     try {
       for (const sessionId of sessionIds)
