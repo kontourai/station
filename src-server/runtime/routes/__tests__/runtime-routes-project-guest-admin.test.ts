@@ -78,6 +78,7 @@ import { ProjectService } from '../../../services/projects/project-service.js';
 import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
 import { DevicePairingError } from '../../../services/ssh/device-pairing-service.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
+import { getInternalApiToken } from '../../../utils/internal-api-token.js';
 import { createConsentApp } from '../../consent/consent-listener.js';
 import {
   configureRuntimeRoutes as configureRuntimeRoutesProduction,
@@ -3495,6 +3496,57 @@ describe('project guest administration over the production composition', () => {
     expect((await unsupervised.json()).code).toBe('restart_unavailable');
     expect(existsSync(stored)).toBe(false);
   });
+  test('the UI ingress witness survives the initiating connection closing before consent', async () => {
+    const h = await setup();
+    const supervisor = await import('../../bootstrap/supervisor-link.js');
+    vi.spyOn(supervisor, 'isSupervisedEnvironment').mockReturnValue(true);
+    vi.spyOn(supervisor, 'requestSupervisorHandoff').mockResolvedValue({
+      status: 'draining',
+    });
+    const socket: { remoteAddress?: string } = { remoteAddress: '127.0.0.1' };
+    const response = await h.app.request(
+      `${ORIGIN}/api/operator/account-sharing`,
+      h.operatorHeaders({
+        method: 'PUT',
+        headers: {
+          Host: '127.0.0.1:4321',
+          Origin: ORIGIN,
+          'Content-Type': 'application/json',
+          'x-station-internal-token': getInternalApiToken(),
+          'x-station-proxy-caller': 'remote',
+          'x-station-proxy-forwarded-host': 'station.example.test',
+        },
+        body: JSON.stringify({ enabled: true, publicOrigin: ORIGIN }),
+      }),
+      { incoming: { socket } },
+    );
+    expect(response.status, await response.clone().text()).toBe(202);
+    const id = (await response.json()).data.confirmation.id;
+    socket.remoteAddress = undefined;
+    const review = h.consentChannel.store.renderReview(
+      h.consentChannel.tenantId,
+      id,
+      'consent-session',
+    );
+    if (!review.ok) throw new Error(`Review failed: ${review.reason}`);
+    const result = await h.consentChannel.store.decide(
+      h.consentChannel.tenantId,
+      id,
+      'approved',
+      review.nonce,
+      'consent-session',
+    );
+    expect(result, JSON.stringify(result)).toMatchObject({
+      ok: true,
+      status: 'approved',
+    });
+    expect(
+      JSON.parse(
+        readFileSync(join(h.homeDir, 'config', 'account-sharing.json'), 'utf8'),
+      ).pending.choice.publicOrigin,
+    ).toBe(ORIGIN);
+  });
+
   test('host browser scripts cannot apply without a separate consent decision', async () => {
     const h = await setup();
     const supervisor = await import('../../bootstrap/supervisor-link.js');

@@ -6847,6 +6847,7 @@ export function configureRuntimeRoutes(
   // any operator step-up added to that check applies here too.
   if (context.accountSharing && context.accountSharingPreview) {
     const accountSharingState = context.accountSharing;
+    const sharingIngressByRequest = new WeakMap<Request, string | null>();
     context.app.route(
       '/api/operator/account-sharing',
       createAccountSharingRoutes({
@@ -6857,6 +6858,15 @@ export function configureRuntimeRoutes(
         state: accountSharingState,
         preview: context.accountSharingPreview,
         origins: async (c) => {
+          if (!sharingIngressByRequest.has(c.req.raw)) {
+            sharingIngressByRequest.set(
+              c.req.raw,
+              attestedBrowserVisibleHost({
+                environment: c.env,
+                header: (name) => c.req.header(name),
+              }) ?? null,
+            );
+          }
           const configuredUiPort = Number(process.env.STATION_UI_PORT);
           const uiPort =
             Number.isInteger(configuredUiPort) &&
@@ -6879,10 +6889,8 @@ export function configureRuntimeRoutes(
             apiPort: context.port,
             uiPort,
             host: context.host,
-            uiIngressAuthority: attestedBrowserVisibleHost({
-              environment: c.env,
-              header: (name) => c.req.header(name),
-            }),
+            uiIngressAuthority:
+              sharingIngressByRequest.get(c.req.raw) ?? undefined,
             tailscaleServeOrigins: detected ?? [],
           });
         },
