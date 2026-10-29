@@ -1,0 +1,13 @@
+{
+  "revision": "6c10554c05b0b689f1ec0287d70bb76274e0734c",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the desktop project-switching journey after inbox X changed from Close to Dismiss. It now compares all six visible conversation identities, including saved history, and confirms the active conversation and transcript remain unchanged. The focused Chromium journey passed; the documented project, inbox, responsive and browser-smoke claims remain accurate.","inputs":["docs/design/chat-composer.md","tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the desktop project-switching journey after inbox X changed from Close to Dismiss. It now compares all six visible conversation identities, including saved history, and confirms the active conversation and transcript remain unchanged. The focused Chromium journey passed; the documented project, inbox, responsive and browser-smoke claims remain accurate.","inputs":["docs/guides/responsive-ui.md","tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed the desktop project-switching journey after inbox X changed from Close to Dismiss. It now compares all six visible conversation identities, including saved history, and confirms the active conversation and transcript remain unchanged. The focused Chromium journey passed; the documented project, inbox, responsive and browser-smoke claims remain accurate.","inputs":["docs/testing/browser-smoke.md","tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the desktop project-switching journey after inbox X changed from Close to Dismiss. It now compares all six visible conversation identities, including saved history, and confirms the active conversation and transcript remain unchanged. The focused Chromium journey passed; the documented project, inbox, responsive and browser-smoke claims remain accurate.","inputs":["docs/user/getting-started.md","tests/cross-runtime-chat-switching.spec.ts"]}
+  ]
+}
