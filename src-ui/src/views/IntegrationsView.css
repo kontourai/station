@@ -10,7 +10,7 @@
 
 .integration-trust-history {
   padding-inline-start: var(--k-space-5);
-  font-size: var(--text-md);
+  font-size: var(--k-text-md);
   overflow-wrap: anywhere;
 }
 
