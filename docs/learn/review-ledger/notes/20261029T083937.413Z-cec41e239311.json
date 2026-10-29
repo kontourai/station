@@ -1,0 +1,15 @@
+{
+  "revision": "8ad04c5563415d010e6e11d3538438087f80113f",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the general event relay references against the principal-audience withholding guard and focused stream test; operational event and native delivery descriptions remain accurate. No per-person delivery or live stream is claimed.","inputs":["docs/architecture/module-map.md","src-server/routes/orchestration/events.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the bare event relay contract against the principal-audience guard and focused stream test. The scoped admission description remains accurate; no person feed is claimed.","inputs":["docs/reference/api.md","src-server/routes/orchestration/events.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed NotificationsAPI list and mutation descriptions against the owner route's principal-audience exclusion and focused route test. The wrapper and existing scheduling limitation remain accurate; no person feed is claimed.","inputs":["docs/reference/sdk.md","src-server/routes/operations/notifications.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the bare event feed description against the principal-audience guard and focused stream test. The stream still carries admitted ephemeral notifications and cache hints; it does not claim every notification is relayed.","inputs":["docs/reference/session-api.md","src-server/routes/orchestration/events.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Reviewed notification envelope parsing and write restrictions against the new raw principal-audience detection and focused suites. The documented parser behavior and refusal of principal producer writes remain unchanged.","inputs":["docs/reference/shared.md","packages/shared/src/notification-envelope.ts"]}
+  ]
+}

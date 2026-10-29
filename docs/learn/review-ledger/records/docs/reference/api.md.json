@@ -612,7 +612,13 @@
 
     "src-server/services/walkthroughs/task-walkthrough-store.ts",
 
-    "src-server/tools/station-control-browser-tools.ts"
+    "src-server/tools/station-control-browser-tools.ts",
+
+    "src-server/routes/me/person-notifications.ts",
+
+    "src-server/services/notifications/notification-service.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-account-personal-tokens.test.ts"
   ],
 
   "checks": [
