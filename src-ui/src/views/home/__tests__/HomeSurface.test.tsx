@@ -675,11 +675,12 @@ describe('HomeSurface coordinator pin (#3628)', () => {
   test.each([
     ['an empty Station', []],
     ['a page with work', [item('a', 'Wire the verbs', 'Station', 2)]],
-  ])('%s pins the coordinator right under the start form', (_, workItems) => {
+  ])('%s shows the coordinator after the work actions', (_, workItems) => {
     renderHome({ workItems });
-    const form = screen.getByRole('form', { name: 'Start work' });
+    const actions = screen.getByRole('region', { name: 'Work actions' });
     const pin = screen.getByRole('region', { name: 'Coordinator pin' });
-    // The pin follows the form's wrapper directly.
-    expect(form.parentElement?.nextElementSibling).toBe(pin);
+    expect(
+      actions.compareDocumentPosition(pin) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });

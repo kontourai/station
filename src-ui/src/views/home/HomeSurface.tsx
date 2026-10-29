@@ -205,19 +205,18 @@ export function HomeSurface({
       >
         <HomeStartComposer compact={hasWork} />
       </div>
-      {/* #3628: the person's coordinator, pinned under the start form on
-          every Home, with or without work. */}
-      <HomeCoordinatorCard />
       {hasWork ? (
         <>
           {continueCard}
           {!listEmpty && recentWork}
           {actions}
+          <HomeCoordinatorCard />
           {chart}
         </>
       ) : (
         <>
           {actions}
+          <HomeCoordinatorCard />
           {!model.firstSession && recentWork}
         </>
       )}
