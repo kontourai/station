@@ -42,7 +42,8 @@ An approved proposal runs in the chat that proposed it.
 
 ## Failures, missed runs and turning off
 
-- A run that fails is listed as failed and notifies you.
+- A run that fails is listed as failed and notifies you. The notice is generic;
+  open Automations to see the jobs and runs you can access.
 - After **5 failed runs in a row**, Station turns the automation off and
   notifies you once. A run that retried counts once. A successful run resets
   the count, and so does turning the automation back on.
@@ -66,8 +67,8 @@ Templates only ask for work an agent can do with its workspace and tools.
 - An agent can create, change, run or delete an automation only in its own
   chat. A dedicated chat is your choice. To change or run an automation that
   runs in a chat, you must be able to send to that chat.
-- An automation always runs as the person who created it; editing it does
-  not change that.
+- An automation that runs in a chat acts as the person who created it; editing
+  it does not change that.
 - Start notifications are not sent; the old `notifyStart` setting is ignored.
 - GitHub event triggers are not part of Automations yet
   ([#3439](https://github.com/kontourai/station/issues/3439)).
