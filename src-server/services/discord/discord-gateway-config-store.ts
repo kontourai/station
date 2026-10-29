@@ -149,4 +149,3 @@ export class DiscordGatewayConfigurationStore {
     chmodSync(path, 0o600);
   }
 }
-

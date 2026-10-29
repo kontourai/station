@@ -23,8 +23,10 @@ export class DiscordAuthorizationService {
     try {
       const configuration = this.store.read();
       const snapshot = JSON.stringify(configuration);
-      return this.core.authorizeDiscord(configuration, request, () =>
-        JSON.stringify(this.store.read()) === snapshot,
+      return this.core.authorizeDiscord(
+        configuration,
+        request,
+        () => JSON.stringify(this.store.read()) === snapshot,
       );
     } catch {
       // An unreadable policy, database or refusal log must fail closed.
