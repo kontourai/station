@@ -36,7 +36,7 @@ const approvalKey = (conversationId: string, serverId: string, tool: string) =>
   JSON.stringify([conversationId, serverId, tool]);
 
 /** `mcp__<server>__<tool>`, refused when the separator is ambiguous. */
-export function parseExternalMcpToolName(
+function parseExternalMcpToolName(
   name: string,
 ): { serverId: string; toolName: string } | undefined {
   if (!name.startsWith('mcp__')) return undefined;
@@ -97,7 +97,7 @@ export function resetPersonApprovedCalls(): void {
  * The definition the permission reads. Station-control's read-only tools
  * come from Station's own authority table, not the stored probe.
  */
-export function mediatedToolDefinition(
+function mediatedToolDefinition(
   serverId: string,
   toolName: string,
   def: ToolDef | undefined,

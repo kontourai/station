@@ -35,7 +35,7 @@ export function allowPrivateCatalogAddresses(
  * `undefined` (the platform fetch). One fetch is one connection: it resolves
  * each hostname once.
  */
-export function catalogServerFetch(
+function catalogServerFetch(
   home: string,
   def: Pick<ToolDef, 'id' | 'transport' | 'endpoint'>,
   options: CatalogAddressOptions = {},
