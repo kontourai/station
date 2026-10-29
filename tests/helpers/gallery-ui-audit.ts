@@ -45,12 +45,13 @@ const DOCK_OCCLUSION_AUDIT = `(() => {
       // An independently scrolling pane can bring its below-fold controls
       // fully into view; the sliver at its clipped edge is not dock coverage.
       let reachableInPane = false;
+      let pinned = ['fixed', 'sticky'].includes(getComputedStyle(control).position);
       for (let ancestor = control.parentElement; ancestor && ancestor !== document.body; ancestor = ancestor.parentElement) {
         const style = getComputedStyle(ancestor), pane = ancestor.getBoundingClientRect();
         const listBoundary = Math.min(pane.bottom, d.top);
         const independentlyScrollingPane = pane.width < d.width - 1 && pane.bottom <= d.top + 1;
         const settingsList = control.closest('.settings__section') !== null;
-        if ((style.overflowY === 'auto' || style.overflowY === 'scroll') &&
+        if (!pinned && (style.overflowY === 'auto' || style.overflowY === 'scroll') &&
             ancestor.scrollHeight > ancestor.clientHeight &&
             (independentlyScrollingPane || settingsList) &&
             r.height <= listBoundary - pane.top &&
@@ -59,6 +60,7 @@ const DOCK_OCCLUSION_AUDIT = `(() => {
           reachableInPane = true;
           break;
         }
+        if (style.position === 'fixed' || style.position === 'sticky') pinned = true;
       }
       if (reachableInPane) continue;
       const left = Math.max(r.left, d.left, 0), right = Math.min(r.right, d.right, innerWidth);

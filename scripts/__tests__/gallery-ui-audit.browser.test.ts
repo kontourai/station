@@ -189,6 +189,33 @@ describe('gallery finding identities', { timeout: 60_000 }, () => {
     ).toBe('1');
   });
 
+  it.each(['sticky control', 'sticky ancestor', 'fixed control'])(
+    'reports a %s that cannot scroll clear of the dock',
+    async (kind) => {
+      const position = kind === 'fixed control' ? 'fixed' : 'sticky';
+      const button = `<button aria-label="Pinned row" style="${kind === 'sticky ancestor' ? '' : `position:${position};top:800px;`}width:100px;height:32px">Pinned row</button>`;
+      const content =
+        kind === 'sticky ancestor'
+          ? `<div style="position:sticky;top:800px">${button}</div>`
+          : button;
+      await render(
+        `<div style="position:fixed;left:0;right:0;top:0;bottom:0;overflow:auto"><div class="settings__section" style="height:1800px">${content}</div></div><div class="chat-dock is-collapsed" style="position:fixed;left:0;right:0;bottom:0;height:55px;background:#333"></div>`,
+      );
+      const row = page.getByRole('button', { name: 'Pinned row' });
+      const audit = await auditGalleryScreen(page, 'fixture');
+      expect(
+        audit.findings.some(
+          (finding) =>
+            finding.identity.startsWith('hit-target:occluded-by-dock:') &&
+            finding.identity.includes('Pinned row'),
+        ),
+      ).toBe(true);
+      await page.mouse.move(200, 400);
+      await page.mouse.wheel(0, 300);
+      await expect(row.click({ timeout: 1000 })).rejects.toThrow();
+    },
+  );
+
   it('does not call a control clipped out by its own ancestor a dock occlusion', async () => {
     await render(
       `<div style="position:fixed;top:700px;left:10px;width:120px;height:10px;overflow:hidden"><button aria-label="Clipped" style="position:absolute;top:100px;width:100px;height:44px">Clipped</button></div><div class="chat-dock is-collapsed" style="position:fixed;left:0;right:0;bottom:0;height:55px;background:#333"></div>`,
