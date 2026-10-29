@@ -1826,8 +1826,8 @@ maps each record through `coordinatorAttentionOf` (needs-input, failed and
 done tiers that name a Session; a requested stop is left out) and hands one
 framed turn per burst to `ThreadInboxDelivery.submit`. The person's
 [routes](../../src-server/routes/orchestration/coordinator.ts) read and set
-the designation. The agent resolver's `isCoordinatorSession` gives the
-coordinator's Sessions the built-in Station tool servers
+the designation. The agent resolver's `isCoordinatorSession` requests the
+coordinator's built-in Station tool servers
 (`withCoordinatorCapabilities`).
 
 **Invariants.** One designation per person and at most one person per
@@ -1863,13 +1863,24 @@ the person and coordinator reads recheck each conversation's access. Finished
 notes expire after seven days. The preview and normal caller scope both gate the
 operation; the picture is authored context, not an authoritative live status.
 
+For an already-running coordinator, the Claude adapter refreshes its own MCP
+server set before the next turn. Other supported engines use the normal
+conversation continuation path to start a successor, carrying the native
+cursor or an admitted transcript seed. The successor reservation records the
+tools-restart reason atomically, and a started Session exposes it to the chat.
+The in-process coordinator credential rechecks the designation on every call.
+An engine that declares tool servers unsupported remains selectable and the
+card and chat show the limitation; no host-wide Codex reload is used.
+
 **Composition and evidence.** The runtime mounts the routes and the wake in
 `runtime-routes.ts`, withdrawn on a hosted Station (`servesCoordinatorSession`).
 Tests: `coordinator-session.test.ts` (designation across a restart, coalescing,
 the hourly and pending caps at max + 1, exclusions, restart hand-over),
 `coordinator-wake-dispatch.test.ts` (a worker's turn ending reaches the
 coordinator's engine once, on ACP and a Claude-provider seam),
-`coordinator.routes.test.ts`, and `session-agent-resolution.test.ts`.
+`coordinator.routes.test.ts`, `session-agent-resolution.test.ts`, and
+`coordinator-tools-successor.test.ts` (real service and store with a fake
+Codex adapter; it does not establish live provider behavior).
 
 ## WorkClaimStore
 

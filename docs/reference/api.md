@@ -4612,11 +4612,22 @@ With a designation, GET and PUT also answer `delivery` (`CoordinatorDelivery`):
 `wakes` is `blocked` when the coordinator's last turn has ended but its
 turn boundary is still held, so the inbox would hold a wake indefinitely
 (#4051),
-`toolsPending` while the live Session started without the Station tools, and
+`toolsPending` while the live Session started without the Station tools,
+`toolsUnavailable` when its engine declares tool servers unsupported,
+`toolsRestarted` when the current Session was started to acquire them, and
 `engine` names its provider. A designation whose conversation the person can
 no longer read reads as none, and PUT replaces it without `replace`. Replacing
 or removing a designation withdraws the wakes still queued for the old
 conversation.
+
+The default-off coordinator-picture preview adds
+`GET /api/orchestration/coordinator/picture` for the person's readable notes.
+A bound designated coordinator reads and writes its own picture through
+`GET` and `POST /api/orchestration/station-control/coordinator-picture`.
+The POST accepts `conversationId`, `status` (`in-flight`, `waiting`, `finished`
+or `remove`), and a summary except for `remove`. The caller and source read
+permissions are checked again after the body arrives. Notes are bounded and
+are the coordinator's account, not live work status.
 
 ### Update Job
 
