@@ -7,7 +7,7 @@
  * file, so it follows a rename, and fails on any other literal use.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative, resolve } from 'node:path';
+import { join, relative, resolve, win32 } from 'node:path';
 import { describe, expect, test } from 'vitest';
 
 const ROOT = resolve(import.meta.dirname, '../..');
@@ -44,22 +44,53 @@ function* files(dir: string): Generator<string> {
   }
 }
 
+function findOffenders(
+  entries: Iterable<{ path: string; read: () => string }>,
+  names: readonly string[],
+): string[] {
+  const offenders: string[] = [];
+  for (const entry of entries) {
+    const rel = entry.path.replaceAll('\\', '/');
+    if (rel === COPY_SOURCE) continue;
+    const text = entry.read();
+    for (const name of names)
+      if (text.includes(name)) offenders.push(`${rel}: ${name}`);
+  }
+  return offenders;
+}
+
+function* sourceEntries() {
+  for (const top of SCANNED)
+    for (const path of files(join(ROOT, top)))
+      yield {
+        path: relative(ROOT, path),
+        read: () => readFileSync(path, 'utf8'),
+      };
+}
+
 describe('coordinator product names stay in their copy source', () => {
   test('the copy source declares both names', () => {
     expect(productNames()).toHaveLength(2);
   });
 
   test('no other source file spells them', () => {
-    const names = productNames();
-    const offenders: string[] = [];
-    for (const top of SCANNED)
-      for (const path of files(join(ROOT, top))) {
-        const rel = relative(ROOT, path);
-        if (rel === COPY_SOURCE) continue;
-        const text = readFileSync(path, 'utf8');
-        for (const name of names)
-          if (text.includes(name)) offenders.push(`${rel}: ${name}`);
-      }
-    expect(offenders).toEqual([]);
+    expect(findOffenders(sourceEntries(), productNames())).toEqual([]);
+  });
+
+  test('Windows paths exempt the copy source but still report other files', () => {
+    const root = 'C:\\station';
+    const entry = (path: string, text: string) => ({
+      path: win32.relative(root, win32.join(root, path)),
+      read: () => text,
+    });
+    expect(
+      findOffenders(
+        [
+          entry('src-ui/src/lib/productNames.ts', 'ExampleName'),
+          entry('src-server/other.ts', 'ExampleName'),
+        ],
+        ['ExampleName'],
+      ),
+    ).toEqual(['src-server/other.ts: ExampleName']);
   });
 });
