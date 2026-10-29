@@ -977,3 +977,33 @@ test('a recent approval opens its own conversation while Attention has no projec
   expect(navigationStore.getSnapshot().isDockOpen).toBe(true);
   expect(close).toHaveBeenCalledTimes(1);
 });
+
+test('the scheduler notice opens Automations after its action succeeds', () => {
+  navigationStore.navigate('/notifications');
+  notifications = [
+    {
+      id: 'round3-notice',
+      source: 'scheduler',
+      category: 'job-failure',
+      title: 'An automation failed',
+      body: 'Open Automations to see the work you can access.',
+      priority: 'high',
+      status: 'delivered',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      scheduledAt: null,
+      deliveredAt: new Date().toISOString(),
+      actions: [{ id: 'view-scheduler', label: 'View Automations' }],
+      metadata: { link: '/automations' },
+    },
+  ];
+  const close = vi.fn();
+  render(<NotificationHistory isOpen onClose={close} onViewAll={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'View Automations' }));
+  expect(action).toHaveBeenCalled();
+  expect(navigationStore.getSnapshot().pathname).toBe('/notifications');
+  expect(close).not.toHaveBeenCalled();
+  action.mock.calls.at(-1)![1].onSuccess();
+  expect(navigationStore.getSnapshot().pathname).toBe('/automations');
+  expect(close).toHaveBeenCalledOnce();
+});

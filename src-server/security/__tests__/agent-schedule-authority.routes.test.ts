@@ -60,6 +60,7 @@ import {
 } from '../../routes/orchestration/agent-schedule.js';
 import { resolveDispatchActor } from '../../routes/orchestration/orchestration.js';
 import { createRunRoutes } from '../../routes/orchestration/runs.js';
+import { createDiagnosticsRoutes } from '../../routes/system/diagnostics.js';
 import { configureRuntimeHttp } from '../../runtime/bootstrap/runtime-http.js';
 import {
   createAgentDispatchActorResolver,
@@ -81,6 +82,11 @@ import {
   LOCAL_OPERATOR_PRINCIPAL_ID,
   principalForRecordedSessionOwner,
 } from '../../services/identity/principal-resolver.js';
+import { createServerLogReader } from '../../services/infra/server-log-reader.js';
+import {
+  installServerLogSink,
+  resetServerLogSinkForTests,
+} from '../../services/infra/server-log-store.js';
 import { NotificationService } from '../../services/notifications/notification-service.js';
 import {
   type AgentScheduleStore,
@@ -107,6 +113,7 @@ import {
   INTERNAL_PROXY_CALLER_HEADER,
 } from '../../utils/internal-api-token.js';
 import type { Logger } from '../../utils/logger.js';
+import { createLogger } from '../../utils/logger.js';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../runtime-request-security.js';
 import { createStationControlAuthorityGuard } from '../station-control-authority-guard.js';
 import { __resetStationServerSelfAttestationForTests } from '../station-server-scope.js';
@@ -222,6 +229,7 @@ async function boot(options: {
   /** A real scheduler instead of the create-only stub. */
   scheduler?: SchedulerService;
   notifications?: NotificationService;
+  logDirectory?: string;
   /**
    * The guard's grant-store answer. Production answers false for a job that
    * holds no unattended grants (conversation runs need none); absent, the
@@ -377,6 +385,15 @@ async function boot(options: {
       },
     ),
   );
+  if (options.logDirectory)
+    app.route(
+      '/api/diagnostics',
+      createDiagnosticsRoutes(
+        { generateBundle: async () => ({}) } as never,
+        quietLogger(),
+        createServerLogReader({ directory: options.logDirectory }),
+      ),
+    );
   if (options.notifications)
     app.route(
       '/notifications',
@@ -2782,6 +2799,111 @@ describe('acting on an automation is admitted against its stored target', () => 
       ).toBe(404);
     } finally {
       await world.close();
+    }
+  });
+});
+
+describe('round3 independent reviewer probes', () => {
+  const makeTempDir = trackTempDirs();
+
+  test('a different conversation agent must not read the hidden job through diagnostic logs', async () => {
+    const directory = makeTempDir('round3-log-probe-');
+    const logDirectory = join(directory, 'logs');
+    installServerLogSink({ directory: logDirectory });
+    const bus = new EventBus();
+    const notifications = new NotificationService(bus, directory, 999_999);
+    const scheduler = new SchedulerService({
+      logger: createLogger({ name: 'round3-scheduler', level: 'info' }),
+      builtin: {
+        ledger: createSchedulerLedger({ directory }),
+        notificationService: notifications,
+        turnAdapter: { invoke: vi.fn() },
+        conversationRuns: {
+          run: async () => ({
+            kind: 'failed',
+            error: 'round3-private-answer-marker',
+            conversationId: 'conv-victim',
+          }),
+        },
+      },
+    });
+    const served = await boot({
+      hosted: false,
+      scheduler,
+      notifications,
+      logDirectory,
+      retargetsGrantedJob: () => false,
+    });
+    try {
+      await scheduler.addJob({
+        name: 'round3-private-job',
+        schedule: { kind: 'every', everyMs: 60_000 },
+        prompt: 'round4-private-prompt',
+        target: { kind: 'conversation', conversationId: 'conv-victim' },
+        createdBy: { userId: 'victim-person' },
+      });
+      for (let index = 0; index < 5; index++)
+        await scheduler.runJob('round3-private-job');
+      const at = { baseUrl: served.baseUrl, port: served.port };
+      const listed = await agent(
+        'bound',
+        'other',
+        'GET',
+        '/scheduler/jobs',
+        undefined,
+        at,
+      );
+      expect(listed.status).toBe(200);
+      expect(listed.body.data).toEqual([]);
+      const logs = await agent(
+        'bound',
+        'other',
+        'GET',
+        '/scheduler/jobs/round3-private-job/logs',
+        undefined,
+        at,
+      );
+      expect(logs.status).toBe(404);
+      const bell = await notifications.list();
+      expect(JSON.stringify(bell)).not.toContain('round3-private');
+      const direct = await createServerLogReader({
+        directory: logDirectory,
+      }).query({});
+      expect(direct.entries.length).toBeGreaterThanOrEqual(10);
+      expect(JSON.stringify(direct)).not.toContain('round3-private');
+      expect(JSON.stringify(direct)).not.toContain('round4-private-prompt');
+      expect(
+        direct.entries.some(
+          (entry) =>
+            entry.msg === 'Scheduler job failed' &&
+            entry.errorClass === 'SchedulerRunFailure' &&
+            entry['station.scheduler.target_kind'] === 'conversation',
+        ),
+      ).toBe(true);
+      expect(
+        direct.entries.some(
+          (entry) =>
+            entry.msg === 'Automation disabled after repeated failures',
+        ),
+      ).toBe(true);
+      expect(
+        (await scheduler.getJobLogs('round3-private-job'))[0]!.error,
+      ).toContain('round3-private-answer-marker');
+      const diagnostics = await agent(
+        'bound',
+        'other',
+        'GET',
+        '/api/diagnostics/logs?q=round3-private',
+        undefined,
+        at,
+      );
+      expect(diagnostics.status).toBe(200);
+      expect(JSON.stringify(diagnostics.body)).not.toContain('round3-private');
+    } finally {
+      await served.close();
+      await scheduler.stop();
+      await notifications.shutdown();
+      resetServerLogSinkForTests();
     }
   });
 });

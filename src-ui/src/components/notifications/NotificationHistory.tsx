@@ -157,8 +157,13 @@ export function NotificationHistory({
     const ownApproval =
       notification?.source === 'approval-inbox' &&
       notification.category === 'approval-request';
+    const schedulerAction =
+      notification?.source === 'scheduler' &&
+      actionId === 'view-scheduler' &&
+      (notification.category === 'job-failure' ||
+        notification.category === 'external-monitor');
     const ownLink =
-      ownApproval && typeof metadata?.link === 'string'
+      (ownApproval || schedulerAction) && typeof metadata?.link === 'string'
         ? metadata.link
         : undefined;
     const ownThread =

@@ -294,11 +294,12 @@ export async function executeSchedulerJobAttempt({
         announcedRunIds,
       });
       observe(() =>
-        logger?.warn('Scheduler job failed', {
-          error: notInvokedError,
-          attempt,
-          maxAttempts,
-        }),
+        logger?.warn(
+          'Scheduler job failed',
+          job.target
+            ? { errorClass: 'SchedulerNotInvoked' }
+            : { error: notInvokedError, attempt, maxAttempts },
+        ),
       );
       return {
         logId: id,
@@ -365,11 +366,10 @@ export async function executeSchedulerJobAttempt({
       }),
     );
     observe(() =>
-      logger?.info('Scheduler job completed', {
-        durationSecs,
-        attempt,
-        maxAttempts,
-      }),
+      logger?.info(
+        'Scheduler job completed',
+        job.target ? {} : { durationSecs, attempt, maxAttempts },
+      ),
     );
 
     return {
@@ -427,11 +427,12 @@ export async function executeSchedulerJobAttempt({
       announcedRunIds,
     });
     observe(() =>
-      logger?.warn('Scheduler job failed', {
-        error: errorMessage,
-        attempt,
-        maxAttempts,
-      }),
+      logger?.warn(
+        'Scheduler job failed',
+        job.target
+          ? { errorClass: 'SchedulerRunFailure' }
+          : { error: errorMessage, attempt, maxAttempts },
+      ),
     );
 
     return {

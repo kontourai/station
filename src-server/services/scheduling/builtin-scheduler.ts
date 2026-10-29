@@ -381,10 +381,8 @@ export class BuiltinScheduler implements ISchedulerProvider {
           this.options.logger?.error(
             'Scheduler job record is unreadable; it will not run until it is repaired or removed',
             {
-              job: job.name,
               jobId: job.jobId,
               revision: job.revision,
-              reason: job.reason,
             },
           ),
       });
@@ -776,7 +774,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
         );
       } else {
         this.options.logger?.warn('Scheduler storage unavailable during tick', {
-          error: errorMessage(error),
+          errorClass: 'SchedulerStorageUnavailable',
         });
       }
       return;
@@ -785,9 +783,17 @@ export class BuiltinScheduler implements ISchedulerProvider {
     for (const receipt of receipts) {
       void this.executeJob(receipt).catch((error) =>
         this.observe(() =>
-          this.options.logger?.warn('Scheduler execution lifecycle failed', {
-            error: errorMessage(error),
-          }),
+          this.options.logger?.warn(
+            'Scheduler execution lifecycle failed',
+            receipt.job.target
+              ? {
+                  jobId: receipt.jobId,
+                  runId: receipt.id,
+                  targetKind: receipt.job.target.kind,
+                  errorClass: 'SchedulerExecutionError',
+                }
+              : { error: errorMessage(error) },
+          ),
         ),
       );
     }
@@ -881,9 +887,9 @@ export class BuiltinScheduler implements ISchedulerProvider {
         }
         this.announceMonitorTerminal(job, terminal.triggerId);
       }
-    } catch (error) {
+    } catch {
       this.options.logger?.warn('Monitor terminal reconciliation failed', {
-        error: errorMessage(error),
+        errorClass: 'MonitorReconciliationError',
       });
     } finally {
       this.reconcilingMonitorTerminals = false;
@@ -918,8 +924,10 @@ export class BuiltinScheduler implements ISchedulerProvider {
           this.options.logger?.warn(
             'Automation disabled after repeated failures',
             {
-              job: announcement.jobName,
-              consecutiveFailures: announcement.failures,
+              jobId: announcement.jobId,
+              runId: announcement.id,
+              targetKind: 'unknown',
+              errorClass: 'SchedulerFatigue',
             },
           ),
         );
@@ -987,13 +995,21 @@ export class BuiltinScheduler implements ISchedulerProvider {
               this.options.logger?.warn(
                 'Scheduler retry waiting for invocation capacity',
                 {
-                  job: job.name,
-                  id,
-                  attempt,
-                  maxAttempts,
-                  reason,
-                  maxConcurrentJobs:
-                    SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs,
+                  ...(targeted
+                    ? {
+                        jobId: receipt.jobId,
+                        runId: id,
+                        targetKind: job.target!.kind,
+                      }
+                    : {
+                        job: job.name,
+                        id,
+                        attempt,
+                        maxAttempts,
+                        reason,
+                        maxConcurrentJobs:
+                          SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs,
+                      }),
                 },
               ),
             );
@@ -1015,13 +1031,21 @@ export class BuiltinScheduler implements ISchedulerProvider {
               this.options.logger?.info(
                 'Scheduler retry invocation capacity wait ended',
                 {
-                  job: job.name,
-                  id,
-                  attempt,
-                  maxAttempts,
-                  reason,
-                  disposition: admitted ? 'admitted' : 'stopped',
-                  waitMs: Date.now() - waitingSince,
+                  ...(targeted
+                    ? {
+                        jobId: receipt.jobId,
+                        runId: id,
+                        targetKind: job.target!.kind,
+                      }
+                    : {
+                        job: job.name,
+                        id,
+                        attempt,
+                        maxAttempts,
+                        reason,
+                        disposition: admitted ? 'admitted' : 'stopped',
+                        waitMs: Date.now() - waitingSince,
+                      }),
                 },
               ),
             );
@@ -1043,12 +1067,19 @@ export class BuiltinScheduler implements ISchedulerProvider {
               this.observe(() =>
                 this.options.logger?.warn(
                   'Scheduler occurrence deferred by concurrency limit',
-                  {
-                    job: job.name,
-                    reason,
-                    maxConcurrentJobs:
-                      SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs,
-                  },
+                  targeted
+                    ? {
+                        jobId: receipt.jobId,
+                        runId: id,
+                        targetKind: job.target!.kind,
+                        errorClass: 'SchedulerCapacityDeferred',
+                      }
+                    : {
+                        job: job.name,
+                        reason,
+                        maxConcurrentJobs:
+                          SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs,
+                      },
                 ),
               );
               this.recordConcurrencyDeferral('released');
@@ -1073,12 +1104,14 @@ export class BuiltinScheduler implements ISchedulerProvider {
             this.observe(() =>
               this.options.logger?.warn(
                 'Scheduler concurrency deferral receipt was indeterminate',
-                {
-                  job: job.name,
-                  id,
-                  reason,
-                  receiptKind: released.kind,
-                },
+                targeted
+                  ? {
+                      jobId: receipt.jobId,
+                      runId: id,
+                      targetKind: job.target!.kind,
+                      errorClass: 'SchedulerDeferralIndeterminate',
+                    }
+                  : { job: job.name, id, reason, receiptKind: released.kind },
               ),
             );
             this.recordConcurrencyDeferral('indeterminate');
@@ -1099,20 +1132,25 @@ export class BuiltinScheduler implements ISchedulerProvider {
         let jobLogger: Logger | undefined;
         try {
           jobLogger = this.options.logger?.child(
-            schedulerJobCorrelationBindings({
-              jobName: job.name,
-              jobRunId: id,
-            }),
+            targeted
+              ? {
+                  'station.scheduler.job_id': receipt.jobId,
+                  'station.scheduler.job_run_id': id,
+                  'station.scheduler.target_kind': job.target!.kind,
+                }
+              : schedulerJobCorrelationBindings({
+                  jobName: job.name,
+                  jobRunId: id,
+                }),
           );
         } catch {
           // Logging is observer-only and cannot prevent durable invocation.
         }
         this.observe(() =>
-          jobLogger?.info('Scheduler job started', {
-            manual: receipt.manual,
-            attempt,
-            maxAttempts,
-          }),
+          jobLogger?.info(
+            'Scheduler job started',
+            targeted ? {} : { manual: receipt.manual, attempt, maxAttempts },
+          ),
         );
         this.observe(() =>
           this.broadcast({
@@ -1151,7 +1189,11 @@ export class BuiltinScheduler implements ISchedulerProvider {
                     if (bound.kind === 'unavailable')
                       this.options.logger?.warn(
                         'Automation conversation could not be recorded',
-                        { job: job.name },
+                        {
+                          jobId: receipt.jobId,
+                          runId: id,
+                          targetKind: job.target!.kind,
+                        },
                       );
                   },
                 }
