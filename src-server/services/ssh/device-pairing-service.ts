@@ -1421,7 +1421,9 @@ export class DevicePairingService {
         name,
         input.clientInstanceId,
         provenance,
-        accountCandidateIdentity(input.accountCandidate),
+        input.requireAccountBinding
+          ? accountCandidateIdentity(input.accountCandidate)
+          : undefined,
       ),
       scope: offer.scope,
       kind: offer.kind,
@@ -2016,7 +2018,13 @@ export class DevicePairingService {
     const issuedAt = this.#now();
     const device: StoredDevice = {
       id: relayReservation?.deviceId ?? randomUUID(),
-      name: request.deviceName,
+      name: this.#uniqueDeviceName(
+        request.deviceName,
+        input.clientInstanceId,
+        requestProvenance,
+        offer.principalBinding,
+        offer.offerId,
+      ),
       scope: sessionScope,
       kind: offer.kind,
       createdAt: issuedAt,
@@ -3648,7 +3656,8 @@ export class DevicePairingService {
     name: string,
     clientInstanceId?: string,
     provenance?: PairingProvenance,
-    requestedBinding?: AccountReplacementIdentity,
+    requestedBinding?: ReplacementBinding,
+    excludeOfferId?: string,
   ): string {
     const existingNames = new Set(
       this.#registry.devices
@@ -3664,7 +3673,7 @@ export class DevicePairingService {
     );
     const now = this.#now();
     for (const offer of this.#offers.values()) {
-      if (offer.expiresAt <= now) continue;
+      if (offer.offerId === excludeOfferId || offer.expiresAt <= now) continue;
       if (offer.status !== 'requested' && offer.status !== 'confirmed') {
         continue;
       }
@@ -3679,7 +3688,9 @@ export class DevicePairingService {
               principalBinding:
                 offer.status === 'confirmed'
                   ? offer.principalBinding
-                  : accountCandidateIdentity(offer.request.accountCandidate),
+                  : offer.request.requireAccountBinding
+                    ? accountCandidateIdentity(offer.request.accountCandidate)
+                    : undefined,
             },
             provenance,
             requestedBinding,
@@ -3699,7 +3710,7 @@ export class DevicePairingService {
       const candidate = `${base}${suffixText}`;
       if (!existingNames.has(candidate)) return candidate;
     }
-    return name;
+    throw new DevicePairingError('invalid_request');
   }
 
   #activeOffer(offerId: string): PairingOfferState {

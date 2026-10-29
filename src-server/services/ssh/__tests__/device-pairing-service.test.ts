@@ -1705,6 +1705,155 @@ describe('DevicePairingService', () => {
     expect(unbound.request.deviceName).toBe('Shared browser (3)');
   });
 
+  test.each(['personal', 'verified-ingress'] as const)(
+    'optional account candidate reserves a distinct name when approved as %s',
+    (mode) => {
+      const { service } = harness();
+      const clientInstanceId = '11111111-1111-4111-8111-111111111111';
+      const request = (required: boolean) => {
+        const offer = service.createOffer({
+          endpoint: 'https://station.example.test',
+        });
+        const pending = service.requestPairing({
+          offerId: offer.offerId,
+          proof: offer.challenge,
+          deviceName: 'Shared browser',
+          clientInstanceId,
+          requesterPosition: 'off-box',
+          source: 'tailnet',
+          requester: {
+            provider: 'tailscale-serve',
+            login: 'shared@example.test',
+          },
+          accountCandidate: {
+            issuer: 'https://accounts.example.test',
+            subject: 'alice',
+            displayName: 'Alice',
+          },
+          accountCandidateSessionId: 'verified-alice',
+          ...(required ? { requireAccountBinding: true as const } : {}),
+        });
+        return { offer, pending };
+      };
+      const first = request(true);
+      service.confirmRequest(first.pending.requestId, OPERATOR_APPROVAL, {
+        kind: 'account',
+        principalId: 'human:deployment:operator',
+      });
+      const alice = service.exchange({
+        offerId: first.offer.offerId,
+        proof: first.offer.challenge,
+        requestId: first.pending.requestId,
+        clientInstanceId,
+      });
+      const second = request(false);
+      expect(second.pending.deviceName).toBe('Shared browser (2)');
+      service.confirmRequest(
+        second.pending.requestId,
+        OPERATOR_APPROVAL,
+        mode === 'personal'
+          ? undefined
+          : {
+              kind: 'verified-ingress',
+              principalId: 'human:tailscale-serve:shared@example.test',
+            },
+      );
+      const issued = service.exchange({
+        offerId: second.offer.offerId,
+        proof: second.offer.challenge,
+        requestId: second.pending.requestId,
+        clientInstanceId,
+      });
+      expect(service.verifyCredential(alice.credential)).toBe(true);
+      expect(service.verifyCredential(issued.credential)).toBe(true);
+      expect(issued.device.name).not.toBe(alice.device.name);
+    },
+  );
+
+  test('an optional candidate does not reserve an account-bound pending name', () => {
+    const { service } = harness();
+    const clientInstanceId = '11111111-1111-4111-8111-111111111111';
+    const request = (required: boolean) => {
+      const offer = service.createOffer({
+        endpoint: 'https://station.example.test',
+      });
+      return service.requestPairing({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        deviceName: 'Pending browser',
+        clientInstanceId,
+        requesterPosition: 'off-box',
+        source: 'tailnet',
+        requester: {
+          provider: 'tailscale-serve',
+          login: 'shared@example.test',
+        },
+        accountCandidate: {
+          issuer: 'https://accounts.example.test',
+          subject: 'alice',
+          displayName: 'Alice',
+        },
+        accountCandidateSessionId: 'verified-alice',
+        ...(required ? { requireAccountBinding: true as const } : {}),
+      });
+    };
+    expect(request(false).deviceName).toBe('Pending browser');
+    expect(request(true).deviceName).toBe('Pending browser (2)');
+    expect(request(false).deviceName).toBe('Pending browser');
+  });
+
+  test('exchange rechecks the name when pending requests receive different approval bindings', () => {
+    const { service } = harness();
+    const clientInstanceId = '11111111-1111-4111-8111-111111111111';
+    const request = () => {
+      const offer = service.createOffer({
+        endpoint: 'https://station.example.test',
+      });
+      const pending = service.requestPairing({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        deviceName: 'Shared browser',
+        clientInstanceId,
+        requesterPosition: 'off-box',
+        source: 'pairing-code',
+        accountCandidate: {
+          issuer: 'https://accounts.example.test',
+          subject: 'alice',
+          displayName: 'Alice',
+        },
+        accountCandidateSessionId: 'verified-alice',
+      });
+      return { offer, pending };
+    };
+    const personal = request();
+    const account = request();
+    expect(personal.pending.deviceName).toBe('Shared browser');
+    expect(account.pending.deviceName).toBe('Shared browser');
+    service.confirmRequest(personal.pending.requestId, OPERATOR_APPROVAL);
+    service.confirmRequest(account.pending.requestId, OPERATOR_APPROVAL, {
+      kind: 'account',
+      principalId: 'human:deployment:operator',
+    });
+    const first = service.exchange({
+      offerId: personal.offer.offerId,
+      proof: personal.offer.challenge,
+      requestId: personal.pending.requestId,
+      clientInstanceId,
+    });
+    const second = service.exchange({
+      offerId: account.offer.offerId,
+      proof: account.offer.challenge,
+      requestId: account.pending.requestId,
+      clientInstanceId,
+    });
+    expect(service.verifyCredential(first.credential)).toBe(true);
+    expect(service.verifyCredential(second.credential)).toBe(true);
+    expect([first.device.name, second.device.name].sort()).toEqual([
+      'Shared browser',
+      'Shared browser (2)',
+    ]);
+  });
+
   test('rejects an exchange whose client identity differs from the approved request', () => {
     const { service } = harness();
     const offer = service.createOffer({
