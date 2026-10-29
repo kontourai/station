@@ -144,7 +144,7 @@
     {
       "id": "experimental-sheet-gestures",
       "label": "Sheet gestures preview",
-      "help": "Opt in to dragging phone sheets up to expand them and down to close them.",
+      "help": "Opt in to phone sheet handles and swipe-to-reveal Snooze and Dismiss in the inbox.",
       "scope": "device",
       "section": "developer-tools",
       "route": "/settings?view=developer-tools&highlight=experimental-sheet-gestures",
