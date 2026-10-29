@@ -214,8 +214,9 @@ confined read the coding routes use. The answer (`ProjectCheckoutFreshness`,
 - `stale` or `not-stale`, with `branch`, `upstream` (`origin/main`),
   `behind`, `ahead`, `behindSince`, `upstreamFetchedAt`, `thresholds`,
   `staleBecause` and `updateCommand` (`git -C <directory> pull --ff-only`,
-  shell-quoted for a POSIX shell). Station never runs that command; with
-  `ahead` above 0 it refuses.
+  naming the working directory's absolute path, shell-quoted for a POSIX
+  shell). Station never runs that command; it refuses when both `ahead` and
+  `behind` are above 0.
 
 `behindSince` is the later of the committer date of the oldest missing commit
 on the upstream's first-parent line and the time the upstream ref's reflog
@@ -223,18 +224,22 @@ first moved past HEAD (the newest 32 entries are examined). A committer date
 alone can be much older than when a commit arrived; the reflog time is never
 earlier. Without a reflog only the committer date is available.
 `upstreamFetchedAt` is the newest of the worktree's and the repository's
-`FETCH_HEAD` (a fetch of any remote), the upstream ref's reflog and the
-configured remote's `HEAD` reflog (which `git clone` writes; `git remote
-set-head` and `git gc` also touch it), for an upstream from a remote only;
-it is absent when none exists. A record reached through a link anywhere below
-the git directory is ignored.
+`FETCH_HEAD` when it lists the upstream's current commit (a heuristic: a
+fetch of a fork at that same commit, or `git fetch --append`, also counts),
+the upstream ref's reflog and the configured remote's `HEAD` reflog (which
+`git clone` writes; `git remote set-head` and `git gc` also touch it), for an
+upstream from a remote only; it is absent when none exists. A record reached
+through a link anywhere below the git directory is ignored, and one whose path
+or file identity changes while it is read is discarded. A swap made and
+undone between those checks is not detected.
 
 `staleBecause` lists `commits` when `behind` reaches `checkoutStaleAfterCommits`
 (default 50), `age` when `behindSince` is at least `checkoutStaleAfterDays`
 (default 3) old, and `fetch-age` when `upstreamFetchedAt` is that old, even with
 nothing behind, because the local refs cannot show what a fetch would
-([config](config.md)). Facts are remembered per directory for ten seconds and
-concurrent reads join one read; a read that could not complete is not
+([config](config.md)). The whole read, file system included, is bounded at 15
+seconds; past that it answers `unreadable`. Facts are remembered per
+directory for ten seconds and concurrent reads join one read; a read that could not complete is not
 remembered, and thresholds apply on every request. The
 station-control `get_project` tool adds this answer as `checkoutFreshness`
 when the route returns one; it leaves the field out otherwise and never fails
