@@ -21,6 +21,7 @@ import type { AgentPolicyService } from '../../services/agents/agent-policy-serv
 import { extractToolFilePath } from '../../services/agents/agent-policy-service.js';
 import type { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
+import { recordPersonApprovedCall } from '../../services/plugins/mediated-untrusted-content-gate.js';
 import {
   sharedUntrustedContentLedger,
   type UntrustedContentLedger,
@@ -246,7 +247,18 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
       if (decision.behavior === 'allow') return true;
       if (decision.behavior === 'deny') return decision.denial;
       if (decision.behavior === 'ask' && requester) {
-        if (await requester(tool)) return true;
+        if (await requester(tool)) {
+          // #3483: the person approved this call; the station-control
+          // guard applies the same permission and reads this approval.
+          const provenance = provenanceOf(tool);
+          if (provenance && invocation.conversationId)
+            recordPersonApprovedCall(
+              invocation.conversationId,
+              provenance.integrationId,
+              provenance.originalToolName,
+            );
+          return true;
+        }
         toolDenials.add(1, { reason: 'user_denied' });
         // archive#3210: these two reasons are pure Station templates — they
         // embed no guardian, hook, or tool-supplied prose at all — yet they

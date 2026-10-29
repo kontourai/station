@@ -3,6 +3,19 @@ import {
   type UntrustedContentPermission,
 } from '@kontourai/station-contracts/tool';
 import type { IntegrationViewModel } from '@kontourai/station-sdk';
+import { StatusBadge } from '@kontourai/ui/react';
+
+const ENGINE_LABEL = {
+  claude: 'Claude Code',
+  codex: 'Codex',
+  acp: 'ACP agents',
+} as const;
+
+const COVERAGE = {
+  'station-gated': { label: 'Station applies these', tone: 'positive' },
+  'engine-direct': { label: 'Direct connection', tone: 'caution' },
+  'not-delivered': { label: 'Not offered', tone: 'neutral' },
+} as const;
 
 export function IntegrationTrustSection({
   form,
@@ -157,6 +170,37 @@ export function IntegrationTrustSection({
           ? 'A server supplies its own read-only hints. Trust them only if you trust the server.'
           : 'Hints are already trusted when content is trusted.'}
       </p>
+      {form.engineCoverage && form.engineCoverage.length > 0 && (
+        <div className="editor-field">
+          <h4 className="editor-label" id="integration-engine-coverage">
+            Other engines
+          </h4>
+          <dl
+            className="integration-engine-coverage"
+            aria-labelledby="integration-engine-coverage"
+          >
+            {form.engineCoverage.map((entry) => (
+              <div key={entry.engine}>
+                <dt>{ENGINE_LABEL[entry.engine]}</dt>
+                <dd>
+                  <StatusBadge
+                    tone={COVERAGE[entry.coverage].tone}
+                    status={COVERAGE[entry.coverage].label}
+                  />
+                </dd>
+              </div>
+            ))}
+          </dl>
+          {form.engineCoverage.some(
+            (entry) => entry.coverage === 'engine-direct',
+          ) && (
+            <p className="editor-field-hint">
+              This engine connects to this server directly; Station can&rsquo;t
+              gate its calls.
+            </p>
+          )}
+        </div>
+      )}
       <details className="editor-disclosure">
         <summary>
           Change history ({form.untrustedContentChanges?.length ?? 0})

@@ -130,7 +130,7 @@ export function createEngineOAuthProxyRoutes(): Hono {
         return c.text('MCP request exceeds proxy limit', 413, securityHeaders);
       throw error;
     }
-    let rpc: { id?: unknown; method?: string } = {};
+    let rpc: { id?: unknown; method?: string; tool?: unknown } = {};
     try {
       if (body) {
         const parsed: unknown = JSON.parse(body);
@@ -141,6 +141,13 @@ export function createEngineOAuthProxyRoutes(): Hono {
           method:
             'method' in parsed && typeof parsed.method === 'string'
               ? parsed.method
+              : undefined,
+          tool:
+            'params' in parsed &&
+            parsed.params &&
+            typeof parsed.params === 'object' &&
+            'name' in parsed.params
+              ? parsed.params.name
               : undefined,
         };
       }
@@ -157,6 +164,15 @@ export function createEngineOAuthProxyRoutes(): Hono {
         { status, headers: { ...securityHeaders, ...headers } },
       );
     let remoteStatus: number | undefined;
+    const toolCall = rpc.method === 'tools/call';
+    if (toolCall) {
+      // #3483: this proxy is the only Station seam on the call, so the
+      // untrusted-content permission is applied here.
+      if (typeof rpc.tool !== 'string')
+        return c.text('Invalid MCP request', 400, securityHeaders);
+      const verdict = await binding.gate(rpc.tool);
+      if (!verdict.allowed) return failure(verdict.reason, 403);
+    }
     try {
       const messageRoute = c.req.path.endsWith('/messages');
       const target = messageRoute ? binding.messageEndpoint : binding.endpoint;
@@ -219,6 +235,8 @@ export function createEngineOAuthProxyRoutes(): Hono {
         }
       }
       remoteStatus = response.status;
+      // The result is on its way to the engine: count it as read.
+      if (toolCall) binding.recordRead();
       if (response.status === 400) {
         // Preserve only the SDK's protocol-negotiation data, never remote error prose.
         const refusal = negotiationRefusal.safeParse(

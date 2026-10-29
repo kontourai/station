@@ -261,10 +261,38 @@ checks newer state and stale grants is follow-up work, not an available command.
   ([agent-hooks.ts](../../src-server/runtime/agents/agent-hooks.ts)). The
   Registry says so: "In Station-engine sessions, asks before tools that send
   or change things by default."
-- **Not enforced on external engines.** Claude Code, Codex and ACP sessions
-  build their evaluator in `StationRuntime.resolveExternalPreToolPolicy`
-  without this stage, and their tool results are not reported to Station's
-  hooks per turn. Station shows no claim of coverage there.
+- **External engines (Claude Code, Codex, ACP).** Enforced on every MCP call
+  Station carries for them
+  ([mediated-untrusted-content-gate.ts](../../src-server/services/plugins/mediated-untrusted-content-gate.ts)):
+  station-control calls, at the station-control authority guard, and calls to
+  remote servers signed in through Station's OAuth proxy, at the proxy. A
+  proxied `tools/call` result from an `untrusted` server (or one whose
+  definition cannot be read) marks the session durably. In a marked session
+  each call that sends or changes things (station-control tools that are not
+  read-only; proxied `tools/call` without a trusted read-only hint) takes the
+  tool's permission: `deny` refuses, `allow` passes, and `ask` passes only
+  on a person's approval of that tool in that session, recorded when an
+  authenticated person (not a station-control call) accepts the engine's
+  request for it; one approval admits one call within ten minutes. Neither
+  seam can ask a person itself, so an `ask` without an approval is refused.
+  Claude Code and ACP route their tool requests through the external staged
+  evaluator, which now applies the same permission, so they ask the person
+  for an `mcp__<server>__<tool>` call in a marked session. Station's
+  pre-tool evaluator does not run for Codex's MCP calls, so a gated Codex
+  call that would ask has no approval and is refused; set the tool to
+  `allow` or `deny`. A route several station-control
+  tools share takes the strictest of their permissions.
+- **Servers an engine connects to itself.** Stdio servers (Claude Code, Codex
+  and ACP spawn or reach them) and remote servers Station hands over without
+  its proxy are called directly by the engine. Station cannot gate those calls
+  or see their results, so their content does not mark the session. The
+  integration API (`engineCoverage` on `GET /api/integrations` and
+  `GET /api/integrations/:id`) and **Other engines** in the trust settings
+  show this per engine: `station-gated`, `engine-direct` or `not-delivered`,
+  derived from the transport and how Station delivers the server. Claude
+  Code's pre-tool hook still asks for those calls in a marked session, but
+  that is not enforcement. External-engine marks are keyed by the session;
+  another session of the same conversation is not marked by them.
 - **MCP prompts.** The composer carries the source of `/<server>:<prompt>`
   through the foreground send and Station's authorized relay. The Station
   engine marks the turn before its first tool when that source is untrusted

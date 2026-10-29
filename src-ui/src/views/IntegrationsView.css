@@ -18,6 +18,22 @@
   padding-inline-start: var(--k-space-5);
 }
 
+.integration-engine-coverage {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--k-space-2) var(--k-space-4);
+  align-items: center;
+  margin: 0;
+}
+
+.integration-engine-coverage > div {
+  display: contents;
+}
+
+.integration-engine-coverage dd {
+  margin: 0;
+}
+
 .integration-trust-review {
   display: grid;
   gap: var(--k-space-2);

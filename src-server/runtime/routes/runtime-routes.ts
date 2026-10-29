@@ -726,6 +726,7 @@ import {
   isMcpUiRenderRevoked,
   setMcpUiRenderAllowed,
 } from '../../services/plugins/mcp-ui-permissions.js';
+import { gateMediatedMcpCall } from '../../services/plugins/mediated-untrusted-content-gate.js';
 import { createPluginCommandRequirementResolver } from '../../services/plugins/plugin-command-effect-admission.js';
 import { PluginDraftService } from '../../services/plugins/plugin-draft-service.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
@@ -2320,6 +2321,18 @@ export function configureRuntimeRoutes(
           threadId,
           remote: false,
         }),
+      // #3483: an external engine's station-control call that sends or
+      // changes things, after its conversation read untrusted content.
+      untrustedContentGate: async ({ conversationIds, toolNames }) => {
+        const verdict = await gateMediatedMcpCall({
+          conversationIds,
+          serverId: 'station-control',
+          toolNames,
+          definition: () =>
+            context.configLoader.loadIntegration('station-control'),
+        });
+        return verdict.allowed ? undefined : verdict.reason;
+      },
       onRefusal: (refusal, method, path) =>
         context.logger.warn(
           `station-control authority refused ${method} ${path}: ${refusal.code}`,

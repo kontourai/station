@@ -34,6 +34,7 @@ import {
   currentEngineMcpAccountOwner,
 } from '../../services/plugins/engine-mcp-oauth.js';
 import { scanInstalledPluginInventory } from '../../services/plugins/installed-plugin-inventory.js';
+import { externalUntrustedContentPermission } from '../../services/plugins/mediated-untrusted-content-gate.js';
 import {
   closePluginActivationSession,
   completePluginActivationComposition,
@@ -1251,6 +1252,11 @@ export class StationRuntime {
           input.agent?.toolServers,
           toolNameProvenance,
         ),
+      // #3483: after the conversation read untrusted content (seen at a
+      // Station seam), an engine that asks Station asks the person too.
+      untrustedContentPermission: externalUntrustedContentPermission({
+        loadIntegration: (id) => this.configLoader.loadIntegration(id),
+      }),
       logger: this.logger,
     });
   }

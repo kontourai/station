@@ -394,6 +394,22 @@ export interface ToolMetadata {
   probe?: ToolServerProbeResult;
   /** #3483: legacy trust settings that wait for a person; see `IntegrationTrustReview`. */
   trustReview?: IntegrationTrustReview;
+  /** #3483: where each external engine's calls to this server go. */
+  engineCoverage?: IntegrationEngineCoverage[];
+}
+
+/**
+ * #3483: whether Station can apply the untrusted-content permission to an
+ * external engine's calls to one server, derived from its transport and how
+ * Station delivers it.
+ * - `station-gated`: every call passes a Station seam that applies it;
+ * - `engine-direct`: the engine connects to the server itself, so Station
+ *   cannot gate its calls or see what they return;
+ * - `not-delivered`: Station does not give this server to that engine.
+ */
+export interface IntegrationEngineCoverage {
+  engine: 'claude' | 'codex' | 'acp';
+  coverage: 'station-gated' | 'engine-direct' | 'not-delivered';
 }
 
 /**

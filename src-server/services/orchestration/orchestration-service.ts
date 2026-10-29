@@ -278,6 +278,7 @@ import {
 } from '../infra/resource-posture.js';
 import { workloadBudgetEngineContext } from '../infra/workload-budget.js';
 import { withEngineMcpAccountOwner } from '../plugins/engine-mcp-oauth.js';
+import { recordPersonApprovedExternalTool } from '../plugins/mediated-untrusted-content-gate.js';
 import {
   isPersonChatStart,
   type ProjectChatDefaultsService,
@@ -7851,6 +7852,13 @@ export class OrchestrationService {
        * `accept`.
        */
       approvalModeAuthority?: true;
+      /**
+       * #3483: set by the orchestration command route for an answer from an
+       * authenticated person (not a station-control call acting for its
+       * session's owner). Only such an approval admits an MCP call the
+       * untrusted-content permission asks about at a Station seam.
+       */
+      personAnswer?: true;
     },
     internal?: OrchestrationDispatchInternalOptions,
   ): Promise<
@@ -10004,6 +10012,23 @@ export class OrchestrationService {
                   decision,
                 );
           };
+          // #3483: recorded before the engine hears the answer, so its next
+          // call through a Station seam finds the approval.
+          if (
+            context?.personAnswer === true &&
+            (decision === 'accept' || decision === 'acceptForSession') &&
+            currentQuestionRequest?.state === 'found'
+          ) {
+            const opened = currentQuestionRequest.event.payload as {
+              requestType?: unknown;
+              payload?: { toolName?: unknown };
+            };
+            if (opened.requestType === 'approval')
+              recordPersonApprovedExternalTool(
+                command.threadId,
+                opened.payload?.toolName,
+              );
+          }
           if (
             command.expectedSkillExperience &&
             (decision === 'accept' || decision === 'acceptForSession')

@@ -10,6 +10,7 @@ type Tool<_T = any> = any;
 import { type SpawnOptions, spawn } from 'node:child_process';
 import type { CredentialOwner } from '@kontourai/station-contracts/secret-binding';
 import type {
+  IntegrationEngineCoverage,
   IntegrationTrustReviewDecision,
   ToolDef,
   ToolMetadata,
@@ -31,7 +32,10 @@ import type {
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { markIntegrationEnabledExplicit } from '../../domain/config-loader-storage.js';
-import { isBuiltinStationControl } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import {
+  isBuiltinStationControl,
+  isRuntimeManagedIntegrationId,
+} from '../../runtime/bootstrap/station-control-runtime-env.js';
 import {
   extractMCPAppsResourceMetadata,
   extractMCPAppsToolMetadata,
@@ -50,7 +54,11 @@ import type {
   IntegrationSecretBindingGranter,
   IntegrationSecretResolver,
 } from '../secrets/secret-binding-administration.js';
-import { recordIntegrationOrigin } from './integration-origin.js';
+import {
+  isCatalogSuppliedIntegration,
+  recordIntegrationOrigin,
+} from './integration-origin.js';
+import { externalEngineCoverage } from './mediated-untrusted-content-gate.js';
 import {
   principalToolCatalogExists,
   writePrincipalToolCatalog,
@@ -413,6 +421,27 @@ export class MCPService {
 
   async listIntegrations(): Promise<ToolMetadata[]> {
     return this.configLoader.listIntegrations();
+  }
+
+  /**
+   * #3483: where each external engine's calls to this server go (see
+   * `externalEngineCoverage`).
+   */
+  engineCoverage(
+    def: Pick<
+      ToolMetadata,
+      'id' | 'kind' | 'transport' | 'credentialOwnership' | 'probe'
+    >,
+    secrets: boolean,
+  ): IntegrationEngineCoverage[] | undefined {
+    return externalEngineCoverage(def, {
+      builtin: isRuntimeManagedIntegrationId(def.id),
+      catalogSupplied: isCatalogSuppliedIntegration(
+        this.configLoader.getProjectHomeDir(),
+        def.id,
+      ),
+      secrets,
+    });
   }
 
   /** #3483: legacy trust settings waiting for a person, if any. */

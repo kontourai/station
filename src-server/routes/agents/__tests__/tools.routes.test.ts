@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -10,6 +11,7 @@ import {
   saveIntegrationConfig,
 } from '../../../domain/config-loader-storage.js';
 import { rebuildOrClearRuntimeProjections } from '../../../runtime/bootstrap/runtime-projection-recovery.js';
+import { recordIntegrationOrigin } from '../../../services/plugins/integration-origin.js';
 
 // Spread the real module rather than enumerating instruments by hand: this
 // list grew to 14 and still went stale when the route recorded
@@ -1769,5 +1771,74 @@ describe('legacy trust settings that need a person (#3483)', () => {
       permissions: {},
       trustReadOnlyHints: false,
     });
+  });
+});
+
+describe('external engine coverage of the untrusted-content permission (#3483)', () => {
+  const makeTempDir = trackTempDirs();
+  test('is derived from each server’s transport and delivery', async () => {
+    const home = makeTempDir('station-engine-coverage-');
+    const loader = new ConfigLoader({ projectHomeDir: home });
+    const remote = (id: string, extra: Partial<ToolDef> = {}): ToolDef => ({
+      id,
+      kind: 'mcp',
+      transport: 'streamable-http',
+      endpoint: `https://${id}.example.test/mcp`,
+      ...extra,
+    });
+    await loader.saveIntegration(
+      'signed-in',
+      remote('signed-in', { credentialOwnership: { owner: 'principal' } }),
+    );
+    await loader.saveIntegration('open-remote', remote('open-remote'));
+    const catalog = remote('from-catalog');
+    await loader.saveIntegration('from-catalog', catalog);
+    recordIntegrationOrigin(home, catalog, {
+      kind: 'registry',
+      registryId: 'mcp-subregistry:station-curated',
+    });
+    await loader.saveIntegration('local', {
+      id: 'local',
+      kind: 'mcp',
+      transport: 'stdio',
+      command: 'node',
+    });
+    const service = new MCPService(
+      loader,
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      { warn: vi.fn() },
+    );
+    const app = createToolRoutes(service, vi.fn());
+    const list = (await json(await app.request('/'))) as {
+      data: Array<{ id: string; engineCoverage?: unknown }>;
+    };
+    const coverage = Object.fromEntries(
+      list.data.map((item) => [item.id, item.engineCoverage]),
+    );
+    const of = (claude: string, codex: string, acp: string) => [
+      { engine: 'claude', coverage: claude },
+      { engine: 'codex', coverage: codex },
+      { engine: 'acp', coverage: acp },
+    ];
+    expect(coverage['signed-in']).toEqual(
+      of('station-gated', 'station-gated', 'not-delivered'),
+    );
+    expect(coverage['open-remote']).toEqual(
+      of('engine-direct', 'engine-direct', 'not-delivered'),
+    );
+    expect(coverage['from-catalog']).toEqual(
+      of('not-delivered', 'not-delivered', 'not-delivered'),
+    );
+    expect(coverage.local).toEqual(
+      of('engine-direct', 'engine-direct', 'engine-direct'),
+    );
+    const detail = (await json(await app.request('/open-remote'))) as {
+      data: { engineCoverage?: unknown };
+    };
+    expect(detail.data.engineCoverage).toEqual(coverage['open-remote']);
   });
 });

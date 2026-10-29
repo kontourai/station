@@ -1547,7 +1547,11 @@ name that later points at a private address is refused.
 Some servers return content written by others, such as email. In a
 Station-engine turn that has read such content, Station asks before running
 a tool, even one the Agent auto-approves, unless the tool's trusted server
-declares it read-only. A server classified untrusted cannot exempt its own
+declares it read-only. For Claude Code, Codex and ACP, Station applies the
+same permission to the MCP calls it carries (station-control and servers
+signed in through Station); **Other engines** in a server's trust settings
+shows when an engine connects to the server directly, where Station can't
+gate its calls. A server classified untrusted cannot exempt its own
 tools that way unless you set `trustReadOnlyHints`.
 
 Station defaults external integrations outside its bundled curated catalog to

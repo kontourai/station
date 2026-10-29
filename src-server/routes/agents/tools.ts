@@ -270,6 +270,14 @@ export function createToolRoutes(
     }
     await next();
   });
+  // #3483: the per-engine coverage of the untrusted-content permission.
+  const coverageOf = (
+    def: Parameters<MCPService['engineCoverage']>[0],
+    secrets: boolean,
+  ) => {
+    const engineCoverage = mcpService.engineCoverage?.(def, secrets);
+    return engineCoverage ? { engineCoverage } : {};
+  };
   const iconAssets =
     mcpUiCallDeps.integrationIconAssets ??
     new IntegrationIconAssets(resolveHomeDir());
@@ -442,6 +450,7 @@ export function createToolRoutes(
           renderAllowed: mcpUiCallDeps.isRenderRevoked
             ? !mcpUiCallDeps.isRenderRevoked(t.id)
             : true,
+          ...coverageOf(t, t.requiresEnvSecrets === true),
         };
       });
       return c.json({ success: true, data });
@@ -495,7 +504,20 @@ export function createToolRoutes(
   app.get('/:id', async (c) => {
     try {
       const def = await mcpService.getIntegration(param(c, 'id'));
-      return c.json({ success: true, data: integrationReadProjection(def) });
+      return c.json({
+        success: true,
+        data: {
+          ...integrationReadProjection(def),
+          ...coverageOf(
+            def,
+            Boolean(
+              (def.env && Object.keys(def.env).length) ||
+                def.storedEnvNames?.length ||
+                Object.keys(def.secretEnvRefs ?? {}).length,
+            ),
+          ),
+        },
+      });
     } catch (error: unknown) {
       // #3483: shown for review without its unreviewed settings; it stays
       // unloaded until a person decides.

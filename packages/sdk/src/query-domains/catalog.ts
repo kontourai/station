@@ -108,6 +108,11 @@ export interface IntegrationViewModel extends ToolDef {
    * host computed it; the integration is not loaded until a person decides.
    */
   trustReview?: import('@kontourai/station-contracts/tool').IntegrationTrustReview;
+  /**
+   * #3483: whether Station can apply the untrusted-content permission to each
+   * external engine's calls to this server. Absent from older hosts.
+   */
+  engineCoverage?: import('@kontourai/station-contracts/tool').IntegrationEngineCoverage[];
 }
 
 export interface IntegrationLifecycleResult extends IntegrationViewModel {

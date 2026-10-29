@@ -111,7 +111,17 @@ import {
   type FullAccessGrant,
   requestMayBeAnAgent,
 } from '../../security/coding-authority.js';
-import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
+import {
+  getRuntimeAuthenticatedRequestPrincipal,
+  resolveClientOriginForRequest,
+} from '../../security/runtime-request-security.js';
+
+/** #3483: an authenticated request that is not a station-control (internal) call. */
+function isPersonRequest(request: Request): boolean {
+  const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+  return principal !== undefined && principal.kind !== 'internal';
+}
+
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
 import {
   AnswerAssessmentConflictError,
@@ -6603,6 +6613,12 @@ export function createOrchestrationRoutes(
           // here may record the Auto posture an edit-mode answer implies.
           ...(command.type === 'respondToRequest'
             ? { approvalModeAuthority: true as const }
+            : {}),
+          // #3483: a person answering, not a station-control tool call that
+          // acts for its session's owner. Only a person's approval admits a
+          // call the untrusted-content permission asks about.
+          ...(command.type === 'respondToRequest' && isPersonRequest(c.req.raw)
+            ? { personAnswer: true as const }
             : {}),
           ...(command.type === 'respondToRequest' &&
           command.expectedRequestEventId !== undefined

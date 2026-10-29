@@ -456,4 +456,50 @@ describe('IntegrationEditorPanel', () => {
     expect(screen.getByText('echo')).toBeTruthy();
     expect(screen.getByText('reverse')).toBeTruthy();
   });
+
+  test('shows where each external engine sends calls (#3483)', () => {
+    render(
+      <IntegrationEditorPanel
+        editForm={
+          {
+            id: 'tracker',
+            kind: 'mcp',
+            transport: 'stdio',
+            command: 'node',
+            engineCoverage: [
+              { engine: 'claude', coverage: 'station-gated' },
+              { engine: 'codex', coverage: 'engine-direct' },
+              { engine: 'acp', coverage: 'not-delivered' },
+            ],
+          } as any
+        }
+        isNew={false}
+        locked={false}
+        message={null}
+        viewMode="form"
+        rawJson=""
+        rawError={null}
+        savePending={false}
+        reconnectPending={false}
+        trustControlsEnabled
+        onReconnect={vi.fn()}
+        onDelete={vi.fn()}
+        onSave={vi.fn()}
+        onSwitchToForm={vi.fn()}
+        onSwitchToRaw={vi.fn()}
+        onRawJsonChange={vi.fn()}
+        onUpdate={vi.fn()}
+        onUnlock={vi.fn()}
+      />,
+    );
+    const list = screen.getByLabelText('Other engines');
+    expect(list.textContent).toContain('Claude CodeStation applies these');
+    expect(list.textContent).toContain('CodexDirect connection');
+    expect(list.textContent).toContain('ACP agentsNot offered');
+    expect(
+      screen.getByText(
+        /connects to this server directly; Station can.t gate its calls/,
+      ),
+    ).toBeTruthy();
+  });
 });

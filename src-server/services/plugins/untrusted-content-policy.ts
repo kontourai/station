@@ -12,10 +12,10 @@
  * rules answer an `ask` exactly as they answer any other.
  *
  * Coverage: Station enforces this where it dispatches tools itself (the
- * Station engine's hooks). External engines (Claude Code, Codex) reach MCP
- * servers through their own clients or Station's passthrough and do not
- * report tool results to these hooks; see
- * docs/design/mcp-subregistry-curation.md for the exact gap.
+ * Station engine's hooks) and at the seams that carry external engines'
+ * MCP calls (mediated-untrusted-content-gate.ts). Servers an engine
+ * connects to itself are not covered; see
+ * docs/design/mcp-subregistry-curation.md#coverage-and-gaps.
  */
 
 import type {
@@ -241,7 +241,7 @@ export class UntrustedContentLedger {
     conversationId: string | undefined,
     mark: Promise<unknown>,
   ) {
-    if (!this.durable || !conversationId) return;
+    if (!conversationId) return;
     const pending =
       this.pendingConversationMarks.get(conversationId) ??
       new Set<Promise<unknown>>();
@@ -300,6 +300,40 @@ export class UntrustedContentLedger {
   /** Whether a child this conversation delegated to has read it. */
   hasDescendantRead(conversationId: string | undefined): boolean {
     return this.saturated || this.descendantsRead.has(conversationId);
+  }
+
+  /**
+   * #3483: a Station seam saw an untrusted read for an external engine's
+   * conversation (no Station turn is involved).
+   */
+  markConversation(conversationId: string, untrusted: Promise<boolean>): void {
+    const recorded = untrusted
+      .catch(() => true)
+      .then((read) => {
+        if (read)
+          this.recordConversationRead({
+            agentSlug: '',
+            conversationId,
+          } as InvocationContext);
+      });
+    this.trackPending(conversationId, recorded);
+  }
+
+  /**
+   * Whether any of these conversations has read untrusted content beyond a
+   * turn: this process's record, or the durable mark when wired.
+   */
+  async conversationHasRead(
+    ...conversationIds: (string | undefined)[]
+  ): Promise<boolean> {
+    const ids = conversationIds.filter((id): id is string => !!id);
+    if (ids.length === 0) return false;
+    if (this.saturated) return true;
+    await Promise.all(
+      ids.flatMap((id) => [...(this.pendingConversationMarks.get(id) ?? [])]),
+    );
+    if (ids.some((id) => this.conversationsRead.has(id))) return true;
+    return this.durable?.isMarked(...ids) ?? false;
   }
 
   /**

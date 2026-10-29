@@ -15,6 +15,10 @@ import {
 } from '../../runtime/mcp/station-control-mcp-token.js';
 import { isCatalogSuppliedIntegration } from './integration-origin.js';
 import {
+  gateMediatedMcpCall,
+  type MediatedGateResult,
+} from './mediated-untrusted-content-gate.js';
+import {
   ConnectAccountRequiredError,
   StationOwnedToolServerError,
   StationToolServerOAuthProvider,
@@ -22,6 +26,7 @@ import {
   toolServerCredentialStoreFor,
   toolServerOAuthResourceIdentity,
 } from './tool-server-oauth.js';
+import { sharedUntrustedContentLedger } from './untrusted-content-policy.js';
 
 const launchOwner = new AsyncLocalStorage<{ accountId: string | undefined }>();
 export function withEngineMcpAccountOwner<T>(
@@ -59,6 +64,10 @@ type ProxyBinding = {
   messageEndpoint?: string;
   /** #3483: address-pinned for a catalog-supplied server; else the platform fetch. */
   fetch?: typeof globalThis.fetch;
+  /** #3483: the untrusted-content permission for one `tools/call`. */
+  gate: (toolName: string) => Promise<MediatedGateResult>;
+  /** #3483: a `tools/call` result came back; marks the conversation if untrusted. */
+  recordRead: () => void;
 };
 const bindings = new Map<string, ProxyBinding>();
 const bindingKey = (session: string, server: string) =>
@@ -96,7 +105,10 @@ export function createEngineMcpOAuthResolver(options: {
   ): Promise<ReadonlyMap<string, string>> => {
     const prepared: {
       server: ResolvedAgentToolServer;
-      binding: Omit<ProxyBinding, 'expiresAt' | 'signal'>;
+      binding: Omit<
+        ProxyBinding,
+        'expiresAt' | 'signal' | 'gate' | 'recordRead'
+      >;
     }[] = [];
     for (const server of servers) {
       if (server.transport !== 'sse' && server.transport !== 'streamable-http')
@@ -225,10 +237,23 @@ export function createEngineMcpOAuthResolver(options: {
           bindings.delete(key);
         },
       );
+      const definition = () => options.getIntegration(server.id);
       bindings.set(bindingKey(sessionId!, server.id), {
         ...binding,
         expiresAt,
         signal: lifetime.signal,
+        gate: (toolName) =>
+          gateMediatedMcpCall({
+            conversationIds: [sessionId],
+            serverId: server.id,
+            toolNames: [toolName],
+            definition,
+          }),
+        recordRead: () =>
+          sharedUntrustedContentLedger.markConversation(
+            sessionId!,
+            definition().then((def) => def.contentTrust === 'untrusted'),
+          ),
       });
       result.set(
         server.id,
