@@ -33,7 +33,6 @@ import {
   createEngineMcpOAuthResolver,
   currentEngineMcpAccountOwner,
 } from '../../services/plugins/engine-mcp-oauth.js';
-import { deploymentClientMetadataUrl } from '../../services/plugins/tool-server-oauth.js';
 import { scanInstalledPluginInventory } from '../../services/plugins/installed-plugin-inventory.js';
 import {
   closePluginActivationSession,
@@ -50,6 +49,7 @@ import {
   type RegistryTrustPolicyAuthority,
 } from '../../services/plugins/registry-trust-policy.js';
 import { ToolLibraryService } from '../../services/plugins/tool-library-service.js';
+import { deploymentClientMetadataUrl } from '../../services/plugins/tool-server-oauth.js';
 import { deriveWorkspaceHomeRoleStatus } from '../../services/plugins/workspace-home-role-service.js';
 import { createProjectMembershipRuntime } from '../../services/projects/project-membership-runtime.js';
 import { createProjectNativeToolLoader } from '../../services/projects/project-native-tools.js';
@@ -1142,8 +1142,9 @@ export class StationRuntime {
   // binds; the listener itself starts during initialize.
   // A malformed STATION_OAUTH_CLIENT_METADATA_URL throws here, refusing
   // startup, so sign-in and status reads can rely on it.
-  private readonly deploymentClientMetadataUrl =
-    deploymentClientMetadataUrl(process.env);
+  readonly deploymentClientMetadataUrl = deploymentClientMetadataUrl(
+    process.env,
+  );
   // A malformed STATION_TRUSTED_CONSENT_ORIGIN throws here, refusing startup.
   public readonly consentChannel = new ConsentChannelService({
     trustedOrigin: parseTrustedConsentOrigin(
