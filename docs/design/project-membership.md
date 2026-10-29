@@ -173,9 +173,11 @@ operator authority, separate from any membership. Until then, the
 administration read `GET .../access` is refused with `403
 project_access_forbidden`, as it is for a non-manager. That refusal carries
 `ProjectAccessRefusalDetails` (#4302). The service reads the sharing state only
-after the caller passes the checks `enable` makes before its transaction. That
-caller learns `off` (and that it can enable) or `on`. Everyone else gets
-`undisclosed`, the same for a shared, unshared or missing Project.
+after the caller passes operator and human authority checks and the HTTP
+admission for `POST .../access/enable`, including the pairing scope and
+account-bound Device gate. That caller learns `off` (and that it can enable)
+or `on`. Everyone else gets `undisclosed`, the same for a shared, unshared or
+missing Project.
 
 Private Sessions remain private by default. New Project work must explicitly
 record whether it is Project-shared. Sharing existing work requires a review
