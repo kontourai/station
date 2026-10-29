@@ -93,7 +93,7 @@ export function TaskReviewClips({
       {clips.isLoading ? (
         <SkeletonList count={1} withIcon={false} label="Loading clips" />
       ) : items.length === 0 && !clips.error ? (
-        <Empty variant="compact" label="No clips yet" />
+        <Empty variant="compact" label="Ask the lead agent to record a clip." />
       ) : (
         items.map((clip) => (
           <Button
