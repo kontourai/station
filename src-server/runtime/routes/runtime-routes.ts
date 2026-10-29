@@ -2716,6 +2716,10 @@ export function configureRuntimeRoutes(
       context.projectMembership
         ? (token) => context.projectMembership!.previewInvitation(token)
         : undefined,
+      context.localAccounts?.service ===
+        context.deploymentAuthentication?.service
+        ? context.localAccounts?.signOutBrowserOrigins
+        : undefined,
     ),
   );
   context.app.route(

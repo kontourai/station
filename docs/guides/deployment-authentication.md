@@ -185,8 +185,12 @@ changes person attribution only; each route still enforces its own admission and
 resource permissions. A conflicting operator or Device caught by the scoped
 local-account rule is refused with `403 account_identity_conflict`. The local
 account's `POST /api/account-auth/sign-out` remains available to end that
-account session; it does not revoke the Device credential. Account-tied
-personal tokens retain their separate conflict refusal described below.
+account session; it does not revoke the Device credential. It accepts an exact
+Station-allowed browser Origin as well as the authentication Origin, so an
+owner using an allowed loopback UI can recover. This exception applies only to
+local sign-out; other account operations keep the authentication Origin policy.
+Account-tied personal tokens retain their separate conflict refusal described
+below.
 
 
 ## HTTP behavior

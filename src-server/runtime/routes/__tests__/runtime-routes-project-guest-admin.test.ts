@@ -61,6 +61,7 @@ import { readJson } from '../../../__test-utils__/read-json.js';
 import { readStreamUntil } from '../../../__test-utils__/sse-helpers.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
+import { resolveStationBrowserOrigins } from '../../../security/station-browser-origins.js';
 import { createApplicationSessionRuntime } from '../../../services/identity/application-session-runtime.js';
 import { loadDeploymentAuthentication } from '../../../services/identity/deployment-authentication-loader.js';
 import { deploymentAccountPrincipal } from '../../../services/identity/deployment-authentication-service.js';
@@ -291,6 +292,7 @@ describe('project guest administration over the production composition', () => {
       { publicOrigin: useLocalAccounts ? ORIGIN : 'http://localhost:4321' },
       { stationId: STATION_ID, homeDirectory: homeDir },
       membership.service,
+      resolveStationBrowserOrigins({ port: 4321, host: '127.0.0.1' }),
     );
     const applicationSessions = createApplicationSessionRuntime(
       homeDir,
@@ -625,6 +627,7 @@ describe('project guest administration over the production composition', () => {
   }
 
   test('real local accounts read only individually shared children through exact Device leaves', async () => {
+    process.env.ALLOWED_ORIGINS = `${ORIGIN},http://localhost:6242`;
     const h = await setup(false, true);
     const project = await h.projectService.createProject({
       name: 'Local relationships',
@@ -1175,6 +1178,38 @@ describe('project guest administration over the production composition', () => {
       operatorAccountEdit.status,
       await operatorAccountEdit.clone().text(),
     ).toBe(403);
+    // The local UI is an allowed Station origin but is not the auth origin.
+    // Hostile and missing Origins must not consume the account session.
+    for (const origin of ['https://attacker.example.test', undefined]) {
+      const deniedLogout = await h.request('/api/account-auth/sign-out', {
+        method: 'POST',
+        headers: {
+          Cookie: people[1]!.cookie,
+          Authorization: `Bearer ${h.operatorCredential}`,
+          ...(origin ? { Origin: origin } : {}),
+          'Content-Type': 'application/json',
+        },
+        body: '{}',
+      });
+      expect(deniedLogout.status).toBe(403);
+    }
+    const alternateOrigin = 'http://localhost:6242';
+    const foreignLogin = await h.request('/api/account-auth/sign-in/username', {
+      method: 'POST',
+      headers: { Origin: alternateOrigin, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: 'relationbob',
+        password: 'Relationship password 12345',
+      }),
+    });
+    expect(foreignLogin.status).toBe(403);
+    expect(
+      (
+        await h.request('/api/account-auth/session', {
+          headers: { Cookie: people[1]!.cookie, Origin: ORIGIN },
+        })
+      ).status,
+    ).toBe(200);
     const logout = await h.request(
       '/api/account-auth/sign-out',
       {
@@ -1183,7 +1218,7 @@ describe('project guest administration over the production composition', () => {
           ...serveHeaders,
           Cookie: people[1]!.cookie,
           Authorization: `Bearer ${h.operatorCredential}`,
-          Origin: ORIGIN,
+          Origin: alternateOrigin,
           'Content-Type': 'application/json',
         },
         body: '{}',
@@ -1191,6 +1226,13 @@ describe('project guest administration over the production composition', () => {
       serveEnv,
     );
     expect(logout.status, await logout.clone().text()).toBe(200);
+    const clearedCookies = logout.headers.getSetCookie();
+    expect(clearedCookies).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/session_token=.*Max-Age=0/i),
+      ]),
+    );
+    expect(clearedCookies.join(';')).not.toContain('station-device');
     expect(
       (
         await h.request('/api/account-auth/session', {
