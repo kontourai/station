@@ -91,6 +91,91 @@ const post = (app: Hono, path: string, body: unknown) =>
   });
 
 describe('Project membership through revision and administration routes', () => {
+  test('notifies subscribers after committed membership changes and stops on unsubscribe', async () => {
+    const h = await harness();
+    const observed: Array<{
+      projectId: string;
+      principalId: string;
+      revision: number;
+      status: string;
+    }> = [];
+    const unsubscribe = h.service.subscribe((change) => {
+      const row = h.db
+        .prepare(
+          'SELECT record FROM project_members WHERE project_id=? AND principal_id=?',
+        )
+        .get(change.projectId, change.principalId) as { record: string };
+      const stored = JSON.parse(row.record) as {
+        revision: number;
+        status: string;
+      };
+      expect(stored.revision).toBe(change.revision);
+      observed.push({ ...change, status: stored.status });
+    });
+    const view = await h.service.enable('example', h.project.id, h.access);
+    const offer = await h.service.invite(view.scope, invitation(), h.access);
+    h.setActor(invitee);
+    await h.service.accept(offer.token, h.access);
+    h.setActor(owner, true);
+    await h.service.changeMember(
+      view.scope,
+      invitee.id,
+      1,
+      { role: 'contributor', status: 'active' },
+      h.access,
+    );
+    await expect(
+      h.service.changeMember(
+        view.scope,
+        invitee.id,
+        1,
+        { role: 'viewer', status: 'revoked' },
+        h.access,
+      ),
+    ).rejects.toMatchObject({ code: 'conflict' });
+    await h.service.changeMember(
+      view.scope,
+      invitee.id,
+      2,
+      { role: 'viewer', status: 'revoked' },
+      h.access,
+    );
+    expect(observed).toEqual([
+      {
+        projectId: h.project.id,
+        principalId: owner.id,
+        revision: 1,
+        status: 'active',
+      },
+      {
+        projectId: h.project.id,
+        principalId: invitee.id,
+        revision: 1,
+        status: 'active',
+      },
+      {
+        projectId: h.project.id,
+        principalId: invitee.id,
+        revision: 2,
+        status: 'active',
+      },
+      {
+        projectId: h.project.id,
+        principalId: invitee.id,
+        revision: 3,
+        status: 'revoked',
+      },
+    ]);
+    unsubscribe();
+    await h.service.changeMember(
+      view.scope,
+      invitee.id,
+      3,
+      { role: 'viewer', status: 'active' },
+      h.access,
+    );
+    expect(observed).toHaveLength(4);
+  });
   test('invitation preview discloses only its offered Project and fails after cancellation', async () => {
     const h = await harness();
     const access = await h.service.enable('example', h.project.id, h.access);

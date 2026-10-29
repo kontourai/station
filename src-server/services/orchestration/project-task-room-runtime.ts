@@ -159,6 +159,13 @@ export interface ProjectTaskRoomRequestAuthority {
   ): Promise<RequestPrincipal | { readonly kind: 'revoked' | 'unavailable' }>;
 }
 interface ProjectTaskRoomRuntimeDeps {
+  readonly subscribeMembershipChanges?: (
+    listener: (change: {
+      projectId: string;
+      principalId: string;
+      revision: number;
+    }) => void,
+  ) => () => void;
   readonly attachments?: TaskRoomAttachments;
   readonly taskGraph: Pick<
     { readTaskView(taskId: string): TaskRecord | null },
@@ -270,6 +277,8 @@ interface PersistedLiveRoomRecovery {
 interface RoomSubscriber {
   readonly request: Request;
   readonly emit: (event: unknown) => void;
+  readonly principal: RequestPrincipal;
+  unsubscribeMembership?: () => void;
   ready: boolean;
   pending: unknown[];
 }
@@ -2846,11 +2855,25 @@ export class ProjectTaskRoomRuntime {
     const subscriber: RoomSubscriber = {
       request: input.request,
       emit: input.emit,
+      principal,
       ready: false,
       pending: [],
     };
     subscribers.add(subscriber);
     this.#subscribers.set(key, subscribers);
+    subscriber.unsubscribeMembership = this.#deps.subscribeMembershipChanges?.(
+      (change) => {
+        if (change.principalId !== principal.operatorId) return;
+        void this.#subscriberAuthorized(document, subscriber)
+          .catch(() => false)
+          .then((authorized) => {
+            if (!authorized && subscribers.has(subscriber)) {
+              this.#deliver(subscriber, { type: 'terminal' });
+              this.#removeSubscriber(document, subscriber);
+            }
+          });
+      },
+    );
     if (!this.#unwatchWorking)
       this.#unwatchWorking = this.#deps.working.watch(() => {
         void this.#publishWorkingChanges();
@@ -2903,7 +2926,17 @@ export class ProjectTaskRoomRuntime {
 
   /** SSE cadence rechecks the same request authority even when the document is idle. */
   async subscriptionAlive(input: { taskId: string; request: Request }) {
-    return Boolean(await this.#authorizedDocument(input.taskId, input.request));
+    const document = await this.#authorizedDocument(
+      input.taskId,
+      input.request,
+    );
+    if (!document) return false;
+    const subscriber = [
+      ...(this.#subscribers.get(documentKey(document)) ?? []),
+    ].find((item) => item.request === input.request);
+    return subscriber
+      ? this.#subscriberAuthorized(document, subscriber)
+      : false;
   }
 
   /**
@@ -3139,6 +3172,9 @@ export class ProjectTaskRoomRuntime {
     this.#activeLiveRecovery.clear();
     this.#unwatchWorking?.();
     this.#unwatchWorking = undefined;
+    for (const subscribers of this.#subscribers.values())
+      for (const subscriber of subscribers)
+        subscriber.unsubscribeMembership?.();
     this.#subscribers.clear();
     this.#documentNotificationChains.clear();
     this.#notificationChains.clear();
@@ -3872,6 +3908,8 @@ export class ProjectTaskRoomRuntime {
     document: { projectId: string; taskId: string; documentId: string },
     subscriber: RoomSubscriber,
   ) {
+    subscriber.unsubscribeMembership?.();
+    subscriber.unsubscribeMembership = undefined;
     const key = documentKey(document);
     const subscribers = this.#subscribers.get(key);
     if (!subscribers) return;
@@ -3891,7 +3929,7 @@ export class ProjectTaskRoomRuntime {
     for (const subscriber of [...subscribers]) {
       const projected = await this.#subscriberEvent(
         document,
-        subscriber.request,
+        subscriber,
         event,
       );
       if (projected === undefined) {
@@ -3905,11 +3943,11 @@ export class ProjectTaskRoomRuntime {
   }
   #subscriberEvent(
     document: { projectId: string; taskId: string; documentId: string },
-    request: Request,
+    subscriber: RoomSubscriber,
     event: unknown,
   ) {
     const project = () =>
-      this.#projectSubscriberEvent(document, request, event);
+      this.#projectSubscriberEvent(document, subscriber, event);
     // Document delivery remains independent; only mutable live projections
     // must wait for a prepared/armed material transition to settle.
     return event &&
@@ -3921,14 +3959,19 @@ export class ProjectTaskRoomRuntime {
 
   async #projectSubscriberEvent(
     document: { projectId: string; taskId: string; documentId: string },
-    request: Request,
+    subscriber: RoomSubscriber,
     event: unknown,
   ): Promise<unknown | undefined> {
     const current = await this.#authorizedDocumentWithPrincipal(
       document.taskId,
-      request,
+      subscriber.request,
     );
-    if (!current || !sameDocument(current.document, document)) return undefined;
+    if (
+      !current ||
+      !sameDocument(current.document, document) ||
+      !samePrincipal(current.principal, subscriber.principal)
+    )
+      return undefined;
     if (
       !event ||
       typeof event !== 'object' ||
@@ -3962,10 +4005,17 @@ export class ProjectTaskRoomRuntime {
   }
   async #subscriberAuthorized(
     document: { projectId: string; taskId: string; documentId: string },
-    request: Request,
+    subscriber: RoomSubscriber,
   ) {
-    const current = await this.#authorizedDocument(document.taskId, request);
-    return Boolean(current && sameDocument(current, document));
+    const current = await this.#authorizedDocumentWithPrincipal(
+      document.taskId,
+      subscriber.request,
+    );
+    return Boolean(
+      current &&
+        sameDocument(current.document, document) &&
+        samePrincipal(current.principal, subscriber.principal),
+    );
   }
   async #publishHistory(document: {
     projectId: string;
@@ -3975,6 +4025,11 @@ export class ProjectTaskRoomRuntime {
     const subscribers = this.#subscribers.get(documentKey(document));
     if (!subscribers) return;
     for (const subscriber of [...subscribers]) {
+      if (!(await this.#subscriberAuthorized(document, subscriber))) {
+        this.#deliver(subscriber, { type: 'terminal' });
+        this.#removeSubscriber(document, subscriber);
+        continue;
+      }
       const result = await this.history({
         taskId: document.taskId,
         request: subscriber.request,
@@ -4367,9 +4422,9 @@ export class ProjectTaskRoomRuntime {
       const projection = await this.#deps.working.read({ scope });
       for (const subscriber of [...subscribers]) {
         // Every externally-observed update is reauthorized at delivery time.
-        if (!(await this.#subscriberAuthorized(scope, subscriber.request))) {
+        if (!(await this.#subscriberAuthorized(scope, subscriber))) {
           this.#deliver(subscriber, { type: 'terminal' });
-          subscribers.delete(subscriber);
+          this.#removeSubscriber(scope, subscriber);
           continue;
         }
         this.#deliver(subscriber, { type: 'document', ...projection });

@@ -5301,6 +5301,12 @@ export function configureRuntimeRoutes(
         : { kind: 'revoked' as const };
     };
     const roomRuntime = new ProjectTaskRoomRuntime({
+      ...(context.projectMembership
+        ? {
+            subscribeMembershipChanges: (listener) =>
+              context.projectMembership!.subscribe(listener),
+          }
+        : {}),
       attachments: new TaskRoomAttachments(
         join(context.configLoader.getProjectHomeDir(), 'task-room-attachments'),
       ),
