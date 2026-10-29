@@ -763,11 +763,6 @@ clicking Allow/Deny on an approval card. Requests surface as `request.opened` ca
 runtime events (see [Reading session activity](#reading-session-activity)); resolve them
 by `requestId`.
 
-Codex app-server stderr is drained without adding its content to session
-history or failure messages. With a server logger configured, Station emits one content-free diagnostic
-per process when it receives nonblank stderr. Codex protocol warnings, including
-`configWarning`, and process or turn failures still surface as session events.
-
 For Codex, this is Station's canonical string ID. The
 [adapter](../../src-server/providers/adapters/codex-adapter-transport.ts)
 maps it to Codex's original wire ID and preserves that ID's value and type in
@@ -1797,6 +1792,12 @@ rather than the parent's history. A single record of any type larger than 4 MiB 
 skipped and shown as one `too-large` entry.
 
 ### Live SSE feed (`GET /events`)
+
+Codex app-server stderr is drained without adding its content to session
+history or failure messages. With a server logger configured, Station emits one
+content-free diagnostic per process when it receives nonblank stderr. Codex
+protocol warnings, including `configWarning`, and process or turn failures
+still surface as session events.
 
 ```
 GET /api/orchestration/events              # all sessions the caller can read
