@@ -1805,10 +1805,11 @@ Local fixture evidence covers MCP tool calls through the proxy, account selectio
 refresh and conditional publication, mid-session expiry/401, scope refusals,
 launch refusal and confined Claude configuration delivery. These are local checks;
 live provider acceptance of the proxy design is **NOT_VERIFIED**.
-The [account sign-in capture](../learn/media/oauth-mcp-sign-in-comparison.png) and
-[tool assignment capture](../learn/media/oauth-mcp-picker-comparison.png)
-show mounted browser components with synthetic API responses. They do not show
-a live remote-server sign-in or tool call.
+The [account sign-in capture](../learn/media/oauth-mcp-sign-in-comparison.png)
+is from an isolated Station with a local fake authorization server; the
+[tool assignment capture](../learn/media/oauth-mcp-picker-comparison.png) shows
+mounted browser components with synthetic API responses. Neither shows a live
+remote-server sign-in or tool call.
 
 ## Developer services and computers
 
