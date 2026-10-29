@@ -1,0 +1,7 @@
+{
+  "revision": "0330bd61185739df6c43007252a448223bb37f65",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Scoped source-impact review at 0330bd61185. Read the complete scripts instructions and pending vitest-resource-manifest changes already inspected for the model-runtime context review. Additions classify child-process, exclusive timing and shared-output owners; body-process and immutable SQLite compatibility remain named process-heavy, outbox is process-exclusive, and no new ordinary-worker exemption is introduced. The compact ordinary-exclusion projection is still checked against Vitest discovery and the exact manifest partition, with a Windows argument-size refusal. These changes reinforce rather than alter the instructions to classify process tests, use owned bounded children, preserve red/failure receipts and collect terminal exit status. The instructions make no claim that the classified suites passed. No instruction or policy text change required for this named manifest input. Source reasoning only; no new test execution, global resource/performance proof, baseline change, waiver or shared-process control.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}
