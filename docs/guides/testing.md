@@ -1718,6 +1718,10 @@ slot and then runs the script as the slot holder. These entry points use it:
   naming it. `STATION_HEAVY_CHECK_SLOT_HELD` names the holder's exact claim
   (slot directory, index and nonce). A marker for a released, reclaimed or
   dead claim is ignored.
+- The check runs as the slot holder: on macOS and Linux it replaces the
+  runner process, and on Windows an owned Job ties it to the holder. When no
+  slot is held (hosted CI, or a check running under its ancestor's slot),
+  Windows runs it as an ordinary child, since no slot record can outlive it.
 - Admission is always taken in one order: the verification coordinator, then
   a heavy-check slot, then typecheck or Biome.
   - A coordinator owner takes its slot only after the lane, or each
