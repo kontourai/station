@@ -8990,6 +8990,8 @@ describe('ClaudeAdapter', () => {
       };
       expect(queryArgs.options).toEqual({
         cwd: undefined,
+        // The artifacts setting is off by default, which disallows the tool.
+        disallowedTools: ['Artifact'],
         model: undefined,
         resume: undefined,
         includePartialMessages: true,
@@ -9106,7 +9108,7 @@ describe('ClaudeAdapter', () => {
       const { options } = mockQuery.mock.calls[0][0];
       expect(options.strictMcpConfig).toBe(false);
       expect(options.env.ENABLE_TOOL_SEARCH).toBe('true');
-      expect(options.disallowedTools).toEqual(['mcp__weather__write']);
+      expect(options.disallowedTools).toEqual(['mcp__weather__write', 'Artifact']);
       const hook = options.hooks.PreToolUse[0].hooks[0];
       for (const name of ['write', 'new_tool']) {
         const refused = await hook(
@@ -9181,7 +9183,7 @@ describe('ClaudeAdapter', () => {
       const { options } = mockQuery.mock.calls[0][0];
       expect(options.strictMcpConfig).toBe(false);
       expect(options.mcpServers.weather.command).toBe(process.execPath);
-      expect(options.disallowedTools).toEqual(['mcp__weather__write']);
+      expect(options.disallowedTools).toEqual(['mcp__weather__write', 'Artifact']);
       const hook = options.hooks.PreToolUse[0].hooks[0];
       expect(
         await hook(
@@ -10842,6 +10844,27 @@ echo '{"loggedIn":true}'
           )
         ).CLAUDE_CODE_ARTIFACT,
       ).toBe('1');
+    });
+
+    test('off also disallows the tool, which a settings-file env enable cannot undo; on leaves it allowed', async () => {
+      async function disallowed(enabled: boolean, threadId: string) {
+        mockQuery.mockClear();
+        mockQuery.mockReturnValue(createMockQuery([]));
+        const adapter = new ClaudeAdapter({
+          getArtifactsEnabled: async () => enabled,
+        });
+        await adapter.startSession({ provider: 'claude', threadId });
+        const tools = mockQuery.mock.calls.at(-1)?.[0].options
+          .disallowedTools as string[] | undefined;
+        await adapter.stopAll();
+        return tools ?? [];
+      }
+      expect(await disallowed(false, 'artifacts-off-disallowed')).toContain(
+        'Artifact',
+      );
+      expect(await disallowed(true, 'artifacts-on-allowed')).not.toContain(
+        'Artifact',
+      );
     });
 
     test('an adopted session reads the setting at its own start', async () => {

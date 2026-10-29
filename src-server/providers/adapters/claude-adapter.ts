@@ -21,6 +21,7 @@ import {
   engineConnectionId,
   engineId,
 } from '@kontourai/station-contracts/agent-identity';
+import { CLAUDE_ARTIFACT_TOOL_NAME } from '@kontourai/station-contracts/claude-artifact';
 import { STEERING_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 import {
   type ConfinementFallbackReason,
@@ -896,8 +897,10 @@ export interface ClaudeArtifactsSpawnEnv {
  * bundle). Off is therefore written as `0`, not left unset: the setting is
  * authoritative, so an ambient enable in Station's own environment, or one
  * in the connection's `env` map, cannot publish to claude.ai while Settings
- * shows the tool off. The engine still offers the
- * tool only to a first-party claude.ai subscription login.
+ * shows the tool off. `buildOptions` also disallows the tool when off,
+ * because a Claude settings file's `env` block can set the variable back
+ * to `1` inside the CLI. The engine still offers the tool only to a
+ * first-party claude.ai subscription login.
  */
 export function claudeArtifactsSpawnEnv(
   enabled: boolean,
@@ -3817,27 +3820,34 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ? 'allowed'
         : 'changed';
     };
-    return {
-      cwd: input.cwd,
+    const disallowedTools = [
       ...(input.agent?.toolServers?.some(
         (server) =>
           server.allowedTools !== undefined || server.disabledTools?.length,
       )
-        ? {
-            disallowedTools: input.agent.toolServers.flatMap((server) =>
-              [
-                ...new Set([
-                  ...(server.disabledTools ?? []),
-                  ...(server.allowedTools !== undefined
-                    ? (server.toolNames ?? []).filter(
-                        (name) => !server.allowedTools!.includes(name),
-                      )
-                    : []),
-                ]),
-              ].map((name) => `mcp__${server.id}__${name}`),
-            ),
-          }
-        : {}),
+        ? input.agent.toolServers.flatMap((server) =>
+            [
+              ...new Set([
+                ...(server.disabledTools ?? []),
+                ...(server.allowedTools !== undefined
+                  ? (server.toolNames ?? []).filter(
+                      (name) => !server.allowedTools!.includes(name),
+                    )
+                  : []),
+              ]),
+            ].map((name) => `mcp__${server.id}__${name}`),
+          )
+        : []),
+      // The `0` in artifactsEnv is not enough on its own: a settings file's
+      // `env` block (user, project or local tier) is applied inside the CLI
+      // and re-enables the tool. A disallowed tool cannot be re-allowed there.
+      ...(artifactsEnv.CLAUDE_CODE_ARTIFACT === '1'
+        ? []
+        : [CLAUDE_ARTIFACT_TOOL_NAME]),
+    ];
+    return {
+      cwd: input.cwd,
+      ...(disallowedTools.length ? { disallowedTools } : {}),
       model: input.modelId,
       // #1551: run the Claude Code the user installed. Omitted when none
       // resolved, which is the SDK's documented "use the built-in executable"

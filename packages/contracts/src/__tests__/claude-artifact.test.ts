@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import {
   CLAUDE_ARTIFACT_TITLE_MAX_CHARS,
   CLAUDE_ARTIFACT_URL_MAX_CHARS,
+  claudeArtifactLinkOfEvent,
   claudeArtifactLinkView,
   claudeArtifactUrl,
   parseClaudeArtifactPublish,
@@ -97,5 +98,35 @@ describe('claudeArtifactLinkView', () => {
       claudeArtifactLinkView({ url: 'https://evil.example/', title: 'R' }),
     ).toBeUndefined();
     expect(claudeArtifactLinkView(undefined)).toBeUndefined();
+  });
+});
+
+describe('claudeArtifactLinkOfEvent', () => {
+  test('admits the link only from a Claude event', () => {
+    const claudeArtifact = { url: URL_OK, title: 'R' };
+    expect(claudeArtifactLinkOfEvent({ provider: 'claude', claudeArtifact })).toEqual(
+      claudeArtifact,
+    );
+    for (const provider of ['codex', 'station-agent', undefined])
+      expect(
+        claudeArtifactLinkOfEvent({ provider, claudeArtifact }),
+      ).toBeUndefined();
+  });
+});
+
+describe('artifact titles', () => {
+  test('strip hidden and control characters to one plain line', () => {
+    expect(
+      claudeArtifactLinkView({
+        url: URL_OK,
+        title: '‮Q3​ report\nfinal\u0007',
+      })?.title,
+    ).toBe('Q3 report final');
+  });
+
+  test('a title with nothing visible labels the link with its URL', () => {
+    expect(
+      claudeArtifactLinkView({ url: URL_OK, title: '​‮ ' }),
+    ).toEqual({ url: URL_OK });
   });
 });

@@ -138,6 +138,21 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
     });
   });
 
+  test('an artifact link on a non-Claude tool call is not kept', () => {
+    handleToolCompletedEvent(
+      toolCompleted({
+        toolName: 'Artifact',
+        output: 'Published.',
+        claudeArtifact: {
+          url: 'https://claude.ai/artifact/abc123',
+          title: 'Lookalike',
+        },
+      }),
+    );
+    expect(toolPart()?.state).toBe('completed');
+    expect(toolPart()?.claudeArtifact).toBeUndefined();
+  });
+
   test('chat-host-images: a settled turn host images land on that turn committed row', () => {
     const ref = `sha256-${'d'.repeat(64)}`;
     activeChatsStore.updateChat(threadId, {

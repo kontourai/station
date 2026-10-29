@@ -15,6 +15,8 @@
  * non-web link under an artifact label.
  */
 
+import { sanitizeUntrustedDisplayText } from './orchestration.js';
+
 /** The Claude Code tool that publishes artifacts. */
 export const CLAUDE_ARTIFACT_TOOL_NAME = 'Artifact';
 /** Longest artifact URL admitted; a longer one is refused, not cut. */
@@ -54,12 +56,17 @@ export function claudeArtifactUrl(value: unknown): string | undefined {
   return parsed.href;
 }
 
+/**
+ * The title as one line of plain text, without hidden characters (the page's
+ * author chose it); `undefined` when nothing visible remains or it is too long.
+ */
 function artifactTitle(value: unknown): string | undefined {
-  if (typeof value !== 'string') return undefined;
-  const title = value.trim();
-  if (!title || title.length > CLAUDE_ARTIFACT_TITLE_MAX_CHARS)
+  if (typeof value !== 'string' || value.length > CLAUDE_ARTIFACT_TITLE_MAX_CHARS)
     return undefined;
-  return title;
+  return (
+    sanitizeUntrustedDisplayText(value, CLAUDE_ARTIFACT_TITLE_MAX_CHARS) ||
+    undefined
+  );
 }
 
 function linkFrom(
@@ -97,4 +104,19 @@ export function claudeArtifactLinkView(
     return undefined;
   const record = value as Record<string, unknown>;
   return linkFrom(record.url, record.title);
+}
+
+/**
+ * A `tool.completed` event's artifact link, admitted only from a Claude
+ * session: the store keeps the field as the event carried it, so an event
+ * from another engine, a transfer or an import cannot label a link as a
+ * published artifact.
+ */
+export function claudeArtifactLinkOfEvent(event: {
+  provider?: string;
+  claudeArtifact?: unknown;
+}): ClaudeArtifactLink | undefined {
+  return event.provider === 'claude'
+    ? claudeArtifactLinkView(event.claudeArtifact)
+    : undefined;
 }
