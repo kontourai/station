@@ -1,0 +1,9 @@
+{
+  "revision": "a2ce40768b77be19a962337f05cc22a020c2bf40",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Added a bullet for how a slotted check runs: the slot holder replaces the runner on macOS/Linux (execve), uses an owned Job on Windows, and runs as an ordinary child on Windows when no slot is held (hosted CI or a nested check). Checked against scripts/lib/slot-holder-exec.mjs (holdsSlot branch), scripts/heavy-check-slot.mjs (holdsSlot is true only for a fresh slot) and scripts/__tests__/slot-holder-exec.test.ts. path-read-pin-boundary.test.ts only classifies the slot suites temp queue reads.","inputs":["docs/guides/testing.md","scripts/__tests__/path-read-pin-boundary.test.ts","scripts/heavy-check-slot.mjs","scripts/lib/slot-holder-exec.mjs"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Rechecked: verification-coordinator.test.ts only switches its file claim directory to trackTempDirs; the module map description of the verification coordinator is unaffected.","inputs":["docs/architecture/module-map.md","scripts/__tests__/verification-coordinator.test.ts"]}
+  ]
+}
