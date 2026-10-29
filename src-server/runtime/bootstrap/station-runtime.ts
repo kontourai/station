@@ -843,6 +843,10 @@ export class StationRuntime {
         ? provideSkills.filter((id): id is string => typeof id === 'string')
         : undefined;
     },
+    // Claude Code's Artifact tool (AppConfig.claudeArtifactsEnabled), read
+    // per session start; same lazy-capture posture as `getProvideSkills`.
+    getArtifactsEnabled: async () =>
+      (await this.configLoader.loadAppConfig()).claudeArtifactsEnabled === true,
     resolveSkillDir: async (id) => {
       try {
         const skill = await this.skillService.getSkill(id);
