@@ -101,6 +101,9 @@ These frozen comparisons record #3490's redesign at the revisions in the media
 manifest. Later Project identity marks, server run-location updates, Agent
 grouping and Engine & model overrides are not pictured; the images are not captures or visual qualification of the current
 composer.
+The **⋯** they show held only **Use a visual skill**; that action now appears
+only while the `visual-skills` Feature Preview is on, so by default the
+current composer has no **⋯**.
 
 The Project comparison captures also precede the shared Project Room and
 Overview-first navigation. They retain their original revisions. Direct Agent
@@ -150,7 +153,8 @@ of the chat on screen, in any dock region or placement (full screen on a phone):
 
 The Project page opens on Overview and keeps its shared Project Room separate
 from direct Agent conversations. Separate Agent and Engine & model controls sit
-inside the composer beside Start and the overflow for visual skills. The Agent list retains each Agent's repair action: a row that cannot start is
+inside the composer beside Start and, while the `visual-skills` Feature Preview
+is on, the overflow for visual skills. The Agent list retains each Agent's repair action: a row that cannot start is
 dimmed and disabled with its one fixing button, and shows a state badge only
 when it has no fix of its own; a ready row shows none. Custom Agents keep a
 short purpose. The engine that runs an Agent
@@ -446,7 +450,7 @@ These controls are owned by [ChatInputArea](../../src-ui/src/components/chat/Cha
 
 ### Turn navigation
 
-A live transcript with six or more user turns gets turn navigation (#342;
+A live transcript gets turn navigation from its first user turn (#342;
 [TranscriptTurnRail](../../src-ui/src/components/chat/TranscriptTurnRail.tsx)).
 Its user turns are derived from the whole transcript row model
 ([transcriptTurnLandmarks](../../src-ui/src/components/chat/transcriptTurnLandmarks.ts)),

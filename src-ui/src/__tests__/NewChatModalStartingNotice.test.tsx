@@ -55,6 +55,10 @@ vi.mock('@kontourai/station-sdk', () => ({
   // paired Stations, so only this one.
   useSshEnvironmentsQuery: () => ({ isSuccess: false, isError: false }),
   usePeerCredentialsQuery: () => ({ isSuccess: false, isError: false }),
+  // The visual-skills Feature Preview on, so the start composer offers them.
+  useFeaturePreviewsQuery: () => ({
+    data: [{ id: 'visual-skills', enabled: true }],
+  }),
   useAgentsQuery: () => ({ data: [] }),
   useConfigQuery: () => ({ data: {}, dataUpdatedAt: 1, refetch: vi.fn() }),
   useSkillExperienceInventoryQuery: () => ({

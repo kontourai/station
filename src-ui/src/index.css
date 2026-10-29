@@ -6331,6 +6331,10 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     overflow-wrap: anywhere;
   }
 
+  .composer-popover-panel .composer-mode-sheet__notes {
+    padding-inline: calc(var(--k-space-1) + var(--k-space-4));
+  }
+
   .chat-dock__project-switcher-switch {
     min-height: 64px;
     padding: var(--k-space-3);
@@ -9626,6 +9630,19 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 .composer-mode-sheet__option {
   min-height: 56px;
   justify-content: flex-start;
+}
+
+/* The notes above the list start where a row's content does: the list's
+   padding (`--space-2`, i.e. `--k-space-1`) plus the row's own
+   (`--space-3`, i.e. half `--k-space-3`). The phone override sits beside the
+   phone row padding. */
+.composer-mode-sheet__notes {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: calc(var(--k-space-1) / 2);
+  padding: calc(var(--k-space-3) / 2)
+    calc(var(--k-space-1) + var(--k-space-3) / 2) 0;
 }
 
 /* Visually-hidden native radio input (same clip technique as Checkbox.css's

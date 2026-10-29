@@ -1,0 +1,15 @@
+{
+  "revision": "e3485fb23d316362a7b9d7a09f7cdce21ec45eff",
+
+  "notes": [
+    {"path":"docs/design/remote-execution-preparation.md","note":"delegate.ts now keeps the --session reserved-word refusal on the original supervision verbs, so list is a sub-verb only without --agent or --session; delegate.test.ts adds that --session case. This design covers prepared portable delegation and makes no claim about sub-verb dispatch or list, so it stays accurate.","inputs":["docs/design/remote-execution-preparation.md","packages/cli/src/__tests__/delegate.test.ts","packages/cli/src/commands/delegate.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"delegate.ts now keeps the --session reserved-word refusal on the original supervision verbs, so list is a sub-verb only without --agent or --session; delegate.test.ts adds that --session case. Re-read the delegate and conversation/claims sections: the list usage, --limit bounds and --session description remain accurate; the section states no reserved-word rule that this changes.","inputs":["docs/reference/cli.md","packages/cli/src/__tests__/delegate.test.ts","packages/cli/src/commands/delegate.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"delegate.ts now keeps the --session reserved-word refusal on the original supervision verbs, so list is a sub-verb only without --agent or --session; delegate.test.ts adds that --session case. contracts.md documents contract subpaths only; nothing in it depends on CLI sub-verb dispatch.","inputs":["docs/reference/contracts.md","packages/cli/src/commands/delegate.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Edited in review round 2: Forking a conversation now states the rule per caller kind (non-bound held to its Session scope; bound non-operator to its owner Project actions, never another owner; bound operator unscoped), checked against stationControlScopeRefusal, ownerMay in runtime-routes.ts, and the mounted fork tests including the bound non-operator cross-Project cases.","inputs":["docs/guides/self-configuring-agent.md"]},
+
+    {"path":"docs/reference/session-api.md","note":"self-configuring-agent.md changed only in its Forking a conversation section (caller-kind scope wording). session-api.md does not describe fork_conversation scope; its fork-context and read claims are unaffected.","inputs":["docs/reference/session-api.md","docs/guides/self-configuring-agent.md"]}
+  ]
+}

@@ -60,7 +60,6 @@ import { StreamingMessage } from './StreamingMessage';
 import { SubagentTranscriptCard } from './SubagentTranscriptCard';
 import { ToolCallDisplay } from './ToolCallDisplay';
 import {
-  TRANSCRIPT_TURN_NAVIGATION_MIN_TURNS,
   TranscriptTurnActions,
   TranscriptTurnRail,
   turnLabel,
@@ -567,9 +566,7 @@ function ChatMessageListComponent({
     [transcriptRows],
   );
   // History replay keeps its own timeline; the live transcript gets the rail.
-  const turnNavigation =
-    !activeSession.replay &&
-    turnLandmarks.length >= TRANSCRIPT_TURN_NAVIGATION_MIN_TURNS;
+  const turnNavigation = !activeSession.replay && turnLandmarks.length > 0;
   const turnRailRef = useRef<HTMLElement>(null);
   // Reported by the rail; until it measures, assume the wide layout.
   const [turnRailAvailable, setTurnRailAvailable] = useState(true);
