@@ -31,10 +31,10 @@ describe('inboxContextParts', () => {
           assignedAgentSlug: agentId('reviewer'),
           model: 'opus-5.5',
         }),
-        localStationName: 'kontour',
+        localStationName: 'workstation',
       }),
     ).toEqual({
-      station: 'kontour',
+      station: 'workstation',
       project: 'station',
       chat: 'Notification inbox redesign',
       agent: 'reviewer',
@@ -49,12 +49,12 @@ describe('inboxContextParts', () => {
         delegation: {
           taskId: 'task-1',
           environmentKind: 'peer',
-          environmentName: 'bmedia',
+          environmentName: 'build-server',
         } as OrchestrationSessionSummary['delegation'],
       }),
-      localStationName: 'kontour',
+      localStationName: 'workstation',
     });
-    expect(result.station).toBe('bmedia');
+    expect(result.station).toBe('build-server');
   });
 
   test("an item's own fields win over the session's", () => {
@@ -82,7 +82,7 @@ describe('inboxContextParts', () => {
     expect(
       inboxContextParts({
         title: 'Nightly backup finished',
-        localStationName: 'kontour',
+        localStationName: 'workstation',
       }),
     ).toEqual([]);
   });
