@@ -715,6 +715,7 @@ describe('ChatDockBody marker actions follow callerAccess', () => {
   const CALLERS = {
     full: undefined,
     noNewChat: { continue: true, startChat: false },
+    noSend: { continue: false, startChat: true },
     readOnly: { continue: false, startChat: false },
   } as const;
 
@@ -796,18 +797,19 @@ describe('ChatDockBody marker actions follow callerAccess', () => {
 
   const LOST = `[SYSTEM_EVENT] [CHAT_ERROR:engine-session-binding-dead] ${RAW_MESSAGE}`;
   test.each([
-    ['full', ['Send again'], true],
-    ['noNewChat', ['Send again'], false],
-    ['readOnly', [], false],
+    ['full', ['Send again'], true, true],
+    ['noNewChat', ['Send again'], true, false],
+    ['noSend', [], false, true],
+    ['readOnly', [], false, false],
   ] as const)(
-    'a lost engine session offers %s caller %j',
-    async (caller, expected, namesNewChat) => {
+    'a lost engine session offers %s caller %j (hint names send=%s, new chat=%s)',
+    async (caller, expected, namesSend, namesNewChat) => {
       expect(
         await actionsFor(LOST, caller, /engine session was lost/i),
       ).toEqual(expected);
-      expect(Boolean(screen.queryByText(/or start a new chat/))).toBe(
-        namesNewChat,
-      );
+      const text = document.body.textContent ?? '';
+      expect(text.includes('Send your message again')).toBe(namesSend);
+      expect(/start a new chat/i.test(text)).toBe(namesNewChat);
     },
   );
 
@@ -816,6 +818,7 @@ describe('ChatDockBody marker actions follow callerAccess', () => {
   test.each([
     ['full', ['Continue']],
     ['noNewChat', ['Continue']],
+    ['noSend', []],
     ['readOnly', []],
   ] as const)(
     'an out-of-memory stop offers %s caller %j',
@@ -823,6 +826,44 @@ describe('ChatDockBody marker actions follow callerAccess', () => {
       expect(
         await actionsFor(OOM, caller, /engine ran out of memory/i),
       ).toEqual(expected);
+      // The hint names Continue only beside a Continue button.
+      expect(Boolean(screen.queryByText(/Continue picks the task up/))).toBe(
+        expected.length > 0,
+      );
+    },
+  );
+
+  // The second terminal-session error: an unsafe workspace to resume in.
+  const WORKSPACE = `[SYSTEM_EVENT] [CHAT_ERROR:continuation_workspace_worktree_gone] ${RAW_MESSAGE}`;
+  test.each([
+    ['full', ['New chat']],
+    ['noNewChat', []],
+    ['noSend', ['New chat']],
+    ['readOnly', []],
+  ] as const)(
+    'an unsafe workspace offers %s caller %j, never Send again',
+    async (caller, expected) => {
+      expect(await actionsFor(WORKSPACE, caller, /Can't resume/)).toEqual(
+        expected,
+      );
+      // Its hint is "New chat.": shown only to a caller allowed one.
+      expect(Boolean(screen.queryByText('New chat.'))).toBe(
+        expected.length > 0,
+      );
+    },
+  );
+
+  const UNKNOWN = '[SYSTEM_EVENT] [CHAT_ERROR] Something unexpected went wrong';
+  test.each([
+    ['full', true],
+    ['noNewChat', true],
+    ['noSend', false],
+    ['readOnly', false],
+  ] as const)(
+    'an unclassified failure tells %s caller retrying may help: %s',
+    async (caller, namesRetry) => {
+      await actionsFor(UNKNOWN, caller, /Something unexpected went wrong/);
+      expect(Boolean(screen.queryByText(/Retrying may help/))).toBe(namesRetry);
     },
   );
 });

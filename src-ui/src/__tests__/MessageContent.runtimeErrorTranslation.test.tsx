@@ -23,9 +23,13 @@ afterEach(cleanup);
 const RAW_MESSAGE =
   'No conversation found with session ID: d434e194-cc2e-4edc-8733-d8645c512fab';
 
-function renderPart(part: Record<string, unknown>) {
+function renderPart(
+  part: Record<string, unknown>,
+  callerAccess?: { continue: boolean; startChat: boolean },
+) {
   return render(
     <MessageContent
+      callerAccess={callerAccess}
       contentParts={[part as any]}
       textContent=""
       chatFontSize={14}
@@ -56,6 +60,34 @@ describe('MessageContent projected runtime-error translation (#765 A1)', () => {
       container.textContent!.toLowerCase().indexOf('engine session was lost'),
     );
   });
+
+  // The reloaded bubble's hint follows the server's open-read answer, the
+  // same rule as the error card and the live bubble.
+  test.each([
+    [undefined, true, true],
+    [{ continue: true, startChat: false }, true, false],
+    [{ continue: false, startChat: false }, false, false],
+  ] as const)(
+    'a reloaded bubble for caller access %j recommends send=%s, new chat=%s',
+    async (callerAccess, namesSend, namesNewChat) => {
+      const { container } = renderPart(
+        {
+          type: 'text',
+          content: `⚠️ ${RAW_MESSAGE}`,
+          runtimeError: true,
+          runtimeErrorCode: 'engine-session-binding-dead',
+        },
+        callerAccess,
+      );
+      await waitFor(() =>
+        expect(container.textContent).toMatch(/engine session was lost/i),
+      );
+      expect(container.textContent?.includes('Send your message again')).toBe(
+        namesSend,
+      );
+      expect(/new chat/i.test(container.textContent ?? '')).toBe(namesNewChat);
+    },
+  );
 
   test('an uncoded runtime-error part keeps its verbatim engine prose', async () => {
     const { container } = renderPart({

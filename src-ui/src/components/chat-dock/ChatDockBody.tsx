@@ -1498,7 +1498,12 @@ export function ChatDockBody({
                               // Not a resend: Station's continuation, whose
                               // model input carries the recovery note. It
                               // posts a turn, so a caller the server refused
-                              // a send is not offered it.
+                              // a send is not offered it. Assumption: its
+                              // route (POST /api/orchestration/conversations/
+                              // :id/memory-continuation) sits in the same
+                              // operate tier as the /chat/:id/continue route
+                              // `callerAccess.continue` checks. If the tiers
+                              // ever split, this needs its own server answer.
                               label: 'Continue',
                               onClick: () => void continueAfterMemoryKill(),
                             }

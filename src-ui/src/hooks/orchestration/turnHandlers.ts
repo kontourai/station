@@ -623,8 +623,13 @@ export function handleRuntimeErrorEvent(
     event.code === ENGINE_TURN_FAILED_CODE
       ? translateChatError({ message: event.message, code: event.code })
       : undefined;
+  // The hint follows the server's last open-read answer on what this caller
+  // may do here, the same rule the error card and reloaded bubble apply.
   const errorPartPrefix = translation
-    ? formatChatErrorDisplay(translation)
+    ? formatChatErrorDisplay(
+        translation,
+        chat?.conversationOpenState?.callerAccess,
+      )
     : event.message;
   const previousPart = streamingMessage.contentParts?.at(-1);
   const previousPartCount =

@@ -48,6 +48,12 @@ type MessageContentPart = NonNullable<ChatMessage['contentParts']>[number];
 export const INLINE_RUN_LIMIT = 1;
 
 interface MessageContentProps {
+  /**
+   * What the server's open read says this caller may do in the
+   * conversation; a reloaded runtime-error part picks its hint by it, as the
+   * error card does. Absent means unknown, and the full hint shows.
+   */
+  callerAccess?: { continue?: boolean; startChat?: boolean };
   contentParts?: MessageContentPart[];
   messageKey?: string;
   textContent: string;
@@ -70,6 +76,7 @@ interface MessageContentProps {
 }
 
 function MessageContentComponent({
+  callerAccess,
   contentParts,
   messageKey = 'message',
   textContent,
@@ -244,6 +251,7 @@ function MessageContentComponent({
               const translated = translateProjectedRuntimeError(
                 part.content,
                 part.runtimeErrorCode,
+                callerAccess,
               );
               if (translated) {
                 const raw = projectedRuntimeErrorRaw(part.content);

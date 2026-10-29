@@ -67,12 +67,18 @@ export interface ChatErrorTranslation {
    */
   retryable?: boolean;
   /**
-   * The hint for a caller the server says may not start a new chat
-   * (`callerAccess.startChat === false`), when `hint` recommends one. `null`
-   * means no hint at all. Unset means `hint` names no new chat and stands.
-   * Read through {@link chatErrorHintFor}, never directly.
+   * Hand-written hints for a caller the server's open read refused part of
+   * what `hint` recommends (`callerAccess`): `noSend` when it may not send
+   * here (`continue === false`), `noNewChat` when it may not start a chat
+   * (`startChat === false`), `neither` when both. `null` means no hint. An
+   * unset key means `hint` recommends nothing that caller lacks, so it
+   * stands. Read through {@link chatErrorHintFor}, never directly.
    */
-  hintWithoutNewChat?: string | null;
+  callerHints?: {
+    noSend?: string | null;
+    noNewChat?: string | null;
+    neither?: string | null;
+  };
   /**
    * True when the raw engine message should be available behind a Details
    * control, never as the card body. Callers that still inline markdown
@@ -159,6 +165,12 @@ function engineAuthTranslation(text: string): ChatErrorTranslation | null {
     title: 'This engine needs to be signed in',
     body: 'The computer running this Station could not refresh its login, so this turn did not run.',
     hint: 'Sign in on that computer, then try again — or switch to another agent.',
+    callerHints: {
+      noSend:
+        'It needs signing in on that computer. You can switch to another agent in a new chat.',
+      noNewChat: 'Sign in on that computer, then try again.',
+      neither: 'It needs signing in on that computer.',
+    },
     retryable: false,
     disclosureRaw: true,
   };
@@ -377,7 +389,7 @@ export function translateChatError(
         text ||
         'This session has already ended, so it cannot take another message.',
       hint: 'Start a new chat to continue.',
-      hintWithoutNewChat: null,
+      callerHints: { noNewChat: null, neither: null },
       terminalSession: true,
     };
   }
@@ -468,6 +480,7 @@ export function translateChatError(
       title: 'The engine ran out of memory',
       body: text,
       hint: 'Continue picks the task up where it stopped.',
+      callerHints: { noSend: null, neither: null },
       retryable: false,
     };
   }
@@ -530,7 +543,7 @@ export function translateChatError(
       title: "Can't resume",
       body: text || 'Unsafe workspace.',
       hint: 'New chat.',
-      hintWithoutNewChat: null,
+      callerHints: { noNewChat: null, neither: null },
       terminalSession: true,
     };
   }
@@ -561,6 +574,13 @@ export function translateChatError(
         classifiedReason[1] === 'rejected the credentials'
           ? "Check the model connection's credentials, then send your message again."
           : 'Your message was kept — send it again to retry.',
+      callerHints:
+        classifiedReason[1] === 'rejected the credentials'
+          ? {
+              noSend: "The model connection's credentials need checking.",
+              neither: "The model connection's credentials need checking.",
+            }
+          : { noSend: null, neither: null },
     };
   }
 
@@ -579,7 +599,14 @@ export function translateChatError(
       title: 'Sign in to this engine',
       body: text || 'This engine needs you to sign in before it can run.',
       hint: "Sign in from the engine's page in Connections, then start a new chat.",
-      hintWithoutNewChat: "Sign in from the engine's page in Connections.",
+      // Signing in lets the engine run later turns; it does not resend this
+      // one, and without a new chat this conversation is where they go.
+      callerHints: {
+        noNewChat:
+          "Signing in from the engine's page in Connections lets this engine run again. It does not resend this message.",
+        neither:
+          "Signing in from the engine's page in Connections lets this engine run again. It does not resend this message.",
+      },
       retryable: false,
     };
   }
@@ -589,6 +616,7 @@ export function translateChatError(
       title: 'This turn did not complete',
       body: 'The Station agent could not finish this turn.',
       hint: 'Your message was kept — send it again to retry.',
+      callerHints: { noSend: null, neither: null },
     };
   }
 
@@ -607,8 +635,12 @@ export function translateChatError(
       title: "This conversation's engine session was lost",
       body: 'The engine could not reopen the native session behind this conversation, so this turn failed.',
       hint: 'Send your message again — the conversation continues in a fresh engine session — or start a new chat.',
-      hintWithoutNewChat:
-        'Send your message again — the conversation continues in a fresh engine session.',
+      callerHints: {
+        noSend: 'Start a new chat to continue.',
+        noNewChat:
+          'Send your message again — the conversation continues in a fresh engine session.',
+        neither: null,
+      },
       disclosureRaw: true,
     };
   }
@@ -733,6 +765,7 @@ export function translateChatError(
     // archive#3299: the fallback classified nothing, so it must not assert
     // that retrying helps \u2014 that is a claim about a cause it does not know.
     hint: 'Retrying may help if this was a temporary failure.',
+    callerHints: { noSend: null, neither: null },
   };
 }
 
@@ -750,6 +783,7 @@ export function projectedRuntimeErrorRaw(text: string): string {
 export function translateProjectedRuntimeError(
   text: string,
   code: string,
+  callerAccess?: { continue?: boolean; startChat?: boolean },
 ): string | null {
   if (
     code !== ENGINE_SESSION_BINDING_DEAD_CODE &&
@@ -764,6 +798,7 @@ export function translateProjectedRuntimeError(
   const repeatSuffix = match?.[2] ?? '';
   const display = formatChatErrorDisplay(
     translateChatError({ message: raw, code }),
+    callerAccess,
   );
   return repeatSuffix ? `${display}\n${repeatSuffix.trim()}` : display;
 }
@@ -777,30 +812,36 @@ export const MEMORY_EXHAUSTION_CONTINUE_TEXT =
   'Continue the task from where it stopped.';
 
 /**
- * Renders a `ChatErrorTranslation` as the markdown chat copy shown to the
- * user. Raw engine text is not inlined — `disclosureRaw` is a Details control.
- */
-/**
- * The hint to show THIS caller: a hint recommending a new chat is replaced
- * by `hintWithoutNewChat` when the server's open read said the caller may
- * not start one (`callerAccess.startChat === false`). Unknown access shows
- * the full hint; the server still enforces.
+ * The hint to show THIS caller. One rule for every surface (the error card,
+ * the reply bubble live and reloaded, the send-failure notice): when the
+ * server's open read refused the caller sending here (`continue === false`)
+ * or starting a chat (`startChat === false`), the translation's hand-written
+ * `callerHints` alternative for that case replaces `hint`. Unknown access
+ * shows the full hint; the server still enforces.
  */
 export function chatErrorHintFor(
   translation: ChatErrorTranslation,
-  callerAccess?: { startChat?: boolean },
+  callerAccess?: { continue?: boolean; startChat?: boolean },
 ): string | undefined {
-  if (
-    callerAccess?.startChat === false &&
-    translation.hintWithoutNewChat !== undefined
-  )
-    return translation.hintWithoutNewChat ?? undefined;
-  return translation.hint;
+  const noSend = callerAccess?.continue === false;
+  const noNewChat = callerAccess?.startChat === false;
+  if (!translation.callerHints || (!noSend && !noNewChat))
+    return translation.hint;
+  const alternative =
+    translation.callerHints[
+      noSend && noNewChat ? 'neither' : noSend ? 'noSend' : 'noNewChat'
+    ];
+  if (alternative === undefined) return translation.hint;
+  return alternative ?? undefined;
 }
 
+/**
+ * Renders a `ChatErrorTranslation` as the markdown chat copy shown to the
+ * user. Raw engine text is not inlined — `disclosureRaw` is a Details control.
+ */
 export function formatChatErrorDisplay(
   translation: ChatErrorTranslation,
-  callerAccess?: { startChat?: boolean },
+  callerAccess?: { continue?: boolean; startChat?: boolean },
 ): string {
   const lines = [`**${translation.title}**`, '', translation.body];
   const hint = chatErrorHintFor(translation, callerAccess);

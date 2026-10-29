@@ -82,6 +82,47 @@ describe('handleRuntimeErrorEvent — station#1827 terminal engine session', () 
     );
   });
 
+  // The live bubble's hint follows the server's last open-read answer, the
+  // same rule as the error card below it.
+  test.each([
+    [undefined, /or start a new chat/],
+    [
+      { continue: true, startChat: false },
+      /^(?![\s\S]*new chat)[\s\S]*Send your message again/,
+    ],
+    [
+      { continue: false, startChat: true },
+      /^(?![\s\S]*Send your message again)[\s\S]*Start a new chat to continue/,
+    ],
+    [
+      { continue: false, startChat: false },
+      /^(?![\s\S]*(Send your message again|new chat))/,
+    ],
+  ] as const)(
+    'the live bubble hint for caller access %j',
+    (callerAccess, expected) => {
+      if (callerAccess)
+        activeChatsStore.updateChat(THREAD_ID, {
+          conversationOpenState: { callerAccess } as never,
+        });
+      handleRuntimeErrorEvent({
+        threadId: THREAD_ID,
+        method: 'runtime.error',
+        code: 'engine-session-binding-dead',
+        message: RAW_MESSAGE,
+      } as any);
+      const bubbleText = activeChatsStore
+        .getSnapshot()
+        [THREAD_ID].streamingMessage?.contentParts?.filter(
+          (p: any) => p.type === 'text',
+        )
+        .map((p: any) => p.content)
+        .join('\n');
+      expect(bubbleText).toMatch(/engine session was lost/i);
+      expect(bubbleText).toMatch(expected);
+    },
+  );
+
   test('renders translated copy in the streaming bubble, with the raw text behind a disclosure — not as the headline', () => {
     handleRuntimeErrorEvent({
       threadId: THREAD_ID,
