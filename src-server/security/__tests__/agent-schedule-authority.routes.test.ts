@@ -2883,7 +2883,9 @@ describe('round3 independent reviewer probes', () => {
       expect(
         direct.entries.some(
           (entry) =>
-            entry.msg === 'Automation disabled after repeated failures',
+            entry.msg === 'Automation disabled after repeated failures' &&
+            entry.targetKind === 'conversation' &&
+            entry.errorClass === 'SchedulerFatigue',
         ),
       ).toBe(true);
       expect(

@@ -920,17 +920,23 @@ export class BuiltinScheduler implements ISchedulerProvider {
     );
     if (applied.kind === 'available')
       for (const announcement of applied.value)
-        this.observe(() =>
+        this.observe(() => {
+          const logs = this.ledger.logs(announcement.jobName, 50);
+          const target =
+            logs.kind === 'available'
+              ? logs.value.at(-1)?.runTarget
+              : undefined;
           this.options.logger?.warn(
             'Automation disabled after repeated failures',
             {
               jobId: announcement.jobId,
               runId: announcement.id,
-              targetKind: 'unknown',
+              targetKind:
+                target === null ? 'untargeted' : (target?.kind ?? 'unknown'),
               errorClass: 'SchedulerFatigue',
             },
-          ),
-        );
+          );
+        });
     await this.sweepOwedFatigueAnnouncements();
   }
 
