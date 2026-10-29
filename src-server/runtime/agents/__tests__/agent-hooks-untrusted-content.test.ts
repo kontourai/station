@@ -63,6 +63,21 @@ function setup(
         entry.provenance.originalToolName === tool,
     )![0];
   const definitions: Record<string, ToolDef> = {
+    bash: {
+      id: 'bash',
+      kind: 'builtin',
+      untrustedContentPermissions: { tools: { bash: 'deny' } },
+    },
+    'http-request': {
+      id: 'http-request',
+      kind: 'builtin',
+      untrustedContentPermissions: { tools: { http_request: 'allow' } },
+    },
+    'file-editor': {
+      id: 'file-editor',
+      kind: 'builtin',
+      untrustedContentPermissions: { tools: { fileEditor: 'ask' } },
+    },
     mail: {
       id: 'mail',
       kind: 'mcp',
@@ -112,7 +127,13 @@ function setup(
       name: 'Assistant',
       prompt: '',
       tools: {
-        autoApprove: ['mcp/mail/*', 'mcp/tracker/*', 'mcp/station-control/*'],
+        autoApprove: [
+          'mcp/mail/*',
+          'mcp/tracker/*',
+          'mcp/station-control/*',
+          'bash',
+          'http_request',
+        ],
       },
     },
     appConfig: {},
@@ -160,6 +181,52 @@ function setup(
 beforeEach(() => vi.mocked(toolDenials.add).mockClear());
 
 describe('outbound tools after untrusted content', () => {
+  test('person policy controls authentic built-in tools, while unproven names still ask', async () => {
+    const { hooks, invocation, readMail, requester } = setup();
+    await readMail();
+    expect(
+      await hooks.beforeToolCall!(
+        {
+          toolName: 'bash',
+          toolCallId: 'b1',
+          toolArgs: {},
+          builtin: { integrationId: 'bash' },
+        } as any,
+        invocation,
+      ),
+    ).toMatchObject({ allowed: false, policyDenied: true });
+    expect(
+      await hooks.beforeToolCall!(
+        {
+          toolName: 'http_request',
+          toolCallId: 'h1',
+          toolArgs: {},
+          builtin: { integrationId: 'http-request' },
+        } as any,
+        invocation,
+      ),
+    ).toBe(true);
+    requester.mockResolvedValueOnce(true);
+    expect(
+      await hooks.beforeToolCall!(
+        {
+          toolName: 'fileEditor',
+          toolCallId: 'f1',
+          toolArgs: {},
+          builtin: { integrationId: 'file-editor' },
+        },
+        invocation,
+      ),
+    ).toBe(true);
+    requester.mockResolvedValueOnce(false);
+    expect(
+      await hooks.beforeToolCall!(
+        { toolName: 'http_request', toolCallId: 'h2', toolArgs: {} },
+        invocation,
+      ),
+    ).toMatchObject({ allowed: false });
+    expect(requester).toHaveBeenCalledTimes(2);
+  });
   test('a turn with no untrusted content is unaffected', async () => {
     const { requester, createIssue } = setup();
     expect(await createIssue()).toBe(true);

@@ -1579,6 +1579,10 @@ their command and endpoint remain package-owned. For example:
 `allow` means untrusted content adds no question and the tool's usual
 permission applies; `deny` refuses. Set `contentTrust` to `trusted` for a
 server whose content you trust. API edits record the authenticated person.
+The same per-tool permissions apply to Station's installed built-ins: use the
+integration API for `bash`, `file-editor`, or `http-request`, with tool keys
+`bash`, `fileEditor`, or `http_request` respectively. If a tool's loaded
+identity cannot be verified, Station asks rather than applying its allow entry.
 Delegated children share the mark both ways. Station applies this on its own
 engine only, and not yet to MCP prompts from an untrusted server; see the
 [coverage notes](../design/mcp-subregistry-curation.md#coverage-and-gaps).

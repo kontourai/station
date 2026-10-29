@@ -236,9 +236,9 @@ checks newer state and stale grants is follow-up work, not an available command.
   after its parent's turn ended and after 10,000 newer records, before its
   own first tool call, is not marked. A delegated child on an external engine does not report its
   reads.
-- **Tools without integration settings.** A tool not loaded from an
-  integration (Station's built-in bash, file editor, HTTP request) takes the
-  default `ask` in a marked turn and has no per-tool setting yet.
+- **Built-in tools.** Station's bash, file editor and HTTP request use their
+  integration's per-tool permission when their loader-owned identity is
+  available. An unknown tool without verified identity asks by default.
 - **Earlier turns.** Content read in an earlier turn stays in the
   conversation history but no longer marks the turn.
 - **No settings UI yet.** The fields are edited through the tool's settings

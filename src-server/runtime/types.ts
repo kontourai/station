@@ -197,6 +197,8 @@ export interface ToolCallContext {
   toolDescription?: string;
   /** Untrusted model-stated intent; display-only, never approval evidence. */
   purpose?: string;
+  /** Station-owned built-in identity, supplied by the tool loader. */
+  builtin?: Readonly<{ integrationId: string }>;
   /** Server-only loader authority; never inferred from a model-visible name. */
   mcp?: Readonly<{
     provenance: MCPToolLoaderProvenance;

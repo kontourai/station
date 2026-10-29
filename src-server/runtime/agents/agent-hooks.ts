@@ -193,8 +193,15 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
     untrustedContentPermission: async (tool, invocation) => {
       if (!(await untrustedContent.hasRead(invocation))) return undefined;
       const provenance = provenanceOf(tool);
-      // A tool Station did not load from an integration has no stored
-      // permission to change, so it takes the default.
+      if (!provenance && tool.builtin) {
+        return untrustedContentDecision(
+          await storedDefinition(tool.builtin.integrationId).catch(
+            () => undefined,
+          ),
+          tool.toolName,
+        );
+      }
+      // Unknown sources cannot grant a tool permission by name alone.
       if (!provenance)
         return untrustedContentDecision(undefined, tool.toolName);
       return untrustedContentDecision(

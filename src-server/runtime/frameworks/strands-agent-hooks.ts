@@ -78,6 +78,7 @@ export function wireStrandsToolGate(options: {
   deniedToolCalls: Map<string, ToolCallDenial>;
   invocationCtx: InvocationContext;
   purposeEnabledToolNames?: ReadonlySet<string>;
+  findBuiltinToolIdentity?: (runtimeName: string) => string | undefined;
 }): void {
   const {
     strandsAgent,
@@ -85,6 +86,7 @@ export function wireStrandsToolGate(options: {
     deniedToolCalls,
     invocationCtx,
     purposeEnabledToolNames,
+    findBuiltinToolIdentity,
   } = options;
   if (!hooks?.beforeToolCall) return;
   strandsAgent.addHook(BeforeToolCallEvent, async (event) => {
@@ -105,6 +107,13 @@ export function wireStrandsToolGate(options: {
         toolCallId: event.toolUse.toolUseId,
         toolArgs: purposeful.input,
         purpose: purposeful.purpose,
+        ...(findBuiltinToolIdentity?.(event.toolUse.name)
+          ? {
+              builtin: Object.freeze({
+                integrationId: findBuiltinToolIdentity(event.toolUse.name)!,
+              }),
+            }
+          : {}),
       },
       invocation,
     );
@@ -137,6 +146,7 @@ export function wireStrandsAgentHooks(options: {
     runtimeName: string,
   ) => MCPToolLoaderProvenance | undefined;
   purposeEnabledToolNames?: ReadonlySet<string>;
+  findBuiltinToolIdentity?: (runtimeName: string) => string | undefined;
 }): void {
   const {
     strandsAgent,
@@ -149,6 +159,7 @@ export function wireStrandsAgentHooks(options: {
     getLastStreamUsage,
     findMCPToolProvenance,
     purposeEnabledToolNames,
+    findBuiltinToolIdentity,
   } = options;
 
   let toolCallCount = 0;
@@ -159,6 +170,7 @@ export function wireStrandsAgentHooks(options: {
     deniedToolCalls,
     invocationCtx,
     purposeEnabledToolNames,
+    findBuiltinToolIdentity,
   });
 
   if (hooks?.afterToolCall) {

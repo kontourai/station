@@ -55,6 +55,10 @@ import {
   copyLoadedMCPToolProvenance,
   getLoadedMCPToolProvenance,
 } from '../tools/mcp-tool-names.js';
+import {
+  copyBuiltinVendedToolIdentity,
+  getBuiltinVendedToolIdentity,
+} from '../tools/vended-tool-compat.js';
 import type {
   AgentCreationConfig,
   IAgent,
@@ -800,6 +804,7 @@ export function toVoltAgentTool(tool: ITool): Tool<any> {
       ...(execute ? { execute: execute as never } : {}),
     }) as unknown as Tool<any>,
   );
+  copyBuiltinVendedToolIdentity(tool, adapted);
   if (purposeEnabled) purposeEnabledVoltTools.add(adapted);
   return adapted;
 }
@@ -871,6 +876,13 @@ export function createVoltAgentLifecycleHooks(
         toolCallId,
         toolArgs: purposeful.input,
         purpose: purposeful.purpose,
+        ...(getBuiltinVendedToolIdentity(tool)
+          ? {
+              builtin: Object.freeze({
+                integrationId: getBuiltinVendedToolIdentity(tool)!,
+              }),
+            }
+          : {}),
         ...(getLoadedMCPToolProvenance(tool)
           ? {
               mcp: Object.freeze({
