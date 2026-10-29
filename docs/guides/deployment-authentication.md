@@ -109,6 +109,13 @@ makes before committing a change. It also stops personal access tokens made
 before then (#3586). Removing a passkey stops it from signing in but does not
 sign out existing sessions; use **Revoke sessions** for that.
 
+If an authentication transaction is active, account disable/enable and session
+revocation return `503 account_operation_unavailable` without applying or queuing
+the action. Retry after authentication finishes. Passkey removal and pending
+Device enrollment promotion or cleanup likewise refuse or defer independent
+writes while that transaction owns the account database. A successful retry
+commits independently, so a failed registration cannot roll it back.
+
 Member passkeys are not operator passkeys. They live in the account store, while
 [operator passkeys](operator-passkeys.md) live in a separate registry. A member
 passkey only ever creates an ordinary account session, which carries no operator
