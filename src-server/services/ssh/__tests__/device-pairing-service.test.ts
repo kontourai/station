@@ -1647,6 +1647,64 @@ describe('DevicePairingService', () => {
     expect(service.verifyCredential(first.credential)).toBe(false);
   });
 
+  test('account-bound re-pair names distinguish the pending and issued person', () => {
+    const { service } = harness();
+    const clientInstanceId = '11111111-1111-4111-8111-111111111111';
+    const requestFor = (subject?: string) => {
+      const offer = service.createOffer({
+        endpoint: 'https://station.example.test',
+      });
+      const request = service.requestPairing({
+        requesterPosition: 'off-box',
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        deviceName: 'Shared browser',
+        clientInstanceId,
+        source: 'tailnet',
+        requester: {
+          provider: 'tailscale-serve',
+          login: 'shared@example.test',
+        },
+        ...(subject
+          ? {
+              accountCandidate: {
+                issuer: 'https://accounts.example.test',
+                subject,
+                displayName: subject,
+              },
+              accountCandidateSessionId: 'verified-session',
+              requireAccountBinding: true as const,
+            }
+          : {}),
+      });
+      return { offer, request };
+    };
+    const original = requestFor('alice');
+    service.confirmRequest(original.request.requestId, OPERATOR_APPROVAL, {
+      kind: 'account',
+      principalId: 'human:deployment:operator',
+    });
+    service.exchange({
+      offerId: original.offer.offerId,
+      proof: original.offer.challenge,
+      requestId: original.request.requestId,
+      clientInstanceId,
+    });
+
+    const alice = requestFor('alice');
+    expect(alice.request.deviceName).toBe('Shared browser');
+    service.confirmRequest(alice.request.requestId, OPERATOR_APPROVAL, {
+      kind: 'account',
+      principalId: 'human:deployment:operator',
+    });
+    const bob = requestFor('bob');
+    expect(bob.request.deviceName).toBe('Shared browser (2)');
+    const bobRetry = requestFor('bob');
+    expect(bobRetry.request.deviceName).toBe('Shared browser (2)');
+    const unbound = requestFor();
+    expect(unbound.request.deviceName).toBe('Shared browser (3)');
+  });
+
   test('rejects an exchange whose client identity differs from the approved request', () => {
     const { service } = harness();
     const offer = service.createOffer({

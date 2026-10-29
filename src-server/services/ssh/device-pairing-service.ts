@@ -1139,15 +1139,32 @@ function cloneRegistry(registry: DeviceRegistry): DeviceRegistry {
   };
 }
 
+type AccountReplacementIdentity = Pick<
+  Extract<DevicePrincipalBinding, { kind: 'account' }>,
+  'kind' | 'issuer' | 'subject'
+>;
+type ReplacementBinding = DevicePrincipalBinding | AccountReplacementIdentity;
+
+// A candidate can reserve a display name; only an approved binding authorizes exchange replacement.
+function accountCandidateIdentity(
+  candidate: DeviceAccountBindingCandidate | undefined,
+): AccountReplacementIdentity | undefined {
+  return candidate
+    ? { kind: 'account', issuer: candidate.issuer, subject: candidate.subject }
+    : undefined;
+}
+
 /**
  * A caller-controlled instance id is only a replacement key inside an
  * existing provenance domain. Account-bound Devices also require the same
  * approved issuer and subject; WhoIs alone cannot link accounts.
  */
 function isSameReplacementDomain(
-  existing: Pick<StoredDevice, 'source' | 'requester' | 'principalBinding'>,
+  existing: Pick<StoredDevice, 'source' | 'requester'> & {
+    principalBinding?: ReplacementBinding;
+  },
   request: PairingProvenance,
-  approvedBinding: DevicePrincipalBinding | undefined,
+  approvedBinding: ReplacementBinding | undefined,
 ): boolean {
   const existingAccount =
     existing.principalBinding && 'kind' in existing.principalBinding
@@ -1404,6 +1421,7 @@ export class DevicePairingService {
         name,
         input.clientInstanceId,
         provenance,
+        accountCandidateIdentity(input.accountCandidate),
       ),
       scope: offer.scope,
       kind: offer.kind,
@@ -3630,6 +3648,7 @@ export class DevicePairingService {
     name: string,
     clientInstanceId?: string,
     provenance?: PairingProvenance,
+    requestedBinding?: AccountReplacementIdentity,
   ): string {
     const existingNames = new Set(
       this.#registry.devices
@@ -3639,7 +3658,7 @@ export class DevicePairingService {
             (!clientInstanceId ||
               !provenance ||
               device.clientInstanceId !== clientInstanceId ||
-              !isSameReplacementDomain(device, provenance)),
+              !isSameReplacementDomain(device, provenance, requestedBinding)),
         )
         .map((device) => device.name),
     );
@@ -3654,7 +3673,17 @@ export class DevicePairingService {
         (!clientInstanceId ||
           !provenance ||
           offer.clientInstanceId !== clientInstanceId ||
-          !isSameReplacementDomain(offer.request, provenance))
+          !isSameReplacementDomain(
+            {
+              ...offer.request,
+              principalBinding:
+                offer.status === 'confirmed'
+                  ? offer.principalBinding
+                  : accountCandidateIdentity(offer.request.accountCandidate),
+            },
+            provenance,
+            requestedBinding,
+          ))
       ) {
         existingNames.add(offer.request.deviceName);
       }
