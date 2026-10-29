@@ -1,0 +1,7 @@
+{
+  "revision": "f76ec4e78aea93102665fc47d43482aeb3ba4ad2",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the adapter-retirement.ts diagnostic-only change through OrchestrationService.shutdown and shutdownRetirementTasks. Existing cleanup deadlines, retirement ownership, rejection identity and terminal behavior remain unchanged; failures now emit the existing named cleanup label, a bounded message and up to five bounded direct AggregateError causes before propagation. The module map makes no conflicting logging-field claims, so prose remains accurate. Focused adapter-retirement suite passed 11 tests; removing the diagnostic caused the two intended regression failures and restoration passed all 11. This establishes local diagnostics only, not native Codex persistence or production incident root cause.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/adapter-retirement.ts"]}
+  ]
+}

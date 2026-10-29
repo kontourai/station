@@ -1024,12 +1024,6 @@ export class StationRuntime {
           msg,
           ...args,
         ),
-      // Codex app-server stderr lines (`codex-stderr-tail.ts`).
-      debug: (msg: string, ...args: unknown[]) =>
-        (this.logger?.debug as ((...a: unknown[]) => void) | undefined)?.(
-          msg,
-          ...args,
-        ),
     },
   });
   // Muse Code runs one `muse serve` host per session (#2452), so approvals

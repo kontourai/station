@@ -174,7 +174,7 @@ import {
   nativeSessionIdentityKey,
 } from './native-resume-binding.js';
 
-type CodexAdapterLogger = Pick<Logger, 'warn'> & Partial<Pick<Logger, 'debug'>>;
+type CodexAdapterLogger = Pick<Logger, 'warn'>;
 type CodexExecutionKnobs = NonNullable<
   ReturnType<typeof resolveCodexExecutionKnobs>
 >;
@@ -877,14 +877,11 @@ export class CodexAdapter implements ProviderAdapterShape {
           method,
         }),
       (threadId) => this.options.revokeStationControlMcpAuth?.(threadId),
-      // Codex stderr is diagnostics: the server log at debug level, never a
-      // live event (see `codex-stderr-tail.ts`).
-      (threadId, line) =>
-        this.options.logger?.debug?.('Codex app-server stderr', {
-          provider: 'codex',
-          threadId,
-          line,
-        }),
+      () =>
+        this.options.logger?.warn?.(
+          'Codex app-server emitted stderr; details are withheld',
+          { provider: 'codex' },
+        ),
     );
   }
 

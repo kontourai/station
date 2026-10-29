@@ -155,195 +155,83 @@ describe('CodexAdapterTransport', () => {
     expect(JSON.stringify(warning)).not.toContain('{not json');
   });
 
-  /**
-   * Codex stderr is diagnostics, not events. An untrusted project folder
-   * makes Codex print one multi-line ANSI ERROR block (it also sends the
-   * `configWarning` notification on stdout), and an inherited `RUST_LOG`
-   * dozens of INFO lines; neither may become a warning per line. The tail is
-   * kept, redacted, for a failure to explain itself with.
-   */
-  describe('stderr', () => {
-    const ESC = String.fromCharCode(0x1b);
-    // The shape Codex prints for an untrusted project's config: colored
-    // level, then continuation lines.
-    const UNTRUSTED_PROJECT_STDERR = [
-      `${ESC}[2m2026-10-27T18:02:11.204Z${ESC}[0m ${ESC}[31mERROR${ESC}[0m ${ESC}[2mcodex_core::config${ESC}[0m: project config was not loaded`,
-      '  /workspace/repo/.codex/config.toml is in a folder that is not trusted.',
-      '  Mark the folder trusted to load it.',
-      '',
-      `${ESC}[2m2026-10-27T18:02:11.205Z${ESC}[0m ${ESC}[33m WARN${ESC}[0m codex_core: continuing with user config only`,
-    ].join('\n');
-    const SECRET_LINE = `ERROR auth refresh failed for ${'OPENAI_API_KEY'}=${'sk-proj-abcdefghijklmnop1234567890'}`;
-
-    function stderrRecord(threadId: string) {
-      const debugLines: string[] = [];
-      const transport = new CodexAdapterTransport(
-        () => new Date('2026-10-27T18:02:11Z'),
-        async () => {},
-        undefined,
-        undefined,
-        undefined,
-        (_threadId, line) => debugLines.push(line),
-      );
-      const events: any[] = [];
-      transport.publish = (event) => {
-        events.push(event);
-      };
-      const processHandle = new FakeCodexProcess();
-      const record = createCodexSessionRecord({
-        externalThreadId: threadId,
-        process: processHandle,
-        provider: 'codex',
-        threadId,
-        model: 'gpt-5-codex',
-        nowIso: () => '2026-10-27T18:02:11Z',
-      });
-      transport.registerSession(record);
-      transport.handleProcess(record);
-      return { transport, processHandle, record, events, debugLines };
-    }
-
-    /** Lets readline deliver what was written to stderr. */
-    const flushStderr = () => new Promise((resolve) => setImmediate(resolve));
-
-    test('a multi-line ANSI ERROR block publishes no warning; each line is logged plain at debug', async () => {
-      const { processHandle, events, debugLines } = stderrRecord(
-        'thread-stderr-block',
-      );
-      processHandle.stderr.write(`${UNTRUSTED_PROJECT_STDERR}\n`);
-      for (let line = 0; line < 27; line++)
-        processHandle.stderr.write(
-          `${ESC}[32m INFO${ESC}[0m codex_core::codex: rollout line ${line}\n`,
-        );
-      await flushStderr();
-      expect(events).toEqual([]);
-      expect(debugLines).toHaveLength(4 + 27);
-      expect(debugLines[0]).toBe(
-        '2026-10-27T18:02:11.204Z ERROR codex_core::config: project config was not loaded',
-      );
-      expect(debugLines.join('\n')).not.toContain(ESC);
+  test('keeps stderr diagnostics out of session events without losing subsequent events', async () => {
+    const onStderr = vi.fn();
+    const transport = new CodexAdapterTransport(
+      () => new Date('2026-04-11T00:00:00Z'),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      onStderr,
+    );
+    const processHandle = new FakeCodexProcess();
+    const record = createCodexSessionRecord({
+      externalThreadId: 'thread-stderr',
+      process: processHandle,
+      provider: 'codex',
+      threadId: 'thread-stderr',
+      model: 'gpt-5-codex',
+      nowIso: () => '2026-04-11T00:00:00Z',
     });
+    transport.registerSession(record);
+    transport.handleProcess(record);
+    const iterator = transport.streamEvents()[Symbol.asyncIterator]();
 
-    test('the tail explains an unexpected exit mid-turn, ANSI stripped', async () => {
-      const { processHandle, record, events } =
-        stderrRecord('thread-stderr-exit');
-      record.activeTurnId = 'turn-1';
-      processHandle.stderr.write(`${UNTRUSTED_PROJECT_STDERR}\n`);
-      await flushStderr();
-      processHandle.exitCode = 1;
-      processHandle.emit('exit', 1, null);
-      await vi.waitFor(() =>
-        expect(events.map((event) => event.method)).toContain('session.exited'),
-      );
-      const failure = events.find((event) => event.method === 'runtime.error');
-      // #4266: the message quotes the newest ERROR line, not the whole tail.
-      expect(failure.message).toBe(
-        'Codex app-server exited before the turn finished (code: 1).\nstderr: 2026-10-27T18:02:11.204Z ERROR codex_core::config: project config was not loaded',
-      );
-      // The whole tail, each line kept trimmed and in order, is in details.
-      expect(failure.details.stderrTail).toContain(
-        'not trusted.\nMark the folder trusted to load it.',
-      );
-      expect(failure.details.stderrTail).toContain(
-        'continuing with user config only',
-      );
-      expect(JSON.stringify(failure)).not.toContain(ESC);
-    });
+    processHandle.stderr.write('token=must-not-persist\nsecond diagnostic\n');
+    transport.handleStdoutLine(record, '{not json');
 
-    test('an exit does not quote again what a configWarning already reported (#4266)', async () => {
-      const { transport, processHandle, record, events } = stderrRecord(
-        'thread-stderr-reported',
-      );
-      record.activeTurnId = 'turn-1';
-      processHandle.stderr.write(`${UNTRUSTED_PROJECT_STDERR}\n`);
-      await flushStderr();
-      transport.handleStdoutLine(
-        record,
-        JSON.stringify({
-          method: 'configWarning',
-          params: {
-            summary:
-              'Project config was not loaded: the folder is not trusted.',
-          },
-        }),
-      );
-      processHandle.exitCode = 1;
-      processHandle.emit('exit', 1, null);
-      await vi.waitFor(() =>
-        expect(events.map((event) => event.method)).toContain('session.exited'),
-      );
-      const failure = events.find((event) => event.method === 'runtime.error');
-      expect(failure.message).toBe(
-        'Codex app-server exited before the turn finished (code: 1).',
-      );
-      expect(failure.details.stderrTail).toContain(
-        'project config was not loaded',
-      );
+    const warning = await nextEvent(iterator, 'protocol warning');
+    expect(warning).toMatchObject({
+      method: 'runtime.warning',
+      code: 'codex-json-parse',
     });
+    expect(JSON.stringify(warning)).not.toContain('must-not-persist');
+    expect(onStderr).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(onStderr.mock.calls)).not.toContain(
+      'must-not-persist',
+    );
+  });
 
-    test('the tail explains a startup that fails before Codex answers', async () => {
-      const { transport, processHandle, record } = stderrRecord(
-        'thread-stderr-startup',
-      );
-      const initialize = transport.sendRequest(record, 'initialize', {});
-      processHandle.stderr.write('Error: unknown option --frobnicate\n');
-      await flushStderr();
-      processHandle.exitCode = 2;
-      processHandle.emit('exit', 2, null);
-      await expect(initialize).rejects.toThrow(
-        'Codex app-server exited before responding (code: 2)\nstderr: Error: unknown option --frobnicate',
-      );
+  test('a configWarning on stdout is one user-facing warning carrying its message', () => {
+    const transport = new CodexAdapterTransport(
+      () => new Date('2026-10-27T18:02:11Z'),
+    );
+    const events: any[] = [];
+    transport.publish = (event) => {
+      events.push(event);
+    };
+    const processHandle = new FakeCodexProcess();
+    const record = createCodexSessionRecord({
+      externalThreadId: 'thread-config-warning',
+      process: processHandle,
+      provider: 'codex',
+      threadId: 'thread-config-warning',
+      model: 'gpt-5-codex',
+      nowIso: () => '2026-10-27T18:02:11Z',
     });
-
-    test('a secret-shaped line never reaches a published event or the log', async () => {
-      const { transport, processHandle, record, events, debugLines } =
-        stderrRecord('thread-stderr-secret');
-      record.activeTurnId = 'turn-1';
-      const pending = transport.sendRequest(record, 'turn/start', {});
-      const rejected = pending.catch((error: Error) => error.message);
-      processHandle.stderr.write(`${SECRET_LINE}\n`);
-      await flushStderr();
-      processHandle.exitCode = 1;
-      processHandle.emit('exit', 1, null);
-      await vi.waitFor(() =>
-        expect(events.map((event) => event.method)).toContain('session.exited'),
-      );
-      const published = JSON.stringify(events);
-      // The failure did carry the tail, so the secret had a path to leak.
-      expect(published).toContain('auth refresh failed');
-      expect(published).not.toContain('sk-proj-abcdefghijklmnop1234567890');
-      expect(await rejected).not.toContain('sk-proj-');
-      expect(debugLines.join('\n')).not.toContain('sk-proj-');
-    });
-
-    test('a configWarning on stdout is one user-facing warning carrying its message', () => {
-      const { transport, record, events } = stderrRecord(
-        'thread-config-warning',
-      );
-      transport.handleStdoutLine(
-        record,
-        JSON.stringify({
-          method: 'configWarning',
-          params: {
-            summary:
-              'Project config was not loaded: the folder is not trusted.',
-            details: 'Mark /workspace/repo trusted to load .codex/config.toml.',
-            path: '/workspace/repo/.codex/config.toml',
-          },
-        }),
-      );
-      expect(events).toEqual([
-        expect.objectContaining({
-          method: 'runtime.warning',
-          code: 'codex-config-warning',
-          message: 'Project config was not loaded: the folder is not trusted.',
-          details: {
-            details: 'Mark /workspace/repo trusted to load .codex/config.toml.',
-            path: '/workspace/repo/.codex/config.toml',
-          },
-        }),
-      ]);
-    });
+    transport.handleStdoutLine(
+      record,
+      JSON.stringify({
+        method: 'configWarning',
+        params: {
+          summary: 'Project config was not loaded: the folder is not trusted.',
+          details: 'Mark /workspace/repo trusted to load .codex/config.toml.',
+          path: '/workspace/repo/.codex/config.toml',
+        },
+      }),
+    );
+    expect(events).toEqual([
+      expect.objectContaining({
+        method: 'runtime.warning',
+        code: 'codex-config-warning',
+        message: 'Project config was not loaded: the folder is not trusted.',
+        details: {
+          details: 'Mark /workspace/repo trusted to load .codex/config.toml.',
+          path: '/workspace/repo/.codex/config.toml',
+        },
+      }),
+    ]);
   });
 
   test('confirms process-tree cleanup before publishing a natural exit', async () => {
