@@ -1,0 +1,7 @@
+{
+  "revision": "72a99c3d5f399e697b4b16319d70d63591eae632",
+
+  "notes": [
+    {"path":"docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","note":"Scoped CLI-help/caller review at 72a99c3d5f3 after the audit-found dispatch defect was repaired in 66ee538ef9e. Read the complete historical ADR including its current command route and no-flag/no-alias supersession, current doctor help, migration dispatch/helper and injected server migration composition. The restored production branch now handles --migrate-playbooks before ordinary bundled doctor target inspection; missing migration injection raises the repository ./station-launcher refusal. Source dry-run forwards to the existing migration owner, while ordinary bundled doctor still uses target inspection. Inspected the added runCli regression: bundled migration must refuse without target/fetch calls, ordinary doctor retains its target path, and source dry-run reaches the injected owner. This aligns the current command paragraph and help with source, without reviving historical flag/alias rollout text or claiming a migration happened. No ADR prose change required. REASONED source/test inspection only; implementation-owner red/restored execution receipts remain separately attributed and are not my execution. No user-home migration, provider/platform/publication proof, baseline/classification/capture change.","inputs":["docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","packages/cli/src/cli.ts","packages/cli/src/help.ts"]}
+  ]
+}
