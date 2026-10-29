@@ -33,10 +33,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
-import type {
-  AccountSharingChoice,
-  AccountSharingLastApply,
-} from '@kontourai/station-contracts/local-accounts';
+import type { AccountSharingChoice } from '@kontourai/station-contracts/local-accounts';
 import { openRegularFileSync } from '@kontourai/station-shared/regular-file';
 import { z } from 'zod/v3';
 import { HOSTED_TENANT_REGISTRY_FILE_ENV } from '../../runtime/bootstrap/hosted-tenant-mode.js';
@@ -47,7 +44,7 @@ import { assertPrivateDirectory } from '../../utils/private-sqlite.js';
  * being set, even to `0`, means the deployment decided, and the stored
  * setting is neither read at startup nor writable from Settings.
  */
-export const ACCOUNT_SHARING_DEPLOYMENT_VARIABLES = Object.freeze([
+const ACCOUNT_SHARING_DEPLOYMENT_VARIABLES = Object.freeze([
   'STATION_PROJECT_SHARING',
   'STATION_LOCAL_ACCOUNTS',
   'STATION_AUTHENTICATION_MODULE',
@@ -178,7 +175,7 @@ export function readAccountSharingRecord(
 }
 
 /** Atomic, fsynced replacement: a crash leaves the old record or the new one. */
-export function writeAccountSharingRecord(
+function writeAccountSharingRecord(
   homeDirectory: string,
   record: AccountSharingRecord,
 ): void {
@@ -394,5 +391,3 @@ export function withdrawStagedAccountSharingChange(
     },
   });
 }
-
-export type { AccountSharingChoice, AccountSharingLastApply };
