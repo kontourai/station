@@ -1,0 +1,17 @@
+{
+  "revision": "e1763b3c795654417f4ab5638755eab1a65b440f",
+
+  "notes": [
+    {"path":"README.md","note":"Reviewed the CLI-reference-only delta at e1763b3c795: added the required ### media-tools heading under the already documented local speech section. Command names, flags, authority, limits and examples are unchanged; CLI parity now passes for 53 topics. Existing claims in this document remain accurate for that heading/link addition. This narrow source/document delta review adds no runtime or release qualification.","inputs":["README.md","docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the CLI-reference-only delta at e1763b3c795: added the required ### media-tools heading under the already documented local speech section. Command names, flags, authority, limits and examples are unchanged; CLI parity now passes for 53 topics. Existing claims in this document remain accurate for that heading/link addition. This narrow source/document delta review adds no runtime or release qualification.","inputs":["docs/architecture/abstraction-review.md","docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Reviewed the CLI-reference-only delta at e1763b3c795: added the required ### media-tools heading under the already documented local speech section. Command names, flags, authority, limits and examples are unchanged; CLI parity now passes for 53 topics. Existing claims in this document remain accurate for that heading/link addition. This narrow source/document delta review adds no runtime or release qualification.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the CLI-reference-only delta at e1763b3c795: added the required ### media-tools heading under the already documented local speech section. Command names, flags, authority, limits and examples are unchanged; CLI parity now passes for 53 topics. Existing claims in this document remain accurate for that heading/link addition. This narrow source/document delta review adds no runtime or release qualification.","inputs":["docs/guides/integrating-station.md","docs/reference/cli.md"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed the CLI-reference-only delta at e1763b3c795: added the required ### media-tools heading under the already documented local speech section. Command names, flags, authority, limits and examples are unchanged; CLI parity now passes for 53 topics. Existing claims in this document remain accurate for that heading/link addition. This narrow source/document delta review adds no runtime or release qualification.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"packages/cli/README.md","note":"Reviewed the CLI-reference-only delta at e1763b3c795: added the required ### media-tools heading under the already documented local speech section. Command names, flags, authority, limits and examples are unchanged; CLI parity now passes for 53 topics. Existing claims in this document remain accurate for that heading/link addition. This narrow source/document delta review adds no runtime or release qualification.","inputs":["packages/cli/README.md","docs/reference/cli.md"]}
+  ]
+}

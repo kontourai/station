@@ -1,0 +1,7 @@
+{
+  "revision": "a460a407fb2c3486e7d9c240d36c5691e40ec663",
+
+  "notes": [
+    {"path":"docs/reference/connect.md","note":"canForgetConnection now also consults an optional host canRemoveSharedProfile provider prop; the listing's description (false for host-supplied Station, native relay route, or a shared profile no host can forget) still holds, since a host refusal is a shared profile the host cannot forget.","inputs":["docs/reference/connect.md","packages/connect/src/react/ConnectionsContext.tsx","src-ui/src/contexts/ApiBaseContext.tsx","src-ui/src/platform/native/stationProfileStorage.ts"]}
+  ]
+}

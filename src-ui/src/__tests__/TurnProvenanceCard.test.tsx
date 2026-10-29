@@ -898,9 +898,7 @@ describe('TurnProvenanceCard', () => {
       render(<TurnProvenanceCard provenance={value} />);
 
       expect(
-        screen.getByText(
-          /cannot read\. Nothing about this answer is being claimed/,
-        ),
+        screen.getByText(/format this version of Station cannot read\.$/),
       ).toBeTruthy();
       // Nothing is decoded out of it — no engine, no counts, no gap tally.
       expect(screen.queryByRole('button')).toBeNull();

@@ -1,0 +1,7 @@
+{
+  "revision": "278442bb4bdf4a3bbb2b3f16198292eb9f23a91a",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Reviewed companion preparation controls against CompanionArchivePreparation.tsx, captured-authority SDK queries/mutation, runtime routes and durable archive index. Prepare submits once; lost responses and reopened panes use reads; pending, lock and missing receipts are not liveness. Install/start remain unfinished. Prior focused pane recovery and backend evidence is diagnostic, not native or release qualification.","inputs":["docs/guides/monitoring.md","packages/sdk/src/query-domains/telemetryDelivery.ts","src-ui/src/views/developer/TelemetryCompanion.tsx"]}
+  ]
+}

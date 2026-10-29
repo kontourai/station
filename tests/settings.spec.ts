@@ -9,9 +9,9 @@ async function goToSettings(page: import('@playwright/test').Page) {
   await page.goto('/');
   await dismissSetupLauncher(page);
   // archive#1009 targeted the gear's accessible name directly. #1552 D1 moved
-  // that command into the avatar's menu on a fine pointer, and this suite runs
-  // at the default desktop viewport where the gear is `display: none` — so the
-  // route, not the control, is what this asks for.
+  // that command into the account control's menu, and no Settings gear is
+  // left in the header or the sidebar footer — so the route, not the control,
+  // is what this asks for.
   await openHeaderSettings(page);
   await page.waitForSelector('.settings__section-nav', { timeout: 10_000 });
 }
@@ -174,10 +174,13 @@ test.describe('Settings', () => {
       .getByRole('link', { name: 'Plugins', exact: true })
       .click();
     await expect(page).toHaveURL(/\/plugins$/);
+    // The way back is the sidebar footer's account menu, which stays on
+    // screen beside Plugins.
     await page
       .getByRole('navigation', { name: 'Primary navigation' })
-      .getByRole('button', { name: 'Settings', exact: true })
+      .getByRole('button', { name: /^Profile and settings:/ })
       .click();
+    await page.getByRole('menuitem', { name: 'Open settings' }).click();
     await expect(page).toHaveURL(/\/settings$/);
     await expect(page.locator('#section-agent-runs')).toBeVisible();
   });

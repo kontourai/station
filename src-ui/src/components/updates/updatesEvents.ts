@@ -10,6 +10,11 @@ export interface UpdateNotice {
   href?: string;
   actionLabel?: string;
   onAction?: () => void;
+  /**
+   * Counts toward the Updates control status only: the Updates section for
+   * this target renders the same fact itself, so the panel does not repeat it.
+   */
+  summaryOnly?: boolean;
 }
 
 const listeners = new Set<() => void>();

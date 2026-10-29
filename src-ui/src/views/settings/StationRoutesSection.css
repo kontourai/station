@@ -1,0 +1,99 @@
+/* Settings › Devices › Routes (docs/design/station-routes.md). */
+
+.station-routes {
+  display: flex;
+  flex-direction: column;
+}
+
+.station-routes__failure {
+  margin: 0 0 var(--k-space-1);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.station-routes__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.station-routes__row {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  padding: var(--k-space-2) 0;
+}
+
+.station-routes__row + .station-routes__row {
+  border-top: 1px solid var(--k-line);
+}
+
+.station-routes__remove {
+  position: relative;
+  flex: 0 0 auto;
+  color: var(--k-negative);
+}
+
+/* 44px touch target without a 44px-tall row. */
+.station-routes__remove::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+}
+
+.station-routes__body {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.station-routes__name {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  color: var(--k-text);
+  font-size: var(--k-text-md);
+}
+
+.station-routes__meta {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  overflow-wrap: anywhere;
+}
+
+.station-routes__add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-2);
+  padding-top: var(--k-space-2);
+}
+
+.station-routes__input {
+  flex: 1 1 12rem;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 var(--k-space-3);
+  font: inherit;
+  font-size: var(--k-text-md);
+  color: var(--k-text);
+  background: var(--k-bg);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+}
+
+.station-routes__add-route {
+  align-self: flex-start;
+}
+
+.station-routes__error {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--k-negative);
+  font-size: var(--k-text-sm);
+}

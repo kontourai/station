@@ -280,7 +280,11 @@
 
     "src-ui/src/views/home/HomeSurface.tsx",
 
-    "src-ui/src/views/home/useHomeViewModel.ts"
+    "src-ui/src/views/home/useHomeViewModel.ts",
+
+    "packages/contracts/src/engine-capability-matrix.ts",
+
+    "src-ui/src/utils/execution.ts"
   ],
 
   "checks": [

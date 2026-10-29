@@ -42,7 +42,10 @@ import type {
  * A recorded turn start everything of which can be sent again: it has the
  * prompt a send carried (see `replayableSource`).
  */
-type ReplayableTurnStart = TurnStartedEvent & { prompt: string };
+type ReplayableTurnStart = TurnStartedEvent & {
+  prompt: string;
+  ambientContext?: string;
+};
 
 /**
  * #3157: what a user action on a waiting usage-limit stop did. `not-waiting`
@@ -1078,6 +1081,14 @@ export class SessionRecoveryCoordinator {
     source: TurnStartedEvent | undefined,
   ): source is ReplayableTurnStart {
     if (!source || source.prompt === undefined) return false;
+    // A reference left unresolved (its content row is gone) is never replayed
+    // as its preview.
+    if (
+      typeof source.prompt !== 'string' ||
+      (source.ambientContext !== undefined &&
+        typeof source.ambientContext !== 'string')
+    )
+      return false;
     // #2324: never replay a turn the engine opened on its own.
     if (isProviderTriggeredTurn(source)) return false;
     if (!source.attachments?.length) return true;
@@ -1554,7 +1565,11 @@ export class SessionRecoveryCoordinator {
       intent.threadId,
       intent.sourceEventId,
     )?.payload;
-    return event?.method === 'turn.started' ? event : undefined;
+    // Replay re-sends the prompt to the engine, so a prompt or ambient
+    // context stored out of line is resolved here (exact, never a preview).
+    return event?.method === 'turn.started'
+      ? (this.options.eventStore.resolveCanonicalEventContent?.(event) ?? event)
+      : undefined;
   }
 
   private findResumedIntent(threadId: string, turnId?: string) {

@@ -94,6 +94,37 @@ describe('useStreamingContent', () => {
     expect(hook.result.current.streamingText).toBe('ab');
   });
 
+  test('a hidden page renders no streamed text until it is shown', () => {
+    let hidden = true;
+    const hiddenProperty = vi
+      .spyOn(document, 'hidden', 'get')
+      .mockImplementation(() => hidden);
+    try {
+      const hook = renderHook(() => useStreamingContent('session'));
+      act(() => {
+        store.publish({
+          session: {
+            streamingMessage: {
+              role: 'assistant',
+              content: 'while away',
+              contentParts: [{ type: 'text', content: 'while away' }],
+            },
+          },
+        });
+        vi.advanceTimersByTime(500);
+      });
+      expect(hook.result.current.streamingText).toBe('');
+
+      hidden = false;
+      act(() => {
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      expect(hook.result.current.streamingText).toBe('while away');
+    } finally {
+      hiddenProperty.mockRestore();
+    }
+  });
+
   test('publishes a completed text part immediately at a tool boundary', () => {
     const hook = renderHook(() => useStreamingContent('session'));
     act(() => {

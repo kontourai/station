@@ -1,0 +1,43 @@
+{
+  "path": "docs/guides/feature-previews.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Contributor policy for default-off unfinished capabilities, Station-wide versus device previews, composition binding, entry-point gating, refusal transport, documentation consistency, promotion and removal. Existing registry, runtime fleet consumer, route and UI boundaries inspected.",
+
+  "limits": "Source inspection and executed consistency CLI tests only. The HTTP refusal shape is the documented convention for future preview-only routes; the existing fleet consumer skips optional probes. No live UI, CLI, MCP, provider or scheduler journey was exercised; the checklist is policy rather than proof that every future consumer is gated.",
+
+  "sources": [
+    "src-server/services/feature-previews/feature-preview-registry.ts",
+
+    "src-server/routes/system/feature-previews.ts",
+
+    "src-server/runtime/bootstrap/station-runtime.ts",
+
+    "src-server/routes/projects/project-s3-source-routes.ts",
+
+    "src-server/tools/station-control-shared.ts",
+
+    "src-ui/src/hooks/useSurfaceVisibilityFlags.ts",
+
+    "src-ui/src/app-shell/destination-registry.ts",
+
+    "docs/user/settings.md",
+
+    "scripts/feature-preview-docs-check.mjs",
+
+    "scripts/__tests__/feature-preview-docs-check.test.ts",
+
+    "scripts/run-ci-fast.mjs",
+
+    "scripts/docs-truth-gate-aggregate.mjs"
+  ],
+
+  "checks": [
+    "Inspected registry persistence, default-off and conflicting-definition rules; traced the real fleet selector and user-facing Settings/navigation boundaries.",
+
+    "Executed the preview-docs CLI against the actual repository and focused child-process positive and rejection cases; validated Markdown links and regenerated unchanged shipped MCP topics."
+  ]
+}

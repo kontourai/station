@@ -255,7 +255,8 @@ describe('Codex native attached-session adoption', () => {
     // No confinement given: confined, so it runs under Station's permission
     // profile with its sandbox keys pinned (#3800).
     expect(processFactory).toHaveBeenCalledWith(
-      { CODEX_HOME: '/source-home' },
+      // The adopted child is this Session's engine: its scope is labelled.
+      { CODEX_HOME: '/source-home', STATION_WORKLOAD_SESSION_ID: TARGET_ID },
       [
         '-c',
         'default_permissions="station-workspace"',
@@ -660,7 +661,8 @@ describe('Codex native attached-session adoption', () => {
     // No confinement given: confined, so it runs under Station's permission
     // profile with its sandbox keys pinned (#3800).
     expect(processFactory).toHaveBeenCalledWith(
-      { CODEX_HOME: '/source-home' },
+      // The adopted child is this Session's engine: its scope is labelled.
+      { CODEX_HOME: '/source-home', STATION_WORKLOAD_SESSION_ID: TARGET_ID },
       [
         '-c',
         'default_permissions="station-workspace"',

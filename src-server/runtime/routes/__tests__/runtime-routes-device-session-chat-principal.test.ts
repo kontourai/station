@@ -1,3 +1,7 @@
+import { z } from 'zod/v3';
+import { recipientCandidateSchema } from '../../../analytics/recipient-candidate.js';
+import { enrollmentIntentSchema } from '../../../analytics/source-enrollment-protocol.js';
+import { ConsentChannelService } from '../../../services/consent/consent-channel.js';
 /**
  * station#4518: a freshly APPROVED paired-device session (the Android app
  * over tailscale-served HTTPS, exactly the owner-reproduced repro) sent a
@@ -120,6 +124,10 @@ import {
   INTERNAL_PROXY_CALLER_HEADER,
 } from '../../../utils/internal-api-token.js';
 import { orchestrationUsageRefFor } from '../../bootstrap/orchestration-usage-ref.js';
+import {
+  RuntimeEventLog,
+  type RuntimeEventQueryOptions,
+} from '../../conversation/runtime-event-log.js';
 import { configureRuntimeRoutes as configureRuntimeRoutesProduction } from '../runtime-routes.js';
 
 // Deliberately NOT mocked (unlike the room-principal composition test): this
@@ -384,6 +392,11 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       actionOperations?: unknown;
       /** Rows `/monitoring/events?start=` reads, before its authorization. */
       monitoringRows?: unknown[];
+      /**
+       * `/monitoring/events` reads `eventLogPath` through the production
+       * RuntimeEventLog reader, owner filter included.
+       */
+      diskEventLog?: boolean;
       // Extra rows written before the orchestration runtime starts. Writing
       // after it starts races its own connections for the SQLite write lock.
       seed?: (store: EventStore) => void;
@@ -580,7 +593,10 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           (value) => pairing.identifyDevice(value),
         )
       : undefined;
+    const consentChannel = new ConsentChannelService();
+    consentChannel.markListening(4322);
     const context = deepStub({
+      consentChannel,
       projectMembership: membership?.service,
       projectSharedTasks: membership?.sharedTasks,
       ...(membershipStorage ? { storageAdapter: membershipStorage } : {}),
@@ -624,6 +640,22 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         ? {
             queryEventsFromDisk: async () => orchestrationExtras.monitoringRows,
           }
+        : {}),
+      ...(orchestrationExtras.diskEventLog && orchestrationExtras.eventLogPath
+        ? (() => {
+            const eventLog = new RuntimeEventLog(
+              orchestrationExtras.eventLogPath,
+              { debug() {}, info() {}, warn() {}, error() {} },
+            );
+            return {
+              queryEventsFromDisk: (
+                start: number,
+                end: number,
+                owner: string | readonly string[],
+                options?: RuntimeEventQueryOptions,
+              ) => eventLog.queryEvents(start, end, owner, options ?? {}),
+            };
+          })()
         : {}),
       ...(orchestrationExtras.eventLogPath
         ? {
@@ -687,8 +719,12 @@ describe('device-session chat principal resolution over the REAL auth path (stat
               listSessions: orchestration!.listSessions.bind(orchestration),
               attachmentCandidateOwnerIds:
                 orchestration!.attachmentCandidateOwnerIds.bind(orchestration),
+              readableSessionOwnerIds:
+                orchestration!.readableSessionOwnerIds.bind(orchestration),
               readUsageReceiptExport:
                 orchestration!.readUsageReceiptExport.bind(orchestration),
+              usageExportOwnerIds:
+                orchestration!.usageExportOwnerIds.bind(orchestration),
               ...(orchestrationExtras.flowReads
                 ? {
                     listSessionReadModel:
@@ -2910,7 +2946,165 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           REMOTE_TAILNET_ENV,
         );
         expect(boundResponse.status, await boundResponse.text()).toBe(200);
+        const enrollmentPath = '/api/analytics/source-enrollments';
+        const enrollmentId = '01234567-89ab-4cde-8fab-0123456789ab';
+        const enrollmentBody = JSON.stringify({
+          operationId: enrollmentId,
+          proposedDestination: {
+            stationId: h.pairing.environmentId(),
+            origin: 'https://destination.example.test',
+          },
+          scope: 'individual',
+          expiresAt: new Date(Date.now() + 86400000).toISOString(),
+          retention: { mode: 'live-mirror' },
+        });
+        const unboundEnrollment = await h.app.request(
+          enrollmentPath,
+          {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${h.paired.credential}` },
+            body: enrollmentBody,
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(unboundEnrollment.status, await unboundEnrollment.text()).toBe(
+          403,
+        );
+        const enrollment = await h.app.request(
+          enrollmentPath,
+          {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${bound.credential}` },
+            body: enrollmentBody,
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        const enrollmentResult = await enrollment.json();
+        expect(enrollment.status, JSON.stringify(enrollmentResult)).toBe(200);
+        expect(enrollmentResult).toMatchObject({
+          data: {
+            phase: 'prepared',
+            destinationVerified: false,
+            exportAuthority: false,
+          },
+        });
+        const heldEnrollment = await h.app.request(
+          `${enrollmentPath}/${enrollmentId}`,
+          {
+            headers: { Authorization: `Bearer ${bound.credential}` },
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(heldEnrollment.status).toBe(200);
+        if (
+          !enrollmentResult ||
+          typeof enrollmentResult !== 'object' ||
+          !('data' in enrollmentResult)
+        )
+          throw new Error('Missing source intent');
+        const recipientPath = '/api/analytics/recipient-candidates';
+        const recipientId = '11234567-89ab-4cde-8fab-0123456789ab';
+        const recipientBody = JSON.stringify({
+          operationId: recipientId,
+          proposedSourceOrigin: 'https://station.example.test',
+          sourceIntent: enrollmentIntentSchema.parse(enrollmentResult.data),
+        });
+        const unboundRecipient = await h.app.request(
+          recipientPath,
+          {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${h.paired.credential}` },
+            body: recipientBody,
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(unboundRecipient.status, await unboundRecipient.text()).toBe(
+          403,
+        );
+        const recipient = await h.app.request(
+          recipientPath,
+          {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${bound.credential}` },
+            body: recipientBody,
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        const recipientResult = await recipient.json();
+        expect(recipient.status, JSON.stringify(recipientResult)).toBe(200);
+        expect(recipientResult).toMatchObject({
+          data: {
+            phase: 'candidate',
+            verification: 'key-possession-only',
+            exportAuthority: false,
+            sourceVerified: false,
+            candidate: {
+              claims: {
+                destinationStationId: h.pairing.environmentId(),
+                recipientPrincipalId: 'human:tailscale-serve:owner@github',
+              },
+            },
+          },
+        });
+        const heldRecipient = await h.app.request(
+          `${recipientPath}/${recipientId}`,
+          {
+            headers: { Authorization: `Bearer ${bound.credential}` },
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(heldRecipient.status).toBe(200);
+        const sourceApprovalBody = JSON.stringify({
+          operationId: '21234567-89ab-4cde-8fab-0123456789ab',
+          sourceOperationId: enrollmentId,
+          recipientCandidate: z
+            .object({ data: z.object({ candidate: recipientCandidateSchema }) })
+            .parse(recipientResult).data.candidate,
+        });
+        const sourceApprovalPath = '/api/analytics/source-grant-approvals';
+        const unboundApproval = await h.app.request(
+          sourceApprovalPath,
+          {
+            method: 'POST',
+            headers: {
+              host: 'station.example.test',
+              Authorization: `Bearer ${h.paired.credential}`,
+            },
+            body: sourceApprovalBody,
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(unboundApproval.status, await unboundApproval.text()).toBe(403);
+        const sourceApproval = await h.app.request(
+          sourceApprovalPath,
+          {
+            method: 'POST',
+            headers: {
+              host: 'station.example.test',
+              Authorization: `Bearer ${bound.credential}`,
+            },
+            body: sourceApprovalBody,
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        const sourceApprovalResult = await sourceApproval.json();
+        expect(
+          sourceApproval.status,
+          JSON.stringify(sourceApprovalResult),
+        ).toBe(200);
+        expect(sourceApprovalResult).toMatchObject({
+          approval: { status: 'pending' },
+        });
+        expect(sourceApproval.headers.get('set-cookie')).toContain(
+          'station-consent=',
+        );
         h.pairing.revokeDevice(bound.device.id, 'operator-credential');
+        await expect(heldRecipient.text()).rejects.toThrow(
+          'Authority observation ended',
+        );
+        await expect(heldEnrollment.text()).rejects.toThrow(
+          'Authority observation ended',
+        );
         expect(
           (
             await h.app.request(
@@ -3913,20 +4107,45 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       expect(body.data?.items?.[0]?.scope.accountId).toBe(accountId);
     });
 
-    test('monitoring history and the insights rollup keep the account’s session rows and drop a stranger’s', async () => {
-      // Both rows carry the OS alias as `userId`: the routes' separate
-      // per-user row filter still defaults to it, and this test is about the
-      // session predicate that runs after it.
+    test('monitoring history and the insights rollup count the whole personal account’s rows, from the operator and from a paired device, and drop a stranger’s', async () => {
+      // Station's own writers stamp `station.user.id` with the acting
+      // principal; OTLP ingest stamps the host's OS alias as the instance's
+      // user. Both routes used to compare rows with that alias alone, so every
+      // principal-stamped row was dropped and Profile Diagnostics read zero.
       const now = Date.now();
-      const row = (sessionId: string) => ({
+      const stranger = 'human:tailscale-serve:stranger@example';
+      const eventLogPath = makeTempDir('station-principal-insights-');
+      const { app, paired, pairing } = await principalSetup({
+        eventLogPath,
+        diskEventLog: true,
+      });
+      const device = `human:device:${paired.device.id}`;
+      const toolRow = (owner: string | undefined, tool: string) => ({
+        timestamp: new Date(now).toISOString(),
+        'timestamp.ms': now,
+        'gen_ai.operation.name': 'execute_tool',
+        'span.kind': 'start',
+        'gen_ai.tool.name': tool,
+        ...(owner === undefined ? {} : { 'station.user.id': owner }),
+      });
+      const sessionRow = (sessionId: string, owner: string) => ({
         timestamp: new Date(now).toISOString(),
         'timestamp.ms': now,
         'gen_ai.operation.name': 'invoke_agent',
         'gen_ai.conversation.id': sessionId,
-        userId: getCachedUser().alias,
+        'station.user.id': owner,
       });
-      const rows = [row('operator-owned'), row('stranger-owned')];
-      const eventLogPath = makeTempDir('station-principal-insights-');
+      const rows = [
+        toolRow(device, 'device-tool'),
+        toolRow(LOCAL_OPERATOR_PRINCIPAL_ID, 'operator-tool'),
+        toolRow(stranger, 'stranger-tool'),
+        toolRow(getCachedUser().alias, 'alias-tool'),
+        toolRow(undefined, 'unowned-tool'),
+        sessionRow('operator-owned', LOCAL_OPERATOR_PRINCIPAL_ID),
+        // An account member's id on a stranger's session: the session
+        // predicate still refuses it after the owner check admits it.
+        sessionRow('stranger-owned', device),
+      ];
       writeFileSync(
         join(
           eventLogPath,
@@ -3934,38 +4153,95 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         ),
         `${rows.map((entry) => JSON.stringify(entry)).join('\n')}\n`,
       );
-      const { app } = await principalSetup({
-        eventLogPath,
-        monitoringRows: rows,
-      });
 
-      const history = await app.request(
+      for (const [caller, headers] of [
+        ['operator', operatorHeaders],
+        ['paired device', { Authorization: `Bearer ${paired.credential}` }],
+      ] as const) {
+        const history = await app.request(
+          '/monitoring/events?start=0',
+          { headers },
+          REMOTE_TAILNET_ENV,
+        );
+        const historyBody = (await history.json()) as {
+          data?: Array<Record<string, unknown>>;
+        };
+        expect(
+          history.status,
+          `${caller}: ${JSON.stringify(historyBody)}`,
+        ).toBe(200);
+        expect(
+          (historyBody.data ?? [])
+            .map(
+              (event) =>
+                event['gen_ai.tool.name'] ?? event['gen_ai.conversation.id'],
+            )
+            .sort(),
+          caller,
+        ).toEqual([
+          'alias-tool',
+          'device-tool',
+          'operator-owned',
+          'operator-tool',
+        ]);
+
+        const insights = await app.request(
+          '/api/insights?days=1',
+          { headers },
+          REMOTE_TAILNET_ENV,
+        );
+        const insightsBody = (await insights.json()) as {
+          data?: {
+            totalToolCalls?: number;
+            toolUsage?: Record<string, unknown>;
+            hourlyActivity?: number[];
+          };
+        };
+        expect(
+          insights.status,
+          `${caller}: ${JSON.stringify(insightsBody)}`,
+        ).toBe(200);
+        expect(insightsBody.data?.totalToolCalls, caller).toBe(3);
+        expect(
+          Object.keys(insightsBody.data?.toolUsage ?? {}).sort(),
+          caller,
+        ).toEqual(['alias-tool', 'device-tool', 'operator-tool']);
+        expect(
+          (insightsBody.data?.hourlyActivity ?? []).reduce((a, b) => a + b, 0),
+          caller,
+        ).toBe(4);
+      }
+
+      // A paired principal outside the personal account (a delegation peer)
+      // reads none of the account's rows and none of the alias-stamped ones.
+      const outsider = {
+        Authorization: `Bearer ${pairDelegationPeer(pairing).credential}`,
+      };
+      const outsiderHistory = await app.request(
         '/monitoring/events?start=0',
-        { headers: operatorHeaders },
+        { headers: outsider },
         REMOTE_TAILNET_ENV,
       );
-      const historyBody = (await history.json()) as {
-        data?: Array<Record<string, unknown>>;
+      const outsiderHistoryBody = (await outsiderHistory.json()) as {
+        data?: unknown[];
       };
-      expect(history.status, JSON.stringify(historyBody)).toBe(200);
-      expect(
-        (historyBody.data ?? []).map(
-          (event) => event['gen_ai.conversation.id'],
-        ),
-      ).toEqual(['operator-owned']);
-
-      const insights = await app.request(
-        '/api/insights',
-        { headers: operatorHeaders },
+      expect(outsiderHistory.status, JSON.stringify(outsiderHistoryBody)).toBe(
+        200,
+      );
+      expect(outsiderHistoryBody.data).toEqual([]);
+      const outsiderInsights = await app.request(
+        '/api/insights?days=1',
+        { headers: outsider },
         REMOTE_TAILNET_ENV,
       );
-      const insightsBody = (await insights.json()) as {
-        data?: { hourlyActivity?: number[] };
+      const outsiderInsightsBody = (await outsiderInsights.json()) as {
+        data?: { totalToolCalls?: number };
       };
-      expect(insights.status, JSON.stringify(insightsBody)).toBe(200);
       expect(
-        (insightsBody.data?.hourlyActivity ?? []).reduce((a, b) => a + b, 0),
-      ).toBe(1);
+        outsiderInsights.status,
+        JSON.stringify(outsiderInsightsBody),
+      ).toBe(200);
+      expect(outsiderInsightsBody.data?.totalToolCalls).toBe(0);
     });
 
     test('the live relay delivers an answer update for the account’s session and not for a stranger’s', async () => {

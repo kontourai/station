@@ -184,19 +184,29 @@ export class RuntimeEventLog {
     return this.eventLogPath;
   }
 
-  queryEvents(start: number, end: number, userId: string): Promise<any[]>;
+  /**
+   * `owner` is one user id, or every owner id the caller may read (its own
+   * principal plus the other members of its personal conversation account).
+   * A row matches when either owner field names one of them.
+   */
   queryEvents(
     start: number,
     end: number,
-    userId: string,
+    owner: string | readonly string[],
+  ): Promise<any[]>;
+  queryEvents(
+    start: number,
+    end: number,
+    owner: string | readonly string[],
     options: RuntimeEventQueryOptions,
   ): Promise<RuntimeEventPage>;
   async queryEvents(
     start: number,
     end: number,
-    userId: string,
+    owner: string | readonly string[],
     options?: RuntimeEventQueryOptions,
   ): Promise<any[] | RuntimeEventPage> {
+    const owners = new Set(typeof owner === 'string' ? [owner] : owner);
     const events: any[] = [];
     type Row = {
       event: any;
@@ -300,7 +310,7 @@ export class RuntimeEventLog {
           if (
             time < start ||
             time > end ||
-            (event.userId !== userId && event['station.user.id'] !== userId)
+            !(owners.has(event.userId) || owners.has(event['station.user.id']))
           )
             continue;
           if (options?.matches && !options.matches(event)) continue;

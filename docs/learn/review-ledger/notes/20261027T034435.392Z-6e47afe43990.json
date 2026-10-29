@@ -1,0 +1,7 @@
+{
+  "revision": "03de66577b851284970e0e9ed397dd8487597327",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"destination-registry.ts change is comment-only; Settings/Customize vocabulary unchanged. No prose change.","inputs":["docs/glossary.md","src-ui/src/app-shell/destination-registry.ts"]}
+  ]
+}

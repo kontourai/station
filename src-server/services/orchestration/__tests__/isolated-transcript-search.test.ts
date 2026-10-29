@@ -170,6 +170,7 @@ function syncReads(store: EventStore, authz: SessionAuthorization) {
     isEphemeralSession: () => false,
     sessionAttributionFor: () => null,
     listEventPayloads: () => [],
+    listResolvedEventPayloads: () => [],
     readUsageRevision: () => 'fixture',
     listUsageEventPayloads: () => [],
     listUsageReceiptEvents: () => [],

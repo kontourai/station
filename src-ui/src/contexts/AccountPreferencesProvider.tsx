@@ -86,6 +86,9 @@ export function AccountPreferencesProvider({
   const mutation = useMutation({
     mutationKey: queryKey,
     scope: { id: JSON.stringify(queryKey) },
+    // Preferences are designed to wait for the connection (see
+    // `waitingForConnection`), unlike the app's fail-fast mutation default.
+    networkMode: 'online',
     mutationFn: (write: PendingWrite) => {
       if (!write.scope.isCurrent()) throw new Error('Account access changed.');
       return patchAccountPreferences(

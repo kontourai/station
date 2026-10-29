@@ -1,0 +1,9 @@
+{
+  "revision": "dcdc9ef4c4005602b47b760b6f2672770573711d",
+
+  "notes": [
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"StartComposer.css changed only the Permissions status chip's tokens (--k-text-xs, --k-radius-sm). These captures start on another Station ('on Kontour'), where the composer shows no Permissions chip, so nothing they show changed.","inputs":["docs/learn/media/new-chat-start-before.png","src-ui/src/components/chat-start/StartComposer.css"]},
+
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"StartComposer.css changed only the Permissions status chip's tokens (--k-text-xs, --k-radius-sm). These captures start on another Station ('on Kontour'), where the composer shows no Permissions chip, so nothing they show changed.","inputs":["docs/learn/media/new-chat-start-after.png","src-ui/src/components/chat-start/StartComposer.css"]}
+  ]
+}

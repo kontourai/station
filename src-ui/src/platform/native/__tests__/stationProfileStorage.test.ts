@@ -1797,7 +1797,7 @@ describe('NativeStationProfileStorage', () => {
       expect(calls).not.toContain('credential_vault_delete_unreferenced');
     });
 
-    it('refuses a Station that changed since the user confirmed, and the bundled local Station', async () => {
+    it("refuses a Station that changed since the user confirmed, and this app's own Station", async () => {
       const initial = forgetStore();
       initial.profiles[0] = {
         ...initial.profiles[0],
@@ -1812,6 +1812,8 @@ describe('NativeStationProfileStorage', () => {
         initialStore: initial,
       });
       await storage.hydrate();
+      // Boot names this app's own Station through the native owner resolver.
+      storage.selectProfileForProcess('kontour');
       await storage.authorizeActiveConnection(HOSTED, true);
       calls.length = 0;
       await expect(
@@ -1827,10 +1829,87 @@ describe('NativeStationProfileStorage', () => {
           connectionId: KONTOUR,
           expected: expectedFor(0),
         }),
-      ).rejects.toThrow('cannot be forgotten here');
+      ).rejects.toThrow("This app's own Station cannot be forgotten");
       expect(currentStore().profiles).toHaveLength(2);
       expect(currentStore().revision).toBe(0);
       expect(credentials.get('station-bearer:kontour-token')).toBe('old-token');
+    });
+
+    it("forgets another local service's Station, keeping only this app's own", async () => {
+      // A desktop that has run several channels and dev instances: each left
+      // a local-service profile in the shared store, and a stale duplicate
+      // can claim this app's own service identity.
+      const service = (
+        instanceId: string,
+        serverPort: number,
+        baseDir = `/home/station/${instanceId}`,
+      ) => ({
+        instanceId,
+        baseDir,
+        serverPort,
+        uiPort: serverPort + 1,
+      });
+      const local = (
+        name: string,
+        port: number,
+        instanceId: string,
+        baseDir?: string,
+      ) => ({
+        schemaVersion: 1 as const,
+        name,
+        endpoint: `http://127.0.0.1:${port}`,
+        localService: service(instanceId, port, baseDir),
+        setupSource: 'local' as const,
+        configurationState: 'configured' as const,
+        createdAt: 1,
+        updatedAt: 2,
+      });
+      const initial = forgetStore();
+      initial.profiles.push(
+        local('nightly-local', 38141, 'desktop-sidecar-nightly'),
+        local('local', 38141, 'desktop-sidecar-nightly', '/tmp/station-proof'),
+        local('nightly-renamed', 38141, 'desktop-sidecar-nightly'),
+        local('local-3', 39293, 'desktop-sidecar-dev-old'),
+      );
+      const { storage, currentStore } = keyring({ initialStore: initial });
+      await storage.hydrate();
+      const forget = (name: string) => {
+        const profile = currentStore().profiles.find((p) => p.name === name)!;
+        return storage.removeProfile({
+          connectionId: `station-profile:${name}`,
+          expected: { name, url: profile.endpoint },
+        });
+      };
+
+      // Until boot names this app's own Station, any of them might be it.
+      await expect(forget('local-3')).rejects.toThrow("This app's own Station");
+      expect(storage.canRemoveProfile('station-profile:local-3')).toBe(false);
+      expect(storage.canRemoveProfile(HOSTED)).toBe(true);
+      storage.selectProfileForProcess('nightly-local');
+      // The UI asks the same question before offering Forget.
+      expect(storage.canRemoveProfile('station-profile:local-3')).toBe(true);
+      expect(storage.canRemoveProfile('station-profile:nightly-local')).toBe(
+        false,
+      );
+      expect(storage.canRemoveProfile('station-profile:missing')).toBe(false);
+
+      await forget('local-3');
+      // Same service identity as nightly-local, but a different home.
+      await forget('local');
+      await expect(forget('nightly-local')).rejects.toThrow(
+        "This app's own Station",
+      );
+      // A copy under another name, as a CLI rename leaves, is still this
+      // app's own by its service identity.
+      await expect(forget('nightly-renamed')).rejects.toThrow(
+        "This app's own Station",
+      );
+      expect(currentStore().profiles.map((profile) => profile.name)).toEqual([
+        'kontour',
+        'station.kontourai.io',
+        'nightly-local',
+        'nightly-renamed',
+      ]);
     });
 
     it('selects a fallback the host cannot authorize without calling it a failure', async () => {

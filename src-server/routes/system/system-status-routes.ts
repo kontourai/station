@@ -989,6 +989,12 @@ export function createSystemStatusRoutes(deps: SystemStatusDeps) {
     });
   });
 
+  app.get('/routes', async (c) => {
+    if (!deps.resolveStationRoutes) return c.json({ error: 'not_found' }, 404);
+    systemOps.add(1, { op: 'get_routes' });
+    return c.json(await deps.resolveStationRoutes());
+  });
+
   app.get('/identity', (c) => {
     // The SAME derivation the core-update diagnostics read — one identity
     // rule, shared (update-ux PR2), never two implementations that can

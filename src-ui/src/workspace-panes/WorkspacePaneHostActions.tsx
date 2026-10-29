@@ -11,7 +11,12 @@ import {
 import { type ReactNode, useRef, useState } from 'react';
 import { Button } from '../components/Button';
 import { ResponsiveSurfaceActions } from '../components/ResponsiveDialogSurface';
-import { SkeletonBlock } from '../components/state';
+import {
+  describeReadFailure,
+  ErrorState,
+  SkeletonBlock,
+  useRetainedReadFailure,
+} from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { openChatsStore } from '../contexts/open-chats-store';
 import { useShowSurface } from '../contexts/useShowSurface';
@@ -228,15 +233,28 @@ export function WorkspacePaneHostActions({
     requestScope: authority,
     enabled: Boolean(authority),
   });
+  // Held across refetches: a retry must not swap this card for the skeleton.
+  const failure = useRetainedReadFailure(query);
+  if (failure)
+    return (
+      <ErrorState
+        variant="compact"
+        className="workspace-host-actions"
+        title="Workspace actions unavailable"
+        description={describeReadFailure(failure.error)}
+        action={
+          <Button
+            size="sm"
+            pending={failure.retrying}
+            onClick={() => void query.refetch()}
+          >
+            Try again
+          </Button>
+        }
+      />
+    );
   if (query.isLoading)
     return <SkeletonBlock count={1} label="Loading workspace actions" />;
-  if (query.isError)
-    return (
-      <div className="workspace-host-actions" role="status">
-        Workspace actions could not be loaded.{' '}
-        <Button onClick={() => void query.refetch()}>Refresh actions</Button>
-      </div>
-    );
   if (!query.data || (!query.data.contributions.length && query.data.complete))
     return null;
   return (

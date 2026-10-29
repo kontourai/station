@@ -86,6 +86,12 @@ export type SessionInventoryViewItem = {
   relation: 'Contributed to this answer' | 'Context from this Session';
   classification: 'current' | 'kept';
   actions: readonly SessionInventoryAction[];
+  /**
+   * An owner-reported state the row's title does not carry. Today only a
+   * command with no recorded outcome (#4178); the words claim neither
+   * success nor failure.
+   */
+  status?: 'No result recorded';
   row?: SessionInventoryV2Row;
 };
 export type SessionInventoryLiveItem = {
@@ -244,6 +250,9 @@ function toItem(
             ? ['inspect-output', 'keep-file']
             : ['inspect-output', 'keep-pr']
           : [],
+    ...(row.kind === 'thread-tool-result' && row.terminalStatus === 'unresolved'
+      ? { status: 'No result recorded' as const }
+      : {}),
     row,
   };
 }

@@ -1,8 +1,10 @@
 import {
   type CSSProperties,
+  type Ref,
   type RefObject,
   useCallback,
   useEffect,
+  useImperativeHandle,
   useRef,
   useState,
 } from 'react';
@@ -10,6 +12,7 @@ import { createPortal } from 'react-dom';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import { useMenuTriggerToggle } from '../../hooks/useMenuTriggerToggle';
 import { countWords } from '../../utils/text-display';
+import type { OverflowMenuHandle } from '../ActionOverflowMenu';
 import { Dialog } from '../Dialog';
 import { LazyBoundary } from '../LazyBoundary';
 import type { ForkTurnSource } from './fork-turn-source';
@@ -26,6 +29,31 @@ const loadConnectedAttachAnswerToTaskButton = () =>
   import('./AttachAnswerToTaskButton').then((module) => ({
     default: module.ConnectedAttachAnswerToTaskButton,
   }));
+
+/**
+ * The bubble's right-click opens its ⋯ (`OverflowMenuHandle`): the same rows,
+ * anchored to the same trigger. Focus goes to the trigger first so the menu
+ * returns it there on close. No trigger (the phone sheet's inline rows) means
+ * no menu to open. An open, not a toggle: asked again while the menu is open,
+ * it leaves focus in the menu.
+ */
+function useMenuHandle(
+  handleRef: Ref<OverflowMenuHandle> | undefined,
+  triggerRef: RefObject<HTMLButtonElement | null>,
+  isOpen: boolean,
+  openMenu: () => void,
+) {
+  useImperativeHandle(handleRef, () => ({
+    open: () => {
+      const trigger = triggerRef.current;
+      if (!trigger) return false;
+      if (isOpen) return true;
+      trigger.focus();
+      openMenu();
+      return true;
+    },
+  }));
+}
 
 const MENU_GAP_PX = 4;
 /**
@@ -119,6 +147,8 @@ export interface TurnActionsMenuProps {
     shareContent?: React.ReactNode;
   };
   reasoning?: { content: string };
+  /** Opens the menu from the bubble it belongs to (a right-click on it). */
+  handleRef?: Ref<OverflowMenuHandle>;
 }
 
 /** Lazy per-turn overflow, using the same focus primitive as app header menus. */
@@ -128,6 +158,7 @@ export default function TurnActionsMenu({
   onForkFromTurn,
   provenance,
   reasoning,
+  handleRef,
 }: TurnActionsMenuProps) {
   const [view, setView] = useState<
     'closed' | 'menu' | 'picker' | 'provenance' | 'reasoning'
@@ -164,6 +195,10 @@ export default function TurnActionsMenu({
     },
     close,
   );
+  useMenuHandle(handleRef, triggerRef, open, () => {
+    place();
+    setView('menu');
+  });
 
   return (
     <span className="turn-footer__actions-menu">
@@ -326,6 +361,8 @@ export interface UserMessageActionsMenuProps {
    * render in place, with no second ⋯ to open.
    */
   inline?: boolean;
+  /** Opens the menu from the bubble it belongs to (a right-click on it). */
+  handleRef?: Ref<OverflowMenuHandle>;
 }
 
 /** Overflow for a user bubble: fork or a new-chat seed (#2216). Copy is the
@@ -337,6 +374,7 @@ export function UserMessageActionsMenu({
   onDiscardUnsent,
   taskTarget,
   inline = false,
+  handleRef,
 }: UserMessageActionsMenuProps) {
   // 'picker': the Task dialog is open and this owner stays mounted (with the
   // menu hidden) until it settles, exactly as the answer menu does.
@@ -361,6 +399,10 @@ export function UserMessageActionsMenu({
     },
     close,
   );
+  useMenuHandle(handleRef, triggerRef, open, () => {
+    place();
+    setView('menu');
+  });
 
   // In the ⋯ popup the rows are menu items (with the menu's arrow-key
   // focus); inline in the phone's sheet they are plain buttons in a group,

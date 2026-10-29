@@ -31,6 +31,50 @@ type PluginDisposer = () => void;
 
 /** Plugin discovery must never block the app shell indefinitely. */
 export const PLUGIN_REGISTRY_INVENTORY_TIMEOUT_MS = 8_000;
+/** Marks the script preloads `prefetchBundles` adds, removed once the pass ends. */
+const BUNDLE_PRELOAD_ATTRIBUTE = 'data-station-plugin-preload';
+
+/** A stylesheet download started ahead of its plugin's turn. */
+interface PrefetchedStylesheet {
+  /** Its text, within the plugin's own deadline, which starts on this call. */
+  read(): Promise<string>;
+}
+
+/**
+ * Starts the download now, and its deadline only when the plugin's turn
+ * reads it: when six connections are queued behind other bundles, a download
+ * that began early does not give its plugin less time than it had when loads
+ * waited in turn.
+ */
+function prefetchStylesheet(
+  url: string,
+  signal: AbortSignal,
+): PrefetchedStylesheet {
+  const controller = new AbortController();
+  const stop = () => controller.abort(signal.reason);
+  signal.addEventListener('abort', stop, { once: true });
+  const text = authenticatedFetch(url, {
+    signal: controller.signal,
+    timeoutMs: null,
+  })
+    .then((res) => {
+      if (!res.ok) throw new Error(`Failed to load plugin CSS: ${url}`);
+      return res.text();
+    })
+    .finally(() => signal.removeEventListener('abort', stop));
+  // Awaited, and reported, by that plugin's own load.
+  text.catch(() => {});
+  return {
+    read() {
+      const deadline = AbortSignal.timeout(
+        PLUGIN_REGISTRY_INVENTORY_TIMEOUT_MS,
+      );
+      const expire = () => controller.abort(deadline.reason);
+      deadline.addEventListener('abort', expire, { once: true });
+      return text.finally(() => deadline.removeEventListener('abort', expire));
+    },
+  };
+}
 
 export type PluginRegistryLoadState = 'loading' | 'ready' | 'degraded';
 export type PluginRegistrySettledLoadState = Exclude<
@@ -298,13 +342,16 @@ export class PluginRegistry {
       }
 
       let allBundlesLoaded = true;
+      const installable = (plugin: any) =>
+        plugin.hasBundle &&
+        (plugin.installationReadiness === undefined ||
+          plugin.installationReadiness?.state === 'ready');
+      const prefetchedCss =
+        remoteBrowserIsolation || remoteNativeIsolation
+          ? new Map<string, PrefetchedStylesheet>()
+          : this.prefetchBundles(plugins.filter(installable), apiBase, signal);
       for (const plugin of plugins) {
-        if (
-          !plugin.hasBundle ||
-          (plugin.installationReadiness !== undefined &&
-            plugin.installationReadiness?.state !== 'ready')
-        )
-          continue;
+        if (!installable(plugin)) continue;
         if (remoteBrowserIsolation || remoteNativeIsolation) {
           if (!this.registerIsolatedPlugin(plugin, registryGeneration)) {
             allBundlesLoaded = false;
@@ -319,6 +366,7 @@ export class PluginRegistry {
             apiBaseGeneration,
             signal,
             registryGeneration,
+            prefetchedCss.get(plugin.name),
           ))
         ) {
           allBundlesLoaded = false;
@@ -335,6 +383,11 @@ export class PluginRegistry {
       log.api('[PluginRegistry] Failed to initialize:', e);
       this.failure = 'registry-unavailable';
       return 'degraded';
+    } finally {
+      for (const link of document.head.querySelectorAll(
+        `link[${BUNDLE_PRELOAD_ATTRIBUTE}]`,
+      ))
+        link.remove();
     }
   }
 
@@ -421,12 +474,44 @@ export class PluginRegistry {
     );
   }
 
+  /**
+   * Starts every installed bundle's stylesheet fetch, and a preload of its
+   * script, before the first is applied: N plugins cost about one download's
+   * round trip instead of 2N in a row. Applying and executing still happen
+   * one bundle at a time in registry order (`loadPlugin`), so each
+   * registration is still read at its own script's load event (archive#4302).
+   * Desktop delivery resolves its asset URLs one at a time and is left alone.
+   */
+  private prefetchBundles(
+    plugins: any[],
+    apiBase: string,
+    signal: AbortSignal,
+  ): Map<string, PrefetchedStylesheet> {
+    const css = new Map<string, PrefetchedStylesheet>();
+    if (this.nativeHost && !this.remoteProfile) return css;
+    for (const plugin of plugins) {
+      const base = `${apiBase}/api/plugins/${encodeURIComponent(plugin.name)}`;
+      css.set(plugin.name, prefetchStylesheet(`${base}/bundle.css`, signal));
+      const script = `${base}/bundle.js`;
+      if (!isSameOriginBundleUrl(script)) continue;
+      const link = document.createElement('link');
+      link.rel = 'preload';
+      link.as = 'script';
+      link.href = script;
+      link.referrerPolicy = 'no-referrer';
+      link.setAttribute(BUNDLE_PRELOAD_ATTRIBUTE, '');
+      document.head.appendChild(link);
+    }
+    return css;
+  }
+
   private async loadPlugin(
     pluginMeta: any,
     apiBase: string,
     apiBaseGeneration: number,
     signal: AbortSignal,
     registryGeneration = this.registryGeneration,
+    prefetchedCss?: PrefetchedStylesheet,
   ): Promise<boolean> {
     const name = pluginMeta.name;
     try {
@@ -447,6 +532,7 @@ export class PluginRegistry {
         signal,
         INSTALLED_BUNDLE_MARKER,
         desktopDelivery,
+        prefetchedCss,
       );
 
       const bundleUrl = await assetUrl('bundle.js');
@@ -658,6 +744,7 @@ export class PluginRegistry {
     signal: AbortSignal,
     marker: BundleNodeMarker = INSTALLED_BUNDLE_MARKER,
     desktopDelivery = false,
+    prefetched?: PrefetchedStylesheet,
   ): Promise<void> {
     if (desktopDelivery) {
       if (
@@ -694,12 +781,16 @@ export class PluginRegistry {
       });
       return;
     }
-    const res = await authenticatedFetch(url, {
-      signal,
-      timeoutMs: PLUGIN_REGISTRY_INVENTORY_TIMEOUT_MS,
-    });
-    if (!res.ok) throw new Error(`Failed to load plugin CSS: ${url}`);
-    const css = await res.text();
+    const css = prefetched
+      ? await prefetched.read()
+      : await (async () => {
+          const res = await authenticatedFetch(url, {
+            signal,
+            timeoutMs: PLUGIN_REGISTRY_INVENTORY_TIMEOUT_MS,
+          });
+          if (!res.ok) throw new Error(`Failed to load plugin CSS: ${url}`);
+          return res.text();
+        })();
     if (!this.isCurrentConfiguredOrigin(apiBase, apiBaseGeneration)) return;
     if (!css.trim()) return;
     const style = document.createElement('style');

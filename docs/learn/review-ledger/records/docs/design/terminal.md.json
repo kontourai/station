@@ -28,7 +28,19 @@
 
     "src-server/runtime/routes/runtime-routes.ts",
 
-    "docs/reference/api.md"
+    "docs/reference/api.md",
+
+    "src-server/services/terminal/terminal-gateway.ts",
+
+    "src-server/services/terminal/terminal-channel-connection.ts",
+
+    "packages/contracts/src/terminal-transport.ts",
+
+    "src-server/services/terminal/__tests__/terminal-gateway.process.test.ts",
+
+    "src-server/adapters/pty-process-groups.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts"
   ],
 
   "checks": [

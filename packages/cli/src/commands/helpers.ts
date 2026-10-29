@@ -124,8 +124,9 @@ const SYSTEM_TEMP_HOME_ROOT = join('/tmp', STATION_TEMP_ROOT_NAME);
  * The Station-owned `<home>/tmp` tree containing `candidate`, for the homes an
  * agent can inherit: `STATION_HOME` and the resolved Station root (which is
  * that home when it is self-rooted). Station hands spawned engines
- * `<home>/tmp/engine-spawn` and reaps it by age, so nothing durable for the
- * length of a run may live there. Only that subtree is refused: a temp root
+ * `<home>/tmp/engine-spawn`, reaped by age, or (chat-host-images preview) a
+ * per-session `<home>/tmp/session-tmp/...` removed when the session exits, so
+ * nothing durable for the length of a run may live there. Only that subtree is refused: a temp root
  * elsewhere under a Station root, such as `STATION_ROOT=/tmp/station` with
  * the default `TMPDIR`, stays where it was.
  */
@@ -179,12 +180,12 @@ function mintAdmittedTemporaryHome(
 
 /**
  * A `--temp-home` lives under the Station temp root, which follows the ambient
- * `TMPDIR`. Station points every agent it spawns at `<home>/tmp/engine-spawn`
- * (see `engine-spawn-tmpdir.ts`), so an agent running
+ * `TMPDIR`. Station points every agent it spawns under `<home>/tmp`
+ * (`engine-spawn-tmpdir.ts`, `session-tmpdir.ts`), so an agent running
  * `./station start --temp-home` would mint its home inside its parent's
  * Station tree. Under `instances/` the runtime-home guard refuses it; under a
  * self-rooted parent home (`--home`, `--temp-home`) the guard admits it, and
- * the parent's engine-spawn reaper then deletes it by age while it may still
+ * the parent's reaper or session cleanup then deletes it while it may still
  * be in use. So a candidate inside that home's `tmp/` tree is refused here
  * too, and any refused candidate is retried once under the system `/tmp`.
  * Windows agents do not get this redirect (`os.tmpdir()` reads TEMP/TMP

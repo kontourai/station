@@ -1,0 +1,7 @@
+{
+  "revision": "5c3631951e5b27656f30daf8b207e438caf6e987",
+
+  "notes": [
+    {"path":"docs/design/connection-list-recovery.md","note":"Checked keyring claims: service io.kontourai.station and account profile:<kind>:<id> unchanged; the SSH-session interactivity default only changes the macOS Keychain wait bound, not storage or root binding.","inputs":["docs/design/connection-list-recovery.md","packages/cli/src/commands/profile-keyring.ts"]}
+  ]
+}

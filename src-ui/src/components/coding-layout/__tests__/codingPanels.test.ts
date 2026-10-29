@@ -33,17 +33,22 @@ describe('codingPanels — the wide fold and the panels’ bounds (#3040)', () =
     expect(480 + CODING_SIDE_MIN_WIDTH + 8 + 44 + 240).toBe(1092);
   });
 
-  test('useCodingWide follows the 1280px media query', () => {
-    const listeners = new Set<() => void>();
+  test('useCodingWide follows width while mobile viewports retain one tool', () => {
+    const listeners = new Set<(event: { matches: boolean }) => void>();
     let matches = false;
+    let mobileMatches = false;
     const matchMedia = vi.fn((query: string) => ({
       get matches() {
-        return query === '(min-width: 1280px)' && matches;
+        return query === '(min-width: 1280px)' ? matches : mobileMatches;
       },
-      addEventListener: (_type: string, listener: () => void) =>
-        listeners.add(listener),
-      removeEventListener: (_type: string, listener: () => void) =>
-        listeners.delete(listener),
+      addEventListener: (
+        _type: string,
+        listener: (event: { matches: boolean }) => void,
+      ) => listeners.add(listener),
+      removeEventListener: (
+        _type: string,
+        listener: (event: { matches: boolean }) => void,
+      ) => listeners.delete(listener),
     }));
     vi.stubGlobal('matchMedia', matchMedia);
     try {
@@ -52,9 +57,14 @@ describe('codingPanels — the wide fold and the panels’ bounds (#3040)', () =
       expect(result.current).toBe(false);
       act(() => {
         matches = true;
-        for (const listener of listeners) listener();
+        for (const listener of listeners) listener({ matches: false });
       });
       expect(result.current).toBe(true);
+      act(() => {
+        mobileMatches = true;
+        for (const listener of listeners) listener({ matches: true });
+      });
+      expect(result.current).toBe(false);
       unmount();
       expect(listeners.size).toBe(0);
     } finally {

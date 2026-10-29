@@ -1,0 +1,7 @@
+{
+  "revision": "89a5d9b0ddb0c01d70924adc92560397b57ab71f",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"OnboardingGate pairing-review sentence reworded to 'won't be retried'; this doc makes no claim about it; no prose change.","inputs":["docs/design/connections-onboarding.md","src-ui/src/components/OnboardingGate.tsx"]}
+  ]
+}

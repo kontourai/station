@@ -1,0 +1,7 @@
+{
+  "revision": "f96fce9f3b382e9053859576fffb1ad38bdfa8f5",
+
+  "notes": [
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Merge of origin/main into feat/walkthroughs: the branch adds media-upload receive policy to the UI proxy listener and Walkthrough/media-tools/transcription pairing-scope rows; it keeps backendExcludedPrefixes passed into the serialized proxy handler. Combined-tree lifecycle.test.ts and ui-asset-delivery.test.ts passed (241 tests), including the excluded OAuth/MCP proxy path test. No OAuth leaf scope changed.","inputs":["docs/reference/outside-agent-oauth.md","src-server/security/pairing-route-scopes.ts","packages/cli/src/commands/lifecycle.ts"]}
+  ]
+}

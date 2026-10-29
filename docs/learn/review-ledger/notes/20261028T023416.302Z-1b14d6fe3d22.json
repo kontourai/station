@@ -1,0 +1,7 @@
+{
+  "revision": "0a7059e45b4ad9d8492234a87c26eddcd61b7d42",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed mobile picker against CodingWorkbench, codingPanels and ToolControls. Mounted Chromium covers bottom-sheet geometry, canonical pane selection, draft preservation and desktop resizing in both themes. Fixtures do not qualify live terminal or native behavior.","inputs":["docs/design/placement.md"]}
+  ]
+}

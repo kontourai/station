@@ -32,6 +32,7 @@ import {
   type ProjectConfig,
   type ProjectRunLocations,
 } from '@kontourai/station-contracts/project';
+import type { ProjectChatDefaultsView } from '@kontourai/station-contracts/project-chat-defaults';
 import type { ProjectResourceBindOutcome } from '@kontourai/station-contracts/project-identity';
 import type {
   ProjectMemberAction,
@@ -65,6 +66,7 @@ import {
 import {
   isOperatorInPersonNotAgent,
   mayChooseWorkingDirectory,
+  mayGrantFullAccess,
   WORKING_DIRECTORY_NOT_GRANTED_CODE,
 } from '../../security/coding-authority.js';
 import {
@@ -109,7 +111,10 @@ import {
   type ProjectManifestReader,
 } from '../../services/projects/project-resource-binder.js';
 import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
-import type { ProjectService } from '../../services/projects/project-service.js';
+import {
+  ProjectFullAccessDefaultRefusal,
+  type ProjectService,
+} from '../../services/projects/project-service.js';
 import { resolveProjectWorkspacePath } from '../../services/projects/project-workspace-path.js';
 import {
   RepositoryAcquisitionConflict,
@@ -348,6 +353,17 @@ interface ProjectRouteDeps {
    * availability from it; absent means unknown, which fails closed.
    */
   browserPaneDeployment?: 'supported' | 'unsupported';
+  /**
+   * What a new chat in a Project starts with for the request's caller
+   * (`ProjectChatDefaultsService.view`). Absent: `GET /:slug/chat-defaults`
+   * answers 501 rather than inventing a view.
+   */
+  chatDefaults?: (
+    c: Context,
+    project: ProjectConfig,
+    /** The caller's own full-access proof, decided by this route. */
+    options: { mayGrantFullAccess: boolean },
+  ) => ProjectChatDefaultsView | Promise<ProjectChatDefaultsView>;
 }
 
 /**
@@ -897,6 +913,25 @@ export function createProjectRoutes(
   }
 
   /**
+   * A Project's new-chat approval mode at full access (`never`) puts every new
+   * chat there at full access, as the Station default does, so raising it
+   * takes the grant raising the Station default takes (`PUT /config/app`,
+   * #2436): the operator in person or a device holding `approval:full-access`.
+   * At create there is nothing to raise from; an update is checked by
+   * `ProjectService.updateProject` against the revision it replaces, and a
+   * resent `never` the Project already has is not a raise there.
+   */
+  function mayRaiseFullAccessDefault(c: Context): boolean {
+    return mayGrantFullAccess(
+      c.req.raw,
+      grantedPairingScope(c as unknown as PairingScopeContextStore),
+    );
+  }
+
+  const FULL_ACCESS_DEFAULT_REFUSAL =
+    'Starting new chats at full access needs full-access permission. No changes were saved.';
+
+  /**
    * #2412 review: a Project's working directory is what every coding route
    * is confined to, so whoever may set it decides where the coding routes
    * read, edit and run. Setting it (create) or changing it (update) is
@@ -1118,6 +1153,11 @@ export function createProjectRoutes(
         undefined,
       );
       if (folderRefusal) return folderRefusal;
+      if (body.defaultApprovalMode === 'never' && !mayRaiseFullAccessDefault(c))
+        return c.json(
+          { success: false, error: FULL_ACCESS_DEFAULT_REFUSAL },
+          403,
+        );
       if (body.starterLayoutId !== undefined && !body.creationRequestId)
         return c.json(
           {
@@ -1301,6 +1341,38 @@ export function createProjectRoutes(
     }
   });
 
+  // What a new chat here starts with, for the caller. A shared member reads
+  // it too: the session start applies the same Project layer to a member's
+  // chat, so the member's composer must show what will apply. The view holds
+  // only the Project's new-chat selections and the caller's own last-used
+  // values, never another person's.
+  app.get('/:slug/chat-defaults', async (c) => {
+    try {
+      const slug = param(c, 'slug');
+      const project = await projectService.getProject(slug);
+      const memberAdmission = await deps.memberProjectAdmission?.(c, slug);
+      if (
+        memberAdmission === null ||
+        (memberAdmission && memberAdmission.scope.localProjectId !== project.id)
+      )
+        return c.json({ success: false, error: 'Project not found' }, 404);
+      if (!deps.chatDefaults)
+        return c.json(
+          { success: false, error: 'Project chat defaults are unavailable.' },
+          501,
+        );
+      return c.json({
+        success: true,
+        data: await deps.chatDefaults(c, project, {
+          mayGrantFullAccess: mayRaiseFullAccessDefault(c),
+        }),
+      });
+    } catch (error: unknown) {
+      const failure = projectReadFailure(error, 'Project');
+      return c.json({ success: false, error: failure.error }, failure.status);
+    }
+  });
+
   // Update project
   app.put('/:slug', validate(projectUpdateSchema), async (c) => {
     try {
@@ -1345,10 +1417,17 @@ export function createProjectRoutes(
         async () => projectService.getProject(slug),
       );
       if (folderRefusal) return folderRefusal;
-      const updated = await projectService.updateProject(slug, body);
+      const updated = await projectService.updateProject(slug, body, {
+        mayRaiseFullAccessDefault: mayRaiseFullAccessDefault(c),
+      });
       projectOps.add(1, { op: 'update' });
       return c.json({ success: true, data: updated });
     } catch (error: unknown) {
+      if (error instanceof ProjectFullAccessDefaultRefusal)
+        return c.json(
+          { success: false, error: FULL_ACCESS_DEFAULT_REFUSAL },
+          403,
+        );
       return c.json(
         { success: false, error: projectMutationMessage(error) },
         projectMutationStatus(error),

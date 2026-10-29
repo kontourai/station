@@ -154,6 +154,51 @@ async function readConversationWindow(
   }
 }
 
+/** Pages one reload's fill may read before Load older takes over. */
+const MAX_FILL_PAGES = 12;
+
+/**
+ * The lowest sequence from which a page runs unbroken to its newest event. A
+ * detached page's oldest event is its oldest turn's `turn.started`, re-added
+ * across rows the page left out, so the unbroken run starts after it.
+ */
+function contiguousFrom(
+  page: Pick<
+    OrchestrationConversationEventWindow,
+    'events' | 'turnStartDetached'
+  >,
+): number {
+  return (
+    page.events[page.turnStartDetached ? 1 : 0]?.sequence ??
+    Number.POSITIVE_INFINITY
+  );
+}
+
+/**
+ * Where the page's newest turn starts: its first `turn.started`. The newest
+ * event cannot name that turn (a finished turn is followed by a turnless
+ * `session.state-changed`), and a steer re-announces the turn later on.
+ */
+function newestTurnStart(
+  events: readonly OrchestrationSequencedEvent[],
+): number | undefined {
+  const newest = [...events]
+    .reverse()
+    .find((item) => item.event.method === 'turn.started')?.event;
+  if (!newest) return undefined;
+  return events.find(
+    (item) =>
+      item.event.method === 'turn.started' &&
+      item.event.threadId === newest.threadId &&
+      item.event.turnId === newest.turnId,
+  )?.sequence;
+}
+
+function lowest(...values: (number | undefined)[]): number | undefined {
+  const defined = values.filter((value) => value !== undefined);
+  return defined.length ? Math.min(...defined) : undefined;
+}
+
 /** REST-only bounded session history. Live content remains app-wide SSE state. */
 export function useSessionEventWindow(
   apiBase: string,
@@ -193,10 +238,16 @@ export function useSessionEventWindow(
   const requestSerialRef = useRef(0);
   const reconcileRevisionRef = useRef(reconcileRevision);
   const requestControllerRef = useRef<AbortController | undefined>(undefined);
+  const fillRef = useRef<(cursor: string, floor: number) => Promise<void>>(
+    async () => {},
+  );
   const recoveryTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
   );
   cursorRef.current = cursor;
+  const eventsRef = useRef(events);
+  const pendingFloorRef = useRef<number | undefined>(undefined);
+  eventsRef.current = events;
   watermarkRef.current = watermark;
   reconcileRevisionRef.current = reconcileRevision;
 
@@ -224,6 +275,7 @@ export function useSessionEventWindow(
     requestControllerRef.current = controller;
     setLoading(true);
     setSettled(false);
+    let fill: { cursor: string; floor: number } | undefined;
     try {
       const capability = await fetchSessionEventWindowCapability(apiBase);
       if (
@@ -291,20 +343,30 @@ export function useSessionEventWindow(
             requestGeneration === generation.current,
         ).catch(() => {});
       }
-      const replacementBoundary = next.reduce(
-        (minimum, item) => Math.min(minimum, item.sequence),
-        Number.POSITIVE_INFINITY,
-      );
+      // The newest page is capped: a long turn can read back as its
+      // `turn.started` plus its tail, and a reload after a long silence can
+      // land above what this reader holds. The page must run unbroken down to
+      // what is held once older pages are loaded, or else to its newest turn's
+      // start, so that turn reads whole. Its cursor reads the gap first.
+      // A fill a later read cut short still owes its gap, so its floor holds
+      // until some fill reaches it.
+      const floor = olderLoadedRef.current
+        ? lowest(eventsRef.current.at(-1)?.sequence, pendingFloorRef.current)
+        : newestTurnStart(next);
+      if (
+        page.nextCursor &&
+        floor !== undefined &&
+        contiguousFrom(page) > floor
+      )
+        fill = { cursor: page.nextCursor, floor };
+      // Once older pages are loaded, the events already held are kept: stored
+      // events never change, and the new page wins where the two overlap.
       setEvents((current) =>
-        olderLoadedRef.current
-          ? mergePages(
-              current.filter((item) => item.sequence < replacementBoundary),
-              next,
-            )
-          : mergePages([], next),
+        mergePages(olderLoadedRef.current ? current : [], next),
       );
       if (!olderLoadedRef.current) setCursor(page.nextCursor);
       setWatermark(page.watermark);
+      watermarkRef.current = page.watermark;
       setError(undefined);
     } catch (cause) {
       if (controller.signal.aborted) return;
@@ -330,70 +392,121 @@ export function useSessionEventWindow(
         setSettledRevision(revisionAtStart);
       }
     }
+    if (fill) void fillRef.current(fill.cursor, fill.floor);
   }, [apiBase, legacySessionId, observation, threadId, namespace]);
+
+  /**
+   * Read one older page at `pageCursor` and merge it. `adoptCursor` moves the
+   * reader's own paging cursor to the page's next one; `olderLoaded` marks
+   * history past the newest page as held, so later reloads keep it. Resolves
+   * with the page once applied, or undefined when superseded or failed.
+   */
+  const readOlder = useCallback(
+    async (
+      pageCursor: string,
+      options: { adoptCursor: boolean; olderLoaded: boolean },
+    ): Promise<OrchestrationConversationEventWindow | undefined> => {
+      if (!threadId) return undefined;
+      const requestGeneration = generation.current;
+      const requestSerial = ++requestSerialRef.current;
+      const read = observation?.read(
+        threadId,
+        'older-history',
+        () =>
+          requestGeneration === generation.current &&
+          requestSerial === requestSerialRef.current,
+        activeChatsStore.getChatForExecutionSession(threadId)
+          ?.conversationActivity?.asOfSequence,
+      );
+
+      requestControllerRef.current?.abort();
+      const controller = new AbortController();
+      requestControllerRef.current = controller;
+      setLoading(true);
+      try {
+        const page = await readConversationWindow(
+          threadId,
+          apiBase,
+          { cursor: pageCursor, turnLimit: 20 },
+          { signal: controller.signal },
+          legacySessionId,
+        );
+        if (
+          requestGeneration !== generation.current ||
+          requestSerial !== requestSerialRef.current
+        )
+          return undefined;
+        if (read?.current() === false) return undefined;
+        activeChatsStore.applyConversationActivity(
+          page.session?.conversationActivity,
+        );
+        setCurrentSessionId(page.currentSessionId);
+        setSessionLineage(page.sessionLineage);
+        setHandoffs(page.handoffs ?? []);
+        setContextBoundaries(page.contextBoundaries ?? []);
+        read?.observed(page.watermark);
+        setError(undefined);
+        // A cursor pins the head it was minted at, which a later reload may
+        // have passed. The events it pages lie below that head and never
+        // change, so its page merges whatever the reader's head is now.
+        setEvents((current) => mergePages(page.events, current));
+        if (options.olderLoaded) olderLoadedRef.current = true;
+        if (options.adoptCursor) setCursor(page.nextCursor);
+        return page;
+      } catch (cause) {
+        if (controller.signal.aborted) return undefined;
+        if (requestGeneration !== generation.current) return undefined;
+        read?.failed();
+        setError(cause instanceof Error ? cause : new Error(String(cause)));
+        return undefined;
+      } finally {
+        if (
+          requestGeneration === generation.current &&
+          requestSerial === requestSerialRef.current
+        )
+          setLoading(false);
+      }
+    },
+    [apiBase, legacySessionId, observation, threadId],
+  );
 
   const loadOlder = useCallback(async () => {
     const pageCursor = cursorRef.current;
-    if (!threadId || !pageCursor) return;
-    const requestGeneration = generation.current;
-    const requestSerial = ++requestSerialRef.current;
-    const read = observation?.read(
-      threadId,
-      'older-history',
-      () =>
-        requestGeneration === generation.current &&
-        requestSerial === requestSerialRef.current,
-      activeChatsStore.getChatForExecutionSession(threadId)
-        ?.conversationActivity?.asOfSequence,
-    );
+    if (pageCursor)
+      await readOlder(pageCursor, { adoptCursor: true, olderLoaded: true });
+  }, [readOlder]);
 
-    requestControllerRef.current?.abort();
-    const controller = new AbortController();
-    requestControllerRef.current = controller;
-    setLoading(true);
-    try {
-      const page = await readConversationWindow(
-        threadId,
-        apiBase,
-        { cursor: pageCursor, turnLimit: 20 },
-        { signal: controller.signal },
-        legacySessionId,
-      );
-      if (
-        requestGeneration !== generation.current ||
-        requestSerial !== requestSerialRef.current
-      )
-        return;
-      if (read?.current() === false) return;
-      activeChatsStore.applyConversationActivity(
-        page.session?.conversationActivity,
-      );
-      setCurrentSessionId(page.currentSessionId);
-      setSessionLineage(page.sessionLineage);
-      setHandoffs(page.handoffs ?? []);
-      setContextBoundaries(page.contextBoundaries ?? []);
-      read?.observed(page.watermark);
-      setError(undefined);
-      if (page.watermark !== watermarkRef.current) {
-        await reload();
-        return;
+  // Page down from a reload's newest page until it runs unbroken to `floor`.
+  // Older pages already loaded keep their own cursor, which sits past what is
+  // held; otherwise the reader's cursor follows the fill, so Load older
+  // resumes where it stopped. Bounded: past that, Load older reads on.
+  const fillToFloor = useCallback(
+    async (cursor: string, floor: number) => {
+      const adoptCursor = !olderLoadedRef.current;
+      // Only held history can owe a gap: without older pages, the next reload
+      // replaces this page and finds its own floor.
+      pendingFloorRef.current = adoptCursor ? undefined : floor;
+      let pageCursor: string | undefined = cursor;
+      for (let pages = 0; pageCursor && pages < MAX_FILL_PAGES; pages += 1) {
+        const page = await readOlder(pageCursor, {
+          adoptCursor,
+          olderLoaded: false,
+        });
+        // Superseded or failed: the floor stays owed to the next reload.
+        if (!page) return;
+        if (contiguousFrom(page) <= floor) {
+          pendingFloorRef.current = undefined;
+          return;
+        }
+        pageCursor = page.nextCursor;
       }
-      setEvents((current) => mergePages(page.events, current));
-      olderLoadedRef.current = true;
-      setCursor(page.nextCursor);
-    } catch (cause) {
-      if (controller.signal.aborted) return;
-      if (requestGeneration !== generation.current) return;
-      read?.failed();
-      setError(cause instanceof Error ? cause : new Error(String(cause)));
-    } finally {
-      if (
-        requestGeneration === generation.current &&
-        requestSerial === requestSerialRef.current
-      )
-        setLoading(false);
-    }
-  }, [apiBase, legacySessionId, observation, reload, threadId]);
+      // Bounded or out of pages: Load older owns the rest of the gap.
+      pendingFloorRef.current = undefined;
+      if (!adoptCursor && pageCursor) setCursor(pageCursor);
+    },
+    [readOlder],
+  );
+  fillRef.current = fillToFloor;
 
   useEffect(() => {
     if (readerKeyRef.current === readerKey) return;
@@ -402,6 +515,7 @@ export function useSessionEventWindow(
     requestSerialRef.current += 1;
     requestControllerRef.current?.abort();
     olderLoadedRef.current = false;
+    pendingFloorRef.current = undefined;
     if (recoveryTimerRef.current !== undefined) {
       clearTimeout(recoveryTimerRef.current);
       recoveryTimerRef.current = undefined;

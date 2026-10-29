@@ -1,0 +1,7 @@
+{
+  "revision": "197315ba7ee8cee1bd53fbef9f15b8add6d825fe",
+
+  "notes": [
+    {"path":"docs/design/pane-relationships.md","note":"Reviewed Shell controls paragraph and SidebarAccountControl. Updated account placement after icon-only Updates; Schedule and Customize remain, Settings stays in their menus, and only the footer Live work entry is removed. Existing pane placement, owner routing and phone overflow contracts are unchanged. Footer tests pass and browser confirms account menu opens.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/project-sidebar/SidebarAccountControl.tsx"]}
+  ]
+}

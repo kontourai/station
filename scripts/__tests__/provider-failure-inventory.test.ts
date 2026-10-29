@@ -11,6 +11,11 @@ const exclusions = {
       'event_history_limit_exceeded',
       'Monitoring history read budget; surfaced as HTTP 413, not provider execution.',
     ],
+  'src-server/services/infra/workload-resources.ts:WorkloadSettingsRejectedError.code':
+    [
+      'workload_settings_invalid',
+      'Workload budget settings validation, answered 400 by PUT /api/system/workload/settings; not provider execution.',
+    ],
   'packages/contracts/src/agent-identity.ts:ReservedStationIdentityError.code':
     [
       'STATION_ID_RESERVED',

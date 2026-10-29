@@ -190,7 +190,12 @@ describe('UI-block provenance — writer/server inventory ratchet (station#1399 
       emitCalls: 1,
     },
     'src-server/services/orchestration/attached-session-follow-service.ts': {
-      appendEventCalls: 1,
+      // appendAndPublish, plus its retry that persists the unavailable-marked
+      // copy of the same event after an ingress refusal
+      // (docs/design/event-content-spill.md#residual-refusal). That copy is
+      // built from the event already passed through
+      // safeSanitizeUIBlockEventProvenance at the top of the method.
+      appendEventCalls: 2,
       emitCalls: 1,
     },
     'src-server/services/orchestration/conversation-lineage.ts': {
@@ -223,10 +228,11 @@ describe('UI-block provenance — writer/server inventory ratchet (station#1399 
 
   // The store is the sink every writer above calls, not a writer. Its
   // yielding wrapper delegates to its own appendEventIfAbsent with the
-  // event its caller already sanitized; pinning the count keeps any other
-  // self-call in the store from passing silently.
+  // event its caller already sanitized. Fork publication delegates only after
+  // rejecting every method except conversation.forked, which carries no UI blocks.
+  // Pinning both calls keeps any other self-call from passing silently.
   const EVENT_STORE_SINK = 'src-server/services/orchestration/event-store.ts';
-  const EVENT_STORE_SELF_DELEGATIONS = 1;
+  const EVENT_STORE_SELF_DELEGATIONS = 2;
 
   it('the discovered set of .appendEvent(/.appendEventIfAbsent( call sites matches the pinned list exactly', () => {
     const discovered = filesMatching(APPEND_EVENT_PATTERN).filter(

@@ -235,14 +235,11 @@ import { useHomeWorkLanes } from '../views/home/useHomeWorkLanes';
 // unmount/remount loop around that crash took the Open chats section with
 // it. Mounting the real provider keeps the status row in the tree instead
 // of stubbing the hook out from under every other consumer.
-// #2066's presence tray reads `useLiveActivityQuery`, so the real footer needs
-// a QueryClient the way it already needs KeyboardShortcutsProvider. Without
-// one the tray throws, the Boards LazyBoundary catches it, and the panel
-// renders its error alert where the section belongs — which is how main went
-// red: #2084 added the tray and #2095 added the test that mounts the real
-// sidebar, each green alone. Retries are off so a failing fetch settles in one
-// tick instead of holding the test open; the tray's own suites are where its
-// error and capability states are asserted.
+// The real sidebar reads queries, so it needs a QueryClient the way it already
+// needs KeyboardShortcutsProvider. Without one a query hook throws, a
+// LazyBoundary catches it, and the panel renders its error alert where the
+// section belongs (#2084/#2095). Retries are off so a failing fetch settles in
+// one tick instead of holding the test open.
 function renderSidebar(ui: ReactElement) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },

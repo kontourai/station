@@ -1,0 +1,7 @@
+{
+  "revision": "14341b2d324791e2722936e17985dd3d8488e9e1",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Re-reviewed after the switcher tiles' Forget rename: screenshots.spec.ts only renames the station-switcher-forget tile and its Forget copy assertions. Capture order, motion settling, gallery selection and telemetry screens this document describes are unchanged.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]}
+  ]
+}

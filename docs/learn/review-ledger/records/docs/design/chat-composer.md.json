@@ -180,7 +180,17 @@
 
     "src-ui/src/components/chat/ConversationInboxMessages.tsx",
 
-    "tests/message-delivery-recovery.spec.ts"
+    "tests/message-delivery-recovery.spec.ts",
+
+    "packages/contracts/src/engine-capability-matrix.ts",
+
+    "src-ui/src/utils/execution.ts",
+
+    "src-ui/src/components/chat-dock/ChatDockBody.tsx",
+
+    "src-ui/src/__tests__/execution.test.ts",
+
+    "src-ui/src/__tests__/ChatDockBody.offlineSettling.test.tsx"
   ],
 
   "checks": [

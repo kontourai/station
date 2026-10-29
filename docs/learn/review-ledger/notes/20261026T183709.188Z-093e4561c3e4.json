@@ -1,0 +1,9 @@
+{
+  "revision": "ecc7471b3936219a5b1298b4625ad81dfa447694",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed the pure capability accessor and anonymous descriptor cache moving into the portable client subtree. Existing SDK entrypoints forward to the single implementation, preserving shared cache, capability absence and private Insights behavior. No API or prose change is needed. Hosted portability failures are repaired without changing either scan; 46 focused source-scan/capability consumer tests and SDK/server-test typechecks passed. No new installed, native or release qualification.","inputs":["docs/reference/sdk.md","packages/sdk/src/client/private-insights.ts","packages/sdk/src/client/capability.ts","packages/sdk/src/client/publicStationCapabilities.ts","packages/sdk/src/capability.ts","packages/sdk/src/publicStationCapabilities.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Reviewed the terminal classifier using destructured observed method/provider/retriable fields for the existing deferred-retry predicate, instead of constructing a literal runtime.error object and casting its provider. Classification and SQL prefilter semantics are unchanged; the failure write inventory remains intact. Focused source-scan and capability consumer tests passed with SDK/server-test typechecks. No prose change or new runtime/release qualification.","inputs":["docs/guides/monitoring.md","src-server/services/orchestration/canonical-terminal-outcome.ts"]}
+  ]
+}

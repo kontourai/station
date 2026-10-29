@@ -1,0 +1,7 @@
+{
+  "revision": "03de66577b851284970e0e9ed397dd8487597327",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"destination-registry.ts change is comment-only; placement claims about registry, sidebar and chooser callers unaffected. No prose change.","inputs":["docs/design/placement.md","src-ui/src/app-shell/destination-registry.ts"]}
+  ]
+}

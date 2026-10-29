@@ -3,28 +3,27 @@ import type { CoreUpdateStatus } from '@kontourai/station-sdk';
 import {
   clientVersionInHostOrder,
   compareStationReleaseVersions,
-  hostNightlyAllocation,
 } from '@kontourai/station-shared/release-version-order';
 import {
+  isArchiveInstall,
   SERVICE_UPDATE_IN_FLIGHT,
-  serviceUpdateProgressLine,
 } from '../views/settings/coreUpdatePresentation';
 
 interface OfferVersions {
-  /** The raw version strings, kept for the details line. */
   client: string;
   server: string;
-  /** The same two versions in one readable form (see `readableVersions`). */
-  clientLabel: string;
-  serverLabel: string;
 }
 
 export type ServerOlderOffer =
   | { kind: 'none' }
   /** The server can update itself from here, to `target`. */
   | ({ kind: 'update'; target: string } & OfferVersions)
-  /** It cannot from here; `remedy` says how instead. */
-  | ({ kind: 'manual'; remedy: string } & OfferVersions);
+  /**
+   * It cannot from here; `remedy` says how instead, or is null when the
+   * Updates server section already shows the way (its progress, its
+   * refusal, or its Download and Restart actions).
+   */
+  | ({ kind: 'manual'; remedy: string | null } & OfferVersions);
 
 const NONE: ServerOlderOffer = { kind: 'none' };
 const ON_HOST = 'Run "station upgrade" on its host to update it.';
@@ -83,35 +82,32 @@ export function deriveServerOlderOffer(
   ) {
     return NONE;
   }
-  const [clientLabel, serverLabel] = readableVersions(
-    clientInHostOrder,
-    server,
-  );
-  const versions: OfferVersions = {
-    client: clientVersion,
-    server,
-    clientLabel,
-    serverLabel,
-  };
-  const manual = (remedy: string): ServerOlderOffer => ({
+  const versions: OfferVersions = { client: clientVersion, server };
+  const manual = (remedy: string | null): ServerOlderOffer => ({
     kind: 'manual',
     ...versions,
     remedy,
   });
 
   const progress = status.serviceUpdate;
-  if (progress && SERVICE_UPDATE_IN_FLIGHT.has(progress.state)) {
-    return manual('An update is already under way on that server.');
-  }
-  if (progress?.state === 'needs-operator') {
-    return manual(
-      serviceUpdateProgressLine(progress, status.serverIdentity?.instanceId)
-        ?.text ?? ON_HOST,
-    );
+  // The section shows an update under way, and one that needs an operator,
+  // in its own progress line.
+  if (
+    progress &&
+    (SERVICE_UPDATE_IN_FLIGHT.has(progress.state) ||
+      progress.state === 'needs-operator')
+  ) {
+    return manual(null);
   }
   if (status.selfUpdateUnavailableReason) {
+    // The section states the same refusal beside an available update.
+    const sectionStatesRefusal =
+      status.updateAvailable &&
+      (status.applyMethod === 'git-pull' || isArchiveInstall(status));
     return manual(
-      `It cannot be updated from here: ${status.selfUpdateUnavailableReason}.`,
+      sectionStatesRefusal
+        ? null
+        : `It cannot be updated from here: ${status.selfUpdateUnavailableReason}.`,
     );
   }
   if (
@@ -121,22 +117,15 @@ export function deriveServerOlderOffer(
   ) {
     if (!status.updateAvailable || !status.latestVersion) {
       const ring = status.channel ? `${status.channel} ` : '';
-      return manual(
-        `It already runs the newest ${ring}release, so there is nothing to update it to yet.`,
-      );
+      return manual(`No newer ${ring}server release yet.`);
     }
     if (!facts.identityMatches) {
       return manual(
-        'This app could not confirm which server answered. Check for server updates in Settings.',
+        'Could not confirm which server answered. Check for server updates.',
       );
     }
-    if (status.stagedUpdates) {
-      return manual(
-        status.serviceUpdate?.state === 'staged'
-          ? `Station ${status.serviceUpdate.version} is downloaded. Restart the server into it from Updates, which lists the agent turns a restart would interrupt.`
-          : 'Download the update and restart the server from Updates, which lists the agent turns a restart would interrupt.',
-      );
-    }
+    // Download, then Restart, are the section's own actions.
+    if (status.stagedUpdates) return manual(null);
     return {
       kind: 'update',
       ...versions,
@@ -166,62 +155,16 @@ function sameRelease(left: string, right: string): boolean {
   return a !== null && a === releaseCore(right);
 }
 
-const MONTHS = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'Jun',
-  'Jul',
-  'Aug',
-  'Sep',
-  'Oct',
-  'Nov',
-  'Dec',
-];
-
-/**
- * Two host-order versions in one readable form, so they read side by side: a
- * Nightly as its build date ("Nightly Oct 9, build 3"), anything else as its
- * version. The release (X.Y.Z) is named only when the two differ in it, and
- * the year only when the two dates differ in it.
- */
-export function readableVersions(
-  left: string,
-  right: string,
-): [string, string] {
-  const a = hostNightlyAllocation(left);
-  const b = hostNightlyAllocation(right);
-  const showCore = !sameRelease(left, right);
-  const showYear =
-    !!a && !!b && a.date.getUTCFullYear() !== b.date.getUTCFullYear();
-  const label = (
-    version: string,
-    allocation: ReturnType<typeof hostNightlyAllocation>,
-  ) => {
-    if (!allocation) return version;
-    const { date, build } = allocation;
-    const day = `${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}${
-      showYear ? `, ${date.getUTCFullYear()}` : ''
-    }`;
-    const core = showCore ? `${releaseCore(version)} ` : '';
-    return `${core}Nightly ${day}${build > 0 ? `, build ${build}` : ''}`;
-  };
-  return [label(left, a), label(right, b)];
-}
-
 export function serverOlderNoticeContent(
   offer: ServerOlderOffer,
-): { message: string; detail: string } | null {
+): { message: string; detail?: string } | null {
   if (offer.kind === 'none') return null;
-  const message = `This Station server runs ${offer.serverLabel}, which is older than this app (${offer.clientLabel}).`;
-  const versions = `Server ${offer.server}, app ${offer.client}.`;
+  // The server's version is in its section header. The app's is named here:
+  // a web client on another origin has no app section, and the desktop one
+  // hides its version while an app update downloads. An offered update is
+  // the section's own button, so only a remedy the section lacks is added.
   return {
-    message,
-    detail:
-      offer.kind === 'update'
-        ? `${versions} Review the server update to ${offer.target} below. Updating downloads and verifies it, tries it, and keeps the current version if it does not start. The server restarts during the update.`
-        : `${versions} ${offer.remedy}`,
+    message: `Server is older than this app (${offer.client}).`,
+    detail: offer.kind === 'manual' ? (offer.remedy ?? undefined) : undefined,
   };
 }

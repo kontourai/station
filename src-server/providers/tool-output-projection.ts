@@ -1,4 +1,5 @@
 import type { ToolOutputReceipt } from '@kontourai/station-contracts/runtime-events';
+import { splitJsonTextByEscapedBytes } from '../utils/json-text-bytes.js';
 import {
   INLINE_IMAGE_DATA_PLACEHOLDER,
   redactInlineData,
@@ -166,17 +167,14 @@ export function truncateJsonString(
   };
 }
 
-/** Split a string into byte-bounded chunks that reassemble to the original. */
+/**
+ * Split a string into chunks that reassemble to the original, each of whose
+ * JSON encoding (quotes and escapes included) fits `maxChunkBytes`. One
+ * linear pass: the previous re-truncation of the remainder was quadratic
+ * (seconds of event-loop time for a multi-megabyte transcript record).
+ */
 export function utf8Chunks(value: string, maxChunkBytes: number): string[] {
-  const chunks: string[] = [];
-  let remaining = value;
-  while (remaining) {
-    const chunk = truncateJsonString(remaining, maxChunkBytes).value;
-    if (!chunk) break;
-    chunks.push(chunk);
-    remaining = remaining.slice(chunk.length);
-  }
-  return chunks;
+  return splitJsonTextByEscapedBytes(value, maxChunkBytes - 2);
 }
 
 /**

@@ -1,0 +1,7 @@
+{
+  "revision": "bc956eb745f249cb63216f38296775def58f778f",
+
+  "notes": [
+    {"path":"docs/guides/code-hygiene.md","note":"Only change to component-style-hygiene-baseline.json is removal of entries for deleted ProjectSidebarPresenceTray.css/.tsx; guide's baseline and ratchet rules unchanged. lint:component-style passes.","inputs":["docs/guides/code-hygiene.md","scripts/component-style-hygiene-baseline.json"]}
+  ]
+}

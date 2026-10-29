@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
+import { ANDROID_INSETS_EVENT } from '@kontourai/station-shared/visual-viewport';
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 import {
   installVisualViewportInset,
   useMobileVisualViewport,
 } from '../hooks/useMobileVisualViewport';
-import { ANDROID_INSETS_EVENT } from '../platform/androidSafeArea';
 
 afterEach(() => {
   cleanup();

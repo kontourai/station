@@ -34,6 +34,7 @@ import { ImageInspector } from '../components/ImageInspector';
 import { CheckGlyph, CopyGlyph } from '../components/icons/Glyph';
 import { LazyBoundary } from '../components/LazyBoundary';
 import { Empty, ErrorState, SkeletonBlock } from '../components/state';
+import { ToolControls } from '../components/ToolControls';
 import { useNavigation } from '../contexts/NavigationContext';
 import { langFromFilePath } from '../highlight/langFromFilePath';
 import {
@@ -716,11 +717,13 @@ function FilePreviewSourceLines({
         </p>
       )}
       {goTo.open && (
-        <FilePreviewGoToLine
-          lines={lines}
-          stateKey={stateKey}
-          onClose={goTo.close}
-        />
+        <ToolControls>
+          <FilePreviewGoToLine
+            lines={lines}
+            stateKey={stateKey}
+            onClose={goTo.close}
+          />
+        </ToolControls>
       )}
       <section
         aria-label={`${state.path} source`}

@@ -1,0 +1,7 @@
+{
+  "revision": "481e605ed4fd7feda8d9d8ae3dfcdf35e822edbb",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Management-screen sentence now says Settings is reached through the account menu and Customize; the footer gear is removed. Checked ProjectSidebarFooter (no Settings control), SidebarAccountControl/ProfileMenu (Open settings row) and destination-registry customizeNav for settings (listed in Customize). Merge of origin/main 4a2aace brought unrelated edits to this file (#4242, #4167); no conflict with this sentence. Focused footer/sidebar units pass 80/80.","inputs":["docs/design/settings-architecture.md"]}
+  ]
+}

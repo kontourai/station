@@ -86,7 +86,10 @@ function projectToolCompletedEvent(
   >,
 ): ToolResultProjectionOutcome {
   const output = inertText(event.output);
-  const text = output ?? event.error;
+  // The descriptor read joins spilled text, so `error` is a string here; a
+  // reference that reached this seam unresolved is not shown as the error.
+  const text =
+    output ?? (typeof event.error === 'string' ? event.error : undefined);
   const authorityDecision =
     event.policyDenied === true && event.status !== 'success'
       ? { decision: 'denied' as const, authority: 'kontourai.station' }

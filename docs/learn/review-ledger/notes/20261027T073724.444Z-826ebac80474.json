@@ -1,0 +1,7 @@
+{
+  "revision": "3a71d62a3fa80c4c8fc697acde28e70aa0aa15d7",
+
+  "notes": [
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"Its readSessionMessages/lineage method index lines remain accurate for the existing methods; the new private readSessionSeedMessages forwarder and lineage dep add no decomposition claim this map makes. No prose change.","inputs":["docs/design/orchestration-decomposition-map.md","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

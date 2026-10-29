@@ -294,17 +294,55 @@ export function queryTranscriptMessagePage(
   },
 ) {
   const ownerIds = transcriptOwnerIds(options);
+  // The continuation's offset is read before the query so SQLite returns
+  // only the requested page; its revision is checked against the row below.
+  let cursor: { revision: string; offset: number } | undefined;
+  if (options.continuation !== undefined) {
+    const parsed = JSON.parse(
+      Buffer.from(options.continuation, 'base64url').toString('utf8'),
+    );
+    if (
+      !parsed ||
+      typeof parsed !== 'object' ||
+      Array.isArray(parsed) ||
+      Object.keys(parsed).length !== 2 ||
+      typeof parsed.revision !== 'string' ||
+      !Number.isSafeInteger(parsed.offset) ||
+      parsed.offset <= 0 ||
+      parsed.offset % TRANSCRIPT_PAGE_CHARS !== 0
+    )
+      throw new TranscriptReadLimitError('Message continuation is unavailable');
+    cursor = parsed;
+  }
+  const offset = cursor?.offset ?? 0;
+  // A prompt or reply EventStore stored out of line
+  // (docs/design/event-content-spill.md) is read from its content row. The
+  // page is cut in SQL (SQLite counts characters as code points, the same
+  // unit as `Array.from`), so the worker never holds a whole long body.
+  const spilled = (field: string) =>
+    `(json_extract(e.payload, '${field}."$stationContent"') = 1 AND json_extract(e.payload, '${field}.kind') = 'string')`;
+  const spilledBody = (field: string) =>
+    `(SELECT spill.body FROM orchestration_event_content AS spill
+       WHERE spill.thread_id = e.thread_id AND spill.digest = json_extract(e.payload, '${field}.ref'))`;
   const content = `CASE WHEN json_valid(e.payload) THEN CASE e.method
-    WHEN 'turn.started' THEN CASE WHEN json_type(e.payload, '$.prompt') = 'text' THEN json_extract(e.payload, '$.prompt') END
-    WHEN 'turn.completed' THEN CASE WHEN json_type(e.payload, '$.outputText') = 'text' THEN json_extract(e.payload, '$.outputText') END END END`;
-  const bounded = (field: string, max: number) =>
-    `CASE WHEN length(CAST(${field} AS BLOB)) <= ${max} THEN ${field} END`;
+    WHEN 'turn.started' THEN CASE WHEN ${spilled('$.prompt')} THEN ${spilledBody('$.prompt')}
+      WHEN json_type(e.payload, '$.prompt') = 'text' THEN json_extract(e.payload, '$.prompt') END
+    WHEN 'turn.completed' THEN CASE WHEN ${spilled('$.outputText')} THEN ${spilledBody('$.outputText')}
+      WHEN json_type(e.payload, '$.outputText') = 'text' THEN json_extract(e.payload, '$.outputText') END END END`;
+  const spilledRef = `CASE e.method
+    WHEN 'turn.started' THEN CASE WHEN ${spilled('$.prompt')} THEN json_extract(e.payload, '$.prompt.ref') END
+    WHEN 'turn.completed' THEN CASE WHEN ${spilled('$.outputText')} THEN json_extract(e.payload, '$.outputText.ref') END END`;
+  const bounded = (value: string, max: number) =>
+    `CASE WHEN length(CAST(${value} AS BLOB)) <= ${max} THEN ${value} END`;
   const row = db
     .prepare(`SELECT e.method,
-    ${bounded(content, 131072)} AS content,
+    ${spilledRef} AS spilled_ref,
+    CASE WHEN (${spilledRef}) IS NULL THEN ${bounded(content, 131072)} END AS content,
+    length(${content}) AS content_chars,
+    substr(${content}, ?, ${TRANSCRIPT_PAGE_CHARS}) AS page,
     ${bounded('h.agent_slug', 256)} AS agent_slug,
     ${bounded('h.project_slug', 256)} AS project_slug,
-    (length(CAST(${content} AS BLOB)) > 131072 OR
+    ((${spilledRef}) IS NULL AND length(CAST(${content} AS BLOB)) > 131072 OR
      coalesce(length(CAST(h.agent_slug AS BLOB)), 0) > 256 OR
      coalesce(length(CAST(h.project_slug AS BLOB)), 0) > 256) AS oversized
     FROM orchestration_events e
@@ -312,6 +350,7 @@ export function queryTranscriptMessagePage(
     WHERE e.thread_id = ? AND e.id = ? AND e.method IN ('turn.started', 'turn.completed')
       AND h.owner_user_id IN (${ownerIds.map(() => '?').join(', ')}) AND (? IS NULL OR h.tenant_id = ?) LIMIT 1`)
     .get(
+      offset + 1,
       options.threadId,
       options.matchedEventId,
       ...ownerIds,
@@ -320,59 +359,53 @@ export function queryTranscriptMessagePage(
     ) as
     | {
         method: string;
+        spilled_ref: string | null;
         content: string | null;
+        content_chars: number | null;
+        page: string | null;
         agent_slug: string | null;
         project_slug: string | null;
         oversized: number;
       }
     | undefined;
   if (!row) return null;
-  if (row.oversized || typeof row.content !== 'string')
+  if (
+    row.oversized ||
+    typeof row.page !== 'string' ||
+    typeof row.content_chars !== 'number' ||
+    (row.spilled_ref === null && typeof row.content !== 'string')
+  )
     throw new TranscriptReadLimitError('Canonical message is unavailable');
   const role =
     row.method === 'turn.started' ? ('user' as const) : ('assistant' as const);
+  // An inline body revises by its text; a spilled body by its content
+  // digest, which already hashes the text.
   const contentRevision = createHash('sha256')
     .update(
       JSON.stringify([
         options.threadId,
         options.matchedEventId,
         role,
-        row.content,
+        row.spilled_ref === null ? row.content : `spilled:${row.spilled_ref}`,
         row.agent_slug,
         row.project_slug,
       ]),
     )
     .digest('hex');
-  let offset = 0;
-  if (options.continuation !== undefined) {
-    const cursor = JSON.parse(
-      Buffer.from(options.continuation, 'base64url').toString('utf8'),
-    );
-    if (
-      !cursor ||
-      typeof cursor !== 'object' ||
-      Array.isArray(cursor) ||
-      Object.keys(cursor).length !== 2 ||
-      cursor.revision !== contentRevision ||
-      !Number.isSafeInteger(cursor.offset) ||
-      cursor.offset <= 0 ||
-      cursor.offset % 4096 !== 0
-    )
-      throw new TranscriptReadLimitError('Message continuation is unavailable');
-    offset = cursor.offset;
-  }
-  const characters = Array.from(row.content);
-  if (offset > 0 && offset >= characters.length)
+  if (cursor && cursor.revision !== contentRevision)
     throw new TranscriptReadLimitError('Message continuation is unavailable');
-  const nextOffset = offset + 4096;
+  const characters = row.content_chars;
+  if (offset > 0 && offset >= characters)
+    throw new TranscriptReadLimitError('Message continuation is unavailable');
+  const nextOffset = offset + TRANSCRIPT_PAGE_CHARS;
   return {
     sessionId: options.threadId,
     matchedEventId: options.matchedEventId,
     role,
-    text: characters.slice(offset, nextOffset).join(''),
+    text: row.page,
     contentRevision,
     offset,
-    ...(nextOffset < characters.length
+    ...(nextOffset < characters
       ? {
           nextContinuation: Buffer.from(
             JSON.stringify({ revision: contentRevision, offset: nextOffset }),
@@ -383,6 +416,9 @@ export function queryTranscriptMessagePage(
     ...(row.agent_slug ? { agentSlug: row.agent_slug } : {}),
   };
 }
+
+/** Characters per transcript message page. */
+const TRANSCRIPT_PAGE_CHARS = 4096;
 
 /** Opaque FTS scope terms keep user/tenant postings disjoint from body terms. */
 function messageSearchScopeKey(

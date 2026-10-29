@@ -1,8 +1,9 @@
 # Station product telemetry receiver
 
 This optional companion accepts Station's disclosed product observations and
-stores them in PostgreSQL. It is separate from the OTel Collector and from
-personal usage accounting. See [Monitoring & Telemetry](../../docs/guides/monitoring.md).
+stores them in PostgreSQL. Product ingestion is separate from the OTel Collector
+and canonical personal usage accounting. An isolated private usage storage
+namespace is described below; Core retains person and source authorization. See [Monitoring & Telemetry](../../docs/guides/monitoring.md).
 
 **Status: source implementation; not yet a qualified deployment.** Lite receiver
 diagnostics, the existing bundled qualifier, hosted checks and deployment
@@ -15,10 +16,171 @@ Transactions use a local `pg_catalog` search path while accessing explicitly
 qualified application tables. Schema validation therefore does not depend on
 the login role's default search path, including the deployment role named
 `station_telemetry`. The caller's session setting is restored after the transaction.
-HTTP 202 means PostgreSQL acknowledged the transaction's commit; a disconnected
+For product ingestion, HTTP 202 means PostgreSQL acknowledged the transaction's commit; a disconnected
 or timed-out commit returns a failure. Retrying the same source/event UUID with
 the same observation does not insert another event. Reusing an ID with different
 content returns 409. This deduplication lasts only while the event is retained.
+
+## Private usage storage
+
+**Source implementation only.** Core has explicit page capture/recovery,
+bounded receipt indexing and summaries, principal-owned saved views, and
+Insights/enrollment UI. Those consumers recheck current person/source authority;
+this store does not establish it. Real deployment, installed/native and release
+qualification remain unfinished. The store accepts canonical usage pages and
+derives bounded summaries; it does not calculate billing.
+
+Private data lives in `station_private_usage`, outside all product/Lite queries.
+The operator service can POST `/v1/operator/private-usage-vaults` with exactly
+`{credentialHash}` to register an empty bucket. It receives `created` and the
+private store's `receiverEpoch`, never the key. Operator/product credentials
+cannot read or write private pages. Only the matching opaque
+`Authorization: Bearer stai_<32-byte-base64url-key>` binds a source and accesses
+that bucket. Core must keep this purpose-specific key in the verified person's
+analytics custody; this is storage capability ownership, not a second person
+registry or a replacement for source grants.
+
+POST `/v1/private-usage/pages` takes `PrivateUsageCommit`: an operation UUID,
+expected receiver epoch/checkpoint, immutable source binding, captured export
+query/page and source mutation revision. The page decoder rejects content fields,
+foreign source/scope/snapshot and invalid provenance/money. PostgreSQL commits
+observations, checkpoint and operation receipt together. Latest matching operation
+replay returns its historical receipt without advancing twice. Different content
+under one operation or observation identity conflicts. Unprovisioned keys, changed
+source epochs, stale checkpoints, incomplete checkpoint evidence and missing
+schema refuse. A new empty store gets a new epoch and rejects prepared writes
+for its previous incarnation. `restartSnapshot:true` permits a fresh first page
+under the expected checkpoint without erasing prior observations; it never
+bypasses CAS, source binding or receiver epoch checks. That epoch is copied by backups and **does not
+fence restored or regrown backups**; private restore reconciliation remains open.
+
+GET `/v1/private-usage/checkpoint?from=YYYY-MM-DD&to=YYYY-MM-DD` returns the store
+epoch and committed checkpoint, or null before that window's first commit.
+GET `/v1/private-usage/commits/<operationId>` recovers a lost reply. A receipt is a
+historical commit result, not current storage/source health. GET
+`/v1/private-usage/observations?after=0&highWater=<optional-fixed-head>` pages at
+most 100 stored observations with their captured source revisions. It explicitly
+reports `sourceAuthority:"not-verified-by-storage"` and retained-only coverage.
+Core must validate the current person/source and index state before presenting
+live Insights. Independent keys have independent observation namespaces, even
+when canonical event/receipt IDs collide.
+
+Storage is bounded to 1,000 buckets, 10,000 operation receipts per bucket, the
+configured observation/database limits, 2 MiB bodies and bounded admission.
+Retained copies use the approved 1–90 days from first storage; replay does not
+renew age. Live-mirror rows are unreadable after the source binding expires.
+Expired rows are filtered on reads and physically pruned before listening and
+during the existing 30-second maintenance cycle. Offline storage is pruned when
+restarted. Checkpoint/receipt metadata may remain for reconciliation. DELETE
+`/v1/private-usage/vault` erases that key's facts/checkpoints/receipts and retains a
+revoked bucket tombstone; operator provisioning cannot reactivate it.
+
+Focused tests use PostgreSQL semantics through PGlite and mounted HTTP handlers.
+They cover rollback between row insertion and checkpoint, lost-reply recovery,
+stale writers, namespace isolation, conflicting data, retention, erasure and
+missing evidence. They do not prove TCP/fsync, process/host crash recovery,
+current source authentication, restored-backup fencing or release qualification.
+The existing product-only restore command does not reconcile private usage.
+
+### Apply private invalidations
+
+The private schema's version-two migration preserves version-one pages,
+checkpoints and receiver epoch. Existing bound buckets begin journal replay at
+zero; the upgrade does not assume their deletion history was applied. New
+buckets initialize their replay baseline from the first authorized fact snapshot.
+Older binaries refuse the newer schema; downgrading requires a compatible backup
+and explicit reconciliation.
+
+POST `/v1/private-usage/invalidations` accepts
+`PrivateUsageInvalidationCommit` under the same private capability. It binds an
+operation ID, expected receiver epoch and expected journal position to a strict
+source invalidation page. The source Station/scope/epoch must match the bucket,
+and replay continuation retains its fixed high water. Withdrawals remove only
+observations captured at a source revision earlier than the invalidation;
+newer authorized captures of the same thread remain. A consented terminal
+observation names its thread and is withdrawn only with that thread. Other
+unattributed empty observations are withdrawn conservatively. Scope-entry records return thread
+refresh/backfill requirements instead of deleting facts.
+
+Withdrawal, capacity accounting, replay checkpoint and operation receipt commit
+in one transaction. Matching operation replay returns its historical receipt;
+changed payload or stale positions conflict. GET
+`/v1/private-usage/invalidation-commits/<operationId>` recovers a lost reply.
+The ordinary checkpoint response also includes `journal` (null before binding).
+Retained receipts witness journal position; missing evidence fails closed.
+A delayed fact write captured before the applied journal position is rejected,
+including writes for another date window, so old in-flight pages cannot
+resurrect withdrawn facts. Owner erasure removes both kinds of receipt.
+
+Core's sync action calls this transaction with durable intent, receipt-first
+recovery and a final current-source check. It drains one bounded replay page
+before advancing facts; pruned source checkpoints require reconciliation. Historical
+stored observations and fact-capture status do not establish a current live
+index. Real PostgreSQL/TCP/crash
+qualification and copied-backup restore fencing remain separate work.
+
+### Query canonical captured receipts
+
+Private POST `/v1/private-usage/receipts/query` accepts the strict
+`station-private-usage-receipt-query/v1` request: receiver incarnation, complete
+window checkpoint, source mutation revision/high water, dates and optional index
+UUID/receipt cursor. Core supplies these fences after current source/person
+checks; a bucket capability alone is not source authority.
+
+Schema v3 adds a selected-window derived index without rewriting v1/v2 data.
+Each action scans at most 100 retained observations in numeric commit order and
+uses the shared receipt reconciler. Partial derivation returns `indexing` with no
+rows. Ready pages contain at most 100 normalized receipts, retain mixed-money
+provenance and never sum raw cumulative observations. Changing capture/window or
+withdrawal invalidates the view; expiry, pruning and owner erasure also discard
+derived copies. Missing count/progress evidence refuses. Up to four index windows per
+bucket and the existing database/admission budgets bound this cache.
+
+Core exposes the receiving-person query, including queued source-revocation
+checks and explicit pinned-view freshness. Saved views, Insights UI and real
+managed deployment qualification remain open. Neither a ready index nor its
+retained-only coverage is a claim of complete provider history or an invoice.
+
+### Resumable grouped totals
+
+Query `mode:"summary"` derives full-window totals from normalized receipts, not
+from a receipt page or the interactive 500-receipt limit. `groupBy` supports
+provider/model/Station/day; exact provider/model/account-key filters use actual
+attribution. Each action advances at most 1,000 receipts, atomically storing
+cursor, count witness and canonical accumulator. `aggregating` releases no rows;
+`ready` pages completed groups independently from drilldown. Filter/group changes
+require a matching summary ID or a new summary.
+
+Schema v4 discards only old derived caches during upgrade, preserving facts,
+checkpoints, grants and operation evidence. Composite index identities and
+cascade deletion keep comparison windows independent and remove grouped copies
+with their source index. Four windows and eight summaries per index, 1,000 groups
+and a 1 MiB accumulator bound cache growth. The database/admission/deadline limits
+still apply. Summary-state loss or count disagreement refuses instead of returning
+an apparently complete total. The shared accumulator preserves sparse/cumulative
+reconciliation's results, currencies and price provenance. Saved views, UI,
+restore fencing and real PostgreSQL/native/release qualification remain open.
+
+### Consented terminal outcomes
+
+A bucket whose binding carries `operationalConsent:"terminal-outcomes/v1"`
+stores consented commits' canonical terminal facts as ordinary observations.
+They contain only class, engine family, Station-observed time and opaque IDs.
+The contract decoder refuses a terminal field without that consent in the
+binding, query and page alike. Schema v5 adds only a partial index over those
+rows; v1–v4 digests and data are unchanged.
+
+Private POST `/v1/private-usage/outcomes/query` accepts the strict
+`station-private-operational-outcomes-query/v1` request. It carries the same
+receiver/checkpoint/source-revision/high-water fences as the receipt query and
+`groupBy` (`engine` or `day`). It returns
+`station-private-operational-outcomes/v1` with up to 400 rows, the observed-turn
+denominator and `retained-terminal-observations-only` coverage. Each
+thread/turn counts once by its latest committed terminal, so replay and
+restatement do not double-count. A bucket without consent returns 403
+`private_usage_consent_required`. Withdrawal, retention, expiry and erasure
+apply because the facts are the same rows; there is no separate derived cache.
+Real PostgreSQL/TCP and installed-companion qualification remain open.
 
 ## Run privately
 
@@ -75,6 +237,51 @@ keys cannot submit source events. Rotating the operator key requires restarting
 the receiver; rotating a source means provisioning a fresh source and revoking
 the old one.
 
+After restoring a compatible database, keep receivers stopped and run
+`node packages/telemetry-broker/dist/main.mjs --fence-product-sources-after-restore`
+with the same private credential configuration. This one-shot operator command
+validates existing schema without migrations, revokes active product-source
+credentials, closes its pool and exits without serving HTTP or starting
+maintenance. It emits `station-product-restore-fence/v1` with product-only scope
+and an explicit unreconciled publisher state. No-argument serving is unchanged;
+unknown command arguments refuse startup. Observations and publisher privacy
+state are not modified. See the [restore boundary](../../deployment/telemetry/README.md#backup-restore-and-upgrade-acceptance)
+for snapshot rollback risks, enrollment and remaining qualification limits.
+
+For the supported product/diagnostic-only managed restore, stop **all** receiver
+processes and disable receiver network access before opening the restored copy.
+Run `node packages/telemetry-broker/dist/main.mjs --fence-managed-restore` with
+the private credential configuration. Recreate every receiver process only after
+success. The command starts no HTTP listeners or maintenance timers. It migrates
+compatible supported older schemas and fences in one transaction, without first
+running ordinary startup or refreshing copied credentials. It revokes copied
+product source credentials, deletes publisher keys, and permanently suppresses
+Lite ingestion (including feedback), finalization and public/publisher aggregate
+publication. Product ingestion can use freshly enrolled source credentials;
+operator product and exact Lite queries, retention and privacy erasure remain
+available. Sealed publications, noise keys and product commit receipts remain.
+
+Migration 9 adds a digest-checked singleton publication fence; private usage
+keeps its independent schema 6. Missing/malformed fence state refuses startup.
+No supported enrollment, restart, migration or configuration clears suppression.
+Aggregate responses have no cells or cursors and use `no-store`, including a
+request for a previously cached page. The receipt labels the state exactly
+`publication permanently suppressed; history unreconciled`. It does not claim
+publisher privacy reconciliation. Every managed restore must reapply this
+command, even if a restored snapshot predates the fence.
+
+The command validates private receiver identity and refuses any copied private
+vault, including revoked or unbound credentials, with
+`private_restore_unsupported`; its transaction rolls back. Keep that receiver
+stopped and network-disabled: private receiving-authority restore reconciliation
+is not implemented by this command. An empty private receiver identity alone
+is not private vault custody. This profile provides no live response draining,
+arbitrary SQL/VM rollback protection, or old-binary guarantee. Previously
+released data cannot be retracted. The existing product-only command above
+continues to leave publisher and private state unreconciled. Existing v1
+qualification does not qualify the new suppression profile; runtime and fault
+proof remain separate verification work.
+
 The [private companion profile](../../deployment/telemetry/README.md) composes
 an explicit standalone image target and separate pinned diagnostic stores.
 Its source exists; image/configuration/runtime and upgrade/restore qualification
@@ -94,9 +301,20 @@ described under [Lite observations](#lite-observations).
 | `POST /v1/operator/sources` | Operator Bearer key; JSON `{id, label, credentialHash}` provisions a UUID source and a lowercase SHA-256 key digest |
 | `DELETE /v1/operator/sources/:id` | Operator Bearer key; commits revocation, fenced against concurrent ingestion |
 | `GET /v1/operator/trends?from=...&to=...` | Operator Bearer key; UTC ISO bounds, at most 365 days and 1,000 aggregate rows |
+| `GET /v1/operator/incidents?from=...&to=...` | Operator Bearer key; ISO bounds, at most 365 days and 1,000 build/classification groups |
 | `POST /v1/product/events` | Source `x-api-key`; strict v1 disclosed batch; 202 returns a committed receipt |
 | `POST /v1/product/probes` | Source `x-api-key`; content-free v1 probe checks source authority and compatible storage without inserting a source, observation or receipt |
 | `GET /v1/product/receipts/:id` | Source `x-api-key`; only that source's receipt, otherwise 404 |
+
+Incident groups use retained received product observations, with separate
+succeeded/failed/aborted/unresolved/unknown populations, an observed denominator,
+distinct reported installation count, first/last problem times and immutable
+build provenance. Probes contribute no observations; delivery coverage is unknown.
+A group limit failure is an error, not a complete-looking truncated report.
+No installation IDs, private source identity, prompts, paths or raw stack traces
+are returned. Core mediates the operator query and owns local GitHub references;
+the receiver neither publishes issues nor stores those references. See
+[incident handoff](../../docs/guides/monitoring.md#review-an-incident-draft).
 
 Set Station's `STATION_PRODUCT_TELEMETRY_ENDPOINT` to the full
 `/v1/product/events` URL and `STATION_PRODUCT_TELEMETRY_KEY` to its source key.

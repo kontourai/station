@@ -8,7 +8,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { useElapsedClock } from '../../hooks/useElapsedClock';
-import { prefersReducedMotion } from '../../lib/reduced-motion';
+import { motionTokenMs, prefersReducedMotion } from '../../lib/reduced-motion';
 import { formatDuration } from '../../utils/relativeTime';
 import type { ChatStatus } from './chatStatus';
 import {
@@ -233,12 +233,10 @@ export function ChatStatusPill({
     )
       return;
     const style = getComputedStyle(element);
-    const duration = style.getPropertyValue('--motion-base').trim();
     resizeAnimation.current = element.animate(
       [{ width: `${previous}px` }, { width: `${width}px` }],
       {
-        duration:
-          Number.parseFloat(duration) * (duration.endsWith('ms') ? 1 : 1000),
+        duration: motionTokenMs(style, '--motion-base'),
         easing: style.getPropertyValue('--ease-standard').trim(),
       },
     );

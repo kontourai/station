@@ -51,9 +51,8 @@ vi.mock('../../../contexts/useShowSurface', () => ({
   useShowSurface: () => vi.fn(),
   useShowSurfacePage: () => vi.fn(),
 }));
-// Activity no longer mounts the host-wide collaborator roster (the sidebar
-// footer's presence tray shows it). Any live-activity read from this surface
-// would be that roster coming back.
+// Activity no longer mounts the host-wide collaborator roster. Any
+// live-activity read from this surface would be that roster coming back.
 vi.mock('@kontourai/station-sdk/live-activity', () => ({
   useLiveActivityQuery,
 }));

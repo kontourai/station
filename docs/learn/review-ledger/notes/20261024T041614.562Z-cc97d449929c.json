@@ -1,0 +1,11 @@
+{
+  "revision": "9691f2312da6b80077a60700267b66a21346fd1b",
+
+  "notes": [
+    {"path":"deployment/telemetry/README.md","note":"Reviewed private payload preparation from the production archive caller through unchanged-inode bounded descriptor reads, process-group tar stdout capture, fixed destination writes, inventory/source verification, file/directory sync and durable receipt. Real packaged TAR passed; signed corrupt bundle, foreign source and symlink variants returned failed receipts without payloadPrepared. This is file preparation, not runtime, installation, release or native qualification.","inputs":["deployment/telemetry/README.md","packages/contracts/src/telemetry-delivery.ts","scripts/__tests__/package-telemetry-companion.test.ts","scripts/package-telemetry-companion.mjs","src-server/services/telemetry-companion-archive.ts","src-server/services/telemetry-companion-extract.ts","src-server/utils/process-group-exec.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Reviewed the companion pane and captured-authority SDK receipt decoder: optional payloadPrepared:true is shown separately from archive authentication and never creates an Install action. Existing lost-reply recovery now decodes and displays the field through the mounted route; eight pane tests passed. Historical receipt evidence is not fresh installation authority. No native/browser or service-start qualification claimed.","inputs":["docs/guides/monitoring.md","packages/sdk/src/query-domains/telemetryDelivery.ts","src-server/services/telemetry-companion-extract.ts","src-ui/src/views/developer/CompanionArchivePreparation.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed optional literal payloadPrepared:true against contracts, server receipt schema and SDK strict receipt decoder. It requires authenticated phase; omitted older receipts remain accepted. Mounted lost-response recovery consumes the field and displays prepared files without installation controls. SDK, server-tests and UI typechecks passed. Archive/file preparation grants no installation or personal-source authority.","inputs":["docs/reference/sdk.md","packages/sdk/src/query-domains/telemetryDelivery.ts","src-server/services/telemetry-companion-archive.ts","src-ui/src/views/developer/CompanionArchivePreparation.tsx"]}
+  ]
+}

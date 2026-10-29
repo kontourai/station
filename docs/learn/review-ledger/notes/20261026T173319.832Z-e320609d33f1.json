@@ -1,0 +1,25 @@
+{
+  "revision": "c3f78152a2214e7f4b58e7146f0c0edb7ae2a6f0",
+
+  "notes": [
+    {"path":"deployment/telemetry/README.md","note":"Reviewed the linked deployment-guide corrections against the canonical schema-9 profile. Historical diagnostic evidence, permanent publication suppression and unsupported in-place rollback retain their stated limits; no new installed or release acceptance.","inputs":["deployment/telemetry/README.md","docs/guides/deployment.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Rechecked operational contract callers after explicit validated-field returns and private-only publication helper exports. The decoder wire constraints, storage fencing, ownership and qualification limits are unchanged; no new runtime evidence.","inputs":["docs/architecture/module-map.md","packages/contracts/src/usage-export.ts","packages/telemetry-broker/src/lite-store.ts"]},
+
+    {"path":"docs/design/automations.md","note":"Reviewed the proposal ingress assumptions against deployment and threat-model edits. Changes describe personal analytics admission and schema-9 telemetry operation; they do not authorize Funnel, Automation intake or execution. Retained proposal/foundation limits remain accurate; no runtime qualification.","inputs":["docs/design/automations.md","docs/guides/deployment.md","docs/security/remote-access-threat-model.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed the dynamic entrypoint addition: withTelemetryStation launches scripts/lib/telemetry-station-child.mjs through a constructed node path. Declaring this real child follows the documented entrypoint contract; no finding baseline or ignore rule was weakened.","inputs":["docs/guides/code-quality.md",".fallowrc.json#/dynamicallyLoaded"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Rechecked the operational parser and publisher fence owner after validated-field construction and removal of file-internal exports. Wire rejection rules and source/storage authority boundaries are unchanged. Contracts types and 51 consumer tests passed; broker types passed. No private two-Station, native or release qualification.","inputs":["docs/guides/monitoring.md","packages/contracts/src/usage-export.ts","packages/telemetry-broker/src/lite-store.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Rechecked operational outcome request/response fields after replacing double casts with explicit validated-field returns. Routes and strict wire semantics are unchanged; contracts types and 51 consumer tests passed, without new installed runtime acceptance.","inputs":["docs/reference/api.md","packages/contracts/src/usage-export.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed explicit operational query/summary construction and typed row validation against callers. The same wire checks are retained without double casts; contracts typecheck and 51 consumer tests passed. No broader authority or deployment claim.","inputs":["docs/reference/contracts.md","packages/contracts/src/usage-export.ts"]},
+
+    {"path":"docs/reference/deploy-ledger.md","note":"Checked generated Markdown byte equality with renderLedgerMarkdown over its canonical JSON and retained ledger provenance/caveats. This reviews the existing projection, not new artifact publication or independent verification of every historical release.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]},
+
+    {"path":"docs/reference/sdk.md","note":"Rechecked operational decoder consumers after behavior-preserving validated-field returns. Existing typed reader, principal-scoped hook, capability refusal and coverage limits remain accurate; contracts types and 51 consumer tests passed, not consent-to-installed-UI acceptance.","inputs":["docs/reference/sdk.md","packages/contracts/src/usage-export.ts"]},
+
+    {"path":"packages/telemetry-broker/README.md","note":"Reviewed publication fence helper exports becoming file-private: all real internal callers remain, with no schema, SQL, cache or wire behavior change. Broker typecheck passed. Existing source-only private-storage and diagnostic/install-authority limits remain accurate.","inputs":["packages/telemetry-broker/README.md","packages/telemetry-broker/src/lite-store.ts"]}
+  ]
+}

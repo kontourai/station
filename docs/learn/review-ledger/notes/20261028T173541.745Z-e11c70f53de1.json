@@ -1,0 +1,145 @@
+{
+  "revision": "be87f9975512de0bfe0d146205fdd99aa1b0dda9",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["deploy/public-ingress/README.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/README.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/README.md","docs/architecture/module-map.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/adr/0017-browser-preview-host.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/architecture.md","src-server/runtime/conversation/runtime-event-log.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the Monitoring history section against RuntimeEventLog.queryEvents (owner id set), monitoringReadOwnerIds, and the runtime-routes resolver readableMonitoringOwnerIds; added the owner-scoping sentence. Other sections cite runtime-routes.ts for unrelated wiring this change does not touch.","inputs":["docs/architecture/module-map.md","src-server/runtime/conversation/runtime-event-log.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/runtime/conversation/runtime-event-log.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/runtime/conversation/runtime-event-log.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/design/answer-share-permalinks.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/design/browser-preview-host-spike.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/design/browser-preview-pane-mvp.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/design/channel-home-authority.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/design/local-bootstrap-token.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/design/operator-device-access.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/design/project-membership.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/design/task-room-agent-requests.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/design/terminal.md","docs/reference/api.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/glossary.md","docs/architecture/module-map.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/guides/browser-workspace.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/guides/delegation-attempt-claims.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/guides/deployment-authentication.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/guides/deployment.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/guides/home-transfer-controller.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/guides/local-collaboration-lab.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/guides/machine-relationships.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/guides/mobile-device-workspace.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Checked the local monitoring events row and the station.user.id key description against the emitter, OTLP receiver and the new principal owner-set read in monitoring.ts/insights.ts; the claims stay accurate, no prose change.","inputs":["docs/guides/monitoring.md","src-server/routes/operations/insights.ts","src-server/routes/operations/monitoring.ts","src-server/runtime/conversation/runtime-event-log.ts","src-server/runtime/routes/__tests__/runtime-routes-device-session-chat-principal.test.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/guides/operator-passkeys.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/guides/private-runner-partition.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/guides/product-law-authoring.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/guides/repository-layout.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/guides/self-configuring-agent.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/guides/starter-work.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/guides/walkthroughs.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/guides/web-push-notifications.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/guides/work-board-security.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/guides/workspace-packages.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/api.md","note":"Checked Get Usage Insights and Telemetry ingest against insights.ts and monitoring.ts: added the owner-scope bullet; producer rows remain readable only by the token owner (canReadMonitoringEvent producer branch is unchanged).","inputs":["docs/reference/api.md","src-server/routes/operations/insights.ts","src-server/routes/operations/monitoring.ts","src-server/runtime/conversation/runtime-event-log.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Checked that /monitoring/events still owns per-user and tenant authorization for station insights events; it does (owner set plus session predicate). No prose change.","inputs":["docs/reference/cli.md","src-server/routes/operations/monitoring.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/reference/config.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/reference/connect.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/reference/contracts.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/reference/env-vars.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/reference/sdk.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/reference/session-api.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/reference/usage-telemetry.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/security/remote-access-threat-model.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/user/pull-request-guides.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["docs/user/workspace-checkpoints.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["examples/mcp-ui-demo/README.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["examples/station-sessions-mcp/README.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"src-server/AGENTS.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Checked against this change, which only adds monitoring-row owner resolution for /monitoring/events and /api/insights (runtime-routes.ts wiring, RuntimeEventLog owner set). The document makes no claim about monitoring row ownership; no prose change.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"This change only adds monitoring-row owner resolution to runtime-routes.ts for /monitoring/events and /api/insights; the operator sign-in and step-up flow this capture shows is untouched.","inputs":["docs/learn/media/operator-s4-before-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"This change only adds monitoring-row owner resolution to runtime-routes.ts for /monitoring/events and /api/insights; the operator sign-in and step-up flow this capture shows is untouched.","inputs":["docs/learn/media/operator-s4-after-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"This change only adds monitoring-row owner resolution to runtime-routes.ts for /monitoring/events and /api/insights; the operator sign-in and step-up flow this capture shows is untouched.","inputs":["docs/learn/media/operator-s4-step-up-review.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"This change only adds monitoring-row owner resolution to runtime-routes.ts for /monitoring/events and /api/insights; the operator sign-in and step-up flow this capture shows is untouched.","inputs":["docs/learn/media/operator-s4-after-step-up.png","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

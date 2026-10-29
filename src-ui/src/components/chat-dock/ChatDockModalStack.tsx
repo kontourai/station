@@ -6,6 +6,7 @@ import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import type { ProjectChatComposerDraft } from '../../lib/projectChatEvents';
 import type { SkillExperienceDraft } from '../../lib/skill-experience-draft';
 import type { ChatSession } from '../../types';
+import type { ApprovalMode } from '../../utils/approvalMode';
 import type { EffectiveModelSource } from '../../utils/execution';
 import type { ReplayCaptureSource } from '../chat/ReplayCaptureControls';
 import { LazyBoundary } from '../LazyBoundary';
@@ -109,6 +110,8 @@ interface ChatDockModalStackProps {
     /** Files for the first message, staged by the chat that opens. */
     initialFiles?: File[],
     ambientContext?: string,
+    /** The Permissions chip's pick, queued on the chat that opens. */
+    approvalMode?: ApprovalMode,
   ) => void;
   onCloseNewChat: () => void;
   onNewTaskStarted?: () => void;

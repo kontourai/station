@@ -734,7 +734,7 @@ describe('catalog application MRU tracking', () => {
   test('tracks the canonical catalog ID only after Settings application succeeds', async () => {
     render(<LayoutsSection slug="demo" />);
 
-    fireEvent.click(screen.getByRole('button', { name: '+ Add Layout' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add Layout' }));
     expect(sdkMocks.queryConfig).toEqual({ enabled: true });
     fireEvent.click(screen.getByRole('button', { name: /Coding/ }));
 
@@ -751,7 +751,7 @@ describe('catalog application MRU tracking', () => {
     sdkMocks.mutateAsync.mockRejectedValueOnce(new Error('apply failed'));
     render(<LayoutsSection slug="demo" />);
 
-    fireEvent.click(screen.getByRole('button', { name: '+ Add Layout' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add Layout' }));
     fireEvent.click(screen.getByRole('button', { name: /Coding/ }));
 
     await waitFor(() => {
@@ -888,7 +888,7 @@ describe('layout apply and removal failures (4-HOME-014)', () => {
     );
     render(<LayoutsSection slug="demo" />);
 
-    fireEvent.click(screen.getByRole('button', { name: '+ Add Layout' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add Layout' }));
     fireEvent.click(screen.getByRole('button', { name: /Coding/ }));
 
     const alert = await screen.findByRole('alert');

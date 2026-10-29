@@ -1,0 +1,11 @@
+{
+  "revision": "b80641fd1ef0a42117437707154cede771db5570",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Visual-skills preview: HomeView.test.tsx only gained a useFeaturePreviewsQuery SDK mock (empty previews) because Home's start composer now reads Feature Previews; no Home, plugin or pane behavior asserted by this test changed, so the document claims citing it are unchanged.","inputs":["docs/architecture/module-map.md","src-ui/src/__tests__/HomeView.test.tsx"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Visual-skills preview: HomeView.test.tsx only gained a useFeaturePreviewsQuery SDK mock (empty previews) because Home's start composer now reads Feature Previews; no Home, plugin or pane behavior asserted by this test changed, so the document claims citing it are unchanged.","inputs":["docs/design/shell-plugins-distributions.md","src-ui/src/__tests__/HomeView.test.tsx"]},
+
+    {"path":"docs/guides/plugins.md","note":"Visual-skills preview: HomeView.test.tsx only gained a useFeaturePreviewsQuery SDK mock (empty previews) because Home's start composer now reads Feature Previews; no Home, plugin or pane behavior asserted by this test changed, so the document claims citing it are unchanged.","inputs":["docs/guides/plugins.md","src-ui/src/__tests__/HomeView.test.tsx"]}
+  ]
+}

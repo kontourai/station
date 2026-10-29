@@ -1,0 +1,7 @@
+{
+  "revision": "3a71d62a3fa80c4c8fc697acde28e70aa0aa15d7",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Seed paragraph checked against conversation-lineage.ts (captureTranscriptContext, readConversationTranscriptMessages) and the new readSessionSeedMessages: added that a seed reads a reply stored out of line at its full size (whole or disclosed as omitted). viewedContentDigest section re-checked: shape unchanged; the schema now also carries an explicit .max(71) consistent with the documented sha256- digest.","inputs":["docs/reference/session-api.md","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/conversation-lineage.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

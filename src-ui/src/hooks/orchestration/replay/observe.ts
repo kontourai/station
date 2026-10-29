@@ -42,6 +42,7 @@ const UI_FOLDED_ORCHESTRATION_METHODS = [
   'platform.mutation',
   'workflow.state-changed',
   'conversation.forked',
+  'content.host-images',
 ] as const;
 
 const PREVIEW_CHARS = 160;

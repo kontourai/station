@@ -1,0 +1,7 @@
+{
+  "revision": "dd1aef748e9a6134d45831e7b9d7fc782321a3b9",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"StationSwitcherMenu now keeps its filter and empty state beside a role=menu list (ARIA structure only). The guide's switcher description is unchanged in behavior and still matches.","inputs":["docs/guides/connections.md","src-ui/src/components/header/StationSwitcherMenu.tsx"]}
+  ]
+}

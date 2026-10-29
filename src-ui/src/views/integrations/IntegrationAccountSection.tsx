@@ -124,7 +124,7 @@ function IntegrationAccountControls({
       <p className="agent-editor__section-desc">
         {sharedAccount
           ? 'This integration uses the shared Station account.'
-          : 'Each person connects their own account. Connecting does not grant Project membership or change the integration’s allowed tools.'}
+          : 'Each person connects their own account.'}
       </p>
       {requireSave ? (
         <p>Save the integration changes before managing your account.</p>

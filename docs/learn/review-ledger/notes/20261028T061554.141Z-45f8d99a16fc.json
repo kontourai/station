@@ -1,0 +1,7 @@
+{
+  "revision": "eb9bfb8b074a676949c338289eb4f9dc41ce7a97",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Rewrote the chooser paragraph for the Station switcher change: recency order with focus on the previous Station, the Switch Station chord, filter at five or more, unauthenticated public-handshake reachability (broker routes unchecked), inline and bulk removal with confirmation, current Station not removable, and native forgetting of other channels' local-service profiles with only the app's own refused. Checked against StationSwitcherMenu.tsx, stationSwitcher.ts, HeaderActions.tsx and stationProfileStorage.removeProfile. Manager paragraphs unchanged and still accurate.","inputs":["docs/guides/connections.md","src-ui/src/components/header/HeaderActions.tsx","src-ui/src/components/header/StationSwitcherMenu.tsx","src-ui/src/platform/native/stationProfileStorage.ts"]}
+  ]
+}

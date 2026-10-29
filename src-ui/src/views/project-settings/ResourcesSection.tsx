@@ -465,7 +465,7 @@ function ResolutionBody({
         <Empty
           variant="compact"
           label="This Station isn't backing this project"
-          description="Nothing here names code for it, and it has no working directory on this Station. That is a complete, ordinary state — there is nothing to set up."
+          description="This project has no code or working directory here. Nothing to set up."
         />
       );
 
@@ -610,7 +610,7 @@ export function ResourcesSection({
         className="project-settings__section resources-section"
         eyebrow="Project code"
         title={embedded ? 'Repositories' : 'Resources'}
-        description="Where this Station finds the code this project points at, and what it can do about it when that changes."
+        description="Where this Station finds this project's code."
       >
         {isLoading ? (
           <SkeletonList count={2} />

@@ -1,0 +1,7 @@
+{
+  "revision": "f44cec61337e7e20856f0f415f3512ddedd7ef01",
+
+  "notes": [
+    {"path":"docs/guides/native-shell-verification.md","note":"OnboardingGate copy-only delta restoring 'Station won't resend' on the exchange-attempt line; consistent with the guide's not-received resend rule. No verification procedure changed; prose accurate.","inputs":["docs/guides/native-shell-verification.md","src-ui/src/components/OnboardingGate.tsx"]}
+  ]
+}

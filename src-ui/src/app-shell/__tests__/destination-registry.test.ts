@@ -10,8 +10,9 @@ describe('DestinationRegistry', () => {
   test('drives the exact panel and command-palette inventories from one authority', () => {
     // #2059 (design record D3): the left panel lists PLACES only. Activity is
     // the sole `sidebar` row — Home is `hiddenFromNav` and the panel renders
-    // it directly, Notifications and Settings became the footer's bell and
-    // gear, and the configuration destinations moved behind the gear.
+    // it directly, Notifications became the header's bell and Settings the
+    // footer account menu's Open settings row, and the configuration
+    // destinations moved behind the footer's Customize chooser.
     expect(
       APP_DESTINATION_REGISTRY.getSidebar().map(
         (destination) => destination.id,
@@ -80,7 +81,7 @@ describe('DestinationRegistry', () => {
   // asserts the ROUTE, not the id, because the Skills page reaches the palette
   // under two entries of its own (`Commands` and `Skills`) rather than its own
   // id — an id-keyed check would have called it unreachable.
-  test('every destination behind the gear is also reachable from the palette', () => {
+  test('every destination behind Customize is also reachable from the palette', () => {
     const flags = new Set([DEVELOPER_TOOLS_FLAG]);
     const paletteRoutes = new Set(
       APP_DESTINATION_REGISTRY.getPalette(flags).map(

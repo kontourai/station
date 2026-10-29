@@ -1,0 +1,7 @@
+{
+  "revision": "4a7de6f46167fdac25e1b85cf248358c8a4e3698",
+
+  "notes": [
+    {"path":"docs/guides/web-push-notifications.md","note":"Checked the router paragraph against notification-service.ts and router.ts: the new notification:updated for an actions-only change to a legacy record reaches the router as a settle (isContentEdit needs an envelope; actions are not in the content key), so 'legacy records keep delivery-event behavior' and the escalation/settle wording remain accurate. No prose change.","inputs":["docs/guides/web-push-notifications.md","src-server/services/notifications/delivery/__tests__/router.test.ts","src-server/services/notifications/notification-service.ts"]}
+  ]
+}

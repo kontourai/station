@@ -1,0 +1,13 @@
+{
+  "revision": "3e51bbe79486656df095ee9628d5d27c0871fbe0",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"#4237 review fix round: empty mentions arrays are now refused at every version (selection still keeps them from forcing v5), and parseProjectTaskRoomPrincipal/HumanMessage require an explicit schema version, refusing a missing one instead of defaulting to v5. Re-read this document; it does not describe mention cardinality or parser version defaults, so no claim changed.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#4237 review fix round: empty mentions arrays are now refused at every version (selection still keeps them from forcing v5), and parseProjectTaskRoomPrincipal/HumanMessage require an explicit schema version, refusing a missing one instead of defaulting to v5. Re-read this document; it does not describe mention cardinality or parser version defaults, so no claim changed.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"#4237 review fix round: empty mentions arrays are now refused at every version (selection still keeps them from forcing v5), and parseProjectTaskRoomPrincipal/HumanMessage require an explicit schema version, refusing a missing one instead of defaulting to v5. Updated the reference: 1 to 32 mentions, empty refused, explicit version required. Executed: contract suites 170/170; removing the empty refusal and restoring the v5 default each fail their new test; all 16 typecheck lanes pass.","inputs":["docs/reference/contracts.md","packages/contracts/src/__tests__/project-task-room.test.ts","packages/contracts/src/project-task-room.ts"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"#4237 review fix round: empty mentions arrays are now refused at every version (selection still keeps them from forcing v5), and parseProjectTaskRoomPrincipal/HumanMessage require an explicit schema version, refusing a missing one instead of defaulting to v5. Re-read this document; it does not describe mention cardinality or parser version defaults, so no claim changed.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

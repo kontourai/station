@@ -1,0 +1,7 @@
+{
+  "revision": "f5506cad8e7f7f7408a3ac5f1916a24118b02bf2",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"Source delta (#4203 round 4): the inventory no longer copies the transcript's merge rule in SQL; an unresolved completion is listed only while projectRuntimeEventsToMessages over the thread's events (up to the read's frozen high-water mark) still shows it, computed once per (thread, high-water) when a listing meets one; idx_events_thread_tool_call_sequence is removed; the readWholeSessionEvents seam comment now states that. Checked: no claim about the inventory listing, its supersede rule, or the event-store index set. No prose change.","inputs":["docs/reference/config.md","src-server/services/orchestration/event-store.ts"]}
+  ]
+}

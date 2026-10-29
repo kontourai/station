@@ -21,8 +21,11 @@ import { isTelemetryProducerName } from '../../services/telemetry-producers/tele
 import { insightOps } from '../../telemetry/metrics.js';
 import { createLogger } from '../../utils/logger.js';
 import { readNdjsonLines } from '../../utils/ndjson-lines.js';
-import { getCachedUser } from '../system/auth.js';
-import { canReadMonitoringEvent } from './monitoring.js';
+import {
+  canReadMonitoringEvent,
+  type MonitoringDeps,
+  monitoringReadOwnerIds,
+} from './monitoring.js';
 
 const logger = createLogger({ name: 'insights-routes' });
 
@@ -151,6 +154,7 @@ export function createInsightsRoutes(
       event: unknown,
       authority: SessionReadAuthority,
     ) => boolean;
+    readableEventOwnerIds?: MonitoringDeps['readableEventOwnerIds'];
   },
 ) {
   const app = new Hono();
@@ -324,15 +328,16 @@ export function createInsightsRoutes(
     }
 
     const authority = authz?.readAuthorityForRequest?.(c.req.raw);
-    // Identical resolution to /monitoring/events (monitoring.ts:330-333),
-    // including the alias fallback. Without it the product's only caller
-    // (`fetchInsights` sends `?days=N` and nothing else) got an UNSCOPED
-    // rollup — the hole archive#3130 was filed about, still open through the
-    // front door.
-    const callerUserId =
-      c.req.query('userId') ||
-      c.req.header('x-user-id') ||
-      getCachedUser().alias;
+    // The same owner resolution as /monitoring/events. The product's only
+    // caller (`fetchInsights`) sends `?days=N` and nothing else, so the
+    // request's principal decides whose rows count.
+    const callerOwnerIds = new Set(
+      monitoringReadOwnerIds(
+        c.req.query('userId') || c.req.header('x-user-id') || undefined,
+        authority,
+        authz ?? {},
+      ),
+    );
     // The session predicate reaches sessionOwnerUserId, which deliberately
     // never caches a NEGATIVE, so an ownerless thread re-runs a synchronous
     // SQLite ownership scan (~4.4ms, its own docblock) for EVERY row. On a
@@ -344,12 +349,11 @@ export function createInsightsRoutes(
       // unattributed row is NOT admitted: "unowned means everyone's" is the
       // wrong default on a hosted install (archive#3130).
       const record = event as unknown as Record<string, unknown>;
-      // callerUserId is always defined now (alias fallback), so this always
-      // runs — matching queryEventsFromDisk, whose userId parameter is
-      // required and whose predicate is never skipped.
+      // Never skipped, matching queryEventsFromDisk, whose owner parameter is
+      // required.
       if (
-        record.userId !== callerUserId &&
-        record['station.user.id'] !== callerUserId
+        !callerOwnerIds.has(record.userId as string) &&
+        !callerOwnerIds.has(record['station.user.id'] as string)
       )
         return false;
       // Route EVERY case through the shared predicate, including an absent

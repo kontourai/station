@@ -1,0 +1,7 @@
+{
+  "revision": "fa31d72b52c13f6147e6a3d57e07fbd66913644c",
+
+  "notes": [
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Checked against the change that adds request.opened and request.resolved to the stream's session read-model refresh set and corrects its comments. This document makes no claim about which events re-read the sessions list; its claims stand unchanged.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts"]}
+  ]
+}

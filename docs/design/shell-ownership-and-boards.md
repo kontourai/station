@@ -137,8 +137,7 @@ PERSONAL BOARDS                                      +
   Daily brief
   Research desk
 ─────────────────────────────────────────────────────
-[live work / participants]                    [account]
-                         [Schedule] [Customize] [Settings]
+[Schedule] [Customize]                 [Updates] [account]
 ```
 
 [Implementation screenshots and local evidence](../reviews/workspace-map-20261015/README.md)
@@ -173,17 +172,16 @@ personal Board list and its create action. Escape returns focus to that
 button; selecting a Board dismisses the popup. Palette creation with the
 rail collapsed opens the new Board without focusing an invisible rename.
 
-The expanded footer gives live work and the account control (the signed-in
-person's initials, opening My access, Profile, Ask Station for help and Open
-settings) a row of their own, so neither runs under the other at 216px, with
-Schedule, Customize and Settings on the row below. The collapsed rail stacks
-live work and the account control above **Sidebar utilities**, which holds
-Schedule, Customize and Settings. The **Updates** control sits above the footer
-rows on desktop, web and mobile. It opens one panel with separate app and
-connected-server actions; collapsed, it is icon-only. Its status reports
-available update details, app download progress and restart readiness. The presence tray
-continues to distinguish published participants, live work, pending reads,
-failed reads and unsupported publication. Notifications stay in the header.
+The expanded footer places Schedule and Customize on the left, with an
+icon-only Updates control immediately before the account control on the right.
+The account control shows the signed-in person's initials and opens My access,
+Profile, Ask Station for help and Open settings. Live work and the separate
+Settings gear no longer appear in the footer. The collapsed rail puts Schedule
+and Customize in **Sidebar utilities** and keeps Updates and the account control
+on the rail. Updates opens one panel with separate app and connected-server
+actions on desktop, web and mobile. Its accessible name and tooltip report
+available update details, app download progress and restart readiness, with an
+indicator when attention is needed. Notifications stay in the header.
 
 Open chats and composer drafts no longer form sidebar sections. Their
 conversation and draft state remains in the chat dock and its inbox; the map
@@ -225,11 +223,10 @@ backups retain their stored section values for compatibility.
 - **Chat is a Layout.** A configured Chat view opens the existing fullscreen
   chat workspace. Individual conversations and composer drafts remain in
   the chat dock (⌘D), which retains its own inbox.
-- **Footer**: live work and joined-room participants, the account control,
-  Schedule, Customize, and Settings. Notifications remain in the header, and the command palette keeps
-  its keyboard shortcut. Schedule and Customize do not occupy project-list rows.
-  The live-work count reads the authorized session inventory; participant faces
-  read task-room publication. A connected browser is not treated as a person.
+- **Footer**: Schedule and Customize on the left, Updates and the account
+  control on the right. Settings is available in the account menu and Customize.
+  Notifications remain in the header, and the command palette keeps its keyboard
+  shortcut. Schedule and Customize do not occupy project-list rows.
 
 The original slice moved Agents, Connections, Guidance, Registry, Plugins,
 Schedule, and Developer behind the Settings gear and command palette, removing
@@ -295,7 +292,11 @@ guessing a Project.
 
 ### D5. Presence is a tray, not a section
 
-Decision: the footer shows an avatar stack and a count of people present on
+**Superseded 2026-10-25.** The footer no longer has a presence tray, and the
+tray component has been removed. The original decision below is kept as
+history and does not describe the current footer.
+
+Original decision: the footer shows an avatar stack and a count of people present on
 projects the viewer shares. Opening it lists people (with a message action)
 and agent workers (with a follow action) together. Data comes from the
 host-wide live-activity projection (`useLiveActivityQuery`) and the task-room

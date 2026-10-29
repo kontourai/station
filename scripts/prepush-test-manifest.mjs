@@ -72,7 +72,7 @@ export const PREPUSH_TEST_GROUPS = Object.freeze({
     'src-ui/src/__tests__/OnboardingGate.test.tsx',
     'src-ui/src/contexts/__tests__/AuthContext.test.tsx',
     'src-ui/src/__tests__/responsive-dialog-contract.test.ts',
-    'src-ui/src/__tests__/mobile-chat-viewport.test.ts',
+    'packages/shared/src/__tests__/visual-viewport.test.ts',
     'src-ui/src/__tests__/mobile-chat-scroll-anchor.test.ts',
     'src-ui/src/__tests__/new-chat-modal-utils.test.ts',
     'src-ui/src/__tests__/connectionInventory.test.ts',

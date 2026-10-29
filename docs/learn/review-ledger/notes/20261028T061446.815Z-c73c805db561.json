@@ -1,0 +1,7 @@
+{
+  "revision": "57ffc22dca4beeaeb0e23cee15056247d54eb0c8",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"screenshots.spec.ts gains stationSwitcherScreens (five Station switcher tiles, routed fixture Stations, URL-scoped seed) without changing capture order, motion settling, gallery selection rules or telemetry screens this document describes.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]}
+  ]
+}

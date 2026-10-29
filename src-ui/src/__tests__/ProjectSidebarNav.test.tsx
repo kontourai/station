@@ -60,9 +60,10 @@ describe('ProjectSidebarNav', () => {
 
   // #2059 (design record D3): the left panel lists PLACES only. Agents,
   // Connections, Skills, Registry, Plugins, Schedule and Developer moved
-  // behind the gear and the palette; Notifications and Settings became the
-  // footer's bell and gear; and the `Customize` and `System` group headers
-  // went with them. Activity is what is left — a place, beside Home.
+  // behind the footer's Customize chooser and the palette; Notifications
+  // became the header's bell and Settings the footer account menu's Open
+  // settings row; and the `Customize` and `System` group headers went with
+  // them. Activity is what is left — a place, beside Home.
   //
   // This is the panel's whole row inventory, not a "does not contain X" check
   // per removed destination: a list assertion is what notices a row nobody

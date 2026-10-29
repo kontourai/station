@@ -261,3 +261,19 @@ describe('ProviderVoiceSessionAdapter', () => {
     expect(adapter.getSnapshot().state).toBe('disconnected');
   });
 });
+
+it('projects batch transcription and cancels it when the compatibility session ends', async () => {
+  const stt = makeSTT();
+  const cancel = vi.fn(() => stt.emit('idle'));
+  stt.provider.cancelListening = cancel;
+  const tts = makeTTS();
+  const adapter = createProviderVoiceSessionAdapter(stt.provider, tts.provider);
+  await adapter.start();
+  stt.emit('transcribing');
+  expect(adapter.getSnapshot().state).toBe('transcribing');
+  await adapter.stop();
+  expect(cancel).toHaveBeenCalledOnce();
+  expect(stt.provider.stopListening).not.toHaveBeenCalled();
+  expect(adapter.getSnapshot().state).toBe('disconnected');
+  await adapter.dispose();
+});

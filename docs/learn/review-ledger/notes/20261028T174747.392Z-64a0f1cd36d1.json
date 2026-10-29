@@ -1,0 +1,7 @@
+{
+  "revision": "2d132626d4a88f1d4b2cd6e02d94b5f8b4563162",
+
+  "notes": [
+    {"path":"docs/user/settings.md","note":"Visual-skills preview wording: an unsent New Chat skill is hidden and not started while the preview is off, and restored when it is turned back on (NewChatModal keeps chosenExperience and derives experience from the flag).","inputs":["docs/user/settings.md"]}
+  ]
+}

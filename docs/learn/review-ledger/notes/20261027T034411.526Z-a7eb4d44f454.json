@@ -1,0 +1,7 @@
+{
+  "revision": "03de66577b851284970e0e9ed397dd8487597327",
+
+  "notes": [
+    {"path":"docs/design/task-room-agent-requests.md","note":"Runtime test change is comment-only (live-activity TTL comment no longer cites the removed tray). No agent-request claim affected. No prose change.","inputs":["docs/design/task-room-agent-requests.md","src-server/services/orchestration/__tests__/project-task-room-runtime.test.ts"]}
+  ]
+}

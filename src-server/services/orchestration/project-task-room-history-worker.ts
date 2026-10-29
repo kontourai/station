@@ -820,18 +820,29 @@ async function sealSource(
       };
     }
     // A history-only room need not have materialized working-state tables.
-    // If present, both durable publication queues must be empty at closure.
+    // Unreferenced candidates are working state, covered by its digest. Only
+    // claimed/marked revisions and lifecycle publications block closure.
     for (const table of [
       'project_task_room_revision_publication_outbox',
       'project_task_room_agent_lifecycle_outbox',
     ]) {
       if (
-        db
+        !db
           .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?")
-          .get(table) &&
+          .get(table)
+      )
+        continue;
+      const coalescing =
+        table === 'project_task_room_revision_publication_outbox' &&
+        (
+          db.prepare(`PRAGMA table_info(${table})`).all() as Array<{
+            name: string;
+          }>
+        ).some((column) => column.name === 'freeze_requested');
+      if (
         db
           .prepare(
-            `SELECT 1 FROM ${table} WHERE project_id=? AND task_id=? LIMIT 1`,
+            `SELECT 1 FROM ${table} WHERE project_id=? AND task_id=?${coalescing ? ' AND (freeze_requested IS NOT 0 OR evidence_revision IS NOT NULL)' : ''} LIMIT 1`,
           )
           .get(request.scope.projectId, request.scope.taskId)
       ) {

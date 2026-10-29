@@ -1,0 +1,7 @@
+{
+  "revision": "dd1aef748e9a6134d45831e7b9d7fc782321a3b9",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"chat.css adds one rule keeping the Station switcher's current row name at --k-text (the shared accent-on-selected text failed light-theme contrast in the gallery audit). Only a .station-switcher* selector; this document's claims do not touch it.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

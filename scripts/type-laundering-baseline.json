@@ -832,12 +832,6 @@
     },
     {
       "file": "src-server/routes/chat/conversations.ts",
-      "rule": "as-unknown",
-      "fingerprint": "02f115533e20c57159edff43b075973da57ce30e86ce2def1a13f379f9818e07",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-server/routes/chat/conversations.ts",
       "rule": "as-any",
       "fingerprint": "1cb8a531473e8df5270aa4b617b79e551c2cf321e366b48985c851d8424f99ed",
       "reason": "legacy-cast"

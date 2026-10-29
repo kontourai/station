@@ -171,17 +171,15 @@ export type ThreadToolResultRow = RowBase<'thread-tool-result'> & {
   toolCallId: string;
   name: string;
   /**
-   * station#1558 deliberately did NOT add a member for a `tool.completed`
-   * whose status is `unresolved` (the session ended with the call open, so
-   * no outcome was ever observed). This vocabulary is validated exactly, by
-   * version, so a new member would make every consumer built before it
-   * reject the whole ROW rather than degrade — and the three members here
-   * all assert an outcome, so folding an unresolved completion into
-   * `cancelled` would put a fabricated one in an inventory whose value is
-   * that it is believable. The projection omits the row instead
-   * (`session-inventory-module.ts`); the transcript still carries the event.
+   * `unresolved` is a command that started but never reported an outcome
+   * (the session ended with the call open). It claims neither success nor
+   * failure. station#1558 left it out because this vocabulary is validated
+   * exactly, and a consumer built before the member rejects the whole
+   * projection; a host therefore sends `unresolved` rows only to a client that
+   * declared client protocol 4 or later (#4178), and omits them for older
+   * clients exactly as before.
    */
-  terminalStatus: 'succeeded' | 'failed' | 'cancelled';
+  terminalStatus: 'succeeded' | 'failed' | 'cancelled' | 'unresolved';
 };
 export type StationPlanSnapshotRow = RowBase<'station-plan-snapshot'> & {
   sessionId: string;
@@ -698,7 +696,7 @@ function rowDetails(value: Record<string, unknown>): boolean {
         string(value.turnId) &&
         string(value.toolCallId) &&
         string(value.name, 240) &&
-        ['succeeded', 'failed', 'cancelled'].includes(
+        ['succeeded', 'failed', 'cancelled', 'unresolved'].includes(
           value.terminalStatus as string,
         )
       );

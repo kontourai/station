@@ -3,9 +3,16 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { isPtyUnavailableError } from '../../domain/pty-adapter.js';
 import { NodePtyAdapter } from '../node-pty-adapter.js';
 
+const census = vi.hoisted(() => ({ read: vi.fn() }));
 vi.mock('node:child_process', async (original) => {
+  const { promisify } = await import('node:util');
   const actual = await original<typeof import('node:child_process')>();
-  return { ...actual, execFile: vi.fn(actual.execFile) };
+  return {
+    ...actual,
+    execFile: Object.assign(vi.fn(actual.execFile), {
+      [promisify.custom]: census.read,
+    }),
+  };
 });
 
 const SPAWN_INPUT = {
@@ -82,12 +89,13 @@ describe('NodePtyAdapter no-pty configuration (#1244)', () => {
 });
 
 describe.skipIf(process.platform === 'win32')(
-  'paused PTY exit observations',
+  'owned PTY cleanup and paused exit observations',
   () => {
     afterEach(() => {
       vi.useRealTimers();
       vi.restoreAllMocks();
       vi.mocked(execFile).mockReset();
+      census.read.mockReset();
     });
 
     async function backend() {
@@ -110,7 +118,7 @@ describe.skipIf(process.platform === 'win32')(
         write() {},
         resize() {},
         clear() {},
-        kill() {},
+        kill: vi.fn(),
         pause: vi.fn(),
         resume: vi.fn(),
       } satisfies import('node-pty').IPty;
@@ -130,6 +138,63 @@ describe.skipIf(process.platform === 'win32')(
         exit: () => exits.forEach((callback) => callback({ exitCode: 0 })),
       };
     }
+
+    test.each(['??', 'none'])(
+      'kills the owned shell when the census refuses tty %s',
+      async (tty) => {
+        const { proc, pty } = await backend();
+        census.read.mockResolvedValue({ stdout: `4242 1 4242 ${tty}\n` });
+        const signal = vi.spyOn(process, 'kill').mockReturnValue(true);
+        await expect(proc.terminate!()).rejects.toThrow(
+          'Terminal controlling tty ownership unavailable',
+        );
+        expect(pty.kill).toHaveBeenCalledExactlyOnceWith('SIGKILL');
+        expect(signal).not.toHaveBeenCalled();
+      },
+    );
+
+    test('paused observation retries cap backoff at one second', async () => {
+      const { proc, pty } = await backend();
+      vi.mocked(execFile).mockImplementation(
+        (_file, _args, _options, callback) => {
+          callback?.(
+            Object.assign(new Error('unknown'), { code: 2, cmd: 'ps' }),
+            '',
+            '',
+          );
+          return new ChildProcess();
+        },
+      );
+      proc.pause!();
+      for (const delay of [50, 100, 200, 400, 800, 1000, 1000]) {
+        const observed = vi.mocked(execFile).mock.calls.length;
+        await vi.advanceTimersByTimeAsync(delay - 1);
+        expect(execFile).toHaveBeenCalledTimes(observed);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(execFile).toHaveBeenCalledTimes(observed + 1);
+      }
+      expect(pty.resume).not.toHaveBeenCalled();
+      proc.resume!();
+    });
+
+    test('exit 1 with stderr stays paused instead of declaring the child gone', async () => {
+      const { proc, pty } = await backend();
+      vi.mocked(execFile).mockImplementation(
+        (_file, _args, _options, callback) => {
+          callback?.(
+            Object.assign(new Error('diagnostic'), { code: 1, cmd: 'ps' }),
+            '',
+            'ps: observation denied',
+          );
+          return new ChildProcess();
+        },
+      );
+      proc.pause!();
+      await vi.advanceTimersByTimeAsync(150);
+      expect(execFile).toHaveBeenCalledTimes(2);
+      expect(pty.resume).not.toHaveBeenCalled();
+      proc.resume!();
+    });
 
     test.each([
       ['timeout', { killed: true, signal: 'SIGTERM' }],

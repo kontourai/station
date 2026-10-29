@@ -71,7 +71,10 @@ const CAPABILITY_DESCRIPTION =
  * for weeks after Codex became capable.
  */
 function capableEngineSentence(): string {
-  const names = controlPlaneCapableEngineNames();
+  return joinNames(controlPlaneCapableEngineNames());
+}
+
+function joinNames(names: readonly string[]): string {
   if (names.length === 0) return '';
   if (names.length === 1) return names[0];
   return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
@@ -348,52 +351,19 @@ export function EnginePicker({
     return shell(
       <>
         {/*
-            MERGE (#1644 x #1547 AC5). Both descriptions speak about
-            `incapableNames`, so both sit behind this branch's guard rather
-            than only the first: on a panel whose one unresolved engine is
-            still mid-check, `incapableNames` is empty and the zero-engine
-            wording ("You have no engine connected yet…", "An engine that
-            can't run the built-in assistant still gets Station's
-            documentation…") would be describing a verdict Station has not
-            reached. Gating one and not the other would keep half of a
-            two-sentence claim on screen with its premise removed.
+            MERGE (#1644 x #1547 AC5). Gated so a panel whose only unresolved
+            engine is mid-check doesn't state a verdict Station hasn't reached.
+            archive#1547: "answer questions about Station" is backed by the ACP
+            adapter granting `station-docs` on every ACP session; the
+            zero-engine line makes no docs claim, since a capable engine gets
+            docs through the assistant itself.
 */}
         {(incapableNames.length > 0 || pendingOptions.length === 0) && (
-          <>
-            <div className="engine-picker__description">
-              {incapableNames.length === 0
-                ? 'You have no engine connected yet, so nothing can run the built-in assistant — the assistant that operates Station for you: creating agents, running jobs, changing settings.'
-                : incapableNames.length === 1
-                  ? `${incapableNames[0]} can chat, but it can't operate Station — creating agents, running jobs, changing settings — so it can't run the built-in assistant.`
-                  : `Your connected engines (${incapableNames.join(', ')}) can chat, but none of them can operate Station — creating agents, running jobs, changing settings — so none of them can run the built-in assistant.`}
-            </div>
-            {/* archive#1547. Restored, and this time it has a producer:
-                  the ACP adapter now delivers the credential-free
-                  `station-docs` server on every ACP session (acp-adapter.ts),
-                  which is exactly the engine class that can never carry
-                  `station-control` and so can never run the built-in
-                  assistant. The first shipping of this sentence was reverted
-                  at 5a61adbf because nothing delivered the server to a
-                  non-`station` agent — an engine that answers confidently
-                  while silently unable to is the assert-then-retract failure
-                  delivery-protocol §6 forbids, and a claim with no producer
-                  is the same defect arriving through the copy.
-
-                  Each variant is scoped to what actually ships. The
-                  zero-engine variant deliberately says "an engine that can't
-                  run the built-in assistant" rather than "any engine you
-                  connect": a CAPABLE engine gets documentation by way of the
-                  built-in assistant itself, not by this grant, so the broader
-                  sentence would be making a claim about a delivery path that
-                  does not exist for it. */}
-            <div className="engine-picker__description">
-              {incapableNames.length === 0
-                ? "An engine that can't run the built-in assistant still gets Station's documentation, so it can explain how Station works, answer questions about it, and help you plan — it just can't create agents, run jobs, or change settings."
-                : incapableNames.length === 1
-                  ? `${incapableNames[0]} still gets Station's documentation, so it can explain how Station works, answer questions about it, and help you plan — it just can't create agents, run jobs, or change settings.`
-                  : "They still get Station's documentation, so they can explain how Station works, answer questions about it, and help you plan — they just can't create agents, run jobs, or change settings."}
-            </div>
-          </>
+          <div className="engine-picker__description">
+            {incapableNames.length === 0
+              ? 'No engine is connected yet.'
+              : `${joinNames(incapableNames)} can chat and answer questions about Station, but can't run the assistant.`}
+          </div>
         )}
         {pendingRows}
         {pendingOptions.length > 0 && (
@@ -401,13 +371,11 @@ export function EnginePicker({
           // unresolved engine is mid-check would be "go connect a different
           // engine" — true, but the wrong thing to tell that user.
           <div className="engine-picker__description">
-            This panel updates on its own if Station finds one of them can run
-            the assistant.
+            This updates if Station finds one that can.
           </div>
         )}
         <div className="engine-picker__description">
-          Engines that can run it today: {capableNames}. Add one in Connections,
-          then come back here.
+          Engines that can: {capableNames}. Add one in Connections.
         </div>
         {variant === 'step' ? (
           <ResponsiveSurfaceActions className="first-run-chapter__actions">

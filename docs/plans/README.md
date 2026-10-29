@@ -10,6 +10,7 @@ Concrete execution plans that expand roadmap phases or major initiatives into im
 - [agent-identity-supported-surface-inventory.md](agent-identity-supported-surface-inventory.md) — Agent identity supported-surface inventory
 - [basis-session-epic-completion.md](basis-session-epic-completion.md) — Basis and session surfaces: remaining epic work
 - [child-work-epic.md](child-work-epic.md) — Child-work epic
+- [continuity-epic-followthrough.md](continuity-epic-followthrough.md) — Continuity and existing-client follow-through
 - [documentation-code-audit.md](documentation-code-audit.md) — Documentation and architecture audit
 - [issue-class-prevention.md](issue-class-prevention.md) — Issue class prevention
 - [onboarding-improvement-rounds.md](onboarding-improvement-rounds.md) — Onboarding improvement rounds

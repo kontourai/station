@@ -935,7 +935,7 @@ function roomCapacityRefusal(
  */
 const ROOM_CAPACITY_REFUSAL_COPY: Record<RoomCapacityRefusal, string> = {
   'document-full':
-    'Not saved: this Task document is full. It keeps every character ever typed in it, deleted ones included, so no text can be added and deleting text does not make room. Your unsaved text is only in this editor; the shared document was not changed.',
+    'Not saved: this Task document is full, and deleting text does not make room. Your unsaved text is only in this editor.',
   'evidence-ledger-full':
-    "Not saved: Station's revision history is full, so no Task document edits can be saved on this Station, deletions included. Your unsaved text is only in this editor; the shared document was not changed.",
+    "Not saved: Station's revision history is full, so no Task document edits can be saved. Your unsaved text is only in this editor.",
 };

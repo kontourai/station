@@ -1,0 +1,7 @@
+{
+  "revision": "a460a407fb2c3486e7d9c240d36c5691e40ec663",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Delta round: the × is no longer offered for the app's own local Station (host answers per Station), and the guide now states that if the app cannot identify its own local Station at startup, every local-service profile stays protected until restart. Checked against stationProfileStorage.canRemoveProfile/isOwnStation, bundledLocalProfileBootstrap early returns, ConnectionsContext.canForgetConnection and StationSwitcherMenu.","inputs":["docs/guides/connections.md","src-ui/src/components/header/StationSwitcherMenu.tsx","src-ui/src/contexts/ApiBaseContext.tsx","src-ui/src/platform/native/stationProfileStorage.ts"]}
+  ]
+}

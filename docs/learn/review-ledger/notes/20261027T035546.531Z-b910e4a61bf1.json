@@ -1,0 +1,9 @@
+{
+  "revision": "8fb3f919ba851c0efcc55a95f5866b41f1802fd3",
+
+  "notes": [
+    {"path":"docs/reference/metrics.md","note":"Regenerated with npm run docs:metrics:generate from metrics.ts: only the source hash and the station.chat.attachment_blob_requests description (now served/not_modified/not_found/rejected) changed; docs:metrics:check verifies the exact output.","inputs":["docs/reference/metrics.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"metrics.md delta: regenerated with a new source hash and one counter description gaining the not_modified attachment outcome; this document cites the metrics reference as the generated declaration inventory, which it still is, so its claims remain accurate.","inputs":["docs/architecture/abstraction-review.md","docs/reference/metrics.md"]}
+  ]
+}

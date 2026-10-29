@@ -1,0 +1,7 @@
+{
+  "revision": "fc718a60a20625f07d41a0d6afb653a346337a01",
+
+  "notes": [
+    {"path":"docs/user/workspace-checkpoints.md","note":"MessageBubble pointer-tracking change only; checkpoint restore in the changed-files disclosure is unchanged.","inputs":["docs/user/workspace-checkpoints.md","src-ui/src/components/chat/MessageBubble.tsx"]}
+  ]
+}

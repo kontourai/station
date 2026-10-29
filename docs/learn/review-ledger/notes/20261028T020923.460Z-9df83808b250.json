@@ -1,0 +1,7 @@
+{
+  "revision": "0d736803af500396d18f4cf17d72bc34ab422e83",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"CoreUpdateCheck change only alters the status-badge superseded input for the card's own followed update; the doc's isCurrent/query-guard claims are unchanged; no prose change.","inputs":["docs/reference/sdk.md","src-ui/src/views/settings/CoreUpdateCheck.tsx"]}
+  ]
+}

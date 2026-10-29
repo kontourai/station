@@ -21,8 +21,10 @@ matters: work can exist before an engine is ready to execute it.
 
 The Task's shared plan and conversation keep revisions and discussion with
 that work. The historical capture below shows the earlier Brief tab;
-the document was saved through the real autosave path. In this example a person saved a document; the room history records
-revision evidence. This does not demonstrate an external Agent editing alongside
+the document was saved through the real autosave path. This historical capture
+also shows revision evidence from the earlier per-save policy. Current saves
+retain an unlinked candidate; a [revision reference](../design/revision-bound-evidence.md#freeze-and-retention-decision)
+requests an immutable receipt. This does not demonstrate an external Agent editing alongside
 them. The current editor uses the available width and gives a multi-paragraph
 brief room to breathe. [#2844](https://github.com/kontourai/station/issues/2844)
 also tracks heading/focus and revision-label usability; this capture does not

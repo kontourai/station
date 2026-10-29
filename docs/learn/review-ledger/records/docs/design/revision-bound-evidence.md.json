@@ -18,7 +18,19 @@
 
     "src-server/services/orchestration/project-task-room-revision-evidence-bridge.ts",
 
-    "src-server/services/orchestration/sqlite-revision-evidence-persistence.ts"
+    "src-server/services/orchestration/sqlite-revision-evidence-persistence.ts",
+
+    "docs/decisions/revision-evidence-freeze-policy.md",
+
+    "src-server/domain/migrations/024-project-task-room-revision-freeze.ts",
+
+    "src-server/services/orchestration/project-task-room-runtime.ts",
+
+    "src-server/services/orchestration/project-task-room-working-state-worker.ts",
+
+    "src-server/services/orchestration/project-task-room-history-worker.ts",
+
+    "src-server/services/projects/task-review-module.ts"
   ],
 
   "checks": [

@@ -1,0 +1,7 @@
+{
+  "revision": "2a2d287e677b3d3306bad654e202ba1134597ea3",
+
+  "notes": [
+    {"path":"docs/guides/feature-previews.md","note":"Visual-skills preview: settings.md row wording changed only (unsent New Chat skill hidden while off, restored when re-enabled). Guide claims unchanged.","inputs":["docs/guides/feature-previews.md","docs/user/settings.md"]}
+  ]
+}

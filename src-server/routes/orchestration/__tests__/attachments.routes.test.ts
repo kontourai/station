@@ -222,6 +222,52 @@ describe('GET /api/attachments/:ref (station#3385)', () => {
     expect(canReadSession).toHaveBeenCalledTimes(1);
   });
 
+  test('revalidates an authorized copy with a 304 and no body', async () => {
+    const readAttachment = vi.fn(() => pixels);
+    const response = await appFor(readAttachment).request(
+      `/api/attachments/${ref}`,
+      { headers: { ...asOwner.headers, 'If-None-Match': `"${ref}"` } },
+    );
+
+    expect(response.status).toBe(304);
+    expect(await response.arrayBuffer()).toHaveProperty('byteLength', 0);
+    expect(response.headers.get('etag')).toBe(`"${ref}"`);
+    expect(response.headers.get('cache-control')).toBe('private, no-cache');
+    expect(response.headers.get('vary')).toBe('Authorization, Cookie');
+    expect(readAttachment).toHaveBeenCalledWith(ref);
+  });
+
+  test('a matching tag never answers for a caller who cannot read the blob', async () => {
+    const stranger = await appFor(() => pixels).request(
+      `/api/attachments/${ref}`,
+      {
+        headers: {
+          Authorization: 'Bearer stranger',
+          'If-None-Match': `"${ref}"`,
+        },
+      },
+    );
+    expect(stranger.status).toBe(404);
+    expect(stranger.headers.get('etag')).toBeNull();
+
+    const reclaimed = await appFor(() => undefined).request(
+      `/api/attachments/${ref}`,
+      { headers: { ...asOwner.headers, 'If-None-Match': `"${ref}"` } },
+    );
+    // A stored copy of reclaimed bytes is not confirmed: the chip learns they
+    // are gone, as it would without the copy.
+    expect(reclaimed.status).toBe(404);
+  });
+
+  test('another tag gets the bytes', async () => {
+    const response = await appFor(() => pixels).request(
+      `/api/attachments/${ref}`,
+      { headers: { ...asOwner.headers, 'If-None-Match': '"sha256-other"' } },
+    );
+    expect(response.status).toBe(200);
+    expect(Buffer.from(await response.arrayBuffer()).equals(pixels)).toBe(true);
+  });
+
   test('requires authentication at the pairing boundary', () => {
     // A blob route that resolved to no scope would be treated as public by
     // the runtime's fail-closed classifier, which is how an unlisted route

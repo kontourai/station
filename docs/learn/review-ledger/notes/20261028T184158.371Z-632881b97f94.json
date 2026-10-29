@@ -1,0 +1,11 @@
+{
+  "revision": "b706ae7a7b7548d14b8efa132f6cf98895411c56",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Fix round: approvalMode.ts changed only the Codex connection-default description string and its comment. The reviewer-gap, Ask-chip and delivery-disclosure claims are unaffected; the document stays accurate.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/utils/approvalMode.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Fix round: the Codex Default sentence now says it asks before network use or writes outside the chat's folder and temp. EXECUTED against codex-cli 0.164.0 with empty CODEX_HOME: untrusted host folder reports on-request plus readOnly; trusted host folder reports workspaceWrite under :workspace; codexConfinementConfigArgs reports workspaceWrite under station-workspace; network false in all of them; `codex sandbox` with workspace-write wrote /tmp and was refused for $HOME. Pinned by ApprovalModeChip.test.tsx and StartApprovalSummary.test.tsx.","inputs":["docs/design/chat-composer.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Fix round: the Codex Engine default sentence now says that, unset, Codex asks before using the network or writing outside the chat's folder and temporary directories, which matches approvalModeDescription('connection-default','codex') and the executed Codex probes recorded for docs/design/chat-composer.md.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

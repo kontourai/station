@@ -1,0 +1,7 @@
+{
+  "revision": "af3e5a84422aca57bfe6b2b91b157b1a2b9e04f0",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Inbox rows gain a hold-to-open Details route on touch chrome; the documented Inventory, Files and chat steps are unchanged.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]}
+  ]
+}

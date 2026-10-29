@@ -10,6 +10,10 @@ export const ACTION_OPERATION_MAX_STORE_BYTES = 512 * 1024;
 
 export const ACTION_OPERATION_PHASE_CODES = [
   'preparing',
+  'probe',
+  'transcribe',
+  'frames',
+  'write',
   'creating-continuation',
   'cancellation-requested',
   'reconciliation-required',
@@ -63,6 +67,11 @@ export type ActionOperationDomainRef =
       readonly correlationId: string;
       readonly routingReceiptId?: string;
     }
+  | {
+      readonly kind: 'walkthrough-import';
+      readonly projectSlug: string;
+      readonly walkthroughId: string;
+    }
   | { readonly kind: 'platform-action'; readonly actionId: string };
 
 /** Closed Station navigation targets; persisted state never carries a URL/query. */
@@ -73,6 +82,11 @@ export type ActionOperationReentry =
       readonly conversationId: string;
     }
   | { readonly kind: 'session'; readonly sessionId: string }
+  | {
+      readonly kind: 'walkthrough';
+      readonly projectSlug: string;
+      readonly walkthroughId: string;
+    }
   | { readonly kind: 'monitoring'; readonly routingReceiptId: string };
 
 export interface ActionOperation {
@@ -321,6 +335,18 @@ function parseDomain(
     };
   }
   if (
+    value.kind === 'walkthrough-import' &&
+    exactFields(value, ['kind', 'projectSlug', 'walkthroughId']) &&
+    id(value.projectSlug) &&
+    id(value.walkthroughId)
+  ) {
+    return {
+      kind: 'walkthrough-import',
+      projectSlug: value.projectSlug,
+      walkthroughId: value.walkthroughId,
+    };
+  }
+  if (
     value.kind === 'platform-action' &&
     exactFields(value, ['kind', 'actionId']) &&
     id(value.actionId)
@@ -350,6 +376,18 @@ function parseReentry(value: unknown): ActionOperationReentry | undefined {
     id(value.sessionId)
   ) {
     return { kind: 'session', sessionId: value.sessionId };
+  }
+  if (
+    value.kind === 'walkthrough' &&
+    exactFields(value, ['kind', 'projectSlug', 'walkthroughId']) &&
+    id(value.projectSlug) &&
+    id(value.walkthroughId)
+  ) {
+    return {
+      kind: 'walkthrough',
+      projectSlug: value.projectSlug,
+      walkthroughId: value.walkthroughId,
+    };
   }
   if (
     value.kind === 'monitoring' &&

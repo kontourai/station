@@ -1,0 +1,7 @@
+{
+  "revision": "d1691fe2d62db83e694e146ea51dc608aad3a0f2",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Wording only: a restart-interrupted turn leaves the Session idle with no settledTurn and no acknowledgement of requested work, matching session-turn-wait and thread-inbox.","inputs":["docs/guides/self-configuring-agent.md"]}
+  ]
+}

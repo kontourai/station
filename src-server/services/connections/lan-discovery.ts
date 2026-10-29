@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Server } from 'node:net';
+import type { AddressInfo, Server } from 'node:net';
 import { hostname, networkInterfaces } from 'node:os';
 import {
   type CiaoService,
@@ -72,6 +72,12 @@ export class LanDiscovery {
     this.listener = undefined;
     clearInterval(this.networkTimer);
     return this.reconcile();
+  }
+
+  /** The API listener's bound address, which `GET /api/system/routes` reports from. */
+  boundAddress(): AddressInfo | undefined {
+    const bound = this.listener?.address();
+    return bound && typeof bound !== 'string' ? bound : undefined;
   }
 
   private lanInterfaces(): Array<{ name: string; address: string }> {

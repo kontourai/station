@@ -353,6 +353,24 @@ describe('portable server archive workflow', () => {
   );
   const workflow = load(source) as Workflow;
 
+  it('uses the verified pnpm bootstrap for the non-Intel archive runners', () => {
+    type Step = { name?: string; uses?: string; if?: string; with?: unknown };
+    const steps = (workflow.jobs.archive as unknown as { steps: Step[] }).steps;
+    const setup = steps.find((step) => step.name === 'Setup pinned pnpm');
+    expect(setup?.if).toBe("runner.os != 'macOS' || runner.arch != 'X64'");
+    expect(setup?.uses).toBe(
+      'kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20',
+    );
+    expect(setup?.with).toBeUndefined();
+    expect(
+      steps.some(
+        (step) =>
+          step.name === 'Setup pinned pnpm from its JS package (Intel macOS)' &&
+          step.if === "runner.os == 'macOS' && runner.arch == 'X64'",
+      ),
+    ).toBe(true);
+  });
+
   it('builds and smokes every supported target in its archive format', () => {
     expect(workflow.jobs.archive.strategy['max-parallel']).toBe(2);
     const include = workflow.jobs.archive.strategy.matrix.include;

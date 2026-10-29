@@ -103,6 +103,7 @@ import { frameAgentMessage } from '@kontourai/station-shared/agent-message-frame
 import type { StartOwnerAttribution } from './session-owner-attribution.js';
 import {
   evaluateSessionWait,
+  type SessionInterruptedTurn,
   type SessionSettledTurn,
   type SessionTurnWaitPorts,
   type SessionWaitFoldEvent,
@@ -377,6 +378,14 @@ export type DelegationResultArm = Pick<
   'childConversationId' | 'taskId' | 'parentConversationId' | 'actor'
 > & { readonly childAgent?: string };
 
+/**
+ * A settled turn's outcome, or `interrupted`: a Station restart cut the
+ * child's turn off, and recovery closed it without settling it.
+ */
+export type DelegationResultOutcome =
+  | SessionSettledTurn['outcome']
+  | 'interrupted';
+
 export interface DelegationResultRow {
   readonly childConversationId: string;
   readonly transitionKey: string;
@@ -384,7 +393,7 @@ export interface DelegationResultRow {
   readonly parentConversationId: string;
   readonly childSessionId: string;
   readonly childTurnId?: string;
-  readonly outcome: SessionSettledTurn['outcome'];
+  readonly outcome: DelegationResultOutcome;
   readonly deliveryId: string;
   readonly text: string;
   readonly state: DelegationResultState;
@@ -447,7 +456,7 @@ export function createSqliteDelegationResultStore(
     parentConversationId: String(row.parent_conversation_id),
     childSessionId: String(row.child_session_id),
     ...(row.child_turn_id ? { childTurnId: String(row.child_turn_id) } : {}),
-    outcome: row.outcome as SessionSettledTurn['outcome'],
+    outcome: row.outcome as DelegationResultOutcome,
     deliveryId: String(row.delivery_id),
     text: String(row.text),
     state: row.state as DelegationResultState,
@@ -570,7 +579,7 @@ export function createSqliteDelegationResultStore(
   const spend = (
     childConversationId: string,
     turnId: string,
-    outcome: SessionSettledTurn['outcome'],
+    outcome: DelegationResultOutcome,
   ): string[] => {
     const matched = db
       .prepare(
@@ -995,7 +1004,7 @@ export function createSqliteDelegationResultStore(
     spendSuppressions(
       childConversationId: string,
       turnId: string,
-      outcome: SessionSettledTurn['outcome'],
+      outcome: DelegationResultOutcome,
     ): string[] {
       return atomically(() => spend(childConversationId, turnId, outcome));
     },
@@ -1185,8 +1194,9 @@ const FOLD_METHODS = new Set([
   'session.exited',
 ]);
 
-const OUTCOME_WORDS: Record<SessionSettledTurn['outcome'], string> = {
+const OUTCOME_WORDS: Record<DelegationResultOutcome, string> = {
   completed: 'completed',
+  interrupted: 'was interrupted when Station restarted, before it finished',
   aborted: 'was stopped',
   error: 'failed',
   exited: 'ended when its Session exited',
@@ -1215,7 +1225,7 @@ function composeDelegationResultText(input: {
   readonly taskId: string;
   readonly agent?: string;
   readonly childSessionId: string;
-  readonly outcome: SessionSettledTurn['outcome'];
+  readonly outcome: DelegationResultOutcome;
   readonly output: string;
   /** The output read stopped at its event bound. */
   readonly outputIncomplete: boolean;
@@ -1223,6 +1233,8 @@ function composeDelegationResultText(input: {
   const who = `${input.agent ? `agent ${JSON.stringify(flat(input.agent))}, ` : ''}Session ${JSON.stringify(flat(input.childSessionId))}`;
   const header = `${HEADER_OPEN} Task ${JSON.stringify(flat(input.taskId))} (${who}) ${OUTCOME_WORDS[input.outcome]}.`;
   const output = input.output.trim();
+  if (input.outcome === 'interrupted')
+    return `${header} Read the task's Session for any partial work.]`;
   if (!output)
     return `${header} It recorded no text output; read the task for details.]`;
   const clipped =
@@ -1291,6 +1303,8 @@ type ResultSettlementIdentity =
       value: string;
       nativeOnlyLegacy?: true;
     }
+  /** The recovery abort's own event id; it proves the interruption alone. */
+  | { threadId: string; kind: 'interrupted'; value: string }
   | { threadId: string; kind: 'sequence'; value: number };
 const RESULT_SETTLEMENT_CODEC = 'station.delegation-result/2';
 function settlementKey(identity: ResultSettlementIdentity): string {
@@ -1327,6 +1341,14 @@ function readSettlementIdentity(
       typeof value === 'string' &&
       value !== '' &&
       (kind !== 'native' || row.childTurnId === value)
+    )
+      return { threadId, kind, value };
+    if (
+      kind === 'interrupted' &&
+      typeof value === 'string' &&
+      value !== '' &&
+      row.childTurnId !== undefined &&
+      row.outcome === 'interrupted'
     )
       return { threadId, kind, value };
     if (
@@ -1610,7 +1632,7 @@ export class DelegationResultDelivery {
     const owner = this.ports.store.owner(childConversationId);
     if (!owner) return;
     const thread = this.ports.currentSessionId(childConversationId);
-    const { view } = evaluateSessionWait(
+    const { view, interrupted } = evaluateSessionWait(
       { ...this.foldPorts(), coordinatorBusy: () => false },
       thread,
       'turn-settled',
@@ -1622,7 +1644,18 @@ export class DelegationResultDelivery {
         view.openTurnId,
       );
     const settled = view.settledTurn;
-    if (view.state !== 'idle' || !settled) return;
+    if (view.state !== 'idle') return;
+    if (interrupted && (!settled || interrupted.sequence > settled.sequence)) {
+      this.recordInterrupted(
+        childConversationId,
+        owner,
+        thread,
+        interrupted,
+        source,
+      );
+      return;
+    }
+    if (!settled) return;
     if (
       settled.invocationId !== undefined &&
       this.ports.readInvocationTerminal?.(
@@ -1689,6 +1722,50 @@ export class DelegationResultDelivery {
     );
   }
 
+  /**
+   * A restart cut the child's turn off. Recovery's abort closes it without
+   * settling it (nothing acknowledges the work), so no settled result ever
+   * comes; tell the parent instead, once per abort. Identified by the abort's
+   * own event id, never by turn or invocation, so it cannot be mistaken for a
+   * settlement of either. No output is quoted: the turn's text cannot be
+   * attributed to this run without inferring an invocation from a turn id.
+   */
+  private recordInterrupted(
+    childConversationId: string,
+    owner: DelegationResultOwner,
+    thread: string,
+    interrupted: SessionInterruptedTurn,
+    source: 'live' | 'caught-up',
+  ): void {
+    const transitionKey = settlementKey({
+      threadId: thread,
+      kind: 'interrupted',
+      value: interrupted.eventId,
+    });
+    if (this.ports.store.has(childConversationId, transitionKey)) return;
+    this.ports.store.record(
+      {
+        childConversationId,
+        transitionKey,
+        transition: 'settled',
+        parentConversationId: owner.parentConversationId,
+        childSessionId: thread,
+        childTurnId: interrupted.turnId,
+        outcome: 'interrupted',
+        deliveryId: deliveryIdFor(childConversationId, transitionKey),
+        text: composeDelegationResultText({
+          taskId: owner.taskId,
+          ...(owner.childAgent ? { agent: owner.childAgent } : {}),
+          childSessionId: thread,
+          outcome: 'interrupted',
+          output: '',
+          outputIncomplete: false,
+        }),
+      },
+      { caughtUp: source === 'caught-up' },
+    );
+  }
+
   private driveChild(childConversationId: string): void {
     for (const row of this.ports.store.listForChild(childConversationId))
       if (row.state === 'pending') this.drive(row, false);
@@ -1719,6 +1796,7 @@ export class DelegationResultDelivery {
   private canDeliverRow(row: DelegationResultRow): boolean {
     const identity = readSettlementIdentity(row);
     if (!identity) return false;
+    if (identity.kind === 'interrupted') return true;
     if (
       identity.kind !== 'invocation' &&
       this.ports.readInputlessTurnDisposition?.(row.childSessionId)?.kind !==

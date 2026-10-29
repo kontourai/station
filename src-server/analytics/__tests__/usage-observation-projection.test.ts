@@ -85,6 +85,10 @@ function fixture() {
     },
     listEventPayloads: (threadId) =>
       store.listEvents(threadId).map((row) => row.payload),
+    listResolvedEventPayloads: (threadId) =>
+      store
+        .resolveEventContent(store.listEvents(threadId))
+        .map((row) => row.payload),
     readUsageRevision: (threadId) => store.readUsageRevision(threadId),
     listUsageEventPayloads: (threadId) =>
       store.listUsageEventPayloads(threadId),

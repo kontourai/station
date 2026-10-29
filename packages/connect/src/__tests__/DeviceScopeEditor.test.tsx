@@ -3,6 +3,7 @@
 import {
   PAIRING_SCOPE_ENGINE_LOGIN,
   PAIRING_SCOPE_GRANT_PATHS,
+  PAIRING_SCOPE_TELEMETRY_MANAGE,
   PAIRING_SCOPES,
   type PairingScope,
 } from '@kontourai/station-contracts/environment-security';
@@ -48,6 +49,21 @@ function openEditor(
 
 const apply = () =>
   fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+
+test('companion management is an explicit elevated choice applied against the captured device grant', () => {
+  const onApply = openEditor('orchestration:read');
+  const control = screen.getByRole('checkbox', {
+    name: /Manage telemetry companion/,
+  });
+  expect(control).toHaveProperty('checked', false);
+  fireEvent.click(control);
+  expect(onApply).not.toHaveBeenCalled();
+  apply();
+  expect(onApply).toHaveBeenCalledWith(
+    ['orchestration:read', PAIRING_SCOPE_TELEMETRY_MANAGE],
+    'orchestration:read',
+  );
+});
 
 test('initialises from the device’s CURRENT scope, base and capabilities alike', () => {
   openEditor(

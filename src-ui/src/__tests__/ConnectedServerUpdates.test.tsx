@@ -343,6 +343,29 @@ async function renderHarness({
   return { view, queryClient, rerender: () => view.rerender(buildTree()) };
 }
 
+/**
+ * The server card once its connection answered: its header names the
+ * selected profile, and its folded Details name the address (only a
+ * connected server has one there).
+ */
+async function findConnectedServer(name: string) {
+  await waitFor(() => {
+    expect(screen.getByText(`Server · ${name}`)).toBeTruthy();
+    expect(screen.getByText(`Address: ${PAIRED_ORIGIN}`)).toBeTruthy();
+  });
+  return screen.getByText(`Server · ${name}`);
+}
+
+/** Whether a node sits inside the card's folded Details. */
+function inDetails(node: Element): boolean {
+  return node.closest('details.server-update__details') !== null;
+}
+
+/** The header's status badge text. */
+function badgeText(): string {
+  return document.querySelector('.server-update__badge')?.textContent ?? '';
+}
+
 async function waitConnected() {
   await waitFor(() => expect(health?.status).toBe('connected'));
 }
@@ -524,17 +547,20 @@ describe('ConnectedServerUpdates', () => {
     it('on a server older than #3851 (no stagedUpdates), confirms the update and follows the request to its rollback outcome', async () => {
       await renderArchive(archiveServiceBody());
       expect(
-        await screen.findByText(
-          'Station 0.8.0-preview.2 is available. This server runs 0.8.0-preview.1.',
-        ),
+        await screen.findByRole('button', { name: 'Update server' }),
       ).toBeTruthy();
+      expect(badgeText()).toBe('Update available');
       expect(screen.queryByText(/[Ss]ource update cannot/)).toBeNull();
       // The server said it can update itself from here, and it has no
       // source installation: neither connection-only line stands.
       expect(screen.queryByText('Manage updates on that host.')).toBeNull();
       expect(screen.queryByText('Source installation details')).toBeNull();
       // Paired-server facts that stay true are kept.
-      expect(screen.getByText(/Server on station\.example\.test/)).toBeTruthy();
+      expect(
+        inDetails(
+          screen.getByText(/Updates apply to the server at this address/),
+        ),
+      ).toBe(true);
 
       applyBody = () => ({
         success: true,
@@ -542,11 +568,7 @@ describe('ConnectedServerUpdates', () => {
         message: 'Update requested.',
       });
       serviceProgressBody = () => ({ state: 'staging', requestId: REQUEST_ID });
-      fireEvent.click(
-        screen.getByRole('button', {
-          name: 'Update server to 0.8.0-preview.2',
-        }),
-      );
+      fireEvent.click(screen.getByRole('button', { name: 'Update server' }));
       const confirm = await screen.findByRole('button', {
         name: 'Update and restart',
       });
@@ -619,10 +641,10 @@ describe('ConnectedServerUpdates', () => {
       );
       // Download, never the one-click update.
       const download = await screen.findByRole('button', {
-        name: 'Download 0.8.0-preview.2',
+        name: 'Download server update',
       });
       expect(
-        screen.queryByRole('button', { name: /Update server to/ }),
+        screen.queryByRole('button', { name: /^Update server$/ }),
       ).toBeNull();
       applyBody = () => ({
         success: true,
@@ -637,11 +659,11 @@ describe('ConnectedServerUpdates', () => {
         totalBytes: 100 * 1024 * 1024,
       });
       fireEvent.click(download);
-      expect(
-        await screen.findByText(
-          'Downloading the release: 25.0 of 100.0 MB (25%)…',
-        ),
-      ).toBeTruthy();
+      const bar = await screen.findByRole('progressbar', {
+        name: 'Downloading the update',
+      });
+      expect(bar.getAttribute('aria-valuenow')).toBe('25');
+      expect(screen.getByText('25.0 / 100.0 MB')).toBeTruthy();
       expect(postBodies).toEqual([{ action: 'stage' }]);
 
       // The server now reports `staged` (it pushes it as
@@ -672,7 +694,7 @@ describe('ConnectedServerUpdates', () => {
       });
       fireEvent.click(
         await screen.findByRole('button', {
-          name: 'Restart server to update to 0.8.0-preview.2',
+          name: 'Restart server',
         }),
       );
       // Opening the confirmation restarts nothing; it names the turn.
@@ -747,6 +769,47 @@ describe('ConnectedServerUpdates', () => {
       );
     });
 
+    it('states the address and each version at most once outside a collapsed Details', async () => {
+      serverStateBody = () => ({
+        supported: true,
+        currentVersion: '0.8.0-preview.1',
+        availability: null,
+        progress: { state: 'idle' },
+        downloadPolicy: 'after-24h',
+        autoDownloadAt: null,
+        applyWhenIdle: null,
+      });
+      await renderArchive(archiveServiceBody({ stagedUpdates: true }));
+      await screen.findByRole('button', { name: 'Download server update' });
+      const card = screen
+        .getByText('Server · paired-owner')
+        .closest('.server-update') as HTMLElement;
+      const details = card.querySelector(
+        'details.server-update__details',
+      ) as HTMLDetailsElement;
+      expect(details.open).toBe(false);
+      expect(details.querySelector('summary')?.textContent).toBe('Details');
+      // Identity, channel and the method explanation are folded away.
+      for (const folded of [
+        `Address: ${PAIRED_ORIGIN}`,
+        /Update channel: preview/,
+        /signed release manifest/,
+      ]) {
+        expect(inDetails(screen.getByText(folded))).toBe(true);
+      }
+      const visible = card.cloneNode(true) as HTMLElement;
+      for (const node of visible.querySelectorAll('details')) node.remove();
+      const count = (needle: string) =>
+        visible.textContent?.split(needle).length ?? 1;
+      const host = new URL(PAIRED_ORIGIN).hostname;
+      expect(count(host) - 1).toBeLessThanOrEqual(1);
+      expect(count('0.8.0-preview.1') - 1).toBe(1);
+      expect(count('0.8.0-preview.2') - 1).toBe(1);
+      expect(badgeText()).toBe('Update available');
+      // One primary action.
+      expect(card.querySelectorAll('.button--primary')).toHaveLength(1);
+    });
+
     it('an archive no launcher runs keeps "Manage updates on that host." and shows no source disclosure', async () => {
       await renderArchive(
         archiveServiceBody({
@@ -785,7 +848,7 @@ describe('ConnectedServerUpdates', () => {
         'Built-in server — updated with this desktop app.',
       ),
     ).toBeTruthy();
-    expect(screen.getByText('Use Desktop app updates above.')).toBeTruthy();
+    expect(screen.queryByText(/Use Desktop app updates/)).toBeNull();
     expect(screen.queryByText(/provenance/i)).toBeNull();
     await new Promise((resolve) => setTimeout(resolve, 25));
     expect(
@@ -814,14 +877,10 @@ describe('ConnectedServerUpdates', () => {
     });
     await waitConnected();
     await waitIdentitySettled();
-    expect(
-      await screen.findByText('Installed service on this Mac.'),
-    ).toBeTruthy();
-    expect(
-      screen.getByText(
-        'This service is updated separately from the desktop app.',
-      ),
-    ).toBeTruthy();
+    const installed = await screen.findByText(
+      'Installed service on this Mac. It is updated separately from the desktop app.',
+    );
+    expect(inDetails(installed)).toBe(true);
     expect(screen.queryByText('Stopped')).toBeNull();
     // The ordinary source check is mounted and auto-checks once settled.
     await waitFor(() =>
@@ -847,18 +906,16 @@ describe('ConnectedServerUpdates', () => {
     });
     await waitConnected();
     await waitIdentitySettled();
-    expect(
-      await screen.findByText('Server on station.example.test:8444.'),
-    ).toBeTruthy();
-    expect(screen.getByText('Manage updates on that host.')).toBeTruthy();
-    expect(
-      screen.getByText(
-        'Updates apply to the server at this address and affect its connected clients.',
-      ),
-    ).toBeTruthy();
-    expect(
-      screen.getByText(`Connected to paired-owner · ${PAIRED_ORIGIN}`),
-    ).toBeTruthy();
+    const scope = await screen.findByText(
+      'Updates apply to the server at this address and affect its connected clients.',
+    );
+    // The action line stays visible; where the server is folds into Details.
+    expect(inDetails(screen.getByText('Manage updates on that host.'))).toBe(
+      false,
+    );
+    expect(inDetails(scope)).toBe(true);
+    expect(screen.getByText('Server · paired-owner')).toBeTruthy();
+    expect(inDetails(screen.getByText(`Address: ${PAIRED_ORIGIN}`))).toBe(true);
     await waitFor(() =>
       expect(
         transportCalls.some((url) => url.includes('/api/system/core-update')),
@@ -903,11 +960,7 @@ describe('ConnectedServerUpdates', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Check for server updates' }),
     );
-    expect(
-      await screen.findByText(
-        'Station 0.8.0-preview.2 is available. This server runs 0.8.0-preview.1.',
-      ),
-    ).toBeTruthy();
+    await waitFor(() => expect(badgeText()).toBe('Update available'));
     expect(screen.queryByText('Server update method unknown.')).toBeNull();
     expect(screen.queryByText('Source installation details')).toBeNull();
   });
@@ -967,7 +1020,7 @@ describe('ConnectedServerUpdates', () => {
     expect(
       screen.queryByText('Built-in server — updated with this desktop app.'),
     ).toBeNull();
-    expect(screen.queryByText('Installed service on this Mac.')).toBeNull();
+    expect(screen.queryByText(/Installed service on this Mac\./)).toBeNull();
   });
 
   it('resolves unresolved while a persisted connection has no native binding yet', async () => {
@@ -989,7 +1042,7 @@ describe('ConnectedServerUpdates', () => {
     expect(
       await screen.findByText('Server update method unknown.'),
     ).toBeTruthy();
-    expect(screen.queryByText('Installed service on this Mac.')).toBeNull();
+    expect(screen.queryByText(/Installed service on this Mac\./)).toBeNull();
   });
 
   it('resolves unresolved and keeps the card silent about method when identity is incomplete', async () => {
@@ -1160,7 +1213,7 @@ describe('ConnectedServerUpdates', () => {
     await waitIdentitySettled();
     expect(context?.claimedOwnerUnresolved).toBe(false);
     expect(
-      await screen.findByText('Server on station.example.test:8444.'),
+      await screen.findByText(/Updates apply to the server at this address/),
     ).toBeTruthy();
     await waitFor(() =>
       expect(
@@ -1221,7 +1274,7 @@ describe('ConnectedServerUpdates', () => {
     await waitIdentitySettled();
     // Settle on the presentation first so the absence is not read mid-probe.
     expect(
-      await screen.findByText('Server on station.example.test:8444.'),
+      await screen.findByText(/Updates apply to the server at this address/),
     ).toBeTruthy();
     expect(
       screen.queryByText('Built-in server — updated with this desktop app.'),
@@ -1251,7 +1304,7 @@ describe('ConnectedServerUpdates', () => {
     await waitIdentitySettled();
     // Settle on the presentation first so the absence is not read mid-probe.
     expect(
-      await screen.findByText('Server on station.example.test:8444.'),
+      await screen.findByText(/Updates apply to the server at this address/),
     ).toBeTruthy();
     expect(
       screen.queryByText('Built-in server — updated with this desktop app.'),
@@ -1276,9 +1329,7 @@ describe('ConnectedServerUpdates', () => {
     expect(heldA?.signal).toBeTruthy();
     const scopeA1 = context?.scopeKey;
     expect(scopeA1).toBeTruthy();
-    expect(
-      await screen.findByText(`Connected to profile-a · ${PAIRED_ORIGIN}`),
-    ).toBeTruthy();
+    expect(await findConnectedServer('profile-a')).toBeTruthy();
 
     await native.repository?.authorizeActiveConnection(
       'station-profile:profile-b',
@@ -1316,9 +1367,7 @@ describe('ConnectedServerUpdates', () => {
       );
     });
     await waitIdentitySettled();
-    expect(
-      await screen.findByText(`Connected to profile-b · ${PAIRED_ORIGIN}`),
-    ).toBeTruthy();
+    expect(await findConnectedServer('profile-b')).toBeTruthy();
     const scopeB = context?.scopeKey;
     expect(scopeB).toBeTruthy();
     expect(scopeB).not.toEqual(scopeA1);
@@ -1379,9 +1428,7 @@ describe('ConnectedServerUpdates', () => {
     const scopeA2 = context?.scopeKey;
     expect(scopeA2).toBeTruthy();
     expect(scopeA2).not.toEqual(scopeA1);
-    expect(
-      await screen.findByText(`Connected to profile-a · ${PAIRED_ORIGIN}`),
-    ).toBeTruthy();
+    expect(await findConnectedServer('profile-a')).toBeTruthy();
     const a2Entry = queryClient
       .getQueryCache()
       .getAll()

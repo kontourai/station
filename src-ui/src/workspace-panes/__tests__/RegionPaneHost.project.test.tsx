@@ -910,7 +910,7 @@ test('a file preview from another project keeps its tab and says it is unavailab
   expect(within(shell('right')).queryByText(/close the tab/i)).toBeNull();
   expect(
     within(shell('right')).getByText(
-      /Open it again from the chat that linked it\./,
+      /Reopen it from the chat that linked it\./,
     ),
   ).toBeTruthy();
 });
@@ -991,7 +991,7 @@ test('a lone pane that cannot be shown in this dock can be removed from its regi
   expect(within(shell('right')).queryByRole('tablist')).toBeNull();
   expect(
     within(shell('right')).getByText(
-      /Not available in this Project: it was opened for another one, where it still works.*Removing it closes this tab\./,
+      /belongs to another Project or is no longer known/,
     ),
   ).toBeTruthy();
   fireEvent.click(

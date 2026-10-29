@@ -423,6 +423,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/orchestration-chat-flow.spec.ts',
     'tests/mcp-elicitation-form.spec.ts',
     'tests/mobile-request-sheet.spec.ts',
+    'tests/approval-spilled-content.spec.ts',
     'tests/input-request.spec.ts',
     'tests/acp-orchestration-plan.spec.ts',
     'tests/flow-gate-verdicts.spec.ts',
@@ -1617,6 +1618,15 @@ export const e2eManifest = [
     tierTarget: 'full',
     rationale:
       '#3284 MCP form elicitation on the pending-requests strip: rendered fields, contrast, touch targets and focus at desktop and 390px in both themes, refusal of a missing required field, and the typed respondToRequest content; an MCP prompt listed in the composer slash menu as /<server>:<prompt> with its MCP badge at desktop and 390px.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/approval-spilled-content.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    rationale:
+      'docs/design/event-content-spill.md: an approval whose content was stored out of line offers only Deny until the card loads the whole request through the content route, then shows the loaded content and offers Allow, and the allow carries viewedContentDigest; desktop 1440 and phone 390 in both themes.',
     exceptions: [],
   },
   {

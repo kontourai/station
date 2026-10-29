@@ -1,0 +1,7 @@
+{
+  "revision": "2b6b3ec31c9d05b69a38d728f178e1fdf6ef6aa9",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Re-checked its references to notification-delivery.md after that doc gained a sentence on Deny-only approval rewrites: its claims (webhook turns are ephemeral and raise no card alerts; an ask rule routes to the inbox) are unaffected. No prose change.","inputs":["docs/design/automations.md","docs/design/notification-delivery.md"]}
+  ]
+}

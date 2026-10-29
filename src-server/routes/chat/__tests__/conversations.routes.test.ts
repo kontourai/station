@@ -7,12 +7,15 @@ import {
   sessionReadAuthorityFromRequest,
   tenantId,
 } from '@kontourai/station-contracts/tenancy';
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { createForkContextWriter } from '../../../__test-utils__/fork-context-writer.js';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { resolvePrincipal } from '../../../services/identity/principal-resolver.js';
 import { resolveRuntimeAgent } from '../../agents/runtime-agent-resolver.js';
 
-vi.mock('../../../telemetry/metrics.js', () => ({
+vi.mock('../../../telemetry/metrics.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../telemetry/metrics.js')>()),
   conversationOps: { add: vi.fn() },
   conversationMessageSearches: { add: vi.fn() },
   chatTitleRegenerated: { add: vi.fn() },
@@ -80,6 +83,94 @@ const {
 const { FileMemoryAdapter } = await import(
   '../../../adapters/file/memory-adapter.js'
 );
+const makeForkDir = trackTempDirs();
+let forkWriters = new WeakMap<
+  object,
+  ReturnType<typeof createForkContextWriter>
+>();
+let forkAdapters = new WeakSet<object>();
+const forkCloses: Array<() => void> = [];
+const forkRestores: Array<() => void> = [];
+afterEach(() => {
+  for (const close of forkCloses.splice(0)) close();
+  for (const restore of forkRestores.splice(0)) restore();
+  forkWriters = new WeakMap();
+  forkAdapters = new WeakSet();
+});
+
+function prepareForkAdapter(adapter: InstanceType<typeof FileMemoryAdapter>) {
+  if (
+    forkAdapters.has(adapter) ||
+    !vi.isMockFunction(adapter.createConversation)
+  )
+    return;
+  forkAdapters.add(adapter);
+  const create = adapter.createConversation;
+  const read = adapter.getConversation;
+  const messages = adapter.getMessages;
+  const add = adapter.addMessages;
+  const records = new Map<
+    string,
+    NonNullable<Awaited<ReturnType<typeof read>>>
+  >();
+  const copies = new Map<string, Awaited<ReturnType<typeof messages>>>();
+  adapter.createConversation = vi.fn(async (input) => {
+    await create.call(adapter, input);
+    const time = new Date().toISOString();
+    const record = { ...input, createdAt: time, updatedAt: time };
+    records.set(input.id, record);
+    copies.set(input.id, []);
+    return record;
+  });
+  adapter.getConversation = vi.fn(async (id) => {
+    if (records.has(id)) return records.get(id) ?? null;
+    const record = await read.call(adapter, id);
+    return record?.id === id ? record : null;
+  });
+  adapter.getMessages = vi.fn(async (userId, id, options) => {
+    if (records.has(id))
+      return records.get(id)?.userId === userId ? (copies.get(id) ?? []) : [];
+    return messages.call(adapter, userId, id, options);
+  });
+  adapter.addMessages = vi.fn(async (input, userId, id) => {
+    await add.call(adapter, input, userId, id);
+    copies.set(id, [...(copies.get(id) ?? []), ...input]);
+  });
+  forkRestores.push(() => {
+    adapter.createConversation = create;
+    adapter.getConversation = read;
+    adapter.getMessages = messages;
+    adapter.addMessages = add;
+  });
+}
+
+function createForkConversationRoutes(
+  ...args: Parameters<typeof createConversationRoutes>
+) {
+  const observations = args[12];
+  if (!observations || observations.reserveConversationForkContext)
+    return createConversationRoutes(...args);
+  for (const adapter of args[0].values()) prepareForkAdapter(adapter);
+  const createAdapter = args[7];
+  if (createAdapter)
+    args[7] = (slug) => {
+      const adapter = createAdapter(slug);
+      prepareForkAdapter(adapter);
+      return adapter;
+    };
+  let context = forkWriters.get(observations);
+  if (!context) {
+    context = createForkContextWriter(
+      join(makeForkDir('station-fork-route-'), 'events.sqlite'),
+      observations,
+    );
+    forkWriters.set(observations, context);
+    forkCloses.push(context.close);
+  }
+  args[12] = context.writer;
+  return createConversationRoutes(...args);
+}
+
 const { ensureChatConversation } = await import('../chat-persistence.js');
 const { conversationOps } = await import('../../../telemetry/metrics.js');
 const { getConversationStats } = await import(
@@ -1347,7 +1438,7 @@ describe('Conversation Routes', () => {
       appendConversationFork: vi.fn(),
       readConversationForkProvenance: vi.fn(() => ({ forkedTo: [] })),
     };
-    const app = createConversationRoutes(
+    const app = createForkConversationRoutes(
       new Map([
         ['default', source],
         ['codex', target],
@@ -1385,7 +1476,7 @@ describe('Conversation Routes', () => {
       appendConversationFork: vi.fn(),
       readConversationForkProvenance: vi.fn(() => ({ forkedTo: [] })),
     };
-    const app = createConversationRoutes(
+    const app = createForkConversationRoutes(
       new Map([['default', source]]) as any,
       mockLogger,
       undefined,
@@ -1429,7 +1520,7 @@ describe('Conversation Routes', () => {
         .mockRejectedValue(new Error('tracking store unavailable')),
       update: vi.fn(),
     };
-    const app = createConversationRoutes(
+    const app = createForkConversationRoutes(
       new Map([
         ['default', source],
         ['codex', target],
@@ -1482,7 +1573,7 @@ describe('Conversation Routes', () => {
     const configLoader = {
       loadAgent: vi.fn().mockResolvedValue({ slug: 'codex' }),
     };
-    const app = createConversationRoutes(
+    const app = createForkConversationRoutes(
       new Map([
         ['default', source],
         ['codex', target],
@@ -1531,7 +1622,7 @@ describe('Conversation Routes', () => {
     const configLoader = {
       loadAgent: vi.fn().mockResolvedValue({ slug: 'codex' }),
     };
-    const createTargetConversation = vi.fn().mockResolvedValue(undefined);
+    const createTargetConversation = vi.fn(ensureChatConversation);
     const actionOperations = {
       create: vi.fn().mockResolvedValue({ id: 'fork-operation', revision: 1 }),
       update: vi
@@ -1542,7 +1633,7 @@ describe('Conversation Routes', () => {
         })
         .mockRejectedValueOnce(new Error('terminal observation failed')),
     };
-    const app = createConversationRoutes(
+    const app = createForkConversationRoutes(
       new Map([
         ['default', source],
         ['codex', target],
@@ -1631,7 +1722,7 @@ describe('Conversation Routes', () => {
       }),
       readConversationForkProvenance: vi.fn(() => ({ forkedTo: forks })),
     };
-    const app = createConversationRoutes(
+    const app = createForkConversationRoutes(
       new Map([
         ['default', source],
         ['codex', target],
@@ -1724,7 +1815,7 @@ describe('Conversation Routes', () => {
       appendConversationForkIfAbsent: vi.fn(() => true),
       readConversationForkProvenance: vi.fn(() => ({ forkedTo: [] })),
     };
-    const app = createConversationRoutes(
+    const app = createForkConversationRoutes(
       new Map([
         ['default', source],
         ['codex', target],
@@ -2278,7 +2369,7 @@ describe('Conversation Routes', () => {
     });
     adapter.getMessages.mockResolvedValue(completedForkTranscript());
     const forks: any[] = [];
-    const app = createConversationRoutes(
+    const app = createForkConversationRoutes(
       new Map([['codex', adapter]]) as any,
       mockLogger,
       undefined,
@@ -2436,7 +2527,7 @@ describe('Conversation Routes', () => {
       ),
     };
     const forks: any[] = [];
-    const app = createConversationRoutes(
+    const app = createForkConversationRoutes(
       new Map([
         ['codex', adapter],
         ['claude', adapter],
@@ -2559,7 +2650,7 @@ describe('Conversation Routes', () => {
         readConversationForkProvenance: vi.fn(() => ({ forkedTo: [] })),
       };
       const actionOperations = { create: vi.fn(), update: vi.fn() };
-      const app = createConversationRoutes(
+      const app = createForkConversationRoutes(
         new Map([['claude', source]]) as any,
         mockLogger,
         undefined,
@@ -4076,7 +4167,7 @@ describe('Conversation export route (station#1999 S2)', () => {
             })),
           getDefaultAgentIds: async () => defaults,
         });
-      const app = createConversationRoutes(
+      const app = createForkConversationRoutes(
         new Map([
           ['codex', source],
           ['claude', target],
@@ -4118,7 +4209,7 @@ describe('Conversation export route (station#1999 S2)', () => {
   test('production registry-aware fork rejects a deleted/unknown target absent from active and persisted registries', async () => {
     const source = createMockAdapter();
     source.getMessages.mockResolvedValue(completedForkTranscript());
-    const app = createConversationRoutes(
+    const app = createForkConversationRoutes(
       new Map([['codex', source]]) as any,
       mockLogger,
       undefined,
@@ -4165,7 +4256,7 @@ describe('Conversation export route (station#1999 S2)', () => {
         appendConversationFork: vi.fn(),
         readConversationForkProvenance: vi.fn(() => ({ forkedTo: [] })),
       };
-      const app = createConversationRoutes(
+      const app = createForkConversationRoutes(
         new Map([['codex', adapter]]) as any,
         mockLogger,
         undefined,
@@ -4198,7 +4289,7 @@ describe('Conversation export route (station#1999 S2)', () => {
       appendConversationFork: vi.fn(),
       readConversationForkProvenance: vi.fn(() => ({ forkedTo: [] })),
     };
-    const app = createConversationRoutes(
+    const app = createForkConversationRoutes(
       new Map([['codex', adapter]]) as any,
       mockLogger,
       undefined,
@@ -4230,7 +4321,7 @@ describe('Conversation export route (station#1999 S2)', () => {
   test('rejects a clean unknown source even when the conversation id exists under another Agent', async () => {
     const adapter = createMockAdapter();
     const createAdapter = vi.fn(() => adapter as any);
-    const app = createConversationRoutes(
+    const app = createForkConversationRoutes(
       new Map([['codex', adapter]]) as any,
       mockLogger,
       undefined,
@@ -4270,7 +4361,7 @@ describe('Conversation export route (station#1999 S2)', () => {
       appendConversationFork: vi.fn(),
       readConversationForkProvenance: vi.fn(() => ({ forkedTo: [] })),
     };
-    const app = createConversationRoutes(
+    const app = createForkConversationRoutes(
       new Map([['codex', adapter]]) as any,
       mockLogger,
       undefined,
@@ -4311,7 +4402,7 @@ describe('Conversation export route (station#1999 S2)', () => {
         appendConversationFork: vi.fn(),
         readConversationForkProvenance: vi.fn(() => ({ forkedTo: [] })),
       };
-      const app = createConversationRoutes(
+      const app = createForkConversationRoutes(
         new Map([['codex', adapter]]) as any,
         mockLogger,
         undefined,
@@ -4358,7 +4449,7 @@ describe('Conversation export route (station#1999 S2)', () => {
       const target = createMockAdapter();
       target.getConversation.mockResolvedValue(null);
       const forks: any[] = [];
-      const app = createConversationRoutes(
+      const app = createForkConversationRoutes(
         new Map([
           ['codex', source],
           ['owned', target],

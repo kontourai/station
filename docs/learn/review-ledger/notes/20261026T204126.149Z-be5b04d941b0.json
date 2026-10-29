@@ -1,0 +1,7 @@
+{
+  "revision": "bc956eb745f249cb63216f38296775def58f778f",
+
+  "notes": [
+    {"path":"docs/reviews/workspace-map-20261015/README.md","note":"Historical evidence record; unchanged. ProjectSidebarRow change is comment-only (SEAM note no longer names the removed footer tray). Record's observations remain historical, not current-layout claims.","inputs":["docs/reviews/workspace-map-20261015/README.md","src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx"]}
+  ]
+}

@@ -2575,56 +2575,83 @@ it('source seal requires a dedicated grant and rechecks it at the commit boundar
   }
 });
 
-it('source seal refuses an unpublished committed document instead of hiding it behind a closing checkpoint', async () => {
-  const path = databasePath();
-  const source = history(path);
-  const working = createProjectTaskRoomWorkingState(path);
-  try {
-    await source.open({ grant: grant('discover') });
-    const documentScope = {
-      projectId: scope.projectId,
-      taskId: scope.taskId,
-      documentId: 'document',
-    };
-    expect(
-      (
-        await working.settle({
-          scope: documentScope,
-          intentId: 'pending-edit',
-          intentDigest: sha('pending-edit'),
-          actorId: 'operator',
-          epoch: 1,
-          publicationPrincipal: {
-            operatorId: 'operator',
-            deviceId: 'device',
-            policyRevision: 'policy-1',
-          },
-          operations: [
-            {
-              schemaVersion: 1,
-              operationId: 'pending-op',
-              documentId: 'document',
-              replicaId: 'replica',
-              actor: { actorId: 'operator', kind: 'human' },
-              parents: [],
-              authorizationEpoch: 1,
-              kind: 'insert',
-              after: null,
-              text: 'not yet published',
+it.each([false, true])(
+  'source seal distinguishes claimed publication from replaceable working state (coalesce=%s)',
+  async (coalesce) => {
+    const path = databasePath();
+    const source = history(path);
+    const working = createProjectTaskRoomWorkingState(path);
+    try {
+      await source.open({ grant: grant('discover') });
+      const documentScope = {
+        projectId: scope.projectId,
+        taskId: scope.taskId,
+        documentId: 'document',
+      };
+      expect(
+        (
+          await working.settle({
+            scope: documentScope,
+            intentId: 'pending-edit',
+            ...(coalesce ? { coalesceRevisionPublication: true as const } : {}),
+            intentDigest: sha('pending-edit'),
+            actorId: 'operator',
+            epoch: 1,
+            publicationPrincipal: {
+              operatorId: 'operator',
+              deviceId: 'device',
+              policyRevision: 'policy-1',
             },
-          ],
-        })
-      ).kind,
-    ).toBe('committed');
-    expect(
-      await source.sealSource({ grant: grant('home-transfer'), ...sealIntent }),
-    ).toEqual({ kind: 'publication-pending' });
-    expect((await source.append(message('still-open'))).kind).toBe('committed');
-  } finally {
-    await source.close();
-    await working.close();
-  }
-});
+            operations: [
+              {
+                schemaVersion: 1,
+                operationId: 'pending-op',
+                documentId: 'document',
+                replicaId: 'replica',
+                actor: { actorId: 'operator', kind: 'human' },
+                parents: [],
+                authorizationEpoch: 1,
+                kind: 'insert',
+                after: null,
+                text: 'not yet published',
+              },
+            ],
+          })
+        ).kind,
+      ).toBe('committed');
+      const sealed = await source.sealSource({
+        grant: grant('home-transfer'),
+        ...sealIntent,
+      });
+      if (coalesce) {
+        expect(sealed).toMatchObject({
+          kind: 'sealed',
+          seal: { workingStateDigest: expect.stringMatching(/^[0-9a-f]{64}$/) },
+        });
+        expect(await working.read({ scope: documentScope })).toMatchObject({
+          text: 'not yet published',
+        });
+        expect(
+          await source.sealSource({
+            grant: grant('home-transfer'),
+            ...sealIntent,
+          }),
+        ).toEqual(sealed);
+        expect((await source.append(message('after-seal'))).kind).toBe(
+          'denied',
+        );
+      } else {
+        expect(sealed).toEqual({ kind: 'publication-pending' });
+        expect((await source.append(message('still-open'))).kind).toBe(
+          'committed',
+        );
+      }
+    } finally {
+      await source.close();
+      await working.close();
+    }
+  },
+);
 
 it('source seal serializes behind an admitted transaction and closes at its committed checkpoint', async () => {
   const path = databasePath();

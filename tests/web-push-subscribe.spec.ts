@@ -30,9 +30,8 @@ async function goToNotificationsSettings(
   page: import('@playwright/test').Page,
 ) {
   await page.goto('/');
-  // #1552 D1: "Open settings" is a row of the avatar's menu on a fine pointer,
-  // and this suite runs at the default desktop viewport, so the standalone gear
-  // this used to dispatch against is `display: none` there.
+  // #1552 D1: "Open settings" is a row of the account menu; the footer no
+  // longer has a standalone Settings gear.
   await openHeaderSettings(page);
   await page.waitForSelector('.settings__section-nav', { timeout: 10_000 });
   await page

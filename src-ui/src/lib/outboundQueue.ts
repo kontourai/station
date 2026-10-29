@@ -23,6 +23,7 @@ import {
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { createStore, get, promisifyRequest, set, update } from 'idb-keyval';
 import type { FileAttachment } from '../types';
+import { requestPersistentStorage } from './persistentStorage';
 
 export type OutboundDispatchStatus =
   | 'pending'
@@ -1627,6 +1628,9 @@ async function enqueue(
     deferredAt?: unknown;
   };
   const now = safeIntent.createdAt ?? Date.now();
+  // Text now waits on this device, so ask the browser to keep it. A live send
+  // that is answered (beginLive) never reaches here and never prompts.
+  void requestPersistentStorage();
   return mutateState((state) => {
     // A message already delivered or discarded is not queued again.
     const retired = retiredReason(state, safeIntent.clientTurnId);

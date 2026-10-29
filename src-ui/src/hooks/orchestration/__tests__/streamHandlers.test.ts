@@ -16,6 +16,7 @@ let handleToolCompletedEvent: typeof import('../streamHandlers').handleToolCompl
 let handleToolProgressEvent: typeof import('../streamHandlers').handleToolProgressEvent;
 let handleRuntimeErrorEvent: typeof import('../turnHandlers').handleRuntimeErrorEvent;
 let handleTextDeltaEvent: typeof import('../streamHandlers').handleTextDeltaEvent;
+let handleHostImagesEvent: typeof import('../streamHandlers').handleHostImagesEvent;
 // archive#3351: spies on the messageParts module (see the doMock in the
 // text-delta describe below) to prove the dedup actually removed the
 // duplicated per-token work.
@@ -76,6 +77,7 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
       handleToolStartedEvent,
       handleToolCompletedEvent,
       handleToolProgressEvent,
+      handleHostImagesEvent,
     } = await import('../streamHandlers'));
     ({ handleRuntimeErrorEvent } = await import('../turnHandlers'));
     ({ resetTurnAttentionNotifications } = await import(
@@ -115,6 +117,45 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
     expect(part?.sourceEventId).toBe('evt-1');
     expect(part?.error).toBeUndefined();
     expect(part?.approvalStatus).toBeUndefined();
+  });
+
+  test('chat-host-images: a settled turn host images land on that turn committed row', () => {
+    const ref = `sha256-${'d'.repeat(64)}`;
+    activeChatsStore.updateChat(threadId, {
+      messages: [
+        { role: 'assistant', content: 'earlier', turnId: 'turn-0' },
+        { role: 'assistant', content: '![x](/w/x.png)', turnId: 'turn-1' },
+      ],
+    });
+    handleHostImagesEvent({
+      eventId: 'host-1',
+      provider: 'codex',
+      threadId,
+      turnId: 'turn-1',
+      createdAt: '2026-10-27T00:00:00.000Z',
+      method: 'content.host-images',
+      attachments: [
+        {
+          kind: 'image',
+          name: 'x.png',
+          mimeType: 'image/png',
+          size: 3,
+          blobRef: ref,
+        },
+      ],
+      sources: [
+        { path: '/w/x.png', attachmentIndex: 0 },
+        { path: '/etc/y.png', refused: 'outside-allowed-roots' },
+      ],
+    });
+    const messages = activeChatsStore.getSnapshot()[threadId]?.messages ?? [];
+    expect(messages[0].hostImages).toBeUndefined();
+    expect(messages[1].hostImages).toEqual({
+      images: {
+        '/w/x.png': { blobRef: ref, mimeType: 'image/png', name: 'x.png' },
+      },
+      refused: { '/etc/y.png': 'outside-allowed-roots' },
+    });
   });
 
   test('a tool-returned image lands right after its row as a blob reference, once', () => {

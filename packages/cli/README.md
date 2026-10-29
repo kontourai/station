@@ -71,7 +71,10 @@ host** (`station environment access approve <request-id>` there, with the
 existing Station home selected). When they do,
 the CLI stores the issued bearer credential in the operating-system keyring and
 saves only its reference with the Station entry. That Station becomes the
-default only after pairing succeeds.
+default only after pairing succeeds. On macOS the Keychain is reached through
+`/usr/bin/security`, so one **Always Allow** survives upgrades. A Keychain wait
+that nobody can answer fails with a remedy instead of hanging; see
+[the CLI reference](../../docs/reference/cli.md).
 
 That is the whole point of pairing: from then on, nothing needs a flag.
 

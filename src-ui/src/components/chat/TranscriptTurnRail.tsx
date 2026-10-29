@@ -19,8 +19,6 @@ import {
 } from './transcriptTurnLandmarks';
 import './TranscriptTurnRail.css';
 
-/** Below this many user turns the transcript is short enough to scroll. */
-export const TRANSCRIPT_TURN_NAVIGATION_MIN_TURNS = 6;
 // The gutter needs a column this wide beside it, and a transcript this tall,
 // to be a map rather than clutter; below either, the turn actions remain.
 const RAIL_MIN_COLUMN_WIDTH_PX = 560;

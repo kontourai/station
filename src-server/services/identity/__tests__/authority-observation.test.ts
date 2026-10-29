@@ -495,3 +495,81 @@ describe('guardAuthorityObservationResponse', () => {
     );
   });
 });
+
+test('release lease is asserted at enqueue after probe completion and released on refusal', async () => {
+  let current = true;
+  let probes = 0;
+  let releases = 0;
+  const response = await guardAuthorityObservationResponse(
+    new Response('private'),
+    {
+      async probe() {
+        probes++;
+        if (probes === 2)
+          queueMicrotask(() => {
+            current = false;
+          });
+        return {
+          assertLocalCurrent() {
+            if (!current)
+              throw new AuthorityObservationRejected(403, 'authority_changed');
+          },
+          async release() {
+            releases++;
+          },
+        };
+      },
+    },
+  );
+  await expect(response.text()).rejects.toThrow('before response delivery');
+  expect(probes).toBe(2);
+  expect(releases).toBe(2);
+  expect(response.headers.get('cache-control')).toBe('no-store');
+});
+
+test('cancellation while probing releases custody without enqueueing a chunk', async () => {
+  let enter = () => {};
+  let finish = () => {};
+  const entered = new Promise<void>((resolve) => {
+    enter = resolve;
+  });
+  const blocked = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  let probes = 0;
+  let releases = 0;
+  let released = () => {};
+  const releaseFinished = new Promise<void>((resolve) => {
+    released = resolve;
+  });
+  let assertions = 0;
+  const response = await guardAuthorityObservationResponse(
+    new Response('private'),
+    {
+      async probe() {
+        if (++probes === 2) {
+          enter();
+          await blocked;
+        }
+        return {
+          assertLocalCurrent() {
+            assertions++;
+          },
+          async release() {
+            releases++;
+            if (releases === 2) released();
+          },
+        };
+      },
+    },
+  );
+  const reader = response.body!.getReader();
+  const read = reader.read();
+  await entered;
+  await reader.cancel();
+  finish();
+  expect((await read).done).toBe(true);
+  await releaseFinished;
+  expect(assertions).toBe(1);
+  expect(releases).toBe(2);
+});

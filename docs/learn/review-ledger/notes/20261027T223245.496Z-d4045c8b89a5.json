@@ -1,0 +1,7 @@
+{
+  "revision": "fa6bf335c4cec0435dec10fd7376d4d6b011045b",
+
+  "notes": [
+    {"path":"docs/learn/media/connections-models.png","note":"Copy-only change in AgentConnectionView.tsx, ProviderConnectionForm.tsx: shortened user-facing strings, no layout, flow or behavior change. Not re-captured; any visible wording may be the older, longer text.","inputs":["docs/learn/media/connections-models.png","src-ui/src/views/AgentConnectionView.tsx","src-ui/src/views/provider-settings/ProviderConnectionForm.tsx"]}
+  ]
+}

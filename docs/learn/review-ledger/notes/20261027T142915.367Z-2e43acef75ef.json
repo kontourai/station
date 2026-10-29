@@ -1,0 +1,13 @@
+{
+  "revision": "bbeb2c9c22844cd5dadec83ea000441cdc49251a",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"#4237 wording-only change in docs/reference/contracts.md: 'a defined attachments array, even [], selects at least v4' replaces 'any present attachments key', since an explicitly undefined key is present but selects nothing and no version accepts it. No claim in this document changed.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#4237 wording-only change in docs/reference/contracts.md: 'a defined attachments array, even [], selects at least v4' replaces 'any present attachments key', since an explicitly undefined key is present but selects nothing and no version accepts it. No claim in this document changed.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"#4237 wording-only change in docs/reference/contracts.md: 'a defined attachments array, even [], selects at least v4' replaces 'any present attachments key', since an explicitly undefined key is present but selects nothing and no version accepts it. Checked against projectTaskRoomWriteSchemaVersion and hasRoomField.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"#4237 wording-only change in docs/reference/contracts.md: 'a defined attachments array, even [], selects at least v4' replaces 'any present attachments key', since an explicitly undefined key is present but selects nothing and no version accepts it. No claim in this document changed.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

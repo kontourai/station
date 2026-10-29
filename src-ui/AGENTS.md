@@ -33,6 +33,13 @@ Applies to `src-ui` and the pane packages (`packages/basis-pane`, `packages/boar
 
 Layout, touch targets and dialogs: [responsive UI](../docs/guides/responsive-ui.md). Data ownership, tones and styling: [frontend patterns](../docs/patterns/frontend.md).
 
+## Product copy
+
+- State each fact once per surface. Show status as a badge or pill, not a sentence. Offer one primary action.
+- Put explanation in a Details disclosure or tooltip. Skip reassurance tails and mechanism explanations unless the user needs them to decide.
+- Aim for at most 100 characters per description.
+- `npm run ui-copy-length:ratchet` fails when a file gains copy over 140 characters or over two sentences. Regenerate its baseline with `node scripts/ui-copy-length.mjs --update` only to absorb shrinkage or a reviewed exception.
+
 ## Design system
 
 UI, brand, and product-copy rules live in `DESIGN.md` in `@kontourai/ui` (https://github.com/kontourai/ui/blob/main/DESIGN.md; also shipped at `node_modules/@kontourai/ui/DESIGN.md`). Style with the `--k-*` tokens instead of hard-coded colors, spacing, radii or font sizes, and don't resolve anything the doc marks OPEN.

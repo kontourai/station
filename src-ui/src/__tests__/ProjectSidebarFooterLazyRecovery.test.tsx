@@ -42,13 +42,6 @@ vi.mock('../components/LazyBoundary', async (importOriginal) => {
 vi.mock('@kontourai/station-sdk', () => ({
   useOrchestrationSessionsQuery: () => ({ data: [], isError: false }),
 }));
-vi.mock('@kontourai/station-sdk/live-activity', () => ({
-  useLiveActivityQuery: () => ({
-    data: null,
-    isError: false,
-    isPending: false,
-  }),
-}));
 vi.mock('../hooks/useSurfaceVisibilityFlags', () => ({
   useSurfaceVisibilityFlags: () => new Set(),
 }));
@@ -100,7 +93,7 @@ test('a rejected Customize chunk has dialog recovery on a collapsed rail, closes
   );
   expect(within(recovery).getByRole('button', { name: 'Reload' })).toBeTruthy();
   expect(window.history.length).toBe(beforeFailureHistoryLength);
-  expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Schedule' })).toBeTruthy();
 
   fireEvent.click(
     within(recovery).getByRole('button', { name: 'Close Customize' }),

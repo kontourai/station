@@ -1,0 +1,7 @@
+{
+  "revision": "42c538191596801dcc4636ac0f3da3d322693898",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Source delta (#4203 round 3): the inventory supersede lookup now follows the transcript's fold exactly (a start claims the completion right after it when turns are compatible, a later unresolved takes over the slot, unclaimed results of other turns are skipped), still one range seek on idx_events_thread_tool_call_sequence with LAG over that range. contracts.md's supersede sentence changed; this document only routes to it. No prose change.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]}
+  ]
+}

@@ -57,6 +57,32 @@
   line-gap-override: 0%;
 }
 
+/* Android ships Roboto, not Arial, so the Arial fallback above never loads
+ * there and the swap from system-ui reflowed every line. Same method and
+ * sample against Roboto 2.138 hmtx advances (2048 units per em): sample
+ * widths 64.6787109375 em (regular) and 65.55224609375 em (bold). */
+@font-face {
+  font-family: "DM Sans Roboto Fallback";
+  src: local("Roboto"), local("Roboto-Regular");
+  font-style: normal;
+  font-weight: 400 500;
+  size-adjust: 102.7757%;
+  ascent-override: 96.52087%;
+  descent-override: 30.16277%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: "DM Sans Roboto Fallback";
+  src: local("Roboto Bold"), local("Roboto-Bold");
+  font-style: normal;
+  font-weight: 600 700;
+  size-adjust: 106.65233%;
+  ascent-override: 93.0125%;
+  descent-override: 29.06641%;
+  line-gap-override: 0%;
+}
+
 /* DM Sans · latin */
 @font-face {
   font-family: "DM Sans";

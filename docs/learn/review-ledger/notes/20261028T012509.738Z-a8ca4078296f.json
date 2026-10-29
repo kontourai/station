@@ -1,0 +1,7 @@
+{
+  "revision": "f44cec61337e7e20856f0f415f3512ddedd7ef01",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"UsageTelemetryDisclosure summary restores 'never linked to your account'; TelemetryTierSettings restores 'after notice' for daily counts (matches the shown-notice requirement in the tier table). Runtime behavior unchanged; prose accurate.","inputs":["docs/reference/usage-telemetry.md","src-ui/src/components/OnboardingGate.tsx","src-ui/src/components/UsageTelemetryDisclosure.tsx","src-ui/src/views/settings/TelemetryTierSettings.tsx"]}
+  ]
+}

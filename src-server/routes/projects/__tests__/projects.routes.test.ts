@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { WORKSPACE_BASIS_PANE_DESCRIPTOR } from '@kontourai/station-basis-pane/workspace-basis-pane';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import type { ProjectChatDefaultsView } from '@kontourai/station-contracts/project-chat-defaults';
 import { agentOwnershipFinding } from '@kontourai/station-contracts/project-reference-integrity';
 import { WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-browser-preview';
 import { WORKSPACE_CHAT_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-chat-pane';
@@ -40,6 +41,7 @@ import {
   saveAgentConfig,
 } from '../../../domain/config-loader-agents.js';
 import { setGrantedPairingScope } from '../../../security/pairing-route-scopes.js';
+import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 
 const projectOps = { add: vi.fn() };
 const projectPaneCatalogDuration = { record: vi.fn() };
@@ -641,11 +643,13 @@ describe('Project Routes', () => {
       expect(service.updateProject).toHaveBeenLastCalledWith(
         'atlas',
         expect.objectContaining({ defaultAgent: 'codex' }),
+        expect.anything(),
       );
       expect((await put(app, { defaultAgent: null })).status).toBe(200);
       expect(service.updateProject).toHaveBeenLastCalledWith(
         'atlas',
         expect.objectContaining({ defaultAgent: null }),
+        expect.anything(),
       );
     });
 
@@ -662,6 +666,7 @@ describe('Project Routes', () => {
           defaultModel: 'claude-sonnet',
           defaultProviderId: 'anthropic-local',
         }),
+        expect.anything(),
       );
     });
 
@@ -678,7 +683,195 @@ describe('Project Routes', () => {
           defaultModel: null,
           defaultProviderId: null,
         }),
+        expect.anything(),
       );
+    });
+
+    describe('new-chat selections and approval mode', () => {
+      /** Mounts the routes behind the operator's own credential (in person). */
+      function asOperator(app: Awaited<ReturnType<typeof seeded>>['app']) {
+        const outer = new Hono();
+        outer.use('*', async (c, next) => {
+          setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+            credential: 'operator-credential-fixture',
+            authority: 'operator-credential',
+            source: 'bearer',
+          });
+          await next();
+        });
+        outer.route('/', app);
+        return outer;
+      }
+
+      test('selections and a posture are validated, and null drops each', async () => {
+        const { service, app } = await seeded();
+        expect(
+          (await put(app, { defaultModelSelection: 'sometimes' })).status,
+        ).toBe(400);
+        expect(
+          (await put(app, { defaultApprovalMode: 'connection-default' }))
+            .status,
+        ).toBe(400);
+        expect(service.updateProject).not.toHaveBeenCalled();
+        const res = await put(app, {
+          defaultModelSelection: 'last-used',
+          defaultApprovalModeSelection: 'last-used',
+          defaultApprovalMode: 'auto',
+        });
+        expect(res.status).toBe(200);
+        expect(service.updateProject).toHaveBeenLastCalledWith(
+          'atlas',
+          expect.objectContaining({
+            defaultModelSelection: 'last-used',
+            defaultApprovalModeSelection: 'last-used',
+            defaultApprovalMode: 'auto',
+          }),
+          expect.anything(),
+        );
+        expect(
+          (
+            await put(app, {
+              defaultModelSelection: null,
+              defaultApprovalModeSelection: null,
+              defaultApprovalMode: null,
+            })
+          ).status,
+        ).toBe(200);
+        expect(service.updateProject).toHaveBeenLastCalledWith(
+          'atlas',
+          expect.objectContaining({
+            defaultModelSelection: null,
+            defaultApprovalModeSelection: null,
+            defaultApprovalMode: null,
+          }),
+          expect.anything(),
+        );
+      });
+
+      test('an update hands the service the caller’s full-access grant, and its refusal is a 403', async () => {
+        const { service, app } = await seeded();
+        // No authenticated principal: no grant.
+        expect((await put(app, { defaultApprovalMode: 'ask' })).status).toBe(
+          200,
+        );
+        expect(service.updateProject).toHaveBeenLastCalledWith(
+          'atlas',
+          expect.objectContaining({ defaultApprovalMode: 'ask' }),
+          { mayRaiseFullAccessDefault: false },
+        );
+        // The operator in person holds it.
+        await put(asOperator(app), { defaultApprovalMode: 'never' });
+        expect(service.updateProject).toHaveBeenLastCalledWith(
+          'atlas',
+          expect.objectContaining({ defaultApprovalMode: 'never' }),
+          { mayRaiseFullAccessDefault: true },
+        );
+        // The service decides against the revision it replaces (see
+        // project-service.test); the route reports its refusal as 403.
+        const { ProjectFullAccessDefaultRefusal } = await import(
+          '../../../services/projects/project-service.js'
+        );
+        service.updateProject.mockRejectedValueOnce(
+          new ProjectFullAccessDefaultRefusal(),
+        );
+        const refused = await put(app, { defaultApprovalMode: 'never' });
+        expect(refused.status).toBe(403);
+        expect((await json(refused)).error).toContain('full-access');
+      });
+
+      test('POST / refuses a full-access new-chat mode without the grant', async () => {
+        const service = createMockProjectService();
+        const app = createProjectRoutes(
+          service as any,
+          createMockStorageAdapter() as any,
+          '/tmp',
+        );
+        const refused = await app.request('/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: 'Atlas',
+            slug: 'atlas',
+            defaultApprovalMode: 'never',
+          }),
+        });
+        expect(refused.status).toBe(403);
+        expect(service.createProject).not.toHaveBeenCalled();
+      });
+
+      test('GET /:slug/chat-defaults answers the composed view for the caller', async () => {
+        const service = createMockProjectService();
+        const view: ProjectChatDefaultsView = {
+          version: 'station.project-chat-defaults/v1',
+          projectSlug: 'atlas',
+          model: { selection: 'last-used', lastUsed: [] },
+          approvalMode: { selection: 'fixed', resolved: { source: 'none' } },
+        };
+        const chatDefaults = vi.fn(() => view);
+        const app = createProjectRoutes(
+          service as any,
+          createMockStorageAdapter() as any,
+          '/tmp',
+          { chatDefaults },
+        );
+        await app.request('/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'Atlas', slug: 'atlas' }),
+        });
+        const res = await app.request('/atlas/chat-defaults');
+        expect(res.status).toBe(200);
+        expect((await json(res)).data).toEqual(view);
+        // The route decides the caller's full-access proof (no principal
+        // here, so none) and hands it to the composed view.
+        expect(chatDefaults).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({ slug: 'atlas' }),
+          { mayGrantFullAccess: false },
+        );
+        expect((await app.request('/missing/chat-defaults')).status).toBe(404);
+      });
+
+      test('GET /:slug/chat-defaults answers an admitted member, not a refused one, and is 501 when not composed', async () => {
+        const service = createMockProjectService();
+        const member = createProjectRoutes(
+          service as any,
+          createMockStorageAdapter() as any,
+          '/tmp',
+          {
+            chatDefaults: vi.fn(
+              () => ({ version: 'station.project-chat-defaults/v1' }) as any,
+            ),
+            memberProjectAdmission: async () => ({
+              scope: { localProjectId: 'id-1' } as any,
+              actions: ['view'],
+            }),
+          },
+        );
+        await member.request('/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'Atlas', slug: 'atlas' }),
+        });
+        // The start applies the Project layer to a member's chat too, so the
+        // member reads what will apply.
+        expect((await member.request('/atlas/chat-defaults')).status).toBe(200);
+        const refusedMember = createProjectRoutes(
+          service as any,
+          createMockStorageAdapter() as any,
+          '/tmp',
+          { chatDefaults: vi.fn(), memberProjectAdmission: async () => null },
+        );
+        expect(
+          (await refusedMember.request('/atlas/chat-defaults')).status,
+        ).toBe(404);
+        const bare = createProjectRoutes(
+          service as any,
+          createMockStorageAdapter() as any,
+          '/tmp',
+        );
+        expect((await bare.request('/atlas/chat-defaults')).status).toBe(501);
+      });
     });
 
     test('a workspace mode outside the enum is refused before the file layer', async () => {
@@ -724,6 +917,7 @@ describe('Project Routes', () => {
       expect(service.updateProject).toHaveBeenCalledWith(
         'atlas',
         expect.objectContaining({ defaultWorkspaceIsolation: 'worktree' }),
+        expect.anything(),
       );
     });
 

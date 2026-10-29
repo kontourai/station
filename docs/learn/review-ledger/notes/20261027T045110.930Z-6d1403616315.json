@@ -1,0 +1,9 @@
+{
+  "revision": "6ab558175854f4fbc9cacfe0eb16babc3d525aea",
+
+  "notes": [
+    {"path":"docs/patterns/frontend.md","note":"Checked the claims here against this change. serverHealth.test.ts only reads the expected client-protocol header value from STATION_COMPAT_PROTOCOL_VERSION instead of a pinned '3'; the probe behavior and header rule it tests are unchanged.","inputs":["docs/patterns/frontend.md","src-ui/src/__tests__/serverHealth.test.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Checked the claims here against this change. serverHealth.test.ts only reads the expected client-protocol header value from STATION_COMPAT_PROTOCOL_VERSION instead of a pinned '3'; the probe behavior and header rule it tests are unchanged.","inputs":["docs/reference/connect.md","packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx","src-ui/src/__tests__/serverHealth.test.ts"]}
+  ]
+}

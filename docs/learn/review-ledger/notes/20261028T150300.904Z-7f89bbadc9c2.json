@@ -1,0 +1,11 @@
+{
+  "revision": "b6602be646ab117ea2ae9b365d2e72f98de6aebe",
+
+  "notes": [
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"Reviewed the RegionPaneHost change adding the start toolbar slot. Surface selection, region placement, pane persistence and authority are unchanged; the existing composition owner links remain accurate. Focused header and host tests passed (124 tests); this note covers only the changed chrome wiring.","inputs":["docs/contexts/workspace-surfaces/CONTEXT.md","src-ui/src/workspace-panes/RegionPaneHost.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"Reviewed RegionPaneHost start-slot wiring against the relationship, persistence and shared presentation claims. This change only places the inbox toggle before region chrome; related-pane navigation, guards, fences, controller ownership and storage are unchanged. No prose change is needed for those claims.","inputs":["docs/design/pane-relationships.md","src-ui/src/workspace-panes/RegionPaneHost.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed the dock header placement through ChatDockHeader, RegionChromeSlots, RegionChromeBar, RegionPaneHost and CodingWorkbench. Updated the inbox row to specify the far left before region tabs or the Coding breadcrumb. Existing inbox counts, labels, pressed state and handlers remain intact. Focused tests passed (124); browser header fixtures at 390 and 1440 pixels in light and dark were captured and inspected. These fixtures do not establish full app or native-shell behavior.","inputs":["docs/design/placement.md","src-ui/src/workspace-panes/RegionChromeBar.tsx","src-ui/src/workspace-panes/RegionPaneHost.tsx"]}
+  ]
+}

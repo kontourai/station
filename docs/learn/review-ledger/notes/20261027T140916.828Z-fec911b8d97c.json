@@ -1,0 +1,7 @@
+{
+  "revision": "66878799e4fc6ab7b95693d0c323970bbe6abaa2",
+
+  "notes": [
+    {"path":"src-desktop/icons/README.md","note":"Checked against station-icon.mjs and generate-app-icons.mjs: icon-square-1024.png and the gen/apple AppIcon set render from the new ios target (map-face crop); Windows Square*/StoreLogo tiles and the web maskable icon keep the uncropped square target; ANDROID_SCALE fills the central 72 of 108dp.","inputs":["src-desktop/icons/README.md",".github/workflows/build-ios.yml",".github/workflows/nightly-native-stage.yml",".github/workflows/release.yml",".github/workflows/testflight-delivery.yml","scripts/__tests__/ios-channel-icons.test.ts","scripts/__tests__/verify-desktop-clean-checkout.test.ts","scripts/apply-android-channel-icons.mjs","scripts/generate-app-icons.mjs","scripts/ios-channel-icons.mjs","scripts/verify-desktop-clean-checkout.mjs","src-desktop/tauri.conf.json","src-ui/src/index.css","scripts/lib/ios-launch-screen.mjs","scripts/lib/station-icon.mjs","scripts/lib/station-icon-geometry.mjs","scripts/__tests__/station-icon.test.ts","scripts/write-ios-build-manifest.mjs","scripts/lib/android-themed-icon.mjs","scripts/ios-simulator-build.mjs","package.json#/scripts/build:ios:simulator"]}
+  ]
+}

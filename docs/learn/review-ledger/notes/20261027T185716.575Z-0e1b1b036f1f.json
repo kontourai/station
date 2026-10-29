@@ -1,0 +1,7 @@
+{
+  "revision": "a1646747d0ff93209ac981819086646338d3b4db",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"chat-host-images round-3 review: muse-adapter.ts now creates and records an exec session's temp folder at start; the Muse error-code table (muse_turn_slot_releasing, muse-approval-*, muse-exit-without-terminal) is unchanged. The chat-host-images row's 'closed refusal vocabulary' still holds with the added shared-folder reason (CHAT_HOST_IMAGE_REFUSALS lists it).","inputs":["docs/reference/contracts.md","src-server/providers/adapters/muse-adapter.ts"]}
+  ]
+}

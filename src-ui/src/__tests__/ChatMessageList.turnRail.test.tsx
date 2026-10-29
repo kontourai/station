@@ -256,28 +256,37 @@ afterEach(() => {
   window.history.replaceState(null, '', '/');
 });
 
-describe('turn navigation threshold', () => {
-  test('a transcript under six user turns has no rail and no turn steps', () => {
-    const { scroller } = renderList(session(5));
+describe('turn navigation availability', () => {
+  test('a transcript without user turns has no turn navigation', () => {
+    const base = session(1);
+    renderList({
+      ...base,
+      messages: base.messages.filter((message) => message.role === 'assistant'),
+    });
     expect(turnRail()).toBeNull();
-    readerScrollsTo(scroller, 200);
-    expect(
-      screen.getByRole('button', { name: 'Scroll to bottom' }),
-    ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Previous turn' })).toBeNull();
   });
 
-  test('six user turns get one tick each and steps beside Scroll to bottom', () => {
-    const { scroller } = renderList(session(6));
-    expect(within(turnRail()!).getAllByRole('button')).toHaveLength(6);
-    readerScrollsTo(scroller, 200);
-    const group = screen.getByRole('group', { name: 'Turn navigation' });
-    expect(
-      within(group)
-        .getAllByRole('button')
-        .map((button) => button.getAttribute('aria-label')),
-    ).toEqual(['Previous turn', 'Next turn', 'Scroll to bottom']);
+  test('the first user turn gets a rail tick', () => {
+    renderList(session(1));
+    expect(within(turnRail()!).getAllByRole('button')).toHaveLength(1);
+    expect(tick(0).getAttribute('aria-label')).toBe('Turn 1 of 1: Question 0');
   });
+
+  test.each([5, 6])(
+    '%i user turns get one tick each and steps beside Scroll to bottom',
+    (turns) => {
+      const { scroller } = renderList(session(turns));
+      expect(within(turnRail()!).getAllByRole('button')).toHaveLength(turns);
+      readerScrollsTo(scroller, 200);
+      const group = screen.getByRole('group', { name: 'Turn navigation' });
+      expect(
+        within(group)
+          .getAllByRole('button')
+          .map((button) => button.getAttribute('aria-label')),
+      ).toEqual(['Previous turn', 'Next turn', 'Scroll to bottom']);
+    },
+  );
 
   test('History replay keeps its own timeline: no live rail', () => {
     renderList({ ...session(8), replay: { elapsedMs: 0 } } as Session);

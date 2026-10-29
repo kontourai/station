@@ -649,11 +649,17 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
         ...(message.metadata?.stationCheckBack
           ? { stationCheckBack: true }
           : {}),
+        ...(message.metadata?.stationMemoryContinuation
+          ? { stationMemoryContinuation: true }
+          : {}),
         ...(message.metadata?.sender
           ? { sender: message.metadata.sender }
           : {}),
         answerEligible: message.metadata?.answerEligible,
         provenance: message.metadata?.provenance,
+        ...(message.metadata?.hostImages
+          ? { hostImages: message.metadata.hostImages }
+          : {}),
         turnEnded: message.metadata?.turnEnded,
         turnEndedReason: message.metadata?.turnEndedReason,
         turnStoppedBy: message.metadata?.turnStoppedBy,

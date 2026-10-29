@@ -1,8 +1,9 @@
 import type { ChildProcess } from 'node:child_process';
 import type { LiveSurfaceStreamParams } from '@kontourai/station-contracts/live-surface';
+import { resolveHomeDir } from '../../utils/paths.js';
 import { spawnOwnedChild } from '../infra/process-utils.js';
+import { MediaToolsAcquisition } from '../media-tools/media-tools-acquisition.js';
 import { JpegStreamSplitter } from './device-frame-codecs.js';
-import { locateExecutable, standardFfmpegDirs } from './device-host-tools.js';
 
 /**
  * Server-side H.264 → JPEG decoding for Android device surfaces (#1970, D8).
@@ -14,11 +15,9 @@ import { locateExecutable, standardFfmpegDirs } from './device-host-tools.js';
  * through `spawnOwnedChild`, windows hidden) reads Annex-B on stdin and
  * writes concatenated JPEGs on stdout.
  *
- * ffmpeg is NOT shipped or downloaded here. An installed one is used; when
- * none is found the provider answers `decoder-unavailable`, the producer
- * falls back to polling screenshots, and says so. A consent-gated pinned
- * download (the D3 pattern) is a follow-up owned by the device toolchain
- * lane, not this one.
+ * Host-installed or previously consented, pinned ffmpeg is resolved through
+ * media-tools. Resolution never downloads. When unavailable, the producer
+ * reports decoder-unavailable and falls back to polling screenshots.
  */
 
 export type DeviceVideoDecoderAvailability =
@@ -26,7 +25,7 @@ export type DeviceVideoDecoderAvailability =
   | {
       available: false;
       reason: 'decoder-unavailable';
-      /** What would make one available; the download is not implemented here. */
+      /** The operator can install ffmpeg or use station media-tools download --yes. */
       remedy: 'install-ffmpeg-or-consent-to-pinned-download';
     };
 
@@ -118,6 +117,7 @@ const MAX_BUFFERED_INPUT_BYTES = 4 * 1024 * 1024;
 export function createFfmpegDecoderProvider(
   options: {
     locate?: () => Promise<string | null>;
+    mediaTools?: Pick<MediaToolsAcquisition, 'resolveFfmpegExecutable'>;
     spawn?: (
       command: string,
       args: string[],
@@ -128,7 +128,13 @@ export function createFfmpegDecoderProvider(
   } = {},
 ): DeviceVideoDecoderProvider {
   const locate =
-    options.locate ?? (() => locateExecutable('ffmpeg', standardFfmpegDirs()));
+    options.locate ??
+    (async () => {
+      const result = await (
+        options.mediaTools ?? new MediaToolsAcquisition(resolveHomeDir())
+      ).resolveFfmpegExecutable();
+      return result.status === 'ready' ? result.paths : null;
+    });
   const spawn =
     options.spawn ??
     ((command: string, args: string[]) =>

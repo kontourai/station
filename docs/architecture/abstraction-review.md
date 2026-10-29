@@ -304,11 +304,14 @@ The Operate shell's event stream bypasses the authenticated SDK transport even
 though its initial Session read uses it. A real caller against a synthetic
 protected HTTP service reproduced the missing credential and HTTP 401;
 [#2845](https://github.com/kontourai/station/issues/2845) tracks the correction.
-Home reset has a separate source-confirmed gap: it skips the home instance
-registry and does not take the backup/restore maintenance lease before archiving
-([#2849](https://github.com/kontourai/station/issues/2849)). No live home reset
-was attempted. Both belong in the existing owners, with actual-caller tests,
-rather than another parallel transport or lifecycle abstraction.
+Home reset now acquires the home maintenance lease, rechecks lifecycle inactivity
+and archives the home while holding that lease. It still does not separately
+consult the home-scoped instance registry
+([#2849](https://github.com/kontourai/station/issues/2849)). Maintenance excludes
+cooperating leased runtimes; it does not stop writers that bypass that protocol.
+No live home reset was attempted in the original review. The remaining gaps
+belong in the existing owners, with actual-caller coverage, rather than another
+parallel transport or lifecycle abstraction.
 
 ### Successful persistence does not establish usable presentation
 

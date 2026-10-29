@@ -1,0 +1,7 @@
+{
+  "revision": "f44cec61337e7e20856f0f415f3512ddedd7ef01",
+
+  "notes": [
+    {"path":"docs/guides/release-channel-ports.md","note":"SystemSection delta is the core-app-updates row label only. Channel ports and runtime-home claims unaffected; prose accurate.","inputs":["docs/guides/release-channel-ports.md","src-ui/src/views/settings/SystemSection.tsx"]}
+  ]
+}

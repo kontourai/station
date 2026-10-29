@@ -140,6 +140,16 @@
 
     "src-server/services/telemetry-producers/telemetry-producer-store.ts",
 
+    "src-server/routes/mcp/station-control-external-client-routes.ts",
+
+    "src-server/runtime/mcp/station-control-mcp-token.ts",
+
+    "src-server/runtime/mcp/station-control-caller.ts",
+
+    "src-server/routes/mcp/station-control-mcp-route.ts",
+
+    "packages/contracts/src/station-control-external-client.ts",
+
     "packages/connect/src/core/pendingPairingExchangeJournal.ts",
 
     "src-server/services/connections/lan-discovery.ts",
@@ -154,11 +164,19 @@
 
     "src-server/services/projects/project-s3-sources.ts",
 
+    "src-server/services/telemetry-companion-archive.ts",
+
+    "src-server/routes/system/telemetry-companion-routes.ts",
+
     "src-server/services/consent/consent-transactions.ts",
 
     "src-server/runtime/consent/consent-listener.ts",
 
-    "src-server/services/identity/operator-sessions.ts"
+    "src-server/services/identity/operator-sessions.ts",
+
+    "src-server/adapters/pty-process-groups.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts"
   ],
 
   "checks": [

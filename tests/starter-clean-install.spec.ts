@@ -212,7 +212,9 @@ test('fresh Station completes real Work and opts into the developer Scheduler ch
       name: 'Run a scheduled readiness check',
     });
     await expect(starter).toHaveCount(0);
-    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    // Settings is reached through the sidebar footer's account menu.
+    await page.getByRole('button', { name: /^Profile and settings:/ }).click();
+    await page.getByRole('menuitem', { name: 'Open settings' }).click();
     // Developer tools live on Settings' Advanced page (#3143).
     await page.getByRole('link', { name: 'Advanced', exact: true }).click();
     const developerTools = page.getByRole('switch', {

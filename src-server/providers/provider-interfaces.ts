@@ -169,6 +169,16 @@ export interface INotificationProvider {
     notificationId: string,
     clientOrigin?: import('@kontourai/station-contracts/client-origin').ClientOrigin,
   ): Promise<void>;
+  /**
+   * Called after `handleAction` threw and the action lease was released, so
+   * the provider can rewrite the notification (its actions) in response.
+   * Best effort: a throw here is logged, never surfaced.
+   */
+  handleActionFailed?(
+    notificationId: string,
+    actionId: string,
+    error: unknown,
+  ): Promise<void>;
 }
 
 export interface NotificationStatusUpdate {

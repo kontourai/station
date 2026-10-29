@@ -150,7 +150,7 @@ function DeliveryForAuthority({
     <>
       <PageRow
         {...settingsRow('product-telemetry-delivery')}
-        description="Receiver acknowledgements and the current process’s queue. An explicit connection check sends no usage observation and does not acknowledge disclosure."
+        description="Delivery status for this process. Check connection sends no usage data."
         status={
           <span>
             {product.sending ? 'Sending observations…' : productSummary}
@@ -183,7 +183,7 @@ function DeliveryForAuthority({
       </PageRow>
       <PageRow
         {...settingsRow('otel-delivery')}
-        description="Metrics and traces sent to the operator’s collector. Initialization and HTTP acceptance do not establish downstream persistence or querying."
+        description="Metrics and traces sent to the operator’s collector."
         status={
           <span>
             {otel.phase === 'restart-required'

@@ -2,7 +2,6 @@ import type { CoreUpdateStatus } from '@kontourai/station-sdk';
 import { describe, expect, test } from 'vitest';
 import {
   deriveServerOlderOffer,
-  readableVersions,
   type ServerOlderFacts,
   serverOlderNoticeContent,
 } from '../lib/serverOlderThanClient';
@@ -45,9 +44,6 @@ describe('deriveServerOlderOffer: when the server is older', () => {
       kind: 'update',
       client: '0.1.11-nightly.2465',
       server: '0.1.11-nightly.246303',
-      // Day 2463 is 2026-09-29, day 2465 is 2026-10-01.
-      clientLabel: 'Nightly Oct 1',
-      serverLabel: 'Nightly Sep 29, build 3',
       target: '0.1.11-nightly.246500',
     });
   });
@@ -144,8 +140,11 @@ describe('deriveServerOlderOffer: when the server is older', () => {
 describe('deriveServerOlderOffer: no dead button', () => {
   test.each<[string, Partial<CoreUpdateStatus>, RegExp]>([
     [
-      'a refusal the server states',
-      { selfUpdateUnavailableReason: 'stop the service first' },
+      'a refusal the server states with nothing to apply',
+      {
+        selfUpdateUnavailableReason: 'stop the service first',
+        updateAvailable: false,
+      },
       /cannot be updated from here: stop the service first/,
     ],
     [
@@ -159,7 +158,7 @@ describe('deriveServerOlderOffer: no dead button', () => {
     [
       'a ring with nothing newer',
       { updateAvailable: false, latestVersion: '0.1.11-nightly.246303' },
-      /newest nightly release/,
+      /No newer nightly server release yet/,
     ],
     [
       'an unreachable manifest',
@@ -169,16 +168,6 @@ describe('deriveServerOlderOffer: no dead button', () => {
         message: 'Could not reach the nightly release manifest.',
       },
       /Could not reach the nightly release manifest\. Run "station upgrade"/,
-    ],
-    [
-      'an update already running',
-      {
-        serviceUpdate: {
-          state: 'staging',
-          requestId: 'r0',
-        },
-      },
-      /already under way/,
     ],
   ])('explains instead for %s', (_label, overrides, remedy) => {
     const offer = deriveServerOlderOffer(
@@ -195,14 +184,28 @@ describe('deriveServerOlderOffer: no dead button', () => {
 });
 
 describe('serverOlderNoticeContent', () => {
-  test('names both readable versions and preserves raw versions in the guidance', () => {
-    const content = serverOlderNoticeContent(deriveServerOlderOffer(facts()));
-    expect(content?.message).toBe(
-      'This Station server runs Nightly Sep 29, build 3, which is older than this app (Nightly Oct 1).',
+  test('names the app version, and nothing else, when the section offers the update', () => {
+    // The server's version is in its section header; the app's may be shown
+    // nowhere else (no app section on another origin, hidden mid-download).
+    expect(serverOlderNoticeContent(deriveServerOlderOffer(facts()))).toEqual({
+      message: 'Server is older than this app (0.1.11-nightly.2465).',
+      detail: undefined,
+    });
+  });
+
+  test('adds a remedy the section does not show', () => {
+    const content = serverOlderNoticeContent(
+      deriveServerOlderOffer(
+        facts({
+          status: serviceArchive({
+            installKind: 'archive',
+            applyMethod: 'station-upgrade',
+          }),
+        }),
+      ),
     );
-    expect(content?.detail).toMatch(
-      /^Server 0\.1\.11-nightly\.246303, app 0\.1\.11-nightly\.2465\./,
-    );
+    expect(content?.detail).toMatch(/station upgrade/);
+    expect(content?.detail).not.toContain('0.1.11-nightly');
   });
 
   test('no offer produces no notice', () => {
@@ -210,65 +213,34 @@ describe('serverOlderNoticeContent', () => {
   });
 });
 
-describe('readableVersions', () => {
-  test.each<[string, string, [string, string]]>([
+describe('remedies the Updates server section already shows (#3851)', () => {
+  test.each<[string, Partial<CoreUpdateStatus>]>([
+    ['a staged-update service, before download', { stagedUpdates: true }],
     [
-      '0.1.11-nightly.246500',
-      '0.1.11-nightly.246303',
-      ['Nightly Oct 1', 'Nightly Sep 29, build 3'],
+      'a staged-update service, once downloaded',
+      {
+        stagedUpdates: true,
+        serviceUpdate: {
+          state: 'staged',
+          requestId: 'r-1',
+          version: '0.1.11-nightly.246500',
+          stagedAt: '2026-10-19T10:00:00.000Z',
+        },
+      },
     ],
-    // The release is named only when the two differ in it.
     [
-      '0.1.12-nightly.246500',
-      '0.1.11-nightly.246303',
-      ['0.1.12 Nightly Oct 1', '0.1.11 Nightly Sep 29, build 3'],
+      'an update already running',
+      { serviceUpdate: { state: 'staging', requestId: 'r0' } },
     ],
-    // The year only when the two dates differ in it.
     [
-      '0.1.11-nightly.256500',
-      '0.1.11-nightly.246303',
-      ['Nightly Jan 9, 2027', 'Nightly Sep 29, 2026, build 3'],
+      'a refusal stated beside an available update',
+      { selfUpdateUnavailableReason: 'stop the service first' },
     ],
-    // The dated shape #2962 introduces reads the same way.
-    [
-      '0.1.11-nightly.20261011.2',
-      '0.1.11-nightly.246303',
-      ['Nightly Oct 11, build 2', 'Nightly Sep 29, build 3'],
-    ],
-    // Releases and previews keep their version.
-    ['0.2.0', '0.1.11-preview.3', ['0.2.0', '0.1.11-preview.3']],
-  ])('%s and %s', (left, right, expected) => {
-    expect(readableVersions(left, right)).toEqual(expected);
-  });
-});
-
-describe('a server that downloads and restarts as separate steps (#3851)', () => {
-  test('a staged service points to the shared Updates confirmation', () => {
-    expect(
-      deriveServerOlderOffer(
-        facts({ status: serviceArchive({ stagedUpdates: true }) }),
-      ),
-    ).toMatchObject({
-      kind: 'manual',
-      remedy: expect.stringContaining('from Updates'),
-    });
-    expect(
-      deriveServerOlderOffer(
-        facts({
-          status: serviceArchive({
-            stagedUpdates: true,
-            serviceUpdate: {
-              state: 'staged',
-              requestId: 'r-1',
-              version: '0.1.11-nightly.246500',
-              stagedAt: '2026-10-19T10:00:00.000Z',
-            },
-          }),
-        }),
-      ),
-    ).toMatchObject({
-      kind: 'manual',
-      remedy: expect.stringContaining('0.1.11-nightly.246500 is downloaded'),
-    });
+  ])('%s adds no remedy', (_label, overrides) => {
+    const offer = deriveServerOlderOffer(
+      facts({ status: serviceArchive(overrides) }),
+    );
+    expect(offer).toMatchObject({ kind: 'manual', remedy: null });
+    expect(serverOlderNoticeContent(offer)?.detail).toBeUndefined();
   });
 });

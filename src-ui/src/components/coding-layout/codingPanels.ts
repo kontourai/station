@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { TRANSCRIPT_MIN_WIDTH } from '../chat/transcriptMeasure';
 
 /**
@@ -112,6 +113,7 @@ const CODING_SEPARATOR_SIZE = 8;
  */
 export function useCodingWide(): boolean {
   const [wide, setWide] = useState(readCodingWide);
+  const mobile = useIsMobile();
   useEffect(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return;
     const query = window.matchMedia(CODING_WIDE_MEDIA_QUERY);
@@ -120,7 +122,7 @@ export function useCodingWide(): boolean {
     query.addEventListener('change', read);
     return () => query.removeEventListener('change', read);
   }, []);
-  return wide;
+  return wide && !mobile;
 }
 
 function readCodingWide(): boolean {

@@ -353,6 +353,7 @@ async function harness(
               throw new Error('not a kept output');
             },
           },
+          freezePlan: async () => true,
           readPlan: async () => ({ kind: 'unavailable' }),
           readAnswers: async () => [],
         }),

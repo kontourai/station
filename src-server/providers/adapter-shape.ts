@@ -270,6 +270,13 @@ export interface ProviderAdapterMetadata {
   modelExecution?: ModelInventoryExecutionIdentity;
   /** Abort does not settle discovery until adapter-owned resources are closed. */
   abortSettlement?: 'await';
+  /**
+   * `engine-process`: each session's engine is a child process launched
+   * through the shared workload launcher, so where Linux workload enforcement
+   * runs, the engine and every command it starts share one bounded scope.
+   * Station then tells the engine its budget. Absent: no such claim.
+   */
+  workloadScope?: 'engine-process';
   /** Optional bounded same-session recovery declaration; absence is unsupported. */
   recovery?: ConnectionRecoveryCapability;
   /**

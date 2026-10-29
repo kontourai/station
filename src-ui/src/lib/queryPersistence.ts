@@ -39,7 +39,7 @@ import {
   persistQueryClient,
 } from '@tanstack/react-query-persist-client';
 import { createStore, del, get, set } from 'idb-keyval';
-import { buildInfo } from '../build-info';
+import { buildCacheBuster } from './buildCacheBuster';
 
 /**
  * Default-deny whitelist: only queries whose queryKey's first segment is one
@@ -136,7 +136,7 @@ export const QUERY_PERSISTENCE_STORAGE_KEY = 'station-query-cache-v1';
  * incompatible build.
  */
 export function queryPersistenceBuster(): string {
-  return `${buildInfo.version}+${buildInfo.commit}`;
+  return buildCacheBuster();
 }
 
 /**

@@ -17,8 +17,7 @@ import { useRegionSurfaceMenu } from './useRegionSurfaceMenu';
 type ConnectionStatus = ComponentProps<typeof ConnectionStatusDot>['status'];
 
 /**
- * Live work's phone route while the drawer is closed: the footer's presence
- * tray is inside the drawer, so this row names the same active-session count
+ * Live work's phone route: this row names the active-session count
  * (`activeLiveWorkSessions`) and opens Activity, where that work is listed.
  * The count is only stated once the inventory has answered.
  */

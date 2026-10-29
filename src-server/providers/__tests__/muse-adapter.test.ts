@@ -15,11 +15,20 @@ import {
   resolveModelLaunchPlan,
   unsupportedModelOptionKeys,
 } from '@kontourai/station-contracts/provider';
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import {
+  installSessionTmpDirPolicy,
+  ownedDirTestHooks,
+  sessionTempRoot,
+  sessionTmpDirPath,
+} from '../../services/infra/session-tmpdir.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
+import { HostImageTurnCapture } from '../../services/orchestration/host-image-turn-capture.js';
 import type { ProviderAdapterShape } from '../adapter-shape.js';
 import { SendTurnRefusedError } from '../adapter-shape.js';
 import type { MuseAdapterOptions } from '../adapters/muse-adapter.js';
@@ -176,6 +185,7 @@ interface Harness {
   processes: FakeMuseProcess[];
   spawnArgs: string[][];
   spawnCwds: Array<string | undefined>;
+  spawnTmpDirs: Array<string | undefined>;
   released: number;
   logger: { warn: ReturnType<typeof vi.fn>; info: ReturnType<typeof vi.fn> };
 }
@@ -184,19 +194,22 @@ function createHarness(overrides: Partial<MuseAdapterOptions> = {}): Harness {
   const processes: FakeMuseProcess[] = [];
   const spawnArgs: string[][] = [];
   const spawnCwds: Array<string | undefined> = [];
+  const spawnTmpDirs: Array<string | undefined> = [];
   const logger = { warn: vi.fn(), info: vi.fn() };
   const harness = {
     processes,
     spawnArgs,
     spawnCwds,
+    spawnTmpDirs,
     released: 0,
     logger,
   } as Harness;
   const adapter = new MuseAdapter({
     newSessionId: () => 'muse-session-fixed',
-    processFactory: (args, cwd) => {
+    processFactory: (args, cwd, tmpDir) => {
       spawnArgs.push(args);
       spawnCwds.push(cwd);
+      spawnTmpDirs.push(tmpDir);
       const processHandle = new FakeMuseProcess();
       processes.push(processHandle);
       return {
@@ -218,6 +231,8 @@ function createHarness(overrides: Partial<MuseAdapterOptions> = {}): Harness {
   harness.iterator = adapter.streamEvents()[Symbol.asyncIterator]();
   return harness;
 }
+
+const makeSessionHome = trackTempDirs();
 
 describe('MuseAdapter', () => {
   afterEach(() => {
@@ -285,6 +300,142 @@ describe('MuseAdapter', () => {
     harness.processes[0].exit(0);
     await flushIo();
     expect(existsSync(path)).toBe(false);
+  });
+
+  test('chat-host-images: an exec session records its temp folder at start, before any turn', async () => {
+    const home = makeSessionHome('muse-session-tmp-');
+    vi.stubEnv('STATION_HOME', home);
+    const uninstall = installSessionTmpDirPolicy(() => true);
+    try {
+      const harness = createHarness();
+      await harness.adapter.startSession({
+        provider: 'muse',
+        threadId: 'thread-muse-tmp',
+        cwd: '/tmp/project',
+        modelId: 'muse-spark-1.2-contributor',
+      });
+      expect(harness.processes).toHaveLength(0);
+      expect(sessionTempRoot('thread-muse-tmp')).toBe(
+        sessionTmpDirPath('thread-muse-tmp', home),
+      );
+    } finally {
+      uninstall();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  test('chat-host-images: stopping the session removes its recorded temp folder, through its own exit', async () => {
+    const home = makeSessionHome('muse-session-stop-');
+    vi.stubEnv('STATION_HOME', home);
+    const uninstall = installSessionTmpDirPolicy(() => true);
+    try {
+      const harness = createHarness();
+      await harness.adapter.startSession({
+        provider: 'muse',
+        threadId: 'thread-muse-stop',
+        cwd: '/tmp/project',
+        modelId: 'muse-spark-1.2-contributor',
+      });
+      const dir = sessionTempRoot('thread-muse-stop')!;
+      expect(existsSync(dir)).toBe(true);
+      await harness.adapter.stopSession('thread-muse-stop');
+      let exited: CanonicalRuntimeEvent | undefined;
+      while (!exited) {
+        const next = await harness.iterator.next();
+        if (next.done) break;
+        if (next.value.method === 'session.exited') exited = next.value;
+      }
+      if (!exited) throw new Error('no session.exited published');
+      const capture = new HostImageTurnCapture({
+        preview: undefined,
+        eventStore: undefined,
+        sessionCwd: () => undefined,
+        publish: () => {},
+        logger: { warn: () => {} },
+      });
+      capture.observe(exited);
+      await capture.settled();
+      expect(sessionTempRoot('thread-muse-stop')).toBeUndefined();
+      expect(existsSync(dir)).toBe(false);
+    } finally {
+      uninstall();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  test('chat-host-images: an exec turn uses the start folder and never creates one later', async () => {
+    const home = makeSessionHome('muse-turn-tmp-');
+    vi.stubEnv('STATION_HOME', home);
+    let admitted = false;
+    const uninstall = installSessionTmpDirPolicy(() => admitted);
+    try {
+      const harness = createHarness();
+      // Started while the preview was off; turned on before the turn.
+      await harness.adapter.startSession({
+        provider: 'muse',
+        threadId: 'late-on',
+        cwd: '/tmp/project',
+      });
+      admitted = true;
+      void harness.adapter
+        .sendTurn({ threadId: 'late-on', input: 'hi' })
+        .catch(() => undefined);
+      await vi.waitFor(() => expect(harness.spawnTmpDirs).toHaveLength(1));
+      expect(harness.spawnTmpDirs[0]).toBeUndefined();
+      expect(existsSync(sessionTmpDirPath('late-on', home))).toBe(false);
+      // Admitted at start: every turn gets that same folder.
+      await harness.adapter.startSession({
+        provider: 'muse',
+        threadId: 'on',
+        cwd: '/tmp/project',
+      });
+      void harness.adapter
+        .sendTurn({ threadId: 'on', input: 'hi' })
+        .catch(() => undefined);
+      await vi.waitFor(() => expect(harness.spawnTmpDirs).toHaveLength(2));
+      expect(harness.spawnTmpDirs[1]).toBe(sessionTmpDirPath('on', home));
+      // A second turn of the same session reuses that same root.
+      await writeLines(harness.processes[1], MUSE_META_RUN_TERMINAL);
+      harness.processes[1].exit(0);
+      await flushIo();
+      await harness.adapter.sendTurn({ threadId: 'on', input: 'again' });
+      expect(harness.spawnTmpDirs[2]).toBe(sessionTmpDirPath('on', home));
+      expect(sessionTempRoot('on')).toBe(harness.spawnTmpDirs[2]);
+    } finally {
+      uninstall();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  test('chat-host-images: a folder gone before the start commits leaves exec turns with no session TMPDIR', async () => {
+    const home = makeSessionHome('muse-gone-tmp-');
+    vi.stubEnv('STATION_HOME', home);
+    const uninstall = installSessionTmpDirPolicy(() => true);
+    let opens = 0;
+    ownedDirTestHooks.afterOpen = (dir) => {
+      // 1st: prepared at start; 2nd: the commit. An earlier session's queued
+      // removal deletes the folder in between.
+      opens += 1;
+      if (opens === 2) rmSync(dir, { recursive: true, force: true });
+    };
+    try {
+      const harness = createHarness();
+      await harness.adapter.startSession({
+        provider: 'muse',
+        threadId: 'gone',
+        cwd: '/tmp/project',
+      });
+      expect(sessionTempRoot('gone')).toBeUndefined();
+      void harness.adapter
+        .sendTurn({ threadId: 'gone', input: 'hi' })
+        .catch(() => undefined);
+      await vi.waitFor(() => expect(harness.spawnTmpDirs).toHaveLength(1));
+      expect(harness.spawnTmpDirs[0]).toBeUndefined();
+    } finally {
+      ownedDirTestHooks.afterOpen = undefined;
+      uninstall();
+      vi.unstubAllEnvs();
+    }
   });
 
   test('startSession spawns nothing and publishes the canonical lifecycle', async () => {

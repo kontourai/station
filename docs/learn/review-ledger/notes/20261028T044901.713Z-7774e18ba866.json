@@ -1,0 +1,7 @@
+{
+  "revision": "bf4b1a5c0a512e58de6b4bebe7ddb54204bbd2c2",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed the provider-failure wire-contract owner against the two diagnostics introduced by workload recovery: literal engine-memory-exhausted remains engine_crashed with caller-requested retry eligibility true, while workload-command-oom-killed remains warning with retryability false because the engine stays live. Added only those two independent expected rows; production mappings, retry table, public kinds, effect phase and automatic-replay policy are unchanged. Hosted d774 ordinary5 guard found exactly the missing keys. Exact bf4b1a5 owner89PASS, deliberate engine classification fault1intendedFAIL88PASS, byte-exact restore89PASS. No runtime OOM/provider recovery, full-main qualification, native or installed delivery claim is made by this fixture repair.","inputs":["docs/reference/contracts.md","packages/contracts/src/__tests__/provider-failure.test.ts"]}
+  ]
+}

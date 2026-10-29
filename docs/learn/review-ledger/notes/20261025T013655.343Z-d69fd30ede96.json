@@ -1,0 +1,21 @@
+{
+  "revision": "b2ae7d1e11ec8f8736be566d1b58e94da741da42",
+
+  "notes": [
+    {"path":"README.md","note":"Reviewed the final CLI reference heading spelling against cli-doc-parity and help.ts: the Walkthrough verb uses the established backticked level-three heading; usage, target authentication and source-only publication limits are unchanged. Existing commands and related document claims are unaffected.","inputs":["README.md","docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the final CLI reference heading spelling against cli-doc-parity and help.ts: the Walkthrough verb uses the established backticked level-three heading; usage, target authentication and source-only publication limits are unchanged. Existing commands and related document claims are unaffected.","inputs":["docs/architecture/abstraction-review.md","docs/reference/cli.md"]},
+
+    {"path":"docs/design/README.md","note":"Reviewed regenerated design index: the tracked Walkthrough design is now listed; its staged implementation status and owning guide link remain explicit. No source-runtime or publication qualification is implied.","inputs":["docs/design/README.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Reviewed the final CLI reference heading spelling against cli-doc-parity and help.ts: the Walkthrough verb uses the established backticked level-three heading; usage, target authentication and source-only publication limits are unchanged. Existing commands and related document claims are unaffected.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the final CLI reference heading spelling against cli-doc-parity and help.ts: the Walkthrough verb uses the established backticked level-three heading; usage, target authentication and source-only publication limits are unchanged. Existing commands and related document claims are unaffected.","inputs":["docs/guides/integrating-station.md","docs/reference/cli.md"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed route failure serialization through the existing errorMessage owner instead of direct .message; typed import outcomes, status codes and Project authorization remain unchanged. Focused route/storage tests and repo-governance pass. Test homes use trackTempDirs with correct test/file lifetime and close-before-remove ordering.","inputs":["docs/reference/api.md","src-server/routes/walkthroughs.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed the final CLI reference heading spelling against cli-doc-parity and help.ts: the Walkthrough verb uses the established backticked level-three heading; usage, target authentication and source-only publication limits are unchanged. Existing commands and related document claims are unaffected.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"packages/cli/README.md","note":"Reviewed the final CLI reference heading spelling against cli-doc-parity and help.ts: the Walkthrough verb uses the established backticked level-three heading; usage, target authentication and source-only publication limits are unchanged. Existing commands and related document claims are unaffected.","inputs":["packages/cli/README.md","docs/reference/cli.md"]}
+  ]
+}

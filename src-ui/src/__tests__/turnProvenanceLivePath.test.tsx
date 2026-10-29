@@ -378,9 +378,7 @@ describe('turn provenance on the live orchestration path (station#1410)', () => 
     );
     fireEvent.click(screen.getByRole('menuitem', { name: 'Answer details' }));
     expect(
-      await screen.findByText(
-        /cannot read\. Nothing about this answer is being claimed/,
-      ),
+      await screen.findByText(/format this version of Station cannot read\.$/),
     ).toBeTruthy();
   });
 });

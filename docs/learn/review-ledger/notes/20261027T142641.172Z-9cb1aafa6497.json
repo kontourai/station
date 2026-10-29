@@ -1,0 +1,7 @@
+{
+  "revision": "834f27383254392827cda61de98f426c278ad7d1",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Checked against this change: Live work now opens a continuation Session inside its Conversation, a 409 indeterminate continuation no longer replaces the chat conversationId, and Send again restages attachments. No claim here describes those paths differently.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]}
+  ]
+}

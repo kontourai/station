@@ -2,38 +2,34 @@ import { createHash, randomUUID } from 'node:crypto';
 import type {
   ProductTelemetryBatch,
   ProductTelemetryCommitReceipt,
+  ProductTelemetryIncidents,
   ProductTelemetryObservation,
   ProductTelemetryProbeReceipt,
+  ProductTelemetryTrends,
 } from '@kontourai/station-contracts/product-telemetry';
 import { PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION } from '@kontourai/station-shared/product-telemetry';
 import { Pool, type PoolClient, type QueryResultRow } from 'pg';
 import { BrokerError } from './broker-error.js';
-import { assertLiteSchema, LiteRepository, migrateLite } from './lite-store.js';
+import {
+  assertLiteSchema,
+  LiteRepository,
+  migrateLite,
+  suppressPublicationAfterRestore,
+} from './lite-store.js';
+import {
+  migratePrivateUsage,
+  PrivateUsageRepository,
+} from './private-usage-store.js';
+import { readProductIncidents } from './product-incidents.js';
 
 export interface ProductSource {
   id: string;
   label: string;
   revokedAt: string | null;
 }
-export interface ProductTrends {
-  scope: 'received-product-observations';
-  window: { from: string; to: string };
-  retentionDays: number;
-  eventTime: 'producer-wall-clock';
-  deliveryCoverage: 'unknown';
-  rows: Array<{
-    day: string;
-    event: string;
-    version: string;
-    sha: string | null;
-    shaSource: string | null;
-    engine: string | null;
-    outcome: string | null;
-    count: number;
-  }>;
-}
 export interface ProductRepository {
   readonly lite?: LiteRepository;
+  readonly privateUsage?: PrivateUsageRepository;
   ingest(
     key: string,
     batch: ProductTelemetryBatch,
@@ -51,7 +47,8 @@ export interface ProductRepository {
     key: string,
     id: string,
   ): Promise<ProductTelemetryCommitReceipt | null>;
-  trends(from: string, to: string): Promise<ProductTrends>;
+  trends(from: string, to: string): Promise<ProductTelemetryTrends>;
+  incidents(from: string, to: string): Promise<ProductTelemetryIncidents>;
   ready(): Promise<void>;
 }
 const SCHEMA = `
@@ -134,12 +131,18 @@ export class PgProductRepository implements ProductRepository {
     );
   }
   readonly lite: LiteRepository;
+  readonly privateUsage: PrivateUsageRepository;
   constructor(
     readonly pool: Pool,
     private readonly maxEvents = 1_000_000,
     private readonly maxDatabaseBytes = 1_073_741_824,
     readonly retentionDays = 90,
   ) {
+    this.privateUsage = new PrivateUsageRepository(
+      (operation) => this.transaction(operation),
+      maxEvents,
+      maxDatabaseBytes,
+    );
     this.lite = new LiteRepository(
       (operation) =>
         this.transaction(async (client) => {
@@ -207,36 +210,39 @@ export class PgProductRepository implements ProductRepository {
     }
   }
   async migrate(): Promise<void> {
-    await this.transaction(async (client) => {
-      await client.query(
-        "SELECT pg_advisory_xact_lock(hashtext('station.product.telemetry.migration'))",
-      );
-      await client.query(
-        'CREATE SCHEMA IF NOT EXISTS station_telemetry; CREATE TABLE IF NOT EXISTS station_telemetry.migrations(version integer PRIMARY KEY,digest text NOT NULL)',
-      );
-      const { rows } = await client.query<{ version: number; digest: string }>(
-        'SELECT version,digest FROM station_telemetry.migrations ORDER BY version',
-      );
-      if (rows.length) {
-        if (
-          rows.length > 8 ||
-          rows[0].version !== 1 ||
-          rows[0].digest !== SCHEMA_DIGEST
-        )
-          throw new BrokerError('schema_incompatible');
-        await migrateLite(client);
-        await this.assertSchema(client);
-        return;
-      }
-      await client.query(SCHEMA);
-      await client.query(
-        'INSERT INTO station_telemetry.migrations VALUES(1,$1)',
-        [SCHEMA_DIGEST],
-      );
-      await migrateLite(client);
-      await this.assertSchema(client);
-    });
+    await this.transaction((client) => this.migrateInTransaction(client));
     await this.refreshCredentials();
+  }
+  private async migrateInTransaction(client: PoolClient): Promise<void> {
+    await client.query(
+      "SELECT pg_advisory_xact_lock(hashtext('station.product.telemetry.migration'))",
+    );
+    await client.query(
+      'CREATE SCHEMA IF NOT EXISTS station_telemetry; CREATE TABLE IF NOT EXISTS station_telemetry.migrations(version integer PRIMARY KEY,digest text NOT NULL)',
+    );
+    const { rows } = await client.query<{ version: number; digest: string }>(
+      'SELECT version,digest FROM station_telemetry.migrations ORDER BY version',
+    );
+    if (rows.length) {
+      if (
+        rows.length > 9 ||
+        rows[0].version !== 1 ||
+        rows[0].digest !== SCHEMA_DIGEST
+      )
+        throw new BrokerError('schema_incompatible');
+      await migrateLite(client);
+      await migratePrivateUsage(client);
+      await this.assertSchema(client);
+      return;
+    }
+    await client.query(SCHEMA);
+    await client.query(
+      'INSERT INTO station_telemetry.migrations VALUES(1,$1)',
+      [SCHEMA_DIGEST],
+    );
+    await migrateLite(client);
+    await migratePrivateUsage(client);
+    await this.assertSchema(client);
   }
   private async assertSchema(client: PoolClient): Promise<void> {
     // Hold DDL locks through the operation, so validated keys cannot disappear before commit.
@@ -311,9 +317,10 @@ export class PgProductRepository implements ProductRepository {
       'sources|p|PRIMARY KEY (id)',
       'sources|u|UNIQUE (credential_hash)',
     ];
-    const actualConstraints = constraints.rows.map(
-      (row) => `${row.name}|${row.type}|${row.definition}`,
-    );
+    // PostgreSQL 18 also catalogs NOT NULL; required columns are checked above.
+    const actualConstraints = constraints.rows
+      .filter((row) => row.type !== 'n')
+      .map((row) => `${row.name}|${row.type}|${row.definition}`);
     if (
       constraints.rows.some(
         (row) => !row.valid || row.deferred || !row.key_valid,
@@ -340,7 +347,7 @@ export class PgProductRepository implements ProductRepository {
       'SELECT version,digest FROM station_telemetry.migrations ORDER BY version',
     );
     if (
-      rows.length !== 8 ||
+      rows.length !== 9 ||
       rows[0].version !== 1 ||
       rows[0].digest !== SCHEMA_DIGEST ||
       rows[1].version !== 2 ||
@@ -349,7 +356,8 @@ export class PgProductRepository implements ProductRepository {
       rows[4].version !== 5 ||
       rows[5].version !== 6 ||
       rows[6].version !== 7 ||
-      rows[7].version !== 8
+      rows[7].version !== 8 ||
+      rows[8].version !== 9
     )
       throw new BrokerError('schema_incompatible');
     await assertLiteSchema(client);
@@ -358,6 +366,57 @@ export class PgProductRepository implements ProductRepository {
     await this.transaction(async (client) => {
       await this.assertSchema(client);
     });
+  }
+  /** Requires all receivers stopped and network-disabled; recreate them after success. */
+  async fenceManagedRestore(): Promise<number> {
+    const revoked = await this.transaction(async (client) => {
+      await client.query(
+        "SELECT pg_advisory_xact_lock(hashtext('station.lite.publication'))",
+      );
+      await this.migrateInTransaction(client);
+      // Private restore has no receiving-authority reconciliation owner yet.
+      // Refuse even revoked/unbound vaults: copied custody is outside this profile.
+      const privateState = await client.query(
+        'SELECT (SELECT count(*) FROM station_private_usage.identity) AS identities,(SELECT count(*) FROM station_private_usage.vaults) AS vaults',
+      );
+      if (
+        Number(privateState.rows[0].identities) !== 1 ||
+        Number(privateState.rows[0].vaults) !== 0
+      )
+        throw new BrokerError('private_restore_unsupported');
+      await suppressPublicationAfterRestore(client);
+      await client.query(
+        "SELECT pg_advisory_xact_lock(hashtext('station.product.telemetry.admission'))",
+      );
+      const result = await client.query(
+        "UPDATE station_telemetry.sources SET revoked_at=clock_timestamp() WHERE namespace='product' AND revoked_at IS NULL",
+      );
+      if (result.rowCount === null)
+        throw new BrokerError('schema_incompatible');
+      return result.rowCount;
+    });
+    this.credentialRevision++;
+    this.credentialSources.clear();
+    this.lite.clearPublisherCredentials();
+    return revoked;
+  }
+  /** Invalidate copied product credentials before exposing a restored receiver. */
+  async fenceProductSourcesAfterRestore(): Promise<number> {
+    const revoked = await this.transaction(async (client) => {
+      await this.assertSchema(client);
+      await client.query(
+        "SELECT pg_advisory_xact_lock(hashtext('station.product.telemetry.admission'))",
+      );
+      const result = await client.query(
+        "UPDATE station_telemetry.sources SET revoked_at=clock_timestamp() WHERE namespace='product' AND revoked_at IS NULL",
+      );
+      if (result.rowCount === null)
+        throw new BrokerError('schema_incompatible');
+      return result.rowCount;
+    });
+    this.credentialRevision++;
+    this.credentialSources.clear();
+    return revoked;
   }
   async authenticate(key: string): Promise<void> {
     if (!this.hasCredential(key)) throw new BrokerError('source_unauthorized');
@@ -545,7 +604,16 @@ export class PgProductRepository implements ProductRepository {
       return rows[0]?.body ?? null;
     });
   }
-  async trends(from: string, to: string): Promise<ProductTrends> {
+  async incidents(
+    from: string,
+    to: string,
+  ): Promise<ProductTelemetryIncidents> {
+    return this.transaction(async (client) => {
+      await this.assertSchema(client);
+      return readProductIncidents(client, from, to, this.retentionDays);
+    });
+  }
+  async trends(from: string, to: string): Promise<ProductTelemetryTrends> {
     return this.transaction(async (client) => {
       await this.assertSchema(client);
       const { rows } = await client.query<{

@@ -14,10 +14,8 @@ import { createHash } from 'node:crypto';
  *                                       body, drop shadow, alpha outside it);
  *                                       only the .icns comes from this
  *   assets/brand/icon-square-1024.png — Stable full-bleed opaque square; iOS
- *                                       rejects alpha in App Store icons and
- *                                       Android/Windows launchers apply their
- *                                       own masks, so those sets come from
- *                                       this
+ *                                       rejects alpha in App Store icons;
+ *                                       cropped to the map face
  *   src-ui/public/favicon{,-dev,-beta,-nightly}.png
  *                                     — 192x192 tile cut out on transparency
  *                                       per channel (in-app surfaces render it
@@ -26,6 +24,12 @@ import { createHash } from 'node:crypto';
  *                                       startup splash, the iOS launch screen
  *                                       and the Android launch window show it
  *                                       too.
+ *   src-ui/public/icons/station{,-maskable}-512.png
+ *                                     — the web app manifest's install icons:
+ *                                       the rounded Stable tile on
+ *                                       transparency, and the full-bleed
+ *                                       opaque square that survives a
+ *                                       launcher's mask
  *   src-ui/src/lib/startup-mark-geometry.ts
  *                                     — where the startup animation finds the
  *                                       river in that mark, derived from the
@@ -56,15 +60,15 @@ import { createHash } from 'node:crypto';
  *                                       sequence, so without that the four
  *                                       committed icns churned on every run
  *                                       (#1797).
- *   src-desktop/icons/{Square*,StoreLogo}.png, gen/apple AppIcon set
- *                                     — from the square master
+ *   src-desktop/icons/{Square*,StoreLogo}.png
+ *                                     — from the uncropped square target
+ *   gen/apple AppIcon set             — from the cropped iOS square master
  *   gen/android app/src/main mipmaps, src-desktop/icons/<channel>/android
  *                                     — from each channel's Android master:
- *                                       the square with the tile scaled into
- *                                       the adaptive-icon safe zone, since
- *                                       launchers and the Android 12 splash
- *                                       mask the foreground well inside its
- *                                       edges
+ *                                       the map face fills the central 72 of
+ *                                       108dp; the launcher masks its corners
+ *                                       and base instead of framing a small
+ *                                       tile inside a dark square
  *   src-desktop/icons/<channel>/ios/AppIcon-*.png (stable, beta, nightly, dev)
  *                                     — from each channel's square master:
  *                                       the committed iOS asset-catalog sets.
@@ -166,6 +170,8 @@ const STATUS_BAR_MARK = join(
 
 const ICON_SIZE = 1024;
 const FAVICON_SIZE = 192;
+const WEB_APP_ICON_SIZE = 512;
+const WEB_APP_ICON_DIR = join(ROOT, 'src-ui', 'public', 'icons');
 // The startup animation draws the mark into a square of this many pixels.
 const STARTUP_MARK_SIZE = 187;
 
@@ -224,8 +230,9 @@ async function renderMasters() {
   const masters = ICON_CHANNELS.flatMap((channel) => [
     ...(channel === 'stable' ? [] : [{ channel, target: 'macos' }]),
     ...(channel !== 'stable' && IOS_ICON_SET_CHANNELS.includes(channel)
-      ? [{ channel, target: 'square' }]
+      ? [{ channel, target: 'ios' }]
       : []),
+    ...(channel === 'stable' ? [{ channel, target: 'square' }] : []),
     { channel, target: 'desktop' },
     { channel, target: 'android' },
   ]).map((master) => ({ ...master, size: ICON_SIZE }));
@@ -238,7 +245,7 @@ async function renderMasters() {
     },
     {
       channel: 'stable',
-      target: 'square',
+      target: 'ios',
       size: ICON_SIZE,
       path: join(BRAND_DIR, 'icon-square-1024.png'),
     },
@@ -253,11 +260,23 @@ async function renderMasters() {
         channel === 'stable' ? 'favicon.png' : `favicon-${channel}.png`,
       ),
     })),
+    {
+      channel: 'stable',
+      target: 'desktop',
+      size: WEB_APP_ICON_SIZE,
+      path: join(WEB_APP_ICON_DIR, 'station-512.png'),
+    },
+    {
+      channel: 'stable',
+      target: 'square',
+      size: WEB_APP_ICON_SIZE,
+      path: join(WEB_APP_ICON_DIR, 'station-maskable-512.png'),
+    },
     // The iOS Live Activity draws this beside the agent status; SwiftUI
     // applies the rounded mask, so it is the opaque square.
     ...LIVE_ACTIVITY_ICON_SCALES.map((scale) => ({
       channel: 'stable',
-      target: 'square',
+      target: 'ios',
       size: 32 * scale,
       path: join(LIVE_ACTIVITY_ICON_DIR, `StationAppIcon@${scale}x.png`),
     })),
@@ -275,7 +294,10 @@ async function renderMasters() {
       size,
     })),
   );
-  requests.forEach(({ path }, index) => writeFileSync(path, pngs[index]));
+  requests.forEach(({ path }, index) => {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, pngs[index]);
+  });
   writeFileSync(STARTUP_MARK_GEOMETRY, startupMarkGeometryModule());
   writeFileSync(STATUS_BAR_MARK, statusBarMarkXml());
   return { variantDir, paths };
@@ -321,6 +343,8 @@ const DIRECT_OUTPUTS = [
   'src-ui/public/favicon-beta.png',
   'src-ui/public/favicon-nightly.png',
   'src-ui/public/favicon-dev.png',
+  'src-ui/public/icons/station-512.png',
+  'src-ui/public/icons/station-maskable-512.png',
   'src-ui/src/lib/startup-mark-geometry.ts',
   'src-desktop/plugins/agent-activity/android/src/main/res/drawable/agent_activity_mark.xml',
   'src-desktop/ios/StationAgentActivity/Assets.xcassets/StationAppIcon.imageset/StationAppIcon@1x.png',
@@ -488,20 +512,22 @@ async function main() {
     };
     copyFileSync(icnsOut(ROUNDED_MASTER), join(ICONS_DIR, 'icon.icns'));
 
-    // ...then the surfaces whose platforms mask or reject alpha themselves
-    // are overwritten from the full-bleed square master.
+    // Windows tiles keep the uncropped composition; iOS fills its mask.
+    const windowsOut = mkdtempSync(join(tmpdir(), 'station-windows-icons-'));
+    tempDirs.push(windowsOut);
+    tauriIcon(paths['stable-square'], windowsOut);
+    copyInto(windowsOut, ICONS_DIR, (name) =>
+      /^Square.*Logo\.png$|^StoreLogo\.png$/.test(name),
+    );
     const squareOut = mkdtempSync(join(tmpdir(), 'station-square-icons-'));
     tempDirs.push(squareOut);
     tauriIcon(join(BRAND_DIR, 'icon-square-1024.png'), squareOut);
-    copyInto(squareOut, ICONS_DIR, (name) =>
-      /^Square.*Logo\.png$|^StoreLogo\.png$/.test(name),
-    );
     copyInto(join(squareOut, 'ios'), APPLE_ICONSET);
     // The tracked seed is Stable; post-init staging restores the selected
     // channel from the corresponding committed square fan-out.
     copyIosSet(squareOut, iosIconSetDir('stable'));
 
-    // Android launchers come from each channel's adaptive-safe master. Keep
+    // Android launchers come from each channel's mask-filling master. Keep
     // a canonical Stable Android source outside generated scaffolding:
     // channel application copies from these committed sources after `init`.
     const androidOut = (channel) => {
@@ -544,12 +570,12 @@ async function main() {
     writeChannelSet({
       channel: 'dev',
       rounded: paths['dev-macos'],
-      square: paths['dev-square'],
+      square: paths['dev-ios'],
     });
     writeChannelSet({
       channel: 'beta',
       rounded: paths['beta-macos'],
-      square: paths['beta-square'],
+      square: paths['beta-ios'],
     });
 
     // The nightly channel's shade, committed under icons/nightly/:
@@ -559,7 +585,7 @@ async function main() {
     writeChannelSet({
       channel: 'nightly',
       rounded: paths['nightly-macos'],
-      square: paths['nightly-square'],
+      square: paths['nightly-ios'],
     });
     writeManifest();
   } finally {

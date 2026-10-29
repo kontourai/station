@@ -1,0 +1,7 @@
+{
+  "revision": "fad8fdce42ccb592493076181f1c47209f7aa833",
+
+  "notes": [
+    {"path":"docs/reference/connect.md","note":"Source delta (#4178): devicePairing.test.ts now pins X-Station-Client-Protocol '4' after STATION_COMPAT_PROTOCOL_VERSION moved to 4. connect.md describes the header policy, the SDK sending its build's protocol, and the minClientProtocol/426/400 refusals without pinning a protocol number. No prose change.","inputs":["docs/reference/connect.md","packages/connect/src/__tests__/devicePairing.test.ts"]}
+  ]
+}

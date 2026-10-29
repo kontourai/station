@@ -1,0 +1,25 @@
+{
+  "revision": "cab93731d268535d5563c4be1fc38c692cc959d9",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"module-map.md changed only by one added paragraph naming the fork route as a StationControlDispatchScope consumer (source view, target execute). This document does not restate that section, so its claims stay accurate.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"module-map.md changed only by one added paragraph naming the fork route as a StationControlDispatchScope consumer (source view, target execute). This document does not restate that section, so its claims stay accurate.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"module-map.md changed only by one added paragraph naming the fork route as a StationControlDispatchScope consumer (source view, target execute). This document does not restate that section, so its claims stay accurate.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"module-map.md changed only by one added paragraph naming the fork route as a StationControlDispatchScope consumer (source view, target execute). This document does not restate that section, so its claims stay accurate.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"module-map.md changed only by one added paragraph naming the fork route as a StationControlDispatchScope consumer (source view, target execute). This document does not restate that section, so its claims stay accurate.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"module-map.md changed only by one added paragraph naming the fork route as a StationControlDispatchScope consumer (source view, target execute). This document does not restate that section, so its claims stay accurate.","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/concepts.md","note":"module-map.md changed only by one added paragraph naming the fork route as a StationControlDispatchScope consumer (source view, target execute). This document does not restate that section, so its claims stay accurate.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"module-map.md changed only by one added paragraph naming the fork route as a StationControlDispatchScope consumer (source view, target execute). This document does not restate that section, so its claims stay accurate.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"module-map.md changed only by one added paragraph naming the fork route as a StationControlDispatchScope consumer (source view, target execute). This document does not restate that section, so its claims stay accurate.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"module-map.md changed only by one added paragraph naming the fork route as a StationControlDispatchScope consumer (source view, target execute). This document does not restate that section, so its claims stay accurate.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}

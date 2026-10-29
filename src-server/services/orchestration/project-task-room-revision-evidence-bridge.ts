@@ -96,10 +96,12 @@ export class ProjectTaskRoomRevisionEvidenceBridge {
     return this.#available;
   }
 
-  recordPublication(
-    input: RevisionPublication,
-  ):
+  recordPublication(input: RevisionPublication):
     | { readonly kind: 'recorded'; readonly revisionId: string }
+    | {
+        readonly kind: 'refused';
+        readonly reason: 'capacity_exceeded' | 'snapshot_invalid';
+      }
     | { readonly kind: 'unavailable' } {
     if (!this.available() || this.#active.size >= MAX_ACTIVE_FREEZE_GRANTS)
       return { kind: 'unavailable' };
@@ -124,7 +126,10 @@ export class ProjectTaskRoomRevisionEvidenceBridge {
       });
       return frozen.outcome === 'committed' || frozen.outcome === 'duplicate'
         ? { kind: 'recorded', revisionId: frozen.revision.revisionId }
-        : { kind: 'unavailable' };
+        : frozen.reason === 'capacity_exceeded' ||
+            frozen.reason === 'snapshot_invalid'
+          ? { kind: 'refused', reason: frozen.reason }
+          : { kind: 'unavailable' };
     } finally {
       this.#active.delete(requestId);
     }

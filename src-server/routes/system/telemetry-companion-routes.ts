@@ -1,0 +1,586 @@
+import {
+  isProductTelemetryIncidents,
+  isProductTelemetryTrends,
+  isProductTelemetryTrendWindow,
+  type ProductTelemetryIncidents,
+  type ProductTelemetryTrends,
+} from '@kontourai/station-contracts/product-telemetry';
+import {
+  isTelemetryCompanionOperationId,
+  type TelemetryCompanionAction,
+  type TelemetryCompanionArchivePreparation,
+  type TelemetryCompanionInstallation,
+  type TelemetryCompanionManagedState,
+  type TelemetryCompanionPreparationState,
+  type TelemetryCompanionPrerequisites,
+  type TelemetryPrivateUsagePreparation,
+} from '@kontourai/station-contracts/telemetry-delivery';
+import { Hono } from 'hono';
+import { z } from 'zod/v3';
+import { PrivateUsageClientRejected } from '../../analytics/private-usage-client.js';
+import { RecipientCandidateRejected } from '../../analytics/recipient-store.js';
+import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
+import {
+  AuthorityObservationRejected,
+  guardAuthorityObservationResponse,
+} from '../../services/identity/authority-observation.js';
+import {
+  CompanionArchivePreparationBusyError,
+  CompanionArchivePreparationUnsupportedError,
+} from '../../services/telemetry-companion-archive.js';
+import { CompanionControlRefusal } from '../../services/telemetry-companion-control.js';
+import { CompanionInstallationRefusal } from '../../services/telemetry-companion-install.js';
+
+export function createTelemetryCompanionRoutes(deps: {
+  requireOperator(request: Request): Promise<void>;
+  assertOperatorLocalCurrent?(request: Request): void;
+  privateUsagePreparation?(
+    request: Request,
+    requestId: string,
+    fingerprint?: string,
+  ): Promise<{
+    data: TelemetryPrivateUsagePreparation;
+    assertCurrent(): Promise<void>;
+    probe?(): Promise<
+      import('../../services/identity/authority-observation.js').AuthorityReleaseLease
+    >;
+  }>;
+  productTrends?(
+    request: Request,
+    window: { from: string; to: string },
+  ): Promise<ProductTelemetryTrends>;
+  productIncidents?(
+    request: Request,
+    window: { from: string; to: string },
+  ): Promise<ProductTelemetryIncidents>;
+  managedState?(request: Request): Promise<TelemetryCompanionManagedState>;
+  control?(
+    request: Request,
+    installationId: string,
+    operationId: string,
+    action: 'start' | 'stop',
+  ): Promise<TelemetryCompanionAction>;
+  action?(
+    installationId: string,
+    operationId: string,
+  ): Promise<TelemetryCompanionAction | null>;
+  install?(
+    request: Request,
+    installationId: string,
+    preparationId: string,
+  ): Promise<TelemetryCompanionInstallation>;
+  installation?(
+    installationId: string,
+  ): Promise<TelemetryCompanionInstallation | null>;
+  prerequisites(
+    includeArtifactEvidence: boolean,
+  ): Promise<TelemetryCompanionPrerequisites>;
+  prepareArchive?(
+    request: Request,
+    operationId: string,
+  ): Promise<TelemetryCompanionArchivePreparation>;
+  archivePreparation?(
+    operationId: string,
+  ): Promise<TelemetryCompanionArchivePreparation | null>;
+  preparationState?(
+    request: Request,
+  ): Promise<TelemetryCompanionPreparationState>;
+}) {
+  const app = new Hono();
+  const privateUsagePreparation = async (
+    c: import('hono').Context,
+    prepare: boolean,
+  ) => {
+    c.header('Cache-Control', 'no-store');
+    try {
+      await deps.requireOperator(c.req.raw);
+    } catch {
+      return c.json({ error: { code: 'operator_required' } }, 403);
+    }
+    const requestId = c.req.param('requestId');
+    let fingerprint: string | undefined;
+    try {
+      if (!isTelemetryCompanionOperationId(requestId))
+        throw new Error('Invalid request');
+      if (prepare) {
+        const body = await readBoundedRequestBody(c.req.raw, 1024);
+        if (body.status !== 'ok') throw new Error('Invalid body');
+        fingerprint = z
+          .object({ fingerprint: z.string().regex(/^[a-f0-9]{64}$/) })
+          .strict()
+          .parse(JSON.parse(body.body)).fingerprint;
+      }
+    } catch {
+      return c.json(
+        { error: { code: 'invalid_private_usage_preparation' } },
+        400,
+      );
+    }
+    if (!deps.privateUsagePreparation)
+      return c.json({ error: { code: 'private_usage_unavailable' } }, 503);
+    try {
+      const observation = await deps.privateUsagePreparation(
+        c.req.raw,
+        requestId,
+        fingerprint,
+      );
+      await deps.requireOperator(c.req.raw);
+      return await guardAuthorityObservationResponse(
+        c.json({ data: observation.data }),
+        {
+          async probe() {
+            await deps.requireOperator(c.req.raw);
+            if (!observation.probe || !deps.assertOperatorLocalCurrent)
+              throw new AuthorityObservationRejected(
+                503,
+                'authentication_unavailable',
+              );
+            const lease = await observation.probe();
+            return {
+              assertLocalCurrent() {
+                lease.assertLocalCurrent();
+                deps.assertOperatorLocalCurrent!(c.req.raw);
+              },
+              release: lease.release,
+            };
+          },
+        },
+      );
+    } catch (error) {
+      try {
+        await deps.requireOperator(c.req.raw);
+      } catch {
+        return c.json({ error: { code: 'operator_required' } }, 403);
+      }
+      if (
+        error instanceof PrivateUsageClientRejected ||
+        error instanceof RecipientCandidateRejected ||
+        error instanceof AuthorityObservationRejected
+      )
+        return c.json({ error: { code: error.code } }, error.status);
+      return c.json({ error: { code: 'private_usage_unavailable' } }, 503);
+    }
+  };
+  app.get('/private-usage-preparations/:requestId', (c) =>
+    privateUsagePreparation(c, false),
+  );
+  app.post('/private-usage-preparations/:requestId', (c) =>
+    privateUsagePreparation(c, true),
+  );
+  app.get('/product-trends', async (c) => {
+    c.header('Cache-Control', 'no-store');
+    try {
+      await deps.requireOperator(c.req.raw);
+    } catch {
+      return c.json({ error: { code: 'operator_required' } }, 403);
+    }
+    const query = c.req.queries();
+    const from = query.from?.[0],
+      to = query.to?.[0];
+    if (
+      Object.keys(query).some((key) => !['from', 'to'].includes(key)) ||
+      query.from?.length !== 1 ||
+      query.to?.length !== 1 ||
+      !from ||
+      !to ||
+      !isProductTelemetryTrendWindow(from, to)
+    )
+      return c.json({ error: { code: 'invalid_product_trend_window' } }, 400);
+    if (!deps.productTrends)
+      return c.json({ error: { code: 'companion_query_unavailable' } }, 503);
+    try {
+      const data = await deps.productTrends(c.req.raw, { from, to });
+      if (
+        !isProductTelemetryTrends(data) ||
+        data.window.from !== from ||
+        data.window.to !== to
+      )
+        throw new Error('Invalid product trends');
+      await deps.requireOperator(c.req.raw);
+      return c.json({ data });
+    } catch {
+      try {
+        await deps.requireOperator(c.req.raw);
+      } catch {
+        return c.json({ error: { code: 'operator_required' } }, 403);
+      }
+      return c.json({ error: { code: 'companion_query_unavailable' } }, 503);
+    }
+  });
+  app.get('/product-incidents', async (c) => {
+    c.header('Cache-Control', 'no-store');
+    try {
+      await deps.requireOperator(c.req.raw);
+    } catch {
+      return c.json({ error: { code: 'operator_required' } }, 403);
+    }
+    const query = c.req.queries();
+    const from = query.from?.[0],
+      to = query.to?.[0];
+    if (
+      Object.keys(query).some((key) => !['from', 'to'].includes(key)) ||
+      query.from?.length !== 1 ||
+      query.to?.length !== 1 ||
+      !from ||
+      !to ||
+      !isProductTelemetryTrendWindow(from, to)
+    )
+      return c.json(
+        { error: { code: 'invalid_product_incident_window' } },
+        400,
+      );
+    if (!deps.productIncidents)
+      return c.json({ error: { code: 'companion_query_unavailable' } }, 503);
+    try {
+      const data = await deps.productIncidents(c.req.raw, { from, to });
+      if (
+        !isProductTelemetryIncidents(data) ||
+        data.window.from !== from ||
+        data.window.to !== to
+      )
+        throw new Error('Invalid product trends');
+      await deps.requireOperator(c.req.raw);
+      return c.json({ data });
+    } catch {
+      try {
+        await deps.requireOperator(c.req.raw);
+      } catch {
+        return c.json({ error: { code: 'operator_required' } }, 403);
+      }
+      return c.json({ error: { code: 'companion_query_unavailable' } }, 503);
+    }
+  });
+  app.get('/installations', async (c) => {
+    c.header('Cache-Control', 'no-store');
+    try {
+      await deps.requireOperator(c.req.raw);
+    } catch {
+      return c.json({ error: { code: 'operator_required' } }, 403);
+    }
+    if (!deps.managedState)
+      return c.json({ error: { code: 'companion_control_unavailable' } }, 503);
+    try {
+      const data = await deps.managedState(c.req.raw);
+      await deps.requireOperator(c.req.raw);
+      return c.json({ data });
+    } catch {
+      try {
+        await deps.requireOperator(c.req.raw);
+      } catch {
+        return c.json({ error: { code: 'operator_required' } }, 403);
+      }
+      return c.json({ error: { code: 'companion_control_unavailable' } }, 503);
+    }
+  });
+  app.post('/installations/:installationId/actions', async (c) => {
+    c.header('Cache-Control', 'no-store');
+    try {
+      await deps.requireOperator(c.req.raw);
+    } catch {
+      return c.json({ error: { code: 'operator_required' } }, 403);
+    }
+    let input: { operationId: string; action: 'start' | 'stop' };
+    const installationId = c.req.param('installationId');
+    try {
+      if (!isTelemetryCompanionOperationId(installationId))
+        throw new Error('Invalid installation');
+      const body = await readBoundedRequestBody(c.req.raw, 1024);
+      if (body.status !== 'ok') throw new Error('Invalid body');
+      input = z
+        .object({
+          operationId: z.string().refine(isTelemetryCompanionOperationId),
+          action: z.enum(['start', 'stop']),
+        })
+        .strict()
+        .parse(JSON.parse(body.body));
+    } catch {
+      return c.json({ error: { code: 'invalid_companion_action' } }, 400);
+    }
+    if (!deps.control)
+      return c.json({ error: { code: 'companion_control_unavailable' } }, 503);
+    try {
+      const data = await deps.control(
+        c.req.raw,
+        installationId,
+        input.operationId,
+        input.action,
+      );
+      await deps.requireOperator(c.req.raw);
+      return c.json({ data });
+    } catch (error) {
+      try {
+        await deps.requireOperator(c.req.raw);
+      } catch {
+        return c.json({ error: { code: 'operator_required' } }, 403);
+      }
+      if (error instanceof CompanionControlRefusal)
+        return c.json(
+          {
+            error: { code: 'companion_control_refused', reason: error.reason },
+          },
+          409,
+        );
+      return c.json({ error: { code: 'companion_control_unavailable' } }, 503);
+    }
+  });
+  app.get('/installations/:installationId/actions/:operationId', async (c) => {
+    c.header('Cache-Control', 'no-store');
+    try {
+      await deps.requireOperator(c.req.raw);
+    } catch {
+      return c.json({ error: { code: 'operator_required' } }, 403);
+    }
+    const installationId = c.req.param('installationId'),
+      operationId = c.req.param('operationId');
+    if (
+      !isTelemetryCompanionOperationId(installationId) ||
+      !isTelemetryCompanionOperationId(operationId)
+    )
+      return c.json({ error: { code: 'invalid_companion_action' } }, 400);
+    if (!deps.action)
+      return c.json({ error: { code: 'companion_control_unavailable' } }, 503);
+    try {
+      const data = await deps.action(installationId, operationId);
+      await deps.requireOperator(c.req.raw);
+      return data
+        ? c.json({ data })
+        : c.json({ error: { code: 'companion_action_missing' } }, 404);
+    } catch {
+      try {
+        await deps.requireOperator(c.req.raw);
+      } catch {
+        return c.json({ error: { code: 'operator_required' } }, 403);
+      }
+      return c.json({ error: { code: 'companion_control_unavailable' } }, 503);
+    }
+  });
+  app.post('/installations', async (c) => {
+    c.header('Cache-Control', 'no-store');
+    try {
+      await deps.requireOperator(c.req.raw);
+    } catch {
+      return c.json({ error: { code: 'operator_required' } }, 403);
+    }
+    let input: Pick<
+      TelemetryCompanionInstallation,
+      'installationId' | 'preparationId' | 'host' | 'storage'
+    >;
+    try {
+      const body = await readBoundedRequestBody(c.req.raw, 1024);
+      if (body.status !== 'ok') throw new Error('Invalid body');
+      input = z
+        .object({
+          installationId: z.string().refine(isTelemetryCompanionOperationId),
+          preparationId: z.string().refine(isTelemetryCompanionOperationId),
+          host: z.literal('selected-station'),
+          storage: z.literal('managed-docker-volumes'),
+        })
+        .strict()
+        .parse(JSON.parse(body.body));
+    } catch {
+      return c.json({ error: { code: 'invalid_installation_request' } }, 400);
+    }
+    if (!deps.install)
+      return c.json(
+        { error: { code: 'companion_installation_unavailable' } },
+        503,
+      );
+    try {
+      const data = await deps.install(
+        c.req.raw,
+        input.installationId,
+        input.preparationId,
+      );
+      await deps.requireOperator(c.req.raw);
+      return c.json({ data });
+    } catch (error) {
+      try {
+        await deps.requireOperator(c.req.raw);
+      } catch {
+        return c.json({ error: { code: 'operator_required' } }, 403);
+      }
+      if (error instanceof CompanionInstallationRefusal)
+        return c.json(
+          {
+            error: {
+              code: 'companion_installation_refused',
+              reason: error.reason,
+            },
+          },
+          error.reason === 'unsupported' ? 501 : 409,
+        );
+      return c.json(
+        { error: { code: 'companion_installation_unavailable' } },
+        503,
+      );
+    }
+  });
+  app.get('/installations/:installationId', async (c) => {
+    c.header('Cache-Control', 'no-store');
+    try {
+      await deps.requireOperator(c.req.raw);
+    } catch {
+      return c.json({ error: { code: 'operator_required' } }, 403);
+    }
+    const id = c.req.param('installationId');
+    if (!isTelemetryCompanionOperationId(id))
+      return c.json({ error: { code: 'invalid_installation_request' } }, 400);
+    if (!deps.installation)
+      return c.json(
+        { error: { code: 'companion_installation_unavailable' } },
+        503,
+      );
+    try {
+      const data = await deps.installation(id);
+      await deps.requireOperator(c.req.raw);
+      return data
+        ? c.json({ data })
+        : c.json({ error: { code: 'companion_installation_missing' } }, 404);
+    } catch {
+      try {
+        await deps.requireOperator(c.req.raw);
+      } catch {
+        return c.json({ error: { code: 'operator_required' } }, 403);
+      }
+      return c.json(
+        { error: { code: 'companion_installation_unavailable' } },
+        503,
+      );
+    }
+  });
+  app.get('/archive-preparations', async (c) => {
+    c.header('Cache-Control', 'no-store');
+    try {
+      await deps.requireOperator(c.req.raw);
+    } catch {
+      return c.json({ error: { code: 'operator_required' } }, 403);
+    }
+    if (!deps.preparationState)
+      return c.json(
+        { error: { code: 'companion_preparation_unavailable' } },
+        503,
+      );
+    try {
+      const data = await deps.preparationState(c.req.raw);
+      await deps.requireOperator(c.req.raw);
+      return c.json({ data });
+    } catch {
+      try {
+        await deps.requireOperator(c.req.raw);
+      } catch {
+        return c.json({ error: { code: 'operator_required' } }, 403);
+      }
+      return c.json(
+        { error: { code: 'companion_preparation_unavailable' } },
+        503,
+      );
+    }
+  });
+  app.get('/prerequisites', async (c) => {
+    c.header('Cache-Control', 'no-store');
+    try {
+      await deps.requireOperator(c.req.raw);
+    } catch {
+      return c.json({ error: { code: 'operator_required' } }, 403);
+    }
+    let data: TelemetryCompanionPrerequisites;
+    try {
+      data = await deps.prerequisites(c.req.query('artifactEvidence') === '1');
+    } catch {
+      return c.json({ error: { code: 'companion_probe_unavailable' } }, 503);
+    }
+    try {
+      await deps.requireOperator(c.req.raw);
+    } catch {
+      return c.json({ error: { code: 'operator_required' } }, 403);
+    }
+    return c.json({ data });
+  });
+  app.post('/archive-preparations', async (c) => {
+    c.header('Cache-Control', 'no-store');
+    try {
+      await deps.requireOperator(c.req.raw);
+    } catch {
+      return c.json({ error: { code: 'operator_required' } }, 403);
+    }
+    let operationId: string;
+    try {
+      const body = await readBoundedRequestBody(c.req.raw, 1024);
+      if (body.status !== 'ok') throw new Error('Invalid body');
+      operationId = z
+        .object({
+          operationId: z.string().refine(isTelemetryCompanionOperationId),
+        })
+        .strict()
+        .parse(JSON.parse(body.body)).operationId;
+    } catch {
+      return c.json({ error: { code: 'invalid_preparation_request' } }, 400);
+    }
+    if (!deps.prepareArchive)
+      return c.json(
+        { error: { code: 'companion_preparation_unavailable' } },
+        503,
+      );
+    try {
+      const data = await deps.prepareArchive(c.req.raw, operationId);
+      await deps.requireOperator(c.req.raw);
+      return c.json({ data });
+    } catch (error) {
+      try {
+        await deps.requireOperator(c.req.raw);
+      } catch {
+        return c.json({ error: { code: 'operator_required' } }, 403);
+      }
+      if (error instanceof CompanionArchivePreparationUnsupportedError)
+        return c.json(
+          { error: { code: 'companion_preparation_unsupported' } },
+          501,
+        );
+      return c.json(
+        {
+          error: {
+            code:
+              error instanceof CompanionArchivePreparationBusyError
+                ? 'companion_preparation_busy'
+                : 'companion_preparation_unavailable',
+          },
+        },
+        error instanceof CompanionArchivePreparationBusyError ? 409 : 503,
+      );
+    }
+  });
+  app.get('/archive-preparations/:operationId', async (c) => {
+    c.header('Cache-Control', 'no-store');
+    try {
+      await deps.requireOperator(c.req.raw);
+    } catch {
+      return c.json({ error: { code: 'operator_required' } }, 403);
+    }
+    const operationId = c.req.param('operationId');
+    if (!isTelemetryCompanionOperationId(operationId))
+      return c.json({ error: { code: 'invalid_preparation_request' } }, 400);
+    if (!deps.archivePreparation)
+      return c.json(
+        { error: { code: 'companion_preparation_unavailable' } },
+        503,
+      );
+    try {
+      const data = await deps.archivePreparation(operationId);
+      await deps.requireOperator(c.req.raw);
+      return data
+        ? c.json({ data })
+        : c.json({ error: { code: 'companion_preparation_missing' } }, 404);
+    } catch {
+      try {
+        await deps.requireOperator(c.req.raw);
+      } catch {
+        return c.json({ error: { code: 'operator_required' } }, 403);
+      }
+      return c.json(
+        { error: { code: 'companion_preparation_unavailable' } },
+        503,
+      );
+    }
+  });
+  return app;
+}

@@ -614,6 +614,31 @@ describe('NotificationDeliveryRouter', () => {
       bus.emit(SERVER_EVENTS.NOTIFICATION_UPDATED, { ...legacy, title: 'x' });
       expect(plain.deliveries).toHaveLength(1);
     });
+
+    // docs/design/event-content-spill.md: an approval card rewritten to
+    // offer only Deny emits UPDATED so open clients refetch. It must not
+    // alert again, and a still-open card must not be taken back.
+    test('an actions-only update to a legacy approval card neither re-sends nor retracts', async () => {
+      const { bus, plain, retracting } = setup();
+      const legacy = notification({
+        category: 'approval-request',
+        actions: [
+          { id: 'accept', label: 'Allow Once', variant: 'primary' },
+          { id: 'decline', label: 'Deny', variant: 'danger' },
+        ],
+      });
+      delete legacy.metadata;
+      bus.emit(SERVER_EVENTS.NOTIFICATION_DELIVERED, legacy);
+      bus.emit(SERVER_EVENTS.NOTIFICATION_UPDATED, {
+        ...legacy,
+        actions: [{ id: 'decline', label: 'Deny', variant: 'danger' }],
+        revision: 2,
+      });
+      await flush();
+      expect(plain.deliveries).toHaveLength(1);
+      expect(retracting.deliveries).toHaveLength(1);
+      expect(retracting.retractions).toEqual([]);
+    });
   });
 
   describe('never throws into the bus', () => {

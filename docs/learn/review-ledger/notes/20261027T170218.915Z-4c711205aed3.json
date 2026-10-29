@@ -1,0 +1,7 @@
+{
+  "revision": "55044b932c6b768c25cb977813abdb0a5b626698",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"chat-host-images review: its link to approval-posture-server-ordered.md supports 'AppConfig.defaultApprovalMode, applied at every session start', which the edit there (Codex confinement accepting the session's own temp directory as a Station-owned root) does not change; its generic pointer to canonical events in runtime-events.ts also still holds with content.host-images added.","inputs":["docs/design/automations.md","docs/design/approval-posture-server-ordered.md"]}
+  ]
+}

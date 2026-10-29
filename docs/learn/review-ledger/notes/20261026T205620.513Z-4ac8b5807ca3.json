@@ -1,0 +1,9 @@
+{
+  "revision": "d5c0f5f17bde5d9f5f345ea8a2ec8ffa308c96e9",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"Rechecked ToolCallDisplay after the fix round 2 changes (skeleton for the spilled-content wait, multi-line text argument blocks): it still mounts TranscriptMCPApp beside a completed non-error MCP result as described.","inputs":["docs/design/mcp-ui-host.md","src-ui/src/components/chat/ToolCallDisplay.tsx"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Rechecked ToolCallDisplay after the fix round 2 changes (skeleton for the spilled-content wait, multi-line text argument blocks); the approval delivery and allow semantics this document records are unchanged.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/components/chat/ToolCallDisplay.tsx"]}
+  ]
+}

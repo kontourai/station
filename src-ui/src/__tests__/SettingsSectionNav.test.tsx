@@ -24,6 +24,7 @@ test('Settings offers topic links that stay within Settings', () => {
     'Privacy & sharing',
     'My knowledge',
     'Advanced',
+    'About',
   ]);
   for (const link of screen.getAllByRole('link')) {
     expect(link.getAttribute('href')).toMatch(/^\/settings\?view=/);

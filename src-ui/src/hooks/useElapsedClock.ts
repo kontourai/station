@@ -1,4 +1,8 @@
 import { useSyncExternalStore } from 'react';
+import {
+  isDocumentVisible,
+  subscribeDocumentVisibility,
+} from '../lib/documentVisibility';
 
 /**
  * THE ticking source for elapsed durations: one module-wide interval that
@@ -16,11 +20,10 @@ const TICK_MS = 1000;
 
 let now = Date.now();
 let timer: ReturnType<typeof setInterval> | undefined;
+let stopWatchingVisibility: (() => void) | undefined;
 const listeners = new Set<() => void>();
 
-function pageHidden(): boolean {
-  return typeof document !== 'undefined' && document.hidden;
-}
+const pageHidden = () => !isDocumentVisible();
 
 function tick() {
   now = Date.now();
@@ -52,15 +55,14 @@ function subscribe(listener: () => void): () => void {
   if (listeners.size === 1) {
     now = Date.now();
     start();
-    if (typeof document !== 'undefined')
-      document.addEventListener('visibilitychange', onVisibilityChange);
+    stopWatchingVisibility = subscribeDocumentVisibility(onVisibilityChange);
   }
   return () => {
     listeners.delete(listener);
     if (listeners.size === 0) {
       stop();
-      if (typeof document !== 'undefined')
-        document.removeEventListener('visibilitychange', onVisibilityChange);
+      stopWatchingVisibility?.();
+      stopWatchingVisibility = undefined;
     }
   };
 }

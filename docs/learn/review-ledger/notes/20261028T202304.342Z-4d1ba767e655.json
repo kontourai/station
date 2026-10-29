@@ -1,0 +1,41 @@
+{
+  "revision": "82295a94f2a7c768ded3da08ee0b58a064d1eb91",
+
+  "notes": [
+    {"path":"docs/learn/media/connections-models.png","note":"Checked against the index.css change: it only adds the approval-mode picker notes inset (.composer-mode-sheet__notes). This capture does not show that picker; its rendered styles are unchanged.","inputs":["docs/learn/media/connections-models.png","src-ui/src/index.css","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Checked against the index.css change: it only adds the approval-mode picker notes inset (.composer-mode-sheet__notes). This capture does not show that picker; its rendered styles are unchanged.","inputs":["docs/learn/media/connections-tour.webm","src-ui/src/index.css","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Checked against the index.css change: it only adds the approval-mode picker notes inset (.composer-mode-sheet__notes). This capture does not show that picker; its rendered styles are unchanged.","inputs":["docs/learn/media/inspect-request.png","src-ui/src/index.css","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Checked against the index.css change: it only adds the approval-mode picker notes inset (.composer-mode-sheet__notes). This capture does not show that picker; its rendered styles are unchanged.","inputs":["docs/learn/media/inspect-request.webm","src-ui/src/index.css","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/oauth-mcp-picker-comparison.png","note":"Checked against the index.css change: it only adds the approval-mode picker notes inset (.composer-mode-sheet__notes). This capture does not show that picker; its rendered styles are unchanged.","inputs":["docs/learn/media/oauth-mcp-picker-comparison.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/oauth-mcp-sign-in-comparison.png","note":"Checked against the index.css change: it only adds the approval-mode picker notes inset (.composer-mode-sheet__notes). This capture does not show that picker; its rendered styles are unchanged.","inputs":["docs/learn/media/oauth-mcp-sign-in-comparison.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-consent-sign-in.png","note":"Checked against the index.css change: it only adds the approval-mode picker notes inset (.composer-mode-sheet__notes). This capture does not show that picker; its rendered styles are unchanged.","inputs":["docs/learn/media/operator-s3-consent-sign-in.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-other-browser-refused.png","note":"Checked against the index.css change: it only adds the approval-mode picker notes inset (.composer-mode-sheet__notes). This capture does not show that picker; its rendered styles are unchanged.","inputs":["docs/learn/media/operator-s3-other-browser-refused.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-paired-after-sign-in.png","note":"Checked against the index.css change: it only adds the approval-mode picker notes inset (.composer-mode-sheet__notes). This capture does not show that picker; its rendered styles are unchanged.","inputs":["docs/learn/media/operator-s3-paired-after-sign-in.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-paired-before-sign-in.png","note":"Checked against the index.css change: it only adds the approval-mode picker notes inset (.composer-mode-sheet__notes). This capture does not show that picker; its rendered styles are unchanged.","inputs":["docs/learn/media/operator-s3-paired-before-sign-in.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Checked against the index.css change: it only adds the approval-mode picker notes inset (.composer-mode-sheet__notes). This capture does not show that picker; its rendered styles are unchanged.","inputs":["docs/learn/media/operator-s4-after-sign-in.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Checked against the index.css change: it only adds the approval-mode picker notes inset (.composer-mode-sheet__notes). This capture does not show that picker; its rendered styles are unchanged.","inputs":["docs/learn/media/operator-s4-after-step-up.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Checked against the index.css change: it only adds the approval-mode picker notes inset (.composer-mode-sheet__notes). This capture does not show that picker; its rendered styles are unchanged.","inputs":["docs/learn/media/operator-s4-before-sign-in.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Checked against the index.css change: it only adds the approval-mode picker notes inset (.composer-mode-sheet__notes). This capture does not show that picker; its rendered styles are unchanged.","inputs":["docs/learn/media/operator-s4-step-up-review.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"Checked against the index.css change: it only adds the approval-mode picker notes inset (.composer-mode-sheet__notes). This capture does not show that picker; its rendered styles are unchanged.","inputs":["docs/learn/media/project-with-task.png","src-ui/src/index.css","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge-narrow.png","note":"Checked against the index.css change: it only adds the approval-mode picker notes inset (.composer-mode-sheet__notes). This capture does not show that picker; its rendered styles are unchanged.","inputs":["docs/learn/media/repository-knowledge-narrow.png","src-ui/src/index.css","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge.png","note":"Checked against the index.css change: it only adds the approval-mode picker notes inset (.composer-mode-sheet__notes). This capture does not show that picker; its rendered styles are unchanged.","inputs":["docs/learn/media/repository-knowledge.png","src-ui/src/index.css","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"Checked against the index.css change: it only adds the approval-mode picker notes inset (.composer-mode-sheet__notes). This capture does not show that picker; its rendered styles are unchanged.","inputs":["docs/learn/media/shared-task-document.png","src-ui/src/index.css","src-ui/src/views/page-layout.css"]}
+  ]
+}

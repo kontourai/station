@@ -544,14 +544,20 @@ describe('Task review through configureRuntimeRoutes', () => {
       'GET',
       `/api/tasks/${e.task.id}/room/document`,
     );
+    expect(documentBefore.status).toBe(200);
+    expect(e.evidence()).toHaveLength(0);
+    const thread = await e.createThread();
+    const evidenceBefore = e.evidence();
+    expect(evidenceBefore).toHaveLength(1);
+    expect(JSON.parse(String(evidenceBefore[0]!.record_json))).toMatchObject({
+      sharedRevision: thread.artifact.revision,
+      text: 'First plan\nDetails.',
+    });
     const historyBefore = await e.asOperator(
       'GET',
       `/api/tasks/${e.task.id}/room/history`,
     );
-    expect(documentBefore.status).toBe(200);
     expect(historyBefore.status).toBe(200);
-    const evidenceBefore = e.evidence();
-    const thread = await e.createThread();
     const reply = await e.asOperator(
       'POST',
       `${e.reviewPath}/threads/${thread.threadId}/replies`,

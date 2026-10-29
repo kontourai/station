@@ -1,0 +1,7 @@
+{
+  "revision": "fc718a60a20625f07d41a0d6afb653a346337a01",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Re-reviewed Context menus and holds after two review rounds: hold swallow window (any new press ends it; lands-anywhere), portal scoping, platform long-press reopen, idempotent opens, backdrop behavior, native-menu targets (text inputs, xterm, selection, Shift+button 2), ContextMenu host layer, same-origin links; each claim traced to useContextMenuGesture, native-context-menu, ActionOverflowMenu, ContextMenu, NativeContextMenuGuard and pinned by fault-injected tests. WebView and device behavior stated as unverified.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/ActionOverflowMenu.tsx"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "03de66577b851284970e0e9ed397dd8487597327",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Source changes are comment-only (destination-registry Settings doors now name the footer account menu; runtime test comment for live-activity TTL). Checked LiveWorkSession/ProjectTaskRoom TTL-expiry claims still match; no prose change needed.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/__tests__/project-task-room-runtime.test.ts","src-ui/src/app-shell/destination-registry.ts"]}
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "revision": "4cc046eaf86ef798e2f1c250f701a477300c0a63",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Reviewed this change to scoped documentation freshness: the merge-base state is reused only when a fresh resolution of the base names the same commit; an advanced base is read again. Append-only, source-change, capture and review decisions remain enforced. Real Git fixture and intended stale-review fault exercised; hosted performance and delivery are not established. No prose change.","inputs":[".veritas/README.md","scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed this change to scoped documentation freshness: the merge-base state is reused only when a fresh resolution of the base names the same commit; an advanced base is read again. Append-only, source-change, capture and review decisions remain enforced. Real Git fixture and intended stale-review fault exercised; hosted performance and delivery are not established. No prose change.","inputs":["docs/guides/code-quality.md","scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/guides/documentation-review-ledger.md","note":"Reviewed this change to scoped documentation freshness: the merge-base state is reused only when a fresh resolution of the base names the same commit; an advanced base is read again. Append-only, source-change, capture and review decisions remain enforced. Real Git fixture and intended stale-review fault exercised; hosted performance and delivery are not established. No prose change.","inputs":["docs/guides/documentation-review-ledger.md","scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/guides/documentation.md","note":"Reviewed this change to scoped documentation freshness: the merge-base state is reused only when a fresh resolution of the base names the same commit; an advanced base is read again. Append-only, source-change, capture and review decisions remain enforced. Real Git fixture and intended stale-review fault exercised; hosted performance and delivery are not established. No prose change.","inputs":["docs/guides/documentation.md","scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/learn/README.md","note":"Reviewed this change to scoped documentation freshness: the merge-base state is reused only when a fresh resolution of the base names the same commit; an advanced base is read again. Append-only, source-change, capture and review decisions remain enforced. Real Git fixture and intended stale-review fault exercised; hosted performance and delivery are not established. No prose change.","inputs":["docs/learn/README.md","scripts/lib/documentation-freshness.mjs"]}
+  ]
+}

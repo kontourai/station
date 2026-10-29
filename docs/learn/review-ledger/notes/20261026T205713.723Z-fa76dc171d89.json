@@ -1,0 +1,9 @@
+{
+  "revision": "25082ae9f75218778e38cdf1bb55d352ccb34dd0",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.png","note":"Scoped delta review of the #4194 merge with origin/main (363d5befa7e, bringing #4127) and its follow-up 22c5d58fb89. #4127's own OrchestrationService changes in this delta are owned and reviewed by #4127. The branch's changed OrchestrationService lines are the conversation-open read (nextTurnStartsSession, now awaited with the request authority so it is omitted while a context-delivery fence would refuse the send) and the start-metadata read for sessionStarted replays. The capture shows the request inspection surface; none of those lines are on that path, so no recapture.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Scoped delta review of the #4194 merge with origin/main (363d5befa7e, bringing #4127) and its follow-up 22c5d58fb89. #4127's own OrchestrationService changes in this delta are owned and reviewed by #4127. The branch's changed OrchestrationService lines are the conversation-open read (nextTurnStartsSession, now awaited with the request authority so it is omitted while a context-delivery fence would refuse the send) and the start-metadata read for sessionStarted replays. The capture shows the request inspection surface; none of those lines are on that path, so no recapture.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

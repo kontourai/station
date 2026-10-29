@@ -1,0 +1,7 @@
+{
+  "revision": "f44cec61337e7e20856f0f415f3512ddedd7ef01",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"ConnectStationDialog: identification-failure help again says no access request was sent (matches guide line 269); pending peer status says this device can't approve itself. OnboardingGate restores the no-resend fact. Flow and requests unchanged; prose accurate.","inputs":["docs/guides/connections.md","src-ui/src/__tests__/ConnectStationDialog.test.tsx","src-ui/src/components/OnboardingGate.tsx","src-ui/src/views/connections-hub/ConnectStationDialog.tsx"]}
+  ]
+}

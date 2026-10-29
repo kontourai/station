@@ -1,0 +1,7 @@
+{
+  "revision": "af3e5a84422aca57bfe6b2b91b157b1a2b9e04f0",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"App.tsx change mounts NativeContextMenuGuard, which ignores events already defaultPrevented; the sidebar pill, layout chip, region tab and toolbar-toggle context menus prevent default themselves, so their documented right-click and hold behavior is unchanged.","inputs":["docs/design/placement.md","src-ui/src/App.tsx"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "4520f1bab0603e7d08faf3fcc9af945336254e5d",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"chat.css change is confined to .station-switcher* and .app-toolbar__station-switcher selectors, now on canonical --k-* tokens (filter field, forget control with hover/coarse-pointer rules, footer). No selector this document's claims depend on changed.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

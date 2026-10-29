@@ -1,5 +1,5 @@
 import { activeChatsStore } from '../../contexts/active-chats-store';
-import type { PlanArtifact } from '../../utils/planArtifacts';
+import { canonicalPlanArtifact } from '../../utils/planArtifacts';
 import type { OrchestrationEvent } from './types';
 
 /**
@@ -21,15 +21,14 @@ export function handlePlanUpdatedEvent(
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
   if (!chat) return;
 
-  const planArtifact: PlanArtifact = {
-    source: 'canonical',
-    rawText: event.entries.map((entry) => entry.content).join('\n'),
-    steps: event.entries.map((entry) => ({
-      content: entry.content,
-      status: entry.status,
-    })),
-    updatedAt: event.createdAt,
-  };
+  // A plan too large for one event arrives as a reference to its entries,
+  // or with an entry's text referenced (docs/design/event-content-spill.md):
+  // show the previews, marked partial, with the rest loadable on request.
+  const planArtifact = canonicalPlanArtifact(
+    event.entries,
+    event.createdAt,
+    event.threadId,
+  );
 
   activeChatsStore.updateChat(event.threadId, { planArtifact });
 }

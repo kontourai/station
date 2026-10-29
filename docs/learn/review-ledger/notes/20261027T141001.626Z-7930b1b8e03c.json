@@ -1,0 +1,61 @@
+{
+  "revision": "810a2ec4a3d3b2b00f30339a5852eeb222e34c13",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Searched for approval-mode, start-composer, Claude spawn and Project chat-defaults claims; the module boundaries named here are unchanged (no new module, owners unchanged).","inputs":["docs/architecture/module-map.md","src-ui/src/components/modals/NewChatModal.tsx","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/chat-dock/ChatDockModalStack.tsx","src-ui/src/lib/newChatIntent.ts","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked the Claude permission-mode claims (plan mode, forwarded acceptEdits under bypassPermissions, turn applies posture only when it differs from the requested mode): still accurate; this change grants the spawn-time bypass flag earlier for host starts with a concrete mode and drops an engine-suggested bypassPermissions setMode from tool session grants, which narrows rather than contradicts them.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/providers/__tests__/claude-adapter.test.ts","src-server/providers/adapters/claude-adapter.ts","src-ui/src/components/badges/ComposerModeSheet.tsx"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Searched for approval-mode, spawn-grant and start-composer claims; none describe the changed behavior.","inputs":["docs/contexts/agent-runtime/CONTEXT.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/design/agent-interaction-capabilities.md","note":"Searched for approval-mode and Claude permission claims; none describe the spawn grant or the start picker.","inputs":["docs/design/agent-interaction-capabilities.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Updated: the Claude spawn takes the bypass grant for a host-confined start that Station gives a concrete mode (not workspace, not the engine-settings default, not a raw plan start, not root outside a sandbox), so the restart refusal is left to those sessions and older ones; a tool session grant never forwards a switch into bypassPermissions; the start picker outranks the defaults. The Project last-used text is unchanged from base.","inputs":["docs/design/approval-posture-server-ordered.md"]},
+
+    {"path":"docs/design/automations.md","note":"Checked: the Station defaultApprovalMode applies at session start; unattended starts never inherit last-used values (isPersonChatStart unchanged), so nothing here changed.","inputs":["docs/design/automations.md","docs/design/approval-posture-server-ordered.md"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Updated the startup-permissions bullet: the start chip now opens the shared approval picker (full-access confirmation kept), the pick rides the first send, and inside the dock's New chat dialog it opens on the dialog layer (browser journey in composer-capabilities.spec.ts).","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/modals/NewChatModal.tsx","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/__tests__/StartComposerParity.test.tsx","src-ui/src/components/home/HomeStartComposer.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Checked the OpenCode approval line (#3290) and the spawn table: unrelated to the Claude spawn grant or the start picker.","inputs":["docs/design/connections-onboarding.md","src-server/providers/adapters/claude-adapter.ts","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"Searched for approval and New chat dialog claims; the dock/modal relationships are unchanged (no new pane or route).","inputs":["docs/design/pane-relationships.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Searched for approval and New chat claims; placement of the dock and its New chat dialog is unchanged.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Searched: an Agent's execution.approvalMode still outranks the Project layer and personal default; the start pick outranks it as a chat pick always did.","inputs":["docs/guides/agent-configuration.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the Project New chats paragraph: it says a Project can set the approval mode a new chat starts in and links the API reference; unchanged and accurate (last-used stays opt-in).","inputs":["docs/guides/connections.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Searched for approval-mode and start-composer claims; development workflow guidance is unaffected.","inputs":["docs/guides/development.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Searched for layer and dialog guidance: the start picker follows it (dialog layer inside a dialog, popover elsewhere); rendered at 1440 and 390 in the browser journey.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked: inbox follow-ups run with the conversation's existing permissions; unchanged.","inputs":["docs/guides/self-configuring-agent.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked the starter-work approval observation rows; unrelated to the start picker or spawn grant.","inputs":["docs/guides/starter-work.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"Looked at it: Codex on another Station (on Kontour), no Permissions chip renders there; nothing it shows changed.","inputs":["docs/learn/media/new-chat-start-after.png","src-ui/src/components/modals/NewChatModal.tsx","src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"Looked at it: a start on another Station (on Kontour), where the composer shows no Permissions chip; nothing it shows changed.","inputs":["docs/learn/media/new-chat-start-before.png","src-ui/src/components/modals/NewChatModal.tsx","src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/learn/media/project-start-after.png","note":"Looked at it: Project start on Kontour (another Station), no Permissions chip; nothing it shows changed.","inputs":["docs/learn/media/project-start-after.png","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/learn/media/project-start-before.png","note":"Looked at it: the Project page before its start composer existed; no composer, nothing changed.","inputs":["docs/learn/media/project-start-before.png","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Searched for Claude approval and spawn claims; none describe the changed behavior.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/providers/__tests__/claude-adapter.test.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Re-checked after the implicit last-used default was backed out: the file is unchanged from base and still accurate (absent selection is fixed; last-used is the opt-in).","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"Checked defaultApprovalMode's precedence row (chat pick, Agent default, Project new-chat mode, personal default, Station): unchanged by this change; the start picker is the chat's own pick.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked the client mutation-approval lines; the session API surface is unchanged.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Searched for approval-mode and Project new-chat claims; none contradict the change.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Updated: Permissions on the start composer opens the picker for this chat; a Claude chat started in a chosen mode by someone who may grant full access switches to full access on its next turn; chats on Claude's own settings, older ones, and root-without-sandbox Stations need a restart. The Project last-used text is unchanged from base.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDockModalStack.tsx","src-ui/src/components/modals/NewChatModal.tsx","src-ui/src/lib/newChatIntent.ts","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/__tests__/StartComposerParity.test.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Searched for approval and New chat claims; boards are unaffected by the ChatDock new-chat handler change.","inputs":["docs/user/personal-boards.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockModalStack.tsx"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Searched for Claude permission and approval claims; the example does not describe the spawn grant.","inputs":["examples/self-configuring-agent/README.md","src-server/providers/adapters/claude-adapter.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "dfbf343fdbe94da2113052c8310676d5bad83a7d",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Scoped DFBF review of changed native-release-promotion HTTP controls and unchanged release authority: actual workflow bash still validates exact ref/tag/source/run/plan/admission digests before one DELETE, initial404 remains no-op, final404 required, unknown HTTP/foreign owner fails. ERR diagnostic adds only fixed phase/status/exit, no credential or raw body. Executed 38 script controls including ten HTTP cases; trap-removal mutation8 intended failures/exactrestore. Integration/full qualification/Nightly source gate and immutable Preview/Stable requirements remain distinct. Historical cleanup root cause and terminal recovery remain unverified; no unrelated baseline review refresh.","inputs":["docs/guides/releasing.md","scripts/__tests__/native-release-promotion.test.ts"]}
+  ]
+}

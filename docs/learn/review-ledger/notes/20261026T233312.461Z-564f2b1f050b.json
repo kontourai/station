@@ -1,0 +1,21 @@
+{
+  "revision": "46b7d61080b77abaed2369a353f9880e7da4e0d0",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"useDeveloperFeatures now delegates to the pure developerFeatures selector in hooks/developer-features.ts (same rule: Developer tools plus each preview's own switch) and developerPaneEnabled takes only the pane previews; the flags it returns and every gate built on them are unchanged.","inputs":["docs/design/settings-architecture.md","src-ui/src/hooks/useDeveloperFeatures.ts"]},
+
+    {"path":"docs/design/settings-launch-triage.md","note":"useDeveloperFeatures now delegates to the pure developerFeatures selector in hooks/developer-features.ts (same rule: Developer tools plus each preview's own switch) and developerPaneEnabled takes only the pane previews; the flags it returns and every gate built on them are unchanged.","inputs":["docs/design/settings-launch-triage.md","src-ui/src/hooks/useDeveloperFeatures.ts"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"useDeveloperFeatures now delegates to the pure developerFeatures selector in hooks/developer-features.ts (same rule: Developer tools plus each preview's own switch) and developerPaneEnabled takes only the pane previews; the flags it returns and every gate built on them are unchanged.","inputs":["docs/reference/settings-deep-links.md","src-ui/src/hooks/useDeveloperFeatures.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"ResponsiveDialogSurface reads the Sheet gestures preview through useSheetGesturesPreview (the same selector, straight from the device-settings store) instead of useDeveloperFeatures, so the shared surface no longer loads DeviceSettingsContext; its behavior, layers, focus, dismissal and history are unchanged.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/ResponsiveDialogSurface.tsx"]},
+
+    {"path":"docs/guides/theming.md","note":"ResponsiveDialogSurface reads the Sheet gestures preview through useSheetGesturesPreview (the same selector, straight from the device-settings store) instead of useDeveloperFeatures, so the shared surface no longer loads DeviceSettingsContext; its behavior, layers, focus, dismissal and history are unchanged.","inputs":["docs/guides/theming.md","src-ui/src/components/ResponsiveDialogSurface.tsx"]},
+
+    {"path":"docs/patterns/backend.md","note":"ResponsiveDialogSurface reads the Sheet gestures preview through useSheetGesturesPreview (the same selector, straight from the device-settings store) instead of useDeveloperFeatures, so the shared surface no longer loads DeviceSettingsContext; its behavior, layers, focus, dismissal and history are unchanged.","inputs":["docs/patterns/backend.md","src-ui/src/components/ResponsiveDialogSurface.tsx"]},
+
+    {"path":"docs/patterns/frontend.md","note":"ResponsiveDialogSurface reads the Sheet gestures preview through useSheetGesturesPreview (the same selector, straight from the device-settings store) instead of useDeveloperFeatures, so the shared surface no longer loads DeviceSettingsContext; its behavior, layers, focus, dismissal and history are unchanged.","inputs":["docs/patterns/frontend.md","src-ui/src/components/ResponsiveDialogSurface.tsx"]},
+
+    {"path":"src-ui/AGENTS.md","note":"ResponsiveDialogSurface reads the Sheet gestures preview through useSheetGesturesPreview (the same selector, straight from the device-settings store) instead of useDeveloperFeatures, so the shared surface no longer loads DeviceSettingsContext; its behavior, layers, focus, dismissal and history are unchanged.","inputs":["src-ui/AGENTS.md","src-ui/src/components/ResponsiveDialogSurface.tsx"]}
+  ]
+}

@@ -54,7 +54,57 @@
 
     "scripts/package-telemetry-companion.mjs",
 
-    "scripts/__tests__/package-telemetry-companion.test.ts"
+    "scripts/__tests__/package-telemetry-companion.test.ts",
+
+    "src-server/routes/system/telemetry-companion-routes.ts",
+
+    "src-server/services/telemetry-companion.ts",
+
+    "packages/contracts/src/telemetry-delivery.ts",
+
+    "scripts/qualify-telemetry-companion.mjs",
+
+    "src-server/services/telemetry-companion-archive.ts",
+
+    "src-server/services/telemetry-companion-extract.ts",
+
+    "src-server/utils/process-group-exec.ts",
+
+    "src-server/services/telemetry-companion-artifact.mjs",
+
+    "src-server/services/telemetry-companion-release.ts",
+
+    "scripts/lib/telemetry-station-export.mjs",
+
+    "scripts/lib/telemetry-station-child.mjs",
+
+    "src-server/routes/system/boot-history.ts",
+
+    "src-server/index.ts",
+
+    "src-server/services/telemetry-companion-qualification.mjs",
+
+    "scripts/build-portable-server-archive.mjs",
+
+    "scripts/lib/portable-server-archive.mjs",
+
+    "src-server/services/telemetry-companion-install.ts",
+
+    "src-server/services/telemetry-companion-storage.ts",
+
+    "src-server/services/telemetry-companion-control.ts",
+
+    "src-server/services/__tests__/telemetry-companion-control.test.ts",
+
+    "src-ui/src/views/developer/CompanionManaged.tsx",
+
+    "src-ui/src/views/developer/CompanionProductTrends.tsx",
+
+    "packages/sdk/src/query-domains/telemetryCompanion.ts",
+
+    "src-server/routes/system/__tests__/telemetry-companion-routes.test.ts",
+
+    "src-ui/src/views/developer/CompanionManaged.css"
   ],
 
   "checks": [

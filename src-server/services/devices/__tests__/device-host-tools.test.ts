@@ -177,22 +177,93 @@ describe('runBoundedToolCapture (#1971): stdin, output and deadline', () => {
     expect(fake.written).toEqual(['{"aps":{}}']);
   });
 
-  test('a non-zero exit and an over-long output are tool-failed', async () => {
-    await expect(
-      runBoundedToolCapture(
+  test.each([false, true])(
+    'non-zero exit and overflow reject with partialOnTimeout=%s',
+    async (partialOnTimeout) => {
+      await expect(
+        runBoundedToolCapture(
+          'adb',
+          [],
+          { timeoutMs: 1_000, partialOnTimeout },
+          fakeSpawn('', 1).spawnTool,
+        ),
+      ).rejects.toMatchObject({ code: 'tool-failed' });
+      await expect(
+        runBoundedToolCapture(
+          'adb',
+          [],
+          { timeoutMs: 1_000, maxBuffer: 4, partialOnTimeout },
+          fakeSpawn('0123456789').spawnTool,
+        ),
+      ).rejects.toMatchObject({ code: 'tool-failed' });
+    },
+  );
+  test('default timeout rejects despite captured output and immediately kills and drops pipes', async () => {
+    vi.useFakeTimers();
+    const stdout = Object.assign(new EventEmitter(), { destroy: vi.fn() });
+    const kill = vi.fn();
+    const child = Object.assign(new EventEmitter(), {
+      stdout,
+      stdin: null,
+      kill,
+    });
+    try {
+      const result = runBoundedToolCapture(
         'adb',
         [],
-        { timeoutMs: 1_000 },
-        fakeSpawn('', 1).spawnTool,
-      ),
-    ).rejects.toMatchObject({ code: 'tool-failed' });
-    await expect(
-      runBoundedToolCapture(
-        'adb',
-        [],
-        { timeoutMs: 1_000, maxBuffer: 4 },
-        fakeSpawn('0123456789').spawnTool,
-      ),
-    ).rejects.toMatchObject({ code: 'tool-failed' });
+        { timeoutMs: 1000 },
+        (() => child) as never,
+      );
+      const rejected = expect(result).rejects.toMatchObject({
+        code: 'tool-timeout',
+      });
+      stdout.emit('data', Buffer.from('partial device output'));
+      await vi.advanceTimersByTimeAsync(1000);
+      await rejected;
+      expect(kill).toHaveBeenCalledExactlyOnceWith('SIGKILL');
+      expect(stdout.destroy).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
   });
+  test.each([false, true])(
+    'partial timeout flushes then settles within the original deadline with a stdout holder=%s',
+    async (holdsStdout) => {
+      vi.useFakeTimers();
+      const stdout = Object.assign(new EventEmitter(), { destroy: vi.fn() });
+      const child = Object.assign(new EventEmitter(), {
+        stdout,
+        stdin: null,
+        kill: vi.fn((signal: string) => {
+          if (signal === 'SIGTERM' && !holdsStdout) {
+            stdout.emit('data', Buffer.from('flushed\n'));
+            child.emit('close', 255);
+          }
+        }),
+      });
+      try {
+        const result = runBoundedToolCapture(
+          'ffmpeg',
+          [],
+          { timeoutMs: 1000, partialOnTimeout: true },
+          (() => child) as never,
+        );
+        stdout.emit('data', Buffer.from('partial\n'));
+        await vi.advanceTimersByTimeAsync(900);
+        expect(child.kill).toHaveBeenNthCalledWith(1, 'SIGTERM');
+        await vi.advanceTimersByTimeAsync(100);
+        await expect(result).resolves.toBe(
+          holdsStdout ? 'partial\n' : 'partial\nflushed\n',
+        );
+        expect(child.kill).toHaveBeenCalledTimes(holdsStdout ? 2 : 1);
+        if (holdsStdout) {
+          expect(child.kill).toHaveBeenLastCalledWith('SIGKILL');
+          expect(stdout.destroy).toHaveBeenCalledOnce();
+        }
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
 });

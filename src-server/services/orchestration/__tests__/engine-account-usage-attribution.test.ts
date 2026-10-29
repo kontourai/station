@@ -106,6 +106,7 @@ function usageReads(store: EventStore): SessionTranscriptReads {
     isEphemeralSession: () => false,
     sessionAttributionFor: () => null,
     listEventPayloads: () => [],
+    listResolvedEventPayloads: () => [],
     readUsageRevision: () => 'fixture',
     listUsageEventPayloads: () => [],
     listUsageReceiptEvents: (options) => store.listUsageReceiptEvents(options),

@@ -63,7 +63,6 @@ describe('PluginRegistry inventory timeout', () => {
       deadlines.push(deadline);
       return deadline.signal;
     });
-    let hungDeadline: AbortController | undefined;
     let markHung!: () => void;
     const hung = new Promise<void>((resolve) => {
       markHung = resolve;
@@ -81,9 +80,6 @@ describe('PluginRegistry inventory timeout', () => {
           });
         }
         if (url.endsWith(hungPath)) {
-          // The newest deadline issued so far: this request's own, if it
-          // has one.
-          hungDeadline = deadlines.at(-1);
           markHung();
           return new Promise<Response>((_resolve, reject) => {
             init?.signal?.addEventListener(
@@ -103,10 +99,13 @@ describe('PluginRegistry inventory timeout', () => {
     const reloading = registry.reload();
 
     await hung;
-    // A bundle fetch without a deadline of its own captured an earlier
-    // request's, whose firing cannot reach this fetch, so the reload stays
-    // pending and the race below reds.
-    hungDeadline?.abort();
+    // The stylesheet downloads ahead of its plugin's turn, and that turn
+    // issues its deadline. Once the turn has started, the newest deadline is
+    // this request's own, if it has one; a bundle fetch without one leaves an
+    // earlier request's, whose firing cannot reach this fetch, so the reload
+    // stays pending and the race below reds.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    deadlines.at(-1)?.abort();
 
     const pending = Symbol('still pending');
     await expect(

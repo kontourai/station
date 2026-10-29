@@ -1,4 +1,5 @@
 import { isPendingAttentionItem } from '@kontourai/station-contracts/attention';
+import { runtimeEventContentText } from '@kontourai/station-contracts/runtime-event-content';
 import {
   foldedSessionLifecycleState,
   isSessionLifecycleStateAtRest,
@@ -68,9 +69,11 @@ function truncateOneLine(text: string, max = 96): string {
 /** The opening user turn's own text, if the live feed has caught it yet. */
 function firstUserPrompt(events: OrchestrationEvent[]): string | undefined {
   for (const event of events) {
-    if (event.method === 'turn.started' && event.prompt?.trim()) {
-      return event.prompt.trim();
-    }
+    const prompt =
+      event.method === 'turn.started'
+        ? runtimeEventContentText(event.prompt)?.text.trim()
+        : undefined;
+    if (prompt) return prompt;
   }
   return undefined;
 }

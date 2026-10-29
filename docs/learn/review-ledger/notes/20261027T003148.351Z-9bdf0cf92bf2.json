@@ -1,0 +1,7 @@
+{
+  "revision": "134fee9214b27f1e39b67b04e7018756dbc72a6b",
+
+  "notes": [
+    {"path":"docs/learn/media/shared-task-document.png","note":"ProjectTaskRoomConversation.tsx delta: the running-thread clock now reads the shared useElapsedClock (paused while the page is hidden) instead of a private 1 s interval; markup, layout and copy are unchanged, so the captured room conversation still depicts current UI. Not re-captured.","inputs":["docs/learn/media/shared-task-document.png","src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx"]}
+  ]
+}

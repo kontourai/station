@@ -11,6 +11,7 @@ import type {
 } from '@kontourai/station-contracts/agent-identity';
 import type { StagedAttachmentReference } from '@kontourai/station-contracts/attachment-staging';
 import type { BoardReference } from '@kontourai/station-contracts/board';
+import type { ChatHostImageMap } from '@kontourai/station-contracts/chat-host-images';
 import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
 import type {
   InputRequestForm,
@@ -184,6 +185,11 @@ export interface ChatMessage {
    */
   stationCheckBack?: boolean;
   /**
+   * Station's own continuation after the engine was killed for exceeding its
+   * memory budget: written by Station, not the person.
+   */
+  stationMemoryContinuation?: boolean;
+  /**
    * #3419: the agent that sent this user-role row, from the server's own
    * record. Its presence is what makes the row an incoming agent message
    * rather than the person's; `content` is the sender's own words.
@@ -229,6 +235,12 @@ export interface ChatMessage {
     approvalThreadId?: string;
     /** #2316: see `MessagePart.approvalEventId`. */
     approvalEventId?: string;
+    /** See `MessagePart.approvalContentEvent`. */
+    approvalContentEvent?: import('@kontourai/station-contracts/runtime-events').CanonicalRuntimeEvent;
+    /** See `MessagePart.spilledText`. */
+    spilledText?: import('@kontourai/station-shared/conversation-message').MessagePart['spilledText'];
+    /** See `MessagePart.contentThreadId`. */
+    contentThreadId?: string;
     /** See `MessagePart.approvalToolName`. */
     approvalToolName?: string;
     /** #2915: see `MessagePart.approvalSessionGrant`. */
@@ -278,6 +290,8 @@ export interface ChatMessage {
   }>;
   /** archive#1410: the canonical turn this assistant row projects, when known. */
   turnId?: string;
+  /** chat-host-images: host image paths this turn's reply named, by path. */
+  hostImages?: ChatHostImageMap;
   /** Execution Session that produced this historical assistant row. */
   sessionId?: string;
   /**

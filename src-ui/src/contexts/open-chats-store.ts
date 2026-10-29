@@ -1,5 +1,5 @@
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
-import { useMemo, useSyncExternalStore } from 'react';
+import { useMemo } from 'react';
 import type { AgentSummary } from '../types';
 import type { HomeWorkItem } from '../views/home/home-view-model';
 import {
@@ -7,6 +7,7 @@ import {
   type ResolveModelLabel,
 } from '../views/home/home-view-model';
 import { activeChatsStore } from './active-chats-store';
+import { useOpenChatStatus } from './open-chat-status';
 
 export interface ChatFocusTarget {
   sessionId?: string;
@@ -223,11 +224,7 @@ export function useOpenWorkChats(
   sessions: OrchestrationSessionSummary[] = [],
   resolveModelLabel?: ResolveModelLabel,
 ): HomeWorkItem[] {
-  const chats = useSyncExternalStore(
-    openChatsStore.subscribe,
-    openChatsStore.getSnapshot,
-    openChatsStore.getSnapshot,
-  );
+  const chats = useOpenChatStatus();
   return useMemo(
     () =>
       buildActiveChatTaskItems({
@@ -255,11 +252,7 @@ export function useOpenChatInbox(
   items: HomeWorkItem[];
   currentSessionIdByConversation: ReadonlyMap<string, string>;
 } {
-  const chats = useSyncExternalStore(
-    openChatsStore.subscribe,
-    openChatsStore.getSnapshot,
-    openChatsStore.getSnapshot,
-  );
+  const chats = useOpenChatStatus();
   return useMemo(
     () => ({
       items: buildActiveChatTaskItems({
@@ -291,11 +284,7 @@ export function useOpenChats(
    */
   resolveModelLabel?: ResolveModelLabel,
 ): HomeWorkItem[] {
-  const chats = useSyncExternalStore(
-    openChatsStore.subscribe,
-    openChatsStore.getSnapshot,
-    openChatsStore.getSnapshot,
-  );
+  const chats = useOpenChatStatus();
   return useMemo(
     () =>
       buildActiveChatTaskItems({

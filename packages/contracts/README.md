@@ -30,6 +30,11 @@ the source and its imports. Station's esbuild plugin build is one such consumer.
 Do not treat the source suffix alone as proof of compatibility with every
 Node loader, bundler or alternate runtime.
 
+The `/terminal-transport` subpath owns the numbered binary frame codec and
+observe/operate scope predicate. The [terminal API](../../docs/reference/api.md#terminal-socket-personal-operator-transport)
+explains controls, bounds and the current personal-operator admission limit.
+It is not the SDK session store, which remains follow-up work under #3994.
+
 ## Usage
 
 ```ts

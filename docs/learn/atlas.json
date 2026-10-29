@@ -77,6 +77,7 @@
         "docs/guides/workspace-pane-authoring.md",
         "docs/design/pane-host-contract.md",
         "docs/guides/commands.md",
+        "docs/guides/local-speech.md",
         "docs/guides/responsive-ui.md",
         "docs/user/work-board.md",
         "docs/user/personal-boards.md"
@@ -93,6 +94,7 @@
         "ProjectTaskRoom",
         "MobileDeviceHost",
         "BrowserSessionService",
+        "Local speech and media tools",
         "Shared live surface",
         "Personal Work Board",
         "Personal Board authoring"
@@ -165,6 +167,7 @@
       "summary": "How source material is stored, indexed, retrieved, and reviewed without confusing an observation with permission to modify its source.",
       "docs": [
         "docs/guides/knowledge.md",
+        "docs/guides/walkthroughs.md",
         "docs/learn/walkthroughs.md#explore-repository-knowledge",
         "docs/guides/repository-knowledge-graph.md",
         "docs/plans/1364-owner-source-observation--grounding.md",
@@ -174,6 +177,7 @@
       "modules": [
         "StationKnowledgeMcpServer",
         "KnowledgeStoreProvider",
+        "WalkthroughService",
         "SqliteVecIndexProvider",
         "KnowledgeFileTransactions",
         "KnowledgeSourceObservation",
@@ -237,6 +241,8 @@
         "ProductTelemetryReceiver",
         "PluginTelemetryPublisher",
         "CanonicalUsageExport",
+        "PrivateUsageStorage",
+        "AnalyticsSavedViews",
         "Native notification feed"
       ],
       "questions": [

@@ -1,0 +1,11 @@
+{
+  "revision": "a9eed54bef98c54f795a07b108d95f877f4c1873",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Third fix round: approvalMode.ts changed only the Codex connection-default description and its comment. The reviewer-gap, Ask-chip and delivery-disclosure claims are unaffected.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/utils/approvalMode.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Third fix round: the Codex Default bound is now scoped to commands (none uses the network or writes outside folder and temp unasked). Hosted web search and MCP tool calls are named as outside it, because they are not sandboxed commands. The sandbox and policy probe evidence is unchanged (codex-cli 0.164.0). The text is pinned by ApprovalModeChip.test.tsx and StartApprovalSummary.test.tsx.","inputs":["docs/design/chat-composer.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Third fix round: the Codex Engine default sentence is scoped to commands Codex runs, with web search and MCP tools named as not covered. It matches approvalModeDescription('connection-default','codex').","inputs":["docs/user/getting-started.md"]}
+  ]
+}

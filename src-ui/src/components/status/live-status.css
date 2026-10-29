@@ -167,12 +167,8 @@ button.chat-status-pill {
   outline-offset: 2px;
 }
 
-.chat-status-pill[data-tone="active"] {
-  border-color: color-mix(
-    in srgb,
-    var(--accent-primary) 45%,
-    var(--border-primary)
-  );
+.chat-status-pill-host .chat-status-pill[data-tone="active"] {
+  border-color: transparent;
 }
 .chat-status-pill[data-tone="active"] .live-status-glyph {
   color: var(--accent-primary);

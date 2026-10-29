@@ -1,0 +1,7 @@
+{
+  "revision": "e091e24d48559c8fab29ed2ed1d48ba96dd55dc2",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Added ENGINE_MEMORY_EXHAUSTED_CODE (engine-memory-exhausted, details.workload; Continue instead of Send again; successor recovery note) and WorkloadBudgetStatus in system-status, checked against provider.ts, system-status.ts, codex-adapter-transport.ts, chatErrorTranslation.ts and ChatDockBody.tsx. The chatErrorTranslation.ts delta (a new code branch, the Continue text constant) changes no other claim here.","inputs":["docs/reference/contracts.md","src-ui/src/utils/chatErrorTranslation.ts"]}
+  ]
+}

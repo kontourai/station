@@ -1,0 +1,7 @@
+{
+  "revision": "6ae9e5470974dce3dd3c8715438176d7b83828c8",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Re-read the command table row for respondToRequest against src-server/routes/orchestration/orchestration.ts: the body also accepts viewedContentDigest (sha256 digest, explicit max 71) and the service requires it to allow a request with out-of-line content; added that with a link to the Session API section. Other rows in the table unchanged.","inputs":["docs/design/chat-composer.md"]}
+  ]
+}

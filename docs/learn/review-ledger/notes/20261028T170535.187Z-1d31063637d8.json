@@ -1,0 +1,31 @@
+{
+  "revision": "f4cc7ec9db610b5a5c9e295efd3dae2a1f7bc668",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Visual-skills preview delta: NewChatModal now reads the visual-skills Feature Preview before offering or fetching installed experiences. The module map's SkillExperienceRuntime and New Chat entries describe server admission and Session projection, which are unchanged; no prose names the composer entry point, so no edit.","inputs":["docs/architecture/module-map.md","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Visual-skills preview delta: qualified the start composer's overflow as present only while the visual-skills Feature Preview is on, and noted that the frozen after-redesign captures show a ⋯ that holds only Use a visual skill and is now absent by default. Traced StartComposer (menu omitted for an empty action list), NewChatModal and HomeStartComposer.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/NewChatModalSelectDispatch.test.tsx","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Visual-skills preview delta: NewChatModal change only gates the visual-skills picker, its overflow action and the inventory query on the visual-skills preview. Setup return, Connect, Enable and repair paths are unchanged; the inventory refetch on setup return now runs only while the preview is on. No onboarding claim changes.","inputs":["docs/design/connections-onboarding.md","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Visual-skills preview delta: the registry now also offers visual-skills from its constructor beside task-review (client-consumed previews read through useSurfaceVisibilityFlags). The guide's binding and entry-point guidance is unchanged; visual-skills deliberately gates only UI entry points, documented in the user settings row. No edit.","inputs":["docs/guides/feature-previews.md","docs/user/settings.md","scripts/__tests__/feature-preview-docs-check.test.ts","src-server/services/feature-previews/feature-preview-registry.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Visual-skills preview delta: New Chat presents installed experiences only while the visual-skills Feature Preview is on; linked the settings section. Author build, schema, inventory route and Session execution are unchanged and remain unconditional. Also reviewed the rich-skill-experience README step that now enables the preview first.","inputs":["docs/reference/skill-experiences.md","examples/rich-skill-experience/README.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Visual-skills preview delta: the start composer ⋯ and Use a visual skill exist only while the Visual skills Feature Preview is on; with it off there is no ⋯ (StartComposer omits an empty overflow). Prepare a visual skill now says to turn the preview on first. Traced NewChatModal, HomeStartComposer and StartComposer.","inputs":["docs/user/getting-started.md","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Visual-skills preview delta: added the visual-skills row (off by default via the registry) naming its entry points: start composer ⋯ and New Chat agent-list picker. States that install, validation, authoring and started skill chats are not gated, matching the unchanged inventory route and SkillExperiencePanel.","inputs":["docs/user/settings.md","scripts/__tests__/feature-preview-docs-check.test.ts","src-server/services/feature-previews/feature-preview-registry.ts"]},
+
+    {"path":"examples/README.md","note":"Visual-skills preview delta: rich-skill-experience README now asks the reader to turn on the Visual skills Feature Preview before selecting its experience. Index descriptions remain accurate; no edit.","inputs":["examples/README.md","examples/rich-skill-experience/README.md"]},
+
+    {"path":"examples/visual-skill-experience/README.md","note":"Visual-skills preview delta: the contract reference now says New Chat offers experiences while the visual-skills preview is on. This README covers author build validation only, which needs no preview; no edit.","inputs":["examples/visual-skill-experience/README.md","docs/reference/skill-experiences.md"]},
+
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"Visual-skills preview delta: pre-redesign baseline capture; it predates the start composer overflow and is unaffected by gating Use a visual skill. Still a frozen historical comparison.","inputs":["docs/learn/media/new-chat-start-before.png","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"Visual-skills preview delta: viewed the capture; it shows the ⋯ that held only Use a visual skill, now hidden while the visual-skills preview is off (the default). Retained as a frozen historical comparison; chat-composer.md now states that difference beside it.","inputs":["docs/learn/media/new-chat-start-after.png","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/learn/media/project-start-before.png","note":"Visual-skills preview delta: pre-redesign baseline capture with no inline Project composer; unaffected by gating Use a visual skill. Still a frozen historical comparison.","inputs":["docs/learn/media/project-start-before.png","src-ui/src/components/home/HomeStartComposer.tsx"]},
+
+    {"path":"docs/learn/media/project-start-after.png","note":"Visual-skills preview delta: viewed the capture; it shows the Home composer ⋯ that held only Use a visual skill, now hidden while the visual-skills preview is off (the default). Retained as a frozen historical comparison; chat-composer.md now states that difference beside it.","inputs":["docs/learn/media/project-start-after.png","src-ui/src/components/home/HomeStartComposer.tsx"]}
+  ]
+}

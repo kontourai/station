@@ -185,6 +185,8 @@ interface OperatorDecisionProof {
 }
 
 interface ConsentTransactionInit {
+  /** Personal approvals may be decided only by their transaction-bound requester session. */
+  readonly decisionPolicy?: 'requester-session';
   readonly ceremony?: 'webauthn';
   readonly operatorSessionId?: string;
   readonly tenantId: string;
@@ -225,6 +227,7 @@ interface ConsentTransactionInit {
 }
 
 interface ConsentTransactionRecord {
+  readonly decisionPolicy?: 'requester-session';
   readonly ceremony?: 'webauthn';
   readonly operatorSessionId?: string;
   readonly id: string;
@@ -298,11 +301,16 @@ type ConsentRenderResult =
     }
   | {
       readonly ok: false;
-      readonly reason: 'not_found' | 'not_pending' | 'render_limited';
+      readonly reason:
+        | 'not_found'
+        | 'not_pending'
+        | 'render_limited'
+        | 'authority_refused';
       readonly status?: ConsentTransactionStatus;
     };
 
 type ConsentDecideRefusalReason =
+  | 'authority_refused'
   | 'not_found'
   | 'not_pending'
   | 'decision_in_flight'
@@ -487,6 +495,7 @@ export class ConsentTransactionStore {
       operatorSessionId: init.operatorSessionId,
       id: randomUUID(),
       tenantId: init.tenantId,
+      decisionPolicy: init.decisionPolicy,
       target: init.target,
       description: init.description,
       requester: init.requester,
@@ -562,10 +571,30 @@ export class ConsentTransactionStore {
    * Renders the review: mints the ONE-USE nonce. Re-rendering replaces the
    * previous nonce, so only the most recently rendered page can decide.
    */
-  renderReview(tenantId: string, id: string): ConsentRenderResult {
+  allowsDecisionAuthority(
+    tenantId: string,
+    id: string,
+    via: ConsentDecisionAuthority,
+  ): boolean {
+    return (
+      this.#tenants.get(tenantId)?.get(id)?.decisionPolicy !==
+        'requester-session' || via === 'consent-session'
+    );
+  }
+
+  renderReview(
+    tenantId: string,
+    id: string,
+    via?: ConsentDecisionAuthority,
+  ): ConsentRenderResult {
     this.#sweep(tenantId);
     const record = this.#tenant(tenantId).get(id);
     if (!record) return { ok: false, reason: 'not_found' };
+    if (
+      record.decisionPolicy === 'requester-session' &&
+      via !== 'consent-session'
+    )
+      return { ok: false, reason: 'authority_refused' };
     if (record.status !== 'pending') {
       return { ok: false, reason: 'not_pending', status: record.status };
     }
@@ -650,6 +679,8 @@ export class ConsentTransactionStore {
     if (record.decisionInFlight) {
       return refuse('decision_in_flight');
     }
+    if (!this.allowsDecisionAuthority(tenantId, id, via))
+      return refuse('authority_refused');
     if (presentedNonce === undefined || presentedNonce.length === 0) {
       return refuse('nonce_missing');
     }
@@ -751,6 +782,13 @@ export class ConsentTransactionStore {
           ...(secret ? { secret } : {}),
         } as const;
       });
+    } catch (error) {
+      return refuse(
+        'commit_refused',
+        error instanceof ConsentCommitRefusedError
+          ? error.safeDetail
+          : 'The approval target could not be revalidated.',
+      );
     } finally {
       record.decisionInFlight = false;
     }

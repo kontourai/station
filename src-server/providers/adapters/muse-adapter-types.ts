@@ -291,6 +291,11 @@ export interface MuseToolTaskBinding {
 }
 
 export interface MuseSessionRecord {
+  /**
+   * chat-host-images: the temp folder prepared at session start, the TMPDIR
+   * of its serve host and of every turn's exec. Never created per turn.
+   */
+  tmpDir?: string;
   externalThreadId: string;
   /**
    * The `--session-id` handed to every `muse exec` for this thread. Muse's

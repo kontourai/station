@@ -94,7 +94,7 @@ and compact switch sit beneath them.
 ## Experimental project tools
 
 Advanced → Developer tools reveals independent Flow delivery, Veritas readiness,
-and Trust preview switches. All three default off on each device; enabling
+Trust, Sheet gestures and Station routes preview switches. All five default off on each device; enabling
 Developer tools alone enables none of them. Disabling it withdraws previews
 without clearing their saved opt-ins. The Coding layout, files, diff, terminal,
 and chat remain available. Pane discovery omits disabled previews, and restored
@@ -353,23 +353,25 @@ The project selector appears only alongside model/workspace defaults and
 permissions. Device settings still save immediately; Station and Project drafts
 keep their existing Save and discard guard.
 
-The sidebar footer groups **Schedule**, **Customize**, and **Settings** beside
-live work in one compact row. In the desktop app, a desktop-update control sits
-above that row while an update is available, downloading or ready to install
-(#3851); it is hidden otherwise. A collapsed workspace map puts these utilities
-in its Sidebar utilities popup. The obsolete Open chats/Drafts section toggles
-no longer appear in Appearance; existing device values remain compatible.
+The sidebar footer places **Schedule** and **Customize** on the left, with
+an icon-only **Updates** control immediately before the profile button on the
+right. Updates keeps its status in its accessible name and tooltip and shows
+an indicator when update details need attention. Live work and the separate
+Settings gear no longer appear in the footer. A collapsed workspace map puts
+Schedule and Customize in its Sidebar utilities popup, while Updates and the
+profile button remain on the rail. The obsolete Open chats/Drafts section
+toggles no longer appear in Appearance; existing device values remain compatible.
 Customize opens Agents, Skills, Connections, Plugins, Appearance and Settings
 at their existing routes. Developer joins that chooser, before Settings, when
-enabled. Settings stays reachable from the footer gear, its keyboard shortcut
-and the command palette. The Appearance page owns light/dark mode, the color
+enabled. Settings stays reachable from the profile menu, Customize, its keyboard
+shortcut and the command palette. The Appearance page owns light/dark mode, the color
 theme, its flavor and its accent; Settings' Appearance topic keeps the mode
 toggle, the phone-only haptics row, and Theme and Accent color rows that link
 to the page. The footer replaces its
 command-palette chip and duplicate notification bell; the header bell and
 command-palette shortcut remain available.
-The Settings rail and phone picker stay within Settings; the panel's Settings
-gear remains available from management screens. Long permission and checkpoint
+The Settings rail and phone picker stay within Settings; from management screens
+Settings remains reachable through the account menu and Customize. Long permission and checkpoint
 explanations keep their full text under Details, with a short consequence visible
 on the row. Registry remains reachable from Plugins and the command palette.
 
@@ -436,6 +438,14 @@ overridable set from its shape would present them as Station settings the
 moment someone added one. `PROJECT_OVERRIDE_FIELD_ALIASES` records the one
 name the two sides spell differently; neither side is being renamed, because
 a rename on either is a stored-data migration.
+
+A Project's new-chat selections (`defaultModelSelection`,
+`defaultApprovalMode`, `defaultApprovalModeSelection`;
+`packages/contracts/src/project-chat-defaults.ts`) are Project fields edited in
+Project settings → New chats, not entries in this list. A `last-used` choice
+has no Station-scope equivalent, so `GET /config/app?project=<slug>` reports
+`defaultApprovalMode` with its Station provenance even when a Project sets its
+own; the Project's answer is `GET /api/projects/:slug/chat-defaults`.
 
 `defaultWorkspaceIsolation` is new in this slice — a Station-scope setting for
 the workspace a new project chat starts in. Resolution is

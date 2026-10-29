@@ -1,0 +1,9 @@
+{
+  "revision": "9b415ba0b63e9e2ed59216256cb86fbc11d0cb41",
+
+  "notes": [
+    {"path":"docs/patterns/frontend.md","note":"serverHealth.test.ts delta: the cross-origin client-protocol header assertion now expects String(STATION_COMPAT_PROTOCOL_VERSION) (currently 4, raised by #4203) instead of a hardcoded '3'; the probe's behavior (header sent cross-origin only after the handshake advertises clientProtocolHeader) is unchanged, and this document names no protocol number, so its claims remain accurate.","inputs":["docs/patterns/frontend.md","src-ui/src/__tests__/serverHealth.test.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"serverHealth.test.ts delta: the cross-origin client-protocol header assertion now expects String(STATION_COMPAT_PROTOCOL_VERSION) (currently 4) instead of a hardcoded '3'; the only number this document gives is that an absent header means protocol 1, which is unchanged, so its claims remain accurate.","inputs":["docs/reference/connect.md","src-ui/src/__tests__/serverHealth.test.ts"]}
+  ]
+}

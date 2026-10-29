@@ -8,8 +8,8 @@
 // `Skeleton` before this port and is asserted here only to confirm its
 // pre-existing behavior is untouched.
 
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { navigationStore } from '../../../contexts/navigation-store';
 
 vi.mock('../../../contexts/ApiBaseContext', async (importOriginal) => ({
@@ -21,6 +21,22 @@ vi.mock('../../../contexts/ApiBaseContext', async (importOriginal) => ({
   }),
 }));
 
+const knowledgeMocks = vi.hoisted(() => ({
+  scan: vi.fn(),
+  save: vi.fn(),
+  refetch: vi.fn(),
+  docsError: false,
+  workingDirectory: null as string | null,
+}));
+
+beforeEach(() => {
+  knowledgeMocks.scan.mockReset();
+  knowledgeMocks.save.mockReset();
+  knowledgeMocks.refetch.mockReset();
+  knowledgeMocks.docsError = false;
+  knowledgeMocks.workingDirectory = null;
+});
+
 vi.mock('@kontourai/station-sdk', () => ({
   useCreateKnowledgeRootMutation: () => ({
     mutate: vi.fn(),
@@ -29,16 +45,20 @@ vi.mock('@kontourai/station-sdk', () => ({
   }),
   useKnowledgeBulkDeleteMutation: () => ({ mutate: vi.fn(), isPending: false }),
   useKnowledgeDeleteMutation: () => ({ mutate: vi.fn(), isPending: false }),
-  useKnowledgeDocsQuery: () => ({ data: [] }),
+  useKnowledgeDocsQuery: () => ({
+    data: [],
+    isError: knowledgeMocks.docsError,
+    refetch: knowledgeMocks.refetch,
+  }),
   useKnowledgeRootsQuery: () => ({ data: [], isLoading: false, error: null }),
   useKnowledgeSaveMutation: () => ({
     mutate: vi.fn(),
-    mutateAsync: vi.fn(),
+    mutateAsync: knowledgeMocks.save,
     isPending: false,
   }),
   useKnowledgeScanMutation: () => ({
     mutate: vi.fn(),
-    mutateAsync: vi.fn(),
+    mutateAsync: knowledgeMocks.scan,
     isPending: false,
   }),
   useKnowledgeStatusQuery: () => ({ data: undefined }),
@@ -48,7 +68,9 @@ vi.mock('@kontourai/station-sdk', () => ({
     isError: false,
     data: undefined,
   }),
-  useProjectQuery: () => ({ data: { workingDirectory: null } }),
+  useProjectQuery: () => ({
+    data: { workingDirectory: knowledgeMocks.workingDirectory },
+  }),
 }));
 
 const navigateMock = vi.fn(
@@ -93,6 +115,48 @@ describe('project-settings/KnowledgeSection (#242 shell port)', () => {
     expect(
       screen.queryByRole('button', { name: /Create project knowledge store/ }),
     ).toBeNull();
+  });
+
+  it('reports document read failures and retries the read', () => {
+    knowledgeMocks.docsError = true;
+    render(<KnowledgeSection slug="demo-project" />);
+    expect(screen.getByText('Could not load documents')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(knowledgeMocks.refetch).toHaveBeenCalledOnce();
+  });
+
+  it('reports a refused directory scan instead of silently dropping the error', async () => {
+    knowledgeMocks.workingDirectory = '/tmp/demo';
+    knowledgeMocks.scan.mockRejectedValueOnce(new Error('Index unavailable'));
+    render(<KnowledgeSection slug="demo-project" />);
+    fireEvent.click(screen.getByRole('button', { name: /Index directory/ }));
+    await waitFor(() =>
+      expect(screen.getByText('Index unavailable')).toBeTruthy(),
+    );
+    expect(screen.queryByText(/Indexed 0 files/)).toBeNull();
+  });
+
+  it('reports a failed upload with its filename while continuing the remaining files', async () => {
+    knowledgeMocks.save.mockRejectedValueOnce(new Error('Store unavailable'));
+    knowledgeMocks.save.mockResolvedValueOnce({});
+    const { container } = render(<KnowledgeSection slug="demo-project" />);
+    const fileInput = container.querySelector('input[type="file"]')!;
+    fireEvent.change(fileInput, {
+      target: {
+        files: [
+          { name: 'failed.md', text: async () => 'First document' },
+          { name: 'saved.md', text: async () => 'Second document' },
+        ],
+      },
+    });
+    await waitFor(() => {
+      expect(screen.getByText('failed.md: Store unavailable')).toBeTruthy();
+    });
+    expect(knowledgeMocks.save).toHaveBeenCalledTimes(2);
+    expect(knowledgeMocks.save).toHaveBeenLastCalledWith({
+      filename: 'saved.md',
+      content: 'Second document',
+    });
   });
 
   // archive#settings-revamp 1.

@@ -121,8 +121,10 @@ describe('top-level help', () => {
     const text = usageText();
 
     // One line per verb plus group headers: a bound on the summary's shape,
-    // not on the number of verbs (restart and supervisor brought it to 80).
-    expect(text.split('\n').length).toBeLessThan(85);
+    // not on the number of verbs (restart and supervisor brought it to 80,
+    // claims to 85). Headroom so the next verb does not fail on the count; a
+    // flag wall would add hundreds of lines, not a few.
+    expect(text.split('\n').length).toBeLessThan(100);
     for (const group of [
       'Lifecycle:',
       'Stations:',

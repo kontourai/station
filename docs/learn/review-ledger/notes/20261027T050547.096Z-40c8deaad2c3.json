@@ -1,0 +1,7 @@
+{
+  "revision": "4a7de6f46167fdac25e1b85cf248358c8a4e3698",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"Checked the approval-actions paragraph against approval-inbox.ts and notification-service.ts at 106170bec9c: a Deny-only rewrite of a legacy card now emits notification:updated (actions-only change), so open history/Attention views refetch; the delivery router treats it as a settle (no re-push, no retract). Added that, and that an already-delivered native notification is not updated (any Allow that reaches Station gets the 409). Physical phone delivery not exercised.","inputs":["docs/design/notification-delivery.md","src-server/services/approvals/approval-inbox.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "79e77a7f28b105661fa5de8a520f9cabb5078954",
+
+  "notes": [
+    {"path":"deployment/telemetry/README.md","note":"Reviewed79e77a ingress repair against source and actual packaged consumer. Receiver joins a separate regular product-ingress bridge; Collector/Grafana join diagnostics-ingress. PostgreSQL, Prometheus and Tempo remain unpublished on their original internal networks; product and diagnostics are not bridged together. README explicitly discloses outbound connectivity for frontends rather than claiming unchanged egress isolation.34 package/archive tests passed. Fresh full Compose run reached host-side authenticated postgres-schema-v1 readiness and Grafana HTTP/database readiness; wrong operator/Collector keys and anonymous Grafana API were refused. Actual Docker bindings were loopback-only; backend network memberships and absent host bindings were inspected. First run stopped while Grafana was migrating because harness made a one-shot health request; corrected bounded HTTP readiness polling passed on a new fresh project. All services stopped; private credentials and volumes retained. Real Station ingestion/query/render, persistence/backup/fresh restore, upgrade/rollback, native and signed release/installation qualification remain unverified.","inputs":["deployment/telemetry/README.md","deployment/telemetry/compose.diagnostics.yaml","deployment/telemetry/compose.yaml"]}
+  ]
+}

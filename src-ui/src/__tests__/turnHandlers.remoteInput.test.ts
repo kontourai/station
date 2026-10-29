@@ -1,9 +1,16 @@
 // @vitest-environment jsdom
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import {
+  attachmentBlobForObjectUrl,
+  attachmentObjectUrlKey,
+  peekAttachmentObjectUrl,
+  resetAttachmentObjectUrls,
+} from '../components/chat/attachment-object-urls';
 import { beginConversationHandoffUiState } from '../components/chat-dock/conversationHandoffUiState';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { handleOrchestrationEvent } from '../hooks/orchestration/eventHandlers';
 import { handleTurnStartedEvent } from '../hooks/orchestration/turnHandlers';
+import { buildOutgoingUserMessage } from '../hooks/useActiveChatSessions.helpers';
 
 const id = 'shared-chat';
 afterEach(() => activeChatsStore.removeChat(id));
@@ -214,4 +221,266 @@ test('a handoff turn whose start carries the dialog key binds the handoff bubble
   expect(chat.messages).toHaveLength(1);
   expect(chat.pendingClientTurnId).toBeUndefined();
   expect(chat.sendAwaitingTurnStart).toBeUndefined();
+});
+
+const REF = `sha256-${'b'.repeat(64)}`;
+const REF_B = `sha256-${'c'.repeat(64)}`;
+// Two different pictures with the name a paste always gets: 8 and 9 bytes.
+const PNG_A = 'data:image/png;base64,iVBORw0KGgo=';
+const PNG_B = 'data:image/png;base64,AAAAAAAAAAAA';
+type Recorded = {
+  kind: 'image';
+  name: string;
+  mimeType: 'image/png';
+  size: number;
+  blobRef?: string;
+  dataUrl?: string;
+};
+function recorded(
+  name: string,
+  size: number,
+  bytes: { blobRef?: string; dataUrl?: string } = {},
+): Recorded {
+  return { kind: 'image', name, mimeType: 'image/png', size, ...bytes };
+}
+function startKeyed(
+  clientTurnId: string | undefined,
+  attachments: Recorded[],
+  turnId = 'turn-attached',
+) {
+  handleTurnStartedEvent({
+    eventId: `event-${turnId}`,
+    method: 'turn.started',
+    provider: 'codex',
+    threadId: id,
+    turnId,
+    createdAt: '2026-09-12T00:00:00Z',
+    prompt: 'See this',
+    ...(clientTurnId ? { clientTurnId } : {}),
+    attachments,
+  });
+}
+function sendBubble(
+  key: string,
+  files: Array<{ name: string; data: string; size: number; type?: string }>,
+) {
+  activeChatsStore.initChat(id, {
+    agentSlug: 'codex',
+    agentName: 'Codex',
+    title: 'Shared',
+  });
+  const { messages } = buildOutgoingUserMessage(
+    [],
+    'See this',
+    files.map((file, index) => ({
+      id: `file-${index}`,
+      type: 'image/png',
+      preview: file.data,
+      ...file,
+    })),
+    key,
+  );
+  activeChatsStore.updateChat(id, { pendingClientTurnId: key, messages });
+}
+const bubble = () => activeChatsStore.getSnapshot()[id].messages?.[0];
+const fileParts = () =>
+  bubble()?.contentParts?.filter((part) => part.type === 'file');
+const createObjectURL = vi.fn((_blob: Blob) => 'blob:seeded');
+beforeEach(() => {
+  createObjectURL.mockClear();
+  Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() });
+});
+afterEach(() => resetAttachmentObjectUrls());
+
+test('a send that went out as staged references gains the recorded attachments when its turn starts', () => {
+  activeChatsStore.initChat(id, {
+    agentSlug: 'codex',
+    agentName: 'Codex',
+    title: 'Shared',
+  });
+  // After a reload the composer holds only stage descriptors, so the send
+  // path writes its bubble with no file parts at all.
+  const { messages } = buildOutgoingUserMessage(
+    [],
+    'See this',
+    undefined,
+    'key-1',
+  );
+  activeChatsStore.updateChat(id, { pendingClientTurnId: 'key-1', messages });
+  startKeyed('key-1', [recorded('screen.png', 8, { blobRef: REF })]);
+  expect(bubble()).toMatchObject({
+    clientId: 'key-1',
+    turnId: 'turn-attached',
+    contentParts: [
+      { type: 'text', content: 'See this' },
+      {
+        type: 'file',
+        blobRef: REF,
+        mediaType: 'image/png',
+        name: 'screen.png',
+      },
+    ],
+  });
+});
+
+test('once its turn records a reference, the bubble lets go of its bytes and the cache holds them under that reference', () => {
+  sendBubble('key-2', [{ name: 'screen.png', data: PNG_A, size: 8 }]);
+  expect(JSON.stringify(bubble())).toContain('data:');
+  startKeyed('key-2', [recorded('screen.png', 8, { blobRef: REF })]);
+  expect(JSON.stringify(bubble())).not.toContain('data:');
+  expect(fileParts()).toEqual([
+    { type: 'file', blobRef: REF, mediaType: 'image/png', name: 'screen.png' },
+  ]);
+  const key = attachmentObjectUrlKey(REF, 'image/png');
+  expect(peekAttachmentObjectUrl(key)).toBe('blob:seeded');
+  expect(attachmentBlobForObjectUrl('blob:seeded')?.size).toBe(8);
+});
+
+test('two different pictures both named image.png, recorded in the other order, carry no bytes across', () => {
+  sendBubble('key-3', [
+    { name: 'image.png', data: PNG_A, size: 8 },
+    { name: 'image.png', data: PNG_B, size: 9 },
+  ]);
+  startKeyed('key-3', [
+    recorded('image.png', 9, { blobRef: REF_B }),
+    recorded('image.png', 8, { blobRef: REF }),
+  ]);
+  expect(createObjectURL).not.toHaveBeenCalled();
+  expect(
+    peekAttachmentObjectUrl(attachmentObjectUrlKey(REF, 'image/png')),
+  ).toBeUndefined();
+  expect(
+    peekAttachmentObjectUrl(attachmentObjectUrlKey(REF_B, 'image/png')),
+  ).toBeUndefined();
+
+  // Without references the swapped parts would otherwise keep each other's
+  // inline bytes; they keep none.
+  sendBubble('key-3b', [
+    { name: 'image.png', data: PNG_A, size: 8 },
+    { name: 'image.png', data: PNG_B, size: 9 },
+  ]);
+  startKeyed('key-3b', [recorded('image.png', 9), recorded('image.png', 8)]);
+  expect(fileParts()).toEqual([
+    { type: 'file', mediaType: 'image/png', name: 'image.png' },
+    { type: 'file', mediaType: 'image/png', name: 'image.png' },
+  ]);
+});
+
+test('a recorded attachment under another name keeps none of the sent bytes', () => {
+  sendBubble('key-4', [{ name: 'screen.png', data: PNG_A, size: 8 }]);
+  startKeyed('key-4', [recorded('other.png', 8)]);
+  expect(fileParts()).toEqual([
+    { type: 'file', mediaType: 'image/png', name: 'other.png' },
+  ]);
+});
+
+test('with no reference, the bytes the event itself carries become the part', () => {
+  sendBubble('key-5', [{ name: 'screen.png', data: PNG_A, size: 8 }]);
+  startKeyed('key-5', [recorded('screen.png', 9, { dataUrl: PNG_B })]);
+  expect(fileParts()).toEqual([
+    { type: 'file', url: PNG_B, mediaType: 'image/png', name: 'screen.png' },
+  ]);
+});
+
+test('a row with only plain content keeps its text when it adopts files', () => {
+  activeChatsStore.initChat(id, {
+    agentSlug: 'codex',
+    agentName: 'Codex',
+    title: 'Shared',
+  });
+  activeChatsStore.updateChat(id, {
+    pendingClientTurnId: 'key-6',
+    messages: [{ role: 'user', clientId: 'key-6', content: 'See this' }],
+  });
+  startKeyed('key-6', [recorded('screen.png', 8, { blobRef: REF })]);
+  expect(bubble()?.contentParts).toEqual([
+    { type: 'text', content: 'See this' },
+    { type: 'file', blobRef: REF, mediaType: 'image/png', name: 'screen.png' },
+  ]);
+});
+
+test('the recorded list is authoritative when it names fewer files than the bubble', () => {
+  sendBubble('key-7', [
+    { name: 'a.png', data: PNG_A, size: 8 },
+    { name: 'b.png', data: PNG_B, size: 9 },
+  ]);
+  startKeyed('key-7', [recorded('a.png', 8, { blobRef: REF })]);
+  expect(fileParts()).toEqual([
+    { type: 'file', blobRef: REF, mediaType: 'image/png', name: 'a.png' },
+  ]);
+});
+
+test('a repeated turn.started leaves the adopted bubble as it was', () => {
+  sendBubble('key-8', [{ name: 'screen.png', data: PNG_A, size: 8 }]);
+  const attachments = [recorded('screen.png', 8, { blobRef: REF })];
+  startKeyed('key-8', attachments);
+  const first = activeChatsStore.getSnapshot()[id].messages;
+  startKeyed('key-8', attachments);
+  expect(activeChatsStore.getSnapshot()[id].messages).toEqual(first);
+  expect(activeChatsStore.getSnapshot()[id].messages).toHaveLength(1);
+});
+
+test('a turn keyed to another send leaves this bubble and its bytes alone', () => {
+  sendBubble('key-9', [{ name: 'screen.png', data: PNG_A, size: 8 }]);
+  const before = bubble();
+  startKeyed('someone-else', [recorded('screen.png', 8, { blobRef: REF })]);
+  expect(bubble()).toEqual(before);
+  expect(createObjectURL).not.toHaveBeenCalled();
+});
+
+test('an unkeyed turn never rewrites a row an earlier turn already bound', () => {
+  activeChatsStore.initChat(id, {
+    agentSlug: 'codex',
+    agentName: 'Codex',
+    title: 'Shared',
+  });
+  const bound = {
+    role: 'user' as const,
+    clientId: 'earlier',
+    turnId: 'turn-earlier',
+    content: 'Earlier',
+    contentParts: [
+      { type: 'text', content: 'Earlier' },
+      { type: 'file', url: PNG_A, mediaType: 'image/png', name: 'screen.png' },
+    ],
+  };
+  activeChatsStore.updateChat(id, {
+    pendingClientTurnId: 'pending',
+    messages: [bound],
+  });
+  startKeyed(
+    undefined,
+    [recorded('screen.png', 8, { blobRef: REF })],
+    'turn-new',
+  );
+  expect(bubble()).toEqual(bound);
+});
+
+test('a sent file of another type than the one recorded keeps none of its bytes', () => {
+  sendBubble('key-10', [
+    { name: 'screen.png', data: PNG_A, size: 8, type: 'image/png' },
+  ]);
+  startKeyed('key-10', [
+    {
+      ...recorded('screen.png', 8, { blobRef: REF }),
+      mimeType: 'image/jpeg' as 'image/png',
+    },
+  ]);
+  expect(createObjectURL).not.toHaveBeenCalled();
+  expect(fileParts()).toEqual([
+    { type: 'file', blobRef: REF, mediaType: 'image/jpeg', name: 'screen.png' },
+  ]);
+});
+
+test("seeded bytes take the recorded type, as fetched bytes do, not the data URL's own", () => {
+  sendBubble('key-11', [
+    {
+      name: 'screen.png',
+      data: 'data:application/octet-stream;base64,iVBORw0KGgo=',
+      size: 8,
+      type: 'image/png',
+    },
+  ]);
+  startKeyed('key-11', [recorded('screen.png', 8, { blobRef: REF })]);
+  expect(attachmentBlobForObjectUrl('blob:seeded')?.type).toBe('image/png');
 });

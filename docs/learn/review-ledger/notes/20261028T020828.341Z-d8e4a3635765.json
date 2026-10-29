@@ -1,0 +1,7 @@
+{
+  "revision": "0d736803af500396d18f4cf17d72bc34ab422e83",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"OnboardingGate change is one pairing-review wording edit (Station won't resend the request); this doc states no claim about that sentence; no prose change.","inputs":["docs/guides/connections.md","src-ui/src/components/OnboardingGate.tsx"]}
+  ]
+}

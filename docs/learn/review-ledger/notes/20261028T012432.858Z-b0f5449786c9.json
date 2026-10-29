@@ -1,0 +1,7 @@
+{
+  "revision": "f44cec61337e7e20856f0f415f3512ddedd7ef01",
+
+  "notes": [
+    {"path":"docs/reference/connect.md","note":"ConnectStationDialog copy-only delta and its test assertions (no access request sent; device can't approve itself). No connect protocol, scope or status contract changed; prose accurate.","inputs":["docs/reference/connect.md","src-ui/src/__tests__/ConnectStationDialog.test.tsx","src-ui/src/views/connections-hub/ConnectStationDialog.tsx"]}
+  ]
+}

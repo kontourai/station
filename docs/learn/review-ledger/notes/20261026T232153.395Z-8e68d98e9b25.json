@@ -1,0 +1,11 @@
+{
+  "revision": "9af65c28c5810ad45a8c83f02d035944e44376ca",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"ChatDockMobileHeader now types conversationStats as ContextPercentageSource plus onOpen (the shared source type exported by ContextPercentage) instead of restating its fields; the row, its condition and its behavior are unchanged, so no claim changes.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"ChatDockMobileHeader now types conversationStats as ContextPercentageSource plus onOpen (the shared source type exported by ContextPercentage) instead of restating its fields; the row, its condition and its behavior are unchanged, so no claim changes.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"ChatDockMobileHeader now types conversationStats as ContextPercentageSource plus onOpen (the shared source type exported by ContextPercentage) instead of restating its fields; the row, its condition and its behavior are unchanged, so no claim changes.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx"]}
+  ]
+}

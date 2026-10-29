@@ -422,6 +422,8 @@ export async function toToolEnvelope<T>(promise: Promise<T>): Promise<
       success: false;
       error: string;
       code?: string;
+      previewId?: string;
+      settingsPath?: string;
       outcome?: 'failed' | 'indeterminate';
       retryable?: false;
       data?: unknown;
@@ -432,6 +434,8 @@ export async function toToolEnvelope<T>(promise: Promise<T>): Promise<
   } catch (err) {
     const typed = err as {
       code?: unknown;
+      previewId?: unknown;
+      settingsPath?: unknown;
       outcome?: unknown;
       retryable?: unknown;
       receipt?: unknown;
@@ -471,6 +475,12 @@ export async function toToolEnvelope<T>(promise: Promise<T>): Promise<
     return {
       success: false,
       error: err instanceof Error ? err.message : 'Request failed',
+      ...(err instanceof Error &&
+      typed.code === 'feature_preview_disabled' &&
+      typeof typed.previewId === 'string' &&
+      typeof typed.settingsPath === 'string'
+        ? { previewId: typed.previewId, settingsPath: typed.settingsPath }
+        : {}),
       ...(err instanceof Error && typeof typed.code === 'string'
         ? { code: typed.code }
         : {}),

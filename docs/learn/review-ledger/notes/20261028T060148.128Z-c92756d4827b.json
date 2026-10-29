@@ -1,0 +1,7 @@
+{
+  "revision": "af3e5a84422aca57bfe6b2b91b157b1a2b9e04f0",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked inbox-row and message-bubble claims: bubble ⋯ menus, inbox Details sheet and row actions are unchanged; this change only adds a right-click/hold route to the same menus, so no claim changes.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat/MessageBubble.tsx"]}
+  ]
+}

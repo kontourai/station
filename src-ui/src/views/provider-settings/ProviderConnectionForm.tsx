@@ -681,7 +681,7 @@ export function ProviderConnectionForm({
             value={(form.config.defaultModel as string) ?? ''}
             options={modelOptions}
             placeholder="The model id to use when an agent names none"
-            hint="Used when an agent names no model of its own, and it is the model Test Connection sends its one minimal chat request to if this connection returns no model list."
+            hint="Used when an agent names no model, and by Test Connection if no model list is returned."
             onChange={(next) => onSetConfigField('defaultModel', next)}
           />
         </div>
@@ -816,7 +816,7 @@ export function ProviderConnectionForm({
             value={(form.config.defaultModel as string) ?? ''}
             options={modelOptions}
             placeholder="A model or inference-profile id this account can invoke"
-            hint="Used when an agent names no model of its own, and it is the model Test Connection sends its one minimal chat request to when this account cannot list Bedrock models."
+            hint="Used when an agent names no model, and by Test Connection if Bedrock models can't be listed."
             onChange={(next) => onSetConfigField('defaultModel', next)}
           />
         </>

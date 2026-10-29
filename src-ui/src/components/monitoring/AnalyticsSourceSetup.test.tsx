@@ -1,0 +1,181 @@
+/** @vitest-environment jsdom */
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
+import { afterEach, expect, test, vi } from 'vitest';
+
+const h = vi.hoisted(() => ({ mutate: vi.fn(), windowOpen: vi.fn() }));
+vi.mock('@kontourai/station-sdk/private-insights-query', () => ({
+  useAnalyticsSetupMutation: () => ({
+    mutateAsync: h.mutate,
+    isPending: false,
+  }),
+  useAnalyticsReceiverInfo: () => ({
+    data: { stationId: 'receiver', origin: 'https://receiver.example.test' },
+  }),
+  useAnalyticsSourceOffers: () => ({ data: [] }),
+  useAnalyticsReceivingProof: () => ({ data: undefined, error: null }),
+  useAnalyticsSetupReview: () => ({ data: undefined, error: null }),
+  parseAnalyticsTransfer: JSON.parse,
+  analyticsReviewUrl: (_scope: unknown, v: { reviewUrl: string }) =>
+    v.reviewUrl,
+}));
+
+import { AnalyticsSourceSetup } from './AnalyticsSourceSetup';
+
+const scope = {
+  apiBase: 'https://source.example.test',
+  authorityKey: 'person',
+  isCurrent: () => true,
+};
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  h.mutate.mockReset();
+});
+test('a blocked requester window does not create consent or substitute a native/operator decision', async () => {
+  vi.spyOn(window, 'open').mockReturnValue(null);
+  render(<AnalyticsSourceSetup scope={scope} sources={[]} />);
+  fireEvent.click(screen.getByText('Connect or manage private sources'));
+  fireEvent.click(screen.getByRole('button', { name: 'Share this Station' }));
+  fireEvent.change(screen.getByLabelText('Public receiving-key proof'), {
+    target: { value: '{}' },
+  });
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Review source permission' }),
+  );
+  expect(h.mutate).not.toHaveBeenCalled();
+  expect(screen.getByText(/could not open the trusted requester/)).toBeTruthy();
+});
+test('source review opens a detached trusted page and never renders an approve decision in the main UI', async () => {
+  const replace = vi.fn(),
+    close = vi.fn();
+  let opener: Window | null = window;
+  const location = { ...window.location, replace };
+  const popup = new Proxy(window, {
+    get: (target, key) =>
+      key === 'location'
+        ? location
+        : key === 'close'
+          ? close
+          : key === 'opener'
+            ? opener
+            : Reflect.get(target, key),
+    set: (target, key, value) => {
+      if (key === 'opener' && value === null) {
+        opener = null;
+        return true;
+      }
+      return Reflect.set(target, key, value);
+    },
+  });
+  vi.spyOn(window, 'open').mockReturnValue(popup);
+  const id = '11234567-89ab-4cde-8fab-0123456789ab';
+  h.mutate.mockResolvedValue({
+    review: {
+      kind: 'source',
+      subject: id,
+      id,
+      status: 'pending',
+      reviewUrl: `https://source.example.test:444/consent/${id}`,
+    },
+  });
+  render(<AnalyticsSourceSetup scope={scope} sources={[]} />);
+  fireEvent.click(screen.getByText('Connect or manage private sources'));
+  fireEvent.click(screen.getByRole('button', { name: 'Share this Station' }));
+  fireEvent.change(screen.getByLabelText('Public receiving-key proof'), {
+    target: { value: '{"claims":{}}' },
+  });
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Review source permission' }),
+  );
+  await waitFor(() =>
+    expect(replace).toHaveBeenCalledWith(
+      `https://source.example.test:444/consent/${id}`,
+    ),
+  );
+  expect(popup.opener).toBeNull();
+  expect(h.mutate).toHaveBeenCalledWith({
+    kind: 'source-review',
+    proof: { claims: {} },
+  });
+  expect(
+    screen.queryByRole('button', { name: 'Approve this source and key' }),
+  ).toBeNull();
+  expect(close).not.toHaveBeenCalled();
+});
+
+test.each([false, true])(
+  'source offer includes optional immutable operational consent only when selected: %s',
+  async (enabled) => {
+    h.mutate.mockResolvedValue({});
+    render(<AnalyticsSourceSetup scope={scope} sources={[]} />);
+    fireEvent.click(screen.getByText('Connect or manage private sources'));
+    fireEvent.click(screen.getByRole('button', { name: 'Share this Station' }));
+    fireEvent.change(screen.getByLabelText('Receiving Station ID'), {
+      target: { value: 'receiver' },
+    });
+    fireEvent.change(screen.getByLabelText('Receiving Station address'), {
+      target: { value: 'https://receiver.example.test' },
+    });
+    const checkbox = screen.getByRole('checkbox', {
+      name: /Include content-free terminal/,
+    });
+    expect(checkbox).toHaveProperty('checked', false);
+    if (enabled) fireEvent.click(checkbox);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Create public offer' }),
+    );
+    await waitFor(() => expect(h.mutate).toHaveBeenCalledOnce());
+    if (enabled)
+      expect(h.mutate.mock.calls[0][0].operationalConsent).toBe(
+        'terminal-outcomes/v1',
+      );
+    else
+      expect(h.mutate.mock.calls[0][0]).not.toHaveProperty(
+        'operationalConsent',
+      );
+  },
+);
+
+test('receiving source removal remains reachable through the source action menu', async () => {
+  const recipientId = '11234567-89ab-4cde-8fab-0123456789ab';
+  h.mutate.mockResolvedValue({});
+  render(
+    <AnalyticsSourceSetup
+      scope={scope}
+      sources={[
+        {
+          id: recipientId,
+          stationId: 'owned-source',
+          ready: true,
+          retainedCopy: false,
+        },
+      ]}
+    />,
+  );
+  fireEvent.click(screen.getByText('Connect or manage private sources'));
+  fireEvent.change(screen.getByLabelText('Owned receiving slot'), {
+    target: { value: recipientId },
+  });
+  expect(
+    screen.getByRole('button', { name: 'Review source address' }),
+  ).toBeTruthy();
+  expect(
+    screen.getByRole('button', { name: 'Request private storage preparation' }),
+  ).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'More source actions' }));
+  fireEvent.click(
+    screen.getByRole('menuitem', { name: 'Stop receiving source' }),
+  );
+  await waitFor(() =>
+    expect(h.mutate).toHaveBeenCalledWith({
+      kind: 'cancel-receiver',
+      recipientId,
+    }),
+  );
+});

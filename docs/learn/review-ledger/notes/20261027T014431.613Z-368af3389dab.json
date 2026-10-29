@@ -1,0 +1,15 @@
+{
+  "revision": "5564d0f2a33e46487f00ada9af2fbdd07d4f8d66",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"testing.md delta: only the gallery font paragraph changed (--font-sans now names both width-matched fallback faces; the render container has neither font, so baselines are unaffected). The sections this document links (lanes and verification, gallery product assertions, host pressure, transfer gate, fixture fidelity and test effectiveness) and their anchors are unchanged, so its claims remain accurate.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"testing.md delta: only the gallery font paragraph changed (--font-sans now names both width-matched fallback faces; the render container has neither font, so baselines are unaffected). The sections this document links (lanes and verification, gallery product assertions, host pressure, transfer gate, fixture fidelity and test effectiveness) and their anchors are unchanged, so its claims remain accurate.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"testing.md delta: only the gallery font paragraph changed (--font-sans now names both width-matched fallback faces; the render container has neither font, so baselines are unaffected). The sections this document links (lanes and verification, gallery product assertions, host pressure, transfer gate, fixture fidelity and test effectiveness) and their anchors are unchanged, so its claims remain accurate.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"testing.md delta: only the gallery font paragraph changed (--font-sans now names both width-matched fallback faces; the render container has neither font, so baselines are unaffected). The sections this document links (lanes and verification, gallery product assertions, host pressure, transfer gate, fixture fidelity and test effectiveness) and their anchors are unchanged, so its claims remain accurate.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"testing.md delta: only the gallery font paragraph changed (--font-sans now names both width-matched fallback faces; the render container has neither font, so baselines are unaffected). The sections this document links (lanes and verification, gallery product assertions, host pressure, transfer gate, fixture fidelity and test effectiveness) and their anchors are unchanged, so its claims remain accurate.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

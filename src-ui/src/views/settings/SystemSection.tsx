@@ -83,16 +83,16 @@ export function SystemSection({
         </div>
       )}
 
-      <div
+      {/* The card's own "Server · {name}" heading labels this row; a row
+          title above it would name the same server twice. */}
+      <section
         className="settings__field"
         {...settingsRow('core-app-updates')}
+        aria-labelledby="core-app-updates-heading"
         tabIndex={-1}
       >
-        <span className="settings__field-label">
-          {settingsRow('core-app-updates').title}
-        </span>
-        <ConnectedServerUpdates />
-      </div>
+        <ConnectedServerUpdates headingId="core-app-updates-heading" />
+      </section>
 
       <div
         className="settings__field"

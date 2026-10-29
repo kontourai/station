@@ -1,0 +1,7 @@
+{
+  "revision": "a460a407fb2c3486e7d9c240d36c5691e40ec663",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"ApiBaseContext only gains a desktop-only canRemoveSharedProfile prop that asks NativeStationProfileStorage.canRemoveProfile (relay routes and this app's own Station refused, from the last read store). Searched this document's ApiBaseProvider claims (native relay owner, grant-renewal supervisor, transport binding, API base precedence): none concern forgetting a saved Station, so none change.","inputs":["docs/reference/sdk.md","src-ui/src/contexts/ApiBaseContext.tsx"]}
+  ]
+}

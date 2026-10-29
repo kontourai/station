@@ -1,0 +1,7 @@
+{
+  "revision": "33c316abbe58329c5e885996baeb383a9338545e",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"StationSwitcherMenu now shows an empty filter through FilteredEmpty (Clear filter) and no longer labels a pending probe; the guide's switcher paragraph (green dot when answered, Unreachable otherwise, filter at five or more) still matches.","inputs":["docs/guides/connections.md","src-ui/src/components/header/StationSwitcherMenu.tsx"]}
+  ]
+}

@@ -68,6 +68,7 @@ import {
   answerDeliveryModeOf,
   settingsForAnswerDelivery,
 } from '../utils/answerDelivery';
+import { AboutSection } from './settings/AboutSection';
 import { AgentDefaultsSection } from './settings/AgentDefaultsSection';
 import { AnswerSharesSection } from './settings/AnswerSharesSection';
 import { DeviceHostsSection } from './settings/DeviceHostsSection';
@@ -93,6 +94,7 @@ import {
 import { SettingsPageRow as PageRow } from './settings/SettingsPageRow';
 import { SettingsSection as Section } from './settings/SettingsSection';
 import { StationConfigSection } from './settings/StationConfigSection';
+import { StationRoutesSection } from './settings/StationRoutesSection';
 import { SystemSection } from './settings/SystemSection';
 import {
   formatSettingsMessage,
@@ -120,6 +122,7 @@ import {
   NotificationsSection,
   VoiceFeaturesSection,
 } from './settings/VoiceFeaturesSection';
+import { WorkloadBudgetSettings } from './settings/WorkloadBudgetSettings';
 
 const ALL_LEAF_SECTION_IDS = SETTINGS_SECTIONS.map(({ id }) => id);
 const ALL_SETTINGS_VIEWS = [
@@ -392,6 +395,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
           isOperator,
           developerToolsEnabled,
           experimentalTrustEnabled: developerFeatures.trust,
+          experimentalStationRoutesEnabled: developerFeatures.stationRoutes,
         }).map((entry) => entry.section)
       : activeSection === 'overview'
         ? ALL_LEAF_SECTION_IDS.filter(operatorMayView)
@@ -442,7 +446,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     }
     if (
       (entry.conditional === 'developer' && !developerToolsEnabled) ||
-      (entry.conditional === 'experimental-trust' && !developerFeatures.trust)
+      (entry.conditional === 'experimental-trust' &&
+        !developerFeatures.trust) ||
+      (entry.conditional === 'experimental-station-routes' &&
+        !developerFeatures.stationRoutes)
     ) {
       setHighlightAnnouncement(
         'This experimental tool is off. Enable it in Advanced → Developer tools.',
@@ -585,6 +592,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     locale,
     developerToolsEnabled,
     developerFeatures.trust,
+    developerFeatures.stationRoutes,
   ]);
 
   // Reconciling the server snapshot with the form is a question about *time*,
@@ -1249,6 +1257,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       containerScope="station"
                       projectOverride={projectOverride}
                     />
+                    {/* Behind the workload-budget-settings Feature Preview;
+                  renders nothing while it is off. */}
+                    <WorkloadBudgetSettings />
                   </EnvironmentStatus>
                 )}
 
@@ -1776,6 +1787,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
 
                 {/* #2182: pairing is not a voice feature, and now says so. */}
                 {sectionVisible('pairing') && <PairingSection />}
+                {sectionVisible('station-routes') && <StationRoutesSection />}
 
                 {sectionVisible('developer-tools') && (
                   <Section
@@ -1798,6 +1810,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     />
                     <DeveloperFeatures />
                   </Section>
+                )}
+
+                {sectionVisible('about') && (
+                  <AboutSection onOpenSection={navigateToSection} />
                 )}
               </section>
             )}

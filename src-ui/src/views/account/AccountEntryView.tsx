@@ -373,7 +373,7 @@ export function AccountEntryView({
           ) : invitation && mode !== 'reset' && preview.isError ? (
             <ErrorState
               title="Invitation unavailable"
-              description="This link may have expired, been accepted or been cancelled. Ask the inviter for a new link, or try again if this Station is unavailable."
+              description="It may have expired, been accepted, or been cancelled. Ask the inviter for a new link."
               action={
                 <Button onClick={() => void preview.refetch()}>
                   Check invitation again

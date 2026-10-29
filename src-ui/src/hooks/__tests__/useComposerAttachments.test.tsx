@@ -167,6 +167,71 @@ describe('useComposerAttachments', () => {
     expect(stages[0]?.error).toBe('Attachment staging capacity is full.');
   });
 
+  // A second staging of an id that is still queued must join the first task:
+  // replacing it orphaned the first caller's wait (Send again never returned)
+  // and queued a second upload of the same identity.
+  test('staging a queued id again joins its task instead of orphaning it', async () => {
+    let stages: ComposerAttachmentStageSnapshot[] = [];
+    const selected: FileAttachment[] = [];
+    const releases: Array<() => void> = [];
+    stageComposerAttachments.mockImplementation(
+      async (_api, files: FileAttachment[], _signal, update) => {
+        await new Promise<void>((resolve) => releases.push(resolve));
+        update({
+          clientAttachmentId: files[0]!.id,
+          state: 'complete',
+          progress: 1,
+          delivery: 'staged',
+        });
+      },
+    );
+    const hook = renderHook(() =>
+      useComposerAttachments({
+        apiBase: 'http://station.test',
+        ownerKey: 'join',
+        attachments: selected,
+        stages,
+        getCurrentAttachments: () => selected,
+        getCurrentStages: () => stages,
+        capabilities: { images: true, files: true },
+        onAddAttachments: (files) => selected.push(...files),
+        onStagesChange: (value) => {
+          stages = value;
+        },
+      }),
+    );
+    // Fill every upload slot so the next id waits in the queue.
+    const busy: Promise<boolean>[] = [];
+    for (const id of ['one', 'two', 'three']) {
+      busy.push(hook.result.current.stageFiles([attachment(id)]));
+      await waitFor(() => expect(releases).toHaveLength(busy.length));
+    }
+    let firstDone = false;
+    const first = hook.result.current
+      .stageFiles([attachment('queued')])
+      .then((ok) => {
+        firstDone = true;
+        return ok;
+      });
+    const second = hook.result.current.stageFiles([attachment('queued')]);
+    await act(async () => {
+      for (const release of releases.splice(0)) release();
+      await Promise.all(busy);
+    });
+    await waitFor(() => expect(releases).toHaveLength(1));
+    await act(async () => {
+      releases.shift()!();
+      await second;
+    });
+    await waitFor(() => expect(firstDone).toBe(true));
+    expect(await first).toBe(true);
+    expect(
+      stageComposerAttachments.mock.calls.filter(
+        ([, files]) => (files as FileAttachment[])[0]!.id === 'queued',
+      ),
+    ).toHaveLength(1);
+  });
+
   // #545: the queue reports an unresolvable caller as a failed stage; the
   // hook's catch must not turn it back into a Retry or bury the reason.
   test('an unresolvable caller stays a failed, explained stage', async () => {

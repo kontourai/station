@@ -79,7 +79,7 @@ describe('public handshake compatibility block', () => {
       // Not a hardcoded string: a build can never advertise a version it is
       // not. This is the one field that is a release version, on purpose.
       serverVersion: packageJson.version,
-      protocolVersion: 3,
+      protocolVersion: 4,
       minClientProtocol: 1,
       capabilities: {
         remoteAuth: 1,
@@ -138,6 +138,7 @@ describe('public handshake capability flags (station#1095)', () => {
     expect(handshake.capabilities).toEqual(STATION_CAPABILITY_FLAGS);
     expect(handshake.capabilities).toEqual({
       delegationGroups: false,
+      privateOperationalOutcomes: true,
       sshEnvironments: true,
       webPushNotifications: true,
       eventStreamResume: true,
@@ -149,6 +150,7 @@ describe('public handshake capability flags (station#1095)', () => {
       delegationAttemptClaims: true,
       executionPreparation: true,
       delegatedInputAnswers: true,
+      connectionRoutes: true,
     });
   });
 
@@ -175,6 +177,7 @@ describe('public handshake capability flags (station#1095)', () => {
     // ships those surfaces.
     expect(body.capabilities).toEqual({
       delegationGroups: false,
+      privateOperationalOutcomes: true,
       sshEnvironments: true,
       webPushNotifications: true,
       eventStreamResume: true,
@@ -186,6 +189,7 @@ describe('public handshake capability flags (station#1095)', () => {
       delegationAttemptClaims: true,
       executionPreparation: true,
       delegatedInputAnswers: true,
+      connectionRoutes: true,
     });
     for (const buildIdentityField of [
       'build',

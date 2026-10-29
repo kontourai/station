@@ -1,5 +1,6 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { PGlite, type PGliteInterface } from '@electric-sql/pglite';
+import { PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION } from '@kontourai/station-shared/product-telemetry';
 import type { Pool, QueryResultRow } from 'pg';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { createProductBroker } from '../app.js';
@@ -8,6 +9,7 @@ import {
   assertLiteSchema,
   LiteRepository,
   migrateLite,
+  suppressPublicationAfterRestore,
 } from '../lite-store.js';
 import { noisyCount } from '../noisy-count.js';
 import { PgProductRepository } from '../store.js';
@@ -115,7 +117,9 @@ async function closeDay(day = closedWeek) {
   );
 }
 async function readAll(path = '/v1/public/aggregates', key?: string) {
-  const cells: Awaited<ReturnType<LiteRepository['aggregates']>>['cells'] = [];
+  const cells: Array<
+    Awaited<ReturnType<LiteRepository['aggregates']>>['cells'][number]
+  > = [];
   let cursor: string | null = null;
   do {
     const r = await app.request(
@@ -1181,3 +1185,325 @@ test('feedback hashes erase even when the ping erasure transaction fails', async
     ).rows,
   ).toEqual([{ client_hash: null }]);
 });
+
+test('offline suppression preserves sealed history while restart, maintenance and enrollment cannot republish it', async () => {
+  await send('198.51.100.10');
+  await closeDay();
+  await lite.finalize();
+  const cached = await app.request('/v1/public/aggregates');
+  const published = await cached.json();
+  expect(published.cells.length).toBeGreaterThan(0);
+  expect(published.nextCursor).toBeTruthy();
+  const sealed = async () => ({
+    publications: (
+      await db.query(
+        'SELECT * FROM station_telemetry.lite_publications ORDER BY week,publisher',
+      )
+    ).rows,
+    cells: (
+      await db.query(
+        'SELECT * FROM station_telemetry.lite_published ORDER BY week,publisher,dimension,value',
+      )
+    ).rows,
+    noise: (
+      await db.query(
+        "SELECT encode(secret,'hex') AS secret FROM station_telemetry.lite_noise_key",
+      )
+    ).rows,
+  });
+  const before = await sealed();
+  const exactBefore = await lite.exact('daily');
+  // Leave another pending day to prove maintenance cannot add marginals/publications.
+  await send('198.51.100.11');
+  await closeDay();
+  await db.transaction((tx) => suppressPublicationAfterRestore(sqlClient(tx)));
+  lite.clearPublisherCredentials();
+  // Exercise the existing route cache before recreating process-owned objects.
+  for (const suffix of ['', `?cursor=${published.nextCursor}`]) {
+    const response = await app.request(`/v1/public/aggregates${suffix}`);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(await response.json()).toMatchObject({
+      publicationState:
+        'publication permanently suppressed; history unreconciled',
+      cells: [],
+      nextCursor: null,
+    });
+  }
+  lite = new LiteRepository(
+    (operation) => db.transaction((tx) => operation(sqlClient(tx))),
+    100000,
+    1_073_741_824,
+  );
+  await db.transaction(async (tx) => {
+    await migrateLite(sqlClient(tx));
+    await assertLiteSchema(sqlClient(tx));
+    await lite.refreshCredentials(sqlClient(tx));
+  });
+  app = createProductBroker(
+    Object.assign(new PgProductRepository({} as Pool), { lite }),
+    operatorKey,
+  );
+  await lite.finalize();
+  expect(await sealed()).toEqual(before);
+  expect((await lite.exact('daily')).marginals).toEqual(exactBefore.marginals);
+  expect(
+    (await db.query('SELECT * FROM station_telemetry.publisher_keys')).rows,
+  ).toEqual([]);
+  expect(lite.hasCredential('publisher:example', publisherKey)).toBe(false);
+  await expect(
+    lite.setPublisherKey(
+      'publisher:example',
+      createHash('sha256').update(publisherKey).digest('hex'),
+    ),
+  ).rejects.toThrow('publication_suppressed');
+  for (const body of [
+    dailyPing(),
+    { publisher: 'kontour', action: 'enable', reason: 'notice' },
+  ]) {
+    const response = await app.request(
+      '/v1/lite/kontour',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+      socketBindings('198.51.100.12'),
+    );
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: 'publication_suppressed' });
+  }
+  const operator = await app.request('/v1/operator/lite/daily', auth());
+  expect(operator.status).toBe(200);
+  expect((await operator.json()).marginals).toEqual(exactBefore.marginals);
+  const publisher = await app.request(
+    '/v1/publishers/publisher:example/aggregates',
+    auth(publisherKey),
+  );
+  expect(publisher.status).toBe(200);
+  expect(await publisher.json()).toMatchObject({ cells: [], nextCursor: null });
+  expect(
+    (
+      await db.query<{
+        client_hash: Uint8Array | null;
+        contributions: unknown;
+      }>('SELECT client_hash,contributions FROM station_telemetry.lite_pings')
+    ).rows.every(
+      (row) => row.client_hash === null && row.contributions === null,
+    ),
+  ).toBe(true);
+});
+
+test.each(['missing', 'malformed', 'digest'] as const)(
+  'publication fence %s refuses startup and reads',
+  async (fault) => {
+    if (fault === 'missing')
+      await db.exec('DELETE FROM station_telemetry.lite_publication_fence');
+    if (fault === 'malformed')
+      await db.exec(
+        "ALTER TABLE station_telemetry.lite_publication_fence DROP CONSTRAINT lite_publication_fence_state_check; UPDATE station_telemetry.lite_publication_fence SET state='unknown'",
+      );
+    if (fault === 'digest')
+      await db.exec(
+        "UPDATE station_telemetry.migrations SET digest='wrong' WHERE version=9",
+      );
+    await expect(
+      db.transaction((tx) => assertLiteSchema(sqlClient(tx))),
+    ).rejects.toThrow('schema_incompatible');
+    if (fault !== 'digest')
+      await expect(lite.publicAggregates()).rejects.toThrow(
+        'schema_incompatible',
+      );
+  },
+);
+
+test('schema 8 upgrade adds the fence without changing prior migration digests or sealed history', async () => {
+  await send('198.51.100.13');
+  await closeDay();
+  await lite.finalize();
+  const before = (
+    await db.query(
+      'SELECT version,digest FROM station_telemetry.migrations WHERE version<9 ORDER BY version',
+    )
+  ).rows;
+  const cells = (
+    await db.query(
+      'SELECT * FROM station_telemetry.lite_published ORDER BY week,publisher,dimension,value',
+    )
+  ).rows;
+  await db.exec(
+    'DROP TABLE station_telemetry.lite_publication_fence; DELETE FROM station_telemetry.migrations WHERE version=9',
+  );
+  await db.transaction(async (tx) => {
+    await migrateLite(sqlClient(tx));
+    await suppressPublicationAfterRestore(sqlClient(tx));
+    await assertLiteSchema(sqlClient(tx));
+  });
+  expect(
+    (
+      await db.query(
+        'SELECT version,digest FROM station_telemetry.migrations WHERE version<9 ORDER BY version',
+      )
+    ).rows,
+  ).toEqual(before);
+  expect(
+    (
+      await db.query(
+        'SELECT * FROM station_telemetry.lite_published ORDER BY week,publisher,dimension,value',
+      )
+    ).rows,
+  ).toEqual(cells);
+  expect(await lite.publicAggregates()).toMatchObject({
+    cells: [],
+    nextCursor: null,
+  });
+});
+
+test.each([false, true])(
+  'managed restore atomically upgrades and fences, or refuses copied private custody (vault=%s)',
+  async (withVault) => {
+    const restored = new PGlite({
+      startParams: [
+        ...PGlite.defaultStartParams.filter((parameter) => parameter !== '-F'),
+        '-c',
+        'fsync=on',
+        '-c',
+        'full_page_writes=on',
+      ],
+    });
+    let released = Promise.resolve();
+    // SQL adapter only: durability settings are queried by the real repository.
+    // This in-memory backend is not power-loss or PostgreSQL deployment evidence.
+    const pool = {
+      async connect() {
+        await released;
+        return {
+          ...sqlClient(restored),
+          release(destroy?: boolean) {
+            if (destroy)
+              released = restored.exec('ROLLBACK').then(() => undefined);
+          },
+        };
+      },
+    } as unknown as Pool;
+    const productKey = `stp_${'r'.repeat(43)}`;
+    const sourceId = randomUUID();
+    try {
+      const repository = new PgProductRepository(pool);
+      await repository.migrate();
+      await repository.createSource(
+        sourceId,
+        'restore-test',
+        createHash('sha256').update(productKey).digest('hex'),
+      );
+      const now = new Date().toISOString();
+      const receipt = await repository.ingest(productKey, {
+        schema_version: 1,
+        inventory_revision: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION,
+        distinct_id: 'a'.repeat(64),
+        events: [
+          {
+            event_id: randomUUID(),
+            event: 'engine_turn',
+            occurred_at: now,
+            observed_at: now,
+            build: { version: '1.2.3', platform: 'linux', arch: 'x64' },
+            properties: { engine: 'codex', outcome: 'completed' },
+          },
+        ],
+      });
+      await repository.lite.setPublisherKey(
+        'kontour',
+        createHash('sha256').update(publisherKey).digest('hex'),
+      );
+      if (withVault) await repository.privateUsage.provision('c'.repeat(64));
+      const receipts = (
+        await restored.query(
+          'SELECT * FROM station_telemetry.commits ORDER BY id',
+        )
+      ).rows;
+      const privateIdentity = (
+        await restored.query('SELECT * FROM station_private_usage.identity')
+      ).rows;
+      await restored.exec(
+        'DROP TABLE station_telemetry.lite_publication_fence; DELETE FROM station_telemetry.migrations WHERE version=9',
+      );
+      if (withVault) {
+        await expect(repository.fenceManagedRestore()).rejects.toThrow(
+          'private_restore_unsupported',
+        );
+        await released;
+        expect(
+          (
+            await restored.query(
+              'SELECT * FROM station_telemetry.migrations WHERE version=9',
+            )
+          ).rows,
+        ).toEqual([]);
+        expect(
+          (
+            await restored.query(
+              'SELECT revoked_at FROM station_telemetry.sources',
+            )
+          ).rows,
+        ).toEqual([{ revoked_at: null }]);
+        expect(
+          (
+            await restored.query(
+              'SELECT publisher FROM station_telemetry.publisher_keys',
+            )
+          ).rows,
+        ).toEqual([{ publisher: 'kontour' }]);
+      } else {
+        expect(await repository.fenceManagedRestore()).toBe(1);
+        expect(repository.hasCredential(productKey)).toBe(false);
+        const restarted = new PgProductRepository(pool);
+        await restarted.migrate();
+        await restarted.lite.finalize();
+        await restarted.retain();
+        expect(await restarted.fenceManagedRestore()).toBe(0);
+        expect(await restarted.lite.publicAggregates()).toMatchObject({
+          cells: [],
+          nextCursor: null,
+        });
+        expect(
+          (
+            await restored.query(
+              'SELECT publisher FROM station_telemetry.publisher_keys',
+            )
+          ).rows,
+        ).toEqual([]);
+        const mounted = createProductBroker(restarted, operatorKey);
+        const response = await mounted.request(
+          `/v1/operator/trends?from=${now.slice(0, 10)}&to=${new Date(Date.parse(now) + 86400000).toISOString().slice(0, 10)}`,
+          auth(),
+        );
+        expect(response.status).toBe(200);
+        expect((await response.json()).rows).toContainEqual(
+          expect.objectContaining({ event: 'engine_turn', count: 1 }),
+        );
+        expect(
+          (
+            await restored.query<{ body: unknown }>(
+              'SELECT body FROM station_telemetry.commits WHERE id=$1',
+              [receipt.receiptId],
+            )
+          ).rows[0].body,
+        ).toEqual(receipt);
+      }
+      expect(
+        (
+          await restored.query(
+            'SELECT * FROM station_telemetry.commits ORDER BY id',
+          )
+        ).rows,
+      ).toEqual(receipts);
+      expect(
+        (await restored.query('SELECT * FROM station_private_usage.identity'))
+          .rows,
+      ).toEqual(privateIdentity);
+    } finally {
+      await released;
+      await restored.close();
+    }
+  },
+);

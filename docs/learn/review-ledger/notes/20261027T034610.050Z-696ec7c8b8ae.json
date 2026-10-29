@@ -1,0 +1,7 @@
+{
+  "revision": "03de66577b851284970e0e9ed397dd8487597327",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"Only responsive-action-surfaces inventory lines for the sidebar footer changed; no theming claim depends on them. No prose change.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

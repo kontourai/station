@@ -1,0 +1,7 @@
+{
+  "revision": "f44cec61337e7e20856f0f415f3512ddedd7ef01",
+
+  "notes": [
+    {"path":"docs/guides/android-build.md","note":"SystemSection delta is the core-app-updates row label only (card heading labels the row). No Android build, provenance or packaged-settings consumer behavior changed; prose accurate.","inputs":["docs/guides/android-build.md","src-ui/src/views/settings/SystemSection.tsx"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "57ffc22dca4beeaeb0e23cee15056247d54eb0c8",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"Only stationProfileStorage.removeProfile changed (refusal narrowed from any localService profile to this app's own bundled profile) and connections.md's chooser paragraph. Searched this document for forget/remove, localService, bundled profile and switcher claims: none. Credential custody, authorization and pairing paths it describes are unchanged.","inputs":["docs/guides/agent-configuration.md","src-ui/src/platform/native/stationProfileStorage.ts"]}
+  ]
+}

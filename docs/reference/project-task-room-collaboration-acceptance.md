@@ -10,7 +10,7 @@ for the current authority and Task incarnation.
 When it passes, the lane checks both browsers receive the same server-owned room generation;
 implicit join and durable publication; symmetric named presence; autosave;
 watch/follow fixture commands and local-input stop; exact revision-bound cursor/selection projection; message and
-document convergence over the shared SSE connection; revoked-device access recovery with protected editing and sending controls removed; immutable revision links in Details; and same-home SQLite
+document convergence over the shared SSE connection; revoked-device access recovery with protected editing and sending controls removed; autosaves leaving immutable revision links unrequested; and same-home SQLite
 restoration after a full server restart. Reconnect checks the selected Plan tab
 and converged preview before explicitly reopening the editor. It does not claim
 draft or edit-mode continuity across authority re-verification. After restart,
@@ -58,3 +58,5 @@ The #2892 synthetic command remains smoke evidence only. Reference performance
 is verified only by the named Windows production target and bridge
 described in `interactive-workspace-performance.md`; an absent target or bridge
 is `NOT_VERIFIED`, never a substitute PASS.
+
+The [revision evidence composition suite](../../src-server/services/orchestration/__tests__/project-task-room-revision-evidence-bridge.test.ts) and composed Task Review routes own exact plan-reference freezing. Saving alone no longer publishes an immutable revision link; the [freeze policy](../decisions/revision-evidence-freeze-policy.md) separates those outcomes.

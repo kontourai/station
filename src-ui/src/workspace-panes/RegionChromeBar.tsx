@@ -358,7 +358,7 @@ export function RegionChromeSlotsProvider({
   absorb,
   children,
 }: {
-  slots: Pick<RegionChromeSlots, 'leading' | 'trailing'>;
+  slots: Pick<RegionChromeSlots, 'start' | 'leading' | 'trailing'>;
   chrome: DockShellChrome;
   tabs: readonly RegionChromeTab[];
   selectedSurfaceId: string | undefined;
@@ -384,6 +384,7 @@ export function RegionChromeSlotsProvider({
   // biome-ignore lint/correctness/useExhaustiveDependencies: `signature` is the change key for `actions`
   const value = useMemo<RegionChromeSlots>(
     () => ({
+      start: slots.start,
       leading: slots.leading,
       trailing: slots.trailing,
       regionMenu: {
@@ -398,7 +399,7 @@ export function RegionChromeSlotsProvider({
         absorb,
       },
     }),
-    [slots.leading, slots.trailing, absorb, signature],
+    [slots.start, slots.leading, slots.trailing, absorb, signature],
   );
   return (
     <RegionChromeSlotsContext.Provider value={value}>
@@ -639,6 +640,7 @@ export function RegionChromeBar({
   onMoveTab,
   onAddPane,
   addPaneOpen = false,
+  startSlotRef,
   leadingSlotRef,
   trailingSlotRef,
   onBackToChat,
@@ -659,6 +661,7 @@ export function RegionChromeBar({
   onAddPane?: (trigger: HTMLButtonElement) => void;
   /** Whether the chooser the "+" opens is open — the button's `aria-expanded`. */
   addPaneOpen?: boolean;
+  startSlotRef?: (element: HTMLElement | null) => void;
   leadingSlotRef: (element: HTMLElement | null) => void;
   trailingSlotRef: (element: HTMLElement | null) => void;
   /**
@@ -783,6 +786,7 @@ export function RegionChromeBar({
       data-dock-drag-surface=""
     >
       <div className="chat-dock__title">
+        <span className="chat-dock__pane-toolbar" ref={startSlotRef} />
         {onBackToChat ? (
           <button
             type="button"

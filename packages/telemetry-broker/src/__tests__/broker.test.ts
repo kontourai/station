@@ -46,6 +46,7 @@ const store = {
   revokeSource: vi.fn<ProductRepository['revokeSource']>(),
   receipt: vi.fn<ProductRepository['receipt']>(),
   trends: vi.fn<ProductRepository['trends']>(),
+  incidents: vi.fn(),
   ready: vi.fn<ProductRepository['ready']>(),
 };
 beforeEach(() => {
@@ -287,7 +288,7 @@ describe('bounded receiver admission', () => {
   });
 });
 
-test('anonymous lite and public traffic cannot spend authenticated ingest admission; cached reads perform no storage work', async () => {
+test('anonymous lite and public traffic cannot spend authenticated ingest admission; cached reads reuse aggregate queries', async () => {
   const lite = new LiteRepository(
     async () => {
       throw new BrokerError('source_unauthorized');
@@ -295,6 +296,7 @@ test('anonymous lite and public traffic cannot spend authenticated ingest admiss
     100,
     100,
   );
+  vi.spyOn(lite, 'isPublicationSuppressed').mockResolvedValue(false);
   const reads = vi.spyOn(lite, 'publicAggregates').mockResolvedValue({
     databaseDay: new Date().toISOString().slice(0, 10),
     scope: 'weekly-fixed-domain-marginals',
@@ -345,6 +347,7 @@ test('public cache shares pending reads, retries failures, and refreshes at UTC 
   >((_, reject) => {
     refuse = reject;
   });
+  vi.spyOn(lite, 'isPublicationSuppressed').mockResolvedValue(false);
   const reads = vi
     .spyOn(lite, 'publicAggregates')
     .mockReturnValueOnce(pending)
@@ -449,6 +452,7 @@ test('public reads do not cache a database cutoff behind the receiver day', asyn
     deliveryCoverage: 'unknown',
     cells: [],
   };
+  vi.spyOn(lite, 'isPublicationSuppressed').mockResolvedValue(false);
   const reads = vi
     .spyOn(lite, 'publicAggregates')
     .mockResolvedValueOnce({ ...result, databaseDay: '2000-01-01' })

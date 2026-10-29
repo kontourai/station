@@ -219,6 +219,11 @@ function bootAfterCrash(options: {
    * published anything.
    */
   turnStarted?: boolean;
+  /**
+   * The invocation the service stamps on a dispatched turn's start (codex and
+   * claude starts carry one), which anchors that turn's terminal identity.
+   */
+  startInvocationId?: string;
   /** #3071: events the dying process wrote before `turn-1` started. */
   beforeTurnStarted?: CanonicalRuntimeEvent[];
   /** #3071: events the dying process wrote while `turn-1` was running. */
@@ -262,6 +267,9 @@ function bootAfterCrash(options: {
       provider: options.provider,
       threadId: options.threadId,
       turnId: 'turn-1',
+      ...(options.startInvocationId
+        ? { invocationId: options.startInvocationId }
+        : {}),
       createdAt: '2026-08-16T00:00:01.000Z',
       method: 'turn.started',
       prompt: 'do the thing',
@@ -1578,6 +1586,316 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
     ).toBeUndefined();
   });
 
+  test('closes an invocation-anchored turn, so the conversation is not left waiting on it', async () => {
+    const path = databasePath();
+    const threadId = 'thread-invocation-abort';
+    const eventStore = bootAfterCrash({
+      path,
+      threadId,
+      provider: 'codex',
+      boundaryState: 'accepted',
+      startInvocationId: 'invocation-1',
+    });
+    stores.push(eventStore);
+    const service = new OrchestrationService({
+      adapterRegistry: createRegistry(),
+      eventBus: new EventBus(),
+      eventStore,
+      logger,
+    });
+
+    await (service as any).interruptedTurns.consume();
+
+    const events = eventStore.listEvents(threadId);
+    const abort = events.find((e) => e.payload.method === 'turn.aborted');
+    // Turn-scoped: recovery has no originating request to attribute it to.
+    expect(abort?.payload).toMatchObject({
+      turnId: 'turn-1',
+      recoveryTerminal: true,
+    });
+    expect(abort?.payload.invocationId).toBeUndefined();
+    expect(
+      activeTurnIdForEvents(events.map((row) => row.payload)),
+    ).toBeUndefined();
+    const detail = await service.readSession(
+      threadId,
+      INTERNAL_SESSION_READ_SCOPE,
+    );
+    expect(detail?.session).toMatchObject({
+      lifecycleState: 'needs_input',
+      hasActiveTurn: false,
+    });
+  });
+
+  test.each([
+    { shape: 'plain', earlierUse: 0, steers: 0, captured: false },
+    // The id's earlier use fills a per-turn page ahead of this dispatch.
+    {
+      shape: 'a long earlier use of the id',
+      earlierUse: 70,
+      steers: 0,
+      captured: false,
+    },
+    // Steer starts carry no invocation and land after the reused start.
+    {
+      shape: 'a steer after the reuse',
+      earlierUse: 0,
+      steers: 1,
+      captured: false,
+    },
+    // More starts since the claim than any one page of them.
+    {
+      shape: 'more steers after the reuse than a page',
+      earlierUse: 0,
+      steers: 70,
+      captured: false,
+    },
+    // Only the captured intent names this dispatch's invocation.
+    {
+      shape: 'a captured dispatch whose start has no invocation',
+      earlierUse: 0,
+      steers: 0,
+      captured: true,
+    },
+  ])(
+    'leaves a newer invocation that reuses the dead turn id running ($shape)',
+    async ({ earlierUse, steers, captured }) => {
+      const path = databasePath();
+      const threadId = 'thread-reused-turn-id';
+      const eventStore = bootAfterCrash({
+        path,
+        threadId,
+        provider: 'codex',
+        boundaryState: 'accepted',
+        capturedInput: captured,
+        ...(captured ? {} : { startInvocationId: 'invocation-1' }),
+        beforeTurnStarted: Array.from(
+          { length: earlierUse },
+          (_, index) =>
+            ({
+              eventId: `earlier-use:${index}`,
+              provider: 'codex',
+              threadId,
+              turnId: 'turn-1',
+              invocationId: 'invocation-0',
+              createdAt: '2026-08-16T00:00:00.100Z',
+              method: 'content.text-delta',
+              itemId: 'earlier-item',
+              delta: 'x',
+            }) as CanonicalRuntimeEvent,
+        ),
+      });
+      stores.push(eventStore);
+      // A new owner sent again before recovery ran; the engine reused the id.
+      eventStore.appendEvent({
+        eventId: 'turn-started:reused',
+        provider: 'codex',
+        threadId,
+        turnId: 'turn-1',
+        invocationId: 'invocation-2',
+        createdAt: '2026-08-16T00:00:04.000Z',
+        method: 'turn.started',
+        prompt: 'again',
+      } as CanonicalRuntimeEvent);
+      for (let index = 0; index < steers; index += 1)
+        eventStore.appendEvent({
+          eventId: `turn-started:steer:${index}`,
+          provider: 'codex',
+          threadId,
+          turnId: 'turn-1',
+          createdAt: '2026-08-16T00:00:04.500Z',
+          method: 'turn.started',
+          prompt: 'and this',
+          inputKind: 'steer',
+        } as CanonicalRuntimeEvent);
+      const service = new OrchestrationService({
+        adapterRegistry: createRegistry(),
+        eventBus: new EventBus(),
+        eventStore,
+        logger,
+      });
+
+      await (service as any).interruptedTurns.consume();
+
+      const events = eventStore.listEvents(threadId);
+      expect(events.filter((e) => e.payload.method === 'turn.aborted')).toEqual(
+        [],
+      );
+      expect(activeTurnIdForEvents(events.map((row) => row.payload))).toBe(
+        'turn-1',
+      );
+    },
+  );
+
+  test('a steer of the dead turn does not keep recovery from closing it', async () => {
+    const path = databasePath();
+    const threadId = 'thread-steered-dead-turn';
+    const eventStore = bootAfterCrash({
+      path,
+      threadId,
+      provider: 'codex',
+      boundaryState: 'accepted',
+      startInvocationId: 'invocation-1',
+      duringTurn: [
+        {
+          eventId: 'turn-started:steer',
+          provider: 'codex',
+          threadId,
+          turnId: 'turn-1',
+          createdAt: '2026-08-16T00:00:01.500Z',
+          method: 'turn.started',
+          prompt: 'and this',
+          inputKind: 'steer',
+        } as CanonicalRuntimeEvent,
+      ],
+    });
+    stores.push(eventStore);
+    const service = new OrchestrationService({
+      adapterRegistry: createRegistry(),
+      eventBus: new EventBus(),
+      eventStore,
+      logger,
+    });
+
+    await (service as any).interruptedTurns.consume();
+
+    const events = eventStore.listEvents(threadId);
+    expect(
+      events.filter((e) => e.payload.method === 'turn.aborted'),
+    ).toHaveLength(1);
+    expect(
+      activeTurnIdForEvents(events.map((row) => row.payload)),
+    ).toBeUndefined();
+  });
+
+  test('a newer start without an invocation is no evidence of reuse: the dead turn is closed', async () => {
+    const path = databasePath();
+    const threadId = 'thread-uninvoked-newer-start';
+    const eventStore = bootAfterCrash({
+      path,
+      threadId,
+      provider: 'codex',
+      boundaryState: 'accepted',
+      startInvocationId: 'invocation-1',
+    });
+    stores.push(eventStore);
+    eventStore.appendEvent({
+      eventId: 'turn-started:uninvoked',
+      provider: 'codex',
+      threadId,
+      turnId: 'turn-1',
+      createdAt: '2026-08-16T00:00:04.000Z',
+      method: 'turn.started',
+      metadata: { trigger: 'provider' },
+    } as CanonicalRuntimeEvent);
+    const service = new OrchestrationService({
+      adapterRegistry: createRegistry(),
+      eventBus: new EventBus(),
+      eventStore,
+      logger,
+    });
+
+    await (service as any).interruptedTurns.consume();
+
+    const events = eventStore.listEvents(threadId);
+    expect(
+      events.filter((e) => e.payload.method === 'turn.aborted'),
+    ).toHaveLength(1);
+  });
+
+  test('a recovery abort persisted without an invocationId still closes its invocation-anchored turn', async () => {
+    // The row shape boot recovery wrote before it stamped the invocation:
+    // those conversations read an active turn forever, so every send waited.
+    const path = databasePath();
+    const threadId = 'thread-legacy-recovery-abort';
+    const eventStore = bootAfterCrash({
+      path,
+      threadId,
+      provider: 'codex',
+      boundaryState: 'accepted',
+      startInvocationId: 'invocation-1',
+    });
+    stores.push(eventStore);
+    eventStore.takeInterruptedTurnBoundaries();
+    eventStore.upsertSession({
+      provider: 'codex',
+      threadId,
+      status: 'running',
+      createdAt: '2026-08-16T00:00:00.000Z',
+      updatedAt: '2026-08-16T00:00:02.000Z',
+    });
+    eventStore.appendEvent({
+      eventId: 'turn-interrupted-abort:legacy',
+      provider: 'codex',
+      threadId,
+      turnId: 'turn-1',
+      createdAt: '2026-08-16T00:00:05.000Z',
+      method: 'turn.aborted',
+      reason: TURN_INTERRUPTED_MESSAGE,
+      recoveryTerminal: true,
+    });
+    // The banner recovery writes after the abort. As the thread's latest
+    // lifecycle event it takes the lifecycle slot of the session projection,
+    // so the abort must come from the turn-scoped terminal lookup.
+    eventStore.appendEvent({
+      eventId: 'turn-interrupted:legacy',
+      provider: 'codex',
+      threadId,
+      createdAt: '2026-08-16T00:00:05.000Z',
+      method: 'session.state-changed',
+      sessionId: threadId,
+      from: 'running',
+      to: 'awaiting-approval',
+      reason: TURN_INTERRUPTED_MESSAGE,
+      sessionState: 'needs_input',
+      transitionReason: 'runtime_exit',
+      transitionSource: 'system_recovery',
+      interruptedTurnBoundary: {
+        boundaryId: 'legacy',
+        priorState: 'accepted',
+        providerTurnId: 'turn-1',
+        ownerId: 'dead-owner',
+        boundaryCreatedAt: '2026-08-16T00:00:00.800Z',
+        boundaryUpdatedAt: '2026-08-16T00:00:02.500Z',
+      },
+    } as CanonicalRuntimeEvent);
+    const service = new OrchestrationService({
+      adapterRegistry: createRegistry(),
+      eventBus: new EventBus(),
+      eventStore,
+      logger,
+    });
+
+    expect(
+      activeTurnIdForEvents(
+        eventStore.listEvents(threadId).map((row) => row.payload),
+      ),
+    ).toBeUndefined();
+    // The bounded fact set the conversation-open read folds, and its batched
+    // twin behind the session list and agent runs.
+    expect(
+      activeTurnIdForEvents(
+        eventStore
+          .listSessionProjectionEvents(threadId)
+          .map((row) => row.payload),
+      ),
+    ).toBeUndefined();
+    expect(
+      activeTurnIdForEvents(
+        (
+          eventStore
+            .listSessionProjectionEventsForThreads([threadId])
+            .get(threadId) ?? []
+        ).map((row) => row.payload),
+      ),
+    ).toBeUndefined();
+    const detail = await service.readSession(
+      threadId,
+      INTERNAL_SESSION_READ_SCOPE,
+    );
+    expect(detail?.session.hasActiveTurn).toBe(false);
+  });
+
   describe('#2324: a turn the engine opened on its own', () => {
     const providerStart = (threadId: string): CanonicalRuntimeEvent => ({
       eventId: `provider-start:${threadId}`,
@@ -1644,6 +1962,38 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
       expect(
         eventStore.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
       ).toEqual({ kind: 'available', active: false });
+    });
+
+    test('a dispatch that reused its turn id before recovery ran is left running', async () => {
+      const path = databasePath();
+      const threadId = 'thread-provider-reused';
+      const dying = new EventStore(path);
+      dying.appendEvent(sessionStartedEvent({ threadId, provider: 'claude' }));
+      (serviceOn(dying) as any).projectAndPublishEvent(providerStart(threadId));
+      dying.close();
+
+      const eventStore = new EventStore(path);
+      stores.push(eventStore);
+      // A new owner sent before recovery ran, and the engine reused the id.
+      eventStore.appendEvent({
+        eventId: 'turn-started:reused',
+        provider: 'claude',
+        threadId,
+        turnId: 'provider:turn-1',
+        invocationId: 'invocation-2',
+        createdAt: '2026-08-16T00:00:04.000Z',
+        method: 'turn.started',
+        prompt: 'again',
+      } as CanonicalRuntimeEvent);
+      await (serviceOn(eventStore) as any).interruptedTurns.consume();
+
+      const events = eventStore.listEvents(threadId);
+      expect(events.filter((e) => e.payload.method === 'turn.aborted')).toEqual(
+        [],
+      );
+      expect(activeTurnIdForEvents(events.map((row) => row.payload))).toBe(
+        'provider:turn-1',
+      );
     });
 
     test('L4: a send queued behind it when the process died (accepted, never started) still gets its terminal and banner', async () => {

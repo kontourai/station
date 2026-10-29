@@ -1,3 +1,7 @@
+import type {
+  ProjectChatApprovalPosture,
+  ProjectChatDefaultSelection,
+} from '@kontourai/station-contracts/project-chat-defaults';
 import type { ProjectConfig } from '../../contexts/ProjectsContext';
 
 /**
@@ -28,6 +32,11 @@ export type ProjectForm = Pick<
   | 'toolDefaults'
 > & {
   defaultWorkspaceIsolation: ProjectWorkspaceIsolationChoice;
+  /** `fixed` is also what an absent stored value means. */
+  defaultModelSelection: ProjectChatDefaultSelection;
+  defaultApprovalModeSelection: ProjectChatDefaultSelection;
+  /** `'inherit'`: the Project sets no approval mode (stored as absent). */
+  defaultApprovalMode: ProjectChatApprovalPosture | 'inherit';
 };
 
 export interface DocMeta {

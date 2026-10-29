@@ -1,12 +1,14 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { createElicitationCallback } from '../../../runtime/conversation/stream-orchestrator.js';
 import { isCardAlerted } from '../../notifications/delivery/card-alerted-categories.js';
 import { NotificationService } from '../../notifications/notification-service.js';
 import { EventBus } from '../../orchestration/event-bus.js';
 import type { OrchestrationService } from '../../orchestration/orchestration-service.js';
+import { RequestEventGuardError } from '../../orchestration/request-inspection.js';
 import { AttentionProjectionService } from '../../projects/attention-projection.js';
 import {
   ApprovalInboxNotificationProvider,
@@ -62,6 +64,7 @@ describe('approval inbox notifications', () => {
     | 'isReadOnlyAttachedSession'
     | 'readRequestOutcome'
     | 'resolveSessionProjectSlug'
+    | 'readApprovalContentBinding'
   >;
   let provider: ApprovalInboxNotificationProvider;
 
@@ -111,6 +114,25 @@ describe('approval inbox notifications', () => {
       isEphemeralSession: vi
         .fn<OrchestrationService['isEphemeralSession']>()
         .mockReturnValue(false),
+      // A stored request with nothing spilled: Allow is offered.
+      readApprovalContentBinding: vi
+        .fn<OrchestrationService['readApprovalContentBinding']>()
+        .mockImplementation((threadId, requestId) => ({
+          requestEventId: `event-${requestId}`,
+          request: {
+            eventId: `event-${requestId}`,
+            provider: 'codex',
+            threadId,
+            createdAt: new Date().toISOString(),
+            method: 'request.opened',
+            requestId,
+            requestType: 'approval',
+            title: 'Needs approval',
+          },
+          bound: [],
+          required: false,
+          viewedContentDigest: `sha256-${'0'.repeat(64)}`,
+        })),
     };
     provider = new ApprovalInboxNotificationProvider({
       approvalRegistry,
@@ -164,6 +186,177 @@ describe('approval inbox notifications', () => {
       requestId: 'req-1',
       decision: 'acceptForSession',
     });
+  });
+
+  // docs/design/event-content-spill.md: a request whose gated call holds
+  // spilled content (a Codex file change's diff) must be loaded before it
+  // is allowed, so its card offers only Deny; opening it is the review.
+  const fileChangeRequest = {
+    createdAt: new Date().toISOString(),
+    eventId: 'event-fc',
+    method: 'request.opened' as const,
+    payload: { itemId: 'item-fc', threadId: 'codex-thread' },
+    provider: 'codex',
+    requestId: 'req-fc',
+    requestType: 'approval' as const,
+    threadId: 'thread-fc',
+    title: 'Approve file changes',
+  };
+  const needsLoad = () =>
+    vi
+      .mocked(orchestrationService.readApprovalContentBinding)
+      .mockImplementation(() => ({
+        requestEventId: 'event-fc',
+        request: fileChangeRequest,
+        bound: [],
+        required: true,
+        viewedContentDigest: `sha256-${'d'.repeat(64)}`,
+      }));
+  const cardLabels = async () =>
+    (await notificationService.list())[0]!.actions?.map(
+      (action) => action.label,
+    );
+  // What an open client is told: the action lists of every
+  // `notification:updated` the bus carried, in order.
+  const updatedActionLabels = () => {
+    const seen: string[][] = [];
+    bus.subscribe((message) => {
+      if (message.event !== SERVER_EVENTS.NOTIFICATION_UPDATED) return;
+      const actions = (message.data as { actions?: { label: string }[] })
+        ?.actions;
+      seen.push((actions ?? []).map((action) => action.label));
+    });
+    return seen;
+  };
+
+  test('offers only Deny when the request cannot be read back', async () => {
+    vi.mocked(orchestrationService.readApprovalContentBinding).mockReturnValue(
+      null,
+    );
+    await emit('orchestration:event', { event: fileChangeRequest });
+    expect(await cardLabels()).toEqual(['Deny']);
+  });
+
+  test('a spilled bound call that arrives later turns the card into Deny only', async () => {
+    await emit('orchestration:event', { event: fileChangeRequest });
+    expect(await cardLabels()).toContain('Allow Once');
+    const updates = updatedActionLabels();
+    needsLoad();
+    // A call this request does not gate changes nothing.
+    await emit('orchestration:event', {
+      event: {
+        eventId: 'start-other',
+        provider: 'codex',
+        threadId: 'thread-fc',
+        createdAt: new Date().toISOString(),
+        method: 'tool.started',
+        toolCallId: 'item-other',
+        toolName: 'apply_patch',
+        spilledContent: { v: 1, count: 1, bytes: 40_000 },
+      },
+    });
+    expect(await cardLabels()).toContain('Allow Once');
+    await emit('orchestration:event', {
+      event: {
+        eventId: 'start-fc',
+        provider: 'codex',
+        threadId: 'thread-fc',
+        createdAt: new Date().toISOString(),
+        method: 'tool.started',
+        toolCallId: 'item-fc',
+        itemId: 'item-fc',
+        toolName: 'apply_patch',
+        spilledContent: { v: 1, count: 1, bytes: 40_000 },
+      },
+    });
+    expect(await cardLabels()).toEqual(['Deny']);
+    // Open clients are told, so none keeps showing Allow.
+    expect(updates).toEqual([['Deny']]);
+  });
+
+  test('an allow the server refuses for unloaded content leaves the card offering only Deny', async () => {
+    await emit('orchestration:event', { event: fileChangeRequest });
+    const [card] = await notificationService.list();
+    const updates = updatedActionLabels();
+    needsLoad();
+    vi.mocked(orchestrationService.dispatch).mockRejectedValueOnce(
+      new RequestEventGuardError(
+        'request_content_not_loaded',
+        'Load the full request before allowing it.',
+      ),
+    );
+    await expect(
+      notificationService.action(card!.id, 'accept'),
+    ).rejects.toMatchObject({ code: 'request_content_not_loaded' });
+    expect(await cardLabels()).toEqual(['Deny']);
+    expect(updates).toEqual([['Deny']]);
+    // Still answerable: Deny goes through.
+    await notificationService.action(card!.id, 'decline');
+    expect(orchestrationService.dispatch).toHaveBeenLastCalledWith(
+      expect.objectContaining({ requestId: 'req-fc', decision: 'decline' }),
+    );
+  });
+
+  test('a refusal for another reason does not rewrite the card', async () => {
+    await emit('orchestration:event', { event: fileChangeRequest });
+    const [card] = await notificationService.list();
+    // The binding would call for a load: only the refusal's code decides.
+    needsLoad();
+    vi.mocked(orchestrationService.dispatch).mockRejectedValueOnce(
+      new RequestEventGuardError(
+        'request_event_changed',
+        'The request changed since it was shown.',
+      ),
+    );
+    await expect(
+      notificationService.action(card!.id, 'accept'),
+    ).rejects.toMatchObject({ code: 'request_event_changed' });
+    expect(await cardLabels()).toContain('Allow Once');
+  });
+
+  test('a rewrite that races the request settling does not re-register the card', async () => {
+    await emit('orchestration:event', { event: fileChangeRequest });
+    const [card] = await notificationService.list();
+    // Settled elsewhere between the binding read and the rewrite.
+    await notificationService.markStatus(card!.id, 'actioned');
+    needsLoad();
+    const remember = vi.spyOn(provider, 'remember');
+    await emit('orchestration:event', {
+      event: {
+        eventId: 'start-fc',
+        provider: 'codex',
+        threadId: 'thread-fc',
+        createdAt: new Date().toISOString(),
+        method: 'tool.started',
+        toolCallId: 'item-fc',
+        itemId: 'item-fc',
+        toolName: 'apply_patch',
+        spilledContent: { v: 1, count: 1, bytes: 40_000 },
+      },
+    });
+    expect(remember).not.toHaveBeenCalled();
+  });
+
+  test('offers only Deny when the server binding needs a content load', async () => {
+    needsLoad();
+    emit('orchestration:event', {
+      event: {
+        createdAt: new Date().toISOString(),
+        eventId: 'event-fc',
+        method: 'request.opened',
+        payload: { itemId: 'item-fc', threadId: 'codex-thread' },
+        provider: 'codex',
+        requestId: 'req-fc',
+        requestType: 'approval',
+        threadId: 'thread-fc',
+        title: 'Approve file changes',
+      },
+    });
+    await vi.waitFor(async () =>
+      expect(await notificationService.list()).toHaveLength(1),
+    );
+    const [card] = await notificationService.list();
+    expect(card!.actions?.map((action) => action.label)).toEqual(['Deny']);
   });
 
   describe('the Station browser server grant', () => {

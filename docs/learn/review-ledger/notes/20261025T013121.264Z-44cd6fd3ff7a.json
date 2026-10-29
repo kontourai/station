@@ -1,0 +1,7 @@
+{
+  "revision": "38babbb1491f13e2bb2fdf1ebd467d133312d843",
+
+  "notes": [
+    {"path":"docs/design/README.md","note":"Reviewed the generated design index after docs:index added the precommitted Walkthroughs design. The new link resolves to docs/design/walkthroughs.md; headings and other design entries are unchanged. This is index/link evidence only, with no runtime or delivery qualification.","inputs":["docs/design/README.md"]}
+  ]
+}

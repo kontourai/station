@@ -1,0 +1,13 @@
+{
+  "revision": "0fe0a4418000028a80c6b0b19783af6efb6f989d",
+
+  "notes": [
+    {"path":"docs/guides/feature-previews.md","note":"Source-only no-prose-change review after main integration: inspected station-runtime analytics activation binding, retained analyticsMaintenance callback and health-cycle expiry, alongside the existing fleet preview bind/select owner. Telemetry additions do not alter the documented registry default-off choice, fleet probe consumer, authorization distinction or preview promotion contract. No browser or release qualification inferred.","inputs":["docs/guides/feature-previews.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Source-only no-prose-change review: compared the settings Feature previews/device Developer tools/About claims with the station-runtime branch delta. Analytics activation and sync-outbox maintenance add no Settings destination or preview registry choice and do not change the existing controls. Existing mounted Personal Insights and telemetry setup are documented in monitoring; no current visual acceptance inferred.","inputs":["docs/user/settings.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/local-speech.md","note":"Source-only no-prose-change review: inspected station-home-archive restore/update rollback delta and the media-tools path ownership. The new negative analytics recovery fence is persisted before copied authority replacement; it preserves live/external roots and does not change exclusion of reacquirable media-tools downloads, retained import/transcript product state, or consent-required reacquisition. Local-media preview/transcriber owners remain unchanged. No restore/runtime/native evidence inferred.","inputs":["docs/guides/local-speech.md","packages/shared/src/station-home-archive.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"Source-only no-prose-change review: inspected runtime-routes composition delta and runtime-http security/body-budget delta against the guide's preview, personal-host dependency, Project authority, exact streaming-upload and refusal claims. Added analytics enrollment/companion routes, analytics-grant authentication and exact query/outcomes read-only POST exemptions do not touch walkthroughImportDependencies, its media upload paths, preview selectors, streaming bounds or publication recheck. Existing hosted/package qualification limits retained.","inputs":["docs/guides/walkthroughs.md","src-server/runtime/routes/runtime-routes.ts","src-server/runtime/bootstrap/runtime-http.ts"]}
+  ]
+}

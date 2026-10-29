@@ -1,0 +1,33 @@
+{
+  "revision": "508a2b7e67de5652664e27e7f35d385fcf6d6bd6",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Round 2 recheck: module-map.md changed one sentence in the delegated-results paragraph (every transition row, settled or interrupted, is the consumption record shared with get_task). This page makes no claim about delegated result rows or their consumption, so it stays accurate.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Round 2 recheck: module-map.md changed one sentence in the delegated-results paragraph (every transition row, settled or interrupted, is the consumption record shared with get_task). This page makes no claim about delegated result rows or their consumption, so it stays accurate.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"Round 2 recheck: module-map.md changed one sentence in the delegated-results paragraph (every transition row, settled or interrupted, is the consumption record shared with get_task). This page makes no claim about delegated result rows or their consumption, so it stays accurate.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Round 2 recheck: module-map.md changed one sentence in the delegated-results paragraph (every transition row, settled or interrupted, is the consumption record shared with get_task). This page makes no claim about delegated result rows or their consumption, so it stays accurate.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Round 2 recheck: module-map.md changed one sentence in the delegated-results paragraph (every transition row, settled or interrupted, is the consumption record shared with get_task). This page makes no claim about delegated result rows or their consumption, so it stays accurate.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Round 2 recheck: module-map.md changed one sentence in the delegated-results paragraph (every transition row, settled or interrupted, is the consumption record shared with get_task). This page makes no claim about delegated result rows or their consumption, so it stays accurate.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/glossary.md","note":"Round 2 recheck: module-map.md changed one sentence in the delegated-results paragraph (every transition row, settled or interrupted, is the consumption record shared with get_task). This page makes no claim about delegated result rows or their consumption, so it stays accurate.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Round 2 recheck: module-map.md changed one sentence in the delegated-results paragraph (every transition row, settled or interrupted, is the consumption record shared with get_task). This page makes no claim about delegated result rows or their consumption, so it stays accurate.","inputs":["docs/guides/self-configuring-agent.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Round 2 recheck: module-map.md changed one sentence in the delegated-results paragraph (every transition row, settled or interrupted, is the consumption record shared with get_task). This page makes no claim about delegated result rows or their consumption, so it stays accurate.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Round 2 recheck: module-map.md changed one sentence in the delegated-results paragraph (every transition row, settled or interrupted, is the consumption record shared with get_task). This page makes no claim about delegated result rows or their consumption, so it stays accurate.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/concepts.md","note":"Round 2 recheck: module-map.md changed one sentence in the delegated-results paragraph (every transition row, settled or interrupted, is the consumption record shared with get_task). This page makes no claim about delegated result rows or their consumption, so it stays accurate.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Round 2 recheck: module-map.md changed one sentence in the delegated-results paragraph (every transition row, settled or interrupted, is the consumption record shared with get_task). This page makes no claim about delegated result rows or their consumption, so it stays accurate.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Round 2 recheck: module-map.md changed one sentence in the delegated-results paragraph (every transition row, settled or interrupted, is the consumption record shared with get_task). This page makes no claim about delegated result rows or their consumption, so it stays accurate.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Round 2 recheck: module-map.md changed one sentence in the delegated-results paragraph (every transition row, settled or interrupted, is the consumption record shared with get_task). This page makes no claim about delegated result rows or their consumption, so it stays accurate.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}

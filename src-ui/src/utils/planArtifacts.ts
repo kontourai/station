@@ -1,3 +1,7 @@
+import {
+  hasRuntimeEventContentRefs,
+  runtimeEventContentDisplayText,
+} from '@kontourai/station-contracts/runtime-event-content';
 import type {
   ChatMessage,
   ChatUIState,
@@ -16,6 +20,37 @@ export interface PlanArtifact {
   rawText: string;
   steps: PlanArtifactStep[];
   updatedAt: string;
+  /** A canonical plan whose entries (or an entry's text) are stored out of
+   * line: what "Load full content" resolves (docs/design/event-content-spill.md). */
+  spilled?: { threadId: string; entries: unknown };
+}
+
+/**
+ * The typed artifact for a canonical `plan.updated`. Entries may be a
+ * reference to the whole list or carry referenced text; either shows as its
+ * marked preview until loaded, and `spilled` records what to load.
+ */
+export function canonicalPlanArtifact(
+  entries: unknown,
+  updatedAt: string,
+  threadId?: string,
+): PlanArtifact {
+  const list = Array.isArray(entries) ? entries : undefined;
+  const steps = (list ?? []).map((entry) => ({
+    content: runtimeEventContentDisplayText(entry?.content) ?? '',
+    status: entry?.status,
+  }));
+  return {
+    source: 'canonical',
+    rawText: list
+      ? steps.map((step) => step.content).join('\n')
+      : (runtimeEventContentDisplayText(entries) ?? ''),
+    steps,
+    updatedAt,
+    ...(threadId && hasRuntimeEventContentRefs(entries)
+      ? { spilled: { threadId, entries } }
+      : {}),
+  };
 }
 
 const LINE_STATUS_PATTERNS: Array<{

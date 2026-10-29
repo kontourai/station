@@ -53,10 +53,9 @@ describe('#2081 — the turn actions trigger closes its own menu', () => {
     // helper's `act()` flush landing the dismissal before the click: delete
     // that one line and this test passes against the restored defect, because
     // the click then closes over a stale `open` and the re-open never happens.
-    // The reviewer showed the same removal also disarms
-    // `ProjectSidebarFooter.test.tsx`'s pointer test, 33/33 green against the
-    // presence tray's own defect — so a one-line tidy in a helper now serving
-    // three suites could silently retire two regressions.
+    // The reviewer showed the same removal also disarmed the (since removed)
+    // presence tray's pointer test, so a one-line tidy in a shared helper
+    // could silently retire more than one regression.
     //
     // Asserting BETWEEN the press and the release removes that dependency. The
     // press dismissing the menu is true of the browser whenever it happens, and

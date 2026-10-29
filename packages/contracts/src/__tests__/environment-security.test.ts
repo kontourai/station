@@ -18,6 +18,7 @@ import {
   PAIRING_SCOPE_ORCHESTRATION_OPERATE,
   PAIRING_SCOPE_ORCHESTRATION_READ,
   PAIRING_SCOPE_PRESETS,
+  PAIRING_SCOPE_TELEMETRY_MANAGE,
   PAIRING_SCOPE_TERMINAL_OPERATE,
   PAIRING_SCOPES,
   type PairingScope,
@@ -417,6 +418,20 @@ describe('scoped pairing (station#1098)', () => {
     for (const scopes of Object.values(PAIRING_SCOPE_PRESETS)) {
       expect(scopes).not.toContain(PAIRING_SCOPE_HOME_CONTROL);
     }
+  });
+
+  test('companion management requires operator promotion and cannot be requested at pairing or inherited from defaults', () => {
+    expect(PAIRING_SCOPE_GRANT_PATHS[PAIRING_SCOPE_TELEMETRY_MANAGE]).toEqual([
+      'operator-promotion',
+    ]);
+    expect(parsePairingScope(DEFAULT_GRANT_PAIRING_SCOPE)).not.toContain(
+      PAIRING_SCOPE_TELEMETRY_MANAGE,
+    );
+    for (const scopes of Object.values(PAIRING_SCOPE_PRESETS))
+      expect(scopes).not.toContain(PAIRING_SCOPE_TELEMETRY_MANAGE);
+    expect(isDeviceRequestableScope(PAIRING_SCOPE_TELEMETRY_MANAGE)).toBe(
+      false,
+    );
   });
 
   test('old-peer compatibility: a client built against the four-token vocabulary still parses the default grant', () => {

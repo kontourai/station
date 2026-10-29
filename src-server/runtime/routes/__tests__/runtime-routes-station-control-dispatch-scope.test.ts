@@ -1896,6 +1896,9 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
       setApprovalMode: 'connection-default',
       setApprovalModeBasedOn: null,
     },
+    // A person's approval hint (`recordPersonalApprovalDefault`): an agent's
+    // dispatch carries no person's default.
+    'personalApprovalDefault (auto)': { personalApprovalDefault: 'auto' },
   };
   const NEW_IN_P = { agent: 'writer', workspace: P };
   const DELEGATION = {

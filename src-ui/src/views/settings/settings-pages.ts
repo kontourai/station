@@ -22,7 +22,7 @@ export const SETTINGS_PAGES = [
   {
     id: 'devices',
     title: 'Devices',
-    sections: ['pairing', 'device-hosts', 'people'],
+    sections: ['pairing', 'station-routes', 'device-hosts', 'people'],
   },
   {
     id: 'privacy',
@@ -42,6 +42,7 @@ export const SETTINGS_PAGES = [
       'developer-tools',
     ],
   },
+  { id: 'about', title: 'About', sections: ['about'] },
 ] as const satisfies readonly {
   id: string;
   title: string;

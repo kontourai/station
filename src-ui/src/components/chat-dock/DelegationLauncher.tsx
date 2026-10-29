@@ -80,31 +80,31 @@ type TargetOption = {
  * controller-side offer query exists — the Station confirms on submit.
  */
 const PORTABLE_IDENTITY_NOTICE =
-  'Checking this Project\u2019s portable identity before placing it on the selected Station.';
+  'Checking this Project\u2019s portable identity\u2026';
 const PORTABLE_IDENTITY_MISSING_NOTICE =
-  'This Project has no portable identity on this Station, so it cannot be placed on a paired Station. Its prompt, Project and Station choice are kept.';
+  'This Project has no portable identity, so it can\u2019t be placed on a paired Station.';
 const PORTABLE_IDENTITY_SETUP_GUIDANCE =
   'Prepare one explicitly with `station projects prepare-identity <slug>` and choose its execution resource with `station projects execution-root <slug> --repo-id=<resource-id> --path=<relative-path>`, then retry. Attaching a copy elsewhere is a separate explicit step (`station projects attach`).';
 const PORTABLE_RESOURCE_MISSING_NOTICE =
-  'This Project\u2019s portable identity declares no executable resource, so there is nothing to place on the selected Station yet.';
+  'This Project\u2019s portable identity declares no executable resource to place.';
 const PORTABLE_RESOURCE_CHOICE_NOTICE =
   'Choose which Project resource to place on the selected Station.';
 const PORTABLE_SSH_UNSUPPORTED_NOTICE =
   'This Project can\u2019t be placed on an SSH Station in this flow.';
 const PORTABLE_SSH_UNSUPPORTED_GUIDANCE =
-  'Choose a paired Station to place this Project, or This Station to run it here. The prompt and Project choice are kept.';
+  'Choose a paired Station, or This Station to run it here.';
 const PORTABLE_IDENTITY_DENIED_NOTICE =
   'This Station refused to share this Project\u2019s placement details.';
 const PORTABLE_IDENTITY_DENIED_GUIDANCE =
-  'Check access and retry \u2014 nothing was sent and the prompt, Project and Station choice are kept.';
+  'Nothing was sent. Check access and retry.';
 const PORTABLE_IDENTITY_UNAVAILABLE_NOTICE =
   'This Project\u2019s placement details couldn\u2019t be loaded.';
 const PORTABLE_IDENTITY_UNAVAILABLE_GUIDANCE =
-  'Retry when ready \u2014 nothing was sent and the prompt, Project and Station choice are kept.';
+  'Nothing was sent. Retry when ready.';
 const PORTABLE_OFFER_UNVERIFIED_NOTICE =
-  'Offer not verified from here \u2014 the selected Station confirms whether it currently offers this Project resource when the task is submitted.';
+  'Offer not verified from here; the selected Station confirms it on submit.';
 const PORTABLE_IDENTITY_STALE_INCARNATION_NOTICE =
-  'This Project changed on this Station since its placement details were opened. Nothing was sent; retry to load the current Project.';
+  'This Project changed since its placement details loaded. Nothing was sent; retry.';
 const PORTABLE_AUTHORITY_STALE_NOTICE =
   'Station access changed before the task could start. The draft is kept; choose the Station again and retry.';
 

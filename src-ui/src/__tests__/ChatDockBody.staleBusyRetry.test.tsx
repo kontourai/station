@@ -41,6 +41,7 @@ const realControlsMock = vi.hoisted(() => ({ enabled: false }));
 const steerOrchestrationTurnMock = vi.hoisted(() => vi.fn());
 const addEphemeralMessageMock = vi.hoisted(() => vi.fn());
 const cancelTurnMock = vi.hoisted(() => vi.fn());
+const handleSendMock = vi.hoisted(() => vi.fn(async () => {}));
 
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
@@ -210,7 +211,7 @@ function buildChatInput() {
     commandQuery: null,
     slashCommands: [],
     handleInputChange: vi.fn(),
-    handleSend: vi.fn(async () => {}),
+    handleSend: handleSendMock,
     handleCancel: cancelTurnMock,
     handleClearInput: vi.fn(),
     handleAddAttachments: vi.fn(),
@@ -308,6 +309,7 @@ describe('ChatDockBody stale busy wait', () => {
     steerOrchestrationTurnMock.mockReset();
     addEphemeralMessageMock.mockReset();
     cancelTurnMock.mockReset();
+    handleSendMock.mockClear();
   });
 
   // A refused steer is a send that did not go: the short-dock composer line
@@ -386,7 +388,9 @@ describe('ChatDockBody stale busy wait', () => {
     expect(onRetryConversationOpen).toHaveBeenCalledOnce();
   });
 
-  test('a live wait keeps draft-only with no Check again', async () => {
+  // A chat reopened mid-turn resolves `busy`, but its open turn is live: the
+  // composer takes Steer or Queue as it does in the tab that started the turn.
+  test('a live wait leaves Send enabled with no Check again', async () => {
     renderDock({
       session: buildSession({
         status: 'sending',
@@ -395,6 +399,8 @@ describe('ChatDockBody stale busy wait', () => {
     });
     await waitFor(() => expect(chatInputPropsMock.current).not.toBeNull());
     expect(chatInputPropsMock.current?.turnInFlight).toBe(true);
+    expect(chatInputPropsMock.current?.disabled).toBe(false);
+    expect(chatInputPropsMock.current?.allowDraftWhileDisabled).toBe(false);
     expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull();
   });
 
@@ -423,7 +429,7 @@ describe('ChatDockBody stale busy wait', () => {
     ).toBeTruthy();
   });
 
-  test('the live wait still promises drafting', async () => {
+  test('the live wait sends the draft into the open turn', async () => {
     realControlsMock.enabled = true;
     renderDock({
       session: buildSession({
@@ -432,9 +438,17 @@ describe('ChatDockBody stale busy wait', () => {
       }),
     });
     expect(
-      await screen.findByPlaceholderText(
-        'Draft a follow-up while this turn finishes…',
-      ),
+      await screen.findByPlaceholderText('Queue a follow-up…'),
     ).toBeTruthy();
+    const send = screen.getByRole('button', { name: 'Send' });
+    expect(send.hasAttribute('disabled')).toBe(false);
+    await act(async () => {
+      fireEvent.click(send);
+    });
+    expect(handleSendMock).toHaveBeenCalledWith(
+      undefined,
+      undefined,
+      expect.objectContaining({ queueOnBusy: true }),
+    );
   });
 });

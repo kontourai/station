@@ -1,0 +1,7 @@
+{
+  "revision": "84160f75fc31caabceeabd3852e04826d12e4f6c",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Reviewed the receiving-source ActionRow change through the mounted setup controls: review and empty-storage preparation remain visible, while More source actions retains Stop receiving source. The named actions and authority semantics remain unchanged, so no prose change is needed. The cap gate, five user-action tests and UI typecheck passed; the prior layout failed the new menu control and exact restoration passed. No responsive/theme, native or real two-Station qualification is inferred.","inputs":["docs/guides/monitoring.md","src-ui/src/components/monitoring/AnalyticsSourceSetup.tsx"]}
+  ]
+}

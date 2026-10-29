@@ -254,7 +254,6 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--k-space-3) var(--k-space-2);
-  margin-top: var(--k-space-3);
 }
 
 .appearance-accent__row {

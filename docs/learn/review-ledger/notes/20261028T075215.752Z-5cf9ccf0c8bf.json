@@ -1,0 +1,7 @@
+{
+  "revision": "a460a407fb2c3486e7d9c240d36c5691e40ec663",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Re-reviewed after connections.md gained the startup-identification disclosure. This guide does not describe forgetting saved Stations; no claim changes.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md","src-ui/src/platform/native/stationProfileStorage.ts"]}
+  ]
+}

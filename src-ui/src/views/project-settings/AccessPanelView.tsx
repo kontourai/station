@@ -164,7 +164,7 @@ export function AccessPanelView({
                     member.status === 'active'
                       ? 'Revoke Project access?'
                       : 'Restore Project access?',
-                  message: `${member.principal.display}'s Project membership will change. Their account and device grants will remain separate.`,
+                  message: `Only ${member.principal.display}'s Project membership changes; their account and device access don't.`,
                   command: stamp({
                     kind: 'change-member',
                     scope: view.scope,
@@ -207,7 +207,7 @@ export function AccessPanelView({
     <PageSection
       id="section-access"
       title="People and access"
-      description="Manage who can participate in this Project. Device access and computer contributions are managed separately."
+      description="Who can participate in this Project."
     >
       {readOnly && (
         <p role="note" className="project-access__read-only">

@@ -7,6 +7,7 @@ import {
   engineSpawnTmpDirPath,
   reapEngineSpawnTmpDir,
 } from '../../services/infra/engine-spawn-tmpdir.js';
+import { reapStaleSessionTmpDirs } from '../../services/infra/session-tmpdir.js';
 import { checkPluginUpdates } from '../../services/plugins/plugin-update-check.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { resolveHomeDir } from '../../utils/paths.js';
@@ -111,6 +112,8 @@ export function scheduleRuntimeEngineSpawnTmpReaping(
         // gone (from boot, and on the same schedule), whether or not the
         // sweep above failed.
         reapStaleSeatbeltSessionDirs(resolveHomeDir());
+        // Per-session engine TMPDIRs (chat-host-images) a crashed Station left.
+        reapStaleSessionTmpDirs(resolveHomeDir());
       }
     });
   const runReap = () => {

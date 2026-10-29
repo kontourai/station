@@ -1717,6 +1717,40 @@ describe('claude-adapter-events — top-level tool_use / tool_result mapping', (
 });
 
 describe('station#1182 — claude-adapter-events runtime-reported model', () => {
+  test('binds completion to the SDK result identity rather than the mutable Session cursor', () => {
+    const messages: SDKMessage[] = readFileSync(
+      new URL(
+        './fixtures/claude-2.1.296-skill-invocation-local.jsonl',
+        import.meta.url,
+      ),
+      'utf8',
+    )
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+    const result = messages.find((message) => message.type === 'result');
+    if (!result)
+      throw new Error('The captured SDK fixture has no terminal result.');
+    const record = makeRecord({ nativeOwnershipBindingKey: 'a'.repeat(64) });
+    record.session.resumeCursor = 'later-rebound-native';
+    const events: CanonicalRuntimeEvent[] = [];
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish: (event) => events.push(event),
+      message: { ...result, session_id: 'native-result-identity' },
+    });
+    expect(
+      events.find((event) => event.method === 'turn.completed'),
+    ).toMatchObject({
+      turnId: 'turn-1',
+      metadata: {
+        nativeTurnIdentityKey:
+          '3799a900a7fe24ddad7fd701aa8ec9b22c99bf43a75c7a58a746ee5b0ab465a7',
+      },
+    });
+  });
+
   test('captures message.message.model off a top-level assistant message and carries it onto turn.completed as reportedModel — distinct from the requested/init model', () => {
     const publish = vi.fn();
     // The init message (session.configured) reports the REQUESTED alias —

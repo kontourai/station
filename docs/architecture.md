@@ -121,12 +121,24 @@ PostgreSQL store returns a commit receipt for retained source/event identities.
 This optional product path does not feed canonical EventStore accounting or
 establish collector delivery. Settings health describes the current process;
 connection checks do not substitute for an accepted observation or downstream
-query. Personal analytics continues to consume canonical usage receipts.
+query. Personal analytics consumes canonical usage receipts through separate
+verified-person source consent, encrypted receiving custody and explicit sync.
+Bounded indexes/summaries and saved Personal views reuse those current-source
+checks. Operator product incident reports expose retained build/classification
+cohorts; local drafts/references neither reveal private source identity nor
+publish externally. Normal restore and update rollback invalidate copied private
+grants/keys through an activation fence, not through generic stream identity.
+These source boundaries do not establish deployed/native or release qualification;
+see [monitoring](guides/monitoring.md).
 
-Terminal and voice use dedicated WebSocket listeners and are not represented
-by the HTTP/SSE arrow. Browser/Device frames use a binary HTTP stream. A
-same-origin UI/API proxy does not by itself expose the dedicated socket ports;
-transport-specific configuration and platform qualification remain necessary.
+The legacy Coding terminal and voice use dedicated WebSocket listeners and are
+not represented by the HTTP/SSE arrow. The additive personal-operator terminal
+gateway uses `/api/terminal/socket` on the API listener; the SDK/Coding cutover
+and relay/broker admission remain pending under
+[the terminal transport boundary](design/terminal.md#transport-implementation-boundary-3994-part-b1).
+Browser/Device frames use a binary HTTP stream. A same-origin UI/API proxy does
+not by itself expose dedicated socket ports or bridge upgrades; each route
+still needs transport configuration and platform qualification.
 
 ### Station-engine chat topology
 

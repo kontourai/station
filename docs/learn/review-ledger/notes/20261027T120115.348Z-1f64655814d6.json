@@ -1,0 +1,7 @@
+{
+  "revision": "fab49d88288cab5a78cddf6fe57fd411b398a11f",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Reviewed only the committed fence-HTTP fixture cleanup correction after readiness exposed raw temporary-directory ratchet growth. The existing trackTempDirs helper now guarantees after-test cleanup without altering HTTP fixtures, exact ownership/digest validation, expected statuses, or deletion counts. Release flow, source versus artifact evidence, cadence and immutable promotion claims remain accurate. Executed 38 affected script assertions, script types and the real verification policy gate; no raw-temp baseline or production change.","inputs":["docs/guides/releasing.md","scripts/__tests__/native-release-promotion.test.ts"]}
+  ]
+}

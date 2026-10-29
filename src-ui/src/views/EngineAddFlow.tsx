@@ -148,7 +148,7 @@ function EngineAddCatalog({
         <Empty
           variant="prominent"
           label="Every supported engine is already listed"
-          description="Detected apps and commands that are ready appear in the main list automatically. Connect a custom command below, or install another supported app and reopen this catalog."
+          description="Connect a custom command below, or install another supported app."
         />
       )}
       <ul className="engine-catalog__list" aria-label="Engines to add">

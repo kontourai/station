@@ -11,6 +11,7 @@ import {
 import { AUTH_RATE_LIMITED_ERROR_CODE } from './http.js';
 import {
   APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
+  CONVERSATION_CONTEXT_UNAVAILABLE_CODE,
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
 } from './orchestration.js';
 import { PRINCIPAL_UNRESOLVED_CODE } from './principal.js';
@@ -23,6 +24,7 @@ import {
   CLIENT_TURN_IN_FLIGHT_CODE,
   CLIENT_TURN_INPUT_CONFLICT_CODE,
   CLIENT_TURN_INPUT_UNSUPPORTED_CODE,
+  ENGINE_MEMORY_EXHAUSTED_CODE,
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_SIGN_IN_REQUIRED_CODE,
   ENGINE_TURN_FAILED_CODE,
@@ -43,6 +45,7 @@ import {
   PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
   SESSION_REATTACH_CONFLICT_CODE,
+  WORKLOAD_COMMAND_OOM_KILLED_CODE,
 } from './provider.js';
 import { SESSION_ENDED_REJECTION_CODE } from './session-lifecycle.js';
 
@@ -151,6 +154,7 @@ export const PROVIDER_FAILURE_KINDS = {
   [AUTH_RATE_LIMITED_ERROR_CODE]: 'rate_limited',
   [APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE]: 'permission_denied',
   [FOREGROUND_MESSAGE_INDETERMINATE_CODE]: 'indeterminate',
+  [CONVERSATION_CONTEXT_UNAVAILABLE_CODE]: 'conflict',
   [PRINCIPAL_UNRESOLVED_CODE]: 'auth',
   [PROJECT_IDENTITY_NOT_PREPARED_CODE]: 'input_unsupported',
   [MODEL_OVERRIDE_UNSUPPORTED_CODE]: 'input_unsupported',
@@ -159,6 +163,11 @@ export const PROVIDER_FAILURE_KINDS = {
   [APPROVAL_ESCALATION_REQUIRES_RESTART_CODE]: 'warning',
   [ENGINE_SESSION_BINDING_DEAD_CODE]: 'session_gone',
   [ENGINE_TURN_FAILED_CODE]: 'provider_error',
+  // The kernel killed the engine for memory; Station or a person continues
+  // the turn in a successor Session.
+  [ENGINE_MEMORY_EXHAUSTED_CODE]: 'engine_crashed',
+  // A command inside the engine's scope was killed; the engine kept running.
+  [WORKLOAD_COMMAND_OOM_KILLED_CODE]: 'warning',
   [ENGINE_SIGN_IN_REQUIRED_CODE]: 'auth',
   [MUSE_TURN_IDLE_TIMEOUT_CODE]: 'timeout',
   [MUSE_TURN_TOTAL_TIMEOUT_CODE]: 'timeout',

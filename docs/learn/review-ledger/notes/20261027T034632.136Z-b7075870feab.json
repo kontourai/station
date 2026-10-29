@@ -1,0 +1,7 @@
+{
+  "revision": "03de66577b851284970e0e9ed397dd8487597327",
+
+  "notes": [
+    {"path":"docs/patterns/backend.md","note":"Only sidebar footer inventory lines changed in responsive-action-surfaces.txt; no backend pattern claim affected. No prose change.","inputs":["docs/patterns/backend.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

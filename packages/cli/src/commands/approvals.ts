@@ -8,8 +8,8 @@
  * (`src-server/services/orchestration/orchestration-session-state.ts:174-184`): a
  * `request.opened` event is pending unless a later `request.resolved` event
  * for the same `requestId` exists. `--thread=<id>` scopes to one thread's
- * events; without it, every orchestration session for `--agent`'s provider
- * is read (the same N+1 pattern `session-client.ts`'s `listSessions`/
+ * events; without it, every orchestration session (narrowed to `--agent`'s
+ * provider when `--agent` is given) is read (the same N+1 pattern `session-client.ts`'s `listSessions`/
  * `readSession` already use) and pending requests are aggregated across all
  * of them.
  *
@@ -36,6 +36,7 @@ import {
   authenticatedFetch,
   getOrchestrationSession,
   listOrchestrationSessions,
+  loadApprovalContent,
   respondToRequest,
 } from '@kontourai/station-sdk/client';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
@@ -249,11 +250,14 @@ export async function listPendingForThread(
 
 async function listPendingForProvider(
   apiBase: string,
-  provider: string,
+  provider: string | undefined,
 ): Promise<PendingApproval[]> {
   const sessions =
     await listOrchestrationSessions<Array<Record<string, unknown>>>(apiBase);
-  const matching = sessions.filter((session) => session.provider === provider);
+  const matching =
+    provider === undefined
+      ? sessions
+      : sessions.filter((session) => session.provider === provider);
 
   const pending: PendingApproval[] = [];
   for (const session of matching) {
@@ -414,10 +418,6 @@ async function runApprovalsList(
 ): Promise<void> {
   const agentSlug =
     typeof parsed.flags.agent === 'string' ? parsed.flags.agent : undefined;
-  if (!agentSlug) {
-    throw new Error('Missing required flag: --agent=<slug>');
-  }
-
   const threadId =
     typeof parsed.flags.thread === 'string' ? parsed.flags.thread : undefined;
   const jsonMode = parsed.flags.json === true;
@@ -434,14 +434,18 @@ async function runApprovalsList(
     );
   }
 
-  const provider = await resolveApprovalsAgentProvider(
-    apiBase,
-    agentId(agentSlug),
-  );
-  if (!provider) {
-    throw new Error(
-      `Agent '${agentSlug}' is not bound to an approvals-capable external engine.`,
-    );
+  // `--agent` narrows to one engine's sessions; without it every session's
+  // pending requests are listed, since approvals are not owned by an Agent.
+  let provider: string | undefined;
+  if (agentSlug) {
+    provider =
+      (await resolveApprovalsAgentProvider(apiBase, agentId(agentSlug))) ??
+      undefined;
+    if (!provider) {
+      throw new Error(
+        `Agent '${agentSlug}' is not bound to an approvals-capable external engine.`,
+      );
+    }
   }
 
   if (watch) {
@@ -470,7 +474,8 @@ async function expectedRequestEvent(
   apiBase: string,
   threadId: string,
   requestId: string,
-): Promise<{ expectedRequestEventId?: string }> {
+  decision: ApprovalDecision,
+): Promise<{ expectedRequestEventId?: string; viewedContentDigest?: string }> {
   let detail: OrchestrationSessionDetail;
   try {
     detail = await getOrchestrationSession<OrchestrationSessionDetail>(
@@ -505,6 +510,25 @@ async function expectedRequestEvent(
     payload?.questionnaire !== undefined
   )
     return {};
+  // docs/design/event-content-spill.md: allowing a request whose content was
+  // stored out of line loads all of it first; the digest proves the load.
+  // A failed load leaves the answer unbound and the server refuses it.
+  // docs/design/event-content-spill.md: the server defines what an allow
+  // must load (the request and the tool calls bound to it) and the digest
+  // its gate checks; load all of it, then send the digest. A failed load
+  // leaves the answer without one, and the server refuses it.
+  if (decision === 'accept' || decision === 'acceptForSession') {
+    try {
+      const loaded = await loadApprovalContent(apiBase, threadId, requestId);
+      if (loaded.binding.required)
+        return {
+          expectedRequestEventId: request.requestEventId,
+          viewedContentDigest: loaded.viewedContentDigest,
+        };
+    } catch {
+      return { expectedRequestEventId: request.requestEventId };
+    }
+  }
   return { expectedRequestEventId: request.requestEventId };
 }
 
@@ -525,7 +549,12 @@ async function runApprovalsRespond(
   const { receipt } = await respondToRequest(apiBase, {
     threadId,
     requestId,
-    ...(await expectedRequestEvent(apiBase, threadId, requestId)),
+    ...(await expectedRequestEvent(
+      apiBase,
+      threadId,
+      requestId,
+      decision as ApprovalDecision,
+    )),
     decision: decision as ApprovalDecision,
   });
 

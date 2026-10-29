@@ -119,6 +119,11 @@ export interface RespondToRequestInput {
    * answer; send `content` instead.
    */
   answers?: HarnessQuestionAnswers;
+  /**
+   * docs/design/event-content-spill.md: required to allow a request whose
+   * content was stored out of line; see `computeViewedContentDigest`.
+   */
+  viewedContentDigest?: string;
 }
 
 export interface RespondToRequestResult {

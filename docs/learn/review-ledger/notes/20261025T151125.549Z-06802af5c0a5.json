@@ -1,0 +1,9 @@
+{
+  "revision": "2079ff817c69c1d5a8057af68838f01be91c531e",
+
+  "notes": [
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"Correction to the previous note's reason: the capture starts on another Station ('on Kontour'), where the start composer shows no Permissions line at all, so the framed Permissions chip and the rest of fix round 2 change nothing it shows. Viewed new-chat-start-after.png to confirm.","inputs":["docs/learn/media/new-chat-start-before.png"]},
+
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"Correction to the previous note's reason: the capture starts on another Station ('on Kontour'), where the start composer shows no Permissions line at all, so the framed Permissions chip and the rest of fix round 2 change nothing it shows. Viewed new-chat-start-after.png to confirm.","inputs":["docs/learn/media/new-chat-start-after.png"]}
+  ]
+}

@@ -150,9 +150,28 @@ test('real SDK observers cannot admit stale ready rows when notifications lag fa
       if (path === '/api/agents')
         data = stage === 'changed' ? [NEEDS, fresh] : [NEEDS, OLD_READY];
       else if (path === '/api/skills/experiences') data = experiences;
+      // The visual-skills preview on, so the inventory read above still runs.
+      else if (path === '/api/feature-previews')
+        data = [
+          {
+            id: 'visual-skills',
+            label: 'Visual skills',
+            description: 'Offer installed visual skills.',
+            enabled: true,
+          },
+        ];
       else if (path === '/api/projects') data = [PROJECT];
       else if (path === '/api/projects/alpha')
         data = { ...PROJECT, agents: ['needs-setup', 'other'] };
+      // The selected Project's new-chat defaults: nothing chosen, nothing
+      // recorded, the shape the route answers.
+      else if (path === '/api/projects/alpha/chat-defaults')
+        data = {
+          version: 'station.project-chat-defaults/v1',
+          projectSlug: 'alpha',
+          model: { selection: 'fixed', lastUsed: [] },
+          approvalMode: { selection: 'fixed', resolved: { source: 'none' } },
+        };
       else if (
         path === '/api/connections/agents' ||
         path === '/api/connections/models' ||

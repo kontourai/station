@@ -116,8 +116,13 @@ interface ConversationOpenSubject {
    * the detail's Open in chat.
    */
   delegationEnvironmentKind?: OrchestrationDelegationContext['environmentKind'];
-  /** Durable conversation identity when a handoff child differs from its thread. */
-  conversationId?: string;
+  /**
+   * Durable conversation identity when a continuation or handoff child
+   * differs from its thread. Required (though possibly undefined) so a caller
+   * cannot silently drop it: the fallback below would then open the child
+   * Session id as if it were a Conversation.
+   */
+  conversationId: string | undefined;
   agentSlug?: string;
   controlMode?: string;
   projectSlug?: string;

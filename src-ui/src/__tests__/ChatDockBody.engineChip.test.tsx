@@ -58,6 +58,12 @@ vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({ user: { alias: 'operator' } }),
 }));
 
+// The dock header's close-tab hint; the header renders beside the chip below.
+vi.mock('../hooks/useKeyboardShortcut', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useKeyboardShortcut')>()),
+  useShortcutDisplay: () => '⌘W',
+}));
+
 vi.mock('../hooks/useToolApproval', () => ({
   useToolApproval: () => vi.fn(),
 }));
@@ -117,9 +123,13 @@ vi.mock('../components/chat/QueuedMessages', () => ({
   QueuedMessages: () => null,
 }));
 
+import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
+import { ChatDockActiveIdentity } from '../components/chat-dock/ChatDockActiveIdentity';
 import { ChatDockBody } from '../components/chat-dock/ChatDockBody';
+import { conversationOpenPatch } from '../components/chat-dock/conversationOpenController';
 import { PreviewProvider } from '../contexts/PreviewContext';
 import type { ChatSession } from '../types';
+import { chatExecutionBinding } from '../utils/engine';
 
 function buildChatInput() {
   return {
@@ -249,6 +259,10 @@ async function engineChip() {
     engine: caption?.firstChild?.textContent ?? '',
     hint: text('.chat-input__engine-moved--full'),
     shortHint: text('.chat-input__engine-moved--short'),
+    // The narrow composer's own line for a next-turn move.
+    notice:
+      document.querySelector('.chat-input__next-turn-notice')?.textContent ??
+      null,
   };
 }
 
@@ -280,6 +294,7 @@ describe('ChatDockBody composer engine chip', () => {
     // The repoint is stated as a fact about the Agent, never as the engine.
     expect(hint).toBe(' · Agent now on OpenCode');
     expect(shortHint).toBe(' · Agent moved');
+    expect(document.querySelector('.chat-input__next-turn-notice')).toBeNull();
     const name = button.getAttribute('aria-label') ?? '';
     expect(name).toContain(
       'This conversation runs on Codex. Its Agent now uses OpenCode.',
@@ -295,10 +310,11 @@ describe('ChatDockBody composer engine chip', () => {
       ),
       { id: 'opencode', name: 'OpenCode' },
     );
-    const { button, engine, hint, shortHint } = await engineChip();
+    const { button, engine, hint, shortHint, notice } = await engineChip();
     expect(engine).toBe('Codex');
     expect(hint).toBe(' · Next turn on OpenCode');
-    expect(shortHint).toBe(' · Next: OpenCode');
+    expect(shortHint).toBeNull();
+    expect(notice).toBe('Next turn starts on OpenCode');
     expect(button.getAttribute('aria-label')).toContain(
       "This conversation's Codex session has ended; its next turn starts on OpenCode",
     );
@@ -427,5 +443,205 @@ describe('ChatDockBody composer engine chip', () => {
     const { engine, hint } = await engineChip();
     expect(engine).toBe('Codex (work)');
     expect(hint).toBeNull();
+  });
+
+  /** A fresh tab's state for a conversation the open read resolved. */
+  function reopened(
+    open: Partial<Extract<ConversationOpenResolution, { status: 'resolved' }>>,
+  ): ChatSession {
+    const resolution = {
+      status: 'resolved',
+      conversation: {
+        id: 'conversation-engine-chip',
+        title: 'Continue',
+        agentSlug: agentId('station'),
+        answerability: { answerable: true },
+      },
+      currentSessionId: 'session-1',
+      execution: {
+        sessionId: 'session-1',
+        agentId: agentId('station'),
+        provider: 'codex',
+        engineConnectionId: engineConnectionId('codex'),
+      },
+      transcript: { available: true, owner: 'runtime', messageCount: 2 },
+      canContinue: true,
+      answerability: { answerable: true },
+      recoveryActions: [],
+      ...open,
+    } as ConversationOpenResolution;
+    // The real open patch: a fresh tab has no live status for the Session.
+    const patch = conversationOpenPatch(resolution);
+    expect(patch.orchestrationStatus).toBeUndefined();
+    return buildSession(patch as Partial<ChatSession>);
+  }
+
+  test('#4179: a fresh open of an ended Session says the next turn starts on the new engine', async () => {
+    renderDock(reopened({ nextTurnStartsSession: true }), {
+      id: 'opencode',
+      name: 'OpenCode',
+    });
+    const { engine, hint, notice } = await engineChip();
+    expect(engine).toBe('Codex');
+    expect(hint).toBe(' · Next turn on OpenCode');
+    expect(notice).toBe('Next turn starts on OpenCode');
+  });
+
+  test.each([
+    ['the Session takes the next turn', { nextTurnStartsSession: false }],
+    ['an older host says nothing', {}],
+  ] as const)(
+    '#4179: a fresh open where %s keeps the Agent copy',
+    async (_case, open) => {
+      renderDock(reopened(open), { id: 'opencode', name: 'OpenCode' });
+      const { engine, hint } = await engineChip();
+      expect(engine).toBe('Codex');
+      expect(hint).toBe(' · Agent now on OpenCode');
+    },
+  );
+
+  test("#4179: the open fact stops applying once the chat's Session moves on", async () => {
+    const session = reopened({ nextTurnStartsSession: true });
+    renderDock(
+      {
+        ...session,
+        // A later send started a successor; its own facts are not in yet.
+        currentSessionId: 'session-2',
+        agentConnectionObservedFor: 'session-2',
+      },
+      { id: 'opencode', name: 'OpenCode' },
+    );
+    const { hint } = await engineChip();
+    expect(hint).not.toMatch(/Next turn/);
+  });
+
+  test('an override whose execution Agent is missing: the chip and the header name one engine', async () => {
+    // The override's Agent was deleted (or has not loaded); the chat's own
+    // Agent sits on the connection the Session runs on, under its own name.
+    const session = buildSession(
+      observed('codex', 'codex-work', {
+        executionAgentId: agentId('codex-work-default'),
+      }),
+    );
+    renderDock(session, { id: 'codex-work', name: 'Codex (work)' });
+    const { engine } = await engineChip();
+    render(
+      <ChatDockActiveIdentity
+        session={session}
+        agent={agentsMock.current[0]}
+        executionAgent={chatExecutionBinding(session, agentsMock.current)}
+        acpConnections={acpConnectionsMock.current}
+        onClose={vi.fn()}
+      />,
+    );
+    const header = document.querySelector(
+      '.chat-dock__active-identity-engine',
+    )?.textContent;
+    // Neither borrows the chat Agent's binding for the override: both name
+    // the Session's own engine.
+    expect(engine).toBe('Codex');
+    expect(header).toBe(engine);
+  });
+
+  describe('with the Agent catalog not loaded, the chip and the header agree', () => {
+    /** Renders both surfaces with no Agents resolved, and reads each engine. */
+    async function renderUnloaded(chat: ChatSession) {
+      // An Agent name no engine shares: the header drops an engine that
+      // repeats the Agent's own name, which would hide what it names.
+      const session = { ...chat, agentName: 'Writer' };
+      agentsMock.current = [];
+      acpConnectionsMock.current = [OPENCODE];
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      render(
+        <QueryClientProvider client={queryClient}>
+          <PreviewProvider>
+            <ChatDockBody
+              activeSession={session}
+              chatFontSize={14}
+              dockHeight={400}
+              showStatsPanel={false}
+              showReasoning={false}
+              showToolDetails={false}
+              modelSupportsAttachments={false}
+              fileAttachmentsSupported={false}
+              availableModels={[]}
+              // A native chat's `provider` is its MODEL provider; this is
+              // what the chip must not mistake for an engine.
+              modelProviderLabel="Anthropic API"
+              chatInput={buildChatInput() as any}
+              setShowStatsPanel={vi.fn()}
+            />
+          </PreviewProvider>
+        </QueryClientProvider>,
+      );
+      const { engine } = await engineChip();
+      render(
+        <ChatDockActiveIdentity
+          session={session}
+          agent={undefined}
+          executionAgent={chatExecutionBinding(session, agentsMock.current)}
+          acpConnections={acpConnectionsMock.current}
+          onClose={vi.fn()}
+        />,
+      );
+      const header =
+        document.querySelector('.chat-dock__active-identity-engine')
+          ?.textContent ?? null;
+      return { engine, header };
+    }
+
+    test.each([
+      [
+        'a native Station Session (same)',
+        { provider: 'anthropic', orchestrationProvider: 'station-agent' },
+        'Station',
+      ],
+      [
+        'a native Claude Session (same)',
+        { provider: 'claude', orchestrationProvider: 'claude' },
+        'Claude Code',
+      ],
+    ])('%s is named by its own engine', async (_case, fields, expected) => {
+      const { engine, header } = await renderUnloaded(
+        buildSession({
+          ...fields,
+          orchestrationSessionStarted: true,
+          currentSessionId: 'session-1',
+        } as Partial<ChatSession>),
+      );
+      expect(engine).toBe(expected);
+      expect(header).toBe(engine);
+    });
+
+    test('a reopened chat with no Session yet (resync) reads neutral, as the header names none', async () => {
+      const { engine, header } = await renderUnloaded(
+        buildSession({ provider: 'claude' } as Partial<ChatSession>),
+      );
+      expect(engine).toBe('Engine & model');
+      expect(header).toBeNull();
+    });
+
+    test('a moved ACP Session is named by its own connection on both', async () => {
+      const { engine, header } = await renderUnloaded(
+        buildSession(observed('acp', 'opencode')),
+      );
+      expect(engine).toBe('OpenCode');
+      expect(header).toBe(engine);
+    });
+
+    test('an ACP Session with a stale connection names nothing on either', async () => {
+      const { engine, header } = await renderUnloaded(
+        buildSession(
+          observed('acp', 'opencode', {
+            currentSessionId: 'session-2',
+            agentConnectionObservedFor: 'session-1',
+          }),
+        ),
+      );
+      expect(engine).toBe('Engine & model');
+      expect(header).toBeNull();
+    });
   });
 });

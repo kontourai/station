@@ -1,0 +1,7 @@
+{
+  "revision": "0faf37272b9e2155c7b7979610ad31b5bff8c24f",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed the additive station-control-external-client package subpath against its export and portable closed-tool request/lease types and untrusted-response parser. The contract states recorded context/process-and-session lifetime without active-engine or provider proof. No runtime authority, existing contract ownership or other table entries changed.","inputs":["docs/reference/contracts.md","packages/contracts/package.json","packages/contracts/package.json#/exports","packages/contracts/src/index.ts","src-server/providers/adapters/claude-sdk-turns.ts","src-server/security/pairing-route-scopes.ts","src-server/services/orchestration/orchestration-service.ts","packages/contracts/src/station-control-external-client.ts"]}
+  ]
+}

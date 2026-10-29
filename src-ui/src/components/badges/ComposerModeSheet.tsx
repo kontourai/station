@@ -36,6 +36,11 @@ interface ComposerModeSheetProps {
   pendingNote?: string;
   activeMode?: string;
   isNewSession?: boolean;
+  /**
+   * `dialog` when the trigger sits in a dialog (the dock's New chat), so the
+   * picker opens above it, as that dialog's other menus do.
+   */
+  layer?: 'dialog' | 'popover';
 }
 
 /**
@@ -67,6 +72,7 @@ export function ComposerModeSheet({
   pendingNote,
   activeMode,
   isNewSession,
+  layer = 'popover',
 }: ComposerModeSheetProps) {
   const account = useAccountPreferences();
   const [saveAsDefault, setSaveAsDefault] = useState(false);
@@ -102,7 +108,7 @@ export function ComposerModeSheet({
 
   return (
     <ResponsiveDialogSurface
-      layer="popover"
+      layer={layer}
       ariaLabel="Approval mode"
       onClose={onClose}
       historyMode="entry"
@@ -117,30 +123,32 @@ export function ComposerModeSheet({
         closeLabel="Close mode picker"
         onClose={onClose}
       />
-      <p className="composer-mode-sheet__confirm-body">{sourceNote}</p>
-      <p className="composer-mode-sheet__confirm-body">
-        {pendingNote?.includes('restart')
-          ? 'Restart required'
-          : isNewSession
-            ? 'Applies on start'
-            : 'Applies next turn'}
-        {activeMode ? ` · Active: ${activeMode}` : ''}
-      </p>
-      {account.status === 'account' && (
-        <label className="composer-mode-sheet__confirm-body">
-          <input
-            type="checkbox"
-            checked={saveAsDefault}
-            onChange={(event) => setSaveAsDefault(event.target.checked)}
-          />{' '}
-          Save as my {engineConnectionId} default
-        </label>
-      )}
-      {saveAsDefault && (
-        <Button onClick={() => choose(effectiveMode)}>
-          Save current mode as my default
-        </Button>
-      )}
+      <div className="composer-mode-sheet__notes">
+        <p className="composer-mode-sheet__confirm-body">{sourceNote}</p>
+        <p className="composer-mode-sheet__confirm-body">
+          {pendingNote?.includes('restart')
+            ? 'Restart required'
+            : isNewSession
+              ? 'Applies on start'
+              : 'Applies next turn'}
+          {activeMode ? ` · Active: ${activeMode}` : ''}
+        </p>
+        {account.status === 'account' && (
+          <label className="composer-mode-sheet__confirm-body">
+            <input
+              type="checkbox"
+              checked={saveAsDefault}
+              onChange={(event) => setSaveAsDefault(event.target.checked)}
+            />{' '}
+            Save as my {engineConnectionId} default
+          </label>
+        )}
+        {saveAsDefault && (
+          <Button onClick={() => choose(effectiveMode)}>
+            Save current mode as my default
+          </Button>
+        )}
+      </div>
 
       {pendingEscalation ? (
         <div className="composer-mode-sheet__confirm" role="alertdialog">

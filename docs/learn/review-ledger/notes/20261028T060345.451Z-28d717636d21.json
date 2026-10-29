@@ -1,0 +1,7 @@
+{
+  "revision": "af3e5a84422aca57bfe6b2b91b157b1a2b9e04f0",
+
+  "notes": [
+    {"path":"docs/user/workspace-checkpoints.md","note":"MessageBubble change adds a desktop right-click route to the bubble's existing ⋯ menu; checkpoint restore stays in the changed-files disclosure, unchanged.","inputs":["docs/user/workspace-checkpoints.md","src-ui/src/components/chat/MessageBubble.tsx"]}
+  ]
+}

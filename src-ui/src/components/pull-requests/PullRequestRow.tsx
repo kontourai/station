@@ -1,5 +1,10 @@
-import type { ReactNode, Ref } from 'react';
-import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
+import { type ReactNode, type Ref, useRef } from 'react';
+import { useContextMenuGesture } from '../../hooks/useContextMenuGesture';
+import {
+  ActionOverflowMenu,
+  type OverflowAction,
+  type OverflowMenuHandle,
+} from '../ActionOverflowMenu';
 import {
   PullRequestChip,
   type PullRequestChipValue,
@@ -48,6 +53,13 @@ export function PullRequestRow({
   /** One line below, for a row that cannot be opened (its reason). */
   note?: string;
 }) {
+  const menu = useRef<OverflowMenuHandle>(null);
+  // A right-click or hold anywhere on the row opens its `⋯`: the same rows,
+  // anchored to the same control.
+  const gesture = useContextMenuGesture({
+    enabled: overflow.length > 0,
+    onOpen: () => menu.current?.open() ?? false,
+  });
   const body = (
     <>
       <span className="pull-request-row__title">{title}</span>
@@ -72,6 +84,7 @@ export function PullRequestRow({
     <li
       className="pull-request-row"
       data-current={current ? 'true' : undefined}
+      {...gesture}
     >
       {onOpen ? (
         <button
@@ -91,6 +104,7 @@ export function PullRequestRow({
       {overflow.length > 0 && (
         <ActionOverflowMenu
           actions={overflow}
+          handleRef={menu}
           label={overflowLabel}
           triggerClassName="pull-request-row__more"
         />

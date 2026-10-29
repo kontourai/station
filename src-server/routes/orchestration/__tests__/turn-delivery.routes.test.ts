@@ -267,6 +267,7 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
       }),
       getProject: vi.fn(),
       getProviderAdapter: (provider) => service.getProviderAdapter(provider),
+      readInitialConversationContext: async () => undefined,
       readSessionBinding: async (_access, id) => currentBinding(store, id),
       resolveConversationSession: async (_access, id, requested) =>
         service.resolveConversationContinuation(

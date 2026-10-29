@@ -1,0 +1,7 @@
+{
+  "revision": "0faf37272b9e2155c7b7979610ad31b5bff8c24f",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Reviewed only the new mcp-clients authorize/create/revoke journey against command dispatch, local file-proven authorization, loopback origin checks, explicit tools/integer TTL and exclusive private configuration output. The CLI uses the portable response parser, displays metadata without bearer, compensates only a newly issued lease after file failure and does not retry ambiguous transport outcomes. Local POSIX CLI evidence does not establish Windows ACL handling, live operator setup, provider execution or public onboarding qualification.","inputs":["docs/reference/cli.md","packages/cli/src/cli.ts","packages/cli/src/commands/core.ts","packages/cli/src/help.ts","packages/cli/src/commands/mcp-clients.ts","packages/cli/src/__tests__/mcp-clients.test.ts","packages/contracts/src/station-control-external-client.ts"]}
+  ]
+}

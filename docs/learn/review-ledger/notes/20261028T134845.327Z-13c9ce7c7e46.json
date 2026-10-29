@@ -1,0 +1,7 @@
+{
+  "revision": "3371fbcdf23d9521ebe2cb708ac1b15142d69a51",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Round 2: reworded the delegated-results sentence to 'Every transition row, settled or interrupted, is the consumption record shared with get_task', which matches delegation-result-delivery.ts (get_task consumes any row via the shared store regardless of outcome). Interrupted rows are only for dispatched turns (session-turn-wait.ts excludes provider-triggered aborts).","inputs":["docs/architecture/module-map.md"]}
+  ]
+}

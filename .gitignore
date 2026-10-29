@@ -49,6 +49,9 @@ archive/
 !docs/learn/media/*.png
 !src-ui/public/favicon-beta.png
 !src-ui/public/favicon-nightly.png
+# Real-writer images (macOS sips, Chromium) the chat-host-images capture tests
+# read: generated fixtures would not prove what real writers emit.
+!src-server/services/orchestration/__tests__/fixtures/host-images/*.png
 # Platform icon sets are source-controlled build INPUT, not build output, and
 # the negation below is single-level so nested sets need their own entries.
 # Without them Android fails resource linking outright (mipmap-anydpi-v26/
@@ -83,6 +86,8 @@ archive/
 !src-ui/public/favicon.png
 # favicon-dev.png is what a dev build's is-dev-build rule actually displays.
 !src-ui/public/favicon-dev.png
+# The web app manifest's install icons, written by generate-app-icons.mjs.
+!src-ui/public/icons/*.png
 .station.pids
 test-results/
 playwright-report/

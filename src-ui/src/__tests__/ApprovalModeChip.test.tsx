@@ -293,12 +293,16 @@ describe('ApprovalModeChip', () => {
 
     expect(
       screen.getByRole('button', {
-        name: /^Approval mode: Engine default — Connection default\./,
+        name: /^Approval mode: Engine default — Codex's own settings\./,
       }),
     ).toBeTruthy();
     await openSheet();
-    expect(option(/^Connection default/).getAttribute('aria-checked')).toBe(
-      'true',
+    const defaultOption = option(/^Connection default/);
+    expect(defaultOption.getAttribute('aria-checked')).toBe('true');
+    // Says what the engine default concretely is for Codex, not only that
+    // Station has not confirmed a mode.
+    expect(defaultOption.closest('label')?.textContent).toContain(
+      'Your Codex settings apply until you pick a mode. If unset, no command uses the network or writes beyond this folder and temp unasked.',
     );
   });
 

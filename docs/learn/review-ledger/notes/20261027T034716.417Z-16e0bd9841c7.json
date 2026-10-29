@@ -1,0 +1,7 @@
+{
+  "revision": "03de66577b851284970e0e9ed397dd8487597327",
+
+  "notes": [
+    {"path":"docs/plans/pane-workspace.md","note":"Kept the #3875 record as history and added that Live work and the Settings gear have since left the footer; the row is Schedule, Customize, Updates, account, measured by activity-pane Sidebar footer controls (passed locally).","inputs":["docs/plans/pane-workspace.md"]}
+  ]
+}

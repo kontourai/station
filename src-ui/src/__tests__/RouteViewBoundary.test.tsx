@@ -3,7 +3,8 @@
  */
 
 import { StationHttpError } from '@kontourai/station-sdk/client';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { onlineManager } from '@tanstack/react-query';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { Component, type ReactNode, useEffect } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -197,6 +198,34 @@ describe('RouteViewBoundary', () => {
       ).toBeTruthy();
       // A retry here cannot work: React caches the rejected lazy promise.
       expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    });
+
+    test('a failed chunk download offers its reload only once back online', () => {
+      // A reload while offline replaces the workspace with the offline reader.
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      onlineManager.setOnline(false);
+      try {
+        render(
+          <RouteViewBoundary routeKey="activity:all">
+            <ThrowingView
+              error={new Error('Failed to fetch dynamically imported module')}
+            />
+          </RouteViewBoundary>,
+        );
+
+        expect(screen.getByRole('alert').textContent).toContain(
+          'not saved on this device',
+        );
+        expect(
+          screen.queryByRole('button', { name: 'Reload Station' }),
+        ).toBeNull();
+        act(() => onlineManager.setOnline(true));
+        expect(
+          screen.getByRole('button', { name: 'Reload Station' }),
+        ).toBeTruthy();
+      } finally {
+        onlineManager.setOnline(true);
+      }
     });
 
     test('an authority failure offers the connection, not a reload', () => {

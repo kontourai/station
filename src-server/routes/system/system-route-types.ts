@@ -3,6 +3,7 @@ import type {
   EngineId,
 } from '@kontourai/station-contracts/agent-identity';
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
+import type { StationRoutesResponse } from '@kontourai/station-contracts/station-routes';
 import type {
   HomeRecoveryDisclosure,
   ServerUpdateRunningTurns,
@@ -16,8 +17,17 @@ import type { RuntimeResourcePostureProbe } from '../../services/infra/resource-
 import type { ServerUpdateCoordinator } from '../../services/server-update/server-update-coordinator.js';
 import type { UnconnectedACPRegistryEntry } from '../connections/acp.js';
 import type { BootHistoryRecord } from './boot-history.js';
+import type { WorkloadRouteDeps } from './workload-routes.js';
 
 export interface SystemStatusDeps {
+  /** Workload budget routes; absent leaves them unmounted (404). */
+  workload?: WorkloadRouteDeps;
+  /**
+   * The addresses this Station is reached on (`GET /routes`, Station routes).
+   * Absent where the deployment does not serve them; the route then answers
+   * 404, matching the withdrawn `connectionRoutes` handshake flag.
+   */
+  resolveStationRoutes?: () => Promise<StationRoutesResponse>;
   getHomeRecovery?: () => HomeRecoveryDisclosure;
   getBootHistory?: () => Promise<{
     records: BootHistoryRecord[];

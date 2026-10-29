@@ -1,0 +1,17 @@
+{
+  "revision": "133de7834a084c0c9cd7a8e073b173d075cd94b6",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.png","note":"Checked against the event-content-spill change to orchestration-service.ts: request inspection for a request with no out-of-line content is unchanged (the new accept gate applies only to requests carrying spilledContent; the inspection read and its presentation are unchanged), so this capture still shows current behavior. Not re-captured.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Checked against the event-content-spill change to orchestration-service.ts: request inspection for a request with no out-of-line content is unchanged (the new accept gate applies only to requests carrying spilledContent; the inspection read and its presentation are unchanged), so this capture still shows current behavior. Not re-captured.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Checked against the event-content-spill change to runtime-routes.ts: the changes there are the delegation result's opt-in content resolution; operator sign-in and step-up review are untouched, so this capture still shows current behavior. Not re-captured.","inputs":["docs/learn/media/operator-s4-before-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Checked against the event-content-spill change to runtime-routes.ts: the changes there are the delegation result's opt-in content resolution; operator sign-in and step-up review are untouched, so this capture still shows current behavior. Not re-captured.","inputs":["docs/learn/media/operator-s4-after-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Checked against the event-content-spill change to runtime-routes.ts: the changes there are the delegation result's opt-in content resolution; operator sign-in and step-up review are untouched, so this capture still shows current behavior. Not re-captured.","inputs":["docs/learn/media/operator-s4-step-up-review.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Checked against the event-content-spill change to runtime-routes.ts: the changes there are the delegation result's opt-in content resolution; operator sign-in and step-up review are untouched, so this capture still shows current behavior. Not re-captured.","inputs":["docs/learn/media/operator-s4-after-step-up.png","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

@@ -1,18 +1,20 @@
 import { useEffect } from 'react';
+import type { ChatLiveUsage } from '../../contexts/active-chats-state';
 import { useStats } from '../../contexts/StatsContext';
 import { getContextWindowColor } from './utils';
 import './ContextPercentage.css';
 
-interface ContextPercentageProps {
+/** What the context share of one conversation is derived from. */
+export interface ContextPercentageSource {
   agentSlug: string;
   conversationId: string;
   apiBase: string;
   messageCount?: number;
   /** A current provider observation can update the meter before refetch. */
-  liveUsage?: {
-    contextTokens?: number;
-    contextWindowTokens?: number;
-  };
+  liveUsage?: Pick<ChatLiveUsage, 'contextTokens' | 'contextWindowTokens'>;
+}
+
+interface ContextPercentageProps extends ContextPercentageSource {
   onClick?: () => void;
 }
 
@@ -34,6 +36,35 @@ function contextPercentage(
 }
 
 /**
+ * The share of the context window a conversation uses, or `null` while it is
+ * unknown: a current provider observation first, then the stats read (which
+ * refetches as messages arrive). One derivation for the composer's meter and
+ * the phone's Actions sheet, so the two can never disagree.
+ */
+export function useContextPercentage({
+  agentSlug,
+  conversationId,
+  apiBase,
+  messageCount,
+  liveUsage,
+}: ContextPercentageSource): number | null {
+  const { stats, refetch } = useStats(agentSlug, conversationId, apiBase, true);
+  useEffect(() => {
+    if (messageCount !== undefined && messageCount > 0) {
+      refetch();
+    }
+  }, [messageCount, refetch]);
+  return (
+    contextPercentage(
+      liveUsage?.contextTokens,
+      liveUsage?.contextWindowTokens,
+    ) ??
+    contextPercentage(stats?.contextWindowPercentage, 100) ??
+    null
+  );
+}
+
+/**
  * The composer's context meter: a short track and the rounded share of the
  * context window used. It sits in the composer's meta row beside the model it
  * measures; the exact figure is the tooltip, the breakdown is the stats panel
@@ -50,20 +81,13 @@ export function ContextPercentage({
   liveUsage,
   onClick,
 }: ContextPercentageProps) {
-  const { stats, refetch } = useStats(agentSlug, conversationId, apiBase, true);
-  const percentage =
-    contextPercentage(
-      liveUsage?.contextTokens,
-      liveUsage?.contextWindowTokens,
-    ) ??
-    contextPercentage(stats?.contextWindowPercentage, 100) ??
-    null;
-
-  useEffect(() => {
-    if (messageCount !== undefined && messageCount > 0) {
-      refetch();
-    }
-  }, [messageCount, refetch]);
+  const percentage = useContextPercentage({
+    agentSlug,
+    conversationId,
+    apiBase,
+    messageCount,
+    liveUsage,
+  });
 
   if (percentage === null) return null;
 

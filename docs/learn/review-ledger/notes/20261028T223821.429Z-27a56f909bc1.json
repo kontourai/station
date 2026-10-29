@@ -1,0 +1,9 @@
+{
+  "revision": "749c3f364890d4a3ea6fefbc9816e81107413235",
+
+  "notes": [
+    {"path":"docs/guides/local-speech.md","note":"Checked against this change, which only puts CLI clean and home reset under the home maintenance lease with an inactivity recheck (lifecycle.ts clean/homeReset/assertStationHomeInactive; the lease lives in the tmpdir coordination root, not in the home). This guide cites lifecycle.ts for the built-UI proxy media upload/transcription windows and listener receive/keep-alive setup, and for backup/update-snapshot media-tools exclusion; those regions, station-home-archive.ts and station-home-store-registry.ts are unchanged. The guide makes no clean or reset claim; no prose change.","inputs":["docs/guides/local-speech.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"Checked against this change, which only puts CLI clean and home reset under the home maintenance lease with an inactivity recheck (lifecycle.ts clean/homeReset/assertStationHomeInactive; the lease lives in the tmpdir coordination root, not in the home). This guide cites lifecycle.ts for the serialized built-UI listener receive/keep-alive setup and the proxy's 60-second upload idle and two-hour processing-response windows; those regions and http-upload.ts are unchanged. The guide makes no clean, reset or home-removal claim; no prose change.","inputs":["docs/guides/walkthroughs.md","packages/cli/src/commands/lifecycle.ts"]}
+  ]
+}

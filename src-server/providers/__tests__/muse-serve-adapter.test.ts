@@ -28,6 +28,11 @@ import {
 } from '@kontourai/station-contracts/runtime-events';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import { afterEach, describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import {
+  installSessionTmpDirPolicy,
+  sessionTmpDirPath,
+} from '../../services/infra/session-tmpdir.js';
 import { ProviderTurnInProgressError } from '../adapter-shape.js';
 import {
   buildMuseServeArgs,
@@ -58,6 +63,7 @@ interface Harness {
   hosts: FakeMuseServeHost[];
   events: CanonicalRuntimeEvent[];
   execSpawns: string[][];
+  hostTmpDirs: Array<string | undefined>;
 }
 
 const adapters: MuseAdapter[] = [];
@@ -79,9 +85,11 @@ function harness(
   const hosts: FakeMuseServeHost[] = [];
   const events: CanonicalRuntimeEvent[] = [];
   const execSpawns: string[][] = [];
+  const hostTmpDirs: Array<string | undefined> = [];
   const adapter = new MuseAdapter({
     serve: {
-      spawnHost: (posture) => {
+      spawnHost: (posture, _cwd, tmpDir) => {
+        hostTmpDirs.push(tmpDir);
         const args = buildMuseServeArgs(posture);
         const host =
           options.spawnHost?.(args, hosts.length) ??
@@ -115,7 +123,7 @@ function harness(
   void (async () => {
     for await (const event of adapter.streamEvents()) events.push(event);
   })();
-  return { adapter, hosts, events, execSpawns };
+  return { adapter, hosts, events, execSpawns, hostTmpDirs };
 }
 
 const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 20));
@@ -219,6 +227,31 @@ function fold(events: CanonicalRuntimeEvent[]): ChildWorkRegistryState {
     createEmptyChildWorkRegistry(),
   );
 }
+
+describe('chat-host-images: a serve host', () => {
+  const makeHome = trackTempDirs();
+  test('gets the session temp folder prepared at start as its TMPDIR', async () => {
+    const home = makeHome('muse-serve-tmp-');
+    const previous = process.env.STATION_HOME;
+    process.env.STATION_HOME = home;
+    const uninstall = installSessionTmpDirPolicy(() => true);
+    try {
+      const h = harness();
+      await firstHost(h, () =>
+        h.adapter.startSession({
+          provider: 'muse',
+          threadId: THREAD,
+          cwd: '/workspace/probe/repo',
+        }),
+      );
+      expect(h.hostTmpDirs).toEqual([sessionTmpDirPath(THREAD, home)]);
+    } finally {
+      uninstall();
+      if (previous === undefined) delete process.env.STATION_HOME;
+      else process.env.STATION_HOME = previous;
+    }
+  });
+});
 
 describe('#2452 muse serve: approval mode', () => {
   test('Station modes map onto the MSP mode and the host sandbox posture', () => {

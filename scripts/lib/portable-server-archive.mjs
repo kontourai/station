@@ -429,6 +429,7 @@ async function stagePortableServerTree({
   nodeDistributionBytes,
   release,
   includeTelemetryCompanion,
+  companionQualificationReceipt,
 }) {
   const uiIndex = join(projectRoot, 'dist-ui', 'index.html');
   if (!existsSync(uiIndex)) {
@@ -469,7 +470,10 @@ async function stagePortableServerTree({
   stageBundledRegistry({ projectRoot, outputRoot: stageRoot });
   if (includeTelemetryCompanion) {
     const output = join(stageRoot, '.companion-package');
-    const candidate = await packageTelemetryCompanion(output, { projectRoot });
+    const candidate = await packageTelemetryCompanion(output, {
+      projectRoot,
+      qualificationReceiptPath: companionQualificationReceipt,
+    });
     const manifest = await verifyTelemetryCompanion(candidate.directory);
     if (manifest.source !== release.sha)
       throw new Error(
@@ -571,6 +575,22 @@ export function assertBuildSourceIsCheckout({ sha, git }) {
   }
 }
 
+/**
+ * @param {{
+ *   projectRoot?: string,
+ *   outputDir?: string,
+ *   platform?: NodeJS.Platform,
+ *   arch?: NodeJS.Architecture,
+ *   tag: string,
+ *   sha: string,
+ *   createdAt?: string,
+ *   nodeDistribution?: string,
+ *   keepStage?: boolean,
+ *   expectedRing?: string,
+ *   includeTelemetryCompanion?: boolean,
+ *   companionQualificationReceipt?: string,
+ * }} options
+ */
 export async function buildPortableServerArchive({
   projectRoot = REPO_ROOT,
   outputDir = resolve(projectRoot, 'dist-portable-server'),
@@ -583,7 +603,10 @@ export async function buildPortableServerArchive({
   keepStage = false,
   expectedRing,
   includeTelemetryCompanion = false,
+  companionQualificationReceipt,
 }) {
+  if (companionQualificationReceipt && !includeTelemetryCompanion)
+    throw new Error('Companion qualification requires the companion payload');
   const target = resolvePortableServerTarget(
     platform,
     arch,
@@ -624,6 +647,7 @@ export async function buildPortableServerArchive({
       nodeDistributionBytes: distributionBytes,
       release,
       includeTelemetryCompanion,
+      companionQualificationReceipt,
     });
     const archivePath = createPortableArchive({
       stageParent,

@@ -160,6 +160,8 @@ const GUIDE_TARGET = {
 
 /** Arguments that pass each tool's own schema, so it reaches Station. */
 const ARGS: Record<string, Record<string, unknown>> = {
+  list_walkthroughs: { projectSlug: 'project-a' },
+  get_walkthrough: { projectSlug: 'project-a', id: 'walkthrough-1' },
   read_pull_request_guide: { target: GUIDE_TARGET },
   write_pull_request_guides: { targets: [GUIDE_TARGET] },
   device_open: { platform: 'android', deviceId: 'emulator-5554' },
@@ -185,6 +187,7 @@ const ARGS: Record<string, Record<string, unknown>> = {
   get_conversation_messages: { agent: 'a', conversationId: 'c' },
   read_conversation: { conversationId: 'c', limit: 5 },
   delete_conversation: { agent: 'a', conversationId: 'c' },
+  fork_conversation: { agent: 'a', conversationId: 'c', targetAgent: 'b' },
   search_sessions: { query: 'cobalt' },
   search_conversations: { query: 'cobalt' },
   rename_session: { conversationId: 'c', title: 'A title' },

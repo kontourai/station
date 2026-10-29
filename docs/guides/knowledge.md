@@ -502,7 +502,10 @@ document sources; their readiness and permission checks remain independent.
 The Project knowledge section keeps the older document upload, indexing and
 migration controls. Store creation and attachment now have one owner:
 **Settings → Sources**. **Manage sources** navigates there through the ordinary
-unsaved-changes guard.
+unsaved-changes guard. These document actions apply immediately rather than
+waiting for the Project settings **Save** button. Failed reads offer **Retry**;
+upload failures name the affected files while remaining files continue.
+Indexing, removal, and clear failures remain visible in the section.
 
 **Migrate this project's existing knowledge** appears when earlier document
 storage contains files. It runs the [migration described above](#the-non-destructive-guarantee),

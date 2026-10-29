@@ -1,0 +1,7 @@
+{
+  "revision": "99b37f49a70a8237affa0a4697280d579bcb402b",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Scoped no-prose-change review at 99b37f49a70: inspected Manage telemetry companion access and Pairing scopes on this computer against describeDeviceScope/scopeSetsMatch, the literal fullAccessScope fixture, and the unchanged 16-token PAIRING_SCOPES contract. The test-only correction adds telemetry:manage to the independent complete-vocabulary input and verifies omission still yields Custom access. The guide remains accurate: telemetry:manage is separately operator-promoted, absent from presets/default grants, and does not itself establish the current human/operator authority or personal analytics access. No product scope matcher, preset, default, contract or user flow changed. The owner suite passed 40 tests on exact integrated head99b37; this fixture result does not establish installed/native/activation acceptance.","inputs":["docs/guides/connections.md","packages/connect/src/__tests__/deviceActivity.test.ts"]}
+  ]
+}

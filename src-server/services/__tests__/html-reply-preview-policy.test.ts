@@ -46,20 +46,46 @@ vi.mock('../browser/hosts/chromium-server-host.js', async (importOriginal) => {
             params?: object,
             sessionId?: string,
           ): Promise<R> {
-            if (method === 'Target.createTarget')
+            if (method === 'Target.createTarget') {
+              internal =
+                (params as { url?: string })?.url ===
+                'chrome://prefs-internals/';
               return { targetId: `T${++target}` } as R;
+            }
             if (method === 'Target.attachToTarget')
               return { sessionId: 'policy-session' } as R;
             if (method === 'Page.navigate')
               internal =
                 (params as { url?: string })?.url ===
                 'chrome://prefs-internals/';
+            if (method === 'Page.getFrameTree')
+              return {
+                frameTree: {
+                  frame: {
+                    id: 'policy-frame',
+                    loaderId: 'policy-loader',
+                    url: internal ? 'chrome://prefs-internals/' : 'about:blank',
+                  },
+                },
+              } as R;
+            if (method === 'Page.createIsolatedWorld') {
+              if (
+                !internal ||
+                (params as { frameId?: string })?.frameId !== 'policy-frame'
+              )
+                throw new Error('Policy world was not bound to its frame');
+              return { executionContextId: 41 } as R;
+            }
             if (method === 'Target.closeTarget') internal = false;
             if (method === 'Page.navigate')
               for (const callback of listeners.get('Page.loadEventFired') ?? [])
                 callback({}, sessionId);
             if (method === 'Runtime.evaluate') {
-              if (internal) {
+              if (
+                internal &&
+                (params as { contextId?: number })?.contextId === 41 &&
+                (params as { awaitPromise?: boolean })?.awaitPromise === true
+              ) {
                 probe.policyRead = true;
                 // Resolved browser value overrides the restrictive profile file.
                 return {

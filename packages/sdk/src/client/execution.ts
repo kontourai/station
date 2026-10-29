@@ -61,6 +61,12 @@ export type ForegroundMessageInput = ForegroundMessageFields &
 
 interface ForegroundMessageFields {
   expectedInputRequest?: AttentionRequestReference;
+  /**
+   * The person's personal per-engine approval default on a chat's first
+   * send: a hint the server applies below the Agent's default and the
+   * Project's layer, never a pick. A Station that predates it ignores it.
+   */
+  personalApprovalDefault?: 'ask' | 'auto' | 'never';
   target: Omit<ExecutionTarget, 'environment'> & {
     environment?: EnvironmentRef;
   };

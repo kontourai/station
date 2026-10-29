@@ -1,0 +1,37 @@
+{
+  "revision": "0de5cf954afe2c44d47221091d6c4b1b45e756b0",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Rechecked against this change: src-ui/src/index.css only adds .composer-mode-sheet__notes, insetting the approval picker notes (From adapter default, Applies on start, the save checkbox) to align with the menu rows. This page describes the composer approval control but not the notes inset, so it stays accurate.","inputs":["docs/design/chat-composer.md","src-ui/src/index.css"]},
+
+    {"path":"docs/design/placement.md","note":"Rechecked against this change: src-ui/src/index.css only adds .composer-mode-sheet__notes (a flex column inset to align the approval picker notes with its rows) and its phone padding override. This page makes no claim about the approval picker notes layout, so it stays accurate.","inputs":["docs/design/placement.md","src-ui/src/index.css"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"Rechecked against this change: src-ui/src/index.css only adds .composer-mode-sheet__notes (a flex column inset to align the approval picker notes with its rows) and its phone padding override. This page makes no claim about the approval picker notes layout, so it stays accurate.","inputs":["docs/design/session-tape-replay.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/connections.md","note":"Rechecked against this change: src-ui/src/index.css only adds .composer-mode-sheet__notes (a flex column inset to align the approval picker notes with its rows) and its phone padding override. This page makes no claim about the approval picker notes layout, so it stays accurate.","inputs":["docs/guides/connections.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Rechecked against this change: src-ui/src/index.css only adds .composer-mode-sheet__notes (a flex column inset to align the approval picker notes with its rows) and its phone padding override. This page makes no claim about the approval picker notes layout, so it stays accurate.","inputs":["docs/guides/knowledge.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Rechecked against this change: src-ui/src/index.css only adds .composer-mode-sheet__notes (a flex column inset to align the approval picker notes with its rows) and its phone padding override. This page makes no claim about the approval picker notes layout, so it stays accurate.","inputs":["docs/guides/responsive-ui.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Rechecked against this change: src-ui/src/index.css only adds .composer-mode-sheet__notes (a flex column inset to align the approval picker notes with its rows) and its phone padding override. This page makes no claim about the approval picker notes layout, so it stays accurate.","inputs":["docs/guides/starter-work.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/theming.md","note":"Rechecked against this change: src-ui/src/index.css only adds .composer-mode-sheet__notes (a flex column inset to align the approval picker notes with its rows) and its phone padding override. This page makes no claim about the approval picker notes layout, so it stays accurate.","inputs":["docs/guides/theming.md","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Rechecked against this change: src-ui/src/index.css only adds .composer-mode-sheet__notes (a flex column inset to align the approval picker notes with its rows) and its phone padding override. This page makes no claim about the approval picker notes layout, so it stays accurate.","inputs":["docs/learn/walkthroughs.md","src-ui/src/index.css"]},
+
+    {"path":"docs/patterns/backend.md","note":"Rechecked against this change: src-ui/src/index.css only adds .composer-mode-sheet__notes (a flex column inset to align the approval picker notes with its rows) and its phone padding override. This page makes no claim about the approval picker notes layout, so it stays accurate.","inputs":["docs/patterns/backend.md","src-ui/src/index.css"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Rechecked against this change: src-ui/src/index.css only adds .composer-mode-sheet__notes (a flex column inset to align the approval picker notes with its rows) and its phone padding override. This page makes no claim about the approval picker notes layout, so it stays accurate.","inputs":["docs/patterns/frontend.md","src-ui/src/index.css"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Rechecked against this change: src-ui/src/index.css only adds .composer-mode-sheet__notes (a flex column inset to align the approval picker notes with its rows) and its phone padding override. This page makes no claim about the approval picker notes layout, so it stays accurate.","inputs":["docs/reference/agent-smoke-confidence.md","src-ui/src/index.css"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Rechecked against this change: src-ui/src/index.css only adds .composer-mode-sheet__notes (a flex column inset to align the approval picker notes with its rows) and its phone padding override. This page makes no claim about the approval picker notes layout, so it stays accurate.","inputs":["docs/reference/project-task-room-collaboration-acceptance.md","src-ui/src/index.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"Rechecked against this change: src-ui/src/index.css only adds .composer-mode-sheet__notes (a flex column inset to align the approval picker notes with its rows) and its phone padding override. This page makes no claim about the approval picker notes layout, so it stays accurate.","inputs":["docs/user/getting-started.md","src-ui/src/index.css"]},
+
+    {"path":"examples/knowledge-library/README.md","note":"Rechecked against this change: src-ui/src/index.css only adds .composer-mode-sheet__notes (a flex column inset to align the approval picker notes with its rows) and its phone padding override. This page makes no claim about the approval picker notes layout, so it stays accurate.","inputs":["examples/knowledge-library/README.md","src-ui/src/index.css"]},
+
+    {"path":"src-desktop/icons/README.md","note":"Rechecked against this change: src-ui/src/index.css only adds .composer-mode-sheet__notes (a flex column inset to align the approval picker notes with its rows) and its phone padding override. This page makes no claim about the approval picker notes layout, so it stays accurate.","inputs":["src-desktop/icons/README.md","src-ui/src/index.css"]}
+  ]
+}

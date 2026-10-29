@@ -467,14 +467,26 @@ test.describe('Coding stack — phone (390px)', () => {
     await seed(page);
   });
 
-  test('the phone keeps Chat in its maximized dock; the centre mounts no second Chat', async ({
+  test('the phone tool picker gives a tool the full width and returns to the same Chat', async ({
     page,
   }) => {
-    await page.goto(`${ROUTE}?chat=conv-1`);
-    await dismissSetupLauncher(page);
-    await expect(page.locator('#chat-dock')).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator('#chat-dock')).toHaveClass(/is-maximized/);
-    await expect(page.locator('#chat-workspace-pane')).toHaveCount(0);
+    await landOnChat(page);
+    await expect(page.locator('.coding-workbench__rail')).toHaveCount(0);
+    await selectCodingPane(page, 'Diff');
+    await expect(
+      page.getByRole('button', { name: 'Switch tool, current: Diff' }),
+    ).toBeVisible();
+    const room = await drillInPage(page).boundingBox();
+    expect(room!.width).toBe(390);
+    await page
+      .getByRole('button', { name: 'Switch tool, current: Diff' })
+      .click();
+    await page
+      .getByRole('dialog', { name: 'Tools' })
+      .getByRole('button', { name: 'Chat', exact: true })
+      .click();
+    await expect(centreChat(page)).toBeVisible();
+    await expect(page).not.toHaveURL(/[?&]pane=/);
   });
 });
 
@@ -1227,12 +1239,7 @@ test.describe('Coding stack — wide (1440px): links, reloads and the Terminal a
   });
 });
 
-/**
- * #3465 review F1: panels mode needs Chat in the centre as well as the wide
- * fold, and a coarse pointer folds the dock to one region at any width. A
- * touch screen past 1280px therefore keeps the drill-in stack: the rail item
- * is the current page, not a pressed toggle.
- */
+/** Wide touch tablets retain panels; only the shared mobile predicate folds them. */
 test.describe('Coding stack — wide touch screen (1440px, coarse pointer)', () => {
   test.use({ viewport: { width: 1440, height: 900 }, hasTouch: true });
 
@@ -1240,9 +1247,7 @@ test.describe('Coding stack — wide touch screen (1440px, coarse pointer)', () 
     await seed(page);
   });
 
-  test('a rail pick drills in as a page, not a panel toggle', async ({
-    page,
-  }) => {
+  test('a rail pick opens a panel on a wide touch tablet', async ({ page }) => {
     await page.goto(`${ROUTE}?chat=conv-1`);
     await dismissSetupLauncher(page);
     expect(
@@ -1251,15 +1256,15 @@ test.describe('Coding stack — wide touch screen (1440px, coarse pointer)', () 
     await expect(codingViewItem(page, 'Diff')).toBeVisible({
       timeout: 20_000,
     });
-    expect(await codingRailMode(page)).toBe('stack');
+    expect(await codingRailMode(page)).toBe('panels');
 
     await selectCodingPane(page, 'Diff');
     await expect(codingViewItem(page, 'Diff')).toHaveAttribute(
-      'aria-current',
-      'page',
+      'aria-pressed',
+      'true',
     );
     await expect(codingViewItem(page, 'Diff')).not.toHaveAttribute(
-      'aria-pressed',
+      'aria-current',
       /.*/,
     );
     await expect(drillInPage(page)).toHaveAttribute('data-active', 'true');

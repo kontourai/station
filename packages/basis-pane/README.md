@@ -103,7 +103,12 @@ panel and desktop/mobile headers. Current execution updates preserve a captured
 exact-answer scope; changing chat or authority, or unmounting the pane, retires
 it. The connected exact-answer action opens an explicit Task picker before
 Keep. The portable App remains a reader: its existing protocol negotiation does
-not opt into all protocol 3 HTTP lineage rows.
+not opt into all protocol 3 HTTP lineage rows, nor into protocol 4 rows for
+commands with no recorded result.
+
+In the Execution group, a command that never reported an outcome (#4178) shows
+the shared `StatusBadge` "No result recorded" in its neutral tone beside its
+classification; it claims neither success nor failure.
 
 
 The desktop and mobile chat headers expose **Inventory** directly. It opens

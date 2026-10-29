@@ -260,6 +260,9 @@ export function RequestSheet({
       historyMode="entry"
       returnFocusTarget={returnFocusTarget}
       overlayClassName="request-sheet__overlay"
+      // Owns its own grab strip, whose drag is hide-only; the shared handle
+      // would be a second one with different semantics.
+      sheetGesture={false}
       panelClassName={
         offset > 0 ? 'request-sheet request-sheet--dragging' : 'request-sheet'
       }

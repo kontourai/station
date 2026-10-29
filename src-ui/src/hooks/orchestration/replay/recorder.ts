@@ -56,6 +56,28 @@ export function getCapturedTape() {
   return latestTape;
 }
 
+/**
+ * A capture carries what the conversation showed, never attachment bytes. As
+ * a JSON replacer over the initial chat, the initial history and every frame,
+ * it drops a recorded attachment's `dataUrl` (a legacy inline read, or
+ * `turn.started`/`tool.completed` attachments) and a file part's inline
+ * `data:` URL (a sent bubble's own bytes), leaving the name, type and
+ * reference the chip still shows — the same descriptor-only part a reclaimed
+ * attachment renders as. Bytes would otherwise go into an exported file and
+ * crowd out the 16 MiB budget.
+ */
+function withoutAttachmentBytes(
+  this: unknown,
+  key: string,
+  value: unknown,
+): unknown {
+  if (typeof value !== 'string' || !value.startsWith('data:')) return value;
+  if (key === 'dataUrl') return undefined;
+  if (key === 'url' && (this as { type?: unknown } | null)?.type === 'file')
+    return undefined;
+  return value;
+}
+
 export function startReplayCapture(
   apiBase: string,
   source: SessionTapeSource,
@@ -79,26 +101,31 @@ export function startReplayCapture(
         orchestrationSessionStarted: chat.orchestrationSessionStarted,
       }
     : undefined;
-  const tape: SessionTape = structuredClone({
-    schemaVersion: 1,
-    kind: SESSION_TAPE_KIND,
-    recordedAt: new Date().toISOString(),
-    source,
-    events: [],
-    frames: [],
-    coverage: 'client-capture',
-    presentation: {
-      answerDelivery: answerDeliveryModeOf(
-        deviceSettingsStore.get('featureSettings').smoothReveal,
-        deviceSettingsStore.get('featureSettings').bufferedDelivery,
-      ),
-    },
-    initialChat,
-    initialHistory: currentReplayCaptureHistory(
-      apiBase,
-      source.conversationId ?? source.threadId,
+  const tape: SessionTape = JSON.parse(
+    JSON.stringify(
+      {
+        schemaVersion: 1,
+        kind: SESSION_TAPE_KIND,
+        recordedAt: new Date().toISOString(),
+        source,
+        events: [],
+        frames: [],
+        coverage: 'client-capture',
+        presentation: {
+          answerDelivery: answerDeliveryModeOf(
+            deviceSettingsStore.get('featureSettings').smoothReveal,
+            deviceSettingsStore.get('featureSettings').bufferedDelivery,
+          ),
+        },
+        initialChat,
+        initialHistory: currentReplayCaptureHistory(
+          apiBase,
+          source.conversationId ?? source.threadId,
+        ),
+      },
+      withoutAttachmentBytes,
     ),
-  });
+  );
   const bytes = new TextEncoder().encode(JSON.stringify(tape)).length;
   if (bytes > MAX_CAPTURE_BYTES - TAPE_METADATA_RESERVE)
     throw new Error(
@@ -144,7 +171,7 @@ function append(frame: ReplayFrameInput): void {
   const capture = recording;
   if (!capture) return;
   const value = { ...frame, atMs: performance.now() - capture.startedAt };
-  const encoded = JSON.stringify(value);
+  const encoded = JSON.stringify(value, withoutAttachmentBytes);
   const bytes = new TextEncoder().encode(encoded).length + 1;
   if (
     capture.bytes + bytes > MAX_CAPTURE_BYTES - TAPE_METADATA_RESERVE ||

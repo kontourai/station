@@ -1,0 +1,7 @@
+{
+  "revision": "fd5223f8c1d1c12a3dc80f700b52bfbc3d5ae354",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"Source delta (#4203 review): contracts.md now also states that a superseded unresolved completion is not listed, matching the transcript, within the read's frozen high-water mark. This document defines no inventory listing rule and only routes to the contracts reference. No prose change.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

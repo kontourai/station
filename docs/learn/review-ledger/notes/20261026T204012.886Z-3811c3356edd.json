@@ -1,0 +1,13 @@
+{
+  "revision": "4967a65e5bbf1790393f29b1983578b909c73b6e",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Rechecked after the chat.css token change (the text-argument block now uses --k-font-mono); nothing this document describes changes.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/placement.md","note":"Rechecked after the chat.css token change (the text-argument block now uses --k-font-mono); nothing this document describes changes.","inputs":["docs/design/placement.md","src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Rechecked after the chat.css token change (the text-argument block now uses --k-font-mono); nothing this document describes changes.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"Rechecked after the chat.css token change (the text-argument block now uses --k-font-mono); nothing this document describes changes.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

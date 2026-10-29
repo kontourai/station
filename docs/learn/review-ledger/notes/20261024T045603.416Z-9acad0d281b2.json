@@ -1,0 +1,7 @@
+{
+  "revision": "b204e575bd7533bd438eb80d2cdde2ad19e2ed4a",
+
+  "notes": [
+    {"path":"deployment/telemetry/README.md","note":"Reviewed real source Station export qualifier and executed bc18eb9cbb10d7b0588015b939126c1c69807d63 runtime report. Actual Station entrypoint booted on isolated home/temp/process registry and owned ports with product tier Off. Its unauthenticated auth-status request was refused, fresh generated operator bearer authenticated a distinct traced request, persisted OTel identity matched the queried boot counter and HTTP span, and trace storage excluded the credential. Station child stopped without escalation and exact Docker cleanup completed; command exited zero. The initial 50bc probe failed because it omitted auth, and both owned process/container cleanups completed before correction. This is source Station OTel plus component proof, not installed-release/product-consent/fresh-restore/upgrade/native qualification or an installation permit.","inputs":["deployment/telemetry/README.md","scripts/qualify-telemetry-companion.mjs","scripts/lib/telemetry-station-export.mjs","scripts/lib/telemetry-station-child.mjs","src-server/routes/system/boot-history.ts","src-server/index.ts"]}
+  ]
+}

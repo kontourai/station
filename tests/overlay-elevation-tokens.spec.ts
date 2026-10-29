@@ -56,11 +56,8 @@ import { expect, test } from '@playwright/test';
  * `.command-palette` (`CommandPalette.css`) and `.acp-add-dialog`
  * (`ACPConnections.css`) read the same two tokens from their own chunk
  * sheets; the token assertions below are what covers them, since the failure
- * is in the custom property and not in any one rule. `index.css`'s `.toast`
- * rule reads `--elevation-overlay` as well but is **not** probed: nothing
- * renders `class="toast"` — the notification surface is `.toast-card`, which
- * sets its own literal radius and shadow — so a probe of it would assert
- * against a rule no user can reach.
+ * is in the custom property and not in any one rule. The notification
+ * surface, `.toast-card`, sets its own literal radius and shadow.
  */
 
 /** The entry-stylesheet rules that read either token AND have a live surface. */

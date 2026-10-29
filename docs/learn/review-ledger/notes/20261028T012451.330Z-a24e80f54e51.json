@@ -1,0 +1,7 @@
+{
+  "revision": "f44cec61337e7e20856f0f415f3512ddedd7ef01",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"CoreUpdateCheck: method hints shortened; badge now gated on restart offer and superseded state; staged target shown only while Restart is offered. Uses the same CoreUpdateStatus/ServerUpdateState SDK fields; no SDK API claim changed; prose accurate.","inputs":["docs/reference/sdk.md","src-ui/src/views/settings/CoreUpdateCheck.tsx"]}
+  ]
+}

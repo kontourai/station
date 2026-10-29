@@ -1,0 +1,7 @@
+{
+  "revision": "7caa187f3cb73a1fd6ebf8b4dcb5cc4746ac2977",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Checked against the restart-recovery fix: event-store's turn-scoped terminal lookup and session-lifecycle's terminal identity guard now accept a recoveryTerminal turn.aborted without an invocationId for its matching turn. No claim here describes that guard; invocationId attribution is unchanged (the recovery abort stays unattributed).","inputs":["docs/reference/contracts.md","src-server/services/orchestration/session-lifecycle-service.ts"]}
+  ]
+}

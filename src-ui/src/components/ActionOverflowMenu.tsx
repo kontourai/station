@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useId,
+  useImperativeHandle,
   useLayoutEffect,
   useRef,
   useState,
@@ -89,6 +90,17 @@ export interface OverflowAction {
   onSelect: (trigger: HTMLElement) => void;
 }
 
+/**
+ * Opens the menu from outside its trigger: the right-click or hold on the row
+ * the `⋯` belongs to (`useContextMenuGesture`), so that gesture shows exactly
+ * the rows the `⋯` does. `open` returns false when there is no menu to open (no
+ * rows, or one row rendered as its own button), so the caller can leave the
+ * gesture to the platform instead of running a command nobody chose.
+ */
+export interface OverflowMenuHandle {
+  open: () => boolean;
+}
+
 /** "⌘G" → "Meta+G", the `aria-keyshortcuts` spelling; "Ctrl+G" stays. */
 function ariaShortcut(shortcut: string): string {
   return shortcut.replace('⌘', 'Meta+');
@@ -111,6 +123,24 @@ const MENU_PADDING_PX = 12;
 const roomNeededPx = (rowCount: number) =>
   rowCount * MENU_ROW_PX + MENU_PADDING_PX + MENU_GAP_PX;
 
+/** The first paint's position, from the trigger's rect and the guess above. */
+function pressPosition(
+  trigger: HTMLElement,
+  rowCount: number,
+): React.CSSProperties {
+  const rect = trigger.getBoundingClientRect();
+  const below = window.innerHeight - rect.bottom;
+  return below < roomNeededPx(rowCount)
+    ? {
+        bottom: `${window.innerHeight - rect.top + MENU_GAP_PX}px`,
+        right: `${window.innerWidth - rect.right}px`,
+      }
+    : {
+        top: `${rect.bottom + MENU_GAP_PX}px`,
+        right: `${window.innerWidth - rect.right}px`,
+      };
+}
+
 /**
  * A `⋯` trigger and the menu of commands folded behind it.
  *
@@ -129,6 +159,7 @@ const roomNeededPx = (rowCount: number) =>
 export function ActionOverflowMenu({
   actions,
   triggerRef,
+  handleRef,
   badgeCount = 0,
   badgeLabel,
   status,
@@ -146,6 +177,8 @@ export function ActionOverflowMenu({
    * anchoring to the control that opened it.
    */
   triggerRef?: React.RefObject<HTMLButtonElement | null>;
+  /** Opens the menu from the row it belongs to; see `OverflowMenuHandle`. */
+  handleRef?: React.Ref<OverflowMenuHandle>;
   /**
    * Live work behind a folded row, surfaced on the trigger. Folding Background
    * tasks into this menu took its running-count badge off the bar with it, and
@@ -197,6 +230,8 @@ export function ActionOverflowMenu({
   reserveGlyphColumn?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const openRef = useRef(open);
+  openRef.current = open;
   const coarse = useCoarsePointer();
   const [position, setPosition] = useState<React.CSSProperties>({});
   /** The menu's z-index when its host outranks the default; see `placeMenu`. */
@@ -360,6 +395,28 @@ export function ActionOverflowMenu({
     setOpen(false);
   }, [actions.length]);
 
+  useImperativeHandle(
+    handleRef,
+    () => ({
+      open: () => {
+        const trigger = ownRef.current;
+        // The same two branches the render below takes without a menu.
+        if (!trigger || actions.length === 0) return false;
+        if (inlineSingle && actions.length === 1) return false;
+        // An open, not a toggle: one hold can ask twice (the platform's own
+        // long-press `contextmenu` after the hold timer), and focusing the
+        // trigger again would take focus out of the open menu and close it.
+        if (openRef.current) return true;
+        // Focus first, so `useMenuFocus` returns focus to the `⋯` on close.
+        trigger.focus();
+        setPosition(pressPosition(trigger, actions.length));
+        setOpen(true);
+        return true;
+      },
+    }),
+    [actions.length, inlineSingle],
+  );
+
   if (actions.length === 0) return null;
 
   /**
@@ -447,19 +504,7 @@ export function ActionOverflowMenu({
         aria-expanded={open}
         onClick={(event) => {
           event.stopPropagation();
-          const rect = event.currentTarget.getBoundingClientRect();
-          const below = window.innerHeight - rect.bottom;
-          setPosition(
-            below < roomNeededPx(ordered.length)
-              ? {
-                  bottom: `${window.innerHeight - rect.top + MENU_GAP_PX}px`,
-                  right: `${window.innerWidth - rect.right}px`,
-                }
-              : {
-                  top: `${rect.bottom + MENU_GAP_PX}px`,
-                  right: `${window.innerWidth - rect.right}px`,
-                },
-          );
+          setPosition(pressPosition(event.currentTarget, ordered.length));
           setOpen((wasOpen) => !wasOpen);
         }}
       >
@@ -495,6 +540,12 @@ export function ActionOverflowMenu({
                   event.stopPropagation();
                   setOpen(false);
                 }}
+                // No WebView menu over an open one. The menu stays open: on
+                // touch this is usually the platform's own long-press
+                // `contextmenu` for the hold that opened it, landing on this
+                // backdrop, and it reaches the row's gesture (React bubbles
+                // portal events) as a repeat open.
+                onContextMenu={(event) => event.preventDefault()}
               />
               {/* The class names are the dock's because the RULES are: a
                   body-portalled, fixed menu that must outrank the dock is the

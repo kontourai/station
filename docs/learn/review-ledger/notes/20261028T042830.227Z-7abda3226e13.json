@@ -1,0 +1,7 @@
+{
+  "revision": "63119743e667daa80861a4e3d3ad89b392232178",
+
+  "notes": [
+    {"path":"docs/guides/plugins.md","note":"ProjectLayoutRenderer test now asserts the shortened coding-pane error text; the doc makes no claim about that copy or legacy-host fallback wording; no prose change.","inputs":["docs/guides/plugins.md","src-ui/src/app-shell/__tests__/ProjectLayoutRenderer.test.tsx"]}
+  ]
+}

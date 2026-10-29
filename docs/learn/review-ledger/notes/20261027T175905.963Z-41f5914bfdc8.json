@@ -1,0 +1,9 @@
+{
+  "revision": "9309cb05d8543209f73f364642e1aa41f18f87ec",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"contracts.md gained the WorkloadBudgetStatus holder field; the glossary defines no workload status term (its \"holder\" entries are browser lease holders), so nothing changes.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"contracts.md gained an optional holder field on a system-status shape; it is a pure declaration in its owning module, consistent with this scope's rules.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}
