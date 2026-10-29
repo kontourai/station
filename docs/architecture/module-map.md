@@ -1460,6 +1460,13 @@ caller to the same rule for a stored conversation, which has no Session record
 to read: it asks `target` for the Project named in the conversation's own
 metadata (global when it names none) and passes that to the shared rule, after
 the owner check (which a bound operator caller skips). A named Project Station cannot read refuses.
+The [fork route](../../src-server/routes/chat/conversations.ts)
+(`fork_conversation`) applies the rule twice before it writes: the source as a
+Conversation target with Project `view`, then the fork's Project as a new
+Session target with `execute`, so an agent forks only what its scope admits
+and only into a scope where it could start a Session. The
+[mounted fork test](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-fork-conversation.test.ts)
+drives each caller kind through it.
 
 **Start-time repeat.** The resolved directory is still a string when the engine
 starts. For a new Session and any caller except a bound operator, the route

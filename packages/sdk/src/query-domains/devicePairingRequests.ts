@@ -187,16 +187,29 @@ export async function confirmDevicePairingRequest(
         },
   );
   if (response.status === 202) {
-    const body = await response.json();
-    const transaction = body?.transaction;
+    const body: unknown = await response.json();
+    if (typeof body !== 'object' || body === null || !('transaction' in body))
+      throw new Error('Invalid step-up response');
+    const transaction = body.transaction;
     if (
-      body?.status !== 'step_up_required' ||
-      typeof transaction?.id !== 'string' ||
-      typeof transaction?.reviewUrl !== 'string' ||
-      !Number.isFinite(transaction?.expiresAt)
+      !('status' in body) ||
+      body.status !== 'step_up_required' ||
+      typeof transaction !== 'object' ||
+      transaction === null ||
+      !('id' in transaction) ||
+      typeof transaction.id !== 'string' ||
+      !('reviewUrl' in transaction) ||
+      typeof transaction.reviewUrl !== 'string' ||
+      !('expiresAt' in transaction) ||
+      typeof transaction.expiresAt !== 'number' ||
+      !Number.isFinite(transaction.expiresAt)
     )
       throw new Error('Invalid step-up response');
-    throw new StationStepUpRequiredError(transaction);
+    throw new StationStepUpRequiredError({
+      id: transaction.id,
+      reviewUrl: transaction.reviewUrl,
+      expiresAt: transaction.expiresAt,
+    });
   }
   if (!response.ok) throw await pairingActionError(response);
 }
