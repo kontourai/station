@@ -1801,6 +1801,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     sdkQuery.close();
     await engineProcess.terminate();
     seatbelt.launch.cleanup();
+    removeLaunchedRoot(threadId, record.hostImageLaunch);
     this.options.revokeStationControlCallerToken?.(threadId);
     if (record.nativeOwnershipClaimed)
       this.options.nativeSessionOwnership?.retired(threadId);
@@ -2466,6 +2467,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           await engineProcess.terminate();
           this.restrictedStartingProcesses.delete(input.threadId);
           seatbelt?.launch.cleanup();
+          removeLaunchedRoot(input.threadId, record.hostImageLaunch);
           this.sessions.delete(input.threadId);
           this.options.revokeStationControlCallerToken?.(input.threadId);
           throw error;
