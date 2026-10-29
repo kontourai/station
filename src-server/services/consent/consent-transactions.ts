@@ -465,6 +465,7 @@ export class ConsentTransactionStore {
     if (
       [
         'device-access-change',
+        'device-pairing-approval',
         'person-group-change',
         'person-token-change',
         'operator-passkey-revocation',

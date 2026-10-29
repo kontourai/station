@@ -3250,8 +3250,13 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       toolPolicyDelivery={toolPolicyDelivery}
                       availableModels={effectiveModels}
                       executionModels={executionRoutes}
+                      // The same server-derived gate as the composer menu's
+                      // handoff: a conversation this caller may not change
+                      // offers no engine switch at all.
                       onExecutionModelSelect={
-                        conversationBoundaryDialogs.openExecutionHandoff
+                        conversationCanMutate
+                          ? conversationBoundaryDialogs.openExecutionHandoff
+                          : undefined
                       }
                       modelsLoading={modelsLoading}
                       chatInput={chatInput}

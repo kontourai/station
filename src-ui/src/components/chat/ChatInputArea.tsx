@@ -323,6 +323,18 @@ interface ChatInputAreaProps {
   onClearAttachments: () => void;
   onModelSelect: (model: SelectableModel) => void;
   onModelReset: () => void;
+  /**
+   * Why the model/engine reset is refused right now. Set, the picker's reset
+   * is disabled with it shown, and the composer's reset chip stays in place
+   * disabled with it as its description.
+   */
+  modelResetDisabledReason?: string;
+  /**
+   * False when this conversation cannot take the reset at all (the server's
+   * open resolution denies changes). The composer then offers no reset chip.
+   * Defaults to true.
+   */
+  modelResetOffered?: boolean;
   onModelClose: () => void;
   onModelOpen: () => void;
   onModelRuntimeOptionChange: (
@@ -512,6 +524,8 @@ export function ChatInputArea({
   onClearAttachments,
   onModelSelect,
   onModelReset,
+  modelResetDisabledReason,
+  modelResetOffered = true,
   onModelClose,
   onModelOpen,
   onModelRuntimeOptionChange,
@@ -714,7 +728,13 @@ export function ChatInputArea({
   ]
     .filter(Boolean)
     .join(' ');
-  const agentAccessibleLabel = `Agent: ${[agentLabel ?? 'current Agent', agentRoute].filter(Boolean).join(' · ')}. ${agentHandoffDisabled ? (agentHandoffDisabledReason ?? 'Unavailable') : 'Change Agent'}`;
+  // The shared handoff reason names no action ("Send a message first."), so
+  // the refused state names it here, where the action is known.
+  const agentAccessibleLabel = `Agent: ${[agentLabel ?? 'current Agent', agentRoute].filter(Boolean).join(' · ')}. ${
+    agentHandoffDisabled
+      ? `Can’t change Agent yet.${agentHandoffDisabledReason ? ` ${agentHandoffDisabledReason}` : ''}`
+      : 'Change Agent'
+  }`;
   // A turn is in flight. Steer is the default on engines that can take
   // mid-turn input; otherwise Enter queues until this turn finishes.
   const mentionLocation =
@@ -777,6 +797,7 @@ export function ChatInputArea({
   const queuedDiscard = useUnconfirmedDiscardDisclosure();
   if (!queuedRetryText && queuedDiscard.open) queuedDiscard.close();
   const queuedRetryDescriptionId = React.useId();
+  const modelResetReasonId = React.useId();
   const composerRootRef = useRef<HTMLDivElement | null>(null);
   // The draft's two-line floor, written by the per-keystroke sizing below and
   // read by the reservation.
@@ -1065,6 +1086,7 @@ export function ChatInputArea({
                 runtimeOptions={modelRuntimeOptions}
                 onSelect={onModelSelect}
                 onReset={onModelReset}
+                resetDisabledReason={modelResetDisabledReason}
                 onRuntimeOptionChange={onModelRuntimeOptionChange}
                 onClose={onModelClose}
               />
@@ -1162,15 +1184,36 @@ export function ChatInputArea({
             </span>
             <ArrowDownGlyph className="choice-caret" />
           </button>
-          {isOverride && (
-            <button
-              type="button"
-              className="chat-input__model-reset"
-              onClick={onModelReset}
-              title="Reset this chat to its default model"
-            >
-              Use {modelResetSourceLabel(defaultModelSource)}
-            </button>
+          {/* A reset the conversation cannot take at all is not offered. While
+              the reset is only temporarily blocked (any shared handoff reason:
+              a turn running, queued or offline messages unresolved, or their
+              state still being checked or unavailable) it stays in place,
+              disabled, so the row does not shift every turn, and carries the
+              reason as its description: the composer row has no room for the
+              sentence, and the picker states the same reason as text. */}
+          {isOverride && modelResetOffered && (
+            <>
+              <button
+                type="button"
+                className="chat-input__model-reset"
+                aria-disabled={modelResetDisabledReason ? true : undefined}
+                aria-describedby={
+                  modelResetDisabledReason ? modelResetReasonId : undefined
+                }
+                onClick={modelResetDisabledReason ? undefined : onModelReset}
+                title={
+                  modelResetDisabledReason ??
+                  'Reset this chat to its default model'
+                }
+              >
+                Use {modelResetSourceLabel(defaultModelSource)}
+              </button>
+              {modelResetDisabledReason && (
+                <span id={modelResetReasonId} className="sr-only">
+                  {modelResetDisabledReason}
+                </span>
+              )}
+            </>
           )}
           {contextMeter}
           {modeChoices.length > 0 && onAcpSessionModeChange ? (

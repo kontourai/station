@@ -1169,6 +1169,7 @@ function configureRuntimeSecurity(
       .some((part) => part.trim().startsWith(`${OPERATOR_SESSION_COOKIE}=`));
     const admitOperatorSession = async (
       admittedDevice = false,
+      allowDeviceFallback = false,
     ): Promise<Response | undefined> => {
       if (
         !(
@@ -1197,13 +1198,15 @@ function configureRuntimeSecurity(
           tenant: getTenantRequestContext(c.req.raw),
         }));
       const refuse = () =>
-        c.json(
-          {
-            error: { code: 'operator_session_required' },
-            signInUrl: security.operatorSessions?.signInUrl ?? null,
-          },
-          admittedDevice || bindingDeviceAdmitted ? 403 : 401,
-        );
+        allowDeviceFallback
+          ? undefined
+          : c.json(
+              {
+                error: { code: 'operator_session_required' },
+                signInUrl: security.operatorSessions?.signInUrl ?? null,
+              },
+              admittedDevice || bindingDeviceAdmitted ? 403 : 401,
+            );
       if (!sessionSecret || !deviceCredential || hasCredentialQuery(c.req.url))
         return refuse();
       // Validate the binding credential through ordinary device admission on
@@ -1250,7 +1253,12 @@ function configureRuntimeSecurity(
       return c.res;
     };
     const inventorySignIn =
-      (c.req.method === 'GET' && c.req.path === '/api/pairing/devices') ||
+      (c.req.method === 'GET' &&
+        ['/api/pairing/devices', '/api/pairing/requests'].includes(
+          c.req.path,
+        )) ||
+      (c.req.method === 'POST' &&
+        /^\/api\/pairing\/requests\/[^/]+\/confirm$/.test(c.req.path)) ||
       isAccountBindingConsentLeaf(c.req.method, c.req.path)
         ? security.operatorSessions?.signInUrl
         : null;
@@ -1409,6 +1417,16 @@ function configureRuntimeSecurity(
           authority === 'operator-credential',
           locality === 'home-possession',
         );
+      if (
+        permitted &&
+        authority === 'device-credential' &&
+        operatorCookiePresent &&
+        c.req.method === 'POST' &&
+        /^\/api\/pairing\/requests\/[^/]+\/confirm$/.test(c.req.path)
+      ) {
+        const sessionResponse = await admitOperatorSession(true, true);
+        if (sessionResponse) return sessionResponse;
+      }
       if (!permitted) {
         const sessionResponse = await admitOperatorSession(
           authority === 'device-credential',

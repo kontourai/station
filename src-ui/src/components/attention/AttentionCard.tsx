@@ -333,22 +333,33 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
   // The card only says a device is asking; the details and the decision
   // open in a dialog.
   const [reviewing, setReviewing] = useState(false);
-  // #765 D5 live verification: `access:approve` is operator-promotion-only,
-  // so a paired browser session can read this item but the pairing routes
-  // answer its approve/deny with 401 `authentication_required` — the buttons
-  // were structurally dead there. `viewerCanDecide` is the server's own
-  // boundary predicate evaluated for THIS session; when it says no, render
-  // the remedy the panel prints for the same refusal instead of dead buttons.
-  if (!item.viewerCanDecide) {
-    return (
-      <div
-        className="attention-item__detail"
-        data-testid="attention-pairing-remedy"
-      >
-        {pairingApprovalRemedy(item, operatorCli, kept)}
-      </div>
-    );
-  }
+  // An operator session can be established after this attention item was read.
+  // The approval endpoint remains the authority for the submitted decision.
+  const error = confirmMutation.error as
+    | (Error & {
+        status?: number;
+        signInUrl?: string;
+        transaction?: { reviewUrl?: string };
+      })
+    | null;
+  const safeConsentUrl = (value: string | undefined) => {
+    try {
+      const url = new URL(value ?? '');
+      const app = new URL(apiBase);
+      return url.protocol === 'https:' &&
+        url.hostname === app.hostname &&
+        url.origin !== app.origin
+        ? url.href
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  const signInUrl = safeConsentUrl(error?.signInUrl);
+  const reviewUrl =
+    error?.status === 202
+      ? safeConsentUrl(error.transaction?.reviewUrl)
+      : undefined;
   const decision = (
     <div className="notice-actions">
       <NoticeAction
@@ -400,6 +411,14 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
           Review
         </NoticeAction>
       </div>
+      {!item.viewerCanDecide && (
+        <div
+          className="attention-item__detail"
+          data-testid="attention-pairing-remedy"
+        >
+          {pairingApprovalRemedy(item, operatorCli, kept)}
+        </div>
+      )}
       {reviewing && (
         <Dialog
           title={`${item.deviceName} is asking to pair`}
@@ -421,9 +440,26 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
           ) : (
             <p className="attention-item__detail">{item.body}</p>
           )}
+          {reviewUrl && (
+            <p>
+              Approval is pending.{' '}
+              <a href={reviewUrl} target="_blank" rel="noopener noreferrer">
+                Review and confirm with passkey
+              </a>
+              .
+            </p>
+          )}
+          {signInUrl && (
+            <p>
+              <a href={signInUrl} target="_blank" rel="noopener noreferrer">
+                Sign in as operator
+              </a>
+              , then return and approve again.
+            </p>
+          )}
           <MutationError
             error={describePairingActionError(
-              confirmMutation.error,
+              reviewUrl ? null : confirmMutation.error,
               item,
               'approve',
               operatorCli,

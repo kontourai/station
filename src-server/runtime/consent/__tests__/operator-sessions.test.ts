@@ -1462,6 +1462,171 @@ async function reviewRefusalText(
 }
 
 describe('per-action operator passkey step-up (#3257 S4)', () => {
+  test('a paired browser without an operator session is offered operator sign-in', async () => {
+    const h = await build();
+    const result = await h.api.request(
+      '/api/pairing/requests/example/confirm',
+      {
+        method: 'POST',
+        headers: {
+          cookie: `__Host-station-device=${h.first.credential}`,
+          origin: APP,
+        },
+      },
+    );
+    expect(result.status).toBe(403);
+    expect(await result.json()).toMatchObject({
+      signInUrl: `${ORIGIN}/operator/sign-in`,
+    });
+  });
+
+  test('a signed-in operator can read pending pairing requests', async () => {
+    const h = await build();
+    const offer = h.pairing.createOffer({
+      endpoint: APP,
+      scope: 'orchestration:read',
+    });
+    const pending = h.pairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'New browser',
+      source: 'pairing-code',
+      requesterPosition: 'unproven',
+    });
+    const signed = await h.signIn();
+    const response = await h.read(signed.cookie, '/api/pairing/requests');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      requests: [
+        expect.objectContaining({
+          requestId: pending.requestId,
+          status: 'pending',
+        }),
+      ],
+    });
+  });
+
+  test('a valid operator session starts review while an expired cookie does not block an independently authorized device', async () => {
+    const h = await build();
+    const approver = h.pair('Approver', 'orchestration:read access:approve');
+    const signed = await h.signIn(approver.credential);
+    const makePending = () => {
+      const offer = h.pairing.createOffer({
+        endpoint: APP,
+        scope: 'orchestration:read',
+      });
+      return h.pairing.requestPairing({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        deviceName: 'New browser',
+        source: 'pairing-code',
+        requesterPosition: 'unproven',
+      });
+    };
+    const first = makePending();
+    await requestChange(
+      h,
+      signed,
+      'POST',
+      `/api/pairing/requests/${first.requestId}/confirm`,
+      {},
+    );
+    expect(
+      h.pairing
+        .listRequests()
+        .find((entry) => entry.requestId === first.requestId)?.status,
+    ).toBe('pending');
+    h.clock.now += OPERATOR_SESSION_ABSOLUTE_MS + 1;
+    const second = makePending();
+    const response = await h.api.request(
+      `/api/pairing/requests/${second.requestId}/confirm`,
+      {
+        method: 'POST',
+        headers: {
+          cookie: signed.cookie,
+          origin: APP,
+          'content-type': 'application/json',
+        },
+        body: '{}',
+      },
+    );
+    expect(response.status).toBe(200);
+    expect(
+      h.pairing
+        .listRequests()
+        .find((entry) => entry.requestId === second.requestId)?.status,
+    ).toBe('confirmed');
+  });
+  test('an operator can approve a pairing request only after passkey confirmation', async () => {
+    const h = await build();
+    const signed = await h.signIn();
+    const offer = h.pairing.createOffer({
+      endpoint: APP,
+      scope: 'orchestration:read coding:exec',
+    });
+    const pending = h.pairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'New browser',
+      source: 'pairing-code',
+      requesterPosition: 'unproven',
+    });
+    const transaction = await requestChange(
+      h,
+      signed,
+      'POST',
+      `/api/pairing/requests/${pending.requestId}/confirm`,
+      {},
+    );
+    expect(
+      h.pairing
+        .listRequests()
+        .find((item) => item.requestId === pending.requestId)?.status,
+    ).toBe('pending');
+    const review = await reviewChange(h, signed, transaction.id);
+    expect(review.html).toContain('New browser');
+    const result = await commitChange(h, signed, transaction.id, review);
+    expect(result.status).toBe(200);
+    expect(
+      h.pairing
+        .listRequests()
+        .find((item) => item.requestId === pending.requestId)?.status,
+    ).toBe('confirmed');
+  });
+
+  test('a passkey review cannot approve a request denied after review began', async () => {
+    const h = await build();
+    const signed = await h.signIn();
+    const offer = h.pairing.createOffer({
+      endpoint: APP,
+      scope: 'orchestration:read coding:exec',
+    });
+    const pending = h.pairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'New browser',
+      source: 'pairing-code',
+      requesterPosition: 'unproven',
+    });
+    const transaction = await requestChange(
+      h,
+      signed,
+      'POST',
+      `/api/pairing/requests/${pending.requestId}/confirm`,
+      {},
+    );
+    const review = await reviewChange(h, signed, transaction.id);
+    h.pairing.denyRequest(pending.requestId);
+    await commitChange(h, signed, transaction.id, review);
+    expect(
+      h.channel.store.get(h.channel.tenantId, transaction.id)?.status,
+    ).toBe('target_changed');
+    expect(
+      h.pairing
+        .listRequests()
+        .some((item) => item.requestId === pending.requestId),
+    ).toBe(false);
+  });
   test('People and token controls are unreachable with operator-session authority', async () => {
     const h = await build(),
       signed = await h.signIn();
@@ -1739,7 +1904,10 @@ describe('per-action operator passkey step-up (#3257 S4)', () => {
   test('account binding requires a passkey decision for the exact pending request', async () => {
     const h = await build();
     const signed = await h.signIn();
-    const offer = h.pairing.createOffer({ endpoint: APP });
+    const offer = h.pairing.createOffer({
+      endpoint: APP,
+      scope: 'orchestration:read',
+    });
     const pending = h.pairing.requestPairing({
       offerId: offer.offerId,
       proof: offer.challenge,
@@ -1753,6 +1921,16 @@ describe('per-action operator passkey step-up (#3257 S4)', () => {
       accountCandidateSessionId: 'account-session',
       requireAccountBinding: true,
     });
+    const ordinary = await h.api.request(
+      `/api/pairing/requests/${pending.requestId}/confirm`,
+      { method: 'POST', headers: { cookie: signed.cookie, origin: APP } },
+    );
+    expect(ordinary.status).toBe(404);
+    expect(
+      h.pairing
+        .listRequests()
+        .find((item) => item.requestId === pending.requestId)?.status,
+    ).toBe('pending');
     const transaction = await requestChange(
       h,
       signed,
