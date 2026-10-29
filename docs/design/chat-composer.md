@@ -411,7 +411,7 @@ These controls are owned by [ChatInputArea](../../src-ui/src/components/chat/Cha
 
 ### Turn navigation
 
-A live transcript with six or more user turns gets turn navigation (#342;
+A live transcript gets turn navigation from its first user turn (#342;
 [TranscriptTurnRail](../../src-ui/src/components/chat/TranscriptTurnRail.tsx)).
 Its user turns are derived from the whole transcript row model
 ([transcriptTurnLandmarks](../../src-ui/src/components/chat/transcriptTurnLandmarks.ts)),
