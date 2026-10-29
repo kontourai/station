@@ -7,6 +7,7 @@ import {
 import { _setApiBase } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -217,6 +218,7 @@ function setup(
   );
   return {
     tree,
+    client,
     reads,
     onOpenCapture,
     revoke,
@@ -243,6 +245,116 @@ test('renders only this Task’s captures in time order, with authorized thumbna
   expect(h.reads.some((path) => path.includes('/foreign/'))).toBe(false);
   fireEvent.click(first);
   expect(h.onOpenCapture).toHaveBeenCalledWith('reproduced');
+});
+
+test('withdraws queued reads and releases content after all Screens leave, then reloads on return', async () => {
+  const callbacks = new Map<Element, IntersectionObserverCallback>();
+  vi.stubGlobal(
+    'IntersectionObserver',
+    class {
+      constructor(private callback: IntersectionObserverCallback) {}
+      observe(element: Element) {
+        callbacks.set(element, this.callback);
+      }
+      disconnect() {}
+    },
+  );
+  const h = setup({ count: 12 });
+  const fetchContent = globalThis.fetch;
+  const releases: Array<() => void> = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((input: string | Request | URL, init?: RequestInit) => {
+      if (!String(input).endsWith('/content')) return fetchContent(input, init);
+      return new Promise<Response>((resolve, reject) => {
+        releases.push(() => {
+          void fetchContent(input, init).then(resolve, reject);
+        });
+      });
+    }),
+  );
+  render(h.tree(true));
+  await screen.findByText('Screen 11');
+  const setNearby = (near: boolean) =>
+    act(() => {
+      for (const [element, callback] of callbacks)
+        callback(
+          [
+            {
+              target: element,
+              isIntersecting: near,
+            } as IntersectionObserverEntry,
+          ],
+          {} as IntersectionObserver,
+        );
+    });
+  setNearby(true);
+  await waitFor(() => expect(releases).toHaveLength(4));
+  setNearby(false);
+  await act(async () => {
+    releases.slice().forEach((release) => release());
+  });
+  await waitFor(() =>
+    expect(h.reads.filter((path) => path.endsWith('/content'))).toHaveLength(4),
+  );
+  expect(releases).toHaveLength(4);
+  expect(
+    h.client
+      .getQueriesData({ queryKey: ['task-review-capture-content'] })
+      .filter(([, data]) => data instanceof Blob),
+  ).toHaveLength(0);
+  setNearby(true);
+  await waitFor(() => expect(releases).toHaveLength(8));
+  await act(async () => {
+    releases[4]!();
+  });
+  await screen.findByRole('button', { name: 'Review Screen 0' });
+});
+
+test('keeps a shared digest visible until its last nearby Screen leaves', async () => {
+  const callbacks = new Map<Element, IntersectionObserverCallback>();
+  vi.stubGlobal(
+    'IntersectionObserver',
+    class {
+      constructor(private callback: IntersectionObserverCallback) {}
+      observe(element: Element) {
+        callbacks.set(element, this.callback);
+      }
+      disconnect() {}
+    },
+  );
+  const h = setup({ count: 2, sameDigest: true });
+  render(h.tree(true));
+  await screen.findByText('Screen 1');
+  const entries = [...callbacks];
+  act(() =>
+    entries.forEach(([element, callback]) =>
+      callback(
+        [
+          {
+            target: element,
+            isIntersecting: true,
+          } as IntersectionObserverEntry,
+        ],
+        {} as IntersectionObserver,
+      ),
+    ),
+  );
+  await screen.findByRole('button', { name: 'Review Screen 1' });
+  act(() =>
+    entries[0]![1](
+      [
+        {
+          target: entries[0]![0],
+          isIntersecting: false,
+        } as IntersectionObserverEntry,
+      ],
+      {} as IntersectionObserver,
+    ),
+  );
+  expect(screen.getByRole('button', { name: 'Review Screen 1' })).toBeTruthy();
+  expect(h.reads.filter((path) => path.endsWith('/content'))).toHaveLength(1);
+  expect(h.revoke).toHaveBeenCalledTimes(1);
 });
 
 test('does not read while hidden and revokes private thumbnails when leaving Overview', async () => {

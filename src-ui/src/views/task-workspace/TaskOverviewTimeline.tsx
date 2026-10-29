@@ -119,32 +119,6 @@ function TimelineScreenContent({
   scope: string;
   near: boolean;
 }) {
-  const content = useQuery({
-    queryKey: [
-      'task-review-capture-content',
-      capture.taskId,
-      scope,
-      capture.digest,
-    ],
-    queryFn: ({ signal }) =>
-      admit(signal, () =>
-        fetchTaskCaptureContent(capture.taskId, capture.captureId, signal),
-      ),
-    enabled: near,
-    gcTime: 0,
-    staleTime: Infinity,
-  });
-  const imageRef = useRef<HTMLImageElement>(null);
-  useEffect(() => {
-    if (!near || !content.data || !imageRef.current) return;
-    const element = imageRef.current;
-    const url = URL.createObjectURL(content.data);
-    element.src = url;
-    return () => {
-      element.removeAttribute('src');
-      URL.revokeObjectURL(url);
-    };
-  }, [content.data, near]);
   const evidence = threads.flatMap((thread) => {
     if (thread.status !== 'available') return [];
     const event = thread.lastDeliveryEvent;
@@ -160,25 +134,13 @@ function TimelineScreenContent({
   const label = capture.label ?? 'Screen';
   return (
     <>
-      {content.error ? (
-        <ErrorState
-          variant="compact"
-          title={`Couldn’t load ${label}.`}
-          action={
-            <Button size="sm" onClick={() => void content.refetch()}>
-              Retry Screen
-            </Button>
-          }
+      {near ? (
+        <NearbyScreen
+          capture={capture}
+          onOpenCapture={onOpenCapture}
+          admit={admit}
+          scope={scope}
         />
-      ) : near && content.data ? (
-        <Button
-          variant="ghost"
-          className="task-timeline__screen"
-          aria-label={`Review ${label}`}
-          onClick={() => onOpenCapture(capture.captureId)}
-        >
-          <img ref={imageRef} alt={label} />
-        </Button>
       ) : (
         <SkeletonBlock label={`Loading ${label}`} />
       )}
@@ -213,6 +175,71 @@ function TimelineScreenContent({
           )}
         </span>
       </div>
+    </>
+  );
+}
+
+function NearbyScreen({
+  capture,
+  onOpenCapture,
+  admit,
+  scope,
+}: {
+  capture: TaskCapture;
+  onOpenCapture: (id: string) => void;
+  admit: ContentAdmission;
+  scope: string;
+}) {
+  const content = useQuery({
+    queryKey: [
+      'task-review-capture-content',
+      capture.taskId,
+      scope,
+      capture.digest,
+    ],
+    queryFn: ({ signal }) =>
+      admit(signal, () =>
+        fetchTaskCaptureContent(capture.taskId, capture.captureId, signal),
+      ),
+    gcTime: 0,
+    staleTime: Infinity,
+  });
+  const imageRef = useRef<HTMLImageElement>(null);
+  useEffect(() => {
+    if (!content.data || !imageRef.current) return;
+    const element = imageRef.current;
+    const url = URL.createObjectURL(content.data);
+    element.src = url;
+    return () => {
+      element.removeAttribute('src');
+      URL.revokeObjectURL(url);
+    };
+  }, [content.data]);
+  const label = capture.label ?? 'Screen';
+  return (
+    <>
+      {content.error ? (
+        <ErrorState
+          variant="compact"
+          title={`Couldn’t load ${label}.`}
+          action={
+            <Button size="sm" onClick={() => void content.refetch()}>
+              Retry Screen
+            </Button>
+          }
+        />
+      ) : content.data ? (
+        <Button
+          variant="ghost"
+          className="task-timeline__screen"
+          aria-label={`Review ${label}`}
+          onClick={() => onOpenCapture(capture.captureId)}
+        >
+          <img ref={imageRef} alt={label} />
+        </Button>
+      ) : (
+        <SkeletonBlock label={`Loading ${label}`} />
+      )}
     </>
   );
 }
