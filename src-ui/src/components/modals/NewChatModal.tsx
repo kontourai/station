@@ -2477,14 +2477,20 @@ function NewChatDraftSurface({
   // mounted, `historyActive` now false) takes the orphan route and never
   // travels back, so it cannot cancel a navigation landing in the same
   // moment (#2414: a phone's setup journey collapses the dock and navigates
-  // together). Only an ordinary close folds the entry by travelling back.
+  // together). A started draft is released the same way: Start has just
+  // navigated to its chat, and travelling back would undo that (on a phone,
+  // back to the URL with the dock closed). Only a dismissal travels back.
   const releasedOutOfView = useRef(false);
   releasedOutOfView.current = !historyActive;
   useEffect(() => {
     if (!historyActive) return;
     const host = {
       get removed() {
-        return releasedOutOfView.current || Boolean(historyHost?.removed);
+        return (
+          releasedOutOfView.current ||
+          startedRef?.current === true ||
+          Boolean(historyHost?.removed)
+        );
       },
     };
     return registerDialogHistory(historyId, () => onCloseRef.current(), host);
