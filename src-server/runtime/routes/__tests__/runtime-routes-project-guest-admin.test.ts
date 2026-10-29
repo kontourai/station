@@ -642,6 +642,18 @@ describe('project guest administration over the production composition', () => {
       project.id,
       bootstrap,
     );
+    const serveEnv = {
+      incoming: { socket: { remoteAddress: '127.0.0.1' } },
+    } as never;
+    const serveHeaders = {
+      [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+      [INTERNAL_INGRESS_IDENTITY_HEADER]: Buffer.from(
+        JSON.stringify({
+          provider: 'tailscale-serve',
+          login: 'device-owner@example.test',
+        }),
+      ).toString('base64url'),
+    };
     const people: {
       cookie: string;
       paired: ReturnType<typeof h.pairAccountBound>;
@@ -709,18 +721,27 @@ describe('project guest administration over the production composition', () => {
         h.localAccounts.service.captureCurrentSession(verifiedRequest)(),
         JSON.stringify(authenticated.session),
       ).toBe(true);
-      await h.membership.service.accept(invitation.token, {
-        current: async () => ({
-          principal: authenticated.principal,
-          verifiedEmails: [],
-        }),
-        operator: async () => {},
-      });
       const paired = h.pairAccountBound(
         username,
         GUEST_GRANT,
         authenticated.session.subject,
       );
+      const accepted = await h.request(
+        '/api/account-auth/accept-invitation',
+        {
+          method: 'POST',
+          headers: {
+            ...serveHeaders,
+            Authorization: `Bearer ${paired.credential}`,
+            Cookie: cookie,
+            Origin: ORIGIN,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ token: invitation.token }),
+        },
+        serveEnv,
+      );
+      expect(accepted.status, await accepted.clone().text()).toBe(200);
       people.push({ cookie, authenticated, paired });
     }
     const parent = await h.graph.createTask({
@@ -755,18 +776,6 @@ describe('project guest administration over the production composition', () => {
         sharedBy: humanPrincipal('fixture', 'operator', 'Operator').id,
       });
     share(parent);
-    const serveEnv = {
-      incoming: { socket: { remoteAddress: '127.0.0.1' } },
-    } as never;
-    const serveHeaders = {
-      [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
-      [INTERNAL_INGRESS_IDENTITY_HEADER]: Buffer.from(
-        JSON.stringify({
-          provider: 'tailscale-serve',
-          login: 'device-owner@example.test',
-        }),
-      ).toString('base64url'),
-    };
     const serveRequest = (path: string, credential: string, cookie?: string) =>
       h.request(
         path,
@@ -899,6 +908,7 @@ describe('project guest administration over the production composition', () => {
       h.operatorHeaders({
         method: 'POST',
         headers: {
+          ...serveHeaders,
           Cookie: people[0]!.cookie,
           Origin: ORIGIN,
           'Content-Type': 'application/json',
@@ -909,6 +919,7 @@ describe('project guest administration over the production composition', () => {
           task: { projectId: project.id, title: 'Operator-authorized child' },
         }),
       }),
+      serveEnv,
     );
     expect(
       operatorAccountEdit.status,
