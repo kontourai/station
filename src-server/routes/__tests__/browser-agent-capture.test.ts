@@ -156,6 +156,7 @@ async function harness(
     storageInRepository?: boolean;
     recording?: boolean;
     recordingPreview?: boolean;
+    continuousFrames?: boolean;
     encoderPath?: string;
     beforeResolveFfmpeg?: () => Promise<void>;
     duringFrame?: (workspace: string) => void;
@@ -227,7 +228,12 @@ async function harness(
       if (method === 'Page.startScreencast' && options.recording) {
         streams++;
         notifyStreamStarted();
-        for (const [i, frame] of [FRAME_RED, FRAME_BLUE].entries()) {
+        const frames = options.continuousFrames
+          ? Array.from({ length: 8 }, (_, i) =>
+              i % 2 === 0 ? FRAME_RED : FRAME_BLUE,
+            )
+          : [FRAME_RED, FRAME_BLUE];
+        for (const [i, frame] of frames.entries()) {
           const timer = setTimeout(
             () => {
               timers.delete(timer);
@@ -243,7 +249,7 @@ async function harness(
                   sessionId,
                 );
             },
-            30 + i * 120,
+            30 + i * (options.continuousFrames ? 450 : 120),
           );
           timers.add(timer);
         }
@@ -1533,10 +1539,14 @@ test
     const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
     writeFileSync(
       wrapper,
-      `#!/bin/sh\nprintf '%s' "$$" > ${quote(pidPath)}\nexec ${quote(ffmpeg!)} -re "$@"\n`,
+      `#!/bin/sh\nprintf '%s' "$$" > ${quote(pidPath)}\nexec ${quote(ffmpeg!)} -readrate 0.5 "$@"\n`,
       { mode: 0o700 },
     );
-    const h = await harness({ recording: true, encoderPath: wrapper });
+    const h = await harness({
+      recording: true,
+      continuousFrames: true,
+      encoderPath: wrapper,
+    });
     const controller = new AbortController();
     const pending = probeRequest(h, controller.signal, 4000);
     await h.streamStarted;
