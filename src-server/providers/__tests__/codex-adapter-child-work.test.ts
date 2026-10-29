@@ -413,7 +413,7 @@ describe('#2458 Codex subagents as child work — real captures', () => {
     expect(deltasOf(events)).toEqual([]);
   });
 
-  test('session end with the child still open settles it unresolved, before session.exited', async () => {
+  test('a requested session stop is no interruption: a child still open settles unresolved, before session.exited', async () => {
     const capture = CODEX_COLLAB_V1_CLIENT_TURN_INTERRUPT;
     const childDone = capture.findIndex((line) => {
       const { msg } = JSON.parse(line);
@@ -422,7 +422,10 @@ describe('#2458 Codex subagents as child work — real captures', () => {
     const replay = replayCodexCapture(capture, { limit: childDone });
     expect(child(replay.events).status).toBe('running');
     await replay.stop();
-    expect(child(replay.events).status).toBe('unresolved');
+    // #4266: Station reaped the app-server because a stop was requested, so
+    // the child reads "No result", as Claude's does, never interrupted.
+    expect(child(replay.events)).toMatchObject({ status: 'unresolved' });
+    expect(child(replay.events).endedBy).toBeUndefined();
     const settleAt = replay.events.findIndex(
       (event) =>
         event.method === 'child-work.updated' && event.delta.kind === 'settle',
@@ -461,6 +464,82 @@ describe('#2458 Codex subagents as child work — real captures', () => {
       result: { summary: 'done' },
     });
     expect(codexCaptureIds(reordered).parentThreadId).toBe(PARENT);
+  });
+});
+
+describe('Codex child transcripts: a codex-thread ref from the spawn on', () => {
+  const HOME = '/home/user/.codex';
+  const ref = { kind: 'codex-thread', threadId: CHILD, configHome: HOME };
+
+  test.each([
+    ['v1 spawnAgent', CODEX_COLLAB_V1_SPAWN_WAIT_COMPLETED],
+    ['v2 subAgentActivity', CODEX_COLLAB_V2_SPAWN_WAIT_COMPLETED],
+  ])(
+    '%s: the running child already names its own thread under the session home',
+    (_label, capture) => {
+      // Stop just before the child's own turn/completed: it is still running.
+      const childDone = capture.findIndex((line) => {
+        const { msg } = JSON.parse(line);
+        return msg.method === 'turn/completed' && msg.params.threadId === CHILD;
+      });
+      expect(childDone).toBeGreaterThan(0);
+      const running = replayCodexCapture(capture, {
+        limit: childDone,
+        codexHome: HOME,
+      });
+      expect(child(running.events)).toMatchObject({
+        status: 'running',
+        transcript: ref,
+      });
+      // The ref is on the delta the adapter published, not only the fold.
+      expect(
+        deltasOf(running.events).some(
+          (delta) =>
+            delta.kind === 'snapshot' &&
+            delta.running.some(
+              (item) =>
+                item.childId === CHILD &&
+                item.transcript?.kind === 'codex-thread',
+            ),
+        ),
+      ).toBe(true);
+      // And the settle keeps it.
+      const settled = replayCodexCapture(capture, { codexHome: HOME });
+      expect(child(settled.events)).toMatchObject({
+        status: 'completed',
+        transcript: ref,
+      });
+    },
+  );
+
+  test('a session with no recorded home offers no transcript rather than guess one', () => {
+    const { events } = replayCodexCapture(CODEX_COLLAB_V1_SPAWN_WAIT_COMPLETED);
+    expect(child(events).transcript).toBeUndefined();
+  });
+
+  test('a child first named by a `wait`, not a spawn, carries the ref too', () => {
+    const { events } = replayCodexCapture(synthetic([wait('running')]), {
+      codexHome: HOME,
+    });
+    expect(child(events)).toMatchObject({ status: 'running', transcript: ref });
+  });
+
+  test('a running child stays fresh: its own token usage bumps the item', () => {
+    const { events } = replayCodexCapture(
+      synthetic([spawn(), childUsage(10), childUsage(25)]),
+      { codexHome: HOME },
+    );
+    const usageUpserts = deltasOf(events).filter(
+      (delta) => delta.kind === 'upsert' && delta.item.childId === CHILD,
+    );
+    // Each report reaches clients as its own change, which is what the
+    // transcript viewer's `revision` re-reads on.
+    expect(
+      usageUpserts.map(
+        (delta) => (delta as { item: ChildWorkItem }).item.usage,
+      ),
+    ).toEqual([{ totalTokens: 10 }, { totalTokens: 25 }]);
+    expect(child(events)).toMatchObject({ status: 'running', transcript: ref });
   });
 });
 

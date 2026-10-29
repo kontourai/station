@@ -260,7 +260,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/native-relay-link` | Closed v1 public route intent or unchanged native v2 invitation envelope, untrusted origin hints, fixed native channels and secret-free host delivery metadata/opaque handles; no trust, person, Device, Project or compute authority |
 | `@kontourai/station-contracts/deployment-authentication` | Public operator-installed authentication provider configuration, factory, descriptor, operations and verified account-session results; see [deployment authentication](../guides/deployment-authentication.md) |
 | `@kontourai/station-contracts/catalog` | Registry items, install results, skills, guidance assets |
-| `@kontourai/station-contracts/child-work` | Provider-neutral child work (engine subagents and Station delegates): items, deltas, the session read model, and the one pure reducer over them. An item's optional `model` is the child's own model with its `source` (never the parent's), and `transcript` names the engine records its read-only transcript is served from. Its optional bounded `latestTool` is the latest reported child tool name, independent of `progress`; it carries no tool arguments or inferred execution state. Missing reports retain the last observed name through reducer updates and settlement, and a new resumed child has a separate identity. `usageProvisional` marks a terminal child whose usage still holds figures from while it ran; settles that report usage replace its running fields, and a field a settle reported stays sticky, even while `usageRunningFields` names other fields still running. `childWorkSettleFromItem` restates a stored settled item as a settle that keeps both, for seeding a registry from history or a session view |
+| `@kontourai/station-contracts/child-work` | Provider-neutral child work (engine subagents and Station delegates): items, deltas, the session read model, and the one pure reducer over them. An item's optional `model` is the child's own model with its `source` (never the parent's), and `transcript` names the engine records its read-only transcript is served from: a Claude subagent by session and agent id (`claude-subagent`), a Codex child by its thread id under the session's `CODEX_HOME` (`codex-thread`, its rollout file), never by a path. An `unresolved` child may carry `endedBy: 'engine-exit'`: the engine process it ran in died under it (a crash, a signal, memory exhaustion). A stop someone requested is not one: its children read "No result". Unlike a bare `unresolved` that is an observed end, so no later settle corrects it, and `childWorkDisplayStatus` reads it as `interrupted`. It is a field rather than a status so a client built before it, which drops unknown members, keeps showing "No result" instead of an unknown status; the wire statuses stay the six released clients know. Its optional bounded `latestTool` is the latest reported child tool name, independent of `progress`; it carries no tool arguments or inferred execution state. Missing reports retain the last observed name through reducer updates and settlement, and a new resumed child has a separate identity. `usageProvisional` marks a terminal child whose usage still holds figures from while it ran; settles that report usage replace its running fields, and a field a settle reported stays sticky, even while `usageRunningFields` names other fields still running. `childWorkSettleFromItem` restates a stored settled item as a settle that keeps both, for seeding a registry from history or a session view |
 | `@kontourai/station-contracts/thread-usage-tree` | A conversation's usage tree: own figures, each child's usage relation to its parent (`added`, `included-in-parent`, `not-reported`) for tokens and cost, and a roll-up total that names what it leaves out |
 | `@kontourai/station-contracts/cloud-move` | Cloud preparation target/inventory, enrolled target observations, unavailable-transfer projection, and workspace package capture/inspection/verification receipts |
 | `@kontourai/station-contracts/registry-trust` | Candidate registry policies, bounded applied identity/epoch shapes, and untrusted signed-package claim shapes |
@@ -285,7 +285,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/personal-board` | Declarative dashboard sections, saved/proposed Board document and revisioned authoring inputs |
 | `@kontourai/station-contracts/local-accounts` | Operator-only account projections, sign-in/session actions and one-time recovery results |
 | `@kontourai/station-contracts/notification` | Notification payloads and actions |
-| `@kontourai/station-contracts/orchestration` | Connected-agent/orchestration request and response shapes. A session event window may carry `latestTool: { turnId, name }` independently of its transcript caps, bounded to a 256-byte UTF-8 name and 4096-byte turn ID at the snapshot watermark. `null` means no usable current-turn tool; only an absent field permits older-server event fallback. A new turn clears the fact; steering the same turn preserves it. No arguments or inferred tool-running state are included. `turnStartDetached: true` marks a capped newest page whose oldest event is its oldest turn's `turn.started`, re-added across events the page left out; its `nextCursor` reads that gap first. Absent means the page is contiguous, or the host predates the field. |
+| `@kontourai/station-contracts/orchestration` | Connected-agent/orchestration request and response shapes. A session event window may carry `latestTool: { turnId, name }` independently of its transcript caps, bounded to a 256-byte UTF-8 name and 4096-byte turn ID at the snapshot watermark. `null` means no usable current-turn tool; only an absent field permits older-server event fallback. A new turn clears the fact; steering the same turn preserves it. No arguments or inferred tool-running state are included. `turnStartDetached: true` marks a capped newest page whose oldest event is its oldest turn's `turn.started`, re-added across events the page left out; its `nextCursor` reads that gap first. Absent means the page is contiguous, or the host predates the field. Conversation windows may include `memoryContinuation: { eligible, turnId? }`, the server's current person-continuation decision; an absent field does not authorize a stored-event Continue action. Submission still checks the sender's permission and current state. |
 | `@kontourai/station-contracts/required-slots` | Required Home and shared Inbox/Chat default identities, non-empty assignment parser, default mutation refusal and pure override/default/safe-mode resolution; declarations grant no execution or role authority. See [required slots](../guides/plugins.md#required-home-and-inboxchat-slots) |
 | `@kontourai/station-contracts/plugin` | Plugin manifests, previews, overrides, conflicts, install outcomes and current permission status |
 | `@kontourai/station-contracts/plugin-foreground-work` | Bounded foreground-work declarations, start intents, effect depth, run states, and safe public outcomes. Published ahead of a server implementation: Station does not admit or list plugin foreground runs yet |
@@ -365,6 +365,15 @@ empty lists deny all. A binding must never bypass that check. Unrepresentable
 legacy records refuse the entire projection rather than silently skipping them.
 The runtime owns one-time persistence, revocation, and token transfer to secrets.
 
+Delivery entries admit a `busy` refusal. An outbound acknowledgement may name
+its inbound refusal with `refusalId`, independently of `retryOf` (which names a
+prior attempt). Outbound reply chunks may carry `replyChunk` with a bounded
+`replyId`, zero-based `chunkIndex`, and `chunkCount` from 1 through 10; the
+index must be smaller than the count. Only the last chunk of a ten-chunk reply
+may set `overflow: true`. Refusal links and chunk metadata cannot occur on
+inbound entries or together on one entry. These references describe receipts;
+the parser cannot establish that a referenced record exists.
+
 Raw confirmation codes use 10–128 symbols from
 `23456789ABCDEFGHJKLMNPQRSTUVWXYZ` (32 unambiguous symbols). The runtime must use
 uniform cryptographic randomness with at least 50 bits of entropy; format
@@ -390,6 +399,13 @@ per Station and the Discord import remain responsibilities of the runtime lanes.
 
 The `task-review` subpath defines the [Task review API](api.md#task-review-threads)
 and its SDK types; runtime delivery and verification are documented in the API reference.
+`summarizeThreadView` and `previewTaskReviewEvent` produce bounded list previews
+without splitting surrogate pairs. Available Plan items may include
+`revisionOrdinals`, mapping the current and returned threads' anchored plan
+revisions to persistent save sequence numbers for display. One committed,
+revision-changing settle batch advances once, regardless of its operation count.
+The index survives restart and operation pruning; unknown revisions are omitted.
+This metadata does not replace revision identity.
 The shared refusal union includes `workspace-unobservable` when a clean
 workspace pin cannot observe the Task workspace or its submodules.
 All `parseTaskReview*Request` and `parseTaskThread*Request` helpers, plus
@@ -1294,7 +1310,10 @@ kernel `oom_kill` count (`childWorkloadMemoryExhausted` in
 `@kontourai/station-shared/child-workload`), not a signal alone. Only the Codex
 adapter publishes it today. The conversation is continued automatically
 (capped) with a Station recovery note; past the cap chat offers Continue rather
-than Send again. That continuation's turn carries a send key starting
+than Send again. `isEngineMemoryExhaustedFailure` (`provider`) also recognises
+a failure stored before that code existed (`codex-turn-orphaned` with the old
+"Codex was killed because memory was exhausted." sentence), so chat shows it
+in current copy and a person's Continue applies to it. That continuation's turn carries a send key starting
 `MEMORY_CONTINUATION_CLIENT_TURN_PREFIX` and an internal origin;
 `isStationMemoryContinuationTurn` (`provider`) recognises it and
 `memoryContinuationKeyKind` tells Station's automatic key from a person's
@@ -1558,6 +1577,33 @@ Work-chat listings expose only currently readable canonical IDs and revisions.
 `ProjectSharedTaskService` remains the separate default-private publication
 owner. See the real-store relationship and mounted-route tests for the local
 persistence/transport boundary; these do not qualify production composition.
+
+### Finish time and engines run
+
+`OrchestrationSessionSummary.lifecycleChangedAt` is when the event that
+produced the current `lifecycleState` was recorded, so a finished session
+reports its real finish time; later bookkeeping moves `updatedAt` and
+`lastEventAt` but not this. It is absent when no event in the folded window
+changed the state, and consumers fall back to `updatedAt`. A runtime
+`ConversationListItem` carries its current execution's `lifecycleChangedAt` and
+`executionProviders`: the distinct engines of the conversation's execution
+sessions in lineage order, so a handoff between engines lists both. A reserved
+handoff whose session never started ran nothing and is not listed. Both fields
+are absent from older hosts. See the
+[lifecycle fold](../../src-server/services/orchestration/session-lifecycle-service.ts)
+and the [inventory projection](../../src-server/services/orchestration/conversation-history-read-service.ts).
+
+### Conversation titles
+
+`@kontourai/station-contracts/conversation-title` exports `isLowContentPrompt`,
+the one rule every title derivation shares (#4266): a prompt whose words are
+all conversational filler ("Continue", "ok, go ahead", "yes please"), that has
+no letters or digits, or that is Station's memory-recovery continuation never
+names a conversation while a later prompt does, and never replaces a title that
+names something. It is not a length rule: "Deploy staging" is a title. See the
+[helper](../../packages/contracts/src/conversation-title.ts). A runtime
+`ConversationListItem` now carries `titleSource` (`prompt`, `provider` or
+`generated`); rows recorded before #4266 carry none.
 
 ### Conversation measurements
 
@@ -2048,6 +2094,17 @@ previews. HTML requires Station's distinct-origin frame viewer; the contract
 carries display data and does not confer workspace-read authority. The server
 reuses Project/Session admission and confines reads to that workspace or a
 verified Git worktree of the same repository.
+
+A refused read answers `{ success: false, error, reason }` with a
+`WorkspaceVisualFileRefusal`: `missing` and `no-workspace` (404),
+`outside-project` (403), `unsupported-type` (415), `too-large` (413) and
+`unreadable` (422), per `WORKSPACE_VISUAL_FILE_REFUSAL_STATUS`. Name and
+extension are checked before any filesystem access, and containment is decided
+on resolved paths; a path or link that does not end inside the allowed folders
+is `outside-project` whether or not its target exists.
+`workspaceVisualFileUnavailableReason(status, body)` believes a reason only
+with its paired status, and otherwise reports `unauthorized` (401, or 403
+without a reason), `server-error` (5xx) or `unavailable`.
 
 ## Walkthrough
 

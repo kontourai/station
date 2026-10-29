@@ -4,15 +4,22 @@ import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import { describe, expect, test } from 'vitest';
 import { inboxContextParts } from '../inboxContext';
 
-// Only the fields the resolver reads; the cast is the fixture boundary.
 function session(
   extra: Partial<OrchestrationSessionSummary>,
 ): OrchestrationSessionSummary {
   return {
     threadId: 'thread-1',
     provider: 'claude',
+    status: 'running',
+    createdAt: '2026-10-28T00:00:00.000Z',
+    updatedAt: '2026-10-28T00:00:00.000Z',
+    controlMode: 'station-owned',
+    answerability: { answerable: true },
+    isLoaded: true,
+    isPersisted: true,
+    eventCount: 0,
     ...extra,
-  } as OrchestrationSessionSummary;
+  };
 }
 
 const parts = (facts: Parameters<typeof inboxContextParts>[0]) =>
@@ -50,7 +57,7 @@ describe('inboxContextParts', () => {
           taskId: 'task-1',
           environmentKind: 'peer',
           environmentName: 'build-server',
-        } as OrchestrationSessionSummary['delegation'],
+        },
       }),
       localStationName: 'workstation',
     });
@@ -106,7 +113,7 @@ test('remote work with no Station name still reads as remote, never as this one'
         taskId: 'task-1',
         environmentKind: 'peer',
         environmentId: 'env-1',
-      } as OrchestrationSessionSummary['delegation'],
+      },
     }),
     localStationName: 'workstation',
   });

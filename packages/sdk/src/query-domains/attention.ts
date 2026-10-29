@@ -1,6 +1,7 @@
 import type { AttentionProjection } from '@kontourai/station-contracts/attention';
 import { apiErrorMessage } from '../api-core';
 import { authenticatedFetch, type ClientRequestOptions } from '../client/http';
+import { unlessDeadline } from '../client/request-deadline';
 import {
   type QueryConfig,
   resolveApiBase,
@@ -130,7 +131,7 @@ export async function snoozeAttentionItem(
       body: JSON.stringify({ until }),
     },
   );
-  const result = (await response.json().catch(() => null)) as {
+  const result = (await response.json().catch(unlessDeadline(() => null))) as {
     success?: boolean;
     data?: { snoozedUntil: string };
     error?: string;
@@ -152,7 +153,7 @@ export async function unsnoozeAttentionItem(
     `${resolvedApiBase}/api/attention/${encodeURIComponent(itemId)}/snooze`,
     { method: 'DELETE' },
   );
-  const result = (await response.json().catch(() => null)) as {
+  const result = (await response.json().catch(unlessDeadline(() => null))) as {
     success?: boolean;
     error?: string;
     code?: string;

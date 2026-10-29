@@ -49,7 +49,10 @@ import type {
 } from '../flow/flow-run-service.js';
 import { resolveNotificationOpenHref } from '../notifications/notification-deep-link.js';
 import type { NotificationService } from '../notifications/notification-service.js';
-import type { ConversationAcknowledgementStore } from '../orchestration/conversation-acknowledgement-store.js';
+import {
+  type ConversationAcknowledgementStore,
+  conversationAcknowledgementKey,
+} from '../orchestration/conversation-acknowledgement-store.js';
 import { collectOpenRequests } from '../orchestration/open-requests.js';
 import type { OrchestrationService } from '../orchestration/orchestration-service.js';
 import {
@@ -211,15 +214,12 @@ export class AttentionProjectionService {
      */
     private readonly acknowledgementStore?: Pick<
       ConversationAcknowledgementStore,
-      'getMany' | 'acknowledge'
+      'getMany' | 'acknowledge' | 'isOwnerDevice'
     >,
     /**
-     * Identity the acknowledgement store scopes by. Defaults to a single
-     * fixed id: Station is currently a single-operator local app with no
-     * per-request caller identity reaching this service (unlike the HTTP
-     * route layer, which resolves `getCachedUser().alias` for the
-     * conversation-acknowledgement route this reuses). A caller that does
-     * have a real per-user identity may inject one.
+     * The user id of the personal read authority used when a caller passes
+     * none. Acknowledgements are not keyed by it: every read and write goes
+     * through `conversationAcknowledgementKey`, the inventory's key.
      */
     private readonly getUserId: () => string = () => 'default',
     /**
@@ -470,9 +470,11 @@ export class AttentionProjectionService {
       ...pairingItems,
       ...setupItems,
     ];
-    const acknowledgements = this.acknowledgementStore?.getMany(
-      readAuthority.userId,
-      undecorated.map((item) => item.id),
+    // The inventory's key (`conversationAcknowledgementKey`), so a person's
+    // acknowledgement on one device holds on every device they use.
+    const acknowledgementKey = conversationAcknowledgementKey(
+      readAuthority,
+      this.acknowledgementStore?.isOwnerDevice,
     );
     const snoozes = this.snoozeEnabled()
       ? this.snoozing?.store.getMany(
@@ -481,6 +483,12 @@ export class AttentionProjectionService {
         )
       : undefined;
     const now = this.snoozing?.now?.() ?? Date.now();
+    const acknowledgements = acknowledgementKey
+      ? this.acknowledgementStore?.getMany(
+          acknowledgementKey,
+          undecorated.map((item) => item.id),
+        )
+      : undefined;
     const decorated = undecorated.map((item) => {
       const version = acknowledgements?.get(item.id);
       const snooze = snoozes?.get(item.id);
@@ -582,6 +590,8 @@ export class AttentionProjectionService {
   ): Promise<boolean> {
     if (!this.acknowledgementStore) return false;
     const readAuthority = authority ?? this.defaultReadAuthority();
+    const acknowledgementKey = conversationAcknowledgementKey(readAuthority);
+    if (!acknowledgementKey) return false;
     const { items } = await this.list(readAuthority);
     const item = items.find((candidate) => candidate.id === itemId);
     if (!item) return false;
@@ -591,7 +601,7 @@ export class AttentionProjectionService {
     // true — someone decides it. See `isAcknowledgeableAttentionKind`.
     if (!isAcknowledgeableAttentionKind(item.kind)) return false;
     this.acknowledgementStore.acknowledge({
-      userId: readAuthority.userId,
+      userId: acknowledgementKey,
       conversationId: item.id,
       updatedAt: item.updatedAt,
     });

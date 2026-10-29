@@ -1498,7 +1498,7 @@ describe('NotificationsPage snoozed items (Feature Preview)', () => {
     expect(screen.queryByRole('menuitem', { name: /^1 hour/ })).toBeNull();
   });
 
-  test('when everything is snoozed, the page still offers Unsnooze', () => {
+  test('when everything is snoozed, filters stay reachable and clearing restores Unsnooze', () => {
     snoozePreviews = [{ id: 'attention-snooze', enabled: true }];
     attention = {
       pendingCount: 0,
@@ -1508,6 +1508,14 @@ describe('NotificationsPage snoozed items (Feature Preview)', () => {
     renderPage();
     expect(screen.queryByText('All caught up')).toBeNull();
     expect(screen.getByRole('button', { name: 'Unsnooze' })).toBeTruthy();
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search' }), {
+      target: { value: 'no matching work' },
+    });
+    expect(screen.queryByRole('button', { name: 'Unsnooze' })).toBeNull();
+    expect(screen.getByRole('searchbox', { name: 'Search' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Unsnooze' }));
+    expect(unsnoozeAttention).toHaveBeenCalledWith('session-failed:b');
     snoozePreviews = [];
   });
 

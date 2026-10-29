@@ -296,7 +296,7 @@ export function NotificationsPage() {
         {inbox.pendingCount === 0 &&
         inbox.notifications.length === 0 &&
         // A snoozed item still has a row to lift its snooze from.
-        snoozedItems.length === 0 &&
+        !(snooze.enabled && inbox.items.some((item) => item.snoozedUntil)) &&
         inbox.unavailableSources.length === 0 &&
         !approvalTarget &&
         !pairingTarget ? (

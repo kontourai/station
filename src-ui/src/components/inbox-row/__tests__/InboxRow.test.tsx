@@ -480,7 +480,7 @@ describe('the chip line exists only when a chip does', () => {
     expect(document.querySelector('.inbox-row__chip')).toBeNull();
   });
 
-  it('shows the remote machine, the unsent draft and the woke marker each from its own fact', () => {
+  it('shows the remote machine and the woke marker as chips, and the unsent draft as a pencil on the project line', () => {
     const base = rowFor();
     const remote: Row = {
       ...base,
@@ -499,15 +499,20 @@ describe('the chip line exists only when a chip does', () => {
       ]),
     ).toEqual([
       ['remote', 'home-media'],
-      ['draft', 'Unsent draft'],
       ['woke', 'Woke from snooze'],
     ]);
-    act(() => chatDraftsStore.clear('chat-with-draft'));
+    // #4266: no full-line "Unsent draft" chip. A pencil on the meta line,
+    // hidden from assistive tech: the row's name already says it.
+    const marker = screen.getByTestId('inbox-row-draft-marker');
+    expect(marker.getAttribute('title')).toBe('Unsent draft');
+    expect(marker.getAttribute('aria-hidden')).toBe('true');
+    expect(marker.closest('.inbox-row__meta')).not.toBeNull();
+    expect(screen.queryByText('Unsent draft')).toBeNull();
     expect(
-      [...document.querySelectorAll('.inbox-row__chip')].map((chip) =>
-        chip.getAttribute('data-chip'),
-      ),
-    ).toEqual(['remote', 'woke']);
+      screen.getByRole('button', { name: /, unsent draft$/ }),
+    ).toBeTruthy();
+    act(() => chatDraftsStore.clear('chat-with-draft'));
+    expect(screen.queryByTestId('inbox-row-draft-marker')).toBeNull();
   });
 
   it('the chip derivation, fact by fact', () => {
@@ -515,15 +520,66 @@ describe('the chip line exists only when a chip does', () => {
     expect(inboxRowChips({ receivedAgentMessage: true })).toEqual([
       { kind: 'agent-message', label: 'Agent message' },
     ]);
-    expect(
-      inboxRowChips({}, { hasUnsentDraft: false, isWoken: false }),
-    ).toEqual([]);
+    expect(inboxRowChips({}, { isWoken: false })).toEqual([]);
     expect(inboxRowChips({ environmentLabel: 'box' })).toEqual([
       { kind: 'remote', label: 'box' },
     ]);
-    expect(inboxRowChips({}, { hasUnsentDraft: true })).toEqual([
-      { kind: 'draft', label: 'Unsent draft' },
-    ]);
+  });
+});
+
+describe('the picker project line draws one project mark (#4266)', () => {
+  it('a project without an icon shows the folder alone, never folder plus colour dot', () => {
+    const { container } = renderRow(rowFor(), {
+      actionsInDetails: true,
+      chrome: 'touch',
+      projectAccent: '#ff8800',
+    });
+    const line = container.querySelector('.inbox-row__project-context')!;
+    expect(line.querySelectorAll('svg')).toHaveLength(1);
+    expect(line.querySelector('[data-project-icon]')).toBeNull();
+    expect(line.querySelector('.inbox-row__project')?.textContent).toBeTruthy();
+  });
+
+  it('a project with its own icon shows that icon instead of the folder', () => {
+    const { container } = renderRow(rowFor(), {
+      actionsInDetails: true,
+      chrome: 'touch',
+      projectAccent: '#ff8800',
+      projectIcon: '🚀',
+    });
+    const line = container.querySelector('.inbox-row__project-context')!;
+    expect(line.querySelector('svg')).toBeNull();
+    expect(line.querySelector('.project-icon--icon')?.textContent).toBe('🚀');
+  });
+
+  it('an unsent draft is a pencil on the picker project line, not a chip', () => {
+    const base = rowFor();
+    chatDraftsStore.set('picker-draft', 'half a thought');
+    try {
+      const { container } = renderRow(
+        { ...base, item: { ...base.item, chatSessionId: 'picker-draft' } },
+        { actionsInDetails: true, chrome: 'touch' },
+      );
+      const line = container.querySelector('.inbox-row__project-context')!;
+      expect(
+        line.querySelector('[data-testid="inbox-row-draft-marker"]'),
+      ).not.toBeNull();
+      expect(container.querySelector('.inbox-row__chips')).toBeNull();
+    } finally {
+      chatDraftsStore.clear('picker-draft');
+    }
+  });
+
+  it('the agent is named in visible text beside its marks', () => {
+    const { container } = renderRow(rowFor(), {
+      actionsInDetails: true,
+      chrome: 'touch',
+    });
+    const text = container.querySelector('.inbox-row__meta-text');
+    expect(text?.className).not.toContain('sr-only');
+    expect(container.querySelector('.inbox-row__agent')?.textContent).toBe(
+      rowFor().item.agentLabel,
+    );
   });
 });
 
@@ -710,7 +766,7 @@ describe('an unsent composer draft on touch chrome (U11)', () => {
     chatDraftsStore.set('tab-draft', 'Draft on the phone: check the README');
     try {
       renderRow(row, { chrome: 'touch', hoverCard: true, isOpenChat: true });
-      expect(screen.getByText('Unsent draft')).toBeTruthy();
+      expect(screen.getByTestId('inbox-row-draft-marker')).toBeTruthy();
       fireEvent.click(screen.getByRole('button', { name: /^Details for/ }));
       await screen.findByTestId('inbox-row-details', {}, { timeout: 8000 });
       const discard = screen.getByRole('button', {
@@ -722,7 +778,7 @@ describe('an unsent composer draft on touch chrome (U11)', () => {
       fireEvent.click(discard);
       expect(chatDraftsStore.hasDraft('tab-draft')).toBe(false);
       // The chip reads the same store, so it goes with the text.
-      expect(screen.queryByText('Unsent draft')).toBeNull();
+      expect(screen.queryByTestId('inbox-row-draft-marker')).toBeNull();
       expect(screen.queryByTestId('inbox-row-details')).toBeNull();
     } finally {
       chatDraftsStore.clear('tab-draft');

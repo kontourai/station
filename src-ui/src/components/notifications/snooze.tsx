@@ -140,8 +140,6 @@ export function useInboxSnooze() {
   };
 }
 
-export type InboxSnooze = ReturnType<typeof useInboxSnooze>;
-
 /** A row's snooze choices, as items for its ⋯ menu. */
 export function snoozeMenuItems(
   onSnooze: (until: Date) => void,
