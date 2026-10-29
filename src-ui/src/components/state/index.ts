@@ -36,3 +36,4 @@ export {
 export { Empty, type EmptyProps } from './Empty';
 export { ErrorState, type ErrorStateProps } from './ErrorState';
 export { FilteredEmpty } from './FilteredEmpty';
+export { useRetainedReadFailure } from './useRetainedReadFailure';

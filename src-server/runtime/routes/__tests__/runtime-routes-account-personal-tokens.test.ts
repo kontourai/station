@@ -17,6 +17,7 @@ import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { usageExportOwnerIds } from '../../../analytics/usage-export-reader.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { createApplicationSessionRuntime } from '../../../services/identity/application-session-runtime.js';
 import { deploymentAccountPrincipal } from '../../../services/identity/deployment-authentication-service.js';
@@ -24,6 +25,7 @@ import {
   type LoadedLocalAccounts,
   loadLocalAccounts,
 } from '../../../services/identity/local-account-runtime.js';
+import { NotificationService } from '../../../services/notifications/notification-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { ProjectManifestStore } from '../../../services/projects/project-manifest-store.js';
 import { createProjectMembershipRuntime } from '../../../services/projects/project-membership-runtime.js';
@@ -41,7 +43,7 @@ vi.mock('../runtime-route-support.js', () => {
   return {
     configureRuntimeSupportServices: () => ({
       schedulerService: runtimeSupportStub,
-      notificationService: runtimeSupportStub,
+      notificationService: notificationServiceForFixture ?? runtimeSupportStub,
       attentionProjection: runtimeSupportStub,
       webPushService: runtimeSupportStub,
       webPushEnabled: false,
@@ -71,6 +73,7 @@ const ORIGIN = 'https://station.example.test';
 const STATION_ID = 'account-token-fixture';
 const GRANT = 'orchestration:read orchestration:operate';
 const operatorApproval = { kind: 'presented-credential' } as const;
+let notificationServiceForFixture: NotificationService | undefined;
 
 describe('account-tied personal access tokens over the production composition', () => {
   // Created first, so its after-hook removes the homes after the account
@@ -92,6 +95,8 @@ describe('account-tied personal access tokens over the production composition', 
     process.env.ALLOWED_ORIGINS = ORIGIN;
   });
   afterEach(async () => {
+    await notificationServiceForFixture?.shutdown();
+    notificationServiceForFixture = undefined;
     for (const accounts of loaded.splice(0)) await accounts.service.close();
     if (ambientHome === undefined) delete process.env.STATION_HOME;
     else process.env.STATION_HOME = ambientHome;
@@ -117,6 +122,11 @@ describe('account-tied personal access tokens over the production composition', 
       STATION_ID,
       storage,
     );
+    const eventBus = new EventBus();
+    const notifications = new NotificationService(eventBus, homeDir, 999_999, {
+      projectMembership: membership.service,
+    });
+    notificationServiceForFixture = notifications;
     const localAccounts = await loadLocalAccounts(
       { publicOrigin: ORIGIN },
       { stationId: STATION_ID, homeDirectory: homeDir },
@@ -182,7 +192,13 @@ describe('account-tied personal access tokens over the production composition', 
         },
       ),
       environmentSecurityService: security,
-      eventBus: new EventBus(),
+      orchestrationService: deepStub({
+        usageExportOwnerIds: (
+          authority: Parameters<typeof usageExportOwnerIds>[0],
+          scope: Parameters<typeof usageExportOwnerIds>[1],
+        ) => usageExportOwnerIds(authority, scope, () => undefined),
+      }),
+      eventBus,
       taskGraphService: { listTasks: () => [] },
     });
     const result = configureRuntimeRoutesProduction(
@@ -249,9 +265,10 @@ describe('account-tied personal access tokens over the production composition', 
     const pairAccountDevice = (
       account: { accountId: string; principalId: string },
       name: string,
+      scope = GRANT,
     ) => {
       const pairing = security.devicePairing;
-      const offer = pairing.createOffer({ endpoint: ORIGIN, scope: GRANT });
+      const offer = pairing.createOffer({ endpoint: ORIGIN, scope });
       const pending = pairing.requestPairing({
         offerId: offer.offerId,
         proof: offer.challenge,
@@ -296,6 +313,7 @@ describe('account-tied personal access tokens over the production composition', 
       const credential = pairAccountDevice(account, `${username}-laptop`);
       return {
         ...account,
+        credential,
         device: withHeaders({
           Authorization: `Bearer ${credential}`,
           Cookie: account.cookie,
@@ -371,6 +389,7 @@ describe('account-tied personal access tokens over the production composition', 
         }),
       );
       expect(accepted.status, await accepted.clone().text()).toBe(200);
+      return project;
     };
     const slugs = async (response: Response) => {
       expect(response.status, await response.clone().text()).toBe(200);
@@ -384,13 +403,245 @@ describe('account-tied personal access tokens over the production composition', 
       request,
       operator,
       person,
+      pairAccountDevice,
       mintToken,
       bearer,
       shareWith,
       slugs,
       projectService,
+      homeDir,
+      notifications,
+      owner,
+      ownerOperator,
     };
   }
+
+  test('person notifications isolate paired accounts and persist their read and dismiss state', async () => {
+    const h = await setup();
+    const alice = await h.person('notificationalice');
+    const bob = await h.person('notificationbob');
+    const aliceProject = await h.shareWith('alice-project', alice, 'viewer');
+    const bobProject = await h.shareWith('bob-project', bob, 'viewer');
+    const send = async (
+      principalId: string,
+      projectId: string,
+      title: string,
+    ) => {
+      const result = await h.notifications.scheduleEnveloped(
+        'review',
+        { category: 'review-request', title },
+        {
+          v: 1,
+          source: { kind: 'system', subsystem: 'review' },
+          audience: { kind: 'principal', principalId, projectId },
+          urgency: 'info',
+          interrupt: 'default',
+        },
+      );
+      expect(result.outcome).toBe('created');
+      if (!result.notification)
+        throw new Error('Expected principal notification');
+      return result.notification;
+    };
+    const aliceNotice = await send(
+      alice.principalId,
+      aliceProject.id,
+      'Alice only',
+    );
+    const bobNotice = await send(bob.principalId, bobProject.id, 'Bob only');
+    const ownerNotice = await send(
+      h.owner.principalId,
+      aliceProject.id,
+      'Owner personally',
+    );
+    const globalNotice = await h.notifications.schedule('fixture', {
+      category: 'test',
+      title: 'Owner global',
+    });
+    const list = async (request: RequestInit, query = '') => {
+      const response = await h.request(
+        `/api/me/notifications${query}`,
+        request,
+      );
+      expect(response.status, await response.clone().text()).toBe(200);
+      expect(response.headers.get('cache-control')).toBe('no-store');
+      return (await readJson<{ data: Array<{ id: string }> }>(response)).data;
+    };
+    expect(
+      await list(
+        alice.device(),
+        `?principalId=${encodeURIComponent(bob.principalId)}`,
+      ),
+    ).toEqual([aliceNotice]);
+    expect(await list(bob.device())).toEqual([bobNotice]);
+    expect(await list(h.ownerOperator())).toEqual([ownerNotice]);
+    const minted = await h.mintToken(alice.device, GRANT);
+    expect(minted.status, await minted.clone().text()).toBe(201);
+    const token = h.bearer((await readJson<{ secret: string }>(minted)).secret);
+    expect(await list(token())).toEqual([aliceNotice]);
+    expect(
+      (
+        await h.request(
+          `/api/me/notifications/${bobNotice.id}/read`,
+          token({ method: 'POST' }),
+        )
+      ).status,
+    ).toBe(404);
+    const ownerFeed = await h.request('/notifications', h.ownerOperator());
+    expect(ownerFeed.status, await ownerFeed.clone().text()).toBe(200);
+    expect(
+      (await readJson<{ data: Array<{ id: string }> }>(ownerFeed)).data,
+    ).toEqual([globalNotice]);
+    expect((await h.request('/notifications', alice.device())).status).toBe(
+      403,
+    );
+
+    for (const [method, suffix] of [
+      ['POST', '/read'],
+      ['DELETE', ''],
+    ] as const) {
+      const forbiddenRow = await h.request(
+        `/api/me/notifications/${bobNotice.id}${suffix}`,
+        alice.device({ method }),
+      );
+      expect(forbiddenRow.status).toBe(404);
+      expect(await readJson(forbiddenRow)).toEqual({
+        success: false,
+        error: 'Notification not found',
+      });
+    }
+    const read = await h.request(
+      `/api/me/notifications/${aliceNotice.id}/read`,
+      alice.device({ method: 'POST' }),
+    );
+    expect(read.status, await read.clone().text()).toBe(200);
+    expect(await readJson(read)).toEqual({
+      success: true,
+      data: { outcome: 'read' },
+    });
+    const readAgain = await h.request(
+      `/api/me/notifications/${aliceNotice.id}/read`,
+      alice.device({ method: 'POST' }),
+    );
+    expect(await readJson(readAgain)).toEqual({
+      success: true,
+      data: { outcome: 'already-read' },
+    });
+    const dismiss = await h.request(
+      `/api/me/notifications/${aliceNotice.id}`,
+      alice.device({ method: 'DELETE' }),
+    );
+    expect(dismiss.status, await dismiss.clone().text()).toBe(200);
+    const aliceAfter = await list(alice.device());
+    expect(aliceAfter[0]).toMatchObject({
+      status: 'dismissed',
+      metadata: {
+        envelope: {
+          readBy: expect.stringMatching(/^device:/),
+          dismissedBy: expect.stringMatching(/^device:/),
+        },
+      },
+    });
+    expect(await list(bob.device())).toEqual([bobNotice]);
+    const reopened = new NotificationService(new EventBus(), h.homeDir);
+    try {
+      expect(await reopened.listForPrincipal(alice.principalId)).toEqual(
+        aliceAfter,
+      );
+      expect(await reopened.listForPrincipal(bob.principalId)).toEqual([
+        bobNotice,
+      ]);
+    } finally {
+      await reopened.shutdown();
+    }
+    expect((await h.request('/api/me/notifications')).status).toBe(401);
+  });
+
+  test('telemetry person leaves compose account session, Device scope, principal ownership and operator separation', async () => {
+    const h = await setup();
+    const alice = await h.person('analyticsalice');
+    const bob = await h.person('analyticsbob');
+    const base = '/api/analytics/source-enrollments';
+    const operationId = '02234567-89ab-4cde-8fab-0123456789ab';
+    const create = {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        operationId,
+        proposedDestination: {
+          stationId: 'receiver',
+          origin: 'https://receiver.example.test',
+        },
+        scope: 'individual',
+        expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+        retention: { mode: 'live-mirror' },
+      }),
+    };
+    const created = await h.request(base, alice.device(create));
+    expect(created.status, await created.clone().text()).toBe(200);
+    const own = await h.request(`${base}/${operationId}`, alice.device());
+    expect(own.status, await own.clone().text()).toBe(200);
+    expect(await own.json()).toMatchObject({
+      data: { operationId, exportAuthority: false },
+    });
+    expect(
+      (await h.request(`${base}/${operationId}`, bob.device())).status,
+    ).toBe(404);
+    const noRead = h.pairAccountDevice(alice, 'no-read', 'inference:invoke');
+    const deniedScope = await h.request(base, {
+      headers: { Authorization: `Bearer ${noRead}`, Cookie: alice.cookie },
+    });
+    expect(deniedScope.status).toBe(403);
+    expect(await deniedScope.json()).toMatchObject({
+      error: { code: 'insufficient_scope' },
+    });
+    const missingSession = await h.request(base, h.bearer(alice.credential)());
+    expect(missingSession.status).toBe(401);
+    expect(await missingSession.json()).toMatchObject({
+      error: { code: 'account_authentication_required' },
+    });
+    const conflict = await h.request(base, {
+      headers: {
+        Authorization: `Bearer ${alice.credential}`,
+        Cookie: bob.cookie,
+      },
+    });
+    expect(conflict.status).toBe(401);
+    expect(await conflict.json()).toMatchObject({
+      error: { code: 'account_identity_conflict' },
+    });
+    const minted = await h.mintToken(alice.device);
+    expect(minted.status).toBe(201);
+    const token = (await readJson<{ secret: string }>(minted)).secret;
+    const tokenRead = await h.request(base, h.bearer(token)());
+    expect(tokenRead.status).toBe(403);
+    expect(await tokenRead.json()).toMatchObject({
+      error: { code: 'account_bound_device_route_forbidden' },
+    });
+    const agent = await h.request(
+      base,
+      alice.device({ headers: { 'x-station-control-origin': 'agent-tool' } }),
+    );
+    expect(agent.status).toBe(403);
+    const management = await h.request(
+      `/api/operator/telemetry-companion/private-usage-preparations/${operationId}`,
+      alice.device(),
+    );
+    expect(management.status).toBe(403);
+    expect(await management.json()).toMatchObject({
+      error: { code: 'insufficient_scope' },
+    });
+    const generic = await h.request('/api/analytics/usage', alice.device());
+    expect(generic.status).toBe(403);
+    expect(await generic.json()).toMatchObject({
+      error: { code: 'account_bound_device_route_forbidden' },
+    });
+    const revoked = h.security.devicePairing.identifyDevice(alice.credential);
+    expect(revoked).not.toBeNull();
+    if (!revoked) throw new Error('Missing paired device');
+    h.security.devicePairing.revokeDevice(revoked.id, 'operator-credential');
+    expect((await h.request(base, alice.device())).status).toBe(401);
+  });
 
   test('a member token reads its Project; a non-member token gets 404 and an empty catalogue', async () => {
     const h = await setup();

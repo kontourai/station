@@ -64,6 +64,8 @@ async function answered(
 }
 
 describe('#2880: Codex decision delivery', () => {
+  // docs/design/event-content-spill.md replaced #4118's refusal: an
+  // approval of any size or shape is delivered whole and stays answerable.
   test.each([
     { command: 'x'.repeat(70_000) },
     { extra: Array(513).fill(null) },
@@ -74,7 +76,7 @@ describe('#2880: Codex decision delivery', () => {
       ),
     },
   ])(
-    'an oversized or complex approval is refused on the wire without wedging subsequent requests (%#)',
+    'an oversized or complex approval is delivered whole and answerable (%#)',
     async (oversized) => {
       const { adapter, process, events } = await startedAdapter();
       try {
@@ -83,21 +85,14 @@ describe('#2880: Codex decision delivery', () => {
           ...request,
           params: { ...request.params, ...oversized },
         });
+        const opened = await waitFor(
+          () => of(events, 'request.opened')[0],
+          'request.opened',
+        );
+        expect(opened.payload).toMatchObject(oversized);
+        expect(of(events, 'runtime.warning')).toEqual([]);
+        await adapter.respondToRequest(THREAD, opened.requestId, 'decline');
         expect(repliesTo(process, 'oversized')).toEqual([
-          expect.objectContaining({
-            error: expect.objectContaining({
-              message: expect.stringContaining('too large'),
-            }),
-          }),
-        ]);
-        expect(of(events, 'request.opened')).toEqual([]);
-        expect(of(events, 'runtime.warning')).toMatchObject([
-          { code: 'codex-approval-request-too-large' },
-        ]);
-        await emit(process, commandApproval('next'));
-        const requestId = await openedRequestId(events);
-        await adapter.respondToRequest(THREAD, requestId, 'decline');
-        expect(repliesTo(process, 'next')).toEqual([
           expect.objectContaining({ result: { decision: 'decline' } }),
         ]);
       } finally {
@@ -105,6 +100,38 @@ describe('#2880: Codex decision delivery', () => {
       }
     },
   );
+
+  test('a 38 KB html_preview MCP approval is delivered whole', async () => {
+    const { adapter, process, events } = await startedAdapter();
+    try {
+      const html = `<html><body>${'<p>preview</p>'.repeat(2_800)}</body></html>`;
+      expect(html.length).toBeGreaterThan(38_000);
+      await emit(process, {
+        id: 'html',
+        method: 'mcpServer/elicitation/request',
+        params: {
+          threadId: 'codex-thread',
+          serverName: 'station-control',
+          message: 'Allow station-control to run "html_preview"?',
+          mode: 'form',
+          requestedSchema: { type: 'object', properties: {} },
+          _meta: {
+            codex_approval_kind: 'mcp_tool_call',
+            tool_title: 'html_preview',
+            tool_params: { html },
+          },
+        },
+      });
+      const opened = await waitFor(
+        () => of(events, 'request.opened')[0],
+        'request.opened',
+      );
+      expect(opened.payload._meta.tool_params.html).toBe(html);
+      expect(of(events, 'runtime.warning')).toEqual([]);
+    } finally {
+      await adapter.stopAll();
+    }
+  });
 
   test('the acknowledgement window is pinned at 30 s', () => {
     // Literal next to the constant: a change to the window is a decision,

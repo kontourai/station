@@ -2604,6 +2604,56 @@ describe('CodexAdapter', () => {
       }
     }
 
+    test('a spawned child names its own rollout under the CODEX_HOME the session was spawned with', async () => {
+      processHandle = new FakeCodexProcess();
+      const processFactory = vi.fn(
+        (_env?: Record<string, string>) => processHandle!,
+      );
+      const adapter = new CodexAdapter({
+        processFactory,
+        getAppHomeEnv: async () => ({
+          env: { CODEX_HOME: '/profiles/child-home' },
+          profileRef: 'child-home',
+        }),
+      });
+      const transport = (adapter as any).transport;
+      const published: any[] = [];
+      const publish = transport.publish.bind(transport);
+      transport.publish = (event: any, record?: unknown) => {
+        published.push(event);
+        return publish(event, record);
+      };
+      const threadId = 'thread-child-transcript-ref';
+      try {
+        await replayCodexCollabPrefix(
+          adapter,
+          threadId,
+          CODEX_COLLAB_V1_CLIENT_INTERRUPT_UNBLOCKS_PARENT,
+        );
+        // The home the process was actually spawned with...
+        expect(processFactory.mock.calls[0][0]).toMatchObject({
+          CODEX_HOME: '/profiles/child-home',
+        });
+        // ...is the one the running child's published ref names.
+        const refs = published.flatMap((event) =>
+          event.method === 'child-work.updated' &&
+          event.delta.kind === 'snapshot'
+            ? event.delta.running
+                .filter((item: any) => item.childId === CHILD_ID)
+                .map((item: any) => item.transcript)
+            : [],
+        );
+        expect(refs.length).toBeGreaterThan(0);
+        expect(refs.at(-1)).toEqual({
+          kind: 'codex-thread',
+          threadId: CHILD_ID,
+          configHome: '/profiles/child-home',
+        });
+      } finally {
+        await adapter.stopAll();
+      }
+    });
+
     test('per-child stop sends exactly two interrupts — the child, then the parent — and both settle cancelled', async () => {
       processHandle = new FakeCodexProcess();
       const adapter = new CodexAdapter({
@@ -5647,7 +5697,10 @@ describe('CodexAdapter', () => {
       // toolServers config args (undefined here — this session authors no
       // toolServers, so the spawn argv stays byte-identical to before).
       expect(processFactory).toHaveBeenCalledWith(
-        { CODEX_HOME: '/station/app-homes/codex' },
+        {
+          CODEX_HOME: '/station/app-homes/codex',
+          STATION_WORKLOAD_SESSION_ID: 'thread-app-home',
+        },
         undefined,
       );
       await adapter.stopAll();
@@ -5703,10 +5756,16 @@ describe('CodexAdapter', () => {
       });
       await withTimeout(started, 'startSession');
 
-      expect(processFactory).toHaveBeenCalledWith({ CODEX_HOME: profileHome }, [
-        '-c',
-        `mcp_servers.station-control.url="http://127.0.0.1:3141/mcp/station-control?token=${token}"`,
-      ]);
+      expect(processFactory).toHaveBeenCalledWith(
+        {
+          CODEX_HOME: profileHome,
+          STATION_WORKLOAD_SESSION_ID: 'thread-profile-with-tools',
+        },
+        [
+          '-c',
+          `mcp_servers.station-control.url="http://127.0.0.1:3141/mcp/station-control?token=${token}"`,
+        ],
+      );
       const events = [
         await nextEvent(iterator, 'session.started'),
         await nextEvent(iterator, 'session.configured'),
@@ -5950,6 +6009,7 @@ describe('CodexAdapter', () => {
         {
           ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
           CODEX_HOME: '/station/app-homes/codex',
+          STATION_WORKLOAD_SESSION_ID: 'thread-connection-env',
         },
         undefined,
       );
@@ -5989,7 +6049,10 @@ describe('CodexAdapter', () => {
       await withTimeout(startSessionPromise, 'startSession');
 
       expect(processFactory).toHaveBeenCalledWith(
-        { CODEX_HOME: '/Users/me/.codex_vibe' },
+        {
+          CODEX_HOME: '/Users/me/.codex_vibe',
+          STATION_WORKLOAD_SESSION_ID: 'thread-connection-env-only',
+        },
         undefined,
       );
       await adapter.stopAll();
@@ -6094,6 +6157,7 @@ describe('CodexAdapter', () => {
             OPENAI_API_KEY: '',
             CONNECTION_ONLY: 'kept',
             CODEX_HOME: credentialProfileAppHomeDir('codex', 'proxy', homeDir),
+            STATION_WORKLOAD_SESSION_ID: 'thread-profile-overlay',
           },
           undefined,
         );

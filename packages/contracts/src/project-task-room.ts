@@ -8,16 +8,30 @@ import {
   type ChatAttachmentMimeType,
   validatePersistedChatAttachmentDescriptor,
 } from './chat-attachment.js';
+import {
+  boundaryText,
+  timestamp as canonicalTimestamp,
+  sha256,
+} from './contract-validation.js';
 
 export const PROJECT_TASK_ROOM_SCHEMA_VERSION =
-  'station.project-task-room/v4' as const;
+  'station.project-task-room/v5' as const;
+export type ProjectTaskRoomLegacySchemaVersion =
+  | 'station.project-task-room/v2'
+  | 'station.project-task-room/v3'
+  | 'station.project-task-room/v4';
+export type ProjectTaskRoomSchemaVersion =
+  | ProjectTaskRoomLegacySchemaVersion
+  | typeof PROJECT_TASK_ROOM_SCHEMA_VERSION;
+export const PROJECT_TASK_ROOM_MAX_MENTIONS = 32;
+export const PROJECT_TASK_ROOM_LOCATION_FILE_MAX_CHARS = 4096;
 export const PROJECT_TASK_ROOM_GRANT_SCHEMA_VERSION =
   'station.project-task-room-grant/v1' as const;
 export const PROJECT_TASK_ROOM_ASSURANCE = 'L0' as const;
 /**
- * Exact worst-case item counts for the closed v2/v3/v4 record/page shapes. The
+ * Exact worst-case item counts for the closed v2/v3/v4/v5 record/page shapes. The
  * record maximum uses the agent principal, the larger of a lifecycle-finished
- * body with run link or a human body with five attachment descriptors,
+ * body with three links or a human body with five attachments and 32 mentions,
  * correlation+causation, and embedded grant receipt. The wrapper maximum
  * includes checkpoint plus continuation cursor. Changing either closed schema
  * requires changing this derivation beside it.
@@ -26,11 +40,15 @@ export const PROJECT_TASK_ROOM_MAX_RECORD_JSON_ITEMS =
   1 +
   1 +
   4 +
-  10 +
+  6 +
   1 +
   1 +
   52 +
-  2 * Math.max(10, 4 + CHAT_ATTACHMENT_MAX_COUNT * 6) +
+  2 *
+    Math.max(
+      22,
+      5 + CHAT_ATTACHMENT_MAX_COUNT * 6 + PROJECT_TASK_ROOM_MAX_MENTIONS * 3,
+    ) +
   1 +
   1;
 export const PROJECT_TASK_ROOM_MAX_PAGE_WRAPPER_JSON_ITEMS =
@@ -71,9 +89,201 @@ export interface ProjectTaskRoomAgentPrincipal {
   deviceId: string;
   authorizationReceiptId: string;
 }
+export interface ProjectTaskRoomMemberPrincipal {
+  kind: 'member';
+  principalId: string;
+  deviceId: string;
+}
+/** Legacy runtime consumers switch to the v5 union with member admission. */
 export type ProjectTaskRoomPrincipal =
   | ProjectTaskRoomHumanPrincipal
   | ProjectTaskRoomAgentPrincipal;
+export type ProjectTaskRoomV5Principal =
+  | ProjectTaskRoomPrincipal
+  | ProjectTaskRoomMemberPrincipal;
+export interface ProjectTaskRoomPersonMention {
+  kind: 'person';
+  principalId: string;
+}
+export type ProjectTaskRoomPresenceLocation =
+  | 'conversation'
+  | 'review'
+  | 'plan'
+  | { file: string };
+export interface ProjectTaskRoomHumanMessage {
+  kind: 'human-message';
+  text: string;
+  attachments?: TaskRoomAttachment[];
+  mentions?: ProjectTaskRoomPersonMention[];
+}
+
+/** Structural validation only; membership and device authority belong to the host. */
+export function parseProjectTaskRoomPrincipal(
+  value: unknown,
+  schemaVersion: ProjectTaskRoomSchemaVersion,
+): ProjectTaskRoomV5Principal | null {
+  if (!roomSchemaVersion(schemaVersion) || !value || typeof value !== 'object')
+    return null;
+  const row = value as Record<string, unknown>;
+  if (
+    plainOwn(row, ['kind', 'principalId', 'deviceId']) &&
+    row.kind === 'member' &&
+    schemaVersion === PROJECT_TASK_ROOM_SCHEMA_VERSION &&
+    memberId(row.principalId) &&
+    memberId(row.deviceId)
+  )
+    return {
+      kind: 'member',
+      principalId: row.principalId,
+      deviceId: row.deviceId,
+    };
+  if (
+    plainOwn(row, ['kind', 'operatorId', 'deviceId']) &&
+    row.kind === 'operator' &&
+    roomId(row.operatorId) &&
+    roomId(row.deviceId)
+  )
+    return {
+      kind: 'operator',
+      operatorId: row.operatorId,
+      deviceId: row.deviceId,
+    };
+  if (
+    plainOwn(row, [
+      'kind',
+      'agentId',
+      'ownerOperatorId',
+      'deviceId',
+      'authorizationReceiptId',
+    ]) &&
+    row.kind === 'agent' &&
+    roomId(row.agentId) &&
+    roomId(row.ownerOperatorId) &&
+    roomId(row.deviceId) &&
+    roomId(row.authorizationReceiptId)
+  )
+    return {
+      kind: 'agent',
+      agentId: row.agentId,
+      ownerOperatorId: row.ownerOperatorId,
+      deviceId: row.deviceId,
+      authorizationReceiptId: row.authorizationReceiptId,
+    };
+  return null;
+}
+
+export function isProjectTaskRoomMentions(
+  value: unknown,
+): value is ProjectTaskRoomPersonMention[] {
+  // Empty is refused, not absent: selection keeps legacy rooms on their version.
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.length > PROJECT_TASK_ROOM_MAX_MENTIONS
+  )
+    return false;
+  const principals = new Set<string>();
+  for (let index = 0; index < value.length; index += 1) {
+    const mention = value[index];
+    if (
+      !plainOwn(mention, ['kind', 'principalId']) ||
+      mention.kind !== 'person' ||
+      !memberId(mention.principalId) ||
+      principals.has(mention.principalId)
+    )
+      return false;
+    principals.add(mention.principalId);
+  }
+  return true;
+}
+
+export function parseProjectTaskRoomPresenceLocation(
+  value: unknown,
+): ProjectTaskRoomPresenceLocation | null {
+  if (value === 'conversation' || value === 'review' || value === 'plan')
+    return value;
+  return plainOwn(value, ['file']) && roomFile(value.file)
+    ? { file: value.file }
+    : null;
+}
+
+/** v2/v3 reject attachments; all legacy versions reject structured mentions. */
+export function parseProjectTaskRoomHumanMessage(
+  value: unknown,
+  schemaVersion: ProjectTaskRoomSchemaVersion,
+): ProjectTaskRoomHumanMessage | null {
+  if (!roomSchemaVersion(schemaVersion) || !value || typeof value !== 'object')
+    return null;
+  const row = value as Record<string, unknown>;
+  const keys = [
+    'kind',
+    'text',
+    ...['attachments', 'mentions'].filter((key) => hasRoomField(row, key)),
+  ];
+  if (
+    !plainOwn(row, keys) ||
+    row.kind !== 'human-message' ||
+    typeof row.text !== 'string' ||
+    row.text.length === 0 ||
+    new TextEncoder().encode(row.text).byteLength > 16 * 1024 ||
+    (hasRoomField(row, 'attachments') &&
+      (![
+        'station.project-task-room/v4',
+        PROJECT_TASK_ROOM_SCHEMA_VERSION,
+      ].includes(schemaVersion) ||
+        !isTaskRoomAttachments(row.attachments))) ||
+    (hasRoomField(row, 'mentions') &&
+      (schemaVersion !== PROJECT_TASK_ROOM_SCHEMA_VERSION ||
+        !isProjectTaskRoomMentions(row.mentions)))
+  )
+    return null;
+  return {
+    kind: 'human-message',
+    text: row.text,
+    ...(row.attachments
+      ? { attachments: row.attachments as TaskRoomAttachment[] }
+      : {}),
+    ...(row.mentions
+      ? { mentions: row.mentions as ProjectTaskRoomPersonMention[] }
+      : {}),
+  };
+}
+
+/** Monotone format selection. The store must persist and enforce this fence in 2B. */
+export function projectTaskRoomWriteSchemaVersion(
+  previous: ProjectTaskRoomSchemaVersion,
+  principal: ProjectTaskRoomV5Principal,
+  body: ProjectTaskRoomAppendBody | ProjectTaskRoomBody,
+): ProjectTaskRoomSchemaVersion {
+  if (
+    previous === PROJECT_TASK_ROOM_SCHEMA_VERSION ||
+    principal.kind === 'member' ||
+    (body.kind === 'human-message' && !!body.mentions?.length)
+  )
+    return PROJECT_TASK_ROOM_SCHEMA_VERSION;
+  if (
+    previous === 'station.project-task-room/v4' ||
+    (body.kind === 'human-message' && body.attachments !== undefined)
+  )
+    return 'station.project-task-room/v4';
+  if (
+    previous === 'station.project-task-room/v3' ||
+    body.kind === 'output-feedback'
+  )
+    return 'station.project-task-room/v3';
+  return 'station.project-task-room/v2';
+}
+
+function roomSchemaVersion(
+  value: unknown,
+): value is ProjectTaskRoomSchemaVersion {
+  return (
+    value === 'station.project-task-room/v2' ||
+    value === 'station.project-task-room/v3' ||
+    value === 'station.project-task-room/v4' ||
+    value === PROJECT_TASK_ROOM_SCHEMA_VERSION
+  );
+}
 export interface ProjectTaskRoomResolvedLink {
   schemaVersion: 'station.project-task-room-resolved-link/v1';
   kind: 'run' | 'revision' | 'proposed-change' | 'evidence' | 'receipt';
@@ -137,7 +347,7 @@ export function isTaskRoomAttachments(
 }
 export type ProjectTaskRoomAppendBody =
   | ProjectTaskRoomOutputFeedback
-  | { kind: 'human-message'; text: string; attachments?: TaskRoomAttachment[] }
+  | ProjectTaskRoomHumanMessage
   | { kind: 'live-work-started'; sessionId: string; runReference?: string }
   | {
       /** Presence is a collaboration fact, never a work terminal state. */
@@ -161,7 +371,7 @@ export type ProjectTaskRoomAppendBody =
     };
 export type ProjectTaskRoomBody =
   | ProjectTaskRoomOutputFeedback
-  | { kind: 'human-message'; text: string; attachments?: TaskRoomAttachment[] }
+  | ProjectTaskRoomHumanMessage
   | {
       kind: 'live-work-started';
       sessionId: string;
@@ -190,10 +400,7 @@ export interface ProjectTaskRoomAppendIntent {
   body: ProjectTaskRoomAppendBody;
 }
 export interface ProjectTaskRoomRecord {
-  schemaVersion:
-    | typeof PROJECT_TASK_ROOM_SCHEMA_VERSION
-    | 'station.project-task-room/v2'
-    | 'station.project-task-room/v3';
+  schemaVersion: ProjectTaskRoomLegacySchemaVersion;
   scope: ProjectTaskRoomScope;
   principal: ProjectTaskRoomPrincipal;
   correlationId?: string;
@@ -202,6 +409,12 @@ export interface ProjectTaskRoomRecord {
   body: ProjectTaskRoomBody;
   bodyBytes: number;
   checkpointDigest: string;
+}
+/** v5 wire shape; legacy runtime producers remain on ProjectTaskRoomRecord until 2B. */
+export interface ProjectTaskRoomV5Record
+  extends Omit<ProjectTaskRoomRecord, 'schemaVersion' | 'principal'> {
+  schemaVersion: typeof PROJECT_TASK_ROOM_SCHEMA_VERSION;
+  principal: ProjectTaskRoomV5Principal;
 }
 export interface ProjectTaskRoomCheckpoint {
   channelId: string;
@@ -279,6 +492,13 @@ export function isProjectTaskRoomCheckpoint(
   );
 }
 
+function hasRoomField(value: object, key: string): boolean {
+  try {
+    return Object.getOwnPropertyDescriptor(value, key) !== undefined;
+  } catch {
+    return false;
+  }
+}
 function plainOwn(
   value: unknown,
   keys: readonly string[],
@@ -302,7 +522,32 @@ function plainOwn(
   }
 }
 function roomId(value: unknown): value is string {
-  if (typeof value !== 'string' || value.length < 1 || value.length > 256)
+  return roomText(value, 256);
+}
+/** New collaboration IDs are exact; legacy room IDs retain their wire rules. */
+function memberId(value: unknown): value is string {
+  return boundaryText(value, 256);
+}
+function roomFile(value: unknown): value is string {
+  return (
+    roomText(value, PROJECT_TASK_ROOM_LOCATION_FILE_MAX_CHARS) &&
+    value.trim() === value &&
+    !hasExtendedControl(value) &&
+    !value.startsWith('/') &&
+    !value.startsWith('~') &&
+    !value.includes('\\') &&
+    !/^[a-z][a-z0-9+.-]*:/i.test(value) &&
+    value.split('/').every((segment) => segment.length > 0 && segment !== '..')
+  );
+}
+function hasExtendedControl(value: string): boolean {
+  return [...value].some((char) => {
+    const point = char.codePointAt(0) ?? 0;
+    return point >= 0x7f && point <= 0x9f;
+  });
+}
+function roomText(value: unknown, max: number): value is string {
+  if (typeof value !== 'string' || value.length < 1 || value.length > max)
     return false;
   for (const char of value) {
     const point = char.codePointAt(0) ?? 0;
@@ -310,19 +555,11 @@ function roomId(value: unknown): value is string {
   }
   return true;
 }
-function sha256(value: unknown): value is string {
-  return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
-}
 function nonnegative(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }
 function positive(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 1;
-}
-function canonicalTimestamp(value: unknown): value is string {
-  if (typeof value !== 'string' || value.length !== 24) return false;
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) && new Date(parsed).toISOString() === value;
 }
 export type ProjectTaskRoomOpenOutcome =
   | {

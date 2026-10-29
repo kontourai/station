@@ -1,0 +1,7 @@
+{
+  "revision": "b546551357c2f14af0ba796f091d8ddf542c1ab1",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Checked the holder paragraph against workload-resources.ts engineScopeWrapper: bash -p (ignores inherited BASH_ENV/SHELLOPTS), an unexpanded or non-numeric /dev/fd entry is skipped, fds 3+ closed, then exec sleep 2147483647; fallback without bash closes 3-9. Added the -p clause; rest unchanged.","inputs":["docs/guides/development.md","src-server/services/infra/workload-resources.ts"]}
+  ]
+}

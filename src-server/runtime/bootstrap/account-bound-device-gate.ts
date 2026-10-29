@@ -25,7 +25,10 @@ import { NATIVE_DEVICE_PROOF_SELF_RECEIPT_BASE_PATH } from '@kontourai/station-c
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { nativeDeviceOnlyObservationRoute } from '../../security/native-device-request-authority.js';
-import { isRelayManagementHttpLeaf } from '../../security/pairing-route-scopes.js';
+import {
+  isRelayManagementHttpLeaf,
+  matchPairingScopeRule,
+} from '../../security/pairing-route-scopes.js';
 import {
   getRuntimeAuthenticatedRequestPrincipal,
   getRuntimeNativeDeviceProofPrincipal,
@@ -213,6 +216,20 @@ function isAccountBoundOwnTokenLeaf(path: string, method: string): boolean {
   );
 }
 
+/** A person's own notification feed and its read/dismiss mutations. */
+function isAccountBoundPersonNotificationLeaf(
+  path: string,
+  method: string,
+): boolean {
+  return (
+    ((method === 'GET' || method === 'HEAD') &&
+      path === '/api/me/notifications') ||
+    (method === 'POST' &&
+      /^\/api\/me\/notifications\/[^/]+\/read$/.test(path)) ||
+    (method === 'DELETE' && /^\/api\/me\/notifications\/[^/]+$/.test(path))
+  );
+}
+
 /**
  * #3586: what an account-tied personal access token may never reach, even
  * inside the account-bound allowlist: the account's own sign-in surface,
@@ -396,7 +413,16 @@ export function installAccountBoundDeviceGate(
           403,
         );
       }
+      const rule = matchPairingScopeRule(method, path);
+      const personLeaf =
+        rule?.exact === true && rule.accountBoundPerson === true;
+      if (accountToken && personLeaf)
+        return c.json(
+          { error: { code: 'account_bound_device_route_forbidden' } },
+          403,
+        );
       const permitted =
+        personLeaf ||
         (method === 'GET' &&
           [
             '/api/tool-library/access',
@@ -447,6 +473,7 @@ export function installAccountBoundDeviceGate(
         isAccountBoundLayoutLeaf(path, method) ||
         isTaskRelationshipHttpLeaf(method, path) ||
         isAccountBoundOwnTokenLeaf(path, method) ||
+        isAccountBoundPersonNotificationLeaf(path, method) ||
         (path === '/api/me/preferences' &&
           (method === 'GET' || method === 'HEAD' || method === 'PATCH')) ||
         path === '/api/account-auth' ||

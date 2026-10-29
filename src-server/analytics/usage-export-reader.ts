@@ -4,6 +4,7 @@ import {
   type SessionReadAuthority,
 } from '@kontourai/station-contracts/tenancy';
 import type {
+  AnalyticsOperationalConsent,
   UsageExportPage,
   UsageExportRequest,
 } from '@kontourai/station-contracts/usage-export';
@@ -15,8 +16,9 @@ export class UsageExportRejected extends Error {
     readonly code:
       | 'invalid_usage_export'
       | 'usage_export_authority_changed'
+      | 'usage_export_history_gap'
       | 'usage_export_unavailable',
-    readonly status: 400 | 403 | 503,
+    readonly status: 400 | 403 | 410 | 503,
   ) {
     super(code);
     this.name = 'UsageExportRejected';
@@ -24,7 +26,8 @@ export class UsageExportRejected extends Error {
 }
 
 interface Continuation {
-  version: 1;
+  version: 2;
+  sourceRevision: number;
   context: string;
   epoch: string;
   highWater: number;
@@ -53,9 +56,13 @@ function continuation(value: string | undefined): Continuation | undefined {
     throw new UsageExportRejected('invalid_usage_export', 400);
   const fields = Object.keys(parsed).sort().join(',');
   if (
-    fields !== 'after,context,epoch,highWater,version' ||
+    fields !== 'after,context,epoch,highWater,sourceRevision,version' ||
     !('version' in parsed) ||
-    parsed.version !== 1 ||
+    parsed.version !== 2 ||
+    !('sourceRevision' in parsed) ||
+    typeof parsed.sourceRevision !== 'number' ||
+    !Number.isSafeInteger(parsed.sourceRevision) ||
+    parsed.sourceRevision < 0 ||
     !('context' in parsed) ||
     typeof parsed.context !== 'string' ||
     !/^[a-f0-9]{64}$/.test(parsed.context) ||
@@ -75,7 +82,8 @@ function continuation(value: string | undefined): Continuation | undefined {
   )
     throw new UsageExportRejected('invalid_usage_export', 400);
   return {
-    version: 1,
+    version: 2,
+    sourceRevision: parsed.sourceRevision,
     context: parsed.context,
     epoch: parsed.epoch,
     highWater: parsed.highWater,
@@ -83,23 +91,64 @@ function continuation(value: string | undefined): Continuation | undefined {
   };
 }
 
-export function readAuthorizedUsageExport(input: {
-  store: Pick<
-    EventStore,
-    'readUsageReceiptExportPage' | 'streamEpoch' | 'headGlobalSequence'
-  >;
-  authority: SessionReadAuthority;
-  stationId: string;
-  request: UsageExportRequest;
-  /** The existing SessionAuthorization owner policy, re-read at release. */
-  personalOwnerIds: () => readonly string[] | undefined;
-}): { page: UsageExportPage; assertCurrent(): void } {
-  const { store, authority, stationId, request } = input;
+/** One owner-selection policy for retained exports and enrollment proposals. */
+export function usageExportOwnerIds(
+  authority: SessionReadAuthority,
+  scope: UsageExportRequest['scope'],
+  personalOwnerIds: () => readonly string[] | undefined,
+): string[] {
   if (
     !isSessionReadAuthority(authority) ||
     (authority.mode === 'hosted' && !authority.tenantExecutionContext)
   )
     throw new UsageExportRejected('usage_export_authority_changed', 403);
+  if (scope === 'individual') return [authority.userId];
+  if (scope !== 'personal-account' || authority.mode === 'hosted')
+    throw new UsageExportRejected('invalid_usage_export', 400);
+  const members = personalOwnerIds();
+  if (!members?.includes(authority.userId))
+    throw new UsageExportRejected('usage_export_authority_changed', 403);
+  return [...new Set(members)].sort();
+}
+
+export function readAuthorizedUsageExport(input: {
+  store: Pick<
+    EventStore,
+    | 'readUsageReceiptExportPage'
+    | 'usageExportEpoch'
+    | 'headGlobalSequence'
+    | 'usageExportRevision'
+  >;
+  authority: SessionReadAuthority;
+  stationId: string;
+  request: UsageExportRequest;
+  /** Domain-specific grant generation, derived by its authenticator; never a caller identity field. */
+  authorizationContext?: string;
+  /** The existing SessionAuthorization owner policy, re-read at release. */
+  personalOwnerIds: () => readonly string[] | undefined;
+  /**
+   * Derived only from the current source grant record by its authenticator,
+   * never from request input. Omitted keeps the usage-only page byte-identical.
+   */
+  operationalConsent?: AnalyticsOperationalConsent;
+}): { page: UsageExportPage; sourceRevision: number; assertCurrent(): void } {
+  const { store, authority, stationId, request } = input;
+  const currentRevision = () => {
+    try {
+      return store.usageExportRevision();
+    } catch {
+      throw new UsageExportRejected('usage_export_unavailable', 503);
+    }
+  };
+
+  if (
+    !isSessionReadAuthority(authority) ||
+    (authority.mode === 'hosted' && !authority.tenantExecutionContext)
+  )
+    throw new UsageExportRejected('usage_export_authority_changed', 403);
+  const operational = input.operationalConsent === 'terminal-outcomes/v1';
+  if (input.operationalConsent !== undefined && !operational)
+    throw new UsageExportRejected('invalid_usage_export', 400);
   const limit = request.pageSize ?? 100;
   if (
     !validDay(request.from) ||
@@ -113,13 +162,8 @@ export function readAuthorizedUsageExport(input: {
     (authority.mode === 'hosted' && request.scope === 'personal-account')
   )
     throw new UsageExportRejected('invalid_usage_export', 400);
-  const owners = () => {
-    if (request.scope === 'individual') return [authority.userId];
-    const members = input.personalOwnerIds();
-    if (!members?.includes(authority.userId))
-      throw new UsageExportRejected('usage_export_authority_changed', 403);
-    return [...new Set(members)].sort();
-  };
+  const owners = () =>
+    usageExportOwnerIds(authority, request.scope, input.personalOwnerIds);
   const ownerIds = owners();
   if (!ownerIds.includes(authority.userId))
     throw new UsageExportRejected('usage_export_authority_changed', 403);
@@ -134,11 +178,17 @@ export function readAuthorizedUsageExport(input: {
         ownerIds,
         request.from,
         request.to,
+        ...(input.authorizationContext ? [input.authorizationContext] : []),
+        // A usage-only cursor can never continue a consented selection.
+        ...(operational ? ['terminal-outcomes/v1'] : []),
       ]),
     )
     .digest('hex');
   const cursor = continuation(request.cursor);
-  if (cursor && cursor.context !== context)
+  if (
+    cursor &&
+    (cursor.context !== context || cursor.sourceRevision !== currentRevision())
+  )
     throw new UsageExportRejected('usage_export_authority_changed', 403);
   let selected: ReturnType<EventStore['readUsageReceiptExportPage']>;
   try {
@@ -151,8 +201,13 @@ export function readAuthorizedUsageExport(input: {
       to: request.to,
       after: cursor?.after ?? 0,
       limit,
+      ...(operational ? { terminalOutcomes: true } : {}),
       ...(cursor
-        ? { highWater: cursor.highWater, streamEpoch: cursor.epoch }
+        ? {
+            highWater: cursor.highWater,
+            streamEpoch: cursor.epoch,
+            sourceRevision: cursor.sourceRevision,
+          }
         : {}),
     });
   } catch {
@@ -162,7 +217,8 @@ export function readAuthorizedUsageExport(input: {
   const next: Continuation | undefined =
     selected.hasMore && last !== undefined
       ? {
-          version: 1,
+          version: 2,
+          sourceRevision: selected.sourceRevision,
           context,
           epoch: selected.streamEpoch,
           highWater: selected.highWater,
@@ -170,21 +226,33 @@ export function readAuthorizedUsageExport(input: {
         }
       : undefined;
   return {
+    sourceRevision: selected.sourceRevision,
     page: {
       schemaVersion: 1,
       stationId,
       streamEpoch: selected.streamEpoch,
       highWater: selected.highWater,
       scope: request.scope,
+      ...(operational
+        ? { operationalConsent: 'terminal-outcomes/v1' as const }
+        : {}),
       window: {
         from: request.from,
         to: request.to,
         clock: 'station-observed-utc',
       },
-      observations: selected.rows.map((row) => ({
-        globalSequence: row.globalSequence,
-        receipts: usageReceiptsForEventRow(row.usage, stationId),
-      })),
+      observations: selected.rows.map((row) =>
+        'terminal' in row
+          ? {
+              globalSequence: row.globalSequence,
+              receipts: [],
+              terminal: row.terminal,
+            }
+          : {
+              globalSequence: row.globalSequence,
+              receipts: usageReceiptsForEventRow(row.usage, stationId),
+            },
+      ),
       ...(next
         ? {
             nextCursor: Buffer.from(JSON.stringify(next)).toString('base64url'),
@@ -199,7 +267,8 @@ export function readAuthorizedUsageExport(input: {
     assertCurrent() {
       if (
         JSON.stringify(owners()) !== JSON.stringify(ownerIds) ||
-        store.streamEpoch() !== selected.streamEpoch ||
+        currentRevision() !== selected.sourceRevision ||
+        store.usageExportEpoch() !== selected.streamEpoch ||
         store.headGlobalSequence() < selected.highWater
       )
         throw new UsageExportRejected('usage_export_authority_changed', 403);

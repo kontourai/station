@@ -13,6 +13,7 @@ export function visibleCatalogIds(options: {
   isOperator?: boolean;
   developerToolsEnabled?: boolean;
   experimentalTrustEnabled?: boolean;
+  experimentalStationRoutesEnabled?: boolean;
 }) {
   return SETTINGS_CATALOG.filter((entry) => {
     if (entry.conditional === 'mobile') return options.isMobile;
@@ -21,6 +22,8 @@ export function visibleCatalogIds(options: {
       return options.developerToolsEnabled === true;
     if (entry.conditional === 'experimental-trust')
       return options.experimentalTrustEnabled === true;
+    if (entry.conditional === 'experimental-station-routes')
+      return options.experimentalStationRoutesEnabled === true;
     if (entry.conditional === 'operator') return options.isOperator === true;
     return true;
   }).map((entry) => entry.id);

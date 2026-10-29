@@ -1268,6 +1268,52 @@ button:hover {
    global reset in tokens.css (animation-duration 0.01ms, iteration-count 1)
    fully collapses it — see mobile-css-ratchet on page-local at-rules. */
 
+/* Sheet gestures device preview (useResponsiveSheetGesture). The handle is a
+   sibling of the panel, fixed by the hook over the panel's top edge: a
+   44px-tall hit area reaching 28px above the panel, with the grip drawn just
+   inside it. `touch-action: none` keeps Android from claiming the touch as a
+   pan before the drag threshold. `scroll-margin-top` is never used for
+   scrolling: it is where the Full state's top gap is declared, because the
+   hook can read `env()` back only through a real property. */
+.responsive-sheet-handle {
+  position: fixed;
+  z-index: 2;
+  display: flex;
+  box-sizing: border-box;
+  align-items: flex-end;
+  justify-content: center;
+  height: 44px;
+  padding-bottom: 6px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  scroll-margin-top: calc(var(--safe-top) + var(--k-space-4));
+}
+
+.responsive-sheet-handle:active {
+  cursor: grabbing;
+}
+
+.responsive-sheet-handle__grip {
+  display: block;
+  inline-size: 36px;
+  block-size: 4px;
+  border-radius: var(--k-radius-sm);
+  background: var(--k-text-muted);
+  opacity: 0.5;
+}
+
+/* Full: the sheet reaches from where it rests up to the declared top gap.
+   The hook measures that height (it depends on the overlay's padding and the
+   keyboard, which this rule cannot see) and keeps the property current. The
+   consumer's own height rules are overridden only while this attribute is
+   set, so Default is always exactly the sheet the consumer designed. */
+.responsive-surface-overlay[data-sheet-expanded] > .responsive-surface-panel {
+  height: var(--responsive-sheet-full-height) !important;
+  max-height: var(--responsive-sheet-full-height) !important;
+}
+
 /* Mobile: hamburger + logo in toolbar */
 .app-toolbar__sidebar-toggle {
   display: inline-flex;
@@ -1315,37 +1361,6 @@ button:hover {
 .theme-toggle:hover {
   border-color: var(--accent-primary);
   color: var(--text-primary);
-}
-
-.toast {
-  position: fixed;
-  right: 24px;
-  bottom: 24px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 18px;
-  border-radius: 10px;
-  border: 1px solid var(--accent-primary);
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  box-shadow: var(--elevation-overlay);
-  backdrop-filter: blur(6px);
-  z-index: var(--layer-notification);
-}
-
-.toast button {
-  padding: 6px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--accent-primary);
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  font-size: var(--text-base);
-}
-
-.toast button:hover {
-  background: var(--accent-light);
 }
 
 .agent-selector {
@@ -6300,6 +6315,10 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     overflow-wrap: anywhere;
   }
 
+  .composer-popover-panel .composer-mode-sheet__notes {
+    padding-inline: calc(var(--k-space-1) + var(--k-space-4));
+  }
+
   .chat-dock__project-switcher-switch {
     min-height: 64px;
     padding: var(--k-space-3);
@@ -6935,6 +6954,36 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   content: "";
   position: absolute;
   inset: min(0px, calc((100% - 44px) / 2));
+}
+
+/* chat-host-images: a host image this device cannot show, and why. */
+.markdown-image-unavailable {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: var(--k-space-2);
+  max-width: 100%;
+  padding: var(--k-space-2) var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel-raised);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  line-height: var(--k-leading-normal);
+  overflow-wrap: anywhere;
+}
+.markdown-image-unavailable > svg {
+  flex-shrink: 0;
+  margin-top: 0.2em;
+}
+.markdown-image-unavailable strong {
+  color: var(--k-text);
+}
+.markdown-image-pending {
+  display: inline-block;
+  width: min(240px, 100%);
+  aspect-ratio: 4 / 3;
+  border-radius: 6px;
+  background: var(--k-panel-raised);
 }
 
 /* File Part Preview */
@@ -9605,6 +9654,19 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 .composer-mode-sheet__option {
   min-height: 56px;
   justify-content: flex-start;
+}
+
+/* The notes above the list start where a row's content does: the list's
+   padding (`--space-2`, i.e. `--k-space-1`) plus the row's own
+   (`--space-3`, i.e. half `--k-space-3`). The phone override sits beside the
+   phone row padding. */
+.composer-mode-sheet__notes {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: calc(var(--k-space-1) / 2);
+  padding: calc(var(--k-space-3) / 2)
+    calc(var(--k-space-1) + var(--k-space-3) / 2) 0;
 }
 
 /* Visually-hidden native radio input (same clip technique as Checkbox.css's

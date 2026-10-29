@@ -100,6 +100,48 @@ describe('buildHomeWorkItems', () => {
       }
     },
   );
+  test.each([
+    [
+      'a low-content chat title yields to the server title',
+      'Continue',
+      'Fix the dock header',
+    ],
+    ['a real chat title (a rename) is kept', 'Dock work', 'Dock work'],
+  ])('#4266: %s', (_case, chatTitle, expected) => {
+    const agents = [{ slug: 'claude', name: 'Claude Code' }] as any;
+    const sessions = [
+      {
+        threadId: 'thread-1',
+        conversationId: 'conversation',
+        assignedAgentSlug: 'claude',
+        provider: 'claude',
+        displayTitle: 'Fix the dock header',
+        createdAt: '2026-08-25T12:00:00Z',
+        updatedAt: '2026-08-25T12:00:00Z',
+        status: 'ready',
+        lifecycleState: 'completed',
+        isLoaded: true,
+        isPersisted: true,
+        answerability: { answerable: true },
+        eventCount: 1,
+      },
+    ] as any;
+    const chats = {
+      open: {
+        conversationId: 'conversation',
+        currentSessionId: 'thread-1',
+        agentSlug: 'claude',
+        agentName: 'Claude Code',
+        title: chatTitle,
+        createdAt: Date.parse('2026-08-25T13:00:00Z'),
+        messages: [],
+      },
+    } as any;
+    const items = buildHomeWorkItems({ chats, agents, sessions });
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ title: expected, chatSessionId: 'open' });
+  });
+
   test('active-chat consumers retain the newest handoff child for one conversation', () => {
     const items = buildActiveChatTaskItems({
       chats: {

@@ -115,12 +115,14 @@ import {
   WORKSPACE_CHAT_OPENER,
 } from '../../regions/pane-opener';
 import type { ChatSession, DockMode, FileAttachment } from '../../types';
+import { chatExecutionBinding } from '../../utils/engine';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import {
   type EffectiveModelSource,
   isSessionWorkActive,
 } from '../../utils/execution';
 import { displayProvider, sessionTitle } from '../../utils/sessionDisplay';
+import { withConversationInventory } from '../../views/home/conversation-inventory-facts';
 import { chatTaskSessionId } from '../../views/home/home-view-model';
 import {
   openChatInboxRows,
@@ -196,6 +198,7 @@ import {
   useSessionInventoryHostRegistered,
   useSessionInventoryHostRegistration,
 } from './sessionInventoryOccurrence';
+import { useAcknowledgeVisibleConversation } from './useAcknowledgeVisibleConversation';
 import { useChatDockActiveChatSync } from './useChatDockActiveChatSync';
 import { useChatDockOverlays } from './useChatDockOverlays';
 import { useChatDockViewModel } from './useChatDockViewModel';
@@ -776,23 +779,11 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     () => openChatInboxRows(inboxItems),
     [inboxItems],
   );
-  // The inventory's acknowledgement stamps are presentation (which finished
-  // rows are "Just finished"), layered on the shared items; no status word
-  // reads them.
+  // The inventory's per-conversation facts (last view, finish time, engines
+  // run) are presentation layered on the shared items; no status word reads
+  // them.
   const taskItems = useMemo(
-    () =>
-      inboxItems.map((item) => {
-        const conversation = inventoryById.get(item.id);
-        if (!conversation) return item;
-        const acknowledgedAt = conversation.acknowledgedAt
-          ? Date.parse(conversation.acknowledgedAt)
-          : Number.NaN;
-        return {
-          ...item,
-          conversationUpdatedAt: conversation.updatedAt,
-          ...(Number.isFinite(acknowledgedAt) ? { acknowledgedAt } : {}),
-        };
-      }),
+    () => withConversationInventory(inboxItems, inventoryById),
     [inboxItems, inventoryById],
   );
   const acknowledgeTaskConversation = useCallback(
@@ -1271,10 +1262,10 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // header's engine label reads it the same way the composer's chip does.
   const { data: acpConnections } = useACPConnections();
   // A conversation override runs on its execution Agent's engine; the header
-  // and the composer chip both compare against that Agent.
-  const activeExecutionAgent = activeSession?.executionAgentId
-    ? agents.find((agent) => agent.slug === activeSession.executionAgentId)
-    : activeChatAgent;
+  // and the composer chip both resolve that Agent with `chatExecutionBinding`.
+  const activeExecutionAgent = activeSession
+    ? chatExecutionBinding(activeSession, agents)
+    : null;
   timelineSourceRef.current = activeSession?.id ?? null;
 
   // station#3309: the model the dock header names — the same answer the
@@ -1338,6 +1329,13 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const activeTaskItem = activeSession
     ? taskItems.find((item) => chatTaskSessionId(item) === activeSession.id)
     : undefined;
+  // #4266: the chat on screen is viewed. Watching a thread finish clears it
+  // from "Just finished" on every device; the phone's task switcher covers
+  // the transcript, so it does not count as viewing it.
+  useAcknowledgeVisibleConversation(
+    activeTaskItem,
+    isPaneOpen && !(isMobile && isTaskSwitcherOpen),
+  );
   const activeWorkStatus = useOptionalObservedWorkStatus(
     activeTaskItem,
     inboxClock,
@@ -2917,6 +2915,17 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     }
                   : undefined,
                 sessionContextStatus: sessionContextStatus?.text,
+                conversationStats:
+                  contextMeterShown && activeSession?.conversationId
+                    ? {
+                        agentSlug: activeSession.agentSlug,
+                        conversationId: activeSession.conversationId,
+                        apiBase,
+                        messageCount: activeSession.messages.length,
+                        liveUsage: activeSession.liveUsage,
+                        onOpen: () => setShowStatsPanel(true),
+                      }
+                    : undefined,
               }}
             />
           ) : (
@@ -3658,6 +3667,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
             executionOnCurrentStation,
             initialFiles,
             ambientContext,
+            approvalMode,
           ) => {
             // station#4525: an explicit project choice inside the New Chat
             // modal is exactly as deliberate as a picker pick (#4524's
@@ -3698,6 +3708,10 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
             );
             if (sessionId && ambientContext?.includes(TASK_SHAPING_INSTRUCTION))
               updateChat(sessionId, { taskShaping: true });
+            // Before the first send is scheduled: that send carries a queued
+            // pick to the server, which records it before the engine starts.
+            if (sessionId && approvalMode)
+              updateChat(sessionId, { queuedApprovalMode: approvalMode });
             if (sessionId && experienceDraft)
               updateChat(sessionId, {
                 skillExperienceDraft: experienceDraft,

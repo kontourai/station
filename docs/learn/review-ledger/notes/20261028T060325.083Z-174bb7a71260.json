@@ -1,0 +1,7 @@
+{
+  "revision": "af3e5a84422aca57bfe6b2b91b157b1a2b9e04f0",
+
+  "notes": [
+    {"path":"docs/user/sharing-answers.md","note":"TurnActionsMenu gains an open handle used by a right-click on the answer; the documented More answer actions route and its rows are unchanged.","inputs":["docs/user/sharing-answers.md","src-ui/src/components/chat/TurnActionsMenu.tsx"]}
+  ]
+}

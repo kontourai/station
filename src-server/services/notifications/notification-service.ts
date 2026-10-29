@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import {
   type Notification,
+  type NotificationAudience,
   type NotificationEnvelopeV1,
   type ScheduleNotificationOpts,
   type SurfaceId,
@@ -35,6 +36,7 @@ import { isRecord } from '../../utils/is-record.js';
 import { createLogger } from '../../utils/logger.js';
 import { JsonFileStore } from '../infra/json-store.js';
 import type { EventBus } from '../orchestration/event-bus.js';
+import type { ProjectMembershipService } from '../projects/project-membership-service.js';
 import { ON_ACTIVITY_CARD_METADATA_KEY } from './delivery/card-alerted-categories.js';
 
 const logger = createLogger({ name: 'notification-service' });
@@ -60,6 +62,8 @@ type NotificationStore = Pick<
 type NotificationStoreFactory = (storePath: string) => NotificationStore;
 const ACTION_LEASE_MS = 30_000;
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 5_000;
+const PRINCIPAL_FEED_MAX = 100;
+const PRINCIPAL_FEED_MAX_BYTES = 16 * 1024 * 1024;
 type NotificationDismissal = 'dismissed' | 'not-found' | 'action-dispatching';
 type NotificationDismissalResult =
   | { outcome: 'dismissed'; notification: StoredNotification }
@@ -103,9 +107,27 @@ export type NotificationMarkReadOutcome =
  * Result of the trusted enveloped write. `unchanged` — the dedupe tag names a
  * dismissed (final) record or one whose action is in flight; nothing changed.
  */
-export type NotificationScheduleOutcome = 'created' | 'updated' | 'unchanged';
+export type NotificationScheduleOutcome =
+  | 'created'
+  | 'updated'
+  | 'unchanged'
+  | 'suppressed';
+export type NotificationScheduleResult =
+  | {
+      notification: Notification;
+      outcome: Exclude<NotificationScheduleOutcome, 'suppressed'>;
+    }
+  | { notification: undefined; outcome: 'suppressed' };
+type ExistingAudienceEnvelope = NotificationEnvelopeV1 & {
+  audience: Exclude<NotificationAudience, { kind: 'principal' }>;
+};
 
 export interface NotificationServiceOptions {
+  /** The current Project membership authority for principal deliveries. */
+  projectMembership?: Pick<
+    ProjectMembershipService,
+    'admissionsForResolvedPrincipal'
+  >;
   /** Injectable only for deterministic cross-process mutation tests. */
   acquireMutationLock?: FileMutationLock;
   /** Injectable only for durable-write fault-injection tests. */
@@ -242,6 +264,14 @@ export class NotificationService {
   private timers = new Map<string, ReturnType<typeof setTimeout>>();
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private readonly storePath: string;
+  private readonly principalStorePath: string;
+  private readonly principalStore: JsonFileStore<
+    Record<string, StoredNotification[]>
+  >;
+  private readonly projectMembership?: Pick<
+    ProjectMembershipService,
+    'admissionsForResolvedPrincipal'
+  >;
   private readonly acquireMutationLock: FileMutationLock;
   private readonly beforeActionDispatch?: (
     notificationId: string,
@@ -262,6 +292,17 @@ export class NotificationService {
     options: NotificationServiceOptions = {},
   ) {
     this.storePath = join(dataDir, 'notifications.json');
+    this.principalStorePath = join(dataDir, 'principal-notifications.json');
+    this.principalStore = new JsonFileStore(
+      this.principalStorePath,
+      {},
+      {
+        onCorruption: 'throw',
+        durableAtomicWrite: true,
+        maxReadBytes: PRINCIPAL_FEED_MAX_BYTES,
+      },
+    );
+    this.projectMembership = options.projectMembership;
     this.acquireMutationLock =
       options.acquireMutationLock ?? acquireFileMutationLockAsync;
     this.store =
@@ -448,20 +489,30 @@ export class NotificationService {
    * Trusted write path (#2583): the only way `metadata.envelope` is written.
    * In-process producers only (the agent notification gate, system
    * producers) — never wire a request body into it. The envelope must pass
-   * `parseNotificationEnvelopeForWrite` (exact keys, no read/dismiss markers,
-   * no `principal` audience). `metadata.sessionId`/`conversationId` are
+   * `parseNotificationEnvelopeForWrite` (exact keys, no read/dismiss markers).
+   * A principal audience is delivered to its private store only after a fresh
+   * membership check. Producers must derive the Project from their own authority,
+   * never request input: membership validates the supplied Project, not the producer.
+   * `metadata.sessionId`/`conversationId` are
    * derived from the envelope so REST read-gating and deep links follow the
    * envelope's session; a conflicting caller value is refused. A dedupe
    * update of an enveloped record emits NOTIFICATION_UPDATED.
    */
+  scheduleEnveloped(
+    source: string,
+    opts: ScheduleNotificationOpts,
+    envelope: ExistingAudienceEnvelope,
+  ): Promise<Exclude<NotificationScheduleResult, { outcome: 'suppressed' }>>;
+  scheduleEnveloped(
+    source: string,
+    opts: ScheduleNotificationOpts,
+    envelope: NotificationEnvelopeV1,
+  ): Promise<NotificationScheduleResult>;
   async scheduleEnveloped(
     source: string,
     opts: ScheduleNotificationOpts,
     envelope: NotificationEnvelopeV1,
-  ): Promise<{
-    notification: Notification;
-    outcome: NotificationScheduleOutcome;
-  }> {
+  ): Promise<NotificationScheduleResult> {
     const parsed = parseNotificationEnvelopeForWrite(envelope);
     if (!parsed) throw new NotificationEnvelopeValidationError();
     const metadata = jsonSafeMetadata(opts.metadata);
@@ -488,6 +539,14 @@ export class NotificationService {
       metadata[key] = derived;
     }
     metadata.envelope = parsed as unknown as Record<string, unknown>;
+    if (parsed.audience.kind === 'principal') {
+      if (!parsed.audience.projectId)
+        throw new NotificationEnvelopeValidationError();
+      return this.scheduleForPrincipal(source, opts, metadata, {
+        principalId: parsed.audience.principalId,
+        projectId: parsed.audience.projectId,
+      });
+    }
     const { notification, created, updated } = await this.scheduleRecord(
       source,
       opts,
@@ -498,6 +557,194 @@ export class NotificationService {
       notification,
       outcome: created ? 'created' : updated ? 'updated' : 'unchanged',
     };
+  }
+
+  private async scheduleForPrincipal(
+    source: string,
+    opts: ScheduleNotificationOpts,
+    metadata: Record<string, unknown>,
+    audience: { principalId: string; projectId: string },
+  ): Promise<NotificationScheduleResult> {
+    return this.mutatePrincipal<NotificationScheduleResult>(
+      audience.principalId,
+      (all) => {
+        // The feed write is the delivery. Check after acquiring the store lock,
+        // immediately before the synchronous write, not when a producer queues it.
+        if (
+          !this.projectMembership
+            ?.admissionsForResolvedPrincipal(audience.principalId)
+            .some(({ scope }) => scope.localProjectId === audience.projectId)
+        ) {
+          return { result: { outcome: 'suppressed', notification: undefined } };
+        }
+        if (opts.scheduledAt !== undefined)
+          throw new NotificationEnvelopeValidationError(
+            'Principal delivery cannot be scheduled',
+          );
+        const existing = opts.dedupeTag
+          ? all.find((n) => n.metadata?.dedupeTag === opts.dedupeTag)
+          : undefined;
+        if (existing && existing.source !== source)
+          throw new NotificationDedupeSourceConflictError();
+        if (existing?.status === 'dismissed')
+          return {
+            result: {
+              outcome: 'unchanged',
+              notification: toPublicNotification(existing),
+            },
+          };
+        const now = new Date().toISOString();
+        if (existing) expirePrincipalNotification(existing, now);
+        const category = classifyNotificationCategory(opts.category);
+        const ttl =
+          opts.ttl ?? (category ? NOTIFICATION_TTL_MS[category] : undefined);
+        const notification: StoredNotification = {
+          id: existing?.id ?? randomUUID(),
+          source,
+          category: opts.category,
+          title: opts.title,
+          ...(opts.body === undefined ? {} : { body: opts.body }),
+          priority: opts.priority ?? existing?.priority ?? 'normal',
+          status: existing?.status ?? 'delivered',
+          scheduledAt: null,
+          deliveredAt: existing?.deliveredAt ?? now,
+          ...(ttl === undefined ? {} : { ttl }),
+          ...(opts.actions === undefined ? {} : { actions: opts.actions }),
+          metadata: {
+            ...metadata,
+            ...(opts.dedupeTag === undefined
+              ? {}
+              : { dedupeTag: opts.dedupeTag }),
+          },
+          createdAt: existing?.createdAt ?? now,
+          updatedAt: now,
+          revision: (existing?.revision ?? 0) + 1,
+        };
+        const next = existing
+          ? all.map((item) => (item.id === existing.id ? notification : item))
+          : [...all, notification].slice(-PRINCIPAL_FEED_MAX);
+        return {
+          result: {
+            outcome: existing ? 'updated' : 'created',
+            notification: toPublicNotification(notification),
+          },
+          next,
+        };
+      },
+    );
+  }
+
+  async listForPrincipal(principalId: string): Promise<Notification[]> {
+    return this.mutatePrincipal(principalId, (all) => {
+      const now = new Date().toISOString();
+      const changed = all
+        .map((item) => expirePrincipalNotification(item, now))
+        .some(Boolean);
+      return {
+        result: all.map(toPublicNotification),
+        ...(changed ? { next: all } : {}),
+      };
+    });
+  }
+
+  async markReadForPrincipal(
+    principalId: string,
+    id: string,
+    surfaceId: SurfaceId,
+  ): Promise<NotificationMarkReadOutcome> {
+    if (!isSurfaceId(surfaceId))
+      throw new TypeError('markRead requires a surface id');
+    return this.mutatePrincipal(principalId, (all) => {
+      const notification = all.find((item) => item.id === id);
+      if (!notification) return { result: 'not-found' };
+      const now = new Date().toISOString();
+      if (expirePrincipalNotification(notification, now))
+        return { result: 'not-delivered', next: all };
+      const envelope = parseNotificationEnvelope(
+        notification.metadata?.envelope,
+      );
+      if (!envelope) return { result: 'no-envelope' };
+      if (notification.status !== 'delivered')
+        return { result: 'not-delivered' };
+      if (envelope.readAt) return { result: 'already-read' };
+      stampEnvelopeMark(notification, 'read', now, surfaceId);
+      notification.updatedAt = now;
+      return { result: 'read', next: all };
+    });
+  }
+
+  async dismissForPrincipal(
+    principalId: string,
+    id: string,
+    surfaceId: SurfaceId,
+  ): Promise<NotificationDismissal> {
+    if (!isSurfaceId(surfaceId))
+      throw new TypeError('dismiss requires a surface id');
+    return this.mutatePrincipal(principalId, (all) => {
+      const notification = all.find((item) => item.id === id);
+      if (!notification) return { result: 'not-found' };
+      notification.status = 'dismissed';
+      notification.updatedAt = new Date().toISOString();
+      notification.revision += 1;
+      stampEnvelopeMark(
+        notification,
+        'dismissed',
+        notification.updatedAt,
+        surfaceId,
+      );
+      return { result: 'dismissed', next: all };
+    });
+  }
+
+  private readPrincipalDocument(): Record<string, StoredNotification[]> {
+    const document: unknown = this.principalStore.read();
+    if (!isRecord(document)) throw new NotificationStoreValidationError();
+    for (const [principalId, value] of Object.entries(document)) {
+      const records = validateNotificationDocument(value);
+      if (
+        records.length > PRINCIPAL_FEED_MAX ||
+        records.some((record) => {
+          const envelope = parseNotificationEnvelope(record.metadata?.envelope);
+          return (
+            envelope?.audience.kind !== 'principal' ||
+            envelope.audience.principalId !== principalId ||
+            !envelope.audience.projectId
+          );
+        })
+      )
+        throw new NotificationStoreValidationError();
+    }
+    return document as Record<string, StoredNotification[]>;
+  }
+
+  private async mutatePrincipal<T>(
+    principalId: string,
+    mutation: (records: StoredNotification[]) => {
+      result: T;
+      next?: StoredNotification[];
+    },
+  ): Promise<T> {
+    const release = await this.acquireMutationLock(
+      `${this.principalStorePath}.mutation`,
+    );
+    try {
+      const document = this.readPrincipalDocument();
+      const outcome = mutation(
+        Object.hasOwn(document, principalId) ? document[principalId] : [],
+      );
+      if (outcome.next) {
+        document[principalId] = validateNotificationDocument(outcome.next);
+        if (
+          Buffer.byteLength(JSON.stringify(document, null, 2)) >
+          PRINCIPAL_FEED_MAX_BYTES
+        )
+          throw new NotificationStoreValidationError();
+        this.principalStore.write(document);
+      }
+      return outcome.result;
+    } finally {
+      await release();
+    }
   }
 
   private async scheduleRecord(
@@ -512,6 +759,7 @@ export class NotificationService {
   }> {
     let displaced: string | undefined;
     let remaining = 0;
+    let actionsChanged = false;
     const now = new Date().toISOString();
     const { notification, created, updated } = await this.mutate((all) => {
       // Dedupe by tag. The fresh read happens while holding the mutation
@@ -590,6 +838,9 @@ export class NotificationService {
           const outcome = classifyNotificationCategory(opts.category);
           const defaultTtl = outcome ? NOTIFICATION_TTL_MS[outcome] : undefined;
           const ttl = opts.ttl ?? defaultTtl ?? existing.ttl;
+          actionsChanged =
+            JSON.stringify(existing.actions ?? null) !==
+            JSON.stringify(opts.actions ?? null);
           if (opts.actions === undefined) delete existing.actions;
           if (opts.body === undefined) delete existing.body;
           Object.assign(existing, {
@@ -679,8 +930,13 @@ export class NotificationService {
       else if (notification.status === 'delivered')
         this.scheduleExpiryTimer(notification);
       // An enveloped record's content change must reach every client (and
-      // the delivery router); legacy dedupe updates stay silent as before.
-      if (envelope) {
+      // the delivery router). A legacy record's dedupe update stays silent
+      // unless its actions changed: open clients render the buttons from the
+      // stored record, so a card rewritten to offer fewer actions (an
+      // approval that now needs its content loaded) must tell them to
+      // refetch. The delivery router treats such an update as a settle, not
+      // a content edit (it needs an envelope), so nothing is sent again.
+      if (envelope || actionsChanged) {
         this.eventBus.emit(
           SERVER_EVENTS.NOTIFICATION_UPDATED,
           toPublicNotification(notification) as unknown as Record<
@@ -867,6 +1123,14 @@ export class NotificationService {
     } catch (error) {
       const restored = await this.releaseActionLease(id, reservation.id);
       if (restored) this.scheduleExpiryTimer(restored);
+      try {
+        await provider?.handleActionFailed?.(id, actionId, error);
+      } catch (followUpError) {
+        logger.warn('Notification provider failed to follow up an action', {
+          id,
+          error: followUpError,
+        });
+      }
       throw error;
     }
 
@@ -1474,6 +1738,24 @@ function isActiveApprovalNotification(notification: Notification): boolean {
     notification.category === 'approval-request' &&
     (notification.status === 'delivered' || notification.status === 'pending')
   );
+}
+
+/** Principal feeds have no asynchronous delivery or expiry events. */
+function expirePrincipalNotification(
+  notification: StoredNotification,
+  now: string,
+): boolean {
+  if (
+    notification.status !== 'delivered' ||
+    !notification.deliveredAt ||
+    !notification.ttl ||
+    Date.parse(notification.deliveredAt) + notification.ttl > Date.parse(now)
+  )
+    return false;
+  notification.status = 'expired';
+  notification.updatedAt = now;
+  notification.revision += 1;
+  return true;
 }
 
 function toPublicNotification(notification: StoredNotification): Notification {

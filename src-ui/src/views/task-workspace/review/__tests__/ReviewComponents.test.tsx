@@ -1163,7 +1163,7 @@ it('prevents a second reopen while the collapsed thread action is pending', asyn
   await waitFor(() => expect(button.hasAttribute('disabled')).toBe(false));
 });
 
-it('hides default state and body-inferred verdict chips while showing the projected non-default state', () => {
+it('keeps Open visible on expanded cards and derives verdict chips only from projected state', () => {
   const approved = {
     ...threads[0],
     events: [{ ...threads[0].events[0], body: 'Approved.' }],
@@ -1172,7 +1172,8 @@ it('hides default state and body-inferred verdict chips while showing the projec
     <ReviewThreadCard thread={approved} {...actions()} />,
   );
   const card = screen.getByRole('article', { name: 'Thread 1' });
-  expect(within(card).queryByText('Open')).toBeNull();
+  expect(within(card).getByText('Open')).toBeTruthy();
+  expect(within(card).getByText('#1')).toBeTruthy();
   expect(within(card).queryByText('Approve')).toBeNull();
   expect(within(card).getByText('Approved.')).toBeTruthy();
   rerender(<ReviewThreadCard thread={threads[4]} {...actions()} />);
@@ -1284,6 +1285,45 @@ it('formats numeric revision transitions', () => {
       title="Brief"
       text="Short brief."
       threads={[]}
+      onCreateThread={vi.fn()}
+    />,
+  );
+  expect(screen.getByText('v2 → v3')).toBeTruthy();
+});
+
+it('explains an unavailable Brief in visible navigation text', () => {
+  render(
+    <ReviewItemList
+      items={[
+        {
+          kind: 'summary',
+          id: 'summary',
+          label: 'Brief',
+          status: 'unavailable',
+          counts: { open: 0, outdated: 0, resolved: 0 },
+        },
+      ]}
+      onSelectItem={vi.fn()}
+    />,
+  );
+  const navigation = screen.getByRole('navigation', { name: 'Review items' });
+  expect(
+    within(navigation).getByRole('button', { name: 'Brief' }),
+  ).toHaveProperty('disabled', true);
+  expect(within(navigation).getByText('No Brief yet')).toBeTruthy();
+});
+
+it('renders working-state revision ordinals supplied by the server', () => {
+  const before = `swsr-v1:${'a'.repeat(64)}`;
+  const current = `swsr-v1:${'b'.repeat(64)}`;
+  render(
+    <ReviewDocumentView
+      draftScope="working-revision"
+      artifact={{ ...plan, revision: current }}
+      previousArtifact={{ ...plan, revision: before }}
+      revisionOrdinals={{ [before]: 2, [current]: 3 }}
+      title="Plan"
+      text="Plan"
       onCreateThread={vi.fn()}
     />,
   );

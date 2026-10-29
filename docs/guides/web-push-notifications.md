@@ -124,9 +124,23 @@ The [audience resolver](../../src-server/services/notifications/delivery/audienc
 selects active personal-family devices with the required read eligibility. It
 excludes delegated Stations, pending enrollment and account-bound devices from
 this current family. Every named Session also requires the recipient's own
-principal to be able to read it, including legacy notifications. A reserved
-`principal` audience has no delivery implementation yet. Pairing alone is not
-sufficient audience membership.
+principal to be able to read it, including legacy notifications. Pairing alone
+is not sufficient audience membership.
+
+[NotificationService](../../src-server/services/notifications/notification-service.ts)
+delivers a `principal` audience synchronously to a separate private feed after
+a fresh check of that person's Project membership. A non-member is suppressed
+without a write; a failed write is returned to the producer. The membership check
+validates the supplied Project, not the producer’s authority, so every producer
+must derive the Project from its own authority, never from request input. The feed keeps the
+newest 100 records per person and scopes read and dismissal state to that person.
+Future-scheduled principal writes are refused; expiry is settled when the feed
+is next accessed. These records do not enter the owner feed or shared
+notification stream and do not trigger push. The authenticated person reads,
+marks read, and dismisses their own entries through the
+[person notification routes](../reference/api.md#person-notifications). A
+per-person notification preference, account-bound Device push, producers, and
+the corresponding inbox UI remain future work.
 
 The router consumes `NOTIFICATION_DELIVERED`. It also handles content changes to
 previously seen, delivered, unread enveloped records on `NOTIFICATION_UPDATED`;

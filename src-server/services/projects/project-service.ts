@@ -8,6 +8,10 @@ import {
   type ProjectMetadata,
   projectIconProblem,
 } from '@kontourai/station-contracts/project';
+import {
+  PROJECT_CHAT_DEFAULT_RECORD_FIELDS,
+  type ProjectChatDefaultRecordField,
+} from '@kontourai/station-contracts/project-chat-defaults';
 import type { ProjectPortableIdentity } from '@kontourai/station-contracts/project-identity';
 import {
   PROJECT_OVERRIDE_RECORD_FIELDS,
@@ -126,11 +130,14 @@ export type ProjectUpdate = Partial<
     | 'slug'
     | 'createdAt'
     | ProjectOverrideRecordField
+    | ProjectChatDefaultRecordField
     | 'defaultAgent'
     | 'icon'
   >
 > & {
-  [K in ProjectOverrideRecordField]?: ProjectConfig[K] | null;
+  [K in ProjectOverrideRecordField | ProjectChatDefaultRecordField]?:
+    | ProjectConfig[K]
+    | null;
 } & {
   defaultAgent?: ProjectConfig['defaultAgent'] | null;
   /** `''` and `null` clear the icon; see {@link withoutClearedIcon}. */
@@ -194,14 +201,28 @@ export type ProjectCreate = Omit<
   | 'createdAt'
   | 'updatedAt'
   | ProjectOverrideRecordField
+  | ProjectChatDefaultRecordField
   | 'defaultAgent'
   | 'icon'
 > & {
-  [K in ProjectOverrideRecordField]?: ProjectConfig[K] | null;
+  [K in ProjectOverrideRecordField | ProjectChatDefaultRecordField]?:
+    | ProjectConfig[K]
+    | null;
 } & {
   defaultAgent?: ProjectConfig['defaultAgent'] | null;
   icon?: string | null;
 };
+
+/** Raising a Project's new-chat approval mode to full access without the grant. */
+export class ProjectFullAccessDefaultRefusal extends Error {
+  readonly code = 'approval-full-access-not-granted';
+  constructor() {
+    super(
+      'Starting new chats at full access needs full-access permission. No changes were saved.',
+    );
+    this.name = 'ProjectFullAccessDefaultRefusal';
+  }
+}
 
 export async function assertProjectWorktreeDirectory(
   projectSlug: string,
@@ -474,7 +495,10 @@ export class ProjectService {
       ProjectConfig,
       'id' | 'createdAt' | 'updatedAt'
     >;
-    for (const field of PROJECT_OVERRIDE_RECORD_FIELDS) {
+    for (const field of [
+      ...PROJECT_OVERRIDE_RECORD_FIELDS,
+      ...PROJECT_CHAT_DEFAULT_RECORD_FIELDS,
+    ]) {
       if ((config as Record<string, unknown>)[field] === null) {
         delete normalized[field];
       }
@@ -546,9 +570,24 @@ export class ProjectService {
   async updateProject(
     slug: string,
     updates: ProjectUpdate,
+    options: {
+      /**
+       * The caller's own proof it may raise the Project's new-chat approval
+       * mode to full access (`mayGrantFullAccess`, decided by the route).
+       * Checked here against the revision this update replaces, so a save
+       * that read `never` cannot land after the mode was lowered.
+       */
+      mayRaiseFullAccessDefault?: boolean;
+    } = {},
   ): Promise<ProjectConfig> {
     const revision = this.storageAdapter.projectRevision(slug);
     const existing = revision.value;
+    if (
+      updates.defaultApprovalMode === 'never' &&
+      existing.defaultApprovalMode !== 'never' &&
+      options.mayRaiseFullAccessDefault !== true
+    )
+      throw new ProjectFullAccessDefaultRefusal();
     assertWritableProjectIcon(updates.icon, existing.icon);
     // Cleared AFTER the spread, so `''`/`null` also removes a stored icon.
     const updated: ProjectConfig = withoutClearedIcon({
@@ -562,7 +601,10 @@ export class ProjectService {
     // of these, so a stored null makes the record unloadable on the next
     // read. Applied after the spread so it also clears a field the existing
     // record carried.
-    for (const field of PROJECT_OVERRIDE_RECORD_FIELDS) {
+    for (const field of [
+      ...PROJECT_OVERRIDE_RECORD_FIELDS,
+      ...PROJECT_CHAT_DEFAULT_RECORD_FIELDS,
+    ]) {
       if ((updates as Record<string, unknown>)[field] === null) {
         delete updated[field];
       }

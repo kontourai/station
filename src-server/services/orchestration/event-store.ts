@@ -40,6 +40,7 @@ import type {
   ConnectionRecoveryOutcomeReason,
   ConnectionRecoveryProjection,
 } from '@kontourai/station-contracts/connection-recovery';
+import { isLowContentPrompt } from '@kontourai/station-contracts/conversation-title';
 import { parseMcpToolRef } from '@kontourai/station-contracts/layout';
 import type {
   ConversationHandoffProjection,
@@ -56,6 +57,14 @@ import {
 } from '@kontourai/station-contracts/provider';
 import type { RunSummary } from '@kontourai/station-contracts/runs';
 import {
+  collectRuntimeEventContentRefs,
+  isRuntimeEventContentDigest,
+  isRuntimeEventContentRef,
+  type RuntimeEventContentBody,
+  resolveRuntimeEventContent,
+  runtimeEventContentForDisplay,
+} from '@kontourai/station-contracts/runtime-event-content';
+import {
   type CanonicalRuntimeEvent,
   isProviderTriggeredTurn,
   PROVIDER_TURN_TRIGGER,
@@ -67,6 +76,10 @@ import {
 import { parseStationControlRefusal } from '@kontourai/station-contracts/station-control-refusal';
 import { parseTenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
+import type {
+  UsageInvalidationPage,
+  UsageTerminalFact,
+} from '@kontourai/station-contracts/usage-export';
 import { isAuthoredInputContent } from '@kontourai/station-shared/authored-input';
 import { htmlReplyReference } from '@kontourai/station-shared/html-reply-document';
 import { isSuccessfulMcpResult } from '@kontourai/station-shared/mcp-app-result';
@@ -74,6 +87,7 @@ import {
   exactProcessIdentity,
   probeExactProcessIdentity,
 } from '@kontourai/station-shared/process-identity';
+import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import {
   corruptionMarkerFromError,
   recordCorruptionObserved,
@@ -109,6 +123,7 @@ import { ensureProjectTaskRoomRevisionAttributionColumn } from '../../domain/mig
 import { CONVERSATION_SESSION_LINEAGE_MIGRATION } from '../../domain/migrations/010-conversation-session-lineage.js';
 import {
   CONVERSATION_HANDOFF_MIGRATION,
+  ensureConversationHandoffContextSeedColumn,
   ensureConversationHandoffExecutionAgentColumn,
   ensureConversationHandoffMessageDigestColumn,
   ensureConversationHandoffNativeReturnColumn,
@@ -128,21 +143,38 @@ import {
   POSITIVE_TURN_START_INDEX,
   POSITIVE_TURN_START_SQL,
 } from '../../domain/migrations/019-positive-turn-start-index.js';
+import { CONVERSATION_FORK_CONTEXT_MIGRATION } from '../../domain/migrations/020-conversation-fork-context.js';
 import { TASK_MEMORY_MIGRATION } from '../../domain/migrations/020-task-memory.js';
+import { CONVERSATION_START_CONTEXT_MIGRATION } from '../../domain/migrations/021-conversation-start-context.js';
 import { TASK_LEARNING_DISMISSALS_MIGRATION } from '../../domain/migrations/021-task-learning-dismissals.js';
 import { TASK_LEARNING_PROMOTIONS_MIGRATION } from '../../domain/migrations/022-task-learning-promotions.js';
 import { TASK_REVIEW_MIGRATION } from '../../domain/migrations/023-task-review.js';
+import {
+  ensureUsageExportInvalidations,
+  USAGE_EXPORT_JOURNAL_MARKER,
+} from '../../domain/migrations/023-usage-export-invalidations.js';
+import { CONVERSATION_NATIVE_FORK_EFFECT_MIGRATION } from '../../domain/migrations/024-conversation-native-fork-effect.js';
+import {
+  EVENT_CONTENT_MIGRATION,
+  EVENT_CONTENT_ORPHAN_SWEEP,
+} from '../../domain/migrations/024-event-content.js';
+import { ensureProjectTaskRoomRevisionFreezeColumn } from '../../domain/migrations/024-project-task-room-revision-freeze.js';
+import { ensureConversationHistoryTitleSourceColumn } from '../../domain/migrations/025-conversation-history-title-source.js';
 import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
   RevisionEvidenceModule,
 } from '../../domain/revision-bound-evidence.js';
+import { NATIVE_TURN_IDENTITY_METADATA_KEY } from '../../providers/adapters/native-resume-binding.js';
 import { PROVIDER_PROVEN_FINISH_REASONS } from '../../providers/finish-reason-authority.js';
 import { appendToolOutputNote } from '../../providers/tool-output-projection.js';
 import type { NativeOutputTerminalAdmission } from '../../runtime/native-output-declaration.js';
 import {
   attachmentBytesStripped,
   conversationSessionLineageMutations,
+  eventContentBytesSpilled,
+  eventContentOrphansSwept,
+  eventContentValuesSpilled,
   orchestrationEventPersistDuration,
   orchestrationEventsPersisted,
   orchestrationEventWindowElisions,
@@ -208,16 +240,43 @@ import {
   isAttachmentBlobRef,
 } from './attachment-blob-store.js';
 import {
+  CANONICAL_TERMINAL_EVENT_SQL,
+  canonicalTerminalOutcome,
+  terminalEngineFamily,
+} from './canonical-terminal-outcome.js';
+import {
   ConversationContextBoundaryConflictError,
   type ConversationContextBoundaryMarker,
   type ConversationContextBoundaryModule,
   createConversationContextBoundaryModule,
 } from './conversation-context-boundary-module.js';
 import {
+  type ConversationSeedWitness,
+  createConversationSeedWitness,
+  readConversationSeedWitness,
+} from './conversation-context-seed-witness.js';
+import {
+  ConversationForkContextError,
+  type ConversationForkContextReference,
+  type ConversationForkContextSnapshot,
+  decodeCommittedNativeForkCreation,
+  type NativeForkCommitInput,
+  type NativeForkCreationObservation,
+  type NativeForkEffectClaim,
+  type NativeForkEffectRecord,
+  type NativeForkSourceSeal,
+  nativeForkHash,
+  nativeForkJson,
+  readConversationForkContext,
+  readNativeForkEffect,
+} from './conversation-fork-context.js';
+import {
   ConversationHandoffConflictError,
   type ConversationHandoffMarker,
   type ConversationHandoffModule,
+  conversationHandoffClientTurnId,
   createConversationHandoffModule,
+  readConversationContextSeedPin,
 } from './conversation-handoff-module.js';
 import {
   type ConversationSessionLineage,
@@ -227,6 +286,10 @@ import {
   createConversationSessionLineageModule,
   isSameConversationSessionLineage,
 } from './conversation-session-lineage.js';
+import {
+  ConversationStartContextError,
+  readConversationStartSeedCarrier,
+} from './conversation-start-context.js';
 import { derivedConversationTitle } from './conversation-title.js';
 import {
   type CredentialApplicationHandle,
@@ -237,6 +300,14 @@ import {
   type DelegationResultStore,
   migrateDelegationResultSchema,
 } from './delegation-result-delivery.js';
+import {
+  MAX_EVENT_CONTENT_BYTES,
+  MAX_EVENT_CONTENT_CONTAINER_ENTRIES,
+  MAX_EVENT_CONTENT_DEPTH,
+  type PlannedSpill,
+  planEventContentSpill,
+  withUnavailableContent,
+} from './event-content-spill.js';
 import { createHtmlReplyPages } from './html-reply-pages.js';
 import {
   createNativeInvocationRuns,
@@ -463,7 +534,11 @@ const CANONICAL_TERMINAL_TARGET = `state NOT IN ('lifecycle','settled') AND purp
   AND prepared_settlement IS NULL
   AND (invocation_id IS NOT NULL OR input_digest IS NOT NULL OR intent_digest IS NOT NULL OR body_ref IS NOT NULL OR dedup_key IS NOT NULL)`;
 const MESSAGE_SEARCH_BACKGROUND_WRITE = Symbol('message-search-backfill');
-/** Last-resort ingress ceiling; upstream adapters own useful projection. */
+/**
+ * Last-resort ceiling on an event's STORED form. Large engine content is
+ * spilled out of line first (event-content-spill.ts), so after spilling only
+ * adapter-built fields can reach this.
+ */
 export const MAX_EVENT_STORE_INGRESS_BYTES = 64 * 1024;
 /**
  * Structural limits make the last-resort byte ceiling cheap to enforce even
@@ -473,8 +548,8 @@ export const MAX_EVENT_STORE_INGRESS_BYTES = 64 * 1024;
  * projection of arbitrary provider output.
  */
 const MAX_EVENT_STORE_INGRESS_DEPTH = 32;
+/** Per container: object properties or array items. */
 const MAX_EVENT_STORE_INGRESS_PROPERTIES = 512;
-const MAX_EVENT_STORE_INGRESS_ARRAY_ITEMS = 512;
 const MAX_UNACKNOWLEDGED_CREDENTIAL_APPLICATIONS = 64;
 const MAX_BASIS_DESCRIPTOR_ROWS = 1_000;
 const MAX_BASIS_DESCRIPTOR_BYTES = 128 * 1_024;
@@ -613,10 +688,11 @@ export type SessionInventoryEventDescriptor =
       toolCallId: string;
       name: string;
       /**
-       * station#1558: `'unresolved'` exists on THIS internal descriptor and
-       * deliberately not on the published `ThreadToolResultRow`. The
-       * inventory projection drops such a completion rather than emit a row
-       * — see `session-inventory-module.ts` and the note on that contract.
+       * station#1558: a command that never reported an outcome. The
+       * inventory projection emits it as a `ThreadToolResultRow` with
+       * `terminalStatus: 'unresolved'` only to a client of protocol 4 or
+       * later (#4178) and omits it for older clients, whose validator does
+       * not know the member — see `session-inventory-module.ts`.
        */
       terminalStatus: 'succeeded' | 'failed' | 'cancelled' | 'unresolved';
     }
@@ -794,8 +870,75 @@ function hasBoundedDescriptorText(
   return true;
 }
 
+/**
+ * SQL for a string content field EventStore may have stored out of line
+ * (docs/design/event-content-spill.md): the joined body when the field is a
+ * `string` reference, otherwise the inline value. `thread` must be a
+ * QUALIFIED thread column of the outer row; unqualified, it would bind to
+ * the content table inside the subquery. A reference whose row is missing
+ * reads as NULL text, never as its preview.
+ */
+function spilledTextSql(path: string, thread: string, payload = 'payload') {
+  return `(CASE WHEN json_extract(${payload}, '${path}."$stationContent"') = 1
+                 AND json_extract(${payload}, '${path}.kind') = 'string'
+            THEN (SELECT spill.body FROM orchestration_event_content AS spill
+                   WHERE spill.thread_id = ${thread}
+                     AND spill.digest = json_extract(${payload}, '${path}.ref'))
+            ELSE json_extract(${payload}, '${path}') END)`;
+}
+
+/** `json_type` of a field, reading a `string` reference as `'text'`. */
+function spilledTypeSql(path: string, payload = 'payload') {
+  return `(CASE WHEN json_extract(${payload}, '${path}."$stationContent"') = 1
+                 AND json_extract(${payload}, '${path}.kind') = 'string'
+            THEN 'text' ELSE json_type(${payload}, '${path}') END)`;
+}
+
+/**
+ * A turn's own `turn.started`. A steer re-announces its turn with another
+ * `turn.started` of the same id; it neither starts a turn nor marks one.
+ */
+const OWN_TURN_START_SQL = `method = 'turn.started' AND (CASE WHEN json_valid(payload) THEN json_extract(payload, '$.inputKind') END) IS NOT 'steer'`;
+
+/**
+ * A turn start with a typed prompt: non-blank inline text, or a prompt
+ * stored out of line (which ingress only does for a long one).
+ */
+const PROMPTED_TURN_SQL = `((typeof(json_extract(payload, '$.prompt')) = 'text'
+       AND trim(json_extract(payload, '$.prompt')) != '')
+    OR json_extract(payload, '$.prompt."$stationContent"') = 1)`;
+
+/**
+ * Indexed text per message. Both FTS projections store and tokenize what
+ * they are given inside the append savepoint, so a 16 MiB reply would cost
+ * several times that; search covers the first 256 KiB of a message.
+ */
+const MESSAGE_SEARCH_MAX_INDEXED_BYTES = 256 * 1024;
+
+function capSearchText(text: string): string {
+  if (Buffer.byteLength(text, 'utf8') <= MESSAGE_SEARCH_MAX_INDEXED_BYTES)
+    return text;
+  // A cut inside a multi-byte character decodes to U+FFFD; drop it.
+  return Buffer.from(text, 'utf8')
+    .subarray(0, MESSAGE_SEARCH_MAX_INDEXED_BYTES)
+    .toString('utf8')
+    .replace(/\uFFFD+$/u, '');
+}
+
+/** SQLite function: whether an unresolved completion stands in the transcript. */
+const UNRESOLVED_COMPLETION_STANDS_SQL_FUNCTION =
+  'station_unresolved_completion_stands';
+/** Distinct (thread, high-water) transcript checks kept for paging reuse. */
+const STANDING_UNRESOLVED_CACHE_MAX = 8;
+
 /** SQLite function: whether the exact input read would serve this row. */
 const READABLE_USER_INPUT_SQL_FUNCTION = 'station_is_readable_user_input';
+/**
+ * #4266: a history title, or NULL when it is low-content
+ * (`isLowContentPrompt`), so a conversation listing can prefer the first
+ * title of the conversation that names something.
+ */
+const MEANINGFUL_TITLE_SQL_FUNCTION = 'station_meaningful_title';
 
 /**
  * The descriptor fields of one `orchestration_events` row, in the argument
@@ -813,9 +956,9 @@ const USER_INPUT_DESCRIPTOR_FIELD_EXPRESSIONS = [
   "CASE WHEN json_valid(payload) THEN json_type(payload, '$.turnId') END",
   `CASE WHEN json_valid(payload) AND json_type(payload, '$.turnId') = 'text'
         THEN json_extract(payload, '$.turnId') END`,
-  "CASE WHEN json_valid(payload) THEN json_type(payload, '$.prompt') END",
-  `CASE WHEN json_valid(payload) AND json_type(payload, '$.prompt') = 'text'
-        THEN json_extract(payload, '$.prompt') END`,
+  `CASE WHEN json_valid(payload) THEN ${spilledTypeSql('$.prompt')} END`,
+  `CASE WHEN json_valid(payload) AND ${spilledTypeSql('$.prompt')} = 'text'
+        THEN ${spilledTextSql('$.prompt', 'orchestration_events.thread_id')} END`,
   "CASE WHEN json_valid(payload) THEN json_type(payload, '$.inputKind') END",
   `CASE WHEN json_valid(payload) AND json_type(payload, '$.inputKind') = 'text'
         THEN json_extract(payload, '$.inputKind') END`,
@@ -1013,6 +1156,15 @@ type PersistedIngressForm = {
   toolImageKey?: string;
 };
 
+/** What one ingress produced, ready to append without re-projection. */
+type PreparedEventIngress = {
+  event: CanonicalRuntimeEvent;
+  requestId: string | null;
+  persisted: PersistedIngressForm;
+  serializedPayload: string;
+  spills: PlannedSpill[];
+};
+
 /**
  * Tell the reader of a tool's output which of its images were not kept, and
  * why. An adapter marks a kept image `[image: <name>]` where its bytes were;
@@ -1054,10 +1206,24 @@ function withToolImageNotes(
   return appendToolOutputNote(rewritten, line);
 }
 
+/** The event a refusal is about, when its shape allowed reading it. */
+export interface EventStoreIngressSubject {
+  eventId?: string;
+  method?: string;
+  threadId?: string;
+}
+
 class EventStoreIngressError extends Error {
-  constructor(reason: string) {
+  /**
+   * Identity of the refused event. A residual handler must match this
+   * against the event it offered before acting on it (a coalescer flush can
+   * surface a different event's refusal).
+   */
+  readonly subject: EventStoreIngressSubject;
+  constructor(reason: string, subject: EventStoreIngressSubject = {}) {
     super(`Runtime event cannot be safely persisted by EventStore: ${reason}.`);
     this.name = 'EventStoreIngressError';
+    this.subject = subject;
   }
 }
 
@@ -1069,9 +1235,9 @@ class EventStoreIngressError extends Error {
  */
 export { EventStoreIngressError };
 
-function eventStoreIngressCeilingError(): EventStoreIngressError {
+function eventStoreIngressCeilingError(limit: number): EventStoreIngressError {
   return new EventStoreIngressError(
-    `it exceeds the ${MAX_EVENT_STORE_INGRESS_BYTES}-byte ingress ceiling`,
+    `it exceeds the ${limit}-byte ingress ceiling`,
   );
 }
 
@@ -1082,10 +1248,37 @@ function eventStoreIngressCeilingError(): EventStoreIngressError {
  * cyclic, getter-backed, or hostile Proxy value is refused before
  * `JSON.stringify` could allocate its complete payload or invoke user code.
  */
+interface EventStoreIngressLimits {
+  bytes: number;
+  depth: number;
+  entries: number;
+}
+
+const STORED_EVENT_INGRESS_LIMITS: EventStoreIngressLimits = {
+  bytes: MAX_EVENT_STORE_INGRESS_BYTES,
+  depth: MAX_EVENT_STORE_INGRESS_DEPTH,
+  entries: MAX_EVENT_STORE_INGRESS_PROPERTIES,
+};
+
+/**
+ * The raw event, before spilling: engine content up to the per-event ceiling
+ * (docs/design/event-content-spill.md). The stored form is then held to
+ * {@link STORED_EVENT_INGRESS_LIMITS}.
+ */
+const RAW_EVENT_INGRESS_LIMITS: EventStoreIngressLimits = {
+  bytes: MAX_EVENT_CONTENT_BYTES,
+  depth: MAX_EVENT_CONTENT_DEPTH,
+  entries: MAX_EVENT_CONTENT_CONTAINER_ENTRIES,
+};
+
 class BoundedEventStoreIngressProjector {
   private bytes = 0;
   private readonly ancestors = new Set<object>();
   private attachmentBytes = 0;
+
+  constructor(
+    private readonly limits: EventStoreIngressLimits = STORED_EVENT_INGRESS_LIMITS,
+  ) {}
 
   project(
     value: unknown,
@@ -1105,8 +1298,8 @@ class BoundedEventStoreIngressProjector {
 
   private addBytes(bytes: number): void {
     this.bytes += bytes;
-    if (this.bytes > MAX_EVENT_STORE_INGRESS_BYTES) {
-      throw eventStoreIngressCeilingError();
+    if (this.bytes > this.limits.bytes) {
+      throw eventStoreIngressCeilingError(this.limits.bytes);
     }
   }
 
@@ -1239,7 +1432,7 @@ class BoundedEventStoreIngressProjector {
         throw new EventStoreIngressError('it contains unsupported data');
     }
 
-    if (depth >= MAX_EVENT_STORE_INGRESS_DEPTH) {
+    if (depth >= this.limits.depth) {
       throw new EventStoreIngressError('it exceeds the structural depth limit');
     }
     const object = value as object;
@@ -1292,7 +1485,7 @@ class BoundedEventStoreIngressProjector {
       );
     }
     const length = lengthDescriptor.value;
-    if (length > MAX_EVENT_STORE_INGRESS_ARRAY_ITEMS) {
+    if (length > this.limits.entries) {
       throw new EventStoreIngressError('it exceeds the structural array limit');
     }
     if (
@@ -1339,7 +1532,7 @@ class BoundedEventStoreIngressProjector {
     } catch {
       throw new EventStoreIngressError('its own keys cannot be inspected');
     }
-    if (keys.length > MAX_EVENT_STORE_INGRESS_PROPERTIES) {
+    if (keys.length > this.limits.entries) {
       throw new EventStoreIngressError(
         'it exceeds the structural property limit',
       );
@@ -1365,7 +1558,7 @@ class BoundedEventStoreIngressProjector {
         continue;
       }
       properties += 1;
-      if (properties > MAX_EVENT_STORE_INGRESS_PROPERTIES) {
+      if (properties > this.limits.entries) {
         throw new EventStoreIngressError(
           'it exceeds the structural property limit',
         );
@@ -1474,6 +1667,8 @@ export interface PersistedRuntimeEventWindow {
   events: PersistedRuntimeEvent[];
   hasMore: boolean;
   nextCursor?: string;
+  /** See `OrchestrationSessionEventWindow.turnStartDetached`. */
+  turnStartDetached?: true;
   /** Highest stream sequence for this thread at the same read boundary. */
   watermark: number;
 }
@@ -1486,6 +1681,53 @@ export interface ConversationForkProvenance {
   branchPointTurnId?: string;
   sourceSessionId?: string;
   continuation?: 'native' | 'replay-seed';
+}
+
+interface ForkContextReferenceRow {
+  target_conversation_id: string;
+  fork_event_id: string;
+  source_conversation_id: string;
+  source_agent: string;
+  target_agent: string;
+  owner_user_id: string;
+  tenant_key: string;
+  project_slug: string | null;
+  requested_project_slug: string | null;
+  requested_branch_point_turn_id: string | null;
+  idempotency_key: string | null;
+  context_digest: string;
+  state: ConversationForkContextReference['state'];
+  created_at: string;
+}
+const FORK_CONTEXT_REFERENCE_COLUMNS = `target_conversation_id, fork_event_id, source_conversation_id,
+  source_agent, target_agent, owner_user_id, tenant_key, project_slug, requested_project_slug,
+  requested_branch_point_turn_id, idempotency_key, context_digest, state, created_at`;
+
+function forkContextReference(
+  row: ForkContextReferenceRow,
+): ConversationForkContextReference {
+  return {
+    targetConversationId: row.target_conversation_id,
+    forkEventId: row.fork_event_id,
+    sourceConversationId: row.source_conversation_id,
+    sourceAgent: row.source_agent,
+    targetAgent: row.target_agent,
+    ownerUserId: row.owner_user_id,
+    ...(row.tenant_key ? { tenantId: row.tenant_key } : {}),
+    ...(row.project_slug !== null ? { projectSlug: row.project_slug } : {}),
+    ...(row.requested_project_slug !== null
+      ? { requestedProjectSlug: row.requested_project_slug }
+      : {}),
+    ...(row.requested_branch_point_turn_id !== null
+      ? { requestedBranchPointTurnId: row.requested_branch_point_turn_id }
+      : {}),
+    ...(row.idempotency_key !== null
+      ? { idempotencyKey: row.idempotency_key }
+      : {}),
+    digest: row.context_digest,
+    state: row.state,
+    createdAt: row.created_at,
+  };
 }
 
 const LIFECYCLE_METHODS = [
@@ -1566,6 +1808,9 @@ const SESSION_EVENT_WINDOW_MAX_EVENTS = 150;
  */
 const ATTACHMENT_CANDIDATE_THREAD_LIMIT = 4;
 const SNAPSHOT_TOOL_OUTPUT_MAX_CHARS = 84;
+/** Station's own HTML render tool, under every name it is exposed as. */
+const HTML_RENDER_TOOL_NAME =
+  /^(?:mcp__station-control__|station-control[_/]|Tool: station-control\/)html_render$/;
 /**
  * Per-event ceiling for a window read. Sized to clear the 16 KiB transcript
  * chunks the session sources persist (`MAX_TEXT_CHUNK_BYTES` in
@@ -1833,6 +2078,13 @@ function decodeEventWindowCursor(
 }
 
 /** Cuts one snapshot text field to its ceiling and reports whether it cut. */
+/** An output as an excerpt shows it: text as is, references as previews. */
+function displayedSnapshotOutput(output: unknown): string {
+  if (typeof output === 'string') return output;
+  const shown = runtimeEventContentForDisplay(output);
+  return typeof shown === 'string' ? shown : JSON.stringify(shown);
+}
+
 function sliceSnapshotText(value: unknown): { text: string; cut: boolean } {
   const text = String(value);
   return {
@@ -1922,26 +2174,27 @@ function snapshotEvent(
     // not silent data loss: `listEventWindowByTurn` already reports that as
     // `hasMore`/`nextCursor`, same as it does for any other byte-budget
     // crossing.
+    // A spilled output or error is already a small reference that the
+    // client resolves on demand; its stamps were derived at ingress.
     const error =
       typeof payload.error === 'string'
         ? sliceSnapshotText(payload.error)
         : undefined;
+    // A nested reference (an MCP `{content:[{text: ref}]}`) or an
+    // unavailable marker shows in the excerpt as its marked preview text,
+    // never as the raw reference object.
     const output =
-      payload.output === undefined || payload.output === null
+      payload.output === undefined ||
+      payload.output === null ||
+      isRuntimeEventContentRef(payload.output)
         ? undefined
-        : sliceSnapshotText(
-            typeof payload.output === 'string'
-              ? payload.output
-              : JSON.stringify(payload.output),
-          );
+        : sliceSnapshotText(displayedSnapshotOutput(payload.output));
     outputCut = Boolean(error?.cut) || Boolean(output?.cut);
     // Page references are bounded display metadata, like attachment refs.
     // Keep them outside the ordinary 84-character tool-output excerpt.
     const pageReference =
       typeof payload.toolName === 'string' &&
-      /^(?:mcp__station-control__|station-control[_/]|Tool: station-control\/)html_render$/.test(
-        payload.toolName,
-      )
+      HTML_RENDER_TOOL_NAME.test(payload.toolName)
         ? htmlReplyReference(payload.output)
         : undefined;
     // A station-control refusal is the tool's whole result, as JSON: the
@@ -2038,9 +2291,34 @@ export interface ConversationHistoryRecord {
   tenantId?: string;
   agentSlug?: string;
   title: string;
+  /** Where `title` came from; absent for a row written before #4266. */
+  titleSource?: ConversationHistoryTitleSource;
   messageCount: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * Where a runtime conversation's history title came from (#4266): derived from
+ * a prompt, supplied with the start (a delegation title), or generated by the
+ * title model. Only a `'prompt'` (or legacy NULL) title is ever replaced.
+ */
+export type ConversationHistoryTitleSource =
+  | 'prompt'
+  | 'provider'
+  | 'generated';
+
+function conversationHistoryTitleSource(
+  value: unknown,
+): ConversationHistoryTitleSource | undefined {
+  return value === 'prompt' || value === 'provider' || value === 'generated'
+    ? value
+    : undefined;
+}
+
+/** A NULL source is a pre-#4266 prompt- or start-derived title. */
+function isReplaceableTitleSource(value: unknown): boolean {
+  return value === null || value === undefined || value === 'prompt';
 }
 
 export interface ConversationHistoryPage {
@@ -2239,9 +2517,33 @@ export interface TurnActivitySeed {
   };
 }
 
+type NativeForkNotice =
+  | { kind: 'event'; event: CanonicalRuntimeEvent; globalSequence: number }
+  | { kind: 'lineage'; conversationId: string; sessionId: string };
+interface NativeForkNoticeCapture {
+  targetId: string;
+  intentId: string;
+  eventDigests: ReadonlyMap<string, string>;
+  notices: NativeForkNotice[];
+}
+
 export class EventStore {
+  private nativeForkNoticeCapture?: NativeForkNoticeCapture;
+  /** The Session inventory listing currently executing, for its SQL filter. */
+  private inventoryTranscriptRead?: { threadId: string; highWater: number };
+  /**
+   * Unresolved completions the transcript still shows, per thread and frozen
+   * high-water mark. Keyed also by the high-water row's \`global_sequence\`:
+   * a thread deleted and recreated under the same id repeats its per-thread
+   * sequences, but never a global one, so an entry can only describe the
+   * events it was computed from. Events at or below a mark never change, so
+   * an entry stays true; continuation pages of one read reuse it. Small LRU,
+   * per process.
+   */
+  private readonly standingUnresolvedCache = new Map<string, Set<string>>();
   /** Kept private: room history receives a separate connection, never this DB. */
   private readonly databasePath: string;
+  private usageExportActivation?: () => string;
   private steerReceipts?: SqliteKernelStorage;
   private htmlReplyPageStore?: ReturnType<typeof createHtmlReplyPages>;
   private readonly db: InstanceType<typeof DatabaseSync>;
@@ -2436,6 +2738,29 @@ export class EventStore {
           ? 1
           : 0,
     );
+    connection.function(
+      MEANINGFUL_TITLE_SQL_FUNCTION,
+      { deterministic: true },
+      (title) =>
+        typeof title === 'string' && !isLowContentPrompt(title) ? title : null,
+    );
+    // Whether an unresolved completion still stands in the transcript of the
+    // listing being read (see listSessionInventoryEvents). Not deterministic:
+    // the answer belongs to that read's thread and high-water mark.
+    connection.function(
+      UNRESOLVED_COMPLETION_STANDS_SQL_FUNCTION,
+      { deterministic: false },
+      (id) => {
+        const read = this.inventoryTranscriptRead;
+        if (!read || typeof id !== 'string') return 1;
+        return this.standingUnresolvedCompletionIds(
+          read.threadId,
+          read.highWater,
+        ).has(id)
+          ? 1
+          : 0;
+      },
+    );
     this.db = watchForSqliteCorruption(connection, {
       onCorruptionObserved: (error) => {
         // The shared mapping (archive#3220's extraction — two copies of it are two
@@ -2541,11 +2866,15 @@ export class EventStore {
       this.ensureObservedAtColumn();
       this.ensureUsageReceiptIndex();
       this.db.exec(CONVERSATION_SESSION_LINEAGE_MIGRATION);
+      this.db.exec(CONVERSATION_START_CONTEXT_MIGRATION);
+      this.db.exec(CONVERSATION_FORK_CONTEXT_MIGRATION);
+      this.db.exec(CONVERSATION_NATIVE_FORK_EFFECT_MIGRATION);
       this.db.exec(CONVERSATION_HANDOFF_MIGRATION);
       this.db.exec(NATIVE_SESSION_OWNERSHIP_MIGRATION);
       ensureConversationHandoffMessageDigestColumn(this.db);
       ensureConversationHandoffNativeReturnColumn(this.db);
       ensureConversationHandoffExecutionAgentColumn(this.db);
+      ensureConversationHandoffContextSeedColumn(this.db);
       this.db.exec(CONVERSATION_CONTEXT_BOUNDARY_MIGRATION);
       ensureConversationContextBoundaryColumns(this.db);
       this.db.exec(SESSION_WORK_ITEM_ASSOCIATIONS_MIGRATION);
@@ -2557,6 +2886,7 @@ export class EventStore {
       this.db.exec(REVISION_EVIDENCE_RECEIPTS_MIGRATION);
       this.db.exec(PROJECT_TASK_ROOM_REVISION_PUBLICATION_MIGRATION);
       ensureProjectTaskRoomRevisionAttributionColumn(this.db);
+      ensureProjectTaskRoomRevisionFreezeColumn(this.db);
       this.db.exec(`
       CREATE TABLE IF NOT EXISTS orchestration_attachment_quota (
         thread_id TEXT PRIMARY KEY,
@@ -2624,7 +2954,10 @@ export class EventStore {
       this.db.exec(TASK_LEARNING_DISMISSALS_MIGRATION);
       // #4003 layer 4: the store each promoted record version went to.
       this.db.exec(TASK_LEARNING_PROMOTIONS_MIGRATION);
+      ensureUsageExportInvalidations(this.db);
       this.db.exec(TASK_REVIEW_MIGRATION);
+      this.db.exec(EVENT_CONTENT_MIGRATION);
+      this.sweepOrphanedEventContent();
       this.db
         .prepare(
           `INSERT OR IGNORE INTO orchestration_stream_identity(singleton, high_water)
@@ -2638,6 +2971,7 @@ export class EventStore {
         .run(randomUUID());
       ensureOrchestrationAdoptionColumns(this.db);
       this.ensureConversationHistoryProjectSlugColumn();
+      ensureConversationHistoryTitleSourceColumn(this.db);
       // Repair the bounded pre-existing history projection before the full
       // upgrade creates new rows. Fresh rows already derive project_slug from
       // their selected metadata, so this ordering prevents the repair from
@@ -3004,10 +3338,15 @@ export class EventStore {
       ? SESSION_INVENTORY_GROUP_METHODS[input.group]
       : SESSION_INVENTORY_EVENT_METHODS;
     const placeholders = methods.map(() => '?').join(', ');
-    const rows = (
-      this.db
-        .prepare(
-          `SELECT id, provider, turn_id, method, sequence,
+    // The transcript read this listing's unresolved rows are checked against:
+    // this thread, frozen at this read's high-water mark.
+    this.inventoryTranscriptRead = { threadId, highWater };
+    let rows: SessionInventoryEventDescriptor[];
+    try {
+      rows = (
+        this.db
+          .prepare(
+            `SELECT id, provider, turn_id, method, sequence,
              json_extract(payload, '$.turnId') AS event_turn_id,
              json_extract(payload, '$.inputKind') AS input_kind,
              json_extract(payload, '$.metadata.trigger') AS turn_trigger,
@@ -3041,6 +3380,18 @@ export class EventStore {
                method <> 'turn.started'
                OR ${READABLE_USER_INPUT_SQL_FUNCTION}(${USER_INPUT_DESCRIPTOR_FIELDS_SQL}) = 1
              )
+             -- An \`unresolved\` completion is listed only while the
+             -- transcript still shows it: the call's own late result can
+             -- replace that row (station#1569 H1). The transcript projection
+             -- decides (${UNRESOLVED_COMPLETION_STANDS_SQL_FUNCTION}), not a
+             -- second copy of its rule (#4178 review). Asked only for
+             -- unresolved rows, so a page without one never projects.
+             AND (
+               method <> 'tool.completed'
+               OR CASE WHEN json_extract(payload, '$.status') = 'unresolved'
+                       THEN ${UNRESOLVED_COMPLETION_STANDS_SQL_FUNCTION}(id)
+                       ELSE 1 END = 1
+             )
              AND (
                ? IS NULL
                OR sequence > ?
@@ -3048,18 +3399,21 @@ export class EventStore {
              )
            ORDER BY sequence ASC, id ASC
            LIMIT ?`,
-        )
-        .all(
-          threadId,
-          highWater,
-          ...methods,
-          input.continuation?.sequence ?? null,
-          input.continuation?.sequence ?? 0,
-          input.continuation?.sequence ?? 0,
-          input.continuation?.eventId ?? '',
-          limit + 1,
-        ) as any[]
-    ).map((row: any) => this.projectSessionInventoryEventRow(row));
+          )
+          .all(
+            threadId,
+            highWater,
+            ...methods,
+            input.continuation?.sequence ?? null,
+            input.continuation?.sequence ?? 0,
+            input.continuation?.sequence ?? 0,
+            input.continuation?.eventId ?? '',
+            limit + 1,
+          ) as any[]
+      ).map((row: any) => this.projectSessionInventoryEventRow(row));
+    } finally {
+      this.inventoryTranscriptRead = undefined;
+    }
     const events = rows.slice(0, limit);
     const last = events.at(-1);
     return {
@@ -3069,6 +3423,55 @@ export class EventStore {
         ? { continuation: { sequence: last.sequence, eventId: last.id } }
         : {}),
     };
+  }
+
+  /**
+   * The ids of \`unresolved\` tool completions that still stand as a row in
+   * the thread's transcript, up to \`highWater\` (#4178 review). Computed by
+   * the transcript's own projection, so the inventory lists a command with no
+   * result exactly when the transcript shows one: a late result that replaced
+   * the row (station#1569 H1) leaves the replaced completion out. One linear
+   * pass over the thread's events, the same work as reading its transcript,
+   * done only when a listing meets an unresolved row and cached per read.
+   */
+  standingUnresolvedCompletionIds(
+    threadId: string,
+    highWater: number,
+  ): ReadonlySet<string> {
+    const head = this.readStatement(
+      `SELECT global_sequence FROM orchestration_events
+        WHERE thread_id = ? AND sequence = ?`,
+    ).get(threadId, highWater) as { global_sequence?: number } | undefined;
+    const key = `${threadId}\u0000${highWater}\u0000${head?.global_sequence ?? 'none'}`;
+    const cached = this.standingUnresolvedCache.get(key);
+    if (cached) {
+      this.standingUnresolvedCache.delete(key);
+      this.standingUnresolvedCache.set(key, cached);
+      return cached;
+    }
+    const rows = this.readStatement(
+      `SELECT payload FROM orchestration_events
+        WHERE thread_id = ? AND sequence <= ?
+        ORDER BY sequence ASC`,
+    ).all(threadId, highWater) as Array<{ payload: string }>;
+    const standing = new Set<string>();
+    for (const message of projectRuntimeEventsToMessages(
+      rows.map((row) => JSON.parse(row.payload) as CanonicalRuntimeEvent),
+    ))
+      for (const part of message.parts)
+        if (
+          part.type === 'tool-invocation' &&
+          part.state === 'unresolved' &&
+          typeof part.sourceEventId === 'string'
+        )
+          standing.add(part.sourceEventId);
+    this.standingUnresolvedCache.set(key, standing);
+    while (this.standingUnresolvedCache.size > STANDING_UNRESOLVED_CACHE_MAX) {
+      const oldest = this.standingUnresolvedCache.keys().next().value;
+      if (oldest === undefined) break;
+      this.standingUnresolvedCache.delete(oldest);
+    }
+    return standing;
   }
 
   private projectSessionInventoryEventRow(
@@ -3489,6 +3892,9 @@ export class EventStore {
     if (event.method === 'tool.completed' && event.attachments?.length) {
       return this.persistedToolImages(event);
     }
+    if (event.method === 'content.host-images') {
+      return this.persistedHostImages(event);
+    }
     if (event.method !== 'turn.started' || !event.attachments?.length) {
       return { payload: event, blobRefs: [] };
     }
@@ -3502,7 +3908,12 @@ export class EventStore {
       const attachmentError = validateChatAttachments(
         event.attachments as Parameters<typeof validateChatAttachments>[0],
       );
-      if (attachmentError) throw new EventStoreIngressError(attachmentError);
+      if (attachmentError)
+        throw new EventStoreIngressError(attachmentError, {
+          eventId: event.eventId,
+          method: event.method,
+          threadId: event.threadId,
+        });
     }
     // #2483: the same binding rule as a tool's images (see
     // `persistedToolImages`). A reference without bytes is bound only when this
@@ -3714,12 +4125,70 @@ export class EventStore {
   private persistedToolImages(
     event: Extract<CanonicalRuntimeEvent, { method: 'tool.completed' }>,
   ): PersistedIngressForm {
-    const attachments = event.attachments ?? [];
+    const { persisted, notKept, blobRefs, changed, stripped, key } =
+      this.persistEngineImages(event, event.attachments ?? []);
+    if (!changed) return { payload: event, blobRefs, toolImageKey: key };
+    if (stripped > 0)
+      this.observeAttachmentBytesStripped(stripped, event.provider);
+    return {
+      payload: {
+        ...event,
+        attachments: persisted,
+        ...(notKept.length > 0
+          ? { output: withToolImageNotes(event.output, notKept) }
+          : {}),
+      },
+      blobRefs,
+      toolImageKey: key,
+    };
+  }
+
+  /**
+   * The persisted form of a `content.host-images` event: its images go
+   * through exactly the tool-image path (type check by content, the chat's
+   * attachment budget, blob write, binding to this thread), and a source
+   * whose image was not kept says so as `not-stored` rather than pointing at
+   * a descriptor with no bytes.
+   */
+  private persistedHostImages(
+    event: Extract<CanonicalRuntimeEvent, { method: 'content.host-images' }>,
+  ): PersistedIngressForm {
+    const { persisted, blobRefs, changed, stripped, key } =
+      this.persistEngineImages(event, event.attachments ?? []);
+    if (!changed) return { payload: event, blobRefs, toolImageKey: key };
+    if (stripped > 0)
+      this.observeAttachmentBytesStripped(stripped, event.provider);
+    const sources = (event.sources ?? []).map((source) =>
+      source.attachmentIndex !== undefined &&
+      !persisted[source.attachmentIndex]?.blobRef
+        ? { path: source.path, refused: 'not-stored' as const }
+        : source,
+    );
+    return {
+      payload: { ...event, attachments: persisted, sources },
+      blobRefs,
+      toolImageKey: key,
+    };
+  }
+
+  /**
+   * Store an engine-side event's images (a tool's, or a reply's host images)
+   * and keep each as a reference, or as a bare descriptor with the reason.
+   */
+  private persistEngineImages(
+    event: CanonicalRuntimeEvent,
+    attachments: PersistedChatAttachment[],
+  ) {
     if (attachments.some((attachment) => attachment.dataUrl !== undefined)) {
       const attachmentError = validateChatAttachments(
         attachments as Parameters<typeof validateChatAttachments>[0],
       );
-      if (attachmentError) throw new EventStoreIngressError(attachmentError);
+      if (attachmentError)
+        throw new EventStoreIngressError(attachmentError, {
+          eventId: event.eventId,
+          method: event.method,
+          threadId: event.threadId,
+        });
     }
     const live = this.pendingToolImages.get(this.toolImageKey(event));
     const blobRefs: string[] = [];
@@ -3799,20 +4268,7 @@ export class EventStore {
     const pending = this.pendingToolImages.get(key);
     if (pending && pending.refs.size === 0 && pending.charges.size === 0)
       this.pendingToolImages.delete(key);
-    if (!changed) return { payload: event, blobRefs, toolImageKey: key };
-    if (stripped > 0)
-      this.observeAttachmentBytesStripped(stripped, event.provider);
-    return {
-      payload: {
-        ...event,
-        attachments: persisted,
-        ...(notKept.length > 0
-          ? { output: withToolImageNotes(event.output, notKept) }
-          : {}),
-      },
-      blobRefs,
-      toolImageKey: key,
-    };
+    return { persisted, notKept, blobRefs, changed, stripped, key };
   }
 
   /**
@@ -3821,12 +4277,9 @@ export class EventStore {
    * following stringify therefore cannot invoke a caller's getter/proxy or
    * allocate an unbounded JSON payload.
    */
-  private prepareEventIngress(event: CanonicalRuntimeEvent): {
-    event: CanonicalRuntimeEvent;
-    requestId: ReturnType<typeof persistedRequestId>;
-    persisted: PersistedIngressForm;
-    serializedPayload: string;
-  } {
+  private prepareEventIngress(
+    event: CanonicalRuntimeEvent,
+  ): PreparedEventIngress {
     // station#2210: every deterministic ingress rejection names its subject.
     // A canonical event's method and thread are the minimum a log reader
     // needs to find the producer; the reason itself stays verbatim.
@@ -3835,7 +4288,11 @@ export class EventStore {
       options?: { allowCanonicalAttachmentDataUrls?: boolean },
     ): EventStoreIngressJson => {
       try {
-        return new BoundedEventStoreIngressProjector().project(value, options);
+        return new BoundedEventStoreIngressProjector(
+          options?.allowCanonicalAttachmentDataUrls
+            ? RAW_EVENT_INGRESS_LIMITS
+            : STORED_EVENT_INGRESS_LIMITS,
+        ).project(value, options);
       } catch (error) {
         if (error instanceof EventStoreIngressError) {
           const prefix =
@@ -3843,15 +4300,30 @@ export class EventStore {
           const reason = error.message.startsWith(prefix)
             ? error.message.slice(prefix.length).replace(/\.$/, '')
             : error.message;
-          const identity =
-            typeof (event as { method?: unknown }).method === 'string'
-              ? `method=${event.method}, threadId=${event.threadId}`
-              : 'shape unavailable';
-          throw new EventStoreIngressError(`(${identity}) ${reason}`);
+          const readable =
+            typeof (event as { method?: unknown }).method === 'string';
+          const identity = readable
+            ? `method=${event.method}, threadId=${event.threadId}`
+            : 'shape unavailable';
+          throw new EventStoreIngressError(
+            `(${identity}) ${reason}`,
+            readable
+              ? {
+                  method: event.method,
+                  threadId: event.threadId,
+                  ...(typeof event.eventId === 'string'
+                    ? { eventId: event.eventId }
+                    : {}),
+                }
+              : {},
+          );
         }
         throw error;
       }
     };
+    // The raw projection (the only one admitting attachment data URLs) may
+    // carry engine content up to the per-event ceiling; the stored form
+    // below is held to the ordinary backstop.
     const projectedEvent = projectWithIdentity(event, {
       allowCanonicalAttachmentDataUrls: true,
     }) as unknown as CanonicalRuntimeEvent;
@@ -3889,6 +4361,33 @@ export class EventStore {
       this.settleToolImageCharges(this.toolImageKey(projectedEvent));
       throw error;
     }
+    // docs/design/event-content-spill.md: large values in allowlisted
+    // content fields move out of line; reserved-key objects are escaped.
+    // The planner copies, so `projectedEvent` keeps the raw values that the
+    // derived projections (search, title) read inside the append.
+    const plan = planEventContentSpill(persisted.payload, {
+      trustedUnavailableRoots: this.residualEvents.has(event),
+    });
+    if (plan.spilledToolResult && plan.payload.method === 'tool.completed') {
+      // `snapshotEvent` derives these from the output; a reference cannot
+      // be read there, so they are stamped from the raw value here.
+      const stamped = plan.payload;
+      const raw = plan.spilledToolResult;
+      const toolName =
+        typeof stamped.toolName === 'string' ? stamped.toolName : undefined;
+      const pageReference =
+        toolName && HTML_RENDER_TOOL_NAME.test(toolName)
+          ? htmlReplyReference(raw.output)
+          : undefined;
+      if (pageReference) stamped.htmlReply = pageReference;
+      const refusal =
+        parseStationControlRefusal(
+          toolName,
+          typeof raw.error === 'string' ? raw.error : undefined,
+        ) ?? parseStationControlRefusal(toolName, raw.output);
+      if (refusal) stamped.stationControlRefusal = refusal;
+    }
+    persisted = { ...persisted, payload: plan.payload };
     // Attachment projection can replace a very small inline data URL with a
     // longer digest reference, so measure its persisted shape independently.
     // It is now a plain projected value, not caller-controlled structure.
@@ -3905,7 +4404,238 @@ export class EventStore {
       requestId: persistedRequestId(projectedEvent),
       persisted,
       serializedPayload: JSON.stringify(persistedPayload),
+      spills: plan.spills,
     };
+  }
+
+  /**
+   * Events this store marked for the residual case (see
+   * {@link markContentUnavailable}). Identity, never content, decides it.
+   */
+  private readonly residualEvents = new WeakSet<object>();
+
+  /**
+   * docs/design/event-content-spill.md#residual-refusal: a copy of `event`
+   * whose spillable roots are replaced by `exceeds-ceiling` markers, which
+   * this store keeps as markers (any other inbound marker is engine data and
+   * is escaped). Undefined when the event has no spillable root to mark.
+   */
+  markContentUnavailable<T extends CanonicalRuntimeEvent>(
+    event: T,
+  ): T | undefined {
+    const marked = withUnavailableContent(event);
+    if (marked) this.residualEvents.add(marked);
+    return marked;
+  }
+
+  /**
+   * The residual case for a turn terminal: only its identity and outcome,
+   * with the reply marked `exceeds-ceiling`, so the turn's end is recorded
+   * whatever else it carried. Undefined for any other method.
+   */
+  minimalTurnTerminal(
+    event: CanonicalRuntimeEvent,
+  ): CanonicalRuntimeEvent | undefined {
+    if (event.method !== 'turn.completed') return undefined;
+    const minimal: CanonicalRuntimeEvent = {
+      eventId: event.eventId,
+      provider: event.provider,
+      threadId: event.threadId,
+      createdAt: event.createdAt,
+      method: 'turn.completed',
+      turnId: event.turnId,
+      ...(event.invocationId !== undefined
+        ? { invocationId: event.invocationId }
+        : {}),
+      ...(event.sessionState !== undefined
+        ? { sessionState: event.sessionState }
+        : {}),
+      ...(event.previousState !== undefined
+        ? { previousState: event.previousState }
+        : {}),
+      ...(event.finishReason !== undefined
+        ? { finishReason: event.finishReason }
+        : {}),
+      ...(event.stopReason !== undefined
+        ? { stopReason: event.stopReason }
+        : {}),
+      outputText: { $stationContent: 1, unavailable: 'exceeds-ceiling' },
+    };
+    this.residualEvents.add(minimal);
+    return minimal;
+  }
+
+  /**
+   * The ingress each live projection produced, keyed by the exact object
+   * `projectLiveEvent` returned. Appending that object reuses it, so a
+   * stored reference is never re-projected (which would escape it as engine
+   * data, and drop the `mcpAppResourceUri` stamp). Identity cannot be forged
+   * by event content.
+   */
+  private readonly preparedLiveIngress = new WeakMap<
+    object,
+    PreparedEventIngress
+  >();
+
+  private ingressFor(event: CanonicalRuntimeEvent): PreparedEventIngress {
+    const prepared = this.preparedLiveIngress.get(event);
+    if (prepared) {
+      this.preparedLiveIngress.delete(event);
+      return prepared;
+    }
+    // A copy of a live projection would re-ingest its references as engine
+    // data (escaped), silently losing the content they name.
+    // `spilledContent` is EventStore's to set; an event arriving with it is
+    // such a copy or a producer's claim, and is refused either way.
+    if (event.spilledContent)
+      throw new EventStoreIngressError(
+        'it claims spilledContent; append the object projectLiveEvent returned',
+        {
+          eventId: event.eventId,
+          method: event.method,
+          threadId: event.threadId,
+        },
+      );
+    return this.prepareEventIngress(event);
+  }
+
+  /**
+   * Write an append's spilled values, inside its savepoint. Idempotent:
+   * the same value in the same thread has the same digest.
+   */
+  private recordEventContent(threadId: string, spills: PlannedSpill[]): void {
+    if (spills.length === 0) return;
+    const insert = (this.eventContentInsert ??= this.db.prepare(
+      `INSERT OR IGNORE INTO orchestration_event_content
+         (thread_id, digest, kind, body, bytes) VALUES (?, ?, ?, ?, ?)`,
+    ));
+    for (const spill of spills)
+      insert.run(threadId, spill.digest, spill.kind, spill.body, spill.bytes);
+  }
+
+  private eventContentInsert?: ReturnType<EventStore['db']['prepare']>;
+
+  private observeEventContentSpilled(
+    event: CanonicalRuntimeEvent,
+    spills: PlannedSpill[],
+  ): void {
+    if (spills.length === 0) return;
+    try {
+      const attributes = { provider: event.provider, method: event.method };
+      eventContentValuesSpilled.add(spills.length, attributes);
+      eventContentBytesSpilled.add(
+        spills.reduce((sum, spill) => sum + spill.bytes, 0),
+        attributes,
+      );
+    } catch {
+      // Observation only.
+    }
+  }
+
+  /**
+   * Stored bodies for `digests` in one thread, batched under SQLite's
+   * bound-parameter ceiling.
+   */
+  readEventContent(
+    threadId: string,
+    digests: readonly string[],
+  ): Map<string, RuntimeEventContentBody> {
+    const found = new Map<string, RuntimeEventContentBody>();
+    const wanted = [...new Set(digests)].filter(isRuntimeEventContentDigest);
+    for (let start = 0; start < wanted.length; start += 400) {
+      const slice = wanted.slice(start, start + 400);
+      const rows = this.db
+        .prepare(
+          `SELECT digest, kind, body FROM orchestration_event_content
+           WHERE thread_id = ? AND digest IN (${slice.map(() => '?').join(',')})`,
+        )
+        .all(threadId, ...slice) as Array<{
+        digest: string;
+        kind: 'string' | 'json';
+        body: string;
+      }>;
+      for (const row of rows)
+        found.set(row.digest, { kind: row.kind, body: row.body });
+    }
+    return found;
+  }
+
+  /**
+   * Remove content rows whose thread has no events: an older Station that
+   * knows nothing of the table deleted the thread after a downgrade.
+   */
+  private sweepOrphanedEventContent(): void {
+    const result = this.db.prepare(EVENT_CONTENT_ORPHAN_SWEEP).run() as {
+      changes: number;
+    };
+    if (result.changes > 0) {
+      try {
+        eventContentOrphansSwept.add(result.changes);
+      } catch {
+        // Observation only.
+      }
+    }
+  }
+
+  /** One stored body, for the content route. */
+  readEventContentBody(
+    threadId: string,
+    digest: string,
+  ): (RuntimeEventContentBody & { bytes: number }) | undefined {
+    if (!isRuntimeEventContentDigest(digest)) return undefined;
+    const row = this.db
+      .prepare(
+        `SELECT kind, body, bytes FROM orchestration_event_content
+         WHERE thread_id = ? AND digest = ?`,
+      )
+      .get(threadId, digest) as
+      | { kind: 'string' | 'json'; body: string; bytes: number }
+      | undefined;
+    return row
+      ? { kind: row.kind, body: row.body, bytes: Number(row.bytes) }
+      : undefined;
+  }
+
+  /**
+   * Opt-in resolution (docs/design/event-content-spill.md#resolution-seam):
+   * replace every reference in these events with its stored value, with one
+   * batched lookup per thread. Events without `spilledContent` pass through
+   * untouched (literal wrappers are still unwrapped).
+   */
+  resolveEventContent<T extends PersistedRuntimeEvent>(
+    events: readonly T[],
+  ): T[] {
+    const byThread = new Map<string, Set<string>>();
+    for (const event of events) {
+      if (!event.payload.spilledContent) continue;
+      const refs = collectRuntimeEventContentRefs(event.payload);
+      if (refs.length === 0) continue;
+      const set = byThread.get(event.threadId) ?? new Set<string>();
+      for (const ref of refs) set.add(ref.ref);
+      byThread.set(event.threadId, set);
+    }
+    const bodies = new Map<string, Map<string, RuntimeEventContentBody>>();
+    for (const [threadId, digests] of byThread)
+      bodies.set(threadId, this.readEventContent(threadId, [...digests]));
+    return events.map((event) => {
+      const found = bodies.get(event.threadId);
+      const payload = resolveRuntimeEventContent(event.payload, (ref) =>
+        found?.get(ref),
+      );
+      return { ...event, payload };
+    });
+  }
+
+  /** {@link resolveEventContent} for a single canonical event of `threadId`. */
+  resolveCanonicalEventContent<T extends CanonicalRuntimeEvent>(event: T): T {
+    if (!event.spilledContent)
+      return resolveRuntimeEventContent(event, () => undefined);
+    const refs = collectRuntimeEventContentRefs(event);
+    const found = this.readEventContent(
+      event.threadId,
+      refs.map((ref) => ref.ref),
+    );
+    return resolveRuntimeEventContent(event, (ref) => found.get(ref));
   }
 
   /**
@@ -3914,7 +4644,10 @@ export class EventStore {
    * throws rather than falling back to a data URL.
    */
   projectLiveEvent(event: CanonicalRuntimeEvent): CanonicalRuntimeEvent {
-    return this.prepareEventIngress(event).persisted.payload;
+    const prepared = this.prepareEventIngress(event);
+    const live = prepared.persisted.payload;
+    this.preparedLiveIngress.set(live, prepared);
+    return live;
   }
 
   /**
@@ -4081,7 +4814,7 @@ export class EventStore {
         'Declared output admission requires a durable completed turn.',
       );
     }
-    const ingress = this.prepareEventIngress(event);
+    const ingress = this.ingressFor(event);
     // A tool image's quota charge is written inside this append's savepoint
     // (`chargeCommittedToolImages`); afterwards the pending entry is dropped.
     try {
@@ -4092,7 +4825,7 @@ export class EventStore {
   }
 
   private appendIngressedEvent(
-    ingress: ReturnType<EventStore['prepareEventIngress']>,
+    ingress: PreparedEventIngress,
     declaredOutputs: readonly NativeOutputTerminalAdmission[],
     coCommit: (() => void) | undefined,
   ): number {
@@ -4244,6 +4977,7 @@ export class EventStore {
           'UPDATE orchestration_stream_identity SET high_water = ? WHERE singleton = 1',
         )).run(globalSequence);
         this.recordAttachmentRefs(event.threadId, persisted.blobRefs);
+        this.recordEventContent(event.threadId, ingress.spills);
         this.chargeCommittedToolImages(persisted.toolImageKey);
         this.projectConversationHistoryEvent(event);
         this.projectMessageSearchEvent(event);
@@ -4291,6 +5025,7 @@ export class EventStore {
       performance.now() - startedAt,
       { provider: event.provider, method: event.method },
     );
+    this.observeEventContentSpilled(event, ingress.spills);
     this.notifyEventCommitted(event, globalSequence);
     return nextSequence;
   }
@@ -4309,6 +5044,231 @@ export class EventStore {
     const observed = this.sessionTurnBoundaries.observe(event);
     if (observed.kind !== 'applied')
       throw new Error('Invocation terminal observation unavailable.');
+    if (event.method !== 'turn.completed' || !event.turnId) return;
+    this.db.exec('SAVEPOINT context_seed_witness_projection');
+    try {
+      this.projectConversationSeedWitness(event);
+      this.db.exec('RELEASE SAVEPOINT context_seed_witness_projection');
+    } catch {
+      // Derived proof cannot erase a provider fact. Roll back any partial
+      // witness so a projection failure leaves context delivery unverified.
+      this.db.exec(
+        'ROLLBACK TO SAVEPOINT context_seed_witness_projection; RELEASE SAVEPOINT context_seed_witness_projection',
+      );
+      logger.warn(
+        'Context delivery projection failed; witness update rolled back.',
+        {
+          threadId: event.threadId,
+          invocationId: event.invocationId,
+        },
+      );
+    }
+  }
+
+  private projectConversationSeedWitness(event: CanonicalRuntimeEvent): void {
+    if (
+      event.method !== 'turn.completed' ||
+      !event.invocationId ||
+      !event.turnId
+    )
+      return;
+    const handoffKey = this.db
+      .prepare(`SELECT conversation_id, idempotency_key FROM orchestration_conversation_handoffs
+      WHERE session_id = ? AND context_seed_json IS NOT NULL`)
+      .get(event.threadId) as
+      | { conversation_id: string; idempotency_key: string }
+      | undefined;
+    const reference = this.conversationForkContextReference(event.threadId);
+    const startSeed = this.conversationStartContext(event.threadId);
+    if (!handoffKey && reference?.state !== 'ready' && !startSeed) return;
+    const capturedKey = this.db
+      .prepare(`SELECT client_turn_id FROM orchestration_prepared_turns
+      WHERE thread_id = ? AND invocation_id = ?`)
+      .get(event.threadId, event.invocationId) as
+      | { client_turn_id: string | null }
+      | undefined;
+    const clientTurnId = capturedKey?.client_turn_id;
+    if (!clientTurnId) return;
+    let context:
+      | {
+          kind: ConversationSeedWitness['kind'];
+          contextId: string;
+          contextDigest: string;
+          seed: import('./conversation-handoff-module.js').ConversationContextSeedPin;
+        }
+      | undefined;
+    if (
+      handoffKey &&
+      clientTurnId ===
+        conversationHandoffClientTurnId(
+          handoffKey.conversation_id,
+          handoffKey.idempotency_key,
+        )
+    ) {
+      const handoff = this.conversationHandoffForSession(event.threadId);
+      if (!handoff?.contextSeed) return;
+      context = {
+        kind: 'handoff',
+        contextId: handoff.sessionId,
+        contextDigest: handoff.contextSeed.pinDigest,
+        seed: handoff.contextSeed,
+      };
+    } else {
+      const start = this.latestEventByMethod(event.threadId, 'session.started');
+      const metadata =
+        start?.payload.method === 'session.started'
+          ? start.payload.metadata
+          : undefined;
+      const startCarrier = startSeed
+        ? readConversationStartSeedCarrier(metadata, startSeed)
+        : undefined;
+      if (startSeed && startCarrier?.clientTurnId === clientTurnId)
+        context = {
+          kind: 'boundary',
+          contextId: event.threadId,
+          contextDigest: startSeed.pinDigest,
+          seed: startSeed,
+        };
+      const carrier = metadata?.forkSeedCarrier;
+      if (
+        reference?.state === 'ready' &&
+        carrier &&
+        typeof carrier === 'object' &&
+        'clientTurnId' in carrier &&
+        carrier.clientTurnId === clientTurnId &&
+        'contextDigest' in carrier &&
+        carrier.contextDigest === reference.digest
+      ) {
+        const snapshot = this.conversationForkContextSnapshot(event.threadId);
+        if (!snapshot) return;
+        context = {
+          kind: 'fork',
+          contextId: reference.forkEventId,
+          contextDigest: reference.digest,
+          seed: readConversationContextSeedPin(snapshot.seedPinJson),
+        };
+      }
+    }
+    if (!context) return;
+    const prepared = this.readPreparedTurnIntent(
+      event.threadId,
+      event.invocationId,
+    );
+    if (!prepared || prepared.capture.clientTurnId !== clientTurnId) return;
+    const terminal = this.readInvocationTerminal(
+      event.threadId,
+      event.invocationId,
+      event.turnId,
+    );
+    if (
+      terminal.kind !== 'found' ||
+      terminal.fact.terminalEventId !== event.eventId
+    )
+      return;
+    if (
+      !context ||
+      !prepared.capture.adapterInput.ambientContext?.includes(context.seed.text)
+    )
+      return;
+    const capturedNativeIdentity =
+      prepared.capture.resumeGuard.binding.nativeIdentityKey;
+    const reportedNativeIdentity =
+      event.metadata?.[NATIVE_TURN_IDENTITY_METADATA_KEY];
+    if (
+      capturedNativeIdentity !== undefined &&
+      (typeof capturedNativeIdentity !== 'string' ||
+        !/^[a-f0-9]{64}$/.test(capturedNativeIdentity))
+    )
+      return;
+    if (
+      reportedNativeIdentity !== undefined &&
+      (typeof reportedNativeIdentity !== 'string' ||
+        !/^[a-f0-9]{64}$/.test(reportedNativeIdentity))
+    )
+      return;
+    if (
+      capturedNativeIdentity &&
+      reportedNativeIdentity &&
+      capturedNativeIdentity !== reportedNativeIdentity
+    )
+      return;
+    // A first identity can arrive after preparation. Only its engine terminal
+    // may fill that gap; the mutable carrier binding cannot attest delivery.
+    const native = capturedNativeIdentity ?? reportedNativeIdentity;
+    const witness = createConversationSeedWitness({
+      kind: context.kind,
+      contextId: context.contextId,
+      contextDigest: context.contextDigest,
+      threadId: event.threadId,
+      clientTurnId,
+      seedDigest: context.seed.seedDigest,
+      invocationId: event.invocationId,
+      providerTurnId: event.turnId,
+      terminalEventId: event.eventId,
+      ...(native ? { nativeIdentityKey: native } : {}),
+    });
+    this.db
+      .prepare(`INSERT OR IGNORE INTO orchestration_context_seed_witnesses
+      (thread_id, client_turn_id, context_kind, context_id, context_digest, native_identity_key, witness_json)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      .run(
+        event.threadId,
+        clientTurnId,
+        witness.kind,
+        witness.contextId,
+        witness.contextDigest,
+        witness.nativeIdentityKey ?? null,
+        JSON.stringify(witness),
+      );
+    if (
+      this.conversationSeedWitness(event.threadId, clientTurnId)?.digest !==
+      witness.digest
+    )
+      throw new Error(
+        'Context delivery evidence conflicts with its completed invocation.',
+      );
+  }
+
+  conversationSeedWitness(
+    threadId: string,
+    clientTurnId: string,
+  ): ConversationSeedWitness | undefined {
+    const row = this.db
+      .prepare(`SELECT context_kind, context_id, context_digest, native_identity_key, witness_json
+      FROM orchestration_context_seed_witnesses WHERE thread_id = ? AND client_turn_id = ?`)
+      .get(threadId, clientTurnId) as
+      | {
+          context_kind: string;
+          context_id: string;
+          context_digest: string;
+          native_identity_key: string | null;
+          witness_json: string;
+        }
+      | undefined;
+    if (!row) return undefined;
+    const witness = readConversationSeedWitness(row.witness_json);
+    if (
+      witness.threadId !== threadId ||
+      witness.clientTurnId !== clientTurnId ||
+      witness.kind !== row.context_kind ||
+      witness.contextId !== row.context_id ||
+      witness.contextDigest !== row.context_digest ||
+      (witness.nativeIdentityKey ?? null) !== row.native_identity_key
+    )
+      throw new Error('Context delivery evidence is unavailable.');
+    return witness;
+  }
+
+  contextSeedWitnessHasCurrentNativeBinding(
+    witness: ConversationSeedWitness,
+  ): boolean {
+    return (
+      witness.nativeIdentityKey !== undefined &&
+      this.db
+        .prepare(`SELECT 1 FROM orchestration_native_session_bindings
+      WHERE session_id = ? AND identity_key = ?`)
+        .get(witness.threadId, witness.nativeIdentityKey) !== undefined
+    );
   }
 
   /**
@@ -4338,6 +5298,18 @@ export class EventStore {
     event: CanonicalRuntimeEvent,
     globalSequence: number,
   ): void {
+    const capture = this.nativeForkNoticeCapture;
+    if (capture) {
+      if (
+        capture.eventDigests.get(event.eventId) !==
+        nativeForkHash(nativeForkJson(event))
+      )
+        throw new ConversationForkContextError(
+          'Unexpected event inside native fork commit.',
+        );
+      capture.notices.push({ kind: 'event', event, globalSequence });
+      return;
+    }
     if (this.commitObservers.size === 0) return;
     // Our own savepoint is released; a transaction still open here belongs
     // to a caller and can still roll this row back.
@@ -4348,6 +5320,15 @@ export class EventStore {
   }
 
   private notifyLineageChanged(conversationId: string, sessionId: string) {
+    const capture = this.nativeForkNoticeCapture;
+    if (capture) {
+      if (capture.targetId !== conversationId || capture.targetId !== sessionId)
+        throw new ConversationForkContextError(
+          'Unexpected lineage inside native fork commit.',
+        );
+      capture.notices.push({ kind: 'lineage', conversationId, sessionId });
+      return;
+    }
     if (this.commitObservers.size === 0) return;
     this.notifyCommitObservers((observer) =>
       observer.lineageChanged?.({ conversationId, sessionId }),
@@ -4743,6 +5724,1162 @@ export class EventStore {
    * through any projection ensure/rehydrate path: detail reads must never
    * mutate the event store.
    */
+  conversationForkContextReference(
+    conversationId: string,
+  ): ConversationForkContextReference | undefined {
+    const row = this.db
+      .prepare(`SELECT ${FORK_CONTEXT_REFERENCE_COLUMNS}
+      FROM orchestration_conversation_fork_context WHERE target_conversation_id = ?`)
+      .get(conversationId) as ForkContextReferenceRow | undefined;
+    return row ? forkContextReference(row) : undefined;
+  }
+
+  conversationForkContextForRequest(
+    sourceConversationId: string,
+    idempotencyKey: string,
+    ownerUserId: string,
+    tenantId?: string,
+  ): ConversationForkContextReference | undefined {
+    const row = this.db
+      .prepare(`SELECT ${FORK_CONTEXT_REFERENCE_COLUMNS}
+      FROM orchestration_conversation_fork_context
+      WHERE source_conversation_id = ? AND idempotency_key = ? AND owner_user_id = ? AND tenant_key = ?`)
+      .get(sourceConversationId, idempotencyKey, ownerUserId, tenantId ?? '') as
+      | ForkContextReferenceRow
+      | undefined;
+    return row ? forkContextReference(row) : undefined;
+  }
+
+  conversationForkContextSnapshot(
+    conversationId: string,
+  ): ConversationForkContextSnapshot | undefined {
+    const row = this.db
+      .prepare(`SELECT ${FORK_CONTEXT_REFERENCE_COLUMNS}, snapshot_json
+      FROM orchestration_conversation_fork_context WHERE target_conversation_id = ? AND state != 'deleted'`)
+      .get(conversationId) as
+      | (ForkContextReferenceRow & { snapshot_json: string | null })
+      | undefined;
+    if (!row) return undefined;
+    if (row.snapshot_json === null)
+      throw new ConversationForkContextError(
+        'Saved fork context is unavailable.',
+      );
+    const snapshot = readConversationForkContext(row.snapshot_json);
+    if (
+      snapshot.digest !== row.context_digest ||
+      snapshot.targetConversationId !== row.target_conversation_id ||
+      snapshot.forkEventId !== row.fork_event_id ||
+      snapshot.sourceConversationId !== row.source_conversation_id ||
+      snapshot.sourceAgent !== row.source_agent ||
+      snapshot.targetAgent !== row.target_agent ||
+      snapshot.ownerUserId !== row.owner_user_id ||
+      (snapshot.tenantId ?? '') !== row.tenant_key ||
+      (snapshot.projectSlug ?? null) !== row.project_slug ||
+      (snapshot.requestedProjectSlug ?? null) !== row.requested_project_slug ||
+      (snapshot.requestedBranchPointTurnId ?? null) !==
+        row.requested_branch_point_turn_id ||
+      (snapshot.idempotencyKey ?? null) !== row.idempotency_key ||
+      snapshot.createdAt !== row.created_at
+    )
+      throw new ConversationForkContextError(
+        'Saved fork context is unavailable.',
+      );
+    return snapshot;
+  }
+
+  /** Indexed disposition only: no native record or canonical payload crosses SQL. */
+  nativeForkStoredReadDisposition(
+    targetId: string,
+    forkEventId: string | undefined,
+    contextDigest: string,
+  ): 'native-intent' | 'replay' | 'absent' | 'unavailable' {
+    if (
+      !targetId ||
+      targetId.length > 512 ||
+      (forkEventId !== undefined &&
+        (!forkEventId || forkEventId.length > 512)) ||
+      !/^[a-f0-9]{64}$/.test(contextDigest)
+    )
+      return 'unavailable';
+    const native = this.db
+      .prepare(
+        'SELECT 1 AS present FROM orchestration_conversation_native_fork_effect WHERE target_conversation_id = ?',
+      )
+      .get(targetId);
+    if (native) return 'native-intent';
+    if (forkEventId === undefined) return 'absent';
+    const row = this.db
+      .prepare(`SELECT CASE
+      WHEN typeof(payload) != 'text' OR length(CAST(payload AS BLOB)) > 2097152 THEN 'unavailable'
+      WHEN json_valid(payload) != 1 THEN 'unavailable'
+      WHEN json_extract(payload, '$.method') IS NOT 'conversation.forked'
+        OR json_extract(payload, '$.provider') IS NOT 'station'
+        OR json_extract(payload, '$.targetConversationId') IS NOT ?
+        OR json_extract(payload, '$.contextDigest') IS NOT ? THEN 'unavailable'
+      WHEN json_extract(payload, '$.continuation') = 'native' THEN 'native-intent'
+      WHEN json_extract(payload, '$.continuation') = 'replay-seed' THEN 'replay'
+      ELSE 'unavailable' END AS mode
+      FROM orchestration_events WHERE id = ?`)
+      .get(targetId, contextDigest, forkEventId) as
+      | { mode: 'native-intent' | 'replay' | 'unavailable' }
+      | undefined;
+    return row?.mode ?? 'absent';
+  }
+
+  readNativeForkEffect(targetId: string): NativeForkEffectRecord | undefined {
+    const row = this.db
+      .prepare(
+        'SELECT record_json FROM orchestration_conversation_native_fork_effect WHERE target_conversation_id = ?',
+      )
+      .get(targetId) as { record_json: string } | undefined;
+    if (!row) return undefined;
+    const record = readNativeForkEffect(row.record_json);
+    if (record.targetId !== targetId)
+      throw new ConversationForkContextError(
+        'Native fork identity is unavailable.',
+      );
+    return record;
+  }
+
+  /** Read-only creation evidence plus current facts; this never grants activation. */
+  observeCommittedNativeFork(
+    targetId: string,
+    contextDigest: string,
+  ): NativeForkCreationObservation {
+    if (
+      !targetId ||
+      targetId.length > 512 ||
+      !/^[a-f0-9]{64}$/.test(contextDigest)
+    )
+      return { kind: 'unavailable', reason: 'invalid' };
+    // Observation-only transfer budgets; ordinary readers and retained caps are unchanged.
+    const maxFieldBytes = 2 * 1024 * 1024;
+    const maxRowBytes = 2 * 1024 * 1024;
+    const maxTransferBytes = 4 * 1024 * 1024;
+    const maxTransferRows = 1024;
+    const unbounded = new Error(
+      'Native observation SQL transfer budget exceeded.',
+    );
+    let transferredBytes = 0;
+    let transferredRows = 0;
+    const account = (rowBytes: number, count: number, largestField: number) => {
+      if (
+        ![rowBytes, count, largestField].every(
+          (n) => Number.isSafeInteger(n) && n >= 0,
+        )
+      )
+        throw new Error('Invalid native observation SQL size.');
+      if (
+        largestField > maxFieldBytes ||
+        rowBytes > maxRowBytes ||
+        transferredBytes + rowBytes > maxTransferBytes ||
+        transferredRows + count > maxTransferRows
+      )
+        throw unbounded;
+      transferredBytes += rowBytes;
+      transferredRows += count;
+    };
+    const admitOne = (
+      table: string,
+      key: string,
+      value: string,
+      text: readonly string[],
+      nullable: readonly string[] = [],
+      integers: readonly string[] = [],
+    ) => {
+      const columns = [...text, ...integers];
+      const row = this.db
+        .prepare(
+          `SELECT ${columns.map((column, index) => `typeof(${column}) AS t${index}, length(CAST(${column} AS BLOB)) AS b${index}`).join(', ')} FROM ${table} WHERE ${key} = ?`,
+        )
+        .get(value) as Record<string, unknown> | undefined;
+      if (!row) return false;
+      let bytes = 0;
+      let largest = 0;
+      for (const [index, column] of columns.entries()) {
+        const type = row[`t${index}`];
+        if (type === 'null' && nullable.includes(column)) continue;
+        if (type !== (integers.includes(column) ? 'integer' : 'text'))
+          throw new Error('Invalid native observation SQL type.');
+        const size = row[`b${index}`];
+        if (typeof size !== 'number' || !Number.isSafeInteger(size) || size < 0)
+          throw new Error('Invalid native observation SQL bytes.');
+        bytes += size;
+        largest = Math.max(largest, size);
+      }
+      account(bytes, 1, largest);
+      return true;
+    };
+    const referenceColumns = FORK_CONTEXT_REFERENCE_COLUMNS.split(',').map(
+      (column) => column.trim(),
+    );
+    const nullableReference = [
+      'project_slug',
+      'requested_project_slug',
+      'requested_branch_point_turn_id',
+      'idempotency_key',
+    ];
+    let reading = false;
+    try {
+      if (this.db.isTransaction)
+        return { kind: 'unavailable', reason: 'corrupt-or-incompatible' };
+      this.db.exec('BEGIN');
+      reading = true;
+      const observation = ((): NativeForkCreationObservation => {
+        if (
+          !admitOne(
+            'orchestration_conversation_native_fork_effect',
+            'target_conversation_id',
+            targetId,
+            ['record_json'],
+          )
+        )
+          return { kind: 'unavailable', reason: 'invalid' };
+        const record = this.readNativeForkEffect(targetId);
+        if (!record || record.contextDigest !== contextDigest)
+          return { kind: 'unavailable', reason: 'invalid' };
+        if (record.state !== 'committed') return { kind: 'pending' };
+        if (
+          !admitOne(
+            'orchestration_conversation_fork_context',
+            'target_conversation_id',
+            targetId,
+            [...referenceColumns, 'snapshot_json'],
+            nullableReference,
+          )
+        )
+          return { kind: 'unavailable', reason: 'invalid' };
+        if (
+          !admitOne(
+            'orchestration_conversation_fork_context',
+            'target_conversation_id',
+            targetId,
+            referenceColumns,
+            nullableReference,
+          )
+        )
+          return { kind: 'unavailable', reason: 'invalid' };
+        const snapshot = this.conversationForkContextSnapshot(targetId);
+        if (
+          !snapshot ||
+          snapshot.digest !== contextDigest ||
+          this.conversationForkContextReference(targetId)?.state !== 'ready' ||
+          !record.commitJson ||
+          record.commitDigest !== nativeForkHash(record.commitJson)
+        )
+          throw new Error('Native creation receipt is not committed.');
+        const creation = decodeCommittedNativeForkCreation(record.commitJson);
+        const { initialChild, started, configured, fork } = creation;
+        const matchesMetadata = (metadata: Record<string, unknown>) =>
+          metadata.userId === snapshot.ownerUserId &&
+          metadata.agentSlug === snapshot.targetAgent &&
+          metadata.agentSlug === record.source.agentId &&
+          metadata.environmentId === record.source.environmentId &&
+          metadata.projectSlug === snapshot.projectSlug &&
+          metadata.connectionId === record.source.connectionId &&
+          metadata.nativeResumeBindingKey ===
+            record.source.nativeResumeBindingKey &&
+          (metadata.agentId === undefined ||
+            metadata.agentId === snapshot.targetAgent) &&
+          (metadata.targetId === undefined ||
+            metadata.targetId === snapshot.targetAgent) &&
+          (metadata.tenantId === undefined ||
+            metadata.tenantId === snapshot.tenantId) &&
+          (metadata.tenantExecutionContext === undefined ||
+            (snapshot.tenantId !== undefined &&
+              parseTenantExecutionContext(metadata.tenantExecutionContext)
+                ?.tenantId === snapshot.tenantId)) &&
+          (metadata.nativeResumeIdentity === undefined ||
+            metadata.nativeResumeIdentity === 'matched') &&
+          (metadata[NATIVE_TURN_IDENTITY_METADATA_KEY] === undefined ||
+            metadata[NATIVE_TURN_IDENTITY_METADATA_KEY] ===
+              record.childIdentity);
+        if (
+          initialChild.threadId !== targetId ||
+          initialChild.provider !== record.source.provider ||
+          initialChild.cwd !== record.source.cwd ||
+          nativeForkJson(initialChild.resumeCursor) !== record.cursorJson ||
+          (initialChild.controlMode ?? 'station-owned') !== 'station-owned' ||
+          (snapshot.tenantId === undefined
+            ? initialChild.tenantExecutionContext !== undefined
+            : parseTenantExecutionContext(initialChild.tenantExecutionContext)
+                ?.tenantId !== snapshot.tenantId) ||
+          started.threadId !== targetId ||
+          started.sessionId !== targetId ||
+          started.provider !== initialChild.provider ||
+          !matchesMetadata(started.metadata) ||
+          configured.threadId !== targetId ||
+          configured.sessionId !== targetId ||
+          configured.provider !== initialChild.provider ||
+          configured.cwd !== record.source.cwd ||
+          !matchesMetadata(configured.metadata) ||
+          fork.threadId !== snapshot.sourceConversationId ||
+          fork.eventId !== snapshot.forkEventId ||
+          fork.sourceConversationId !== snapshot.sourceConversationId ||
+          fork.targetConversationId !== targetId ||
+          fork.targetAgent !== snapshot.targetAgent ||
+          fork.sourceSessionId !== snapshot.sourceSessionId ||
+          fork.branchPointTurnId !== snapshot.branchPointTurnId ||
+          fork.contextDigest !== contextDigest
+        )
+          throw new Error('Native creation coordinates conflict.');
+        const sequences: number[] = [];
+        for (const [index, expected] of [started, configured, fork].entries()) {
+          if (
+            !admitOne(
+              'orchestration_events',
+              'id',
+              expected.eventId,
+              ['thread_id', 'payload'],
+              [],
+              ['global_sequence'],
+            )
+          )
+            throw new Error('Missing native canonical fact.');
+          const row = this.db
+            .prepare(
+              'SELECT thread_id, payload, global_sequence FROM orchestration_events WHERE id = ? AND length(CAST(payload AS BLOB)) <= 2097152',
+            )
+            .get(expected.eventId) as
+            | { thread_id: string; payload: string; global_sequence: number }
+            | undefined;
+          if (
+            !row ||
+            row.thread_id !== expected.threadId ||
+            row.payload !== creation.eventJson[index] ||
+            !Number.isSafeInteger(row.global_sequence)
+          )
+            throw new Error('Native creation canonical event conflicts.');
+          sequences.push(row.global_sequence);
+        }
+        if (!(sequences[0]! < sequences[1]! && sequences[1]! < sequences[2]!))
+          throw new Error('Native creation order conflicts.');
+        if (
+          !admitOne(
+            'provider_session_state',
+            'thread_id',
+            targetId,
+            [
+              'thread_id',
+              'provider',
+              'status',
+              'model',
+              'cwd',
+              'resume_cursor',
+              'control_mode',
+              'attached_source',
+              'continuation_source_thread_id',
+              'adoption_idempotency_key',
+              'tenant_execution_context',
+              'created_at',
+              'updated_at',
+            ],
+            [
+              'model',
+              'cwd',
+              'resume_cursor',
+              'control_mode',
+              'attached_source',
+              'continuation_source_thread_id',
+              'adoption_idempotency_key',
+              'tenant_execution_context',
+              'persist_session',
+              'ephemeral',
+            ],
+            ['persist_session', 'ephemeral'],
+          )
+        )
+          throw new Error('Missing current native Session.');
+        const currentSession = this.readSessionByThread(targetId);
+        if (
+          !currentSession ||
+          currentSession.threadId !== targetId ||
+          currentSession.provider !== initialChild.provider ||
+          (currentSession.controlMode ?? 'station-owned') !== 'station-owned' ||
+          (snapshot.tenantId === undefined
+            ? currentSession.tenantExecutionContext !== undefined
+            : parseTenantExecutionContext(currentSession.tenantExecutionContext)
+                ?.tenantId !== snapshot.tenantId)
+        )
+          throw new Error('Current native child binding is incompatible.');
+        const conversationIds = [
+          ...new Set([fork.sourceConversationId, targetId]),
+        ];
+        const lineageSize = this.db
+          .prepare(
+            `WITH selected AS (SELECT session_id FROM orchestration_conversation_sessions WHERE conversation_id IN (?, ?) ORDER BY conversation_id, ordinal LIMIT 257) SELECT count(*) AS n, coalesce(sum(length(CAST(session_id AS BLOB))),0) AS bytes, coalesce(max(length(CAST(session_id AS BLOB))),0) AS largest, coalesce(sum(CASE WHEN typeof(session_id)='text' THEN 0 ELSE 1 END),0) AS invalid FROM selected`,
+          )
+          .get(fork.sourceConversationId, targetId) as {
+          n: number;
+          bytes: number;
+          largest: number;
+          invalid: number;
+        };
+        if (lineageSize.invalid !== 0)
+          throw new Error('Invalid native lineage SQL type.');
+        if (lineageSize.n > 256 || lineageSize.largest > 512) throw unbounded;
+        account(lineageSize.bytes, lineageSize.n, lineageSize.largest);
+        const rows = this.db
+          .prepare(
+            'SELECT session_id FROM orchestration_conversation_sessions WHERE conversation_id IN (?, ?) ORDER BY conversation_id, ordinal LIMIT 257',
+          )
+          .all(fork.sourceConversationId, targetId) as { session_id: string }[];
+        if (rows.length > 256)
+          return { kind: 'unavailable', reason: 'unbounded' };
+        const lineages = rows.map((row) => {
+          if (
+            !admitOne(
+              'orchestration_conversation_sessions',
+              'session_id',
+              row.session_id,
+              [
+                'conversation_id',
+                'session_id',
+                'predecessor_session_id',
+                'created_at',
+              ],
+              ['predecessor_session_id'],
+              ['ordinal'],
+            )
+          )
+            throw new Error('Missing native lineage.');
+          return this.conversationForSession(row.session_id);
+        });
+        for (const conversationId of conversationIds) {
+          const members = lineages.filter(
+            (row) => row?.conversationId === conversationId,
+          );
+          if (
+            !members.length ||
+            members.some(
+              (row, index) =>
+                !row ||
+                row.ordinal !== index ||
+                (index === 0
+                  ? row.predecessorSessionId !== undefined
+                  : row.predecessorSessionId !== members[index - 1]?.sessionId),
+            )
+          )
+            throw new Error('Current native lineage conflicts.');
+        }
+        if (
+          lineages.some((row) => !row) ||
+          lineages.find((row) => row?.sessionId === targetId)
+            ?.conversationId !== targetId ||
+          lineages.find(
+            (row) => row?.sessionId === record.source.sourceSessionId,
+          )?.conversationId !== fork.sourceConversationId
+        )
+          throw new Error('Native lineage is unavailable.');
+        const threadIds = [
+          ...new Set([
+            fork.threadId,
+            started.threadId,
+            configured.threadId,
+            ...rows.map((row) => row.session_id),
+          ]),
+        ];
+        if (
+          threadIds.length > 256 ||
+          threadIds.some((id) => !id || id.length > 512)
+        )
+          return { kind: 'unavailable', reason: 'unbounded' };
+        return {
+          kind: 'verified-creation',
+          creation,
+          currentSession,
+          canonicalProjection: 'not-supplied',
+          affected: { threadIds, conversationIds },
+          activation: 'unwired',
+        };
+      })();
+      this.db.exec('COMMIT');
+      reading = false;
+      return observation;
+    } catch (error) {
+      if (reading && this.db.isTransaction) this.db.exec('ROLLBACK');
+      return {
+        kind: 'unavailable',
+        reason: error === unbounded ? 'unbounded' : 'corrupt-or-incompatible',
+      };
+    }
+  }
+
+  reserveNativeForkEffect(input: {
+    targetId: string;
+    contextDigest: string;
+    source: NativeForkSourceSeal;
+  }):
+    | { kind: 'owner'; effect: NativeForkEffectClaim }
+    | { kind: 'existing'; observation: NativeForkEffectRecord } {
+    let poisoned = false;
+    let used = false;
+    const transaction = <T>(work: () => T): T => {
+      if (this.db.isTransaction) {
+        poisoned = true;
+        throw new ConversationForkContextError(
+          'Native fork admission requires its own outer transaction.',
+        );
+      }
+      this.db.exec('BEGIN IMMEDIATE');
+      try {
+        this.reserveEventAppendWriter();
+        const result = work();
+        this.db.exec('COMMIT');
+        if (this.db.isTransaction)
+          throw new Error('Native fork commit was not confirmed.');
+        return result;
+      } catch (error) {
+        poisoned = true;
+        if (this.db.isTransaction) this.db.exec('ROLLBACK');
+        throw error;
+      }
+    };
+    const save = (record: NativeForkEffectRecord) => {
+      const json = nativeForkJson(record);
+      readNativeForkEffect(json);
+      this.db
+        .prepare(
+          'INSERT INTO orchestration_conversation_native_fork_effect(target_conversation_id, record_json) VALUES (?, ?) ON CONFLICT(target_conversation_id) DO UPDATE SET record_json=excluded.record_json',
+        )
+        .run(record.targetId, json);
+    };
+    const reserved = transaction(() => {
+      const snapshot = this.conversationForkContextSnapshot(input.targetId);
+      const reference = this.conversationForkContextReference(input.targetId);
+      if (
+        !snapshot ||
+        !reference ||
+        reference.state !== 'prepared' ||
+        snapshot.digest !== input.contextDigest ||
+        this.hasEventId(snapshot.forkEventId)
+      )
+        throw new ConversationForkContextError(
+          'Native fork requires an unpublished prepared fork.',
+        );
+      const existing = this.readNativeForkEffect(input.targetId);
+      if (existing) {
+        if (
+          existing.contextDigest !== input.contextDigest ||
+          nativeForkJson(existing.source) !== nativeForkJson(input.source)
+        )
+          throw new ConversationForkContextError(
+            'Native fork intent conflicts.',
+          );
+        return { kind: 'existing' as const, observation: existing };
+      }
+      const record = readNativeForkEffect(
+        nativeForkJson({
+          version: 1,
+          targetId: input.targetId,
+          contextDigest: input.contextDigest,
+          intentId: randomUUID(),
+          source: input.source,
+          state: 'prepared',
+        }),
+      );
+      const source = this.readSessionByThread(record.source.sourceSessionId);
+      const events = this.listEvents(record.source.sourceSessionId);
+      const configuredSource = [...events]
+        .reverse()
+        .find((event) => event.payload.method === 'session.configured');
+      const selected = events.find(
+        (event) => event.id === record.source.selectedEventId,
+      );
+      if (
+        snapshot.sourceConversationId !== record.source.sourceConversationId ||
+        snapshot.sourceSessionId !== record.source.sourceSessionId ||
+        snapshot.branchPointTurnId !== record.source.selectedTurnId ||
+        snapshot.sourceAgent !== record.source.agentId ||
+        snapshot.targetAgent !== record.source.agentId ||
+        configuredSource?.payload.method !== 'session.configured' ||
+        configuredSource.payload.metadata?.nativeResumeBindingKey !==
+          record.source.nativeResumeBindingKey ||
+        configuredSource.payload.metadata?.environmentId !==
+          record.source.environmentId ||
+        configuredSource.payload.metadata?.agentSlug !==
+          record.source.agentId ||
+        configuredSource.payload.metadata?.projectSlug !==
+          snapshot.projectSlug ||
+        configuredSource.payload.cwd !== record.source.cwd ||
+        (source?.controlMode ?? 'station-owned') !== 'station-owned' ||
+        (source?.tenantExecutionContext !== undefined &&
+          !parseTenantExecutionContext(source.tenantExecutionContext)) ||
+        parseTenantExecutionContext(source?.tenantExecutionContext)
+          ?.tenantId !== snapshot.tenantId ||
+        source?.provider !== record.source.provider ||
+        source.cwd !== record.source.cwd ||
+        selected?.payload.method !== 'turn.completed' ||
+        selected.payload.turnId !== record.source.selectedTurnId ||
+        selected.payload.finishReason !== 'stop' ||
+        events.at(-1)?.id !== record.source.headEventId ||
+        this.nativeSessionBindingIdentity(record.source.sourceSessionId) !==
+          record.source.nativeIdentityKey
+      )
+        throw new ConversationForkContextError(
+          'Native fork source seal does not match canonical history.',
+        );
+      const owned = this.sessionTurnBoundaries.claimSessionStart(
+        input.targetId,
+        new Date().toISOString(),
+      );
+      if (owned.kind !== 'owner')
+        throw new ConversationForkContextError(
+          'Native fork start authority is unavailable.',
+        );
+      save(record);
+      return { kind: 'owner' as const, record, raw: owned.claim };
+    });
+    if (reserved.kind === 'existing') return reserved;
+    const { raw } = reserved;
+    const load = () => {
+      const record = this.readNativeForkEffect(input.targetId);
+      if (
+        !record ||
+        record.intentId !== reserved.record.intentId ||
+        record.contextDigest !== input.contextDigest ||
+        nativeForkJson(record.source) !== nativeForkJson(reserved.record.source)
+      )
+        throw new ConversationForkContextError('Native fork handle is stale.');
+      return record;
+    };
+    const assertUsable = () => {
+      if (poisoned || !used)
+        throw new ConversationForkContextError(
+          'Native fork handle cannot admit effects.',
+        );
+    };
+    const sessionStart: NativeForkEffectClaim['sessionStart'] = Object.freeze({
+      threadId: input.targetId,
+      beginInvocation: (now: string) => {
+        if (poisoned || used) return { kind: 'unavailable' as const };
+        try {
+          transaction(() => {
+            const record = load();
+            const reference = this.conversationForkContextReference(
+              input.targetId,
+            );
+            const snapshot = this.conversationForkContextSnapshot(
+              input.targetId,
+            );
+            if (
+              record.state !== 'prepared' ||
+              reference?.state !== 'prepared' ||
+              !snapshot ||
+              this.hasEventId(snapshot.forkEventId)
+            )
+              throw new ConversationForkContextError(
+                'Native fork cannot invoke after publication.',
+              );
+            if (raw.beginInvocation(now).kind !== 'applied')
+              throw new ConversationForkContextError(
+                'Native fork boundary transition was refused.',
+              );
+            save({ ...record, state: 'invoking' });
+          });
+          used = true;
+          return { kind: 'applied' as const };
+        } catch {
+          poisoned = true;
+          return { kind: 'unavailable' as const };
+        }
+      },
+      started: () => {
+        if (poisoned || !used || load().state !== 'committed')
+          return { kind: 'unavailable' as const };
+        const result = raw.started();
+        if (result.kind !== 'applied') poisoned = true;
+        return result;
+      },
+      notInvoked: () => {
+        poisoned = true;
+        return raw.notInvoked();
+      },
+      refused: () => {
+        poisoned = true;
+        return raw.refused?.() ?? { kind: 'unavailable' as const };
+      },
+      indeterminate: (at: string) => {
+        poisoned = true;
+        return raw.indeterminate(at);
+      },
+    });
+    const retainedState = (state: 'indeterminate' | 'cleanup-pending') => {
+      transaction(() => {
+        const record = load();
+        if (record.state === 'committed')
+          throw new ConversationForkContextError(
+            'Committed native fork cannot become pending.',
+          );
+        save({ ...record, state });
+      });
+      poisoned = true;
+    };
+    return {
+      kind: 'owner',
+      effect: Object.freeze({
+        sessionStart,
+        observeChild: (cursor: unknown, identity: string) => {
+          assertUsable();
+          transaction(() => {
+            const record = load();
+            const cursorJson = nativeForkJson(cursor);
+            if (
+              !/^[a-f0-9]{64}$/.test(identity) ||
+              identity === record.source.nativeIdentityKey ||
+              !['invoking', 'child-observed'].includes(record.state) ||
+              (record.cursorJson !== undefined &&
+                (record.cursorJson !== cursorJson ||
+                  record.childIdentity !== identity))
+            )
+              throw new ConversationForkContextError(
+                'Native fork child receipt conflicts.',
+              );
+            save({
+              ...record,
+              state: 'child-observed',
+              cursorJson,
+              cursorDigest: nativeForkHash(cursorJson),
+              childIdentity: identity,
+            });
+          });
+        },
+        commit: (commit: NativeForkCommitInput) => {
+          assertUsable();
+          let capture: NativeForkNoticeCapture | undefined;
+          try {
+            const outcome = transaction(() => {
+              const record = load();
+              const snapshot = this.conversationForkContextSnapshot(
+                input.targetId,
+              );
+              const reference = this.conversationForkContextReference(
+                input.targetId,
+              );
+              const { child, startedEvent, configuredEvent, forkEvent } =
+                commit;
+              const commitJson = nativeForkJson(commit);
+              const childTenant = parseTenantExecutionContext(
+                child.tenantExecutionContext,
+              );
+              const configuredTenant = parseTenantExecutionContext(
+                configuredEvent.metadata?.tenantExecutionContext,
+              );
+              const metadata = configuredEvent.metadata;
+              const started = startedEvent.metadata;
+              const startedTenant = parseTenantExecutionContext(
+                started?.tenantExecutionContext,
+              );
+              const startedMatch =
+                !!snapshot &&
+                startedEvent.method === 'session.started' &&
+                startedEvent.threadId === input.targetId &&
+                startedEvent.sessionId === input.targetId &&
+                startedEvent.provider === child.provider &&
+                started?.userId === snapshot.ownerUserId &&
+                started.environmentId === record.source.environmentId &&
+                started.agentSlug === snapshot.targetAgent &&
+                (started.agentId === undefined ||
+                  started.agentId === snapshot.targetAgent) &&
+                (started.targetId === undefined ||
+                  started.targetId === snapshot.targetAgent) &&
+                started.projectSlug === snapshot.projectSlug &&
+                started.connectionId === record.source.connectionId &&
+                (started.tenantId === undefined ||
+                  started.tenantId === snapshot.tenantId) &&
+                (started.tenantExecutionContext === undefined ||
+                  (snapshot.tenantId !== undefined &&
+                    startedTenant?.tenantId === snapshot.tenantId)) &&
+                started.nativeResumeBindingKey ===
+                  record.source.nativeResumeBindingKey &&
+                (started.nativeResumeIdentity === undefined ||
+                  started.nativeResumeIdentity === 'matched') &&
+                (started[NATIVE_TURN_IDENTITY_METADATA_KEY] === undefined ||
+                  started[NATIVE_TURN_IDENTITY_METADATA_KEY] ===
+                    record.childIdentity);
+              const coordinatesMatch =
+                !!snapshot &&
+                (child.controlMode ?? 'station-owned') === 'station-owned' &&
+                (snapshot.tenantId === undefined
+                  ? child.tenantExecutionContext === undefined
+                  : childTenant?.tenantId === snapshot.tenantId) &&
+                configuredEvent.method === 'session.configured' &&
+                configuredEvent.sessionId === input.targetId &&
+                configuredEvent.cwd === record.source.cwd &&
+                metadata?.environmentId === record.source.environmentId &&
+                metadata.agentSlug === snapshot.targetAgent &&
+                metadata.agentSlug === record.source.agentId &&
+                (metadata.agentId === undefined ||
+                  metadata.agentId === snapshot.targetAgent) &&
+                (metadata.targetId === undefined ||
+                  metadata.targetId === snapshot.targetAgent) &&
+                metadata.projectSlug === snapshot.projectSlug &&
+                metadata.connectionId === record.source.connectionId &&
+                (metadata.tenantId === undefined ||
+                  metadata.tenantId === snapshot.tenantId) &&
+                (metadata.tenantExecutionContext === undefined ||
+                  (snapshot.tenantId !== undefined &&
+                    configuredTenant?.tenantId === snapshot.tenantId)) &&
+                metadata.nativeResumeBindingKey ===
+                  record.source.nativeResumeBindingKey &&
+                (metadata.nativeResumeIdentity === undefined ||
+                  metadata.nativeResumeIdentity === 'matched') &&
+                (metadata[NATIVE_TURN_IDENTITY_METADATA_KEY] === undefined ||
+                  metadata[NATIVE_TURN_IDENTITY_METADATA_KEY] ===
+                    record.childIdentity) &&
+                forkEvent.provider === 'station' &&
+                forkEvent.threadId === snapshot.sourceConversationId;
+
+              if (
+                !startedMatch ||
+                new Set([
+                  startedEvent.eventId,
+                  configuredEvent.eventId,
+                  forkEvent.eventId,
+                ]).size !== 3 ||
+                !coordinatesMatch ||
+                !snapshot ||
+                !reference ||
+                reference.state === 'deleted' ||
+                child.threadId !== input.targetId ||
+                child.provider !== record.source.provider ||
+                child.cwd !== record.source.cwd ||
+                nativeForkJson(child.resumeCursor) !== record.cursorJson ||
+                this.nativeSessionBindingIdentity(input.targetId) !==
+                  record.childIdentity ||
+                !this.nativeSessionOwnedBy(input.targetId) ||
+                configuredEvent.method !== 'session.configured' ||
+                configuredEvent.threadId !== input.targetId ||
+                configuredEvent.provider !== child.provider ||
+                configuredEvent.metadata?.userId !== snapshot.ownerUserId ||
+                forkEvent.method !== 'conversation.forked' ||
+                forkEvent.continuation !== 'native' ||
+                forkEvent.eventId !== snapshot.forkEventId ||
+                forkEvent.contextDigest !== snapshot.digest ||
+                forkEvent.sourceConversationId !==
+                  snapshot.sourceConversationId ||
+                forkEvent.targetConversationId !== input.targetId ||
+                forkEvent.targetAgent !== snapshot.targetAgent ||
+                forkEvent.branchPointTurnId !== snapshot.branchPointTurnId ||
+                forkEvent.sourceSessionId !== snapshot.sourceSessionId
+              )
+                throw new ConversationForkContextError(
+                  'Native fork commit does not match its receipt.',
+                );
+              if (record.state === 'committed') {
+                this.assertCommittedNativeFork(record, commit);
+                return 'already-committed' as const;
+              }
+              if (
+                record.state !== 'child-observed' ||
+                reference.state !== 'prepared' ||
+                this.hasEventId(forkEvent.eventId)
+              )
+                throw new ConversationForkContextError(
+                  'Native fork cannot publish this state.',
+                );
+              if (this.nativeForkNoticeCapture)
+                throw new ConversationForkContextError(
+                  'Native fork notice capture is already owned.',
+                );
+              capture = {
+                targetId: input.targetId,
+                intentId: record.intentId,
+                eventDigests: new Map(
+                  [startedEvent, configuredEvent, forkEvent].map((event) => [
+                    event.eventId,
+                    nativeForkHash(nativeForkJson(event)),
+                  ]),
+                ),
+                notices: [],
+              };
+              this.nativeForkNoticeCapture = capture;
+              this.appendEvent(forkEvent, [], () => {
+                this.upsertSession(child);
+                this.appendEvent(startedEvent);
+                this.appendEvent(configuredEvent);
+                save({
+                  ...record,
+                  state: 'committed',
+                  commitJson,
+                  commitDigest: nativeForkHash(commitJson),
+                });
+                this.db
+                  .prepare(
+                    "UPDATE orchestration_conversation_fork_context SET state='ready' WHERE target_conversation_id=? AND state='prepared'",
+                  )
+                  .run(input.targetId);
+              });
+              return 'committed' as const;
+            });
+            if (capture) {
+              const committed = load();
+              if (
+                this.db.isTransaction ||
+                this.nativeForkNoticeCapture !== capture ||
+                committed.intentId !== capture.intentId
+              )
+                throw new ConversationForkContextError(
+                  'Native fork outer commit is unconfirmed.',
+                );
+              this.assertCommittedNativeFork(committed, commit);
+              this.nativeForkNoticeCapture = undefined;
+              for (const notice of capture.notices) {
+                this.notifyCommitObservers((observer) => {
+                  if (notice.kind === 'lineage')
+                    observer.lineageChanged?.({
+                      conversationId: notice.conversationId,
+                      sessionId: notice.sessionId,
+                    });
+                  else
+                    observer.eventCommitted?.({
+                      event: notice.event,
+                      globalSequence: notice.globalSequence,
+                      deferred: false,
+                    });
+                });
+              }
+            }
+            return outcome;
+          } catch (error) {
+            poisoned = true;
+            throw error;
+          } finally {
+            if (capture && this.nativeForkNoticeCapture === capture)
+              this.nativeForkNoticeCapture = undefined;
+          }
+        },
+        indeterminate: () => retainedState('indeterminate'),
+        cleanupPending: () => retainedState('cleanup-pending'),
+      }),
+    };
+  }
+
+  private assertCommittedNativeFork(
+    record: NativeForkEffectRecord,
+    commit: NativeForkCommitInput,
+  ): void {
+    const snapshot = this.conversationForkContextSnapshot(record.targetId);
+    const reference = this.conversationForkContextReference(record.targetId);
+    const persisted = this.readSessionByThread(record.targetId);
+    const json = nativeForkJson(commit);
+    if (
+      !snapshot ||
+      reference?.state !== 'ready' ||
+      record.state !== 'committed' ||
+      record.commitJson !== json ||
+      record.commitDigest !== nativeForkHash(json) ||
+      persisted?.provider !== commit.child.provider ||
+      persisted.cwd !== commit.child.cwd ||
+      nativeForkJson(persisted.resumeCursor) !== record.cursorJson ||
+      this.nativeSessionBindingIdentity(record.targetId) !==
+        record.childIdentity ||
+      !this.nativeSessionOwnedBy(record.targetId) ||
+      this.conversationForSession(record.targetId)?.conversationId !==
+        record.targetId
+    )
+      throw new ConversationForkContextError(
+        'Committed native fork binding conflicts.',
+      );
+    for (const expected of [
+      commit.startedEvent,
+      commit.configuredEvent,
+      commit.forkEvent,
+    ]) {
+      const stored = this.listEvents(expected.threadId).find(
+        (event) => event.id === expected.eventId,
+      );
+      if (
+        !stored ||
+        nativeForkJson(stored.payload) !== nativeForkJson(expected)
+      )
+        throw new ConversationForkContextError(
+          'Committed native fork event conflicts.',
+        );
+    }
+  }
+
+  reserveConversationForkContext(
+    input: ConversationForkContextSnapshot,
+  ): ConversationForkContextReference {
+    const snapshot = readConversationForkContext(JSON.stringify(input));
+    this.db.exec('SAVEPOINT reserve_fork_context');
+    try {
+      this.reserveEventAppendWriter();
+      const existing = snapshot.idempotencyKey
+        ? this.conversationForkContextForRequest(
+            snapshot.sourceConversationId,
+            snapshot.idempotencyKey,
+            snapshot.ownerUserId,
+            snapshot.tenantId,
+          )
+        : this.conversationForkContextReference(snapshot.targetConversationId);
+      if (existing) {
+        if (
+          existing.state === 'deleted' ||
+          existing.sourceAgent !== snapshot.sourceAgent ||
+          existing.targetAgent !== snapshot.targetAgent ||
+          existing.requestedProjectSlug !== snapshot.requestedProjectSlug ||
+          existing.requestedBranchPointTurnId !==
+            snapshot.requestedBranchPointTurnId
+        )
+          throw new ConversationForkContextError(
+            'The fork key already names another request or a deleted fork.',
+          );
+        this.db.exec('RELEASE SAVEPOINT reserve_fork_context');
+        return existing;
+      }
+      const effect = this.sessionTurnBoundaries.hasPossibleEffect(
+        snapshot.targetConversationId,
+      );
+      if (
+        this.readSessionByThread(snapshot.targetConversationId) ||
+        effect.kind !== 'available' ||
+        effect.active
+      )
+        throw new ConversationForkContextError(
+          'The fork identity already has a possible provider start.',
+        );
+      this.db
+        .prepare(`INSERT INTO orchestration_conversation_fork_context (
+        target_conversation_id, fork_event_id, source_conversation_id, source_agent, target_agent,
+        owner_user_id, tenant_key, project_slug, requested_project_slug, requested_branch_point_turn_id,
+        idempotency_key, context_digest, state, snapshot_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'prepared', ?, ?)`)
+        .run(
+          snapshot.targetConversationId,
+          snapshot.forkEventId,
+          snapshot.sourceConversationId,
+          snapshot.sourceAgent,
+          snapshot.targetAgent,
+          snapshot.ownerUserId,
+          snapshot.tenantId ?? '',
+          snapshot.projectSlug ?? null,
+          snapshot.requestedProjectSlug ?? null,
+          snapshot.requestedBranchPointTurnId ?? null,
+          snapshot.idempotencyKey ?? null,
+          snapshot.digest,
+          JSON.stringify(snapshot),
+          snapshot.createdAt,
+        );
+      const reference = this.conversationForkContextReference(
+        snapshot.targetConversationId,
+      );
+      if (!reference)
+        throw new ConversationForkContextError(
+          'The fork reservation is unavailable.',
+        );
+      this.db.exec('RELEASE SAVEPOINT reserve_fork_context');
+      return reference;
+    } catch (error) {
+      this.db.exec(
+        'ROLLBACK TO SAVEPOINT reserve_fork_context; RELEASE SAVEPOINT reserve_fork_context',
+      );
+      throw error;
+    }
+  }
+
+  publishConversationForkContext(
+    event: CanonicalRuntimeEvent,
+    digest: string,
+  ): boolean {
+    if (event.method !== 'conversation.forked')
+      throw new ConversationForkContextError('A fork fact is required.');
+    this.db.exec('SAVEPOINT publish_fork_context');
+    try {
+      this.reserveEventAppendWriter();
+      const reference = this.conversationForkContextReference(
+        event.targetConversationId,
+      );
+      const snapshot = this.conversationForkContextSnapshot(
+        event.targetConversationId,
+      );
+      if (
+        !reference ||
+        reference.state === 'deleted' ||
+        !snapshot ||
+        snapshot.digest !== digest ||
+        event.contextDigest !== digest ||
+        event.eventId !== snapshot.forkEventId ||
+        event.sourceConversationId !== snapshot.sourceConversationId ||
+        event.targetAgent !== snapshot.targetAgent ||
+        event.branchPointTurnId !== snapshot.branchPointTurnId ||
+        event.sourceSessionId !== snapshot.sourceSessionId
+      )
+        throw new ConversationForkContextError(
+          'The fork publication does not match its reserved context.',
+        );
+      if (
+        event.continuation !== 'replay-seed' ||
+        this.readNativeForkEffect(event.targetConversationId)
+      )
+        throw new ConversationForkContextError(
+          'Native fork intent forbids ordinary replay publication.',
+        );
+      if (reference.state === 'ready') {
+        const persisted = this.listEvents(event.sourceConversationId).find(
+          (row) => row.id === event.eventId,
+        );
+        if (
+          !persisted ||
+          nativeForkJson(persisted.payload) !== nativeForkJson(event)
+        )
+          throw new ConversationForkContextError(
+            'The fork fact is unavailable.',
+          );
+        this.db.exec('RELEASE SAVEPOINT publish_fork_context');
+        return false;
+      }
+      if (this.hasEventId(event.eventId))
+        throw new ConversationForkContextError(
+          'The fork fact predates its context reservation.',
+        );
+      this.db
+        .prepare(`UPDATE orchestration_conversation_fork_context SET state = 'ready'
+        WHERE target_conversation_id = ? AND state = 'prepared' AND context_digest = ?`)
+        .run(snapshot.targetConversationId, digest);
+      this.appendEvent(event);
+      this.db.exec('RELEASE SAVEPOINT publish_fork_context');
+      return true;
+    } catch (error) {
+      this.db.exec(
+        'ROLLBACK TO SAVEPOINT publish_fork_context; RELEASE SAVEPOINT publish_fork_context',
+      );
+      throw error;
+    }
+  }
+
+  deleteUnstartedConversationForkContext(conversationId: string): void {
+    this.db.exec('SAVEPOINT delete_fork_context');
+    try {
+      this.reserveEventAppendWriter();
+      if (this.readNativeForkEffect(conversationId))
+        throw new ConversationForkContextError(
+          'Native fork intent cannot be deleted as unstarted.',
+        );
+      const effect =
+        this.sessionTurnBoundaries.hasPossibleEffect(conversationId);
+      if (
+        this.readSessionByThread(conversationId) ||
+        effect.kind !== 'available' ||
+        effect.active
+      )
+        throw new ConversationForkContextError(
+          'The fork has a possible provider start and cannot be deleted as an unstarted fork.',
+        );
+      this.db
+        .prepare(`UPDATE orchestration_conversation_fork_context SET state = 'deleted', snapshot_json = NULL
+        WHERE target_conversation_id = ?`)
+        .run(conversationId);
+      this.db.exec('RELEASE SAVEPOINT delete_fork_context');
+    } catch (error) {
+      this.db.exec(
+        'ROLLBACK TO SAVEPOINT delete_fork_context; RELEASE SAVEPOINT delete_fork_context',
+      );
+      throw error;
+    }
+  }
+
   readConversationForkProvenance(conversationId: string): {
     forkedFrom?: ConversationForkProvenance;
     forkedTo: ConversationForkProvenance[];
@@ -5030,7 +7167,7 @@ export class EventStore {
   }
 
   appendEventIfAbsent(event: CanonicalRuntimeEvent): number | undefined {
-    const ingress = this.prepareEventIngress(event);
+    const ingress = this.ingressFor(event);
     try {
       return this.appendIngressedEventIfAbsent(ingress);
     } finally {
@@ -5039,7 +7176,7 @@ export class EventStore {
   }
 
   private appendIngressedEventIfAbsent(
-    ingress: ReturnType<EventStore['prepareEventIngress']>,
+    ingress: PreparedEventIngress,
   ): number | undefined {
     const event = ingress.event;
     const startedAt = performance.now();
@@ -5080,6 +7217,7 @@ export class EventStore {
           )
           .run(globalSequence);
         this.recordAttachmentRefs(event.threadId, persisted.blobRefs);
+        this.recordEventContent(event.threadId, ingress.spills);
         this.chargeCommittedToolImages(persisted.toolImageKey);
         this.projectConversationHistoryEvent(event);
         this.projectMessageSearchEvent(event);
@@ -5107,6 +7245,7 @@ export class EventStore {
       performance.now() - startedAt,
       { provider: event.provider, method: event.method },
     );
+    this.observeEventContentSpilled(event, ingress.spills);
     this.notifyEventCommitted(event, globalSequence);
     return nextSequence;
   }
@@ -5607,7 +7746,7 @@ export class EventStore {
     const starts = this.db
       .prepare(
         `SELECT thread_id, turn_id, created_at, global_sequence,
-                substr(json_extract(payload, '$.prompt'), 1, ${TURN_DIGEST_PROMPT_PREFIX_CHARS}) AS prompt,
+                substr(${spilledTextSql('$.prompt', 'orchestration_events.thread_id')}, 1, ${TURN_DIGEST_PROMPT_PREFIX_CHARS}) AS prompt,
                 json_extract(payload, '$.metadata.trigger') AS turn_trigger,
                 json_extract(payload, '$.invocationId') AS invocation_id,
                 json_quote(json_extract(payload, '$.clientOrigin.sender')) AS sender_json
@@ -5835,7 +7974,13 @@ export class EventStore {
     };
   }
 
-  /** Committed-order selection for paged canonical usage, distinct from interactive rollups. */
+  /**
+   * Committed-order selection for paged canonical usage, distinct from
+   * interactive rollups. `terminalOutcomes` is set only by the export reader
+   * for a grant whose current consent is exactly `terminal-outcomes/v1`; it
+   * adds canonical turn terminals to the same ordered, owner/tenant-joined
+   * page so one high water and cursor cover both fact kinds.
+   */
   readUsageReceiptExportPage(options: {
     ownerUserIds: readonly string[];
     tenantId?: string;
@@ -5844,11 +7989,17 @@ export class EventStore {
     after: number;
     highWater?: number;
     streamEpoch?: string;
+    sourceRevision?: number;
     limit: number;
+    terminalOutcomes?: boolean;
   }): {
     streamEpoch: string;
+    sourceRevision: number;
     highWater: number;
-    rows: Array<{ globalSequence: number; usage: UsageReceiptEventRow }>;
+    rows: Array<
+      | { globalSequence: number; usage: UsageReceiptEventRow }
+      | { globalSequence: number; terminal: UsageTerminalFact }
+    >;
     hasMore: boolean;
   } {
     if (
@@ -5865,13 +8016,16 @@ export class EventStore {
     const owners = usageOwnerPlaceholders(options.ownerUserIds);
     this.db.exec('BEGIN');
     try {
-      const streamEpoch = this.streamEpoch();
+      const streamEpoch = this.usageExportEpoch();
+      const sourceRevision = this.usageExportRevision();
       const head = this.headGlobalSequence();
       const highWater = options.highWater ?? head;
       if (
         (options.streamEpoch !== undefined &&
           options.streamEpoch !== streamEpoch) ||
-        highWater > head
+        highWater > head ||
+        (options.sourceRevision !== undefined &&
+          options.sourceRevision !== sourceRevision)
       )
         throw new Error('Usage export source changed');
       const rows = this.db
@@ -5880,7 +8034,11 @@ export class EventStore {
            FROM orchestration_events e
            INNER JOIN orchestration_conversation_history h ON h.thread_id = e.thread_id
            LEFT JOIN orchestration_conversation_sessions cs ON cs.session_id = e.thread_id
-          WHERE e.method = 'token-usage.updated'
+          WHERE (e.method = 'token-usage.updated'${
+            options.terminalOutcomes
+              ? ` OR ${CANONICAL_TERMINAL_EVENT_SQL}`
+              : ''
+          })
             AND e.global_sequence > ? AND e.global_sequence <= ?
             AND e.observed_at >= ? AND e.observed_at <= ?
             AND h.owner_user_id IN (${owners})
@@ -5901,6 +8059,7 @@ export class EventStore {
       const cumulativeThreads = selected
         .filter(
           (row) =>
+            row.method === 'token-usage.updated' &&
             typeof row.provider === 'string' &&
             providerCostScope(row.provider) === 'engine-process-cumulative',
         )
@@ -5916,6 +8075,11 @@ export class EventStore {
           !Number.isSafeInteger(row.global_sequence)
         )
           throw new Error('Invalid usage export sequence');
+        if (row.method !== 'token-usage.updated')
+          return {
+            globalSequence: row.global_sequence,
+            terminal: usageTerminalFact(this.mapEventRow(row, false)),
+          };
         return {
           globalSequence: row.global_sequence,
           usage: this.mapUsageReceiptEventRow(row, segments),
@@ -5924,6 +8088,7 @@ export class EventStore {
       this.db.exec('COMMIT');
       return {
         streamEpoch,
+        sourceRevision,
         highWater,
         rows: page,
         hasMore: rows.length > options.limit,
@@ -6099,26 +8264,30 @@ export class EventStore {
    */
   private cumulativeCostSegmentsFor(
     threadIds: readonly string[],
-    maximumSequenceBudget?: number,
+    maximumEvidenceRows?: number,
   ): Map<string, string> {
     const segments = new Map<string, string>();
-    let remainingEvidenceRows = maximumSequenceBudget;
-    if (maximumSequenceBudget !== undefined) {
-      let sequences = 0;
+    let remainingEvidenceRows = maximumEvidenceRows;
+    if (maximumEvidenceRows !== undefined) {
+      let evidenceRows = 0;
       for (const threadId of new Set(threadIds)) {
-        const latest = this.db
-          .prepare(
-            'SELECT sequence FROM orchestration_events WHERE thread_id = ? ORDER BY sequence DESC LIMIT 1',
-          )
-          .get(threadId) as { sequence: number } | undefined;
-        const sequence = latest?.sequence ?? 0;
-        if (!Number.isSafeInteger(sequence) || sequence < 0)
-          throw new Error('Invalid cumulative usage sequence');
-        sequences += sequence;
-        if (sequences > maximumSequenceBudget)
-          throw new Error(
-            'Cumulative usage projection exceeds its sequence budget',
-          );
+        for (const method of ['session.started', 'token-usage.updated']) {
+          // The covering index counts only segment evidence, without reading
+          // unrelated terminal/tool payloads or scanning an unbounded history.
+          evidenceRows += this.db
+            .prepare(
+              'SELECT sequence FROM orchestration_events INDEXED BY idx_events_history_projection WHERE thread_id = ? AND method = ? LIMIT ?',
+            )
+            .all(
+              threadId,
+              method,
+              maximumEvidenceRows - evidenceRows + 1,
+            ).length;
+          if (evidenceRows > maximumEvidenceRows)
+            throw new Error(
+              'Cumulative usage projection exceeds its evidence budget',
+            );
+        }
       }
     }
     // Chunks partition by THREAD, never inside one, so every thread's whole
@@ -6135,7 +8304,7 @@ export class EventStore {
                        THEN 1 ELSE 0 END AS resumed,
                   CASE WHEN method = 'token-usage.updated'
                        THEN json_extract(payload, '$.reportedCostUsd') END AS cost
-             FROM orchestration_events
+             FROM orchestration_events${maximumEvidenceRows === undefined ? '' : ' INDEXED BY idx_events_history_projection'}
             WHERE thread_id IN (${chunk.map(() => '?').join(', ')})
               AND method IN ('session.started', 'token-usage.updated')
               AND json_valid(payload)
@@ -6286,15 +8455,15 @@ export class EventStore {
                 CASE WHEN json_valid(payload) THEN json_type(payload, '$.delta') END AS delta_type,
                 CASE WHEN c.method = 'content.text-delta' AND json_valid(payload) AND json_type(payload, '$.delta') = 'text'
                        AND length(CAST(json_extract(payload, '$.delta') AS BLOB)) BETWEEN 1 AND ? THEN 1 ELSE 0 END AS text_delta,
-                CASE WHEN c.method = 'turn.completed' AND json_valid(payload) THEN json_type(payload, '$.outputText') END AS output_text_type,
-                CASE WHEN c.method = 'turn.completed' AND json_valid(payload) AND json_type(payload, '$.outputText') = 'text'
-                       AND length(CAST(json_extract(payload, '$.outputText') AS BLOB)) BETWEEN 1 AND ? THEN 1 ELSE 0 END AS output_text,
-                CASE WHEN c.method = 'turn.completed' AND json_valid(payload) AND json_type(payload, '$.outputText') = 'text'
-                       THEN length(CAST(json_extract(payload, '$.outputText') AS BLOB)) ELSE 0 END AS output_text_bytes,
-                CASE WHEN json_valid(payload) THEN json_type(payload, '$.prompt') END AS prompt_type,
-                CASE WHEN json_valid(payload) AND json_type(payload, '$.prompt') = 'text'
-                       AND length(CAST(json_extract(payload, '$.prompt') AS BLOB)) <= ?
-                     THEN json_extract(payload, '$.prompt') END AS prompt,
+                CASE WHEN c.method = 'turn.completed' AND json_valid(payload) THEN ${spilledTypeSql('$.outputText')} END AS output_text_type,
+                CASE WHEN c.method = 'turn.completed' AND json_valid(payload) AND ${spilledTypeSql('$.outputText')} = 'text'
+                       AND length(CAST(${spilledTextSql('$.outputText', 'c.thread_id')} AS BLOB)) BETWEEN 1 AND ? THEN 1 ELSE 0 END AS output_text,
+                CASE WHEN c.method = 'turn.completed' AND json_valid(payload) AND ${spilledTypeSql('$.outputText')} = 'text'
+                       THEN length(CAST(${spilledTextSql('$.outputText', 'c.thread_id')} AS BLOB)) ELSE 0 END AS output_text_bytes,
+                CASE WHEN json_valid(payload) THEN ${spilledTypeSql('$.prompt')} END AS prompt_type,
+                CASE WHEN json_valid(payload) AND ${spilledTypeSql('$.prompt')} = 'text'
+                       AND length(CAST(${spilledTextSql('$.prompt', 'c.thread_id')} AS BLOB)) <= ?
+                     THEN ${spilledTextSql('$.prompt', 'c.thread_id')} END AS prompt,
                 CASE WHEN json_valid(payload) THEN json_type(payload, '$.inputKind') END AS input_kind_type,
                 CASE WHEN json_valid(payload) AND json_type(payload, '$.inputKind') = 'text'
                        AND length(CAST(json_extract(payload, '$.inputKind') AS BLOB)) <= ?
@@ -6320,14 +8489,14 @@ export class EventStore {
                 CASE WHEN json_valid(payload) THEN json_type(payload, '$.status') END AS tool_status_type,
                 CASE WHEN json_valid(payload) AND json_type(payload, '$.status') = 'text'
                        AND length(CAST(json_extract(payload, '$.status') AS BLOB)) <= ? THEN json_extract(payload, '$.status') END AS tool_status,
-                CASE WHEN json_valid(payload) THEN json_type(payload, '$.output') END AS output_type,
-                CASE WHEN json_valid(payload) AND json_type(payload, '$.output') = 'text'
-                       AND length(CAST(json_extract(payload, '$.output') AS BLOB)) <= ?
-                     THEN json_extract(payload, '$.output') END AS tool_output,
-                CASE WHEN json_valid(payload) THEN json_type(payload, '$.error') END AS error_type,
-                CASE WHEN json_valid(payload) AND json_type(payload, '$.error') = 'text'
-                       AND length(CAST(json_extract(payload, '$.error') AS BLOB)) <= ?
-                     THEN json_extract(payload, '$.error') END AS tool_error,
+                CASE WHEN json_valid(payload) THEN ${spilledTypeSql('$.output')} END AS output_type,
+                CASE WHEN json_valid(payload) AND ${spilledTypeSql('$.output')} = 'text'
+                       AND length(CAST(${spilledTextSql('$.output', 'c.thread_id')} AS BLOB)) <= ?
+                     THEN ${spilledTextSql('$.output', 'c.thread_id')} END AS tool_output,
+                CASE WHEN json_valid(payload) THEN ${spilledTypeSql('$.error')} END AS error_type,
+                CASE WHEN json_valid(payload) AND ${spilledTypeSql('$.error')} = 'text'
+                       AND length(CAST(${spilledTextSql('$.error', 'c.thread_id')} AS BLOB)) <= ?
+                     THEN ${spilledTextSql('$.error', 'c.thread_id')} END AS tool_error,
                 CASE WHEN json_valid(payload) THEN json_type(payload, '$.policyDenied') END AS denied_type,
                 CASE WHEN json_valid(payload) THEN json_extract(payload, '$.policyDenied') END AS denied
            FROM candidate c
@@ -6614,8 +8783,7 @@ export class EventStore {
       `SELECT id, provider, thread_id, turn_id, method, ${this.projectionPayloadSql(bounded)}, created_at, sequence, global_sequence
          FROM orchestration_events
          WHERE thread_id = ? AND method = 'turn.started'
-           AND typeof(json_extract(payload, '$.prompt')) = 'text'
-           AND trim(json_extract(payload, '$.prompt')) != ''
+           AND ${PROMPTED_TURN_SQL}
          ORDER BY sequence ASC
          LIMIT 1`,
     ).get(threadId);
@@ -6636,12 +8804,12 @@ export class EventStore {
     limitPerThread = 256,
   ): Array<{ prompt: string; actor?: unknown }> {
     const statement = this.db.prepare(
-      `SELECT json_extract(payload, '$.prompt') AS prompt,
+      `SELECT ${spilledTextSql('$.prompt', 'orchestration_events.thread_id')} AS prompt,
               json_extract(payload, '$.clientOrigin.actor') AS actor
        FROM orchestration_events
        WHERE thread_id = ? AND method = 'turn.started'
-         AND typeof(json_extract(payload, '$.prompt')) = 'text'
-         AND instr(json_extract(payload, '$.prompt'), ?) > 0
+         AND typeof(${spilledTextSql('$.prompt', 'orchestration_events.thread_id')}) = 'text'
+         AND instr(${spilledTextSql('$.prompt', 'orchestration_events.thread_id')}, ?) > 0
        ORDER BY sequence ASC
        LIMIT ?`,
     );
@@ -6787,13 +8955,72 @@ export class EventStore {
     const statement = this.db.prepare(
       `SELECT title FROM orchestration_conversation_history WHERE thread_id = ?`,
     );
+    // #4266: the first title that names something; a low-content one
+    // ("Continue") only when no thread has better.
+    let lowContent: string | undefined;
     for (const threadId of new Set(threadIds)) {
       const row = statement.get(threadId) as
         | { title: string | null }
         | undefined;
-      if (typeof row?.title === 'string' && row.title.trim()) return row.title;
+      if (typeof row?.title !== 'string' || !row.title.trim()) continue;
+      if (!isLowContentPrompt(row.title)) return row.title;
+      lowContent ??= row.title;
     }
-    return undefined;
+    return lowContent;
+  }
+
+  /**
+   * #4266: whether `threadId`'s conversation is due a generated title, and
+   * the turn to title it from. Due only when the thread is the conversation's
+   * root, its history title is still prompt-derived (or legacy), and it has
+   * completed exactly one turn: a title is generated once, from the first
+   * exchange, and never for a conversation the person already knows by name.
+   */
+  conversationTitleGenerationCandidate(
+    threadId: string,
+  ): { firstPromptedTurn: PersistedRuntimeEvent } | undefined {
+    const lineage =
+      this.conversationSessionLineage.sessionForExecution(threadId);
+    if (lineage && lineage.conversationId !== threadId) return undefined;
+    const row = this.db
+      .prepare(
+        `SELECT title, title_source FROM orchestration_conversation_history
+         WHERE thread_id = ?`,
+      )
+      .get(threadId) as
+      | { title: string | null; title_source: string | null }
+      | undefined;
+    if (!row?.title || !isReplaceableTitleSource(row.title_source))
+      return undefined;
+    const completed = (
+      this.db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM orchestration_events
+           WHERE thread_id = ? AND method = 'turn.completed'`,
+        )
+        .get(threadId) as { count: number }
+    ).count;
+    if (completed !== 1) return undefined;
+    const firstPromptedTurn = this.firstTurnStartedWithPrompt(threadId);
+    return firstPromptedTurn ? { firstPromptedTurn } : undefined;
+  }
+
+  /**
+   * #4266: store a generated title on the conversation's history row, only
+   * while that row's title is still prompt-derived (or legacy). The guard is
+   * in the UPDATE itself, so a title supplied or generated meanwhile is never
+   * overwritten. True when the row changed.
+   */
+  recordGeneratedConversationTitle(threadId: string, title: string): boolean {
+    const result = this.db
+      .prepare(
+        `UPDATE orchestration_conversation_history
+         SET title = ?, title_source = 'generated'
+         WHERE thread_id = ?
+           AND (title_source IS NULL OR title_source = 'prompt')`,
+      )
+      .run(title, threadId) as { changes?: number | bigint };
+    return Number(result.changes ?? 0) > 0;
   }
 
   /**
@@ -7428,7 +9655,16 @@ export class EventStore {
          FROM orchestration_events
          WHERE thread_id = ? AND turn_id = ?
            AND ${completionOnly ? "method = 'turn.completed'" : "method IN ('turn.completed', 'turn.aborted')"}
-           ${invocationId === undefined ? '' : "AND json_extract(payload, '$.invocationId') = ?"}
+           ${
+             invocationId === undefined
+               ? ''
+               : // An invocationless recovery abort closes the turn too
+                 // (session-lifecycle-service.ts's acceptsTurnTerminalEvent).
+                 `AND (json_extract(payload, '$.invocationId') = ?
+                   OR (method = 'turn.aborted'
+                     AND json_extract(payload, '$.invocationId') IS NULL
+                     AND json_extract(payload, '$.recoveryTerminal') = 1))`
+           }
          ORDER BY sequence DESC
          LIMIT 1`,
       )
@@ -7513,6 +9749,39 @@ export class EventStore {
       )
       .all(threadId, sinceCreatedAt, limit)
       .map((row) => this.mapEventRow(row));
+  }
+
+  /**
+   * The oldest and newest dispatch `turn.started` (not a steer) of one turn
+   * at or after `sinceCreatedAt`. Boot recovery compares their invocations
+   * to tell a later dispatch that reused a native turn id from the dead turn
+   * itself. Two single-row reads with no page bound to overflow; each walks
+   * the turn's rows, which only boot recovery pays.
+   */
+  dispatchStartsOfTurnSince(
+    threadId: string,
+    turnId: string,
+    sinceCreatedAt: string,
+  ):
+    | { oldest: PersistedRuntimeEvent; newest: PersistedRuntimeEvent }
+    | undefined {
+    const read = (order: 'ASC' | 'DESC') =>
+      this.db
+        .prepare(
+          `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence
+           FROM orchestration_events
+           WHERE thread_id = ? AND turn_id = ? AND method = 'turn.started'
+             AND created_at >= ?
+             AND json_extract(payload, '$.inputKind') IS NOT 'steer'
+           ORDER BY sequence ${order}
+           LIMIT 1`,
+        )
+        .get(threadId, turnId, sinceCreatedAt);
+    const oldest = read('ASC');
+    const newest = read('DESC');
+    return oldest && newest
+      ? { oldest: this.mapEventRow(oldest), newest: this.mapEventRow(newest) }
+      : undefined;
   }
 
   private listRequestSettlementFacts(
@@ -7973,8 +10242,7 @@ export class EventStore {
                ROW_NUMBER() OVER (PARTITION BY thread_id ORDER BY sequence ASC) AS rn
              FROM orchestration_events
              WHERE thread_id IN (${placeholders}) AND method = 'turn.started'
-               AND typeof(json_extract(payload, '$.prompt')) = 'text'
-               AND trim(json_extract(payload, '$.prompt')) != ''
+               AND ${PROMPTED_TURN_SQL}
            )
            SELECT * FROM ranked WHERE rn = 1`,
         )
@@ -8025,7 +10293,8 @@ export class EventStore {
                ROW_NUMBER() OVER (PARTITION BY requested.thread, requested.native, requested.invocation ORDER BY sequence ${order}) AS rn
              FROM orchestration_events AS event JOIN requested
                ON event.thread_id = requested.thread AND (
-                 (event.turn_id = requested.native AND (requested.invocation IS NULL OR json_extract(event.payload, '$.invocationId') = requested.invocation))
+                 (event.turn_id = requested.native AND (requested.invocation IS NULL OR json_extract(event.payload, '$.invocationId') = requested.invocation
+                   OR (event.method = 'turn.aborted' AND json_extract(event.payload, '$.invocationId') IS NULL AND json_extract(event.payload, '$.recoveryTerminal') = 1)))
                  ${includeSessionErrors ? "OR (event.turn_id IS NULL AND json_extract(event.payload, '$.invocationId') IS NULL)" : ''}
                )
              WHERE ${methodFilter}
@@ -8538,6 +10807,52 @@ export class EventStore {
    * already unique, so a thread-scoped point lookup is both complete and
    * bounded.
    */
+  /**
+   * The stored `tool.started` events of `threadId` whose call id is one of
+   * `callIds`: the calls an approval request gates
+   * (`requestBoundCallIds`). Reference-only form.
+   */
+  boundToolStartedEvents(
+    threadId: string,
+    callIds: readonly string[],
+  ): CanonicalRuntimeEvent[] {
+    if (callIds.length === 0) return [];
+    const rows = this.db
+      .prepare(
+        `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence
+           FROM orchestration_events
+          WHERE thread_id = ? AND method = 'tool.started'
+            AND json_extract(payload, '$.toolCallId') IN (${callIds.map(() => '?').join(', ')})
+          ORDER BY sequence DESC
+          LIMIT 16`,
+      )
+      .all(threadId, ...callIds);
+    // The newest 16 (a re-emitted call's latest arguments are what runs),
+    // returned oldest first.
+    return rows.reverse().map((row) => this.mapEventRow(row, false).payload);
+  }
+
+  /**
+   * The stored, reference-only form of one event: what the live bus and SSE
+   * carry (out-of-line content stays a reference, attachments stay blob
+   * references). For publishers that appended a raw event and must emit what
+   * was stored, never the raw value.
+   */
+  storedLiveEvent(
+    threadId: string,
+    eventId: string,
+  ): CanonicalRuntimeEvent | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence
+         FROM orchestration_events
+         WHERE thread_id = ? AND id = ?
+         LIMIT 1`,
+      )
+      .get(threadId, eventId) as any;
+    return row ? this.mapEventRow(row, false).payload : undefined;
+  }
+
   eventById(
     threadId: string,
     eventId: string,
@@ -8623,25 +10938,25 @@ export class EventStore {
                    AND length(CAST(json_extract(payload, '$.toolName') AS BLOB)) > ?
                   THEN 1 ELSE 0 END AS tool_name_over_limit,
                 json_extract(payload, '$.status') AS status,
-                json_type(payload, '$.output') AS output_type,
+                ${spilledTypeSql('$.output')} AS output_type,
                 CASE
-                  WHEN json_type(payload, '$.output') = 'text'
-                   AND length(CAST(json_extract(payload, '$.output') AS BLOB)) <= ?
-                    THEN json_extract(payload, '$.output')
+                  WHEN ${spilledTypeSql('$.output')} = 'text'
+                   AND length(CAST(${spilledTextSql('$.output', 'orchestration_events.thread_id')} AS BLOB)) <= ?
+                    THEN ${spilledTextSql('$.output', 'orchestration_events.thread_id')}
                   ELSE NULL
                 END AS output,
                 CASE
-                  WHEN json_type(payload, '$.output') = 'text'
-                   AND length(CAST(json_extract(payload, '$.output') AS BLOB)) > ?
+                  WHEN ${spilledTypeSql('$.output')} = 'text'
+                   AND length(CAST(${spilledTextSql('$.output', 'orchestration_events.thread_id')} AS BLOB)) > ?
                     THEN 1
                   ELSE 0
                 END AS output_over_limit,
-                json_type(payload, '$.error') AS error_type,
-                CASE WHEN json_type(payload, '$.error') = 'text'
-                   AND length(CAST(json_extract(payload, '$.error') AS BLOB)) <= ?
-                    THEN json_extract(payload, '$.error') ELSE NULL END AS error,
-                CASE WHEN json_type(payload, '$.error') = 'text'
-                   AND length(CAST(json_extract(payload, '$.error') AS BLOB)) > ?
+                ${spilledTypeSql('$.error')} AS error_type,
+                CASE WHEN ${spilledTypeSql('$.error')} = 'text'
+                   AND length(CAST(${spilledTextSql('$.error', 'orchestration_events.thread_id')} AS BLOB)) <= ?
+                    THEN ${spilledTextSql('$.error', 'orchestration_events.thread_id')} ELSE NULL END AS error,
+                CASE WHEN ${spilledTypeSql('$.error')} = 'text'
+                   AND length(CAST(${spilledTextSql('$.error', 'orchestration_events.thread_id')} AS BLOB)) > ?
                     THEN 1 ELSE 0 END AS error_over_limit,
                 json_type(payload, '$.policyDenied') AS policy_denied_type,
                 json_extract(payload, '$.policyDenied') AS policy_denied
@@ -8790,6 +11105,7 @@ export class EventStore {
       tenant_id: string | null;
       agent_slug: string | null;
       title: string | null;
+      title_source: string | null;
       message_count: number;
       created_at: string;
       updated_at: string;
@@ -8854,6 +11170,7 @@ export class EventStore {
                     ${conversationId} AS conversation_id,
                     ${environmentId} AS environment_id,
                     h.title,
+                    h.title_source,
                     h.created_at,
                     h.updated_at,
                     ROW_NUMBER() OVER (
@@ -8869,16 +11186,44 @@ export class EventStore {
                     FIRST_VALUE(h.title) OVER (
                       PARTITION BY ${partition}
                       ORDER BY h.created_at ASC, h.thread_id ASC
-                    ) AS root_title
+                    ) AS root_title,
+                    FIRST_VALUE(h.title_source) OVER (
+                      PARTITION BY ${partition}
+                      ORDER BY h.created_at ASC, h.thread_id ASC
+                    ) AS root_title_source,
+                    -- #4266: the earliest title in the conversation that
+                    -- names something, so a root row titled "Continue"
+                    -- (written before low-content prompts were skipped, or
+                    -- whose thread never said more) yields to a later
+                    -- Session's real title. Read time, so existing rows need
+                    -- no backfill.
+                    FIRST_VALUE(h.title) OVER meaningful AS meaningful_title,
+                    FIRST_VALUE(h.title_source) OVER meaningful
+                      AS meaningful_title_source
              FROM orchestration_conversation_history h
              LEFT JOIN orchestration_conversation_sessions cs
                ON cs.session_id = h.thread_id
              WHERE ${memberPredicates.join(' AND ')}
+             WINDOW meaningful AS (
+               PARTITION BY ${partition}
+               ORDER BY ${MEANINGFUL_TITLE_SQL_FUNCTION}(h.title) IS NULL,
+                        h.created_at ASC, h.thread_id ASC
+             )
            )
            SELECT thread_id, conversation_id,
                   NULLIF(environment_id, '') AS environment_id,
                   owner_user_id, tenant_id, agent_slug,
-                  COALESCE(root_title, title) AS title,
+                  CASE
+                    WHEN ${MEANINGFUL_TITLE_SQL_FUNCTION}(meaningful_title) IS NOT NULL
+                      THEN meaningful_title
+                    ELSE COALESCE(root_title, title)
+                  END AS title,
+                  CASE
+                    WHEN ${MEANINGFUL_TITLE_SQL_FUNCTION}(meaningful_title) IS NOT NULL
+                      THEN meaningful_title_source
+                    WHEN root_title IS NOT NULL THEN root_title_source
+                    ELSE title_source
+                  END AS title_source,
                   message_count, conversation_created_at AS created_at,
                   updated_at
            FROM ranked
@@ -8898,6 +11243,9 @@ export class EventStore {
       ...(row.tenant_id ? { tenantId: row.tenant_id } : {}),
       ...(row.agent_slug ? { agentSlug: row.agent_slug } : {}),
       title: row.title ?? 'New chat',
+      ...(row.title !== null && conversationHistoryTitleSource(row.title_source)
+        ? { titleSource: conversationHistoryTitleSource(row.title_source) }
+        : {}),
       messageCount: row.message_count,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -8989,6 +11337,51 @@ export class EventStore {
       for (const row of rows) counts.set(row.threadId, row.c);
     }
     return counts;
+  }
+
+  /**
+   * The engines each conversation actually ran on: distinct providers of its
+   * execution sessions, in lineage order (#4266). A handoff to another engine
+   * is a lineage session too, so it appears once that session exists; a
+   * reserved handoff whose session never started ran nothing and is absent.
+   * A legacy conversation with no lineage rows is its own single session.
+   */
+  readConversationExecutionProviders(
+    conversationIds: readonly string[],
+  ): Map<string, string[]> {
+    const unique = [...new Set(conversationIds)];
+    const providers = new Map<string, string[]>();
+    for (const chunk of this.chunkArray(unique, EVENT_STORE_BATCH_CHUNK_SIZE)) {
+      const placeholders = chunk.map(() => '?').join(', ');
+      const rows = this.db
+        .prepare(
+          `SELECT m.conversation_id AS conversationId, s.provider AS provider,
+                  m.ordinal AS ordinal
+           FROM orchestration_conversation_sessions m
+           JOIN provider_session_state s ON s.thread_id = m.session_id
+           WHERE m.conversation_id IN (${placeholders})
+           UNION ALL
+           SELECT s.thread_id AS conversationId, s.provider AS provider,
+                  -1 AS ordinal
+           FROM provider_session_state s
+           WHERE s.thread_id IN (${placeholders})
+             AND NOT EXISTS (
+               SELECT 1 FROM orchestration_conversation_sessions x
+               WHERE x.conversation_id = s.thread_id
+             )
+           ORDER BY conversationId, ordinal`,
+        )
+        .all(...chunk, ...chunk) as Array<{
+        conversationId: string;
+        provider: string;
+      }>;
+      for (const row of rows) {
+        const list = providers.get(row.conversationId) ?? [];
+        if (!list.includes(row.provider)) list.push(row.provider);
+        providers.set(row.conversationId, list);
+      }
+    }
+    return providers;
   }
 
   /** Latest adapter-accepted model across every child Session in a lineage. */
@@ -9470,7 +11863,7 @@ export class EventStore {
           ? []
           : (this.db
               .prepare(
-                `SELECT global_sequence FROM orchestration_events WHERE thread_id IN (${placeholders}) AND method = 'turn.started' AND turn_id IS NOT NULL AND global_sequence < ? ORDER BY global_sequence DESC LIMIT ?`,
+                `SELECT global_sequence FROM orchestration_events WHERE thread_id IN (${placeholders}) AND ${OWN_TURN_START_SQL} AND turn_id IS NOT NULL AND global_sequence < ? ORDER BY global_sequence DESC LIMIT ?`,
               )
               .all(
                 ...ids,
@@ -9527,26 +11920,42 @@ export class EventStore {
       }
       const oldest = events.at(-1);
       const moreInRange = rows.length > events.length;
+      // The newest row this page's budget left out, if any.
+      const newestOmitted = moreInRange ? rows[events.length] : undefined;
+      let turnStartDetached = false;
+      // The turn to anchor is the oldest one the page shows: a turnless row
+      // (a `session.state-changed`) can be the oldest that fit. Its start is
+      // on the page only as the turn's own `turn.started`; a steer
+      // re-announces the same turn later and does not stand in for it.
+      const oldestTurned = [...events].reverse().find((event) => event.turnId);
       if (
-        oldest?.turnId &&
+        oldestTurned?.turnId &&
         !events.some(
           (event) =>
-            event.method === 'turn.started' &&
-            event.threadId === oldest.threadId &&
-            event.turnId === oldest.turnId,
+            event.payload.method === 'turn.started' &&
+            event.payload.inputKind !== 'steer' &&
+            event.threadId === oldestTurned.threadId &&
+            event.turnId === oldestTurned.turnId,
         )
       ) {
         const anchor = this.db
           .prepare(
-            `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence FROM orchestration_events WHERE thread_id = ? AND turn_id = ? AND method = 'turn.started' AND global_sequence >= ? AND global_sequence < ? ORDER BY sequence ASC LIMIT 1`,
+            `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence FROM orchestration_events WHERE thread_id = ? AND turn_id = ? AND ${OWN_TURN_START_SQL} AND global_sequence >= ? AND global_sequence < ? ORDER BY sequence ASC LIMIT 1`,
           )
           .get(
-            oldest.threadId,
-            oldest.turnId,
+            oldestTurned.threadId,
+            oldestTurned.turnId,
             rangeStart,
-            oldest.globalSequence,
+            oldestTurned.globalSequence,
           ) as any;
-        if (anchor) events.push(snapshotEvent(mapPersistedEventRow(anchor)));
+        if (anchor) {
+          events.push(snapshotEvent(mapPersistedEventRow(anchor)));
+          // Rows between the re-added `turn.started` and the tail were left
+          // out: the page is not contiguous, and `nextCursor` pages that gap.
+          turnStartDetached =
+            newestOmitted !== undefined &&
+            newestOmitted.global_sequence > anchor.global_sequence;
+        }
       }
       const hasMore = moreInRange || olderTurnsRemain;
       const nextCursorValue =
@@ -9569,6 +11978,7 @@ export class EventStore {
               ),
             }
           : {}),
+        ...(turnStartDetached ? { turnStartDetached: true as const } : {}),
         watermark,
       };
       this.db.exec('COMMIT');
@@ -9989,6 +12399,163 @@ export class EventStore {
       throw new Error(
         'Cannot publish an orchestration event inside an outer transaction',
       );
+  }
+
+  /** Scoped replay of committed invalidations; a pruned checkpoint is never an empty success. */
+  readUsageExportInvalidations(options: {
+    ownerUserIds: readonly string[];
+    tenantId?: string;
+    after: number;
+    highWater?: number;
+    streamEpoch?: string;
+    limit: number;
+  }):
+    | { kind: 'gap' | 'changed' }
+    | {
+        kind: 'page';
+        streamEpoch: string;
+        highWater: number;
+        retainedAfter: number;
+        rows: Array<{
+          revision: number;
+          threadId: string;
+          reason: 'thread-deleted' | 'scope-changed' | 'scope-entered';
+          observedAt: string;
+        }>;
+        hasMore: boolean;
+      } {
+    if (
+      !Number.isSafeInteger(options.after) ||
+      options.after < 0 ||
+      !Number.isSafeInteger(options.limit) ||
+      options.limit < 1 ||
+      options.limit > 100
+    )
+      throw new Error('Invalid usage invalidation bounds');
+    const owners = usageOwnerPlaceholders(options.ownerUserIds);
+    this.db.exec('BEGIN');
+    try {
+      const state = this.usageExportJournalState();
+      const streamEpoch = this.usageExportEpoch();
+      const highWater = options.highWater ?? state.revision;
+      if (
+        (options.streamEpoch !== undefined &&
+          options.streamEpoch !== streamEpoch) ||
+        !Number.isSafeInteger(highWater) ||
+        highWater < options.after ||
+        highWater > state.revision
+      ) {
+        this.db.exec('COMMIT');
+        return { kind: 'changed' };
+      }
+      if (options.after < state.retainedAfter) {
+        this.db.exec('COMMIT');
+        return { kind: 'gap' };
+      }
+      const records = this.db
+        .prepare(`SELECT revision,thread_id,reason,observed_at
+        FROM orchestration_usage_export_invalidations
+        WHERE revision>? AND revision<=? AND owner_user_id IN (${owners})
+          AND ((? IS NULL AND tenant_id IS NULL) OR tenant_id=?)
+        ORDER BY revision LIMIT ?`)
+        .all(
+          options.after,
+          highWater,
+          ...options.ownerUserIds,
+          options.tenantId ?? null,
+          options.tenantId ?? null,
+          options.limit + 1,
+        );
+      const rows: UsageInvalidationPage['invalidations'] = records
+        .slice(0, options.limit)
+        .map((row) => {
+          if (
+            typeof row.revision !== 'number' ||
+            !Number.isSafeInteger(row.revision) ||
+            typeof row.thread_id !== 'string' ||
+            typeof row.observed_at !== 'string' ||
+            !Number.isFinite(Date.parse(row.observed_at)) ||
+            (row.reason !== 'thread-deleted' &&
+              row.reason !== 'scope-changed' &&
+              row.reason !== 'scope-entered')
+          )
+            throw new Error('Usage invalidation is invalid');
+          return {
+            revision: row.revision,
+            threadId: row.thread_id,
+            reason: row.reason,
+            observedAt: row.observed_at,
+          };
+        });
+      this.db.exec('COMMIT');
+      return {
+        kind: 'page',
+        streamEpoch,
+        highWater,
+        retainedAfter: state.retainedAfter,
+        rows,
+        hasMore: records.length > options.limit,
+      };
+    } catch (error) {
+      if (this.db.isTransaction) this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  /** Deletion/scope mutation state is independent of append-only event high water. */
+  usageExportRevision(): number {
+    return this.usageExportJournalState().revision;
+  }
+
+  usageExportJournalState(): { revision: number; retainedAfter: number } {
+    const state = this.db
+      .prepare(`
+      SELECT s.revision,s.retained_after,
+        (SELECT COUNT(*) FROM orchestration_usage_export_invalidations) AS retained,
+        (SELECT MIN(revision) FROM orchestration_usage_export_invalidations) AS first,
+        (SELECT MAX(revision) FROM orchestration_usage_export_invalidations) AS last
+      FROM orchestration_usage_export_state s WHERE singleton=1
+        AND EXISTS(SELECT 1 FROM orchestration_event_store_backfills WHERE name=?)
+    `)
+      .get(USAGE_EXPORT_JOURNAL_MARKER);
+    if (
+      !state ||
+      typeof state.revision !== 'number' ||
+      !Number.isSafeInteger(state.revision) ||
+      state.revision < 0 ||
+      state.retained_after !== Math.max(0, state.revision - 10000) ||
+      state.retained !== Math.min(state.revision, 10000) ||
+      (state.revision === 0
+        ? state.first !== null || state.last !== null
+        : state.first !== Number(state.retained_after) + 1 ||
+          state.last !== state.revision)
+    )
+      throw new Error('Usage export invalidation journal is unavailable');
+    return {
+      revision: state.revision,
+      retainedAfter: Number(state.retained_after),
+    };
+  }
+
+  /** Runtime binds this once to the current home activation; it is not a grant. */
+  bindUsageExportActivation(readActivation: () => string): void {
+    if (this.usageExportActivation)
+      throw new Error('Usage export activation already bound');
+    this.usageExportActivation = readActivation;
+  }
+
+  /** Analytics generations can change without rewriting the generic event stream identity. */
+  usageExportEpoch(): string {
+    const epoch = this.streamEpoch();
+    if (!this.usageExportActivation) return epoch;
+    const activation = this.usageExportActivation();
+    if (!/^[a-f0-9]{64}$/.test(activation))
+      throw new Error('Usage export activation unavailable');
+    return createHash('sha256')
+      .update(
+        JSON.stringify(['station-private-export-epoch/v1', epoch, activation]),
+      )
+      .digest('hex');
   }
 
   /** Durable identity of this database, independent of its numeric cursor. */
@@ -10600,6 +13167,65 @@ export class EventStore {
     return this.conversationDraftFactsForThreads([threadId]).get(threadId)!;
   }
 
+  conversationStartContext(
+    sessionId: string,
+  ):
+    | import('./conversation-handoff-module.js').ConversationContextSeedPin
+    | undefined {
+    const row = this.db
+      .prepare(
+        'SELECT seed_pin_json FROM orchestration_conversation_start_context WHERE session_id = ?',
+      )
+      .get(sessionId) as { seed_pin_json: string } | undefined;
+    return row ? readConversationContextSeedPin(row.seed_pin_json) : undefined;
+  }
+
+  reserveConversationStartContext(
+    sessionId: string,
+    pin: import('./conversation-handoff-module.js').ConversationContextSeedPin,
+  ): import('./conversation-handoff-module.js').ConversationContextSeedPin {
+    const validated = readConversationContextSeedPin(JSON.stringify(pin));
+    this.db.exec('SAVEPOINT reserve_start_context');
+    try {
+      this.reserveEventAppendWriter();
+      const existing = this.conversationStartContext(sessionId);
+      if (existing) {
+        this.db.exec('RELEASE SAVEPOINT reserve_start_context');
+        return existing;
+      }
+      const lineage = this.conversationForSession(sessionId);
+      if (!lineage?.predecessorSessionId || this.readSessionByThread(sessionId))
+        throw new ConversationStartContextError(
+          'Continuation context must be reserved before its child starts.',
+        );
+      for (const cutoff of validated.sourceCutoffs) {
+        const source = this.conversationForSession(cutoff.sessionId);
+        if (
+          !source ||
+          source.conversationId !== lineage.conversationId ||
+          source.ordinal >= lineage.ordinal ||
+          this.readSessionInventoryHighWater(cutoff.sessionId) !==
+            cutoff.throughSequence
+        )
+          throw new ConversationStartContextError(
+            'Conversation context changed before its continuation reservation.',
+          );
+      }
+      this.db
+        .prepare(
+          'INSERT INTO orchestration_conversation_start_context(session_id, seed_pin_json) VALUES (?, ?)',
+        )
+        .run(sessionId, JSON.stringify(validated));
+      this.db.exec('RELEASE SAVEPOINT reserve_start_context');
+      return validated;
+    } catch (error) {
+      this.db.exec(
+        'ROLLBACK TO SAVEPOINT reserve_start_context; RELEASE SAVEPOINT reserve_start_context',
+      );
+      throw error;
+    }
+  }
+
   reserveNextConversationSession(input: {
     conversationId: string;
     predecessorSessionId: string;
@@ -10643,6 +13269,16 @@ export class EventStore {
     }
   }
 
+  /** Opaque identity recorded in the invocation binding before the provider effect. */
+  nativeSessionBindingIdentity(sessionId: string): string | undefined {
+    const row = this.db
+      .prepare(
+        'SELECT identity_key FROM orchestration_native_session_bindings WHERE session_id = ?',
+      )
+      .get(sessionId) as { identity_key: string } | undefined;
+    return row?.identity_key;
+  }
+
   nativeSessionOwnedBy(sessionId: string): boolean {
     const row = this.db
       .prepare(`SELECT 1 FROM orchestration_native_session_bindings binding
@@ -10670,6 +13306,31 @@ export class EventStore {
           targetSessionId,
         ) !== undefined
     );
+  }
+
+  /**
+   * Completion witnesses pin the identity that accepted the literal seed; a
+   * carrier may later rebind profiles. Keys stay private and callers authorize
+   * the Conversation.
+   */
+  nativeContextDeliverySessions(
+    conversationId: string,
+    sessionId: string,
+  ): readonly string[] {
+    const rows = this.db
+      .prepare(`SELECT handoff.session_id
+      FROM orchestration_native_session_bindings own
+      JOIN orchestration_conversation_handoffs handoff ON handoff.conversation_id = ?
+      JOIN orchestration_context_seed_witnesses witness
+        ON witness.thread_id = handoff.session_id AND witness.context_kind = 'handoff'
+        AND witness.native_identity_key = own.identity_key
+      JOIN orchestration_conversation_sessions lineage ON lineage.session_id = handoff.session_id
+      WHERE own.session_id = ? AND lineage.conversation_id = ?
+      ORDER BY lineage.ordinal ASC`)
+      .all(conversationId, sessionId, conversationId) as Array<{
+      session_id: string;
+    }>;
+    return rows.map((row) => row.session_id);
   }
 
   claimNativeSessionIdentity(
@@ -11331,26 +13992,29 @@ export class EventStore {
       ...(row.native_return_source_event_id
         ? { nativeReturnSourceEventId: row.native_return_source_event_id }
         : {}),
+      ...(row.context_seed_json !== null && row.context_seed_json !== undefined
+        ? { contextSeed: readConversationContextSeedPin(row.context_seed_json) }
+        : {}),
       createdAt: row.created_at,
     });
     const byKey = this.db.prepare(
       `SELECT conversation_id, predecessor_session_id, session_id, idempotency_key,
               target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
-              target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, created_at
+              target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, context_seed_json, created_at
        FROM orchestration_conversation_handoffs
        WHERE conversation_id = ? AND idempotency_key = ?`,
     );
     const byPredecessor = this.db.prepare(
       `SELECT conversation_id, predecessor_session_id, session_id, idempotency_key,
               target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
-              target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, created_at
+              target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, context_seed_json, created_at
        FROM orchestration_conversation_handoffs
        WHERE predecessor_session_id = ?`,
     );
     const byConversation = this.db.prepare(
       `SELECT conversation_id, predecessor_session_id, session_id, idempotency_key,
               target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
-              target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, created_at
+              target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, context_seed_json, created_at
        FROM orchestration_conversation_handoffs
        WHERE conversation_id = ?
        ORDER BY created_at ASC, session_id ASC`,
@@ -11372,8 +14036,8 @@ export class EventStore {
       `INSERT INTO orchestration_conversation_handoffs
         (conversation_id, predecessor_session_id, session_id, idempotency_key,
          target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
-         target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, context_seed_json, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     const sameTarget = (
       left: ConversationHandoffMarker,
@@ -11388,7 +14052,8 @@ export class EventStore {
       left.targetModelId === right.targetModelId &&
       left.messageDigest === right.messageDigest &&
       left.nativeReturnSourceSessionId === right.nativeReturnSourceSessionId &&
-      left.nativeReturnSourceEventId === right.nativeReturnSourceEventId;
+      left.nativeReturnSourceEventId === right.nativeReturnSourceEventId &&
+      JSON.stringify(left.contextSeed) === JSON.stringify(right.contextSeed);
     return createConversationHandoffModule({
       persistence: {
         listByConversation: (conversationId) =>
@@ -11409,6 +14074,18 @@ export class EventStore {
               }
               this.db.exec('COMMIT');
               return { marker: existing, outcome: 'existing' as const };
+            }
+            // The cutoffs precede projection. Under the write transaction,
+            // reject any intervening append rather than acknowledge text
+            // against a different event snapshot.
+            for (const cutoff of input.contextSeed?.sourceCutoffs ?? []) {
+              if (
+                this.readSessionInventoryHighWater(cutoff.sessionId) !==
+                cutoff.throughSequence
+              )
+                throw new Error(
+                  'Conversation context changed before its handoff reservation.',
+                );
             }
             const predecessor = lineage.get(input.predecessorSessionId) as
               | { conversation_id: string; ordinal: number }
@@ -11458,6 +14135,13 @@ export class EventStore {
               input.messageDigest,
               input.nativeReturnSourceSessionId ?? null,
               input.nativeReturnSourceEventId ?? null,
+              input.contextSeed
+                ? JSON.stringify(
+                    readConversationContextSeedPin(
+                      JSON.stringify(input.contextSeed),
+                    ),
+                  )
+                : null,
               input.createdAt,
             );
             if (input.nativeReturnSourceSessionId) {
@@ -11502,7 +14186,7 @@ export class EventStore {
             .prepare(
               `SELECT conversation_id, predecessor_session_id, session_id, idempotency_key,
                       target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
-                      target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, created_at
+                      target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, context_seed_json, created_at
                FROM orchestration_conversation_handoffs WHERE session_id = ?`,
             )
             .get(sessionId);
@@ -13767,9 +16451,23 @@ export class EventStore {
     try {
       this.createSkillExperienceSnapshots().deleteThread(threadId);
       this.db
+        .prepare(
+          'DELETE FROM orchestration_conversation_start_context WHERE session_id = ?',
+        )
+        .run(threadId);
+      this.db
+        .prepare(
+          'DELETE FROM orchestration_context_seed_witnesses WHERE thread_id = ?',
+        )
+        .run(threadId);
+      this.db
         .prepare('DELETE FROM orchestration_prepared_turns WHERE thread_id = ?')
         .run(threadId);
       this.htmlReplyPages().deleteThread(threadId);
+      // Out-of-line event content lives exactly as long as its thread.
+      this.db
+        .prepare('DELETE FROM orchestration_event_content WHERE thread_id = ?')
+        .run(threadId);
       // Every retired or active search projection retains bodies independently
       // of canonical events, so none may outlive a deliberately deleted thread.
       this.db
@@ -14140,7 +16838,7 @@ export class EventStore {
   private projectConversationHistoryEvent(event: CanonicalRuntimeEvent): void {
     const existing = this.db
       .prepare(
-        `SELECT owner_user_id, tenant_id, agent_slug, project_slug, title, message_count, created_at
+        `SELECT owner_user_id, tenant_id, agent_slug, project_slug, title, title_source, message_count, created_at
          FROM orchestration_conversation_history WHERE thread_id = ?`,
       )
       .get(event.threadId) as
@@ -14150,6 +16848,7 @@ export class EventStore {
           agent_slug: string | null;
           project_slug: string | null;
           title: string | null;
+          title_source: string | null;
           message_count: number;
           created_at: string;
         }
@@ -14192,30 +16891,65 @@ export class EventStore {
     // only one.
     //
     // #1536 L5: both reads are skipped unless they can change the outcome — a
-    // row that already has a title keeps it (the title is write-once here), and
-    // an event that carries no prompt has none to write. That leaves the lineage
-    // lookup and the root read on a thread's FIRST prompted turn only, not on
-    // every appended event.
+    // row that already has a title keeps it, and an event that carries no
+    // prompt has none to write. That leaves the lineage lookup and the root
+    // read on a thread's FIRST prompted turn only, not on every appended event.
+    //
+    // #4266: the one exception is a low-content title ("Continue"): a
+    // prompt- or legacy-sourced one is replaced by the first later prompt that
+    // names something, and never the other way round. A start-supplied or
+    // generated title is never replaced here.
+    const existingTitleIsLowContent =
+      !!existing?.title &&
+      isReplaceableTitleSource(existing.title_source) &&
+      isLowContentPrompt(existing.title);
     const needsTitle =
-      !existing?.title &&
+      (!existing?.title || existingTitleIsLowContent) &&
       typeof prompt === 'string' &&
       prompt.trim().length > 0;
     const lineage = needsTitle
       ? this.conversationSessionLineage.sessionForExecution(event.threadId)
       : undefined;
-    const inheritedTitle =
+    const inheritedRow =
       lineage?.predecessorSessionId && lineage.conversationId !== event.threadId
-        ? ((
-            this.db
-              .prepare(
-                `SELECT title FROM orchestration_conversation_history
-                 WHERE thread_id = ?`,
-              )
-              .get(lineage.conversationId) as
-              | { title?: string | null }
-              | undefined
-          )?.title ?? undefined)
+        ? (this.db
+            .prepare(
+              `SELECT title, title_source FROM orchestration_conversation_history
+               WHERE thread_id = ?`,
+            )
+            .get(lineage.conversationId) as
+            | { title?: string | null; title_source?: string | null }
+            | undefined)
         : undefined;
+    // A root titled "Continue" is not inherited: the child titles itself
+    // from its own prompt instead.
+    const inherited =
+      inheritedRow?.title && !isLowContentPrompt(inheritedRow.title)
+        ? {
+            title: inheritedRow.title,
+            source:
+              conversationHistoryTitleSource(inheritedRow.title_source) ??
+              'prompt',
+          }
+        : undefined;
+    const delegationTitle =
+      typeof metadata?.delegationTitle === 'string'
+        ? derivedConversationTitle(metadata.delegationTitle)
+        : undefined;
+    const promptTitle =
+      typeof prompt === 'string' ? derivedConversationTitle(prompt) : undefined;
+    const candidate:
+      | { title: string; source: ConversationHistoryTitleSource }
+      | undefined =
+      inherited ??
+      (delegationTitle
+        ? { title: delegationTitle, source: 'provider' }
+        : undefined) ??
+      (promptTitle ? { title: promptTitle, source: 'prompt' } : undefined);
+    const replaceLowContentTitle =
+      existingTitleIsLowContent &&
+      candidate !== undefined &&
+      !isLowContentPrompt(candidate.title);
     const agentSlug =
       existing?.agent_slug ??
       (typeof metadata?.agentSlug === 'string'
@@ -14241,14 +16975,22 @@ export class EventStore {
     this.db
       .prepare(
         `INSERT INTO orchestration_conversation_history
-          (thread_id, owner_user_id, tenant_id, agent_slug, project_slug, title, message_count, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (thread_id, owner_user_id, tenant_id, agent_slug, project_slug, title, title_source, message_count, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(thread_id) DO UPDATE SET
            owner_user_id = excluded.owner_user_id,
            tenant_id = excluded.tenant_id,
            agent_slug = excluded.agent_slug,
            project_slug = COALESCE(orchestration_conversation_history.project_slug, excluded.project_slug),
-           title = COALESCE(orchestration_conversation_history.title, excluded.title),
+           title_source = CASE
+             WHEN ? = 1 OR orchestration_conversation_history.title IS NULL
+               THEN excluded.title_source
+             ELSE orchestration_conversation_history.title_source
+           END,
+           title = CASE
+             WHEN ? = 1 THEN excluded.title
+             ELSE COALESCE(orchestration_conversation_history.title, excluded.title)
+           END,
            message_count = excluded.message_count,
            updated_at = excluded.updated_at`,
       )
@@ -14258,17 +17000,13 @@ export class EventStore {
         tenant?.tenantId ?? existing?.tenant_id ?? null,
         agentSlug ?? null,
         projectSlug ?? null,
-        inheritedTitle ??
-          (typeof metadata?.delegationTitle === 'string'
-            ? derivedConversationTitle(metadata.delegationTitle)
-            : undefined) ??
-          (typeof prompt === 'string'
-            ? derivedConversationTitle(prompt)
-            : undefined) ??
-          null,
+        candidate?.title ?? null,
+        candidate?.source ?? null,
         messageCount,
         existing?.created_at ?? persisted?.created_at ?? event.createdAt,
         event.createdAt,
+        replaceLowContentTitle ? 1 : 0,
+        replaceLowContentTitle ? 1 : 0,
       );
     this.refreshConversationHistoryQuarantine(event.threadId);
   }
@@ -14463,12 +17201,23 @@ export class EventStore {
     event: CanonicalRuntimeEvent,
     projection?: MessageSearchProjection,
   ): void {
+    // The live append passes the raw event (full text); the backfill reads
+    // the stored form, whose long text is a reference to its content row.
+    const text = (value: unknown): string | undefined => {
+      if (typeof value === 'string') return value;
+      if (isRuntimeEventContentRef(value) && value.kind === 'string')
+        return this.readEventContentBody(event.threadId, value.ref)?.body;
+      return undefined;
+    };
+    const prompt =
+      event.method === 'turn.started' ? text(event.prompt) : undefined;
+    const reply =
+      event.method === 'turn.completed' ? text(event.outputText) : undefined;
     const entry =
-      event.method === 'turn.started' && typeof event.prompt === 'string'
-        ? { role: 'user' as const, content: event.prompt }
-        : event.method === 'turn.completed' &&
-            typeof event.outputText === 'string'
-          ? { role: 'assistant' as const, content: event.outputText }
+      prompt !== undefined
+        ? { role: 'user' as const, content: capSearchText(prompt) }
+        : reply !== undefined
+          ? { role: 'assistant' as const, content: capSearchText(reply) }
           : undefined;
     if (!entry?.content.trim()) return;
     const scope = this.db
@@ -14966,6 +17715,33 @@ function mapPersistedSessionRow(row: any): ProviderSession {
     ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+/**
+ * The `terminal-outcomes/v1` allowlist projection. It copies only the class,
+ * engine family, Station-observed time and opaque identities; the payload's
+ * message, details, tool data and paths are never read into the fact.
+ */
+function usageTerminalFact(event: PersistedRuntimeEvent): UsageTerminalFact {
+  const payload = event.payload as { retriable?: unknown };
+  const outcome = canonicalTerminalOutcome({
+    method: event.method,
+    ...(event.turnId ? { turnId: event.turnId } : {}),
+    provider: event.provider,
+    ...(typeof payload.retriable === 'boolean'
+      ? { retriable: payload.retriable }
+      : {}),
+  });
+  if (!outcome || !event.observedAt)
+    throw new Error('Invalid usage export terminal');
+  return {
+    outcome,
+    engine: terminalEngineFamily(event.provider),
+    observedAt: event.observedAt,
+    eventId: event.id,
+    threadId: event.threadId,
+    ...(event.turnId ? { turnId: event.turnId } : {}),
   };
 }
 

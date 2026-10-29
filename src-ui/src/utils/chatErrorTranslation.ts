@@ -7,9 +7,11 @@ import { PRINCIPAL_UNRESOLVED_CODE } from '@kontourai/station-contracts/principa
 import {
   ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
+  ENGINE_MEMORY_EXHAUSTED_CODE,
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_SIGN_IN_REQUIRED_CODE,
   ENGINE_TURN_FAILED_CODE,
+  isEngineMemoryExhaustedFailure,
   MODEL_NOT_ADVERTISED_CODE,
   MUSE_TURN_IDLE_TIMEOUT_CODE,
   MUSE_TURN_TOTAL_TIMEOUT_CODE,
@@ -317,6 +319,32 @@ const CONTINUATION_WORKSPACE_CODES: ReadonlySet<string> = new Set(
 /** `SessionStartIndeterminateError`'s code (src-server session-turn-boundary). */
 export { SESSION_START_INDETERMINATE_CODE };
 
+/** The budget sentence a Codex memory kill was stored with before #4257. */
+const LEGACY_MEMORY_BUDGET = / Its workload budget was (\d+) MiB\./;
+
+/**
+ * A stored failure in today's vocabulary (#4266). A memory kill recorded
+ * before #4257 carries the generic orphaned-turn code and a sentence
+ * addressed to the agent; it reads as an `ENGINE_MEMORY_EXHAUSTED_CODE`
+ * failure in Station's own words, so it gets the same card and Continue.
+ * Every other failure is returned unchanged.
+ */
+export function currentChatError(input: { code?: string; message: string }): {
+  code?: string;
+  message: string;
+} {
+  if (
+    input.code === ENGINE_MEMORY_EXHAUSTED_CODE ||
+    !isEngineMemoryExhaustedFailure(input)
+  )
+    return input;
+  const budget = LEGACY_MEMORY_BUDGET.exec(input.message)?.[1];
+  return {
+    code: ENGINE_MEMORY_EXHAUSTED_CODE,
+    message: `Codex ran out of memory and was stopped, along with the commands it was running.${budget ? ` Its workload budget was ${budget} MiB.` : ''}`,
+  };
+}
+
 const SESSION_START_INDETERMINATE_SUFFIX =
   /\s*Provider session creation may have completed\. Inspect the session before retrying\.\s*$/;
 
@@ -432,7 +460,7 @@ export function translateChatError(
     return {
       title: "This engine doesn't offer that model",
       body: `${text || 'The engine did not offer the selected model.'} Nothing was sent.`,
-      hint: 'Choose one of the models this engine offers and send again. The engine behind this Agent may have changed; Station has re-read its list.',
+      hint: 'Choose a model this engine offers and send again.',
       retryable: false,
     };
   }
@@ -445,6 +473,21 @@ export function translateChatError(
     return {
       title: 'Full access was not applied',
       body: "Only this Station's operator can allow full access for this device, so the message was not sent. Pick another approval mode to send it.",
+    };
+  }
+
+  // The engine's workload scope was killed for exhausting its memory budget.
+  // The server's sentence is Station's own (budget and peak, no engine
+  // prose), so it is the body. Resending the original prompt would restart
+  // the same concurrent work from scratch: the card offers Continue, whose
+  // next turn carries Station's recovery note (see
+  // `memory-exhaustion-recovery.ts`), instead of Send again.
+  if (code === ENGINE_MEMORY_EXHAUSTED_CODE) {
+    return {
+      title: 'The engine ran out of memory',
+      body: text,
+      hint: 'Continue picks the task up where it stopped.',
+      retryable: false,
     };
   }
 
@@ -640,7 +683,7 @@ export function translateChatError(
   if (ABORTED_PATTERN.test(text)) {
     return {
       title: 'Response stopped before it finished',
-      body: 'The connection to this Station ended while the model was still responding, so the turn was cut short. Nothing is wrong with the Model connection.',
+      body: 'The connection to this Station ended mid-response. Your Model connection is fine.',
       hint: 'Your message was kept — send it again to retry.',
     };
   }
@@ -648,7 +691,7 @@ export function translateChatError(
   if (STALLED_PATTERN.test(text)) {
     return {
       title: 'Station stopped responding',
-      body: 'The connection went silent mid-turn — no response arrived for a while. This looks like a dropped connection or a Station restart, not a problem with your Model connection.',
+      body: 'No response arrived for a while, likely a dropped connection or Station restart. Your Model connection is fine.',
       hint: 'Your message was kept — Retry to reconnect and resend it.',
     };
   }
@@ -723,6 +766,19 @@ export function translateProjectedRuntimeError(
   text: string,
   code: string,
 ): string | null {
+  // #4266: a memory kill the dock no longer offers Continue for (a later
+  // turn moved on) reads in today's words, stored before #4257 or not, and
+  // without the hint that points at a Continue it does not show.
+  const current = currentChatError({
+    code,
+    message: projectedRuntimeErrorRaw(text),
+  });
+  if (current.code === ENGINE_MEMORY_EXHAUSTED_CODE) {
+    const card = { ...translateChatError(current), hint: undefined };
+    const repeat = /( \(repeated \d+×\))$/.exec(text)?.[1]?.trim();
+    const display = formatChatErrorDisplay(card);
+    return repeat ? `${display}\n${repeat}` : display;
+  }
   if (
     code !== ENGINE_SESSION_BINDING_DEAD_CODE &&
     code !== ENGINE_TURN_FAILED_CODE &&
@@ -739,6 +795,14 @@ export function translateProjectedRuntimeError(
   );
   return repeatSuffix ? `${display}\n${repeatSuffix.trim()}` : display;
 }
+
+/** The memory-kill card once Station has continued on its own. */
+export const MEMORY_EXHAUSTION_CONTINUING_DISPLAY =
+  '**The engine ran out of memory and was restarted — continuing**\n\nStation started it again with a note of the commands that were interrupted.';
+
+/** What the Continue action sends after a memory kill; Station adds the rest. */
+export const MEMORY_EXHAUSTION_CONTINUE_TEXT =
+  'Continue the task from where it stopped.';
 
 /**
  * Renders a `ChatErrorTranslation` as the markdown chat copy shown to the

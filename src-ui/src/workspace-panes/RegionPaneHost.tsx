@@ -396,7 +396,7 @@ function RegionPaneUnavailable({
       <Empty
         variant="compact"
         label={`${title} is not available in this dock`}
-        description="Not available in this Project: it was opened for another one, where it still works, or Station no longer remembers what it showed. Removing it closes this tab. Open it again from the chat that linked it."
+        description="It belongs to another Project or is no longer known. Reopen it from the chat that linked it."
         action={<RemoveRegionPaneButton onRemove={onRemove} />}
       />
     </div>
@@ -761,11 +761,12 @@ export function RegionPaneHost({
   // The bar's slots, published to the panes below so the selected pane's
   // toolbar can render into them (`RegionChromeSlots`). State, not refs: the
   // pane must re-render once the slot exists.
+  const [startSlot, setStartSlot] = useState<HTMLElement | null>(null);
   const [leadingSlot, setLeadingSlot] = useState<HTMLElement | null>(null);
   const [trailingSlot, setTrailingSlot] = useState<HTMLElement | null>(null);
   const slots = useMemo(
-    () => ({ leading: leadingSlot, trailing: trailingSlot }),
-    [leadingSlot, trailingSlot],
+    () => ({ start: startSlot, leading: leadingSlot, trailing: trailingSlot }),
+    [startSlot, leadingSlot, trailingSlot],
   );
   // The "+" chooser (#2154, where #2047 D4's catalog modal was): the same
   // rows the empty region shows in its body, as a menu under the button.
@@ -834,6 +835,7 @@ export function RegionPaneHost({
             onMoveTab={regionId && model ? moveTab : undefined}
             onAddPane={chooserRegion ? openChooser : undefined}
             addPaneOpen={chooserAnchor !== null}
+            startSlotRef={setStartSlot}
             leadingSlotRef={setLeadingSlot}
             trailingSlotRef={setTrailingSlot}
             regionActionsAbsorbed={regionActionsAbsorbed > 0}

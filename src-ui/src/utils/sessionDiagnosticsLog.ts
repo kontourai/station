@@ -1,4 +1,5 @@
 import { flowRunDisplayIdentity } from '@kontourai/station-contracts';
+import { runtimeEventContentDisplayText } from '@kontourai/station-contracts/runtime-event-content';
 import { isBoundExtensionNotification } from '@shared/extension-notification-bindings';
 import type { OrchestrationEvent } from '../hooks/orchestration/types';
 
@@ -26,10 +27,11 @@ function describeEvent(event: OrchestrationEvent): string {
     case 'request.resolved':
       return `Request ${event.status}`;
     case 'turn.started':
-      return event.prompt?.trim() ?? '';
+      return runtimeEventContentDisplayText(event.prompt)?.trim() ?? '';
     case 'turn.completed':
       return (
-        event.outputText?.trim() || `Finished (${event.finishReason ?? 'stop'})`
+        runtimeEventContentDisplayText(event.outputText)?.trim() ||
+        `Finished (${event.finishReason ?? 'stop'})`
       );
     case 'turn.aborted':
       return event.reason;

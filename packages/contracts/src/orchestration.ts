@@ -153,6 +153,16 @@ export type OrchestrationCommand =
        */
       sessionGrantScope?: 'server';
       /**
+       * docs/design/event-content-spill.md: required to allow a request whose
+       * content EventStore stored out of line (`spilledContent` set). The
+       * `sha256-<hex>` digest of the stored request event exactly as
+       * delivered (`JSON.stringify` of the reference-bearing payload), which
+       * the client computes only after loading every reference. With it,
+       * `expectedRequestEventId` must name the same event. Decline and
+       * cancel never need it.
+       */
+      viewedContentDigest?: string;
+      /**
        * #3390: accepted content for a form input request (a harness question
        * or a tool server's elicitation), keyed by field name. Only with
        * `accept`; the server validates it against the exact opened event.
@@ -1174,6 +1184,14 @@ export interface OrchestrationSessionSummary extends ProviderSession {
   blockingOpenRequestIds?: string[];
   lifecycleState?: SessionLifecycleState;
   previousLifecycleState?: SessionLifecycleState;
+  /**
+   * When the event that produced the current `lifecycleState` was recorded.
+   * For a finished session this is the real finish time, which `updatedAt`
+   * and `lastEventAt` are not (later bookkeeping events move them). Absent
+   * when no event in the folded window changed the state; consumers then
+   * fall back to `updatedAt`.
+   */
+  lifecycleChangedAt?: string;
   transitionReason?: SessionTransitionReason;
   transitionSource?: SessionTransitionSource;
   pendingReview?: boolean;
@@ -1406,6 +1424,13 @@ export interface OrchestrationSessionEventWindow {
   events: OrchestrationSequencedEvent[];
   hasMore: boolean;
   nextCursor?: string;
+  /**
+   * The page's oldest event is its oldest turn's `turn.started`, re-added
+   * across events the page's budget left out: the page is not contiguous, and
+   * `nextCursor` reads that gap first. Absent when the page is contiguous, and
+   * from hosts that predate the field.
+   */
+  turnStartDetached?: true;
   /** Thread-filtered stream watermark at the snapshot transaction boundary. */
   watermark: number;
   /**
@@ -1430,6 +1455,8 @@ export interface OrchestrationConversationEventWindow
   extends OrchestrationSessionEventWindow {
   conversationId: string;
   currentSessionId: string;
+  /** Server's current person-continuation decision; absent on older hosts. */
+  memoryContinuation?: { eligible: boolean; turnId?: string };
   /**
    * Immutable execution-session lineage for this transcript.  A conversation
    * may replace its current Session during a handoff, so a historical turn
@@ -1525,6 +1552,26 @@ export type ConversationHandoffEffectStatus =
   | 'indeterminate';
 
 /** Authorized durable effect truth; never re-resolves mutable Agent setup. */
+export interface ConversationContextSeedReceipt {
+  seedDigest: string;
+  /** Session-local sequence intervals; never compare across Sessions. */
+  sourceCutoffs: readonly {
+    sessionId: string;
+    afterSequence: number;
+    throughSequence: number;
+  }[];
+  omission: {
+    totalMessages: number;
+    includedMessages: number;
+    omittedMessages: number;
+    newestShortened: boolean;
+    nonTextMessages: number;
+  };
+}
+
+export const CONVERSATION_CONTEXT_UNAVAILABLE_CODE =
+  'conversation-context-unavailable';
+
 export interface ConversationHandoffStatusProjection {
   conversationId: string;
   currentSessionId: string;
@@ -1532,6 +1579,16 @@ export interface ConversationHandoffStatusProjection {
   marker: ConversationHandoffProjection;
   providerTurnId?: string;
   nativeResumeIdentity?: import('./provider.js').NativeResumeIdentityStatus;
+  /** A pinned handoff seed, not proof of provider transcript retention. */
+  contextDelivery?: ConversationContextSeedReceipt & {
+    status: ConversationHandoffEffectStatus;
+    mode?: 'seed-text' | 'native-memory';
+    nativeBinding?: 'matched' | 'changed' | 'unavailable';
+    /** Complete text projection only; omitted/shortened history is never acknowledged. */
+    acceptedTextThrough?: ConversationContextSeedReceipt['sourceCutoffs'];
+  };
+  /** Completed literal-seed ranges witnessed for this matched native identity. */
+  nativeAcceptedTextThrough?: ConversationContextSeedReceipt['sourceCutoffs'];
 }
 
 /**
@@ -1831,8 +1888,10 @@ export interface ConversationListItem {
   /** False when the transcript is owned by an external runtime event store. */
   mutable: boolean;
   /**
-   * Durable title provenance for mutable store conversations. A UI must ask
-   * before replacing a human-owned title; runtime conversations have none.
+   * Durable title provenance. A UI must ask before replacing a human-owned
+   * title on a mutable store conversation. A runtime conversation carries
+   * `prompt`, `provider` (supplied with its start) or `generated` (the title
+   * model's, #4266), and none for a title recorded before #4266.
    * `agent` is a title a station-control agent set with `rename_session`: it
    * is not a person's, so any later rename replaces it without asking.
    */
@@ -1850,8 +1909,16 @@ export interface ConversationListItem {
   answerability: RequestAnswerability;
   controlMode?: SessionControlMode;
   lifecycleState?: SessionLifecycleState;
+  /** The current execution's `OrchestrationSessionSummary.lifecycleChangedAt`. */
+  lifecycleChangedAt?: string;
   pendingReview?: boolean;
   provider?: string;
+  /**
+   * The engines this conversation actually ran on, distinct, in the order
+   * they first ran (one per execution session, so a handoff between engines
+   * lists both). Absent from older hosts and for file-store conversations.
+   */
+  executionProviders?: string[];
   /** Engine-reported identity preferred for a resumed conversation header. */
   model?: string;
   /** Adapter-accepted model identity, distinct from a reported model claim. */
@@ -1903,6 +1970,20 @@ export interface ConversationOpenExecution {
 
 export type ConversationOpenResolution =
   | {
+      /** A saved, authorized fork with no provider Session until first send. */
+      status: 'fork-ready';
+      conversation: ConversationListItem;
+      transcript: {
+        available: true;
+        owner: 'fork-context';
+        messageCount: number;
+      };
+      canContinue: boolean;
+      continuationPending?: boolean;
+      answerability: RequestAnswerability;
+      recoveryActions: readonly [];
+    }
+  | {
       status: 'resolved';
       conversation: ConversationListItem;
       currentSessionId: string;
@@ -1918,6 +1999,20 @@ export type ConversationOpenResolution =
       canContinue: boolean;
       /** Continuation is temporarily blocked only by the current active turn. */
       continuationPending?: boolean;
+      /**
+       * #4179: whether the next ordinary turn starts a new Session (on the
+       * Agent's then-current engine binding) rather than running in
+       * `currentSessionId`: that Session's lifecycle is terminal, its engine
+       * binding ended (`closed`/`dead`/`error`), or a continuation is
+       * reserved but not started. The same rule as the server's continuation
+       * decision, read with this resolution; a model change the Session
+       * cannot apply per turn also starts one, and is not counted here.
+       * Absent on older servers, and when the server would refuse that turn
+       * (a handoff awaiting its target, a context delivery not yet
+       * reconciled). It sits on the resolution rather than on
+       * `execution`, whose field set older clients validate strictly.
+       */
+      nextTurnStartsSession?: boolean;
       /**
        * #2309: the conversation's activity read with this resolution — fresher
        * than any copy on the `conversation` row the caller supplied.

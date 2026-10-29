@@ -131,8 +131,9 @@ describe('Station home store registry (#2675 D)', () => {
       expect(STATION_HOME_ROOTS[segments[0]]).toBe('state');
   });
 
-  it('keeps the schema marker as state and the service-owned roots live', () => {
+  it('keeps the schema marker as state, downloads external and service-owned roots live', () => {
     expect(classifyStationHomeRoot('.station-home-schema.json')).toBe('state');
+    expect(classifyStationHomeRoot('media-tools')).toBe('external');
     for (const live of [
       'instances.json',
       'service',
@@ -146,6 +147,12 @@ describe('Station home store registry (#2675 D)', () => {
     expect(classifyStationHomeRoot('notifications.json.previous')).toBe(
       'state',
     );
+    expect(classifyStationHomeRoot('principal-notifications.json')).toBe(
+      'state',
+    );
+    expect(
+      classifyStationHomeRoot('principal-notifications.json.previous'),
+    ).toBe('state');
     expect(classifyStationHomeRoot('instances.json.previous')).toBe('live');
     expect(classifyStationHomeRoot('never-heard-of-it')).toBeUndefined();
   });
@@ -153,6 +160,7 @@ describe('Station home store registry (#2675 D)', () => {
   it('excludes users repositories and the browser bytes from update rollback, and each path is one Station source writes (#2675 D review F1)', () => {
     expect(classifyStationHomeRoot('workspaces')).toBe('external');
     expect(STATION_HOME_EXTERNAL_PATHS.map((path) => path.join('/'))).toEqual([
+      'media-tools',
       'workspaces',
       'browser/chromium',
       'browser/profiles',

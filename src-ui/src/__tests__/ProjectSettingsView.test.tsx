@@ -8,6 +8,7 @@ import type {
   ProjectConfig,
   ProjectIconCandidate,
 } from '@kontourai/station-contracts/project';
+import type { ProjectChatDefaultsView } from '@kontourai/station-contracts/project-chat-defaults';
 import type {
   useIntegrationsQuery,
   useKnowledgeRootsQuery,
@@ -46,8 +47,13 @@ const sdkMocks = vi.hoisted(() => ({
   // `undefined` is the unread config — the picker must not claim a resolved
   // mode it has not seen.
   stationConfig: undefined as
-    | { defaultWorkspaceIsolation?: 'shared' | 'worktree' }
+    | {
+        defaultWorkspaceIsolation?: 'shared' | 'worktree';
+        defaultApprovalMode?: 'ask' | 'auto' | 'never' | 'connection-default';
+      }
     | undefined,
+  chatDefaults: undefined as ProjectChatDefaultsView | undefined,
+  chatDefaultsQuery: vi.fn(),
 }));
 
 const navigationMocks = vi.hoisted(() => ({
@@ -241,6 +247,44 @@ vi.mock('@kontourai/station-sdk', () => ({
   useModelConnectionsQuery: vi.fn(() => ({
     data: sdkMocks.modelConnections,
   })),
+  // The New chats section names what `last-used` would pick right now.
+  useProjectChatDefaultsQuery: (...args: unknown[]) => {
+    sdkMocks.chatDefaultsQuery(...args);
+    return {
+      data: sdkMocks.chatDefaults,
+      isFetching: false,
+      isPending: !sdkMocks.chatDefaults,
+    };
+  },
+  useAgentsQuery: () => ({
+    data: [
+      {
+        slug: 'claude',
+        name: 'Claude Code',
+        execution: { agentConnectionId: 'claude' },
+      },
+    ],
+    error: null,
+  }),
+  // The engine's catalog, for the last-used model's display name.
+  useEngineConnectionsQuery: () => ({
+    data: [
+      {
+        id: 'claude',
+        runtimeCatalog: {
+          source: 'live',
+          models: [
+            {
+              id: 'claude-sonnet-5',
+              name: 'Claude Sonnet 5',
+              originalId: 'claude-sonnet-5',
+            },
+          ],
+          builtInModels: [],
+        },
+      },
+    ],
+  }),
   useDeleteProjectMutation: vi.fn(() => ({
     isPending: false,
     mutateAsync: async (slug: string) => {
@@ -343,6 +387,8 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     sdkMocks.refetch.mockClear();
     sdkMocks.environments = [];
     sdkMocks.stationConfig = {};
+    sdkMocks.chatDefaults = undefined;
+    sdkMocks.chatDefaultsQuery.mockClear();
     sdkMocks.environmentsError = false;
     sdkMocks.environmentsLoading = false;
     sdkMocks.peerCredentials = [];
@@ -392,6 +438,46 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       }),
     ).toBeTruthy();
     expect(container.querySelector('#section-danger')).toBeTruthy();
+  });
+
+  test('clearing the working directory reaches the update instead of retaining the old folder', async () => {
+    renderProjectSettings();
+    fireEvent.change(screen.getByLabelText('Working Directory'), {
+      target: { value: '' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(sdkMocks.updateProject).toHaveBeenCalledWith(
+        expect.objectContaining({ slug: 'demo', workingDirectory: '' }),
+      ),
+    );
+  });
+
+  test('a refreshed project preserves unsaved edits through Save', async () => {
+    const { rerender } = renderProjectSettings();
+    fireEvent.change(screen.getByLabelText('Name *'), {
+      target: { value: 'Draft name' },
+    });
+    sdkMocks.project = { ...projectFixture, description: 'Changed elsewhere' };
+    rerender(<ProjectSettingsView slug="demo" />);
+    expect(inputValue(screen.getByLabelText('Name *'))).toBe('Draft name');
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(sdkMocks.updateProject).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Draft name' }),
+      ),
+    );
+  });
+
+  test('a whitespace-only name cannot be saved', () => {
+    renderProjectSettings();
+    fireEvent.change(screen.getByLabelText('Name *'), {
+      target: { value: '   ' },
+    });
+    expect(screen.getByRole('button', { name: 'Save' })).toHaveProperty(
+      'disabled',
+      true,
+    );
   });
 
   test('shows a dangling saved environment as the selected missing option', () => {
@@ -585,7 +671,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       expect(model.disabled).toBe(true);
       expect(
         screen.getByText(
-          'Choose a model connection first. Without one, chats in this project use the Station default.',
+          'Choose a connection to override the Station default.',
         ),
       ).toBeTruthy();
 
@@ -839,6 +925,10 @@ describe('ProjectSettingsView (#250 shell port)', () => {
         defaultProviderId: '',
         defaultAgent: null,
         defaultWorkspaceIsolation: 'worktree',
+        // A Project that chose nothing for new chats stores nothing.
+        defaultModelSelection: null,
+        defaultApprovalModeSelection: null,
+        defaultApprovalMode: null,
         defaultEnvironment: { kind: 'current' },
         workingDirectory: '~/dev/demo',
         agents: ['codex'],
@@ -855,6 +945,161 @@ describe('ProjectSettingsView (#250 shell port)', () => {
    * `shared` would print the same sentence from different amounts of
    * knowledge.
    */
+  describe('New chats', () => {
+    const history: ProjectChatDefaultsView = {
+      version: 'station.project-chat-defaults/v1',
+      projectSlug: 'demo',
+      model: {
+        selection: 'last-used',
+        lastUsed: [
+          {
+            agentSlug: 'claude',
+            modelId: 'claude-sonnet-5',
+            startedAt: '2026-10-20T10:00:00.000Z',
+          },
+        ],
+      },
+      approvalMode: {
+        selection: 'last-used',
+        lastUsed: {
+          approvalMode: 'auto',
+          startedAt: '2026-10-20T10:00:00.000Z',
+        },
+        resolved: { approvalMode: 'auto', source: 'last-used' },
+      },
+    };
+
+    test('a Project that stores no choice shows the set defaults, and the read is scoped to it', () => {
+      sdkMocks.stationConfig = { defaultApprovalMode: 'ask' };
+      renderProjectSettings();
+      expect(
+        (screen.getByLabelText('Starting model') as HTMLSelectElement).value,
+      ).toBe('fixed');
+      expect(
+        (screen.getByLabelText('Starting approval mode') as HTMLSelectElement)
+          .value,
+      ).toBe('fixed');
+      expect(
+        (screen.getByLabelText('Set approval mode') as HTMLSelectElement).value,
+      ).toBe('inherit');
+      expect(
+        screen.getByRole('option', {
+          name: 'Use the Station approval default (currently: Ask first)',
+        }),
+      ).toBeTruthy();
+      expect(sdkMocks.chatDefaultsQuery).toHaveBeenCalledWith(
+        'demo',
+        expect.anything(),
+      );
+      // The fixture names a model but no connection, so nothing above applies.
+      expect(
+        screen.getByText(
+          'This project sets no AI model above, so a new chat starts on the Agent’s own model.',
+        ),
+      ).toBeTruthy();
+      // The fallback select says what it is for.
+      expect(
+        screen.getByText(/Also used when there is no chat history/),
+      ).toBeTruthy();
+    });
+
+    test('a project model above is the one fixed new chats start on', () => {
+      sdkMocks.project = {
+        ...projectFixture,
+        defaultProviderId: 'openai-main',
+      };
+      renderProjectSettings();
+      expect(
+        screen.getByText(
+          /starts on the AI model above wherever its Agent offers/,
+        ),
+      ).toBeTruthy();
+    });
+
+    test('choosing last used and a mode saves exactly those fields', async () => {
+      renderProjectSettings();
+      fireEvent.change(screen.getByLabelText('Starting model'), {
+        target: { value: 'last-used' },
+      });
+      fireEvent.change(screen.getByLabelText('Starting approval mode'), {
+        target: { value: 'last-used' },
+      });
+      fireEvent.change(screen.getByLabelText('Set approval mode'), {
+        target: { value: 'auto' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() =>
+        expect(sdkMocks.updateProject).toHaveBeenCalledWith(
+          expect.objectContaining({
+            slug: 'demo',
+            defaultModelSelection: 'last-used',
+            defaultApprovalModeSelection: 'last-used',
+            defaultApprovalMode: 'auto',
+          }),
+        ),
+      );
+    });
+
+    test('a stored choice loads, and setting it back to fixed drops it', async () => {
+      sdkMocks.project = {
+        ...projectFixture,
+        defaultModelSelection: 'last-used',
+        defaultApprovalModeSelection: 'last-used',
+        defaultApprovalMode: 'never',
+      };
+      renderProjectSettings();
+      expect(
+        (screen.getByLabelText('Set approval mode') as HTMLSelectElement).value,
+      ).toBe('never');
+      fireEvent.change(screen.getByLabelText('Starting model'), {
+        target: { value: 'fixed' },
+      });
+      fireEvent.change(screen.getByLabelText('Starting approval mode'), {
+        target: { value: 'fixed' },
+      });
+      fireEvent.change(screen.getByLabelText('Set approval mode'), {
+        target: { value: 'inherit' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() =>
+        expect(sdkMocks.updateProject).toHaveBeenCalledWith(
+          expect.objectContaining({
+            defaultModelSelection: null,
+            defaultApprovalModeSelection: null,
+            defaultApprovalMode: null,
+          }),
+        ),
+      );
+    });
+
+    test('last used names what it would pick, or says nothing is recorded yet', () => {
+      sdkMocks.project = {
+        ...projectFixture,
+        defaultModelSelection: 'last-used',
+        defaultApprovalModeSelection: 'last-used',
+      };
+      sdkMocks.chatDefaults = history;
+      const { unmount } = renderProjectSettings();
+      expect(
+        screen.getByText(/last: Claude Sonnet 5 with Claude Code/),
+      ).toBeTruthy();
+      expect(screen.getByText(/\(last: Auto\)/)).toBeTruthy();
+      unmount();
+      sdkMocks.chatDefaults = {
+        ...history,
+        model: { ...history.model, lastUsed: [] },
+        approvalMode: {
+          selection: 'last-used',
+          resolved: { source: 'none', fallback: 'no-history' },
+        },
+      };
+      renderProjectSettings();
+      expect(
+        screen.getAllByText(/No chat started here has been recorded yet/),
+      ).toHaveLength(2);
+    });
+  });
+
   test('the inherit option names the mode the Station default resolves to', () => {
     sdkMocks.stationConfig = { defaultWorkspaceIsolation: 'worktree' };
     renderProjectSettings();

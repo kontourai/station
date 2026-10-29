@@ -568,6 +568,10 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'lists src-ui/public/color-themes, its own generated output, to refuse a sheet the catalog no longer renders; the color-theme edges in scripts/test-impact-manifest.mjs select it',
   'packages/contracts/src/__tests__/channel-fixture-corpus.test.ts':
     'walks its own fixture directory',
+  // The heavy-check slot queue lives under a makeTempDir root reached through
+  // the workspace or temp fixture object.
+  'scripts/__tests__/heavy-check-slots.test.ts': TEMP_VIA_FIXTURE,
+  'scripts/__tests__/verification-coordinator.test.ts': TEMP_VIA_FIXTURE,
   'scripts/__tests__/ci-event-environment.test.ts':
     'lists .github/workflows; the .github/workflows/** edge selects it',
   'scripts/__tests__/test-impact-incidents.test.ts':
@@ -578,6 +582,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'lists the versions directory of the temporary install root its harness creates',
   'scripts/__tests__/service-launcher-e2e.test.ts':
     'lists the archive directory of the temporary install it builds, to read the signed archive size',
+  'src-server/services/infra/__tests__/workload-budget.test.ts':
+    'lists the config directory under its temporary Station home to prove a refused settings save leaves no temporary file beside workload-budgets.json',
   'packages/supervisor/src/__tests__/control-server.test.ts':
     'lists the run directory under its temporary Station home to check leftover private socket names',
   'packages/cli/src/__tests__/supervised-lifecycle.real.test.ts':

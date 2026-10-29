@@ -1,0 +1,7 @@
+{
+  "revision": "6710c2c1237c566900d4b462b206b7c0abc99434",
+
+  "notes": [
+    {"path":"packages/sdk/README.md","note":"Updated in this change (or regenerated from updated inputs) for out-of-line runtime event content (event-content-spill): checked the new and edited claims against event-store.ts, event-content-spill.ts, the content route, the respondToRequest digest gate, the SDK subpath and their tests; remaining claims are unaffected by the changed inputs.","inputs":["packages/sdk/README.md","packages/sdk/package.json#/exports"]}
+  ]
+}

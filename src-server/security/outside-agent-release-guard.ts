@@ -33,6 +33,7 @@ export const outsideAgentReleaseGuard: MiddlewareHandler = async (c, next) => {
 export type ConsentListenerStore = Pick<
   ConsentTransactionStore,
   | 'get'
+  | 'allowsDecisionAuthority'
   | 'verifyDecisionSession'
   | 'renderReview'
   | 'decide'
@@ -48,13 +49,18 @@ export function outsideAgentConsentStore(
   return {
     get: (tenantId, id) =>
       hidden(tenantId, id) ? undefined : store.get(tenantId, id),
+    // Unknown IDs have no requester-only policy. Preserve that same admission
+    // for hidden IDs; renderReview and decide still refuse them without effects.
+    allowsDecisionAuthority: (tenantId, id, authority) =>
+      hidden(tenantId, id) ||
+      store.allowsDecisionAuthority(tenantId, id, authority),
     verifyDecisionSession: (tenantId, id, candidate) =>
       !hidden(tenantId, id) &&
       store.verifyDecisionSession(tenantId, id, candidate),
-    renderReview: (tenantId, id) =>
+    renderReview: (tenantId, id, authority) =>
       hidden(tenantId, id)
         ? { ok: false, reason: 'not_found' }
-        : store.renderReview(tenantId, id),
+        : store.renderReview(tenantId, id, authority),
     decide: async (tenantId, id, decision, nonce, via, proof) =>
       hidden(tenantId, id)
         ? { ok: false, reason: 'not_found' }

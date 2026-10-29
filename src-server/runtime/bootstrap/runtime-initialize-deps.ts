@@ -21,6 +21,7 @@ import type { AttachedSessionSource } from '../../providers/sessions/attached-se
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import type { SkillService } from '../../services/agents/skill-service.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
+import type { FeaturePreviewSelector } from '../../services/feature-previews/feature-preview-registry.js';
 import type { FeedbackService } from '../../services/feedback/feedback-service.js';
 import type { CredentialProfileRecoveryAdapter } from '../../services/orchestration/credential-recovery-module.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
@@ -65,6 +66,7 @@ interface RuntimeInitializationContext {
   environmentSecurityService: Pick<
     EnvironmentSecurityService,
     | 'verifyCredential'
+    | 'authorizeCredential'
     | 'resolveGrantedScope'
     // #3586: the voice WebSocket refuses account-bound devices and tokens.
     | 'identifyDevice'
@@ -106,6 +108,8 @@ interface RuntimeInitializationContext {
   ) => Promise<BuiltinAgentEngineBinding | null>;
   onACPConnectionsReady?: () => void | Promise<void>;
   orchestrationEventStore: EventStore;
+  /** The `chat-host-images` Feature Preview selector (station-runtime binds it). */
+  hostImagesPreview?: FeaturePreviewSelector;
   credentialProfileRecoveryAdapter?: CredentialProfileRecoveryAdapter;
   usageAggregator?: UsageAggregator;
   /** archive#3245: lifetime analytics' read of the orchestration substrate. */
@@ -167,6 +171,7 @@ interface RuntimeInitializationContext {
   }) => void;
   onRouteServicesReady: (services: {
     orchestrationService: OrchestrationService;
+    nativeForkStoredReadBinder?: import('../../security/native-fork-read-admission.js').NativeForkReadAdmissionDomain['bindAtConversationMount'];
     usageAggregator?: UsageAggregator;
   }) => void | Promise<void>;
   onVoltAgentCreated: (voltAgent: import('@voltagent/core').VoltAgent) => void;
@@ -195,6 +200,7 @@ export function createRuntimeInitializationDeps(
     resolveBuiltinEngineBinding: context.resolveBuiltinEngineBinding,
     onACPConnectionsReady: context.onACPConnectionsReady,
     orchestrationEventStore: context.orchestrationEventStore,
+    hostImagesPreview: context.hostImagesPreview,
     credentialProfileRecoveryAdapter: context.credentialProfileRecoveryAdapter,
     usageAggregator: context.usageAggregator,
     orchestrationUsageRef: context.orchestrationUsageRef,

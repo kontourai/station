@@ -2168,6 +2168,29 @@ function telemetryConsentScreens(): Screen[] {
               await expect(outbox.locator('pre')).toContainText(
                 'station_daily',
               );
+              // Rest the Operator select just below the pinned toolbar, so no
+              // control is left partly behind it (the judge credits no
+              // scroll position).
+              await page
+                .getByRole('combobox', { name: 'Operator telemetry' })
+                .evaluate((select) => {
+                  const bar = document.querySelector('.app-toolbar');
+                  const barBottom = bar?.getBoundingClientRect().bottom ?? 0;
+                  let scroller: Element | null = select.parentElement;
+                  while (
+                    scroller &&
+                    !(
+                      /(auto|scroll)/.test(
+                        getComputedStyle(scroller).overflowY,
+                      ) && scroller.scrollHeight > scroller.clientHeight
+                    )
+                  )
+                    scroller = scroller.parentElement;
+                  (scroller ?? document.scrollingElement)?.scrollBy(
+                    0,
+                    select.getBoundingClientRect().top - barBottom - 8,
+                  );
+                });
             }
           }
         },
@@ -2373,6 +2396,121 @@ function inventoryDrilldownScreens(): Screen[] {
       }),
     ),
   );
+}
+
+/**
+ * The Station switcher with a desktop's worth of saved Stations: the active
+ * one, two that answer and two whose connections are refused, at 390 and 1440
+ * in both themes, plus the inline forget confirmation. Every extra Station is
+ * routed here, because the gallery answers the public handshake on any
+ * origin. Extra profiles join the gallery's own seed only on this screen's
+ * URL, and only once, since init scripts outlive the screen.
+ */
+function stationSwitcherScreens(): Screen[] {
+  const online = 'https://online.gallery.test';
+  const offline = 'https://offline.gallery.test';
+  const shots = [DESKTOP, MOBILE].flatMap((viewport) =>
+    (['dark', 'light'] as const).map((theme) => ({
+      viewport,
+      theme,
+      armed: false,
+    })),
+  );
+  shots.push({ viewport: DESKTOP, theme: 'dark', armed: true });
+  return shots.map(({ viewport, theme, armed }): Screen => {
+    const device = viewport === MOBILE ? 'mobile' : 'desktop';
+    const name = `station-switcher${armed ? '-forget' : ''}-${theme}-${device}`;
+    let cleanups: (() => Promise<void>)[] = [];
+    return {
+      name,
+      title: `Station switcher${armed ? ' — forget' : ''}, ${theme} (${device})`,
+      path: '/?gallery=station-switcher',
+      viewport,
+      beforeGoto: async (page) => {
+        const answer = (route: Route) => route.fulfill({ status: 200 });
+        const refuse = (route: Route) => route.abort('connectionrefused');
+        await page.route(`${online}/**`, answer);
+        await page.route(`${offline}/**`, refuse);
+        cleanups = [
+          () => page.unroute(`${online}/**`, answer),
+          () => page.unroute(`${offline}/**`, refuse),
+        ];
+        await page.addInitScript(
+          ({ activeId, stations }) => {
+            if (
+              new URLSearchParams(location.search).get('gallery') !==
+              'station-switcher'
+            )
+              return;
+            const key = 'station-connect-connections';
+            const ids = new Set(stations.map(([id]) => id));
+            const saved = JSON.parse(localStorage.getItem(key) ?? '[]').filter(
+              (connection: { id: string }) => !ids.has(connection.id),
+            );
+            const template = saved.find(
+              (connection: { id: string }) => connection.id === activeId,
+            );
+            localStorage.setItem(
+              key,
+              JSON.stringify([
+                ...saved,
+                ...stations.map(([id, name, url]) => ({
+                  ...template,
+                  id,
+                  name,
+                  url,
+                  environmentId: null,
+                  credentialRef: { ...template.credentialRef, id },
+                  lastSuccessAt: undefined,
+                })),
+              ]),
+            );
+            localStorage.setItem(
+              'station.switcher.recent',
+              JSON.stringify([activeId, 'media', 'build']),
+            );
+          },
+          {
+            activeId: GALLERY_CONNECTION_ID,
+            stations: [
+              ['build', 'Build box', `${online}/build`],
+              ['media', 'Media server', online],
+              ['laptop', 'Laptop', offline],
+              ['dev', 'Old dev instance', `${offline}/dev`],
+            ],
+          },
+        );
+      },
+      afterGoto: async (page) => {
+        if (theme === 'light')
+          await page.evaluate(() =>
+            document.documentElement.setAttribute('data-theme', 'light'),
+          );
+        await page.getByTestId('app-toolbar-connection').click();
+        const menu = page.getByRole('menu', { name: 'Choose Station' });
+        await expect(
+          page.getByRole('searchbox', { name: 'Find a Station' }),
+        ).toBeFocused();
+        await expect(
+          menu.getByRole('menuitemradio', { name: 'Media server — Online' }),
+        ).toBeVisible();
+        await expect(
+          menu.getByRole('menuitem', { name: 'Forget 2 unreachable' }),
+        ).toBeVisible();
+        if (armed) {
+          await menu
+            .getByRole('menuitemradio', { name: /^Old dev instance/ })
+            .press('Delete');
+          await expect(
+            menu.getByRole('menuitem', { name: 'Forget Old dev instance' }),
+          ).toBeFocused();
+        }
+      },
+      cleanup: async () => {
+        for (const cleanup of cleanups.splice(0)) await cleanup();
+      },
+    };
+  });
 }
 
 const SCREENS: Screen[] = [
@@ -3765,6 +3903,7 @@ const SCREENS: Screen[] = [
     } satisfies Screen;
   })(),
   ...inventoryDrilldownScreens(),
+  ...stationSwitcherScreens(),
 ];
 
 async function statusRasterState(page: Page) {

@@ -200,6 +200,94 @@ describe('useActiveChatTranscript', () => {
       activeChatsStore.removeChat(id);
     }
   });
+  // Navigating back to a streaming chat re-reads the newest window, which is
+  // capped: a long turn comes back as its `turn.started` plus its tail. The
+  // live frames this document already holds for the middle of the turn must
+  // fill that gap, not be dropped as older than the page's watermark.
+  test('a remount mid-stream keeps live frames the capped window left out', async () => {
+    const id = 'remount-gap';
+    const apiBase = 'http://remount-gap.test';
+    activeChatsStore.initChat(id, {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'Remount gap',
+      conversationId: id,
+      orchestrationSessionStarted: true,
+    });
+    activeChatsStore.updateChat(id, {
+      conversationActivity: {
+        conversationId: id,
+        asOfSequence: 6,
+        openTurn: {
+          turnId: 'turn-gap',
+          threadId: id,
+          startedAt: '2026-09-24T00:00:00.000Z',
+        },
+      },
+      orchestrationTurnOpen: true,
+    });
+    const delta = (sequence: number, text: string) => ({
+      ...event(`e${sequence}`, 'content.text-delta', {
+        threadId: id,
+        turnId: 'turn-gap',
+        itemId: 'answer',
+        delta: text,
+      }),
+      sequence,
+    });
+    const streamed = [
+      delta(2, 'A'),
+      delta(3, 'B'),
+      delta(4, 'C'),
+      delta(5, 'D'),
+      delta(6, 'E'),
+    ];
+    for (const item of streamed)
+      recordSequencedLiveEvent(
+        apiBase,
+        item.event as Parameters<typeof recordSequencedLiveEvent>[1],
+        item.sequence,
+      );
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 6,
+      hasMore: true,
+      events: [
+        {
+          ...event('e1', 'turn.started', {
+            threadId: id,
+            turnId: 'turn-gap',
+            prompt: 'Question',
+          }),
+          sequence: 1,
+        },
+        delta(5, 'D'),
+        delta(6, 'E'),
+      ],
+    });
+    const session = {
+      ...baseSession,
+      ...activeChatsStore.getSnapshot()[id],
+      id,
+    } as ChatSession;
+    const view = renderHook(() => useActiveChatTranscript(apiBase, session));
+    try {
+      await waitFor(() => expect(view.result.current.settled).toBe(true));
+      expect(
+        view.result.current.messages
+          .filter((row) => row.role === 'assistant')
+          .map((row) => row.content)
+          .join(''),
+      ).toBe('ABCDE');
+      expect(view.result.current.events.map((item) => item.sequence)).toEqual([
+        1, 2, 3, 4, 5, 6,
+      ]);
+    } finally {
+      view.unmount();
+      activeChatsStore.removeChat(id);
+      resetSequencedLiveEventsForTests();
+    }
+  });
   test('evicted live frames keep the transcript catching up until a newer window loads', async () => {
     const id = 'overflow-window';
     const apiBase = 'http://station-overflow.test';
@@ -2669,6 +2757,1061 @@ describe('useActiveChatTranscript', () => {
     expect(result.current.hasMore).toBe(false);
   });
 
+  // A capped newest page can be its turn's `turn.started` plus its tail. The
+  // host says so (`turnStartDetached`) and its cursor reads the gap, which
+  // the reader fills itself: the middle of the turn must not wait for a
+  // scroll to the top, and must not depend on live frames this tab missed.
+  describe('a detached turn start', () => {
+    const turnEvents = (from: number, to: number) =>
+      Array.from({ length: to - from + 1 }, (_, offset) => {
+        const sequence = from + offset;
+        return sequence === 6
+          ? event('e6', 'turn.started', { turnId: 'turn-6', prompt: 'Q6' })
+          : event(`e${sequence}`, 'content.text-delta', {
+              turnId: sequence < 6 ? 'turn-1' : 'turn-6',
+              itemId: `answer-${sequence < 6 ? 1 : 6}`,
+              delta: `${sequence} `,
+            });
+      });
+    const turn9 = (from: number, to: number) => [
+      ...(from === 9
+        ? [event('e9', 'turn.started', { turnId: 'turn-9', prompt: 'Q9' })]
+        : []),
+      ...Array.from({ length: to - Math.max(from, 10) + 1 }, (_, offset) =>
+        event(`e${Math.max(from, 10) + offset}`, 'content.text-delta', {
+          turnId: 'turn-9',
+          itemId: 'answer-9',
+          delta: `${Math.max(from, 10) + offset} `,
+        }),
+      ),
+    ];
+    const sequences = (events: readonly { sequence: number }[]) =>
+      events.map((item) => item.sequence);
+    const cursorOf = (call: number) =>
+      (fetchWindow.mock.calls[call]?.[2] as { cursor?: string } | undefined)
+        ?.cursor;
+
+    // #4266: until the fill reaches the detached start, the window holds the
+    // turn's prompt and tail only. Its terminal outputText is the whole
+    // reply, so adopting it then would pull the missing middle to the bottom.
+    test.each([
+      // Before the fill the window shows only the tail; adopting the whole
+      // reply then would pull the missing middle below it.
+      ['A. B. C.', 'A. B. C.'],
+      // Once the fill closes the turn, its terminal text is adopted again,
+      // including the last words the stream dropped.
+      ['A. B. C. D.', 'A. B. C. D.'],
+    ])(
+      'a detached turn adopts no terminal text until the fill reaches its start (outputText %j)',
+      async (outputText, whole) => {
+        const assistantText = (messages: ChatSession['messages']) =>
+          messages
+            .filter((message) => message.role === 'assistant')
+            .map((message) => message.content ?? '')
+            .join('|');
+        const answer = (id: string, delta: string) =>
+          event(id, 'content.text-delta', {
+            turnId: 'turn-6',
+            itemId: 'answer-6',
+            delta,
+          });
+        const start = event('e6', 'turn.started', {
+          turnId: 'turn-6',
+          prompt: 'Q6',
+        });
+        let releaseFill!: (page: unknown) => void;
+        fetchWindow
+          .mockResolvedValueOnce({
+            protocolVersion: 1,
+            watermark: 12,
+            hasMore: true,
+            nextCursor: 'gap',
+            turnStartDetached: true,
+            events: [
+              start,
+              answer('e11', 'C.'),
+              event('e12', 'turn.completed', {
+                turnId: 'turn-6',
+                outputText,
+              }),
+            ],
+          })
+          .mockImplementationOnce(
+            () =>
+              new Promise((resolve) => {
+                releaseFill = resolve;
+              }),
+          );
+        const { result } = renderHook(() =>
+          useActiveChatTranscript('http://detached-partial.test', baseSession),
+        );
+        await waitFor(() => expect(releaseFill).toBeTypeOf('function'));
+        await waitFor(() =>
+          expect(assistantText(result.current.messages)).toBe('C.'),
+        );
+        await act(async () =>
+          releaseFill({
+            protocolVersion: 1,
+            watermark: 12,
+            hasMore: false,
+            events: [start, answer('e7', 'A. '), answer('e8', 'B. ')],
+          }),
+        );
+        await waitFor(() =>
+          expect(assistantText(result.current.messages)).toBe(whole),
+        );
+      },
+    );
+
+    // A fill closed the start and older history was loaded; a later reload
+    // of the same long turn lands above what is held again. Until its fill
+    // reaches what is held, that gap is a hole in the turn's text.
+    test.each([
+      // Ends with the streamed tail: the final-answer fallback would replace
+      // that tail with it whole, pulling in the hole (D.) and repeating A-C.
+      ['A. B. C. D. E.', 'D.'],
+      // Ends with words the stream dropped (F.): adopted once whole again.
+      ['A. B. C. D. E. F.', 'F.'],
+    ])(
+      'a reload over held history marks its detached start partial again until the fill reaches what is held (outputText %j)',
+      async (outputText, adoptedOnlyWhenWhole) => {
+        const assistantText = (messages: ChatSession['messages']) =>
+          messages
+            .filter((message) => message.role === 'assistant')
+            .map((message) => message.content ?? '')
+            .join('|');
+        const answer = (id: string, delta: string) =>
+          event(id, 'content.text-delta', {
+            turnId: 'turn-6',
+            itemId: 'answer-6',
+            delta,
+          });
+        const start = event('e6', 'turn.started', {
+          turnId: 'turn-6',
+          prompt: 'Q6',
+        });
+        let releaseHeldFill!: (page: unknown) => void;
+        fetchWindow
+          // A fresh read: the start and its tail.
+          .mockResolvedValueOnce({
+            protocolVersion: 1,
+            watermark: 11,
+            hasMore: true,
+            nextCursor: 'gap',
+            turnStartDetached: true,
+            events: [start, answer('e11', 'C. ')],
+          })
+          // Its fill reaches the start: closed.
+          .mockResolvedValueOnce({
+            protocolVersion: 1,
+            watermark: 11,
+            hasMore: true,
+            nextCursor: 'older',
+            events: [start, answer('e7', 'A. '), answer('e8', 'B. ')],
+          })
+          // Load older.
+          .mockResolvedValueOnce({
+            protocolVersion: 1,
+            watermark: 11,
+            hasMore: false,
+            events: [
+              event('e1', 'turn.started', { turnId: 'turn-1', prompt: 'Q1' }),
+            ],
+          })
+          // A later reload: the start again, then only the newest tail.
+          .mockResolvedValueOnce({
+            protocolVersion: 1,
+            watermark: 21,
+            hasMore: true,
+            nextCursor: 'gap-2',
+            turnStartDetached: true,
+            events: [
+              start,
+              // A tool row: the text after it is a suffix of the terminal
+              // text, which the final-answer fallback would replace whole.
+              event('e18', 'tool.started', {
+                turnId: 'turn-6',
+                toolCallId: 'call-1',
+                toolName: 'exec',
+              }),
+              event('e19', 'tool.completed', {
+                turnId: 'turn-6',
+                toolCallId: 'call-1',
+                toolName: 'exec',
+                status: 'success',
+                output: 'ok',
+              }),
+              answer('e20', 'E.'),
+              event('e21', 'turn.completed', {
+                turnId: 'turn-6',
+                outputText,
+              }),
+            ],
+          })
+          // Its fill toward what is held, still outstanding.
+          .mockImplementationOnce(
+            () =>
+              new Promise((resolve) => {
+                releaseHeldFill = resolve;
+              }),
+          );
+        const { result, rerender } = renderHook(
+          ({ revision }) =>
+            useActiveChatTranscript('http://detached-held.test', {
+              ...baseSession,
+              orchestrationHistoryRevision: revision,
+            }),
+          { initialProps: { revision: 0 } },
+        );
+        await waitFor(() =>
+          expect(assistantText(result.current.messages)).toBe('A. B. C. '),
+        );
+        await act(async () => result.current.loadOlder());
+        rerender({ revision: 1 });
+        await waitFor(() => expect(releaseHeldFill).toBeTypeOf('function'));
+        await waitFor(() =>
+          expect(assistantText(result.current.messages)).toContain('E.'),
+        );
+        // The hole (D.) is not pulled in from the terminal text, and what is
+        // held is not repeated.
+        expect(assistantText(result.current.messages)).not.toContain(
+          adoptedOnlyWhenWhole,
+        );
+        expect(assistantText(result.current.messages).split('A.')).toHaveLength(
+          2,
+        );
+        await act(async () =>
+          releaseHeldFill({
+            protocolVersion: 1,
+            watermark: 21,
+            hasMore: true,
+            nextCursor: 'older-2',
+            events: [answer('e11', 'C. '), answer('e15', 'D. ')],
+          }),
+        );
+        // The fill reached what is held: the turn is whole again, once.
+        await waitFor(() =>
+          expect(assistantText(result.current.messages)).toContain(
+            adoptedOnlyWhenWhole,
+          ),
+        );
+        expect(assistantText(result.current.messages)).toContain('D.');
+        expect(assistantText(result.current.messages).split('A.')).toHaveLength(
+          2,
+        );
+      },
+    );
+
+    test('a fill through two detached gaps clears both partial starts', async () => {
+      const start6 = event('e6', 'turn.started', {
+        turnId: 'turn-6',
+        prompt: 'Q6',
+      });
+      const start9 = event('e9', 'turn.started', {
+        turnId: 'turn-9',
+        prompt: 'Q9',
+      });
+      const answer = (n: number) =>
+        event(`e${n}`, 'content.text-delta', {
+          turnId: n < 9 ? 'turn-6' : 'turn-9',
+          itemId: 'answer',
+          delta: `${n}`,
+        });
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 8,
+          hasMore: true,
+          nextCursor: 'older',
+          events: [start6, answer(8)],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 8,
+          hasMore: true,
+          nextCursor: 'history',
+          events: [
+            event('e1', 'turn.started', { turnId: 'old', prompt: 'old' }),
+          ],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 20,
+          hasMore: true,
+          nextCursor: 'gap6',
+          turnStartDetached: true,
+          events: [start6, answer(20)],
+        })
+        .mockRejectedValueOnce(new Error('gap6 failed'))
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 30,
+          hasMore: true,
+          nextCursor: 'gap9',
+          turnStartDetached: true,
+          events: [start9, answer(30)],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 30,
+          hasMore: true,
+          nextCursor: 'older',
+          events: [answer(8), start9, answer(20)],
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://two-gaps.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(result.current.hasMore).toBe(true));
+      await act(async () => result.current.loadOlder());
+      rerender({ revision: 1 });
+      await waitFor(() =>
+        expect(result.current.error?.message).toBe('gap6 failed'),
+      );
+      expect(
+        'partialTurnStartEventIds' in result.current
+          ? result.current.partialTurnStartEventIds.has('e6')
+          : undefined,
+      ).toBe(true);
+      rerender({ revision: 2 });
+      await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(6));
+      await waitFor(() =>
+        expect(
+          'partialTurnStartEventIds' in result.current
+            ? result.current.partialTurnStartEventIds.has('e9')
+            : undefined,
+        ).toBe(false),
+      );
+      expect(
+        'partialTurnStartEventIds' in result.current
+          ? result.current.partialTurnStartEventIds.has('e6')
+          : undefined,
+      ).toBe(false);
+    });
+
+    test('Load older resumes a failed contiguous reload gap before older history', async () => {
+      const start = (n: number) =>
+        event(`e${n}`, 'turn.started', {
+          turnId: `turn-${n}`,
+          prompt: `Q${n}`,
+        });
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 10,
+          hasMore: true,
+          nextCursor: 'older',
+          events: [start(9), start(10)],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 10,
+          hasMore: true,
+          nextCursor: 'history',
+          events: [start(5), start(6)],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 20,
+          hasMore: true,
+          nextCursor: 'gap',
+          events: [start(19), start(20)],
+        })
+        .mockRejectedValueOnce(new Error('gap failed'))
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 21,
+          hasMore: true,
+          nextCursor: 'new-gap',
+          events: [start(20), start(21)],
+        })
+        .mockRejectedValueOnce(new Error('new gap failed'))
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 20,
+          hasMore: true,
+          nextCursor: 'gap-next',
+          events: [start(14), start(15)],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 20,
+          hasMore: true,
+          nextCursor: 'older',
+          events: [start(9), start(10)],
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://contiguous-gap.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(result.current.hasMore).toBe(true));
+      await act(async () => result.current.loadOlder());
+      rerender({ revision: 1 });
+      await waitFor(() =>
+        expect(result.current.error?.message).toBe('gap failed'),
+      );
+      rerender({ revision: 2 });
+      await waitFor(() =>
+        expect(result.current.error?.message).toBe('new gap failed'),
+      );
+      await act(async () => result.current.loadOlder());
+      expect(cursorOf(6)).toBe('new-gap');
+      expect(sequences(result.current.events)).toContain(14);
+    });
+
+    test('Load older resumes a failed held gap before older history', async () => {
+      const start = event('e6', 'turn.started', {
+        turnId: 'turn-6',
+        prompt: 'Q6',
+      });
+      const answer = (id: string, delta: string) =>
+        event(id, 'content.text-delta', {
+          turnId: 'turn-6',
+          itemId: 'answer-6',
+          delta,
+        });
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 11,
+          hasMore: true,
+          nextCursor: 'gap',
+          turnStartDetached: true,
+          events: [start, answer('e11', 'C.')],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 11,
+          hasMore: true,
+          nextCursor: 'older',
+          events: [start, answer('e7', 'A.')],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 11,
+          hasMore: true,
+          nextCursor: 'older-old',
+          events: [
+            event('e1', 'turn.started', { turnId: 'old', prompt: 'old' }),
+          ],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 21,
+          hasMore: true,
+          nextCursor: 'gap2',
+          turnStartDetached: true,
+          events: [
+            start,
+            answer('e20', 'E.'),
+            event('e21', 'turn.completed', {
+              turnId: 'turn-6',
+              outputText: 'A. C. D. E.',
+            }),
+          ],
+        })
+        .mockRejectedValueOnce(new Error('gap failed'))
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 21,
+          hasMore: true,
+          nextCursor: 'gap3',
+          events: [answer('e15', 'D.')],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 21,
+          hasMore: true,
+          nextCursor: 'older',
+          events: [answer('e11', 'C.')],
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://failed-held-gap.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(2));
+      await act(async () => result.current.loadOlder());
+      rerender({ revision: 1 });
+      await waitFor(() =>
+        expect(result.current.error?.message).toBe('gap failed'),
+      );
+      expect(
+        'partialTurnStartEventIds' in result.current
+          ? result.current.partialTurnStartEventIds.has('e6')
+          : undefined,
+      ).toBe(true);
+      await act(async () => result.current.loadOlder());
+      expect(cursorOf(5)).toBe('gap2');
+      expect(cursorOf(6)).toBe('gap3');
+      expect(sequences(result.current.events)).toContain(15);
+      expect(
+        'partialTurnStartEventIds' in result.current
+          ? result.current.partialTurnStartEventIds.has('e6')
+          : undefined,
+      ).toBe(false);
+    });
+
+    test('a newer reload continues an interrupted held gap using its own cursor', async () => {
+      const start = event('e6', 'turn.started', {
+        turnId: 'turn-6',
+        prompt: 'Q6',
+      });
+      const answer = (id: string) =>
+        event(id, 'content.text-delta', {
+          turnId: 'turn-6',
+          itemId: 'answer-6',
+          delta: id,
+        });
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 11,
+          hasMore: true,
+          nextCursor: 'gap',
+          turnStartDetached: true,
+          events: [start, answer('e11')],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 11,
+          hasMore: true,
+          nextCursor: 'older',
+          events: [start, answer('e7')],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 11,
+          hasMore: true,
+          nextCursor: 'older-old',
+          events: [
+            event('e1', 'turn.started', { turnId: 'old', prompt: 'old' }),
+          ],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 21,
+          hasMore: true,
+          nextCursor: 'gap2',
+          turnStartDetached: true,
+          events: [start, answer('e20')],
+        })
+        .mockRejectedValueOnce(new Error('gap failed'))
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 22,
+          hasMore: true,
+          nextCursor: 'new-gap',
+          events: [answer('e18'), answer('e22')],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 22,
+          hasMore: true,
+          nextCursor: 'older',
+          events: [answer('e11'), answer('e15')],
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://reload-held-gap.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(2));
+      await act(async () => result.current.loadOlder());
+      rerender({ revision: 1 });
+      await waitFor(() =>
+        expect(result.current.error?.message).toBe('gap failed'),
+      );
+      rerender({ revision: 2 });
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toContain(15),
+      );
+      expect(cursorOf(6)).toBe('new-gap');
+      expect(
+        'partialTurnStartEventIds' in result.current
+          ? result.current.partialTurnStartEventIds.has('e6')
+          : undefined,
+      ).toBe(false);
+    });
+
+    test('a fresh read fills the gap and leaves Load older after it', async () => {
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: true,
+          nextCursor: 'gap',
+          turnStartDetached: true,
+          events: [...turnEvents(6, 6), ...turnEvents(11, 12)],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: true,
+          nextCursor: 'older-turns',
+          events: turnEvents(6, 10),
+        });
+      const { result } = renderHook(() =>
+        useActiveChatTranscript('http://detached-fresh.test', baseSession),
+      );
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([
+          6, 7, 8, 9, 10, 11, 12,
+        ]),
+      );
+      expect(cursorOf(1)).toBe('gap');
+      expect(result.current.hasMore).toBe(true);
+      await act(async () => result.current.loadOlder());
+      expect(cursorOf(2)).toBe('older-turns');
+    });
+
+    test('a reload with older pages loaded fills the gap this tab never streamed', async () => {
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 5,
+          hasMore: true,
+          nextCursor: 'older',
+          events: turnEvents(3, 5),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 5,
+          hasMore: false,
+          events: turnEvents(1, 2),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: true,
+          nextCursor: 'gap',
+          turnStartDetached: true,
+          events: [...turnEvents(6, 6), ...turnEvents(11, 12)],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: false,
+          events: turnEvents(1, 10),
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://detached-reload.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(result.current.hasMore).toBe(true));
+      await act(async () => result.current.loadOlder());
+      expect(sequences(result.current.events)).toEqual([1, 2, 3, 4, 5]);
+
+      rerender({ revision: 1 });
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual(
+          Array.from({ length: 12 }, (_, index) => index + 1),
+        ),
+      );
+      expect(cursorOf(3)).toBe('gap');
+      expect(result.current.hasMore).toBe(false);
+    });
+
+    test('a reload that lands above what is held on a turn boundary reads down to it', async () => {
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 5,
+          hasMore: true,
+          nextCursor: 'older',
+          events: turnEvents(3, 5),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 5,
+          hasMore: false,
+          events: turnEvents(1, 2),
+        })
+        // Contiguous and not detached: it simply starts at turn 9's start,
+        // above the newest event this reader holds.
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: true,
+          nextCursor: 'below-9',
+          events: turn9(9, 12),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: false,
+          events: turnEvents(1, 8),
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://boundary-reload.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(result.current.hasMore).toBe(true));
+      await act(async () => result.current.loadOlder());
+      rerender({ revision: 1 });
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual(
+          Array.from({ length: 12 }, (_, index) => index + 1),
+        ),
+      );
+      expect(cursorOf(3)).toBe('below-9');
+    });
+
+    // The fill completes the newest turn; it is not the reader asking for
+    // older history. A later reload still replaces the newest page, so a
+    // long-mounted chat does not accumulate every event it ever filled.
+    test('a fill does not make later reloads keep everything', async () => {
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: true,
+          nextCursor: 'gap',
+          turnStartDetached: true,
+          events: [...turnEvents(6, 6), ...turnEvents(11, 12)],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: true,
+          nextCursor: 'older-turns',
+          events: turnEvents(6, 10),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 14,
+          hasMore: true,
+          nextCursor: 'below-8',
+          // Turn 6 is now the older turn the page cuts; turn 13 is whole.
+          turnStartDetached: true,
+          events: [
+            ...turnEvents(6, 6),
+            ...turnEvents(8, 12),
+            event('e13', 'turn.started', { turnId: 'turn-13', prompt: 'Q13' }),
+            event('e14', 'content.text-delta', {
+              turnId: 'turn-13',
+              itemId: 'answer-13',
+              delta: '14',
+            }),
+          ],
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://fill-then-reload.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([
+          6, 7, 8, 9, 10, 11, 12,
+        ]),
+      );
+      rerender({ revision: 1 });
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([
+          6, 8, 9, 10, 11, 12, 13, 14,
+        ]),
+      );
+      expect(fetchWindow).toHaveBeenCalledTimes(3);
+    });
+
+    // A finished turn is followed by a turnless `session.state-changed`, and a
+    // steer re-announces the turn mid-way: neither may hide where it started.
+    test('a finished, steered turn still reads whole', async () => {
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 13,
+          hasMore: true,
+          nextCursor: 'gap',
+          turnStartDetached: true,
+          events: [
+            ...turnEvents(6, 6),
+            event('e11', 'turn.started', {
+              turnId: 'turn-6',
+              inputKind: 'steer',
+              prompt: 'Steer',
+            }),
+            ...turnEvents(12, 12),
+            event('e13', 'session.state-changed', {
+              from: 'running',
+              to: 'idle',
+            }),
+          ],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 13,
+          hasMore: false,
+          events: turnEvents(6, 10),
+        });
+      const { result } = renderHook(() =>
+        useActiveChatTranscript('http://finished-steered.test', baseSession),
+      );
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([
+          6, 7, 8, 9, 10, 11, 12, 13,
+        ]),
+      );
+      expect(cursorOf(1)).toBe('gap');
+    });
+
+    test('a fill a newer reload cut short is still owed', async () => {
+      let resolveFirstFill: ((page: unknown) => void) | undefined;
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 5,
+          hasMore: true,
+          nextCursor: 'older',
+          events: turnEvents(3, 5),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 5,
+          hasMore: false,
+          events: turnEvents(1, 2),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: true,
+          nextCursor: 'below-9',
+          events: turn9(9, 12),
+        })
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              resolveFirstFill = resolve;
+            }),
+        )
+        // The next reload lands on held events (9..12), so on its own it
+        // would see nothing missing.
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 14,
+          hasMore: true,
+          nextCursor: 'below-9-again',
+          events: turn9(9, 14),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 14,
+          hasMore: false,
+          events: turnEvents(1, 8),
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://owed-fill.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(result.current.hasMore).toBe(true));
+      await act(async () => result.current.loadOlder());
+      rerender({ revision: 1 });
+      await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(4));
+      rerender({ revision: 2 });
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual(
+          Array.from({ length: 14 }, (_, index) => index + 1),
+        ),
+      );
+      expect(cursorOf(5)).toBe('below-9-again');
+      // The superseded fill's late answer changes nothing.
+      await act(async () => {
+        resolveFirstFill?.({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: false,
+          events: turnEvents(6, 6),
+        });
+      });
+      expect(sequences(result.current.events)).toHaveLength(14);
+      expect(result.current.hasMore).toBe(false);
+
+      // Paid: the next reload that lands on held events reads nothing more.
+      fetchWindow.mockResolvedValueOnce({
+        protocolVersion: 1,
+        watermark: 16,
+        hasMore: true,
+        nextCursor: 'below-9-third',
+        events: turn9(9, 16),
+      });
+      rerender({ revision: 3 });
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toHaveLength(16),
+      );
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+      expect(fetchWindow).toHaveBeenCalledTimes(7);
+    });
+
+    test('a fill cut short before older pages were loaded owes nothing later', async () => {
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: true,
+          nextCursor: 'gap',
+          turnStartDetached: true,
+          events: [...turnEvents(6, 6), ...turnEvents(11, 12)],
+        })
+        // The fill's read: Load older aborts it before it answers.
+        .mockImplementationOnce(() => new Promise(() => {}))
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: false,
+          events: turnEvents(6, 10),
+        })
+        // Turn 6 is now the older turn cut; turn 13 is whole, and the page
+        // overlaps what is held.
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 14,
+          hasMore: true,
+          nextCursor: 'below-11',
+          turnStartDetached: true,
+          events: [
+            ...turnEvents(6, 6),
+            ...turnEvents(11, 12),
+            event('e13', 'turn.started', { turnId: 'turn-13', prompt: 'Q13' }),
+            event('e14', 'content.text-delta', {
+              turnId: 'turn-13',
+              itemId: 'answer-13',
+              delta: '14',
+            }),
+          ],
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://cut-short-unloaded.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(2));
+      await act(async () => result.current.loadOlder());
+      expect(sequences(result.current.events)).toEqual([
+        6, 7, 8, 9, 10, 11, 12,
+      ]);
+      rerender({ revision: 1 });
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toHaveLength(9),
+      );
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+      expect(fetchWindow).toHaveBeenCalledTimes(4);
+    });
+
+    test('a page that cuts only an older turn reads nothing more', async () => {
+      // Turn 1 is cut (its start re-added), turn 6 is whole: nothing the
+      // reader is looking at is missing, so the gap waits for Load older.
+      fetchWindow.mockResolvedValueOnce({
+        protocolVersion: 1,
+        watermark: 8,
+        hasMore: true,
+        nextCursor: 'gap-in-turn-1',
+        turnStartDetached: true,
+        events: [
+          event('e1', 'turn.started', { turnId: 'turn-1', prompt: 'Q1' }),
+          ...turnEvents(5, 8),
+        ],
+      });
+      const { result } = renderHook(() =>
+        useActiveChatTranscript('http://older-cut.test', baseSession),
+      );
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([1, 5, 6, 7, 8]),
+      );
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+      expect(fetchWindow).toHaveBeenCalledTimes(1);
+      expect(result.current.hasMore).toBe(true);
+    });
+
+    test('Load older still pages after a reload moved the head', async () => {
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 5,
+          hasMore: true,
+          nextCursor: 'older-a',
+          events: turnEvents(4, 5),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 5,
+          hasMore: true,
+          nextCursor: 'older-b',
+          events: turnEvents(3, 3),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 7,
+          hasMore: true,
+          nextCursor: 'newest-only',
+          // A real newest page overlaps what was already newest.
+          events: turnEvents(4, 7),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 5,
+          hasMore: false,
+          events: turnEvents(1, 2),
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://older-after-reload.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(result.current.hasMore).toBe(true));
+      await act(async () => result.current.loadOlder());
+      rerender({ revision: 1 });
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([3, 4, 5, 6, 7]),
+      );
+      await act(async () => result.current.loadOlder());
+      expect(cursorOf(3)).toBe('older-b');
+      expect(sequences(result.current.events)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+      expect(fetchWindow).toHaveBeenCalledTimes(4);
+      expect(result.current.hasMore).toBe(false);
+    });
+  });
+
   test('retains loaded older pages and ignores a stale terminal refresh', async () => {
     let resolveStale: ((page: Record<string, unknown>) => void) | undefined;
     let resolveLatest: ((page: Record<string, unknown>) => void) | undefined;
@@ -2697,7 +3840,13 @@ describe('useActiveChatTranscript', () => {
           new Promise((resolve) => {
             resolveLatest = resolve;
           }),
-      );
+      )
+      .mockResolvedValueOnce({
+        protocolVersion: 1,
+        watermark: 8,
+        hasMore: false,
+        events: [event('e5', 'turn.started', { turnId: 'new', prompt: 'new' })],
+      });
     const { result, rerender } = renderHook(
       ({ revision }) =>
         useActiveChatTranscript('http://station.test', {
@@ -2745,7 +3894,7 @@ describe('useActiveChatTranscript', () => {
       'new',
       'latest',
     ]);
-    expect(result.current.hasMore).toBe(false);
+    await waitFor(() => expect(result.current.hasMore).toBe(false));
   });
 
   test('projects same-timestamp high-fanout events in authoritative sequence order', async () => {
@@ -3570,4 +4719,224 @@ describe('useActiveChatTranscript — calls of the open turn', () => {
       activeChatsStore.removeChat(id);
     }
   });
+});
+
+// #4266: a reopened chat holds only the stored `runtime.error` of a memory
+// kill; the marker that carries Continue is recreated for the kill Continue
+// still applies to.
+describe('useActiveChatTranscript stored memory kill', () => {
+  beforeEach(() => {
+    resetSequencedLiveEventsForTests();
+    vi.clearAllMocks();
+    fetchWindow.mockReset();
+    recoveryBudget.clear();
+    fetchCapability.mockResolvedValue(true);
+  });
+
+  const CURRENT =
+    'Codex ran out of memory and was stopped, along with the commands it was running. Its workload budget is 3072 MiB.';
+  const LEGACY =
+    'Codex was killed because memory was exhausted. Its workload budget was 3072 MiB. Commands and delegated work were interrupted. Run memory-heavy checks sequentially before continuing.';
+  const killed = (turnId: string, code: string, message: string, at = 2) => [
+    event(`e${at}`, 'turn.started', { turnId, prompt: `run ${turnId}` }),
+    event(`e${at + 1}`, 'runtime.error', {
+      turnId,
+      severity: 'error',
+      code,
+      message,
+    }),
+  ];
+  const carriers = (messages: ChatSession['messages']) =>
+    messages.filter(
+      (message) =>
+        (message.content ?? '').startsWith('[SYSTEM_EVENT] [CHAT_ERROR') ||
+        (message.contentParts ?? []).some((part) => part.runtimeError === true),
+    );
+  async function read(
+    events: ReturnType<typeof event>[],
+    memoryContinuation?: { eligible: boolean; turnId?: string },
+  ) {
+    fetchWindow.mockResolvedValue({
+      protocolVersion: 1,
+      watermark: 20,
+      hasMore: false,
+      events,
+      memoryContinuation,
+    });
+    const view = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+    await waitFor(() => expect(view.result.current.settled).toBe(true));
+    await waitFor(() =>
+      expect(carriers(view.result.current.messages).length).toBeGreaterThan(0),
+    );
+    const result = carriers(view.result.current.messages);
+    view.unmount();
+    return result;
+  }
+
+  test.each([
+    ['today’s code', 'engine-memory-exhausted', CURRENT],
+    ['the code stored before #4257', 'codex-turn-orphaned', LEGACY],
+  ])(
+    'the newest turn’s kill (%s) becomes the one marker card',
+    async (_label, code, message) => {
+      const found = await read(killed('turn-1', code, message), {
+        eligible: true,
+        turnId: 'turn-1',
+      });
+      expect(found).toHaveLength(1);
+      expect(found[0]).toMatchObject({
+        role: 'user',
+        turnId: 'turn-1',
+        content: `[SYSTEM_EVENT] [CHAT_ERROR:${code}] ${message}`,
+      });
+    },
+  );
+
+  test('a kill a person has moved on from keeps its projected part, with no card', async () => {
+    const found = await read(
+      [
+        ...killed('turn-1', 'engine-memory-exhausted', CURRENT, 2),
+        event('e10', 'turn.started', { turnId: 'turn-2', prompt: 'next' }),
+        event('e11', 'turn.completed', { turnId: 'turn-2' }),
+      ],
+      { eligible: false, turnId: 'turn-1' },
+    );
+    expect(found).toHaveLength(1);
+    expect(found[0]?.contentParts?.some((part) => part.runtimeError)).toBe(
+      true,
+    );
+    expect(found[0]?.content ?? '').not.toContain('[CHAT_ERROR');
+  });
+
+  test('a continuation killed in turn gets the card, not the kill it continued', async () => {
+    const found = await read(
+      [
+        ...killed('turn-1', 'engine-memory-exhausted', CURRENT, 2),
+        event('e10', 'turn.started', {
+          turnId: 'turn-2',
+          prompt: 'Continue the task from where it stopped.',
+          clientTurnId: `memory-continue-${'a'.repeat(40)}`,
+          clientOrigin: {
+            version: 1,
+            actor: { kind: 'internal' },
+            reported: { surface: 'unknown' },
+          },
+        }),
+        event('e11', 'runtime.error', {
+          turnId: 'turn-2',
+          severity: 'error',
+          code: 'engine-memory-exhausted',
+          message: CURRENT,
+        }),
+      ],
+      { eligible: true, turnId: 'turn-2' },
+    );
+    const markers = found.filter((message) =>
+      (message.content ?? '').startsWith('[SYSTEM_EVENT] [CHAT_ERROR'),
+    );
+    expect(markers.map((message) => message.turnId)).toEqual(['turn-2']);
+  });
+
+  // The server service tests cover how the last failure derives eligibility.
+  test.each([
+    ['a memory kill after another failure', ['other', 'memory'], true],
+    ['another failure after a memory kill', ['memory', 'other'], false],
+  ] as const)(
+    "the turn's last failure decides, as the server reads it (%s)",
+    async (_label, failures, card) => {
+      const found = await read(
+        [
+          event('e2', 'turn.started', { turnId: 'turn-1', prompt: 'run' }),
+          ...failures.map((failure, index) =>
+            event(`e${3 + index}`, 'runtime.error', {
+              turnId: 'turn-1',
+              severity: 'error',
+              ...(failure === 'memory'
+                ? { code: 'engine-memory-exhausted', message: CURRENT }
+                : {
+                    code: 'codex-turn-orphaned',
+                    message: 'The Codex turn was orphaned.',
+                  }),
+            }),
+          ),
+        ],
+        { eligible: card, turnId: 'turn-1' },
+      );
+      expect(
+        found.some((message) =>
+          (message.content ?? '').startsWith(
+            '[SYSTEM_EVENT] [CHAT_ERROR:engine-memory-exhausted]',
+          ),
+        ),
+      ).toBe(card);
+    },
+  );
+
+  test('another failure in the newest turn gets no recreated card', async () => {
+    const found = await read(
+      killed('turn-1', 'codex-turn-orphaned', 'The Codex turn was orphaned.'),
+    );
+    expect(found).toHaveLength(1);
+    expect(found[0]?.content ?? '').not.toContain('[CHAT_ERROR');
+  });
+
+  test('a later retriable Codex error prevents the memory Continue card', async () => {
+    const found = await read([
+      ...killed('turn-1', 'engine-memory-exhausted', CURRENT),
+      event('e4', 'runtime.error', {
+        turnId: 'turn-1',
+        severity: 'error',
+        code: 'stream-disconnected',
+        message: 'will retry',
+        retriable: true,
+      }),
+    ]);
+    expect(
+      found.some((message) =>
+        (message.content ?? '').includes(
+          '[CHAT_ERROR:engine-memory-exhausted]',
+        ),
+      ),
+    ).toBe(false);
+  });
+
+  test('a turnless later error does not offer Continue without server authority', async () => {
+    const found = await read([
+      ...killed('turn-1', 'engine-memory-exhausted', CURRENT),
+      event('e4', 'runtime.error', {
+        severity: 'error',
+        code: 'stream-disconnected',
+        message: 'later error',
+      }),
+    ]);
+    expect(
+      found.some((message) =>
+        (message.content ?? '').includes(
+          '[CHAT_ERROR:engine-memory-exhausted]',
+        ),
+      ),
+    ).toBe(false);
+  });
+
+  test.each([undefined, { eligible: false, turnId: 'turn-1' }])(
+    'withholds Continue without an eligible fact (%o)',
+    async (fact) => {
+      const found = await read(
+        killed('turn-1', 'engine-memory-exhausted', CURRENT),
+        fact,
+      );
+      expect(
+        found.some((message) =>
+          (message.content ?? '').includes('[CHAT_ERROR'),
+        ),
+      ).toBe(false);
+      expect(
+        found.some((message) =>
+          message.contentParts?.some((part) => part.runtimeError),
+        ),
+      ).toBe(true);
+    },
+  );
 });

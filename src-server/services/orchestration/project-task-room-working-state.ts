@@ -33,6 +33,14 @@ export interface ProjectTaskRoomWorkingState {
     scope: { projectId: string; taskId: string; documentId: string };
     after?: string;
   }): Promise<WorkingProjection>;
+  readRevisionOrdinals(input: {
+    scope: { projectId: string; taskId: string; documentId: string };
+    revision: string;
+    revisions: readonly string[];
+  }): Promise<
+    | { kind: 'available'; revisionOrdinals: Readonly<Record<string, number>> }
+    | { kind: 'unavailable' }
+  >;
   settle(input: {
     scope: { projectId: string; taskId: string; documentId: string };
     intentId: string;
@@ -51,6 +59,10 @@ export interface ProjectTaskRoomWorkingState {
     };
     epoch: number;
     operations: readonly TextDocumentOperation[];
+    /** Proposal seeding rechecks emptiness inside the write transaction. */
+    onlyIfEmpty?: boolean;
+    /** Keep a replaceable candidate until an explicit revision reference. */
+    coalesceRevisionPublication?: true;
     /** E2E/reference-only bulk replay seed; never emits immutable evidence. */
     suppressRevisionPublicationForDiagnostic?: true;
     /** Parent-owned authorization fence immediately before SQLite COMMIT. */
@@ -65,8 +77,8 @@ export interface ProjectTaskRoomWorkingState {
     scope: { projectId: string; taskId: string; documentId: string };
   }): Promise<RevisionPublicationRead>;
   /**
-   * The Station-wide revision ledger as room admission counts it: stored
-   * receipts plus every admitted publication not yet frozen (#4007).
+   * Stored receipts plus claimed publications not yet frozen. Replaceable
+   * candidates do not reserve immutable ledger capacity (#4055).
    */
   revisionLedgerUsage?(): Promise<
     | {
@@ -76,6 +88,25 @@ export interface ProjectTaskRoomWorkingState {
       }
     | { readonly kind: 'unavailable' }
   >;
+  requestRevisionPublication?(input: {
+    scope: { projectId: string; taskId: string; documentId: string };
+    workingRevision: string;
+    initialPrincipal: {
+      operatorId: string;
+      deviceId: string;
+      policyRevision: string;
+    };
+    initialActorId: string;
+    beforeCommit: () => Promise<boolean>;
+  }): Promise<
+    | { kind: 'requested' }
+    | { kind: 'existing'; evidenceRevision: string }
+    | { kind: 'unavailable' }
+  >;
+  releaseRevisionPublication?(input: {
+    scope: { projectId: string; taskId: string; documentId: string };
+    intentId: string;
+  }): Promise<'released' | 'unavailable'>;
   markRevisionPublication(input: {
     scope: { projectId: string; taskId: string; documentId: string };
     intentId: string;
@@ -134,8 +165,8 @@ export interface WorkingSettlement {
   /**
    * With `rejected`. `document-full`: this document's revision evidence would
    * exceed its record bounds. `evidence-ledger-full`: the Station-wide
-   * revision evidence ledger has no room for it. Both are refused before
-   * anything is written, so they never leave a publication pending (#4007).
+   * revision evidence ledger has no room for an eager internal publication.
+   * Coalesced room saves apply only the per-document bound (#4055).
    */
   readonly reason?:
     | 'revision-publication-pending'
@@ -146,6 +177,7 @@ export interface WorkingSettlement {
 export interface RevisionPublication {
   readonly intentId: string;
   readonly scope: { projectId: string; taskId: string; documentId: string };
+  readonly freezeRequested?: boolean;
   readonly baseWorkingRevision: string;
   readonly workingRevision: string;
   readonly snapshot: WorkingStateSnapshot;
@@ -310,6 +342,12 @@ export function createProjectTaskRoomWorkingState(
       }
     });
   return Object.freeze({
+    readRevisionOrdinals: (
+      input: Parameters<ProjectTaskRoomWorkingState['readRevisionOrdinals']>[0],
+    ) =>
+      request<
+        Awaited<ReturnType<ProjectTaskRoomWorkingState['readRevisionOrdinals']>>
+      >({ ...input, type: 'revision-ordinals' }),
     read: (input: Parameters<ProjectTaskRoomWorkingState['read']>[0]) =>
       request<WorkingProjection>({ type: 'read', ...input }),
     settle: (input: Parameters<ProjectTaskRoomWorkingState['settle']>[0]) => {
@@ -338,6 +376,29 @@ export function createProjectTaskRoomWorkingState(
         type: 'read-revision-publication',
         ...input,
       }),
+    requestRevisionPublication: (
+      input: Parameters<
+        NonNullable<ProjectTaskRoomWorkingState['requestRevisionPublication']>
+      >[0],
+    ) => {
+      const { beforeCommit, ...value } = input;
+      return request<
+        | { kind: 'requested' }
+        | { kind: 'existing'; evidenceRevision: string }
+        | { kind: 'unavailable' }
+      >({ type: 'request-revision-publication', ...value }, beforeCommit);
+    },
+    releaseRevisionPublication: async (
+      input: Parameters<
+        NonNullable<ProjectTaskRoomWorkingState['releaseRevisionPublication']>
+      >[0],
+    ) =>
+      (
+        await request<{ kind: 'released' | 'unavailable' }>({
+          type: 'release-revision-publication',
+          ...input,
+        })
+      ).kind,
     markRevisionPublication: async (
       input: Parameters<
         ProjectTaskRoomWorkingState['markRevisionPublication']

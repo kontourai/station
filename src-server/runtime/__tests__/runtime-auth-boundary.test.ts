@@ -749,6 +749,7 @@ describe('central runtime HTTP security boundary', () => {
           close: async () => ({ kind: 'closed' }),
         }) as any,
       working: {
+        readRevisionOrdinals: async () => ({ kind: 'unavailable' as const }),
         read: async () => ({ kind: 'snapshot', revision: 'empty', text: '' }),
         settle: async () => ({ kind: 'rejected' }),
         receipt: async () => ({ kind: 'missing' }),
@@ -923,6 +924,40 @@ describe('central runtime HTTP security boundary', () => {
     expect(response.headers.get('access-control-allow-headers')).toContain(
       STATION_PLUGIN_HEADER,
     );
+    // Cached so a phone does not preflight every poll again.
+    expect(response.headers.get('access-control-max-age')).toBe('7200');
+  });
+
+  it('revalidates an authorized JSON read, and a tag never stands in for authorization', async () => {
+    let reads = 0;
+    const { request } = createHarness({
+      afterSecurity: (app) => {
+        app.get('/api/projects', (c) => {
+          reads += 1;
+          return c.json({ projects: ['one'] });
+        });
+      },
+    });
+    const authorized = { authorization: `Bearer ${CREDENTIAL}` };
+    const first = await request('/api/projects', { headers: authorized });
+    expect(first.status).toBe(200);
+    const etag = first.headers.get('etag');
+    expect(etag).toMatch(/^W\/"[\w-]+"$/);
+    expect(first.headers.get('cache-control')).toBe('private, no-cache');
+
+    const again = await request('/api/projects', {
+      headers: { ...authorized, 'If-None-Match': etag! },
+    });
+    expect(again.status).toBe(304);
+    expect(await again.text()).toBe('');
+    // The handler ran under this caller's authority before the comparison.
+    expect(reads).toBe(2);
+
+    const anonymous = await request('/api/projects', {
+      headers: { 'If-None-Match': etag! },
+    });
+    expect(anonymous.status).toBe(401);
+    expect(reads).toBe(2);
   });
 
   // archive#1890: plugin-context SDK requests set the STATION_PLUGIN_HEADER

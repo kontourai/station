@@ -96,6 +96,14 @@ import {
 } from '../../security/confinement/seatbelt.js';
 import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
+import {
+  commitEngineLaunch,
+  engineSessionTmpDir,
+  type LaunchedRoot,
+  launchedRootOf,
+  removeLaunchedRoot,
+  stampLaunchExit,
+} from '../../services/infra/session-tmpdir.js';
 import type { NativeSessionOwnership } from '../../services/orchestration/native-session-ownership.js';
 import type { EngineMcpOAuthResolver } from '../../services/plugins/engine-mcp-oauth.js';
 import {
@@ -694,6 +702,13 @@ type ClaudeSessionRecord = {
   deliveryProbeServerId?: string;
   /** #2932: the redacted end of the engine's stderr (claude-code-spawn.ts). */
   engineStderrTail?: () => string;
+  /**
+   * The SDK stream failed and the `claude` process was seen to exit, so its
+   * still-running subagents settle `interrupted`.
+   */
+  engineDied?: boolean;
+  /** `stopSession` began: a stream failure after it is the stop, not a death. */
+  stopping?: boolean;
   promptQueue: AsyncUserMessageQueue;
   query: Query;
   pendingRequests: Map<string, PendingRequest>;
@@ -811,6 +826,8 @@ type ClaudeSessionRecord = {
   engineProcess?: ClaudeEngineProcess;
   /** #2494: removes a Seatbelt-confined session's Station temp directory. */
   confinementCleanup?: () => void;
+  /** chat-host-images: the temp-root launch this engine was started with. */
+  hostImageLaunch?: LaunchedRoot;
   /**
    * #2494: set while a confined start waits for its posture to be observed;
    * a turn is refused until it is, so none runs before the profile is known.
@@ -1076,6 +1093,20 @@ interface SeatbeltStart {
   appHomeEnv: Record<string, string>;
   /** Variables the operator configured for this engine; they pass as set. */
   configuredKeys: ReadonlySet<string>;
+}
+
+/**
+ * Whether the engine refuses a spawn granted `allowDangerouslySkipPermissions`
+ * here: Claude Code exits when run as root with that grant, outside a
+ * sandbox it recognizes (`IS_SANDBOX=1`, or its bubblewrap mode). Read from
+ * Station's own process, which the engine inherits.
+ */
+function claudeRefusesBypassGrant(): boolean {
+  return (
+    process.getuid?.() === 0 &&
+    process.env.IS_SANDBOX !== '1' &&
+    !process.env.CLAUDE_CODE_BUBBLEWRAP
+  );
 }
 
 /** #2494: the warning a start that fell back to Auto publishes. */
@@ -1400,6 +1431,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     builtin: true,
     engineId: engineId('claude'),
     abortSettlement: 'await',
+    workloadScope: 'engine-process' as const,
     recovery: {
       sameSession: true,
       maxAttempts: 1,
@@ -1997,6 +2029,26 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       seatbelt && requestedPermissionMode === 'bypassPermissions'
         ? ('acceptEdits' as const)
         : requestedPermissionMode;
+    // A `host` start's caller proved it may grant full access (or the
+    // conversation already recorded `never`), so the SDK's spawn-only bypass
+    // grant is taken now even when the session starts at a stricter mode. It
+    // only permits `bypassPermissions`: the engine runs at `permissionMode`
+    // until the server applies a recorded `never` at a turn start, so a
+    // mid-chat switch to full access needs no restart. Not granted:
+    // - to a `workspace` start without a Seatbelt plan, whose `never` the
+    //   server applies as Auto (approval-posture.ts);
+    // - when Station sends no mode: the engine's own settings cascade then
+    //   decides, and the grant must not let a settings `defaultMode` (a
+    //   repository's checked-in one included) reach bypass on its own;
+    // - as root outside a sandbox, where the engine refuses to start with it
+    //   at all (its own root guard), so an Ask start would fail to spawn;
+    // - to a raw `plan` start: the engine treats plan mode as bypass when
+    //   bypass is available, which a planning pass never asked for.
+    const hostBypassGrant =
+      input.confinement === 'host' &&
+      requestedPermissionMode !== undefined &&
+      requestedPermissionMode !== 'plan' &&
+      !claudeRefusesBypassGrant();
     if (seatbelt && !seatbelt.launch.writeGrants) {
       seatbelt.launch.cleanup();
       assertRequiredConfinementObserved(
@@ -2050,9 +2102,15 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // #2932: Station owns the engine spawn so it can read the permission
     // asks on the engine's stdout (see claude-code-spawn.ts). #2494: a
     // confined start's spawn goes through the provider's `confine`.
-    const engineProcess = seatbeltSpawn
-      ? createClaudeEngineProcess(undefined, seatbeltSpawn.wrap)
-      : createClaudeEngineProcess();
+    // chat-host-images: prepared here, recorded only once this start commits.
+    const sessionTmpDir = seatbelt
+      ? undefined
+      : engineSessionTmpDir(input.threadId);
+    const engineProcess = createClaudeEngineProcess(
+      undefined,
+      seatbeltSpawn?.wrap,
+      input.threadId,
+    );
     let sdkQuery: ReturnType<typeof query>;
     // After station-control, so the browser server reuses its credential.
     let builtinServers: Record<string, McpServerConfig> | undefined;
@@ -2078,7 +2136,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           preToolPolicy,
           claudeExecutable,
           builtinServers,
-          Boolean(seatbelt) || permissionMode === 'bypassPermissions',
+          Boolean(seatbelt) ||
+            hostBypassGrant ||
+            permissionMode === 'bypassPermissions',
+          sessionTmpDir,
         ),
       });
     } catch (error) {
@@ -2128,7 +2189,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       streamTask: Promise.resolve(),
       currentPermissionMode: permissionMode,
       requestedPermissionMode: permissionMode,
-      allowsBypassPermissions: permissionMode === 'bypassPermissions',
+      // A Seatbelt start is lifted (and marked) only once its profile is
+      // observed, below.
+      allowsBypassPermissions:
+        (hostBypassGrant && !seatbelt) ||
+        permissionMode === 'bypassPermissions',
       currentModelOptions: claudeAppliedModelOptions(input.modelOptions),
       skillsOverlayDir,
       ...(seatbelt ? { confinementCleanup: seatbelt.launch.cleanup } : {}),
@@ -2154,13 +2219,33 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       this.cancelPendingRequests(record, input.threadId, {
         agentId: taskId,
       });
+    // chat-host-images: the launch is recorded once this record is the
+    // thread's session, never before, so a start that fails leaves the
+    // previous launch's record and folder alone. A confined engine's real
+    // TMPDIR is Seatbelt's per-launch directory: exactly that one.
+    let hostImageCommitted = false;
+    const commitHostImageLaunch = () => {
+      if (hostImageCommitted) return;
+      hostImageCommitted = true;
+      commitEngineLaunch(
+        input.threadId,
+        seatbelt
+          ? { confined: seatbelt.launch.tmpDir }
+          : sessionTmpDir
+            ? { own: sessionTmpDir }
+            : undefined,
+      );
+      record.hostImageLaunch = launchedRootOf(input.threadId);
+    };
     // #2494: announces the started session; for a confined start, only
     // once the provider has observed the engine inside its profile.
     const announce = (
       confinementRecord?: ReturnType<typeof observedConfinementRecord>,
     ): ProviderSession => {
-      record.streamTask = this.consumeMessages(record);
       this.sessions.set(input.threadId, record);
+      // Once per start: a confined start committed when it registered.
+      commitHostImageLaunch();
+      record.streamTask = this.consumeMessages(record);
 
       this.publish({
         eventId: crypto.randomUUID(),
@@ -2296,6 +2381,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // spawned through `sandbox-exec` is the evidence.
       record.confinementPending = true;
       this.sessions.set(input.threadId, record);
+      commitHostImageLaunch();
       return (async () => {
         const confinementRecord = await this.observeSeatbeltStart(
           record,
@@ -2971,7 +3057,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       context?.sessionGrantScope === 'server'
         ? undefined
         : pending.suggestions &&
-            sessionGrantPermissionUpdates(grant, pending.suggestions),
+            // Full access is the server's recorded decision alone: an
+            // engine-suggested switch into it is never forwarded, even under
+            // a tool grant that forwards every other suggestion.
+            sessionGrantPermissionUpdates(grant, pending.suggestions).filter(
+              (update) =>
+                !(
+                  update.type === 'setMode' &&
+                  update.mode === 'bypassPermissions'
+                ),
+            ),
     );
     // #2915: a forwarded mode change is Station's own request and now the
     // engine's mode. Both records follow it, so a turn whose posture differs
@@ -3017,6 +3112,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // Settle outstanding canUseTool promises before teardown so the SDK
     // callback never hangs on a stopped session (mirrors acp-adapter, archive#148).
     this.cancelPendingRequests(record, threadId);
+    record.stopping = true;
     record.promptQueue.close();
     record.query.close();
     await record.engineProcess?.terminate();
@@ -3638,6 +3734,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     claudeExecutable?: string | null,
     builtinServers?: Record<string, McpServerConfig>,
     grantBypassPermissions = permissionMode === 'bypassPermissions',
+    /**
+     * This session's own temp folder (chat-host-images), when it has one. A
+     * Seatbelt-confined spawn gets none: its wrapper sets its own TMPDIR.
+     */
+    sessionTmpDir?: string,
   ): Options {
     const modelOptions = claudeAppliedModelOptions(input.modelOptions);
     // #2947: the approval guardian's allows, by the engine's tool-use id,
@@ -3801,7 +3902,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // describe blocks in claude-adapter.test.ts.
       // TMPDIR must be final: both augmentedEnv and appHomeEnv can contain a
       // caller/ambient value, but every Claude SDK spawn must use Station's
-      // reaped engine-spawn directory (archive#1908).
+      // reaped engine-spawn directory (archive#1908), or the session's own
+      // Station-owned one when the chat-host-images preview gives it one
+      // (`session-tmpdir.ts`). Seatbelt confinement replaces it again with
+      // its per-launch directory.
       //
       // station#2072: the per-connection env layer (proxy routing) merges
       // BEFORE the app-home layer, so the connection's routing keys always
@@ -3820,7 +3924,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                 input.agent.toolServerLoading === 'always' ? 'false' : 'true',
             }
           : {}),
-        TMPDIR: ensureEngineSpawnTmpDir(),
+        TMPDIR: sessionTmpDir ?? ensureEngineSpawnTmpDir(),
       }),
       // #2932: the SDK reads stdout from the process this returns, after
       // Station's tap has recorded each permission ask on it.
@@ -4317,12 +4421,15 @@ export class ClaudeAdapter implements ProviderAdapterShape {
    */
   private settleSessionEnd(record: ClaudeSessionRecord): void {
     const publish = (event: CanonicalRuntimeEvent) => this.publish(event);
-    const endedChildren = settleOpenClaudeChildren({
-      provider: this.provider,
-      record,
-      publish,
-      createdAt: new Date().toISOString(),
-    });
+    const endedChildren = settleOpenClaudeChildren(
+      {
+        provider: this.provider,
+        record,
+        publish,
+        createdAt: new Date().toISOString(),
+      },
+      { engineDied: record.engineDied === true },
+    );
     // A child that ended with the session can no longer be waiting on the
     // approvals it raised (canUseTool's agentID is its task_id): withdraw
     // them, so a late "Allow for this session" cannot mint a grant.
@@ -4359,6 +4466,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // for; `stopSession` covers the deliberate stop. Whichever runs first
       // empties the map, so the other publishes nothing.
       this.settleSessionEnd(record);
+      // chat-host-images: however the iterator ended (a failure, a clean end,
+      // a binding that died), this engine is gone and no session.exited may
+      // follow, so its launch's temp folder goes now; the identity check
+      // leaves a newer launch of the thread alone.
+      removeLaunchedRoot(record.session.threadId, record.hostImageLaunch);
     }
   }
 
@@ -4410,6 +4522,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           record.terminalResultObserved === 'binding-dead' ? 'dead' : 'error';
         return;
       }
+      // The engine died only when its process is seen gone: a stream can
+      // fail (a malformed frame, a transport error) with `claude` alive.
+      if (!record.stopping && record.engineProcess?.exited() === true)
+        record.engineDied = true;
       // The SDK folds the engine's stderr into an exit error only for its
       // own spawn; Station's spawn kept the tail, so add it here.
       const detail = claudeExitDetailWithStderr(
@@ -4468,6 +4584,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   private publish(event: CanonicalRuntimeEvent): void {
     if (event.method === 'session.exited')
       this.options.revokeStationControlCallerToken?.(event.threadId);
+    // chat-host-images: which launch this exit ends, taken now (see
+    // `stampLaunchExit`).
+    stampLaunchExit(event);
     this.events.push(event);
   }
 

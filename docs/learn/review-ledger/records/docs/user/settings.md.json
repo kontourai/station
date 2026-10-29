@@ -26,7 +26,27 @@
 
     "src-server/services/devices/hosts/device-host-store.ts",
 
-    "src-ui/src/views/settings/LanDiscoveryControl.tsx"
+    "src-ui/src/views/settings/LanDiscoveryControl.tsx",
+
+    "src-server/runtime/bootstrap/station-runtime.ts",
+
+    "scripts/feature-preview-docs-check.mjs",
+
+    "scripts/__tests__/feature-preview-docs-check.test.ts",
+
+    "src-server/runtime/bootstrap/local-media-runtime.ts",
+
+    "src-server/services/feature-previews/feature-preview-refusal.ts",
+
+    "src-ui/src/providers/voice/useLocalSpeechProvider.ts",
+
+    "src-ui/src/views/TaskWorkspaceView.tsx",
+
+    "src-ui/src/hooks/useSurfaceVisibilityFlags.ts",
+
+    "src-ui/src/views/task-workspace/review/TaskReviewTab.tsx",
+
+    "tests/task-review.spec.ts"
   ],
 
   "checks": [

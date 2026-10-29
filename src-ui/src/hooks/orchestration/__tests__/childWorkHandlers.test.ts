@@ -458,7 +458,6 @@ describe('child-work client path (legacy Claude tuples → contract reducer)', (
           items: [row],
           now: Date.now(),
           snoozedUntil: new Map(),
-          terminalSince: new Map(),
         }).running.length,
       ).toBe(active ? 1 : 0);
       expect([chat].filter(isSessionWorkActive)).toHaveLength(active ? 1 : 0);

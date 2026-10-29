@@ -1,8 +1,10 @@
+import type { ChatHostImageMap } from '@kontourai/station-contracts/chat-host-images';
 import type {
   ChildWorkModel,
-  ChildWorkTerminalStatus,
+  ChildWorkTerminalDisplayStatus,
 } from '@kontourai/station-contracts/child-work';
 import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
+import { isLowContentPrompt } from '@kontourai/station-contracts/conversation-title';
 import type { InputRequestRecord } from '@kontourai/station-contracts/input-request';
 import type {
   ConversationHandoffProjection,
@@ -37,6 +39,7 @@ import {
   newerConversationActivity,
   serverTurnLive,
 } from '../utils/conversation-activity';
+import { displayTitleFromPrompt } from '../utils/display-title';
 
 export type { UnsentMessageRecord } from '../types';
 
@@ -141,6 +144,12 @@ export type ChatContentPart = {
   approvalThreadId?: string;
   /** #2316: see `MessagePart.approvalEventId`. */
   approvalEventId?: string;
+  /** See `MessagePart.approvalContentEvent`. */
+  approvalContentEvent?: import('@kontourai/station-contracts/runtime-events').CanonicalRuntimeEvent;
+  /** See `MessagePart.spilledText`. */
+  spilledText?: import('@kontourai/station-shared/conversation-message').MessagePart['spilledText'];
+  /** See `MessagePart.contentThreadId`. */
+  contentThreadId?: string;
   /** See `MessagePart.approvalToolName`. */
   approvalToolName?: string;
   /** #2915: see `MessagePart.approvalSessionGrant`. */
@@ -179,6 +188,8 @@ export type ChatMessage = {
   steerInterruptedRun?: boolean;
   /** See `ChatMessage.stationCheckBack` in types.ts. */
   stationCheckBack?: boolean;
+  /** See `ChatMessage.stationMemoryContinuation` in types.ts. */
+  stationMemoryContinuation?: boolean;
   /** See `ChatMessage.sender` in types.ts. */
   sender?: ClientOriginSender;
   model?: string;
@@ -208,6 +219,8 @@ export type ChatMessage = {
    */
   provenance?: unknown;
   changedFiles?: TurnChangedFiles;
+  /** See `ChatMessage.hostImages` in types.ts. */
+  hostImages?: ChatHostImageMap;
 };
 
 /**
@@ -217,7 +230,7 @@ export type ChatMessage = {
  * when the registry has none.
  */
 export interface BackgroundTaskNotice {
-  status: ChildWorkTerminalStatus;
+  status: ChildWorkTerminalDisplayStatus;
   title?: string;
   summary?: string;
 }
@@ -1695,12 +1708,34 @@ export function clearEphemeralMessagesState(chat: ChatUIState): ChatUIState {
   };
 }
 
+/**
+ * #4266: the title a chat takes when its first send is confirmed. This is
+ * the one moment the local messages are known to be the whole conversation
+ * (this client wrote all of them), so it is the one moment they may name it;
+ * once the session starts they are a bounded window that can begin with
+ * "Continue". Kept as `title`, so it is persisted and survives a reload. A
+ * low-content first message names nothing and leaves the chat untitled.
+ */
+function firstSendTitle(chat: ChatUIState): string | undefined {
+  if (chat.conversationId) return undefined;
+  if (chat.title && chat.title !== 'New chat') return undefined;
+  for (const message of chat.messages ?? []) {
+    if (message.role !== 'user' || typeof message.content !== 'string')
+      continue;
+    const title = displayTitleFromPrompt(message.content);
+    if (title && !isLowContentPrompt(title)) return title;
+  }
+  return undefined;
+}
+
 export function assignConversationIdState(
   chat: ChatUIState,
   conversationId: string,
 ): ChatUIState {
+  const title = firstSendTitle(chat);
   return {
     ...chat,
+    ...(title ? { title } : {}),
     conversationId,
     // #2309: a record describes one conversation; see `mergeChatUpdates`.
     ...(chat.conversationActivity &&

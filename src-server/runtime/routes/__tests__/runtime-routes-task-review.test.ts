@@ -1,5 +1,6 @@
 /** Real runtime composition, TaskGraph, room worker and SQLite; inert unrelated services. */
-import { writeFileSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -8,16 +9,22 @@ import * as reviewContracts from '@kontourai/station-contracts/task-review';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import * as auth from '../../../routes/system/auth.js';
 import { __resetStationServerSelfAttestationForTests } from '../../../security/station-server-scope.js';
+import type { CdpTransport } from '../../../services/browser/browser-host.js';
+import { ChromiumAcquisition } from '../../../services/browser/chromium-acquisition.js';
+import { ChromiumServerHost } from '../../../services/browser/hosts/chromium-server-host.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { NotificationService } from '../../../services/notifications/notification-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
+import { TaskCaptureBlobStore } from '../../../services/projects/task-capture-blob-store.js';
 import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
 import { TaskOutputModule } from '../../../services/projects/task-output-module.js';
 import { TASK_REVIEW_ITEM_MAX_BYTES } from '../../../services/projects/task-review-module.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
+import { execGit } from '../../../utils/git-exec.js';
 import { configureRuntimeRoutes } from '../runtime-routes.js';
 
 const support = vi.hoisted(() => ({
@@ -55,6 +62,8 @@ const OPERATOR_CREDENTIAL = 'test-only-operator-credential-task-review';
 const REVOKED_CREDENTIAL = 'test-only-revoked-person-task-review';
 const PROJECT = 'project-alpha';
 const OTHER_PROJECT = 'project-beta';
+const PROJECT_ID = randomUUID();
+const OTHER_PROJECT_ID = randomUUID();
 const AT = '2026-10-04T00:00:00.000Z';
 const makeTempDir = trackTempDirs();
 
@@ -75,8 +84,39 @@ describe('Task review through configureRuntimeRoutes', () => {
       throw new AggregateError(failures, 'Task review teardown failed');
   });
 
-  async function setup() {
+  async function setup(
+    options: {
+      projectInHomeRepository?: boolean;
+      captureWorkspace?: boolean;
+      operatorDisplay?: string;
+    } = {},
+  ) {
     const homeDir = makeTempDir('station-task-review-');
+    const projectDir = options.projectInHomeRepository
+      ? join(homeDir, 'project')
+      : options.captureWorkspace
+        ? makeTempDir('station-review-workspace-')
+        : homeDir;
+    if (options.projectInHomeRepository || options.captureWorkspace) {
+      if (options.projectInHomeRepository) mkdirSync(projectDir);
+      for (const args of [
+        ['init'],
+        [
+          '-c',
+          'user.name=Station test',
+          '-c',
+          'user.email=station-test@example.invalid',
+          'commit',
+          '--allow-empty',
+          '-m',
+          'fixture',
+        ],
+      ])
+        await execGit(args, {
+          cwd: options.projectInHomeRepository ? homeDir : projectDir,
+          windowsHide: true,
+        });
+    }
     const notifications = new NotificationService(
       new EventBus(),
       homeDir,
@@ -104,15 +144,17 @@ describe('Task review through configureRuntimeRoutes', () => {
       await orchestration.shutdown();
     });
     const projectService = {
-      listProjects: () =>
-        [PROJECT, OTHER_PROJECT].map((id) => ({ id, slug: id })),
+      listProjects: () => [
+        { id: PROJECT_ID, slug: PROJECT },
+        { id: OTHER_PROJECT_ID, slug: OTHER_PROJECT },
+      ],
       getProject: (slug: string) => {
         if (![PROJECT, OTHER_PROJECT].includes(slug))
           throw new Error('missing project');
         return {
-          id: slug,
+          id: slug === PROJECT ? PROJECT_ID : OTHER_PROJECT_ID,
           slug,
-          workingDirectory: homeDir,
+          workingDirectory: projectDir,
           name: 'Project alpha',
           createdAt: AT,
           updatedAt: AT,
@@ -179,7 +221,7 @@ describe('Task review through configureRuntimeRoutes', () => {
       storageAdapter: deepStub({
         getProject: (slug: string) => {
           if (slug !== PROJECT) throw new Error('no project');
-          return { id: PROJECT };
+          return { id: PROJECT_ID };
         },
       }),
       projectMembership: undefined,
@@ -188,7 +230,11 @@ describe('Task review through configureRuntimeRoutes', () => {
       environmentSecurityService: deepStub({
         devicePairing: deepStub({
           listKnownPrincipals: () => [
-            { id: LOCAL_OPERATOR_PRINCIPAL_ID, display: 'Test owner' },
+            {
+              id: LOCAL_OPERATOR_PRINCIPAL_ID,
+              display: options.operatorDisplay ?? 'Test owner',
+            },
+            { id: 'private-owner', display: 'Private starter' },
           ],
           listDevices: () => [],
         }),
@@ -207,7 +253,7 @@ describe('Task review through configureRuntimeRoutes', () => {
         },
         resolveGrantedScope: (credential: string) =>
           [OPERATOR_CREDENTIAL, REVOKED_CREDENTIAL].includes(credential)
-            ? 'orchestration:read orchestration:operate'
+            ? 'orchestration:read orchestration:operate terminal:operate'
             : undefined,
         identifyDevice: () => undefined,
         signRevisionEvidenceAuthorityBinding: (
@@ -231,6 +277,8 @@ describe('Task review through configureRuntimeRoutes', () => {
       const closed = await configured.projectTaskRoomRuntime?.close();
       expect(closed?.kind).toBe('closed');
     });
+    if (configured.browserService)
+      closers.unshift(() => configured.browserService!.shutdown());
     await configured.kitLifecycleReady;
     const base = `http://127.0.0.1:${port}`;
 
@@ -329,6 +377,7 @@ describe('Task review through configureRuntimeRoutes', () => {
     };
     return {
       asOperator,
+      base,
       revokePerson: () => {
         operatorGrant = false;
       },
@@ -347,6 +396,213 @@ describe('Task review through configureRuntimeRoutes', () => {
     };
   }
 
+  test('author labels preserve profile names and use Teammate for unknown people', async () => {
+    const identity = vi
+      .spyOn(auth, 'getCachedUser')
+      .mockReturnValue({ alias: 'brian' });
+    const e = await setup();
+    await e.edit('First plan');
+    const thread = await e.createThread();
+    const unknown = { kind: 'person' as const, principalId: 'unknown-person' };
+    expect(
+      e.store.taskReviewStore().appendReviewEvent({
+        projectId: PROJECT,
+        taskId: e.task.id,
+        taskCreatedAt: e.task.createdAt,
+        author: unknown,
+        beforeCommit: () => true,
+        threadId: thread.threadId,
+        event: {
+          kind: 'reply',
+          body: 'From a former teammate',
+          operationId: 'unknown-person',
+        },
+      }).success,
+    ).toBe(true);
+    const labels = async () =>
+      (await e.asOperator('GET', e.reviewPath)).json.data.authors;
+    // The directory's Test owner display wins over an alias when no profile name exists.
+    expect(await labels()).toContainEqual({
+      author: thread.author,
+      name: 'Test owner',
+    });
+    identity.mockReturnValue({ alias: 'Test owner' });
+    expect(await labels()).toEqual(
+      expect.arrayContaining([
+        { author: thread.author, name: 'Test owner' },
+        { author: unknown, name: 'Teammate' },
+      ]),
+    );
+    identity.mockReturnValue({ alias: 'brian', name: 'brian mcDonald' });
+    expect(await labels()).toContainEqual({
+      author: thread.author,
+      name: 'brian mcDonald',
+    });
+  });
+
+  test('author labels capitalize the local alias when the directory only supplies that alias', async () => {
+    vi.spyOn(auth, 'getCachedUser').mockReturnValue({ alias: 'test owner' });
+    const e = await setup({ operatorDisplay: 'test owner' });
+    await e.edit('First plan');
+    const thread = await e.createThread();
+    expect(
+      (await e.asOperator('GET', e.reviewPath)).json.data.authors,
+    ).toContainEqual({
+      author: thread.author,
+      name: 'Test owner',
+    });
+  });
+
+  test('author labels hide engine and starter from a viewer without Session read access', async () => {
+    const e = await setup();
+    await e.edit('First plan');
+    const opening = await e.createThread();
+    const author = {
+      kind: 'session' as const,
+      sessionId: 'private-review-session',
+    };
+    e.store.appendEvent({
+      eventId: randomUUID(),
+      threadId: author.sessionId,
+      sessionId: author.sessionId,
+      provider: 'claude',
+      method: 'session.started',
+      createdAt: AT,
+      metadata: { userId: 'private-owner' },
+    });
+    const reviewStore = e.store.taskReviewStore();
+    const write = {
+      projectId: PROJECT,
+      taskId: e.task.id,
+      taskCreatedAt: e.task.createdAt,
+      author: {
+        kind: 'person' as const,
+        principalId: LOCAL_OPERATOR_PRINCIPAL_ID,
+      },
+      beforeCommit: () => true,
+    };
+    expect(
+      reviewStore.recordSend({
+        ...write,
+        threadIds: [opening.threadId],
+        deliveryKey: 'identity-delivery',
+        operationId: 'identity-send',
+      }).success,
+    ).toBe(true);
+    expect(
+      reviewStore.appendReviewEvent({
+        ...write,
+        author,
+        threadId: opening.threadId,
+        event: {
+          kind: 'agent-reply',
+          body: 'Private reply',
+          deliveryKey: 'identity-delivery',
+          operationId: 'identity-reply',
+        },
+      }).success,
+    ).toBe(true);
+    const labels = async () =>
+      (await e.asOperator('GET', e.reviewPath)).json.data.authors;
+    expect(await labels()).toContainEqual({ author, name: 'Agent' });
+    // The allowed control proves the engine/starter facts exist behind the read gate.
+    const admission = vi
+      .spyOn(e.orchestration, 'canUserReadSession')
+      .mockReturnValue(true);
+    expect(await labels()).toContainEqual({
+      author,
+      name: 'Claude Code',
+      startedBy: { name: 'Private starter' },
+    });
+    admission.mockReturnValue(false);
+    expect(await labels()).toContainEqual({ author, name: 'Agent' });
+    const missing = {
+      kind: 'session' as const,
+      sessionId: 'unknown-engine-session',
+    };
+    expect(
+      reviewStore.appendReviewEvent({
+        ...write,
+        author: missing,
+        threadId: opening.threadId,
+        event: {
+          kind: 'agent-reply',
+          body: 'Unknown engine',
+          deliveryKey: 'identity-delivery',
+          operationId: 'unknown-engine',
+        },
+      }).success,
+    ).toBe(true);
+    admission.mockReturnValue(true);
+    expect(await labels()).toContainEqual({ author: missing, name: 'Agent' });
+  });
+
+  test('review ordinal work is sparse, cached across polls and selected reads, and refreshed after saves', async () => {
+    const e = await setup();
+    await e.edit('First plan');
+    const thread = await e.createThread();
+    await e.edit('First plan plus second save');
+    await e.edit('First plan plus third save');
+    const ordinalOwner = vi.spyOn(e.runtime, 'readPlanOrdinalsForReview');
+    const entries = vi.spyOn(e.store.taskReviewStore(), 'listThreadEntries');
+    const readPlan = async (path = e.reviewPath) => {
+      const response = await e.asOperator('GET', path);
+      expect(response.status).toBe(200);
+      return path === e.reviewPath
+        ? response.json.data.items.find((item: any) => item.kind === 'plan')
+        : response.json.data;
+    };
+    entries.mockClear();
+    const first = await readPlan();
+    expect(entries).toHaveBeenCalledTimes(1);
+    const latest = first.artifact.revision;
+    expect(first.revisionOrdinals).toEqual({
+      [thread.artifact.revision]: 1,
+      [latest]: 3,
+    });
+    expect(
+      Buffer.byteLength(JSON.stringify(first.revisionOrdinals), 'utf8'),
+    ).toBeLessThan(300);
+    expect(ordinalOwner).toHaveBeenCalledTimes(1);
+    expect(ordinalOwner.mock.calls[0]![3]).toEqual([
+      latest,
+      thread.artifact.revision,
+    ]);
+    for (let poll = 0; poll < 3; poll++)
+      expect((await readPlan()).revisionOrdinals).toEqual(
+        first.revisionOrdinals,
+      );
+    const selected = await readPlan(
+      `${e.reviewPath}/items/plan/${encodeURIComponent(first.id)}`,
+    );
+    expect(selected.revisionOrdinals).toEqual(first.revisionOrdinals);
+    expect(ordinalOwner).toHaveBeenCalledTimes(1);
+    await e.edit('First plan plus fourth save');
+    const fourth = await readPlan();
+    expect(fourth.revisionOrdinals).toEqual({
+      [thread.artifact.revision]: 1,
+      [fourth.artifact.revision]: 4,
+    });
+    expect(ordinalOwner).toHaveBeenCalledTimes(2);
+    expect(ordinalOwner.mock.calls[1]![3]).toEqual([
+      fourth.artifact.revision,
+      thread.artifact.revision,
+    ]);
+    await e.asOperator(
+      'POST',
+      `${e.reviewPath}/threads/${thread.threadId}/resolve`,
+      { reason: 'Done', operationId: 'sparse-resolve' },
+    );
+    const filtered = await e.asOperator('GET', `${e.reviewPath}?state=open`);
+    expect(filtered.status).toBe(200);
+    expect(filtered.json.data.threads).toEqual([]);
+    expect(
+      filtered.json.data.items.find((item: any) => item.kind === 'plan')
+        .revisionOrdinals,
+    ).toEqual({ [fourth.artifact.revision]: 4 });
+    expect(ordinalOwner).toHaveBeenCalledTimes(2);
+  });
+
   test('plan edits relocate quotes before marking Outdated, retain the original quote, and resolve/reopen without changing room state or Task status', async () => {
     const e = await setup();
     await e.edit('First plan\nDetails.');
@@ -354,14 +610,20 @@ describe('Task review through configureRuntimeRoutes', () => {
       'GET',
       `/api/tasks/${e.task.id}/room/document`,
     );
+    expect(documentBefore.status).toBe(200);
+    expect(e.evidence()).toHaveLength(0);
+    const thread = await e.createThread();
+    const evidenceBefore = e.evidence();
+    expect(evidenceBefore).toHaveLength(1);
+    expect(JSON.parse(String(evidenceBefore[0]!.record_json))).toMatchObject({
+      sharedRevision: thread.artifact.revision,
+      text: 'First plan\nDetails.',
+    });
     const historyBefore = await e.asOperator(
       'GET',
       `/api/tasks/${e.task.id}/room/history`,
     );
-    expect(documentBefore.status).toBe(200);
     expect(historyBefore.status).toBe(200);
-    const evidenceBefore = e.evidence();
-    const thread = await e.createThread();
     const reply = await e.asOperator(
       'POST',
       `${e.reviewPath}/threads/${thread.threadId}/replies`,
@@ -381,6 +643,12 @@ describe('Task review through configureRuntimeRoutes', () => {
     expect(e.evidence()).toEqual(evidenceBefore);
     await e.edit('Intro.\nFirst plan\nDetails.');
     let read = await e.asOperator('GET', e.reviewPath);
+    const planItem = read.json.data.items.find(
+      (item: { kind: string }) => item.kind === 'plan',
+    );
+    expect(planItem.revisionOrdinals[thread.artifact.revision]).toBe(1);
+    expect(planItem.revisionOrdinals[planItem.artifact.revision]).toBe(2);
+
     expect(read.json.data.threads[0]).toMatchObject({
       state: 'open',
       outdated: false,
@@ -830,6 +1098,15 @@ describe('Task review through configureRuntimeRoutes', () => {
     ).toBe(200);
     expect(
       store.recordSendFailed({
+        ...session,
+        threadIds: [thread.threadId],
+        deliveryKey: 'delivery-one',
+        reason: 'Late failure',
+        operationId: 'late-failure',
+      }),
+    ).toMatchObject({ success: false, code: 'invalid-request' });
+    expect(
+      store.recordSendFailed({
         ...write,
         threadIds: [thread.threadId],
         deliveryKey: 'delivery-one',
@@ -930,6 +1207,7 @@ describe('Task review through configureRuntimeRoutes', () => {
         eventCount: 2,
         status: 'unavailable',
         state: 'unavailable',
+        artifact: thread.artifact,
       },
       expect.objectContaining({
         threadId: healthy.data.threadId,
@@ -1150,7 +1428,132 @@ describe('Task review through configureRuntimeRoutes', () => {
     }
   });
 
-  test('capture metadata uses the clean commit revision, and selected items preserve thread counts', async () => {
+  test('composed capture resolves a Task slug to the browser Project UUID and publishes readable bytes', async () => {
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGP4DwQACfsD/fteaysAAAAASUVORK5CYII=',
+      'base64',
+    );
+    // Only Chromium is doubled: composition, registry, routes, Git and storage are real.
+    const cdp: CdpTransport = {
+      send: async <T>(method: string) =>
+        (method === 'Page.captureScreenshot'
+          ? { data: png.toString('base64') }
+          : {}) as T,
+      on: () => () => {},
+      close: async () => {},
+      closed: new Promise(() => {}),
+    };
+    vi.spyOn(ChromiumAcquisition.prototype, 'status').mockReturnValue({
+      state: 'found-system',
+      browser: 'chromium',
+      executablePath: '/fixture/chromium',
+    });
+    vi.spyOn(
+      ChromiumAcquisition.prototype,
+      'resolveExecutable',
+    ).mockReturnValue('/fixture/chromium');
+    vi.spyOn(ChromiumServerHost.prototype, 'openTarget').mockResolvedValue({
+      targetId: 'T1',
+      cdpSessionId: 'S1',
+    });
+    vi.spyOn(ChromiumServerHost.prototype, 'cdp').mockReturnValue(cdp);
+    vi.spyOn(ChromiumServerHost.prototype, 'onExit').mockReturnValue(() => {});
+    vi.spyOn(ChromiumServerHost.prototype, 'shutdown').mockResolvedValue();
+    const e = await setup({ captureWorkspace: true });
+    expect(e.task.projectId).toBe(PROJECT);
+    const opened = await e.asOperator('POST', '/api/browser/sessions', {
+      projectSlug: PROJECT,
+      url: 'https://example.test/capture',
+    });
+    expect(opened.status, JSON.stringify(opened.json)).toBe(201);
+    const session = opened.json.data;
+    expect(session.projectId).toBe(PROJECT_ID);
+    const picker = await e.asOperator(
+      'GET',
+      `${e.reviewPath}/capture-sessions`,
+    );
+    expect(picker.json.data.sessions).toEqual([
+      expect.objectContaining({ browserSessionId: session.browserSessionId }),
+    ]);
+    const saved = await e.asOperator('POST', `${e.reviewPath}/captures`, {
+      sourceKind: 'browser',
+      sourceSessionId: session.browserSessionId,
+      operationId: 'composed-capture',
+    });
+    expect(saved.status, JSON.stringify(saved.json)).toBe(201);
+    const capture = saved.json.data.capture;
+    expect(capture).toMatchObject({
+      projectId: PROJECT,
+      digest: `sha256:${createHash('sha256').update(png).digest('hex')}`,
+      sourceSessionId: session.browserSessionId,
+      commit: expect.stringMatching(/^[a-f0-9]{40}$/),
+    });
+    expect(
+      e.store.taskReviewStore().listCaptures({
+        taskId: e.task.id,
+        taskCreatedAt: e.task.createdAt,
+      }),
+    ).toEqual([capture]);
+    const content = await fetch(
+      `${e.base}${e.reviewPath}/captures/${capture.captureId}/content`,
+      {
+        headers: { authorization: `Bearer ${OPERATOR_CREDENTIAL}` },
+      },
+    );
+    expect(content.status).toBe(200);
+    expect(Buffer.from(await content.arrayBuffer())).toEqual(png);
+  });
+
+  test('capture content refuses a registered Task repository containing home outside the Project directory', async () => {
+    const e = await setup({ projectInHomeRepository: true });
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGP4DwQACfsD/fteaysAAAAASUVORK5CYII=',
+      'base64',
+    );
+    // Import existing bytes/metadata; only the composed reader owns this refusal.
+    const blob = await new TaskCaptureBlobStore({
+      homeDir: e.homeDir,
+      forbiddenProjectRoots: [],
+    }).put(png, 'image/png');
+    const captured = e.store.taskReviewStore().createCapture({
+      projectId: PROJECT,
+      taskId: e.task.id,
+      taskCreatedAt: e.task.createdAt,
+      author: { kind: 'person', principalId: LOCAL_OPERATOR_PRINCIPAL_ID },
+      beforeCommit: () => true,
+      sourceKind: 'browser',
+      sourceSessionId: 'browser-one',
+      commit: 'a'.repeat(40),
+      mediaType: 'image/png',
+      ...blob,
+      operationId: 'import-capture',
+    });
+    expect(captured.success).toBe(true);
+    if (!captured.success) throw new Error(captured.error);
+    expect(e.task.workspaceBinding).toMatchObject({
+      workingDirectory: realpathSync(join(e.homeDir, 'project')),
+      repoRoot: realpathSync(e.homeDir),
+    });
+    const result = await e.asOperator(
+      'GET',
+      `${e.reviewPath}/captures/${captured.data.captureId}/content`,
+    );
+    expect(result).toEqual({
+      status: 503,
+      json: {
+        success: false,
+        code: 'capture-unavailable',
+        error:
+          'Capture storage is unavailable or its bytes failed verification.',
+      },
+    });
+    expect(e.runtimeLogger.warn).toHaveBeenCalledWith(
+      'task review capture request failed',
+      { taskId: e.task.id, errorName: 'TaskCaptureBlobStoreError' },
+    );
+  });
+
+  test('captures retain commit revisions, selected counts and bounded summaries with the delivery overlay', async () => {
     const e = await setup();
     const capture = e.store.taskReviewStore().createCapture({
       projectId: PROJECT,
@@ -1172,14 +1575,47 @@ describe('Task review through configureRuntimeRoutes', () => {
       (item: any) => item.kind === 'capture',
     );
     expect(item.artifact.revision).toBe('a'.repeat(40));
+    const opening = 'Screen comment '.repeat(50);
     const saved = await e.asOperator('POST', `${e.reviewPath}/threads`, {
       artifact: item.artifact,
       anchor: { kind: 'region', x: 0, y: 0, w: 0.5, h: 0.5 },
-      body: 'Screen comment',
+      body: opening,
       operationId: 'region',
     });
     expect(saved.status, JSON.stringify(saved.json)).toBe(200);
     expect(saved.json.data.thread.currentRevision).toBe('a'.repeat(40));
+    expect(
+      e.store.taskReviewStore().recordSend({
+        projectId: PROJECT,
+        taskId: e.task.id,
+        taskCreatedAt: e.task.createdAt,
+        author: { kind: 'person', principalId: LOCAL_OPERATOR_PRINCIPAL_ID },
+        beforeCommit: () => true,
+        threadIds: [saved.json.data.thread.threadId],
+        deliveryKey: 'capture-delivery',
+        operationId: 'capture-send',
+      }).success,
+    ).toBe(true);
+    const review = await e.asOperator('GET', e.reviewPath);
+    expect(review.json.data.items).toContainEqual(
+      expect.objectContaining({
+        kind: 'capture',
+        id: item.id,
+        artifact: item.artifact,
+      }),
+    );
+    const summary = review.json.data.threads[0];
+    expect(summary).toMatchObject({
+      status: 'available',
+      eventCount: 2,
+      openingEvent: {
+        kind: 'comment',
+        body: opening.slice(0, 500),
+      },
+      lastDeliveryEvent: { kind: 'sent', deliveryKey: 'capture-delivery' },
+      deliveryStatus: 'unconfirmed',
+    });
+    expect(summary).not.toHaveProperty('events');
     const selected = await e.asOperator(
       'GET',
       `${e.reviewPath}/items/capture/${item.id}`,

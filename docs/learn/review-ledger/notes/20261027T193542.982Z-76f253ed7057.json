@@ -1,0 +1,7 @@
+{
+  "revision": "c1ff86e239588337a206f937f9768c7075d9605d",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Correction to the previous note: the holder sentence it checked is at line 1638 after the merge from main, not 1475. Re-read it: an engine scope reports holder placed or unplaced with a WorkloadHolderUnplacedReason code, still true with holder-gone added.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

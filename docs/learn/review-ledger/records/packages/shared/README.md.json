@@ -54,7 +54,9 @@
 
     "src-server/services/infra/workload-resources.ts",
 
-    "docs/guides/development.md"
+    "docs/guides/development.md",
+
+    "packages/shared/src/http-upload.ts"
   ],
 
   "checks": [

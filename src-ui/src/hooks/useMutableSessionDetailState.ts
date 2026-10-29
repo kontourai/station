@@ -1,4 +1,6 @@
 import { isPendingAttentionItem } from '@kontourai/station-contracts/attention';
+import { isLowContentPrompt } from '@kontourai/station-contracts/conversation-title';
+import { runtimeEventContentText } from '@kontourai/station-contracts/runtime-event-content';
 import {
   foldedSessionLifecycleState,
   isSessionLifecycleStateAtRest,
@@ -65,12 +67,17 @@ function truncateOneLine(text: string, max = 96): string {
     : oneLine;
 }
 
-/** The opening user turn's own text, if the live feed has caught it yet. */
+/**
+ * The first user turn in the live feed that names something (#4266: never a
+ * low-content "Continue"), if the feed has caught one yet.
+ */
 function firstUserPrompt(events: OrchestrationEvent[]): string | undefined {
   for (const event of events) {
-    if (event.method === 'turn.started' && event.prompt?.trim()) {
-      return event.prompt.trim();
-    }
+    const prompt =
+      event.method === 'turn.started'
+        ? runtimeEventContentText(event.prompt)?.text.trim()
+        : undefined;
+    if (prompt && !isLowContentPrompt(prompt)) return prompt;
   }
   return undefined;
 }
@@ -95,9 +102,11 @@ function firstUserPrompt(events: OrchestrationEvent[]): string | undefined {
  * landed on a header showing a raw thread id. `sessionTitle` is the canonical
  * precedence and guarantees no branch returns one.
  *
- * The live feed's own first prompt still wins over it: it is the most
- * concrete answer to "what was this task", and it is available here (the
- * event stream) in a way no shared helper over a summary can be. Exported for
+ * #4266: the server's `displayTitle` wins when it has one. The live feed is
+ * a bounded window of the session's events, and for a continuation child it
+ * starts at the child's own first prompt (often "Continue"), so its first
+ * prompt is only a fallback for a session the server has not titled yet, and
+ * a low-content prompt never titles it. Exported for
  * direct coverage, for the same reason `metadataRows` below is — reaching it
  * through the hook would need the whole react-query/toast provider stack to
  * assert one string.
@@ -106,6 +115,7 @@ export function mutableSessionTitle(
   session: OrchestrationSessionSummary,
   events: OrchestrationEvent[],
 ): string {
+  if (session.displayTitle?.trim()) return sessionTitle(session);
   const prompt = firstUserPrompt(events);
   if (prompt) return truncateOneLine(prompt);
   return sessionTitle(session);

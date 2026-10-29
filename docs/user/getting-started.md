@@ -76,6 +76,11 @@ their **Inspect output** action. Items that cannot be read show an unavailable
 state rather than an empty result. The answer's **Basis** chip still opens
 inspection scoped to that answer.
 
+To see how much of the model's context window a chat has used, read the meter
+beside the model under the message box, or choose **⋯** then **Conversation
+stats** in the phone chat header, which names the share used. Either opens the
+chat's stats.
+
 ## MCP app previews in chat
 
 In Station's web client, a completed MCP call can show its declared app directly
@@ -212,8 +217,16 @@ remain local. Different Stations keep separate account preferences.
 
 The approval chip shows the known mode, including **Full access**, **Auto** or
 **Ask**. **Engine default** means the engine's active mode has not been confirmed.
-Open the picker to see the source, the confirmed mode and whether a request takes
-effect next turn or requires restarting the session.
+For Codex the picker says what that is: your own Codex settings. If you set
+none, no command Codex runs uses the network or writes outside the chat's
+folder and temporary directories without asking; it may ask before other
+writes too. Codex's web search and MCP tools are not commands and are not
+covered by this. Open the picker to see the source, the confirmed mode and whether a request takes
+effect next turn or requires restarting the session. A Claude chat started in a
+chosen mode by someone who may grant full access can switch to full access on
+its next turn. A chat left on Claude's own settings, one that started before
+this was available, or one on a Station running as root outside a sandbox
+needs a restart.
 
 ## Read recent conversations offline
 
@@ -230,7 +243,9 @@ additional encryption, and anyone using this browser profile can read them
 while offline. Enable this only on a device where that trade-off is acceptable.
 **Clear offline copies** deletes the saved text and turns saving off. Signing out,
 changing credential authority or account, or switching Station also clears the
-copies. Reachability failures leave saved copies and the saving preference intact.
+copies. A build change also turns saving off with the expired copies, so enable it
+again after an update. Reachability failures leave saved copies and the saving
+preference intact.
 
 A browser reload while the Station route is unavailable shows a separate, read-only reader with an **offline
 copy from** timestamp. If you lose connectivity in an already open workspace,
@@ -467,7 +482,8 @@ first; the controls show what **Start** will use:
   can be chosen too. Its chats run in your home folder, or, for an ACP
   engine, in that engine's own Working Directory or else a private folder
   Station makes for the chat; the chip and list say which.
-- **⋯** holds **Use a visual skill**.
+- **⋯** holds **Use a visual skill** while the **Visual skills** Feature
+  Preview is on; with it off there is no **⋯**.
 
 **Run a task…** opens **Run on a Station** with your message, Project and any explicit
 Station/engine/model/options choice kept. Its tooltip names the current Station
@@ -501,6 +517,27 @@ which names the default it returns to. Station does not start a chat on a Model
 its engine does not offer: a default that an engine advertising its own model
 list left out is skipped, and a kept choice that list no longer contains is
 refused at **Start** with the message kept, so you can choose another.
+
+Project settings keeps workspace details and chat defaults together. Use
+**Save** to apply workspace, identity, model, new-chat, execution, Agent, and
+tool changes. Layouts, Sources, People and access, and Project knowledge
+have their own actions, which apply immediately. Background refreshes preserve
+unsaved edits. Clearing the working directory removes the configured folder;
+a Project that requires worktree isolation still needs a valid Git directory.
+
+A Project can choose how its new chats start, in Project settings → **New
+chats**. **Use the AI model above** starts each new chat on the Project's AI
+model wherever its Agent offers that model, ahead of your last pick on this
+device. **Last model used in this project** starts on the model your last chat
+there started with for the same Agent; if that model is no longer offered, the
+Project's model or the usual default applies and the Model chip's tooltip says
+why. The approval mode can be set for the Project (Ask first, Auto or full
+access) or follow your last chat there. It applies below the Agent's own mode
+and replaces your personal default for that engine, and full access is only
+reused when you can grant it. **Permissions** on the composer names where its
+mode came from, and opens the approval picker to choose this chat's mode
+before you start; picking **Default** there uses the Agent's, then the
+Station's default instead.
 
 Until Station has loaded your projects, the chips show placeholders and
 **Start** waits, so a start never runs in a project Station has guessed. If
@@ -595,6 +632,16 @@ visible. Task-owned chats appear under their Task as sessions. **Show work**
 filters by project or Station and stays selected on this device. If work needs
 you outside the filter, choose **Show all** from the notice.
 
+To clear your inbox, hover a conversation on desktop and choose **× Dismiss
+from inbox**. On mobile, use the row’s Details menu; with **Sheet gestures
+preview** enabled in Settings → Advanced → Developer tools, swipe left to
+reveal the clock and × controls. The clock opens Snooze duration choices; ×
+dismisses the conversation. Dismissal leaves running work and history intact.
+Choose **Undo**, or expand **Dismissed** and choose **Restore to inbox**.
+Dismissal is saved on this browser/device, like Snooze. A changed status, a
+changed attention kind, or newer activity outside a running turn brings the
+conversation back; streaming progress during the same running turn does not.
+
 The workspace map lists Projects and their named Layouts, followed by your
 **Personal Boards**. Its **+** creates a Board and lets you name it, even
 when the list is empty. Select a project to see its configured views as child rows.
@@ -627,11 +674,16 @@ as icons; if a project's existing icon can't be shown any more, such as one
 saved as a link before that, its settings say so and ask you to choose a new
 one. The icon appears beside the project in
 the sidebar, the project switcher, Home and chat rows, their details, and on
-the project page. Without one, those rows show the project's colour and the
-project page shows its initials. A row for work on another Station shows
+the project page. Without one, those rows show the project's colour (the
+phone's chat list shows a folder instead) and the project page shows its
+initials. A row for work on another Station shows
 neither, since its project belongs to that Station.
 
 ### Prepare a visual skill
+
+Visual skills are a Feature Preview: turn on **Visual skills** in
+**Settings → Advanced → Feature previews** first. Off, the start composer and
+the agent list offer none, even if one is installed.
 
 Choose **⋯** then **Use a visual skill** in the start composer to browse
 installed visual skills, including when only one Agent is ready. A card describes its purpose, example and owning plugin. Choose
@@ -793,8 +845,15 @@ every open window. It does not hold back the messages written after
 it.
 
 Quiet turns show elapsed silence without guessing that an engine retried. Retry
-status appears only when the engine reports it. The Drafts icon saves and restores
-unsent composer content; the trash icon clears the current message. Hold or focus
+status appears only when the engine reports it. The **Drafts** icon opens **Saved
+drafts** (also Ctrl/Cmd+S in the composer). Save a copy of an unsent prompt,
+including attachments and quoted context, then choose it from any chat on this
+device to put it in that chat's composer. Saving leaves the current message in
+place; restoring replaces the destination composer's content without sending it.
+Drafts are stored in this browser or app on this device, not synced to other
+devices. Station keeps the 20 newest saved drafts, with up to five images per
+draft, and lists any dropped or unreadable images. The trash icon clears the
+current message. Hold or focus
 either icon to read its label. Choose **Chat settings → Return in chat** to change
 Return behavior on this device. Touch devices default to a new line; desktop
 Return sends. Shift+Return adds a line and Ctrl/Cmd+Return sends.

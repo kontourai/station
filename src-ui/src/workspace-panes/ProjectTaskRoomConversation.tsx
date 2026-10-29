@@ -24,6 +24,7 @@ import { SplitPaneCompanion } from '../components/SplitPaneLayout';
 import { Empty, SkeletonBlock, SkeletonList } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { openChatsStore } from '../contexts/open-chats-store';
+import { useElapsedClock } from '../hooks/useElapsedClock';
 import { useTaskRoomAttachments } from '../hooks/useTaskRoomAttachments';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { useProjectTaskRoomContext } from './ProjectTaskRoomContext';
@@ -190,12 +191,7 @@ export function ProjectTaskRoomConversation({
   const [historyWindow, setHistoryWindow] = useState(50);
   const lastSequence = records.at(-1)?.sequence;
   const runningCount = running.length;
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    if (!runningCount) return;
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [runningCount]);
+  const now = useElapsedClock(runningCount > 0);
   const goLatest = () => {
     const list = messages.current;
     if (list) list.scrollTop = list.scrollHeight;

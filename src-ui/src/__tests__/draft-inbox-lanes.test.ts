@@ -297,7 +297,6 @@ describe('Draft sessions are not live work (#2310)', () => {
       items,
       now: NOW,
       snoozedUntil: new Map(),
-      terminalSince: new Map(),
     });
     expect(partition.idle.map((item) => item.id)).toEqual([
       SERVER_READY_WITH_HISTORY.threadId,

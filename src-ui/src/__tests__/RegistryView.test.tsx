@@ -548,9 +548,7 @@ describe('RegistryView', () => {
     );
 
     expect(
-      screen.getByText(
-        /other Stations' data, credentials available in this window/i,
-      ),
+      screen.getByText(/other Stations' data, credentials in this window/i),
     ).toBeTruthy();
     expect(screen.queryByText(/applies only to this Station/i)).toBeNull();
     expect(screen.queryByText(/native bridge/i)).toBeNull();
@@ -575,14 +573,12 @@ describe('RegistryView', () => {
     );
 
     expect(
-      screen.getByText(
-        /Station hasn't verified that the frames keep extension code away from the rest of the app/,
-      ),
+      screen.getByText(/runs in frames whose isolation isn't verified/),
     ).toBeTruthy();
     expect(
       screen.getByText(/native features and saved Station credentials/),
     ).toBeTruthy();
-    expect(screen.queryByText(/run inside this app/)).toBeNull();
+    expect(screen.queryByText(/runs inside this app/)).toBeNull();
   });
 
   test('puts the remote-isolation consent section before the catalog', () => {

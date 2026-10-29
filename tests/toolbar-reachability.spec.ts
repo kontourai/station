@@ -102,9 +102,9 @@ const PHONE = {
  * so a rename fails here with the inventory printed rather than silently
  * shrinking what gets checked.
  *
- * No Settings gear: Settings lives in the sidebar drawer's footer
- * (`ProjectSidebarFooter`), reached through `Toggle menu`. The bell
- * (`Notifications`) holds the fourth slot instead.
+ * No Settings gear: Settings is the account menu's "Open settings" row in
+ * the sidebar drawer's footer (`SidebarAccountControl`), reached through
+ * `Toggle menu`. The bell (`Notifications`) holds the fourth slot instead.
  */
 const REQUIRED_CONTROL_KEYS = [
   'Toggle menu', // aria-label, .app-toolbar__sidebar-toggle

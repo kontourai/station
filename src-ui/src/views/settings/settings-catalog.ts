@@ -39,7 +39,12 @@ export type SettingsSectionId =
   | 'notifications'
   | 'voice'
   | 'pairing'
+  // docs/design/station-routes.md: every address this device reaches the
+  // current Station on. Behind the Station routes preview.
+  | 'station-routes'
   | 'developer-tools'
+  // The release-required app facts: version, open source notices, legal.
+  | 'about'
   | 'knowledge';
 
 export interface SettingsCatalogEntry {
@@ -75,7 +80,8 @@ export interface SettingsCatalogEntry {
     | 'desktop'
     | 'operator'
     | 'developer'
-    | 'experimental-trust';
+    | 'experimental-trust'
+    | 'experimental-station-routes';
 }
 
 /**
@@ -149,10 +155,13 @@ export const SETTINGS_SECTIONS = [
   // #2182: reaching this Station from a phone. It was the one non-voice row
   // of "Voice & Features", which is what made "Features" necessary.
   { id: 'pairing', title: 'Pairing', group: 'you' },
+  { id: 'station-routes', title: 'Routes', group: 'you' },
   // archive#3313: gates the Developer surface's sidebar/palette entries on
   // this device (a device setting — see contracts' developerToolsEnabled).
   { id: 'developer-tools', title: 'Developer tools', group: 'you' },
   // #2144 decision 5: Knowledge keeps a group of its own this slice.
+  // What this installed app is, and the notices a store release must carry.
+  { id: 'about', title: 'About Station', group: 'you' },
   { id: 'knowledge', title: 'My knowledge store', group: 'knowledge' },
 ] as const satisfies readonly {
   id: SettingsSectionId;
@@ -272,6 +281,21 @@ const SETTINGS_CATALOG_SOURCE = [
     section: 'developer-tools',
     conditional: 'developer',
     configKeys: ['experimentalTrustEnabled'],
+  },
+  {
+    id: 'experimental-station-routes',
+    title: 'Station routes preview',
+    section: 'developer-tools',
+    conditional: 'developer',
+    keywords: ['routes', 'tailscale', 'lan', 'failover', 'connection'],
+    configKeys: ['experimentalStationRoutesEnabled'],
+  },
+  {
+    id: 'experimental-sheet-gestures',
+    title: 'Sheet gestures preview',
+    section: 'developer-tools',
+    conditional: 'developer',
+    configKeys: ['experimentalSheetGesturesEnabled'],
   },
   {
     id: 'shared-answers',
@@ -565,6 +589,13 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['defaultChatFontSize'],
   },
   {
+    id: 'chat-title-model',
+    title: 'Chat title model',
+    section: 'chat',
+    keywords: ['conversation title', 'generated title'],
+    configKeys: ['titleModel'],
+  },
+  {
     // The id is the stable URL/palette identity and stays as minted even
     // though the title no longer matches it (#2144 slice 6 item B) — a
     // rename would break every deep link and every recorded highlight.
@@ -745,10 +776,36 @@ const SETTINGS_CATALOG_SOURCE = [
     conditional: 'mobile',
   },
   {
+    id: 'station-routes',
+    title: 'Routes',
+    section: 'station-routes',
+    conditional: 'experimental-station-routes',
+    keywords: ['tailscale', 'lan', 'address', 'failover', 'connection'],
+  },
+  {
     id: 'personal-knowledge-store',
     title: 'My knowledge store',
     section: 'knowledge',
     keywords: ['personal project obsidian adapter root vault'],
+  },
+  // ── About ── appended last so earlier rows keep their order.
+  {
+    id: 'app-version',
+    title: 'Version',
+    section: 'about',
+    keywords: ['build', 'release', 'channel', 'commit'],
+  },
+  {
+    id: 'open-source-licenses',
+    title: 'Open source licenses',
+    section: 'about',
+    keywords: ['third party', 'notices', 'attribution', 'oss'],
+  },
+  {
+    id: 'legal',
+    title: 'Legal',
+    section: 'about',
+    keywords: ['privacy policy', 'license', 'support', 'terms'],
   },
 ] as const satisfies readonly Omit<SettingsCatalogEntry, 'scope'>[];
 
@@ -816,6 +873,8 @@ const SETTING_SCOPE_OVERRIDES: Readonly<
   'deployed-build': 'informational',
   'message-context': 'temporary',
   'mobile-pairing': 'informational',
+  // Routes are saved in this device's own connection profile.
+  'station-routes': 'device',
 };
 
 /**
@@ -865,7 +924,11 @@ function scopeForKeylessSection(
     section === 'developer-tools'
   )
     return 'device';
-  if (section === 'host-runtime' || section === 'diagnostics')
+  if (
+    section === 'host-runtime' ||
+    section === 'diagnostics' ||
+    section === 'about'
+  )
     return 'informational';
   return 'station';
 }
@@ -998,6 +1061,7 @@ export function matchingSettingsRows(
     isOperator?: boolean;
     developerToolsEnabled?: boolean;
     experimentalTrustEnabled?: boolean;
+    experimentalStationRoutesEnabled?: boolean;
   } = {},
 ): readonly SettingsCatalogEntry[] {
   const needle = query.trim().toLowerCase();
@@ -1011,6 +1075,11 @@ export function matchingSettingsRows(
     if (
       entry.conditional === 'experimental-trust' &&
       options.experimentalTrustEnabled !== true
+    )
+      return false;
+    if (
+      entry.conditional === 'experimental-station-routes' &&
+      options.experimentalStationRoutesEnabled !== true
     )
       return false;
     if (entry.conditional === 'operator' && options.isOperator !== true) {
@@ -1049,6 +1118,7 @@ export function settingsPaletteCommands(options: {
   isDesktop: boolean;
   developerToolsEnabled?: boolean;
   experimentalTrustEnabled?: boolean;
+  experimentalStationRoutesEnabled?: boolean;
 }): readonly SettingsPaletteCommand[] {
   // #2067: deliberately NOT filtered by `conditional: 'operator'` here.
   //
@@ -1067,7 +1137,9 @@ export function settingsPaletteCommands(options: {
       (entry.conditional !== 'developer' ||
         options.developerToolsEnabled === true) &&
       (entry.conditional !== 'experimental-trust' ||
-        options.experimentalTrustEnabled === true),
+        options.experimentalTrustEnabled === true) &&
+      (entry.conditional !== 'experimental-station-routes' ||
+        options.experimentalStationRoutesEnabled === true),
   ).map((entry) => {
     const unavailable =
       entry.conditional === 'mobile' && !options.isMobile

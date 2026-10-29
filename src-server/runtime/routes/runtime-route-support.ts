@@ -1,8 +1,12 @@
+import { networkInterfaces } from 'node:os';
 import { ACPStatus } from '@kontourai/station-contracts/acp';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { HomeRecoveryDisclosure } from '@kontourai/station-contracts/system-status';
 import { readStationHomeRecovery } from '@kontourai/station-shared/station-home-archive';
-import { servesWebPushNotifications } from '../../capabilities/station-capability-flags.js';
+import {
+  servesConnectionRoutes,
+  servesWebPushNotifications,
+} from '../../capabilities/station-capability-flags.js';
 import { getNotificationProviders } from '../../providers/registries/registry.js';
 import { listUnconnectedACPRegistryEntries } from '../../routes/connections/acp.js';
 import { getCachedUser } from '../../routes/system/auth.js';
@@ -12,6 +16,8 @@ import {
   ApprovalInboxNotificationProvider,
   wireApprovalInboxNotifications,
 } from '../../services/approvals/approval-inbox.js';
+import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
+import { createStationRoutesResolver } from '../../services/connections/station-routes.js';
 import type { FlowRunService } from '../../services/flow/flow-run-service.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import { createEnvironmentRuntimeResourcePostureProbe } from '../../services/infra/resource-posture.js';
@@ -30,7 +36,10 @@ import { registerPluginNotificationProviders } from '../../services/notification
 import { PushSigningKeyStore } from '../../services/notifications/push-signing-key-store.js';
 import { VapidKeyService } from '../../services/notifications/vapid-key-service.js';
 import { WebPushService } from '../../services/notifications/web-push-service.js';
-import { FileConversationAcknowledgementStore } from '../../services/orchestration/conversation-acknowledgement-store.js';
+import {
+  FileConversationAcknowledgementStore,
+  ownerDevicePredicate,
+} from '../../services/orchestration/conversation-acknowledgement-store.js';
 import { UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION } from '../../services/orchestration/session-owner-attribution.js';
 import {
   wireInternalStopRedispatchFailureNotifications,
@@ -46,6 +55,7 @@ import type { ScheduledTurnAdapter } from '../../services/scheduling/builtin-sch
 import { MonitorTaskTurnSupervisor } from '../../services/scheduling/monitor-task-supervisor.js';
 import { SchedulerService } from '../../services/scheduling/scheduler-service.js';
 import { DevicePairingNotificationProvider } from '../../services/ssh/device-pairing-notifications.js';
+import { publicIngressOriginResolver } from '../../services/tailscale/public-ingress-origin.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { isExternalEngineBoundAgent } from '../agents/agent-engine-classification.js';
 import { runWithUnattendedPrincipal } from '../agents/unattended-principal-context.js';
@@ -218,6 +228,22 @@ export function createRuntimeSystemRouteDeps(
       listUnconnectedACPRegistryEntries(context.configLoader),
     eventBus: context.eventBus,
     appConfig: context.appConfig,
+    ...(resolveRuntimeConnectionRoutesEnabled()
+      ? {
+          resolveStationRoutes: createStationRoutesResolver({
+            boundAddress: () =>
+              lanDiscoveryFor(context.configLoader).boundAddress(),
+            networkInterfaces,
+            servedOrigins: () =>
+              publicIngressOriginResolver(context.port).resolve(),
+            magicDnsHost: () =>
+              publicIngressOriginResolver(context.port).magicDnsHost(),
+            environmentId: async () =>
+              (await context.environmentSecurityService.getPublicHandshake())
+                .environmentId,
+          }),
+        }
+      : {}),
     port: context.port,
     host: context.host,
     publicOrigins: (process.env.ALLOWED_ORIGINS ?? '')
@@ -335,6 +361,18 @@ export function resolveRuntimeWebPushEnabled(
   });
 }
 
+/**
+ * Whether this deployment serves Station routes, from the same predicate the
+ * public handshake uses to advertise `connectionRoutes`.
+ */
+export function resolveRuntimeConnectionRoutesEnabled(
+  environment: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return servesConnectionRoutes({
+    hosted: isHostedTenantExecutionRequired(environment),
+  });
+}
+
 export function configureRuntimeSupportServices(
   context: ConfigureRuntimeRoutesContext,
   flowRunService: Pick<FlowRunService, 'getRunConsole'>,
@@ -367,6 +405,7 @@ export function configureRuntimeSupportServices(
     context.configLoader.getProjectHomeDir(),
     60_000,
     {
+      projectMembership: context.projectMembership,
       onAsyncDispatchError: (operation, error) =>
         context.logger.warn('Notification async adapter failed', {
           operation,
@@ -701,6 +740,9 @@ export function configureRuntimeSupportServices(
     // not a new storage mechanism.
     new FileConversationAcknowledgementStore(
       context.configLoader.getProjectHomeDir(),
+      ownerDevicePredicate(() =>
+        context.environmentSecurityService.devicePairing.listDevices(),
+      ),
     ),
     () => getCachedUser().alias,
     // #765 D5: pending pairing requests project as needs-attention items,

@@ -36,10 +36,12 @@ const PUBLIC_QUERY_DOMAINS = [
   'devicePairingRequests',
   'diffComments',
   'featurePreviews',
+  'workloadBudgets',
   'flowRuns',
   'peerCredentials',
   'peerEnrollments',
   'personalLayouts',
+  'personNotifications',
   'personalBoards',
   'pluginVisibility',
   'knowledgeStores',
@@ -68,6 +70,7 @@ const PUBLIC_QUERY_DOMAINS = [
   'taskReview',
   'taskRoomWork',
   'telemetryDelivery',
+  'telemetryCompanion',
   'trustBundles',
   'veritasReadiness',
   'workflowTasks',
@@ -83,6 +86,8 @@ const PUBLIC_QUERY_DOMAINS = [
  * inline reason.
  */
 const INTERNAL_QUERY_DOMAINS: Record<string, string> = {
+  privateInsights:
+    'Published only from the documented private-insights-query subpath for the scoped personal Insights surface; keep private query validators and saved-view controls outside the eager root entry.',
   projectRoomAgents:
     'Agent request hooks are published through projectRooms on the documented project-rooms subpath, outside the eager root entry.',
   taskRelationships:
@@ -113,6 +118,8 @@ const INTERNAL_QUERY_DOMAINS: Record<string, string> = {
     'lazy parser used only by the summary fetcher so strict persisted-data validation does not enter the application shell.',
   developerRuntime:
     'lazy-only developer-surface hooks, intentionally published only from the `@kontourai/station-sdk/developer-runtime` subpath to keep them out of the root entry bundle.',
+  runtimeEventContent:
+    'Lazy subpath `@kontourai/station-sdk/runtime-event-content` (out-of-line event content reads and the approval content gate), kept out of the first-paint barrel like action-operations.',
   actionOperations:
     'Activity-only operation query, intentionally published from the `@kontourai/station-sdk/action-operations` subpath to preserve the lazy Activity bundle boundary.',
   mobileDevices:

@@ -3,6 +3,20 @@
 The Station CLI controls running Stations and supports selected local and
 checkout operations. Availability depends on how it was launched.
 
+## Local speech and media tools
+
+### `media-tools`
+
+`station media-tools status [--json]` prints component IDs, versions, pinned
+download bytes, resolution, byte progress and failures. It performs no download.
+`station media-tools download --yes [--json]` requires explicit consent before
+contacting the selected Station, then starts its missing component downloads.
+Both accept `--station`, or `--api-base` and the usual credential selection.
+These commands require the Station operator and either the Walkthroughs or Local
+speech preview, enabled in Settings → Advanced → Feature previews. A 202 response means downloading
+has started; inspect `status` for readiness or failure. See
+[local speech](../guides/local-speech.md) for platforms and limits.
+
 ## Invocation
 
 There are three entry points, and they are not the same program surface.
@@ -377,6 +391,18 @@ When a Station is selected, its credential reference is resolved through the
 operating-system keyring. Bearer material is absent from saved Station metadata,
 exports, status output, and ordinary app-data files. Unavailable keyrings fail
 closed without a plaintext fallback.
+
+On macOS the CLI reaches the login Keychain through Apple's `/usr/bin/security`
+tool rather than an addon inside `node`. Keychain approval therefore belongs to
+that stable tool and survives CLI and runtime upgrades. `station stations list`,
+`stations show`, and other status displays check only whether a credential
+exists, and never trigger a Keychain dialog. A command that reads, stores, or
+deletes a credential gives up after 5 seconds in a non-interactive shell, or
+after 2 minutes from a terminal. It exits non-zero with an error saying macOS
+is waiting for Keychain approval or that the keychain is locked. To fix it, run
+the command once from a terminal at the Mac and choose **Always Allow**, or
+unlock the keychain with `security unlock-keychain`. Credentials saved by
+earlier versions ask for approval once more, this time for `security`.
 
 `--api-base` accepts either the bare server origin
 or that origin with a trailing `/api` (e.g. copied from a browser Network-tab request
@@ -915,6 +941,48 @@ the UI and REST API. Payload-bearing commands accept JSON via:
 - `--file=/absolute/or/relative/path.json`
 - piped stdin
 
+### `mcp-clients`
+
+Expose a bounded set of Station tools to an existing external MCP client on the
+same host. This is the opposite direction from `tools` connecting Station to
+external MCP servers. It does not start an engine or transfer Session execution.
+
+```bash
+station mcp-clients authorize --station=<installed-local-profile>
+station mcp-clients create --station=<installed-local-profile> --session=<existing-session-id> --tools=read_conversation,board_read,board_pin --ttl-seconds=300 --output=/absolute/private/path/station-client.json
+station mcp-clients revoke <lease-id> --station=<installed-local-profile>
+```
+
+`authorize` explicitly uses the existing local owner-home proof and OS credential
+store. It neither starts a service nor prints the resulting device credential.
+Issuance requires that file-proven local device, `access:manage`, and a real
+operator-owned Session with a recorded, current Project identity. Browser
+bootstrap grants, ordinary pairing, personal access tokens and internal process
+credentials cannot substitute. The target must be an IP-literal loopback profile.
+
+`create` requires explicit tools and a TTL from 60 through 3600 seconds. The
+initial tools are only `read_conversation`, `board_read`, and `board_pin`; omitted,
+empty, duplicate or other selections refuse. Output must be a new absolute file.
+The CLI creates it with mode 0600 and prints metadata only. Initial private-file
+creation is POSIX-only; Windows creation explicitly refuses instead of claiming
+unverified ACL protection. No existing file is overwritten.
+
+Creating a lease does not rotate runtime tokens or another client lease.
+`revoke` targets its exact ID. Expiry, Session revocation and server restart also
+invalidate it. A disconnect is not revocation. Issuance is not automatically
+retried after an uncertain response. Failed file storage attempts revocation and
+reports whether it was confirmed; a partial private file may remain. See the
+[external-client recipe](session-api.md#external-clients-using-station-tools)
+for client configuration, mutation approval and qualification limits.
+
+Each HTTP request uses the normal CLI deadline (30 seconds by default), including
+the separate compensating revoke after a file-write failure. There is no
+independent deadline for the entire create-and-compensate command. Setting
+`STATION_REQUEST_TIMEOUT_MS=0` disables the request deadline and can leave either
+request waiting without a wall-clock bound. A timeout remains an unknown outcome,
+not proof that issuance or revocation failed; the CLI does not automatically
+retry it.
+
 ### `agents`
 
 ```
@@ -1137,11 +1205,15 @@ station sessions interrupt codex runtime-thread --turn=turn-1
 
 ### `conversation`
 
-Export a conversation as a portable thread, or in a provider-native format.
+Export a conversation as a portable thread, or in a provider-native format,
+or fork it into a new conversation.
 
 ```
 station conversation export <agent> <conversationId>
+station conversation fork <agent> <conversationId> [--target-agent=<slug>] [--project=<slug>] [--turn=<id>] [--idempotency-key=<key>] [--json]
 ```
+
+`export`:
 
 - `--format=<fmt>` — `thread` (default), `anthropic-messages`, `openai-chat`, `gemini`, `markdown`
 - `--output=<path>` — write to a file instead of stdout
@@ -1149,6 +1221,49 @@ station conversation export <agent> <conversationId>
 Accepts the shared target flags (`--api-base`, saved Stations); the exported
 `thread` format is the portable conversation envelope, and the provider
 formats are one-way projections of it.
+
+`fork` makes the same request as the web app's fork
+(`POST /agents/:slug/conversations/:conversationId/fork`, SDK
+`forkConversation`), as you: a new conversation that starts from the source's
+history up to a completed assistant turn. The source is unchanged. It prints
+the new conversation id; `--json` prints `{ok, kind: "conversation.fork", data}`
+with the route's reply.
+
+- `--target-agent=<slug>` — the Agent for the fork (default: the source Agent)
+- `--project=<slug>` — the fork's Project (default: the source's)
+- `--turn=<id>` — branch at this completed assistant turn (default: the latest)
+- `--idempotency-key=<key>` — retrying with the same key returns the same fork
+  instead of a second one
+
+The engine replays text from the selected history; engine cursor, tool state
+and approval state do not carry. Exit codes: 0 forked, 1 usage error, 2 Station
+unreachable, 3 refused (for example, not found, no completed turn at the branch
+point, or a target Agent not available in the Project). An agent forks through
+Station Control's `fork_conversation`, which the route holds to the agent's
+scope; a person's fork is not.
+
+### `claims`
+
+List the work claims in the Sessions you can read.
+
+```
+station claims list [--json]
+```
+
+A claim is what a Session says it is working on (a work item, paths and a
+note), made with Station Control's `claim_work`. It is information, not a lock.
+`list` reads `GET /api/orchestration/work-claims` (SDK `listWorkClaims`), the
+read behind the Station UI's claim chips: the active claims (unreleased,
+unexpired, Session not ended) of the Sessions you can read. Agents read the
+same claims through `list_project_activity`. `--json` prints
+`{ok, kind: "claims.list", data: {claims}}` with each claim as the route
+answers it. A claim the contract cannot read fails the command instead of
+being left out.
+
+A claimant is always a Session today, so there is no `claim`, `release` or
+`supersede` verb for a person yet. Exit codes: 0 success, 1 usage error,
+2 Station unreachable, 3 refused (including a Station too old to answer work
+claims).
 
 ### `delegate`
 
@@ -1171,7 +1286,14 @@ station delegate respond <task-id> <request-id> <accept|acceptForSession|decline
 station delegate interrupt <task-id> [--on=<environment>] [--json]
 station delegate wait <task-id> [--on=<environment>] [--timeout=<seconds>] [--interval=<seconds>] [--json]
 station delegate targets [--on=<environment>] [--project=<slug>|--project-path=<path>] [--json]
+station delegate list [--on=<environment>] [--limit=<1-100>] [--json]
 ```
+
+`list` reads your delegated tasks on one Environment (the current one, or
+`--on`): the inventory Station Control's `list_delegated_tasks` returns, from
+`GET /delegations` (SDK `listDelegatedTasks`). `--limit` bounds it (default 50,
+at most 100; anything else is a usage error before any request). When more tasks
+exist, the human output says so and `--json` carries `truncated: true`.
 
 `--session=<conversation-id>` is the one continuation selector across
 foreground chat and delegation. It resolves the Conversation's current child
@@ -1632,7 +1754,8 @@ List and resolve orchestration approval requests (`request.opened` events awaiti
 a `request.resolved`) for an external-engine Agent, without raw `curl` against
 `/api/orchestration/commands`. Adds no new server routes: `list` reads
 `GET /api/orchestration/sessions/:threadId` (or `.../sessions/read-model` to scan
-every thread for `--agent`'s provider when `--thread` is omitted) and derives
+every thread when `--thread` is omitted, narrowed to `--agent`'s provider
+when `--agent` is given) and derives
 "pending" the way the server does; `respond` calls the existing
 `POST /api/orchestration/commands {type:'respondToRequest'}` route.
 
@@ -1650,11 +1773,12 @@ not find is posted without the id and the server decides; nothing is refused
 client-side.
 
 ```
-station approvals list --agent=<slug> [--thread=<id>] [--watch] [--json] [--api-base=<url>]
+station approvals list [--agent=<slug>] [--thread=<id>] [--watch] [--json] [--api-base=<url>]
 station approvals respond <thread-id> <request-id> <accept|acceptForSession|decline|cancel> [--json] [--api-base=<url>]
 ```
 
-`--agent` must be a persisted Agent ID whose execution binds to an external
+Without `--agent`, `list` reads every session on the Station. `--agent`
+must be a persisted Agent ID whose execution binds to an external
 engine (for example `codex` or `kiro`) — approvals are an
 orchestration-session concept, and the provider is resolved from that binding.
 Station#979 AC5: resolution reads the connection's own
@@ -1674,6 +1798,7 @@ repo-wide default change.
 Examples:
 
 ```bash
+station approvals list --json
 station approvals list --agent=codex --thread=runtime-thread
 station approvals list --agent=codex --json
 station approvals list --agent=kiro --thread=kiro-thread
@@ -2027,6 +2152,24 @@ station auth users get <alias> [--api-base=<url>]
 station branding get [--api-base=<url>]
 ```
 
+### `workload`
+
+```
+station workload status [--api-base=<url>]
+```
+
+Prints this Station's engine workload memory budgets as JSON: whether Linux
+enforcement is `ready`, `unmanaged` or `unavailable` (with its reason), the
+per-engine and total limits and whether each came from the environment, a
+saved setting or the default, the host's memory, and whether a saved change
+applies to new engines now or after a restart, and each running scope with
+the limit it was launched with and the OOM kills seen in it. A Station without the route
+exits nonzero and says it does not report workload budgets. Only `--station`
+and `--api-base` choose the Station; any other flag, including `--home` and
+`--instance`, is refused rather than ignored. For a local instance, pass its
+server address as `--api-base=http://127.0.0.1:<port>`. See
+[Linux service workload budgets](../guides/development.md#linux-service-workload-budgets).
+
 ### `feedback`
 
 ```
@@ -2214,7 +2357,8 @@ running version, backs up the home once, and starts the new version as a
 trial. The backup holds Station's own state: every entry but the service
 manifests, `instances.json`, logs, monitoring, quarantine, `tmp` and the update
 restore marker `update-restore.json` (which the service and its updates own),
-the default project directories under `workspaces/`, real acquired working-copy
+versioned re-acquirable `media-tools/`, the default project directories under
+`workspaces/`, real acquired working-copy
 directories at `repository-acquisitions/<request UUID>/checkout-N`, and the
 browser's `browser/chromium` and `browser/profiles`: an update neither copies
 nor rolls them back. Acquisition receipts and mutation files remain backed-up
@@ -2588,7 +2732,7 @@ station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force
 | `--watch` | — | Development mode: server under `tsx watch`, UI as the Vite dev server proxying to it; loopback only, builds nothing. See [Development](../guides/development.md#running-a-second-station-in-development-mode) |
 | `--home=<dir>` | current `STATION_HOME` or `<STATION_ROOT>/instances/<channel>` | Runtime home for this instance — isolated **and** persistent. It never changes shared profiles; cannot be combined with `--temp-home` or `--base` |
 | `--base=<dir>` | current `STATION_HOME` or `<STATION_ROOT>/instances/<channel>` | The same runtime-only setting as `--home` |
-| `--temp-home` | — | Create and use a temporary home under the system temp directory (`TMPDIR`). If that candidate is under the `tmp/` tree of `STATION_HOME` or the resolved Station root (an agent Station spawns has `TMPDIR=<home>/tmp/engine-spawn`, which Station reaps by age), or is refused as a runtime home, it is removed and the home is created under `/tmp/station` instead; a refused retry is reported with the original refusal. On Windows the refusal stands |
+| `--temp-home` | — | Create and use a temporary home under the system temp directory (`TMPDIR`). If that candidate is under the `tmp/` tree of `STATION_HOME` or the resolved Station root (an agent Station spawns has its `TMPDIR` there: `<home>/tmp/engine-spawn`, which Station reaps by age, or with the `chat-host-images` preview a per-session directory under `<home>/tmp/session-tmp` removed when the session exits), or is refused as a runtime home, it is removed and the home is created under `/tmp/station` instead; a refused retry is reported with the original refusal. On Windows the refusal stands |
 | `--instance=<name>` | derived from `{cwd, base, ports}` | Stable instance name for targeted stop/restart flows |
 | `--features=<flags>` | — | Comma-separated feature flags (e.g. `strands-runtime`) |
 | `--log[=<path>]` | `/tmp/station-server.log` | Redirect server stdout/stderr to a log file |
@@ -2681,6 +2825,10 @@ required to reach Station from:
 - a LAN or tailnet IP/hostname (e.g. `http://192.168.1.42:3010` or a Tailscale
   MagicDNS name), or
 - a single-origin HTTPS reverse proxy that only forwards the UI port.
+
+Malformed or reset upstream response bodies close the downstream connection
+without a clean end, so clients observe truncation. The listener contains
+response errors and continues serving subsequent requests.
 
 `STATION_API_BASE` (set before `station start`) is the explicit override: when
 set, it is the **only** case where the UI server injects an absolute
@@ -3126,6 +3274,9 @@ station upgrade
 ### `fresh`
 
 Clean the selected Station home without starting the app.
+After stopping the selected instance, the command takes the home maintenance
+lease before removing the home and its owned build outputs. Another live or
+unverifiable runtime lease on that home refuses cleanup, even with `--force`.
 
 ```
 station fresh [--force] [--allow-default-home-clean] [--home=<dir>] [--base=<dir>] [--temp-home] [--instance=<name>] [--port=<n>] [--ui-port=<n>]
@@ -3221,7 +3372,10 @@ WAL and shared-memory sidecars are not copied. Symlinks in included content,
 corrupt databases, detected active instances, and
 configured size/count limits fail closed. Volatile logs, monitoring output,
 service state, temporary files, live instance records, and the top-level
-quarantine directory are excluded. Defaults are 100,000 files, 20 GiB total,
+quarantine directory are excluded. Re-acquirable `media-tools/` downloads are
+also excluded; a restored home requires host tools or fresh download consent.
+See [media backup and rollback](../guides/local-speech.md#backup-and-update-rollback).
+Defaults are 100,000 entries (files and directories), 20 GiB total,
 and 2 GiB per file. This is a private local copy, not an encrypted export or a
 transfer of execution authority.
 
@@ -3232,6 +3386,12 @@ station home backup [--output=<directory>] [--home=<dir>] [--base=<dir>] [--json
 If `--output` is omitted, Station creates a timestamped sibling of the home.
 The destination must not already exist or be inside the home.
 
+New backups use `station.home-backup/v2` and retain empty directories as well
+as file content. Restore them with a CLI that supports v2; older tools refuse
+this archive version. The current reader also accepts v1 backups, whose
+unrecorded empty directories cannot be recovered. Update snapshots use their
+separate v2 format and additionally count recorded links toward their entry cap.
+
 ### `home restore`
 
 Validate manifest entries and content hashes, stage the copied home, then
@@ -3240,6 +3400,10 @@ rename the previous home aside and publish the staged directory. The
 maintenance lease, checks recorded live instances and attempts rollback on
 publication failure. The two renames are not a single crash-atomic exchange:
 the retained previous home is the recovery copy if publication is interrupted.
+For v2 archives, directory paths and contents must match the manifest before
+the current home is replaced. Duplicate, aliased, unsafe or incomplete directory
+plans are refused. Directory preservation does not reconcile effect history
+created after the backup or grant a restored home execution authority.
 
 The CLI identifies the result as **recovered from a copy**, prints the backup's
 snapshot time, and notes that work after that snapshot may be missing. Its JSON
@@ -3282,10 +3446,11 @@ station home reset --confirm [--if-incompatible] [--home=<dir>] [--base=<dir>] [
 | `--json` | Print the result (`{"archived":..., "archivePath"?:..., "projectHome":...}`) as JSON |
 
 Without `--if-incompatible`, this can archive a compatible home too. It checks
-the lifecycle instance records for that home before renaming it. Unlike backup
-and restore, this path does not acquire the home maintenance lease or separately
-consult the home-scoped service registry. Stop every process using the home
-first; use `station service stop` for a supervised service. A successful reset
+the lifecycle instance records, then holds the home maintenance lease while
+rechecking inactivity and renaming the home. Live or unverifiable runtime
+leases refuse reset. This path does not separately consult the home-scoped
+service registry. Stop every process using the home first; use
+`station service stop` for a supervised service. A successful reset
 preserves the old directory but does not itself start or scaffold the new home.
 
 ```bash
@@ -4131,3 +4296,20 @@ exact snapshot as an optimistic guard. Supply `--repo-id` and a repo-relative
 resource must already be declared, but it may be unbound on this Station;
 configuration never clones, binds, or grants compute. An unchanged request is
 idempotent and does not advance the identity timestamp.
+
+### `walkthrough`
+
+```bash
+station walkthrough import <file> --project <slug>
+station walkthrough list --project <slug> [--cursor=<nextCursor>]
+station walkthrough show <id> --project <slug>
+```
+
+The `--project=<slug>` spelling also works. Import streams a local mp4, mov or
+webm, follows its operation and prints the completed id. Errors preserve
+unavailability and download sizes, with `station media-tools download --yes`
+as the consent-required remedy. List and show print JSON. Normal
+Station target/authentication flags apply. See the [import guide](../guides/walkthroughs.md)
+for limits and privacy. Enable the default-off **Walkthroughs** preview in
+Settings → Advanced → Feature previews. Off commands exit nonzero and retain the
+server's `feature_preview_disabled`, preview ID and Settings path.

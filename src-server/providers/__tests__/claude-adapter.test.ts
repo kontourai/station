@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -11,7 +12,15 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { ResolvedAgentToolServer } from '@kontourai/station-contracts/provider';
 import * as childWorkload from '@kontourai/station-shared/child-workload';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  onTestFinished,
+  test,
+  vi,
+} from 'vitest';
 import { scenarios as deliveryScenarios } from '../../../scripts/engine-delivery-probes.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { MCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
@@ -125,6 +134,11 @@ import {
 } from '../../runtime/mcp/station-control-mcp-token.js';
 import { isAutoApprovedExternalTool } from '../../runtime/tools/tool-executor.js';
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
+import {
+  installSessionTmpDirPolicy,
+  sessionTempRoot,
+  sessionTmpDirPath,
+} from '../../services/infra/session-tmpdir.js';
 import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
 import { scrubBootInternalSecrets } from '../../utils/child-process-environment.js';
 import { INTERNAL_API_TOKEN_ENV } from '../../utils/internal-api-token.js';
@@ -145,6 +159,7 @@ import { credentialProfileAppHomeDir } from '../app-home/credential-profile-regi
 import {
   type ClaudeCanUseToolRequest,
   claudeCanUseToolFrame,
+  FakeClaudeChild,
   sdkCanUseToolOptions,
   startFakeClaudeEngine,
 } from './claude-engine-process-test-utils.js';
@@ -2723,6 +2738,34 @@ describe('ClaudeAdapter', () => {
       if (plain.kind === 'prompted') await plain.answer('decline');
 
       await adapter.stopSession('thread-escalation-no-mint');
+    });
+
+    test('a tool session answer never forwards a suggested switch into full access', async () => {
+      const { adapter, ask } = await grantHarness('thread-tool-no-bypass', {
+        modelOptions: { approvalMode: 'ask' },
+      });
+      const toolRule = {
+        type: 'addRules',
+        rules: [{ toolName: 'Bash', ruleContent: 'git status' }],
+        behavior: 'allow',
+        destination: 'session',
+      };
+      const bypass = {
+        type: 'setMode',
+        mode: 'bypassPermissions',
+        destination: 'session',
+      };
+      const plain = await ask(
+        'Bash',
+        { command: 'git status' },
+        { suggestions: [toolRule, bypass] },
+      );
+      if (plain.kind !== 'prompted') throw new Error('expected a prompt');
+      await expect(plain.answer('acceptForSession')).resolves.toMatchObject({
+        behavior: 'allow',
+        updatedPermissions: [toolRule],
+      });
+      await adapter.stopSession('thread-tool-no-bypass');
     });
 
     test("a file edit's session answer forwards acceptEdits and mints nothing: a later sensitive-file edit prompts", async () => {
@@ -8206,6 +8249,148 @@ describe('ClaudeAdapter', () => {
     });
   });
 
+  test('a host start below full access takes the bypass grant at spawn, so a later full-access turn applies with no restart', async () => {
+    const mockedQuery = createControlledMockQuery();
+    mockQuery.mockReturnValue(mockedQuery);
+    const adapter = new ClaudeAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    const threadId = 'thread-host-ask-escalate';
+    // Whoever runs the suite: the engine's root guard is out of play.
+    vi.stubEnv('IS_SANDBOX', '1');
+    onTestFinished(() => {
+      vi.unstubAllEnvs();
+    });
+
+    await adapter.startSession({
+      provider: 'claude',
+      threadId,
+      // An operator start: its caller proved it may grant full access.
+      confinement: 'host',
+      modelOptions: { approvalMode: 'ask' },
+    });
+    // Granted, but not used: the engine starts at Ask.
+    expect(mockQuery).toHaveBeenCalledWith({
+      prompt: expect.anything(),
+      options: expect.objectContaining({
+        permissionMode: 'default',
+        allowDangerouslySkipPermissions: true,
+      }),
+    });
+    await iterator.next(); // session.started
+    expect((await iterator.next()).value).toMatchObject({
+      method: 'session.configured',
+      metadata: { approvalMode: 'ask', allowDangerouslySkipPermissions: true },
+    });
+
+    await adapter.sendTurn({
+      threadId,
+      input: 'switch to full access mid-chat',
+      modelOptions: { approvalMode: 'never' },
+      confinement: 'host',
+    });
+    expect(mockedQuery.setPermissionMode).toHaveBeenCalledWith(
+      'bypassPermissions',
+    );
+    const turnStarted = await iterator.next();
+    expect(turnStarted.value).toMatchObject({
+      method: 'turn.started',
+      metadata: { approvalMode: 'never' },
+    });
+    expect(turnStarted.value.metadata).not.toHaveProperty(
+      'approvalEscalationRejected',
+      true,
+    );
+  });
+
+  test('a host plan start is not granted bypass, which the engine would read as permission to skip prompts in plan mode', async () => {
+    mockQuery.mockReturnValue(createMockQuery([]));
+    vi.stubEnv('IS_SANDBOX', '1');
+    try {
+      const adapter = new ClaudeAdapter();
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'thread-host-plan',
+        confinement: 'host',
+        modelOptions: { permissionMode: 'plan' },
+      });
+      expect(mockQuery).toHaveBeenCalledWith({
+        prompt: expect.anything(),
+        options: expect.objectContaining({
+          permissionMode: 'plan',
+          allowDangerouslySkipPermissions: undefined,
+        }),
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  test('a host start with no mode from Station is not granted bypass: the engine settings decide alone', async () => {
+    mockQuery.mockReturnValue(createMockQuery([]));
+    const adapter = new ClaudeAdapter();
+
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'thread-host-no-mode',
+      confinement: 'host',
+    });
+
+    expect(mockQuery).toHaveBeenCalledWith({
+      prompt: expect.anything(),
+      options: expect.objectContaining({
+        allowDangerouslySkipPermissions: undefined,
+      }),
+    });
+  });
+
+  test('a host start below full access is not granted bypass as root outside a sandbox, where the engine would refuse it', async () => {
+    mockQuery.mockReturnValue(createMockQuery([]));
+    // Defined where the platform has none (Windows), so the guard sees root.
+    const realGetuid = process.getuid;
+    process.getuid = () => 0;
+    vi.stubEnv('IS_SANDBOX', undefined);
+    vi.stubEnv('CLAUDE_CODE_BUBBLEWRAP', undefined);
+    try {
+      const adapter = new ClaudeAdapter();
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'thread-host-root',
+        confinement: 'host',
+        modelOptions: { approvalMode: 'ask' },
+      });
+      expect(mockQuery).toHaveBeenCalledWith({
+        prompt: expect.anything(),
+        options: expect.objectContaining({
+          permissionMode: 'default',
+          allowDangerouslySkipPermissions: undefined,
+        }),
+      });
+    } finally {
+      process.getuid = realGetuid;
+      vi.unstubAllEnvs();
+    }
+  });
+
+  test('a workspace start below full access is not granted bypass at spawn', async () => {
+    mockQuery.mockReturnValue(createMockQuery([]));
+    const adapter = new ClaudeAdapter();
+
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'thread-workspace-ask',
+      confinement: 'workspace',
+      modelOptions: { approvalMode: 'ask' },
+    });
+
+    expect(mockQuery).toHaveBeenCalledWith({
+      prompt: expect.anything(),
+      options: expect.objectContaining({
+        permissionMode: 'default',
+        allowDangerouslySkipPermissions: undefined,
+      }),
+    });
+  });
+
   test('#2436: the server re-applies a refused full access on every turn; the warning is sent once, the refusal is reported on each turn, and a different posture re-arms it', async () => {
     // Controlled, so each turn can end before the next is sent: a send while
     // a turn is still owed is refused (#2415/#2324).
@@ -10583,6 +10768,145 @@ echo '{"loggedIn":true}'
     });
   });
 
+  describe('chat-host-images: per-session engine TMPDIR', () => {
+    test('a session the preview admits gets its own Station-owned TMPDIR; the catalog probe keeps the shared one', async () => {
+      const stationHome = join(
+        tmpdir(),
+        `station-claude-session-tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      );
+      const previousStationHome = process.env.STATION_HOME;
+      process.env.STATION_HOME = stationHome;
+      const uninstall = installSessionTmpDirPolicy(
+        (threadId) => threadId === 'thread-session-tmp-on',
+      );
+      try {
+        mockQuery.mockClear();
+        mockAugmentedSpawnEnv.mockReset();
+        mockQuery.mockReturnValue(createMockQuery([]));
+        // A live engine: its stream stays open (a stream that ends means the
+        // engine is gone, which releases the folder).
+        mockQuery.mockReturnValueOnce(createControlledMockQuery());
+        const adapter = new ClaudeAdapter();
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'thread-session-tmp-on',
+        });
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'thread-session-tmp-off',
+        });
+        await adapter.listModelCatalog?.();
+        const [onCall, offCall, catalogCall] = mockQuery.mock.calls.map(
+          ([call]) => call,
+        );
+        const own = sessionTmpDirPath('thread-session-tmp-on', stationHome);
+        expect(onCall.options.env.TMPDIR).toBe(own);
+        expect(statSync(own).isDirectory()).toBe(true);
+        expect(statSync(own).mode & 0o777).toBe(0o700);
+        expect(offCall.options.env.TMPDIR).toBe(
+          engineSpawnTmpDirPath(stationHome),
+        );
+        expect(catalogCall.options.env.TMPDIR).toBe(
+          engineSpawnTmpDirPath(stationHome),
+        );
+      } finally {
+        uninstall();
+        if (previousStationHome === undefined) delete process.env.STATION_HOME;
+        else process.env.STATION_HOME = previousStationHome;
+        rmSync(stationHome, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('chat-host-images: an engine that dies on its own', () => {
+    test('releases its launch temp folder though no session.exited follows', async () => {
+      const stationHome = join(
+        tmpdir(),
+        `station-claude-crash-tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      );
+      const previousStationHome = process.env.STATION_HOME;
+      process.env.STATION_HOME = stationHome;
+      const uninstall = installSessionTmpDirPolicy(() => true);
+      try {
+        mockQuery.mockClear();
+        mockAugmentedSpawnEnv.mockReset();
+        let fail: (error: Error) => void = () => undefined;
+        const failed = new Promise<never>((_resolve, reject) => {
+          fail = reject;
+        });
+        failed.catch(() => undefined);
+        mockQuery.mockReturnValue({
+          ...createMockQuery([]),
+          [Symbol.asyncIterator]: () => ({ next: () => failed }),
+        } as never);
+        const adapter = new ClaudeAdapter();
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'thread-crash',
+        });
+        const own = sessionTmpDirPath('thread-crash', stationHome);
+        expect(sessionTempRoot('thread-crash')).toBe(own);
+        fail(new Error('Claude Code process exited with code 1'));
+        await vi.waitFor(() =>
+          expect(sessionTempRoot('thread-crash')).toBeUndefined(),
+        );
+        expect(existsSync(own)).toBe(false);
+        await adapter.stopAll();
+      } finally {
+        uninstall();
+        if (previousStationHome === undefined) delete process.env.STATION_HOME;
+        else process.env.STATION_HOME = previousStationHome;
+        rmSync(stationHome, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('chat-host-images: an engine stream that simply ends', () => {
+    test('releases its launch temp folder on a clean end too', async () => {
+      const stationHome = join(
+        tmpdir(),
+        `station-claude-end-tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      );
+      const previousStationHome = process.env.STATION_HOME;
+      process.env.STATION_HOME = stationHome;
+      const uninstall = installSessionTmpDirPolicy(() => true);
+      try {
+        mockQuery.mockClear();
+        mockAugmentedSpawnEnv.mockReset();
+        let end: () => void = () => undefined;
+        const ended = new Promise<void>((resolve) => {
+          end = resolve;
+        });
+        mockQuery.mockReturnValue({
+          ...createMockQuery([]),
+          async *[Symbol.asyncIterator]() {
+            await ended;
+            // Ends without a message: a clean end of the engine stream.
+            yield* [];
+          },
+        } as never);
+        const adapter = new ClaudeAdapter();
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'thread-clean-end',
+        });
+        const own = sessionTmpDirPath('thread-clean-end', stationHome);
+        expect(sessionTempRoot('thread-clean-end')).toBe(own);
+        end();
+        await vi.waitFor(() =>
+          expect(sessionTempRoot('thread-clean-end')).toBeUndefined(),
+        );
+        expect(existsSync(own)).toBe(false);
+        await adapter.stopAll();
+      } finally {
+        uninstall();
+        if (previousStationHome === undefined) delete process.env.STATION_HOME;
+        else process.env.STATION_HOME = previousStationHome;
+        rmSync(stationHome, { recursive: true, force: true });
+      }
+    });
+  });
+
   describe('station#1182: runtime-reported model, end to end', () => {
     test("a second turn that reports nothing does not inherit the first turn's reportedModel", async () => {
       const controlled = createControlledMockQuery();
@@ -10623,9 +10947,14 @@ echo '{"loggedIn":true}'
       });
       await iterator.next(); // token-usage.updated
       const firstCompleted = await iterator.next(); // turn.completed
-      expect((firstCompleted.value as any).metadata).toEqual({
-        reportedModel: 'claude-opus-4-5-20260101',
-      });
+      if (
+        firstCompleted.done ||
+        firstCompleted.value.method !== 'turn.completed'
+      )
+        throw new Error('Expected the first turn completion.');
+      expect(firstCompleted.value.metadata?.reportedModel).toBe(
+        'claude-opus-4-5-20260101',
+      );
 
       // Second turn reports nothing (e.g. no assistant message before an
       // early result) — must not surface the first turn's stale value.
@@ -10643,7 +10972,12 @@ echo '{"loggedIn":true}'
       });
       await iterator.next(); // token-usage.updated
       const secondCompleted = await iterator.next(); // turn.completed
-      expect((secondCompleted.value as any).metadata).toBeUndefined();
+      if (
+        secondCompleted.done ||
+        secondCompleted.value.method !== 'turn.completed'
+      )
+        throw new Error('Expected the second turn completion.');
+      expect(secondCompleted.value.metadata?.reportedModel).toBeUndefined();
     });
   });
   // #1551: Station detected the user's installed Claude Code, reported it
@@ -12220,6 +12554,7 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
     const pending: unknown[] = [];
     let wake: (() => void) | null = null;
     let ended = false;
+    let failure: Error | undefined;
     const end = () => {
       ended = true;
       wake?.();
@@ -12232,9 +12567,15 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
         wake = null;
       },
       end,
+      /** The SDK iterator failing as it does when the `claude` process dies. */
+      crash(error: Error) {
+        failure = error;
+        end();
+      },
       async *[Symbol.asyncIterator]() {
         for (;;) {
           while (pending.length === 0) {
+            if (failure) throw failure;
             if (ended) return;
             await new Promise<void>((resolve) => {
               wake = resolve;
@@ -12298,7 +12639,10 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
       event.method === 'child-work.updated' &&
       event.delta.kind === 'settle' &&
       event.delta.childId === capturedChildId
-        ? [event.delta.status]
+        ? [
+            // The wire status, and what a current client shows for it.
+            `${event.delta.status}${event.delta.endedBy ? `:${event.delta.endedBy}` : ''}`,
+          ]
         : [],
     );
 
@@ -12414,6 +12758,53 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
     expect(settleAt).toBeLessThan(
       seen.findIndex((event) => event.method === 'session.exited'),
     );
+  });
+
+  /** The fake `claude` process the adapter's own spawn starts for the SDK. */
+  function spawnEngine() {
+    const options = mockQuery.mock.calls.at(-1)?.[0]?.options;
+    startFakeClaudeEngine(options);
+    const child = FakeClaudeChild.newest;
+    if (!child) throw new Error('no fake engine spawned');
+    return child;
+  }
+
+  test('the engine process dying settles the running child interrupted, not unresolved', async () => {
+    const threadId = 'thread-child-process-death';
+    const { query, until, seen } = await runningChild(threadId);
+    const engine = spawnEngine();
+    engine.exit(null, 'SIGKILL');
+    engine.closeStderr();
+    query.crash(new Error('Claude Code process terminated by signal SIGKILL'));
+    const settled = await Promise.race([
+      until(
+        (event) =>
+          event.method === 'child-work.updated' &&
+          event.delta.kind === 'settle' &&
+          event.delta.childId === capturedChildId,
+      ),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 2_000)),
+    ]);
+    expect(settled, 'no settle after the engine died').not.toBeNull();
+    expect(childSettles(seen)).toEqual(['unresolved:engine-exit']);
+  });
+
+  test('a stream failure with the engine process still running is no interruption (#4266)', async () => {
+    const threadId = 'thread-child-stream-failure';
+    const { query, until, seen } = await runningChild(threadId);
+    spawnEngine();
+    query.crash(new Error('Unexpected token in JSON at position 0'));
+    const emptied = await Promise.race([
+      until(
+        (event) =>
+          event.method === 'child-work.updated' &&
+          event.delta.kind === 'snapshot' &&
+          event.delta.running.length === 0,
+      ),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 2_000)),
+    ]);
+    expect(emptied, 'no empty snapshot after the stream failed').not.toBeNull();
+    expect(childSettles(seen)).toEqual([]);
   });
 
   test('the engine process ending on its own settles the running child too', async () => {

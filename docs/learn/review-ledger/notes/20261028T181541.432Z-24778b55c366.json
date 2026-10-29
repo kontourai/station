@@ -1,0 +1,13 @@
+{
+  "revision": "783e701996bd71209b8ddaa418f96a660c377c64",
+
+  "notes": [
+    {"path":"docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","note":"Reviewed against this change: help.ts now gives checkpoints the action list status, prune, history, retention, restore (matching its existing usage lines and the subcommands checkpoints.ts dispatches), which adds an Actions block to `station checkpoints --help`. No verb, usage line or behavior this document cites changed.","inputs":["docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","packages/cli/src/help.ts"]},
+
+    {"path":"docs/guides/authoring-skill-experiences.md","note":"Reviewed against this change: help.ts now gives checkpoints the action list status, prune, history, retention, restore (matching its existing usage lines and the subcommands checkpoints.ts dispatches), which adds an Actions block to `station checkpoints --help`. No verb, usage line or behavior this document cites changed.","inputs":["docs/guides/authoring-skill-experiences.md","packages/cli/src/help.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed against this change: help.ts now gives checkpoints the action list status, prune, history, retention, restore (matching its existing usage lines and the subcommands checkpoints.ts dispatches), which adds an Actions block to `station checkpoints --help`. No verb, usage line or behavior this document cites changed.","inputs":["docs/reference/cli.md","packages/cli/src/help.ts"]},
+
+    {"path":"packages/cli/README.md","note":"Reviewed against this change: help.ts now gives checkpoints the action list status, prune, history, retention, restore (matching its existing usage lines and the subcommands checkpoints.ts dispatches), which adds an Actions block to `station checkpoints --help`. No verb, usage line or behavior this document cites changed.","inputs":["packages/cli/README.md","packages/cli/src/help.ts"]}
+  ]
+}

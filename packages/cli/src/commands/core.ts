@@ -77,6 +77,7 @@ import {
   executionEnvironment,
   rejectRetiredExecutionSelectors,
 } from './execution-target.js';
+import { runMcpClientsCommand } from './mcp-clients.js';
 import { collectModelOptions, resolveOnRequestMode } from './model-options.js';
 import { runOperateCommand } from './operate/index.js';
 import { runProjectIdentityCommand } from './project-identity.js';
@@ -1311,6 +1312,11 @@ export async function runCoreCommand(
   const apiBase = resolveApiBase(parsed);
   configureApiCredential(parsed, apiBase);
 
+  if (command === 'mcp-clients') {
+    await runMcpClientsCommand(apiBase, parsed);
+    return;
+  }
+
   if (command === 'chat') {
     await runChat(parsed, apiBase);
     return;
@@ -1324,6 +1330,12 @@ export async function runCoreCommand(
   if (command === 'conversation') {
     const { runConversationCommand } = await import('./conversation.js');
     await runConversationCommand(apiBase, parsed);
+    return;
+  }
+
+  if (command === 'claims') {
+    const { runClaimsCommand } = await import('./claims.js');
+    await runClaimsCommand(apiBase, parsed);
     return;
   }
 

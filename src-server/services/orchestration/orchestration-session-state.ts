@@ -15,6 +15,7 @@ import {
   clientOriginSender,
   isClientOrigin,
 } from '@kontourai/station-contracts/client-origin';
+import { isLowContentPrompt } from '@kontourai/station-contracts/conversation-title';
 import { sessionDeliveryChannels } from '@kontourai/station-contracts/engine-capability-matrix';
 import type {
   AgentRunFailureKind,
@@ -40,6 +41,7 @@ import {
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_SELECTION_RECEIPT_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
+import { runtimeEventContentText } from '@kontourai/station-contracts/runtime-event-content';
 import {
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
@@ -634,10 +636,14 @@ export function buildOrchestrationSessionSummary(options: {
   const conversationIdentity = extractConversationIdentity(events);
   const displayTitle =
     (delegation?.title ? displayPromptTitle(delegation.title) : undefined) ??
-    (options.conversationFirstPromptedTurn
-      ? extractDisplayTitle([options.conversationFirstPromptedTurn])
-      : undefined) ??
-    extractDisplayTitle(events) ??
+    // The conversation's first prompt comes before this thread's own events,
+    // so one pass over both lets a meaningful later prompt outrank a
+    // low-content first one (#4266).
+    extractDisplayTitle(
+      options.conversationFirstPromptedTurn
+        ? [options.conversationFirstPromptedTurn, ...events]
+        : events,
+    ) ??
     delegation?.title;
   const turnOrigin = extractTurnOrigin(events);
   const lastRuntimeError = findTerminalFailureEvent(events);
@@ -929,23 +935,33 @@ function extractModelSelectionReceipt(
 
 /**
  * Home needs enough identity to distinguish historical sessions without
- * projecting their full prompts. Only the first meaningful user turn is
- * considered, and injected timezone context is removed before bounding.
+ * projecting their full prompts. The first user turn that says something is
+ * the title, and injected timezone context is removed before bounding.
+ *
+ * #4266: a low-content prompt ("Continue", "ok go ahead", the memory-recovery
+ * continuation; `isLowContentPrompt`) is skipped, so the next prompted turn
+ * names the session instead. Only when every prompt is low-content does the
+ * first of them stand, which still says more than an engine fallback name.
  */
 export function extractDisplayTitle(
   events: CanonicalRuntimeEvent[],
 ): string | undefined {
+  let lowContentTitle: string | undefined;
   for (const event of events) {
-    if (event.method !== 'turn.started' || typeof event.prompt !== 'string') {
-      continue;
-    }
+    if (event.method !== 'turn.started') continue;
+    // A long prompt stored out of line titles from its preview: a title is
+    // a short prefix either way.
+    const text = runtimeEventContentText(event.prompt)?.text;
+    if (!text) continue;
     const prompt = clientOriginSender(event.clientOrigin)
-      ? (unframeAgentMessage(event.prompt) ?? event.prompt)
-      : event.prompt;
+      ? (unframeAgentMessage(text) ?? text)
+      : text;
     const title = displayPromptTitle(prompt);
-    if (title) return title;
+    if (!title) continue;
+    if (!isLowContentPrompt(title)) return title;
+    lowContentTitle ??= title;
   }
-  return undefined;
+  return lowContentTitle;
 }
 
 function displayPromptTitle(prompt: string): string | undefined {

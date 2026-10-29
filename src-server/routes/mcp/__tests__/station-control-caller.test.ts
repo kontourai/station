@@ -8,12 +8,20 @@
  * server factory, which registers one probe tool in place of the real
  * registrations, because no shipped tool reads the caller yet.
  */
+import { mkdir, writeFile } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
+import { join } from 'node:path';
 import { serve } from '@hono/node-server';
+import {
+  closeChildWorkload,
+  prepareChildWorkload,
+  trackChildWorkload,
+} from '@kontourai/station-shared/child-workload';
 import { McpServer } from '@modelcontextprotocol/server';
 import { Hono } from 'hono';
 import {
   afterAll,
+  afterEach,
   beforeAll,
   beforeEach,
   describe,
@@ -22,6 +30,7 @@ import {
   vi,
 } from 'vitest';
 import { z } from 'zod';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import {
   createAgentDispatchActorResolver,
@@ -44,6 +53,8 @@ import {
 import { isFullAccessGrant } from '../../../security/coding-authority.js';
 import { resolveClientOriginForRequest } from '../../../security/runtime-request-security.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
+import { WORKLOAD_SESSION_ENV } from '../../../services/infra/workload-budget.js';
+import { __workloadTestHooks } from '../../../services/infra/workload-resources.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { SessionAuthorization } from '../../../services/orchestration/session-authorization.js';
 import type { WorkspacePaneHostActionActor } from '../../../services/plugins/workspace-pane-host-actions.js';
@@ -67,6 +78,7 @@ import {
 import type { Logger } from '../../../utils/logger.js';
 import { createOrchestrationRoutes } from '../../orchestration/orchestration.js';
 import { createWorkspacePaneHostActionRoutes } from '../../orchestration/workspace-pane-host-actions.js';
+import { createWorkloadRoutes } from '../../system/workload-routes.js';
 import { createStationControlCallerRoutes } from '../station-control-caller-route.js';
 import {
   createStationControlMcpRoutes,
@@ -306,6 +318,15 @@ beforeAll(async () => {
   app.route(
     '/api/orchestration',
     createStationControlCallerRoutes({ resolveRecord }),
+  );
+  // The workload session read with its production caller binding.
+  app.route(
+    '/api/system',
+    createWorkloadRoutes({
+      resolveCallerSession: (request) =>
+        resolveStationControlCallerForRequest(request, resolveRecord)
+          ?.sessionId ?? null,
+    }),
   );
   // The REAL orchestration dispatch routes with the production agent
   // dispatch resolver; `delegateTask` records what the child would be
@@ -893,6 +914,7 @@ describe('station-control verified caller (in-process Claude delivery)', () => {
       .map((tool) => tool.name)
       .sort();
     expect(names).toEqual([
+      'browser_capture_to_task',
       'browser_click',
       'browser_close',
       'browser_color_scheme',
@@ -1189,5 +1211,72 @@ describe('Pane host actions (review S3)', () => {
     });
     expect(input.message).toBe('pane action');
     expect(input).not.toHaveProperty('ownerAttribution');
+  });
+});
+
+describe('workload_status session read through the production caller resolver', () => {
+  const makeTempDir = trackTempDirs();
+  afterEach(() => __workloadTestHooks.reset());
+
+  test("reads only the verified caller's own scope; a paired device or a bare internal call gets 403", async () => {
+    const home = makeTempDir('workload-caller-');
+    const cgroupRoot = join(home, 'cgroup');
+    const groups = new Map<string, string>();
+    await __workloadTestHooks.start({
+      homeDir: home,
+      cgroupRoot,
+      run: async (args) => {
+        if (args[0] === 'show' && args.includes('--property=ControlGroup'))
+          return `${groups.get(args[1]) ?? ''}\n`;
+        if (args[0] === 'show') return 'LoadState=not-found\n';
+        return '';
+      },
+    });
+    const engine = prepareChildWorkload('/usr/bin/codex', ['app-server'], {
+      [WORKLOAD_SESSION_ENV]: 'session-a',
+    });
+    if (!engine) throw new Error('no launcher');
+    const unit = engine.args
+      .find((arg) => arg.startsWith('--unit='))
+      ?.slice('--unit='.length) as string;
+    groups.set(unit, `/app.slice/${unit}`);
+    const scope = `${cgroupRoot}/app.slice/${unit}`;
+    await mkdir(scope, { recursive: true });
+    await writeFile(join(scope, 'memory.current'), '1048576\n');
+    await writeFile(join(scope, 'memory.max'), '67108864\n');
+    trackChildWorkload(engine, process.pid);
+    const read = (headers: Record<string, string>) =>
+      fetch(`${baseUrl}/api/system/workload/session`, { headers });
+    try {
+      const a = mintStationControlMcpToken('session-a', 'url-token');
+      const b = mintStationControlMcpToken('session-b', 'url-token');
+      const own = await read({
+        ...internalHeaders(),
+        [STATION_CONTROL_CALLER_TOKEN_HEADER]: a.token,
+      });
+      expect(own.status).toBe(200);
+      expect(await own.json()).toMatchObject({
+        data: { scope: { state: 'measured', unit } },
+      });
+      // Another session's credential never reaches session-a's scope.
+      const other = await read({
+        ...internalHeaders(),
+        [STATION_CONTROL_CALLER_TOKEN_HEADER]: b.token,
+      });
+      expect(await other.json()).toMatchObject({
+        data: { scope: { state: 'unattributed' } },
+      });
+      // A paired device (operator credential) holding the token is not an
+      // agent tool call: refused, like a bare internal call without one.
+      const device = await read({
+        authorization: `Bearer ${OPERATOR_CREDENTIAL}`,
+        [STATION_CONTROL_CALLER_TOKEN_HEADER]: a.token,
+      });
+      expect(device.status).toBe(403);
+      const bare = await read(internalHeaders());
+      expect(bare.status).toBe(403);
+    } finally {
+      await closeChildWorkload(process.pid);
+    }
   });
 });

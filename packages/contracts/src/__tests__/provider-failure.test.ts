@@ -66,8 +66,10 @@ const expected: ReadonlyArray<readonly [string, ProviderFailureKind, boolean]> =
     ['continuation_workspace_unbound', 'input_unsupported', false],
     ['continuation_workspace_worktree_gone', 'input_unsupported', false],
     ['continuation_workspace_worktree_moved', 'input_unsupported', false],
+    ['conversation-context-unavailable', 'conflict', false],
     ['engine-decision-not-sent', 'warning', false],
     ['engine-decision-unacknowledged', 'warning', false],
+    ['engine-memory-exhausted', 'engine_crashed', true],
     ['engine-session-binding-dead', 'session_gone', false],
     ['engine-turn-failed', 'provider_error', false],
     ['engine-sign-in-required', 'auth', false],
@@ -102,6 +104,7 @@ const expected: ReadonlyArray<readonly [string, ProviderFailureKind, boolean]> =
     ['session_recovery_failed', 'unavailable', true],
     ['session_start_in_flight', 'busy', true],
     ['transcript-line-skipped', 'warning', false],
+    ['workload-command-oom-killed', 'warning', false],
   ];
 
 describe('provider failure wire contract', () => {

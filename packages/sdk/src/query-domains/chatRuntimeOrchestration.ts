@@ -1140,6 +1140,8 @@ export async function resolveOrchestrationRequest(input: {
   answers?: HarnessQuestionAnswers;
   /** #3390: accepted content for a form input request. */
   content?: InputRequestContent;
+  /** docs/design/event-content-spill.md: proof the full request was loaded. */
+  viewedContentDigest?: string;
   apiBase?: string;
   /** Deadline for decision admission; a timeout does not cancel the server-side decision. */
   timeoutMs?: number;
@@ -1158,6 +1160,9 @@ export async function resolveOrchestrationRequest(input: {
         : {}),
       ...(input.answers ? { answers: input.answers } : {}),
       ...(input.content ? { content: input.content } : {}),
+      ...(input.viewedContentDigest
+        ? { viewedContentDigest: input.viewedContentDigest }
+        : {}),
     },
     input.apiBase,
     input.timeoutMs,

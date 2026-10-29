@@ -81,6 +81,18 @@ export {
 export * from './integrations';
 export * from './knowledge';
 export * from './learning-source';
+export type {
+  LocalTranscriptionResult,
+  LocalTranscriptSegment,
+  MediaToolComponent,
+  MediaToolDownload,
+  MediaToolsStatus,
+} from './media-tools';
+export {
+  downloadMediaTools,
+  getMediaToolsStatus,
+  transcribeAudio,
+} from './media-tools';
 export * from './orchestration';
 export * from './peer-enrollments';
 export * from './personal-boards';
@@ -97,6 +109,7 @@ export * from './relay-enrollment';
 export * from './request-inspection';
 export * from './reviews';
 export * from './runs';
+export * from './runtime-event-content';
 export * from './scheduler';
 export * from './send-execution-message';
 export { sentTurnKey } from './sent-turn-key';
@@ -116,6 +129,8 @@ export * from './task-tool-results';
 export * from './task-user-input-references';
 export * from './unified-search';
 export * from './usage-export';
+export * from './walkthroughs';
+export * from './work-claims';
 export {
   executeWorkspacePaneHostAction,
   getWorkspacePaneHostActions,

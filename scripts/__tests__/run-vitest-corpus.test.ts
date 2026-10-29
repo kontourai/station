@@ -1,5 +1,16 @@
 import { EventEmitter } from 'node:events';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   buildVitestCommand,
   buildWindowsSerializedCommand,
@@ -18,6 +29,8 @@ import {
   VITEST_CORPUS_GROUPS,
   withoutQuarantinedFiles,
 } from '../run-vitest-corpus.mjs';
+
+const makeTempDir = trackTempDirs();
 
 const GROUPS = {
   ordinary: ['ordinary.test.ts'],
@@ -126,6 +139,80 @@ describe('Vitest corpus runner', () => {
       }),
     ).rejects.toThrow(/has no discovered tests/);
   });
+
+  it.each(['collection', 'body', 'afterEach'])(
+    'retains observed %s delay from the real exclusive child without changing its result',
+    async (phase) => {
+      const root = makeTempDir('corpus-lifecycle-');
+      const repo = resolve(import.meta.dirname, '../..');
+      symlinkSync(
+        resolve(repo, 'node_modules'),
+        resolve(root, 'node_modules'),
+        process.platform === 'win32' ? 'junction' : 'dir',
+      );
+      mkdirSync(resolve(root, 'scripts'));
+      const reporterUrl = pathToFileURL(
+        resolve(repo, 'scripts/vitest-inflight-reporter.mjs'),
+      ).href;
+      writeFileSync(
+        resolve(root, 'scripts/vitest-inflight-reporter.mjs'),
+        `import Reporter from ${JSON.stringify(reporterUrl)};
+export default class extends Reporter {
+  constructor() { super({ intervalMs: 25 }); }
+}`,
+      );
+      writeFileSync(
+        resolve(root, 'vitest.config.mjs'),
+        `export default { test: { include: ['phase.test.ts'], testTimeout: 2000, hookTimeout: 2000, cache: false } };`,
+      );
+      writeFileSync(
+        resolve(root, 'phase.test.ts'),
+        `import { afterEach, expect, test } from 'vitest';
+const delay = () => new Promise(resolve => setTimeout(resolve, 300));
+${phase === 'collection' ? 'await delay();' : ''}
+${phase === 'afterEach' ? 'afterEach(delay);' : ''}
+test('private-case-content-must-not-appear-in-progress', async () => {
+  ${phase === 'body' ? 'await delay();' : ''}
+  expect(2 + 2).toBe(4);
+});`,
+      );
+      const result = await runVitestGroup(
+        VITEST_CORPUS_GROUPS[2],
+        ['phase.test.ts'],
+        { root },
+      );
+      expect(result.error).toBeNull();
+      expect(result.status).toBe(0);
+      expect(result.passed).toBe(true);
+      expect(result.outputTruncated).toBe(false);
+      const progress = result.stdout
+        .split('\n')
+        .filter((line) => line.startsWith('[vitest-progress]'));
+      expect(progress.length).toBeGreaterThan(1);
+      expect(progress.join('\n')).not.toContain('private-case-content');
+      expect(progress.some((line) => line.includes('elapsedMs='))).toBe(true);
+      if (phase === 'collection') {
+        expect(
+          progress.some((line) =>
+            /phase\.test\.ts \{stage=queued; elapsedMs=[1-9]\d*/.test(line),
+          ),
+        ).toBe(true);
+      } else if (phase === 'body') {
+        expect(
+          progress.some((line) =>
+            /stage=running;.*cases=(?!unknown)[^;]+; hooks=unknown/.test(line),
+          ),
+        ).toBe(true);
+      } else {
+        expect(
+          progress.some((line) => /hooks=afterEach@[1-9]\d*ms/.test(line)),
+        ).toBe(true);
+      }
+      expect(progress.at(-1)).toBe(
+        '[vitest-progress] final in-flight: unknown (no observed module; teardown unobserved)',
+      );
+    },
+  );
 
   it('runs groups in canonical order and fails fast on the first failure', async () => {
     const calls: string[] = [];
@@ -337,6 +424,109 @@ describe('Vitest corpus runner', () => {
       stderr.mockRestore();
     }
   });
+
+  it.each([
+    { status: 0, signal: null },
+    { status: 7, signal: null },
+    ...(process.platform === 'win32'
+      ? []
+      : [{ status: null, signal: 'SIGTERM' }]),
+  ])(
+    'retains the real child terminal result and early diagnostics after noisy output: $status/$signal',
+    async ({ status, signal }) => {
+      const root = makeTempDir('corpus-failure-');
+      const vitest = resolve(root, 'node_modules/vitest');
+      mkdirSync(vitest, { recursive: true });
+      writeFileSync(
+        resolve(vitest, 'vitest.mjs'),
+        `const noise = 'later passing output\\n'.repeat(5000);
+process.stdout.write('EARLY_PREVIEW_DIAGNOSTIC\\n' + noise, () => {
+  process.stderr.write('FAIL early.test.ts\\nError: EARLY_SUITE_FAILURE\\n' + noise, () => {
+                ${signal ? "process.kill(process.pid, 'SIGTERM');" : `process.exit(${status});`}
+  });
+});`,
+      );
+      const runChild = () =>
+        process.platform === 'win32'
+          ? runWindowsSerializedCorpus({
+              root,
+              groupName: 'process-heavy',
+              groups: { ...GROUPS, processHeavy: ['early.test.ts'] },
+            })
+          : runVitestGroup(VITEST_CORPUS_GROUPS[1], ['early.test.ts'], {
+              root,
+            });
+      const result = await runChild();
+      expect(result.passed).toBe(status === 0);
+      expect(result.status).toBe(status);
+      const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+      const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+      const diagnosticDirectory = resolve(root, 'diagnostics');
+      try {
+        emitResult(result, { diagnosticDirectory });
+        if (status === 0) {
+          expect(existsSync(diagnosticDirectory)).toBe(false);
+          expect(stdout.mock.calls.flat().join('')).toContain(
+            'process-heavy: PASS;',
+          );
+          return;
+        }
+        expect(
+          existsSync(diagnosticDirectory),
+          'a failed corpus must retain its terminal receipt',
+        ).toBe(true);
+        const [invocationId] = readdirSync(diagnosticDirectory);
+        const directory = resolve(diagnosticDirectory, invocationId);
+        const report = JSON.parse(
+          readFileSync(resolve(directory, 'receipt.json'), 'utf8'),
+        );
+        expect(report).toMatchObject({
+          schemaVersion: 1,
+          invocationId,
+          group: 'process-heavy',
+          passed: false,
+          status,
+          signal,
+          outputTruncated: false,
+        });
+        expect(readFileSync(resolve(directory, 'stdout.log'), 'utf8')).toBe(
+          result.stdout,
+        );
+        expect(readFileSync(resolve(directory, 'stderr.log'), 'utf8')).toBe(
+          result.stderr,
+        );
+        expect(result.stdout).toContain('EARLY_PREVIEW_DIAGNOSTIC');
+        expect(result.stderr).toContain('EARLY_SUITE_FAILURE');
+        const emitted = stderr.mock.calls.flat().join('');
+        expect(emitted).toContain(
+          `status=${status ?? 'null'}; signal=${signal ?? 'none'}`,
+        );
+        expect(emitted).toContain('FAIL early.test.ts');
+        expect(stdout.mock.calls.flat().join('')).not.toContain(
+          'EARLY_PREVIEW_DIAGNOSTIC',
+        );
+        const next = await runChild();
+        emitResult(next, { diagnosticDirectory });
+        const invocations = readdirSync(diagnosticDirectory);
+        expect(invocations).toHaveLength(2);
+        const nextId = invocations.find((id) => id !== invocationId)!;
+        expect(
+          JSON.parse(
+            readFileSync(
+              resolve(diagnosticDirectory, nextId, 'receipt.json'),
+              'utf8',
+            ),
+          ),
+        ).toMatchObject({ invocationId: nextId, status, signal });
+        expect(readFileSync(resolve(directory, 'stdout.log'), 'utf8')).toBe(
+          result.stdout,
+        );
+      } finally {
+        stdout.mockRestore();
+        stderr.mockRestore();
+      }
+    },
+  );
 
   it('reports a signal-cancelled group as CANCELLED, never as a test failure', () => {
     const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);

@@ -1,3 +1,4 @@
+import { boundedText, isRecord, onlyKeys } from './contract-validation.js';
 import {
   isWellFormedUnicode,
   type TaskGateEvaluationReferenceInput,
@@ -225,6 +226,8 @@ export type TaskReviewItem = {
       readonly artifact: TaskReviewArtifactRef;
       readonly text?: string;
       readonly capture?: TaskCapture;
+      /** Save ordinals for the current Plan and returned threads' anchored revisions. */
+      readonly revisionOrdinals?: Readonly<Record<string, number>>;
     }
   | { readonly status: 'unavailable' }
 );
@@ -251,10 +254,60 @@ export type TaskReviewThreadSummary =
   | {
       readonly status: 'unavailable';
       readonly state: 'unavailable';
+      readonly artifact?: TaskReviewArtifactRef;
       readonly threadId: string;
       readonly ordinal: number;
       readonly eventCount: number;
     };
+
+/** Bounded event preview without a trailing partial surrogate pair. */
+export function previewTaskReviewEvent<T extends TaskReviewEvent>(event: T): T {
+  return 'body' in event
+    ? {
+        ...event,
+        body: event.body
+          .slice(0, TASK_REVIEW_OPENING_PREVIEW_CHARS)
+          .replace(/[\uD800-\uDBFF]$/, ''),
+      }
+    : event;
+}
+
+/** Project a detail view into the bounded thread-list payload. */
+export function summarizeThreadView({
+  events,
+  ...view
+}: TaskReviewThreadView): Extract<
+  TaskReviewThreadSummary,
+  { status: 'available' }
+> {
+  const openingEvent = events[0];
+  if (openingEvent?.kind !== 'comment')
+    throw new TypeError('Missing opening comment');
+  const lastDeliveryEvent = [...events]
+    .reverse()
+    .find(
+      (event) =>
+        event.kind === 'sent' ||
+        event.kind === 'send-failed' ||
+        event.kind === 'agent-reply',
+    );
+  return {
+    ...view,
+    status: 'available',
+    eventCount: events.length,
+    openingEvent: previewTaskReviewEvent({ ...openingEvent, kind: 'comment' }),
+    lastDeliveryEvent: lastDeliveryEvent
+      ? previewTaskReviewEvent(lastDeliveryEvent)
+      : undefined,
+    lastEvent: previewTaskReviewEvent(events[events.length - 1]),
+  };
+}
+
+export interface TaskReviewAuthorIdentity {
+  readonly author: TaskReviewAuthor;
+  readonly name: string;
+  readonly startedBy?: { readonly name: string };
+}
 
 export interface TaskReviewView {
   readonly version: typeof TASK_REVIEW_VERSION;
@@ -262,9 +315,23 @@ export interface TaskReviewView {
   readonly taskCreatedAt: string;
   readonly items: readonly TaskReviewItem[];
   readonly threads: readonly TaskReviewThreadSummary[];
+  readonly authors?: readonly TaskReviewAuthorIdentity[];
+  /** Absent on legacy projections; action admission remains server-owned. */
+  readonly capabilities?: TaskReviewCapabilities;
   /** Unfiltered counts, even when the request selects one state. */
   readonly counts: TaskReviewCounts;
   readonly limits: typeof TASK_REVIEW_LIMITS;
+}
+
+export interface TaskReviewCapabilities {
+  readonly view: boolean;
+  readonly comment: boolean;
+  readonly send: boolean;
+}
+
+/** Multiplayer list producers must supply the admitted person's capabilities. */
+export interface TaskReviewListProjection extends TaskReviewView {
+  readonly capabilities: TaskReviewCapabilities;
 }
 
 export type TaskReviewRefusalCode =
@@ -276,6 +343,8 @@ export type TaskReviewRefusalCode =
   | 'unavailable'
   | 'no_task_binding'
   | 'no-live-agent'
+  | 'sender-not-task-owner'
+  | 'message-too-large'
   | 'anchor-mismatch'
   | 'artifact-unavailable'
   | 'operation-conflict'
@@ -284,6 +353,7 @@ export type TaskReviewRefusalCode =
   | 'capture-limit'
   | 'capture-home-limit'
   | 'workspace-changed'
+  | 'workspace-unobservable'
   | 'screenshot-too-large'
   | 'capture-unavailable'
   | 'capture-corrupt'
@@ -345,6 +415,7 @@ export type TaskReviewReopenResponse = TaskReviewResponse<{
 
 /** POST /api/tasks/:taskId/review/send; nonempty, unique thread ids from this incarnation. */
 export interface TaskReviewSendRequest {
+  readonly mode: 'send' | 'send-and-resolve';
   readonly threadIds: readonly string[];
   readonly operationId: string;
 }
@@ -387,6 +458,8 @@ export type TaskThreadListResponse = TaskReviewResponse<{
   readonly taskCreatedAt: string;
   readonly threads: readonly TaskReviewThreadView[];
   readonly counts: TaskReviewCounts;
+  /** Corrupt entries omitted from threads and state counts, independent of the state filter. */
+  readonly unavailableThreadCount: number;
 }>;
 
 /** POST /api/orchestration/station-control/task-thread-reply. */
@@ -410,22 +483,6 @@ export interface TaskThreadResolveRequest {
 export type TaskThreadResolveResponse = TaskReviewResponse<{
   readonly thread: TaskReviewThreadView;
 }>;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value))
-    return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-}
-
-function onlyKeys(
-  record: Record<string, unknown>,
-  keys: readonly string[],
-): boolean {
-  return Reflect.ownKeys(record).every(
-    (key) => typeof key === 'string' && keys.includes(key),
-  );
-}
 
 function safeInteger(value: unknown, min: number): value is number {
   return (
@@ -518,15 +575,6 @@ export function parseTaskReviewAnchor(value: unknown): TaskReviewAnchor | null {
   return JSON.stringify(anchor).length <= TASK_REVIEW_LIMITS.anchorJsonChars
     ? anchor
     : null;
-}
-
-function boundedText(value: unknown, max: number, min = 1): value is string {
-  return (
-    typeof value === 'string' &&
-    value.length >= min &&
-    value.length <= max &&
-    isWellFormedUnicode(value)
-  );
 }
 
 function identity(value: unknown): value is string {
@@ -902,7 +950,10 @@ export function parseTaskReviewSendRequest(
 ): TaskReviewSendRequest | null {
   if (
     !isRecord(value) ||
-    !onlyKeys(value, ['threadIds', 'operationId']) ||
+    !onlyKeys(value, ['threadIds', 'operationId', 'mode']) ||
+    (value.mode !== undefined &&
+      value.mode !== 'send' &&
+      value.mode !== 'send-and-resolve') ||
     !identity(value.operationId) ||
     !Array.isArray(value.threadIds) ||
     value.threadIds.length < 1 ||
@@ -915,7 +966,11 @@ export function parseTaskReviewSendRequest(
     threadIds.push(id);
   }
   return new Set(threadIds).size === threadIds.length
-    ? { threadIds, operationId: value.operationId }
+    ? {
+        threadIds,
+        operationId: value.operationId,
+        mode: value.mode === 'send-and-resolve' ? 'send-and-resolve' : 'send',
+      }
     : null;
 }
 export function parseTaskReviewCreateCaptureRequest(

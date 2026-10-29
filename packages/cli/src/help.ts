@@ -476,6 +476,19 @@ const VERBS: Record<string, VerbSpec> = {
       'peers',
     ],
   },
+  'media-tools': {
+    summary: 'Inspect or download pinned local media and speech tools',
+    usage: [
+      'station media-tools status [--json]',
+      'station media-tools download --yes [--json]',
+    ],
+    actions: ['status', 'download'],
+    targets: true,
+    group: 'Configuration',
+    detail: [
+      'Operator only. Downloads require explicit --yes. Status reads show byte progress and failures.',
+    ],
+  },
   telemetry: {
     summary:
       'Read or change per-publisher telemetry tiers; manage telemetry producer tokens',
@@ -710,13 +723,42 @@ const VERBS: Record<string, VerbSpec> = {
   },
   conversation: {
     group: 'Core Workspace',
-    summary: 'Export a conversation as a portable thread (or provider format)',
+    summary: 'Export or fork a conversation',
     targets: true,
-    usage: ['station conversation export <agent> <conversationId>'],
-    actions: ['export'],
+    usage: [
+      'station conversation export <agent> <conversationId>',
+      'station conversation fork <agent> <conversationId> [--json]',
+    ],
+    actions: ['export', 'fork'],
     detail: [
+      'export:',
       '  --format=<fmt>        thread (default), anthropic-messages, openai-chat, gemini, markdown',
       '  --output=<path>       write to a file instead of stdout',
+      'fork (a new conversation from the history up to a completed turn;',
+      'the source is unchanged):',
+      '  --target-agent=<slug> Agent for the fork (default: the source Agent)',
+      "  --project=<slug>      Project for the fork (default: the source's)",
+      '  --turn=<id>           branch at this completed assistant turn (default: latest)',
+      '  --idempotency-key=<k> retrying with the same key returns the same fork',
+      'Exit codes (fork): 0 forked, 1 usage error, 2 Station unreachable,',
+      '3 refused (not found, not a completed turn, target not available).',
+    ],
+  },
+  claims: {
+    group: 'Core Workspace',
+    summary: 'List the work claims in the Sessions you can read',
+    targets: true,
+    usage: ['station claims list [--json]'],
+    actions: ['list'],
+    detail: [
+      'A claim is what a Session says it is working on (a work item, paths, a',
+      "note), made with Station Control's claim_work. It is information, not a",
+      'lock. list shows the active claims (unreleased, unexpired, Session not',
+      'ended) of the Sessions you can read, as the Station UI shows them.',
+      'A claimant is always a Session today, so there is no claim, release',
+      'or supersede verb for a person yet.',
+      'Exit codes: 0 success, 1 usage error, 2 Station unreachable, 3 refused',
+      '(including a Station too old to answer work claims).',
     ],
   },
   approvals: {
@@ -725,8 +767,9 @@ const VERBS: Record<string, VerbSpec> = {
     targets: true,
     actions: ['list', 'respond'],
     detail: [
-      'station approvals list [--session=<id>] [--json]',
-      'station approvals respond <request-id> <decision>',
+      'station approvals list [--agent=<slug>] [--thread=<id>] [--watch] [--json]',
+      'station approvals respond <thread-id> <request-id> <decision>',
+      'Without --agent, list covers every session on the Station.',
     ],
   },
   operate: {
@@ -753,6 +796,7 @@ const VERBS: Record<string, VerbSpec> = {
       'station delegate interrupt <task-id> [--on=<environment>]',
       'station delegate wait <task-id> [--on=<environment>] [--timeout=<seconds>] [--interval=<seconds>]',
       'station delegate targets [--on=<environment>] [--project=<slug>|--project-path=<path>]',
+      'station delegate list [--on=<environment>] [--limit=<1-100>]',
     ],
     actions: [
       'attempt',
@@ -763,6 +807,7 @@ const VERBS: Record<string, VerbSpec> = {
       'interrupt',
       'targets',
       'wait',
+      'list',
     ],
     detail: [
       'Options (create):',
@@ -796,6 +841,10 @@ const VERBS: Record<string, VerbSpec> = {
       'Ordinary operator/device credentials do not grant attempt lookup.',
       'Lookup success means the observation succeeded, not the work completed.',
       'Never resend based on none/preparing/unresolved or a lost reply.',
+      '',
+      'list shows your delegated tasks on one Environment (the current one, or',
+      "--on): the same inventory as Station Control's list_delegated_tasks.",
+      '--limit bounds it (default 50, at most 100); a longer inventory says so.',
       '',
       '--after=<cursor> (events) is the opaque nextCursor a previous page',
       'returned (station-task-events:v1:<n>), never a raw sequence number.',
@@ -1016,6 +1065,20 @@ const VERBS: Record<string, VerbSpec> = {
     targets: true,
     actions: ['list', 'get', 'create', 'update', 'delete', 'reconnect'],
   },
+  'mcp-clients': {
+    group: 'Core Workspace',
+    summary: 'Connect an external client to selected local Station tools',
+    targets: true,
+    actions: ['authorize', 'create', 'revoke'],
+    detail: [
+      'authorize explicitly uses the existing owner-home local grant for the selected installed profile; it prints no credential and starts no service.',
+      'create requires --session=<id> --tools=<comma-separated names> --ttl-seconds=<60..3600> --output=<absolute new path>.',
+      'Uses a file-proven local operator profile; remote, browser and internal-process credentials cannot issue leases.',
+      'The private output contains the scoped bearer; stdout contains metadata only. Restart, Session revocation, expiry or explicit revoke invalidates it.',
+      'revoke <lease-id> revokes only that external-client lease. Creation has no automatic retry and does not start an engine.',
+      'Initial private-file creation supports POSIX hosts; it does not claim Windows ACL qualification.',
+    ],
+  },
   'secret-bindings': {
     group: 'Core Workspace',
     summary: 'Manage operator-owned MCP secret bindings',
@@ -1110,6 +1173,21 @@ const VERBS: Record<string, VerbSpec> = {
       'Reviewer findings are evidence input, never a merge or gate verdict.',
     ],
   },
+  walkthrough: {
+    group: 'Core Workspace',
+    summary: 'Import and read Project Walkthrough recordings',
+    targets: true,
+    actions: ['import', 'list', 'show'],
+    detail: [
+      'station walkthrough import <file> --project <slug>',
+      'station walkthrough list --project <slug> [--cursor=<id>]',
+      'station walkthrough show <id> --project <slug>',
+      '',
+      'Import follows a long-running operation and prints its Walkthrough id.',
+      'Missing tools report downloads and station media-tools download --yes.',
+      'Recordings remain on the host; imports require Project drive authority.',
+    ],
+  },
   knowledge: {
     group: 'Core Workspace',
     summary: 'Query and rebuild the knowledge index',
@@ -1149,6 +1227,12 @@ const VERBS: Record<string, VerbSpec> = {
     summary: 'Read resolved branding config',
     targets: true,
     actions: ['get'],
+  },
+  workload: {
+    group: 'Core Workspace',
+    summary: 'Show engine workload memory budgets and their enforcement',
+    targets: true,
+    actions: ['status'],
   },
   feedback: {
     group: 'Core Workspace',
@@ -1220,6 +1304,7 @@ const VERBS: Record<string, VerbSpec> = {
   checkpoints: {
     group: 'Setup',
     summary: 'Inspect and reclaim workspace-checkpoint disk usage',
+    actions: ['status', 'prune', 'history', 'retention', 'restore'],
     usage: [
       'station checkpoints status [--json]',
       'station checkpoints prune --thread=<threadId> [--gc]',

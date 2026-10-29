@@ -97,7 +97,7 @@ async function main() {
   const supervisorLink = await parkOrExit();
   if (supervisorLink) installListenerLink(supervisorLink);
   allowHomeAccess();
-  await initializeWorkloadResources();
+  await initializeWorkloadResources({ homeDir: resolveHomeDir() });
   // Set as boot reaches them; a drain before then exits without them.
   let runtimeForDrain: StationRuntime | undefined;
   let gracefulShutdown:

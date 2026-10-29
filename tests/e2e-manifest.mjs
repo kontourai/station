@@ -423,6 +423,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/orchestration-chat-flow.spec.ts',
     'tests/mcp-elicitation-form.spec.ts',
     'tests/mobile-request-sheet.spec.ts',
+    'tests/approval-spilled-content.spec.ts',
     'tests/input-request.spec.ts',
     'tests/acp-orchestration-plan.spec.ts',
     'tests/flow-gate-verdicts.spec.ts',
@@ -1620,6 +1621,15 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/approval-spilled-content.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    rationale:
+      'docs/design/event-content-spill.md: an approval whose content was stored out of line offers only Deny until the card loads the whole request through the content route, then shows the loaded content and offers Allow, and the allow carries viewedContentDigest; desktop 1440 and phone 390 in both themes.',
+    exceptions: [],
+  },
+  {
     path: 'tests/mobile-request-sheet.spec.ts',
     bucket: 'product',
     surface: 'Chat / Orchestration',
@@ -1791,6 +1801,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Real isolated Station lifecycle proof for durable Task workspace binding, inline local references and diff inspection, Direct/Deliver/Learn/Operate authority and unavailable-state boundaries (including hostile owner-shaped metadata), task switching isolation, plus a real Ollama-generated project answer pinned through the keyboard-safe Task basis UI and reopened after same-home restart.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/task-review.spec.ts',
+    bucket: 'extended',
+    surface: 'Task review',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      "Credential-free isolated Station comment, relocation, Send refusal, resolve/reopen and real Chromium capture/pin journeys. The room revision-publication prerequisite passes after #4211. PR-smoke admission remains deferred: the full nine-spec candidate lane failed its existing orchestration-chat approval assertion, and the strict receipt also rejected this spec's explicit live-provider skip. Credential-free Review cases passed, but three clean full-lane runs are not qualified. A separate live-Claude text-reply/commit-verification test is explicitly skipped as NOT_QUALIFIED unless STATION_REVIEW_USE_CLAUDE=1 and signed-in Claude are supplied; there is no ACP fallback. Missing Chromium is explicitly NOT_VERIFIED.",
     exceptions: [],
   },
   {

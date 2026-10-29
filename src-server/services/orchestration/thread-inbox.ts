@@ -81,6 +81,7 @@ import {
 } from '@kontourai/station-contracts/principal';
 import {
   CLIENT_TURN_IN_FLIGHT_CODE,
+  MEMORY_CONTINUATION_CLIENT_TURN_PREFIX,
   MODEL_NOT_ADVERTISED_CODE,
   MUSE_TURN_SLOT_RELEASING_CODE,
   PROVIDER_SESSION_START_FAILED_CODE,
@@ -492,6 +493,21 @@ export function createSqliteThreadInboxStore(
 
 export type ThreadInboxStore = ReturnType<typeof createSqliteThreadInboxStore>;
 
+/**
+ * Whether a stored inbox record proves its turn was never sent: refused, or
+ * cancelled while still queued. Monument retains placement and outcome on
+ * cancellation, so only queued entries have no placement; dismissing an
+ * unconfirmed one keeps its possible-effect target and proves nothing.
+ */
+export function threadInboxRecordNonDelivery(
+  record: ReturnType<ThreadInboxStore['read']>,
+): 'refused' | 'cancelled' | undefined {
+  if (record?.state === 'refused') return 'refused';
+  return record?.state === 'cancelled' && record.placement === null
+    ? 'cancelled'
+    : undefined;
+}
+
 export interface ThreadInboxDeliveryPorts {
   readonly store: ThreadInboxStore;
   /** A Session's lifecycle fold events, oldest first (`ACTIVE_TURN_FOLD_METHODS`). */
@@ -716,6 +732,11 @@ export class ThreadInboxDelivery {
       );
   }
 
+  /** The same sender authority applied when a continuation is submitted. */
+  mayContinue(conversationId: string, userId: string): boolean {
+    return this.ports.mayContinue(this.inboxOf(conversationId), userId);
+  }
+
   private inspectDelivery(
     conversationId: string,
     clientTurnId: string,
@@ -741,6 +762,14 @@ export class ThreadInboxDelivery {
     clientTurnId: string;
     payload: ThreadInboxPayload;
   }): ThreadInboxSubmission {
+    // Only Station's own continuation may use its reserved key prefix: an
+    // ordinary sender could otherwise pre-claim that key and turn Station's
+    // continuation into a conflict.
+    if (
+      input.clientTurnId.startsWith(MEMORY_CONTINUATION_CLIENT_TURN_PREFIX) &&
+      input.payload.clientOrigin?.actor.kind !== 'internal'
+    )
+      return { outcome: 'not-permitted' };
     const inbox = this.inboxOf(input.conversationId);
     const now = this.now();
     if (this.refusalFor(inbox, input.payload, now))
@@ -849,6 +878,16 @@ export class ThreadInboxDelivery {
     const record = this.ports.store.read(inbox, clientTurnId);
     if (!record) return undefined;
     return this.project(inbox, clientTurnId) ?? projectThreadInboxEntry(record);
+  }
+
+  /** A retained proof of non-delivery; an absent or dismissed uncertain key proves nothing. */
+  nonDeliveryReason(
+    conversationId: string,
+    clientTurnId: string,
+  ): 'refused' | 'cancelled' | undefined {
+    return threadInboxRecordNonDelivery(
+      this.ports.store.read(this.inboxOf(conversationId), clientTurnId),
+    );
   }
 
   /**

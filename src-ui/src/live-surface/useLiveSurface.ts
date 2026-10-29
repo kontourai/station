@@ -21,6 +21,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { useDocumentVisible } from '../lib/documentVisibility';
 
 /**
  * Viewer side of a live surface (#90): one authenticated, length-prefixed
@@ -100,6 +101,8 @@ export interface UseLiveSurfaceOptions {
   apiBase: string;
   surfaceId: string;
   params?: Partial<LiveSurfaceStreamParams>;
+  /** While true the stream waits, reading as connecting, for final `params`. */
+  paramsPending?: boolean;
   /** Element whose on-screen visibility gates the stream. */
   visibilityRef: RefObject<Element | null>;
   onFrame: (frame: LiveSurfaceFrame) => void;
@@ -153,19 +156,6 @@ const HOST_BUSY_NOTICE_MS = 5_000;
 const LIVE_SURFACE_RECONNECT_DELAYS_MS = [
   500, 1_000, 2_000, 4_000, 8_000, 10_000,
 ] as const;
-
-function useDocumentVisible(): boolean {
-  const [visible, setVisible] = useState(
-    () =>
-      typeof document === 'undefined' || document.visibilityState !== 'hidden',
-  );
-  useEffect(() => {
-    const update = () => setVisible(document.visibilityState !== 'hidden');
-    document.addEventListener('visibilitychange', update);
-    return () => document.removeEventListener('visibilitychange', update);
-  }, []);
-  return visible;
-}
 
 function useIntersecting(ref: RefObject<Element | null>): boolean {
   const [intersecting, setIntersecting] = useState(true);
@@ -251,6 +241,7 @@ export function useLiveSurface(
     apiBase,
     surfaceId,
     params,
+    paramsPending = false,
     visibilityRef,
     transport = authenticatedFetch,
     now = Date.now,
@@ -300,6 +291,12 @@ export function useLiveSurface(
   useEffect(() => {
     if (!visible) {
       setStatus('suspended');
+      return;
+    }
+    // The caller is still settling what to ask for (the pane's size): open
+    // once, with the final parameters, rather than twice.
+    if (paramsPending) {
+      setStatus('connecting');
       return;
     }
     const abort = new AbortController();
@@ -423,6 +420,7 @@ export function useLiveSurface(
     apiBase,
     surfaceId,
     paramsKey,
+    paramsPending,
     projectSlug,
     visible,
     retryToken,

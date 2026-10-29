@@ -764,6 +764,8 @@ describe('settings catalog completeness', () => {
     const operator = !pluginVisibilityRefused;
     const expected = SETTINGS_SECTIONS.map((section) => section.id)
       .filter((key) => operator || !OPERATOR_ONLY_SECTION_IDS.has(key))
+      // Routes renders only behind the Station routes preview, off here.
+      .filter((key) => key !== 'station-routes')
       .map((key) => `section-${key}`);
     // The expectation itself must not be empty, or the comparison below is
     // satisfied by an empty page.

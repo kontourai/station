@@ -388,6 +388,21 @@ export const STATION_CONTROL_TOOL_POLICY = {
     routes: [del('/agents/:slug/conversations/:conversationId')],
   },
 
+  // Reads the source as the session's owner and writes a new conversation,
+  // so a Project `execute` action, as starting a Session is. The route holds
+  // the caller to its scope twice (`refuseOutOfScopeDispatch`): the source
+  // must be a conversation its scope admits (`view`), and the fork lands only
+  // where it could start a Session (`execute`). A bound operator keeps the
+  // operator's reach.
+  fork_conversation: {
+    assurance: 'any',
+    role: 'project',
+    projectAction: 'execute',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [post('/agents/:slug/conversations/:conversationId/fork')],
+  },
+
   search_conversations: {
     ...SELF_READ,
     routes: [get('/api/conversations/work/search')],
@@ -748,6 +763,17 @@ export const STATION_CONTROL_TOOL_POLICY = {
   // stays in its own Project or the global space, and another Project's
   // Sessions read as absent. The caller's own conversation is its own whatever
   // its scope. Each owns its leaf and shares none.
+  list_walkthroughs: {
+    ...SELF_READ,
+    routes: [get('/api/projects/:projectSlug/walkthroughs')],
+  },
+  get_walkthrough: {
+    ...SELF_READ,
+    routes: [
+      get('/api/projects/:projectSlug/walkthroughs/:id'),
+      get('/api/projects/:projectSlug/walkthroughs/:id/frames/:frameId'),
+    ],
+  },
   list_project_activity: {
     ...SELF_READ,
     routes: [get('/api/orchestration/session-activity')],
@@ -1057,6 +1083,25 @@ export const STATION_CONTROL_TOOL_POLICY = {
     routes: [post('/api/orchestration/station-control/task-record')],
   },
 
+  task_thread_list: {
+    ...SELF_READ,
+    routes: [get('/api/orchestration/station-control/task-threads')],
+  },
+  task_thread_reply: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'bounded-write',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/station-control/task-thread-reply')],
+  },
+  task_thread_resolve: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'bounded-write',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/station-control/task-thread-resolve')],
+  },
+
   // ── notify ─────────────────────────────────────────────────────────────
   html_render: {
     assurance: 'any',
@@ -1081,6 +1126,13 @@ export const STATION_CONTROL_TOOL_POLICY = {
     personOnly: 'never',
     enforcedBy: 'route',
     routes: [post('/api/notifications/agent')],
+  },
+  // The route answers only for the session the forwarded credential names
+  // (its own scope's counters); without one it refuses.
+  workload_status: {
+    ...READ,
+    enforcedBy: 'route',
+    routes: [get('/api/system/workload/session')],
   },
 } as const satisfies Record<string, StationControlToolPolicy>;
 

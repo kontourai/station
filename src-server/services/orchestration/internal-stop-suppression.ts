@@ -60,7 +60,7 @@ export class InternalStopSuppression {
    * `undefined`) so every caller can `rescind()` it
    * once it knows whether a real re-dispatch actually followed —
    * `restartCredentialProfileProviderSession` rescinds for failures in its
-   * own body, `restartCredentialProfileRecoverySession` rescinds if its
+   * own body, `CredentialProfileRecovery.restartRecoverySession` rescinds if its
    * follow-up `sendTurn` then fails, and `CredentialProfileRecovery.restoreSession`
    * (which never dispatches at all) rescinds unconditionally.
    *

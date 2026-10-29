@@ -70,7 +70,7 @@ export function FencedRelatedPane({
       return (
         <GatePlaceholder
           label="Checking which Station this is"
-          description="This pane belongs to one Station. It shows once Station confirms it is connected to that Station, and reads nothing until then."
+          description="This pane shows once its Station is confirmed."
         />
       );
     case 'wrong-station': {
@@ -78,7 +78,7 @@ export function FencedRelatedPane({
       return (
         <GatePlaceholder
           label="Opened on another Station"
-          description={`This pane was opened from ${label} on a different Station, so Station does not read it here. Switch back to that Station to see it, or close the tab.`}
+          description={`Opened from ${label} on a different Station. Switch back to see it, or close the tab.`}
         />
       );
     }
@@ -86,7 +86,7 @@ export function FencedRelatedPane({
       return (
         <GatePlaceholder
           label="This pane cannot be shown here"
-          description="A newer Station build saved this pane, and this build cannot tell which Station it belongs to. It shows again in that build; you can close the tab."
+          description="A newer Station build saved this pane. Open it there, or close the tab."
         />
       );
   }

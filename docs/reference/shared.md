@@ -15,6 +15,10 @@ For runtime helpers, use explicit subpaths:
 - `@kontourai/station-shared/parsers`
 - `@kontourai/station-shared/delegation-files` — coded file-delivery refusals and batch name/size/data checks for CLI preflight and server materialization; validation supplies no staging or execution authority
 - `@kontourai/station-shared/build`
+- `@kontourai/station-shared/http-upload` — Node HTTP receive deadlines shared by the API and serialized CLI listener; takes the media route policy as an argument and preserves socket keep-alive timeouts; `configureHttpKeepAlive` holds an idle connection for 65 seconds instead of Node's 5, so a polling client reuses it rather than opening a new one, and a reverse proxy with a 60-second idle limit closes its upstream connection before Node does; also owns the typed `UploadBodyLimitError` used by streamed body budgets and routes
+- `@kontourai/station-shared/ui-document-policy` — the content-hashed build-asset pattern and the document Content-Security-Policy; the serialized CLI UI listener applies both (with its per-request script nonce), and the web build injects them into the service worker so offline caching and the offline shell follow the same rules
+- `@kontourai/station-shared/visual-viewport` — browser-safe visual viewport geometry (height, page offset and the inset above the keyboard or Android system bars, intersected with the Android shell's reported visible height) as one subscription per window; the app's surfaces and the SDK and Connect modals read the same snapshot through `useSyncExternalStore`
+- `@kontourai/station-shared/strict-indexeddb` — one transaction against a single-store IndexedDB database that refuses a `readwrite` the browser would not commit with strict durability, closes on a version change and rejects with the caller's own errors; the browser relay authority and TURN credential custody and Connect's broker routing grants use it
 - `@kontourai/station-shared/git`
 - `@kontourai/station-shared/mcp`
 - `@kontourai/station-shared/mcp-tool-selection` — browser-safe original/qualified/runtime MCP identities and selection matching
@@ -851,10 +855,13 @@ envelope malformed, as do a fragment and an `openedNotification` parameter
 links may).
 
 Trusted in-process producers use `parseNotificationEnvelopeForWrite`: exact
-keys, known kinds, no unresolved `principal` audience, and no producer-authored
-read/dismiss markers. Passing that parser is shape validation, not caller
-authorization. The notification service owns the trusted write path and derives
-session metadata from the envelope. See the
+keys, known kinds, and no producer-authored read/dismiss markers. A `principal`
+audience needs a well-formed human principal ID and Project ID; an agent source
+that names a Project must agree with it. Older principal envelopes without a
+Project ID remain readable but cannot be written. Passing the parser is shape
+validation, not caller authorization: the notification service rechecks
+membership before writing the private feed. It also derives session metadata
+from the envelope. See the
 [parser](../../packages/shared/src/notification-envelope.ts),
 [service](../../src-server/services/notifications/notification-service.ts), and
 [UI reader](../../src-ui/src/components/notifications/NotificationEnvelopeControls.tsx).

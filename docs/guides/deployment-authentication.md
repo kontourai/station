@@ -221,10 +221,12 @@ used by its principal-resolution owner. Project sharing still needs the separate
 member/resource authorization implementation.
 
 A verified person can read and patch their own `/api/me/preferences` from an
-account-bound Device. Exact GET/HEAD/PATCH admission does not open other `/api/me`
-paths. Account preferences are partitioned by person and trusted tenant on this
-Station, and grant no Device or execution authority. See
-[account preferences](../design/settings-architecture.md#account-preferences-and-device-settings).
+account-bound Device. The exact GET/HEAD/PATCH preference admission grants no
+other `/api/me` path; the person's notification feed has its own separately
+admitted read and mutation leaves. Account preferences are partitioned by
+person and trusted tenant on this Station, and grant no Device or execution
+authority. See [account preferences](../design/settings-architecture.md#account-preferences-and-device-settings)
+and [person notifications](../reference/api.md#person-notifications).
 
 ### Account-bound collaborator Devices
 
@@ -261,8 +263,8 @@ out everywhere after the token was made, and re-enabling the account does
 not revive it. It must be presented alone (an account
 cookie, session continuation or ingress identity beside it is `401
 account_identity_conflict`), and it reaches only the collaborator profile
-below, without the account controls, token management or any Project access
-route. With any other deployment provider, account-tied people cannot hold a
+below, without the account controls, token management, personal analytics or any
+Project access route. With any other deployment provider, account-tied people cannot hold a
 token (`400 account_bound_person`).
 
 The direct request-access endpoint also accepts `requireAccountBinding: true`
@@ -310,6 +312,17 @@ requires `manage-extensions`. Personal Project records are scoped to the
 request principal and withheld under revoked access or non-conforming policy;
 none of these routes grants terminal, file or execution authority. See the
 [personal Project layout contract](../reference/contracts.md#personal-project-layouts-2996).
+
+Personal analytics is a separate exact-leaf exception for a person-bound Device
+with its matching current account session and `orchestration:read`. It includes
+enrollment, requester approval, receiving custody, private sync/query/outcomes
+and saved views; each owner still checks person, tenant, consent and source
+authority. Account tokens and agents cannot use this exception. Generic
+analytics prefixes, companion management and general orchestration commands
+remain closed; independently authorized Project Room Agent requests retain their
+own execution policy. See [the personal source journey](monitoring.md#connect-a-personal-source-in-insights)
+and the [exact pairing rules](../../src-server/security/pairing-route-scopes.ts).
+This admission description does not qualify real two-Station execution.
 
 #### Native relay-management admission
 

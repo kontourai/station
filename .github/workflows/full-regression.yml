@@ -235,6 +235,7 @@ jobs:
           path: |
             ${{ runner.temp }}/full-regression.log
             ${{ runner.temp }}/full-regression-failures.txt
+            ${{ runner.temp }}/vitest-corpus/
           if-no-files-found: ignore
           retention-days: 7
 
@@ -262,8 +263,7 @@ jobs:
           ref: ${{ inputs.source_sha }}
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
-        with: { install: false }
+        uses: kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         timeout-minutes: 5
@@ -361,6 +361,7 @@ jobs:
           path: |
             ${{ runner.temp }}/full-regression.log
             ${{ runner.temp }}/full-regression-failures.txt
+            ${{ runner.temp }}/vitest-corpus/
           if-no-files-found: ignore
           retention-days: 7
 
@@ -381,8 +382,7 @@ jobs:
           ref: ${{ inputs.source_sha }}
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
-        with: { install: false }
+        uses: kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         timeout-minutes: 5
@@ -464,6 +464,7 @@ jobs:
           path: |
             ${{ runner.temp }}/full-regression.log
             ${{ runner.temp }}/full-regression-failures.txt
+            ${{ runner.temp }}/vitest-corpus/
           if-no-files-found: ignore
           retention-days: 7
 

@@ -56,6 +56,10 @@ import {
 import type { AttachedSessionSource } from '../../providers/sessions/attached-session-source.js';
 import { attachVoiceWebSocket } from '../../routes/operations/voice.js';
 import {
+  createRuntimeNativeForkReadAdmissionDomain,
+  type NativeForkReadAdmissionDomain,
+} from '../../security/native-fork-read-admission.js';
+import {
   assertRuntimeHttpRouteCoverage,
   credentialAuthorizedForScope,
   PAIRING_WS_SCOPES,
@@ -72,12 +76,14 @@ import { ConsoleBridgeService } from '../../services/evidence/console-bridge-ser
 import { configurePlatformMutationGate } from '../../services/evidence/platform-mutation-gate.js';
 import { VeritasReadinessService } from '../../services/evidence/veritas-readiness-service.js';
 import { WorkflowSidecarService } from '../../services/evidence/workflow-sidecar-service.js';
+import type { FeaturePreviewSelector } from '../../services/feature-previews/feature-preview-registry.js';
 import type { FeedbackService } from '../../services/feedback/feedback-service.js';
 import { FlowRunService } from '../../services/flow/flow-run-service.js';
 import {
   createEnvironmentRuntimeResourcePostureProbe,
   type RuntimeResourcePostureProbe,
 } from '../../services/infra/resource-posture.js';
+import { enforcedWorkloadLimits } from '../../services/infra/workload-resources.js';
 import { createAdoptedChildExecutionBindingResolver } from '../../services/orchestration/adopted-child-execution-binding.js';
 import {
   AttachedSessionFollowService,
@@ -100,6 +106,7 @@ import type {
   RegistryTrustPolicyApplication,
   RegistryTrustPolicyAuthority,
 } from '../../services/plugins/registry-trust-policy.js';
+import { createProjectChatDefaultsService } from '../../services/projects/project-chat-defaults.js';
 import { ProjectResourceResolver } from '../../services/projects/project-resource-resolver.js';
 import { observeCwdShadow } from '../../services/projects/project-resource-shadow.js';
 import { createProjectSessionDirectoryResolver } from '../../services/projects/project-session-directory.js';
@@ -182,6 +189,7 @@ export interface InitializeRuntimeDeps {
   environmentSecurityService: Pick<
     EnvironmentSecurityService,
     | 'verifyCredential'
+    | 'authorizeCredential'
     | 'resolveGrantedScope'
     // #3586: the voice WebSocket refuses account-bound devices and tokens.
     | 'identifyDevice'
@@ -232,6 +240,8 @@ export interface InitializeRuntimeDeps {
   /** Reconcile the built-in role after background ACP readiness settles. */
   onACPConnectionsReady?: () => void | Promise<void>;
   orchestrationEventStore: EventStore;
+  /** The `chat-host-images` Feature Preview selector, passed to orchestration. */
+  hostImagesPreview?: FeaturePreviewSelector;
   credentialProfileRecoveryAdapter?: CredentialProfileRecoveryAdapter;
   usageAggregator?: UsageAggregator;
   /** archive#3245: lifetime analytics' read of the orchestration substrate. */
@@ -308,12 +318,14 @@ export interface InitializeRuntimeDeps {
   /** Publishes services captured by route registration before VoltAgent calls configureFullApp. */
   onRouteServicesReady: (services: {
     orchestrationService: OrchestrationService;
+    nativeForkStoredReadBinder?: NativeForkReadAdmissionDomain['bindAtConversationMount'];
     usageAggregator?: UsageAggregator;
   }) => void | Promise<void>;
   onVoltAgentCreated: (voltAgent: VoltAgent) => void;
 }
 
 interface InitializeRuntimeResult {
+  nativeForkStoredReadBinder: NativeForkReadAdmissionDomain['bindAtConversationMount'];
   registryPolicyApplication?: RegistryTrustPolicyApplication;
   appConfig: AppConfig;
   framework: RuntimeFramework;
@@ -563,7 +575,14 @@ export async function initializeRuntime(
   const idleSessionParkAfterMs = parseNonNegativeIntegerEnv(
     process.env.STATION_IDLE_SESSION_PARK_AFTER_MS,
   );
+  const nativeForkStoredReadDomain = createRuntimeNativeForkReadAdmissionDomain(
+    deps.environmentSecurityService,
+  );
   const orchestrationService = new OrchestrationService({
+    nativeForkStoredReadVerifier: nativeForkStoredReadDomain.verifyForService,
+    ...(deps.hostImagesPreview
+      ? { hostImagesPreview: deps.hostImagesPreview }
+      : {}),
     ...(idleSessionParkAfterMs !== undefined ? { idleSessionParkAfterMs } : {}),
     // #1796: revoking a device's full access re-confines the sessions its
     // grant unconfined, from their next turn.
@@ -578,6 +597,8 @@ export async function initializeRuntime(
     ]),
     eventBus,
     eventStore: orchestrationEventStore,
+    // The budget an engine is told about is the one its scope enforces.
+    workloadEngineLimits: (sessionId) => enforcedWorkloadLimits(sessionId),
     pricingSnapshotCapture: {
       capture: async (input) => usagePricingSnapshotCapture?.capture(input),
     },
@@ -660,6 +681,12 @@ export async function initializeRuntime(
     // per call for the same reason as the workspace default above.
     resolveStationDefaultApprovalMode: async () =>
       (await configLoader.loadAppConfig()).defaultApprovalMode,
+    // A Project's new-chat approval layer and its last-used record, over the
+    // same Project store and home the project routes read.
+    projectChatDefaults: createProjectChatDefaultsService(
+      configLoader.getProjectHomeDir(),
+      storageAdapter,
+    ),
     // #3157: read when a usage-limit resume is armed and when it is due.
     resolveUsageLimitAutoResume: async () =>
       (await configLoader.loadAppConfig()).usageLimitAutoResume,
@@ -774,7 +801,14 @@ export async function initializeRuntime(
         (message, meta) => logger.warn(message, meta),
       );
       orchestrationEventStore.appendEvent(sanitized);
-      eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, { event: sanitized });
+      // Emit what was stored (docs/design/event-content-spill.md).
+      eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, {
+        event:
+          orchestrationEventStore.storedLiveEvent(
+            sanitized.threadId,
+            sanitized.eventId,
+          ) ?? sanitized,
+      });
     },
     logger,
   });
@@ -895,6 +929,8 @@ export async function initializeRuntime(
   // service that configureRoutes captures before constructing it.
   await onRouteServicesReady({
     orchestrationService,
+    nativeForkStoredReadBinder:
+      nativeForkStoredReadDomain.bindAtConversationMount,
     usageAggregator: nextUsageAggregator,
   });
 
@@ -910,6 +946,10 @@ export async function initializeRuntime(
   // inputs is the archive#1588/#3063 reload-loop anti-pattern.
   await materializeBuiltinIntegrations(deps.configLoader);
 
+  // First-run engine adoption persists AppConfig; finish that owned write before
+  // fencing agent construction against subsequent configuration changes.
+  const builtinEngineBinding =
+    await deps.resolveBuiltinEngineBinding?.(appConfig);
   const registryPolicyApplication =
     await deps.registryTrustPolicyAuthority?.captureApplication();
   const configurationBefore = deps.captureAgentConfigurationRevisions?.();
@@ -919,8 +959,7 @@ export async function initializeRuntime(
     bootstrapDefaultAgent: async () =>
       (await bootstrapRuntimeDefaultAgent({
         appConfig,
-        builtinEngineBinding:
-          await deps.resolveBuiltinEngineBinding?.(appConfig),
+        builtinEngineBinding,
         configLoader: deps.configLoader as any,
         framework,
         logger,
@@ -1159,6 +1198,8 @@ export async function initializeRuntime(
 
   return {
     registryPolicyApplication,
+    nativeForkStoredReadBinder:
+      nativeForkStoredReadDomain.bindAtConversationMount,
     appConfig,
     framework,
     orchestrationService,

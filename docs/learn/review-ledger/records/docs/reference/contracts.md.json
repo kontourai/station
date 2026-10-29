@@ -246,6 +246,8 @@
 
     "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts",
 
+    "packages/contracts/src/station-control-external-client.ts",
+
     "packages/contracts/src/project.ts",
 
     "packages/contracts/src/knowledge-store.ts",
@@ -274,6 +276,22 @@
 
     "src-ui/src/lib/project-onboarding-recovery.ts",
 
+    "src-server/routes/system/telemetry-companion-routes.ts",
+
+    "src-server/services/telemetry-companion.ts",
+
+    "src-server/services/telemetry-companion-archive.ts",
+
+    "src-server/services/telemetry-companion-install.ts",
+
+    "src-server/services/telemetry-companion-control.ts",
+
+    "src-server/routes/system/__tests__/telemetry-companion-routes.test.ts",
+
+    "src-server/analytics/source-export-proof.ts",
+
+    "src-server/analytics/recipient-store.ts",
+
     "src-server/services/consent/consent-transactions.ts",
 
     "src-server/runtime/consent/consent-listener.ts",
@@ -282,11 +300,49 @@
 
     "src-server/services/ssh/device-pairing-service.ts",
 
+    "packages/contracts/src/terminal-transport.ts",
+
+    "packages/contracts/src/walkthrough.ts",
+
+    "packages/contracts/src/action-operation.ts",
+
     "packages/contracts/src/task-review.ts",
 
     "packages/contracts/src/__tests__/task-review.test.ts",
 
-    "packages/contracts/src/task-review-matcher.ts"
+    "packages/contracts/src/task-review-matcher.ts",
+
+    "packages/contracts/src/chat-app.ts",
+
+    "packages/contracts/src/integration-status.ts",
+
+    "packages/contracts/src/__tests__/chat-app.test.ts",
+
+    "packages/contracts/src/__tests__/integration-status.test.ts",
+
+    "packages/contracts/src/__tests__/discord-compatibility.test.ts",
+
+    "packages/contracts/src/contract-validation.ts",
+
+    "packages/contracts/src/project-task-room.ts",
+
+    "packages/contracts/src/task-approval.ts",
+
+    "packages/contracts/src/__tests__/project-task-room.test.ts",
+
+    "packages/contracts/src/__tests__/task-approval.test.ts",
+
+    "packages/contracts/src/engine-capability-matrix.ts",
+
+    "src-ui/src/utils/execution.ts",
+
+    "src-ui/src/components/chat-dock/ChatDockBody.tsx",
+
+    "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
+
+    "src-ui/src/__tests__/execution.test.ts",
+
+    "src-ui/src/__tests__/ChatDockBody.offlineSettling.test.tsx"
   ],
 
   "checks": [

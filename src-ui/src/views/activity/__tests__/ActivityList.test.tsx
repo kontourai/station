@@ -51,9 +51,8 @@ vi.mock('../../../contexts/useShowSurface', () => ({
   useShowSurface: () => vi.fn(),
   useShowSurfacePage: () => vi.fn(),
 }));
-// Activity no longer mounts the host-wide collaborator roster (the sidebar
-// footer's presence tray shows it). Any live-activity read from this surface
-// would be that roster coming back.
+// Activity no longer mounts the host-wide collaborator roster. Any
+// live-activity read from this surface would be that roster coming back.
 vi.mock('@kontourai/station-sdk/live-activity', () => ({
   useLiveActivityQuery,
 }));
@@ -1146,7 +1145,7 @@ describe('Home, the dock and Activity agree on one item', () => {
     }
   });
 
-  test('a project wears one colour on Home, in the dock and in the sheet', () => {
+  test('project marks follow each surface layout', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(NOW);
     // Three projects, so the accent is set-aware: `station` sorts last and
@@ -1173,6 +1172,11 @@ describe('Home, the dock and Activity agree on one item', () => {
     };
     expect(swatch(home)).toBe('var(--event-tool-call)');
     expect(swatch(dock)).toBe(swatch(home));
-    expect(swatch(sheet)).toBe(swatch(home));
+    const line = sheet.querySelector('.inbox-row__project-context')!;
+    expect(line.querySelectorAll('svg')).toHaveLength(1);
+    expect(line.querySelector('.inbox-row__project-accent')).toBeNull();
+    expect(line.querySelector('.inbox-row__project')?.textContent).toBe(
+      'station',
+    );
   });
 });

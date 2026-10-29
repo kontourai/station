@@ -1,8 +1,12 @@
+import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { parentPort, workerData } from 'node:worker_threads';
+import { canonicalizeForDigest } from '@kontourai/station-contracts/fleet-routing-receipt';
 import { PROJECT_TASK_ROOM_RUNTIME_MIGRATION } from '../../domain/migrations/006-project-task-room-runtime.js';
 import { PROJECT_TASK_ROOM_REVISION_PUBLICATION_MIGRATION } from '../../domain/migrations/008-project-task-room-revision-publication.js';
 import { ensureProjectTaskRoomRevisionAttributionColumn } from '../../domain/migrations/009-project-task-room-revision-attribution.js';
+import { ensureProjectTaskRoomRevisionFreezeColumn } from '../../domain/migrations/024-project-task-room-revision-freeze.js';
+import { PROJECT_TASK_ROOM_SAVE_REVISIONS_MIGRATION } from '../../domain/migrations/024-project-task-room-save-revisions.js';
 import {
   type RevisionEvidenceAdmissionRefusal,
   revisionEvidenceAdmission,
@@ -42,6 +46,89 @@ db.exec(PROJECT_TASK_ROOM_RUNTIME_MIGRATION);
 initializeProjectTaskRoomSourceSeals(db);
 db.exec(PROJECT_TASK_ROOM_REVISION_PUBLICATION_MIGRATION);
 ensureProjectTaskRoomRevisionAttributionColumn(db);
+db.exec('BEGIN IMMEDIATE');
+try {
+  const needsBackfill = !db
+    .prepare(
+      "SELECT 1 FROM sqlite_master WHERE type='table' AND name='project_task_room_save_revisions'",
+    )
+    .get();
+  db.exec(PROJECT_TASK_ROOM_SAVE_REVISIONS_MIGRATION);
+  db.exec(`CREATE TABLE IF NOT EXISTS project_task_room_save_revisions_pending (
+    project_id TEXT NOT NULL, task_id TEXT NOT NULL, document_id TEXT NOT NULL,
+    PRIMARY KEY(project_id, task_id, document_id)
+  )`);
+  if (needsBackfill) {
+    db.exec(`INSERT OR IGNORE INTO project_task_room_save_revisions_pending
+      SELECT DISTINCT project_id,task_id,document_id FROM project_task_room_working_batches`);
+  }
+  const documents = db
+    .prepare(
+      'SELECT project_id,task_id,document_id FROM project_task_room_save_revisions_pending',
+    )
+    .all();
+  const receipts = db.prepare(
+    'SELECT receipt_json FROM project_task_room_working_batches WHERE project_id=? AND task_id=? AND document_id=? ORDER BY rowid',
+  );
+  const insert = db.prepare(
+    'INSERT INTO project_task_room_save_revisions VALUES(?,?,?,?,?)',
+  );
+  for (const row of documents) {
+    const key = [row.project_id, row.task_id, row.document_id];
+    const revisions: string[] = [];
+    let valid = true;
+    for (const receipt of receipts.iterate(...key)) {
+      try {
+        const revision = JSON.parse(receipt.receipt_json)?.revision;
+        if (
+          typeof revision !== 'string' ||
+          !/^swsr-v[12]:[a-f0-9]{64}$/.test(revision)
+        ) {
+          valid = false;
+          break;
+        }
+        revisions.push(revision);
+      } catch {
+        valid = false;
+        break;
+      }
+    }
+    if (!valid || !revisions.length) continue;
+    const format = revisions[0].startsWith('swsr-v1:') ? 1 : 2;
+    const empty = {
+      schemaVersion: format,
+      documentId: row.document_id,
+      ...(format === 1 ? { atoms: [] } : { runs: [] }),
+      knownOperations: [],
+      deferredOperations: [],
+    };
+    const initial = `swsr-v${format}:${createHash('sha256')
+      .update(JSON.stringify(canonicalizeForDigest(empty)) ?? 'null')
+      .digest('hex')}`;
+    const ordered = [initial];
+    const seen = new Set(ordered);
+    for (const revision of revisions) {
+      if (revision === ordered[ordered.length - 1]) continue;
+      if (seen.has(revision)) {
+        valid = false;
+        break;
+      }
+      seen.add(revision);
+      ordered.push(revision);
+    }
+    if (!valid) continue;
+    for (const [ordinal, revision] of ordered.entries())
+      insert.run(...key, revision, ordinal);
+    db.prepare(
+      'DELETE FROM project_task_room_save_revisions_pending WHERE project_id=? AND task_id=? AND document_id=?',
+    ).run(...key);
+  }
+  db.exec('COMMIT');
+} catch (error) {
+  db.exec('ROLLBACK');
+  throw error;
+}
+ensureProjectTaskRoomRevisionFreezeColumn(db);
 const maxRetainedOperations = Number.isSafeInteger(
   workerData.maxRetainedOperations,
 )
@@ -86,7 +173,7 @@ function reservedRevisionLedger(): {
   const ledger = readRevisionEvidenceLedgerUsage(db);
   const pending = db
     .prepare(
-      'SELECT snapshot_bytes FROM project_task_room_revision_publication_outbox WHERE evidence_revision IS NULL',
+      'SELECT snapshot_bytes FROM project_task_room_revision_publication_outbox WHERE evidence_revision IS NULL AND freeze_requested=1',
     )
     .all() as Array<{ snapshot_bytes: number }>;
   return {
@@ -99,12 +186,9 @@ function reservedRevisionLedger(): {
   };
 }
 /**
- * The room's half of the one shared check (#4007): this write is admitted
- * only if the revision evidence it publishes fits both its own record bounds
- * and the Station-wide receipt ledger, counting every publication admitted
- * but not yet frozen. Settles are serialised under BEGIN IMMEDIATE, and room
- * publications are the ledger's only writer, so no admitted write can find
- * the ledger full when its publication drains.
+ * Every save must fit a complete evidence record. Coalesced candidates do not
+ * reserve immutable ledger capacity; only non-coalescing (eager) saves still
+ * preflight it.
  */
 function revisionPublicationRefusal(
   value: any,
@@ -138,7 +222,10 @@ function revisionPublicationRefusal(
     )
       ? TASK_ROOM_INSERT_RESERVE_BYTES
       : 0,
-    ledger: reservedRevisionLedger(),
+    ledger:
+      value.coalesceRevisionPublication === true
+        ? { count: 0, recordBytes: 0 }
+        : reservedRevisionLedger(),
   });
 }
 const send = (id: number, result: unknown) =>
@@ -253,7 +340,7 @@ function readRevisionPublication(scope: any) {
     .prepare(
       `SELECT intent_id,base_working_revision,working_revision,snapshot_json,
         actor_id,actor_label,actor_kind,operator_id,device_id,policy_revision,
-        correlation_json,parent_evidence_revision,evidence_revision,created_at
+        correlation_json,parent_evidence_revision,evidence_revision,created_at,freeze_requested
        FROM project_task_room_revision_publication_outbox
        WHERE project_id=? AND task_id=? AND document_id=? LIMIT 1`,
     )
@@ -261,6 +348,7 @@ function readRevisionPublication(scope: any) {
   if (!row) return { kind: 'unavailable' } as const;
   try {
     if (
+      (row.freeze_requested !== 0 && row.freeze_requested !== 1) ||
       !boundedText(row.intent_id) ||
       !boundedText(row.base_working_revision) ||
       !boundedText(row.working_revision) ||
@@ -308,6 +396,7 @@ function readRevisionPublication(scope: any) {
       kind: 'available',
       publication: {
         intentId: row.intent_id,
+        freezeRequested: row.freeze_requested === 1,
         scope,
         baseWorkingRevision: row.base_working_revision,
         workingRevision: row.working_revision,
@@ -410,6 +499,19 @@ function retainedFloor(scope: any, fallback: string) {
     .get(...key(scope)) as { prior_revision?: string } | undefined;
   return row?.prior_revision ?? fallback;
 }
+function revisionOrdinals(scope: any, revisions: readonly string[]) {
+  const query = db.prepare(
+    'SELECT ordinal FROM project_task_room_save_revisions WHERE project_id=? AND task_id=? AND document_id=? AND revision=?',
+  );
+  return Object.fromEntries(
+    revisions.flatMap((revision) => {
+      const row = query.get(...key(scope), revision) as
+        | { ordinal: number }
+        | undefined;
+      return row ? [[revision, row.ordinal]] : [];
+    }),
+  );
+}
 function canResume(scope: any, after: string, revision: string) {
   if (after === revision) return true;
   let cursor = after;
@@ -475,6 +577,31 @@ async function handle(message: any) {
             },
       );
     }
+    if (value.type === 'revision-ordinals') {
+      if (
+        db
+          .prepare(
+            'SELECT 1 FROM project_task_room_save_revisions_pending WHERE project_id=? AND task_id=? AND document_id=?',
+          )
+          .get(...key(value.scope))
+      )
+        return send(id, { kind: 'unavailable' });
+      const row = db
+        .prepare(
+          'SELECT revision FROM project_task_room_working_states WHERE project_id=? AND task_id=? AND document_id=?',
+        )
+        .get(...key(value.scope)) as { revision: string } | undefined;
+      const currentRevision =
+        row?.revision ?? load(value.scope)?.snapshot().revision;
+      if (currentRevision !== value.revision)
+        return send(id, { kind: 'unavailable' });
+      return send(id, {
+        kind: 'available',
+        revisionOrdinals: row
+          ? revisionOrdinals(value.scope, value.revisions)
+          : { [value.revision]: 0 },
+      });
+    }
     if (value.type === 'private-snapshot') {
       const state = load(value.scope);
       return send(id, state?.snapshot());
@@ -502,6 +629,113 @@ async function handle(message: any) {
     }
     if (value.type === 'read-revision-publication') {
       return send(id, readRevisionPublication(value.scope));
+    }
+    if (value.type === 'request-revision-publication') {
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        const read = readRevisionPublication(value.scope);
+        if (readProjectTaskRoomSourceSeal(db, value.scope)) {
+          db.exec('ROLLBACK');
+          return send(id, { kind: 'unavailable' });
+        }
+        if (read.kind === 'missing') {
+          const head = readRevisionHead(value.scope);
+          if (
+            head.kind === 'available' &&
+            head.workingRevision === value.workingRevision
+          ) {
+            db.exec('ROLLBACK');
+            return send(id, {
+              kind: 'existing',
+              evidenceRevision: head.evidenceRevision,
+            });
+          }
+          // A pristine document has no settlement to supply an outbox. Its
+          // first reference freezes the initial state as the recorded Task owner.
+          const stored = db
+            .prepare(
+              'SELECT 1 FROM project_task_room_working_states WHERE project_id=? AND task_id=? AND document_id=?',
+            )
+            .get(...key(value.scope));
+          const initial = stored ? undefined : load(value.scope)?.snapshot();
+          const principal = value.initialPrincipal;
+          if (
+            head.kind !== 'missing' ||
+            !initial ||
+            initial.revision !== value.workingRevision ||
+            !boundedText(value.initialActorId) ||
+            !boundedText(principal?.operatorId) ||
+            !boundedText(principal?.deviceId) ||
+            !boundedText(principal?.policyRevision)
+          ) {
+            db.exec('ROLLBACK');
+            return send(id, { kind: 'unavailable' });
+          }
+          const snapshotJson = JSON.stringify(initial);
+          db.prepare(`INSERT INTO project_task_room_revision_publication_outbox(
+            project_id,task_id,document_id,intent_id,base_working_revision,working_revision,
+            snapshot_json,snapshot_bytes,actor_id,actor_label,actor_kind,
+            operator_id,device_id,policy_revision,correlation_json,
+            parent_evidence_revision,evidence_revision,created_at,freeze_requested
+          ) VALUES(?,?,?,?,?,?,?,?,?,?,'human',?,?,?,?,NULL,NULL,?,1)`).run(
+            ...key(value.scope),
+            'revision-initial:' + initial.revision,
+            initial.revision,
+            initial.revision,
+            snapshotJson,
+            Buffer.byteLength(snapshotJson, 'utf8'),
+            value.initialActorId,
+            principal.operatorId,
+            principal.operatorId,
+            principal.deviceId,
+            principal.policyRevision,
+            JSON.stringify({
+              projectId: value.scope.projectId,
+              taskId: value.scope.taskId,
+            }),
+            new Date().toISOString(),
+          );
+          if (!(await requestBeforeCommit(id))) {
+            db.exec('ROLLBACK');
+            return send(id, { kind: 'unavailable' });
+          }
+          db.exec('COMMIT');
+          return send(id, { kind: 'requested' });
+        }
+        if (
+          read.kind !== 'available' ||
+          read.publication.workingRevision !== value.workingRevision
+        ) {
+          db.exec('ROLLBACK');
+          return send(id, { kind: 'unavailable' });
+        }
+        db.prepare(
+          'UPDATE project_task_room_revision_publication_outbox SET freeze_requested=1 WHERE project_id=? AND task_id=? AND document_id=?',
+        ).run(...key(value.scope));
+        if (!(await requestBeforeCommit(id))) {
+          db.exec('ROLLBACK');
+          return send(id, { kind: 'unavailable' });
+        }
+        db.exec('COMMIT');
+        return send(id, { kind: 'requested' });
+      } catch {
+        try {
+          db.exec('ROLLBACK');
+        } catch {}
+        return send(id, { kind: 'unavailable' });
+      }
+    }
+    // Only a deterministic freeze refusal permits releasing this claim. A
+    // transient/unknown result may already have committed immutable evidence.
+    if (value.type === 'release-revision-publication') {
+      const result = db
+        .prepare(
+          'UPDATE project_task_room_revision_publication_outbox SET freeze_requested=0 WHERE project_id=? AND task_id=? AND document_id=? AND intent_id=? AND evidence_revision IS NULL',
+        )
+        .run(...key(value.scope), value.intentId);
+      return send(id, {
+        kind: result.changes === 1 ? 'released' : 'unavailable',
+      });
     }
     if (value.type === 'mark-revision-publication') {
       if (
@@ -751,7 +985,7 @@ async function handle(message: any) {
         }
         const pending = db
           .prepare(
-            'SELECT 1 AS pending FROM project_task_room_revision_publication_outbox WHERE project_id=? AND task_id=? AND document_id=? LIMIT 1',
+            'SELECT 1 AS pending FROM project_task_room_revision_publication_outbox WHERE project_id=? AND task_id=? AND document_id=? AND (freeze_requested=1 OR evidence_revision IS NOT NULL) LIMIT 1',
           )
           .get(...key(value.scope));
         if (pending) {
@@ -763,6 +997,10 @@ async function handle(message: any) {
         }
         const state = load(value.scope);
         if (!state) throw new Error('unavailable');
+        if (value.onlyIfEmpty === true && state.text()) {
+          db.exec('ROLLBACK');
+          return send(id, { kind: 'rejected' });
+        }
         const baseWorkingRevision = state.snapshot().revision;
         const revisions: Array<{ prior: string; revision: string }> = [];
         for (const operation of value.operations as TextDocumentOperation[]) {
@@ -809,6 +1047,32 @@ async function handle(message: any) {
         ) {
           db.exec('ROLLBACK');
           return send(id, { kind: 'unavailable' });
+        }
+        // Only the final state of a committed save gets an ordinal. This is
+        // independent of per-operation resume cursors and their pruning.
+        const saveHead = db
+          .prepare(
+            'SELECT MAX(ordinal) AS ordinal FROM project_task_room_save_revisions WHERE project_id=? AND task_id=? AND document_id=?',
+          )
+          .get(...key(value.scope)) as { ordinal: number | null };
+        const pendingOrdinals = db
+          .prepare(
+            'SELECT 1 FROM project_task_room_save_revisions_pending WHERE project_id=? AND task_id=? AND document_id=?',
+          )
+          .get(...key(value.scope));
+        if (!pendingOrdinals && saveHead.ordinal === null) {
+          db.prepare(
+            'INSERT INTO project_task_room_save_revisions VALUES(?,?,?,?,0)',
+          ).run(...key(value.scope), baseWorkingRevision);
+        }
+        if (!pendingOrdinals && snapshot.revision !== baseWorkingRevision) {
+          db.prepare(
+            'INSERT INTO project_task_room_save_revisions VALUES(?,?,?,?,?)',
+          ).run(
+            ...key(value.scope),
+            snapshot.revision,
+            (saveHead.ordinal ?? 0) + 1,
+          );
         }
         const projection = { revision: snapshot.revision, text: state.text() };
         let nextOrdinal = Number(
@@ -872,7 +1136,8 @@ async function handle(message: any) {
           | undefined;
         if (
           parent &&
-          (parent.working_revision !== baseWorkingRevision ||
+          ((value.coalesceRevisionPublication !== true &&
+            parent.working_revision !== baseWorkingRevision) ||
             !evidenceRevision(parent.evidence_revision))
         )
           throw new Error('corrupt revision evidence head');
@@ -914,12 +1179,21 @@ async function handle(message: any) {
             project_id,task_id,document_id,intent_id,base_working_revision,
             working_revision,snapshot_json,snapshot_bytes,actor_id,actor_label,actor_kind,
             operator_id,device_id,policy_revision,
-            correlation_json,parent_evidence_revision,evidence_revision,created_at
-          ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?)`,
+            correlation_json,parent_evidence_revision,evidence_revision,created_at,freeze_requested
+          ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?)
+          ON CONFLICT(project_id,task_id,document_id) DO UPDATE SET
+            intent_id=excluded.intent_id,base_working_revision=excluded.base_working_revision,
+            working_revision=excluded.working_revision,snapshot_json=excluded.snapshot_json,
+            snapshot_bytes=excluded.snapshot_bytes,actor_id=excluded.actor_id,
+            actor_label=excluded.actor_label,actor_kind=excluded.actor_kind,
+            operator_id=excluded.operator_id,device_id=excluded.device_id,
+            policy_revision=excluded.policy_revision,correlation_json=excluded.correlation_json,
+            parent_evidence_revision=excluded.parent_evidence_revision,created_at=excluded.created_at,
+            freeze_requested=excluded.freeze_requested`,
         ).run(
           ...key(value.scope),
           publicationIntentId,
-          baseWorkingRevision,
+          parent?.working_revision ?? baseWorkingRevision,
           snapshot.revision,
           snapshotJson,
           snapshotBytes,
@@ -932,6 +1206,7 @@ async function handle(message: any) {
           correlationJson,
           parent?.evidence_revision ?? null,
           new Date().toISOString(),
+          value.coalesceRevisionPublication === true ? 0 : 1,
         );
         // The transaction is intentionally still open while the runtime
         // revalidates the immutable request/device/policy grant. A revoked

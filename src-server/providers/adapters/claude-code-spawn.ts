@@ -7,6 +7,7 @@ import type {
 import { spawnChildWorkload } from '@kontourai/station-shared/child-workload';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import { terminateProcessTree } from '../../services/infra/process-utils.js';
+import { WORKLOAD_SESSION_ENV } from '../../services/infra/workload-budget.js';
 import {
   ClaudePermissionAsks,
   ClaudePermissionFrameTap,
@@ -52,6 +53,11 @@ export type ClaudeEngineProcess = {
   /** Prevent future spawns and require the owned engine processes to exit. */
   terminate: () => Promise<void>;
   /**
+   * Whether an engine process was spawned and none is running now: the
+   * process's own `exit`, observed. False before a spawn.
+   */
+  exited: () => boolean;
+  /**
    * #2494: the command and arguments the latest engine process was actually
    * spawned with, as passed to the spawn call; `undefined` before one.
    */
@@ -91,6 +97,8 @@ function tailOf(text: string): string {
 export function createClaudeEngineProcess(
   spawnChild: SpawnChild = spawnChildWorkload,
   wrap?: ClaudeSpawnWrap,
+  /** The Station session this engine serves, for workload attribution. */
+  sessionId?: string,
 ): ClaudeEngineProcess {
   const asks = new ClaudePermissionAsks();
   let stderrTail = '';
@@ -113,7 +121,7 @@ export function createClaudeEngineProcess(
       cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
       signal: options.signal,
-      env,
+      env: sessionId ? { ...env, [WORKLOAD_SESSION_ENV]: sessionId } : env,
       windowsHide: true,
     });
     children.add(child);
@@ -203,6 +211,7 @@ export function createClaudeEngineProcess(
     spawn,
     stderrTail: () => tailOf(redactSecrets(stderrTail)).trim(),
     spawned: () => spawned,
+    exited: () => spawned !== undefined && children.size === 0,
     async terminate() {
       retired = true;
       await Promise.all(

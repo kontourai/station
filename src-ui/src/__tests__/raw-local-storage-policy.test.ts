@@ -17,9 +17,10 @@ const ALLOWED_RAW_LOCAL_STORAGE_KEYS = [
   'lastProjectLayout', // Navigation restore pointer to the last visited layout.
   'recentAgents', // Derived MRU used for picker ordering, not a setting.
   'recentLayouts', // Derived MRU used for picker ordering, not a setting.
+  'station.switcher.recent', // Derived MRU of saved Station ids for switcher ordering (bounded to 20), not a setting.
   'station-device-settings-v1', // The versioned device-settings envelope itself.
   'station.activity.snoozed', // Per-work-item snooze state, not a setting.
-  'station.activity.terminalSince', // Terminal activity cursor.
+  'station.inbox.dismissed.v1', // Bounded per-conversation inbox visibility state, not a setting.
   'station-attached-session-continuations-v1', // Exact Attached Session continuation evidence.
   'station-browser-relay-account-scope-event-v1', // Transient cross-tab relay account-scope signal; written and removed, never a setting or credential.
   'station-outbound-unlocked-renderers', // Cross-window runtime signal: boot ids of renderers whose outbox liveness lock could not be taken, so other windows read them as unknown rather than gone (lib/outboundQueueLease.ts). Bounded to 32 ids; never a setting or credential.

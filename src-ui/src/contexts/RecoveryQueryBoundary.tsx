@@ -66,7 +66,10 @@ import {
   useRef,
   useState,
 } from 'react';
-import { stationQueryDefaults } from '../lib/queryDefaults';
+import {
+  stationMutationDefaults,
+  stationQueryDefaults,
+} from '../lib/queryDefaults';
 import { useHostRequestAuthorityScope } from './ApiBaseContext';
 
 /**
@@ -139,7 +142,10 @@ export function useOptionalRecoveryScope(): RecoveryScope | null {
 
 function createRecoveryClient(): QueryClient {
   return new QueryClient({
-    defaultOptions: { queries: stationQueryDefaults() },
+    defaultOptions: {
+      queries: stationQueryDefaults(),
+      mutations: stationMutationDefaults(),
+    },
   });
 }
 

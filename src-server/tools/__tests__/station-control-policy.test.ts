@@ -819,6 +819,8 @@ describe('station-control authority table: declare_pull_request and Task close-o
     ).toEqual([
       'task_summary_update',
       'task_record',
+      'task_thread_reply',
+      'task_thread_resolve',
       'html_render',
       'html_preview',
       'notify_user',
@@ -969,6 +971,60 @@ describe('station-control authority table: work claims (#3413 B)', () => {
         })?.code,
       ).toBe('station_control_caller_required');
     }
+  });
+});
+
+// `fork_conversation`: written out here, independently of the table. It
+// writes a new conversation (mutating) where a Session could start, so a
+// Project `execute` action; the route decides the scope itself.
+describe('station-control authority table: fork_conversation', () => {
+  const LEAF = {
+    method: 'POST',
+    path: '/agents/:slug/conversations/:conversationId/fork',
+  } as const;
+
+  test('is project-role execute, any assurance, mutating, never person-only, and owns exactly its own leaf', () => {
+    const policy = STATION_CONTROL_TOOL_POLICY.fork_conversation;
+    expect([
+      policy.assurance,
+      policy.role,
+      policy.projectAction,
+      policy.toolClass,
+      policy.personOnly,
+      policy.routes,
+    ]).toEqual(['any', 'project', 'execute', 'mutating', 'never', [LEAF]]);
+    expect(
+      matchStationControlRoute('POST', '/agents/terra/conversations/c-1/fork')
+        ?.owners,
+    ).toEqual(['fork_conversation']);
+  });
+
+  test('a caller with a recorded owner reaches the leaf; one without, or none, is refused', () => {
+    const path = '/agents/terra/conversations/c-1/fork';
+    for (const caller of [
+      CALLERS['bound-operator'],
+      CALLERS['bound-other-person'],
+      CALLERS['delegated-operator'],
+      CALLERS['bearer-operator'],
+    ])
+      expect(
+        authorizeStationControlRequest('POST', path, {
+          caller,
+          isOperatorPrincipal,
+        }),
+      ).toBeUndefined();
+    expect(
+      authorizeStationControlRequest('POST', path, {
+        caller: { assurance: 'bound' },
+        isOperatorPrincipal,
+      })?.code,
+    ).toBe('station_control_role_required');
+    expect(
+      authorizeStationControlRequest('POST', path, {
+        caller: null,
+        isOperatorPrincipal,
+      })?.code,
+    ).toBe('station_control_caller_required');
   });
 
   test('no tool reaches the UI read of claims', () => {

@@ -23,14 +23,14 @@
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B]",
       "axe:label-content-name-mismatch:button.chat-status-pill[Status unavailable — resync this conversation]",
       "axe:label-content-name-mismatch:button.choice-trigger[Agent: demo-agent. Change Agent]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Engine & model: Claude Code Claude Code — Model & effort]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Engine & model: Claude Code — Model & effort]",
       "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Last known: Waiting on you, Background tasks]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Open project — Project B]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
       "axe:label:input.attachment-input[type=file]",
       "axe:scrollable-region-focusable:div.chat-messages[role=status]",
-      "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B] / [data-testid=inbox-row] button.chat-dock-inbox__row-action[Close Mismatch demo chat]",
+      "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B] / [data-testid=inbox-row] button.chat-dock-inbox__row-action[Dismiss Mismatch demo chat from inbox]",
       "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B] / [data-testid=inbox-row] button.chat-dock-inbox__row-action[Snooze Mismatch demo chat]",
       "hit-target:overlap:[data-testid=starter-work-card] button.button[Create task] / button.session-context-card__action[Last known: Waiting on you, Background tasks]",
       "hit-target:overlap:button.disclosure-toggle[Earlier] / button.chat-dock-inbox__refresh[Refresh inbox]",
@@ -186,7 +186,7 @@
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B]",
       "axe:label-content-name-mismatch:button.chat-status-pill[Status unavailable — resync this conversation]",
       "axe:label-content-name-mismatch:button.choice-trigger[Agent: demo-agent. Change Agent]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Engine & model: Claude Code Claude Code — Model & effort]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Engine & model: Claude Code — Model & effort]",
       "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
       "axe:label:input.attachment-input[type=file]",
       "axe:scrollable-region-focusable:div.chat-messages[role=status]",
@@ -289,14 +289,14 @@
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B]",
       "axe:label-content-name-mismatch:button.chat-status-pill[Status unavailable — resync this conversation]",
       "axe:label-content-name-mismatch:button.choice-trigger[Agent: demo-agent. Change Agent]",
-      "axe:label-content-name-mismatch:button.choice-trigger[Engine & model: Claude Code Claude Code — Model & effort]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Engine & model: Claude Code — Model & effort]",
       "axe:label-content-name-mismatch:button.choice-trigger[Project: Project A]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Last known: Waiting on you, Background tasks]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Open project — Project B]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
       "axe:label:input.attachment-input[type=file]",
       "axe:scrollable-region-focusable:div.chat-messages[role=status]",
-      "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B] / [data-testid=inbox-row] button.chat-dock-inbox__row-action[Close Mismatch demo chat]",
+      "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B] / [data-testid=inbox-row] button.chat-dock-inbox__row-action[Dismiss Mismatch demo chat from inbox]",
       "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B] / [data-testid=inbox-row] button.chat-dock-inbox__row-action[Snooze Mismatch demo chat]",
       "hit-target:overlap:[data-testid=starter-work-card] button.button[Create task] / button.session-context-card__action[Last known: Waiting on you, Background tasks]",
       "hit-target:overlap:button.disclosure-toggle[Earlier] / button.chat-dock-inbox__refresh[Refresh inbox]",
@@ -353,6 +353,24 @@
       "axe:label-content-name-mismatch:button.split-pane__item[github-cli]",
       "axe:label-content-name-mismatch:button.split-pane__item[search-first]",
       "hit-target:overlap:button.split-pane__item[design-probe] / button.split-pane__add-btn[Commands only]"
+    ],
+    "station-switcher-dark-desktop": [
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]"
+    ],
+    "station-switcher-dark-mobile": [
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
+      "hit-target:small:input.attachment-input[type=file]"
+    ],
+    "station-switcher-forget-dark-desktop": [
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]"
+    ],
+    "station-switcher-light-desktop": [
+      "axe:color-contrast:span.sidebar__project-name",
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]"
+    ],
+    "station-switcher-light-mobile": [
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
+      "hit-target:small:input.attachment-input[type=file]"
     ],
     "telemetry-dialog-default-mobile": [
       "hit-target:small:input[type=radio][name=*][Anonymous usage counts]",

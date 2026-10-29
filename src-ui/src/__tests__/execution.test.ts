@@ -1,5 +1,8 @@
 import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
-import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
+import type {
+  AgentConnectionView,
+  ConnectionConfig,
+} from '@kontourai/station-contracts/tool';
 import { describe, expect, test } from 'vitest';
 import {
   buildProviderOptions,
@@ -171,6 +174,143 @@ describe('execution utils', () => {
       id: 'claude-sonnet-4-6',
       source: 'session override',
     });
+  });
+
+  test('a last-used Project model wins over every inherited default and falls back visibly when retired', () => {
+    const runtimeConnection: AgentConnectionView = {
+      id: engineConnectionId('claude'),
+      kind: 'agent',
+      type: 'claude',
+      name: 'Claude Runtime',
+      enabled: true,
+      capabilities: ['agent-runtime'],
+      config: {},
+      status: 'ready',
+      setup: { state: 'ready', detected: true, configured: true },
+      runtimeCatalog: {
+        source: 'live' as const,
+        models: [
+          {
+            id: 'claude-sonnet-4-6',
+            name: 'Claude Sonnet 4.6',
+            originalId: 'claude-sonnet-4-6',
+          },
+          {
+            id: 'claude-opus-4-6',
+            name: 'Claude Opus 4.6',
+            originalId: 'claude-opus-4-6',
+          },
+        ],
+        builtInModels: [],
+      },
+      prerequisites: [],
+    };
+    const lastUsed = resolveEffectiveModel({
+      runtimeConnection,
+      runtimeCurrentModel: 'claude-sonnet-4-6',
+      projectDefaultModel: 'claude-sonnet-4-6',
+      lastChosenModel: 'claude-sonnet-4-6',
+      projectLastUsedModel: 'claude-opus-4-6',
+    });
+    expect(lastUsed).toMatchObject({
+      id: 'claude-opus-4-6',
+      source: 'project last used',
+    });
+    expect(lastUsed.unavailableProjectLastUsed).toBeUndefined();
+    // A pick in this draft still wins.
+    expect(
+      resolveEffectiveModel({
+        runtimeConnection,
+        sessionOverride: 'claude-sonnet-4-6',
+        projectLastUsedModel: 'claude-opus-4-6',
+      }),
+    ).toMatchObject({ id: 'claude-sonnet-4-6', source: 'session override' });
+    // Retired from the catalog: the next layer applies, and says why.
+    const retired = resolveEffectiveModel({
+      runtimeConnection,
+      projectDefaultModel: 'claude-sonnet-4-6',
+      projectLastUsedModel: 'claude-retired',
+    });
+    expect(retired).toMatchObject({
+      id: 'claude-sonnet-4-6',
+      source: 'project default',
+      unavailableProjectLastUsed: 'claude-retired',
+    });
+    // Not advertised by the engine: skipped the same way.
+    expect(
+      resolveEffectiveModel({
+        runtimeConnection,
+        projectDefaultModel: 'claude-sonnet-4-6',
+        projectLastUsedModel: 'claude-opus-4-6',
+        advertisedModels: [{ id: 'claude-sonnet-4-6' }],
+      }),
+    ).toMatchObject({
+      source: 'project default',
+      unavailableProjectLastUsed: 'claude-opus-4-6',
+    });
+  });
+
+  test('a new chat starts on the Project default model ahead of device memory, when the catalog offers it', () => {
+    const runtimeConnection: AgentConnectionView = {
+      id: engineConnectionId('claude'),
+      kind: 'agent',
+      type: 'claude',
+      name: 'Claude Runtime',
+      enabled: true,
+      capabilities: ['agent-runtime'],
+      config: {},
+      status: 'ready',
+      setup: { state: 'ready', detected: true, configured: true },
+      runtimeCatalog: {
+        source: 'live' as const,
+        models: [
+          {
+            id: 'claude-sonnet-4-6',
+            name: 'Sonnet',
+            originalId: 'claude-sonnet-4-6',
+          },
+          {
+            id: 'claude-opus-4-6',
+            name: 'Opus',
+            originalId: 'claude-opus-4-6',
+          },
+        ],
+        builtInModels: [],
+      },
+      prerequisites: [],
+    };
+    const base = {
+      runtimeConnection,
+      runtimeCurrentModel: 'claude-opus-4-6',
+      lastChosenModel: 'claude-opus-4-6',
+      projectDefaultModel: 'claude-sonnet-4-6',
+    };
+    expect(resolveEffectiveModel({ ...base, newChat: true })).toMatchObject({
+      id: 'claude-sonnet-4-6',
+      source: 'project default',
+    });
+    // An existing chat's chain is unchanged.
+    expect(resolveEffectiveModel(base)).toMatchObject({
+      id: 'claude-opus-4-6',
+      source: 'last chosen',
+    });
+    // A Project model this app does not offer (a Model connection's id)
+    // keeps the device memory.
+    expect(
+      resolveEffectiveModel({
+        ...base,
+        newChat: true,
+        projectDefaultModel: 'openai:gpt-5',
+      }),
+    ).toMatchObject({ id: 'claude-opus-4-6', source: 'last chosen' });
+    // A pick in this draft still wins.
+    expect(
+      resolveEffectiveModel({
+        ...base,
+        newChat: true,
+        sessionOverride: 'claude-opus-4-6',
+      }),
+    ).toMatchObject({ source: 'session override' });
   });
 
   test('ignores a last-chosen model that is no longer in the connection catalog', () => {
@@ -1101,8 +1241,8 @@ describe('execution utils', () => {
     ).toMatchObject({ id: 'session-model', source: 'session override' });
   });
 
-  test('sessionAdapterSupportsSteering reads midTurnSteer, not a connection capabilities flag', () => {
-    const connections = [
+  test('sessionAdapterSupportsSteering requires native fidelity, not a connection capabilities flag', () => {
+    const connections: ConnectionConfig[] = [
       {
         id: 'claude-runtime',
         kind: 'agent',
@@ -1137,6 +1277,17 @@ describe('execution utils', () => {
         prerequisites: [],
       },
       {
+        id: 'acp-runtime',
+        kind: 'agent',
+        type: 'acp',
+        name: 'ACP Runtime',
+        enabled: true,
+        capabilities: ['agent-runtime'],
+        config: {},
+        status: 'ready',
+        prerequisites: [],
+      },
+      {
         id: 'steering-preview-runtime',
         kind: 'agent',
         type: 'steering-preview-runtime',
@@ -1147,7 +1298,7 @@ describe('execution utils', () => {
         status: 'ready',
         prerequisites: [],
       },
-    ] as any;
+    ];
 
     expect(sessionAdapterSupportsSteering('claude-runtime', connections)).toBe(
       true,
@@ -1158,12 +1309,21 @@ describe('execution utils', () => {
     expect(sessionAdapterSupportsSteering('muse-runtime', connections)).toBe(
       false,
     );
+    expect(sessionAdapterSupportsSteering('acp-runtime', connections)).toBe(
+      false,
+    );
     // The live session's provider wins over the bound connection.
     expect(
       sessionAdapterSupportsSteering('muse-runtime', connections, 'claude'),
     ).toBe(true);
     expect(
       sessionAdapterSupportsSteering('claude-runtime', connections, 'muse'),
+    ).toBe(false);
+    expect(
+      sessionAdapterSupportsSteering('acp-runtime', connections, 'claude'),
+    ).toBe(true);
+    expect(
+      sessionAdapterSupportsSteering('claude-runtime', connections, 'acp'),
     ).toBe(false);
     // A stale `capabilities: ['steering']` string is not authority.
     expect(
@@ -1174,6 +1334,11 @@ describe('execution utils', () => {
       false,
     );
     expect(sessionAdapterSupportsSteering('claude-runtime')).toBe(false);
+    for (const provider of ['unknown-engine', 'constructor', '__proto__']) {
+      expect(
+        sessionAdapterSupportsSteering('claude-runtime', connections, provider),
+      ).toBe(false);
+    }
   });
 });
 
