@@ -4972,6 +4972,15 @@ reader. Hosted mode skips the two personal storage branches. File-memory Agent
 attribution comes from the stored resource ID, with the adapter key as fallback;
 response shape can also include Project and fork-provenance fields.
 
+`GET /api/conversations/:id/open` resolves a conversation before a client
+treats it as writable (the SDK's `resolveConversationOpen`). Its result may
+carry `callerAccess: {continue, startChat}`, computed for the requesting
+credential by the same boundary gate ingress applies, against
+`POST /api/orchestration/chat/:id/continue` and `POST /api/orchestration/chat`.
+A read-only paired device reads `{continue: false, startChat: false}`. The field
+is omitted when the request has no authenticated principal; clients treat that
+as unknown.
+
 `GET /api/conversations/:id/read?limit=&cursor=&aroundMessageId=` returns one
 page of a conversation's transcript: `{conversationId, access, notice,
 messageCount, messages, prevCursor, nextCursor}`. `limit` is 1 to 50 (default

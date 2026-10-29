@@ -1312,7 +1312,12 @@ kernel `oom_kill` count (`childWorkloadMemoryExhausted` in
 `@kontourai/station-shared/child-workload`), not a signal alone. Only the Codex
 adapter publishes it today. The conversation is continued automatically
 (capped) with a Station recovery note; past the cap chat offers Continue rather
-than Send again. `isEngineMemoryExhaustedFailure` (`provider`) also recognises
+than Send again, to a caller the conversation's open read lets send. That
+answer (`callerAccess.continue`) is computed for
+`POST /api/orchestration/chat/:conversationId/continue`; Continue posts
+`POST /api/orchestration/conversations/:id/memory-continuation`, and the chat
+pane relies on both being in the same `orchestration:operate` tier.
+`isEngineMemoryExhaustedFailure` (`provider`) also recognises
 a failure stored before that code existed (`codex-turn-orphaned` with the old
 "Codex was killed because memory was exhausted." sentence), so chat shows it
 in current copy and a person's Continue applies to it. That continuation's turn carries a send key starting

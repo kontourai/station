@@ -382,6 +382,11 @@ interface ChatInputAreaProps {
   agentHandoffDisabledReason?: string;
   workspaceRefused?: boolean;
   /**
+   * The server refused this caller a send here: the disabled composer shows
+   * no "Type a message" placeholder (its `sendBlockedReason` says why).
+   */
+  sendRefused?: boolean;
+  /**
    * The conversation's open read is still in flight: the composer is disabled
    * and its placeholder names the wait. It occupies no new space, so the
    * transcript above keeps its height.
@@ -552,6 +557,7 @@ export function ChatInputArea({
   agentHandoffDisabled = false,
   agentHandoffDisabledReason,
   workspaceRefused = false,
+  sendRefused = false,
   loadingConversation = false,
   onStartNewChat,
 }: ChatInputAreaProps) {
@@ -741,23 +747,27 @@ export function ChatInputArea({
     workingDirectory && mentionProjectSlug
       ? { projectSlug: mentionProjectSlug, workingDir: workingDirectory }
       : null;
-  const placeholder = workspaceRefused
-    ? 'This conversation continues from its original workspace — start a new chat to work here'
-    : loadingConversation
-      ? 'Loading chat…'
-      : allowDraftWhileDisabled
-        ? turnInFlight
-          ? 'Draft a follow-up while this turn finishes…'
-          : 'Waiting on this chat — check again above to send…'
-        : turnInFlight
-          ? sendMode === 'steer' && busyFollowUp === 'steer'
-            ? busySteeringKind === 'native'
-              ? 'Steer this turn…'
-              : 'Send at a safe boundary…'
-            : 'Queue a follow-up…'
-          : mentionLocation && mentionRequestScope
-            ? 'Type a message — @ files, / for commands…'
-            : 'Type a message — / for commands…';
+  // A composer whose sending the server refused invites no typing: its
+  // reason, under the draft, says why.
+  const placeholder = sendRefused
+    ? ''
+    : workspaceRefused
+      ? 'This conversation continues from its original workspace — start a new chat to work here'
+      : loadingConversation
+        ? 'Loading chat…'
+        : allowDraftWhileDisabled
+          ? turnInFlight
+            ? 'Draft a follow-up while this turn finishes…'
+            : 'Waiting on this chat — check again above to send…'
+          : turnInFlight
+            ? sendMode === 'steer' && busyFollowUp === 'steer'
+              ? busySteeringKind === 'native'
+                ? 'Steer this turn…'
+                : 'Send at a safe boundary…'
+              : 'Queue a follow-up…'
+            : mentionLocation && mentionRequestScope
+              ? 'Type a message — @ files, / for commands…'
+              : 'Type a message — / for commands…';
   const composerTokens = parseComposerTokens(input);
   const displayInput = composerDisplayValue(input, composerTokens);
 

@@ -168,6 +168,7 @@ import {
   isChatPaneFileDropEnabled,
 } from './ChatPaneFileDropBoundary';
 import type { ComposerActionsMenuProps } from './ComposerActionsMenu';
+import { ConversationPickerRecovery } from './ConversationPickerRecovery';
 import {
   chatModelLabel,
   effectiveChatModelId,
@@ -371,10 +372,6 @@ const loadConversationBoundaryDialogs = () =>
   }));
 
 const loadImportedConversationPane = () => import('./ImportedConversationPane');
-const loadConversationOpenRecoveryNotice = () =>
-  import('./ConversationOpenRecoveryNotice').then((module) => ({
-    default: module.ConversationOpenRecoveryNotice,
-  }));
 const loadConversationOpenController = () =>
   import('./conversationOpenController');
 const loadConversationOpenRevalidator = () =>
@@ -879,6 +876,10 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // tab; once a tab exists its `conversationOpenState` is the canonical copy.
   const [conversationOpenRecovery, setConversationOpenRecovery] =
     useState<ConversationOpenRecovery | null>(null);
+  // Read by a failed picker retry, which keeps the server's last answer on
+  // what this caller may do; a ref so the open callback stays stable.
+  const conversationOpenRecoveryRef = useRef(conversationOpenRecovery);
+  conversationOpenRecoveryRef.current = conversationOpenRecovery;
 
   // station#1301 slice 1: the active session's running-background-task count,
   // for the tab bar's badge and the Background tasks rows' labels.
@@ -2198,6 +2199,12 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
         readChat: (tabId) => activeChatsStore.getSnapshot()[tabId],
         agentName: (id) => agents.find((agent) => agent.slug === id)?.name,
         setRecovery: setConversationOpenRecovery,
+        lastCallerAccess: (conversationId) => {
+          const last = conversationOpenRecoveryRef.current;
+          return last?.conversation.id === conversationId
+            ? last.callerAccess
+            : undefined;
+        },
         isCurrent,
       });
       if (keepReader && opened) setImportedSessionId(null);
@@ -3766,21 +3773,10 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   !showNewChatModal &&
                   conversationOpenRecovery &&
                   !importedSessionId ? (
-                    <LazyBoundary
-                      load={loadConversationOpenRecoveryNotice}
-                      componentProps={{
-                        title: conversationOpenRecovery.conversation.title,
-                        // #2424: passed through unmapped; the notice decides
-                        // which statuses are verdicts.
-                        state: conversationOpenRecovery.status,
-                        onRetry: () => void retryConversationOpenRecovery(),
-                        onStartNew: startNewFromConversationRecovery,
-                      }}
-                      pending={
-                        <div className="session-history-error" role="status">
-                          Conversation recovery is loading. Sending is paused.
-                        </div>
-                      }
+                    <ConversationPickerRecovery
+                      recovery={conversationOpenRecovery}
+                      onRetry={() => void retryConversationOpenRecovery()}
+                      onStartNew={startNewFromConversationRecovery}
                     />
                   ) : null}
                   {workspaceShown && !showNewChatModal && importedSessionId ? (
