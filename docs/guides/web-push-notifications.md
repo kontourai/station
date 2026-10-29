@@ -130,7 +130,7 @@ is not sufficient audience membership.
 [NotificationService](../../src-server/services/notifications/notification-service.ts)
 delivers a `principal` audience synchronously to a separate private feed after
 a fresh check of that person's Project membership. A non-member is suppressed
-without a write; a failed write is returned to the producer. The feed keeps the
+without a write; a failed write is returned to the producer. The membership check validates the supplied Project, not the producer’s authority, so every producer must derive the Project from its own authority, never from request input. The feed keeps the
 newest 100 records per person and scopes read and dismissal state to that person.
 Future-scheduled principal writes are refused; expiry is settled when the feed
 is next accessed. These records do not enter the owner feed or shared

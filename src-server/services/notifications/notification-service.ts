@@ -491,7 +491,9 @@ export class NotificationService {
    * producers) — never wire a request body into it. The envelope must pass
    * `parseNotificationEnvelopeForWrite` (exact keys, no read/dismiss markers).
    * A principal audience is delivered to its private store only after a fresh
-   * membership check. `metadata.sessionId`/`conversationId` are
+   * membership check. Producers must derive the Project from their own authority,
+   * never request input: membership validates the supplied Project, not the producer.
+   * `metadata.sessionId`/`conversationId` are
    * derived from the envelope so REST read-gating and deep links follow the
    * envelope's session; a conflicting caller value is refused. A dedupe
    * update of an enveloped record emits NOTIFICATION_UPDATED.

@@ -1,4 +1,5 @@
-import { mkdirSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { NotificationEnvelopeV1 } from '@kontourai/station-contracts/notification';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
@@ -290,4 +291,80 @@ test('the feed keeps the newest 100 records for each principal', async () => {
   expect(
     (await f.service.listForPrincipal(bob.id)).map((item) => item.title),
   ).toEqual(['Bob keeps his own record']);
+});
+
+// These are the public storage boundaries, deliberately independent of the service constants.
+const MAX_FEED_BYTES = 16 * 1024 * 1024;
+const MAX_FEED_RECORDS = 100;
+
+test('an oversized write is refused without changing the existing document', async () => {
+  const f = await fixture();
+  await f.send(alice.id);
+  const path = join(f.home, 'principal-notifications.json');
+  const before = readFileSync(path);
+  const document = JSON.parse(before.toString());
+  const record = document[alice.id][0];
+  document[alice.id].push({ ...record, title: 'x' });
+  const baseSize = Buffer.byteLength(JSON.stringify(document, null, 2));
+  const title = 'x'.repeat(MAX_FEED_BYTES + 2 - baseSize);
+  expect(
+    Buffer.byteLength(
+      JSON.stringify(
+        { ...document, [alice.id]: [record, { ...record, title }] },
+        null,
+        2,
+      ),
+    ),
+  ).toBe(MAX_FEED_BYTES + 1);
+  await expect(f.send(alice.id, title)).rejects.toThrow(
+    'Notification store is invalid',
+  );
+  expect(Buffer.compare(readFileSync(path), before)).toBe(0);
+  expect(await f.service.listForPrincipal(alice.id)).toHaveLength(1);
+});
+
+test('the read byte boundary refuses one extra byte and preserves the document', async () => {
+  const f = await fixture();
+  await f.send(alice.id);
+  const path = join(f.home, 'principal-notifications.json');
+  const document = JSON.parse(readFileSync(path, 'utf8'));
+  const record = document[alice.id][0];
+  record.title = 'x';
+  const baseSize = Buffer.byteLength(JSON.stringify(document, null, 2));
+  record.title = 'x'.repeat(MAX_FEED_BYTES + 1 - baseSize);
+  const atLimit = JSON.stringify(document, null, 2);
+  expect(Buffer.byteLength(atLimit)).toBe(MAX_FEED_BYTES);
+  writeFileSync(path, atLimit);
+  expect(await f.service.listForPrincipal(alice.id)).toHaveLength(1);
+  record.title += 'x';
+  const oversized = Buffer.from(JSON.stringify(document, null, 2));
+  expect(oversized.length).toBe(MAX_FEED_BYTES + 1);
+  writeFileSync(path, oversized);
+  await expect(f.service.listForPrincipal(alice.id)).rejects.toThrow(
+    'JSON read exceeds its allowance',
+  );
+  expect(Buffer.compare(readFileSync(path), oversized)).toBe(0);
+});
+
+test('the persisted record count accepts 100 and refuses 101 without changing the document', async () => {
+  const f = await fixture();
+  await f.send(alice.id);
+  const path = join(f.home, 'principal-notifications.json');
+  const document = JSON.parse(readFileSync(path, 'utf8'));
+  const record = document[alice.id][0];
+  document[alice.id] = Array.from({ length: MAX_FEED_RECORDS }, () => ({
+    ...record,
+    id: randomUUID(),
+  }));
+  writeFileSync(path, JSON.stringify(document, null, 2));
+  expect(await f.service.listForPrincipal(alice.id)).toHaveLength(
+    MAX_FEED_RECORDS,
+  );
+  document[alice.id].push({ ...record, id: randomUUID() });
+  const oversized = Buffer.from(JSON.stringify(document, null, 2));
+  writeFileSync(path, oversized);
+  await expect(f.service.listForPrincipal(alice.id)).rejects.toThrow(
+    'Notification store is invalid',
+  );
+  expect(Buffer.compare(readFileSync(path), oversized)).toBe(0);
 });
