@@ -53,7 +53,9 @@ beforeEach(async () => {
   received = log;
   lookups = [];
   stand = createServer((request, response) => {
-    log.push(request);
+    // Only the paths these tests use: another local process may probe a
+    // newly listening loopback port, and that is not a Station request.
+    if (request.url === '/mcp' || request.url === '/token') log.push(request);
     let body = '';
     request.on('data', (chunk) => {
       body += chunk;
