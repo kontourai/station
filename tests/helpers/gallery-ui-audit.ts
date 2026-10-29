@@ -45,7 +45,19 @@ const DOCK_OCCLUSION_AUDIT = `(() => {
       const left = Math.max(r.left, d.left, 0), right = Math.min(r.right, d.right, innerWidth);
       const top = Math.max(r.top, d.top, 0), bottom = Math.min(r.bottom, d.bottom, innerHeight);
       if (right - left <= 1 || bottom - top <= 1) continue;
-      findings.push({ anchor: stableAnchor(control) });
+      // The control itself may be clipped out of the overlap. Compare the
+      // dock with the first painted element in the control's ancestor chain
+      // as well, so a foreground dialog stays above the dock while clipped
+      // content behind the dock remains detectable.
+      const covered = [0.25, 0.5, 0.75].some((x) =>
+        [0.25, 0.5, 0.75].some((y) => {
+          const stack = document.elementsFromPoint(left + (right - left) * x, top + (bottom - top) * y);
+          const dockIndex = stack.findIndex((element) => dock.contains(element));
+          const controlIndex = stack.findIndex((element) => element === control || control.contains(element) || element.contains(control));
+          return dockIndex >= 0 && controlIndex >= 0 && dockIndex < controlIndex;
+        }),
+      );
+      if (covered) findings.push({ anchor: stableAnchor(control) });
     }
   }
   return findings;

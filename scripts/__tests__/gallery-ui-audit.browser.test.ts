@@ -103,6 +103,22 @@ describe('gallery finding identities', { timeout: 60_000 }, () => {
     ).toBe(false);
   });
 
+  it('does not report a clickable foreground dialog control above the dock', async () => {
+    await render(
+      `<div class="chat-dock is-collapsed" style="position:fixed;left:0;right:0;bottom:0;height:55px;background:#333;z-index:1"></div><div role="dialog" style="position:fixed;left:0;right:0;bottom:0;height:180px;z-index:10;background:white"><button aria-label="Done" style="position:absolute;left:10px;bottom:35px;width:100px;height:44px" onclick="this.closest('[role=dialog]').remove()">Done</button></div>`,
+    );
+    const audit = await auditGalleryScreen(page, 'fixture');
+    expect(
+      audit.findings.some(
+        (finding) =>
+          finding.identity.startsWith('hit-target:occluded-by-dock:') &&
+          finding.identity.includes('Done'),
+      ),
+    ).toBe(false);
+    await page.getByRole('button', { name: 'Done' }).click();
+    expect(await page.getByRole('dialog').count()).toBe(0);
+  });
+
   it('reports a partly visible control extending beyond the content clip into the dock', async () => {
     await render(
       `<div style="position:fixed;left:0;right:0;top:0;bottom:55px;overflow:hidden"><button aria-label="Clipped by dock boundary" style="position:absolute;bottom:-24px;left:10px;width:100px;height:44px">Clipped by dock boundary</button></div><div class="chat-dock is-collapsed" style="position:fixed;left:0;right:0;bottom:0;height:55px;background:#333"></div>`,
