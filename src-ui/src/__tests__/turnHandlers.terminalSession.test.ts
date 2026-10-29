@@ -92,7 +92,7 @@ describe('handleRuntimeErrorEvent — station#1827 terminal engine session', () 
     ],
     [
       { continue: false, startChat: true },
-      /^(?![\s\S]*Send your message again)[\s\S]*Start a new chat to continue/,
+      /^(?![\s\S]*(Send your message again|new chat))/,
     ],
     [
       { continue: false, startChat: false },

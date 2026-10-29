@@ -89,6 +89,39 @@ describe('MessageContent projected runtime-error translation (#765 A1)', () => {
     },
   );
 
+  // The open read can land after the transcript first renders: the memoized
+  // bubble must re-render on a changed answer.
+  test('a reloaded bubble picks up an open read that lands after its first render', async () => {
+    const part = {
+      type: 'text',
+      content: `⚠️ ${RAW_MESSAGE}`,
+      runtimeError: true,
+      runtimeErrorCode: 'engine-session-binding-dead',
+    };
+    const props = {
+      contentParts: [part as any],
+      textContent: '',
+      chatFontSize: 14,
+      showReasoning: false,
+      showToolDetails: false,
+      isStreamingMessage: false,
+    };
+    const { container, rerender } = render(<MessageContent {...props} />);
+    await waitFor(() =>
+      expect(container.textContent).toContain('Send your message again'),
+    );
+    rerender(
+      <MessageContent
+        {...props}
+        callerAccess={{ continue: false, startChat: false }}
+      />,
+    );
+    await waitFor(() =>
+      expect(container.textContent).not.toContain('Send your message again'),
+    );
+    expect(container.textContent).toMatch(/engine session was lost/i);
+  });
+
   test('an uncoded runtime-error part keeps its verbatim engine prose', async () => {
     const { container } = renderPart({
       type: 'text',

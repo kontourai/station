@@ -1384,6 +1384,10 @@ function ChatMessageListComponent({
       }).length,
     [activeSession.pendingApprovals, activeSession.answeredApprovals],
   );
+  const callerContinue =
+    activeSession.conversationOpenState?.callerAccess?.continue;
+  const callerStartChat =
+    activeSession.conversationOpenState?.callerAccess?.startChat;
   const bubbleSession: MessageBubbleSession = useMemo(
     () => ({
       id: activeSession.id,
@@ -1391,7 +1395,12 @@ function ChatMessageListComponent({
       agentName: activeSession.agentName,
       projectSlug: activeSession.projectSlug,
       conversationId: activeSession.conversationId,
-      callerAccess: activeSession.conversationOpenState?.callerAccess,
+      // Rebuilt from its two values (see the deps): each open read returns a
+      // new object, and identity would re-render every bubble on every read.
+      callerAccess:
+        callerContinue === undefined || callerStartChat === undefined
+          ? undefined
+          : { continue: callerContinue, startChat: callerStartChat },
       messageCount: messages.length,
       isThinking: activeSession.isThinking,
       pendingApprovalCount: waitingApprovalCount,
@@ -1415,7 +1424,8 @@ function ChatMessageListComponent({
       activeSession.agentName,
       activeSession.projectSlug,
       activeSession.conversationId,
-      activeSession.conversationOpenState?.callerAccess,
+      callerContinue,
+      callerStartChat,
       activeSession.isThinking,
       waitingApprovalCount,
       statusShownElsewhere,

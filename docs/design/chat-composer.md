@@ -329,12 +329,18 @@ terminal-session and error-card New chat and Switch agent actions, the
 refused queued turn's New chat, the workspace-refused composer's Start new
 chat (the composer is then disabled with "This chat can only continue in its
 original workspace, and you can't start a new chat here."), and Enable it in
-a new chat. Error hints follow one rule on every surface that shows them (the
-error card, the reply bubble live and after a reload, and the send-failure
-notice): a hint recommending something this caller was refused (sending again,
-Continue, a new chat, another agent) is replaced by a hand-written
-alternative, or dropped. A read-only verdict says only "Retry resolution to
-check again." A session
+a new chat. Error hints follow one default-deny rule on every chat error copy
+surface (the error card, the reply bubble live and after a reload, and the
+send-failure notice). Full access sees each hint unchanged. A caller refused a
+send or a new chat sees only a hint the error's translation declares for that
+kind of caller (a hand-written alternative, or the hint itself where it asks
+for nothing the caller lacks); any other hint is not shown. A declared hint
+never recommends something that caller was refused, and an unconfirmed session
+start keeps its "Station may already have started this session" warning for
+every caller. The live bubble's hint is fixed when the error arrives and
+refreshes when the chat reloads. Not covered: the approval-delivery failure
+line on a tool call, which has its own copy. A read-only verdict says only
+"Retry resolution to check again." A session
 that cannot take another message (`terminalSession`) offers Send again to no
 caller. A failed retry from the picker keeps the last answer for that
 conversation. Not gated: the app-wide New chat entry points (toolbar,

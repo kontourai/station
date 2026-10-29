@@ -67,17 +67,19 @@ export interface ChatErrorTranslation {
    */
   retryable?: boolean;
   /**
-   * Hand-written hints for a caller the server's open read refused part of
-   * what `hint` recommends (`callerAccess`): `noSend` when it may not send
-   * here (`continue === false`), `noNewChat` when it may not start a chat
-   * (`startChat === false`), `neither` when both. `null` means no hint. An
-   * unset key means `hint` recommends nothing that caller lacks, so it
-   * stands. Read through {@link chatErrorHintFor}, never directly.
+   * The hints a RESTRICTED caller may see, declared per kind: `noSend` when
+   * the server's open read refused it a send here (`continue === false`),
+   * `noNewChat` when it refused it a new chat (`startChat === false`),
+   * `neither` when both. A string is a hand-written hint for that kind;
+   * `true` declares `hint` itself safe for it; `null` or no entry means no
+   * hint. Default-deny: a hint nobody declared safe for a kind is never shown
+   * to that kind. Full access is unaffected. Read through
+   * {@link chatErrorHintFor}, never directly.
    */
   callerHints?: {
-    noSend?: string | null;
-    noNewChat?: string | null;
-    neither?: string | null;
+    noSend?: string | true | null;
+    noNewChat?: string | true | null;
+    neither?: string | true | null;
   };
   /**
    * True when the raw engine message should be available behind a Details
@@ -246,6 +248,7 @@ const STREAM_BODY_ENDED_TRANSLATION: ChatErrorTranslation = {
   title: 'The reply stream ended early',
   body: 'This Station’s connection returned an incomplete response instead of a reply, so nothing more arrived for this turn.',
   hint: 'This can be temporary — if it keeps happening, check this Station’s connection and credentials.',
+  callerHints: { noSend: true, noNewChat: true, neither: true },
   disclosureRaw: true,
 };
 
@@ -375,6 +378,14 @@ export function translateChatError(
           ? "The chat didn't start"
           : translated.title,
       hint: 'Station may already have started this session. Check it before sending again.',
+      // Its own declaration, replacing the inner cause's: the warning is the
+      // point of this branch and is never traded for a resend suggestion. A
+      // caller who may not send keeps the fact without "before sending".
+      callerHints: {
+        noNewChat: true,
+        noSend: 'Station may already have started this session.',
+        neither: 'Station may already have started this session.',
+      },
     };
   }
 
@@ -389,7 +400,7 @@ export function translateChatError(
         text ||
         'This session has already ended, so it cannot take another message.',
       hint: 'Start a new chat to continue.',
-      callerHints: { noNewChat: null, neither: null },
+      callerHints: { noSend: true, noNewChat: null, neither: null },
       terminalSession: true,
     };
   }
@@ -480,7 +491,7 @@ export function translateChatError(
       title: 'The engine ran out of memory',
       body: text,
       hint: 'Continue picks the task up where it stopped.',
-      callerHints: { noSend: null, neither: null },
+      callerHints: { noNewChat: true, noSend: null, neither: null },
       retryable: false,
     };
   }
@@ -543,7 +554,7 @@ export function translateChatError(
       title: "Can't resume",
       body: text || 'Unsafe workspace.',
       hint: 'New chat.',
-      callerHints: { noNewChat: null, neither: null },
+      callerHints: { noSend: true, noNewChat: null, neither: null },
       terminalSession: true,
     };
   }
@@ -555,6 +566,7 @@ export function translateChatError(
       title: 'This turn did not complete',
       body: 'The engine reported an error for this turn.',
       hint: 'Open Details if you want the engine message.',
+      callerHints: { noSend: true, noNewChat: true, neither: true },
       disclosureRaw: true,
     };
   }
@@ -577,10 +589,11 @@ export function translateChatError(
       callerHints:
         classifiedReason[1] === 'rejected the credentials'
           ? {
+              noNewChat: true,
               noSend: "The model connection's credentials need checking.",
               neither: "The model connection's credentials need checking.",
             }
-          : { noSend: null, neither: null },
+          : { noNewChat: true, noSend: null, neither: null },
     };
   }
 
@@ -602,10 +615,12 @@ export function translateChatError(
       // Signing in lets the engine run later turns; it does not resend this
       // one, and without a new chat this conversation is where they go.
       callerHints: {
+        noSend: true,
         noNewChat:
           "Signing in from the engine's page in Connections lets this engine run again. It does not resend this message.",
+        // No "resend" even in the negative: this caller cannot send at all.
         neither:
-          "Signing in from the engine's page in Connections lets this engine run again. It does not resend this message.",
+          "Signing in from the engine's page in Connections lets this engine run again. This message is not delivered by signing in.",
       },
       retryable: false,
     };
@@ -616,7 +631,7 @@ export function translateChatError(
       title: 'This turn did not complete',
       body: 'The Station agent could not finish this turn.',
       hint: 'Your message was kept — send it again to retry.',
-      callerHints: { noSend: null, neither: null },
+      callerHints: { noNewChat: true, noSend: null, neither: null },
     };
   }
 
@@ -636,7 +651,7 @@ export function translateChatError(
       body: 'The engine could not reopen the native session behind this conversation, so this turn failed.',
       hint: 'Send your message again — the conversation continues in a fresh engine session — or start a new chat.',
       callerHints: {
-        noSend: 'Start a new chat to continue.',
+        noSend: null,
         noNewChat:
           'Send your message again — the conversation continues in a fresh engine session.',
         neither: null,
@@ -765,7 +780,7 @@ export function translateChatError(
     // archive#3299: the fallback classified nothing, so it must not assert
     // that retrying helps \u2014 that is a claim about a cause it does not know.
     hint: 'Retrying may help if this was a temporary failure.',
-    callerHints: { noSend: null, neither: null },
+    callerHints: { noNewChat: true, noSend: null, neither: null },
   };
 }
 
@@ -812,12 +827,12 @@ export const MEMORY_EXHAUSTION_CONTINUE_TEXT =
   'Continue the task from where it stopped.';
 
 /**
- * The hint to show THIS caller. One rule for every surface (the error card,
- * the reply bubble live and reloaded, the send-failure notice): when the
- * server's open read refused the caller sending here (`continue === false`)
- * or starting a chat (`startChat === false`), the translation's hand-written
- * `callerHints` alternative for that case replaces `hint`. Unknown access
- * shows the full hint; the server still enforces.
+ * The hint to show THIS caller. One rule for every chat error copy surface
+ * (the error card, the reply bubble live and reloaded, the send-failure
+ * notice). Full access (no answer, or both halves allowed) sees `hint`. A
+ * caller the server's open read refused a send (`continue === false`) or a
+ * new chat (`startChat === false`) sees ONLY what the translation declares
+ * for its kind in `callerHints`; anything undeclared shows no hint.
  */
 export function chatErrorHintFor(
   translation: ChatErrorTranslation,
@@ -825,14 +840,13 @@ export function chatErrorHintFor(
 ): string | undefined {
   const noSend = callerAccess?.continue === false;
   const noNewChat = callerAccess?.startChat === false;
-  if (!translation.callerHints || (!noSend && !noNewChat))
-    return translation.hint;
-  const alternative =
-    translation.callerHints[
+  if (!noSend && !noNewChat) return translation.hint;
+  const declared =
+    translation.callerHints?.[
       noSend && noNewChat ? 'neither' : noSend ? 'noSend' : 'noNewChat'
     ];
-  if (alternative === undefined) return translation.hint;
-  return alternative ?? undefined;
+  if (declared === true) return translation.hint;
+  return declared ?? undefined;
 }
 
 /**

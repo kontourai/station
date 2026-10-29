@@ -799,7 +799,9 @@ describe('ChatDockBody marker actions follow callerAccess', () => {
   test.each([
     ['full', ['Send again'], true, true],
     ['noNewChat', ['Send again'], true, false],
-    ['noSend', [], false, true],
+    // No action and no hint: the card offers this caller nothing, so the hint
+    // must not suggest a new chat it does not offer.
+    ['noSend', [], false, false],
     ['readOnly', [], false, false],
   ] as const)(
     'a lost engine session offers %s caller %j (hint names send=%s, new chat=%s)',

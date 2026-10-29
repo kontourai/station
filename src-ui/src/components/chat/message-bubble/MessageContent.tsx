@@ -358,7 +358,11 @@ function areMessageContentPropsEqual(
     previous.showToolDetails === next.showToolDetails &&
     previous.isStreamingMessage === next.isStreamingMessage &&
     previous.foldWork === next.foldWork &&
-    previous.onToolApproval === next.onToolApproval
+    previous.onToolApproval === next.onToolApproval &&
+    // By value: an open read that lands later must refresh a reloaded error
+    // part's hint, but a new object with the same answer must not re-render.
+    previous.callerAccess?.continue === next.callerAccess?.continue &&
+    previous.callerAccess?.startChat === next.callerAccess?.startChat
   );
 }
 
