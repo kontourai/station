@@ -144,6 +144,13 @@ jobs:
       - run: npm run dependencies:ci
         timeout-minutes: 15
 
+      - name: Restore trusted Chromium cache
+        if: ${{ steps.mode.outputs.legacy == 'true' }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        continue-on-error: true
+        with:
+          path: ~/.cache/ms-playwright
+          key: station-playwright-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
       - name: Install Chromium for changed-set touch-target checks
         if: ${{ steps.mode.outputs.legacy == 'true' }}
         timeout-minutes: 20
@@ -331,6 +338,13 @@ jobs:
 
       # Same provisioning as fast-checks-statics: the selection can include
       # real-Chromium touch-target checks (station#3513).
+      - name: Restore trusted Chromium cache
+        if: ${{ steps.slice.outputs.empty == 'false' }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        continue-on-error: true
+        with:
+          path: ~/.cache/ms-playwright
+          key: station-playwright-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
       - name: Install Chromium for changed-set touch-target checks
         if: ${{ steps.slice.outputs.empty == 'false' }}
         timeout-minutes: 20
@@ -453,7 +467,14 @@ jobs:
       # (not silently skip) without a browser, redding every affected PR.
       # `playwright install` is called directly so the exported path wins
       # over install:playwright's node_modules pin. Bounded + retried per
-      # #3517. Hosted runners are ephemeral, so this installs every job.
+      # #3517. A main-only Nightly warms the version-bound cache; installation
+      # still runs so a miss or incomplete cache cannot bypass provisioning.
+      - name: Restore trusted Chromium cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        continue-on-error: true
+        with:
+          path: ~/.cache/ms-playwright
+          key: station-playwright-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
       - name: Install Chromium for changed-set touch-target checks
         timeout-minutes: 20
         run: |

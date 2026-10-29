@@ -4,9 +4,11 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
@@ -137,6 +139,80 @@ describe('Vitest corpus runner', () => {
       }),
     ).rejects.toThrow(/has no discovered tests/);
   });
+
+  it.each(['collection', 'body', 'afterEach'])(
+    'retains observed %s delay from the real exclusive child without changing its result',
+    async (phase) => {
+      const root = makeTempDir('corpus-lifecycle-');
+      const repo = resolve(import.meta.dirname, '../..');
+      symlinkSync(
+        resolve(repo, 'node_modules'),
+        resolve(root, 'node_modules'),
+        process.platform === 'win32' ? 'junction' : 'dir',
+      );
+      mkdirSync(resolve(root, 'scripts'));
+      const reporterUrl = pathToFileURL(
+        resolve(repo, 'scripts/vitest-inflight-reporter.mjs'),
+      ).href;
+      writeFileSync(
+        resolve(root, 'scripts/vitest-inflight-reporter.mjs'),
+        `import Reporter from ${JSON.stringify(reporterUrl)};
+export default class extends Reporter {
+  constructor() { super({ intervalMs: 25 }); }
+}`,
+      );
+      writeFileSync(
+        resolve(root, 'vitest.config.mjs'),
+        `export default { test: { include: ['phase.test.ts'], testTimeout: 2000, hookTimeout: 2000, cache: false } };`,
+      );
+      writeFileSync(
+        resolve(root, 'phase.test.ts'),
+        `import { afterEach, expect, test } from 'vitest';
+const delay = () => new Promise(resolve => setTimeout(resolve, 300));
+${phase === 'collection' ? 'await delay();' : ''}
+${phase === 'afterEach' ? 'afterEach(delay);' : ''}
+test('private-case-content-must-not-appear-in-progress', async () => {
+  ${phase === 'body' ? 'await delay();' : ''}
+  expect(2 + 2).toBe(4);
+});`,
+      );
+      const result = await runVitestGroup(
+        VITEST_CORPUS_GROUPS[2],
+        ['phase.test.ts'],
+        { root },
+      );
+      expect(result.error).toBeNull();
+      expect(result.status).toBe(0);
+      expect(result.passed).toBe(true);
+      expect(result.outputTruncated).toBe(false);
+      const progress = result.stdout
+        .split('\n')
+        .filter((line) => line.startsWith('[vitest-progress]'));
+      expect(progress.length).toBeGreaterThan(1);
+      expect(progress.join('\n')).not.toContain('private-case-content');
+      expect(progress.some((line) => line.includes('elapsedMs='))).toBe(true);
+      if (phase === 'collection') {
+        expect(
+          progress.some((line) =>
+            /phase\.test\.ts \{stage=queued; elapsedMs=[1-9]\d*/.test(line),
+          ),
+        ).toBe(true);
+      } else if (phase === 'body') {
+        expect(
+          progress.some((line) =>
+            /stage=running;.*cases=(?!unknown)[^;]+; hooks=unknown/.test(line),
+          ),
+        ).toBe(true);
+      } else {
+        expect(
+          progress.some((line) => /hooks=afterEach@[1-9]\d*ms/.test(line)),
+        ).toBe(true);
+      }
+      expect(progress.at(-1)).toBe(
+        '[vitest-progress] final in-flight: unknown (no observed module; teardown unobserved)',
+      );
+    },
+  );
 
   it('runs groups in canonical order and fails fast on the first failure', async () => {
     const calls: string[] = [];
