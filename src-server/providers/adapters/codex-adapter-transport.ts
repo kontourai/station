@@ -193,6 +193,7 @@ export class CodexAdapterTransport {
     ) => void,
     private readonly onNotificationError?: (method: string) => void,
     private readonly onSessionExit?: (threadId: string) => void,
+    private readonly onStderr?: () => void,
   ) {}
 
   streamEvents(options?: {
@@ -255,18 +256,11 @@ export class CodexAdapterTransport {
     );
 
     const stderr = createInterface({ input: record.process.stderr });
+    let reportedStderr = false;
     stderr.on('line', (line) => {
-      if (!line.trim()) return;
-      this.publish({
-        eventId: crypto.randomUUID(),
-        provider: 'codex',
-        threadId: record.externalThreadId,
-        createdAt: this.now().toISOString(),
-        method: 'runtime.warning',
-        severity: 'warning',
-        message: 'Codex app-server emitted stderr output.',
-        code: 'codex-stderr',
-      });
+      if (!line.trim() || reportedStderr) return;
+      reportedStderr = true;
+      this.onStderr?.();
     });
 
     const workloadOutcome = childWorkloadOutcome(record.process);
