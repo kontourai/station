@@ -37,6 +37,7 @@ import { expectCanonicalSessionLifecycle } from './adapter-contract-test-utils.j
 import {
   CODEX_COLLAB_V1_CLIENT_INTERRUPT_UNBLOCKS_PARENT,
   CODEX_COLLAB_V1_PARENT_STOP_CASCADES_CHILDREN,
+  CODEX_COLLAB_V2_CLIENT_TURN_INTERRUPT,
   codexCaptureServerMessagesBeforeClientInterrupt,
 } from './codex-collab-fixtures.js';
 
@@ -2573,6 +2574,115 @@ describe('CodexAdapter', () => {
     const PARENT_TURN_ID = '00000000-0000-7000-8000-000000000002';
     const CHILD_ID = '00000000-0000-7000-8000-000000000004';
     const CHILD_TURN_ID = '00000000-0000-7000-8000-000000000005';
+
+    test('child steer targets only the owned active child and refuses stale or unknown targets', async () => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const threadId = 'thread-child-steer';
+      await replayCodexCollabPrefix(
+        adapter,
+        threadId,
+        CODEX_COLLAB_V1_CLIENT_INTERRUPT_UNBLOCKS_PARENT,
+      );
+      const before = processHandle.stdin.lines.length;
+      expect(
+        await adapter.steerChildWork(
+          threadId,
+          'unknown-child',
+          CHILD_TURN_ID,
+          'hello',
+        ),
+      ).toEqual({ outcome: 'no-active-task' });
+      expect(
+        await adapter.steerChildWork(threadId, CHILD_ID, 'old-turn', 'hello'),
+      ).toEqual({ outcome: 'no-active-task' });
+      expect(processHandle.stdin.lines).toHaveLength(before);
+      const pending = adapter.steerChildWork(
+        threadId,
+        CHILD_ID,
+        CHILD_TURN_ID,
+        'hello child',
+      );
+      await respondToLatestPendingRequest(adapter, threadId, {
+        turnId: CHILD_TURN_ID,
+      });
+      expect(await pending).toEqual({
+        outcome: 'steered',
+        turnId: CHILD_TURN_ID,
+      });
+      const requests = processHandle.stdin.lines.slice(before).map(parseLine);
+      expect(requests).toHaveLength(1);
+      expect(requests[0]).toMatchObject({
+        method: 'turn/steer',
+        params: {
+          threadId: CHILD_ID,
+          expectedTurnId: CHILD_TURN_ID,
+          input: [{ type: 'text', text: 'hello child', text_elements: [] }],
+        },
+      });
+      await adapter.stopAll();
+    });
+
+    test('v2 child refuses direct steer without sending an RPC', async () => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const threadId = 'thread-v2-child-steer';
+      await replayCodexCollabPrefix(
+        adapter,
+        threadId,
+        CODEX_COLLAB_V2_CLIENT_TURN_INTERRUPT,
+      );
+      const before = processHandle.stdin.lines.length;
+      expect(
+        await adapter.steerChildWork(
+          threadId,
+          CHILD_ID,
+          CHILD_TURN_ID,
+          'hello',
+        ),
+      ).toEqual({ outcome: 'unsupported' });
+      expect(processHandle.stdin.lines).toHaveLength(before);
+      await adapter.stopAll();
+    });
+
+    test('child steer reports an ended-turn rejection from Codex without retrying', async () => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const threadId = 'thread-child-steer-race';
+      await replayCodexCollabPrefix(
+        adapter,
+        threadId,
+        CODEX_COLLAB_V1_CLIENT_INTERRUPT_UNBLOCKS_PARENT,
+      );
+      const before = processHandle.stdin.lines.length;
+      const pending = adapter.steerChildWork(
+        threadId,
+        CHILD_ID,
+        CHILD_TURN_ID,
+        'hello',
+      );
+      await flushIo();
+      const record = (adapter as any).transport.requireSession(threadId);
+      const id = [...record.pendingRpcRequests.keys()].at(-1);
+      writeServerMessage(adapter, threadId, {
+        id,
+        error: { code: -32600, message: 'no active turn' },
+      });
+      expect(await pending).toEqual({ outcome: 'no-active-task' });
+      expect(
+        processHandle.stdin.lines
+          .slice(before)
+          .map(parseLine)
+          .map((message) => message.method),
+      ).toEqual(['turn/steer']);
+      await adapter.stopAll();
+    });
     // codex-0.155.1-collab-v1-parent-stop-cascades-children.jsonl: same
     // parent ids, two children — registered in this order (004 spawned
     // before 006 in the capture's own collabAgentToolCall spawnAgent items).

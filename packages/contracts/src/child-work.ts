@@ -403,7 +403,10 @@ export interface ChildWorkItem extends ChildWorkKey {
   startedAt?: string;
   endedAt?: string;
   /** A stop seam Station has actually wired for this child. */
-  controls?: { stop?: 'delegate-interrupt' | 'provider-task-stop' };
+  controls?: {
+    stop?: 'delegate-interrupt' | 'provider-task-stop';
+    steer?: { turnId: string };
+  };
 }
 
 export type ChildWorkDelta =
@@ -644,7 +647,22 @@ function normalizeItem(item: ChildWorkItem): ChildWorkItem {
   if (result) next.result = result;
   if (item.startedAt !== undefined) next.startedAt = item.startedAt;
   if (item.endedAt !== undefined) next.endedAt = item.endedAt;
-  if (item.controls?.stop) next.controls = { stop: item.controls.stop };
+  const turnId = item.controls?.steer?.turnId;
+  const steer =
+    item.status === 'running' &&
+    typeof turnId === 'string' &&
+    turnId.length > 0 &&
+    turnId.length <= 512 &&
+    turnId.trim() === turnId &&
+    new TextEncoder().encode(turnId).length <= 512
+      ? { turnId }
+      : undefined;
+  if (item.controls?.stop || steer) {
+    next.controls = {
+      ...(item.controls?.stop ? { stop: item.controls.stop } : {}),
+      ...(steer ? { steer } : {}),
+    };
+  }
   return next;
 }
 
@@ -753,11 +771,11 @@ function applySnapshot(
     if (listed.has(key)) continue;
     if (!changed) items = { ...items };
     // No settle reported this child's usage: what it has is a running figure.
-    items[key] = {
+    items[key] = normalizeItem({
       ...items[key],
       status: 'unresolved',
       ...(items[key].usage ? { usageProvisional: true as const } : {}),
-    };
+    });
     changed = true;
   }
   if (!changed) return state;
