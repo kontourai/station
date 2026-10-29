@@ -696,7 +696,7 @@ describe('Notification Routes', () => {
 
   describe('POST /:id/read (#2587)', () => {
     const CLIENT_SESSION = '3f2b8c1e-9a4d-4e6f-8b2a-1c3d5e7f9a0b';
-    const envelope: NotificationEnvelopeV1 = {
+    const envelope = {
       v: 1,
       source: {
         kind: 'agent',
@@ -707,7 +707,7 @@ describe('Notification Routes', () => {
       audience: { kind: 'session-readers', sessionId: 'session-1' },
       urgency: 'done',
       interrupt: 'default',
-    };
+    } satisfies NotificationEnvelopeV1;
 
     function withDevice(deviceId: string) {
       const outer = new Hono();
