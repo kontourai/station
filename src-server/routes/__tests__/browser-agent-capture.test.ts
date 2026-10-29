@@ -416,13 +416,13 @@ async function harness(
             resolver: {
               resolveFfmpeg: async () => {
                 await options.beforeResolveFfmpeg?.();
-                return mediaReady
+                return mediaReady || options.encoderPath
                   ? {
                       status: 'ready',
                       origin: 'host',
                       paths: {
                         ffmpeg: options.encoderPath ?? ffmpeg!,
-                        ffprobe: ffprobe!,
+                        ffprobe: ffprobe ?? join(home, 'unused-ffprobe'),
                       },
                     }
                   : { status: 'unsupported-platform', platform: 'test' };
@@ -946,7 +946,12 @@ test.skipIf(!mediaReady)(
 );
 
 test('recording refuses storage inside a registered Project workspace before streaming', async () => {
-  const h = await harness({ recording: true, storageInRepository: true });
+  const h = await harness({
+    recording: true,
+    storageInRepository: true,
+    // Storage admission must refuse before any stream or encoder is opened.
+    encoderPath: join(temporary('station-unused-encoder-'), 'ffmpeg'),
+  });
   const result = await h.record();
   expect(result).toMatchObject({
     ok: false,
