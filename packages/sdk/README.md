@@ -51,13 +51,6 @@ include it in their export map. The package still has its existing React peers.
 
 ## Installation
 
-The local `/client` also exports delegation-group HTTP and SSE clients. They
-carry explicit server preparation/operation identities, keep group revisions
-separate from member sequence cursors, and reuse protected HTTP transport.
-The matching server routes are not mounted in this increment; paid execution
-and publication remain unverified. See the exact signatures and limits in
-[group transport](../../docs/reference/sdk.md#delegation-group-transport).
-
 ```bash
 npm install @kontourai/station-sdk
 ```

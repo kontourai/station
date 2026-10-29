@@ -213,11 +213,7 @@ frontier; Ctrl-C requests interruption without proving physical termination.
 
 This path uses existing Station permissions and confinement. Portable Flow
 lineage is unbound; dollar, token and physical-attempt caps remain unavailable.
-The separate `station group create|get|list|run|cancel|events|member-events|member-output`
-transport requires server-issued preparation for creation; its hard-cap API
-routes remain unmounted. See [group commands](../../docs/reference/cli.md#group) for inputs,
-qualified runtime limits and revision-bound evidence. Source command presence
-does not establish publication or compatibility with an older Station.
+See [group commands](../../docs/reference/cli.md#group) for inputs and qualified runtime limits. Source command presence does not establish publication or compatibility with an older Station.
 
 ## Advisory report groups
 

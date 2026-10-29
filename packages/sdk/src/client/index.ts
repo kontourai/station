@@ -42,7 +42,6 @@ export * from './cli-session-groups';
 export { setClientOriginResolver } from './client-origin.js';
 export * from './cloud-move';
 export * from './conversations';
-export * from './delegation-groups';
 export * from './delegations';
 export * from './ensembles';
 export * from './execution';

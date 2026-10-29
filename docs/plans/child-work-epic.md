@@ -5,6 +5,17 @@ master consolidation in #3991. It starts at published
 `d96f54887837be058c5e5119b8028daab0befea1`. Merge subsequent master/main
 normally before publication. Open one PR when the combined work is ready.
 
+## Portable delegation-group source split (#91)
+
+The unfinished portable delegation-group CLI, SDK transport, contract shapes,
+route, runtime and exclusive binding owners are retained at
+`archive/portable-groups-unsplit-15d0352a40b` (commit
+`15d0352a40bced0c7826efb316b17c39fbc82190`). They are NOT DELIVERED on
+this branch. The public `delegationGroups` capability remains false.
+Production preparation, current V2 grant binding, Flow host callbacks and
+qualified physical execution remain open under #91. Shared report and CLI
+session-group owners remain in use; this split does not complete the epic.
+
 ## Latest source checkpoint
 
 At `1973398083f`, the branch includes main through `8fa16170bed` by normal
@@ -1273,8 +1284,8 @@ It does not qualify live provider execution or complete #91.
 
 ## Remaining qualification
 
-Local group transport includes the shared Station contract, SDK HTTP/SSE
-clients and registered CLI commands. Independent reviews closed the original
+At the historical checkpoints below, local group transport included the Station contract, SDK HTTP/SSE
+clients and registered CLI commands; that unfinished portable unit is now retained at the source split pin above. Independent reviews closed the original
 nine transport findings, retained event-identity reuse, and the additional
 UTF-8 identity-history byte bound. The provider quote/raw-usage validator has
 independently reviewed per-attempt thinking and supplied-count checks, but no

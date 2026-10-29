@@ -73,15 +73,9 @@ artifact or permission to read an arbitrary path.
 
 ## Subpaths without a reference section
 
-The local `/delegation-group` export owns Station group transport metadata,
-command inputs, bounded pages, explicit unavailable items and raw JSON output
-references. It also carries the separate CLI session-group views and logical
-reserved-start allowance; those views explicitly mark fiscal and physical-attempt
-caps unavailable. It does not copy Flow's authority schema or issue a grant.
-The Flow-authorized API group routes and paid execution remain unactivated;
-the CLI session-group path is a separate controlled consumer. An exported type
-does not establish runtime support or package publication. See
-[SDK group transport](../../docs/reference/sdk.md#delegation-group-transport).
+The local `/delegation-group` export owns CLI session-group views and their
+logical reserved-start allowance. Fiscal and physical-attempt caps remain
+unavailable; these shapes issue no portable execution grant.
 
 The [contracts reference](../../docs/reference/contracts.md) documents most
 domains. These subpaths are exported but not described there yet; each line

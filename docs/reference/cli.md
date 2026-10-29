@@ -539,7 +539,7 @@ deadline would abandon healthy work:
 | `flow attach-command` | Runs a gate command server-side; bounded by its own `--timeout-ms`. |
 | `group session-run` / `group session-sync` | Supervision uses the server's absolute deadline and caller cancellation; the SDK disables its ordinary client request timeout. |
 | `group report-create` / `report-cancel` / `report-finalize-cancel` / `report-sync` / `report-finalize-sync` / `report-recover` | Explicit paid execution, cancellation and accounting recovery operations use caller cancellation; creation retains its server deadline and unknown outcomes never authorize resend. |
-| `group events` / `session-events` / `report-events` with `--follow` | Observation streams have no overall deadline; SIGINT closes observation without sending cancellation. |
+| `group session-events` / `report-events` with `--follow` | Observation streams have no overall deadline; SIGINT closes observation without sending cancellation. |
 | `start`/`build` readiness probes | Already enforce their own startup deadlines. |
 
 Report accounting recovery uses `recoverReportGroupAccounting(base, groupId,
@@ -1481,46 +1481,7 @@ receipt is retrospective replay. At `27fafa8d48b6`, the SDK event stream was
 subscribed before a fresh mixed group started and delivered its question before
 the exact-event answer, then all three authored outputs and initial completions.
 An invalid credential on the SSE endpoint returned 401. These revision-bound source checks do not
-qualify every runtime, packaged identity, billing or a published client. The
-following legacy group transport commands remain separate.
-
-The local CLI has group transport commands. They require a serving Station with
-the corresponding group routes; this checkout has not mounted the hard-cap API group routes or
-enabled bounded paid execution. A client command is not a capability probe or
-permission to launch. Group preparation IDs must come from a server owner.
-The public handshake currently advertises `delegationGroups: false`; an absent
-flag on an older receiver also means unsupported. These commands do not infer
-support from single delegation or automatically negotiate the group flag.
-
-```bash
-station group get <group-id> --json
-station group list --after-group=<cursor> --json
-station group events <group-id> --after-revision=0 --follow --json
-station group member-events <group-id> <seat-id> --after-sequence=0 --follow --json
-station group member-output <group-id> <seat-id> --json
-station group create --preparation=<id> --operation=<id> --json
-station group run <group-id> --operation=<id> --revision=<expected-revision> --json
-station group cancel <group-id> --operation=<id> --revision=<expected-revision> --json
-```
-
-Use the standard Station target and credential flags. Commands print terminal-safe
-JSON. Writes require explicit operation IDs, and run/cancel require an expected
-group revision. A lost response does not authorize another operation or an
-automatic resend. Group-event revisions and member-event sequence numbers are
-different cursor domains. Follow mode uses the SDK's authenticated SSE transport;
-Ctrl-C closes local observation and does not cancel the group. Normal stream
-rotation and transient transport failures reconnect; terminal authority or protocol
-failures end follow mode with an error. With `--json`, HTTP failures retain their
-status and received refusal code in structured output. Server refusal, unknown
-usage, completion, and Flow acceptance must remain distinct. Package publication
-and real execution through this separate hard-cap transport remain unverified.
-
-A member follow subscription stops explicitly at 4,096 identities or 1 MiB of
-retained identity UTF-8 bytes, rather than forgetting earlier identities. Treat that as an observation
-limit, not completion or permission to repeat execution.
-
-Source: `packages/cli/src/commands/group.ts`; focused caller evidence:
-`packages/cli/src/__tests__/group.test.ts`.
+qualify every runtime, packaged identity, billing or a published client.
 
 ### `delegate`
 
