@@ -20,6 +20,7 @@ const ALLOWED_RAW_LOCAL_STORAGE_KEYS = [
   'station.switcher.recent', // Derived MRU of saved Station ids for switcher ordering (bounded to 20), not a setting.
   'station-device-settings-v1', // The versioned device-settings envelope itself.
   'station.activity.snoozed', // Per-work-item snooze state, not a setting.
+  'station.inbox.dismissed.v1', // Bounded per-conversation inbox visibility state, not a setting.
   'station.activity.terminalSince', // Terminal activity cursor.
   'station-attached-session-continuations-v1', // Exact Attached Session continuation evidence.
   'station-browser-relay-account-scope-event-v1', // Transient cross-tab relay account-scope signal; written and removed, never a setting or credential.
