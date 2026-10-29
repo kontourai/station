@@ -851,8 +851,9 @@ gets a new identity. An agent-wide opt-in is the agent's
 `tools.unattendedAutoApprove` list ([Unattended runs](agent-configuration.md#unattended-runs));
 `tools.autoApprove` patterns such as `station-control_*` cover attended chat.
 Use `get_job_logs` or the Runs surface to observe runs in your conversation.
-Runs recorded before target provenance was added are available only to the
-creator who can read the job’s current target.
+Runs recorded before target provenance was added are available to the creator
+who can read the current target, or to the local operator for a creatorless,
+untargeted job. Agents cannot read those older runs.
 
 ### After a usage limit
 

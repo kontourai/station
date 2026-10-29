@@ -166,7 +166,7 @@ export interface ConversationAutomation {
   readonly nextRun?: string;
   readonly lastRun?: string;
   readonly lastSuccessAt?: string;
-  readonly consecutiveFailures: number;
+  readonly consecutiveFailures?: number;
 }
 
 /** A conversation's agent-scheduled items, as the chat shows them. */

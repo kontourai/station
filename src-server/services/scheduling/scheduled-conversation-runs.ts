@@ -448,6 +448,8 @@ export function conversationAutomationsFrom(
       ...(job.nextRun ? { nextRun: job.nextRun } : {}),
       ...(job.lastRun ? { lastRun: job.lastRun } : {}),
       ...(job.lastSuccessAt ? { lastSuccessAt: job.lastSuccessAt } : {}),
-      consecutiveFailures: job.consecutiveFailures ?? 0,
+      ...(job.consecutiveFailures === undefined
+        ? {}
+        : { consecutiveFailures: job.consecutiveFailures }),
     }));
 }

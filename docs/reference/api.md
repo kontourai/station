@@ -4528,7 +4528,8 @@ the owning provider. `providerId` can select the provider explicitly; count
 defaults to 20. These are provider run-log records, not arbitrary server log
 files. Run logs and output use the target recorded when each run was claimed,
 not a job's later target. For old runs without a recorded target, only the
-creator who can read the current target can read them; agents cannot. A
+creator who can read the current target can read them; agents cannot. The local
+operator retains access to older runs of creatorless, untargeted jobs. A
 nonexistent or inaccessible job returns 404. See the
 [automation decision](../decisions/automations-unify-schedules.md#rules).
 

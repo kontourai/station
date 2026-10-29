@@ -73,7 +73,13 @@ that proposed it, so an approved job runs on that chat's own engine.
   Run-derived job fields are withheld when they would combine unreadable runs,
   and statistics count only readable runs. Older runs with no recorded target
   are readable only by the job's creator who can also read its current target;
-  agents cannot read those runs.
+  agents cannot read those runs. For a creatorless, untargeted legacy job,
+  the local operator retains access to those records.
+- **Notifications.** Scheduler failure, fatigue and monitor notifications use
+  generic public text and no job-specific metadata, including older stored
+  notifications. Scheduler notices have no durable conversation audience, so
+  this also applies to untargeted jobs and readers who could see the job.
+  Read the admitted job or run for details.
 - **Creator.** `createdBy` is set when the automation is created (or when a
   job without one gains a target) and never changed by an edit. There is no
   ownership transfer: to act as someone else, that person creates their own.

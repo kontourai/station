@@ -49,7 +49,11 @@ import {
 } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { createStationControlMcpRoutes } from '../../routes/mcp/station-control-mcp-route.js';
-import { createSchedulerRoutes } from '../../routes/operations/scheduler.js';
+import { createNotificationRoutes } from '../../routes/operations/notifications.js';
+import {
+  createSchedulerReadProjection,
+  createSchedulerRoutes,
+} from '../../routes/operations/scheduler.js';
 import {
   createAgentScheduleRoutes,
   WAKE_UP_NEEDS_APPROVAL_COPY,
@@ -77,6 +81,7 @@ import {
   LOCAL_OPERATOR_PRINCIPAL_ID,
   principalForRecordedSessionOwner,
 } from '../../services/identity/principal-resolver.js';
+import { NotificationService } from '../../services/notifications/notification-service.js';
 import {
   type AgentScheduleStore,
   AgentWakeUpDelivery,
@@ -84,7 +89,7 @@ import {
   wakeUpClientTurnId,
   wakeUpMessage,
 } from '../../services/orchestration/agent-schedule.js';
-import type { EventBus } from '../../services/orchestration/event-bus.js';
+import { EventBus } from '../../services/orchestration/event-bus.js';
 import { RunService } from '../../services/orchestration/run-service.js';
 import {
   createSqliteThreadInboxStore,
@@ -92,6 +97,7 @@ import {
   type ThreadInboxStore,
 } from '../../services/orchestration/thread-inbox.js';
 import type { ScheduledConversationRunInput } from '../../services/scheduling/scheduled-conversation-runs.js';
+import { conversationAutomationsFrom } from '../../services/scheduling/scheduled-conversation-runs.js';
 import { createSchedulerLedger } from '../../services/scheduling/scheduler-ledger.js';
 import { SchedulerService } from '../../services/scheduling/scheduler-service.js';
 import { STATION_CONTROL_CALLER_TOKEN_HEADER } from '../../tools/station-control-shared.js';
@@ -215,6 +221,7 @@ async function boot(options: {
   hosted: boolean;
   /** A real scheduler instead of the create-only stub. */
   scheduler?: SchedulerService;
+  notifications?: NotificationService;
   /**
    * The guard's grant-store answer. Production answers false for a job that
    * holds no unattended grants (conversation runs need none); absent, the
@@ -248,7 +255,7 @@ async function boot(options: {
   const addJob = vi.fn(
     async (opts: { name: string }) => `Job '${opts.name}' created`,
   );
-  const composition = composeAgentSchedule({
+  const composition: AgentScheduleComposition = composeAgentSchedule({
     store,
     threadInbox: options.hosted
       ? undefined
@@ -289,12 +296,20 @@ async function boot(options: {
       if (!facts.agents.has(slug)) throw new Error('no such agent');
       return facts.agents.get(slug) ?? undefined;
     },
-    conversationAutomations: async (conversationId) =>
-      (facts.automations.get(conversationId) ?? []).map((name) => ({
-        name,
-        enabled: true,
-        consecutiveFailures: 0,
-      })),
+    conversationAutomations: async (conversationId, c) =>
+      options.scheduler
+        ? conversationAutomationsFrom(
+            await createSchedulerReadProjection(
+              options.scheduler,
+              composition,
+            ).visibleJobs(c),
+            conversationId,
+          )
+        : (facts.automations.get(conversationId) ?? []).map((name) => ({
+            name,
+            enabled: true,
+            consecutiveFailures: 0,
+          })),
     logger: quietLogger(),
     now: () => clock.now,
   });
@@ -362,6 +377,15 @@ async function boot(options: {
       },
     ),
   );
+  if (options.notifications)
+    app.route(
+      '/notifications',
+      createNotificationRoutes(options.notifications, {
+        readAuthorityForRequest: () =>
+          ({ mode: 'personal', userId: LOCAL_OPERATOR_PRINCIPAL_ID }) as never,
+        canReadSession: (sessionId) => !facts.mayNotRead.has(sessionId),
+      }),
+    );
   if (options.scheduler) {
     const runService = new RunService(
       {
@@ -2531,4 +2555,216 @@ describe('acting on an automation is admitted against its stored target', () => 
       }
     },
   );
+  test('inaccessible targeted failure must not leak through notifications', async () => {
+    const directory = makeTempDir('round2-notifications-');
+    const bus = new EventBus();
+    const frames: unknown[] = [];
+    bus.subscribe((frame) => frames.push(frame));
+    const notifications = new NotificationService(bus, directory, 999_999);
+    const scheduler = new SchedulerService({
+      logger: quietLogger(),
+      builtin: {
+        ledger: createSchedulerLedger({ directory }),
+        turnAdapter: { invoke: vi.fn() },
+        notificationService: notifications,
+        conversationRuns: {
+          run: async () => ({
+            kind: 'failed',
+            error: 'private prompt marker round2-secret',
+            conversationId: 'conv-victim',
+          }),
+        },
+      },
+    });
+    const served = await boot({
+      hosted: false,
+      scheduler,
+      notifications,
+      retargetsGrantedJob: () => false,
+    });
+    try {
+      await scheduler.addJob({
+        name: 'private-job-name',
+        schedule: { kind: 'every', everyMs: 60_000 },
+        prompt: 'private prompt marker round2-secret',
+        target: { kind: 'conversation', conversationId: 'conv-victim' },
+        createdBy: { userId: 'victim-person' },
+      });
+      for (let index = 0; index < 5; index++)
+        await scheduler.runJob('private-job-name');
+      await notifications.schedule('scheduler', {
+        category: 'external-monitor',
+        title: 'private-job-name monitor',
+        body: 'round2-secret',
+        dedupeTag: 'monitor:private-job-name',
+        metadata: { jobName: 'private-job-name' },
+      });
+      facts.mayNotRead.add('conv-victim');
+      expect(
+        (
+          await personRequest(
+            'GET',
+            '/scheduler/jobs',
+            undefined,
+            served.baseUrl,
+          )
+        ).body.data,
+      ).toEqual([]);
+      expect(
+        (await personRequest('GET', '/api/runs', undefined, served.baseUrl))
+          .body.data,
+      ).toEqual([]);
+      const result = await personRequest(
+        'GET',
+        '/notifications',
+        undefined,
+        served.baseUrl,
+      );
+      expect(result.status).toBe(200);
+      expect(result.body.data.length).toBeGreaterThanOrEqual(7);
+      for (const projected of [result.body, frames]) {
+        expect(JSON.stringify(projected)).not.toContain('round2-secret');
+        expect(JSON.stringify(projected)).not.toContain('private-job-name');
+      }
+      expect(
+        result.body.data.map(
+          (notification: { title: string }) => notification.title,
+        ),
+      ).toContain('An automation failed');
+      expect(
+        result.body.data.map(
+          (notification: { title: string }) => notification.title,
+        ),
+      ).toContain('An automation monitor needs attention');
+    } finally {
+      await served.close();
+      await scheduler.stop();
+      await notifications.shutdown();
+    }
+  });
+
+  test('retargeted conversation schedule must not expose old chat run fields', async () => {
+    const world = await realWorld();
+    try {
+      await world.scheduler.runJob('victim-job');
+      await world.scheduler.editJob('victim-job', {
+        target: { kind: 'conversation', conversationId: 'conv-new' },
+      });
+      const filtered = await agent(
+        'bound',
+        'new',
+        'GET',
+        '/scheduler/jobs',
+        undefined,
+        world.at,
+      );
+      expect(filtered.body.data[0]).not.toHaveProperty('lastSuccessAt');
+      expect(filtered.body.data[0]).not.toHaveProperty('lastRunMs');
+      const result = await agent(
+        'bound',
+        'new',
+        'GET',
+        '/api/orchestration/agent-schedule/conv-new',
+        undefined,
+        world.at,
+      );
+      expect(result.status).toBe(200);
+      expect(result.body.data.automations[0]).not.toHaveProperty(
+        'lastSuccessAt',
+      );
+    } finally {
+      await world.close();
+    }
+  });
+
+  test('creatorless legacy job remains inspectable by the operator', async () => {
+    const world = await realWorld();
+    try {
+      await world.scheduler.addJob({
+        name: 'legacy',
+        schedule: { kind: 'every', everyMs: 60_000 },
+        prompt: 'legacy operator prompt',
+      });
+      await world.scheduler.runJob('legacy');
+      const db = new DatabaseSync(join(world.directory, 'scheduler.sqlite'));
+      db.prepare(
+        "UPDATE scheduler_logs SET data = json_remove(data, '$.runTarget') WHERE job_name = ?",
+      ).run('legacy');
+      db.close();
+      expect((await world.scheduler.getJobLogs('legacy')).length).toBe(1);
+      const jobs = await personRequest(
+        'GET',
+        '/scheduler/jobs',
+        undefined,
+        world.at.baseUrl,
+      );
+      expect(
+        jobs.body.data.find((job: any) => job.name === 'legacy').prompt,
+      ).toBe('legacy operator prompt');
+      const agentJobs = await agent(
+        'bound',
+        'victim',
+        'GET',
+        '/scheduler/jobs',
+        undefined,
+        world.at,
+      );
+      expect(
+        agentJobs.body.data.some((job: any) => job.name === 'legacy'),
+      ).toBe(false);
+      const result = await personRequest(
+        'GET',
+        '/scheduler/jobs/legacy/logs',
+        undefined,
+        world.at.baseUrl,
+      );
+      expect(result.status).toBe(200);
+      expect(result.body.data).toHaveLength(1);
+      const runs = await personRequest(
+        'GET',
+        '/api/runs?source=schedule',
+        undefined,
+        world.at.baseUrl,
+      );
+      const legacy = runs.body.data.find(
+        (run: { sourceId: string }) => run.sourceId === 'legacy',
+      );
+      expect(legacy).toBeDefined();
+      expect(
+        (
+          await personRequest(
+            'GET',
+            `/api/runs/${encodeURIComponent(legacy.runId)}`,
+            undefined,
+            world.at.baseUrl,
+          )
+        ).status,
+      ).toBe(200);
+      expect(legacy.outputRef).toBeDefined();
+      expect(
+        (
+          await personRequest(
+            'POST',
+            '/api/runs/output',
+            legacy.outputRef,
+            world.at.baseUrl,
+          )
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await agent(
+            'bound',
+            'victim',
+            'GET',
+            `/api/runs/${encodeURIComponent(legacy.runId)}`,
+            undefined,
+            world.at,
+          )
+        ).status,
+      ).toBe(404);
+    } finally {
+      await world.close();
+    }
+  });
 });

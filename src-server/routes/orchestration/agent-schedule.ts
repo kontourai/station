@@ -199,6 +199,7 @@ export interface AgentScheduleRoutesDeps {
    */
   conversationAutomations?(
     conversationId: string,
+    context: Context,
   ): Promise<readonly ConversationAutomation[]>;
   now?: () => number;
 }
@@ -491,7 +492,7 @@ export function createAgentScheduleRoutes(deps: AgentScheduleRoutesDeps) {
     }
     let automations: readonly ConversationAutomation[] | undefined;
     try {
-      automations = await deps.conversationAutomations?.(conversationId);
+      automations = await deps.conversationAutomations?.(conversationId, c);
     } catch {
       // The scheduler being unreadable is not "no automations": leave the
       // field out so the chat does not claim there are none.

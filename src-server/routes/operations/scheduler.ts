@@ -150,6 +150,73 @@ export type AutomationJobAdmission = (
       readonly error: string;
     };
 
+export function createSchedulerReadProjection(
+  schedulerService: SchedulerService,
+  options: {
+    mayReadAutomationJob?: (c: Context, job: SchedulerJob) => boolean;
+    mayReadAutomationRun?: (
+      c: Context,
+      job: SchedulerJob,
+      run: import('@kontourai/station-contracts/scheduler').SchedulerLogEntry,
+    ) => boolean;
+  },
+) {
+  const canReadJob = (c: Context, job: SchedulerJob) =>
+    options.mayReadAutomationJob
+      ? options.mayReadAutomationJob(c, job)
+      : !job.target;
+  const canReadRunSummary = (
+    c: Context,
+    job: SchedulerJob,
+    run: import('@kontourai/station-contracts/runs').RunSummary,
+  ) =>
+    options.mayReadAutomationRun
+      ? options.mayReadAutomationRun(c, job, {
+          id: '',
+          job: job.name,
+          startedAt: run.startedAt,
+          success: run.status === 'completed',
+          jobId:
+            typeof run.metadata?.jobId === 'string'
+              ? run.metadata.jobId
+              : undefined,
+          runTarget: run.metadata?.runTarget as
+            | SchedulerJob['target']
+            | null
+            | undefined,
+        })
+      : canReadJob(c, job);
+  const visibleJobs = async (
+    c: Context,
+    summaries?: import('@kontourai/station-contracts/runs').RunSummary[],
+  ) => {
+    const jobs = (await schedulerService.listJobs()).filter((job) =>
+      canReadJob(c, job),
+    );
+    if (jobs.length === 0) return jobs;
+    const runs = summaries ?? (await schedulerService.listRunSummaries());
+    return jobs.map((job) => {
+      const hidden = runs.some(
+        (run) =>
+          run.providerId === job.provider &&
+          run.sourceId === job.name &&
+          !canReadRunSummary(c, job, run),
+      );
+      if (!hidden) return job;
+      const {
+        lastRun,
+        lastRunMs,
+        lastSuccessAt,
+        consecutiveFailures,
+        ...redacted
+      } = job;
+      return redacted;
+    });
+  };
+
+  return { canReadJob, canReadRunSummary, visibleJobs };
+}
+
 export function createSchedulerRoutes(
   schedulerService: SchedulerService,
   logger: Logger,
@@ -206,52 +273,8 @@ export function createSchedulerRoutes(
         );
   };
 
-  const canReadJob = (c: Context, job: SchedulerJob) =>
-    options.mayReadAutomationJob
-      ? options.mayReadAutomationJob(c, job)
-      : !job.target;
-  const canReadRunSummary = (
-    c: Context,
-    job: SchedulerJob,
-    run: import('@kontourai/station-contracts/runs').RunSummary,
-  ) =>
-    options.mayReadAutomationRun
-      ? options.mayReadAutomationRun(c, job, {
-          id: '',
-          job: job.name,
-          startedAt: run.startedAt,
-          success: run.status === 'completed',
-          jobId:
-            typeof run.metadata?.jobId === 'string'
-              ? run.metadata.jobId
-              : undefined,
-          runTarget: run.metadata?.runTarget as
-            | SchedulerJob['target']
-            | null
-            | undefined,
-        })
-      : canReadJob(c, job);
-  const visibleJobs = async (
-    c: Context,
-    summaries?: import('@kontourai/station-contracts/runs').RunSummary[],
-  ) => {
-    const jobs = (await schedulerService.listJobs()).filter((job) =>
-      canReadJob(c, job),
-    );
-    if (jobs.length === 0) return jobs;
-    const runs = summaries ?? (await schedulerService.listRunSummaries());
-    return jobs.map((job) => {
-      const hidden = runs.some(
-        (run) =>
-          run.providerId === job.provider &&
-          run.sourceId === job.name &&
-          !canReadRunSummary(c, job, run),
-      );
-      if (!hidden) return job;
-      const { lastRun, lastSuccessAt, consecutiveFailures, ...redacted } = job;
-      return redacted;
-    });
-  };
+  const { canReadJob, canReadRunSummary, visibleJobs } =
+    createSchedulerReadProjection(schedulerService, options);
 
   // Scheduler storage and scheduler-originated output have no durable tenant
   // binding.  Do not expose a partially filtered API: every read, SSE frame,

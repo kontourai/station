@@ -432,7 +432,10 @@ import {
 } from '../../routes/operations/notification-preferences.js';
 import { createNotificationRoutes } from '../../routes/operations/notifications.js';
 import { createPushRoutes } from '../../routes/operations/push-routes.js';
-import { createSchedulerRoutes } from '../../routes/operations/scheduler.js';
+import {
+  createSchedulerReadProjection,
+  createSchedulerRoutes,
+} from '../../routes/operations/scheduler.js';
 import { createSshEnvironmentRoutes } from '../../routes/operations/ssh-environments.js';
 import { createTelemetryRoutes } from '../../routes/operations/telemetry-events.js';
 import { createUsageTelemetryDisclosureRoutes } from '../../routes/operations/usage-telemetry-disclosure.js';
@@ -941,6 +944,7 @@ import type {
   RuntimeContext,
 } from '../types.js';
 import {
+  type AgentScheduleComposition,
   agentWakeUpConversation,
   composeAgentSchedule,
 } from './agent-schedule-composition.js';
@@ -6275,7 +6279,7 @@ export function configureRuntimeRoutes(
   // same placement rules (wait for a running turn, the live continuation's
   // permission rule, no stored full-access grant) apply. Without an inbox
   // (hosted), the tool answers that check-backs are unavailable.
-  const agentSchedule = composeAgentSchedule({
+  const agentSchedule: AgentScheduleComposition = composeAgentSchedule({
     store: context.orchestrationEventStore?.agentScheduleStore(),
     threadInbox,
     scope: stationControlDispatchScope,
@@ -6304,9 +6308,12 @@ export function configureRuntimeRoutes(
     // Read when a chat asks, after the scheduler below exists.
     ...(hostedTenantRegistry === undefined
       ? {
-          conversationAutomations: async (conversationId: string) =>
+          conversationAutomations: async (conversationId: string, c: Context) =>
             conversationAutomationsFrom(
-              await schedulerService.listJobs(),
+              await createSchedulerReadProjection(
+                schedulerService,
+                agentSchedule,
+              ).visibleJobs(c),
               conversationId,
             ),
         }

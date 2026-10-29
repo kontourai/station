@@ -4190,8 +4190,10 @@ logs an error), and every other due job still claims. Settling a dead claim on
 such a record advances `last_run_ms` without rewriting the unreadable bytes. Exact revision checks let a concurrent job edit/delete win over old
 completion. Each claim snapshots its target; a dedicated start also records
 its actual conversation against that run, even if the job was retargeted.
-Run reads use that target, and pre-change records without one require the
-creator and current conversation read access. Fatigue excludes a claim still
+Run reads use that target. Pre-change records require the creator and current
+conversation read access, except the local operator can read a creatorless,
+untargeted legacy job. Scheduler failure and monitor notices use generic public
+text because their notification audience is not conversation-bound. Fatigue excludes a claim still
 waiting for retry. Post-commit uncertainty requires exact readback; unavailable storage
 is a typed error, not an empty schedule or invented successful run.
 

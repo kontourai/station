@@ -4458,7 +4458,8 @@ Scheduler list, statistics and status results are scoped to the caller.
 Job logs and scheduled run output use each run's recorded target; a retargeted
 job does not transfer its earlier conversation's history to the new target.
 Older runs without a recorded target require the creator and current-target
-read access. An agent can read only its own conversation's runs.
+read access, except creatorless, untargeted jobs remain readable by the local
+operator. An agent can read only its own conversation's runs.
 `PluginCollectionHttpError` is built the same way: it keeps the envelope's
 `code` on the error and on its `envelope`, and keeps the refusal's `details`
 and `Retry-After`.

@@ -30,6 +30,7 @@ import {
 } from '../../routes/orchestration/agent-schedule.js';
 import { requestMayBeAnAgent } from '../../security/coding-authority.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import {
   type AgentScheduleStore,
   AgentWakeUpDelivery,
@@ -91,6 +92,7 @@ export interface AgentScheduleCompositionDeps {
    */
   conversationAutomations?(
     conversationId: string,
+    context: Context,
   ): Promise<readonly ConversationAutomation[]>;
   readonly logger: {
     warn(message: string, meta?: Record<string, unknown>): void;
@@ -398,7 +400,10 @@ export function composeAgentSchedule(
       if (run.runTarget === undefined) {
         return (
           !!requester &&
-          requester.userId === job.createdBy?.userId &&
+          (requester.userId === job.createdBy?.userId ||
+            (!job.createdBy &&
+              !job.target &&
+              requester.userId === LOCAL_OPERATOR_PRINCIPAL_ID)) &&
           (!job.target ||
             (job.target.conversationId
               ? requester.mayRead(job.target.conversationId)

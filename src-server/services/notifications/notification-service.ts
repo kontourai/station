@@ -1499,6 +1499,25 @@ function toPublicNotification(notification: StoredNotification): Notification {
     revision: _revision,
     ...publicNotification
   } = notification;
+  // Scheduler notices have no durable per-recipient conversation audience.
+  // Redact at the shared projection so old rows, replay, SSE and push cannot
+  // disclose a job name, target, or error after a retarget or access change.
+  if (
+    publicNotification.source === 'scheduler' &&
+    (publicNotification.category === 'job-failure' ||
+      publicNotification.category === 'external-monitor')
+  ) {
+    return structuredClone({
+      ...publicNotification,
+      title:
+        publicNotification.category === 'external-monitor'
+          ? 'An automation monitor needs attention'
+          : 'An automation failed',
+      body: 'Open Automations to see the work you can access.',
+      actions: [{ id: 'view-scheduler', label: 'View Automations' }],
+      metadata: { link: '/automations' },
+    });
+  }
   return structuredClone(publicNotification);
 }
 
