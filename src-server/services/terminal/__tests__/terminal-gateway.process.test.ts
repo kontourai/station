@@ -396,6 +396,123 @@ describe.skipIf(process.platform === 'win32')(
       });
       expect(onUnauthorized).toHaveBeenCalledTimes(1);
     });
+
+    test('SDK survives a retention reset after its last outstanding frame is acknowledged', async () => {
+      const home = temp('terminal-reset-gateway-');
+      const isolatedRoot = join(home, 'project');
+      await mkdir(isolatedRoot);
+      const isolated = new TerminalSessions(
+        home,
+        new InProcessShellHost(new NodePtyAdapter(), () => '/bin/sh'),
+        { authorize: () => true, resolveRoot: async () => isolatedRoot },
+        {
+          persist: false,
+          maxBytes: 4096,
+          maxLines: 10000,
+          tailBytes: 1024,
+          tailLines: 10000,
+          segmentBytes: 1024,
+        },
+      );
+      const listener = createServer((_req, res) => {
+        res.writeHead(204);
+        res.end();
+      });
+      const transport = new TerminalGateway({
+        sessions: isolated,
+        allowedOrigins: [],
+        authenticate: async () => 'operator',
+      });
+      transport.mount(listener, { upgraded: () => undefined });
+      listener.listen(0, '127.0.0.1');
+      await once(listener, 'listening');
+      const address = listener.address();
+      if (!address || typeof address === 'string')
+        throw new Error('Missing owned port');
+      const apiBase = `http://127.0.0.1:${address.port}`;
+      let release!: () => void;
+      let started!: () => void;
+      const blocked = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const rendering = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      const errors: string[] = [];
+      let hold = false;
+      let resets = 0;
+      let output = '';
+      let reader: TerminalOutputSession | undefined;
+      try {
+        const opened = await isolated.open('operator', scope, dimensions);
+        reader = new TerminalOutputSession({
+          apiBase,
+          ...scope,
+          terminalId: opened.terminalId,
+          resolveCredential: () => ({
+            origin: apiBase,
+            credential: 'operator',
+          }),
+          onOutput: async (bytes) => {
+            if (hold) {
+              hold = false;
+              started();
+              await blocked;
+            }
+            output += new TextDecoder().decode(bytes);
+          },
+          onReset: () => {
+            resets++;
+            output = '';
+          },
+          onError: (error) => errors.push(error.code),
+        });
+        await reader.connect();
+        hold = true;
+        await isolated.write(
+          'operator',
+          scope,
+          opened.terminalId,
+          "printf 'first-frame\\n'\r",
+        );
+        await rendering;
+        await isolated.write(
+          'operator',
+          scope,
+          opened.terminalId,
+          "printf '%0200000d' 0; printf 'reset-marker\\n'\r",
+        );
+        await expect
+          .poll(async () => {
+            const snapshot = await isolated.read(
+              'operator',
+              scope,
+              opened.terminalId,
+              0,
+            );
+            return (
+              snapshot.journal.reset &&
+              snapshot.journal.records
+                .map((item) => item.data)
+                .join('')
+                .includes('reset-marker')
+            );
+          })
+          .toBe(true);
+        release();
+        await expect.poll(() => resets).toBeGreaterThan(0);
+        await expect.poll(() => output).toContain('reset-marker');
+        expect(errors).toEqual([]);
+      } finally {
+        release();
+        reader?.dispose();
+        transport.stop();
+        await isolated.dispose();
+        await new Promise<void>((resolve, reject) =>
+          listener.close((error) => (error ? reject(error) : resolve())),
+        );
+      }
+    });
     async function journal(id: string, text: string) {
       await expect
         .poll(
