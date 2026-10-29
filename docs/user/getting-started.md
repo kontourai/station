@@ -618,8 +618,8 @@ needing repair stays visible with its setup action; a removed choice asks you
 to choose another.
 
 Escape, Back, or opening another chat closes the draft; collapsing the dock
-keeps it. On a phone the draft opens full screen, and closing it restores the
-dock's size. Drop files anywhere on the draft to attach them. **New chat**
+keeps it. On a phone the draft opens full screen; closing it, or starting the
+chat, returns the dock to its earlier size. Drop files anywhere on the draft to attach them. **New chat**
 while a draft is open returns you to it. To resume earlier work, choose it in
 the dock’s chat list.
 

@@ -1087,11 +1087,13 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // already showing.
   const conversationSurfaceRef = useRef<HTMLDivElement>(null);
   // The dock as it was before a phone draft forced it to full height, so a
-  // dismissed draft puts it back (a started one keeps full height: it is a
-  // chat now). Includes the maximize memory the forcing overwrote.
-  const dockBeforeDraft = useRef<{ open: boolean; remembered: boolean } | null>(
-    null,
-  );
+  // dismissed draft puts it back and a started one opens its chat at that
+  // size. Includes the maximize memory the forcing overwrote.
+  const dockBeforeDraft = useRef<{
+    open: boolean;
+    maximized: boolean;
+    remembered: boolean;
+  } | null>(null);
   const revealDockForDraft = useCallback(() => {
     if (isFullscreenPlacement) return;
     dismissPhoneLayer();
@@ -1101,6 +1103,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       if (!isDockOpen || !isDockMaximized) {
         dockBeforeDraft.current ??= {
           open: isDockOpen,
+          maximized: isDockMaximized,
           remembered: lastDockMaximized,
         };
         setDockState(true, true);
@@ -1148,7 +1151,15 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     }
     closeNewChatDraft();
   }, [closeNewChatDraft, setDockState, collapseMaximizedDock]);
-  // A started draft is a chat now: it keeps the full height it was given.
+  // A started draft is a chat now: the dock stays open at the size it had,
+  // as opening any chat does (`focusSession`); the full height was the draft's.
+  // Called before Start navigates, whose collapse of the draft's Back entry
+  // then finds nothing to restore.
+  const settleDockForStartedDraft = useCallback(() => {
+    const before = dockBeforeDraft.current;
+    dockBeforeDraft.current = null;
+    if (before && !before.maximized) setDockState(true, false);
+  }, [setDockState]);
   useEffect(() => {
     if (!showNewChatModal) dockBeforeDraft.current = null;
   }, [showNewChatModal]);
@@ -3577,11 +3588,10 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                           // rather than returning focus to its opener.
                           requestComposerFocus(sessionId, { whileBusy: true });
                           // Started before navigating: the navigation collapses
-                          // the draft's history entry through its dismissal,
-                          // which must find no dock size to restore (a phone
-                          // would close the dock on the new chat) and no
-                          // request left to tell 'dismissed'.
-                          dockBeforeDraft.current = null;
+                          // the draft's Back entry through its dismissal, which
+                          // must find no size to restore and no request left
+                          // to tell 'dismissed'.
+                          settleDockForStartedDraft();
                           setShowNewChatModal(false, undefined, 'started');
                           navigate(pathname, { chat: sessionId });
                           setNewChatProjectOverride(null);
@@ -3695,8 +3705,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                                 revealDock: !isFullscreenPlacement,
                                 beforeFocus: () => {
                                   // The fork's open navigates, which dismisses
-                                  // the draft's history entry: nothing to restore.
-                                  dockBeforeDraft.current = null;
+                                  // the draft's Back entry: settle first.
+                                  settleDockForStartedDraft();
                                   return commitForkOpenBoundary({
                                     signal: controller.signal,
                                     generation,

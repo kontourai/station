@@ -133,7 +133,9 @@ of the chat on screen, in any dock region or placement (full screen on a phone):
   down so the draft's Project chip is the one destination.
 - **Leaving.** Escape, Back, **Cancel return** or Cancel fork dismisses the
   draft and hands back its text; on a phone this restores the dock size the
-  draft replaced. Going to another chat (tab, inbox, toast, `?chat=`, history),
+  draft replaced. Start (and a fork's open) closes it as started before
+  navigating, opening the chat at the size the dock had, as `focusSession`
+  does. Going to another chat (tab, inbox, toast, `?chat=`, history),
   compared by chat identity, leaves the draft and keeps the dock as that
   navigation set it. Back uses a history entry held only while the draft is on
   screen; collapsing releases it in place (not by travelling back, which could

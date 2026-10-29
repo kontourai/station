@@ -30,7 +30,6 @@ import {
 import type { ReactNode } from 'react';
 import { afterEach, beforeAll, expect, test, vi } from 'vitest';
 import { ActiveChatsProvider } from '../../../contexts/ActiveChatsContext';
-import { registerDialogHistory } from '../../dialog-history';
 import { ConversationsProvider } from '../../../contexts/ConversationsContext';
 import { KeyboardShortcutsProvider } from '../../../contexts/KeyboardShortcutsContext';
 import { NavigationProvider } from '../../../contexts/NavigationContext';
@@ -55,6 +54,7 @@ import {
   type ProjectChatComposerDraft,
   requestProjectChat,
 } from '../../../lib/projectChatEvents';
+import { registerDialogHistory } from '../../dialog-history';
 import { displayableProjectIcon } from '../../icons/ProjectIcon';
 
 const {
@@ -1221,6 +1221,7 @@ test('the header shows no project destination while a draft is open', async () =
 // gives the half sheet back, maximize memory included. A started one stays.
 test('a phone draft dismissed from a half sheet restores the half sheet', async () => {
   dockProbe.mobile = true;
+  dockProbe.sessions = [chatSession('new-session')];
   navigationStore.navigate('/', { dock: 'open' });
   renderDockedPane();
   await act(async () => {});
@@ -1244,7 +1245,7 @@ test('a phone draft dismissed from a half sheet restores the half sheet', async 
     new URLSearchParams(window.location.search).get('maximize'),
   ).toBeNull();
 
-  // Started: no restore; the new chat keeps the full height it was given.
+  // Started: the new chat opens at the half sheet it had, as any chat.
   act(() => {
     dispatchNewChatIntent({});
   });
@@ -1261,9 +1262,12 @@ test('a phone draft dismissed from a half sheet restores the half sheet', async 
       );
   });
   await act(async () => {});
-  // No restore ran: the full-height memory the draft set is kept.
   expect(createChatSession).toHaveBeenCalledTimes(1);
-  expect(navigationStore.lastDockMaximized).toBe(true);
+  await waitFor(() =>
+    expect(regionModel!.regions.bottom.maximized).toBe(false),
+  );
+  expect(regionModel!.regions.bottom.visible).toBe(true);
+  expect(navigationStore.lastDockMaximized).toBe(false);
 });
 
 // On a phone the header's project switcher comes back with the draft gone,
@@ -1327,13 +1331,17 @@ test('a phone draft left for another chat keeps the dock open on that chat', asy
 // that navigation collapses the entry through the draft's own close. The
 // draft has already started by then, so the close must not restore the
 // phone dock's earlier (closed) size or tell the requester 'dismissed'.
-test('a phone draft started from a closed dock stays open on its new chat', async () => {
+test('a phone draft started from a closed dock opens its chat at its earlier size', async () => {
   dockProbe.mobile = true;
   dockProbe.sessions = [chatSession('new-session')];
   navigationStore.navigate('/', { dock: null });
   renderDockedPane();
   await act(async () => {});
-  act(() => regionModel!.setRegion('bottom', { visible: false }));
+  // Closed, remembering a half sheet.
+  act(() => navigationStore.setDockState(false, false));
+  act(() =>
+    regionModel!.setRegion('bottom', { visible: false, maximized: false }),
+  );
   const outcomes: string[] = [];
   act(() => {
     dispatchNewChatIntent({ onClosed: (outcome) => outcomes.push(outcome) });
@@ -1359,6 +1367,9 @@ test('a phone draft started from a closed dock stays open on its new chat', asyn
   await act(async () => {});
   expect(outcomes).toEqual(['started']);
   expect(regionModel!.regions.bottom.visible).toBe(true);
+  // At the size the dock had, as opening any chat does: the full height
+  // was the draft's.
+  expect(regionModel!.regions.bottom.maximized).toBe(false);
   expect(new URL(window.location.href).searchParams.get('chat')).toBe(
     'new-session',
   );
