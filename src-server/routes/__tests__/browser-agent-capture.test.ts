@@ -1,4 +1,5 @@
 /** Real browser route/registry, room binding authority, Git pins, SQLite and blobs; only CDP is doubled. */
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   existsSync,
@@ -155,6 +156,8 @@ async function harness(
     storageInRepository?: boolean;
     recording?: boolean;
     recordingPreview?: boolean;
+    encoderPath?: string;
+    beforeResolveFfmpeg?: () => Promise<void>;
     duringFrame?: (workspace: string) => void;
   } = {},
 ) {
@@ -403,14 +406,19 @@ async function harness(
             surfaces,
             surfaceIdFor: (id) => live.surfaceIdFor(id),
             resolver: {
-              resolveFfmpeg: async () =>
-                mediaReady
+              resolveFfmpeg: async () => {
+                await options.beforeResolveFfmpeg?.();
+                return mediaReady
                   ? {
                       status: 'ready',
                       origin: 'host',
-                      paths: { ffmpeg: ffmpeg!, ffprobe: ffprobe! },
+                      paths: {
+                        ffmpeg: options.encoderPath ?? ffmpeg!,
+                        ffprobe: ffprobe!,
+                      },
                     }
-                  : { status: 'unsupported-platform', platform: 'test' },
+                  : { status: 'unsupported-platform', platform: 'test' };
+              },
             },
             preview,
             store: taskWalkthroughs,
@@ -573,6 +581,8 @@ async function harness(
     record,
     streamStarted,
     streams: () => streams,
+    stopBrowser: () => live!.dispose(),
+    stopRuntime: () => surfaces.dispose(),
     watch: () => {
       const id = live?.surfaceIdFor(browser.browserSessionId);
       const entry = id ? surfaces.get(id) : undefined;
@@ -1420,3 +1430,242 @@ test('unexpected capture failures log only their error name and Task identity', 
     },
   ]);
 });
+
+function probeProcesses(home: string) {
+  return execFileSync('/bin/ps', ['-axo', 'pid,ppid,command'], {
+    windowsHide: true,
+    encoding: 'utf8',
+    maxBuffer: 4 * 1024 * 1024,
+  })
+    .split('\n')
+    .filter((line) => line.includes(home) && line.includes('ffmpeg'));
+}
+
+function probeRoot(home: string) {
+  return join(home, 'projects', PROJECT_SLUG, 'walkthroughs', '.task-clips');
+}
+
+async function probeRequest(
+  h: Awaited<ReturnType<typeof harness>>,
+  signal: AbortSignal,
+  durationMs: number,
+) {
+  return (
+    await h.request('/api/browser-agent/record-to-task', {
+      method: 'POST',
+      signal,
+      headers: {
+        'content-type': 'application/json',
+        'x-internal': '1',
+        [STATION_CONTROL_CALLER_TOKEN_HEADER]: h.bound,
+      },
+      body: JSON.stringify({ durationMs }),
+    })
+  ).json();
+}
+
+async function within<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error('recording cleanup timed out')),
+          ms,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function expectNoClip(h: Awaited<ReturnType<typeof harness>>) {
+  expect(
+    readdirSync(probeRoot(h.home)).filter((name) =>
+      name.startsWith('.pending-'),
+    ),
+  ).toEqual([]);
+  expect(await (await h.person('task-a/review/walkthroughs')).json()).toEqual({
+    success: true,
+    data: { items: [] },
+  });
+}
+
+test.skipIf(!mediaReady)(
+  'request abort during capture releases the recorder and publishes no clip',
+  async () => {
+    const h = await harness({ recording: true });
+    const controller = new AbortController();
+    const pending = probeRequest(h, controller.signal, 700);
+    await h.streamStarted;
+    const watcher = h.watch();
+    await vi.waitFor(() => {
+      const stage = readdirSync(probeRoot(h.home)).find((name) =>
+        name.startsWith('.pending-'),
+      );
+      expect(stage).toBeDefined();
+      expect(readdirSync(join(probeRoot(h.home), stage!))).toContain(
+        'frame-0000.jpg',
+      );
+    });
+    controller.abort();
+    const result = await within(pending, 2500);
+    const viewersAfterAbort = watcher.count() - 1;
+    watcher.viewer.close();
+    const list = await (await h.person('task-a/review/walkthroughs')).json();
+    expect(result).toMatchObject({ ok: false, code: 'cancelled' });
+    expect(viewersAfterAbort).toBe(0);
+    expect(list).toEqual({ success: true, data: { items: [] } });
+    await expectNoClip(h);
+  },
+);
+
+test
+  .skipIf(!mediaReady || process.platform === 'win32')
+  .each(['request', 'browser', 'runtime'] as const)(
+  '%s disposal during encoding joins real ffmpeg and removes staging',
+  async (cause) => {
+    const dir = temporary('station-recording-encoder-');
+    const pidPath = join(dir, 'pid');
+    const wrapper = join(dir, 'ffmpeg');
+    const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
+    writeFileSync(
+      wrapper,
+      `#!/bin/sh\nprintf '%s' "$$" > ${quote(pidPath)}\nexec ${quote(ffmpeg!)} -re "$@"\n`,
+      { mode: 0o700 },
+    );
+    const h = await harness({ recording: true, encoderPath: wrapper });
+    const controller = new AbortController();
+    const pending = probeRequest(h, controller.signal, 4000);
+    await h.streamStarted;
+    const watcher = h.watch();
+    await vi.waitFor(
+      () => {
+        expect(existsSync(pidPath)).toBe(true);
+        expect(probeProcesses(h.home)).toHaveLength(1);
+      },
+      { timeout: 8000, interval: 40 },
+    );
+    const pid = Number(readFileSync(pidPath, 'utf8'));
+    let stopped: Promise<void> = Promise.resolve();
+    if (cause === 'request') controller.abort();
+    else if (cause === 'browser') stopped = h.stopBrowser();
+    else stopped = h.stopRuntime();
+    const [, result] = await within(
+      Promise.all([stopped, pending]),
+      1800,
+    ).catch((error: unknown) => {
+      const running = probeProcesses(h.home);
+      const staging = readdirSync(probeRoot(h.home)).filter((name) =>
+        name.startsWith('.pending-'),
+      );
+      throw new Error(
+        `recording cleanup timed out: ffmpeg=${JSON.stringify(running)}, staging=${JSON.stringify(staging)}`,
+        { cause: error },
+      );
+    });
+    expect(result).toMatchObject({ ok: false, code: 'cancelled' });
+    if (cause === 'request') expect(watcher.count()).toBe(1);
+    else expect(watcher.viewer.closed).toBe(true);
+    watcher.viewer.close();
+    expect(() => process.kill(pid, 0)).toThrow();
+    expect(probeProcesses(h.home)).toEqual([]);
+    await expectNoClip(h);
+  },
+  15000,
+);
+
+test.skipIf(!mediaReady)(
+  'runtime disposal owns recordings even before a Browser surface is selected',
+  async () => {
+    let entered!: () => void;
+    let release!: () => void;
+    const resolving = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const h = await harness({
+      recording: true,
+      beforeResolveFfmpeg: async () => {
+        entered();
+        await gate;
+      },
+    });
+    const pending = h.record(h.bound, { durationMs: 700 });
+    await resolving;
+    const stopped = h.stopRuntime();
+    release();
+    const [, result] = await within(Promise.all([stopped, pending]), 2500);
+    expect(result).toMatchObject({ ok: false, code: 'cancelled' });
+    expect(existsSync(probeRoot(h.home))).toBe(false);
+  },
+);
+
+test.skipIf(!mediaReady)(
+  'request abort during the final publication check leaves no clip',
+  async () => {
+    let entered!: () => void;
+    let release!: () => void;
+    const checking = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const publish = TaskWalkthroughStore.prototype.publish;
+    vi.spyOn(TaskWalkthroughStore.prototype, 'publish').mockImplementation(
+      async function (
+        this: TaskWalkthroughStore,
+        access,
+        stage,
+        manifest,
+        authorize,
+        signal,
+      ) {
+        return publish.call(
+          this,
+          access,
+          stage,
+          manifest,
+          async () => {
+            entered();
+            await gate;
+            return authorize();
+          },
+          signal,
+        );
+      },
+    );
+    const h = await harness({ recording: true });
+    const controller = new AbortController();
+    const pending = probeRequest(h, controller.signal, 500);
+    await checking;
+    controller.abort();
+    release();
+    expect(await within(pending, 2500)).toMatchObject({
+      ok: false,
+      code: 'cancelled',
+    });
+    await expectNoClip(h);
+  },
+);
+
+test.skipIf(!mediaReady || process.platform === 'win32')(
+  'byte overflow closes the recorder subscription, process, and staging',
+  async () => {
+    const h = await harness({ recording: true });
+    const pending = h.record(h.bound, { durationMs: 500, maxBytes: 128 });
+    await h.streamStarted;
+    const watcher = h.watch();
+    const result = await pending;
+    expect(result).toMatchObject({ ok: false, code: 'recording-too-large' });
+    expect(watcher.count() - 1).toBe(0);
+    watcher.viewer.close();
+    expect(probeProcesses(h.home)).toEqual([]);
+    await expectNoClip(h);
+  },
+);

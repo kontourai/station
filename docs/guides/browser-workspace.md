@@ -277,6 +277,9 @@ Browser, Task and workspace are rechecked before publication. The returned
 Walkthrough ID and commit identify the retained clip, not proof that the page
 was built from the commit.
 
+Cancelling the tool call, closing its Browser or stopping Station cancels an
+in-progress recording and removes its staged files. No clip is published.
+
 With **Task review** and **Walkthroughs** enabled, a person can open the clip
 from **Review → Screens**. Video bytes are requested only when the player opens;
 Task-scoped reads repeat authorization. See [Task clips](walkthroughs.md#record-a-task-clip)

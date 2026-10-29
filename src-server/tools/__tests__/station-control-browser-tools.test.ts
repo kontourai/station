@@ -5,8 +5,13 @@
  * a caller that passes reaches Station's browser-agent route carrying only
  * its credential, never an identity in the body.
  */
+
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { JSONRPCMessageSchema } from '@modelcontextprotocol/sdk/types.js';
 import { McpServer } from '@modelcontextprotocol/server';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { createStationBrowserMcpServer } from '../station-browser-mcp-server.js';
 import { registerBrowserTools } from '../station-control-browser-tools.js';
 import { StationControlToolRegistry } from '../station-control-mcp-server.js';
 import {
@@ -191,6 +196,63 @@ describe('station-control browser tools', () => {
       ),
     ).toMatchObject({ ok: false, code: 'caller-not-bound' });
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  test('MCP cancellation aborts the in-flight recording request', async () => {
+    const server = createStationBrowserMcpServer();
+    const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+    const bridge: Parameters<typeof server.connect>[0] = {
+      start: () => serverSide.start(),
+      close: () => serverSide.close(),
+      send: (message: unknown) =>
+        serverSide.send(JSONRPCMessageSchema.parse(message)),
+    };
+    serverSide.onmessage = (message, extra) =>
+      bridge.onmessage?.(message, extra);
+    await server.connect(bridge);
+    const client = new Client({ name: 'recording-cancellation', version: '1' });
+    await client.connect(clientSide);
+    let started!: () => void;
+    const requested = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    let requestAborted = false;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((_url: string, init: RequestInit) => {
+        started();
+        return new Promise<Response>((_resolve, reject) => {
+          init.signal!.addEventListener(
+            'abort',
+            () => {
+              requestAborted = true;
+              reject(init.signal!.reason);
+            },
+            { once: true },
+          );
+        });
+      }),
+    );
+    const controller = new AbortController();
+    try {
+      const call = withStationControlCallerContext(
+        { token: 'caller-token', resolve: () => good },
+        () =>
+          client.callTool(
+            { name: 'browser_record_to_task', arguments: { durationMs: 700 } },
+            undefined,
+            { signal: controller.signal },
+          ),
+      );
+      await requested;
+      controller.abort();
+      await expect(call).rejects.toThrow();
+      await vi.waitFor(() => expect(requestAborted).toBe(true));
+    } finally {
+      controller.abort();
+      await client.close();
+      await server.close();
+    }
   });
 
   test.each(['browser_snapshot', 'browser_capture_to_task'])(

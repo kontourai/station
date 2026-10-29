@@ -101,6 +101,10 @@ export interface LiveSurfaceEntry {
   readonly producer: LiveSurfaceProducer;
   readonly hub: LiveSurfaceHub;
   readonly lease: LiveSurfaceLeaseReader;
+  /** Ends when this particular surface generation is unregistered. */
+  readonly signal: AbortSignal;
+  /** Join work that must stop when this surface is unregistered. */
+  readonly onDispose: (dispose: () => Promise<void>) => () => void;
   /** Always answers; `authorize` from registration, or deny-all without one. */
   readonly authorize: (
     principal: string,
@@ -262,6 +266,7 @@ function neutralCancelEvents(held: LiveSurfaceHeldInput): LiveSurfaceInput[] {
 }
 
 interface EntryInternals {
+  dispose: () => Promise<void>;
   lease: LiveSurfaceControlLeaseState;
   pressed: PressedInput;
   /** Tail of the per-surface input chain: one batch at a time, in order. */
@@ -289,8 +294,17 @@ function internalsOf(entry: LiveSurfaceEntry): EntryInternals {
 
 export class LiveSurfaceRegistry {
   private readonly entries = new Map<string, LiveSurfaceEntry>();
+  private readonly disposers = new Set<() => Promise<void>>();
+  private disposal?: Promise<void>;
 
   constructor(private readonly options: LiveSurfaceRegistryOptions = {}) {}
+
+  /** Register work owned by the same runtime that owns the registry. */
+  onDispose(dispose: () => Promise<void>): () => void {
+    if (this.disposal) throw new Error('Live surface registry is disposed');
+    this.disposers.add(dispose);
+    return () => this.disposers.delete(dispose);
+  }
 
   /**
    * Register a producer. Returns an unregister function that also stops its
@@ -301,6 +315,7 @@ export class LiveSurfaceRegistry {
     producer: LiveSurfaceProducer,
     registration: LiveSurfaceRegistration = {},
   ): () => Promise<void> {
+    if (this.disposal) throw new Error('Live surface registry is disposed');
     if (this.entries.has(producer.surfaceId))
       throw new Error(
         `live surface ${producer.surfaceId} is already registered`,
@@ -332,15 +347,23 @@ export class LiveSurfaceRegistry {
           : 'deny';
       }
     };
+    const lifetime = new AbortController();
+    const disposers = new Set<() => Promise<void>>();
     const entry: LiveSurfaceEntry = {
       producer,
       hub,
       lease,
+      signal: lifetime.signal,
+      onDispose: (dispose) => {
+        disposers.add(dispose);
+        return () => disposers.delete(dispose);
+      },
       decide,
       authorize: async (principal, action, context) =>
         (await decide(principal, action, context)) === 'allow',
     };
     const own: EntryInternals = {
+      dispose: async () => {},
       lease,
       pressed: new PressedInput(),
       chain: Promise.resolve(),
@@ -352,6 +375,14 @@ export class LiveSurfaceRegistry {
       onExplicitControl: registration.onExplicitControl ?? (() => {}),
     };
     internals.set(entry, own);
+    own.dispose = async () => {
+      lifetime.abort();
+      lease.dispose();
+      await Promise.all([
+        hub.dispose(),
+        ...[...disposers].map((dispose) => dispose()),
+      ]);
+    };
     // A handoff cancels whatever the previous controller held. It is queued
     // synchronously at the claim: AHEAD of the new controller's first batch
     // and behind the old controller's current one.
@@ -376,8 +407,7 @@ export class LiveSurfaceRegistry {
     return async () => {
       if (this.entries.get(producer.surfaceId) !== entry) return;
       this.entries.delete(producer.surfaceId);
-      lease.dispose();
-      await hub.dispose();
+      await own.dispose();
     };
   }
 
@@ -389,11 +419,17 @@ export class LiveSurfaceRegistry {
     return this.entries.size;
   }
 
-  async dispose(): Promise<void> {
+  dispose(): Promise<void> {
+    if (this.disposal) return this.disposal;
     const entries = [...this.entries.values()];
     this.entries.clear();
-    for (const entry of entries) internals.get(entry)?.lease.dispose();
-    await Promise.all(entries.map((entry) => entry.hub.dispose()));
+    const disposers = [...this.disposers];
+    this.disposers.clear();
+    this.disposal = Promise.all([
+      ...entries.map((entry) => internalsOf(entry).dispose()),
+      ...disposers.map((dispose) => dispose()),
+    ]).then(() => {});
+    return this.disposal;
   }
 }
 

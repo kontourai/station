@@ -51,6 +51,12 @@ not prove the displayed page was built from that commit. The manifest retains
 the commit, recording digest and byte length, and up to ten selected frames;
 audio and transcript coverage are absent.
 
+Cancelling the recording request, closing its Browser surface, or stopping
+Station cancels an in-progress capture or encoding. The recorder releases its
+viewer, stops and waits for FFmpeg, and removes staging before cancellation
+finishes. A cancelled recording is not published. Station bounds its cleanup
+waits and reports a shutdown failure if cleanup cannot finish.
+
 Task clips live under the Project's private `walkthroughs/.task-clips/` tree,
 scoped to Project, Task and Task creation time. They do not appear in the
 Project import list. Task Review authorization and the live Walkthroughs preview

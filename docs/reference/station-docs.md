@@ -77,8 +77,10 @@ shares one downloader and recognizer; hosted and published behavior remain unver
 
 The sensitive `browser_record_to_task` tool can also save a silent Browser clip
 to the bound lead Session's Task. With Walkthroughs and Task review previews on,
-open it under Review's Screens. This path uses Task-scoped reads, separate from
-Project imports; see [Task clips](../guides/walkthroughs.md#record-a-task-clip).
+open it under Review's Screens. Cancelling the call, closing the Browser, or
+stopping Station cancels an in-progress recording and removes its staging.
+This path uses Task-scoped reads, separate from Project imports; see
+[Task clips](../guides/walkthroughs.md#record-a-task-clip).
 
 Projects scope Agent selection. A Project can filter global Agents, and an
 Agent may name an owning Project. Project-owned Agents are excluded from global

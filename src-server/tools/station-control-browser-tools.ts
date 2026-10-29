@@ -140,6 +140,7 @@ type ToolContent =
 async function callBrowser(
   operation: string,
   body: Record<string, unknown>,
+  signal?: AbortSignal,
 ): Promise<{ content: ToolContent[] }> {
   let caller: StationControlCaller | null;
   try {
@@ -155,8 +156,15 @@ async function callBrowser(
     response = await api(`${BROWSER_AGENT_API_PATH}/${operation}`, {
       method: 'POST',
       body: JSON.stringify(body),
+      signal,
     });
   } catch {
+    if (signal?.aborted)
+      return jsonToolResult({
+        ok: false,
+        code: 'cancelled',
+        message: 'Recording was cancelled.',
+      });
     return jsonToolResult({
       ok: false,
       code: 'unavailable',
@@ -334,15 +342,19 @@ export function registerBrowserTools(registry: StationControlToolRegistry) {
         .optional(),
       label: z.string().min(1).max(120).optional(),
     },
-    async (args) =>
-      callBrowser('record-to-task', {
-        durationMs: args.durationMs,
-        ...(args.maxBytes !== undefined ? { maxBytes: args.maxBytes } : {}),
-        ...(args.browserSessionId !== undefined
-          ? { browserSessionId: args.browserSessionId }
-          : {}),
-        ...(args.label !== undefined ? { label: args.label } : {}),
-      }),
+    async (args, context) =>
+      callBrowser(
+        'record-to-task',
+        {
+          durationMs: args.durationMs,
+          ...(args.maxBytes !== undefined ? { maxBytes: args.maxBytes } : {}),
+          ...(args.browserSessionId !== undefined
+            ? { browserSessionId: args.browserSessionId }
+            : {}),
+          ...(args.label !== undefined ? { label: args.label } : {}),
+        },
+        context?.mcpReq.signal,
+      ),
   );
 
   registry.tool(

@@ -380,6 +380,7 @@ export function createBrowserAgentRoutes(deps: BrowserAgentRoutesDeps) {
           });
         try {
           const manifest = await capture.recordings.record(access, authority, {
+            signal: c.req.raw.signal,
             ...(typeof id === 'string' ? { browserSessionId: id } : {}),
             ...(parsed.label !== undefined ? { label: parsed.label } : {}),
             durationMs: body.durationMs as number,

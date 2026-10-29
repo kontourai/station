@@ -1,14 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { constants } from 'node:fs';
-import {
-  lstat,
-  mkdir,
-  open,
-  readdir,
-  realpath,
-  rename,
-  rm,
-} from 'node:fs/promises';
+import { constants, renameSync } from 'node:fs';
+import { lstat, mkdir, open, readdir, realpath, rm } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import {
   isWalkthroughId,
@@ -141,6 +133,7 @@ export class TaskWalkthroughStore {
     stage: Stage,
     manifest: Walkthrough,
     authorize: () => Promise<boolean>,
+    signal: AbortSignal,
   ): Promise<void> {
     if (manifest.id !== stage.id)
       throw new Error('Walkthrough identity mismatch');
@@ -162,7 +155,9 @@ export class TaskWalkthroughStore {
       fsyncDirectorySync(stage.root);
       if (!(await authorize()) || !access.write.beforeCommit())
         throw new TaskBrowserCaptureError('not-found', 'Task not found.');
-      await rename(stage.path, join(scope, stage.id));
+      // Cancellation and the visibility-changing rename share one turn.
+      signal.throwIfAborted();
+      renameSync(stage.path, join(scope, stage.id));
       fsyncDirectorySync(scope);
     });
   }
