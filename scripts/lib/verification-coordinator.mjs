@@ -14,6 +14,7 @@ import {
   projectLatestE2EEvidence,
   validateLatestE2EEvidence,
 } from './e2e-latest-evidence.mjs';
+import { withHeavyCheckSlot } from './heavy-check-slots.mjs';
 import {
   collectVerificationProvenance,
   preflightReceiptDestination,
@@ -1169,6 +1170,9 @@ async function runOwnerAndPublish({
   onOwnershipLost,
   terminalHooks,
 }) {
+  // Each full-regression phase takes its own heavy-check slot after its own
+  // admission (verification-completion-phases.mjs); any other executing lane
+  // takes one here, after this owner's admission.
   const execute =
     context.lane.id === CANONICAL_COMPLETION_LANE
       ? createCompletionPhaseRunner({
@@ -1189,21 +1193,25 @@ async function runOwnerAndPublish({
             writeOwnedLease,
           },
         })
-      : (context.runner ??
-        createOwnedRunner({
-          lane: context.lane,
-          worktree: context.before.worktree,
-          outputLock,
-          owner,
-          outputOwned,
-          now: context.now,
-          currentLease: getLease,
-          updateLease: setLease,
-          privateCommand: (lane) => privateCommand(lane, context.toolchain),
-          processIdentity,
-          writeOwnedLease,
-          env: context.env,
-        }));
+      : withHeavyCheckSlot(
+          { label: `verification:${context.lane.id}`, env: context.env },
+          (env) =>
+            context.runner ??
+            createOwnedRunner({
+              lane: context.lane,
+              worktree: context.before.worktree,
+              outputLock,
+              owner,
+              outputOwned,
+              now: context.now,
+              currentLease: getLease,
+              updateLease: setLease,
+              privateCommand: (lane) => privateCommand(lane, context.toolchain),
+              processIdentity,
+              writeOwnedLease,
+              env,
+            }),
+        );
   const { raw, timedOut } = await runWithinDeadline({
     execute,
     lane: context.lane,

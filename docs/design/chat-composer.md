@@ -254,6 +254,14 @@ polite announcement. Waiting drafts are kept in the tab's session storage, so
 they survive a reload but not closing the tab.
 The inbox, mobile switcher, and start surface share their row anatomy. Touch
 cards allow two title lines while status and metadata keep predictable positions.
+Inbox dismissal is independent of an open tab: desktop keeps its hover-revealed
+clock and ×, while × hides any conversation without stopping work or deleting
+history. Undo and the collapsed Dismissed section restore it on this device.
+With Sheet gestures preview enabled, mobile rows reveal the same clock and ×
+on a left swipe, with larger targets and short labels. Swiping only reveals;
+Snooze still opens its duration picker, and Details retains the same actions.
+The implementation is shared by the dock panel and mobile switcher; Home and
+sidebar hosts retain their own actions.
 When Continue holds Home's only item of work, Recent work is not shown and
 View Activity sits beside the Continue heading.
 Home's Recent work rows are the same row: a decorative mark before the Project

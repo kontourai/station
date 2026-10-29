@@ -182,6 +182,8 @@
 
     "src-ui/src/components/chat-start/ChatSetupHelper.tsx",
 
+    "src-ui/src/components/chat-start/RecentChatList.tsx",
+
     "src-ui/src/components/NewChatAction.tsx",
 
     "src-ui/src/hooks/useRecentAgents.ts",
@@ -284,7 +286,23 @@
 
     "src-ui/src/utils/execution.ts",
 
-    "src-ui/src/components/chat-dock/DockStartComposer.tsx"
+    "src-ui/src/components/chat-dock/inbox-dismissals.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockInboxPanel.tsx",
+
+    "src-ui/src/components/chat-dock/useInboxGroups.ts",
+
+    "src-ui/src/components/chat-dock/InboxScopeFilter.tsx",
+
+    "src-ui/src/utils/inbox-dismissal-store.ts",
+
+    "src-ui/src/hooks/useInboxSwipe.ts",
+
+    "src-ui/src/contexts/active-chats-store.ts",
+
+    "src-ui/src/__tests__/inbox-dismissal.test.tsx",
+
+    "src-ui/src/__tests__/inbox-swipe.browser.test.tsx"
   ],
 
   "checks": [
