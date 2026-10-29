@@ -111,6 +111,7 @@ import {
 import { DEFAULT_SERVER_PORT } from '@kontourai/station-shared/ports';
 import {
   acquireStationHomeRuntimeLease,
+  captureStationHomeRuntimeProof,
   type StationHomeRuntimeLease,
 } from '@kontourai/station-shared/station-home-lifecycle';
 import { Agent, AgentRegistry, type Tool, VoltAgent } from '@voltagent/core';
@@ -505,6 +506,7 @@ import {
 import { initializeRuntime } from './runtime-initialize.js';
 import { createRuntimeInitializationDeps } from './runtime-initialize-deps.js';
 import { rebuildOrClearRuntimeProjections } from './runtime-projection-recovery.js';
+import { RuntimePublicationParticipant } from './runtime-publication-participant.js';
 import { createRuntimeServiceBundle } from './runtime-service-bootstrap.js';
 import { shutdownRuntimeServices } from './runtime-shutdown.js';
 import {
@@ -1063,6 +1065,7 @@ export class StationRuntime {
   private readonly operationalEventPublisher: OperationalEventPublisher;
   private readonly pluginOperationalEventSubscriptions: PluginOperationalEventSubscriptionService;
   private readonly stationHomeRuntimeLease: StationHomeRuntimeLease;
+  private runtimePublicationParticipant?: RuntimePublicationParticipant;
 
   // Services
   private agentService!: AgentService;
@@ -1323,6 +1326,9 @@ export class StationRuntime {
     let openedEventStore: EventStore | undefined;
     let openedConfigLoader: ConfigLoader | undefined;
     try {
+      this.runtimePublicationParticipant = new RuntimePublicationParticipant(
+        captureStationHomeRuntimeProof(projectHomeDir, stationHomeRuntimeLease),
+      );
       // No EventStore/SQLite, watcher, or ConfigLoader application-data read is
       // allowed before the home marker has failed closed or been bootstrapped.
       assertHostedPersistenceBeforeSchemaSync(projectHomeDir);
@@ -1751,6 +1757,7 @@ export class StationRuntime {
         nodeVersion: process.version,
       });
     } catch (error) {
+      this.runtimePublicationParticipant?.stop();
       const failures: unknown[] = [error];
       let persistenceClosed = true;
       try {
@@ -4623,6 +4630,7 @@ export class StationRuntime {
       serverUpdate,
       analyticsMaintenance,
     } = configureRuntimeRoutes({
+      runtimePublicationParticipant: this.runtimePublicationParticipant,
       retainProjectRoomRuntime: (runtime) => {
         this.projectRoomRuntime = runtime;
       },
@@ -5236,6 +5244,19 @@ export class StationRuntime {
    * Shutdown the runtime
    */
   async shutdown(): Promise<void> {
+    this.runtimePublicationParticipant?.stop();
+    if (this.shutdownPromise) return this.shutdownPromise;
+    const closing = this.shutdownAfterPublicationDrain();
+    this.shutdownPromise = closing.catch((error) => {
+      this.shutdownPromise = null;
+      throw error;
+    });
+    return this.shutdownPromise;
+  }
+
+  private async shutdownAfterPublicationDrain(): Promise<void> {
+    if (this.runtimePublicationParticipant)
+      await this.runtimePublicationParticipant.drain(5_000);
     // Begin broker retirement without delaying ordinary teardown on its I/O.
     // The aggregate cleanup joins it before this home can be released.
     void this.retireSelfHostedBroker();
@@ -5259,7 +5280,6 @@ export class StationRuntime {
     // `gracefulShutdown` ends in `process.exit`. Same optional-chaining
     // reason as the line above — prototype-built doubles have no fields.
     this.stopStoreIntegrityVerification?.();
-    if (this.shutdownPromise) return this.shutdownPromise;
     // Settle any in-flight initialize() before tearing down — its rejection
     // is expected here (we are shutting down under it) and must not escape
     // as an unhandled rejection attributed to someone else.
@@ -5268,13 +5288,7 @@ export class StationRuntime {
     }
     this.stopObservingRuntimeConfigurationSources();
     this.agentConfigurationMutationsClosed = true;
-    this.shutdownPromise = this.shutdownAfterConfigurationDrain().catch(
-      (error) => {
-        this.shutdownPromise = null;
-        throw error;
-      },
-    );
-    return this.shutdownPromise;
+    await this.shutdownAfterConfigurationDrain();
   }
 
   private retireSelfHostedBroker(): Promise<void> {

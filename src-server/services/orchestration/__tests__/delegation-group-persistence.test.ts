@@ -27,6 +27,11 @@ import {
 } from '@kontourai/flow-agents/delegation-group-v2';
 import { canonicalJson } from '@kontourai/relay';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import {
+  acquireStationHomeMaintenanceLease,
+  StationHomeActiveError,
+} from '@kontourai/station-shared/station-home-lifecycle';
+import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import { expect, test, vi } from 'vitest';
 import {
   executeOwnedProcess,
@@ -34,6 +39,8 @@ import {
   waitForSuiteSettlement,
 } from '../../../../scripts/lib/owned-process.mjs';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import type { RuntimePublicationParticipant } from '../../../runtime/bootstrap/runtime-publication-participant.js';
+import { StationRuntime } from '../../../runtime/bootstrap/station-runtime.js';
 import { HomeWriterOwner } from '../../ssh/home-writer-owner.js';
 import { StationDelegationPersistence } from '../delegation-group-persistence.js';
 import type { ReportInterruptRecord } from '../station-report-group-cancellation.js';
@@ -49,8 +56,9 @@ const reference = (id: string) => ({
   domain: 'fixture.observation',
   digest: `sha256:${digest(id)}`,
 });
-function fixture() {
+function fixture(runtimeHome = false) {
   const root = makeTempDir('station-delegation-persistence-');
+  if (runtimeHome) ensureStationHomeSchemaSync(root);
   const persistence = new StationDelegationPersistence(root);
   let active = true;
   const finalizeCurrent = (): undefined => {
@@ -442,7 +450,7 @@ test('public controller can inspect authority under group lock; duplicate root c
 });
 
 test('new rounds preserve unknown accounting and legacy custody across cancellation and reopen', async () => {
-  const f = fixture();
+  const f = fixture(true);
   await f.service.issue(f.authorityRoot);
   await f.service.derive('authority', f.envelope);
   await f.service.reserveInvocation('authority', 'envelope', 'invoke', {
@@ -463,7 +471,9 @@ test('new rounds preserve unknown accounting and legacy custody across cancellat
     if (!preparationActive) throw Error('preparation-changed');
     return undefined;
   };
-  const compose = () => {
+  const compose = (
+    roundsOverride?: ReturnType<StationDelegationPersistence['roundsStore']>,
+  ) => {
     const persistence = new StationDelegationPersistence(f.root);
     const store = persistence.roundsAuthorityStore(
       f.finalizeCurrent,
@@ -481,7 +491,9 @@ test('new rounds preserve unknown accounting and legacy custody across cancellat
       { maxRenewals: 0 },
     );
     const controller = createDelegationRoundsController({
-      store: persistence.roundsStore(f.finalizeCurrent, preparationCurrent),
+      store:
+        roundsOverride ??
+        persistence.roundsStore(f.finalizeCurrent, preparationCurrent),
       authorityService: service,
       dispatchLedger: new FileAuthorizationLedger({
         root: join(f.root, 'rounds-dispatch'),
@@ -625,13 +637,63 @@ test('new rounds preserve unknown accounting and legacy custody across cancellat
       }),
   ).rejects.toThrow('delegation_group_protocol_conflict');
   expect(crossedGroupBody).toBe(false);
-  await first.controller.cancel({
-    kind: 'cancel',
-    groupId: spec.groupId,
-    operationKey: 'cancel-rounds',
-    expectedRevision: 1,
-    controller: spec.controller,
+  const runtime = new StationRuntime({ projectHomeDir: f.root });
+  const eventStoreClose = vi.spyOn(
+    Reflect.get(runtime, 'orchestrationEventStore'),
+    'close',
+  );
+  const participant = Reflect.get(
+    runtime,
+    'runtimePublicationParticipant',
+  ) as RuntimePublicationParticipant;
+  let reached!: () => void;
+  let resume!: () => void;
+  const bodyDone = new Promise<void>((resolve) => {
+    reached = resolve;
   });
+  const barrier = new Promise<void>((resolve) => {
+    resume = resolve;
+  });
+  const blocked = participant.run(async (lease) => {
+    const real = f.persistence.roundsStore(() => {
+      f.finalizeCurrent();
+      lease.assertCurrent();
+      return undefined;
+    }, preparationCurrent);
+    const blocking: typeof real = {
+      transact: (groupId, body) =>
+        real.transact(groupId, async (journal) => {
+          const next = await body(journal);
+          reached();
+          await barrier;
+          return next;
+        }),
+    };
+    return compose(blocking).controller.cancel({
+      kind: 'cancel',
+      groupId: spec.groupId,
+      operationKey: 'cancel-rounds',
+      expectedRevision: 1,
+      controller: spec.controller,
+    });
+  });
+  let shutdown: Promise<void> | undefined;
+  try {
+    await bodyDone;
+    shutdown = runtime.shutdown();
+    expect(() => participant.acquire()).toThrow('publication');
+    expect(eventStoreClose).not.toHaveBeenCalled();
+    expect(() => acquireStationHomeMaintenanceLease(f.root)).toThrow(
+      StationHomeActiveError,
+    );
+  } finally {
+    resume();
+  }
+  await blocked;
+  await shutdown;
+  expect(eventStoreClose).toHaveBeenCalledOnce();
+  const maintenance = acquireStationHomeMaintenanceLease(f.root);
+  maintenance.release();
   const reopened = compose();
   expect((await reopened.controller.get(spec.groupId)).cancellation).toBe(
     'requested',

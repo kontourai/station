@@ -5,6 +5,17 @@ master consolidation in #3991. It starts at published
 `d96f54887837be058c5e5119b8028daab0befea1`. Merge subsequent master/main
 normally before publication. Open one PR when the combined work is ready.
 
+## Private publication lifetime (#91)
+
+Bootstrap captures the exact current home runtime lease into a private publication
+participant. The existing report sync finalizer holds it through its rounds
+transaction and response readback. Shutdown stops new admissions first and joins
+admitted work before closing dependent services or releasing the home; a pending
+join leaves those dependencies and the lease intact for a later attempt. This is
+not the new public continuation finalizer, does not create provider authority,
+and does not complete #91. The published Flow contract and metadata adapter
+remain separately required.
+
 ## Portable delegation-group source split (#91)
 
 The unfinished portable delegation-group CLI, SDK transport, contract shapes,

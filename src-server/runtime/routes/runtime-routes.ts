@@ -1013,6 +1013,7 @@ export async function pullRequestSessionForReader<
 }
 
 export interface ConfigureRuntimeRoutesContext {
+  runtimePublicationParticipant?: import('../bootstrap/runtime-publication-participant.js').RuntimePublicationParticipant;
   retainProjectRoomRuntime?: (runtime: { close(): Promise<void> }) => void;
   relayInvitationOwner?: RelayInvitationOwner;
   projectMembership?: ProjectMembershipService;
@@ -6719,6 +6720,7 @@ export function configureRuntimeRoutes(
   if (isPersonalHost) {
     try {
       reportGroups = new StationReportGroupRuntime({
+        publicationParticipant: context.runtimePublicationParticipant,
         runtime: {
           configLoader: context.configLoader,
           agentService: context.agentService,

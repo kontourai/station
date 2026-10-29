@@ -3323,7 +3323,13 @@ birth-probe retries for its own PID before refusing startup; probes of other
 owners do not retry or fall back to PID-only authority. The lease can represent
 multiple runtime owners, while individual callers can impose stricter same-home policy.
 [StationRuntime](../../src-server/runtime/bootstrap/station-runtime.ts) retains
-its lease through persistence shutdown. CLI wrappers also check lifecycle
+its lease through persistence shutdown. The lease owner can capture a private
+proof only from the exact live lease and home. Bootstrap uses that proof for a
+publication participant around private report sync finalization. Shutdown stops
+admission and joins admitted publication through journal readback and unlock
+before closing its dependencies; an unresolved join reports pending and retains
+the home lease for a later shutdown attempt. This lifecycle custody does not
+supply the unpublished continuation finalizer or authorize a provider effect. CLI wrappers also check lifecycle
 observations for useful offline diagnostics. CLI clean and reset hold maintenance
 ownership through their home removal or archive rename; clean also keeps it
 through owned build-output cleanup. A live or unverifiable runtime lease refuses

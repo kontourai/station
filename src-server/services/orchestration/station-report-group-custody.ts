@@ -920,11 +920,20 @@ export class StationReportGroupCustody {
     groupId: string,
     input: ReportGroupFinalizeSyncInput,
     dispatchLedger: AuthorizationLedger,
+    publicationCurrent?: () => void,
   ) {
     const command = structuredClone(input);
     id(command.operationKey);
     id(command.syncOperationKey);
-    const authorized = await this.#context(context, 'POST');
+    const captured = await this.#context(context, 'POST');
+    const authorized = {
+      ...captured,
+      current: (): undefined => {
+        captured.current();
+        publicationCurrent?.();
+        return undefined;
+      },
+    };
     const before = await this.#inspect(authorized, groupId);
     const group = before?.group;
     const root = before?.authority?.epochs.at(-1)?.root;

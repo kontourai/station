@@ -14,6 +14,7 @@ import type {
   ReportGroupReportInput,
   ReportGroupView,
 } from '@kontourai/station-contracts/report-group';
+import { isRuntimePublicationParticipant } from '../../runtime/bootstrap/runtime-publication-participant.js';
 import {
   captureEnvironmentLocalGrantObservationOwner,
   captureEnvironmentLocalGrantReadOwner,
@@ -195,6 +196,7 @@ export class StationReportGroupRuntime {
   readonly #wireIntents: FileFinalWireIntentStore;
   constructor(
     private readonly owners: {
+      publicationParticipant?: import('../../runtime/bootstrap/runtime-publication-participant.js').RuntimePublicationParticipant;
       runtime: RuntimeFencedCredentialObservationOwners;
       orchestration: OrchestrationService;
       rawFetch: typeof fetch;
@@ -206,6 +208,11 @@ export class StationReportGroupRuntime {
     });
     owners = this.owners;
     const home = realpathSync(owners.runtime.configLoader.getProjectHomeDir());
+    if (owners.publicationParticipant !== undefined) {
+      if (!isRuntimePublicationParticipant(owners.publicationParticipant))
+        throw new StationReportCustodyUnavailable();
+      owners.publicationParticipant.assertHome(home);
+    }
     const root = join(home, 'report-groups');
     directory(root);
     const sourcesRoot = join(root, 'sources');
@@ -447,15 +454,28 @@ export class StationReportGroupRuntime {
     groupId: string,
     command: ReportGroupFinalizeSyncInput,
   ) {
-    const result = await this.#custody.finalizeSync(
-      context,
-      groupId,
-      command,
-      this.#dispatch,
-    );
-    const historical = await this.#custody.inspectForMutation(context, groupId);
-    if (!historical) throw new StationReportCustodyUnavailable();
-    return { replayed: result.replayed, group: view(historical) };
+    const work = async (
+      lease?: import('../../runtime/bootstrap/runtime-publication-participant.js').RuntimePublicationLease,
+    ) => {
+      const result = await this.#custody.finalizeSync(
+        context,
+        groupId,
+        command,
+        this.#dispatch,
+        lease?.assertCurrent,
+      );
+      const historical = await this.#custody.inspectForMutation(
+        context,
+        groupId,
+      );
+      if (!historical) throw new StationReportCustodyUnavailable();
+      return { replayed: result.replayed, group: view(historical) };
+    };
+    const participant = this.owners.publicationParticipant;
+    if (participant === undefined) return work();
+    if (!isRuntimePublicationParticipant(participant))
+      throw new StationReportCustodyUnavailable();
+    return participant.run(work);
   }
   async get(context: RuntimeSourceRequestContext, groupId: string) {
     const result = await this.#custody.inspect(context, groupId);

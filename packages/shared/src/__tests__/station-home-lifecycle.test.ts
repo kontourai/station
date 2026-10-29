@@ -7,6 +7,8 @@ import {
   acquireStationHomeMaintenanceLease,
   acquireStationHomeMaintenanceLeaseAsync,
   acquireStationHomeRuntimeLease,
+  assertStationHomeRuntimeProof,
+  captureStationHomeRuntimeProof,
   StationHomeActiveError,
 } from '../station-home-lifecycle.js';
 
@@ -34,6 +36,39 @@ afterEach(() => {
 });
 
 describe('Station home lifecycle authority', () => {
+  it('captures only an exact live runtime lease for the same home', () => {
+    const home = join(root(), 'home');
+    const other = join(root(), 'other');
+    const lease = acquireStationHomeRuntimeLease(home);
+    const proof = captureStationHomeRuntimeProof(home, lease);
+    expect(() => assertStationHomeRuntimeProof(proof)).not.toThrow();
+    expect(() => captureStationHomeRuntimeProof(other, lease)).toThrow();
+    expect(() =>
+      captureStationHomeRuntimeProof(home, {
+        ownerId: lease.ownerId,
+        release() {},
+      }),
+    ).toThrow();
+    expect(() =>
+      assertStationHomeRuntimeProof({ assertCurrent() {} }),
+    ).toThrow();
+    lease.release();
+    const replacement = acquireStationHomeRuntimeLease(home);
+    try {
+      expect(() => assertStationHomeRuntimeProof(proof)).toThrow();
+      expect(() => captureStationHomeRuntimeProof(home, lease)).toThrow();
+      const replacementProof = captureStationHomeRuntimeProof(
+        home,
+        replacement,
+      );
+      expect(() =>
+        assertStationHomeRuntimeProof(replacementProof),
+      ).not.toThrow();
+    } finally {
+      replacement.release();
+    }
+  });
+
   it('publishes its own exact lease after a transient Windows birth-probe miss', () => {
     const home = join(root(), 'home');
     let probes = 0;
