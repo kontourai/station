@@ -20,7 +20,7 @@ import { redactSecrets } from '@kontourai/station-shared/redaction';
  */
 
 /** Characters of stderr kept, newest last. */
-export const CODEX_STDERR_TAIL_MAX_CHARS = 2048;
+const CODEX_STDERR_TAIL_MAX_CHARS = 2048;
 /** A longer single line is cut before it is kept or logged. */
 const CODEX_STDERR_LINE_MAX_CHARS = 1024;
 // Long base64-like runs and padded short body lines are withheld even when

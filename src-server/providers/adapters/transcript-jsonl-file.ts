@@ -21,7 +21,7 @@ import { join, relative, sep } from 'node:path';
  * A record longer than this many BYTES is not buffered: its bytes are
  * discarded as they are read and it becomes one `tooLarge` record.
  */
-export const TRANSCRIPT_LINE_MAX_BYTES = 4 * 1024 * 1024;
+const TRANSCRIPT_LINE_MAX_BYTES = 4 * 1024 * 1024;
 /** Bytes read per `read()` call. */
 const READ_CHUNK_BYTES = 64 * 1024;
 

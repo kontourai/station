@@ -269,7 +269,7 @@ function toolOutputText(output: unknown): string | undefined {
 }
 
 /** One rollout record as transcript entries; none for what is left out. */
-export function codexRolloutEntries(
+function codexRolloutEntries(
   rolloutRecord: Record<string, unknown>,
   message: number,
 ): ChildWorkTranscriptEntry[] {

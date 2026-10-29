@@ -81,6 +81,7 @@ describe('#3071: the four inbox-row summaries, as the fold emits them', () => {
     });
     expect(lifecycle(INTERRUPTED_WITH_ORPHANED_APPROVAL_EVENTS)).toEqual({
       lifecycleState: 'needs_input',
+      lifecycleChangedAt: '2026-09-30T10:00:05.000Z',
       previousLifecycleState: 'needs_input',
       transitionReason: 'runtime_exit',
       transitionSource: 'system_recovery',
