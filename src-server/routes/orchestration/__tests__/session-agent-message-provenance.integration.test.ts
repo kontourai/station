@@ -391,7 +391,11 @@ describe('#3419 an agent message carries who sent it', () => {
       (rows) => rows.length === 2,
     );
     const steer = starts.find((start) => start.inputKind === 'steer');
-    expect(unframeAgentMessage(steer?.prompt ?? '')).toBe('Skip the lockfile.');
+    expect(
+      unframeAgentMessage(
+        typeof steer?.prompt === 'string' ? steer.prompt : '',
+      ),
+    ).toBe('Skip the lockfile.');
     expect(steer?.clientOrigin?.sender).toMatchObject({
       sessionId: 'sender-session',
       requestKey: 'request-key-steer-1',

@@ -1,3 +1,4 @@
+import type { StationRoute } from '@kontourai/station-contracts/station-routes';
 import {
   createDirectHttpAccessMethod,
   createHostTunnelAccessMethod,
@@ -9,8 +10,17 @@ import {
   mergeHostAccessProfiles,
   normalizeConnectionProfile,
 } from './connectionProfile';
+import {
+  addConnectionRoute,
+  mergeAdvertisedRoutes,
+  type RouteState,
+  removeConnectionRoute,
+} from './connectionRoutes';
 import { recordConnectionSuccess } from './connectionSuccess';
-import { createAccessEndpoint } from './environmentProfiles';
+import {
+  createAccessEndpoint,
+  type EndpointCompatibilityContext,
+} from './environmentProfiles';
 import { defaultCredentialStorage, defaultStorage } from './storage';
 import type {
   AccessEndpoint,
@@ -1700,6 +1710,62 @@ export class ConnectionStore {
     });
     if (selected) this.write(updated, activeId, snapshot);
     return selected;
+  }
+
+  /**
+   * Applies a Station's own report of the addresses it is reached on
+   * (docs/design/station-routes.md). Ignored unless `environmentId` is the
+   * identity this profile already holds: the report is learned only from the
+   * same Station, and every learned route is still checked by the probe
+   * before use. Returns whether the profile changed.
+   */
+  applyAdvertisedRoutes(
+    id: string,
+    environmentId: string,
+    routes: readonly StationRoute[],
+    context: Pick<EndpointCompatibilityContext, 'clientProtocol'>,
+  ): boolean {
+    return this.updateRoutes(id, (item) =>
+      item.environmentId && item.environmentId === environmentId
+        ? mergeAdvertisedRoutes(item, routes, context)
+        : null,
+    );
+  }
+
+  /** Adds a route the user typed. Throws when the address is not usable. */
+  addRoute(id: string, address: string): boolean {
+    return this.updateRoutes(id, (item) => addConnectionRoute(item, address));
+  }
+
+  /** Removes a route the user added; never an advertised or the last route. */
+  removeRoute(id: string, endpointId: string): boolean {
+    return this.updateRoutes(id, (item) =>
+      removeConnectionRoute(item, endpointId),
+    );
+  }
+
+  private updateRoutes(
+    id: string,
+    change: (item: SavedConnection) => RouteState | null,
+  ): boolean {
+    const snapshot = this.read();
+    const { connections, activeId } = snapshot;
+    const before = connections.find((item) => item.id === id);
+    const routes = before ? change(before) : null;
+    if (!before || !routes) return false;
+    // A different selected address is a rebind: nothing in flight against the
+    // previous one is evidence about the new one.
+    if (routes.selectedEndpointId !== before.selectedEndpointId) {
+      this.invalidateCredentialGeneration(id);
+    }
+    this.write(
+      connections.map((item) =>
+        item.id === id ? { ...item, ...routes } : item,
+      ),
+      activeId,
+      snapshot,
+    );
+    return true;
   }
 
   selectAccessMethod(

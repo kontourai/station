@@ -1,0 +1,27 @@
+{
+  "revision": "025611b42aef9385f339fe91c3940df3068fce10",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Re-checked after a typing-only claude-adapter test change (an onTestFinished cleanup callback now has a block body); adapter behavior is unchanged, so nothing this document says changed.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/providers/__tests__/claude-adapter.test.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Re-checked after a typing-only ChatDock change: the new chat now queues the start pick as { queuedApprovalMode } instead of through approvalPickUpdate (which could return undefined); same behavior, so nothing this document says changed.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"Re-checked after a typing-only ChatDock change: the new chat now queues the start pick as { queuedApprovalMode } instead of through approvalPickUpdate (which could return undefined); same behavior, so nothing this document says changed.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Re-checked after a typing-only ChatDock change: the new chat now queues the start pick as { queuedApprovalMode } instead of through approvalPickUpdate (which could return undefined); same behavior, so nothing this document says changed.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Re-checked after a typing-only ChatDock change: the new chat now queues the start pick as { queuedApprovalMode } instead of through approvalPickUpdate (which could return undefined); same behavior, so nothing this document says changed.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Re-checked after a typing-only claude-adapter test change (an onTestFinished cleanup callback now has a block body); adapter behavior is unchanged, so nothing this document says changed.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/providers/__tests__/claude-adapter.test.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Re-checked after a typing-only ChatDock change: the new chat now queues the start pick as { queuedApprovalMode } instead of through approvalPickUpdate (which could return undefined); same behavior, so nothing this document says changed.","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"Re-checked after a typing-only ChatDock change: the new chat now queues the start pick as { queuedApprovalMode } instead of through approvalPickUpdate (which could return undefined); same behavior, so nothing this document says changed.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Re-checked after a typing-only ChatDock change: the new chat now queues the start pick as { queuedApprovalMode } instead of through approvalPickUpdate (which could return undefined); same behavior, so nothing this document says changed.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Re-checked after a typing-only ChatDock change: the new chat now queues the start pick as { queuedApprovalMode } instead of through approvalPickUpdate (which could return undefined); same behavior, so nothing this document says changed.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Re-checked after a typing-only ChatDock change: the new chat now queues the start pick as { queuedApprovalMode } instead of through approvalPickUpdate (which could return undefined); same behavior, so nothing this document says changed.","inputs":["docs/user/personal-boards.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

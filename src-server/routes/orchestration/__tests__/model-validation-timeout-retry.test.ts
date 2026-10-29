@@ -375,7 +375,12 @@ test('another user still cannot open the reserved-tail conversation', async () =
   expect(store.conversationSessions('conv-private')).toHaveLength(2);
   await expect(
     service.resolveConversationOpen('conv-private', OWNER_AUTHORITY),
-  ).resolves.toMatchObject({ status: 'resolved' });
+  ).resolves.toMatchObject({
+    status: 'resolved',
+    // #4179: described by its predecessor, but the next send starts the
+    // reserved tail.
+    nextTurnStartsSession: true,
+  });
 
   await expect(
     service.resolveConversationOpen(

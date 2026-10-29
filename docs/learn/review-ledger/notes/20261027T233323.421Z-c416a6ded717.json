@@ -1,0 +1,7 @@
+{
+  "revision": "f6ffbccd17683d1d1309fede57e47e4ac3a6f901",
+
+  "notes": [
+    {"path":"src-server/AGENTS.md","note":"Checked: src-server/AGENTS.md only links docs/guides/development.md for workload and verification guidance; the linked section's only change is the holder bash -p clause, and no rule here depends on it.","inputs":["src-server/AGENTS.md","docs/guides/development.md"]}
+  ]
+}

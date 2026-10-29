@@ -388,6 +388,21 @@ export const STATION_CONTROL_TOOL_POLICY = {
     routes: [del('/agents/:slug/conversations/:conversationId')],
   },
 
+  // Reads the source as the session's owner and writes a new conversation,
+  // so a Project `execute` action, as starting a Session is. The route holds
+  // the caller to its scope twice (`refuseOutOfScopeDispatch`): the source
+  // must be a conversation its scope admits (`view`), and the fork lands only
+  // where it could start a Session (`execute`). A bound operator keeps the
+  // operator's reach.
+  fork_conversation: {
+    assurance: 'any',
+    role: 'project',
+    projectAction: 'execute',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [post('/agents/:slug/conversations/:conversationId/fork')],
+  },
+
   search_conversations: {
     ...SELF_READ,
     routes: [get('/api/conversations/work/search')],
@@ -1111,6 +1126,13 @@ export const STATION_CONTROL_TOOL_POLICY = {
     personOnly: 'never',
     enforcedBy: 'route',
     routes: [post('/api/notifications/agent')],
+  },
+  // The route answers only for the session the forwarded credential names
+  // (its own scope's counters); without one it refuses.
+  workload_status: {
+    ...READ,
+    enforcedBy: 'route',
+    routes: [get('/api/system/workload/session')],
   },
 } as const satisfies Record<string, StationControlToolPolicy>;
 

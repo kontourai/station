@@ -99,6 +99,8 @@ _Avoid_: source doc unless it is intended for review
 | Voice session lifecycle | [VoiceSession](../../../src-server/voice/voice-session.ts) | [Voice examples](../../../examples/README.md) |
 | Disclosed product observations and local delivery health | [UsageTelemetryService](../../../src-server/services/usage-telemetry-service.ts) | [Usage telemetry](../../reference/usage-telemetry.md) |
 | Durable product ingestion and received-observation trends | [Product receiver](../../../packages/telemetry-broker/src/store.ts) | [Receiver operation and qualification limits](../../../packages/telemetry-broker/README.md) |
+| Principal-owned source grants, sync and saved Personal views | [Analytics route composition](../../../src-server/runtime/routes/runtime-routes.ts) | [Enrollment, private usage and recovery boundaries](../../guides/monitoring.md#source-enrollment-proposals) |
+| Product incident cohorts and local issue references | [Incident query](../../../packages/telemetry-broker/src/product-incidents.ts) and [Core link owner](../../../src-server/services/telemetry-incident-links.ts) | [Incident handoff and limits](../../guides/monitoring.md#review-an-incident-draft) |
 | Verification selection and completion | [Lane registry](../../../scripts/verification-lanes.mjs) | [Testing](../../guides/testing.md) |
 
 Storage, dispatch, and physical delivery have different evidence. A queued

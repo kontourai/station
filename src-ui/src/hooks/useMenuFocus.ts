@@ -132,7 +132,13 @@ export function useMenuFocus<T extends HTMLElement>(
     if (!isOpen) return;
     const container = containerRef.current;
     if (!container) return;
-    if (container.getAttribute('role') !== 'menu') return;
+    // A popover whose direct child is the menu (a filter field beside it, as
+    // the Station switcher has) owns the same pattern.
+    if (
+      container.getAttribute('role') !== 'menu' &&
+      !container.querySelector(':scope > [role="menu"]')
+    )
+      return;
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (
@@ -149,7 +155,11 @@ export function useMenuFocus<T extends HTMLElement>(
           /^(input|textarea|select)$/i.test(target.tagName))
       )
         return;
-      const items = [...container.querySelectorAll<HTMLElement>(FOCUSABLE)];
+      // `data-roving-skip` marks a secondary control beside a row (a remove
+      // button) that the row's own keys reach, so arrows step row to row.
+      const items = [
+        ...container.querySelectorAll<HTMLElement>(FOCUSABLE),
+      ].filter((item) => !item.hasAttribute('data-roving-skip'));
       if (items.length === 0) return;
       event.preventDefault();
       event.stopPropagation();

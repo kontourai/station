@@ -42,6 +42,8 @@ export function createConversationOpenResolver(deps: {
     answerability: ConversationListItem['answerability'];
     canContinue: boolean;
     continuationPending?: boolean;
+    /** #4179: whether the next ordinary turn starts a new Session. */
+    nextTurnStartsSession?: boolean;
     /** #2309: the conversation's activity, read with the current child. */
     activity?: ConversationTurnActivity;
   } | null>;
@@ -108,6 +110,9 @@ export function createConversationOpenResolver(deps: {
           canContinue: current.canContinue,
           ...(!current.canContinue && current.continuationPending
             ? { continuationPending: true }
+            : {}),
+          ...(current.nextTurnStartsSession !== undefined
+            ? { nextTurnStartsSession: current.nextTurnStartsSession }
             : {}),
           ...(current.activity ? { activity: current.activity } : {}),
           answerability: current.answerability,

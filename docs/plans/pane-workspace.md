@@ -128,8 +128,13 @@ not yet accepted.
 - [ ] Header/footer controls work expanded, collapsed, mobile and both themes.
   In #3875: account control beside Live work, region glyphs at the far right;
   browser geometry checked expanded at 216px in both themes, and collapsed and
-  in the phone drawer at 390 and 320px. Coding toggle delegation is not
-  started.
+  in the phone drawer at 390 and 320px. Live work and the Settings gear have
+  since left the footer: its one row is Schedule and Customize, then Updates
+  and the account control. `tests/activity-pane.spec.ts` ("Sidebar footer
+  controls") checks that row's order, containment and spacing expanded and in
+  the phone drawer at 390 and 320px (with the 44px floor there), and on the
+  collapsed rail checks that Schedule and Customize move to Sidebar utilities. Coding toggle delegation is
+  not started.
 - [ ] Required local checks, independent review and native journeys recorded.
 - [ ] PRs linked and actual REST landing recorded.
 - [ ] Public SDK/contracts publication state recorded separately.

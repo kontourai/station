@@ -499,3 +499,49 @@ test.each([
     }
   },
 );
+
+describe('a restart-recovered turn', () => {
+  test('a recovery abort ends an invocation-anchored turn without settling it', () => {
+    const log: SessionWaitFoldEvent[] = [
+      {
+        sequence: 1,
+        event: {
+          method: 'turn.started',
+          turnId: 'turn-1',
+          invocationId: 'invocation-1',
+          threadId: 't1',
+        } as unknown as CanonicalRuntimeEvent,
+      },
+      {
+        sequence: 2,
+        event: {
+          method: 'turn.aborted',
+          turnId: 'turn-1',
+          recoveryTerminal: true,
+          threadId: 't1',
+        } as unknown as CanonicalRuntimeEvent,
+      },
+    ];
+    const ports: Pick<
+      SessionTurnWaitPorts,
+      | 'foldEvents'
+      | 'headSequence'
+      | 'coordinatorBusy'
+      | 'readInvocationTerminal'
+    > = {
+      foldEvents: () => log,
+      headSequence: () => 2,
+      coordinatorBusy: () => false,
+      // The boundary store records no invocation terminal for a recovery abort.
+      readInvocationTerminal: () => ({ kind: 'absent' }),
+    };
+    expect(evaluateSessionWait(ports, 't1', 'idle', 0)).toMatchObject({
+      satisfied: true,
+      view: { state: 'idle' },
+    });
+    // Nothing proves the requested work settled: no terminal ACK.
+    const settled = evaluateSessionWait(ports, 't1', 'turn-settled', 0);
+    expect(settled.satisfied).toBe(false);
+    expect(settled.view).not.toHaveProperty('settledTurn');
+  });
+});

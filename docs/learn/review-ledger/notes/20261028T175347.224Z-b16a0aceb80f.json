@@ -1,0 +1,7 @@
+{
+  "revision": "e8aa96ce9a21eace504a2aa24f9a8df4b308877a",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Checked against the change that adds request.opened and request.resolved to the stream's session read-model refresh set. This document makes no claim about which events re-read the sessions list; its claims stand unchanged.","inputs":["docs/reference/contracts.md","src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts"]}
+  ]
+}

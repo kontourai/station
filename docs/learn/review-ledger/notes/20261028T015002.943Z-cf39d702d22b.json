@@ -1,0 +1,7 @@
+{
+  "revision": "f7e245d270596b892d3e08ba941c3171d6fe7140",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-checked after LayoutView's error actions changed to a gapped ResponsiveSurfaceActions row with a secondary Try again (render-verified at 390/1440, both themes). Presentation only; no claim in this document about layout dispatch, placement, or host actions is affected.","inputs":["docs/architecture/module-map.md","src-ui/src/views/LayoutView.tsx"]}
+  ]
+}

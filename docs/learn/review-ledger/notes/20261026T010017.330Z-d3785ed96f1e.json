@@ -1,0 +1,7 @@
+{
+  "revision": "197315ba7ee8cee1bd53fbef9f15b8add6d825fe",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed sidebar footer layout against ProjectSidebarFooter, UpdatesControl and SidebarAccountControl. Updated current entry points: Schedule and Customize left, icon-only Updates and profile right, Settings through profile and Customize. Footer and standalone tray focused suites pass 32 tests. Browser confirms one row and profile Settings. No runtime authority or persistence contract changes.","inputs":["docs/design/settings-architecture.md","src-ui/src/components/project-sidebar/ProjectSidebarFooter.tsx","src-ui/src/components/project-sidebar/ProjectSidebarFooter.css","src-ui/src/components/project-sidebar/SidebarAccountControl.tsx","src-ui/src/__tests__/ProjectSidebarPresenceTray.test.tsx"]}
+  ]
+}

@@ -97,9 +97,13 @@ Unsupported resources and writes fail before peer allocation in the
 [Station runtime owner](../../src-ui/src/platform/native/nativeRelayApplicationRuntime.ts).
 The generic library does not choose that policy. Management does not replace
 Project IAM or grant terminal, Agent or Task publication authority. The
-account-bound gate admits only exact native relay-management leaves with
+account-bound relay-management gate admits only its exact native leaves with
 current Device/account proof and separate `relay:manage`; credential-only
-account-bound Devices remain gated. Capabilities grant no management authority.
+account-bound Devices remain gated on those leaves. Independent
+[personal analytics leaves](../../docs/guides/monitoring.md#connect-a-personal-source-in-insights)
+require a person-bound Device, matching current account session,
+`orchestration:read` and per-handler person/grant checks. They grant no generic
+orchestration or native transport authority. Capabilities grant no management authority.
 [ApiBaseContext](../../src-ui/src/contexts/ApiBaseContext.tsx) and the
 [selected connection owner](../../src-ui/src/platform/native/nativeRelayConnectionOwner.ts)
 mount the host transport; the

@@ -11,10 +11,11 @@
  */
 
 // Replaced by the web build; development and native shells never cache.
+// The build injects the listener's own asset and document rules
+// (packages/shared/src/ui-document-policy.ts), so the two cannot drift.
 const OFFLINE_BUILD = /* STATION_OFFLINE_BUILD */ null;
 const SHELL_CACHE = `station-shell-${OFFLINE_BUILD?.version}`;
-const OFFLINE_CSP =
-  "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' http: https: ws: wss:; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
+const IMMUTABLE_ASSET = OFFLINE_BUILD && new RegExp(OFFLINE_BUILD.immutable);
 
 async function anonymousResponse(url) {
   const response = await fetch(url, {
@@ -42,7 +43,7 @@ self.addEventListener('install', (event) => {
                 'Referrer-Policy': 'no-referrer',
                 'X-Content-Type-Options': 'nosniff',
               });
-              headers.set('Content-Security-Policy', OFFLINE_CSP);
+              headers.set('Content-Security-Policy', OFFLINE_BUILD.csp);
               headers.set('Cache-Control', 'no-store');
               const { html } = await response.json();
               if (typeof html !== 'string')
@@ -51,6 +52,14 @@ self.addEventListener('install', (event) => {
             } else await cache.put(url, response);
           }),
         );
+        // Best effort, after the required shell: a missing warm chunk never
+        // fails the install, and Save-Data keeps them to first use.
+        if (!self.navigator.connection?.saveData)
+          await Promise.allSettled(
+            OFFLINE_BUILD.warm.map(async (url) =>
+              cache.put(url, await anonymousResponse(url)),
+            ),
+          );
       }
       await self.skipWaiting();
     })(),
@@ -108,10 +117,7 @@ self.addEventListener('fetch', (event) => {
     );
     return;
   }
-  const immutable =
-    /^\/assets\/(?:[\w.-]+\/)*[\w.-]+-[\w-]{8,}\.(?:js|css|woff2?|png|svg|webp)$/.test(
-      url.pathname,
-    );
+  const immutable = IMMUTABLE_ASSET.test(url.pathname.slice(1));
   const staticShell = OFFLINE_BUILD.precache.includes(url.pathname);
   if (!immutable && !staticShell) return;
   event.respondWith(
