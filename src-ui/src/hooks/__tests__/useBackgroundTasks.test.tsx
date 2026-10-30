@@ -6,6 +6,7 @@ import { activeChatsStore } from '../../contexts/active-chats-store';
 import { backgroundTasksStore } from '../../contexts/background-tasks-store';
 import {
   useChatBackgroundTasks,
+  useChatBackgroundTasksLimited,
   useChatBackgroundTasksRunningCount,
 } from '../useBackgroundTasks';
 
@@ -140,6 +141,25 @@ test('running-count subscribers do not render for detail-only changes', () => {
   );
   expect(result.current).toBe(0);
   expect(renders).toBeGreaterThan(before);
+});
+
+test('limited-history badge tracks only the selected chat', () => {
+  const { result, rerender } = renderHook(
+    (chat: string | null) => useChatBackgroundTasksLimited(chat),
+    { initialProps: 'chat-a' as string | null },
+  );
+  expect(result.current).toBe(false);
+  act(() => {
+    for (let index = 0; index < 101; index++)
+      startTool('chat-b', `other-${index}`);
+  });
+  expect(result.current).toBe(false);
+  rerender('chat-b');
+  expect(result.current).toBe(true);
+  act(() => backgroundTasksStore.reconcileSnapshot({ sessions: [] }));
+  expect(result.current).toBe(false);
+  rerender(null);
+  expect(result.current).toBe(false);
 });
 
 test('provider cards retain their view on unrelated events and refresh the spawning tool and provider updates', () => {
