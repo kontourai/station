@@ -98,7 +98,7 @@ describe('GET /api/projects/:slug/checkout-freshness', () => {
       branch: 'main',
       upstream: 'origin/main',
       behind: 4,
-      updateCommand: `git -C ${checkout} pull --ff-only`,
+      updateCommand: `git -C ${process.platform === 'win32' ? `'${checkout}'` : checkout} pull --ff-only`,
     });
   });
 

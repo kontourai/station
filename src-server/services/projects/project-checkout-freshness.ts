@@ -17,7 +17,7 @@
  * not complete is not remembered. Thresholds are applied per call, so a
  * changed setting applies at once.
  */
-import { constants } from 'node:fs';
+import { type BigIntStats, constants } from 'node:fs';
 import { lstat, open, realpath } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import {
@@ -76,7 +76,7 @@ interface Walk {
   /** `dev:ino` of each part, the record itself last. */
   identities: string[];
   /** The record's own `lstat`. */
-  stat: Awaited<ReturnType<typeof lstat>>;
+  stat: BigIntStats;
 }
 
 /**
@@ -103,7 +103,7 @@ async function walk(
       return undefined;
     path = join(path, part);
     try {
-      stat = await lstat(path);
+      stat = await lstat(path, { bigint: true });
     } catch {
       return undefined;
     }
@@ -161,14 +161,16 @@ async function readRecord(
   }
   let result: { text: string; mtime: Date } | undefined;
   try {
-    const stats = await handle.stat();
+    const stats = await handle.stat({ bigint: true });
     // The file opened must be the one the walk saw.
     if (
       !stats.isFile() ||
       `${stats.dev}:${stats.ino}` !== seen.identities.at(-1)
     )
       return undefined;
-    const length = Math.min(stats.size, maxBytes);
+    if (stats.size > BigInt(Number.MAX_SAFE_INTEGER)) return undefined;
+    const size = Number(stats.size);
+    const length = Math.min(size, maxBytes);
     const bytes = Buffer.alloc(length);
     let read = 0;
     while (read < length) {
@@ -176,7 +178,7 @@ async function readRecord(
         bytes,
         read,
         length - read,
-        stats.size - length + read,
+        size - length + read,
       );
       if (bytesRead === 0) break;
       read += bytesRead;

@@ -86,7 +86,7 @@ describe('project checkout freshness', () => {
       behind: 0,
       ahead: 0,
       thresholds: THRESHOLDS,
-      updateCommand: `git -C ${checkout} pull --ff-only`,
+      updateCommand: `git -C ${process.platform === 'win32' ? `'${checkout}'` : checkout} pull --ff-only`,
     });
   });
 
@@ -636,7 +636,7 @@ describe('project checkout freshness', () => {
       THRESHOLDS,
     );
     expect(result).toMatchObject({
-      updateCommand: `git -C ${checkout} pull --ff-only`,
+      updateCommand: `git -C ${process.platform === 'win32' ? `'${checkout}'` : checkout} pull --ff-only`,
     });
   });
 

@@ -33,11 +33,15 @@ vi.mock('node:fs/promises', async (importOriginal) => {
       const stat = await actual.lstat(...args);
       const path = String(args[0]);
       if (seams.substituted && path.endsWith(seams.substituted))
-        return Object.assign(stat, { ino: Number(stat.ino) + 1 });
+        return Object.assign(stat, {
+          ino: typeof stat.ino === 'bigint' ? stat.ino + 1n : stat.ino + 1,
+        });
       const suffix = seams.swapAfterFirstLstat;
       if (suffix && path.endsWith(suffix)) {
         if (seen.has(path))
-          return Object.assign(stat, { ino: Number(stat.ino) + 1 });
+          return Object.assign(stat, {
+            ino: typeof stat.ino === 'bigint' ? stat.ino + 1n : stat.ino + 1,
+          });
         seen.add(path);
       }
       return stat;
