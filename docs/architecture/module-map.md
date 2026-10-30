@@ -3010,8 +3010,10 @@ and observed legacy-source read set, then durably records one prepared rollback 
 before publishing authoritative record or document files first, metadata and derived
 graph/alias/path indexes second, and removals last. The composed root's device, inode,
 and real path are revalidated before lock acquisition and immediately before every
-rename or unlink. Every replacement is same-directory temp write, file sync, rename, and
-directory sync. A callback rejection publishes none of its staged changes; a partial
+rename or unlink. Every replacement uses a same-directory temp write, file sync and
+rename. The parent directory is synced on non-Windows systems; on Windows the helper
+opens and checks it but skips directory fsync, so equivalent power-loss durability is
+not established. A callback rejection publishes none of its staged changes; a partial
 publication failure rolls back exact bytes. On the next locked read or mutation,
 recovery preserves a prepared journal whose complete after-image already matches disk;
 otherwise it attempts exact rollback. A committed journal needs cleanup only. A rollback
