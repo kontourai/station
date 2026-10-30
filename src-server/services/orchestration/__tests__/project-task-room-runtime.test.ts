@@ -1608,8 +1608,8 @@ describe('ProjectTaskRoomRuntime', () => {
     expect(seeded).toMatchObject({
       kind: 'seeded',
       operationCount: 10_000,
-      baseRevision: expect.stringMatching(/^swsr-v1:/),
-      revision: expect.stringMatching(/^swsr-v1:/),
+      baseRevision: expect.stringMatching(/^swsr-v2:/),
+      revision: expect.stringMatching(/^swsr-v2:/),
     });
     await expect(
       reader.read({ scope, after: seeded.baseRevision }),
