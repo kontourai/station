@@ -1,0 +1,7 @@
+{
+  "revision": "36143ed53a0f6844890becce6d5c6e88de49e547",
+
+  "notes": [
+    {"path":"scripts/__tests__/fixtures/sbom/README.md","note":"Scoped CycloneDX package-pin impact review at 60222782fc8. Read the complete fixture README, SPDX schema identity/license header, current CycloneDX npm6.0.1 selection and the schema-resolution callers in release-sbom-generation tests. CycloneDX validation still constructs JsonValidator1.6 from the installed CycloneDX library resolved relative to the pinned npm tool; SPDX validation still uses the committed2.3 draft07 fixture and preserved CC-BY3.0 license. Tests include malformed-hash/checksum negative assertions; this review reads those assertions, not a new execution result. The dependency update changes neither the README’s schema provenance nor the offline fixture’s separate license and does not make schema validity a release/security attestation. No prose change required for this named devDependency input. Source/installed-metadata inspection only; no schema suite, SBOM generation, package publication, advisory scan or hosted/native acceptance run. No fixture/schema/license, policy, baseline/classification/capture change.","inputs":["scripts/__tests__/fixtures/sbom/README.md"]}
+  ]
+}
