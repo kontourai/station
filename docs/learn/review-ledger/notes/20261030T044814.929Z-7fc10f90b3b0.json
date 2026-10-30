@@ -1,0 +1,7 @@
+{
+  "revision": "3bb53e11857652dd86248903384e5108493e7aba",
+
+  "notes": [
+    {"path":"examples/station-sessions-mcp/README.md","note":"Scoped orchestration/runtime-route input review at 3bb53e11857. Read the complete example README, standalone server reader and renderer, and current /api/orchestration/sessions mount/authority path. The example still fetches its base plus /orchestration/sessions without a credential and converts non-OK/invalid/exception results into an empty array; the README explicitly says this reader needs repair under2785 and that an empty panel is not a verified empty Station. The canonical sessions handler still uses current readAuthorityFor and returns the usual success/data envelope. New group/finalizer preview mounts add no unauthenticated alias, credential delegation or write bridge to this standalone server. Renderer output remains a resource-read snapshot, not live polling or a successful host integration. No prose change required for these named route inputs; do not remove the disclosed repair blocker merely because routes exist. Source inspection only: no MCP server launch, HTTP request, integration install, browser render or host/provider/native acceptance. No baseline/classification/capture change.","inputs":["examples/station-sessions-mcp/README.md","src-server/routes/orchestration/orchestration.ts","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}
