@@ -1,0 +1,7 @@
+{
+  "revision": "ab11ddf41b3dc4b63188a41afb7c0a8603cdeb37",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"Reviewed merged shared MCP transport: OAuth issuer authorizationFetch wraps the address-pinned base and origin-bound literal headers. Registration and refresh use pinned fetch beneath issuer guard. Plugin copy is staging only; locked publisher enforces trust receipts and OAuth rules for install/update/rollback/restore. Local tests, no live-provider claim.","inputs":["docs/reference/shared.md"]}
+  ]
+}

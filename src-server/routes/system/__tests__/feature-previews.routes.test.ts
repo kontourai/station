@@ -66,6 +66,7 @@ describe('feature preview routes', () => {
       data: [
         { id: 'task-review', enabled: false },
         { id: 'visual-skills', enabled: false },
+        { id: 'integration-content-trust', enabled: false },
         { id: 'real-consumer', enabled: false },
       ],
     });

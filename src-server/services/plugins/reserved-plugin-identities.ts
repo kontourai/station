@@ -43,6 +43,8 @@ export const STATION_RESERVED_PLUGIN_IDENTITIES = Object.freeze([
   'host-approvals',
   'install',
   'preview',
+  // #3483 mounts `GET /api/plugins/recovery-backups` (plugin-install-routes.ts).
+  'recovery-backups',
   'reload',
   // #2323 S1 mounted `POST /api/plugins/validate` (plugin-validate-routes.ts).
   'validate',

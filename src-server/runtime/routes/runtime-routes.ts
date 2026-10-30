@@ -368,6 +368,7 @@ import { createSkillRoutes } from '../../routes/agents/skills.js';
 import { createTemplateRoutes } from '../../routes/agents/templates.js';
 import { createToolRoutes } from '../../routes/agents/tools.js';
 import { createUnattendedGrantRoutes } from '../../routes/agents/unattended-grants-routes.js';
+import { createUntrustedContentRoutes } from '../../routes/agents/untrusted-content-routes.js';
 import { createBoardRoutes } from '../../routes/board.js';
 import { createAgentConversationTitleRoutes } from '../../routes/chat/agent-conversation-title.js';
 import { createChatRoutes } from '../../routes/chat/chat.js';
@@ -751,12 +752,14 @@ import {
   isMcpUiRenderRevoked,
   setMcpUiRenderAllowed,
 } from '../../services/plugins/mcp-ui-permissions.js';
+import { gateMediatedMcpCall } from '../../services/plugins/mediated-untrusted-content-gate.js';
 import { createPluginCommandRequirementResolver } from '../../services/plugins/plugin-command-effect-admission.js';
 import { PluginDraftService } from '../../services/plugins/plugin-draft-service.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginLifecycleProposalService } from '../../services/plugins/plugin-lifecycle-proposals.js';
 import { PluginVisibilityService } from '../../services/plugins/plugin-visibility-service.js';
 import { createLocalRegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
+import { sharedUntrustedContentLedger } from '../../services/plugins/untrusted-content-policy.js';
 import { FocusPresence } from '../../services/presence/focus-presence.js';
 import type { AttentionProjectionService } from '../../services/projects/attention-projection.js';
 import { readCheckoutRemotes } from '../../services/projects/checkout-remote-reader.js';
@@ -2441,6 +2444,18 @@ export function configureRuntimeRoutes(
           threadId,
           remote: false,
         }),
+      // #3483: an external engine's station-control call that sends or
+      // changes things, after its conversation read untrusted content.
+      untrustedContentGate: async ({ conversationIds, toolNames }) => {
+        const verdict = await gateMediatedMcpCall({
+          conversationIds,
+          serverId: 'station-control',
+          toolNames,
+          definition: () =>
+            context.configLoader.loadIntegration('station-control'),
+        });
+        return verdict.allowed ? undefined : verdict.reason;
+      },
       onRefusal: (refusal, method, path) =>
         context.logger.warn(
           `station-control authority refused ${method} ${path}: ${refusal.code}`,
@@ -3895,6 +3910,12 @@ export function configureRuntimeRoutes(
       context.logger,
       context.eventBus,
       {
+        recoveryInventoryPreview: context.featurePreviews.bind({
+          id: 'plugin-recovery-inventory',
+          label: 'Plugin recovery inventory',
+          description:
+            'List retained plugin recovery material and manual recovery guidance.',
+        }),
         onTelemetryRemoval: async (publisher, reason) => {
           return context
             .getUsageTelemetry?.()
@@ -4845,29 +4866,48 @@ export function configureRuntimeRoutes(
     canReadSession: (sessionId, authority) =>
       context.orchestrationService.canUserReadSession(sessionId, authority),
   });
+  const authorizeIntegrationOperator = async (c: Context) => {
+    roomRequestPrincipals.set(
+      c.req.raw,
+      resolveOrchestrationRequestPrincipal(c),
+    );
+    const authority = projectMembershipAuthority(c.req.raw);
+    await authority.operator();
+    if (
+      (await authority.current()).principal.id !== LOCAL_OPERATOR_PRINCIPAL_ID
+    )
+      throw new ProjectMembershipRefusal('forbidden');
+  };
+  const resolveIntegrationRequestPrincipalId = (c: Context) => {
+    try {
+      return resolveOrchestrationRequestPrincipal(c).id;
+    } catch {
+      return undefined;
+    }
+  };
+  // #3483: mounted before the tool routes so their `/:id` leaves never
+  // shadow these paths.
+  context.app.route(
+    '/integrations',
+    createUntrustedContentRoutes({
+      marks: () => sharedUntrustedContentLedger.durableMarks,
+      authorizeOperator: authorizeIntegrationOperator,
+      resolveRequestPrincipalId: resolveIntegrationRequestPrincipalId,
+      onCleared: (id) => sharedUntrustedContentLedger.forgetConversation(id),
+    }),
+  );
   context.app.route(
     '/integrations',
     // Reconnect reloads agents (which rebuilds their MCP connections), NOT a
     // full `initialize()` — re-running init re-binds the HTTP + voice-WS ports
     // (EADDRINUSE → uncaughtException → the server shuts itself down).
     createToolRoutes(context.mcpService, context.reloadAgents, {
-      authorizeOperator: async (c) => {
-        roomRequestPrincipals.set(
-          c.req.raw,
-          resolveOrchestrationRequestPrincipal(c),
-        );
-        const authority = projectMembershipAuthority(c.req.raw);
-        await authority.operator();
-        if (
-          (await authority.current()).principal.id !==
-          LOCAL_OPERATOR_PRINCIPAL_ID
-        )
-          throw new ProjectMembershipRefusal('forbidden');
-      },
+      authorizeOperator: authorizeIntegrationOperator,
       integrationIconAssets: new IntegrationIconAssets(
         context.configLoader.getProjectHomeDir(),
       ),
       resolveAccountPrincipalId: resolveConnectedAccountPrincipalId,
+      resolveRequestPrincipalId: resolveIntegrationRequestPrincipalId,
       // MCP-UI tool calls with `approvalPolicy: 'require'` block on a real inbox
       // approval before executing (the existing managed-approval registry +
       // inbox surface); the spec-compliant tool result is returned only after.

@@ -7321,6 +7321,9 @@ export async function executeExecutionTargetMessage(
               ...(context?.submissionDigest !== undefined
                 ? { submissionDigest: context.submissionDigest }
                 : {}),
+              ...(context?.mcpPromptOrigin
+                ? { mcpPromptOrigin: context.mcpPromptOrigin }
+                : {}),
               ...(input.skillExperience
                 ? { skillExperience: input.skillExperience }
                 : {}),
@@ -7347,6 +7350,9 @@ export async function executeExecutionTargetMessage(
                 : {}),
               ...(context?.submissionDigest !== undefined
                 ? { submissionDigest: context.submissionDigest }
+                : {}),
+              ...(context?.mcpPromptOrigin
+                ? { mcpPromptOrigin: context.mcpPromptOrigin }
                 : {}),
               ...(input.skillExperience
                 ? { skillExperience: input.skillExperience }
