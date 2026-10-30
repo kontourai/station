@@ -186,19 +186,37 @@ none can run), and optionally open a Project. The same inline composer starts
 the conversation. Empty Recent work is omitted only for this confirmed first
 session; loading and failed reads retain their status and recovery.
 
-The **Run a task…** control opens the existing task launcher with the current message, Project, Agent and
-explicit Station/engine/model/options selection, and with its Station/worker/model routing controls expanded. The launcher
-loads the selected environment's own worker inventory and retains portable
-Project/resource admission and the explicit no-fallback refusals. **Run task**
-starts a task; it does not place or migrate a foreground chat on a peer.
-**Connect a Station for this task** keeps the task draft, chosen Station and
-Project resource while setup opens. Returning refreshes discovery and still
-requires an explicit **Run task** action.
-Editing the task message updates the originating draft, so Cancel retains those edits.
-A successful launch clears only the text submitted and names its captured
-Station; newly typed text stays. Remote task submission and Escape do not
-submit or dismiss the underlying foreground composer. Prepared visual skills
-and coding-context drafts keep their existing chat-only path.
+The **Runs on <Station>** control names where this start runs: the explicit
+Station choice, else the Project's saved default environment, else the
+answering Station's host projection. When the server reports another Station
+this caller may run on, it opens a **Where this work runs** list with
+the current Station marked. The list offers only what the task launcher
+accepts, through one shared rule set: a verified SSH environment when no
+Project is selected (a Project is never placed over SSH), or a paired Station
+the caller may list whose credential holds `orchestration:operate`. A caller
+whose authority observation reports a grant without `orchestration:operate`
+is offered This Station only; any failed read of the observation (an older
+Station without it, a refusal, a server error or an unreadable body) hides
+nothing, since starting the task still needs `orchestration:operate` and the
+launcher and the server refuse what is not allowed. It only chooses the destination: This Station
+closes the list, and another Station continues into that Station's Engine &
+model picker, because a remote route needs a verified engine there. **Start**
+then opens the task launcher with the message, Project, Agent and selection,
+retaining portable Project/resource admission and the explicit no-fallback
+refusals; **Run task** starts a task and does not place or migrate a
+foreground chat on a peer. Once the task is accepted the composer closes
+and the dock shows **Task started on <Station>.** with **Open task** into
+Activity. **Connect a Station for this task** keeps the
+task draft, chosen Station and Project resource while setup opens; returning
+refreshes discovery and still requires an explicit **Run task** action.
+Editing the task message updates the originating draft, so Cancel retains
+those edits. A successful launch clears only the text submitted; newly typed
+text stays. Remote task submission and Escape do not submit or dismiss the
+underlying foreground composer. With nothing else to choose, before the Station
+reads answer, or when a read is refused (a scoped Device without
+`access:manage` cannot list paired Stations), the control is plain text with
+no caret. Prepared visual skills and coding-context drafts keep their
+existing chat-only path.
 
 The Project header leads with its name, description and observed Git branch.
 Files & connections holds source controls and the **Where Agent work starts**

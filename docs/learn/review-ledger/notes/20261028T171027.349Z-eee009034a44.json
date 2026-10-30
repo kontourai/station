@@ -1,0 +1,7 @@
+{
+  "revision": "7f2e7b4193a0fdc748a43a4aa1344c041419903f",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Edited the MCP advisory paragraph: the first-use pin is replaced by the operator-declared issuer, checked from configuration before the secret is read, independent of buckets, disconnects and concurrency. Checked against tool-server-oauth.ts and its tests. Other inputs: the advisory paragraph now describes the declared issuer instead of a first-use pin; the provider replaces the first-use issuer pin with the declared-issuer check, registers dynamic clients for the configured scopes, and accepts an empty scope choice.","inputs":["docs/guides/dependency-security.md","src-server/services/plugins/tool-server-oauth.ts"]}
+  ]
+}

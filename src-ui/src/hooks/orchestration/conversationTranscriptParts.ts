@@ -32,6 +32,7 @@ export function conversationPartToContentParts(
     result: part.result,
     output: part.output,
     ...(part.htmlReply ? { htmlReply: part.htmlReply } : {}),
+    ...(part.claudeArtifact ? { claudeArtifact: part.claudeArtifact } : {}),
     ...(part.stationControlRefusal
       ? { stationControlRefusal: part.stationControlRefusal }
       : {}),
