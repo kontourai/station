@@ -1,7 +1,12 @@
 /* The composer's context meter (ContextPercentage.tsx). A compact chip in the
    meta row beside the model picker: a fixed-width track and the rounded share.
    The track carries its own inline size; a `flex: 1` track inside this
-   shrink-to-fit button resolves to 0px. */
+   shrink-to-fit button resolves to 0px.
+
+   The fill is deliberate (the meta row's own precedent, chat.css's
+   `chat-input__model-reset`): a transparent meter read as stray text wedged
+   between the row's filled chips — on a phone it looked like a hairline and a
+   percentage floating between "Engine & model" and "Mode", not a control. */
 .context-meter {
   display: inline-flex;
   flex: 0 0 auto;
@@ -11,7 +16,7 @@
   padding: 0 var(--k-space-2);
   border: var(--k-border-thin, 1px) solid transparent;
   border-radius: var(--radius-pill);
-  background: transparent;
+  background: var(--k-panel-raised);
   color: var(--text-secondary);
   font: inherit;
   font-size: var(--text-xs);
@@ -25,7 +30,9 @@
 
 .context-meter:hover:not(:disabled),
 .context-meter:focus-visible {
-  background: var(--bg-tertiary);
+  /* The --bg-hover recipe against the --k tokens directly: this file's new
+     styling speaks the canonical token layer (component-style hygiene). */
+  background: color-mix(in srgb, var(--k-text) 5%, var(--k-bg));
   color: var(--text-primary);
 }
 
@@ -41,7 +48,9 @@
 .context-meter__track {
   display: block;
   flex: 0 0 auto;
-  inline-size: 28px;
+  /* 28px read as a hairline against the fill on a phone; 36px keeps the
+     meter compact while the share's fill is legible at a glance. */
+  inline-size: 36px;
   block-size: 4px;
   overflow: hidden;
   border-radius: var(--radius-pill);

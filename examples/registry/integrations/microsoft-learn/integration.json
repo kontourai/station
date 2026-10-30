@@ -1,0 +1,14 @@
+{
+  "id": "microsoft-learn",
+  "kind": "mcp",
+  "displayName": "Microsoft Learn Docs",
+  "icon": "📖",
+  "description": "Search Microsoft documentation, retrieve articles and find code samples. Queries go to Microsoft Learn. No account or local runtime required.",
+  "enabled": false,
+  "transport": "streamable-http",
+  "endpoint": "https://learn.microsoft.com/api/mcp",
+  "timeouts": {
+    "startupMs": 20000,
+    "requestMs": 60000
+  }
+}

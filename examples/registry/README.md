@@ -36,6 +36,13 @@ definitions; choosing an agent, project/tracker setup and concrete action
 authority are still required. A catalog listing alone does not qualify its
 installed model journey.
 
+The [starter integrations](integrations/README.md) add public web search,
+library and Microsoft documentation, local Lightpanda browsing and local
+document conversion. Hosted queries go to the named provider; local runtimes
+require separate installation. The guide records setup, executed provider
+probes and remaining qualification, and explains how public registries can
+supply the wider catalog without maintaining an exhaustive vendor list here.
+
 ## Scope
 
 This is the reproducible local fixture proof on which Phase 2 was closed. It is

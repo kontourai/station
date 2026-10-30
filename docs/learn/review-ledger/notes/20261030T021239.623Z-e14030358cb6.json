@@ -1,0 +1,7 @@
+{
+  "revision": "93941c96e5a3f17fd81e1e39f9127555dceaf354",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Get Conversation Statistics: reviewed against the stats-modal rendering change (ConversationStatsModal.tsx now collapses an engine-events section whose every figure is unreported, keeping the disclosure sentence; mixed sections keep their dashes). The documented wire contract is unchanged — lineage sums, context from the newest Session, absent-not-zero, and the contextWindowPercentage absence rule all still hold; the modal renders the same response fields and adds no estimate. No prose change.","inputs":["docs/reference/api.md"]}
+  ]
+}

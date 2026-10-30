@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-30T09:15:48Z | nightly-npm | 0.11.0-nightly.2494.41030211374 | `d2ec5ee` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/41030211374) |
 | 2026-10-29T23:36:09Z | nightly-desktop | 0.1.11-nightly.2493.1 | `caea485` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/40962419146) |
 | 2026-10-29T23:36:05Z | nightly-android | 0.1.11-nightly.2493.1 | `caea485` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/40962419146) |
 | 2026-10-29T22:20:26Z | nightly-npm | 0.11.0-nightly.2493.40962419146 | `caea485` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/40962419146) |
@@ -380,6 +381,39 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-30T09:15:48Z · nightly-npm · 0.11.0-nightly.2494.41030211374
+
+- Ship SHA: `d2ec5eefa1641207252376b70e361f5695572d42`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.11.0-nightly.2494.41030211374 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `caea485` ([full sha](https://github.com/kontourai/station/commit/caea48560c6f9c9615604aa8a4d30fc2a1f70794)):
+
+**Features**
+
+- [#4304](https://github.com/kontourai/station/pull/4304) feat(cli): person Session reads — station sessions wait|digest|transcript|search and station activity
+- [#4359](https://github.com/kontourai/station/pull/4359) feat(registry): add starter research and document integrations
+- [#4362](https://github.com/kontourai/station/pull/4362) feat(chat): include reasoning in tool activity groups
+- [#4271](https://github.com/kontourai/station/pull/4271) feat(sdk): add authenticated terminal output replay and reconnect
+- [#4360](https://github.com/kontourai/station/pull/4360) feat(automation): observe GitHub workflows without waking agents
+- [#4348](https://github.com/kontourai/station/pull/4348) feat(ui): rebuild the notifications inbox with context, inline approvals and snooze
+- [#4279](https://github.com/kontourai/station/pull/4279) feat(mcp): connect to remote MCP servers without dynamic client registration
+- [#4346](https://github.com/kontourai/station/pull/4346) feat(claude): opt-in Claude Code artifacts with a chat link card
+
+**Fixes**
+
+- [#4364](https://github.com/kontourai/station/pull/4364) fix(ui): composer context meter chrome and honest stats-modal sections
+- [#4361](https://github.com/kontourai/station/pull/4361) fix(ui): release message-link hold on scroll-to-bottom; keyboard-reachable attachment preview
+- [#4327](https://github.com/kontourai/station/pull/4327) fix(auth): let local accounts join Projects through Serve
+- [#4308](https://github.com/kontourai/station/pull/4308) fix(project-access): say whether sharing is off, and who can turn it on
+
+**Other**
+
+- [#4357](https://github.com/kontourai/station/pull/4357) test(ui): await phone tool focus restoration
 
 ## 2026-10-29T23:36:09Z · nightly-desktop · 0.1.11-nightly.2493.1
 

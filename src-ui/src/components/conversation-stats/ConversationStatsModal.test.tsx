@@ -122,24 +122,35 @@ describe('ConversationStatsModal — unmeasured figures', () => {
     measurement: { source: 'engine-events', provider: 'acp' },
   };
 
-  test('renders an em-dash for every unreported token figure — never a zero', () => {
+  test('collapses the sections whose every figure the engine left unreported', () => {
     renderModal(UNMEASURED);
 
-    expect(rowValue('In')).toBe('—');
-    expect(rowValue('Out')).toBe('—');
-    expect(rowValue('Total')).toBe('—');
-    expect(screen.queryByText('In: 0')).toBeNull();
-    expect(screen.queryByText('Out: 0')).toBeNull();
+    // An ACP session reports context occupancy only, so three cards used to
+    // sit fully dashed above the disclosure — reading as broken data rather
+    // than absent data. The disclosure alone carries an all-unreported class.
+    expect(screen.queryByText('Total LLM Consumption')).toBeNull();
+    expect(screen.queryByText('Per Turn Averages')).toBeNull();
+    expect(screen.queryByText('Cost')).toBeNull();
+    expect(screen.queryByText('In: —')).toBeNull();
+    // Activity is Station's own count of the session, not the engine's
+    // report, so it stays.
+    expect(screen.getByText('Activity')).toBeTruthy();
+    expect(screen.getByText('Turns: 1')).toBeTruthy();
   });
 
-  test('renders an em-dash for an unreported cost — never $0.0000', () => {
-    renderModal(UNMEASURED);
+  test('a section with any reported figure keeps its dashes for the unreported ones', () => {
+    renderModal({
+      ...UNMEASURED,
+      inputTokens: 500,
+      outputTokens: 60,
+      totalTokens: 560,
+    });
 
-    // Both the token total and the cost total are unmeasured here, so the
-    // dash appears twice — the point is that neither is a `0`.
-    expect(screen.getAllByText('Total: —')).toHaveLength(2);
-    expect(screen.getByText('Per Turn: —')).toBeTruthy();
-    expect(screen.queryByText(/\$0\.0000/)).toBeNull();
+    expect(rowValue('In')).toBe('500');
+    expect(rowValue('Out')).toBe('60');
+    expect(rowValue('Total')).toBe('560');
+    // The cost section is still entirely unreported, so it stays collapsed.
+    expect(screen.queryByText('Cost')).toBeNull();
   });
 
   test('names the engine and the classes it did not report', () => {
@@ -195,7 +206,7 @@ describe('ConversationStatsModal — partially measured figures', () => {
     measurement: { source: 'engine-events', provider: 'claude' },
   };
 
-  test('shows the tokens that were reported and dashes only the cost', () => {
+  test('shows the tokens that were reported and collapses the unreported cost section', () => {
     renderModal(PARTIAL);
 
     // Claude's declared cache-inclusivity is 'disjoint' (input excludes
@@ -204,7 +215,9 @@ describe('ConversationStatsModal — partially measured figures', () => {
     expect(rowValue('In (uncached)')).toBe('900');
     expect(rowValue('Out')).toBe('120');
     expect(rowValue('Total')).toBe('1,020');
-    expect(screen.getByText('Total: —')).toBeTruthy();
+    // Cost was reported by neither a turn nor the engine, so its card —
+    // every figure a dash — collapses into the disclosure.
+    expect(screen.queryByText('Cost')).toBeNull();
   });
 
   test('the disclosure names only the classes actually missing', () => {

@@ -1,0 +1,7 @@
+{
+  "revision": "7dba58e0c571e1afe660b67a0ded558971471c01",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the manual and generator contract after merging origin/main. Regenerated the sole conflicting generated bundle from merged canonical Markdown and module sections. The manual accurately describes static credential-free docs, stable topic metadata and digest, and the separation from live reads and authority. No prose change needed.","inputs":["docs/reference/station-docs.md"]}
+  ]
+}

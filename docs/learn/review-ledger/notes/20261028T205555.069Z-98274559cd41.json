@@ -1,0 +1,7 @@
+{
+  "revision": "a6c67515acd32fe3b04d2524d88d4d8b288209f4",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Round 3 only added tests (an engine turn ending with turn.completed, and the person wait for a Session whose folder is gone); the guide's wait_session and restart-interrupted claims are unchanged and the agent answer is still pinned.","inputs":["docs/guides/self-configuring-agent.md","src-server/runtime/routes/__tests__/runtime-routes-station-control-project-activity.test.ts","src-server/services/orchestration/__tests__/session-turn-wait.test.ts"]}
+  ]
+}

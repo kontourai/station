@@ -94,8 +94,14 @@ export async function readDiskIntegrations(
         String(def.id ?? entry.name),
       );
       const command = def.command ?? runtimeCommand;
-      const present =
-        command === process.execPath && command === runtimeCommand
+      // A remote server has no binary to find; its state is its connection.
+      const remote =
+        (def.transport === 'streamable-http' || def.transport === 'sse') &&
+        typeof def.endpoint === 'string' &&
+        command === undefined;
+      const present = remote
+        ? undefined
+        : command === process.execPath && command === runtimeCommand
           ? await access(command, fsConstants.X_OK).then(
               () => true,
               () => false,
@@ -111,7 +117,7 @@ export async function readDiskIntegrations(
           ? { iconUrl: `/integrations/${encodeURIComponent(entry.name)}/icon` }
           : {}),
         installed: true,
-        status: present ? 'connected' : 'missing binary',
+        ...(remote ? {} : { status: present ? 'connected' : 'missing binary' }),
       });
     } catch (error) {
       logger.debug('Failed to read integration definition', {

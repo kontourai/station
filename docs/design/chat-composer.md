@@ -468,6 +468,14 @@ and calls still waiting on a grant stay outside the fold, and so does the last n
 follows the last call. While the turn is live it keeps the shape it streamed
 with. Messages with anchored subagents keep their original tool runs at every
 width, preserving each child card's expansion and keyboard focus during resizing.
+Adjacent tool calls and visible reasoning share an activity summary on every
+screen size, live and settled. A brain glyph marks reasoning and mixed groups;
+the summary counts reasoning steps separately from tools. Opening the group
+keeps reasoning disclosures among the calls in their original order. The
+**Show reasoning** setting removes both the steps and their count. Standalone
+reasoning keeps its existing disclosure; commentary, artifacts, errors and
+approval controls retain their visible boundaries.
+
 In the summary, a failure is counted as **retried** rather than
 **failed** when a later call in the same summary ran the same tool with
 identical, recorded arguments and succeeded. A steer inside a turn does not

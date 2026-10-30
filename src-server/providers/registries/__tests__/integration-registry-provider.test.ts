@@ -111,6 +111,35 @@ describe('integration-registry-provider helpers', () => {
     ]);
   });
 
+  test.each(['streamable-http', 'sse'])(
+    'remote %s catalog entries do not report a missing executable or claim a connection',
+    async (transport) => {
+      const homeDir = createHomeDir();
+      const dir = join(homeDir, 'integrations', 'remote');
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, 'integration.json'),
+        JSON.stringify({
+          id: 'remote',
+          kind: 'mcp',
+          transport,
+          endpoint: 'https://example.test/mcp',
+        }),
+      );
+
+      const registry = createIntegrationRegistryProvider([], homeDir);
+      const items = await registry.listAvailable();
+      expect(items).toEqual([
+        {
+          id: 'remote',
+          displayName: 'remote',
+          description: '',
+          installed: true,
+        },
+      ]);
+    },
+  );
+
   test('catalog listings coalesce lookups and refresh on PATH changes and TTL while definitions stay fresh', async () => {
     const homeDir = createHomeDir();
     const dir = join(homeDir, 'integrations', 'cached-command');

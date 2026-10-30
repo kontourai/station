@@ -113,6 +113,13 @@ export function evaluateSessionWait(
   readonly satisfied: boolean;
   readonly view: SessionWaitState;
   readonly interrupted?: SessionInterruptedTurn;
+  /**
+   * The sequence of the newest event that closed a turn, of any kind (a
+   * settlement, an unverified terminal, a recovery abort, an engine-opened
+   * turn's end), so a reader can tell whether `interrupted` is still the
+   * newest end.
+   */
+  readonly lastTurnEndSequence?: number;
 } {
   const events = ports.foldEvents(threadId);
   const head = Math.max(
@@ -124,6 +131,7 @@ export function evaluateSessionWait(
   let anchor: TurnIdentityAnchor | undefined;
   let settled: SessionSettledTurn | undefined;
   let interrupted: SessionInterruptedTurn | undefined;
+  let lastTurnEnd: number | undefined;
   for (const { sequence, event } of events) {
     const before = open;
     const nextAnchor = nextTurnIdentityAnchor(anchor, event);
@@ -189,6 +197,7 @@ export function evaluateSessionWait(
         outcome: SETTLE_OUTCOME[event.method] ?? 'completed',
       };
     }
+    if (before !== undefined && open === undefined) lastTurnEnd = sequence;
     if (event.method === 'turn.started' && !retainedStart)
       invocationId = event.invocationId;
     else if (open === undefined) invocationId = undefined;
@@ -205,7 +214,17 @@ export function evaluateSessionWait(
     satisfied: until === 'idle' ? !busy : settled !== undefined,
     view,
     ...(interrupted ? { interrupted } : {}),
+    ...(lastTurnEnd !== undefined ? { lastTurnEndSequence: lastTurnEnd } : {}),
   };
+}
+
+/**
+ * Set only for a wait that asked `reportInterrupted`: the newest turn a
+ * restart-recovery abort closed, when that is the newest way a turn ended
+ * after the cursor (no turn settled after it).
+ */
+interface SessionWaitInterruption {
+  readonly interruptedTurn?: SessionInterruptedTurn;
 }
 
 export type SessionWaitOutcome =
@@ -213,8 +232,9 @@ export type SessionWaitOutcome =
       readonly kind: 'settled';
       /** `turn-settled` was asked for and no turn was running to wait on. */
       readonly alreadyIdle?: true;
-    } & SessionWaitState)
-  | ({ readonly kind: 'timeout' } & SessionWaitState)
+    } & SessionWaitState &
+      SessionWaitInterruption)
+  | ({ readonly kind: 'timeout' } & SessionWaitState & SessionWaitInterruption)
   | { readonly kind: 'aborted' }
   | { readonly kind: 'capacity'; readonly scope: 'caller' | 'station' };
 
@@ -251,6 +271,13 @@ export class SessionTurnWaiter {
     readonly timeoutMs: number;
     readonly afterEventCursor?: number;
     readonly signal?: AbortSignal;
+    /**
+     * Report a turn a restart interrupted (`interruptedTurn`), and let it end
+     * a `turn-settled` wait. Off for `wait_session`, whose answer is
+     * unchanged; the person's wait (`station sessions wait`) asks for it so a
+     * cut-off turn never reads as settled or as a silent idle.
+     */
+    readonly reportInterrupted?: boolean;
   }): Promise<SessionWaitOutcome> {
     const held = this.perCaller.get(request.callerSessionId) ?? 0;
     if (held >= this.limits.perCaller)
@@ -276,13 +303,36 @@ export class SessionTurnWaiter {
     readonly timeoutMs: number;
     readonly afterEventCursor?: number;
     readonly signal?: AbortSignal;
+    readonly reportInterrupted?: boolean;
   }): Promise<SessionWaitOutcome> {
     const { threadId, until } = request;
     let cursor = request.afterEventCursor ?? 0;
+    const evaluate = (asked: SessionWaitUntil, after: number) => {
+      const read = evaluateSessionWait(this.ports, threadId, asked, after);
+      const cut = read.interrupted;
+      // The interruption counts only when it is the newest way a turn ended
+      // after the cursor: any turn that ended later (settled or not, an
+      // engine-opened one included) makes it history. With no cursor
+      // (`idle`, or the first look of `turn-settled`) "after the cursor" is
+      // the whole history, so it counts only while nothing runs: a newer
+      // running turn makes it history too.
+      if (
+        !request.reportInterrupted ||
+        !cut ||
+        cut.sequence <= after ||
+        (read.lastTurnEndSequence ?? cut.sequence) > cut.sequence ||
+        (asked === 'idle' && read.view.state !== 'idle')
+      )
+        return { satisfied: read.satisfied, view: read.view };
+      return {
+        satisfied: asked === 'turn-settled' ? true : read.satisfied,
+        view: { ...read.view, interruptedTurn: cut },
+      };
+    };
     if (until === 'turn-settled' && request.afterEventCursor === undefined) {
       // No cursor: wait for the turn that is open NOW. Nothing open means
       // nothing to wait for, which is already settled.
-      const now = evaluateSessionWait(this.ports, threadId, 'idle', 0);
+      const now = evaluate('idle', 0);
       if (now.satisfied)
         return Promise.resolve({
           kind: 'settled',
@@ -306,12 +356,7 @@ export class SessionTurnWaiter {
       const onAbort = () => finish({ kind: 'aborted' });
       const check = () => {
         if (finished) return;
-        const { satisfied, view } = evaluateSessionWait(
-          this.ports,
-          threadId,
-          until,
-          cursor,
-        );
+        const { satisfied, view } = evaluate(until, cursor);
         if (satisfied) finish({ kind: 'settled', ...view });
       };
       request.signal?.addEventListener('abort', onAbort, { once: true });
@@ -319,12 +364,7 @@ export class SessionTurnWaiter {
       // is seen by one of them.
       unsubscribe = this.ports.subscribe(threadId, check);
       timer = setTimeout(() => {
-        const { view } = evaluateSessionWait(
-          this.ports,
-          threadId,
-          until,
-          cursor,
-        );
+        const { view } = evaluate(until, cursor);
         finish({ kind: 'timeout', ...view });
       }, request.timeoutMs);
       check();

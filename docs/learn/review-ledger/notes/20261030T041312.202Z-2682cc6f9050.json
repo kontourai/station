@@ -1,0 +1,7 @@
+{
+  "revision": "0488c49afaa7e23c94934e28500d2d284ba75360",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the static shipped-docs contract after merging main. The sole conflict was generated topic content; docs:mcp:generate compiled merged canonical inputs. Static topic IDs/digest and credential-free explanatory scope remain unchanged; no live-state or authority claim is added. No manual prose change required.","inputs":["docs/reference/station-docs.md"]}
+  ]
+}

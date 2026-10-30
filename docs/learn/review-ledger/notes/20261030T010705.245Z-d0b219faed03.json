@@ -1,0 +1,7 @@
+{
+  "revision": "2afd207560d2ff4591a0847961fa8b6e5e455c76",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed this branch against origin/main: adjacent visible reasoning and tool calls share activity summaries in streaming and settled renderers, including a single call; reasoning has a brain glyph and separate step count, and the sheet interleaves disclosures by original index. Hidden reasoning is omitted. Prose, artifact, failure and approval behavior remains with the existing owners. Eight focused UI suites passed (279 tests, one existing todo); inspected isolated Chromium component renders at 390 and 1440 in both themes. This is source and fixture evidence, not live provider or installed-app qualification.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/message-bubble/MessageContent.tsx","src-ui/src/components/chat/tool-call-groups.ts","src-ui/src/components/chat/tool-call-runs.ts","src-ui/src/components/chat/ToolCallBatch.tsx","src-ui/src/__tests__/ToolCallBatch.test.tsx"]}
+  ]
+}

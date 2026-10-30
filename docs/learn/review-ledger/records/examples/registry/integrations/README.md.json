@@ -1,0 +1,51 @@
+{
+  "path": "examples/registry/integrations/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Starter recipes traced through catalog install, disabled state, explicit enablement, real MCP probes, restart persistence and managed-Agent raw-tool execution on an isolated macOS Station. Remote catalog status and Lightpanda stdio exclusions are source-reviewed; public registry and competitor recommendations remain dated research.",
+
+  "limits": "Real provider/API and managed-Agent raw-tool journeys passed on macOS ARM64. Model generation was not invoked. Signed-in services, Windows/WSL, native shells, graphical UI, installed releases, public-registry adapters and every optional upstream tool remain unverified. The original direct-probe checkpoint and Firecrawl refusal are retained as historical evidence.",
+
+  "sources": [
+    "examples/registry/default.json",
+
+    "examples/registry/manifest.json",
+
+    "examples/registry/integrations/exa/integration.json",
+
+    "examples/registry/integrations/context7/integration.json",
+
+    "examples/registry/integrations/microsoft-learn/integration.json",
+
+    "examples/registry/integrations/lightpanda/integration.json",
+
+    "examples/registry/integrations/markitdown/integration.json",
+
+    "src-server/providers/registries/json-manifest-registry.ts",
+
+    "src-server/providers/registries/registry-source-configuration.ts",
+
+    "src-server/routes/plugins/registry.ts",
+
+    "src-server/domain/config-loader-storage.ts",
+
+    "schemas/tool.schema.json",
+
+    "scripts/lib/bundled-registry.mjs",
+
+    "src-server/providers/registries/integration-registry-provider.ts",
+
+    "src-server/providers/registries/__tests__/integration-registry-provider.test.ts"
+  ],
+
+  "checks": [
+    "Catalog provider/CLI focused suites: 90 tests passed. Real provider, schema and disabled configuration save/load passed for all twelve definitions across both catalogs. Actual bundled-registry staging resolved every listed integration.",
+
+    "2026-10-29 direct MCP SDK probes: Exa web search, Context7 React library resolution and Microsoft Learn documentation search returned non-error content anonymously. Firecrawl initialized/listed but refused its anonymous scrape; that failure is preserved.",
+
+    "Reviewed official MCP Registry API, PulseMCP API authentication, Docker catalog, Smithery docs and current Claude/Cursor/Copilot packaging sources. Recommendations are separate from shipped Station support."
+  ]
+}

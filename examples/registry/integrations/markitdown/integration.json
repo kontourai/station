@@ -1,0 +1,15 @@
+{
+  "id": "markitdown",
+  "kind": "mcp",
+  "displayName": "MarkItDown Document Conversion",
+  "icon": "📄",
+  "description": "Convert documents to Markdown. Requires markitdown-mcp on the Station host; the process can read files and network locations accessible to its OS user. Optional cloud formats may require credentials.",
+  "enabled": false,
+  "transport": "stdio",
+  "command": "markitdown-mcp",
+  "args": [],
+  "timeouts": {
+    "startupMs": 20000,
+    "requestMs": 60000
+  }
+}

@@ -432,45 +432,60 @@ describe('StreamingMessage', () => {
     });
   });
 
-  test('a whitespace-only delta is not an answer, so reasoning stays expanded (station#55)', () => {
-    // The streaming consumer derives `hasAnswerText` itself and hands it to
-    // the reasoning disclosure. Models routinely emit "\n\n" as the first
-    // delta after a reasoning block: treating that as an answer collapses the
-    // reasoning while the answer area is still visually empty. Asserted on
-    // the value StreamingMessage actually passes down, since MessageContent
-    // (the settled consumer) has its own already-trimmed derivation and
-    // cannot witness this defect.
-    const seen: boolean[] = [];
-    const renderReasoning = (
-      _content: string,
-      index: number,
-      hasAnswerText: boolean,
-    ) => {
-      seen.push(hasAnswerText);
-      return <span key={index}>reasoning</span>;
-    };
+  test.each([false, true])(
+    'a whitespace-only delta keeps reasoning expanded without a tool renderer (with tool: %s)',
+    (withTool) => {
+      // The streaming consumer derives `hasAnswerText` itself and hands it to
+      // the reasoning disclosure. Models routinely emit "\n\n" as the first
+      // delta after a reasoning block: treating that as an answer collapses the
+      // reasoning while the answer area is still visually empty. Asserted on
+      // the value StreamingMessage actually passes down, since MessageContent
+      // (the settled consumer) has its own already-trimmed derivation and
+      // cannot witness this defect.
+      const seen: boolean[] = [];
+      const renderReasoning = (
+        _content: string,
+        index: number,
+        hasAnswerText: boolean,
+      ) => {
+        seen.push(hasAnswerText);
+        return <span key={index}>reasoning</span>;
+      };
 
-    useStreamingContent.mockReturnValue({
-      streamingText: '\n\n',
-      hasContent: true,
-      contentRevision: 1,
-      contentParts: [{ type: 'reasoning', content: 'weighing the options' }],
-    });
+      useStreamingContent.mockReturnValue({
+        streamingText: '\n\n',
+        hasContent: true,
+        contentRevision: 1,
+        contentParts: [
+          { type: 'reasoning', content: 'weighing the options' },
+          ...(withTool
+            ? [
+                {
+                  type: 'tool-invocation',
+                  toolCallId: 'quiet-tool',
+                  toolName: 'Read',
+                  state: 'completed',
+                },
+              ]
+            : []),
+        ],
+      });
 
-    render(
-      <StreamingMessage
-        sessionId="session-ws"
-        agentIcon={<div>AI</div>}
-        agentIconStyle={{}}
-        fontSize={14}
-        showReasoning
-        renderReasoning={renderReasoning}
-      />,
-    );
+      render(
+        <StreamingMessage
+          sessionId="session-ws"
+          agentIcon={<div>AI</div>}
+          agentIconStyle={{}}
+          fontSize={14}
+          showReasoning
+          renderReasoning={renderReasoning}
+        />,
+      );
 
-    expect(seen).toContain(false);
-    expect(seen).not.toContain(true);
-  });
+      expect(seen).toContain(false);
+      expect(seen).not.toContain(true);
+    },
+  );
 
   test('a real first token IS an answer (station#55)', () => {
     const seen: boolean[] = [];

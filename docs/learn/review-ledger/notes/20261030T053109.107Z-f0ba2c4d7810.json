@@ -1,0 +1,7 @@
+{
+  "revision": "372def2abb423269fe566fa171881cc2edf09ddc",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Re-reviewed static shipped-docs contract after merging main at 4350458af8a. Generated topic conflict resolved from merged canonical inputs using docs:mcp:generate. Static catalog, digest and credential-free documentation scope remain accurate; no live-state or authorization guarantee is added. No prose change needed.","inputs":["docs/reference/station-docs.md"]}
+  ]
+}

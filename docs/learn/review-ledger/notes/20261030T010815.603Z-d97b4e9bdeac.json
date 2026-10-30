@@ -1,0 +1,7 @@
+{
+  "revision": "2afd207560d2ff4591a0847961fa8b6e5e455c76",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Reviewed the branch diff in StreamingMessage and MessageContent: reasoning joins adjacent tool activity, while UIBlockRenderer, uiBlockIdentity, form submission and draft ownership remain unchanged. The existing milestone test passes while a neighboring activity group opens. UI-block parts still break activity runs and keep their stable render keys. The document's current renderer/form claims need no prose change; live form or provider journeys were not requalified.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/StreamingMessage.tsx","src-ui/src/components/chat/message-bubble/MessageContent.tsx"]}
+  ]
+}
