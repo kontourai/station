@@ -34,7 +34,11 @@
 
     "schemas/tool.schema.json",
 
-    "scripts/lib/bundled-registry.mjs"
+    "scripts/lib/bundled-registry.mjs",
+
+    "src-server/providers/registries/integration-registry-provider.ts",
+
+    "src-server/providers/registries/__tests__/integration-registry-provider.test.ts"
   ],
 
   "checks": [
