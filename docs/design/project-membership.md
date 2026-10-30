@@ -78,7 +78,7 @@ operator authority, then device identity. Consequently, the same device can
 resolve to a tailnet principal on one route and a device principal on another.
 For the exact account, pairing and membership surfaces listed in the
 [deployment authentication guide](../guides/deployment-authentication.md), a
-current local-account session names the person; Serve WhoIs remains ingress
+current local-account cookie session names the person; Serve WhoIs remains ingress
 provenance and an accompanying Device must be bound to that account. It does
 not grant membership or operator authority. A device principal
 is useful attribution but is not evidence that several devices belong to one

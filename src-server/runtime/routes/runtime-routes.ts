@@ -1,5 +1,11 @@
 import { hostname } from 'node:os';
 import { isDeepStrictEqual } from 'node:util';
+import {
+  APPLICATION_SESSION_HEADER,
+  APPLICATION_SESSION_NATIVE_HEADER,
+  APPLICATION_SESSION_NATIVE_PROOF_HEADER,
+  APPLICATION_SESSION_PROOF_HEADER,
+} from '@kontourai/station-contracts/application-session';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { isPersonalTokenScope } from '@kontourai/station-contracts/personal-tokens';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
@@ -1970,6 +1976,17 @@ export function configureRuntimeRoutes(
   // Only the local provider can independently witness current session revocation.
   // WhoIs then describes ingress, while device bindings remain independent authority.
   const accountSessionOwnsPerson = (request: Request): boolean => {
+    // Only cookie sessions replace ingress identity. Continuations retain their
+    // independently admitted Device/grant authority, including bootstrap pairing.
+    if (
+      [
+        APPLICATION_SESSION_HEADER,
+        APPLICATION_SESSION_PROOF_HEADER,
+        APPLICATION_SESSION_NATIVE_HEADER,
+        APPLICATION_SESSION_NATIVE_PROOF_HEADER,
+      ].some((name) => request.headers.has(name))
+    )
+      return false;
     const path = new URL(request.url).pathname;
     const read = request.method === 'GET' || request.method === 'HEAD';
     const scoped =

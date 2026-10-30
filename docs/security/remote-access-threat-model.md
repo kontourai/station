@@ -254,7 +254,7 @@ Previously verified cookie sessions require the provider's synchronous live witn
 relationship commit/delivery seams; missing support, revoked/expired sessions and
 pending enrollment fail closed. A historical authenticated result alone is insufficient.
 
-On the scoped surfaces below, a currently witnessed local-account session
+On the scoped surfaces below, a currently witnessed local-account cookie session
 supplies the acting person. A verified Serve WhoIs identity is ingress
 provenance and does not establish membership or link people. Device and account
 bindings must agree, and an account cannot borrow an operator or another Device

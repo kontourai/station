@@ -186,11 +186,15 @@ belongs to an explicit operation that can deliver its cookie response; ordinary
 verification must not consume the destination body or silently refresh cookies.
 Original device/person bindings and historical authorship are preserved. On
 the scoped surfaces below, a current, synchronously witnessed local-account
-session names the person even when Tailscale Serve supplies WhoIs. WhoIs is
+cookie session names the person even when Tailscale Serve supplies WhoIs. WhoIs is
 ingress provenance, not a linked account. A Device credential must still be
 bound to that account, and an account session cannot use operator authority.
 Other providers retain their existing ingress agreement checks. Without an
 account session, WhoIs attribution is unchanged.
+
+Application and native continuations do not use this cookie-only ingress override.
+They retain their independently admitted proof, stored grant, Device/alias or
+native target, and current provider session, including during SDK bootstrap pairing.
 
 The WhoIs exception applies to these exact surfaces:
 
