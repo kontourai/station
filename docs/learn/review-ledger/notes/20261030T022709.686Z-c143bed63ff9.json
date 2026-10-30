@@ -1,0 +1,7 @@
+{
+  "revision": "3425f5abf187db07c3b70b938c65b9da4d99a849",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.png","note":"Scoped retained-image review at 3425f5abf18. Opened the actual PNG and read its manifest digest, alt/caption/evidence/capturedRevision and walkthrough use. It shows an isolated fixture_read request inspector, Request identity disclosure and Deny/Approve once/Close controls; no decision or external effect is depicted. Reviewed current inspectAttentionRequest exact persisted identity/authorized session read, answerability and canRespond logic against this claim. Report/finalizer/native-child custody changes do not turn opening this inspector into answering it or make the old image prove current dispatch authorization. Existing metadata already labels historical navigation chrome and background bulk-dismiss wording, so those obsolete details are not current-appearance claims. Preserve exact PNG bytes, original capturedRevision and controlled-provider fixture scope; no recapture required for this named service impact. This is still-image/source review only: no approval, provider, passkey, current browser/native/device or changed-request runtime qualification, and no review of the separate video frames in this note. No caption, digest, baseline or classification change.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}
