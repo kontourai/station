@@ -255,9 +255,10 @@ export function foldTurnWork<P extends ToolCallLike>(
       typeof block.part.content === 'string' &&
       block.part.content.trim().length > 0,
   );
-  const lastProse = interludes.findLastIndex(({ part }) =>
-    isFoldableProse(part),
-  );
+  let lastProse = interludes.length - 1;
+  while (lastProse >= 0 && !isFoldableProse(interludes[lastProse].part)) {
+    lastProse -= 1;
+  }
   const lastWords =
     !hasOutcome && lastProse >= 0
       ? interludes.splice(lastProse, 1)[0]
