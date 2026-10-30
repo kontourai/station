@@ -1054,6 +1054,54 @@ describe('bounded delegate history and snapshot uncertainty (#88)', () => {
     );
   });
 
+  test.each(['turn.completed', 'turn.aborted', 'runtime.error'] as const)(
+    'an active reconnect snapshot reopens a delegate after %s without a new turn event',
+    (terminal) => {
+      const store = new BackgroundTasksStore();
+      store.retainChat('parent');
+      store.ingest(
+        event('session.started', {
+          threadId: 'delegate',
+          sessionId: 'delegate',
+          metadata: { taskId: 'delegate', parentTaskId: 'parent' },
+        }),
+      );
+      store.ingest(
+        event(terminal, { threadId: 'delegate', turnId: 'previous-turn' }),
+      );
+      expect(
+        selectChatBackgroundTasks(store.getSnapshot(), 'parent', []).finished,
+      ).toHaveLength(1);
+      store.reconcileSnapshot({
+        sessions: [
+          {
+            provider: 'claude',
+            threadId: 'delegate',
+            status: 'running',
+            hasActiveTurn: true,
+            delegation: { taskId: 'delegate', parentTaskId: 'parent' },
+            childWork: {
+              asChild: {
+                producer: 'station-delegate',
+                reporterThreadId: 'delegate',
+                childId: 'delegate',
+                parent: { taskId: 'parent' },
+                status: 'running',
+                startedAt: '2026-07-29T00:00:00.000Z',
+                controls: { stop: 'delegate-interrupt' },
+              },
+            },
+          },
+        ],
+      });
+      const view = selectChatBackgroundTasks(store.getSnapshot(), 'parent', []);
+      expect(view.running.map((entry) => entry.id)).toEqual(['delegate']);
+      expect(view.finished).toHaveLength(0);
+      expect(view.running[0].endedAt).toBeUndefined();
+      expect(view.running[0].stop).toEqual({ kind: 'delegate-interrupt' });
+    },
+  );
+
   test('snapshot absence is no result, and a later completion corrects that uncertainty', () => {
     const store = new BackgroundTasksStore();
     store.ingest({

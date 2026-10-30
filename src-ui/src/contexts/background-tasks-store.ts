@@ -758,12 +758,27 @@ export function reconcileBackgroundTasksSnapshot(
       continue;
     }
 
-    if (isActive && existing.state === 'unresolved') {
+    if (isActive && existing.state !== 'running') {
       next = {
         ...next,
         entries: {
           ...next.entries,
-          [existing.id]: { ...existing, state: 'running', endedAt: undefined },
+          [existing.id]: {
+            ...existing,
+            state: 'running',
+            endedAt: undefined,
+            ...(child.startedAt
+              ? {
+                  startedAt: parseTime(
+                    child.startedAt,
+                    existing.startedAt ?? Date.now(),
+                  ),
+                }
+              : {}),
+            stop: child.controls?.stop
+              ? { kind: child.controls.stop }
+              : undefined,
+          },
         },
       };
       continue;
