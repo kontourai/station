@@ -1,0 +1,449 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
+import type { AuthorizationLedger } from '@kontourai/dispatch';
+import { createDelegationAuthorityService } from '@kontourai/flow-agents/delegation-authority-service';
+import type { DelegationEnvelopeV2 } from '@kontourai/flow-agents/delegation-envelope-v2';
+import {
+  createDelegationGroupControllerAccountingV1,
+  type DelegationGroupAccountingHostV1,
+  projectDelegationGroupV2,
+} from '@kontourai/flow-agents/delegation-group-v2';
+import { canonicalJson, type ModelRuntime } from '@kontourai/relay';
+import type { reservedStationTurnResult } from '../../runtime/conversation/reserved-station-turn.js';
+import type { DelegatedTaskHandle } from '../../tools/station-control-delegation.js';
+import type { StationDelegationPersistence } from './delegation-group-persistence.js';
+import {
+  inspectSdkSourceWire,
+  sdkDisposalPromise,
+} from './delegation-group-sdk-source-wire-owner.js';
+import type { RuntimeSourceRequestContext } from './delegation-group-source-admission.js';
+import type { FileFinalWireIntentStore } from './delegation-group-wire-intent-store.js';
+import type { OrchestrationService } from './orchestration-service.js';
+import type { PortableGroupAdmissionStore } from './portable-group-admission-store.js';
+import type {
+  PortableGroupPreparation,
+  PreparedPortableGroup,
+} from './portable-group-preparation.js';
+
+const same = (a: unknown, b: unknown) => canonicalJson(a) === canonicalJson(b);
+function refuse(): never {
+  throw new Error('portable_group_unavailable');
+}
+type Retained = {
+  attempt: Awaited<ReturnType<typeof reservedStationTurnResult>>;
+  task: DelegatedTaskHandle;
+  envelopeId: string;
+};
+
+/** Operator-only V2 composition. Other caller classes require their own admission owner. */
+// UNWIRED(#91): factory serving and full caller/protocol qualification remain open.
+export class PortableGroupExecution {
+  constructor(
+    private readonly owners: {
+      preparation: PortableGroupPreparation;
+      admissions: PortableGroupAdmissionStore;
+      persistence: StationDelegationPersistence;
+      dispatchLedger: AuthorizationLedger;
+      wireIntents: FileFinalWireIntentStore;
+      orchestration: OrchestrationService;
+      authorize(context: RuntimeSourceRequestContext): Promise<() => undefined>;
+    },
+  ) {}
+
+  async create(
+    context: RuntimeSourceRequestContext,
+    input: Parameters<PortableGroupPreparation['prepare']>[1],
+  ) {
+    const current = await this.owners.authorize(context);
+    const handle = await this.owners.preparation.prepare(context, input);
+    try {
+      const prepared = this.owners.preparation.read(handle, context.req.raw);
+      const admission = this.owners.preparation.admission(
+        handle,
+        context.req.raw,
+      );
+      await this.owners.admissions.retain(
+        prepared.spec.groupId,
+        admission,
+        current,
+      );
+      const composed = this.#compose(context, handle, current);
+      await composed.service.issue(prepared.root);
+      for (const envelope of prepared.envelopes)
+        await composed.service.derive(prepared.root.authority_id, envelope);
+      return await composed.controller.create({
+        kind: 'create',
+        groupId: prepared.spec.groupId,
+        operationKey: input.operationId,
+        expectedRevision: 0,
+        controller: prepared.spec.controller,
+        spec: prepared.spec,
+      });
+    } finally {
+      this.owners.preparation.close(handle);
+    }
+  }
+
+  async get(context: RuntimeSourceRequestContext, groupId: string) {
+    const current = await this.owners.authorize(context);
+    const admission = this.owners.admissions.read(groupId, current);
+    if (!admission) refuse();
+    const metadata = this.owners.preparation.inspectAdmission(
+      context,
+      admission,
+    );
+    if (metadata.spec.groupId !== groupId) refuse();
+    return this.owners.persistence
+      .groupStore(current)
+      .transact(groupId, async (journal) => {
+        if (!journal) refuse();
+        const projection = projectDelegationGroupV2(journal);
+        if (!same(projection.spec, metadata.spec)) refuse();
+        current();
+        return { journal, result: projection };
+      });
+  }
+
+  async events(
+    context: RuntimeSourceRequestContext,
+    groupId: string,
+    afterRevision = 0,
+  ) {
+    if (
+      !Number.isSafeInteger(afterRevision) ||
+      afterRevision < 0 ||
+      afterRevision > 512
+    )
+      refuse();
+    const current = await this.owners.authorize(context);
+    const admission = this.owners.admissions.read(groupId, current);
+    if (!admission) refuse();
+    const metadata = this.owners.preparation.inspectAdmission(
+      context,
+      admission,
+    );
+    if (metadata.spec.groupId !== groupId) refuse();
+    return this.owners.persistence
+      .groupStore(current)
+      .transact(groupId, async (journal) => {
+        if (!journal) refuse();
+        const projection = projectDelegationGroupV2(journal);
+        if (!same(projection.spec, metadata.spec)) refuse();
+        current();
+        return {
+          journal,
+          result: journal.events.filter(
+            (event) => event.revision > afterRevision,
+          ),
+        };
+      });
+  }
+
+  async run(
+    context: RuntimeSourceRequestContext,
+    groupId: string,
+    operationId: string,
+    expectedRevision: number,
+  ) {
+    const current = await this.owners.authorize(context);
+    const admission = this.owners.admissions.read(groupId, current);
+    if (!admission) refuse();
+    const handle = await this.owners.preparation.readmit(context, admission);
+    const prepared = this.owners.preparation.read(handle, context.req.raw);
+    const deadline = new AbortController();
+    const timer = setTimeout(
+      () => deadline.abort(),
+      Math.max(1, prepared.intent.deadlineAt - Date.now()),
+    );
+    const signal = AbortSignal.any([context.req.raw.signal, deadline.signal]);
+    try {
+      if (prepared.spec.groupId !== groupId) refuse();
+      const composed = this.#compose(context, handle, current);
+      return await composed.controller.run(
+        {
+          kind: 'run',
+          groupId,
+          operationKey: operationId,
+          expectedRevision,
+          controller: prepared.spec.controller,
+        },
+        { signal },
+      );
+    } finally {
+      clearTimeout(timer);
+      deadline.abort();
+      this.owners.preparation.close(handle);
+    }
+  }
+
+  #compose(
+    context: RuntimeSourceRequestContext,
+    handle: PreparedPortableGroup,
+    requestCurrent: () => undefined,
+  ) {
+    const { preparation, persistence } = this.owners;
+    const prepared = preparation.read(handle, context.req.raw);
+    const current = (): undefined => {
+      requestCurrent();
+      preparation.assertCurrent(handle, context.req.raw);
+      return undefined;
+    };
+    const retained = new Map<string, Retained>();
+    const invocation = new AsyncLocalStorage<{
+      envelope: DelegationEnvelopeV2;
+      id: string;
+    }>();
+    const memberFor = (envelope: DelegationEnvelopeV2) => {
+      current();
+      const member = prepared.members.find(
+        (value) => value.taskId === envelope.execution_id,
+      );
+      const seat = prepared.spec.seats.find(
+        (value) => value.seatId === member?.seatId,
+      );
+      if (
+        !member ||
+        !seat ||
+        !preparation.authorizes(
+          handle,
+          context.req.raw,
+          prepared.root,
+          envelope,
+        )
+      )
+        refuse();
+      return { member, seat };
+    };
+    const host = {
+      now: () => new Date(Date.now()).toISOString(),
+      authorize: async (
+        _action: unknown,
+        root: typeof prepared.root,
+        envelope: DelegationEnvelopeV2 | null,
+      ) => preparation.authorizes(handle, context.req.raw, root, envelope),
+      confirmExecution: async (envelope: DelegationEnvelopeV2) =>
+        preparation.confirmsExecution(handle, context.req.raw, envelope),
+      confirmReconciliation: async (candidate: {
+        invocationId: string;
+        envelopeId: string;
+        usage: unknown;
+        terminal: boolean;
+      }) => {
+        current();
+        const result = retained.get(candidate.invocationId);
+        if (
+          !result ||
+          result.envelopeId !== candidate.envelopeId ||
+          !candidate.terminal
+        )
+          return false;
+        await persistence.assertProviderEvidenceRetained(
+          result.attempt.evidence,
+          result.attempt.evidenceReference,
+          current,
+        );
+        const accounting = result.attempt.accounting;
+        return same(candidate.usage, {
+          inputTokens: accounting.inputTokens,
+          outputTokens: accounting.outputTokens,
+          costMicros: accounting.costMicros,
+        });
+      },
+    };
+    const launch = {
+      protocol: 'group-v2' as const,
+      groups: persistence.groupStore(current),
+      authorities: persistence.authorityStore(current),
+      host,
+      intents: this.owners.wireIntents,
+      finalizeCurrent: current,
+    };
+    const service = createDelegationAuthorityService(launch.authorities, host);
+    const physical: ReturnType<
+      DelegationGroupAccountingHostV1['executionHost']
+    > = {
+      accountingProtocol: 'retained-tariff-v1',
+      resolveRuntime: async (envelope) => {
+        const { member, seat } = memberFor(envelope);
+        if (!preparation.confirmsExecution(handle, context.req.raw, envelope))
+          refuse();
+        const runtime: ModelRuntime = {
+          id: envelope.execution_binding.runtime.runtime_receipt_ref.id,
+          capabilities: () => ({
+            structuredTools: false,
+            streaming: false,
+            abort: true,
+            usage: true,
+            outputTokenLimitFidelity: 'native',
+          }),
+          invoke: async (request, options) => {
+            current();
+            const selected = invocation.getStore();
+            if (
+              !selected ||
+              !same(selected.envelope, envelope) ||
+              !same(request, {
+                messages: [{ role: 'user', content: member.brief }],
+                maxOutputTokens: seat.allocation.outputTokens,
+              })
+            )
+              refuse();
+            const sdk = preparation.sdk(handle, context.req.raw, seat.seatId);
+            const captured = inspectSdkSourceWire(sdk.owner, sdk.sdkHandle);
+            const started = Date.now();
+            const dispatched = await preparation.dispatch(
+              handle,
+              context,
+              seat.seatId,
+              {
+                persistence,
+                transport: {
+                  launch,
+                  reservation: {
+                    groupId: prepared.spec.groupId,
+                    controller: prepared.spec.controller,
+                    seatId: seat.seatId,
+                    authority: prepared.spec.rootAuthorityRef,
+                    envelope: seat.envelope,
+                    invocationId: selected.id,
+                    effect: seat.effect,
+                    allocation: seat.allocation,
+                  },
+                  contract: captured.contract,
+                  provider: member.provider,
+                  signal: options?.signal
+                    ? AbortSignal.any([context.req.raw.signal, options.signal])
+                    : context.req.raw.signal,
+                  now: Date.now,
+                  maxResponseBytes: 1024 * 1024,
+                },
+              },
+              this.owners.orchestration,
+            );
+            const attempt = await dispatched.result;
+            await sdkDisposalPromise(sdk.owner, sdk.sdkHandle);
+            current();
+            retained.set(selected.id, {
+              attempt,
+              task: dispatched.task,
+              envelopeId: envelope.envelope_id,
+            });
+            return {
+              provider: member.provider,
+              model: member.modelId,
+              outputText: attempt.sdkResult.text,
+              toolCalls: [],
+              usage: {
+                inputTokens: attempt.accounting.inputTokens,
+                outputTokens: attempt.accounting.outputTokens,
+                totalTokens:
+                  attempt.accounting.inputTokens +
+                  attempt.accounting.outputTokens,
+              },
+              latencyMs: Math.max(0, Date.now() - started),
+            };
+          },
+        };
+        return {
+          runtime,
+          runtimeReceipt:
+            envelope.execution_binding.runtime.runtime_receipt_ref,
+          modelReceipt: envelope.execution_binding.runtime.model_receipt_ref,
+        };
+      },
+      invokeFenced: async (envelope, id, invoke) => {
+        memberFor(envelope);
+        return invocation.run({ envelope, id }, invoke);
+      },
+      retainResult: async (result, envelope, id) => {
+        const { seat } = memberFor(envelope);
+        const value = retained.get(id);
+        if (!value || value.attempt.sdkResult.text !== result.outputText)
+          refuse();
+        await persistence.assertProviderEvidenceRetained(
+          value.attempt.evidence,
+          value.attempt.evidenceReference,
+          current,
+        );
+        await persistence.retainReportObservation(
+          {
+            groupId: prepared.spec.groupId,
+            seatId: seat.seatId,
+            invocationId: id,
+            observation: {
+              kind: 'result',
+              evidence: value.attempt.evidenceReference,
+              text: result.outputText,
+              modelId: result.model,
+              inputTokens: value.attempt.accounting.inputTokens,
+              outputTokens: value.attempt.accounting.outputTokens,
+              costMicros: value.attempt.accounting.costMicros,
+            },
+          },
+          current,
+        );
+        return value.attempt.accounting;
+      },
+      retainFailure: async (_error, envelope, id) => {
+        const { seat } = memberFor(envelope);
+        await persistence.retainReportObservation(
+          {
+            groupId: prepared.spec.groupId,
+            seatId: seat.seatId,
+            invocationId: id,
+            observation: {
+              kind: 'failure',
+              code: 'report_attempt_unavailable',
+            },
+          },
+          current,
+        );
+      },
+      recordScheduleEvent: async () => refuse(),
+      confirmClaim: async () => false,
+      prepareRequest: async () => refuse(),
+      recordMemberOutcome: async () => refuse(),
+    };
+    const retain = (kind: 'member' | 'schedule', value: unknown) =>
+      persistence.retainReportFlowObservation(
+        prepared.spec.groupId,
+        kind,
+        value,
+        current,
+      );
+    const groupHost: DelegationGroupAccountingHostV1 = {
+      authorize: async (input) => {
+        current();
+        if (input.groupId !== null && input.groupId !== prepared.spec.groupId)
+          return null;
+        if (input.spec && !same(input.spec, prepared.spec)) return null;
+        return prepared.root.authenticated_principal_ref;
+      },
+      executionHost: () => physical,
+      prepareIndependentRequest: async (_spec, seat, envelope) => {
+        const { member } = memberFor(envelope);
+        return {
+          messages: [{ role: 'user', content: member.brief }],
+          maxOutputTokens: seat.allocation.outputTokens,
+        };
+      },
+      retainMemberOutcome: async (_spec, seat, outcome) => {
+        const ref = await retain('member', { seatId: seat.seatId, outcome });
+        return { outcomeRef: ref, dissentRefs: [], uncertaintyRefs: [ref] };
+      },
+      retainRunObservation: async (_spec, observation) =>
+        retain('schedule', observation),
+      retainRunFailure: async () =>
+        retain('schedule', { kind: 'execution_unknown' }),
+      requestDescendantCancellation: async () => refuse(),
+    };
+    return {
+      service,
+      controller: createDelegationGroupControllerAccountingV1({
+        store: launch.groups,
+        authorityService: service,
+        dispatchLedger: this.owners.dispatchLedger,
+        host: groupHost,
+      }),
+    };
+  }
+}
