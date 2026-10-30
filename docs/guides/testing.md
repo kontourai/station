@@ -1842,6 +1842,18 @@ The HTML preview process suite also runs in the exclusive group so other Vitest
 files in that invocation do not compete with its disposable Chromium startup.
 It retains the 15-second render deadline and 3-second effective-policy check.
 
+The pinned Vitest runner 4.1.12 has a [managed timer patch](../../patches/vitest-runner-4.1.12.patch).
+Its task-event throttle could lose a pending update when a timer fired exactly
+at its 100 ms boundary, leaving a running body or hook reported as unknown
+until another update arrived. The patch clears the expired timer handle before
+retrying, so an early or boundary callback can schedule another attempt.
+The corpus-runner test exercises the installed package's public `updateTask`
+API with a controlled clock, including cancellation of a pending timer by an
+immediate flush. Real-child lifecycle controls still require observed events
+within their existing two-second test and hook limits; no worker count or
+product deadline changes. Remove the patch when an upstream release passes
+these controls through the managed dependency workflow.
+
 Pre-push and coverage remain one-worker evidence lanes. Coverage merging has a
 different correctness contract, and pre-push is already short while its
 host-wide coordinator weight allows independent worktrees to make progress.
