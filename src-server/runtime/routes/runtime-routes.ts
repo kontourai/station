@@ -421,6 +421,7 @@ import { createPersonalLayoutRoutes } from '../../routes/me/personal-layouts.js'
 import { createActionOperationRoutes } from '../../routes/operations/action-operations.js';
 import { createAgentNotificationRoutes } from '../../routes/operations/agent-notifications.js';
 import { createAnalyticsRoutes } from '../../routes/operations/analytics.js';
+import { createAutomationRoutes } from '../../routes/operations/automations.js';
 import { createFeedbackRoutes } from '../../routes/operations/feedback.js';
 import { createInsightsRoutes } from '../../routes/operations/insights.js';
 import {
@@ -780,6 +781,7 @@ import { PullRequestRepositoryContextResolver } from '../../services/pull-reques
 import { createRemoteStationForwarder } from '../../services/remote-stations/remote-station-forwarder.js';
 import type { SchedulerService } from '../../services/scheduling/scheduler-service.js';
 import type {
+  IntegrationSecretResolver,
   SecretBindingAdministration,
   SecretBindingIntegrationAdministration,
 } from '../../services/secrets/secret-binding-administration.js';
@@ -1077,7 +1079,8 @@ export interface ConfigureRuntimeRoutesContext {
   connectionService: ConnectionService;
   sshEnvironmentService: SshEnvironmentService;
   mcpService: MCPService;
-  secretBindingAdministration: SecretBindingAdministration;
+  secretBindingAdministration: SecretBindingAdministration &
+    IntegrationSecretResolver;
   secretBindingIntegrationAdministration: SecretBindingIntegrationAdministration;
   taskGraphService: TaskGraphService;
   taskDispatcher: TaskDispatcher;
@@ -9877,6 +9880,8 @@ export function configureRuntimeRoutes(
 
   const {
     schedulerService,
+    automationLedger,
+    automationPreview,
     notificationService,
     approvalInboxProvider,
     attentionProjection,
@@ -10235,6 +10240,18 @@ export function configureRuntimeRoutes(
       // A person approving an agent's `propose_job`.
       jobProposals: agentSchedule.jobProposals,
     }),
+  );
+  context.app.route(
+    '/automations',
+    createAutomationRoutes(
+      {
+        listDeliveries: (limit) => automationLedger.get().listDeliveries(limit),
+        listPolls: () => automationLedger.get().listPolls(),
+        preview: automationPreview,
+        readAuthorityForRequest,
+      },
+      context.logger,
+    ),
   );
   context.app.route(
     '/api/runs',

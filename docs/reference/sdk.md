@@ -6067,3 +6067,14 @@ A 404 means unsupported host or unavailable/expired request; request again and
 consider updating the host. No operator or private-vault credential is returned.
 See [the source journey](../guides/monitoring.md#connect-a-personal-source-in-insights)
 for expiry, source/Device revalidation and remaining qualification limits.
+
+### Observe-only Automation deliveries
+
+`listAutomationDeliveries(apiBase, { limit? }, options?)` from
+`@kontourai/station-sdk/client` reads `GET /automations/deliveries` as the
+management caller. It returns `AutomationDeliveryPage` with `deliveries` and
+`polls`, including partial coverage and source failures. The server requires
+**GitHub automation observations** in Feature previews. A `StationHttpError`
+preserves the preview refusal's code and Settings link; a 404 from an older
+host reports the unsupported capability. No mutation or agent invocation is
+performed. See [Automation intake](../design/automations.md#observe-only-github-preview).
