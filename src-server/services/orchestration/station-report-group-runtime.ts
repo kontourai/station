@@ -184,9 +184,6 @@ function view(value: Historical): ReportGroupView {
   };
 }
 
-// Flow Agents 9.9.0 does not authenticate the retained winner on exact
-// finalizer replay. Enable only after a released, verified contract does.
-const CONTINUATION_FINALIZER_AVAILABLE = false;
 export class ReportContinuationUnavailable extends Error {
   readonly code = 'report_continuation_finalizer_unavailable';
   constructor() {
@@ -208,6 +205,7 @@ export class StationReportGroupRuntime {
   constructor(
     private readonly owners: {
       publicationParticipant?: import('../../runtime/bootstrap/runtime-publication-participant.js').RuntimePublicationParticipant;
+      continuationFinalizerPreview?: import('../feature-previews/feature-preview-registry.js').FeaturePreviewSelector;
       runtime: RuntimeFencedCredentialObservationOwners;
       orchestration: OrchestrationService;
       rawFetch: typeof fetch;
@@ -470,11 +468,7 @@ export class StationReportGroupRuntime {
       continuationOperationKey: string;
     },
   ) {
-    if (!CONTINUATION_FINALIZER_AVAILABLE)
-      throw new ReportContinuationUnavailable();
-    const participant = this.owners.publicationParticipant;
-    if (!isRuntimePublicationParticipant(participant))
-      throw new StationReportCustodyUnavailable();
+    const participant = this.#finalizerParticipant();
     const { result, group } = await this.#custody.finalizeContinuation(
       context,
       groupId,
@@ -485,6 +479,22 @@ export class StationReportGroupRuntime {
       view,
     );
     return { replayed: result.replayed, group };
+  }
+  #finalizerParticipant() {
+    const participant = this.owners.publicationParticipant;
+    const preview = this.owners.continuationFinalizerPreview;
+    if (!isRuntimePublicationParticipant(participant) || !preview)
+      throw new ReportContinuationUnavailable();
+    preview.select({
+      enabled: () => {},
+      disabled: () => {
+        throw new ReportContinuationUnavailable();
+      },
+    });
+    return participant;
+  }
+  async withFinalizerResponse<T>(work: () => Promise<T>): Promise<T> {
+    return this.#finalizerParticipant().run(work);
   }
   async finalizeSync(
     context: RuntimeSourceRequestContext,

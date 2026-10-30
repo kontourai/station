@@ -917,7 +917,6 @@ export class StationReportGroupCustody {
     return result;
   }
 
-  // UNWIRED(#91): held off until released replay authentication and owner proof.
   /** Close only an already-recorded Flow continuation; this cannot execute work. */
   async finalizeContinuation<T>(
     context: RuntimeSourceRequestContext,

@@ -2159,10 +2159,10 @@ recovery handle nor read access grants execution or authority to answer a reques
 
 ## StationReportGroupRuntime
 
-The continuation-finalizer route is mounted but disabled while the installed
-Flow Agents 9.9.0 exact-finalizer replay does not authenticate retained winner
-bytes. Its metadata-only adapter is not a provider execution grant and is not
-qualified until the patched public package and owner-boundary tests pass.
+The personal-host continuation-finalizer route is behind the default-off
+report continuation recovery preview. It uses the installed Flow Agents 9.9.1
+contract to authenticate retained winner bytes. This metadata-only adapter
+does not grant provider execution or create a retry authorization.
 
 
 [StationReportGroupRuntime](../../src-server/services/orchestration/station-report-group-runtime.ts)
@@ -3360,8 +3360,9 @@ proof only from the exact live lease and home. Bootstrap uses that proof for a
 publication participant around private report sync finalization. Shutdown stops
 admission and joins admitted publication through journal readback and unlock
 before closing its dependencies; an unresolved join reports pending and retains
-the home lease for a later shutdown attempt. This lifecycle custody does not
-supply the unpublished continuation finalizer or authorize a provider effect. CLI wrappers also check lifecycle
+the home lease for a later shutdown attempt. The default-off report continuation
+recovery preview uses this custody to finalize already-recorded Flow metadata;
+it does not authorize a provider effect. CLI wrappers also check lifecycle
 observations for useful offline diagnostics. CLI clean and reset hold maintenance
 ownership through their home removal or archive rename; clean also keeps it
 through owned build-output cleanup. A live or unverifiable runtime lease refuses

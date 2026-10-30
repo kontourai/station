@@ -2141,11 +2141,13 @@ owns the protocol, saved authority and failure limits.
 
 The source endpoint `POST /api/orchestration/report-groups/:groupId/continuation/finalize`
 accepts an operation key, expected revision and original continuation operation
-key. It currently returns `report_continuation_finalizer_unavailable`: installed
-Flow Agents 9.9.0 does not authenticate the retained winner on an exact
-finalizer replay. No provider work or receipt publication is attempted. A later
-released, verified Flow contract and Station owner-boundary proof are required
-before enabling it.
+key. On a personal host, the default-off **Report continuation recovery**
+Feature Preview enables metadata-only recovery of an already-recorded Flow
+operation. The current local operator and authenticated historical source
+locator are required. It does not prepare source, invoke a provider or grant a
+retry. When the preview or publication owner is unavailable, it returns
+`report_continuation_finalizer_unavailable`; hosted mode returns
+`report_groups_unavailable`. An older host may return 404.
 
 The personal host mounts `/api/orchestration/report-groups` for bounded reports
 using configured Station Agents and the qualified sealed SDK profile. Requests

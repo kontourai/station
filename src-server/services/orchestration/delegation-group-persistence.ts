@@ -637,7 +637,6 @@ export class StationDelegationPersistence {
     });
   }
 
-  // UNWIRED(#91): the metadata finalizer must hold request and publication custody.
   /** Retain exact canonical continuation receipt bytes under group-bound custody. */
   async retainReportContinuation(
     groupId: string,

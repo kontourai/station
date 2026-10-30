@@ -69,20 +69,24 @@ export function createReportGroupRoutes(
   async function respond(
     c: Context,
     work: (owner: StationReportGroupRuntime) => Promise<unknown>,
+    finalizer = false,
   ) {
     c.header('Cache-Control', 'no-store');
     if (!runtime)
       return c.json({ success: false, code: 'report_groups_unavailable' }, 503);
     try {
-      const current = await runtime.authorizeResponse(c);
-      const data = await work(runtime);
-      current();
-      if (Buffer.byteLength(JSON.stringify(data)) > 262_000)
-        return c.json(
-          { success: false, code: 'report_group_response_too_large' },
-          503,
-        );
-      return c.json({ success: true, data });
+      const run = async () => {
+        const current = await runtime.authorizeResponse(c);
+        const data = await work(runtime);
+        current();
+        if (Buffer.byteLength(JSON.stringify(data)) > 262_000)
+          return c.json(
+            { success: false, code: 'report_group_response_too_large' },
+            503,
+          );
+        return c.json({ success: true, data });
+      };
+      return finalizer ? await runtime.withFinalizerResponse(run) : await run();
     } catch (error) {
       if (error instanceof z.ZodError || error instanceof SyntaxError)
         return c.json({ success: false, code: 'report_group_invalid' }, 400);
@@ -273,18 +277,22 @@ export function createReportGroupRoutes(
     }),
   );
   app.post('/:groupId/continuation/finalize', (c) =>
-    respond(c, async (owner) => {
-      noQuery(c);
-      const input = cancel
-        .extend({ continuationOperationKey: id })
-        .strict()
-        .parse(await body(c));
-      return owner.finalizeContinuation(
-        c,
-        id.parse(c.req.param('groupId')),
-        input,
-      );
-    }),
+    respond(
+      c,
+      async (owner) => {
+        noQuery(c);
+        const input = cancel
+          .extend({ continuationOperationKey: id })
+          .strict()
+          .parse(await body(c));
+        return owner.finalizeContinuation(
+          c,
+          id.parse(c.req.param('groupId')),
+          input,
+        );
+      },
+      true,
+    ),
   );
   app.post('/:groupId/report', (c) =>
     respond(c, async (owner) => {

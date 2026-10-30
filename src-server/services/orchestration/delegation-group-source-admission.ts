@@ -944,7 +944,6 @@ export class LocalSourceAdmissionOwner {
     });
   }
 
-  // UNWIRED(#91): metadata finalizer must own request authority and publication custody.
   /** Authenticated historical locator only: never admits or prepares source execution. */
   async readHistoricalFlowLocation(input: {
     source: SourceTuple;

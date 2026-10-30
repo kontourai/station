@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict';
-import fs, { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import fs, {
+  mkdirSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { join } from 'node:path';
 import { FileAuthorizationLedger } from '@kontourai/dispatch';
@@ -12,19 +17,50 @@ import {
 } from '@kontourai/flow';
 import { createDelegationAuthorityServiceV3 } from '@kontourai/flow-agents/delegation-authority-service-v3';
 import { createDelegationRoundsController } from '@kontourai/flow-agents/delegation-group-rounds';
+import { finalizeReportGroupContinuation } from '@kontourai/station-sdk/client';
 import {
   acquireStationHomeMaintenanceLease,
   StationHomeActiveError,
 } from '@kontourai/station-shared/station-home-lifecycle';
+import { Hono } from 'hono';
 import { test, vi } from 'vitest';
+import { createReportGroupRoutes } from '../../../routes/orchestration/report-groups.js';
 import { RuntimePublicationParticipant } from '../../../runtime/bootstrap/runtime-publication-participant.js';
 import { StationRuntime } from '../../../runtime/bootstrap/station-runtime.js';
+import {
+  bindRuntimeLocalOperator,
+  getRuntimeAuthenticatedRequestPrincipal,
+  setRuntimeAuthenticatedRequestPrincipal,
+} from '../../../security/runtime-request-security.js';
+import { FeaturePreviewRegistry } from '../../feature-previews/feature-preview-registry.js';
 import { HomeWriterOwner } from '../../ssh/home-writer-owner.js';
+import { StationDelegationPersistence } from '../delegation-group-persistence.js';
+import { LocalSourceAdmissionOwner } from '../delegation-group-source-admission.js';
+import { EventBus } from '../event-bus.js';
+import { OrchestrationService } from '../orchestration-service.js';
+import { StationReportGroupCustody } from '../station-report-group-custody.js';
+import { StationReportGroupPreparation } from '../station-report-group-preparation.js';
+import { StationReportGroupRuntime } from '../station-report-group-runtime.js';
 import { createReportFlow } from './delegation-source-fixtures/flow.js';
 import { requestFor, setup } from './delegation-source-fixtures/report.js';
 
 test('a lost reappraisal receipt can be finalized and replayed through Station custody', async () => {
   const h = await setup();
+  const reportRoot = join(h.f.home, 'report-groups');
+  const sourcesRoot = join(reportRoot, 'sources');
+  const dispatchRoot = join(reportRoot, 'dispatch');
+  for (const path of [reportRoot, sourcesRoot, dispatchRoot])
+    mkdirSync(path, { mode: 0o700 });
+  h.f.store = sourcesRoot;
+  h.f.owner = new LocalSourceAdmissionOwner(
+    h.f.home,
+    h.f.environment,
+    sourcesRoot,
+  );
+  h.preparationOwners.sources = h.f.owner;
+  h.owner = new StationReportGroupPreparation(h.preparationOwners);
+  h.custodyOwners.persistence = new StationDelegationPersistence(reportRoot);
+  h.custody = new StationReportGroupCustody(h.custodyOwners);
   const flow = await createReportFlow(h.f, 'lost-reappraisal', [
     { id: 'first' },
     {
@@ -81,7 +117,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
     for (const envelope of prepared.envelopes)
       await authority.derive(prepared.root.authority_id, envelope);
     const dispatch = new FileAuthorizationLedger({
-      root: join(h.f.root, 'finalizer-dispatch'),
+      root: dispatchRoot,
     });
     const refuse = (): never => {
       throw Error('unexpected execution');
@@ -327,10 +363,114 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
     ) as RuntimePublicationParticipant;
     assert.equal(finalized.result.replayed, false);
     assert.ok(finalized.group?.continuations[0].receipt);
+    const previews = Reflect.get(
+      runtime,
+      'featurePreviews',
+    ) as FeaturePreviewRegistry;
+    const preview = previews.bind({
+      id: 'report-continuation-finalizer',
+      label: 'Report continuation recovery',
+      description:
+        'Recover already-recorded Flow continuation metadata for a report group.',
+    });
+    const orchestration = new OrchestrationService({
+      adapterRegistry: { register: refuse, get: refuse, list: () => [] },
+      eventBus: new EventBus(),
+      logger: { debug() {}, warn() {} },
+    });
+    const reportRuntime = new StationReportGroupRuntime({
+      runtime: h.preparationOwners.runtime,
+      orchestration,
+      rawFetch: h.rawFetch,
+      publicationParticipant: participant,
+      continuationFinalizerPreview: preview,
+    });
+    const principal = getRuntimeAuthenticatedRequestPrincipal(h.f.req);
+    assert.ok(principal && principal.kind !== 'internal');
+    const app = new Hono();
+    app.use('*', async (c, next) => {
+      setRuntimeAuthenticatedRequestPrincipal(c.req.raw, principal);
+      bindRuntimeLocalOperator(c.req.raw);
+      await next();
+    });
+    app.route(
+      '/api/orchestration/report-groups',
+      createReportGroupRoutes(reportRuntime),
+    );
+    const transport = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (input, init) =>
+        app.fetch(new Request(input, init)),
+      );
+    const sdkCommand = {
+      operationKey: 'finish',
+      expectedRevision: held.revision,
+      continuationOperationKey: 'lost',
+    };
+    const lookup = vi.spyOn(
+      StationDelegationPersistence.prototype,
+      'readReportAdmission',
+    );
+    await assert.rejects(
+      finalizeReportGroupContinuation(
+        'http://127.0.0.1:43979',
+        groupId,
+        sdkCommand,
+      ),
+      { status: 503, code: 'report_continuation_finalizer_unavailable' },
+    );
+    assert.equal(lookup.mock.calls.length, 0);
+    lookup.mockRestore();
+    await previews.setEnabled('report-continuation-finalizer', true);
+    const missingOwner = new StationReportGroupRuntime({
+      runtime: h.preparationOwners.runtime,
+      orchestration,
+      rawFetch: h.rawFetch,
+      continuationFinalizerPreview: preview,
+    });
+    for (const unavailable of [missingOwner, null]) {
+      const unavailableApp = new Hono();
+      unavailableApp.use('*', async (c, next) => {
+        setRuntimeAuthenticatedRequestPrincipal(c.req.raw, principal);
+        bindRuntimeLocalOperator(c.req.raw);
+        await next();
+      });
+      unavailableApp.route(
+        '/api/orchestration/report-groups',
+        createReportGroupRoutes(unavailable),
+      );
+      const lookupUnavailable = vi.spyOn(
+        StationDelegationPersistence.prototype,
+        'readReportAdmission',
+      );
+      const response = await unavailableApp.request(
+        `http://127.0.0.1:43979/api/orchestration/report-groups/${groupId}/continuation/finalize`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(sdkCommand),
+        },
+      );
+      assert.equal(response.status, 503);
+      assert.deepEqual(await response.json(), {
+        success: false,
+        code: unavailable
+          ? 'report_continuation_finalizer_unavailable'
+          : 'report_groups_unavailable',
+      });
+      assert.equal(lookupUnavailable.mock.calls.length, 0);
+      lookupUnavailable.mockRestore();
+    }
+    const sdkReplay = await finalizeReportGroupContinuation(
+      'http://127.0.0.1:43979',
+      groupId,
+      sdkCommand,
+    );
+    assert.equal(sdkReplay.replayed, true);
     const winner = finalized.group.continuations[0].receipt.reference;
     assert.deepEqual(winner, retainedBeforeFault);
     const winnerPath = join(
-      h.f.root,
+      reportRoot,
       'station-report-flow-observations-v1',
       `${winner.id}.json`,
     );
@@ -429,6 +569,14 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
       continuationOperationKey: retry.operationKey,
     };
     h.owner.close(handle);
+    const sdkFinalized = await finalizeReportGroupContinuation(
+      'http://127.0.0.1:43979',
+      groupId,
+      retryCommand,
+    );
+    assert.equal(sdkFinalized.replayed, false);
+    transport.mockRestore();
+    await orchestration.shutdown();
     let acquired = false;
     const acquire = HomeWriterOwner.prototype.acquire;
     const acquireSpy = vi
@@ -591,6 +739,52 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
       h.f.paired.device.id,
       'operator-credential',
     );
+    const reopenedPreviews = Reflect.get(
+      runtime,
+      'featurePreviews',
+    ) as FeaturePreviewRegistry;
+    const reopenedPreview = reopenedPreviews.bind({
+      id: 'report-continuation-finalizer',
+      label: 'Report continuation recovery',
+      description:
+        'Recover already-recorded Flow continuation metadata for a report group.',
+    });
+    const reopenedOwner = new StationReportGroupRuntime({
+      runtime: h.preparationOwners.runtime,
+      orchestration,
+      rawFetch: h.rawFetch,
+      publicationParticipant: participant,
+      continuationFinalizerPreview: reopenedPreview,
+    });
+    const reopenedApp = new Hono();
+    reopenedApp.use('*', async (c, next) => {
+      setRuntimeAuthenticatedRequestPrincipal(c.req.raw, principal);
+      bindRuntimeLocalOperator(c.req.raw);
+      await next();
+    });
+    reopenedApp.route(
+      '/api/orchestration/report-groups',
+      createReportGroupRoutes(reopenedOwner),
+    );
+    const revokedLookup = vi.spyOn(
+      StationDelegationPersistence.prototype,
+      'readReportAdmission',
+    );
+    const revokedResponse = await reopenedApp.request(
+      `http://127.0.0.1:43979/api/orchestration/report-groups/${groupId}/continuation/finalize`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(sdkCommand),
+      },
+    );
+    assert.equal(revokedResponse.status, 503);
+    assert.deepEqual(await revokedResponse.json(), {
+      success: false,
+      code: 'report_group_unavailable',
+    });
+    assert.equal(revokedLookup.mock.calls.length, 0);
+    revokedLookup.mockRestore();
     await assert.rejects(
       h.custody.finalizeContinuation(
         h.f.context(requestFor(h, 'POST')),

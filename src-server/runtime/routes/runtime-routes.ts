@@ -226,6 +226,7 @@ import { WalkthroughService } from '../../services/walkthroughs/walkthrough-serv
 import { errorMessage } from '../../utils/error-message.js';
 import { canonicalPath } from '../../utils/path-containment.js';
 import { bindLocalMediaPreviews } from '../bootstrap/local-media-runtime.js';
+import { isRuntimePublicationParticipant } from '../bootstrap/runtime-publication-participant.js';
 import { STATION_KNOWLEDGE_MCP_PATH } from '../mcp/station-control-mcp-token.js';
 import { createRuntimeFrameworkModel } from '../plugins/runtime-provider-resolution.js';
 import {
@@ -6753,8 +6754,25 @@ export function configureRuntimeRoutes(
   let reportGroups: StationReportGroupRuntime | null = null;
   if (isPersonalHost) {
     try {
+      let preview:
+        | import('../../services/feature-previews/feature-preview-registry.js').FeaturePreviewSelector
+        | undefined;
+      const hasPublication = isRuntimePublicationParticipant(
+        context.runtimePublicationParticipant,
+      );
       reportGroups = new StationReportGroupRuntime({
         publicationParticipant: context.runtimePublicationParticipant,
+        ...(hasPublication
+          ? {
+              continuationFinalizerPreview: {
+                select: <T>(branches: {
+                  enabled: () => T;
+                  disabled: () => T;
+                }): T =>
+                  preview ? preview.select(branches) : branches.disabled(),
+              },
+            }
+          : {}),
         runtime: {
           configLoader: context.configLoader,
           agentService: context.agentService,
@@ -6773,7 +6791,15 @@ export function configureRuntimeRoutes(
         orchestration: context.orchestrationService,
         rawFetch: fetch,
       });
+      if (hasPublication)
+        preview = context.featurePreviews.bind({
+          id: 'report-continuation-finalizer',
+          label: 'Report continuation recovery',
+          description:
+            'Recover already-recorded Flow continuation metadata for a report group.',
+        });
     } catch {
+      reportGroups = null;
       context.logger.warn('Report group private storage is unavailable.');
     }
   }
