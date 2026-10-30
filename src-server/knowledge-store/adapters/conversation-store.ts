@@ -188,7 +188,8 @@ function canReadFileConversation(
   const alias = deps.getUserId();
   if (ownerId === alias) {
     return (
-      deps.canReadFileOwner?.(scope.userId, LOCAL_OPERATOR_PRINCIPAL_ID) === true
+      deps.canReadFileOwner?.(scope.userId, LOCAL_OPERATOR_PRINCIPAL_ID) ===
+      true
     );
   }
   return (
