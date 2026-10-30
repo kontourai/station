@@ -373,10 +373,11 @@ whose engine transcript is missing or unreadable returns 503.
 `useChildWorkTranscriptQuery({threadId, childId, enabled?}, apiBase?)` from the
 SDK root loads 30 messages per page and exposes `fetchNextPage` using
 `nextOffset`. It does not poll. Station's transcript component separately
-refreshes on reported child revisions. Current recovery supports Claude
-subagents, not Codex child threads; a report without a supported reference has
-no guaranteed full-text recovery through this API. Source exports do not prove
-package publication or live restart/native acceptance.
+refreshes on reported child revisions. Retained Claude subagent and Codex child
+thread references can be read through their respective bounded readers after
+Session authorization. A report without a supported reference has no guaranteed
+full-text recovery through this API. Source exports do not prove package
+publication or live restart/native acceptance.
 
 Trusted plugin Workspace Panes are wrapped in the canonical `SDKProvider` graph
 by the host, on both direct routes and placed Pane hosts. No plugin-side mock
