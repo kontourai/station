@@ -119,6 +119,12 @@ establish successful completion. A returned result is still the
 child's report, not verified evidence or acceptance of its work. Open its
 authorized transcript when you need the underlying detail.
 
+A provider summary or child message is not promoted to a returned result just
+because the child ended. Where no returned result was reported, the Agents
+row says so. Long reports disclose that the summary was cut; full-text
+recovery depends on a supported retained transcript reference and your current
+access. A missing or unreadable transcript does not become an empty result.
+
 Background tasks show bounded recent activity. Older tool rows and closed-chat
 history may be missing, and their running counts cover retained rows. An empty
 activity list is not proof that no work is running. Reopening a conversation can
