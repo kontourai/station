@@ -1526,6 +1526,19 @@ describe('station-control verified caller (in-process Claude delivery)', () => {
       'browser_type',
       'browser_wait_for',
     ]);
+    const control = sdkSideTransport();
+    await options
+      .createInProcessStationControl('session-a')
+      .connect(control.transport);
+    await control.request(1, 'initialize', {
+      protocolVersion: '2025-06-18',
+      capabilities: {},
+      clientInfo: { name: 'claude-code', version: '2' },
+    });
+    const controlTools = await control.request(2, 'tools/list', {});
+    expect(
+      controlTools.result.tools.map((tool: { name: string }) => tool.name),
+    ).toContain('device_capture_to_task');
     options.revokeStationControlCallerToken('session-a');
   });
 
