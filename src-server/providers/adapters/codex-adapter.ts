@@ -167,6 +167,7 @@ import {
   requiredByReportedPolicy,
   STATION_CODEX_PERMISSION_PROFILE,
 } from './codex-confinement.js';
+import { CodexGoals } from './codex-goals.js';
 import {
   type CodexToolServerSkip,
   resolveCodexMcpServers,
@@ -847,6 +848,7 @@ export class CodexAdapter implements ProviderAdapterShape {
   }
 
   private readonly transport: CodexAdapterTransport;
+  readonly goals: CodexGoals;
   private readonly processFactory: (
     appHomeEnv?: Record<string, string>,
     extraArgs?: string[],
@@ -892,6 +894,7 @@ export class CodexAdapter implements ProviderAdapterShape {
           { provider: 'codex' },
         ),
     );
+    this.goals = new CodexGoals(this.transport);
   }
 
   async getPrerequisites(options?: {

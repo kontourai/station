@@ -52,6 +52,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [NativeApplicationSignaling](#nativeapplicationsignaling) | Own a native peer transcript and one bounded Device request proof for the opt-in application transport. | `src-desktop/src/native_application_peer.rs` |
 | [PendingPairingCompletion](#pendingpairingcompletion) | Complete one accepted device-pairing request once, with shared subscribers and bounded retry. | `packages/connect/src/core/pendingPairingCompletion.ts` |
 | [SessionQueryModule](#sessionquerymodule) | Authorize and project one conversation from one ordered event stream. | `src-server/services/orchestration/session-query-module.ts` |
+| [SessionGoalModule](#sessiongoalmodule) | Inspect and control an exact live Session's advertised Goal capability. | `src-server/services/orchestration/session-goal-module.ts` |
 | [ConversationSessionLineage](#conversationsessionlineage) | Establish and inspect durable conversation-to-execution-session lineage. | `src-server/services/orchestration/conversation-session-lineage.ts` |
 | [SessionCommandModule](#sessioncommandmodule) | Execute the closed session-command vocabulary and return an outcome with explicit receipt certainty. | `src-server/services/orchestration/session-command-module.ts` |
 | [SessionLifecycleModule](#sessionlifecyclemodule) | Mutate one session lifecycle without racing provider turn startup. | `src-server/services/orchestration/session-lifecycle-module.ts` |
@@ -1391,6 +1392,35 @@ independent tabs on a nonsecure HTTP origin. These checks do not establish nativ
 WebView or physical-device persistence. Do not reintroduce per-screen polling,
 transport-error replay, competing completion policies or a localStorage admission
 lock.
+
+## SessionGoalModule
+
+**Interface.** The [Session Goal contract](../../packages/contracts/src/session-goal.ts)
+defines observations, advertised operations and mutation outcomes for engine-
+or Station-owned implementations. Unsupported, unavailable and indeterminate
+are distinct. A Goal's completion never completes a Task or passes a gate.
+
+**Ownership and authority.** The [module](../../src-server/services/orchestration/session-goal-module.ts)
+uses the exact current live adapter from Orchestration, refusing replaced and
+read-only attached adapters. The [route](../../src-server/routes/orchestration/session-goals.ts)
+is behind the default-off Session goals preview. Reads use Session-read
+authority; writes require a person and Session mutation authority. Both recheck
+authority and adapter identity after provider I/O. SDK hooks partition data by
+Station, authority and Session; Chat settings consumes the same capability.
+
+**Current implementation.** The [Codex adapter](../../src-server/providers/adapters/codex-goals.ts)
+uses an already-owned app-server connection and validates native thread identity.
+It supports read, save paused, pause and clear, with bounded waits and no
+automatic mutation retry. An unacknowledged mutation remains pending after a
+timeout. Reads never start or resume an engine. Activation and Station-managed
+execution remain unavailable pending durable admission and recovery integration.
+
+**Evidence.** [Route tests](../../src-server/routes/orchestration/__tests__/session-goals.test.ts)
+cover authorization and preview; [service tests](../../src-server/services/orchestration/__tests__/orchestration-service.test.ts)
+check replaced-adapter eligibility. [Adapter tests](../../src-server/providers/__tests__/codex-goals.test.ts)
+exercise a fake app-server pipe, timeouts and foreign native identity. They do
+not establish installed-app or autonomous execution qualification. See the
+[delivery plan](../plans/integration-completion-program.md) for remaining work.
 
 ## SessionQueryModule
 
