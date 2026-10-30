@@ -1,0 +1,7 @@
+{
+  "revision": "332ec85904d8a786d6ecded75521d6106b82052d",
+
+  "notes": [
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed the policy routing against the merged SDK reference additions for reported-child recovery, session groups, and qualified report groups. Those contracts name their public client/subpath owners and separate current authorization, logical reserved starts, physical/fiscal unavailability and refused continuation finalization; none requires a plugin to import application internals. The canonical SDK reference path and owning package exports remain present. The cancellation guidance still requires the waiting caller and canonical cache, and these documentation additions do not alter that rule. No instruction text changed. Normative source-routing review only, not proof that all SDK implementations comply or that report finalization/#91 is delivered.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}
