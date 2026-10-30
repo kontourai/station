@@ -6869,7 +6869,12 @@ export class OrchestrationService {
     threadId: string,
   ): Pick<ProviderAdapterShape, 'goals'> | undefined {
     this.initialize();
-    return this.sessionAdapters.get(threadId);
+    const adapter = this.sessionAdapters.get(threadId);
+    return adapter &&
+      this.isAdapterCurrent(adapter) &&
+      !this.isReadOnlyAttachedSession(threadId)
+      ? adapter
+      : undefined;
   }
 
   canUserMutateSession(

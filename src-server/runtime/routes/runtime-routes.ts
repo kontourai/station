@@ -6274,9 +6274,6 @@ export function configureRuntimeRoutes(
       preview: sessionGoalsPreview,
       authority: conversationReadAuthorityForRequest,
       current: isRequestPrincipalCurrent,
-      person: (request) =>
-        stationControlRequestAuthority(request) === undefined &&
-        getRuntimeAuthenticatedRequestPrincipal(request)?.kind === 'credential',
     }),
   );
   context.app.route(

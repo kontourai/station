@@ -1,5 +1,8 @@
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
+import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
+import type { RuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
+import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 import { createSessionGoalRoutes } from '../session-goals.js';
 
 function fixture() {
@@ -7,13 +10,14 @@ function fixture() {
   let current = true;
   let owner = true;
   let person = true;
+  let deviceKind: RuntimeAuthenticatedRequestPrincipal['deviceKind'] = 'device';
   const read = vi.fn(async () => ({ state: 'unsupported' as const }));
   const control = vi.fn(async () => ({
     state: 'applied' as const,
     goal: null,
   }));
   const adapter = { goals: { read, control } };
-  const app = createSessionGoalRoutes({
+  const routes = createSessionGoalRoutes({
     orchestration: {
       liveSessionGoalAdapter: () => adapter,
       canUserReadSession: () => owner,
@@ -26,8 +30,20 @@ function fixture() {
     authority: () =>
       sessionReadAuthorityFromRequest('human:test:owner', undefined, undefined),
     current: () => current,
-    person: () => person,
   });
+  const app = new Hono();
+  app.use('*', async (c, next) => {
+    setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+      kind: person ? 'credential' : 'internal',
+      credential: 'goal-test-device',
+      authority: 'device-credential',
+      deviceId: 'goal-test-device',
+      deviceKind,
+      source: 'bearer',
+    });
+    await next();
+  });
+  app.route('/', routes);
   return {
     app,
     read,
@@ -43,6 +59,9 @@ function fixture() {
     },
     asAgent: () => {
       person = false;
+    },
+    asPeer: (kind: RuntimeAuthenticatedRequestPrincipal['deviceKind']) => {
+      deviceKind = kind;
     },
   };
 }
@@ -87,6 +106,16 @@ describe('Session Goal HTTP admission', () => {
     expect((await post(f.app, { operation: 'pause' })).status).toBe(404);
     expect(f.control).not.toHaveBeenCalled();
   });
+
+  test.each(['delegation', undefined] as const)(
+    'a %s device credential cannot pose as a person',
+    async (kind) => {
+      const f = fixture();
+      f.asPeer(kind);
+      expect((await post(f.app, { operation: 'pause' })).status).toBe(404);
+      expect(f.control).not.toHaveBeenCalled();
+    },
+  );
 
   test('keeps unsupported separate from an empty Goal and forwards the exact target', async () => {
     const f = fixture();

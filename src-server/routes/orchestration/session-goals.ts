@@ -3,9 +3,12 @@ import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy'
 import { type Context, Hono } from 'hono';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
+import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
+import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
 import type { FeaturePreviewSelector } from '../../services/feature-previews/feature-preview-registry.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import { SessionGoalModule } from '../../services/orchestration/session-goal-module.js';
+import { isNonPersonCaller } from '../plugins/plugin-person-approval.js';
 
 export function createSessionGoalRoutes(deps: {
   orchestration: Pick<
@@ -19,7 +22,6 @@ export function createSessionGoalRoutes(deps: {
   preview: FeaturePreviewSelector;
   authority(request: Request): SessionReadAuthority;
   current(request: Request): boolean;
-  person(request: Request): boolean;
 }) {
   const app = new Hono();
   const goals = new SessionGoalModule((id) =>
@@ -27,6 +29,10 @@ export function createSessionGoalRoutes(deps: {
   );
   const enabled = () =>
     deps.preview.select({ enabled: () => true, disabled: () => false });
+  const person = (request: Request) =>
+    stationControlRequestAuthority(request) === undefined &&
+    getRuntimeAuthenticatedRequestPrincipal(request)?.kind === 'credential' &&
+    !isNonPersonCaller(request);
   const disabled = (c: Context) =>
     c.json(
       {
@@ -47,7 +53,7 @@ export function createSessionGoalRoutes(deps: {
       current: () => deps.current(request) && enabled(),
       canRead: () => deps.orchestration.canUserReadSession(id, authority),
       canControl: () =>
-        deps.person(request) &&
+        person(request) &&
         deps.orchestration.canUserMutateSession(
           id,
           authority.userId,
@@ -68,11 +74,12 @@ export function createSessionGoalRoutes(deps: {
   app.post('/sessions/:threadId/goal', async (c) => {
     c.header('Cache-Control', 'private, no-store');
     if (!enabled()) return disabled(c);
-    if (!deps.current(c.req.raw) || !deps.person(c.req.raw))
-      return unavailable(c);
+    if (!deps.current(c.req.raw) || !person(c.req.raw)) return unavailable(c);
     const read = await readBoundedRequestBody(c.req.raw, 32_768);
-    if (read.status !== 'ok')
+    if (read.status === 'too-large')
       return c.json({ success: false, error: 'Goal command too large' }, 413);
+    if (read.status !== 'ok')
+      return c.json({ success: false, error: 'Invalid Goal command' }, 400);
     let body: unknown;
     try {
       body = JSON.parse(read.body);

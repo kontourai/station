@@ -134,19 +134,21 @@ function GoalSurface({
                 value={budget}
                 onChange={(event) => setBudget(event.target.value)}
               />
-              <Button
-                type="submit"
-                disabled={mutation.isPending || !objective.trim()}
-              >
-                Save paused goal
-              </Button>
-              <Button
-                type="button"
-                disabled={mutation.isPending}
-                onClick={() => setEditing(false)}
-              >
-                Cancel
-              </Button>
+              <div className="chat-settings-modal__control">
+                <Button
+                  type="submit"
+                  disabled={mutation.isPending || !objective.trim()}
+                >
+                  Save paused goal
+                </Button>
+                <Button
+                  type="button"
+                  disabled={mutation.isPending}
+                  onClick={() => setEditing(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
             </form>
           ) : (
             <>
