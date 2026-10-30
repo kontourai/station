@@ -48,7 +48,12 @@ or TLS. Solo local operation still requires neither accounts nor a provider when
 these opt-ins are absent.
 
 The operator enables sharing in a Project's **People and access** section,
-chooses a role and creates a single-use invitation link. Share the link manually;
+chooses a role and creates a single-use invitation link. Before sharing is on,
+an eligible caller sees **Sharing is off** and **Enable Project sharing**.
+Station offers this only to a human caller with Station owner (operator) authority
+whose Device credential can reach the enable route, for example the operator
+console on the Station's own computer. Other callers see an explanation instead
+and are not told whether the Project is shared. Share the link manually;
 no email is sent. The default link may be accepted by any authenticated person
 who possesses it, once, before its expiry. Cancel a pending link from that same
 section. An optional email restriction requires provider-verified contact

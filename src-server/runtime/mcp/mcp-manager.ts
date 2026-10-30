@@ -19,6 +19,7 @@ import {
   originalMcpToolName,
 } from '@kontourai/station-shared/mcp-tool-selection';
 import { DEFAULT_SERVER_PORT } from '@kontourai/station-shared/ports';
+import type { FetchLike } from '@modelcontextprotocol/client';
 import type { Tool } from '@voltagent/core';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { wrapPlatformMutationGatedTools } from '../../services/evidence/platform-mutation-gate.js';
@@ -43,6 +44,7 @@ import {
   StationToolServerOAuthProvider,
   toolServerCredentialCandidates,
   toolServerCredentialStoreFor,
+  toolServerOAuthClientConfig,
   toolServerOAuthResourceIdentity,
 } from '../../services/plugins/tool-server-oauth.js';
 import { establishMcpSecretChild } from '../../services/secrets/mcp-secret-child-env.js';
@@ -277,13 +279,14 @@ async function createMCPTools(
                 ? { ...toolDef.env, ...resolvedSecrets }
                 : toolDef.env,
             ),
-            {
-              authProvider: await createRuntimeOAuthProvider(
+            await runtimeOAuthConnectOptions(
+              createRuntimeOAuthProvider(
                 configLoader,
                 toolDef,
                 serverPort,
-              )?.forTransport(),
-            },
+                integrationSecretResolver,
+              ),
+            ),
           ),
       );
       const currentDefinition = await configLoader.loadIntegration(toolId);
@@ -631,6 +634,7 @@ export async function loadAgentTools(
           configLoader,
           serverPort,
           custody,
+          integrationSecretResolver,
         );
         tools.push(
           ...wrapPlatformMutationGatedTools(
@@ -803,7 +807,9 @@ async function principalScopedConnection(
   provider: StationToolServerOAuthProvider,
   onConnected: (connection: MCPConnection) => void,
 ): Promise<MCPConnection> {
-  const authProvider = await provider.forTransport();
+  // The provider's fetch guard goes with it: if the account's tokens vanish
+  // before this connect, `forTransport` hands the SDK the full provider.
+  const connectOptions = await runtimeOAuthConnectOptions(provider);
   let pool = principalConnectionPools.get(custody);
   if (!pool) {
     pool = new Map();
@@ -822,9 +828,7 @@ async function principalScopedConnection(
   const claim = custody.acquire(toolId, 'managed');
   const entry = { claim } as PrincipalConnectionEntry;
   entry.creation = claim
-    .connect(withResolvedMCPEnvironment(toolId, toolDef), {
-      authProvider,
-    })
+    .connect(withResolvedMCPEnvironment(toolId, toolDef), connectOptions)
     .then(
       (connection) => {
         if (!claim.isCurrent()) throw new MCPLocalCustodyError('stale');
@@ -875,6 +879,7 @@ function createPrincipalScopedMCPTools(
   configLoader: ConfigLoader,
   serverPort: number,
   custody: MCPLocalConnectionCustody,
+  integrationSecretResolver: IntegrationSecretResolver | undefined,
 ): Tool<any>[] {
   const resourceIdentity = toolServerOAuthResourceIdentity(toolDef);
   if (!resourceIdentity)
@@ -896,6 +901,11 @@ function createPrincipalScopedMCPTools(
     return [];
   }
   const redirectUrl = toolServerOAuthRedirectUrl(serverPort, toolId);
+  const oauthClient = toolServerOAuthClientConfig(
+    toolDef,
+    integrationSecretResolver,
+    { homeDir },
+  );
   const selectProvider = async (): Promise<StationToolServerOAuthProvider> => {
     // The session owner's `PrincipalRef.id`, only when it can own an account.
     const principalId = connectedAccountOwnerIdForTurnAccount(
@@ -913,6 +923,7 @@ function createPrincipalScopedMCPTools(
         redirectUrl,
         undefined,
         owner,
+        oauthClient,
       );
       if (await provider.tokens()) return provider;
     }
@@ -985,10 +996,23 @@ function createPrincipalScopedMCPTools(
   return normalized;
 }
 
+/** A remote integration's provider and the fetch guard its OAuth requests use. */
+async function runtimeOAuthConnectOptions(
+  provider: StationToolServerOAuthProvider | undefined,
+) {
+  if (!provider) return {};
+  return {
+    authProvider: await provider.forTransport(),
+    authorizationFetch: (fetch: FetchLike) =>
+      provider.authorizationFetch(fetch),
+  };
+}
+
 function createRuntimeOAuthProvider(
   configLoader: ConfigLoader,
   def: ToolDef,
   serverPort: number,
+  integrationSecretResolver: IntegrationSecretResolver | undefined,
 ): StationToolServerOAuthProvider | undefined {
   if (
     (def.transport !== 'sse' && def.transport !== 'streamable-http') ||
@@ -1003,6 +1027,11 @@ function createRuntimeOAuthProvider(
     def.id,
     resourceIdentity,
     toolServerOAuthRedirectUrl(serverPort, def.id),
+    undefined,
+    undefined,
+    toolServerOAuthClientConfig(def, integrationSecretResolver, {
+      homeDir: configLoader.getProjectHomeDir(),
+    }),
   );
 }
 

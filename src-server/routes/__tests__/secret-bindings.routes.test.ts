@@ -173,6 +173,18 @@ test('bind/unbind are structured consumer operations and surface a non-atomic sa
           integrationId: 'github',
           envName: 'TOKEN',
         }),
+        bindOAuthClientSecret: async (input) => ({
+          outcome: 'complete' as const,
+          binding,
+          integrationId: input.integrationId,
+          consumer: 'oauth-client' as const,
+        }),
+        unbindOAuthClientSecret: async (input) => ({
+          outcome: 'complete' as const,
+          binding,
+          integrationId: input.integrationId,
+          consumer: 'oauth-client' as const,
+        }),
       },
       {
         migrateStoredEnv: async (input) => {
@@ -267,10 +279,88 @@ test('management integration binding projection keeps an explicit empty map', as
         integrationId: 'github',
         envName: 'TOKEN',
       }),
+      bindOAuthClientSecret: async () => {
+        throw new Error('unused');
+      },
+      unbindOAuthClientSecret: async () => {
+        throw new Error('unused');
+      },
     },
   );
   expect(await (await app.request('/integrations/unbound')).json()).toEqual({
     success: true,
     data: { integrationId: 'unbound', secretEnvBindingIds: {} },
   });
+});
+
+test('an OAuth client secret binds through its own exact consumer, and extra fields refuse', async () => {
+  const calls: Array<{ operation: string; input: unknown }> = [];
+  const record =
+    (operation: string) => async (input: { integrationId: string }) => {
+      calls.push({ operation, input });
+      return {
+        outcome: 'complete' as const,
+        binding,
+        integrationId: input.integrationId,
+        consumer: 'oauth-client' as const,
+      };
+    };
+  const unexpected = async () => {
+    throw new Error('env consumer must not be called');
+  };
+  const app = createSecretBindingRoutes(
+    {
+      list: async () => [binding],
+      get: async () => binding,
+      create: async () => binding,
+      replace: async () => binding,
+      grant: unexpected,
+      ungrant: unexpected,
+      revoke: async () => binding,
+    },
+    {
+      getIntegrationBindings: async ({ integrationId }) => ({
+        integrationId,
+        secretEnvBindingIds: {},
+      }),
+      bind: unexpected,
+      unbind: unexpected,
+      bindOAuthClientSecret: record('bind'),
+      unbindOAuthClientSecret: record('unbind'),
+    },
+  );
+  for (const operation of ['bind', 'unbind'] as const) {
+    const response = await app.request(`/github/${operation}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'mcp-integration-oauth-client',
+        integrationId: 'gmail',
+        expectedRevision: 1,
+      }),
+    });
+    expect(response.status).toBe(200);
+  }
+  expect(calls).toEqual([
+    {
+      operation: 'bind',
+      input: { id: 'github', integrationId: 'gmail', expectedRevision: 1 },
+    },
+    {
+      operation: 'unbind',
+      input: { id: 'github', integrationId: 'gmail', expectedRevision: 1 },
+    },
+  ]);
+  const extra = await app.request('/github/bind', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      kind: 'mcp-integration-oauth-client',
+      integrationId: 'gmail',
+      envName: 'TOKEN',
+      expectedRevision: 1,
+    }),
+  });
+  expect(extra.status).toBe(400);
+  expect(calls).toHaveLength(2);
 });
