@@ -349,6 +349,22 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
       (historical) => historical.group,
     );
     assert.equal(replay.result.replayed, true);
+    await assert.rejects(
+      h.custody.finalizeContinuation(
+        h.f.context(requestFor(h, 'POST')),
+        groupId,
+        {
+          operationKey: 'stale-finish',
+          expectedRevision: held.revision,
+          continuationOperationKey: 'lost',
+        },
+        dispatch,
+        h.f.owner,
+        participant,
+        (historical) => historical.group,
+      ),
+      { code: 'rounds_continuation_already_completed' },
+    );
     assert.deepEqual(readFileSync(winnerPath), winnerBytes);
     assert.equal(
       flowRunHead((await loadRun(flow.runId, h.f.repo)).state),
