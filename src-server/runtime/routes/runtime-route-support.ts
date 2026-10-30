@@ -1,4 +1,5 @@
 import { networkInterfaces } from 'node:os';
+import { join } from 'node:path';
 import { ACPStatus } from '@kontourai/station-contracts/acp';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { HomeRecoveryDisclosure } from '@kontourai/station-contracts/system-status';
@@ -16,6 +17,12 @@ import {
   ApprovalInboxNotificationProvider,
   wireApprovalInboxNotifications,
 } from '../../services/approvals/approval-inbox.js';
+import {
+  createAutomationLedger,
+  SharedAutomationLedger,
+} from '../../services/automation/automation-ledger.js';
+import { AutomationStore } from '../../services/automation/automation-store.js';
+import { composeGitHubAutomationObservation } from '../../services/automation/github-poll.js';
 import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
 import { createStationRoutesResolver } from '../../services/connections/station-routes.js';
 import type { FlowRunService } from '../../services/flow/flow-run-service.js';
@@ -51,6 +58,7 @@ import {
   AttentionProjectionService,
   type PausedGateReviewAggregate,
 } from '../../services/projects/attention-projection.js';
+import { FileAttentionSnoozeStore } from '../../services/projects/attention-snooze-store.js';
 import type { ScheduledTurnAdapter } from '../../services/scheduling/builtin-scheduler.js';
 import { MonitorTaskTurnSupervisor } from '../../services/scheduling/monitor-task-supervisor.js';
 import { SchedulerService } from '../../services/scheduling/scheduler-service.js';
@@ -481,13 +489,31 @@ export function configureRuntimeSupportServices(
         (event) => event.payload,
       ),
   });
+  const integrationSecretResolver = context.secretBindingAdministration;
+  // Observe-only Automation intake (epic #3439, S2): `github-poll` sources
+  // ride the scheduler's tick through the external monitor's transport. One
+  // lazily opened ledger serves the poller and the read route.
+  const automationHome = context.configLoader.getProjectHomeDir();
+  const automationLedger = new SharedAutomationLedger(() =>
+    createAutomationLedger({ directory: join(automationHome, 'automation') }),
+  );
+  const automationObservation = composeGitHubAutomationObservation(
+    context.featurePreviews,
+    isHostedTenantExecutionRequired(),
+    {
+      store: new AutomationStore(automationHome),
+      ledger: automationLedger,
+      integrationSecretResolver,
+      logger: context.logger,
+    },
+  );
   const schedulerService = new SchedulerService({
     logger: context.logger,
     builtin: {
       notificationService,
       turnAdapter: createScheduledTurnAdapter(context.activeAgents),
-      integrationSecretResolver:
-        context.secretBindingAdministration as unknown as import('../../services/secrets/secret-binding-administration.js').IntegrationSecretResolver,
+      integrationSecretResolver,
+      automationPoller: automationObservation.poller,
       onActionableMonitor: async (input) => {
         const task = await context.taskGraphService.createTaskIdempotent(
           {
@@ -768,9 +794,22 @@ export function configureRuntimeSupportServices(
       context.configLoader.getProjectHomeDir(),
     ),
     new ToolLibraryService(context.configLoader.getProjectHomeDir()),
+    {
+      store: new FileAttentionSnoozeStore(
+        context.configLoader.getProjectHomeDir(),
+      ),
+      preview: context.featurePreviews.bind({
+        id: 'attention-snooze',
+        label: 'Attention snooze',
+        description:
+          'Temporarily hide attention items until a chosen time. New source activity resurfaces immediately.',
+      }),
+    },
   );
   return {
     schedulerService,
+    automationLedger,
+    automationPreview: automationObservation.preview,
     notificationService,
     approvalInboxProvider,
     attentionProjection,

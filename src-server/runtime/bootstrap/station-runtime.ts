@@ -3811,6 +3811,7 @@ export class StationRuntime {
           homeDirectory: this.configLoader.getProjectHomeDir(),
         },
         this.projectMembership.service,
+        resolveStationBrowserOrigins({ port: this.port, host: this.host }),
       );
       this.deploymentAuthentication = this.localAccounts;
       // #3586: account-tied personal access tokens are checked against

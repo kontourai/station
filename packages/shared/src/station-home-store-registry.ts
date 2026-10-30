@@ -54,6 +54,7 @@ export const STATION_HOME_ROOTS: Readonly<
   '.review-evidence-coordination': 'state',
   '.storage-transactions': 'state',
   'action-operations.json': 'state',
+  'attention-snoozes.json': 'state',
   'agent-plugin-data': 'state',
   agents: 'state',
   analytics: 'state',
