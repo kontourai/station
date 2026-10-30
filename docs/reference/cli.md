@@ -915,6 +915,10 @@ Agent, integration and workspace-guidance data. Recognized workspace guidance
 is merged into local `config/app.json`, replacing the same keys when present;
 this is a real configuration write. Matching Agent and integration IDs can also
 be replaced. The command does not ask the remote API to activate these files.
+Imported trust classification, permissions, hint settings, receipts and
+ownership are ignored. A new imported integration takes Station's own
+classification (trusted, unless Station's bundled curated catalog classifies
+it) and the default ask permission; existing person choices are preserved.
 
 Each completed import writes a ledger under the Station home recording the source path,
 format, what was applied, and any fields that could not be represented, so a
@@ -4009,6 +4013,11 @@ station plugin preview ./path/to/local-plugin
 Output includes suggested `--skip` flags if conflicts are detected.
 
 ### `plugin list`
+
+`station plugin recovery-backups` lists retained install recovery material for
+the targeted Station and prints manual recovery guidance. It requires the
+operator credential. See [plugin recovery](../guides/plugins.md) for the
+identity and manual-recovery limitations.
 
 List the installed-plugin projection visible to this caller, including rejected
 rows when the server exposes them. Records can include contributions,

@@ -278,6 +278,7 @@ import {
 } from '../infra/resource-posture.js';
 import { workloadBudgetEngineContext } from '../infra/workload-budget.js';
 import { withEngineMcpAccountOwner } from '../plugins/engine-mcp-oauth.js';
+import { recordPersonApprovedExternalTool } from '../plugins/mediated-untrusted-content-gate.js';
 import {
   isPersonChatStart,
   type ProjectChatDefaultsService,
@@ -567,6 +568,7 @@ function telemetryEngine(
  * from an HTTP route.
  */
 interface OrchestrationDispatchInternalOptions {
+  mcpPromptOrigin?: import('@kontourai/station-contracts/mcp-prompts').VerifiedMcpPromptOrigin;
   /** Original intent proof; null preserves unknown legacy inbox input. */
   submissionDigest?: string | null;
   skillExperience?: SkillExperienceStartInputV1;
@@ -8233,6 +8235,13 @@ export class OrchestrationService {
        * `accept`.
        */
       approvalModeAuthority?: true;
+      /**
+       * #3483: set by the orchestration command route for an answer from an
+       * authenticated person (not a station-control call acting for its
+       * session's owner). Only such an approval admits an MCP call the
+       * untrusted-content permission asks about at a Station seam.
+       */
+      personAnswer?: true;
     },
     internal?: OrchestrationDispatchInternalOptions,
   ): Promise<
@@ -8961,6 +8970,15 @@ export class OrchestrationService {
                                   : {}),
                               })
                             : undefined;
+                        if (
+                          internal?.mcpPromptOrigin &&
+                          (!turnCorrelation ||
+                            adapter.provider !== 'station-agent')
+                        ) {
+                          throw new Error(
+                            'This engine cannot safely carry MCP prompt origin into the turn.',
+                          );
+                        }
                         // The native-output companion is composed only after the
                         // command's normal read authorization gate above. Its
                         // PrincipalRef is attribution; this live lease repeats
@@ -9165,6 +9183,7 @@ export class OrchestrationService {
                                   send,
                                   nativeMemory,
                                   experienceContext,
+                                  internal?.mcpPromptOrigin,
                                 )
                               : send();
                           };
@@ -9235,6 +9254,8 @@ export class OrchestrationService {
                                         )
                                       : sendAdapter(),
                                   nativeMemory,
+                                  undefined,
+                                  internal?.mcpPromptOrigin,
                                 )
                               : sendAdapter(),
                         );
@@ -10374,6 +10395,23 @@ export class OrchestrationService {
                   decision,
                 );
           };
+          // #3483: recorded before the engine hears the answer, so its next
+          // call through a Station seam finds the approval.
+          if (
+            context?.personAnswer === true &&
+            (decision === 'accept' || decision === 'acceptForSession') &&
+            currentQuestionRequest?.state === 'found'
+          ) {
+            const opened = currentQuestionRequest.event.payload as {
+              requestType?: unknown;
+              payload?: { toolName?: unknown };
+            };
+            if (opened.requestType === 'approval')
+              recordPersonApprovedExternalTool(
+                command.threadId,
+                opened.payload?.toolName,
+              );
+          }
           if (
             command.expectedSkillExperience &&
             (decision === 'accept' || decision === 'acceptForSession')
