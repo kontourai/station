@@ -6412,6 +6412,9 @@ describe('Orchestration Routes', () => {
       const release = vi.fn();
       const generalEventProducer = createEventStreamProducer({
         eventBus: bus,
+        readAuthorityForRequest: () => {
+          throw new Error('orchestration authority must be passed explicitly');
+        },
         getACPStatus: () => ({ connected: false, connections: [] }),
         logger: { debug: vi.fn() },
         connectClientSession: () => ({ touch: vi.fn(), release }),

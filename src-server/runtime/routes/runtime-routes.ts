@@ -6591,8 +6591,8 @@ export function configureRuntimeRoutes(
     '/api/orchestration',
     createOrchestrationRoutes(context.orchestrationService, {
       eventBus: context.eventBus,
-      generalEventProducer: (c, stream, write) =>
-        generalEventProducer(c, stream, write),
+      generalEventProducer: (c, stream, write, authority) =>
+        generalEventProducer(c, stream, write, authority),
       ...(delegationResults ? { delegationResults } : {}),
       ...(threadInbox ? { threadInbox } : {}),
       ...(memoryContinuation && threadInbox ? { memoryContinuation } : {}),

@@ -164,6 +164,7 @@ export function createEventStreamProducer({
       event: string;
       data: string;
     }) => Promise<void>,
+    authorityOverride?: SessionReadAuthority,
   ) => {
     let clientLease: ClientConnectionLease | undefined;
     let settleUnauthorized: (() => void) | undefined;
@@ -204,7 +205,7 @@ export function createEventStreamProducer({
         throw new Error('stream_closed');
       }
     };
-    const authority = readAuthorityForRequest?.(c.req.raw);
+    const authority = authorityOverride ?? readAuthorityForRequest?.(c.req.raw);
     sseOps.add(1, { op: 'connect' });
     type BroadcastEvent = Parameters<Parameters<EventBus['subscribe']>[0]>[0];
     const pendingEvents: Array<{

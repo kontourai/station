@@ -1891,6 +1891,7 @@ export function createOrchestrationRoutes(
       c: Context,
       stream: SSEStreamingApi,
       write: (frame: { event: string; data: string }) => Promise<void>,
+      authority: ReturnType<typeof sessionReadAuthorityFromRequest>,
     ) => Promise<void>;
     eventBus: {
       subscribe(
@@ -6899,11 +6900,15 @@ export function createOrchestrationRoutes(
             once: true,
           });
           if (c.req.raw.signal.aborted) abortShared();
-          void shared(c, stream, (frame) =>
-            stream.writeSSE({
-              event: 'station:general',
-              data: JSON.stringify(frame),
-            }),
+          void shared(
+            c,
+            stream,
+            (frame) =>
+              stream.writeSSE({
+                event: 'station:general',
+                data: JSON.stringify(frame),
+              }),
+            authority,
           ).then(abortShared, abortShared);
         }
         // station#2301 review (M2): register for the client going away
