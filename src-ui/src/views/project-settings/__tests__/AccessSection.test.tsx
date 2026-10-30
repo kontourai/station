@@ -190,9 +190,141 @@ describe('Project access administration UI through SDK queries and mutations', (
         <AccessSection slug="example" projectId="local-one" />
       </QueryClientProvider>,
     );
-    await screen.findByText('Project access is unavailable');
+    // A refusal with no details (an older Station) is not shown as an error.
+    await screen.findByText('Sharing may be off');
+    expect(screen.queryByText('Project access is unavailable')).toBeNull();
     expect(screen.queryByText('Collaborator')).toBeNull();
     expect(screen.queryByDisplayValue('private@example.test')).toBeNull();
+  });
+
+  test('an identity conflict preserves the Device and offers account-only sign-out', async () => {
+    let signedIn = true;
+    const logout = vi.fn();
+    vi.mocked(fetch).mockImplementation(async (url, init) => {
+      if (String(url).endsWith('/api/account-auth/sign-out')) {
+        logout();
+        signedIn = false;
+        return Response.json({ success: true });
+      }
+      if (init?.method === 'POST' && signedIn)
+        return Response.json(
+          { error: { code: 'account_identity_conflict' } },
+          { status: 403 },
+        );
+      return reply(view());
+    });
+    mount();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Create invitation' }),
+    );
+    expect(
+      await screen.findByText(/This browser is signed in to a Station account/),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Sign out of account' }),
+    );
+    await waitFor(() => expect(logout).toHaveBeenCalledOnce());
+    expect(await screen.findByText('Collaborator')).toBeTruthy();
+  });
+
+  test('a conflict on the access read offers account sign-out instead of enabling sharing', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      Response.json(
+        { error: { code: 'account_identity_conflict' } },
+        { status: 403 },
+      ),
+    );
+    mount();
+    expect(
+      await screen.findByRole('button', { name: 'Sign out of account' }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: 'Enable Project sharing' }),
+    ).toBeNull();
+  });
+
+  test('sharing off for a caller who can enable it is a neutral state with the Enable action (#4302)', async () => {
+    const writes: string[] = [];
+    vi.mocked(fetch).mockImplementation(async (url, init) => {
+      if (init?.method === 'POST') {
+        writes.push(String(url));
+        return Response.json(
+          { error: { code: 'project_access_forbidden' } },
+          { status: 403 },
+        );
+      }
+      return Response.json(
+        {
+          error: { code: 'project_access_forbidden' },
+          details: { sharing: 'off', canEnable: true },
+        },
+        { status: 403 },
+      );
+    });
+    mount();
+    await screen.findByText('Sharing is off');
+    expect(screen.queryByText('Project access is unavailable')).toBeNull();
+    expect(document.body.textContent).not.toContain('project_access');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Enable Project sharing' }),
+    );
+    // The server refused anyway (authority changed): say so in words.
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'You can’t turn on sharing from this device. It needs Station owner authority, such as the Station’s own computer.',
+    );
+    expect(writes).toEqual([
+      `${host.apiBase}/api/projects/example/access/enable`,
+    ]);
+    expect(document.body.textContent).not.toContain('project_access');
+  });
+
+  test('a caller who cannot enable sharing gets an explanation and no Enable action (#4302)', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      Response.json(
+        {
+          error: { code: 'project_access_forbidden' },
+          details: { sharing: 'undisclosed', canEnable: false },
+        },
+        { status: 403 },
+      ),
+    );
+    mount();
+    await screen.findByText(
+      'You can’t manage people for this Project from here',
+    );
+    expect(
+      screen.getByText(
+        'A Project owner or admin manages access. Turning sharing on needs Station owner authority.',
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: 'Enable Project sharing' }),
+    ).toBeNull();
+    expect(screen.queryByText('Project access is unavailable')).toBeNull();
+    expect(document.body.textContent).not.toContain('project_access');
+  });
+
+  test('a refused invitation is explained in words, not its code (#4302)', async () => {
+    vi.mocked(fetch).mockImplementation(async (_url, init) =>
+      init?.method === 'POST'
+        ? Response.json(
+            { error: { code: 'project_access_forbidden' } },
+            { status: 403 },
+          )
+        : reply(view()),
+    );
+    mount();
+    const create = await screen.findByRole('button', {
+      name: 'Create invitation',
+    });
+    await waitFor(() =>
+      expect((create as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(create);
+    await screen.findByText(
+      'You don’t have permission to change who can access this Project.',
+    );
+    expect(document.body.textContent).not.toContain('project_access');
   });
 
   test('invitation creation requires configured account sign-in', async () => {

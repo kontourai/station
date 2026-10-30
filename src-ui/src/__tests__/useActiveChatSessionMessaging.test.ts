@@ -315,6 +315,62 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     activeChatsStore.removeChat(sessionId);
   });
 
+  it('does not enqueue rendered MCP prompt text without its origin after an unanswered send', async () => {
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new TypeError('Failed to fetch'),
+    );
+    const handler = vi.fn().mockResolvedValue({
+      text: 'mail content',
+      mcpPromptOrigin: {
+        serverId: 'mail',
+        name: 'summarize',
+        receipt: 'opaque',
+      },
+    });
+    const { result } = renderHook(() =>
+      useSendMessage('http://api.test', undefined, undefined, handler),
+    );
+    await act(async () => {
+      await result.current(sessionId, 'codex', undefined, '/mail:summarize');
+    });
+    expect(sendExecutionMessageMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        message: 'mail content',
+        mcpPromptOrigin: {
+          serverId: 'mail',
+          name: 'summarize',
+          receipt: 'opaque',
+        },
+      }),
+      expect.anything(),
+    );
+    expect(enqueueOutboundTurnMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[sessionId]?.error).toContain(
+      'not confirmed',
+    );
+  });
+
+  it('keeps an MCP slash prompt in the composer while a turn is busy', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      input: '/mail:summarize',
+    });
+    const handler = vi.fn();
+    const { result } = renderHook(() =>
+      useSendMessage('http://api.test', undefined, undefined, handler),
+    );
+    await act(async () => {
+      await result.current(sessionId, 'codex', undefined, '/mail:summarize');
+    });
+    expect(handler).not.toHaveBeenCalled();
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[sessionId]).toMatchObject({
+      input: '/mail:summarize',
+      queuedMessages: [],
+    });
+  });
+
   it('keeps shaping instructions across a clarification and reload, then stops when mode is removed', async () => {
     activeChatsStore.updateChat(sessionId, { taskShaping: true });
     const { result } = renderHook(() => useSendMessage('http://api.test'));
@@ -1612,6 +1668,30 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     const notice = chat?.ephemeralMessages?.at(-1);
     expect(notice?.content).toContain('This chat has ended');
     expect(notice?.action).toBeUndefined();
+    // Unknown access (no open read answer): the full hint stands.
+    expect(notice?.content).toContain('Start a new chat to continue.');
+  });
+
+  it('an ended-session notice names no new chat to a caller the server refused one', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      conversationOpenState: {
+        callerAccess: { continue: true, startChat: false },
+      } as never,
+    });
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new CodedOrchestrationError(400, 'This chat has ended.', 'session_ended'),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(sessionId, 'codex', undefined, 'one more thing');
+    });
+
+    const notice = activeChatsStore
+      .getSnapshot()
+      [sessionId]?.ephemeralMessages?.at(-1);
+    expect(notice?.content).toContain('This chat has ended');
+    expect(notice?.content).not.toMatch(/new chat/i);
   });
 
   // #1796 G2: a full-access refusal is decided before anything runs. It is

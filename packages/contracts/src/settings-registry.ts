@@ -526,6 +526,19 @@ export const APP_SETTINGS_REGISTRY = [
     defaultValue: false,
   }),
   defineSetting({
+    key: 'claudeArtifactsEnabled',
+    scope: 'station',
+    descriptor: { kind: 'boolean' },
+    label: 'Claude Code artifacts',
+    help: 'Claude Code sessions can publish HTML and Markdown files as shareable Claude artifact pages.',
+    // Read at each Claude session start (station-runtime.ts `getArtifactsEnabled`
+    // → claude-adapter.ts `buildOptions`), which sets CLAUDE_CODE_ARTIFACT to
+    // 1 or 0; running sessions keep the value they started with.
+    description:
+      'Turn on the Artifact tool for new Claude Code sessions. It publishes pages to claude.ai and needs a claude.ai subscription login; API-key, Bedrock and Vertex logins do not get it.',
+    defaultValue: false,
+  }),
+  defineSetting({
     key: 'distributionProfile',
     scope: 'station',
     descriptor: { kind: 'composite' },
@@ -600,6 +613,16 @@ export const APP_SETTINGS_REGISTRY = [
     // Confirmed against ChatDock.tsx: `appConfig?.defaultChatFontSize ??
     // CONFIG_DEFAULTS.defaultChatFontSize` (14).
     defaultValue: 14,
+  }),
+  defineSetting({
+    key: 'titleModel',
+    scope: 'station',
+    descriptor: { kind: 'string', maxLength: 255 },
+    label: 'Chat title model',
+    help: 'Choose the model that names a chat after its first reply.',
+    // #4266: read by `resolveTitleModel` (chat-title-generation.ts).
+    description:
+      'When empty, no model sees the chat and it is named from its first message.',
   }),
   defineSetting({
     key: 'defaultWorkspaceIsolation',

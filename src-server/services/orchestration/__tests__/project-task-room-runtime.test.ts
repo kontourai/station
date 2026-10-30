@@ -439,6 +439,7 @@ function fixture(
       ? { revisionEvidence: options.revisionEvidence }
       : {}),
     working: {
+      readRevisionOrdinals: async () => ({ kind: 'unavailable' as const }),
       read: async () => {
         if (options.revokeAfterWorkingRead) revoked = true;
         return { kind: 'snapshot' as const, revision: 'empty', text: '' };
@@ -735,6 +736,7 @@ describe('ProjectTaskRoomRuntime', () => {
             : undefined,
         history: () => historyEffects,
         working: {
+          readRevisionOrdinals: async () => ({ kind: 'unavailable' as const }),
           read: vi.fn(async () => ({ kind: 'unavailable' as const })),
           settle: publicationEffects.settle,
           receipt: vi.fn(async () => ({ kind: 'missing' as const })),
@@ -1573,11 +1575,6 @@ describe('ProjectTaskRoomRuntime', () => {
       maxWorkingSnapshotBytes: 16 * 1024 * 1024,
       responseTimeoutMs: 120_000,
     });
-    const reader = store.createProjectTaskRoomWorkingState({
-      maxRetainedOperations: 10_000,
-      maxWorkingSnapshotBytes: 16 * 1024 * 1024,
-      responseTimeoutMs: 120_000,
-    });
     const scope = {
       projectId: task.projectId,
       taskId: task.id,
@@ -1595,6 +1592,11 @@ describe('ProjectTaskRoomRuntime', () => {
       operationCount: 10_000,
       baseRevision: expect.stringMatching(/^swsr-v1:/),
       revision: expect.stringMatching(/^swsr-v1:/),
+    });
+    const reader = store.createProjectTaskRoomWorkingState({
+      maxRetainedOperations: 10_000,
+      maxWorkingSnapshotBytes: 16 * 1024 * 1024,
+      responseTimeoutMs: 120_000,
     });
     await expect(
       reader.read({ scope, after: seeded.baseRevision }),
@@ -2767,6 +2769,7 @@ describe('ProjectTaskRoomRuntime', () => {
           close: async () => ({ kind: 'closed' }),
         }) as ProjectTaskRoomAuthority,
       working: {
+        readRevisionOrdinals: async () => ({ kind: 'unavailable' as const }),
         read: async () => {
           revoked = true;
           return { kind: 'snapshot' as const, revision: 'one', text: 'secret' };

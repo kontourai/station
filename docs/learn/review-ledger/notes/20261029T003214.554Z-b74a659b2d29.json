@@ -1,0 +1,35 @@
+{
+  "revision": "aeff04bb28ab6bfe794ba951eb3646c6a311ee39",
+
+  "notes": [
+    {"path":"AGENTS.md","note":"typecheck-host-slots.mjs now returns the claim nonce, exports liveSlotClaim (a busy record is re-read briefly, then treated as no claim), and gates FIFO tickets on free slots. Typecheck callers keep FIFO off. Root instructions remain accurate.","inputs":["AGENTS.md","scripts/lib/typecheck-host-slots.mjs"]},
+
+    {"path":"docs/architecture/module-map.md","note":"The VerificationCoordinator sentence still matches the code: heavy-check-slots.mjs markers now name the exact claim, and coordinator tests assert the lane marker equals the held claim. No module-map claim changed.","inputs":["docs/architecture/module-map.md","scripts/__tests__/verification-coordinator.test.ts","scripts/lib/heavy-check-slots.mjs"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Its input docs/guides/testing.md changed only in the Host heavy-check slots section: typecheck rows, the claim-based marker (directory, index, nonce), and the documented gap where a targeted kill of a POSIX holder leaves children outside the cap. This file does not restate those, so it remains accurate.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"package.json scripts changed only in that `typecheck` now runs `node scripts/heavy-check-slot.mjs typecheck scripts/typecheck-aggregate.mjs` after dist:freshness, so its lanes run under one heavy-check slot. Names, arguments and exit statuses are unchanged; this document cites no affected command text, so it remains accurate.","inputs":["docs/design/pnpm-workspace-installation.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/code-hygiene.md","note":"package.json scripts changed only in that `typecheck` now runs `node scripts/heavy-check-slot.mjs typecheck scripts/typecheck-aggregate.mjs` after dist:freshness, so its lanes run under one heavy-check slot. Names, arguments and exit statuses are unchanged; this document cites no affected command text, so it remains accurate.","inputs":["docs/guides/code-hygiene.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"package.json scripts changed only in that `typecheck` now runs `node scripts/heavy-check-slot.mjs typecheck scripts/typecheck-aggregate.mjs` after dist:freshness, so its lanes run under one heavy-check slot. Names, arguments and exit statuses are unchanged; this document cites no affected command text, so it remains accurate.","inputs":["docs/guides/dependency-security.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/development.md","note":"package.json scripts changed only in that `typecheck` now runs `node scripts/heavy-check-slot.mjs typecheck scripts/typecheck-aggregate.mjs` after dist:freshness, so its lanes run under one heavy-check slot. Names, arguments and exit statuses are unchanged; this document cites no affected command text, so it remains accurate.","inputs":["docs/guides/development.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/repository-knowledge-graph.md","note":"package.json scripts changed only in that `typecheck` now runs `node scripts/heavy-check-slot.mjs typecheck scripts/typecheck-aggregate.mjs` after dist:freshness, so its lanes run under one heavy-check slot. Names, arguments and exit statuses are unchanged; this document cites no affected command text, so it remains accurate.","inputs":["docs/guides/repository-knowledge-graph.md","package.json#/scripts"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"package.json scripts changed only in that `typecheck` now runs `node scripts/heavy-check-slot.mjs typecheck scripts/typecheck-aggregate.mjs` after dist:freshness, so its lanes run under one heavy-check slot. Names, arguments and exit statuses are unchanged; this document cites no affected command text, so it remains accurate.","inputs":["docs/reference/verification-receipts.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/code-quality.md","note":"The pre-push paragraph still matches .githooks/pre-push. package.json scripts changed only in that `typecheck` now runs `node scripts/heavy-check-slot.mjs typecheck scripts/typecheck-aggregate.mjs` after dist:freshness, so its lanes run under one heavy-check slot. Names, arguments and exit statuses are unchanged; this document cites no affected command text, so it remains accurate.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/testing.md","note":"Re-reviewed the section against the final code. The typecheck rows match tsc-slot.mjs (heavy slot before the typecheck slot, silent when none is needed because the coverage gate reads stderr) and package.json (typecheck aggregate under the runner). The claim marker matches liveSlotClaim and withHeavyCheckHeld, FIFO matches the free-slot gate, and the targeted-kill gap is stated. Tests: heavy-check-slots.test.ts (claim marker, N=2 FIFO) and typecheck-host-slots.test.ts (heavy-held compile refused).","inputs":["docs/guides/testing.md","package.json#/scripts","scripts/__tests__/typecheck-host-slots.test.ts","scripts/heavy-check-slot.mjs","scripts/lib/heavy-check-slots.mjs","scripts/lib/typecheck-host-slots.mjs","scripts/tsc-slot.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Its input docs/guides/testing.md changed only in the Host heavy-check slots section: typecheck rows, the claim-based marker (directory, index, nonce), and the documented gap where a targeted kill of a POSIX holder leaves children outside the cap. This file does not restate those, so it remains accurate.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Its input docs/guides/testing.md changed only in the Host heavy-check slots section: typecheck rows, the claim-based marker (directory, index, nonce), and the documented gap where a targeted kill of a POSIX holder leaves children outside the cap. This file does not restate those, so it remains accurate.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Its input docs/guides/testing.md changed only in the Host heavy-check slots section: typecheck rows, the claim-based marker (directory, index, nonce), and the documented gap where a targeted kill of a POSIX holder leaves children outside the cap. This file does not restate those, so it remains accurate.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Its input docs/guides/testing.md changed only in the Host heavy-check slots section: typecheck rows, the claim-based marker (directory, index, nonce), and the documented gap where a targeted kill of a POSIX holder leaves children outside the cap. This file does not restate those, so it remains accurate.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

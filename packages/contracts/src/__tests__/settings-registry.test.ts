@@ -298,6 +298,9 @@ describe('APP_SETTINGS_REGISTRY completeness', () => {
         // falls through to 50 commits and 3 days.
         'checkoutStaleAfterCommits',
         'checkoutStaleAfterDays',
+        // Confirmed against `claudeArtifactsSpawnEnv` (`=== true`) in
+        // claude-adapter.ts — absent is off.
+        'claudeArtifactsEnabled',
         'defaultChatFontSize',
         'defaultMaxTurns',
         // #2144 slice 2: confirmed against `resolveWorkspaceIsolationMode`

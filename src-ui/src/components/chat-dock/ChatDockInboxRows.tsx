@@ -1,4 +1,3 @@
-import { parseEngineId } from '@kontourai/station-contracts/agent-identity';
 import type { GitReadLocation } from '@kontourai/station-sdk';
 import {
   useCallback,
@@ -12,6 +11,8 @@ import { activeChatsStore } from '../../contexts/active-chats-store';
 import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import { useSessionWorkClaims } from '../../contexts/WorkClaimsContext';
 import { useContextMenuGesture } from '../../hooks/useContextMenuGesture';
+import { useInboxSwipe } from '../../hooks/useInboxSwipe';
+import { agentMark, workIdentityMarks } from '../../utils/identity-marks';
 import { relativeTime } from '../../utils/relativeTime';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
 import {
@@ -28,18 +29,18 @@ import { workStatusText } from '../../views/home/work-status';
 import { Button } from '../Button';
 import { DisclosureToggle } from '../DisclosureToggle';
 import { DiscardDraftButton } from '../drafts/DiscardDraftButton';
-import { AgentIcon } from '../icons/AgentIcon';
-import { hasBundledEngineMark } from '../icons/BrandIcon';
 import {
   CloseGlyph,
   DiscardGlyph,
+  EditGlyph,
   FolderGlyph,
   InfoGlyph,
   MoreGlyph,
   ReturnGlyph,
   TimeGlyph,
 } from '../icons/Glyph';
-import { ProjectIcon } from '../icons/ProjectIcon';
+import { displayableProjectIcon, ProjectIcon } from '../icons/ProjectIcon';
+import { IdentityMarks } from '../inbox-row/IdentityMarks';
 import {
   InboxRowChips,
   InboxRowStatusGlyph,
@@ -127,59 +128,34 @@ export function moveFocusBeforeRemovingInboxRow(
 }
 
 /**
- * The agent an inbox row is attributed to, drawn as its leading icon — or
- * `null`, which renders NO icon at all.
+ * The agent an inbox row is attributed to, as a mark — or `null`, which
+ * draws no agent mark at all. The row's own committed `agentSlug` looked up
+ * in the live catalog, never its display `agentLabel`, and never an engine
+ * standing in for an unresolved agent (the row names an agent in text).
  *
- * Resolution is deliberately narrow: the row's own committed `agentSlug`,
- * looked up in the live agent catalog. Two fallbacks it pointedly does not
- * have:
- *
- * - It never reads `agentLabel`. That is a display string
- *   (`home-view-model.ts`'s `safeAgentLabel`) whose fallbacks include a bare
- *   provider id and the literal "Agent not reported" — matching artwork to
- *   one would be deriving an identity from a label.
- * - It never stands an ENGINE in for an UNRESOLVED agent the way
- *   `sessionIconAgent` does for a session row. That fallback is correct
- *   there, where the engine name is also the text beside the icon; here it
- *   would put an engine mark at the head of a row whose meta line names an
- *   agent, which is exactly the misattribution
- *   `home-view-model.ts`'s `safeAgentLabel` docblock records ("a Home row
- *   therefore said 'Bedrock' beside a Station engine icon"). An unresolvable
- *   row shows no icon rather than a stand-in that implies an engine.
- *
- * One fallback it does have (#3355): the agent RESOLVED, is bound to an
- * engine connection, but the catalog could not report that engine's id. The
- * row's own recorded `provider` — the engine its execution actually ran on —
- * then supplies the mark, so a Codex agent does not degrade to "CO"
- * initials. Only an engine with a bundled mark qualifies (anything else
- * would draw the same initials anyway), never an ACP-bound agent (`'acp'`
- * keeps its initials; its provider is not an engine's identity), and never an
- * unbound agent, whose missing engine is the truth rather than a gap.
- *
- * The catalog entry is returned BY REFERENCE whenever no fallback applies,
- * so resolving it is allocation-free; the fallback returns a copy carrying
- * the provider's `engineId`. Neither suppresses `<AgentIcon>` renders:
- * reconciliation identity is determined by type/key/position, and
- * `AgentIcon` is not memoized.
+ * Kept as the inbox's name for `agentMark` (`utils/identity-marks.ts`), the
+ * one resolver every row surface shares. A row draws the engines that ran it
+ * first (`workIdentityMarks`) and falls back to this.
  */
 export function inboxRowIconAgent(
   item: HomeWorkItem,
   agents: readonly SessionIconAgent[] | undefined,
 ): SessionIconAgent | null {
-  if (!agents || !item.agentSlug) return null;
-  const agent = agents.find((candidate) => candidate.slug === item.agentSlug);
-  if (!agent) return null;
-  if (
-    agent.engineId ||
-    !agent.execution?.agentConnectionId ||
-    agent.engineConnectionType === 'acp'
-  ) {
-    return agent;
-  }
-  const provider = parseEngineId(item.provider);
-  return provider && provider !== 'acp' && hasBundledEngineMark(provider)
-    ? { ...agent, engineId: provider }
-    : agent;
+  return agentMark(item.agentSlug, item.provider, agents);
+}
+
+/** Pencil on the project line for a row with an unsent composer draft. */
+function DraftMarker() {
+  return (
+    <span
+      className="inbox-row__draft-marker"
+      data-testid="inbox-row-draft-marker"
+      title="Unsent draft"
+      aria-hidden="true"
+    >
+      <EditGlyph />
+    </span>
+  );
 }
 
 /**
@@ -294,7 +270,9 @@ function SnoozeActions({
   isSnoozed,
   now,
   onWake,
+  showLabel = false,
 }: {
+  showLabel?: boolean;
   item: HomeWorkItem;
   isSnoozed: boolean;
   now: number;
@@ -317,6 +295,7 @@ function SnoozeActions({
         onClick={(event) => onWake(null, event.currentTarget)}
       >
         <ReturnGlyph />
+        {showLabel && <span>Unsnooze</span>}
       </button>
     );
   }
@@ -333,10 +312,11 @@ function SnoozeActions({
         onClick={() => setMenuOpen((open) => !open)}
       >
         <TimeGlyph />
+        {showLabel && <span>Snooze</span>}
       </button>
       {menuOpen && (
         <ResponsiveDialogSurface
-          layer="popover"
+          layer={showLabel ? 'dialog' : 'popover'}
           ariaLabel={`Snooze ${item.title}`}
           onClose={() => setMenuOpen(false)}
           returnFocusTarget={triggerRef.current}
@@ -371,7 +351,7 @@ interface InboxRowProps {
   item: HomeWorkItem;
   isCurrent: boolean;
   isSnoozed: boolean;
-  /** Whether the row's chat has a live tab, which makes it closable. */
+  /** Live-tab membership for hosts offering tab close rather than dismissal. */
   isOpenChat: boolean;
   now: number;
   onActivate: (item: HomeWorkItem) => void;
@@ -385,13 +365,15 @@ interface InboxRowProps {
     wakeAt: number | null,
     action: HTMLButtonElement,
   ) => void;
-  /** Absent hides the close action (a host with no tab teardown path). */
+  /** Tab teardown for hosts without inbox dismissal. */
   onCloseChat?: (sessionId: string, action: HTMLButtonElement) => void;
+  onDismiss?: (item: HomeWorkItem, action: HTMLButtonElement) => void;
+  onRestore?: (item: HomeWorkItem, action: HTMLButtonElement) => void;
+  isDismissed?: boolean;
+  swipeActions?: boolean;
   /**
-   * #2312: present offers "Discard draft" on rows the server calls a Draft —
-   * open chat or not, which is what makes an orchestration-only Draft
-   * dismissable at all. The discard itself is the server command; this runs
-   * after it succeeded, for the host's focus move and tab teardown.
+   * #2312: offers server-side Discard on Draft rows, independently of inbox
+   * dismissal. Runs after the command succeeds for focus and tab teardown.
    */
   onDraftDiscarded?: (item: HomeWorkItem, action: HTMLButtonElement) => void;
   /**
@@ -498,6 +480,10 @@ export function InboxRow({
   onActivate,
   onSnoozeWake,
   onCloseChat,
+  onDismiss,
+  onRestore,
+  isDismissed = false,
+  swipeActions = false,
   onDraftDiscarded,
   agents,
   gitLocation,
@@ -513,7 +499,7 @@ export function InboxRow({
   detailsOpen: controlledDetailsOpen,
   onDetailsOpenChange,
 }: InboxRowProps) {
-  const iconAgent = inboxRowIconAgent(item, agents);
+  const identity = workIdentityMarks(item, agents);
   // #3159: a row whose conversation a message may reference is a drag source.
   const referenceable = useReferenceableConversations();
   const discardThreadId = onDraftDiscarded ? draftDiscardThreadId(item) : null;
@@ -534,18 +520,26 @@ export function InboxRow({
   // filed under come from the same function.
   const status = useObservedWorkStatus(item, now, facts);
   const claims = useSessionWorkClaims(item);
-  const chips = inboxRowChips(item, { hasUnsentDraft, isWoken, claims });
+  const chips = inboxRowChips(item, { isWoken, claims });
   // An attached transcript's meta line names the app it lives in; the
   // status word ("Elsewhere") says this Station cannot answer there.
   const agentText = item.agentLabel;
   const hasTime = item.updatedAt > 0;
-  const closable = Boolean(onCloseChat && isOpenChat && item.chatSessionId);
+  const closable =
+    !isDismissed &&
+    Boolean(onDismiss || (onCloseChat && isOpenChat && item.chatSessionId));
+  const closeLabel = onDismiss ? 'Dismiss from inbox' : 'Close chat';
+  const closeItem = (action: HTMLButtonElement) => {
+    if (onDismiss) onDismiss(item, action);
+    else if (item.chatSessionId) onCloseChat?.(item.chatSessionId, action);
+  };
+  const restorable = Boolean(isDismissed && onRestore);
   const tooltip = hoverCard && chrome === 'hover';
   const details = hoverCard && chrome === 'touch';
   // A host that offers nothing (the sidebar's open chats) gets no slot and
   // no extra tab stop: the row is already its own open control.
   const hasActions = Boolean(
-    details || onSnoozeWake || discardThreadId || closable,
+    details || onSnoozeWake || discardThreadId || closable || restorable,
   );
   // TOUCH CHROME shows Details and at most ONE direct action, so a phone
   // row keeps its title: Discard on a Draft (it is what a Draft row is for),
@@ -586,6 +580,12 @@ export function InboxRow({
   const sheetUnsnooze =
     !beside('snooze') && onSnoozeWake && isSnoozed ? onSnoozeWake : undefined;
   const sheetClose = !beside('close') && closable;
+  const swipe = useInboxSwipe(
+    Boolean(details && swipeActions && onDismiss && !isDismissed),
+  );
+  const canSwipe = Boolean(
+    details && swipeActions && onDismiss && !isDismissed,
+  );
   const sheetDiscard =
     !beside('discard') && discardThreadId && onDraftDiscarded
       ? { threadId: discardThreadId, onDraftDiscarded }
@@ -600,6 +600,7 @@ export function InboxRow({
     sheetSnoozePresets ||
     sheetUnsnooze ||
     sheetClose ||
+    restorable ||
     sheetDiscard ||
     composerDraftSessionId ? (
       <div
@@ -632,7 +633,7 @@ export function InboxRow({
             ))}
           </fieldset>
         )}
-        {(sheetUnsnooze || sheetClose) && (
+        {(sheetUnsnooze || sheetClose || restorable) && (
           <div className="menu-group">
             {sheetUnsnooze && (
               <button
@@ -648,20 +649,26 @@ export function InboxRow({
                 Unsnooze
               </button>
             )}
+            {restorable && (
+              <Button
+                className="menu-row"
+                onClick={() =>
+                  fromSheet((trigger) => onRestore?.(item, trigger))
+                }
+              >
+                <ReturnGlyph /> Restore to inbox
+              </Button>
+            )}
             {sheetClose && (
               <button
                 type="button"
                 className="menu-row"
-                onClick={() =>
-                  fromSheet((trigger) =>
-                    onCloseChat?.(item.chatSessionId!, trigger),
-                  )
-                }
+                onClick={() => fromSheet((trigger) => closeItem(trigger))}
               >
                 <span className="menu-row__glyph" aria-hidden="true">
                   <CloseGlyph />
                 </span>
-                Close chat
+                {closeLabel}
               </button>
             )}
           </div>
@@ -739,6 +746,8 @@ export function InboxRow({
         `inbox-row--${chrome}`,
         hasActions ? 'inbox-row--has-actions' : '',
         isCurrent ? 'is-current' : '',
+        canSwipe ? 'inbox-row--swipe' : '',
+        swipe.open ? 'inbox-row--swiped' : '',
       ]
         .filter(Boolean)
         .join(' ')}
@@ -747,11 +756,63 @@ export function InboxRow({
       data-status-rung={status.rung}
       data-lane={status.lane}
       {...gesture}
+      onPointerDown={(event) => {
+        gesture.onPointerDown(event);
+        swipe.onPointerDown(event);
+      }}
+      onPointerMove={(event) => {
+        gesture.onPointerMove(event);
+        swipe.onPointerMove(event);
+      }}
+      onPointerUp={(event) => {
+        gesture.onPointerUp(event);
+        swipe.onPointerUp(event);
+      }}
+      onPointerCancel={(event) => {
+        gesture.onPointerCancel(event);
+        swipe.onPointerCancel();
+      }}
+      onClickCapture={(event) => {
+        swipe.onClickCapture(event);
+        if (!event.isPropagationStopped()) gesture.onClickCapture(event);
+      }}
+      onKeyDown={(event) => {
+        if (
+          event.key === 'Escape' &&
+          swipe.open &&
+          event.target instanceof Node &&
+          event.currentTarget.contains(event.target)
+        ) {
+          event.stopPropagation();
+          swipe.close();
+        }
+      }}
       onPointerEnter={tooltip ? hover.onPointerEnter : undefined}
       onPointerLeave={tooltip ? hover.onPointerLeave : undefined}
       onFocus={tooltip ? hover.onFocus : undefined}
       onBlur={tooltip ? hover.onBlur : undefined}
     >
+      {canSwipe && (
+        <div className="inbox-row__swipe-actions" hidden={!swipe.open}>
+          {onSnoozeWake && (
+            <SnoozeActions
+              item={item}
+              isSnoozed={isSnoozed}
+              now={now}
+              showLabel
+              onWake={(wakeAt, action) => onSnoozeWake(item, wakeAt, action)}
+            />
+          )}
+          <Button
+            className="inbox-row__swipe-dismiss"
+            aria-label={`Dismiss ${item.title} from inbox`}
+            onClick={(event) => onDismiss?.(item, event.currentTarget)}
+          >
+            <CloseGlyph />
+            <span>Dismiss</span>
+          </Button>
+        </div>
+      )}
       <button
         type="button"
         className="chat-dock-inbox__item inbox-row__open"
@@ -828,19 +889,11 @@ export function InboxRow({
                   `role="img"`, so the row gains a picture and not a second
                   announcement or a tab stop. An unresolved agent renders no
                   icon at all, never a stand-in. */}
-              {iconAgent && (
-                <span title={agentText}>
-                  <AgentIcon
-                    agent={iconAgent}
-                    size={actionsInDetails ? 20 : 16}
-                    accessibleLabel={actionsInDetails ? agentText : undefined}
-                    className="chat-dock-inbox__avatar"
-                  />
-                </span>
-              )}
-              <span
-                className={`inbox-row__meta-text${actionsInDetails && iconAgent ? ' sr-only' : ''}`}
-              >
+              <IdentityMarks
+                identity={identity}
+                size={actionsInDetails ? 20 : 16}
+              />
+              <span className="inbox-row__meta-text">
                 <span className="inbox-row__agent">{agentText}</span>
                 {!actionsInDetails && (
                   <>
@@ -854,6 +907,7 @@ export function InboxRow({
                     <span className="inbox-row__project">
                       {item.projectLabel}
                     </span>
+                    {hasUnsentDraft && <DraftMarker />}
                   </>
                 )}
               </span>
@@ -883,13 +937,20 @@ export function InboxRow({
             />
             {actionsInDetails && (
               <span className="inbox-row__project-context">
-                <FolderGlyph />
-                <ProjectAccentSwatch
-                  accent={projectAccent}
-                  icon={projectIcon}
-                  name={item.projectLabel}
-                />
+                {/* One project mark: its own icon when it has one, else the
+                    folder. The colour dot beside the folder read as a stray
+                    separator ("[folder] • name"). */}
+                {displayableProjectIcon(projectIcon) ? (
+                  <ProjectAccentSwatch
+                    accent={projectAccent}
+                    icon={projectIcon}
+                    name={item.projectLabel}
+                  />
+                ) : (
+                  <FolderGlyph />
+                )}
                 <span className="inbox-row__project">{item.projectLabel}</span>
+                {hasUnsentDraft && <DraftMarker />}
               </span>
             )}
             <InboxRowChips chips={chips} />
@@ -926,14 +987,26 @@ export function InboxRow({
             <button
               type="button"
               className="chat-dock-inbox__row-action inbox-row__action"
-              title="Close chat"
-              aria-label={`Close ${item.title}`}
-              onClick={(event) =>
-                onCloseChat?.(item.chatSessionId!, event.currentTarget)
+              title={closeLabel}
+              aria-label={
+                onDismiss
+                  ? `Dismiss ${item.title} from inbox`
+                  : `Close ${item.title}`
               }
+              onClick={(event) => closeItem(event.currentTarget)}
             >
               <span aria-hidden="true">×</span>
             </button>
+          )}
+          {beside('close') && restorable && (
+            <Button
+              variant="ghost"
+              title="Restore to inbox"
+              aria-label={`Restore ${item.title} to inbox`}
+              onClick={(event) => onRestore?.(item, event.currentTarget)}
+            >
+              <ReturnGlyph />
+            </Button>
           )}
           {beside('discard') && discardButton}
         </div>
@@ -998,6 +1071,9 @@ export interface InboxGroupListProps {
   onActivate: (item: HomeWorkItem) => void;
   onSnoozeWake: InboxRowProps['onSnoozeWake'];
   onCloseChat?: InboxRowProps['onCloseChat'];
+  onDismiss?: InboxRowProps['onDismiss'];
+  onRestore?: InboxRowProps['onRestore'];
+  swipeActions?: boolean;
   onDraftDiscarded?: InboxRowProps['onDraftDiscarded'];
   /** Live agent catalog for the rows' leading icons — see `InboxRowProps`. */
   agents?: InboxRowProps['agents'];
@@ -1044,6 +1120,9 @@ export function InboxGroupList({
   onActivate,
   onSnoozeWake,
   onCloseChat,
+  onDismiss,
+  onRestore,
+  swipeActions,
   onDraftDiscarded,
   agents,
   gitLocationByThreadId,
@@ -1056,6 +1135,7 @@ export function InboxGroupList({
   const [expandedFamilies, setExpandedFamilies] = useState<ReadonlySet<string>>(
     new Set(),
   );
+  const [dismissedOpen, setDismissedOpen] = useState(false);
   const [olderDraftsOpen, setOlderDraftsOpen] = useState(false);
   const [settledVisibleCount, setSettledVisibleCount] =
     useState(SETTLED_PAGE_SIZE);
@@ -1072,7 +1152,7 @@ export function InboxGroupList({
       collapsible &&
       (group.id === 'snoozed' || group.id === 'earlier') &&
       !collapsible.sections[group.id];
-    if (collapsed) return [];
+    if (collapsed || (group.id === 'dismissed' && !dismissedOpen)) return [];
     if (group.id === 'earlier')
       return group.items.filter(
         (item, index) =>
@@ -1112,8 +1192,12 @@ export function InboxGroupList({
       )}
       now={now}
       onActivate={onActivate}
-      onSnoozeWake={onSnoozeWake}
+      onSnoozeWake={group.id === 'dismissed' ? undefined : onSnoozeWake}
       onCloseChat={onCloseChat}
+      onDismiss={onDismiss}
+      onRestore={onRestore}
+      isDismissed={group.id === 'dismissed'}
+      swipeActions={swipeActions}
       onDraftDiscarded={onDraftDiscarded}
       agents={agents}
       chrome={chrome}
@@ -1184,13 +1268,17 @@ export function InboxGroupList({
           collapsible && (group.id === 'snoozed' || group.id === 'earlier')
             ? group.id
             : null;
-        const isExpanded = collapsibleId
-          ? collapsible!.sections[collapsibleId]
-          : true;
+        const isExpanded =
+          group.id === 'dismissed'
+            ? dismissedOpen
+            : collapsibleId
+              ? collapsible!.sections[collapsibleId]
+              : true;
         // Whether a count shows is this host's choice (`showGroupCounts`, and
         // a collapsed Snoozed always says how many it hides); how it reads is
         // the shared label's: "Snoozed · 2", visible text, never a badge.
         const count =
+          group.id === 'dismissed' ||
           (collapsible && group.id === 'snoozed') ||
           (!collapsibleId && showGroupCounts)
             ? group.id === 'needsYou'
@@ -1206,12 +1294,16 @@ export function InboxGroupList({
             className="chat-dock-inbox__group"
             aria-labelledby={labelId}
           >
-            {collapsibleId ? (
+            {collapsibleId || group.id === 'dismissed' ? (
               <DisclosureToggle
                 id={labelId}
                 className="chat-dock-inbox__section-toggle"
                 expanded={isExpanded}
-                onToggle={() => collapsible!.onToggle(collapsibleId)}
+                onToggle={() =>
+                  group.id === 'dismissed'
+                    ? setDismissedOpen((open) => !open)
+                    : collapsibleId && collapsible!.onToggle(collapsibleId)
+                }
               >
                 {label}
               </DisclosureToggle>

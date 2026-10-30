@@ -1,4 +1,8 @@
-import { CHILD_WORK_SUMMARY_MAX_CHARS } from '@kontourai/station-contracts/child-work';
+import {
+  CHILD_WORK_SUMMARY_MAX_CHARS,
+  type ChildWorkDisplayStatus,
+  childWorkDisplayStatus,
+} from '@kontourai/station-contracts/child-work';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { useId, useState } from 'react';
 import { useElapsedClock } from '../../hooks/useElapsedClock';
@@ -14,6 +18,7 @@ import {
   ArrowRightGlyph,
   CheckGlyph,
   CloseGlyph,
+  WarningGlyph,
 } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import { ChildWorkActivity } from './ChildWorkActivity';
@@ -39,21 +44,43 @@ function parseTime(iso: string | undefined): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-/** The first line of `text` with Markdown emphasis left as written. */
-function firstLine(text: string): string {
-  return (
-    text
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .find(Boolean) ?? ''
-  );
+const LIST_ITEM = /^(?:[-*+]|\d+[.)])\s+/;
+
+/** One Markdown line as the plain text it renders: no block markers, code
+ * spans, emphasis or link syntax. */
+function plainMarkdownLine(line: string): string {
+  // A code fence line renders as no text.
+  if (/^(?:`{3,}|~{3,})/.test(line.trim())) return '';
+  return line
+    .trim()
+    .replace(/^(?:#{1,6}\s+|>\s*)+/, '')
+    .replace(LIST_ITEM, '')
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/(`+)([^`]*?)\1/g, '$2')
+    .replace(/`/g, '')
+    .replace(/(\*\*|__)(.+?)\1/g, '$2')
+    .replace(/(^|[^\w*])[*_]([^*_\s][^*_]*?)[*_](?=[^\w*]|$)/g, '$1$2')
+    .trim();
 }
 
-function StatusGlyph({
-  status,
-}: {
-  status: TranscriptChild['item']['status'];
-}) {
+/**
+ * The collapsed card's one line of the result (#4266): Markdown stripped, so
+ * a cut never leaves a stray backtick, and a first line that introduces a
+ * list ("Found three issues:") followed by the list's first item.
+ */
+export function subagentSummaryPreview(markdown: string): string {
+  const lines = markdown.split(/\r?\n/);
+  const firstIndex = lines.findIndex((line) => plainMarkdownLine(line));
+  if (firstIndex < 0) return '';
+  const first = plainMarkdownLine(lines[firstIndex]!);
+  if (!first.endsWith(':')) return first;
+  const item = lines
+    .slice(firstIndex + 1)
+    .find((line) => LIST_ITEM.test(line.trim()) && plainMarkdownLine(line));
+  return item ? `${first} ${plainMarkdownLine(item)}` : first;
+}
+
+function StatusGlyph({ status }: { status: ChildWorkDisplayStatus }) {
   if (status === 'running')
     return <span className="subagent-card__spinner" aria-hidden="true" />;
   if (status === 'completed') return <CheckGlyph />;
@@ -62,6 +89,8 @@ function StatusGlyph({
   // observations of an absence (no result, an unconfirmed stop).
   if (status === 'cancelled')
     return <span className="subagent-card__stopped" aria-hidden="true" />;
+  // Its engine died under it: an observed end, so a solid mark, not a ring.
+  if (status === 'interrupted') return <WarningGlyph />;
   return <span className="subagent-card__hollow" aria-hidden="true" />;
 }
 
@@ -95,15 +124,16 @@ export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
   const preview = running
     ? item.progress
     : summary
-      ? firstLine(summary)
+      ? subagentSummaryPreview(summary) || undefined
       : undefined;
   const usage = childWorkUsageClauses(item.usage);
-  const statusLabel = CHILD_WORK_STATUS_LABEL[item.status];
+  const status = childWorkDisplayStatus(item);
+  const statusLabel = CHILD_WORK_STATUS_LABEL[status];
 
   return (
     <div
       className="subagent-card"
-      data-status={item.status}
+      data-status={status}
       data-testid="subagent-card"
     >
       <button
@@ -120,9 +150,9 @@ export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
           <span className="subagent-card__headline">
             <strong className="subagent-card__title">{title}</strong>
             <span
-              className={`subagent-card__status subagent-card__status--${item.status}`}
+              className={`subagent-card__status subagent-card__status--${status}`}
             >
-              <StatusGlyph status={item.status} />
+              <StatusGlyph status={status} />
               {statusLabel}
             </span>
           </span>
@@ -273,9 +303,11 @@ function SubagentCallGroup({
   const groupId = useId();
   const grouped = children.length > 1;
   if (!children.length) return null;
-  const counts = new Map<TranscriptChild['item']['status'], number>();
-  for (const child of children)
-    counts.set(child.item.status, (counts.get(child.item.status) ?? 0) + 1);
+  const counts = new Map<ChildWorkDisplayStatus, number>();
+  for (const child of children) {
+    const status = childWorkDisplayStatus(child.item);
+    counts.set(status, (counts.get(status) ?? 0) + 1);
+  }
 
   return (
     <div className="subagent-group" data-grouped={grouped}>

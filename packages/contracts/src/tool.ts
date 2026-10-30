@@ -120,6 +120,254 @@ export interface ToolDef {
    * used for such a turn only when `allowInstanceFallback` is true.
    */
   credentialOwnership?: ToolCredentialOwnership;
+  /**
+   * How Station identifies itself to a remote tool server's OAuth
+   * authorization server. Absent means Dynamic Client Registration, as before.
+   * Selection follows the MCP authorization spec: a pre-registered `clientId`
+   * first, then `clientMetadataUrl` when the server advertises Client ID
+   * Metadata Document support, then registration.
+   */
+  oauthClient?: ToolOAuthClient;
+  /**
+   * #3483: `untrusted` means this server returns content written by others,
+   * such as email. A catalog sets the default; the person may set `trusted`.
+   * Absent means trusted.
+   */
+  contentTrust?: 'untrusted' | 'trusted';
+  /**
+   * #3483: what happens before one of THIS server's tools runs in a turn that
+   * has already read untrusted content. Applies only to tools the server does
+   * not declare read-only. Absent means `ask`.
+   */
+  untrustedContentPermissions?: UntrustedContentPermissions;
+  /**
+   * #3483: honor this server's read-only tool hints (MCP `readOnlyHint`) for
+   * the untrusted-content permission even though `contentTrust` is
+   * `untrusted`. Hints from an untrusted server are otherwise ignored, since
+   * the server controls them. A catalog or the person sets it.
+   */
+  trustReadOnlyHints?: boolean;
+  /** Server-written receipts for changes to the three fields above. */
+  untrustedContentChanges?: UntrustedContentChange[];
+  /** Storage-owned record of person-controlled fields, retained beyond receipt history. */
+  untrustedContentPersonOwned?: Array<
+    'contentTrust' | 'permissions' | 'trustReadOnlyHints'
+  >;
+}
+
+/**
+ * - `ask`: a person approves each call, even one an Agent auto-approves.
+ * - `allow`: untrusted content adds nothing; the tool's usual permission
+ *   decides, so an always-allow for the tool runs it without a question.
+ * - `deny`: the call is refused.
+ *
+ * A person's entry always wins, including over a server's read-only hint.
+ */
+export type UntrustedContentPermission = 'ask' | 'allow' | 'deny';
+
+export interface UntrustedContentPermissions {
+  /** For every tool of this server without its own entry. */
+  default?: UntrustedContentPermission;
+  /** Keyed by the server's own tool name. */
+  tools?: Record<string, UntrustedContentPermission>;
+}
+
+export interface UntrustedContentChange {
+  at: string;
+  /** Principal id of the person who made the change, when known. */
+  by?: string;
+  /** An import made through the local CLI, without a verified Station principal. */
+  source?: 'local-cli-operator';
+  contentTrust?: 'untrusted' | 'trusted';
+  permissions?: UntrustedContentPermissions;
+  trustReadOnlyHints?: boolean;
+}
+
+const UNTRUSTED_CONTENT_CHANGE_LIMIT = 50;
+const ownProperty = Object.prototype.hasOwnProperty;
+function owns(value: object, key: string): boolean {
+  return ownProperty.call(value, key);
+}
+export const DEFAULT_EXTERNAL_CONTENT_TRUST = 'trusted' as const;
+
+function lastImportedReceipt(
+  receipts: readonly UntrustedContentChange[],
+): number {
+  for (let i = receipts.length - 1; i >= 0; i--) {
+    if (receipts[i].source) return i;
+  }
+  return -1;
+}
+
+export function personOwnedUntrustedContentFields(stored: ToolDef | undefined) {
+  const receipts = stored?.untrustedContentChanges ?? [];
+  const lastImport = lastImportedReceipt(receipts);
+  // Old, unreleased import writers marked imported fields as person-owned.
+  // Their ownership flags cannot establish a person's choice; only later
+  // attributed person receipts can do so.
+  const owned = new Set(
+    lastImport >= 0 ? [] : (stored?.untrustedContentPersonOwned ?? []),
+  );
+  for (const receipt of receipts.slice(lastImport + 1)) {
+    if (!receipt.by || receipt.source) continue;
+    if (owns(receipt, 'contentTrust')) owned.add('contentTrust');
+    if (owns(receipt, 'permissions')) owned.add('permissions');
+    if (owns(receipt, 'trustReadOnlyHints')) owned.add('trustReadOnlyHints');
+  }
+  return owned;
+}
+
+/** Ignore external trust policy and apply only Station defaults and person choices. */
+export function withStationIntegrationTrustDefaults(
+  incoming: ToolDef,
+  stored?: ToolDef,
+  stationCuratedTrust?: 'trusted' | 'untrusted',
+): ToolDef {
+  const result = { ...incoming };
+  delete result.contentTrust;
+  delete result.untrustedContentPermissions;
+  delete result.trustReadOnlyHints;
+  delete result.untrustedContentChanges;
+  delete result.untrustedContentPersonOwned;
+  // The bundled catalog may supply Station's classification.
+  result.contentTrust = stationCuratedTrust ?? DEFAULT_EXTERNAL_CONTENT_TRUST;
+  if (!stored) return result;
+  const owned = personOwnedUntrustedContentFields(stored);
+  if (owned.has('contentTrust')) {
+    if (owns(stored, 'contentTrust')) result.contentTrust = stored.contentTrust;
+    else delete result.contentTrust;
+  }
+  if (owned.has('permissions')) {
+    if (owns(stored, 'untrustedContentPermissions'))
+      result.untrustedContentPermissions = stored.untrustedContentPermissions;
+    else delete result.untrustedContentPermissions;
+  }
+  if (owned.has('trustReadOnlyHints')) {
+    if (owns(stored, 'trustReadOnlyHints'))
+      result.trustReadOnlyHints = stored.trustReadOnlyHints;
+    else delete result.trustReadOnlyHints;
+  }
+  return result;
+}
+
+function sameValue(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+}
+
+/**
+ * #3483: the definition to store, with untrusted-content receipts taken from
+ * the stored copy (never from the incoming definition) and one appended when
+ * the classification, a permission or the hint setting changed. Receipts are
+ * bounded to the most recent 50. Every integration writer applies this
+ * against the stored copy it read under its write lock.
+ */
+export function withUntrustedContentChange(
+  stored: ToolDef | undefined,
+  next: ToolDef,
+  by: string | undefined,
+  now: Date,
+  options?: {
+    personChange?: boolean;
+    explicitFields?: readonly (
+      | 'contentTrust'
+      | 'permissions'
+      | 'trustReadOnlyHints'
+    )[];
+  },
+): ToolDef {
+  const result: ToolDef = { ...next };
+  delete result.untrustedContentChanges;
+  delete result.untrustedContentPersonOwned;
+  const owned = personOwnedUntrustedContentFields(stored);
+  if (stored?.untrustedContentChanges?.length) {
+    // Legacy imports could replace both values and ownership. Discard their
+    // contaminated history so later person edits without a principal still
+    // retain their independently recorded ownership.
+    const history = stored.untrustedContentChanges;
+    const retained = history.slice(lastImportedReceipt(history) + 1);
+    if (retained.length) result.untrustedContentChanges = retained;
+  }
+  const trustChanged =
+    (stored?.contentTrust ?? 'trusted') !== (next.contentTrust ?? 'trusted');
+  const permissionsChanged = !sameValue(
+    stored?.untrustedContentPermissions,
+    next.untrustedContentPermissions,
+  );
+  const hintsChanged =
+    (stored?.trustReadOnlyHints ?? false) !==
+    (next.trustReadOnlyHints ?? false);
+  const person = Boolean(by || options?.personChange);
+  const explicit = new Set(
+    person
+      ? (options?.explicitFields ?? [
+          'contentTrust',
+          'permissions',
+          'trustReadOnlyHints',
+        ])
+      : [],
+  );
+  if (person) {
+    if (trustChanged || explicit.has('contentTrust')) owned.add('contentTrust');
+    if (permissionsChanged || explicit.has('permissions'))
+      owned.add('permissions');
+    if (hintsChanged || explicit.has('trustReadOnlyHints'))
+      owned.add('trustReadOnlyHints');
+  }
+  if (owned.size) result.untrustedContentPersonOwned = [...owned];
+  if (
+    !trustChanged &&
+    !permissionsChanged &&
+    !hintsChanged &&
+    explicit.size === 0
+  )
+    return result;
+  const change: UntrustedContentChange = {
+    at: now.toISOString(),
+    ...(by ? { by } : {}),
+    // Absent classification means trusted, so a removal records `trusted`.
+    ...(trustChanged || explicit.has('contentTrust')
+      ? { contentTrust: next.contentTrust ?? 'trusted' }
+      : {}),
+    ...(permissionsChanged || explicit.has('permissions')
+      ? { permissions: next.untrustedContentPermissions ?? {} }
+      : {}),
+    ...(hintsChanged || explicit.has('trustReadOnlyHints')
+      ? { trustReadOnlyHints: next.trustReadOnlyHints ?? false }
+      : {}),
+  };
+  result.untrustedContentChanges = [
+    ...(result.untrustedContentChanges ?? []),
+    change,
+  ].slice(-UNTRUSTED_CONTENT_CHANGE_LIMIT);
+  return result;
+}
+
+/**
+ * A remote tool server's OAuth client. The client identifies the app, not a
+ * person: everyone who signs in uses it, and their tokens keep the
+ * integration's `credentialOwnership`.
+ */
+export interface ToolOAuthClient {
+  /** A client ID registered with the authorization server ahead of time. */
+  clientId?: string;
+  /**
+   * The authorization server's `issuer` the pre-registered client belongs to.
+   * The client is never used with another issuer, and a client secret cannot
+   * be bound without one (GHSA-6qxp-vccf-f47h).
+   */
+  issuer?: string;
+  /** HTTPS URL of a Client ID Metadata Document, used as the client ID. */
+  clientMetadataUrl?: string;
+  /**
+   * Default scopes to request at sign-in, replacing the scopes the server
+   * advertises. The person signing in can change them for their sign-in.
+   */
+  scopes?: string[];
+  /**
+   * Secret binding id holding the client secret, never the secret. Only the
+   * secret-binding bind/unbind routes write it.
+   */
+  clientSecretRef?: string;
 }
 
 export interface ToolCredentialOwnership {
@@ -153,7 +401,9 @@ export interface ToolServerProbeResult {
     | { state: 'awaiting-operator-consent' }
     | { state: 'authorized' }
     | { state: 'authorization-failed'; reason: string }
-    | { state: 'token-expired-refresh-failed'; reason: string };
+    | { state: 'token-expired-refresh-failed'; reason: string }
+    /** The server offers no client registration and no client is configured. */
+    | { state: 'client-id-required'; reason: string };
 }
 
 export interface ToolMetadata {
@@ -180,7 +430,44 @@ export interface ToolMetadata {
   enabled?: boolean;
   disabledTools?: string[];
   probe?: ToolServerProbeResult;
+  /** #3483: legacy trust settings that wait for a person; see `IntegrationTrustReview`. */
+  trustReview?: IntegrationTrustReview;
+  /** #3483: where each external engine's calls to this server go. */
+  engineCoverage?: IntegrationEngineCoverage[];
 }
+
+/**
+ * #3483: whether Station can apply the untrusted-content permission to an
+ * external engine's calls to one server, derived from its transport and how
+ * Station delivers it.
+ * - `station-gated`: every call passes a Station seam that applies it;
+ * - `engine-direct`: the engine connects to the server itself, so Station
+ *   cannot gate its calls or see what they return;
+ * - `not-delivered`: Station does not give this server to that engine.
+ */
+export interface IntegrationEngineCoverage {
+  engine: 'claude' | 'codex' | 'acp';
+  coverage: 'station-gated' | 'engine-direct' | 'not-delivered';
+}
+
+/**
+ * #3483: a stored trust setting that would widen what runs (a trusted
+ * classification, an `allow`, trusted read-only hints) whose ownership
+ * cannot be authenticated. It is not applied, and the integration does not
+ * load, until a person keeps it or resets it.
+ */
+export interface IntegrationTrustReviewField {
+  field: 'contentTrust' | 'permissions' | 'trustReadOnlyHints';
+  /** The stored value, shown for review; never applied before a decision. */
+  value: unknown;
+}
+
+export interface IntegrationTrustReview {
+  fields: IntegrationTrustReviewField[];
+}
+
+/** A person's answer to an integration's trust review. */
+export type IntegrationTrustReviewDecision = 'keep' | 'reset';
 
 /** Installation provenance, separate from an execution or trust grant. */
 export interface ToolOrigin {
@@ -200,6 +487,12 @@ export interface ToolAccountStatus {
   project?: { slug: string; connected: boolean };
   shared: { usable: boolean; connected: boolean };
   catalogAvailable?: boolean;
+  /**
+   * The scopes this caller chose at their last completed sign-in for the
+   * account they would sign in as (empty: the server's own). Absent when
+   * they have not chosen; the integration default then applies.
+   */
+  rememberedScopes?: string[];
 }
 
 export interface Prerequisite {
@@ -652,4 +945,106 @@ export interface ProviderConnectionConfig {
   config: Record<string, unknown>;
   enabled: boolean;
   capabilities: ('llm' | 'embedding' | 'vectordb')[];
+}
+
+/**
+ * OAuth credential identity of a remote tool server: the URL-standard
+ * serialized endpoint with its fragment removed. Fragments never reach an
+ * HTTP server; path trailing slashes and query ordering remain significant.
+ */
+export function toolServerOAuthResourceIdentity(
+  def: Pick<ToolDef, 'transport' | 'endpoint'>,
+): string | undefined {
+  if (
+    (def.transport !== 'sse' && def.transport !== 'streamable-http') ||
+    !def.endpoint
+  )
+    return undefined;
+  try {
+    const endpoint = new URL(def.endpoint);
+    endpoint.hash = '';
+    return endpoint.href;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Whether one integration definition may replace another, for its OAuth
+ * client (GHSA-6qxp-vccf-f47h). Every writer of integration definitions calls
+ * this with the definition it replaces (or none):
+ *
+ * - A pre-registered client names the issuer it belongs to.
+ * - A bound client secret pins the issuer and the endpoint; dropping the
+ *   reference is always allowed, so unbinding is the step that releases them.
+ * - A write never introduces a reference to a different binding, and no
+ *   definition is created already bound: only the bind operation, which
+ *   changes nothing else, adds one.
+ *
+ * Throws with an operator-facing reason; returns nothing when allowed.
+ */
+export function assertToolOAuthClientWritable(
+  current: ToolDef | undefined,
+  next: ToolDef,
+): void {
+  const client = next.oauthClient;
+  if (client?.clientId && !client.issuer)
+    throw new Error(
+      "A pre-registered OAuth client needs its authorization server's issuer.",
+    );
+  const nextRef = client?.clientSecretRef;
+  if (!nextRef) return;
+  const currentRef = current?.oauthClient?.clientSecretRef;
+  if (!current || (currentRef !== undefined && currentRef !== nextRef))
+    throw new Error(
+      'Secret bindings can be changed only through the operator binding API.',
+    );
+  if (!client?.issuer)
+    throw new Error(
+      "Declare the client's authorization server before binding its secret.",
+    );
+  if (current.oauthClient?.issuer !== client.issuer)
+    throw new Error(
+      "Unbind the OAuth client secret before changing the client's authorization server.",
+    );
+  if (
+    toolServerOAuthResourceIdentity(current) !==
+    toolServerOAuthResourceIdentity(next)
+  )
+    throw new Error(
+      'Unbind the OAuth client secret before changing the integration endpoint.',
+    );
+}
+
+/**
+ * A definition from outside Station (a registry, catalog, plugin or import)
+ * never authors a secret-binding reference; only the binding routes do.
+ */
+export function withoutToolBindingReferences(def: ToolDef): ToolDef {
+  const { secretEnvRefs: _env, oauthClient, ...rest } = def;
+  if (!oauthClient) return rest;
+  const { clientSecretRef: _secret, ...client } = oauthClient;
+  return Object.keys(client).length > 0
+    ? { ...rest, oauthClient: client }
+    : rest;
+}
+
+/**
+ * The MCP spec's Client ID Metadata Document shape: an HTTPS URL with a
+ * non-root path, no credentials and no fragment. The SDK rejects anything
+ * else at consent time; refusing it on write keeps a bad value out.
+ */
+export function isToolClientMetadataDocumentUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === 'https:' &&
+      url.pathname !== '/' &&
+      !url.username &&
+      !url.password &&
+      !url.hash
+    );
+  } catch {
+    return false;
+  }
 }

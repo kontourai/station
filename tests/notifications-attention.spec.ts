@@ -273,7 +273,9 @@ test.describe('Notifications: attention queue and activity log', () => {
     const row = activity
       .locator('.notification-card')
       .filter({ hasText: ACTIVITY_TITLE });
-    const dismiss = row.getByRole('button', { name: 'Dismiss' });
+    // Secondary actions live in the row's ⋯ menu.
+    await row.getByRole('button', { name: 'More actions' }).click();
+    const dismiss = page.getByRole('menuitem', { name: 'Dismiss' });
     await expect(dismiss).toBeVisible();
 
     const dismissed = page.waitForResponse(
@@ -295,8 +297,11 @@ test.describe('Notifications: attention queue and activity log', () => {
     expect(stored, 'the dismissal removed the record').toBeTruthy();
     expect(stored?.status).toBe('dismissed');
     await expect(activity.getByText(ACTIVITY_TITLE)).toBeVisible();
-    // What a dismissal takes away is the ACTION, not the row.
-    await expect(row.getByRole('button', { name: 'Dismiss' })).toHaveCount(0);
+    // What a dismissal takes away is the ACTION, not the row: with nothing
+    // left to offer, the row has no menu at all.
+    await expect(row.getByRole('button', { name: 'More actions' })).toHaveCount(
+      0,
+    );
   });
 
   test('the bulk action is disabled when no dismissible attention remains', async ({
@@ -376,15 +381,22 @@ test.describe('Notifications at 390x844', () => {
     expect(bulkBox?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
 
     // archive#3779: the row's own dismissal is a tap target of its own,
-    // distinct from the bulk one above.
-    const rowAction = activityRegion(page)
+    // distinct from the bulk one above — its ⋯ menu, then the menu item.
+    const rowMenu = activityRegion(page)
       .locator('.notification-card')
       .filter({ hasText: ACTIVITY_TITLE })
-      .getByRole('button', { name: 'Dismiss' });
-    await expect(rowAction).toBeVisible();
-    const rowBox = await rowAction.boundingBox();
-    expect(rowBox, 'the row action has no layout box at 390').toBeTruthy();
+      .getByRole('button', { name: 'More actions' });
+    await expect(rowMenu).toBeVisible();
+    const rowBox = await rowMenu.boundingBox();
+    expect(rowBox, 'the row menu has no layout box at 390').toBeTruthy();
     expect(rowBox?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+    expect(rowBox?.width ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+    await rowMenu.click();
+    const rowAction = page.getByRole('menuitem', { name: 'Dismiss' });
+    await expect(rowAction).toBeVisible();
+    const itemBox = await rowAction.boundingBox();
+    expect(itemBox?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+    await page.keyboard.press('Escape');
 
     // The regions stack: attention sits above activity in the document, and
     // nothing pushes the page sideways.

@@ -90,8 +90,9 @@ the device → **Change access**) uses its authenticated credential. A client wi
 **Manage device access** (`access:devices`) can administer devices remotely.
 Only the operator can grant or remove that permission; **Skip approval prompts**
 (`approval:full-access`) alone cannot change device grants. Operator passkey
-sign-in adds read-only inventory access in S3; per-action step-up remains
-[a separate S4 proposal](../design/operator-device-access.md) (#3257).
+sign-in adds inventory access and per-action passkey confirmation for supported
+changes, including ordinary Device pairing approvals. See
+[Operator passkeys](operator-passkeys.md) (#3257).
 
 A device tied to a person (a verified Tailscale identity or an account) is
 also capped by that person's **Station group** (#3557). In **Member**, the

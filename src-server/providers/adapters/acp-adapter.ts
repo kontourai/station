@@ -479,17 +479,23 @@ export interface AcpAdapterOptions {
   mintStationControlMcpAuth?: (
     threadId: string,
     tenantExecutionContext?: TenantExecutionContext,
+    coordinatorGeneration?: number,
   ) => { url: string; token: string } | undefined;
   mintStationKnowledgeMcpAuth?: (
     threadId: string,
     tenantExecutionContext?: TenantExecutionContext,
+    coordinatorGeneration?: number,
   ) => { url: string; token: string } | undefined;
   /** Best-effort cleanup counterpart to `mintStationControlMcpAuth` — called
    * on ordinary session stop and on a failed start. Never required; a
    * missing closure just means the token lives out its bounded TTL. */
   revokeStationControlMcpAuth?: (
     threadId: string,
-    serverId?: 'station-control' | 'station-knowledge',
+    serverId?:
+      | 'station-control'
+      | 'station-knowledge'
+      | 'coordinator-control'
+      | 'coordinator-knowledge',
   ) => void;
 }
 
@@ -1403,14 +1409,33 @@ export class AcpAdapter implements ProviderAdapterShape {
       // server path. The reconciliation right after
       // `resolveAcpPassthroughMcpServers` below — mint-but-not-delivered ⇒
       // revoke now, with its own receipt — is what closes that gap.
+      if (
+        agentToolServers?.some(
+          (server) =>
+            server.coordinatorDerived &&
+            server.coordinatorGeneration === undefined,
+        )
+      )
+        throw new Error('Coordinator generation is required.');
       if (requestedToolServerIds?.includes('station-control')) {
         if (mcpHttp === true) {
-          stationControlAuth = input.tenantExecutionContext
+          const derived =
+            agentToolServers?.find((server) => server.id === 'station-control')
+              ?.coordinatorDerived === true;
+          stationControlAuth = derived
             ? this.options.mintStationControlMcpAuth?.(
                 input.threadId,
                 input.tenantExecutionContext,
+                agentToolServers?.find(
+                  (server) => server.id === 'station-control',
+                )?.coordinatorGeneration,
               )
-            : this.options.mintStationControlMcpAuth?.(input.threadId);
+            : input.tenantExecutionContext
+              ? this.options.mintStationControlMcpAuth?.(
+                  input.threadId,
+                  input.tenantExecutionContext,
+                )
+              : this.options.mintStationControlMcpAuth?.(input.threadId);
           if (!stationControlAuth) {
             // The engine said yes and Station still produced nothing: a
             // Station-side wiring gap, never a fact about the engine. Saying
@@ -1451,6 +1476,15 @@ export class AcpAdapter implements ProviderAdapterShape {
           ? this.options.mintStationKnowledgeMcpAuth?.(
               input.threadId,
               input.tenantExecutionContext,
+              ...(agentToolServers?.find(
+                (server) => server.id === 'station-knowledge',
+              )?.coordinatorDerived
+                ? [
+                    agentToolServers.find(
+                      (server) => server.id === 'station-knowledge',
+                    )?.coordinatorGeneration,
+                  ]
+                : []),
             )
           : undefined;
       const stationKnowledgeUnavailable = {
@@ -1511,7 +1545,10 @@ export class AcpAdapter implements ProviderAdapterShape {
         if (stationControlAuth && !resolved.stationControlDelivered) {
           this.options.revokeStationControlMcpAuth?.(
             input.threadId,
-            'station-control',
+            agentToolServers?.find((server) => server.id === 'station-control')
+              ?.coordinatorDerived
+              ? 'coordinator-control'
+              : 'station-control',
           );
           stationControlAuth = undefined;
           // `not-found` short-circuits BEFORE
@@ -1539,7 +1576,11 @@ export class AcpAdapter implements ProviderAdapterShape {
         if (stationKnowledgeAuth && !resolved.stationKnowledgeDelivered) {
           this.options.revokeStationControlMcpAuth?.(
             input.threadId,
-            'station-knowledge',
+            agentToolServers?.find(
+              (server) => server.id === 'station-knowledge',
+            )?.coordinatorDerived
+              ? 'coordinator-knowledge'
+              : 'station-knowledge',
           );
           stationKnowledgeAuth = undefined;
         }
@@ -1551,13 +1592,25 @@ export class AcpAdapter implements ProviderAdapterShape {
         // rather than misleading), but the credential lifetime should not
         // depend on which way the resolution failed.
         if (stationControlAuth) {
-          this.options.revokeStationControlMcpAuth?.(input.threadId);
+          if (
+            agentToolServers?.find((server) => server.id === 'station-control')
+              ?.coordinatorDerived
+          )
+            this.options.revokeStationControlMcpAuth?.(
+              input.threadId,
+              'coordinator-control',
+            );
+          else this.options.revokeStationControlMcpAuth?.(input.threadId);
           stationControlAuth = undefined;
         }
         if (stationKnowledgeAuth)
           this.options.revokeStationControlMcpAuth?.(
             input.threadId,
-            'station-knowledge',
+            agentToolServers?.find(
+              (server) => server.id === 'station-knowledge',
+            )?.coordinatorDerived
+              ? 'coordinator-knowledge'
+              : 'station-knowledge',
           );
         logger.warn?.(
           `ACP connection '${config.id}': MCP passthrough resolution failed unexpectedly; continuing without passthrough tool servers.`,
@@ -2882,17 +2935,13 @@ export class AcpAdapter implements ProviderAdapterShape {
       const governedEdit =
         record.approvalFloor === 'confined' &&
         isOpenCodeEditShaped(params.toolCall?.kind, params.toolCall?.rawInput);
-      const needsPerson =
+      let needsPerson =
         toolRequestNeedsPerson(toolName, params.toolCall?.kind) ||
         (governedEdit &&
           openCodeEditNeedsPerson(
             params.toolCall?.rawInput,
             record.session.cwd ?? context.cwd,
           ));
-      if (governedEdit && !needsPerson && record.openCodeEditGrant) {
-        const granted = mapAcpDecisionToOutcome('accept', params.options);
-        if (granted.outcome !== 'cancelled') return { outcome: granted };
-      }
       if (toolName && record.preToolPolicy) {
         const decision = await record.preToolPolicy(
           {
@@ -2940,8 +2989,9 @@ export class AcpAdapter implements ProviderAdapterShape {
             outcome: mapAcpDecisionToOutcome('decline', params.options),
           };
         }
-        // `defer` (and defensive `ask`) preserve ACP's one existing approval
-        // flow below; Station never opens a second prompt.
+        if (decision.behavior === 'ask' && decision.required)
+          needsPerson = true;
+        // `defer` and `ask` use ACP's existing approval flow below.
       } else if (
         toolName &&
         !needsPerson &&
@@ -2955,6 +3005,11 @@ export class AcpAdapter implements ProviderAdapterShape {
         return {
           outcome: mapAcpDecisionToOutcome('accept', params.options),
         };
+      }
+
+      if (governedEdit && !needsPerson && record.openCodeEditGrant) {
+        const granted = mapAcpDecisionToOutcome('accept', params.options);
+        if (granted.outcome !== 'cancelled') return { outcome: granted };
       }
 
       // #3290: the chat's approval mode answers what it allows (Auto: a file

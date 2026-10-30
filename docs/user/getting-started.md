@@ -455,9 +455,14 @@ Choose the simplest path for what you want to do:
 
 ## Start Your First Chat
 
-Home and the chat dock use the same start composer. Write
-what you want done and choose **Start**. You do not need to choose anything
-first; the controls show what **Start** will use:
+Home and the chat dock use the same start composer. On Home it sits under
+**What would you like to do?**. **New chat** opens it in the chat dock as a
+draft, like an empty chat: the dock opens if it was collapsed, a quiet line
+names where the chat will start (for example **Start a chat in Pulse on
+studio-mac**) until you write something, and the composer sits where a reply
+would. Write what you want done
+and choose **Start**. You do not need to choose anything first; the controls
+show what **Start** will use:
 
 - The **Agent** chip shows the Agent's icon and name. Open it to
   list **Station**, **Coding apps**, and **My agents**, with readiness and setup
@@ -472,7 +477,14 @@ first; the controls show what **Start** will use:
   returns to, such as **Use project default** for a model-only choice or
   **Use Agent defaults** for an engine override. In an existing conversation,
   changing or resetting the engine opens a handoff confirmation that keeps your draft.
-- The **project** control above the message shows the Project's icon (or
+  In the model picker, while a reply you sent is still running, the other
+  engines and **Use Agent defaults** are shown but unavailable until it
+  finishes. When Station reports that the conversation can't be changed right
+  now (it is read-only, still loading, the check failed, or it is waiting on a
+  turn the server reports as still running), the other engines are not listed
+  and **Use Agent defaults** is unavailable.
+- The **project** control (above the message on Home, beside the Agent chip
+  in the dock) shows the Project's icon (or
   its colour when none is displayable) and name, or **Without a project**.
   Open it to choose a project. The list shows each project's folder and the
   folder this chat will run in. For a linked checkout, that is its resolved
@@ -485,15 +497,20 @@ first; the controls show what **Start** will use:
 - **⋯** holds **Use a visual skill** while the **Visual skills** Feature
   Preview is on; with it off there is no **⋯**.
 
-**Run a task…** opens **Run on a Station** with your message, Project and any explicit
-Station/engine/model/options choice kept. Its tooltip names the current Station
-or saved Project default; this action starts a task rather than moving your chat.
-Choose a Station, worker and model there, then choose **Run task** to start a
-resumable task. Available workers come from that Station; unavailable
-destinations keep their refusal instead of falling back to this computer.
-Cancel returns to your message, including edits made in the task chooser.
-Follow a started task in Activity. A foreground chat stays on its existing
-Station; choosing a remote task destination does not move that chat.
+**Runs on <Station>** says which Station runs the work. When you can run work
+on another Station (a verified SSH environment when no Project is chosen,
+or a paired Station you are allowed to list whose pairing can run work, with
+permission to start tasks), it opens **Where this work runs**, with the current one
+checked. Choosing another Station continues to its **Engine & model**, since
+that Station's own engines run the work. **Start** then opens **Run on a
+Station** with your message, Project and choices, and **Run task** starts a
+resumable task there. Unavailable destinations keep their refusal instead of
+falling back to this computer, and Cancel returns to your message, including
+edits made in the task chooser. A started task shows **Task started on
+<Station>.** with **Open task** to follow it in Activity. A
+foreground chat stays on its existing Station; choosing a remote task
+destination does not move that chat. With no other Station to choose, the
+control is plain text.
 
 The Project page opens on **Overview**. **Project room** is shared discussion
 with people in that Project; use **Bring an Agent** for an explicit request
@@ -610,11 +627,14 @@ current layout default or Station’s runnable suggestion. A remembered Agent
 needing repair stays visible with its setup action; a removed choice asks you
 to choose another.
 
-**Continue working** shows up to five recent chats from the selected workspace,
-using the inbox’s status and details. Choose one to resume it, or **View all**
-to open the chat inventory. Loading and failed reads are shown separately from
-an empty list. **Take the tour** and **Connect another device** are optional alternatives.
-Both save the same selected answers before opening their next step.
+Escape, Back, or opening another chat closes the draft; collapsing the dock
+keeps it. On a phone the draft opens full screen; closing it, or starting the
+chat, returns the dock to its earlier size. Drop files anywhere on the draft to attach them. **New chat**
+while a draft is open returns you to it. To resume earlier work, choose it in
+the dock’s chat list.
+
+At the end of first-run setup, **Take the tour** and **Connect another device**
+are optional alternatives to **Start your first chat**. Both save the same selected answers before opening their next step.
 
 On a phone, use the compose button at the right of the chat bar, or tap the
 current chat title to open **Chats and tasks** and choose **New chat** at the
@@ -631,6 +651,16 @@ Expand the subtask count to read the children; children that need you stay
 visible. Task-owned chats appear under their Task as sessions. **Show work**
 filters by project or Station and stays selected on this device. If work needs
 you outside the filter, choose **Show all** from the notice.
+
+To clear your inbox, hover a conversation on desktop and choose **× Dismiss
+from inbox**. On mobile, use the row’s Details menu; with **Sheet gestures
+preview** enabled in Settings → Advanced → Developer tools, swipe left to
+reveal the clock and × controls. The clock opens Snooze duration choices; ×
+dismisses the conversation. Dismissal leaves running work and history intact.
+Choose **Undo**, or expand **Dismissed** and choose **Restore to inbox**.
+Dismissal is saved on this browser/device, like Snooze. A changed status, a
+changed attention kind, or newer activity outside a running turn brings the
+conversation back; streaming progress during the same running turn does not.
 
 The workspace map lists Projects and their named Layouts, followed by your
 **Personal Boards**. Its **+** creates a Board and lets you name it, even
@@ -664,8 +694,9 @@ as icons; if a project's existing icon can't be shown any more, such as one
 saved as a link before that, its settings say so and ask you to choose a new
 one. The icon appears beside the project in
 the sidebar, the project switcher, Home and chat rows, their details, and on
-the project page. Without one, those rows show the project's colour and the
-project page shows its initials. A row for work on another Station shows
+the project page. Without one, those rows show the project's colour (the
+phone's chat list shows a folder instead) and the project page shows its
+initials. A row for work on another Station shows
 neither, since its project belongs to that Station.
 
 ### Prepare a visual skill
@@ -918,6 +949,8 @@ the server's attachment retention expires.
 An existing chat can become a Task through **New Task from this** in its More menu.
 The **Add to Task** picker also offers **New Task from this** for an answer or input.
 **New Task from this** starts shaping immediately; type any focus or refinement as your next message. New Task mode stays on through clarifying questions and reloads until you accept a proposal or choose **Stop shaping this Task** in the chat’s More menu. No Task is created until acceptance.
+
+To keep one chat as your personal agent, choose **Make this Houston** in its More menu. Home then pins it with **Talk to Houston**, and Station tells it when your work needs you, fails or finishes. See [Houston](https://github.com/kontourai/station/blob/main/docs/user/houston.md).
 
 On a Project's Tasks board, a GitHub issue offers **Start Task**. It copies the
 issue's description and latest comments into a new Task and links back to the
@@ -1196,11 +1229,14 @@ promotion or retirement action.
 
 ## Return to a decision
 
-Open Notifications to find work that needs your attention. When an approval or
-permission has recorded request evidence, **Inspect request** opens its current
-details. Choose **Approve once** or **Deny** only after reviewing the request.
-You can expand **Request identity** for its exact record or open the Session for
-more context.
+Open Notifications, or the bell, to find work that needs your attention. Each
+row names the Station, Project and chat it belongs to when known. When an approval or
+permission has recorded request evidence, its row offers **Approve once** and
+**Deny**; **Details** shows the full request first. Both answer that exact
+request version, once. A review request with recorded evidence offers
+**Inspect request** instead, where **Request identity** shows its exact record.
+A row's ⋯ menu holds **Dismiss**, and **Snooze** when the Attention snooze
+preview is on.
 
 For a task that runs on a paired Station, the card shows **Allow** and **Deny**
 for that Station's approval when your access here permits it. The paired Station

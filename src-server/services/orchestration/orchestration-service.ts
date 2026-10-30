@@ -278,6 +278,7 @@ import {
 } from '../infra/resource-posture.js';
 import { workloadBudgetEngineContext } from '../infra/workload-budget.js';
 import { withEngineMcpAccountOwner } from '../plugins/engine-mcp-oauth.js';
+import { recordPersonApprovedExternalTool } from '../plugins/mediated-untrusted-content-gate.js';
 import {
   isPersonChatStart,
   type ProjectChatDefaultsService,
@@ -332,6 +333,7 @@ import {
   ConversationForkContextModule,
   type ConversationForkContextReference,
   type ConversationForkContextSnapshot,
+  type NativeForkCreationObservation,
 } from './conversation-fork-context.js';
 import {
   type ConversationHistoryPage,
@@ -353,6 +355,10 @@ import {
 } from './conversation-start-context.js';
 import { ConversationTurnActivityProjection } from './conversation-turn-activity.js';
 import { CooperativeStop } from './cooperative-stop.js';
+import {
+  coordinatorDeliveryPorts,
+  readCoordinatorDelivery,
+} from './coordinator-session.js';
 import { CredentialProfileRecovery } from './credential-profile-recovery.js';
 import {
   type CredentialProfileRecoveryAdapter,
@@ -562,6 +568,7 @@ function telemetryEngine(
  * from an HTTP route.
  */
 interface OrchestrationDispatchInternalOptions {
+  mcpPromptOrigin?: import('@kontourai/station-contracts/mcp-prompts').VerifiedMcpPromptOrigin;
   /** Original intent proof; null preserves unknown legacy inbox input. */
   submissionDigest?: string | null;
   skillExperience?: SkillExperienceStartInputV1;
@@ -948,6 +955,7 @@ export type SessionReadScope = SessionReadAuthority | InternalSessionReadScope;
 export type { InterruptedTurnMemoryAdapter };
 
 interface OrchestrationServiceOptions {
+  nativeForkStoredReadVerifier?: import('../../security/native-fork-read-admission.js').NativeForkReadAdmissionDomain['verifyForService'];
   adapterRegistry: IProviderAdapterRegistry;
   monitoringEmitter?: MonitoringEmitter;
   eventBus: EventBus;
@@ -1161,6 +1169,7 @@ interface OrchestrationServiceOptions {
    * agent. Optional — omitted in installations/tests that don't wire it, in
    * which case `startSession` input reaches the adapter exactly as before.
    */
+  coordinatorGenerationForSession?: (threadId: string) => number;
   resolveSessionAgent?: (
     input: ProviderSessionStartInput,
     captured?: { agentId: string; spec: AgentSpec },
@@ -2051,6 +2060,7 @@ export class OrchestrationService {
   private readonly interruptedTurns: InterruptedTurnRecovery;
   private adapterRegistryUnsubscribe?: () => void;
   private readonly sessionAdapters = new Map<string, ProviderAdapterShape>();
+  private readonly coordinatorToolGenerations = new Map<string, number>();
   /**
    * Turn progress + turn-stall observation (epic archive#4024, archive#4116):
    * owns the stall watchdog, per-thread windows, and the process-local
@@ -2116,6 +2126,15 @@ export class OrchestrationService {
    */
   private readonly conversationActivity:
     | ConversationTurnActivityProjection
+    | undefined;
+  private nativeForkWarmReadScope:
+    | {
+        authority: SessionReadAuthority;
+        threadIds: ReadonlySet<string>;
+        conversationIds: ReadonlySet<string>;
+        current: () => boolean;
+        refused: boolean;
+      }
     | undefined;
   /** Transcript read/search/usage projections (epic archive#4024, archive#4144). */
   private readonly transcriptReads: SessionTranscriptReads;
@@ -2392,6 +2411,7 @@ export class OrchestrationService {
   }
 
   constructor(private readonly options: OrchestrationServiceOptions) {
+    this.nativeForkStoredReadVerifier = options.nativeForkStoredReadVerifier;
     // All delete paths converge here, including Draft discard and attached alias cleanup.
     this.stopSessionDeletionNotifications = options.eventStore?.observeCommits({
       threadDeleting: (threadId) => {
@@ -2507,6 +2527,23 @@ export class OrchestrationService {
           readTurnProgress: (threadId) => this.turnProgress.read(threadId),
           readRunningChildWork: (threadId) => {
             const provider = this.sessionAdapters.get(threadId)?.provider;
+            const scope = this.nativeForkWarmReadScope;
+            if (scope) {
+              if (
+                scope.refused ||
+                !scope.threadIds.has(threadId) ||
+                !scope.current()
+              )
+                throw new Error('warm-child-work-out-of-scope');
+              const cached = this.childWork.readWarmReporter(
+                threadId,
+                provider,
+              );
+              if (cached.kind !== 'warm') throw new Error(cached.reason);
+              return cached.view.observability === 'reported'
+                ? cached.view.running
+                : [];
+            }
             const view = this.childWork.read(threadId, provider);
             return view?.observability === 'reported' ? view.running : [];
           },
@@ -2840,10 +2877,21 @@ export class OrchestrationService {
               environmentId: session.environmentId,
             })
           : undefined;
+        // #4266: the conversation's durable history title (it may be a
+        // generated one) and the session's own display title, for the
+        // conversation read's title.
+        const historyTitle = this.options.eventStore?.conversationTitle([
+          ...(conversationId ? [conversationId] : []),
+          threadId,
+        ]);
         return {
           assignedAgentSlug: session.assignedAgentSlug,
           ...(session.delegation?.title
             ? { delegationTitle: session.delegation.title }
+            : {}),
+          ...(historyTitle ? { historyTitle } : {}),
+          ...(session.displayTitle
+            ? { displayTitle: session.displayTitle }
             : {}),
           ...(conversationId ? { conversationId } : {}),
           ...(session.environmentId
@@ -2978,6 +3026,40 @@ export class OrchestrationService {
       perTurnModelOverride: (provider) =>
         options.adapterRegistry.get(provider)?.metadata.modelLaunch
           ?.overridePerTurn !== false,
+      needsCoordinatorToolsSuccessor: (conversationId, detail) => {
+        const store = options.eventStore;
+        const provider = detail.session.provider;
+        const adapter = options.adapterRegistry.get(provider);
+        if (
+          !store ||
+          ENGINE_CAPABILITY_MATRICES[provider]?.toolServers.state !==
+            'session' ||
+          !store.isCoordinatorConversation(conversationId)
+        )
+          return false;
+        if (adapter?.coordinatorToolsNeedSuccessor?.(detail.session.threadId))
+          return true;
+        if (adapter?.coordinatorToolsRefresh) return false;
+        const currentGeneration = options.coordinatorGenerationForSession?.(
+          detail.session.threadId,
+        );
+        if (
+          currentGeneration !== undefined &&
+          this.coordinatorToolGenerations.get(detail.session.threadId) !==
+            currentGeneration
+        )
+          return true;
+        const ports = coordinatorDeliveryPorts({
+          eventStore: store,
+          service: this,
+        });
+        return readCoordinatorDelivery(conversationId, {
+          ...ports,
+          currentSessionId: () => detail.session.threadId,
+          lastTurnEnded: () => false,
+          boundaryActive: () => false,
+        }).toolsPending;
+      },
       nativeReturnSupported: (provider) => {
         const adapter = options.adapterRegistry.get(provider);
         const continuity = adapter?.metadata.continuity;
@@ -3799,6 +3881,22 @@ export class OrchestrationService {
     const resolved = this.options.resolveSessionAgent
       ? await this.options.resolveSessionAgent(withCredentialProfile, captured)
       : withCredentialProfile;
+    const derivedServer = resolved.agent?.toolServers?.find(
+      (server) => server.coordinatorDerived,
+    );
+    const conversationId =
+      typeof input.metadata?.conversationId === 'string'
+        ? input.metadata.conversationId
+        : (this.options.eventStore?.conversationForSession(input.threadId)
+            ?.conversationId ?? input.threadId);
+    const generation =
+      derivedServer?.coordinatorGeneration ??
+      (this.options.eventStore?.isCoordinatorConversation(conversationId)
+        ? this.options.coordinatorGenerationForSession?.(input.threadId)
+        : undefined);
+    if (generation !== undefined)
+      this.coordinatorToolGenerations.set(input.threadId, generation);
+    else this.coordinatorToolGenerations.delete(input.threadId);
     const unavailableReason = sessionAgentStartUnavailableReason({
       agentSlug,
       // Providers with no session-delivery concept — Station's own engine
@@ -5013,6 +5111,51 @@ export class OrchestrationService {
     return this.readLatestSessionStartMetadata(threadId);
   }
 
+  /** Re-resolve the designated Session's Station Control selection at refresh time. */
+  async resolveCoordinatorStationControl(threadId: string) {
+    this.initialize();
+    const store = this.options.eventStore;
+    const resolver = this.options.resolveSessionAgent;
+    const session = store?.readSessionByThread(threadId);
+    const principal = this.resolveSessionActingPrincipal(threadId);
+    if (
+      !store ||
+      !resolver ||
+      !session ||
+      !principal ||
+      principal.source !== 'session-owner'
+    )
+      return undefined;
+    const conversationId =
+      store.conversationForSession(threadId)?.conversationId ?? threadId;
+    const stillDesignated = () => {
+      const current = this.resolveSessionActingPrincipal(threadId);
+      return (
+        store.coordinatorStore().designationForConversation(conversationId)
+          ?.actor.userId === principal.id &&
+        current?.source === 'session-owner' &&
+        current.id === principal.id
+      );
+    };
+    if (!stillDesignated()) return undefined;
+    const metadata = this.readLatestSessionStartMetadata(threadId);
+    if (!metadata) return undefined;
+    const tenantExecutionContext =
+      this.sessionAuthz.tenantContextFor(threadId) ??
+      session.tenantExecutionContext;
+    const resolved = await resolver({
+      threadId,
+      provider: session.provider,
+      metadata,
+      ...(session.cwd ? { cwd: session.cwd } : {}),
+      ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
+    });
+    if (!stillDesignated()) return undefined;
+    return resolved.agent?.toolServers?.find(
+      (server) => server.id === 'station-control',
+    );
+  }
+
   /**
    * #2377 slice C2a: whether Station recorded a start for this session, so a
    * station-control call that names it is a follow-up, not a new session.
@@ -5262,6 +5405,7 @@ export class OrchestrationService {
     nativeSourceSessionId?: string;
     nativeResumeBindingKey?: string;
     contextBoundary?: ConversationContextBoundaryProjection;
+    coordinatorToolsRestart?: boolean;
   }> {
     this.initialize();
     return this.conversationLineage.resolveConversationContinuation(
@@ -6570,6 +6714,235 @@ export class OrchestrationService {
     return this.sessionAuthz.canReadSession(threadId, authority);
   }
 
+  private readonly nativeForkStoredReadVerifier:
+    | import('../../security/native-fork-read-admission.js').NativeForkReadAdmissionDomain['verifyForService']
+    | undefined;
+
+  /** Classification is not admission, a no-effect witness, or native completion. */
+  nativeForkStoredReadRequired(
+    targetId: string,
+    contextDigest: string,
+    authority: SessionReadAuthority,
+  ): 'required' | 'not-required' | 'unavailable' {
+    const store = this.options.eventStore;
+    if (
+      !store ||
+      !this.started ||
+      this.transcriptSearchStopped ||
+      !isSessionReadAuthority(authority) ||
+      !targetId ||
+      targetId.length > 512 ||
+      !/^[a-f0-9]{64}$/.test(contextDigest)
+    )
+      return 'unavailable';
+    try {
+      const reference = store.conversationForkContextReference(targetId);
+      if (
+        reference &&
+        (reference.state === 'deleted' ||
+          reference.digest !== contextDigest ||
+          !this.canReadForkContext(reference, authority))
+      )
+        return 'unavailable';
+      const disposition = store.nativeForkStoredReadDisposition(
+        targetId,
+        reference?.forkEventId,
+        contextDigest,
+      );
+      if (disposition === 'unavailable') return 'unavailable';
+      if (disposition === 'native-intent')
+        return reference ? 'required' : 'unavailable';
+      if (reference?.state === 'ready' && disposition !== 'replay')
+        return 'unavailable';
+      return 'not-required';
+    } catch {
+      return 'unavailable';
+    }
+  }
+
+  /** Stored facts only; no initialization, activity refresh, lifecycle or effect grant. */
+  readNativeForkStoredCreation(
+    targetId: string,
+    contextDigest: string,
+    admission: unknown,
+  ):
+    | {
+        kind: 'stored-creation';
+        observation: Extract<
+          NativeForkCreationObservation,
+          { kind: 'verified-creation' }
+        >;
+        warmCurrent: Extract<
+          ReturnType<
+            ConversationTurnActivityProjection['readWarmConversations']
+          >,
+          { kind: 'warm-current' }
+        >;
+      }
+    | { kind: 'unavailable'; reason: string } {
+    const verify = this.nativeForkStoredReadVerifier;
+    const store = this.options.eventStore;
+    if (!verify || !store || !this.started || this.transcriptSearchStopped)
+      return { kind: 'unavailable', reason: 'stored-read-not-composed' };
+    const sameAuthorization = this.sessionAuthz.captureReadCurrentness();
+    try {
+      const current = verify(admission);
+      if (current.kind !== 'current')
+        return { kind: 'unavailable', reason: 'request-not-current' };
+      const enclosing = this.nativeForkWarmReadScope;
+      if (
+        enclosing &&
+        (enclosing.refused ||
+          enclosing.authority !== current.authority ||
+          !enclosing.threadIds.has(targetId) ||
+          !enclosing.current())
+      ) {
+        enclosing.refused = true;
+        return { kind: 'unavailable', reason: 'warm-scope-widening-or-stale' };
+      }
+      // The bounded observation supplies only the current CHILD row, not
+      // current tenant bindings for every source/lineage member. Do not
+      // substitute cached tenant contexts or scan all Sessions to fill that gap.
+      if (
+        current.authority.mode !== 'personal' ||
+        this.options.requireTenantExecutionContext?.() === true
+      )
+        return {
+          kind: 'unavailable',
+          reason: 'affected-tenant-evidence-unavailable',
+        };
+      if (!this.sessionAuthz.canReadSession(targetId, current.authority))
+        return { kind: 'unavailable', reason: 'affected-owner-unavailable' };
+      const observation = store.observeCommittedNativeFork(
+        targetId,
+        contextDigest,
+      );
+      if (observation.kind !== 'verified-creation')
+        return { kind: 'unavailable', reason: 'creation-not-verified' };
+      if (observation.currentSession.tenantExecutionContext !== undefined)
+        return {
+          kind: 'unavailable',
+          reason: 'affected-tenant-evidence-unavailable',
+        };
+      for (const threadId of observation.affected.threadIds) {
+        if (
+          this.sessionAuthz.tenantContextFor(threadId) !== undefined ||
+          !this.sessionAuthz.canReadSession(threadId, current.authority)
+        )
+          return { kind: 'unavailable', reason: 'affected-owner-unavailable' };
+      }
+      // Historical eligibility alone does not make an activity cache warm.
+      if (
+        this.childWork.threadsNeedingHistoricalSeed(
+          observation.affected.threadIds,
+        ).length > 0
+      )
+        return {
+          kind: 'unavailable',
+          reason: 'cold-settled-evidence-budget-missing',
+        };
+      const isCurrent = () => {
+        const value = verify(admission);
+        return (
+          value.kind === 'current' &&
+          value.authority === current.authority &&
+          sameAuthorization() &&
+          this.started &&
+          !this.transcriptSearchStopped
+        );
+      };
+      const warmCurrent = this.readWarmNativeForkActivity(
+        observation,
+        current.authority,
+        isCurrent,
+      );
+      if (warmCurrent.kind === 'unavailable') return warmCurrent;
+      for (const threadId of observation.affected.threadIds) {
+        if (!this.sessionAuthz.canReadSession(threadId, current.authority))
+          return { kind: 'unavailable', reason: 'affected-owner-unavailable' };
+      }
+      const latest = verify(admission);
+      if (
+        latest.kind !== 'current' ||
+        latest.authority !== current.authority ||
+        !sameAuthorization() ||
+        !this.started ||
+        this.transcriptSearchStopped
+      )
+        return { kind: 'unavailable', reason: 'request-not-current' };
+      return { kind: 'stored-creation', observation, warmCurrent };
+    } catch {
+      return {
+        kind: 'unavailable',
+        reason: 'authoritative-stored-read-unavailable',
+      };
+    }
+  }
+
+  private readWarmNativeForkActivity(
+    observation: Extract<
+      NativeForkCreationObservation,
+      { kind: 'verified-creation' }
+    >,
+    authority: SessionReadAuthority,
+    current: () => boolean,
+  ): ReturnType<ConversationTurnActivityProjection['readWarmConversations']> {
+    const projection = this.conversationActivity;
+    const fork = observation.creation.fork;
+    const source = fork.sourceSessionId;
+    const child = observation.currentSession.threadId;
+    const threads = new Set(observation.affected.threadIds);
+    const conversations = new Set(observation.affected.conversationIds);
+    // The observation does not carry a general lineage map. Its verified
+    // two-conversation/two-thread shape proves only these singleton lineages.
+    if (
+      !projection ||
+      source !== fork.sourceConversationId ||
+      source === child ||
+      threads.size !== 2 ||
+      conversations.size !== 2 ||
+      !threads.has(source) ||
+      !threads.has(child) ||
+      !conversations.has(source) ||
+      !conversations.has(child)
+    )
+      return { kind: 'unavailable', reason: 'warm-lineage-proof-unavailable' };
+    const previous = this.nativeForkWarmReadScope;
+    if (
+      !current() ||
+      (previous &&
+        (previous.refused ||
+          previous.authority !== authority ||
+          !previous.current() ||
+          [...threads].some((id) => !previous.threadIds.has(id)) ||
+          [...conversations].some((id) => !previous.conversationIds.has(id))))
+    ) {
+      if (previous) previous.refused = true;
+      return { kind: 'unavailable', reason: 'warm-scope-widening-or-stale' };
+    }
+    const active = {
+      authority,
+      threadIds: threads,
+      conversationIds: conversations,
+      current,
+      refused: false,
+    };
+    this.nativeForkWarmReadScope = active;
+    try {
+      const result = projection.readWarmConversations(
+        new Map([
+          [source, [source]],
+          [child, [child]],
+        ]),
+      );
+      return !active.refused && current()
+        ? result
+        : { kind: 'unavailable', reason: 'request-not-current' };
+    } finally {
+      this.nativeForkWarmReadScope = previous;
+    }
+  }
+
   /**
    * Whether `authority` may read a CONVERSATION — the durable id a chat keeps
    * across Sessions — with the same fail-closed rule the conversation
@@ -6594,6 +6967,18 @@ export class OrchestrationService {
       );
     if (store?.conversationForSession(conversationId)) return false;
     return this.sessionAuthz.canReadSession(conversationId, authority);
+  }
+
+  liveSessionGoalAdapter(
+    threadId: string,
+  ): Pick<ProviderAdapterShape, 'goals'> | undefined {
+    this.initialize();
+    const adapter = this.sessionAdapters.get(threadId);
+    return adapter &&
+      this.isAdapterCurrent(adapter) &&
+      !this.isReadOnlyAttachedSession(threadId)
+      ? adapter
+      : undefined;
   }
 
   canUserMutateSession(
@@ -7850,6 +8235,13 @@ export class OrchestrationService {
        * `accept`.
        */
       approvalModeAuthority?: true;
+      /**
+       * #3483: set by the orchestration command route for an answer from an
+       * authenticated person (not a station-control call acting for its
+       * session's owner). Only such an approval admits an MCP call the
+       * untrusted-content permission asks about at a Station seam.
+       */
+      personAnswer?: true;
     },
     internal?: OrchestrationDispatchInternalOptions,
   ): Promise<
@@ -8578,6 +8970,15 @@ export class OrchestrationService {
                                   : {}),
                               })
                             : undefined;
+                        if (
+                          internal?.mcpPromptOrigin &&
+                          (!turnCorrelation ||
+                            adapter.provider !== 'station-agent')
+                        ) {
+                          throw new Error(
+                            'This engine cannot safely carry MCP prompt origin into the turn.',
+                          );
+                        }
                         // The native-output companion is composed only after the
                         // command's normal read authorization gate above. Its
                         // PrincipalRef is attribution; this live lease repeats
@@ -8782,6 +9183,7 @@ export class OrchestrationService {
                                   send,
                                   nativeMemory,
                                   experienceContext,
+                                  internal?.mcpPromptOrigin,
                                 )
                               : send();
                           };
@@ -8852,6 +9254,8 @@ export class OrchestrationService {
                                         )
                                       : sendAdapter(),
                                   nativeMemory,
+                                  undefined,
+                                  internal?.mcpPromptOrigin,
                                 )
                               : sendAdapter(),
                         );
@@ -9991,6 +10395,23 @@ export class OrchestrationService {
                   decision,
                 );
           };
+          // #3483: recorded before the engine hears the answer, so its next
+          // call through a Station seam finds the approval.
+          if (
+            context?.personAnswer === true &&
+            (decision === 'accept' || decision === 'acceptForSession') &&
+            currentQuestionRequest?.state === 'found'
+          ) {
+            const opened = currentQuestionRequest.event.payload as {
+              requestType?: unknown;
+              payload?: { toolName?: unknown };
+            };
+            if (opened.requestType === 'approval')
+              recordPersonApprovedExternalTool(
+                command.threadId,
+                opened.payload?.toolName,
+              );
+          }
           if (
             command.expectedSkillExperience &&
             (decision === 'accept' || decision === 'acceptForSession')

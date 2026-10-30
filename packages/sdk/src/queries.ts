@@ -158,6 +158,7 @@ export {
   materializeKitProjectLayout,
   type RegistryCatalogTab,
   useApplyIntegrationToolsMutation,
+  useDecideIntegrationTrustReviewMutation,
   useDeleteIntegrationMutation,
   useDisconnectIntegrationAccountMutation,
   useFinishIntegrationOAuthMutation,
@@ -438,6 +439,18 @@ export {
   usePersonalBoardQuery,
   useSavePersonalBoardMutation,
 } from './query-domains/personalBoards';
+export {
+  dismissPersonNotification,
+  fetchPersonNotifications,
+  markPersonNotificationRead,
+  type PersonNotificationMutationInput,
+  type PersonNotificationReadOutcome,
+  type PersonNotificationRequestScope,
+  personNotificationsKey,
+  useDismissPersonNotificationMutation,
+  useMarkPersonNotificationReadMutation,
+  usePersonNotificationsQuery,
+} from './query-domains/personNotifications';
 export {
   type AgentHealthStatus,
   createWorkspaceHomeRoleRequest,

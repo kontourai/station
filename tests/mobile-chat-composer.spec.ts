@@ -1489,7 +1489,7 @@ test('pasting an image into a Station-engine composer attaches it and sends it a
   );
 });
 
-test('a Task inventory outage does not block the mobile inbox or recent chats', async ({
+test('a Task inventory outage does not block the mobile inbox or New chat', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -1534,9 +1534,8 @@ test('a Task inventory outage does not block the mobile inbox or recent chats', 
     menu.getByRole('button', { name: 'Station Chat, Default' }).first(),
   ).toBeVisible();
   await menu.getByRole('button', { name: 'New chat', exact: true }).click();
-  const newChat = page.getByRole('dialog', { name: 'New chat', exact: true });
+  const newChat = page.getByRole('region', { name: 'New chat', exact: true });
   await expect(newChat).toBeVisible();
-  await expect(newChat.getByText('Could not load recent chats')).toHaveCount(0);
 });
 
 /**
@@ -3251,7 +3250,7 @@ for (const viewport of [
     const agentButton = page.locator('.chat-input__agent-btn');
     await expect(agentButton).toBeVisible();
     await expect(agentButton).toHaveAccessibleName(
-      'Agent: Claude. Send a message before changing Agent.',
+      'Agent: Claude. Can’t change Agent yet. Send a message first.',
     );
     await expect(agentButton).toHaveAttribute('aria-disabled', 'true');
     await expect(agentButton.locator('.chat-input__agent-name')).toHaveText(

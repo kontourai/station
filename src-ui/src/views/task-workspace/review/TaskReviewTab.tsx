@@ -602,6 +602,7 @@ export function TaskReviewTab({
             <ReviewDocumentView
               key={`${content.kind}:${content.id}`}
               artifact={content.artifact}
+              revisionOrdinals={content.revisionOrdinals}
               previousArtifact={
                 threads.find(
                   (thread) =>

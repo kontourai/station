@@ -10,6 +10,7 @@ import {
   isStandingAttentionKind,
   type PluginLifecycleProposalAttentionItem,
   type ProposedChangeAttentionItem,
+  parseAttentionSnoozeUntil,
   type SessionFailedAttentionItem,
   type SetupIncompleteAttentionItem,
 } from '@kontourai/station-contracts/attention';
@@ -40,13 +41,18 @@ import {
   attentionRequestEvidenceScanDuration,
 } from '../../telemetry/metrics.js';
 import type { ApprovalRegistry } from '../approvals/approval-registry.js';
+import { FeaturePreviewDisabledError } from '../feature-previews/feature-preview-refusal.js';
+import type { FeaturePreviewSelector } from '../feature-previews/feature-preview-registry.js';
 import type {
   FlowRunService,
   FlowRunStatus,
 } from '../flow/flow-run-service.js';
 import { resolveNotificationOpenHref } from '../notifications/notification-deep-link.js';
 import type { NotificationService } from '../notifications/notification-service.js';
-import type { ConversationAcknowledgementStore } from '../orchestration/conversation-acknowledgement-store.js';
+import {
+  type ConversationAcknowledgementStore,
+  conversationAcknowledgementKey,
+} from '../orchestration/conversation-acknowledgement-store.js';
 import { collectOpenRequests } from '../orchestration/open-requests.js';
 import type { OrchestrationService } from '../orchestration/orchestration-service.js';
 import {
@@ -66,6 +72,7 @@ import {
 } from '../plugins/plugin-lifecycle-proposals.js';
 import { ToolLibraryService } from '../plugins/tool-library-service.js';
 import { DEVICE_PAIRING_NOTIFICATION_SOURCE } from '../ssh/device-pairing-notifications.js';
+import type { FileAttentionSnoozeStore } from './attention-snooze-store.js';
 import type { ProposedChangeService } from './proposed-change-service.js';
 
 const ACTIVE_NOTIFICATION_STATUSES = ['delivered', 'pending'];
@@ -207,15 +214,12 @@ export class AttentionProjectionService {
      */
     private readonly acknowledgementStore?: Pick<
       ConversationAcknowledgementStore,
-      'getMany' | 'acknowledge'
+      'getMany' | 'acknowledge' | 'isOwnerDevice'
     >,
     /**
-     * Identity the acknowledgement store scopes by. Defaults to a single
-     * fixed id: Station is currently a single-operator local app with no
-     * per-request caller identity reaching this service (unlike the HTTP
-     * route layer, which resolves `getCachedUser().alias` for the
-     * conversation-acknowledgement route this reuses). A caller that does
-     * have a real per-user identity may inject one.
+     * The user id of the personal read authority used when a caller passes
+     * none. Acknowledgements are not keyed by it: every read and write goes
+     * through `conversationAcknowledgementKey`, the inventory's key.
      */
     private readonly getUserId: () => string = () => 'default',
     /**
@@ -283,6 +287,11 @@ export class AttentionProjectionService {
       'listOpen'
     > | null,
     private readonly toolLibrary?: Pick<ToolLibraryService, 'requests'>,
+    private readonly snoozing?: {
+      store: FileAttentionSnoozeStore;
+      preview: FeaturePreviewSelector;
+      now?: () => number;
+    },
   ) {}
 
   /**
@@ -461,15 +470,39 @@ export class AttentionProjectionService {
       ...pairingItems,
       ...setupItems,
     ];
-    const acknowledgements = this.acknowledgementStore?.getMany(
-      readAuthority.userId,
-      undecorated.map((item) => item.id),
+    // The inventory's key (`conversationAcknowledgementKey`), so a person's
+    // acknowledgement on one device holds on every device they use.
+    const acknowledgementKey = conversationAcknowledgementKey(
+      readAuthority,
+      this.acknowledgementStore?.isOwnerDevice,
     );
+    const snoozes = this.snoozeEnabled()
+      ? this.snoozing?.store.getMany(
+          readAuthority.userId,
+          undecorated.map((item) => item.id),
+        )
+      : undefined;
+    const now = this.snoozing?.now?.() ?? Date.now();
+    const acknowledgements = acknowledgementKey
+      ? this.acknowledgementStore?.getMany(
+          acknowledgementKey,
+          undecorated.map((item) => item.id),
+        )
+      : undefined;
     const decorated = undecorated.map((item) => {
       const version = acknowledgements?.get(item.id);
-      return version && version >= item.updatedAt
-        ? { ...item, acknowledgedAt: version }
-        : item;
+      const snooze = snoozes?.get(item.id);
+      return {
+        ...item,
+        ...(version && version >= item.updatedAt
+          ? { acknowledgedAt: version }
+          : {}),
+        ...(snooze &&
+        snooze.version >= item.updatedAt &&
+        Date.parse(snooze.until) > now
+          ? { snoozedUntil: snooze.until }
+          : {}),
+      };
     });
     const items = decorated.sort(compareAttentionItems);
     // Acked items stay IN `items` (history, never deleted) but drop out of
@@ -488,6 +521,60 @@ export class AttentionProjectionService {
     };
   }
 
+  private snoozeEnabled(): boolean {
+    return (
+      this.snoozing?.preview.select({
+        enabled: () => true,
+        disabled: () => false,
+      }) ?? false
+    );
+  }
+
+  private requireSnoozing() {
+    if (!this.snoozing || !this.snoozeEnabled()) {
+      throw new FeaturePreviewDisabledError(
+        'attention-snooze',
+        'Attention snooze',
+      );
+    }
+    return this.snoozing;
+  }
+
+  async snooze(
+    itemId: string,
+    until: unknown,
+    authority?: SessionReadAuthority,
+    viewer?: Parameters<AttentionProjectionService['list']>[1],
+  ): Promise<string | undefined> {
+    const snoozing = this.requireSnoozing();
+    const now = snoozing.now?.() ?? Date.now();
+    const snoozedUntil = parseAttentionSnoozeUntil(until, now);
+    const readAuthority = authority ?? this.defaultReadAuthority();
+    const { items } = await this.list(readAuthority, viewer);
+    const item = items.find((candidate) => candidate.id === itemId);
+    if (!item) return undefined;
+    this.requireSnoozing().store.set(
+      {
+        userId: readAuthority.userId,
+        itemId,
+        version: item.updatedAt,
+        until: snoozedUntil,
+      },
+      now,
+    );
+    return snoozedUntil;
+  }
+
+  unsnooze(itemId: string, authority?: SessionReadAuthority): void {
+    const snoozing = this.requireSnoozing();
+    const readAuthority = authority ?? this.defaultReadAuthority();
+    snoozing.store.delete(
+      readAuthority.userId,
+      itemId,
+      snoozing.now?.() ?? Date.now(),
+    );
+  }
+
   /**
    * Persist an acknowledgement of the CURRENT version of attention item
    * `itemId` (archive#1914) — re-derives `list()` to find the item's own
@@ -503,6 +590,8 @@ export class AttentionProjectionService {
   ): Promise<boolean> {
     if (!this.acknowledgementStore) return false;
     const readAuthority = authority ?? this.defaultReadAuthority();
+    const acknowledgementKey = conversationAcknowledgementKey(readAuthority);
+    if (!acknowledgementKey) return false;
     const { items } = await this.list(readAuthority);
     const item = items.find((candidate) => candidate.id === itemId);
     if (!item) return false;
@@ -512,7 +601,7 @@ export class AttentionProjectionService {
     // true — someone decides it. See `isAcknowledgeableAttentionKind`.
     if (!isAcknowledgeableAttentionKind(item.kind)) return false;
     this.acknowledgementStore.acknowledge({
-      userId: readAuthority.userId,
+      userId: acknowledgementKey,
       conversationId: item.id,
       updatedAt: item.updatedAt,
     });

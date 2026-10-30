@@ -34,6 +34,7 @@ import {
   currentEngineMcpAccountOwner,
 } from '../../services/plugins/engine-mcp-oauth.js';
 import { scanInstalledPluginInventory } from '../../services/plugins/installed-plugin-inventory.js';
+import { externalUntrustedContentPermission } from '../../services/plugins/mediated-untrusted-content-gate.js';
 import {
   closePluginActivationSession,
   completePluginActivationComposition,
@@ -48,7 +49,12 @@ import {
   createLocalRegistryTrustPolicyAuthority,
   type RegistryTrustPolicyAuthority,
 } from '../../services/plugins/registry-trust-policy.js';
+import { installCatalogServerAddressPolicy } from '../../services/plugins/remote-mcp-address-policy.js';
 import { ToolLibraryService } from '../../services/plugins/tool-library-service.js';
+import { deploymentClientMetadataUrl } from '../../services/plugins/tool-server-oauth.js';
+import { registerToolServerOAuthCapability } from '../../services/plugins/tool-server-oauth-capabilities.js';
+import { sharedUntrustedContentLedger } from '../../services/plugins/untrusted-content-policy.js';
+import { UntrustedConversationMarks } from '../../services/plugins/untrusted-conversation-marks.js';
 import { deriveWorkspaceHomeRoleStatus } from '../../services/plugins/workspace-home-role-service.js';
 import { createProjectMembershipRuntime } from '../../services/projects/project-membership-runtime.js';
 import { createProjectNativeToolLoader } from '../../services/projects/project-native-tools.js';
@@ -422,6 +428,10 @@ interface AgentConfigurationGeneration {
   activationEpoch?: number;
 }
 
+import {
+  generateConversationTitle,
+  resolveTitleModel,
+} from '../../routes/chat/chat-title-generation.js';
 import { getCachedUser } from '../../routes/system/auth.js';
 import { runAsStationServer } from '../../security/station-server-scope.js';
 import type { BrowserService } from '../../services/browser/browser-service.js';
@@ -436,6 +446,10 @@ import {
   FileActionOperationStore,
 } from '../../services/operations/action-operation-service.js';
 import { FleetDispatchActionOperationObserver } from '../../services/operations/fleet-dispatch-action-operation-observer.js';
+import {
+  ConversationTitleGeneration,
+  subscribeConversationTitleGeneration,
+} from '../../services/orchestration/conversation-title-generation.js';
 import { FileDelegationAttemptClaimStore } from '../../services/orchestration/delegation-attempt-claim-store.js';
 import {
   createMCPToolProvenanceGeneration,
@@ -467,6 +481,7 @@ import {
 import { claudeInProcessStationControlOptions } from '../mcp/station-control-in-process.js';
 import {
   buildStationControlMcpUrl,
+  coordinatorGeneration,
   mintStationControlMcpToken,
   revokeStationControlMcpToken,
 } from '../mcp/station-control-mcp-token.js';
@@ -805,6 +820,27 @@ export class StationRuntime {
   private readonly openCodeSessionSource = new OpenCodeSessionSource();
   private bedrockAdapter = new BedrockAdapter();
   private claudeAdapter = new ClaudeAdapter({
+    isCoordinatorSession: (threadId) => {
+      const principal =
+        this.orchestrationService?.resolveSessionActingPrincipal(threadId);
+      if (!principal || principal.source !== 'session-owner') return false;
+      const conversationId =
+        this.orchestrationEventStore.conversationForSession(threadId)
+          ?.conversationId ?? threadId;
+      return (
+        this.orchestrationEventStore
+          .coordinatorStore()
+          .designationForConversation(conversationId)?.actor.userId ===
+        principal.id
+      );
+    },
+    resolveCoordinatorStationControl: async (threadId) =>
+      this.orchestrationService?.resolveCoordinatorStationControl(threadId),
+    coordinatorGenerationForSession: (threadId) =>
+      coordinatorGeneration(
+        this.orchestrationEventStore.conversationForSession(threadId)
+          ?.conversationId ?? threadId,
+      ),
     resolveMcpOAuth: (input) => this.resolveExternalMcpOAuth(input),
     nativeSessionOwnership: {
       assertMutable: (sessionId) =>
@@ -835,6 +871,10 @@ export class StationRuntime {
         ? provideSkills.filter((id): id is string => typeof id === 'string')
         : undefined;
     },
+    // Claude Code's Artifact tool (AppConfig.claudeArtifactsEnabled), read
+    // per session start; same lazy-capture posture as `getProvideSkills`.
+    getArtifactsEnabled: async () =>
+      (await this.configLoader.loadAppConfig()).claudeArtifactsEnabled === true,
     resolveSkillDir: async (id) => {
       try {
         const skill = await this.skillService.getSkill(id);
@@ -979,13 +1019,22 @@ export class StationRuntime {
       threadId: string,
       tenantExecutionContext,
       allowedTools,
+      generation,
     ) => {
+      const conversationId =
+        this.orchestrationEventStore.conversationForSession(threadId)
+          ?.conversationId ?? threadId;
       const { token } = mintStationControlMcpToken(
         threadId,
         'url-token',
         undefined,
         tenantExecutionContext,
         allowedTools,
+        generation !== undefined ? 'coordinator-control' : 'station-control',
+        undefined,
+        generation === undefined
+          ? undefined
+          : () => coordinatorGeneration(conversationId) === generation,
       );
       return buildStationControlMcpUrl(this.port, token);
     },
@@ -993,14 +1042,24 @@ export class StationRuntime {
       threadId,
       tenantExecutionContext,
       allowedTools,
+      generation,
     ) => {
+      const conversationId =
+        this.orchestrationEventStore.conversationForSession(threadId)
+          ?.conversationId ?? threadId;
       const { token } = mintStationControlMcpToken(
         threadId,
         'url-token',
         undefined,
         tenantExecutionContext,
         allowedTools,
-        'station-knowledge',
+        generation !== undefined
+          ? 'coordinator-knowledge'
+          : 'station-knowledge',
+        undefined,
+        generation === undefined
+          ? undefined
+          : () => coordinatorGeneration(conversationId) === generation,
       );
       return buildStationControlMcpUrl(this.port, token, 'station-knowledge');
     },
@@ -1042,6 +1101,7 @@ export class StationRuntime {
   });
   private ollamaAdapter = new OllamaAdapter();
   private orchestrationService!: OrchestrationService;
+  private nativeForkStoredReadBinder?: import('../../security/native-fork-read-admission.js').NativeForkReadAdmissionDomain['bindAtConversationMount'];
   private projectRoomRuntime?: { close(): Promise<void> };
   private resourcePosture?: import('../../services/infra/resource-posture.js').RuntimeResourcePostureProbe;
   private attachedSessionFollowService?: AttachedSessionFollowService;
@@ -1139,6 +1199,11 @@ export class StationRuntime {
   // (transaction store + truthful availability state) exists from
   // construction so routes can consult it even when the listener never
   // binds; the listener itself starts during initialize.
+  // A malformed STATION_OAUTH_CLIENT_METADATA_URL throws here, refusing
+  // startup, so sign-in and status reads can rely on it.
+  readonly deploymentClientMetadataUrl = deploymentClientMetadataUrl(
+    process.env,
+  );
   // A malformed STATION_TRUSTED_CONSENT_ORIGIN throws here, refusing startup.
   public readonly consentChannel = new ConsentChannelService({
     trustedOrigin: parseTrustedConsentOrigin(
@@ -1159,12 +1224,20 @@ export class StationRuntime {
   /** #485: durable receiver request-claim owner for opt-in attempts. */
   private delegationAttemptClaims!: FileDelegationAttemptClaimStore;
 
+  private uninstallCatalogAddressPolicy?: () => void;
+
   private readonly engineMcpOAuth = createEngineMcpOAuthResolver({
     homeDir: () => this.configLoader.getProjectHomeDir(),
     port: () => this.port,
     getIntegration: (id) => this.mcpService.getIntegration(id),
     needsSignIn: (id, resource) =>
       this.mcpService.markOAuthNeedsSignIn(id, resource),
+    // Read per refresh: the field is assigned during startup, after this
+    // initializer runs.
+    oauthClientSecrets: {
+      resolveOAuthClientSecret: (input) =>
+        this.secretBindingAdministration.resolveOAuthClientSecret(input),
+    },
   });
 
   private async resolveExternalMcpOAuth(input: ProviderSessionStartInput) {
@@ -1246,11 +1319,17 @@ export class StationRuntime {
           input.agent?.toolServers,
           toolNameProvenance,
         ),
+      // #3483: after the conversation read untrusted content (seen at a
+      // Station seam), an engine that asks Station asks the person too.
+      untrustedContentPermission: externalUntrustedContentPermission({
+        loadIntegration: (id) => this.configLoader.loadIntegration(id),
+      }),
       logger: this.logger,
     });
   }
 
   constructor(options: StationRuntimeOptions = {}) {
+    registerToolServerOAuthCapability('pre-registered-clients');
     this.virtualApplicationConfiguration = options.virtualApplication
       ? { ...options.virtualApplication }
       : undefined;
@@ -1350,6 +1429,17 @@ export class StationRuntime {
         report: (report) =>
           this.logger?.warn('Agent Plugin component was not loaded', report),
       });
+      // #3483: Station connects to catalog-supplied servers only at
+      // addresses it checked.
+      this.uninstallCatalogAddressPolicy = installCatalogServerAddressPolicy(
+        () => projectHomeDir,
+      );
+      // #3483: a conversation that read untrusted content stays marked
+      // across turns and restarts until a person clears it.
+      sharedUntrustedContentLedger.attachDurableMarks(
+        new UntrustedConversationMarks(projectHomeDir),
+        (message, meta) => this.logger?.warn(message, meta),
+      );
       this.configLoader = openedConfigLoader = new ConfigLoader({
         projectHomeDir,
         watchFiles: true,
@@ -1622,6 +1712,20 @@ export class StationRuntime {
       // EventBus: `releaseClaimForSession` already catches internally, and
       // the `.catch` here is defense-in-depth for the subscription callback
       // itself.
+      // #4266: name a conversation with the title model after its first
+      // completed turn. Off unless `titleModel` is set, and always off on a
+      // hosted Station; detached and best-effort, so it never delays a turn.
+      const conversationTitles = new ConversationTitleGeneration({
+        eventStore: this.orchestrationEventStore,
+        enabled: () => resolveTitleModel(this.appConfig ?? {}) !== undefined,
+        generate: (input) =>
+          generateConversationTitle({
+            ctx: this.buildRuntimeContext(),
+            ...input,
+          }),
+        logger: this.logger,
+      });
+      subscribeConversationTitleGeneration(this.eventBus, conversationTitles);
       const worktreeProvisioningService = new WorktreeProvisioningService();
       this.eventBus.subscribe((serverEvent) => {
         if (serverEvent.event !== SERVER_EVENTS.ORCHESTRATION_EVENT) return;
@@ -3748,6 +3852,7 @@ export class StationRuntime {
           homeDirectory: this.configLoader.getProjectHomeDir(),
         },
         this.projectMembership.service,
+        resolveStationBrowserOrigins({ port: this.port, host: this.host }),
       );
       this.deploymentAuthentication = this.localAccounts;
       // #3586: account-tied personal access tokens are checked against
@@ -4079,6 +4184,8 @@ export class StationRuntime {
           },
           onRouteServicesReady: async (services) => {
             this.orchestrationService = services.orchestrationService;
+            this.nativeForkStoredReadBinder =
+              services.nativeForkStoredReadBinder;
             // Route construction happens inside initializeRuntime before this
             // method returns. Publish the Dispatcher at that composition seam,
             // after its concrete orchestration Adapter exists and before any
@@ -4189,6 +4296,7 @@ export class StationRuntime {
     this.appConfig = initialized.appConfig;
     this.framework = initialized.framework;
     this.orchestrationService = initialized.orchestrationService;
+    this.nativeForkStoredReadBinder = initialized.nativeForkStoredReadBinder;
     this.resourcePosture = initialized.resourcePosture;
     this.attachedSessionFollowService =
       initialized.attachedSessionFollowService;
@@ -4689,6 +4797,7 @@ export class StationRuntime {
       delegationAttemptClaims: this.delegationAttemptClaims,
       orchestrationService: this.orchestrationService,
       resourcePosture: this.resourcePosture,
+      nativeForkStoredReadBinder: this.nativeForkStoredReadBinder,
       orchestrationEventStore: this.orchestrationEventStore,
       operationalEventPublisher: this.operationalEventPublisher,
       pluginInstallationHost: this.pluginInstallationHost,
@@ -5236,6 +5345,9 @@ export class StationRuntime {
    * Shutdown the runtime
    */
   async shutdown(): Promise<void> {
+    this.uninstallCatalogAddressPolicy?.();
+    this.uninstallCatalogAddressPolicy = undefined;
+    sharedUntrustedContentLedger.attachDurableMarks(undefined);
     // Begin broker retirement without delaying ordinary teardown on its I/O.
     // The aggregate cleanup joins it before this home can be released.
     void this.retireSelfHostedBroker();

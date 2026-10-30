@@ -1041,11 +1041,19 @@ describe('Home, the dock and Activity agree on one item', () => {
     const workFacts = buildWorkFacts({ items, sessions: summaries });
     const activity = renderView().container;
     const home = render(
-      <HomeSurface
-        model={homeModel(items)}
-        continuation={null}
-        onNavigate={vi.fn()}
-      />,
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <NavigationProvider>
+          <HomeSurface
+            model={homeModel(items)}
+            continuation={null}
+            onNavigate={vi.fn()}
+          />
+        </NavigationProvider>
+      </QueryClientProvider>,
     ).container;
     const dock = render(
       <DockInboxHost
@@ -1145,7 +1153,7 @@ describe('Home, the dock and Activity agree on one item', () => {
     }
   });
 
-  test('a project wears one colour on Home, in the dock and in the sheet', () => {
+  test('project marks follow each surface layout', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(NOW);
     // Three projects, so the accent is set-aware: `station` sorts last and
@@ -1172,6 +1180,11 @@ describe('Home, the dock and Activity agree on one item', () => {
     };
     expect(swatch(home)).toBe('var(--event-tool-call)');
     expect(swatch(dock)).toBe(swatch(home));
-    expect(swatch(sheet)).toBe(swatch(home));
+    const line = sheet.querySelector('.inbox-row__project-context')!;
+    expect(line.querySelectorAll('svg')).toHaveLength(1);
+    expect(line.querySelector('.inbox-row__project-accent')).toBeNull();
+    expect(line.querySelector('.inbox-row__project')?.textContent).toBe(
+      'station',
+    );
   });
 });

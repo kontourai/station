@@ -537,6 +537,19 @@ export interface ThreadInboxDeliveryPorts {
    * closed).
    */
   deviceMaySend?(deviceId: string, since: number): boolean;
+  /**
+   * A sender's own placement policy, checked when an entry is about to be
+   * placed, after the live send rule. A refusal settles the entry `refused`
+   * with that code; nothing is sent. #3628: a coordinator wake whose
+   * conversation is no longer the coordinator, that waited too long, or that
+   * names a Session its person can no longer read.
+   */
+  placementRefusal?(input: {
+    readonly conversationId: string;
+    readonly clientTurnId: string;
+    readonly payload: ThreadInboxPayload;
+    readonly queuedAt: number;
+  }): { readonly reasonCode: string; readonly reason: string } | undefined;
   /** The turn ledger's answer for the key across the whole conversation. */
   inspectDelivery(
     conversationId: string,
@@ -602,7 +615,10 @@ function errorText(error: unknown): string {
  * names. Anything else is `start_refused`, so a reader never sees a code
  * nobody documented. The inbox's own codes are set where they arise:
  * `not_permitted`, `device_not_permitted`, `may_have_been_sent`,
- * `start_deadline` and `unreadable_entry`.
+ * `start_deadline`, `unreadable_entry` and `placement_policy_failed`; a
+ * sender's `placementRefusal` policy sets its own (#3628:
+ * `coordinator_retired`, `coordinator_wake_expired`,
+ * `coordinator_source_unreadable`).
  */
 const START_REFUSAL_CODES: ReadonlySet<string> = new Set([
   SESSION_ENDED_REJECTION_CODE,
@@ -730,6 +746,11 @@ export class ThreadInboxDelivery {
           entry.state === 'placing' ||
           entry.state === 'unconfirmed',
       );
+  }
+
+  /** The same sender authority applied when a continuation is submitted. */
+  mayContinue(conversationId: string, userId: string): boolean {
+    return this.ports.mayContinue(this.inboxOf(conversationId), userId);
   }
 
   private inspectDelivery(
@@ -912,6 +933,34 @@ export class ThreadInboxDelivery {
       default:
         return undefined;
     }
+  }
+
+  /**
+   * Withdraw several of one sender's waiting entries at once: every one is
+   * cancelled before the conversation is driven again, so none of them can be
+   * placed in between (cancelling one at a time drives after each). Entries
+   * that are not the caller's, or no longer waiting, are left as they are.
+   * Returns the keys it cancelled.
+   */
+  cancelQueued(
+    conversationId: string,
+    clientTurnIds: readonly string[],
+    callerUserId: string,
+  ): string[] {
+    const inbox = this.inboxOf(conversationId);
+    const cancelled: string[] = [];
+    for (const key of clientTurnIds) {
+      const record = this.ports.store.read(inbox, key);
+      if (
+        record?.state !== 'queued' ||
+        decodePayload(record.payload)?.actor.userId !== callerUserId
+      )
+        continue;
+      if (this.ports.store.cancel(inbox, key, this.now()).kind === 'cancelled')
+        cancelled.push(key);
+    }
+    if (cancelled.length) this.drive(inbox, false);
+    return cancelled;
   }
 
   /**
@@ -1199,13 +1248,7 @@ export class ThreadInboxDelivery {
         );
         continue;
       }
-      // The live send's own rule, checked again: a sender or device that
-      // lost the right since it queued is refused, and nothing is sent.
-      const refusal = this.refusalFor(conversationId, payload, entry.createdAt);
-      if (refusal) {
-        settle(entry, 'refused', refusal, this.now());
-        continue;
-      }
+      let refusal: PlacementOutcome | undefined;
       let started: SessionStartResult | typeof DEADLINE;
       try {
         // The whole conversation's ledger first (D1): a key an earlier
@@ -1216,13 +1259,45 @@ export class ThreadInboxDelivery {
             conversationId,
             inspect: () =>
               this.inspectDelivery(conversationId, entry.key, payload),
-            start: () =>
-              this.ports.start({
+            start: async () => {
+              // The live send's own rule, checked again: a sender or device that
+              // lost the right since it queued is refused, and nothing is sent.
+              refusal = this.refusalFor(
+                conversationId,
+                payload,
+                entry.createdAt,
+              );
+              if (!refusal && this.ports.placementRefusal) {
+                try {
+                  refusal = this.ports.placementRefusal({
+                    conversationId,
+                    clientTurnId: entry.key,
+                    payload,
+                    queuedAt: entry.createdAt,
+                  });
+                } catch (error) {
+                  // A policy that cannot decide refuses: nothing is sent.
+                  this.ports.logger.warn(
+                    'thread inbox placement policy failed',
+                    {
+                      error: errorText(error),
+                    },
+                  );
+                  refusal = {
+                    reasonCode: 'placement_policy_failed',
+                    reason:
+                      'Station could not check this message. Nothing was sent.',
+                  };
+                }
+              }
+              if (refusal) return { outcome: 'indeterminate' };
+              return this.ports.start({
                 conversationId,
                 threadId: current,
                 payload,
                 clientTurnId: entry.key,
-              }),
+              });
+            },
           }),
         );
       } catch (error) {
@@ -1249,6 +1324,10 @@ export class ThreadInboxDelivery {
         continue;
       }
       if (this.stopped) return;
+      if (refusal) {
+        settle(entry, 'refused', refusal, this.now());
+        continue;
+      }
       if (started === DEADLINE) {
         settle(
           entry,

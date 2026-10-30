@@ -1,0 +1,7 @@
+{
+  "revision": "8c932dc652e0f36fa946e891aa039c6ab48a7645",
+
+  "notes": [
+    {"path":"docs/guides/discord-gateway.md","note":"Reviewed relay claim, per-chunk authorization, delivery receipts, and restart behavior against Discord gateway and chat-app core; live Discord not verified.","inputs":["docs/guides/discord-gateway.md","src-server/services/discord/discord-gateway-service.ts"]}
+  ]
+}

@@ -22,14 +22,25 @@ import {
 } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import type { ACPConfig } from '@kontourai/station-contracts/acp';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { PluginOverrides } from '@kontourai/station-contracts/plugin';
 import {
+  type IntegrationTrustReviewDecision,
   isSafeToolServerId,
   type ToolDef,
   type ToolMetadata,
+  withStationIntegrationTrustDefaults,
+  withUntrustedContentChange,
 } from '@kontourai/station-contracts/tool';
+import {
+  applyIntegrationTrustOverlay,
+  readIntegrationTrustOverlay,
+  writeIntegrationTrustOverlay,
+} from '@kontourai/station-shared/integration-trust-overlay';
+import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import { toolServerIntegrationMutationLockPath } from '@kontourai/station-shared/tool-server-credential-store';
 import { type FSWatcher, watch } from 'chokidar';
 import {
   type AppConfigLaunchabilitySnapshot,
@@ -71,13 +82,16 @@ import {
   withAppConfigMutationAuthority,
 } from './config-loader-app.js';
 import {
+  decideIntegrationTrustReview,
   deleteIntegrationConfig,
   deleteSkillPackageAt,
+  ensureIntegrationInstanceId,
   integrationConfigExists,
   listIntegrationMetadata,
   listSkillConfigs,
   loadACPConfigFile,
   loadIntegrationConfig,
+  loadIntegrationTrustReview,
   loadSkillConfig,
   type SkillConfigRecord,
   saveACPConfigFile,
@@ -878,7 +892,14 @@ export class ConfigLoader {
     if (!integrationConfigExists(this.projectHomeDir, id)) {
       for (const source of this.integrationSources) {
         const projected = source.loadIntegration(id, composition);
-        if (projected) return { definition: projected, contributed: true };
+        if (projected)
+          return {
+            definition: applyIntegrationTrustOverlay(
+              projected,
+              readIntegrationTrustOverlay(this.projectHomeDir, id),
+            ),
+            contributed: true,
+          };
       }
     }
     const def = await loadIntegrationConfig(this.projectHomeDir, id);
@@ -895,7 +916,11 @@ export class ConfigLoader {
       if (!integrationConfigExists(this.projectHomeDir, id)) {
         for (const owner of this.integrationSources) {
           const definition = owner.loadIntegration(id);
-          if (definition) return definition;
+          if (definition)
+            return applyIntegrationTrustOverlay(
+              definition,
+              readIntegrationTrustOverlay(this.projectHomeDir, id),
+            );
         }
         return undefined;
       }
@@ -906,7 +931,13 @@ export class ConfigLoader {
       );
       const value: unknown = JSON.parse(source);
       validator.validateToolDef(value);
-      return this.withBuiltinIntegrationRuntimeIdentity(id, value as ToolDef);
+      return this.withBuiltinIntegrationRuntimeIdentity(
+        id,
+        applyIntegrationTrustOverlay(
+          value as ToolDef,
+          readIntegrationTrustOverlay(this.projectHomeDir, id),
+        ),
+      );
     } catch {
       return undefined;
     }
@@ -974,8 +1005,125 @@ export class ConfigLoader {
    * next reload, forever (archive#1588, the reload loop behind archive#1574's catalog
    * churn). A genuine content change still writes and still activates.
    */
-  async saveIntegration(id: string, def: ToolDef): Promise<void> {
+  /** #3483: legacy trust settings waiting for a person, if any. */
+  async integrationTrustReview(id: string) {
+    await this.ensureHomeSchema();
+    return loadIntegrationTrustReview(this.projectHomeDir, id);
+  }
+
+  /** #3483: a person keeps or resets legacy trust settings, with a receipt. */
+  async decideIntegrationTrustReview(
+    id: string,
+    decision: IntegrationTrustReviewDecision,
+    by: string,
+  ): Promise<void> {
+    await this.ensureHomeSchema();
+    await decideIntegrationTrustReview(this.projectHomeDir, id, decision, by);
+  }
+
+  async saveIntegration(
+    id: string,
+    def: ToolDef,
+    options: {
+      changedBy?: string;
+      personChange?: boolean;
+      explicitFields?: readonly (
+        | 'contentTrust'
+        | 'permissions'
+        | 'trustReadOnlyHints'
+      )[];
+      externalDefaults?: boolean;
+      stationCuratedTrust?: 'trusted' | 'untrusted';
+      requireContributed?: boolean;
+    } = {},
+  ): Promise<void> {
+    if (options.requireContributed || this.isLiveContributedIntegration(id)) {
+      if (!options.personChange && !options.changedBy)
+        throw new Error(
+          `Integration '${id}' is supplied by an installed package and its definition is read-only; uninstall or update the owning package instead`,
+        );
+      if (options.explicitFields && !options.explicitFields.length)
+        throw new Error(
+          `Integration '${id}' is supplied by an installed package and its definition is read-only; uninstall or update the owning package instead`,
+        );
+      await mkdir(join(this.projectHomeDir, 'integrations'), {
+        recursive: true,
+      });
+      const release = await acquireFileMutationLockAsync(
+        toolServerIntegrationMutationLockPath(this.projectHomeDir, id),
+      );
+      try {
+        if (integrationConfigExists(this.projectHomeDir, id))
+          throw new Error('Integration ownership changed during the edit');
+        const source = this.integrationSources
+          .map((owner) => owner.loadIntegration(id))
+          .find(Boolean);
+        if (!source)
+          throw new Error('Package integration is no longer available');
+        const current = applyIntegrationTrustOverlay(
+          source,
+          readIntegrationTrustOverlay(this.projectHomeDir, id),
+        );
+        const nonTrust = (value: ToolDef) =>
+          Object.fromEntries(
+            Object.entries(value).filter(
+              ([name]) =>
+                ![
+                  'contentTrust',
+                  'untrustedContentPermissions',
+                  'trustReadOnlyHints',
+                  'untrustedContentChanges',
+                  'untrustedContentPersonOwned',
+                ].includes(name),
+            ),
+          );
+        if (!isDeepStrictEqual(nonTrust(def), nonTrust(current)))
+          throw new Error(
+            'Package-supplied integration definitions are read-only; only person trust settings may be changed',
+          );
+        const next = withUntrustedContentChange(
+          current,
+          def,
+          options.changedBy,
+          new Date(),
+          {
+            personChange: options.personChange,
+            explicitFields: options.explicitFields,
+          },
+        );
+        validator.validateToolDef(next);
+        writeIntegrationTrustOverlay(this.projectHomeDir, id, next);
+      } finally {
+        await release();
+      }
+      return;
+    }
     this.assertIntegrationDefinitionWritable(id);
+    // #3483: the storage writer owns untrusted-content receipts under its
+    // lock. Applying them here too, against an unlocked read, only lets the
+    // byte comparison below see what that writer would produce.
+    let stored: ToolDef | undefined;
+    try {
+      stored = await loadIntegrationConfig(this.projectHomeDir, id);
+    } catch {
+      /* First write. */
+    }
+    if (options.externalDefaults)
+      def = withStationIntegrationTrustDefaults(
+        def,
+        stored,
+        options.stationCuratedTrust,
+      );
+    def = withUntrustedContentChange(
+      stored,
+      def,
+      options.changedBy,
+      new Date(),
+      {
+        personChange: options.personChange,
+        explicitFields: options.explicitFields,
+      },
+    );
     // archive#3063: a registered built-in's spawn identity never reaches
     // disk — projected out BEFORE the byte comparison so the compare runs
     // against the bytes that would actually be written. Credential writes
@@ -1000,7 +1148,7 @@ export class ConfigLoader {
     ) {
       return;
     }
-    await saveIntegrationConfig(this.projectHomeDir, id, persisted);
+    await saveIntegrationConfig(this.projectHomeDir, id, persisted, options);
   }
 
   /**
@@ -1016,6 +1164,7 @@ export class ConfigLoader {
     return updateIntegrationConfig(this.projectHomeDir, id, (current) => {
       // Compare-and-update callers must see the same effective built-in
       // identity as readers; the persisted projection below removes it again.
+      // The storage writer adds untrusted-content receipts under the lock.
       const updated = update(
         this.withBuiltinIntegrationRuntimeIdentity(id, current),
       );
@@ -1024,6 +1173,11 @@ export class ConfigLoader {
       validator.validateToolDef(next);
       return next;
     });
+  }
+
+  /** #4279: the integration's server-created instance id (see storage). */
+  async integrationInstanceId(id: string): Promise<string> {
+    return ensureIntegrationInstanceId(this.projectHomeDir, id);
   }
 
   async deleteIntegration(id: string): Promise<void> {

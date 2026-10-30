@@ -194,6 +194,27 @@ after generation, delegation and config-protection refusals and retains guardian
 denies; guardian allows, session grants and unattended grants cannot bypass it.
 Managed calls without an approval channel are denied.
 
+## Outbound tools after untrusted content
+
+On the Station engine, a turn that has read a tool result from an
+integration with `contentTrust: "untrusted"` (or whose conversation was
+marked by an earlier turn) runs one more stage after the
+Project tool policy and before authored Ask rules: the called tool's
+`untrustedContentPermissions` entry, then its integration default, then
+`ask`. A read-only hint exempts a tool only when no entry is set and the
+server's hints are trusted (not an `untrusted` server, or
+`trustReadOnlyHints`). Delegation shares the mark between parent and child
+conversations. `ask` is answered exactly like an effective
+authored Ask above, `deny` refuses with `untrusted_content_denied`, and
+`allow` leaves the decision to the later stages. External engines' staged
+evaluator runs the same stage for `mcp__<server>__<tool>` calls in a session
+marked at a Station seam, so Claude Code and ACP ask for them. Enforcement for
+Claude Code, Codex and ACP is at the Station seams that carry their MCP calls
+(the station-control authority guard and the OAuth proxy), where `ask`
+passes only on a person's recorded approval of that tool. Calls an engine
+makes to a server it connects to itself are not enforced
+([design](../design/mcp-subregistry-curation.md#coverage-and-gaps)).
+
 Claude's staged evaluator returns a required Ask as a `PreToolUse` permission
 ask; `canUseTool` also excludes it from automatic, guardian and session grants.
 Adapter tests exercise both callbacks, including repeated calls after a session
@@ -213,6 +234,13 @@ The Station Control HTTP token pins its selected names; the Claude in-process
 server serves the same filtered registrations. A direct call to an omitted
 Station Control tool cannot reach its callback. These filters do not relax the
 existing per-call authority table.
+
+When a running Claude chat becomes the coordinator, the in-place refresh
+re-resolves the designated Agent's Station Control selection, refuses a
+missing or noncanonical server, and gives the in-process server only the
+selected names. Its credential rechecks designation on calls. The adapter and
+in-process MCP tests cover selection and revocation with fixtures; they do not
+establish live-provider behavior.
 
 Probe receipts store server-qualified names. The shared
 [selection translator](../../packages/shared/src/mcp-tool-selection.ts)
@@ -561,9 +589,11 @@ What this costs, and what it still does not cover:
   call. Those would be covered only by the part 1 signals, as before.
 - **Exit errors.** The SDK appends the engine's stderr to an exit error only
   for its own spawn. Station keeps the last 2048 characters itself, redacted,
-  and appends them to the `runtime.error` it publishes when the message
-  stream fails. An exit error the SDK raises on another call does not carry
-  them. The SDK also adds its `--debug-file` argument only for its own
+  and appends them to an unclassified `runtime.error` when the message
+  stream fails. Recognized startup diagnostics instead use fixed guidance
+  without raw engine output; see [engine-neutral failures](../reference/contracts.md#engine-neutral-failures).
+  An exit error the SDK raises on another call does not carry the stderr
+  tail. The SDK also adds its `--debug-file` argument only for its own
   spawn, which matters only when SDK debug logging is on.
 
 A session answer never writes the engine's settings files. Every suggestion

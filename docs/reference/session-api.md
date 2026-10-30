@@ -6,6 +6,15 @@ no UI in the loop. It is the API-parity contract for the composer: every action 
 takes in the chat dock has a documented, scriptable equivalent here
 (`docs/design/chat-composer.md` §4).
 
+The default-off **Session goals** preview adds inspection and paused-objective
+editing in Chat settings. Its scriptable equivalent is
+`GET` or `POST /api/orchestration/sessions/:threadId/goal`; use the current
+execution Session ID rather than the Conversation ID. Reads do not start or
+resume an engine. Writes require an authenticated person with Session mutation
+authority and `orchestration:operate`. The current Codex adapter supports save
+paused, pause and clear; resume and Station-managed execution are unavailable.
+See [Session Goals](api.md#session-goals) for commands and uncertain outcomes.
+
 For foreground chat, the canonical execution surface is
 `POST /api/orchestration/chat`. It accepts an
 Environment + Agent target and a message. Station resolves the Agent's engine,
@@ -332,7 +341,11 @@ including the history-dependent limit on untagged terminal acknowledgement.
 Its read-only companions, `list_project_activity` and `get_session_digest`, call
 `/api/orchestration/session-activity` (see
 [Station Control Project Activity](api.md#station-control-project-activity)) and
-read as the calling Session's owner within the caller's Project.
+read as the calling Session's owner within the caller's Project. A person waits
+on, digests and lists their own Sessions through separate person-facing leaves
+under `/api/orchestration/session-reads` (see
+[Person Session Reads](api.md#person-session-reads)), which refuse every
+station-control request.
 
 The response is a foreground handle containing `conversationId`, `sessionId`,
 `providerTurnId`, the
@@ -561,7 +574,10 @@ persisted binding. Just before sending it checks again that the sender may
 still send to the conversation and that their device is still paired with
 the scope to (for one tied to an account, that the account is enabled and
 was not signed out everywhere since the message was queued); otherwise the message is `refused` (`not_permitted` or
-`device_not_permitted`) and nothing is sent. It never stores a full-access
+`device_not_permitted`) and nothing is sent. Station's own coordinator wakes
+(#3628) are also checked against their sender's policy at that moment, and a
+refused one carries `coordinator_retired`, `coordinator_wake_expired` or
+`coordinator_source_unreadable`; a person's messages have no such policy. It never stores a full-access
 grant: an engine restarted to take a held message starts confined. Each
 message keeps its `clientTurnId`, so the
 [delivery lookup](#find-out-what-became-of-a-send) follows it, and Station
@@ -746,6 +762,13 @@ legs contribute their authorized user/assistant transcript, not provider-private
 tool state. An explicit empty-context boundary excludes earlier model context even
 while the historical transcript remains visible. Callers never supply native
 memory paths or another Session's memory identity.
+
+When a running conversation is designated as the person's coordinator, its
+next turn also acquires Station tools. An engine with per-Session refresh
+updates that Session; another supported engine starts a successor through this
+same continuity path. The chat identifies a restart to acquire tools. An
+engine declaring tool servers unsupported can remain designated; the chat and
+Home explain that it can receive updates but cannot act through those tools.
 
 ## Lifecycle control commands
 
@@ -1761,21 +1784,43 @@ replaced by a placeholder, then each text cut at 4,000 characters and flagged) a
 `404` means no transcript for a session you can read; `503` means the engine
 no longer has it.
 
-Only Claude subagents have a transcript today. Claude Code keeps it under the
-config home the session's engine was spawned with (its app-home or credential
-profile, a connection's config home, or the global one); the adapter records
-that config home with the reference, so a profile session's transcript is
-read from its own profile. Symbolic links below that config home are refused
-by checks made immediately before the file is opened; the checks are not
-atomic against a concurrent swap by a process running as the same user.
-Codex child threads have no transcript reference.
+Claude subagents and Codex child threads have a transcript; the reference
+is set when the child is first reported, so it can be read while the child
+runs. Claude Code keeps a subagent's transcript under the config home the
+session's engine was spawned with (its app-home or credential profile, a
+connection's config home, or the global one); the adapter records that config
+home with the reference, so a profile session's transcript is read from its
+own profile. Codex writes each child thread to its own rollout file under the
+`CODEX_HOME` the session's app-server ran with,
+`sessions/YYYY/MM/DD/rollout-*-<thread id>.jsonl`; the reference names the
+thread id and that home, the server looks only in the day directories the
+id's own time names (then the most recent 31), and refuses a file whose first
+`session_meta` record names another thread. Symbolic links below either home
+are refused by checks made immediately before the file is opened; the checks
+are not atomic against a concurrent swap by a process running as the same
+user.
 
 The transcript is shown in file order, so it can include what Claude Code's
 own reader hides: a branch abandoned by a retry or an edit, and a compaction
-summary. A single record of any type larger than 4 MiB is skipped and shown
-as one `too-large` entry.
+summary. A Codex transcript shows the parent's task, the child's own input,
+its replies, and its tool calls and their text output; the context Codex
+injects as user messages, developer instructions, reasoning and encrypted
+content are left out. A task whose payload Codex encrypted shows its header
+alone. A forked child's rollout (`forked_from_id` in its `session_meta`)
+begins with a copy of its parent's conversation; only the child's own part
+is shown, from the meta's `subagent_history_start_ordinal`, or after the
+message saying the preceding conversation is inherited parent context when
+no start ordinal is written. A forked rollout with neither shows nothing
+rather than the parent's history. A single record of any type larger than 4 MiB is
+skipped and shown as one `too-large` entry.
 
 ### Live SSE feed (`GET /events`)
+
+Codex app-server stderr is drained without adding its content to session
+history or failure messages. With a server logger configured, Station emits one
+content-free diagnostic per process when it receives nonblank stderr. Codex
+protocol warnings, including `configWarning`, and process or turn failures
+still surface as session events.
 
 ```
 GET /api/orchestration/events              # all sessions the caller can read
@@ -1935,6 +1980,55 @@ completing; the diagnostic deliberately does not answer it for you.
 
 
 ## Review work in the attention inbox
+
+`GET /api/attention` returns `{success: true, data: {items, pendingCount}}`.
+Acknowledged and actively snoozed items remain in `items`; `pendingCount` is
+exactly `items.filter(isPendingAttentionItem).length`, where pending means
+neither `acknowledgedAt` nor `snoozedUntil` is present. The
+[attention contract](../../packages/contracts/src/attention.ts) also derives
+project counts from that predicate.
+
+`POST /api/attention/:id/ack` acknowledges the server-derived current item
+version. Standing notices such as `setup-incomplete` and decision-resolved
+kinds such as `proposed-change` and `gate-review` still refuse acknowledgement.
+
+With **Attention snooze** (`attention-snooze`) enabled in **Settings → Advanced →
+Feature previews**:
+
+- `POST /api/attention/:id/snooze` accepts `{until: string}` and returns
+  `{success: true, data: {snoozedUntil: string}}` with status 200. `until` must
+  be an ISO timestamp with a timezone, strictly after the server clock and at
+  most 30 days ahead (`ATTENTION_SNOOZE_MAX_MS`). The server normalizes it to
+  UTC. Invalid, past, present, or longer durations return 400 with a string
+  `error`; nothing is clamped. An absent current item returns 404.
+- `DELETE /api/attention/:id/snooze` removes only the caller's snooze, returning
+  `{success: true}` with status 200 even if no snooze or item exists.
+
+Every projected kind can be snoozed, including standing notices and pending
+human decisions. The service re-derives the item under the same request
+read authority as `/ack`; clients cannot supply its version. Snoozes live in
+`attention-snoozes.json`, separately from acknowledgements, scoped by user and
+item with the source `updatedAt` version and deadline. Writes prune expired
+entries. An active snooze decorates `snoozedUntil` only while the source version
+is no newer than the saved version and the deadline is strictly in the future.
+Expiry, a newer source version, or unsnooze restores pending status unless the
+item was acknowledged. No source decision or activity is deleted.
+
+Both mutations use the same `orchestration:operate` pairing scope as `/ack`.
+Like `/ack`, they emit no event; SDK mutations invalidate the attention cache
+and the attention query polls every 10 seconds. Expiry is observed on the next
+read, without a background timer. Disabling the preview refuses mutations with
+404 and `code: 'feature_preview_disabled'`, and omits snooze decoration while
+off; saved unexpired snoozes apply again if enabled for the same source version.
+This preview adds local file writes and no provider calls or background jobs.
+
+Implementation and evidence: [routes](../../src-server/routes/orchestration/attention.ts),
+[projection](../../src-server/services/projects/attention-projection.ts),
+[snooze store](../../src-server/services/projects/attention-snooze-store.ts),
+[HTTP tests](../../src-server/routes/orchestration/__tests__/attention.routes.test.ts),
+and [projection tests](../../src-server/services/projects/__tests__/attention-projection.test.ts).
+These tests exercise app requests and local persistence, not a deployed client
+or device journey.
 
 `/api/attention` projects supported attention sources for the caller, including
 the two that used to be reachable only from `/review-queue`:

@@ -1466,6 +1466,7 @@ export class MuseAdapter implements ProviderAdapterShape {
     });
     const turn: MuseActiveTurn = {
       turnId,
+      ...(input.invocationId ? { invocationId: input.invocationId } : {}),
       process: spawned.process,
       release: () => {
         try {
@@ -1568,6 +1569,7 @@ export class MuseAdapter implements ProviderAdapterShape {
       createdAt: this.now().toISOString(),
       method: 'turn.started',
       turnId,
+      ...(turn.invocationId ? { invocationId: turn.invocationId } : {}),
       prompt: input.displayInput ?? input.input,
       ...(input.ambientContext ? { ambientContext: input.ambientContext } : {}),
       ...(Object.keys(turnStartedMetadata).length > 0
@@ -1597,6 +1599,7 @@ export class MuseAdapter implements ProviderAdapterShape {
       ({ turnId } = await serve.sendTurn({
         prompt: input.input,
         displayPrompt: input.displayInput ?? input.input,
+        ...(input.invocationId ? { invocationId: input.invocationId } : {}),
         images: decoded.map((image) => ({
           mediaType: image.attachment.mimeType,
           base64: image.base64,
@@ -2438,6 +2441,7 @@ export class MuseAdapter implements ProviderAdapterShape {
           createdAt: nowIso,
           method: 'turn.aborted',
           turnId: turn.turnId,
+          ...(turn.invocationId ? { invocationId: turn.invocationId } : {}),
           reason: outcome.abortReason,
         });
         break;
@@ -2451,6 +2455,7 @@ export class MuseAdapter implements ProviderAdapterShape {
           ...providerFailureForCode(outcome.error.code),
           severity: 'error',
           turnId: turn.turnId,
+          ...(turn.invocationId ? { invocationId: turn.invocationId } : {}),
           // The bounded output-text detail and stderr tail ride the error
           // rather than a warning of their own: for a turn that died on an
           // expired key or an unknown model, this message is the ONLY
@@ -2468,6 +2473,7 @@ export class MuseAdapter implements ProviderAdapterShape {
           createdAt: nowIso,
           method: 'turn.completed',
           turnId: turn.turnId,
+          ...(turn.invocationId ? { invocationId: turn.invocationId } : {}),
           finishReason: outcome.finishReason,
           ...(outcome.outputText === undefined
             ? {}

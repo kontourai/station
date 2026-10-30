@@ -59,6 +59,7 @@ import {
   FAST_CHECKS_SHARD_IF,
   FAST_CHECKS_SHARD_RUN,
   FAST_CHECKS_SLICE_RUN,
+  isOptionalChromiumCacheRestore,
   MERGE_INTEGRATION_DECISION_STEP,
   REQUIRED_FAST_CHECKS_AGGREGATE_CONDITION,
 } from './ci-workflow-governance.mjs';
@@ -536,7 +537,10 @@ function intelMacosPnpmFindings(file, jobId, job) {
   const nativeSetups = steps.filter(
     (step) =>
       typeof step?.uses === 'string' &&
-      step.uses.toLowerCase().startsWith('pnpm/setup@'),
+      (step.uses.toLowerCase().startsWith('pnpm/setup@') ||
+        (file === '.github/workflows/portable-server-archives.yml' &&
+          jobId === 'archive' &&
+          step.uses === VERIFIED_PNPM_SETUP_ACTION)),
   );
   const { labels } = resolvedRunnerLabels(job);
   if (
@@ -611,8 +615,8 @@ const BASE_CONTROLLED_PR_WORKFLOWS = new Set([
  * The ONLY shared-cache access a pull-request or merge-queue workflow may have:
  * a SHA-pinned restore in a named job. Untrusted candidate code runs in those
  * workflows, so a save there would let a pull request poison an entry that
- * later runs restore. The writer is a trusted main-only warmer
- * (ios-rust-cache-warm.yml). GitHub also issues pull_request_target a
+ * later runs restore. The writers are trusted main-only workflows: the iOS
+ * Rust warmer and Nightly's Chromium source gate. GitHub also issues pull_request_target a
  * read-only cache token by default (changelog 2026-06-26), but a workflow- or
  * job-level `cache-mode` can widen that again, so it is refused outright.
  */
@@ -1983,7 +1987,9 @@ function isPinnedVerifiedPnpmSetup(step) {
   return (
     step?.uses === VERIFIED_PNPM_SETUP_ACTION &&
     step?.name === 'Setup pinned pnpm' &&
-    Object.keys(step).sort().join(',') === 'name,uses'
+    (Object.keys(step).sort().join(',') === 'name,uses' ||
+      (Object.keys(step).sort().join(',') === 'if,name,uses' &&
+        step.if === PNPM_SETUP_NATIVE_GUARD))
   );
 }
 
@@ -2111,6 +2117,7 @@ function unapprovedActionFindings(file, jobId, job, allowedPrefixes) {
       (step) =>
         typeof step?.uses === 'string' &&
         !isPinnedPnpmSetup(step) &&
+        !isReviewedCacheRestore(file, jobId, step) &&
         !allowedPrefixes.some((prefix) => step.uses.startsWith(prefix)),
     )
     .map(() => ({
@@ -3159,6 +3166,21 @@ function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
 }
 
 function isReviewedCacheRestore(file, jobId, step) {
+  const chromiumCondition =
+    jobId === 'fast-checks-shard'
+      ? `\${{ steps.slice.outputs.empty == 'false' }}`
+      : jobId === 'fast-checks-plan'
+        ? `\${{ steps.mode.outputs.legacy == 'true' }}`
+        : undefined;
+  if (
+    file === '.github/workflows/ci.yml' &&
+    ['fast-checks-plan', 'fast-checks-shard', 'fast-checks-statics'].includes(
+      jobId,
+    )
+  )
+    return (
+      isOptionalChromiumCacheRestore(step) && step.if === chromiumCondition
+    );
   return (
     step?.uses === REVIEWED_CACHE_RESTORE_ACTION &&
     CACHE_RESTORE_JOBS[file]?.has(jobId) === true
@@ -3430,7 +3452,7 @@ export function readWorkflowDocuments() {
 const BACKGROUND_QUALIFICATION_GROUP = `\${{ inputs.capacity_class == 'background' && 'station-background-compute' || inputs.capacity_class == 'release' && 'station-release-qualification' || format('station-integration-qualification-{0}', inputs.source_sha) }}`;
 const PR_SOURCE_FIFO_GROUPS = {
   'fast-checks-statics': `\${{ github.event_name == 'pull_request_target' && format('ci-pr-statics-{0}', (endsWith(format('{0}', github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '3') || endsWith(format('{0}', github.event.pull_request.number), '5') || endsWith(format('{0}', github.event.pull_request.number), '7') || endsWith(format('{0}', github.event.pull_request.number), '9')) && 'odd' || 'even') || format('ci-fast-statics-{0}-{1}-{2}-{3}', github.event_name, github.event.pull_request.number || github.ref, github.event.pull_request.head.sha || github.sha, github.event.pull_request.base.sha) }}`,
-  'fast-checks-shard': `\${{ github.event_name == 'pull_request_target' && format('ci-pr-shards-{0}', ((endsWith(format('{0}', github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '3') || endsWith(format('{0}', github.event.pull_request.number), '5') || endsWith(format('{0}', github.event.pull_request.number), '7') || endsWith(format('{0}', github.event.pull_request.number), '9')) != (matrix.shard == 1 || matrix.shard == 3)) && 'odd' || 'even') || format('ci-fast-shard-{0}-{1}-{2}-{3}-{4}', matrix.shard, github.event_name, github.event.pull_request.number || github.ref, github.event.pull_request.head.sha || github.sha, github.event.pull_request.base.sha) }}`,
+  'fast-checks-shard': `\${{ github.event_name == 'pull_request_target' && (matrix.shard == 1 || matrix.shard == 3) && (endsWith(format('{0}', github.event.pull_request.number), '0') || endsWith(format('{0}', github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '2')) && 'ci-pr-shards-third' || github.event_name == 'pull_request_target' && format('ci-pr-shards-{0}', ((endsWith(format('{0}', github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '3') || endsWith(format('{0}', github.event.pull_request.number), '5') || endsWith(format('{0}', github.event.pull_request.number), '7') || endsWith(format('{0}', github.event.pull_request.number), '9')) != (matrix.shard == 1 || matrix.shard == 3)) && 'odd' || 'even') || format('ci-fast-shard-{0}-{1}-{2}-{3}-{4}', matrix.shard, github.event_name, github.event.pull_request.number || github.ref, github.event.pull_request.head.sha || github.sha, github.event.pull_request.base.sha) }}`,
 };
 export function legacyActionlintSources(workflows) {
   const expected = {

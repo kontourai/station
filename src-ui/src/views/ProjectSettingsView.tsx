@@ -10,6 +10,10 @@ import {
   useUpdateProjectMutation,
 } from '@kontourai/station-sdk';
 import { Fragment, useEffect, useRef, useState } from 'react';
+import {
+  AccountIdentityConflict,
+  isAccountIdentityConflict,
+} from '../components/AccountIdentityConflict';
 import { Button } from '../components/Button';
 import { DetailHeader } from '../components/DetailHeader';
 import { EnvironmentPicker } from '../components/EnvironmentPicker';
@@ -32,6 +36,7 @@ import {
 } from '../components/project-icon/ProjectIconPicker';
 import { SectionNav } from '../components/SectionNav';
 import { ErrorState, Skeleton } from '../components/state';
+import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { useConfig } from '../contexts/ConfigContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import {
@@ -161,6 +166,7 @@ function connectionInitialModelId(
 }
 
 export function ProjectSettingsView({ slug }: { slug: string }) {
+  const authority = useHostRequestAuthorityScope();
   const stationConfig = useConfig();
   const { navigate } = useNavigation();
   const showSurface = useShowSurface();
@@ -269,6 +275,24 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
     !isLoading && !!form && JSON.stringify(form) !== JSON.stringify(savedForm);
   const { DiscardModal } = useUnsavedGuard(isDirty);
   useCloseShortcut(() => navigate(`/projects/${slug}`));
+
+  if (
+    isLoadError &&
+    !project &&
+    authority &&
+    isAccountIdentityConflict(loadError)
+  ) {
+    return (
+      <div className="page page--full">
+        <div className="project-settings__body">
+          <AccountIdentityConflict
+            apiBase={authority.apiBase}
+            onRecovered={() => refetchProject()}
+          />
+        </div>
+      </div>
+    );
+  }
 
   if (isLoadError && !project) {
     return (

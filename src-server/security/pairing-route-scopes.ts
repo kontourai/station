@@ -759,6 +759,19 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ORCHESTRATION_READ,
     origin: 'explicit',
   },
+  // Epic #3439: Automation reads (S2 mounts only `GET /automations/deliveries`)
+  // return bounded projections — hashed transport keys, outcome codes and
+  // ids, never a payload or secret. The shared ledger is operator management,
+  // Deliberately NOT a family: `/automations` mutations create and enable
+  // triggers that start agent work, so every mutating method stays unmapped
+  // (refused) until a later slice classifies it on purpose.
+  {
+    id: '/automations:read',
+    method: 'GET',
+    prefix: '/automations',
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
   ...PAIRING_SCOPE_DOMAIN_PREFIXES.flatMap((prefix) => [
     ...READ_METHODS.map(
       (method): PairingScopeRouteRule => ({
@@ -1663,6 +1676,14 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     id: '/acp/registry/recheck:operate',
     method: 'POST',
     prefix: '/acp/registry/recheck',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/orchestration/sessions/:threadId/goal:operate',
+    method: 'POST',
+    prefix: '/api/orchestration/sessions/:threadId/goal',
     exact: true,
     scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
     origin: 'explicit',
@@ -3443,6 +3464,20 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'GET',
       path: '/api/orchestration/session-activity/:sessionId/digest',
     },
+    // #3427 the person-facing leaves of the same reads (`station activity`,
+    // `station sessions digest|wait`): owner-scoped, held to the Projects the
+    // person may view, and refused to every internal request. They read
+    // nothing the family's `/events` stream does not already stream to the
+    // same credential, so the family's read tier is enough.
+    { method: 'GET', path: '/api/orchestration/session-reads/activity' },
+    {
+      method: 'GET',
+      path: '/api/orchestration/session-reads/:sessionId/digest',
+    },
+    {
+      method: 'GET',
+      path: '/api/orchestration/session-reads/:sessionId/wait',
+    },
     // #3413 part B work claims. The three POST leaves are agent-only at the
     // route (403 `station_control_caller_required` without a verified
     // station-control caller), and the claimant is that caller's own Session.
@@ -3530,11 +3565,30 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'POST',
       path: '/api/orchestration/agent-schedule/:conversationId/job-proposals/:proposalId/decline',
     },
+    // #3628: the person's own coordinator designation. Every leaf reads or
+    // writes only the request principal's record and refuses a request that
+    // may be an agent's; designating also needs sending to the conversation.
+    // No leaf is more sensitive than the family.
+    { method: 'GET', path: '/api/orchestration/coordinator' },
+    { method: 'GET', path: '/api/orchestration/coordinator/picture' },
+    {
+      method: 'GET',
+      path: '/api/orchestration/station-control/coordinator-picture',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/station-control/coordinator-picture',
+    },
+    { method: 'PUT', path: '/api/orchestration/coordinator' },
+    { method: 'DELETE', path: '/api/orchestration/coordinator' },
     // #2061 Boards: the family read/mutate split is exactly right here —
     // every leaf resolves its owner from the request principal and can reach
     // no other principal's records, so none is more sensitive than the family.
     { method: 'GET', path: '/api/me/preferences' },
     { method: 'PATCH', path: '/api/me/preferences' },
+    { method: 'GET', path: '/api/me/notifications' },
+    { method: 'POST', path: '/api/me/notifications/:id/read' },
+    { method: 'DELETE', path: '/api/me/notifications/:id' },
     { method: 'GET', path: '/api/me/boards/:layoutSlug' },
     { method: 'POST', path: '/api/me/boards/:layoutSlug/proposal' },
     { method: 'PUT', path: '/api/me/boards/:layoutSlug' },
@@ -3897,6 +3951,8 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // on local state with no cross-environment read, so the family default
     // (POST → orchestration:operate) is exactly right.
     { method: 'POST', path: '/api/attention/:id/ack' },
+    { method: 'POST', path: '/api/attention/:id/snooze' },
+    { method: 'DELETE', path: '/api/attention/:id/snooze' },
     { method: 'GET', path: '/api/auth/badge-photo/:id' },
     { method: 'POST', path: '/api/auth/renew' },
     // A server-bound, read-only authority fact. The desktop uses an explicit
@@ -4048,6 +4104,22 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'POST', path: '/integrations/:id/oauth/authorize' },
     { method: 'POST', path: '/integrations/:id/oauth/callback' },
     { method: 'POST', path: '/integrations/:id/reconnect' },
+    // #3483: keeps or resets an integration's legacy trust settings in this
+    // Station, like an integration edit; the handler requires the operator in
+    // person and records a receipt.
+    { method: 'POST', path: '/integrations/:id/trust-review' },
+    // #3483: a conversation's untrusted-content mark. The read resolves
+    // through the integration detail rule (operate); clearing relaxes a
+    // protection within this Station and inherits integration operate, and
+    // the handler further requires the operator in person.
+    {
+      method: 'GET',
+      path: '/integrations/untrusted-content/conversations/:conversationId',
+    },
+    {
+      method: 'POST',
+      path: '/integrations/untrusted-content/conversations/:conversationId/clear',
+    },
     { method: 'POST', path: '/integrations/:id/tools/apply' },
     { method: 'POST', path: '/integrations/:serverId/ui/call' },
     { method: 'POST', path: '/integrations/:serverId/ui/permissions' },
@@ -4258,6 +4330,7 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     },
     { method: 'GET', path: '/api/orchestration/sessions' },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId' },
+    { method: 'GET', path: '/api/orchestration/sessions/:threadId/goal' },
     // Immutable experience history uses the same Session read authority;
     // the reader also authorizes every historical thread before publication.
     {
@@ -4990,6 +5063,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // sensitive than the rest of the family — plain family inheritance.
     // Two got individual scrutiny rather than a rubber stamp:
     { method: 'GET', path: '/api/plugins' },
+    // Retained plugin recovery backups (Feature Preview). The handler answers
+    // only the operator credential, so a paired device that reaches it with
+    // the family read scope is refused there; the scope is the floor.
+    { method: 'GET', path: '/api/plugins/recovery-backups' },
     // archive#3677 PR 3: locality-gated in-handler (see the family comment
     // on PAIRING_SCOPE_DOMAIN_PREFIXES) — the scope tier is deliberately the
     // family default, and the home-possession check is the authority.

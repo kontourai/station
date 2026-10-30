@@ -48,7 +48,12 @@ or TLS. Solo local operation still requires neither accounts nor a provider when
 these opt-ins are absent.
 
 The operator enables sharing in a Project's **People and access** section,
-chooses a role and creates a single-use invitation link. Share the link manually;
+chooses a role and creates a single-use invitation link. Before sharing is on,
+an eligible caller sees **Sharing is off** and **Enable Project sharing**.
+Station offers this only to a human caller with Station owner (operator) authority
+whose Device credential can reach the enable route, for example the operator
+console on the Station's own computer. Other callers see an explanation instead
+and are not told whether the Project is shared. Share the link manually;
 no email is sent. The default link may be accepted by any authenticated person
 who possesses it, once, before its expiry. Cancel a pending link from that same
 section. An optional email restriction requires provider-verified contact
@@ -164,8 +169,34 @@ Disable stale session-cookie caches for authorization reads. For example,
 explains that cookie caching can delay revocation visibility. Session renewal
 belongs to an explicit operation that can deliver its cookie response; ordinary
 verification must not consume the destination body or silently refresh cookies.
-Original device/person bindings and historical authorship are preserved. A
-conflicting verified ingress person or device/person binding is refused.
+Original device/person bindings and historical authorship are preserved. On
+the scoped surfaces below, a current, synchronously witnessed local-account
+session names the person even when Tailscale Serve supplies WhoIs. WhoIs is
+ingress provenance, not a linked account. A Device credential must still be
+bound to that account, and an account session cannot use operator authority.
+Other providers retain their existing ingress agreement checks. Without an
+account session, WhoIs attribution is unchanged.
+
+The WhoIs exception applies to these exact surfaces:
+
+- Any method on `/api/account-auth` and its descendants.
+- `POST` to `/.well-known/station/v1/pairing/access-request` and `/.well-known/station/v1/pairing/exchange`.
+- Any method on `/api/projects/:slug/access` and its descendants.
+- `GET` or `HEAD` on `/api/projects`, `/api/projects/:slug`, and the Project's `room` and `shared-work` paths and descendants.
+- `GET` or `HEAD` on `/api/tasks/:id/children`, `/api/tasks/:id/work-chats`, and `/api/tasks/:id/work-chats/:chatId`; `PUT` on `/api/tasks/:id/parent`; `POST` on the children and work-chats paths; and `DELETE` on the work-chats path.
+
+Other leaves retain their existing ingress-agreement behavior. This exception
+changes person attribution only; each route still enforces its own admission and
+resource permissions. A conflicting operator or Device caught by the scoped
+local-account rule is refused with `403 account_identity_conflict`. The local
+account's `POST /api/account-auth/sign-out` remains available to end that
+account session; it does not revoke the Device credential. It accepts an exact
+Station-allowed browser Origin as well as the authentication Origin, so an
+owner using an allowed loopback UI can recover. This exception applies only to
+local sign-out; other account operations keep the authentication Origin policy.
+Account-tied personal tokens retain their separate conflict refusal described
+below.
+
 
 ## HTTP behavior
 
@@ -221,10 +252,12 @@ used by its principal-resolution owner. Project sharing still needs the separate
 member/resource authorization implementation.
 
 A verified person can read and patch their own `/api/me/preferences` from an
-account-bound Device. Exact GET/HEAD/PATCH admission does not open other `/api/me`
-paths. Account preferences are partitioned by person and trusted tenant on this
-Station, and grant no Device or execution authority. See
-[account preferences](../design/settings-architecture.md#account-preferences-and-device-settings).
+account-bound Device. The exact GET/HEAD/PATCH preference admission grants no
+other `/api/me` path; the person's notification feed has its own separately
+admitted read and mutation leaves. Account preferences are partitioned by
+person and trusted tenant on this Station, and grant no Device or execution
+authority. See [account preferences](../design/settings-architecture.md#account-preferences-and-device-settings)
+and [person notifications](../reference/api.md#person-notifications).
 
 ### Account-bound collaborator Devices
 
@@ -240,6 +273,12 @@ This flag is mutually exclusive with the existing
 bounded `principalBinding` receipt, including its account kind, issuer,
 subject, display name, approval ID, approver and time. Station rechecks the
 provider session and operator credential after reading the confirmation body.
+
+Reusing a client-instance correlation can replace an earlier Device only within
+the existing ingress replacement domain. If either Device has an account
+binding, the approved issuer and subject must match on both; different accounts
+and unbound Devices remain separate even when they share a Serve WhoIs login.
+The correlation is not account proof or Project membership.
 
 The exchanged Device must present a current account for that exact
 issuer/subject on protected resource requests, apart from the narrowly scoped

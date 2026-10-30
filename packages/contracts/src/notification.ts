@@ -124,8 +124,8 @@ export type NotificationSource =
 export type NotificationAudience =
   | { kind: 'owner' }
   | { kind: 'session-readers'; sessionId: string }
-  /** Reserved for future accounts; no resolver produces surfaces for it yet. */
-  | { kind: 'principal'; principalId: string };
+  /** Legacy read-side records may omit projectId; new writes must supply it. */
+  | { kind: 'principal'; principalId: string; projectId?: string };
 
 export type NotificationTarget =
   | { kind: 'session'; sessionId: string }

@@ -78,6 +78,41 @@ function dependencies(): ExecutionTargetExecutionDependencies {
 }
 
 describe('executeForegroundMessage', () => {
+  test('carries a prompt origin to the authorized local turn and refuses a remote target', async () => {
+    const deps = dependencies();
+    deps.readSessionBinding = vi.fn(async () => ({
+      environmentId: 'environment-kontour',
+      agentId: 'station',
+      userId: 'test-user',
+    }));
+    const input = {
+      userId: 'test-user',
+      target: {
+        environment: { kind: 'current' as const },
+        agent: agentId('station'),
+      },
+      conversationId: 'conversation:test',
+      message: 'MCP prompt',
+      mcpPromptOrigin: { serverId: 'mail', name: 'summarize', untrusted: true },
+    };
+    await executeForegroundMessage(input, deps);
+    expect(deps.sendTurn).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ mcpPromptOrigin: input.mcpPromptOrigin }),
+    );
+    deps.resolveEnvironmentAccess = async () =>
+      ({
+        apiBase: 'https://remote.example',
+        environmentId: 'remote',
+        environmentName: 'Remote',
+        kind: 'remote',
+        requestOptions: {},
+      }) as any;
+    await expect(executeForegroundMessage(input, deps)).rejects.toThrow(
+      /cannot be safely carried to another Station/,
+    );
+  });
   // #4162: `resolution` names the Agent's binding at send time. Only a send
   // that started its Session may let a client read it as that Session's
   // engine; a turn sent to a running Session (possibly on an older engine)
@@ -433,6 +468,23 @@ describe('executeForegroundMessage', () => {
         },
         deps,
       );
+
+    test('records a coordinator tools restart on the successor start', async () => {
+      const deps = restartDependencies();
+      deps.resolveConversationSession = vi.fn(async () => ({
+        sessionId: 'conversation:test:successor',
+        startRequired: true,
+        coordinatorToolsRestart: true,
+      }));
+      await send(deps);
+      expect(deps.startSession).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          threadId: 'conversation:test:successor',
+          metadata: expect.objectContaining({ coordinatorToolsRestart: true }),
+        }),
+      );
+    });
 
     test('stops the predecessor only after the successor has started', async () => {
       const deps = restartDependencies();

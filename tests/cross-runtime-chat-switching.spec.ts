@@ -1003,7 +1003,7 @@ async function seedCrossRuntimeRoutes(
 /** The dock's start composer, opened from the dock's one New. */
 function dockComposer(page: Page) {
   return page
-    .getByRole('dialog', { name: 'New chat', exact: true })
+    .getByRole('region', { name: 'New chat', exact: true })
     .getByRole('form', { name: 'Start work' });
 }
 
@@ -1512,7 +1512,7 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
       }),
     ).toBeVisible();
     await page
-      .getByRole('dialog', { name: 'New chat', exact: true })
+      .getByRole('region', { name: 'New chat', exact: true })
       .press('Escape');
     await expect(page.locator('.new-chat-modal')).toHaveCount(0);
     // Nothing started: the open chat is unchanged. The project chip is
@@ -1735,21 +1735,23 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
       .getByRole('button', { name: 'Show Chat', exact: true })
       .click();
     await expect(chatList).toBeVisible();
-    // Close actions identify open conversations, excluding unopened history.
-    // Compare identities so replacing a chat cannot hide behind an equal count.
-    const openChatRows = chatList.getByRole('button', { name: /^Close / });
-    await expect(openChatRows).toHaveCount(5);
+    // Compare inbox conversation identities so replacing a chat cannot hide behind an equal count.
+    const openChatRows = chatList.getByRole('button', {
+      name: /^Dismiss .* from inbox$/,
+    });
+    await expect(openChatRows).toHaveCount(6);
     const readOpenChats = () =>
       openChatRows.evaluateAll((rows) =>
         rows.map((row) => row.getAttribute('aria-label')).sort(),
       );
     const sessionsBeforeSwitch = await readOpenChats();
     expect(sessionsBeforeSwitch).toEqual([
-      'Close Claude Alpha Chat',
-      'Close Codex Beta Chat',
-      'Close Station Chat',
-      'Close Unbound Station Chat',
-      'Close kiro-cli Chat',
+      'Dismiss Claude Alpha Chat from inbox',
+      'Dismiss Codex Beta Chat from inbox',
+      'Dismiss Remember the exact token CEDAR-82. Reply only: CODEX_CONTEXT_OK from inbox',
+      'Dismiss Station Chat from inbox',
+      'Dismiss Unbound Station Chat from inbox',
+      'Dismiss kiro-cli Chat from inbox',
     ]);
     const activeChatBeforeSwitch = new URL(page.url()).searchParams.get('chat');
     expect(activeChatBeforeSwitch).toBeTruthy();
@@ -1844,9 +1846,10 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
       await newChat.click();
       await expect(chats).not.toBeVisible();
       await expect(page.locator('.new-chat-modal')).toBeVisible();
+      // The draft has no close button: Escape dismisses it.
       await page
-        .getByRole('button', { name: 'Close new chat', exact: true })
-        .click();
+        .getByRole('textbox', { name: 'What would you like done?' })
+        .press('Escape');
 
       await trigger.click();
       const dialog = page.getByRole('dialog', { name: 'Projects' });

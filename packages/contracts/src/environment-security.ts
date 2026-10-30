@@ -1345,6 +1345,22 @@ export interface StationCapabilityFlags {
    * about this build, never a statement that any request is open.
    */
   delegatedInputAnswers?: boolean;
+  /**
+   * #3628: `/api/orchestration/coordinator` reads and sets the person's
+   * coordinator Session. Withdrawn on a hosted Station, which keeps no
+   * conversation inbox to wake it through.
+   */
+  coordinatorSession?: boolean;
+  /**
+   * #3427: this build serves the person-facing Session reads under
+   * `/api/orchestration/session-reads` (a Session wait that reports a turn a
+   * restart cut off, a Session digest, and the Project activity list) for a
+   * person's own credential. A STATIC protocol fact: whether they answer is
+   * the `session-cli-reads` Feature Preview's, refused with
+   * `feature_preview_disabled`. A client gates the reads on this flag so an
+   * older host is told apart from a Session that is not found.
+   */
+  sessionPersonReads?: boolean;
 }
 
 export interface PublicStationHandshake {

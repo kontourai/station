@@ -52,6 +52,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [NativeApplicationSignaling](#nativeapplicationsignaling) | Own a native peer transcript and one bounded Device request proof for the opt-in application transport. | `src-desktop/src/native_application_peer.rs` |
 | [PendingPairingCompletion](#pendingpairingcompletion) | Complete one accepted device-pairing request once, with shared subscribers and bounded retry. | `packages/connect/src/core/pendingPairingCompletion.ts` |
 | [SessionQueryModule](#sessionquerymodule) | Authorize and project one conversation from one ordered event stream. | `src-server/services/orchestration/session-query-module.ts` |
+| [SessionGoalModule](#sessiongoalmodule) | Inspect and control an exact live Session's advertised Goal capability. | `src-server/services/orchestration/session-goal-module.ts` |
 | [ConversationSessionLineage](#conversationsessionlineage) | Establish and inspect durable conversation-to-execution-session lineage. | `src-server/services/orchestration/conversation-session-lineage.ts` |
 | [SessionCommandModule](#sessioncommandmodule) | Execute the closed session-command vocabulary and return an outcome with explicit receipt certainty. | `src-server/services/orchestration/session-command-module.ts` |
 | [SessionLifecycleModule](#sessionlifecyclemodule) | Mutate one session lifecycle without racing provider turn startup. | `src-server/services/orchestration/session-lifecycle-module.ts` |
@@ -113,10 +114,11 @@ and where to start reading; it is a pointer, not a reviewed interface contract.
 | Directory | What it owns | Read next |
 | --- | --- | --- |
 | `src-server/services/access/` | Station groups, personal access tokens, and the principal a paired device is tied to (#3557) | [Principals](../design/principals.md) |
-| `src-server/services/automation/` | Foundation only: config validation, store and a delivery ledger for Station Automations. No route or runtime wiring calls it yet (#3439) | [Automations proposal](../design/automations.md) |
+| `src-server/services/automation/` | Default-off observe-only GitHub intake, atomic delivery/episode storage and management-scoped delivery history; action dispatch remains pending (#3439) | [Automations proposal](../design/automations.md) |
 | `src-server/services/board/` | The Board store for one Task or Session (tabs and ordinal widgets; contract in `packages/contracts/src/board.ts`), behind `src-server/routes/board.ts`, which authorizes the owning reference before any store read | Source |
+| `src-server/services/chat-apps/` | Messaging bindings, identity links, kill switches and delivery receipts in the orchestration database; Discord imports its legacy authority once. Live Discord validation remains outstanding. | [Messaging core](../../src-server/services/chat-apps/chat-app-core.ts) |
 | `src-server/services/config/` | The idempotent log-level edit with retained terminal receipts | [Logging configuration](../reference/config.md#logging) |
-| `src-server/services/discord/` | The Discord gateway: private configuration in `<home>/security/discord-gateway.json`, allowlist and identity authorization, channel-to-session bindings and reply relay | [Gateway service](../../src-server/services/discord/discord-gateway-service.ts) |
+| `src-server/services/discord/` | Discord transport and ordered, bounded reply chunks with separate receipts and linked busy refusals; the private token stays in `<home>/security/discord-gateway.json`, whose live policy remains an additional authority ceiling | [Gateway service](../../src-server/services/discord/discord-gateway-service.ts) |
 | `src-server/services/feature-previews/` | The registry of opt-in feature previews this build can run, persisted per Station and shown under Settings → Advanced; served by `src-server/routes/system/feature-previews.ts`. [Contributor workflow](../guides/feature-previews.md) | Source |
 | `src-server/services/kits/` | Installed-Kit observability lifecycle and persistence for the host | Source |
 | `src-server/services/presence/` | Process-local, non-durable focus presence per paired device or client session (#2585) | Source |
@@ -232,14 +234,15 @@ behind `station environment operator passkeys`. The
 [session service](../../src-server/services/identity/operator-sessions.ts) verifies
 single-use sign-in assertions on the [consent origin](../../src-server/runtime/consent/operator-sign-in-routes.ts)
 and stores hashed, device-bound sessions in that same private registry. The HTTP
-boundary admits exact session read leaves and per-action access-change requests.
+boundary admits exact session read leaves, including pending pairing requests,
+and per-action access-change requests.
 Those writes return 202 without mutation. The
 [consent store](../../src-server/services/consent/consent-transactions.ts) owns the
 single-use transaction and target fingerprint; the separate consent listener
 requires a UV passkey assertion from its owning session before commit. Cancel
 uses that session and the render nonce on the consent origin to record terminal
-denial without a passkey; it cannot commit. Device
-scope/revoke/removal, people groups, personal tokens and different-passkey
+denial without a passkey; it cannot commit. Ordinary Device pairing approval,
+Device scope/revoke/removal, people groups, personal tokens and different-passkey
 revocation share this boundary. Token secrets appear once in the commit response,
 never in transaction reads. Server-side idle/absolute expiry and live pairing,
 passkey and credential-rotation checks remain enforced; step-up and its status
@@ -1390,6 +1393,35 @@ WebView or physical-device persistence. Do not reintroduce per-screen polling,
 transport-error replay, competing completion policies or a localStorage admission
 lock.
 
+## SessionGoalModule
+
+**Interface.** The [Session Goal contract](../../packages/contracts/src/session-goal.ts)
+defines observations, advertised operations and mutation outcomes for engine-
+or Station-owned implementations. Unsupported, unavailable and indeterminate
+are distinct. A Goal's completion never completes a Task or passes a gate.
+
+**Ownership and authority.** The [module](../../src-server/services/orchestration/session-goal-module.ts)
+uses the exact current live adapter from Orchestration, refusing replaced and
+read-only attached adapters. The [route](../../src-server/routes/orchestration/session-goals.ts)
+is behind the default-off Session goals preview. Reads use Session-read
+authority; writes require a person and Session mutation authority. Both recheck
+authority and adapter identity after provider I/O. SDK hooks partition data by
+Station, authority and Session; Chat settings consumes the same capability.
+
+**Current implementation.** The [Codex adapter](../../src-server/providers/adapters/codex-goals.ts)
+uses an already-owned app-server connection and validates native thread identity.
+It supports read, save paused, pause and clear, with bounded waits and no
+automatic mutation retry. An unacknowledged mutation remains pending after a
+timeout. Reads never start or resume an engine. Activation and Station-managed
+execution remain unavailable pending durable admission and recovery integration.
+
+**Evidence.** [Route tests](../../src-server/routes/orchestration/__tests__/session-goals.test.ts)
+cover authorization and preview; [service tests](../../src-server/services/orchestration/__tests__/orchestration-service.test.ts)
+check replaced-adapter eligibility. [Adapter tests](../../src-server/providers/__tests__/codex-goals.test.ts)
+exercise a fake app-server pipe, timeouts and foreign native identity. They do
+not establish installed-app or autonomous execution qualification. See the
+[delivery plan](../plans/integration-completion-program.md) for remaining work.
+
 ## SessionQueryModule
 
 This is the read boundary for a Session’s messages and exact answer/input/result references. It keeps authorization and event interpretation together so routes and Knowledge readers do not each reconstruct a different answer. The [query implementation](../../src-server/services/orchestration/session-query-module.ts) separates transcript replay from bounded Basis descriptors.
@@ -1459,6 +1491,13 @@ caller to the same rule for a stored conversation, which has no Session record
 to read: it asks `target` for the Project named in the conversation's own
 metadata (global when it names none) and passes that to the shared rule, after
 the owner check (which a bound operator caller skips). A named Project Station cannot read refuses.
+The [fork route](../../src-server/routes/chat/conversations.ts)
+(`fork_conversation`) applies the rule twice before it writes: the source as a
+Conversation target with Project `view`, then the fork's Project as a new
+Session target with `execute`, so an agent forks only what its scope admits
+and only into a scope where it could start a Session. The
+[mounted fork test](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-fork-conversation.test.ts)
+drives each caller kind through it.
 
 **Start-time repeat.** The resolved directory is still a string when the engine
 starts. For a new Session and any caller except a bound operator, the route
@@ -1576,7 +1615,10 @@ the caller's scope and keys each request in the durable
 before it reaches this module. `wait_session` observes
 the same lifecycle fold the steer path reads through
 [SessionTurnWaiter](../../src-server/services/orchestration/session-turn-wait.ts),
-which never acts on the Session. The
+which never acts on the Session. One waiter per Station also serves the
+person's `station sessions wait` leaf (#3427), so their caps are one budget.
+That leaf alone asks the waiter to report a turn a restart cut off
+(`interruptedTurn`); `wait_session`'s answer is unchanged. The
 [Session control guide](../guides/self-configuring-agent.md#session-control)
 distinguishes ordinary idle from a verified requested-work acknowledgement,
 including the conservative untagged-history limit. Source tests are the
@@ -1760,7 +1802,11 @@ model's summary. [SessionDigest](../../src-server/services/orchestration/session
 folds the recorded facts of a conversation's turns into that account for Station
 Control's `get_session_digest`, and the
 [route](../../src-server/routes/orchestration/session-project-activity.ts) that
-serves it also serves `list_project_activity`.
+serves it also serves `list_project_activity`. The same module serves the
+person-facing leaves behind `station sessions digest` and `station activity`
+(#3427). They share the list and digest code through a viewer, which decides
+visibility per Session: the agent's Project scope rule, or the person's
+Project `view` action.
 
 **Interface.** `EventStore.readTurnDigestFacts(threadIds, { beforeGlobalSequence,
 turnLimit })` selects and aggregates in SQLite the facts of a window of turns,
@@ -1802,6 +1848,83 @@ and remote targets over real events, and the
 pin the bounds. Their presence is not an executed receipt against a real engine.
 See [agent configuration](../guides/self-configuring-agent.md#project-activity)
 for the tool-level behavior.
+
+## CoordinatorWakeDelivery
+
+A person's coordinator Session (#3628) learns when their work needs them,
+fails or finishes, without polling. Its product names live only in the UI copy
+source ([`productNames.ts`](../../src-ui/src/lib/productNames.ts)), which a
+guard test enforces.
+[coordinator-session.ts](../../src-server/services/orchestration/coordinator-session.ts)
+holds the designation and the wake, on the orchestration database.
+
+**Interface.** `EventStore.coordinatorStore()` returns `designate`,
+`undesignate`, `designation`, `designationForConversation`, and the item and
+wake records. `wireCoordinatorWakes` subscribes to `NOTIFICATION_DELIVERED`,
+maps each record through `coordinatorAttentionOf` (needs-input, failed and
+done tiers that name a Session; a requested stop is left out) and hands one
+framed turn per burst to `ThreadInboxDelivery.submit`. The person's
+[routes](../../src-server/routes/orchestration/coordinator.ts) read and set
+the designation. The agent resolver's `isCoordinatorSession` requests the
+coordinator's built-in Station tool servers
+(`withCoordinatorCapabilities`).
+
+**Invariants.** One designation per person and at most one person per
+conversation; a second is refused unless the request says `replace`. An item
+is recorded once per person and remembered for
+`COORDINATOR_WAKE_DEDUPE_WINDOW_MS` (7 days), so a repeat in that window is not
+sent; producers key items per turn or request, so only a replay can repeat one
+later. Read access to each item's Session is decided again when a wake is
+composed, and an unreadable item is dropped. A burst waits
+`COORDINATOR_WAKE_COALESCE_MS`, and at most `COORDINATOR_WAKE_MAX_PER_HOUR`
+wakes go per rolling hour: items past the cap wait for the next slot, and past
+`COORDINATOR_WAKE_MAX_PENDING_ITEMS` a new item is refused. The coordinator's
+own conversation does not wake it, nor does a delegated child's finished or
+failed turn (#3158 already delivers settled turns); a delegated child that
+needs the person does. The wake row is committed before the inbox call under a key
+derived from its id, so a restart re-submits it and the inbox accepts it once.
+When the inbox takes nothing, the items go back and the wake is tried again
+after `COORDINATOR_WAKE_RETRY_DELAYS_MS`, within the hourly cap; the attempt
+and due time are durable. Replacing, removing (`retire`) or deleting the
+coordinator conversation withdraws the wakes still queued in its inbox in one
+operation (`ThreadInboxDelivery.cancelQueued`) and clears the old backoff.
+The inbox's sender policy (`placementRefusal`) checks each wake at placement:
+a retired target, a wake queued over `COORDINATOR_WAKE_QUEUED_MAX_AGE_MS`, or
+an unreadable Session refuses it. The routes' `delivery`
+(`readCoordinatorDelivery` over `coordinatorDeliveryPorts`) says whether
+wakes are blocked (#4051: last turn ended, boundary still held) and whether
+the live Session still lacks the Station tools.
+The turn replays the person's dispatch actor and an internal client origin.
+
+The default-off coordinator-picture preview adds bounded, person-scoped
+conversation notes. The bound designated caller writes through Station Control;
+the person and coordinator reads recheck each conversation's access. Finished
+notes expire after seven days. The preview and normal caller scope both gate the
+operation; the picture is authored context, not an authoritative live status.
+
+For an already-running coordinator, the Claude adapter refreshes its own MCP
+server set before the next turn. Other supported engines use the normal
+conversation continuation path to start a successor, carrying the native
+cursor or an admitted transcript seed. The successor reservation records the
+tools-restart reason atomically, and a started Session exposes it to the chat.
+Station Control and Knowledge credentials added solely by designation recheck
+the designation on every call and are revoked across the conversation's
+Sessions on removal or replacement. A process-local generation fences a late
+provider start; an independently Agent- or Project-authored server retains its
+separate credential. A Claude Session with an earlier coordinator credential
+starts a successor after re-designation.
+An engine that declares tool servers unsupported remains selectable and the
+card and chat show the limitation; no host-wide Codex reload is used.
+
+**Composition and evidence.** The runtime mounts the routes and the wake in
+`runtime-routes.ts`, withdrawn on a hosted Station (`servesCoordinatorSession`).
+Tests: `coordinator-session.test.ts` (designation across a restart, coalescing,
+the hourly and pending caps at max + 1, exclusions, restart hand-over),
+`coordinator-wake-dispatch.test.ts` (a worker's turn ending reaches the
+coordinator's engine once, on ACP and a Claude-provider seam),
+`coordinator.routes.test.ts`, `session-agent-resolution.test.ts`, and
+`coordinator-tools-successor.test.ts` (real service and store with a fake
+Codex adapter; it does not establish live provider behavior).
 
 ## WorkClaimStore
 
@@ -1910,6 +2033,30 @@ creates the actual Session and carries the saved text projection; canonical
 refresh combines copied parent rows with subsequent runtime turns. Deletion
 before first send tombstones the context under the lifecycle guard before file
 cleanup, so failed cleanup cannot reactivate the seed.
+
+Native-fork persistence has a separate, fail-closed recovery boundary. Its
+[private SQLite intent](../../src-server/services/orchestration/event-store.ts)
+joins the existing Session-start claim before invocation. A possible native
+effect cannot be published as a replay fork or deleted as an unstarted context.
+Committing a native child binds its exact owner, workspace, Agent, tenant,
+identity and canonical started/configured/fork facts in one transaction.
+Event and lineage observers run only after the outer commit is confirmed;
+rollback or an uncertain commit publishes no live success.
+
+Recovery reads verify the retained receipt and current stored child separately.
+They admit SQL byte and row budgets before transferring payloads, and bind reads
+to the runtime's original Request, principal, current credential scope and
+release lifetime. The cached activity path accepts only already-warm singleton
+source/child lineages with an actual child-work report. Cold caches, growing
+lineages and missing affected tenant facts refuse without loading history or
+inventing an empty seed. A warm observation is not activation authority.
+
+This is a persistence and read foundation, not built-in native-fork dispatch.
+Retained native attempts still return a context-unavailable response at the fork
+route, including after a successful warm read; they cannot fall through to
+replay success. Native provider activation, general successor-lineage recovery
+and live provider/account qualification remain separate work. Ordinary saved
+replay forks retain their existing behavior.
 
 A turn's outcome
 never ends its session. A finished turn rests it `idle` (at rest and reusable,
@@ -2272,8 +2419,41 @@ captures reject before sender construction. These source boundaries need
 executed interleaving controls; they do not establish generic embedded-runtime
 service cleanup after a late startup failure.
 
+`IntegrationSecretResolver.resolveOAuthClientSecret` materializes one remote
+integration's OAuth client secret for its token requests. It requires an exact
+`mcp-integration-oauth-client` grant for that integration on a non-revoked
+instance binding; environment grants confer none. The integration records only
+the binding id at `oauthClient.clientSecretRef`, written by
+`SecretBindingIntegrationService.bindOAuthClientSecret` (grant first) and
+removed by `unbindOAuthClientSecret` (reference first). Binding requires the integration's declared
+`oauthClient.issuer`; the provider never presents the secret to another issuer. The grant
+records the `issuer`, the resource identity and the integration's instance id
+(`.station-instance`, created by `writeIntegrationConfigLocked` on first write
+and removed with the integration directory) at binding.
+`resolveOAuthClientSecret` reads the current instance id itself and releases
+the secret only for that triple. The provider resolves it at every token
+request and never caches it in a consent flow. A definition rewritten by any
+path cannot redirect the secret, and an integration deleted and recreated
+under the same tuple cannot reuse its grant, so grants are not tied to the
+delete paths. A leftover grant stays visible as binding metadata until
+unbound. Without a declared issuer, `claimIntegrationOAuthIssuerPin` records
+the authorization server of the first completed consent for the resource
+(`.station-oauth-issuer`, under the integration lock); the provider then
+refuses any other issuer before registration or redirect. Unbind
+removes every client-secret grant the binding holds for the integration. The
+issuer/endpoint pin and the no-foreign-reference rule
+(`assertToolOAuthClientWritable` in [the tool contract](../../packages/contracts/src/tool.ts))
+run in `writeIntegrationConfigLocked`, the writer behind
+`ConfigLoader.saveIntegration`/`updateIntegration` and `saveIntegrationConfig`.
+`assertPluginIntegrationsWritable` runs before `copyPluginIntegrations`, which
+copies bundles without that writer. The CLI portability import also calls the
+check. Plugin backup restores put back bytes that were already on disk. The secret is never
+cached or written to the credential store; see
+[Use your own OAuth client](../guides/connections.md#use-your-own-oauth-client).
+
 The v1 document retains legacy records unchanged and adds optional
-`telemetryDestinationGrants` only when a telemetry grant is written. Older
+`telemetryDestinationGrants` only when a telemetry grant is written, and
+`oauthClientGrants` only when an OAuth client-secret grant is written. Older
 strict readers reject that new property; an upgrade/rollback must preserve and
 restore a compatible binding document, never delete grants to bypass admission.
 
@@ -3930,7 +4110,10 @@ Callers use these operations rather than mutating leases or output ownership.
 owns coordinator roots, request/output/receipt paths and execution-equivalence
 keys. [Request context](../../scripts/lib/verification-request-context.mjs)
 validates lane/time/capacity, binds revision/worktree and exact Node/npm toolchain
-provenance, and checks a submitted request at admission. Provenance is checked
+provenance, and checks a submitted request at admission. Once admitted, an
+owner executing a lane, or each full-regression phase, first takes a
+[host heavy-check slot](../guides/testing.md#host-heavy-check-slots) and runs its
+children under it. Reuse and join take none. Provenance is checked
 again before execution and each non-reused completion phase. A same-name lane
 or green sentinel alone is not reusable evidence.
 
@@ -4236,6 +4419,19 @@ Task and dispatch it with explicit Project/Agent identity and monitor limits.
 Missing authority or exhausted budget does not fall through to the ordinary
 model-turn adapter. This path is not proof that an arbitrary external source
 or provider is available.
+
+Automation `github-poll` sources (epic #3439) ride the same tick without a
+timer of their own: [BuiltinScheduler](../../src-server/services/scheduling/builtin-scheduler.ts)
+calls the [GitHub poller](../../src-server/services/automation/github-poll.ts)
+single-flight on each tick, and `stop()` aborts, awaits and closes it. The
+poller enforces each source's `pollIntervalMs` from the
+[Automation ledger](../../src-server/services/automation/automation-ledger.ts)'s
+poll state, lists completed workflow runs through the external monitor's REST
+transport and secret-binding credential path, and records each run through the
+[normalizer](../../src-server/services/automation/github-workflow-run.ts) and
+[intake](../../src-server/services/automation/automation-intake.ts) as matched,
+no-match, refused or duplicate, opening and closing episodes. It starts
+nothing yet: no Task, turn or action claim.
 
 [Ledger tests](../../src-server/services/scheduling/__tests__/scheduler-ledger.test.ts),
 [execution tests](../../src-server/services/scheduling/__tests__/builtin-scheduler-execution.test.ts),
@@ -4654,7 +4850,11 @@ logged and omitted, so absence from the returned list is not proof no definition
 exists on disk. Runtime availability still has its own current-state owner.
 
 [Integration registry listings](../../src-server/providers/registries/integration-registry-provider.ts)
-read definitions afresh with asynchronous filesystem calls. Binary-presence
+read definitions afresh with asynchronous filesystem calls. A remote server
+(HTTP or SSE endpoint, no command) has no binary and gets no presence status.
+[MCP subregistry sources](../../src-server/providers/registries/mcp-subregistry-provider.ts)
+are integration providers beside the built-in catalog; they keep a bounded
+last-good copy per source ([design](../design/mcp-subregistry-curation.md)). Binary-presence
 lookups use asynchronous `which`/`where`, coalesce concurrent observations, and
 cache definitive positive and negative results for 30 seconds (at most 256 commands).
 Timeouts, signals and lookup errors are retried on the next listing.
@@ -5614,8 +5814,9 @@ indexed Session engine and recorded-owner reads after Session read admission;
 no full transcript or People-management request is needed. Missing identity
 facts fall back to Teammate or Agent. The local operator's profile name wins;
 when only the OS alias is available, its initial is capitalized for display.
-Opaque working-state plan
-revisions are hidden because the room does not expose ordinal plan history.
+Plan revision chips count committed, revision-changing settle batches (saves),
+starting at v1. Multi-operation saves advance once; retries do not advance.
+Opaque digest identity remains separate from the displayed version.
 
 Task review keeps anchored comments in its own append-only store, outside the
 shared room's document and history. Plan references freeze revision evidence
@@ -5644,7 +5845,23 @@ lists metadata and counts for the plan, Task summary (Brief), kept outputs,
 linked answers and captures. List threads are summaries with state, anchor,
 event count, opening-comment preview and latest delivery event alongside the
 last event; a separate thread-detail GET supplies full history. Summary event
-bodies are capped at 500 UTF-16 code units without partial surrogates.
+bodies are capped at 500 UTF-16 code units without partial surrogates by the
+shared contracts `summarizeThreadView` projection. Plan item metadata includes
+`revisionOrdinals` for only the current revision and the threads' anchored plan
+revisions. The working-state worker persists final save revisions in a separate
+SQLite index, in the settle transaction. Operation pruning and operation encoding
+never determine these ordinals; restart preserves them. Existing documents are
+backfilled from committed batch receipts in insertion order, using the historical
+revision format for v0 and counting consecutive unchanged identities once. A
+malformed receipt leaves that document's ordinals unavailable and retryable at
+startup without blocking other documents or inventing versions on later saves.
+Intermediate operation states have no version.
+The Review module caches requested ordinals, including missing identities, per
+Task incarnation, document and latest revision. New anchors fetch only missing
+identities; a new latest revision invalidates that cache. Entries share the
+bounded ReviewCache accounting (UTF-16 serialized payload, keys and allowance),
+with at most 16 entries / 1 MiB. Current document and authority reads still run.
+Unknown historical identities receive no invented version.
 Corrupt rows are logged once per thread/event count within the bounded warning
 cache and projected as unavailable entries while healthy
 threads remain readable. Unavailable entries are omitted from aggregate counts.

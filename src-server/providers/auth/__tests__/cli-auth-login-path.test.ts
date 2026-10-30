@@ -12,6 +12,7 @@ const existsSyncMock = vi.hoisted(() =>
   vi.fn((_path: string): boolean => false),
 );
 const execFileMock = vi.hoisted(() => vi.fn());
+const readFileSyncMock = vi.hoisted(() => vi.fn());
 
 vi.mock('node:os', async (importOriginal) => ({
   ...(await importOriginal<typeof import('node:os')>()),
@@ -21,10 +22,11 @@ vi.mock('node:os', async (importOriginal) => ({
 vi.mock('node:fs', async (importOriginal) => ({
   ...(await importOriginal<typeof import('node:fs')>()),
   existsSync: existsSyncMock,
+  readFileSync: readFileSyncMock,
   // #2663: a hit must be a runnable file. These cases describe presence
   // only, so the same predicate answers the file and execute-bit checks.
   statSync: (path: string) => {
-    if (existsSyncMock(path)) return { isFile: () => true };
+    if (existsSyncMock(path)) return { isFile: () => true, size: 100 };
     throw Object.assign(new Error(`ENOENT: ${path}`), { code: 'ENOENT' });
   },
   accessSync: (path: string) => {
@@ -255,6 +257,51 @@ describe('runCliCommand connection env overlay', () => {
   afterEach(() => {
     vi.unstubAllEnvs();
   });
+
+  test('probes a Windows npm CLI through Node while preserving literal arguments', async () => {
+    platformMock.mockReturnValue('win32');
+    const shim = 'C:\\tools\\codex.cmd';
+    const entry = 'C:\\tools\\node_modules\\@openai\\codex\\bin\\codex.js';
+    existsSyncMock.mockImplementation(
+      (path) => path === shim || path === entry,
+    );
+    readFileSyncMock.mockReturnValue(
+      '"%_prog%" "%dp0%\\node_modules\\@openai\\codex\\bin\\codex.js" %*',
+    );
+    execFileMock.mockImplementation((_file, _args, _opts, callback) => {
+      callback(null, { stdout: 'codex-cli 0.166.0', stderr: '' });
+    });
+    const { runCliCommand } = await import('../cli-auth.js');
+    const args = ['--version', 'literal & argument'];
+    const result = await runCliCommand(shim, args);
+    expect(result?.code).toBe(0);
+    expect(execFileMock).toHaveBeenCalledWith(
+      process.execPath,
+      [entry, ...args],
+      expect.objectContaining({ windowsHide: true }),
+      expect.any(Function),
+    );
+  });
+
+  test.each([
+    '"%_prog%" "%dp0%\\node_modules\\..\\evil.js" %*',
+    '"%_prog%" "%dp0%\\node_modules\\%OTHER%\\evil.js" %*',
+    '@echo off\r\ncustom-launcher %*',
+  ])(
+    'refuses an unfamiliar Windows launcher without invoking a shell: %s',
+    async (shimText) => {
+      platformMock.mockReturnValue('win32');
+      existsSyncMock.mockReturnValue(true);
+      readFileSyncMock.mockReturnValue(shimText);
+      execFileMock.mockImplementation((_file, _args, _opts, callback) => {
+        callback(null, { stdout: 'unexpected launcher execution', stderr: '' });
+      });
+      const { runCliCommand } = await import('../cli-auth.js');
+      const result = await runCliCommand('C:\\tools\\codex.cmd', ['--version']);
+      expect(result?.code).toBe(1);
+      expect(execFileMock).not.toHaveBeenCalled();
+    },
+  );
 
   async function probedEnv(
     envOverlay?: Record<string, string>,

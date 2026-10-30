@@ -1,5 +1,30 @@
 # Station API Documentation
 
+## Session Goals
+
+While the default-off **Session goals** Feature Preview is enabled,
+`GET /api/orchestration/sessions/:threadId/goal` reads the exact live Session's
+capability and observed Goal. It uses Session read authority and never starts
+or resumes an engine. A missing live engine is unavailable; an adapter without
+Goal support is unsupported. Responses are private and no-store, with current
+authority checked after provider I/O.
+
+`POST` to the same path accepts one strict command:
+`{operation:'set', objective, tokenBudget:number|null}`, `{operation:'pause'}`,
+or `{operation:'clear'}`. It requires an authenticated person with Session
+mutation authority and the orchestration operate scope. Agent callers are
+refused. The objective is nonblank and at most 4,000 characters; a non-null
+budget is a positive safe integer. No native thread or implementation identity
+comes from the request.
+
+The first Codex implementation saves objectives paused and preserves native
+accounting when the engine does. It does not advertise activation/resume.
+Results distinguish applied, refused, unsupported and indeterminate. A timeout
+after invocation is indeterminate; pending native acknowledgement blocks another
+mutation. Refresh is observation, not permission to retry an uncertain write.
+Goal completion never mutates Task or workflow status. Turning the preview off
+refuses all subsequent Goal requests; ordinary Session controls remain available.
+
 This reference explains selected HTTP route families and their current owners.
 It is not a complete endpoint inventory. Request examples use illustrative IDs;
 replace them with identities returned by the selected Station. Response excerpts
@@ -97,6 +122,25 @@ unset choices under the write lock. Preferences grant no execution access.
 
 See [account preference contracts](contracts.md#account-preferences) and
 [the SDK](sdk.md#account-preferences).
+
+## Person notifications
+
+`GET /api/me/notifications` returns `{ success: true, data: Notification[] }`
+for the authenticated request's resolved person. The server never accepts a
+person identifier from the caller. An operator sees that operator's personal
+feed here; the existing `/notifications` route remains the separate owner feed.
+Internal Agent callers and unbound Device identities cannot use the person feed.
+Account-bound Devices need the normal current account session and pairing scope.
+
+`POST /api/me/notifications/:id/read` returns the read outcome in
+`data.outcome`; `DELETE /api/me/notifications/:id` dismisses the entry. Both
+operate only on the caller's feed and return 404 when the id is absent there,
+including when another person owns it. The server records the verified
+device-credential identity as the surface, including the headless identity of
+a personal access token, or requires a valid `X-Station-Client-Session` for a
+caller without one. Responses carry `Cache-Control: no-store`. The feed is
+durable on this Station and keeps the latest 100 entries per person; push
+delivery and person-notification producers are separate work.
 
 ## Endpoint Legend
 
@@ -1407,7 +1451,11 @@ Engine OAuth MCP delivery uses the internal loopback transport
 session-and-server-scoped Station credential; a paired API credential cannot
 replace it. Station injects the remote bearer and owns refresh. See
 [OAuth MCP setup](../guides/connections.md#connect-an-oauth-mcp-server-to-an-agent)
-for lifetime and failure behavior.
+for lifetime and failure behavior. For a server a catalog added, the proxy
+connects only to addresses it checked, and in a session that read untrusted
+content a `tools/call` takes the tool's untrusted-content permission; a
+refusal is a JSON-RPC error with HTTP 403
+([coverage](../design/mcp-subregistry-curation.md#coverage-and-gaps)).
 
 These routes manage MCP integration definitions through the
 [MCP service](../../src-server/services/plugins/mcp-service.ts) and
@@ -1468,7 +1516,30 @@ values; clients use the returned metadata when editing. A failed lookup returns
 `{success: true}`. Environment updates are merged by key: omission preserves
 stored values, `{env: {}}` clears nothing, and removal uses
 `removeSecretEnvKeys`. Package-supplied definitions are read-only; the MCP
-service refuses changes that would create a shadow copy.
+service refuses changes that would create a shadow copy. An explicit person edit or reset of
+`contentTrust`, `untrustedContentPermissions` or `trustReadOnlyHints`, through
+this route or `POST /integrations`, appends a receipt to
+`untrustedContentChanges` (time, the authenticated request principal when
+known, the new value; last 50 kept), even when the value already equals the default.
+Receipts in the request are ignored and the stored history survives a replacement
+while the integration remains present
+([design](../design/mcp-subregistry-curation.md#untrusted-content-and-outbound-tools)).
+
+The list and read responses carry `engineCoverage`: for each external engine
+(`claude`, `codex`, `acp`), `station-gated`, `engine-direct` or
+`not-delivered`, derived from the transport and how Station delivers the
+server. An integration whose legacy trust settings could widen what runs and
+whose ownership cannot be verified is listed and read with `trustReview`
+(`fields`: the stored values, not applied) and stays unloaded.
+`POST /integrations/:id/trust-review` with `{"decision": "keep" | "reset"}`
+resolves it for the operator signed in as a person (403 otherwise; 409 when
+there is nothing to review) and records a receipt naming them.
+
+`GET /integrations/untrusted-content/conversations/:conversationId` returns
+whether a conversation is marked as having read untrusted content, and its
+clearance receipts. `POST .../:conversationId/clear` (`*` clears every
+mark) clears it for the operator signed in as a person and returns the
+receipt; agents' station-control calls cannot reach either route.
 
 ### Connected accounts (#3279)
 
@@ -1489,11 +1560,49 @@ integration's shared `probe.authorization`. A successful first connection record
 the tool catalog Agents load that integration's tools from.
 
 `GET /integrations/:id/account[?projectSlug=]` returns the caller's own state:
-`{ownership, connectedAs, personal, project?, shared, catalogAvailable}`. It shows
+`{ownership, connectedAs, personal, project?, shared, catalogAvailable,
+rememberedScopes?}`. `rememberedScopes` is the caller's scope choice from
+their last completed sign-in for that account (empty: the server's own). It shows
 owner and availability only, never a token. `DELETE /integrations/:id/account`
 removes the caller's own credential; the next call that needs it refuses.
 
 MCP Apps reads and calls are not available yet for these integrations.
+
+### Remote OAuth client
+
+`POST /integrations/:id/oauth/authorize` also accepts optional `scopes`, the
+signing-in person's choice for that sign-in: at most 32 distinct OAuth scope
+tokens, or a 400. They replace the integration's `oauthClient.scopes` default,
+which replaces the scopes the server advertises; an empty list requests the
+advertised scopes. The choice also applies to a dynamic client registration.
+Nothing is written back.
+
+`oauthClient` on `POST`/`PUT /integrations` accepts `clientId`, `issuer` (an
+HTTPS issuer URL), `clientMetadataUrl` (HTTPS with a path) and `scopes`. It refuses
+`clientSecretRef`, which only `POST /api/secret-bindings/:id/bind` and `unbind`
+with `{kind: "mcp-integration-oauth-client", integrationId, expectedRevision}`
+write; that body accepts no other field. The read projection omits the binding
+id; `GET /api/secret-bindings/integrations/:id` returns it as
+`oauthClientSecretBindingId`. A `clientId` requires `issuer`, and so does
+binding a secret. Changing `clientId`, `issuer` or `clientMetadataUrl` clears
+the integration's tokens. While a secret is bound, the shared integration writer (the API, the
+settings, registry installs, required plugin tools and binding) refuses a
+change to the endpoint or `issuer`, and refuses a definition naming another
+binding. Plugin bundles are checked before copying, and the CLI import before
+writing. Registry, plugin and imported definitions never carry
+`clientSecretRef`. Independently, the client-secret grant records the
+`issuer`, the resource and the integration's server-created instance id at
+binding. At every token request the secret is released only for a definition
+matching all three, so a deleted and recreated integration needs a new
+binding. A declared `issuer` refuses any
+other authorization server before a secret is read, a client is registered
+or a person is redirected. Without a declared `issuer`, the first completed
+sign-in pins its authorization server for the resource (`.station-oauth-issuer`
+beside the definition, shared by every person), and later sign-ins naming
+another server are refused the same way. The callback's `iss` is checked per RFC 9207, and a
+callback with more than one `iss` returns 400. A server without client registration records
+`probe.authorization.state: "client-id-required"`. See
+[Use your own OAuth client](../guides/connections.md#use-your-own-oauth-client).
 
 ### Delete Integration
 
@@ -2058,6 +2167,11 @@ there is no author confirmation to review. `GET /api/usage-telemetry/disclosure`
 `additionalHost` for an additional destination, including an environment-derived
 address. `GET /api/usage-telemetry/disclosure?publisher=kontour` returns the exact
 build destination for its separate, revision-bound acknowledgement.
+Each disclosure response, and the acknowledgement response, also carries
+`capabilities: { acknowledge, recordNotice, lower, raise, defaults }` for the
+calling credential, decided by the same gates as those writes (`defaults` is
+the DNT-ignored baseline a tier write is compared against); see
+[Usage telemetry](usage-telemetry.md).
 The two Lite sinks send independently after notice; the default Full receipt
 covers operator only; author Full uses a separate destination-bound receipt. `GET /api/usage-telemetry/outbox[?publisher=operator]`
 returns the bounded local payload ledger with `orchestration:read` authority. The optional `limit` is an integer from 1 to 200, defaults to 50, and selects the newest records after publisher filtering; invalid values return 400.
@@ -4341,8 +4455,11 @@ same receipt.
 
 ### List Available Integrations (Registry)
 
-`GET /api/registry/integrations` returns `{success: true, data}` after the route's
-ID filtering, first-ID deduplication, and display-text cleanup.
+`GET /api/registry/integrations` returns `{success: true, data, mcpSources}` after the route's
+ID filtering, first-ID deduplication, and display-text cleanup. Entries from an
+MCP subregistry carry `mcpServer` (auth mode, derived qualification and the
+reasons Add is refused); `mcpSources` lists each subregistry source's freshness,
+last error and refused entries ([design](../design/mcp-subregistry-curation.md)).
 
 ### List Installed Integrations (Registry)
 
@@ -4650,6 +4767,42 @@ needs a person who may send to the conversation, and answers 404 to anyone
 else. An agent's request reaches none of them. The agent's own side is the station-control tools in
 [the self-configuring agent guide](../guides/self-configuring-agent.md#wake-an-agent-later).
 
+### A person's coordinator Session
+
+The [coordinator routes](../../src-server/routes/orchestration/coordinator.ts)
+read and set the caller's own coordinator (#3628, product name Houston; see
+[Houston](../user/houston.md)). `GET /api/orchestration/coordinator` answers
+`CoordinatorDesignationRead` (`designation`, or `null`).
+`PUT /api/orchestration/coordinator` with `{conversationId, replace?}`
+designates a conversation the person may send to (404 otherwise). It answers
+409 `coordinator_already_designated` when the person has another one and
+`replace` is not `true`, and 409 `coordinator_conversation_taken` when the
+conversation is another person's. `DELETE` removes it (`undesignated`). The
+user id is the request principal's; a request that may be an agent's is
+refused (403 `person-approval-required`). A hosted Station answers 503
+`coordinator_unavailable` and withdraws the `coordinatorSession` capability.
+With a designation, GET and PUT also answer `delivery` (`CoordinatorDelivery`):
+`wakes` is `blocked` when the coordinator's last turn has ended but its
+turn boundary is still held, so the inbox would hold a wake indefinitely
+(#4051),
+`toolsPending` while the live Session started without the Station tools,
+`toolsUnavailable` when its engine declares tool servers unsupported,
+`toolsRestarted` when the current Session was started to acquire them, and
+`engine` names its provider. A designation whose conversation the person can
+no longer read reads as none, and PUT replaces it without `replace`. Replacing
+or removing a designation withdraws the wakes still queued for the old
+conversation and revokes its designation-derived Station Control and Knowledge
+credentials. Independently authored Agent or Project grants remain separate.
+
+The default-off coordinator-picture preview adds
+`GET /api/orchestration/coordinator/picture` for the person's readable notes.
+A bound designated coordinator reads and writes its own picture through
+`GET` and `POST /api/orchestration/station-control/coordinator-picture`.
+The POST accepts `conversationId`, `status` (`in-flight`, `waiting`, `finished`
+or `remove`), and a summary except for `remove`. The caller and source read
+permissions are checked again after the body arrives. Notes are bounded and
+are the coordinator's account, not live work status.
+
 ### Update Job
 
 `PUT /scheduler/jobs/:target` accepts supported partial job options, including
@@ -4684,6 +4837,25 @@ receipt.
 Use the [SDK scheduler client](../../packages/sdk/src/client/scheduler.ts),
 `station schedule`, or corresponding station-control tools for supported
 operator operations. SSE and webhook retain their separate HTTP transport roles.
+
+### Automation Deliveries
+
+`GET /automations/deliveries?limit=<1-200>` (default 50) returns
+`{success: true, data: {deliveries, polls}}`: the newest recorded Automation
+deliveries, newest first, as the [AutomationDeliveryRecord contract](../../packages/contracts/src/automation.ts)
+projection: hashed `deliveryKey`, `sourceId`, `semanticKey`, `eventType`,
+times, `outcome`, optional `reason`, and rule, episode, Task and session ids.
+No payload, secret or delivery GUID is returned. A `limit` outside 1–200 is
+refused with 400 rather than clamped, an unavailable ledger answers 503 with
+`code: "policy_unavailable"`, and hosted mode answers 404. The route
+([source](../../src-server/routes/operations/automations.ts)) needs the
+`access:manage` pairing scope and the enabled `github-automation-observations`
+Feature Preview. Disabled previews return 404 with `feature_preview_disabled`,
+`previewId` and `settingsPath`, before opening the ledger. The `polls` projection
+reports last-poll time, cursor and coverage/failure outcome; `partial` means the
+GitHub page omitted additional runs and did not advance the cursor. No `/automations` mutation is mounted or
+scope-classified yet. Use the [SDK client](../../packages/sdk/src/client/automations.ts)
+or `station automation deliveries`.
 
 ### Open File with System Handler
 
@@ -4757,8 +4929,15 @@ Hosted deployments mount only the session read; the first two answer 404 there.
 
 ### Continue after a memory kill
 
+An authorized `GET /api/orchestration/conversations/:conversationId/event-window`
+may include `memoryContinuation: { eligible, turnId? }`. This is the current
+server decision for a person's Continue, independent of the page's event cap.
+An absent field does not authorize a stored-event action. The POST checks
+current state and sender permission again.
+
 `POST /api/orchestration/conversations/:conversationId/memory-continuation`
 continues a conversation whose latest turn ended with `engine-memory-exhausted`
+(or a Codex memory kill stored before that code, as `isEngineMemoryExhaustedFailure` recognises)
 ([continuation module](../../src-server/services/orchestration/memory-exhaustion-continuation.ts)).
 It sends one Station-authored turn through the conversation inbox as the caller,
 under a key derived from the dead Session and turn, and answers 202 with that
@@ -4997,6 +5176,15 @@ reader. Hosted mode skips the two personal storage branches. File-memory Agent
 attribution comes from the stored resource ID, with the adapter key as fallback;
 response shape can also include Project and fork-provenance fields.
 
+`GET /api/conversations/:id/open` resolves a conversation before a client
+treats it as writable (the SDK's `resolveConversationOpen`). Its result may
+carry `callerAccess: {continue, startChat}`, computed for the requesting
+credential by the same boundary gate ingress applies, against
+`POST /api/orchestration/chat/:id/continue` and `POST /api/orchestration/chat`.
+A read-only paired device reads `{continue: false, startChat: false}`. The field
+is omitted when the request has no authenticated principal; clients treat that
+as unknown.
+
 `GET /api/conversations/:id/read?limit=&cursor=&aroundMessageId=` returns one
 page of a conversation's transcript: `{conversationId, access, notice,
 messageCount, messages, prevCursor, nextCursor}`. `limit` is 1 to 50 (default
@@ -5082,6 +5270,56 @@ A Session the caller may not see (another Project, another person, an unconfined
 Session for a caller that is not a bound operator, another Station) answers `404`
 `session_not_found`, identical to one that does not exist. See the
 [route](../../src-server/routes/orchestration/session-project-activity.ts).
+
+### Person Session Reads
+
+These are the person-facing leaves of the same reads and of `wait_session`
+(#3427), behind `station activity` and `station sessions wait|digest`:
+
+- `GET /api/orchestration/session-reads/activity?projectSlug=&limit=&cursor=&activeWithinMinutes=`
+- `GET /api/orchestration/session-reads/:sessionId/digest?turnLimit=&cursor=`
+- `GET /api/orchestration/session-reads/:sessionId/wait?until=&timeoutMs=&afterEventCursor=`
+
+They answer a person's own credential. Every internal request (a
+station-control caller, a caller-less child, Station's own server code) gets
+`403`: the station-control guard refuses the unmapped route, and the leaf
+itself answers `person_credential_required`. The agent-only leaves above keep
+refusing a person with `station_control_caller_required`. The leaves inherit
+`orchestration:read`, and the handshake advertises them as
+`capabilities.sessionPersonReads`. While the `session-cli-reads` Feature
+Preview is off, each answers `404` `feature_preview_disabled` with `previewId`
+and `settingsPath`.
+
+Reads are owner-scoped. A Session in a Project is visible only while the
+person holds that Project's `view` action, and a Session in the global space is
+always visible. A Session whose Project cannot be read, such as one whose
+folder is gone, is visible only to a person who may view every Project (anyone
+but a deployment account). Anything out of reach is `404` `session_not_found`.
+
+- **Activity** answers the list shape above, with no `self`. Without
+  `projectSlug` it lists every visible Session. With it, it lists only that
+  Project's Sessions. A Project the person may not view, or one that does not
+  exist, is `404` `project_not_found`. `activeWithinMinutes` (1–10,080) keeps
+  Sessions running a turn or active in that window. The person's own Sessions
+  that run `host` are listed: that exclusion keeps an agent out of other
+  Sessions, not their owner.
+- **Digest** answers the digest shape above.
+- **Wait** has the `wait_session` query and bounds: `until` is
+  `turn-settled|idle`, `timeoutMs` is 1–50,000 (default 30,000), and
+  `afterEventCursor` is allowed only with `turn-settled`. Its answer is
+  `{sessionId, settled, timedOut, alreadyIdle?, state, openTurnId?,
+  settledTurn?, interruptedTurn?, eventCursor, superseded?,
+  currentSessionId?}`. `interruptedTurn` (`{turnId, sequence}`) names a turn a
+  restart-recovery abort closed, when that is the newest way a turn ended after
+  the cursor. With no cursor (`idle`), it counts only while nothing is running.
+  It ends a `turn-settled` wait with `settled: true` and no `settledTurn`,
+  because it acknowledges no work. `wait_session` does not carry
+  it. A person holds at most 4 waits at once (`429` `wait_capacity`), counted
+  apart from any Session's, within Station's shared 256.
+
+See the
+[activity and digest route](../../src-server/routes/orchestration/session-project-activity.ts)
+and the [wait route](../../src-server/routes/orchestration/session-agent-control.ts).
 
 ### Station Control Work Claims
 
@@ -5252,7 +5490,7 @@ Project/binding authority through TerminalSessions.
   fromSeq?, windowBytes?}`. `fromSeq` is the last consumed output sequence,
   default zero. Unknown ids and mismatched Projects/bindings are refused.
   Both commands respond with `attached`, including `terminalId`, `status` and
-  `replayThrough`, plus `readOnly` from the current session authority. Dimensions
+  `replayThrough`, `maxOutstandingOutputFrames`, plus `readOnly` from the current session authority. Dimensions
   range from 1 to 1,000 as in the HTTP API.
 - `list`: `{type, requestId, projectId, bindingKey}` returns `list` with
   `records`. `resize` takes `{type, requestId, channel, cols, rows}`; `close`
@@ -5277,14 +5515,21 @@ The socket maximum payload is 64 KiB + 13 bytes, including JSON frames.
 Each channel has a fixed output credit window (`windowBytes`, 16,384–65,536
 bytes, default 65,536). Sending raw output consumes its byte length;
 acknowledging actual records releases exactly those bytes. Header/control bytes
-do not consume channel credit. The transport filters OSC 8 URI schemes to
+do not consume channel credit. Independently, the server permits at most 128
+unacknowledged output frames per channel, including frames whose sanitized
+payload is empty. This bounds framing overhead without reducing the 64 KiB
+payload window; ACKs release frame slots and replay continues in bounded pages.
+The additive `maxOutstandingOutputFrames` field advertises this enforced limit;
+older clients can ignore it and continue acknowledging sequences. The transport filters OSC 8 URI schemes to
 absolute HTTP/HTTPS and drops unsafe URI metadata while keeping displayed text.
 Parser state advances only when the filtered record fits the remaining credit. Output stays in the bounded journal until credit
 is available. A slow consumer cannot accumulate an unbounded per-socket replay
 queue; retention loss is explicit. `reset` gives `fromSeq` and `replayThrough`;
 replace the emulator's replay and resume acknowledgement from that sequence.
 `progress` reports `sentThrough`, journal `lastSeq`, `replayThrough` and session
-`status`. Acknowledging through replay emits `ready`, allowing input. Clients
+`status`. Unchanged sent cursor, replay target and status are coalesced even if
+the journal's `lastSeq` grows while output is blocked; a later meaningful
+progress notification reports the current `lastSeq`. Acknowledging through replay emits `ready`, allowing input. Clients
 must keep emulator reply writers detached during replay.
 
 The command queue refuses capacity beyond 128 pending commands or 256 KiB of
@@ -5892,13 +6137,20 @@ nightly build, otherwise `npx @kontourai/station-cli@latest`).
 a non-empty subset of the request's scope, for an ordinary device request only
 (not a delegation, relay or account binding). Omitted, it keeps everything
 requested. Keeping `coding:exec` or `approval:full-access` needs the operator
-credential, a qualifying local-grant credential or that host-issued browser
-session; an `access:approve` Device or
+credential, a qualifying local-grant credential, that host-issued browser
+session, or an operator passkey session followed by per-action review; an `access:approve` Device or
 an unauthenticated approval is refused with 403
 `{ "error": "approval_requires_operator", "operatorCli": "…" }` and may approve
 the rest with them left out. Every such 403 carries `operatorCli`. A device
 pairing **Needs attention** item carries `requestedScope` for an ordinary,
 non-account-bound device request.
+
+A live operator passkey session approving an ordinary Device request receives
+202 `step_up_required` and a transaction review URL. No pairing approval is
+committed until a fresh passkey assertion on the consent origin. The request
+and kept scope are rechecked at commit; delegation, relay, and identity-binding
+requests cannot use this path. A refusal may include `signInUrl` when remote
+operator sign-in is configured.
 
 Sender-side Station peer enrollment is a separate operator-only workflow under
 `/api/environments/peers/enrollments`. Its safe status response never returns the
