@@ -3,12 +3,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   type LoadedLocalAccounts,
   loadLocalAccounts,
   readLocalAccountConfiguration,
 } from '../local-account-runtime.js';
 
+const makeTempDir = trackTempDirs();
 const roots: string[] = [];
 const loaded: LoadedLocalAccounts[] = [];
 const publicOrigin = 'http://localhost:4322';
@@ -79,6 +81,84 @@ describe('built-in local account lifetime', () => {
         'Invalid',
       );
     }
+  });
+
+  test('the provider trusts another Station origin only for local sign-out', async () => {
+    const homeDirectory = makeTempDir('station-account-signout-');
+    const alternateOrigin = 'http://localhost:4323';
+    const account = await loadLocalAccounts(
+      { publicOrigin },
+      { stationId: 'signout-origin', homeDirectory },
+      { mayRegister: async () => true },
+      [alternateOrigin],
+    );
+    loaded.push(account);
+    const post = (
+      path: string,
+      body: unknown,
+      origin: string,
+      cookie?: string,
+    ) =>
+      account.service.handle(
+        new Request(`${publicOrigin}/api/account-auth${path}`, {
+          method: 'POST',
+          headers: {
+            Origin: origin,
+            'Content-Type': 'application/json',
+            ...(cookie ? { Cookie: cookie } : {}),
+            ...(path === '/sign-up/username'
+              ? { 'x-station-invitation': 'invitation' }
+              : {}),
+          },
+          body: JSON.stringify(body),
+        }),
+        path,
+      );
+    const user = {
+      username: 'alternate',
+      password: 'Provider boundary password 12345',
+    };
+    const registered = await post('/sign-up/username', user, publicOrigin);
+    expect(registered.status, await registered.clone().text()).toBe(200);
+    const login = await post('/sign-in/username', user, publicOrigin);
+    expect(login.status, await login.clone().text()).toBe(200);
+    const cookie = login.headers
+      .getSetCookie()
+      .map((value) => value.split(';')[0])
+      .join('; ');
+    const hostile = await post(
+      '/sign-out',
+      {},
+      'https://attacker.example.test',
+      cookie,
+    );
+    expect(hostile.status).toBe(403);
+    const noOrigin = await post('/sign-out', {}, '', cookie);
+    expect(noOrigin.status).toBe(403);
+    // The route also guards credential-free requests; this tests Better Auth with a cookie.
+    const foreignLogin = await post(
+      '/sign-in/username',
+      user,
+      alternateOrigin,
+      cookie,
+    );
+    expect(foreignLogin.status).toBe(403);
+    expect(
+      (
+        await account.service.authenticate(
+          new Request(publicOrigin, { headers: { Cookie: cookie } }),
+        )
+      ).kind,
+    ).toBe('authenticated');
+    const logout = await post('/sign-out', {}, alternateOrigin, cookie);
+    expect(logout.status, await logout.clone().text()).toBe(200);
+    expect(
+      (
+        await account.service.authenticate(
+          new Request(publicOrigin, { headers: { Cookie: cookie } }),
+        )
+      ).kind,
+    ).not.toBe('authenticated');
   });
 
   test('reopening preserves cookies and opaque person identity, while another Station or missing secret is refused', async () => {

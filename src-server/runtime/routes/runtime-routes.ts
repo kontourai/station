@@ -420,6 +420,7 @@ import { createPersonalLayoutRoutes } from '../../routes/me/personal-layouts.js'
 import { createActionOperationRoutes } from '../../routes/operations/action-operations.js';
 import { createAgentNotificationRoutes } from '../../routes/operations/agent-notifications.js';
 import { createAnalyticsRoutes } from '../../routes/operations/analytics.js';
+import { createAutomationRoutes } from '../../routes/operations/automations.js';
 import { createFeedbackRoutes } from '../../routes/operations/feedback.js';
 import { createInsightsRoutes } from '../../routes/operations/insights.js';
 import {
@@ -557,6 +558,7 @@ import {
   isBoundRuntimeLocalOperator,
   isLoopbackAuthority,
   isRuntimeRequestPrincipalCurrent,
+  parseStrictBearer,
   RUNTIME_CREDENTIAL_AUTHORITY_VAR,
   type RuntimeCallerRequest,
   type RuntimeDeviceActivityClassifierContext,
@@ -778,6 +780,7 @@ import { PullRequestRepositoryContextResolver } from '../../services/pull-reques
 import { createRemoteStationForwarder } from '../../services/remote-stations/remote-station-forwarder.js';
 import type { SchedulerService } from '../../services/scheduling/scheduler-service.js';
 import type {
+  IntegrationSecretResolver,
   SecretBindingAdministration,
   SecretBindingIntegrationAdministration,
 } from '../../services/secrets/secret-binding-administration.js';
@@ -1081,7 +1084,8 @@ export interface ConfigureRuntimeRoutesContext {
   connectionService: ConnectionService;
   sshEnvironmentService: SshEnvironmentService;
   mcpService: MCPService;
-  secretBindingAdministration: SecretBindingAdministration;
+  secretBindingAdministration: SecretBindingAdministration &
+    IntegrationSecretResolver;
   secretBindingIntegrationAdministration: SecretBindingIntegrationAdministration;
   taskGraphService: TaskGraphService;
   taskDispatcher: TaskDispatcher;
@@ -1963,10 +1967,87 @@ export function configureRuntimeRoutes(
       binding.subject,
       binding.approvedAt,
     ) === 'current';
+  // Only the local provider can independently witness current session revocation.
+  // WhoIs then describes ingress, while device bindings remain independent authority.
+  const accountSessionOwnsPerson = (request: Request): boolean => {
+    const path = new URL(request.url).pathname;
+    const read = request.method === 'GET' || request.method === 'HEAD';
+    const scoped =
+      path === '/api/account-auth' ||
+      path.startsWith('/api/account-auth/') ||
+      (request.method === 'POST' &&
+        (path === PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH ||
+          path === PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH)) ||
+      isTaskRelationshipHttpLeaf(request.method, path) ||
+      /^\/api\/projects\/[^/]+\/access(?:\/|$)/.test(path) ||
+      (read &&
+        (path === '/api/projects' ||
+          /^\/api\/projects\/[^/]+(?:\/(?:room|shared-work)(?:\/|$).*)?$/.test(
+            path,
+          )));
+    if (!scoped) return false;
+    const service = context.localAccounts?.service;
+    if (
+      !service ||
+      service !== context.deploymentAuthentication?.service ||
+      !service.captureCurrentSession(request)()
+    )
+      return false;
+    const account = service.current(request);
+    if (account?.kind !== 'authenticated') return false;
+    const runtime = getRuntimeAuthenticatedRequestPrincipal(request);
+    if (
+      runtime?.authority === 'operator-credential' ||
+      runtime?.authority === 'operator-session' ||
+      runtime?.locality === 'home-possession'
+    )
+      throw new PrincipalUnresolvedError(
+        'Account session conflicts with operator authority',
+      );
+    const authorization = request.headers.get('authorization');
+    const cookie = request.headers.get('cookie') ?? '';
+    const hasDeviceCookie =
+      /(?:^|;)\s*(?:__Host-)?station-device(?:-[a-f0-9]{16})?\s*=/.test(cookie);
+    const presented =
+      runtime?.authority !== 'device-credential' &&
+      (authorization !== null || hasDeviceCookie);
+    const credential =
+      runtime?.authority === 'device-credential'
+        ? runtime.credential
+        : presented && !(authorization && hasDeviceCookie)
+          ? authorization !== null
+            ? parseStrictBearer(authorization)
+            : parseDeviceSessionCookie(
+                cookie,
+                (candidate) =>
+                  !!context.environmentSecurityService.identifyDevice(
+                    candidate,
+                  ),
+              )
+          : undefined;
+    if (presented || runtime?.authority === 'device-credential') {
+      const device = credential
+        ? context.environmentSecurityService.identifyDevice(credential)
+        : undefined;
+      const binding = device && device.principalBinding;
+      if (
+        device?.credentialKind === 'personal-token' ||
+        !binding ||
+        !('kind' in binding) ||
+        binding.kind !== 'account' ||
+        principalForDeviceBinding(binding).id !== account.principal.id
+      )
+        throw new PrincipalUnresolvedError(
+          'Account session conflicts with Device authority',
+        );
+    }
+    return true;
+  };
   const resolveOrchestrationRequestPrincipal =
     createOrchestrationRequestPrincipalResolver({
       environmentSecurityService: context.environmentSecurityService,
       currentRelationshipAccountDevice,
+      accountSessionOwnsPerson,
       deploymentAuthentication: context.deploymentAuthentication?.service,
       hostedTenantRegistry,
       ...(resolveNativeDeviceBinding
@@ -2207,7 +2288,12 @@ export function configureRuntimeRoutes(
   // `bootstrap/account-bound-device-gate.ts` so tests exercise the real
   // middleware rather than a copy. Behavior is unchanged.
   installAccountBoundDeviceGate(context.app, {
+    localAccountSignOutEnabled:
+      !!context.localAccounts &&
+      context.localAccounts.service ===
+        context.deploymentAuthentication?.service,
     currentRelationshipAccountDevice,
+    accountSessionOwnsPerson,
     identifyDevice: (credential) =>
       context.environmentSecurityService.identifyDevice(credential),
     identifyIngress,
@@ -2611,6 +2697,13 @@ export function configureRuntimeRoutes(
                   );
                 if (account.kind !== 'authenticated')
                   throw new ProjectMembershipRefusal('forbidden');
+                let accountOwnsPerson: boolean;
+                try {
+                  accountOwnsPerson = accountSessionOwnsPerson(request);
+                } catch (error) {
+                  if (!(error instanceof PrincipalUnresolvedError)) throw error;
+                  throw new ProjectMembershipRefusal('forbidden');
+                }
                 const ingress = identifyIngress({
                   env: environment,
                   req: {
@@ -2619,6 +2712,7 @@ export function configureRuntimeRoutes(
                 });
                 if (
                   ingress &&
+                  !accountOwnsPerson &&
                   deploymentHumanPrincipal(
                     ingress.provider,
                     ingress.subject,
@@ -2640,6 +2734,10 @@ export function configureRuntimeRoutes(
         : undefined,
       context.projectMembership
         ? (token) => context.projectMembership!.previewInvitation(token)
+        : undefined,
+      context.localAccounts?.service ===
+        context.deploymentAuthentication?.service
+        ? context.localAccounts?.signOutBrowserOrigins
         : undefined,
     ),
   );
@@ -9847,6 +9945,8 @@ export function configureRuntimeRoutes(
 
   const {
     schedulerService,
+    automationLedger,
+    automationPreview,
     notificationService,
     approvalInboxProvider,
     attentionProjection,
@@ -10205,6 +10305,18 @@ export function configureRuntimeRoutes(
       // A person approving an agent's `propose_job`.
       jobProposals: agentSchedule.jobProposals,
     }),
+  );
+  context.app.route(
+    '/automations',
+    createAutomationRoutes(
+      {
+        listDeliveries: (limit) => automationLedger.get().listDeliveries(limit),
+        listPolls: () => automationLedger.get().listPolls(),
+        preview: automationPreview,
+        readAuthorityForRequest,
+      },
+      context.logger,
+    ),
   );
   context.app.route(
     '/api/runs',

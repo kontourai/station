@@ -73,9 +73,14 @@ membership. See [peer pairing](station-peer-pairing.md) and
 [PrincipalRef](../../packages/contracts/src/principal.ts) already separates
 human, agent, service and tenant attribution. The
 [request composition](../../src-server/runtime/routes/runtime-routes.ts)
-currently prefers verified ingress identity, then verified operator authority,
-then device identity. Consequently, the same device can resolve to a tailnet
-principal on one route and a device principal on another. A device principal
+without an account session prefers verified ingress identity, then verified
+operator authority, then device identity. Consequently, the same device can
+resolve to a tailnet principal on one route and a device principal on another.
+For the exact account, pairing and membership surfaces listed in the
+[deployment authentication guide](../guides/deployment-authentication.md), a
+current local-account session names the person; Serve WhoIs remains ingress
+provenance and an accompanying Device must be bound to that account. It does
+not grant membership or operator authority. A device principal
 is useful attribution but is not evidence that several devices belong to one
 person. [Identity sources](identity.md) remain provider-qualified.
 
