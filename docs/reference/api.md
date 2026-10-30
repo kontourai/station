@@ -4966,9 +4966,10 @@ external-engine approval.
 ### Global Conversation Lookup
 
 `GET /api/conversations/:id` returns `{success: true, data}` or 404 when not found.
-The [lookup handler](../../src-server/routes/chat/conversations.ts) checks personal
-Project storage, then file-memory adapters, then the authorized orchestration
-reader. Hosted mode skips the two personal storage branches. File-memory Agent
+The [lookup handler](../../src-server/routes/chat/conversations.ts) first resolves runtime-owned conversations under the request authority, returning
+404 when that read is denied. Other personal conversations use Project storage,
+then file-memory adapters, then the authorized orchestration reader. Hosted
+mode skips the two personal storage branches. File-memory Agent
 attribution comes from the stored resource ID, with the adapter key as fallback;
 response shape can also include Project and fork-provenance fields.
 
