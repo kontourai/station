@@ -491,7 +491,7 @@ async function openDefaultAgentSession(
     .getByRole('button', { name: 'New chat', exact: true })
     .click();
   const draft = page
-    .getByRole('dialog', { name: 'New chat', exact: true })
+    .getByRole('region', { name: 'New chat', exact: true })
     .getByRole('form', { name: 'Start work' });
   // The right agent and model are preselected: the start composer's Agent
   // chip names both, and its project chip the context they resolve in.
@@ -506,7 +506,7 @@ async function openDefaultAgentSession(
     .getByRole('textbox', { name: 'What would you like done?', exact: true })
     .fill(options.firstMessage);
   await draft.getByRole('button', { name: 'Start', exact: true }).click();
-  await expect(page.getByRole('dialog', { name: 'New chat' })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'New chat' })).toHaveCount(0);
   // The dock now holds the chat the draft started, bound to the same identity.
   await expect(
     page.getByRole('button', { name: /^Model: \S+ — llama3\.2/ }),

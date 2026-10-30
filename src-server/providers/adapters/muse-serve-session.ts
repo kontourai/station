@@ -217,6 +217,7 @@ export interface MuseServeStarted {
 export interface MuseServeTurnInput {
   prompt: string;
   displayPrompt: string;
+  invocationId?: string;
   images: Array<{ mediaType: string; base64: string }>;
   modelId?: string;
   /** Present only when this turn carries a posture (see `approval-posture`). */
@@ -238,6 +239,7 @@ interface ServeHost {
 interface ServeTurn {
   turnId: string;
   kind: 'dispatched' | 'provider';
+  invocationId?: string;
   /** A dispatched turn's `turn.started` waits for `turn/start`'s ack. */
   startPublished: boolean;
   buffered: Array<() => void>;
@@ -545,6 +547,7 @@ export class MuseServeSession {
       }
       const commandId = this.deps.newCommandId();
       const turn = this.createTurn(commandId, 'dispatched');
+      turn.invocationId = input.invocationId;
       this.turns.set(commandId, turn);
       let ack: unknown;
       try {
@@ -2078,6 +2081,7 @@ export class MuseServeSession {
       createdAt: startedAt,
       method: 'turn.started',
       turnId: turn.turnId,
+      ...(turn.invocationId ? { invocationId: turn.invocationId } : {}),
       prompt: input.displayPrompt,
       ...(input.ambientContext ? { ambientContext: input.ambientContext } : {}),
       metadata: {
@@ -2152,6 +2156,7 @@ export class MuseServeSession {
       threadId: this.deps.threadId,
       createdAt: this.nowIso(),
       turnId: turn.turnId,
+      ...(turn.invocationId ? { invocationId: turn.invocationId } : {}),
     };
     if (outcome.method === 'turn.completed') {
       this.deps.publish({

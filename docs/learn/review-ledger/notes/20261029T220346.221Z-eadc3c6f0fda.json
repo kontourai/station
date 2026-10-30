@@ -1,0 +1,7 @@
+{
+  "revision": "5f5cfc63f5ad474fbca507c631dd8e6d2b09f228",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed merge of #4356: Runs on control now chooses a Station then its Engine and model, Start launches remote task, accepted task exposes Open task. Preserved same shared NewChatModal inside dock body, mounted covered chat and draft leave/history semantics. Current upstream StartStationControl and placement restrictions retained; dock onTaskStarted invalidates sessions and uses upstream notice. Typecheck UI and focused owner tests passed; independent review pending.","inputs":["docs/user/getting-started.md","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

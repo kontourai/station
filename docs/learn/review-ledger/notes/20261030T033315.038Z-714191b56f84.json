@@ -1,0 +1,37 @@
+{
+  "revision": "78bcd0bbc4f2b233f7fefdfafaab229f5daca263",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Reviewed hosted readiness and governance claims against unchanged required statics and aggregate wiring; the PR shard group trial does not change readiness evidence or protected standards.","inputs":[".veritas/README.md",".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed fast-checks plan, statics, exact receipts and normal push claims against the unchanged aggregator; the third PR admission group changes no proof verdict.","inputs":["docs/guides/code-quality.md",".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed attempt claim and durable authority scope; this PR changes only source-shard queue identities and actionlint validation, with no delegation claim behavior change.","inputs":["docs/guides/delegation-attempt-claims.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed dependency verification and workflow pin claims against unchanged bootstrap, install and security jobs; no dependency or advisory policy changed.","inputs":["docs/guides/dependency-security.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed contributor verification and managed setup claims against unchanged hooks, tests and source aggregate; source-shard concurrency changes no local evidence requirement.","inputs":["docs/guides/development.md",".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed transfer controller and fencing scope; no transfer workflow, source, timeout or receipt is changed by the PR shard queue trial.","inputs":["docs/guides/home-transfer-controller.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Reviewed runner-label and partition claims against the unchanged ubuntu-24.04 shard runner and separate self-hosted paths; the third group is not a reserved runner.","inputs":["docs/guides/private-runner-partition.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Reviewed product-law evidence and failure semantics; this queue-routing change neither selects nor suppresses a product law.","inputs":["docs/guides/product-law-authoring.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Reviewed release qualification, source identity and promotion gates against unchanged release workflows and aggregate; no release authority is altered.","inputs":["docs/guides/release-rings.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/releasing.md","note":"Reviewed the two PR source-job FIFO compatibility checks and three workflow-level queues against the updated exact shard expression; actionlint adaptation still validates original concurrency before removing queue from its lint copy.","inputs":["docs/guides/releasing.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Reviewed hosted-workflow and governance ownership; the workflow and gate remain at the same paths with no layout change.","inputs":["docs/guides/repository-layout.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed source aggregate, exact shard receipts, budgets and hosted completion claims against unchanged plan and receipt code. The trial adds one bounded PR concurrency group; it is not a hard runner reservation or measured speedup.","inputs":["docs/guides/testing.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Reviewed work-board authorization scope; PR shard admission and actionlint queue shape do not alter work-board security.","inputs":["docs/guides/work-board-security.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Reviewed workspace package ownership and publication boundaries; no package source, manifest or release command changed.","inputs":["docs/guides/workspace-packages.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/reference/interactive-workspace-performance.md","note":"Reviewed PR smoke and performance evidence limits; the unchanged statics and aggregate still require their existing outcomes, with no performance claim from the queue trial.","inputs":["docs/reference/interactive-workspace-performance.md",".github/workflows/ci.yml"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed browser smoke prerequisites, one-worker behavior and required aggregate wiring; the PR shard concurrency group change does not skip or alter browser setup or tests.","inputs":["docs/testing/browser-smoke.md",".github/workflows/ci.yml"]}
+  ]
+}

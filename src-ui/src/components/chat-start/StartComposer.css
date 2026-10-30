@@ -25,10 +25,15 @@
   color: var(--k-text);
   font-size: var(--k-text-xl);
 }
+/* Above the text box they read as part of the heading; in the dock
+   draft's chip row they keep the chip frame. */
 .start-composer__project,
 .start-composer__station {
   min-height: 44px;
   max-width: 100%;
+}
+.start-composer__destination .start-composer__project,
+.start-composer__destination .start-composer__station {
   border-color: transparent;
   background: transparent;
   color: var(--k-text-muted);

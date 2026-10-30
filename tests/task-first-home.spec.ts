@@ -732,7 +732,7 @@ async function openNewChatDraft(page: Page) {
     .getByRole('button', { name: 'New chat', exact: true })
     .first()
     .click();
-  const dialog = page.getByRole('dialog', { name: 'New chat', exact: true });
+  const dialog = page.getByRole('region', { name: 'New chat', exact: true });
   await expect(dialog).toBeVisible();
   return {
     dialog,
@@ -1018,7 +1018,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
       target: { agent: 'codex-agent' },
     });
     await expect(
-      page.getByRole('dialog', { name: 'New chat', exact: true }),
+      page.getByRole('region', { name: 'New chat', exact: true }),
     ).toHaveCount(0);
     // The started chat's own Agent and Model controls name the advertised
     // ones.

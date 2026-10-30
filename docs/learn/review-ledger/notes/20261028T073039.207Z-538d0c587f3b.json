@@ -1,0 +1,25 @@
+{
+  "revision": "e3004785959568a44ad25448d095dec0d4e69e54",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-checked after the follow-up commit (ChatDock remounts a collapsed New chat draft with its reported text; useChatDockOverlays exposes that text; idle auto-hide waits while a draft is open). Keyword scan for dock collapse, auto-hide and New chat claims plus the matched passages: none affected; no prose change.","inputs":["docs/architecture/module-map.md","src-ui/src/components/chat-dock/useChatDockOverlays.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Added the collapse/auto-hide sentence against ChatDock (initialPrompt from newChatDraftText after remount) and useChatDockState (idle timer skipped while showNewChatModal); both pinned by ChatWorkspacePaneComposerDraft and useChatDockState tests with fault injection.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"Re-checked after the follow-up commit (ChatDock remounts a collapsed New chat draft with its reported text; useChatDockOverlays exposes that text; idle auto-hide waits while a draft is open). Keyword scan for dock collapse, auto-hide and New chat claims plus the matched passages: none affected; no prose change.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Re-checked after the follow-up commit (ChatDock remounts a collapsed New chat draft with its reported text; useChatDockOverlays exposes that text; idle auto-hide waits while a draft is open). Keyword scan for dock collapse, auto-hide and New chat claims plus the matched passages: none affected; no prose change.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Re-checked after the follow-up commit (ChatDock remounts a collapsed New chat draft with its reported text; useChatDockOverlays exposes that text; idle auto-hide waits while a draft is open). Keyword scan for dock collapse, auto-hide and New chat claims plus the matched passages: none affected; no prose change.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Re-checked after the follow-up commit (ChatDock remounts a collapsed New chat draft with its reported text; useChatDockOverlays exposes that text; idle auto-hide waits while a draft is open). Keyword scan for dock collapse, auto-hide and New chat claims plus the matched passages: none affected; no prose change.","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"Re-checked after the follow-up commit (ChatDock remounts a collapsed New chat draft with its reported text; useChatDockOverlays exposes that text; idle auto-hide waits while a draft is open). Keyword scan for dock collapse, auto-hide and New chat claims plus the matched passages: none affected; no prose change.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Re-checked after the follow-up commit (ChatDock remounts a collapsed New chat draft with its reported text; useChatDockOverlays exposes that text; idle auto-hide waits while a draft is open). Keyword scan for dock collapse, auto-hide and New chat claims plus the matched passages: none affected; no prose change.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Re-checked the draft paragraph against the follow-up: ChatDock now remounts a collapsed draft with its reported text (useChatDockOverlays exposes newChatDraftText). The prose (Escape or leaving for a chat discards it) still holds; no change.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/useChatDockOverlays.ts"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Re-checked after the follow-up commit (ChatDock remounts a collapsed New chat draft with its reported text; useChatDockOverlays exposes that text; idle auto-hide waits while a draft is open). Keyword scan for dock collapse, auto-hide and New chat claims plus the matched passages: none affected; no prose change.","inputs":["docs/user/personal-boards.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

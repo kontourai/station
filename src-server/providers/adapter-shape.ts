@@ -444,6 +444,9 @@ export interface ProviderExecutionAuthObservation {
 }
 
 export interface ProviderAdapterShape {
+  /** This adapter can add coordinator tools to this Session without a successor. */
+  readonly coordinatorToolsRefresh?: true;
+  coordinatorToolsNeedSuccessor?(threadId: string): boolean;
   /** Positive declaration that adoption calls the creation-start hook before its first child effect. */
   readonly adoptionLifecycle?: 'reported';
   readonly provider: EngineId;

@@ -82,8 +82,6 @@
 
     "src-ui/src/components/NewChatAction.tsx",
 
-    "src-ui/src/components/chat-start/RecentChatList.tsx",
-
     "src-ui/src/components/modals/NewChatModal.tsx",
 
     "src-ui/src/components/chat-dock/ChatDockProjectContext.css",
@@ -191,6 +189,8 @@
     "src-ui/src/__tests__/execution.test.ts",
 
     "src-ui/src/__tests__/ChatDockBody.offlineSettling.test.tsx",
+
+    "src-ui/src/components/chat-dock/DockStartComposer.tsx",
 
     "src-ui/src/components/chat/ToolCallBatch.tsx",
 

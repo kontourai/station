@@ -325,7 +325,7 @@ async function openDockStartComposer(page: Page) {
   const add = page.locator('.chat-dock__tab-actions .chat-dock__new').last();
   await expect(add).toBeVisible({ timeout: 15_000 });
   await add.click();
-  const modal = page.getByRole('dialog', { name: 'New chat', exact: true });
+  const modal = page.getByRole('region', { name: 'New chat', exact: true });
   await expect(modal).toBeVisible({ timeout: 10_000 });
   const composer = modal.getByRole('form', { name: 'Start work' });
   await composer.getByRole('button', { name: /^Agent:/ }).click();

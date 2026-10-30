@@ -1,0 +1,11 @@
+{
+  "revision": "0d2d02b54a074cf440b21acc082f2edbeb8ce96a",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Targeted review after NewChatModal merge #4356: inspected start-composer, connection-repair and routing claims. Connections-onboarding describes dock draft and current-page setup return; Station connection repair remains distinct from work-destination Runs on chooser. Module map retains existing owner routing, no claim of a separate dock task form found. No prose change needed. Changed owner retains shared draft lifecycle and upstream Station-selection/placement flow; independent source review clear. Not a full document audit.","inputs":["docs/architecture/module-map.md","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed merge #4356: draft layout now names useExecutionStations and Runs on Station control; upstream shared catalog owns authority and placement restrictions. StartStationControl chooses a destination then its Engine & model, remote Start opens launcher and onTaskStarted retains invalidation and Open task notice. Draft hidden/inert, leave/history and setup-return lifecycles retained. UI typecheck and 347 focused tests passed (2 skipped); source review clear. Hosted qualification pending.","inputs":["docs/design/chat-composer.md","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Targeted review after NewChatModal merge #4356: inspected start-composer, connection-repair and routing claims. Connections-onboarding describes dock draft and current-page setup return; Station connection repair remains distinct from work-destination Runs on chooser. Module map retains existing owner routing, no claim of a separate dock task form found. No prose change needed. Changed owner retains shared draft lifecycle and upstream Station-selection/placement flow; independent source review clear. Not a full document audit.","inputs":["docs/design/connections-onboarding.md","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

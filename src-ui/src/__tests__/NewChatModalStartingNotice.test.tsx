@@ -7,7 +7,9 @@
  * connection, must not take its place.
  */
 
-import { cleanup, render, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { cleanup, render as renderView, screen } from '@testing-library/react';
+import type { ReactElement } from 'react';
 import { useState } from 'react';
 import { afterEach, beforeAll, expect, test, vi } from 'vitest';
 import { NewChatModal } from '../components/modals/NewChatModal';
@@ -51,6 +53,10 @@ vi.mock('../contexts/AuthorityPersistenceContext', () => ({
   }),
 }));
 vi.mock('@kontourai/station-sdk', () => ({
+  // The Station list behind the draft's "on <Station>" line: no saved or
+  // paired Stations, so only this one.
+  useSshEnvironmentsQuery: () => ({ isSuccess: false, isError: false }),
+  usePeerCredentialsQuery: () => ({ isSuccess: false, isError: false }),
   // The visual-skills Feature Preview on, so the start composer offers them.
   useFeaturePreviewsQuery: () => ({
     data: [{ id: 'visual-skills', enabled: true }],
@@ -143,3 +149,12 @@ test('an app still on its first start is reported, not replaced by the Station a
   expect(screen.getByText(STARTING)).toBeTruthy();
   expect(screen.queryByText(/Station needs one thing/)).toBeNull();
 });
+
+function render(ui: ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return renderView(
+    <QueryClientProvider client={client}>{ui}</QueryClientProvider>,
+  );
+}

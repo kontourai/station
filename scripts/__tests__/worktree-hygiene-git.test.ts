@@ -550,6 +550,40 @@ describe('worktree hygiene against real repositories', () => {
     }
   }, 60_000);
 
+  test('ordinary reports expose dependency accumulation in kept legacy baselines without removing it', () => {
+    const { repo, lane } = makeFixture();
+    const head = git(repo, ['rev-parse', 'HEAD']).trim();
+    const baseline = lane(`dependabot-transfer-baseline-${head.slice(0, 9)}`);
+    git(repo, ['worktree', 'add', '-q', '--detach', baseline, head]);
+    const dependency = join(baseline, 'node_modules', 'pkg', 'index.js');
+    mkdirSync(dirname(dependency), { recursive: true });
+    writeFileSync(dependency, 'generated dependency\n');
+    coolDown(baseline);
+
+    const text = runCli(['--repo', repo, '--base', 'main'], repo);
+    expect(text.status).toBe(0);
+    expect(text.stdout).toContain(`DEPENDENCIES  ${baseline}`);
+    expect(text.stdout).toContain('legacy transfer baseline naming');
+    expect(text.stdout).toContain(
+      'automatic baseline retention does not own this name',
+    );
+    expect(text.stdout).toContain(
+      'npm run transfer:gate -- --prepare-baseline',
+    );
+
+    const json = runCli(['--repo', repo, '--base', 'main', '--json'], repo);
+    expect(json.status).toBe(0);
+    const report = JSON.parse(json.stdout);
+    const entry = report.classifications.find(
+      (candidate: { path: string }) => candidate.path === baseline,
+    );
+    expect(entry.dependencyDirectory).toBe(true);
+    expect(entry.finished).toBe(false);
+    expect(existsSync(dependency)).toBe(true);
+    expect(existsSync(join(baseline, 'README.md'))).toBe(true);
+    expect(git(baseline, ['status', '--porcelain'])).toBe('');
+  }, 60_000);
+
   test('the report tells the reader to run git, and names git as the guard', () => {
     const { repo } = makeFixture();
     const { status, stdout } = runCli(['--repo', repo, '--base', 'main'], repo);

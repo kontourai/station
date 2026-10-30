@@ -35,11 +35,6 @@
   align-items: center;
   gap: var(--k-space-2);
 }
-.chat-start__recent ul {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
 .chat-start__recent-heading h4 {
   margin-block: var(--k-space-3);
 }
@@ -48,4 +43,72 @@
 }
 .chat-start__body p {
   color: var(--k-text-muted);
+}
+
+/* The dock's New chat draft reads like an empty chat: a quiet line centred
+   in the body, setup and errors under it, and the start composer pinned
+   where a reply composer sits. */
+/* The body takes the room the composer leaves and scrolls itself, so setup
+   and errors are never underneath the composer. */
+.new-chat-draft__body {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: var(--k-space-3);
+}
+.new-chat-draft__lead {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--k-space-2);
+  /* Centred while the body has room; scrolls with it when setup fills it. */
+  margin-block: auto;
+  text-align: center;
+}
+.new-chat-draft__lead .button.task-chat-start__chip {
+  align-self: center;
+  margin-inline: 0;
+}
+.chat-start__body .new-chat-draft__lead p {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.new-chat-modal > .start-composer {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  background: var(--k-bg);
+  padding: 0 var(--k-space-3) max(var(--k-space-3), var(--safe-bottom, 0px));
+}
+/* A short dock (a desktop bottom dock at its normal height) keeps the body
+   readable: the draft's text box shrinks with the draft's height (`cqh` of
+   the `new-chat-draft` container), from its usual three lines to one, never
+   below the 44px target. */
+.new-chat-modal > .start-composer .start-composer__input {
+  min-height: 2.75rem;
+  height: clamp(2.75rem, 100cqh - 25rem, 6rem);
+}
+/* A file dragged over the draft: the whole draft takes it. Drawn above the
+   pinned composer, whose background would otherwise cover the frame. */
+.new-chat-modal[data-file-drag]::after {
+  content: "";
+  position: absolute;
+  inset: var(--k-space-1);
+  z-index: 2;
+  border: 2px dashed var(--k-focus);
+  border-radius: var(--k-radius-md);
+  pointer-events: none;
+}
+/* While a setup panel shows, Start cannot run yet: setup and the composer
+   scroll together in the draft (one scroller) instead of a squeezed body
+   over a pinned composer. */
+.new-chat-modal:has(.chat-start__setup) > .new-chat-draft__body {
+  flex: 1 0 auto;
+  overflow-y: visible;
+}
+.new-chat-modal:has(.chat-start__setup) > .start-composer {
+  position: static;
 }

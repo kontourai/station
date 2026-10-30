@@ -72,6 +72,7 @@ async function stations(storeOptions?: PeerCredentialStoreOptions) {
   let afterHandshake: (() => void) | undefined;
   let redirectFollowed = false;
   let exchangeCount = 0;
+  let accessRequestRefusal: { status: number; body: unknown } | undefined;
   const observedProtocols: Array<{
     path: string;
     protocol: string | undefined;
@@ -91,6 +92,10 @@ async function stations(storeOptions?: PeerCredentialStoreOptions) {
     const accessRequest =
       c.req.path === '/.well-known/station/v1/pairing/access-request';
     const exchange = c.req.path === '/.well-known/station/v1/pairing/exchange';
+    if (accessRequest && accessRequestRefusal)
+      return Response.json(accessRequestRefusal.body, {
+        status: accessRequestRefusal.status,
+      });
     if (exchange) exchangeCount += 1;
     await next();
     if (c.req.path === '/.well-known/station/v1') afterHandshake?.();
@@ -180,6 +185,9 @@ async function stations(storeOptions?: PeerCredentialStoreOptions) {
     start,
     complete,
     approve,
+    refuseAccessRequest: (status: number, body: unknown) => {
+      accessRequestRefusal = { status, body };
+    },
     setExchangeMode: (mode: typeof exchangeMode) => {
       exchangeMode = mode;
     },
@@ -282,6 +290,67 @@ describe('server-owned peer enrollment through Station routes', () => {
       ),
     ).not.toContain(credential!);
   });
+
+  test.each([
+    {
+      name: 'nested origin refusal',
+      status: 403,
+      body: {
+        error: { code: 'origin_forbidden', message: '/private/receiver' },
+      },
+      guidance:
+        'Receiver blocked this Station address; ask its operator to configure the published address as a trusted origin, then start a new peer request',
+    },
+    {
+      name: 'flat origin refusal',
+      status: 403,
+      body: { error: 'origin_forbidden' },
+      guidance:
+        'Receiver blocked this Station address; ask its operator to configure the published address as a trusted origin, then start a new peer request',
+    },
+    {
+      name: 'rate limit',
+      status: 429,
+      body: { error: 'rate_limited' },
+      guidance:
+        'Receiver is limiting pairing requests; wait before starting a new peer request',
+    },
+    {
+      name: 'unsupported client protocol',
+      status: 426,
+      body: { error: { code: 'client_protocol_unsupported' } },
+      guidance:
+        'Receiver requires a newer Station protocol; update this Station before starting a new peer request',
+    },
+    {
+      name: 'unknown receiver error',
+      status: 403,
+      body: { error: { code: '/private/receiver', message: 'secret-proof' } },
+      guidance: 'Receiver did not accept a peer request',
+    },
+    {
+      name: 'origin code on an unrelated status',
+      status: 500,
+      body: { error: 'origin_forbidden' },
+      guidance: 'Receiver did not accept a peer request',
+    },
+  ])(
+    'explains $name without exposing receiver details',
+    async ({ status, body, guidance }) => {
+      const h = await stations();
+      h.refuseAccessRequest(status, body);
+      const response = await h.start();
+      expect(response.status).toBe(201);
+      const enrollment = (await readEnrollment(response)).data;
+      expect(enrollment.status).toBe('failed');
+      expect(enrollment.error).toBe(guidance);
+      expect(h.pairing.listRequests()).toEqual([]);
+      expect(h.store.list()).toEqual([]);
+      expect((await h.service.get(h.input.id, () => true)).error).toBe(
+        guidance,
+      );
+    },
+  );
 
   test('denial remains terminal and never installs a peer', async () => {
     const h = await stations();

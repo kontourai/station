@@ -286,7 +286,15 @@ operator-authorized session on the controlling Station; ordinary paired-device
 access cannot manage peer credentials. If that authority is unavailable, the
 dialog explains the limitation instead of asking for an operator key. Existing
 trusted approval surfaces remain the remedy; this flow does not implement
-remote operator elevation.
+remote operator elevation. A refused peer request keeps its reference for retry
+from an operator session. **Request access for this device** remains available
+independently, so peer setup cannot prevent Device pairing.
+
+For a Tailscale API endpoint, the receiving Station must allow that endpoint's
+exact HTTPS origin with `--allowed-origin=<endpoint>`. Peer enrollment sends
+that origin when requesting receiver approval. An `origin_forbidden` refusal
+creates no approval request; changing Device scopes or minting another code
+cannot fix it. Apply the endpoint setting through the receiver's launcher.
 
 Device access saves without replacing an existing selected Station. From a
 Project's Delegate dialog, setup preserves the draft and resource selection and
@@ -300,7 +308,9 @@ that existing enrollment. Before confirmation, **Retry this same request** keeps
 its retained identity and destination. Each state offers cancellation separately;
 retry does not create a replacement automatically. If an exchange outcome is unknown, inspect or
 revoke the receiver's grant before starting again. Cancelling a local pending
-request does not revoke an already approved receiver grant. A saved peer
+request does not revoke an already approved receiver grant. After confirmed
+cancellation, **Choose another Station** returns to destination selection.
+A saved peer
 credential establishes permission, not observed reachability or Project readiness.
 
 Tap the connection dot on a phone, or the connection name on desktop, to

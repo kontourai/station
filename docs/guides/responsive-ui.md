@@ -253,9 +253,11 @@ for its 52px add button. Chat creation shares [NewChatAction](../../src-ui/src/c
 across the task picker, desktop inbox, the collapsed dock bar (icon only) and
 the open, empty dock. The mobile bar composes the same conversation-plus glyph
 with its toolbar button styles. Both forms retain a 44px minimum target and
-an accessible name. It opens the start composer: its two chips stay on one line (the Agent
-chip gives up width first) and attach, mic and the overflow sit with Start, so
-a phone gets the chips on row one and [attach mic ⋯ … Start] on row two with no
+an accessible name. It opens the start composer, in the dock as a draft in the
+dock body (full screen on a phone). Its chips (in the dock's draft also the
+Project control, and **Run a task…** when there is more than one Station) wrap
+rather than overflow, and attach, mic and the overflow sit with Start, so a
+phone gets the chips first and [attach mic ⋯ … Start] on the next row with no
 viewport query; every target is 44px, and the chip menus are edge sheets on a phone with their own
 scrolling list. Creation controls remain outside the scrolling lists. The task picker presents
 Input/Approval compactly and keeps reasons readable in full through details;

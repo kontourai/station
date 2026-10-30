@@ -1,0 +1,9 @@
+{
+  "revision": "93297363c944695cca6b03aee9b49273f9f114df",
+
+  "notes": [
+    {"path":"docs/pages/README.md","note":"corpus.json adds docs/user/houston.md to exclude (a repo-only guide, not admitted to Pages, which is why getting-started links it by absolute URL). Updated the exclude list here to name it beside workspace-checkpoints.md; public-docs.json is unchanged, so the two manifests still track.","inputs":["docs/pages/README.md","corpus.json"]},
+
+    {"path":"docs/guides/documentation.md","note":"corpus.json changed only by excluding docs/user/houston.md. The guide rule that new Pages content must be admitted in public-docs.json and that corpus.json tracks it still holds: nothing was admitted, and the docs-kit reachability check needs every Markdown file listed or excluded.","inputs":["docs/guides/documentation.md","corpus.json"]}
+  ]
+}

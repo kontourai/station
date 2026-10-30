@@ -13,6 +13,7 @@
 import { appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { coordinatorWakeClientTurnId } from '@kontourai/station-contracts/coordinator';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -23,6 +24,7 @@ import type {
   ProviderTurnStartResult,
 } from '../../../providers/adapter-shape.js';
 import { isForegroundIndeterminateShape } from '../../../routes/orchestration/orchestration.js';
+import { CoordinatorWakeDelivery } from '../coordinator-session.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
@@ -1530,4 +1532,170 @@ describe('thread inbox (#3568)', () => {
       state: 'cancelled',
     });
   });
+});
+
+describe('withdrawing several entries, and a sender placement policy (#3628)', () => {
+  const path = () =>
+    join(makeTempDir('thread-inbox-withdraw-'), 'orchestration.sqlite');
+
+  /**
+   * Two of the owner's entries queued while the conversation read busy, then
+   * the conversation goes idle with no event to drive it: the moment a
+   * withdrawal meets.
+   */
+  async function twoQueuedOnAnIdleTarget(
+    extra: Partial<ThreadInboxDeliveryPorts> = {},
+  ) {
+    const held = { busy: true };
+    let world!: World;
+    world = boot(path(), {
+      coordinatorBusy: (threadId) =>
+        held.busy || world.service.hasActiveTurn(threadId),
+      // No re-check inside the test: only a drive can place them.
+      retryDelaysMs: [60 * 60_000],
+      maxRetries: 1,
+      ...extra,
+    });
+    await startSession(world);
+    for (const key of ['wake-1', 'wake-2'])
+      expect(
+        world.inbox.submit({
+          conversationId: THREAD,
+          clientTurnId: key,
+          payload: { message: `message ${key}`, actor: { userId: OWNER } },
+        }),
+      ).toMatchObject({ outcome: 'queued' });
+    await settle(world);
+    expect(sends).toEqual([]);
+    held.busy = false;
+    return world;
+  }
+
+  test('cancelling one at a time drives in between: the other entry is placed', async () => {
+    const world = await twoQueuedOnAnIdleTarget();
+    expect(world.inbox.cancel(THREAD, 'wake-1', OWNER)).toMatchObject({
+      kind: 'cancelled',
+    });
+    await settle(world);
+    expect(sends).toEqual(['message wake-2']);
+  });
+
+  test('cancelQueued withdraws every entry before driving: nothing is placed', async () => {
+    const world = await twoQueuedOnAnIdleTarget();
+    expect(
+      world.inbox.cancelQueued(THREAD, ['wake-1', 'wake-2'], OWNER),
+    ).toEqual(['wake-1', 'wake-2']);
+    await settle(world);
+    expect(sends).toEqual([]);
+    expect(world.inbox.list(THREAD).map((entry) => entry.state)).toEqual([
+      'cancelled',
+      'cancelled',
+    ]);
+  });
+
+  test('cancelQueued leaves another sender’s entry and an unknown key alone', async () => {
+    const world = await twoQueuedOnAnIdleTarget();
+    expect(
+      world.inbox.cancelQueued(THREAD, ['wake-1', 'missing'], 'someone-else'),
+    ).toEqual([]);
+  });
+
+  test('a placement policy refusal settles the entry refused and sends nothing', async () => {
+    const asked: string[] = [];
+    const world = await twoQueuedOnAnIdleTarget({
+      placementRefusal: ({ clientTurnId, queuedAt }) => {
+        asked.push(clientTurnId);
+        expect(typeof queuedAt).toBe('number');
+        return clientTurnId === 'wake-1'
+          ? { reasonCode: 'coordinator_retired', reason: 'Not the target.' }
+          : undefined;
+      },
+    });
+    // An event drives the idle conversation.
+    await emit(world, 'session.state-changed', { state: 'ready' });
+    await settle(world);
+    expect(sends).toEqual(['message wake-2']);
+    expect(world.inbox.list(THREAD)).toEqual([
+      expect.objectContaining({
+        clientTurnId: 'wake-1',
+        state: 'refused',
+        reasonCode: 'coordinator_retired',
+      }),
+      expect.objectContaining({ clientTurnId: 'wake-2', state: 'sent' }),
+    ]);
+    expect(asked).toEqual(['wake-1', 'wake-2']);
+  });
+});
+
+test('restart preserves delivery proof before applying coordinator policy', async () => {
+  const file = join(
+    makeTempDir('review-policy-recovery-'),
+    'orchestration.sqlite',
+  );
+  const first = boot(file);
+  const firstTurn = await runningFirstTurn(first);
+  const cs = first.store.coordinatorStore();
+  cs.designate({
+    conversationId: THREAD,
+    actor: { userId: OWNER },
+    replace: false,
+    now: Date.now(),
+  });
+  for (const sessionId of ['source-a', 'source-b'])
+    cs.recordItem(
+      OWNER,
+      { kind: 'finished', sessionId, itemKey: sessionId, title: sessionId },
+      Date.now(),
+    );
+  const claim = cs.claimWake({
+    designation: cs.designation(OWNER)!,
+    now: Date.now(),
+    compose: () => FOLLOW_UP,
+  });
+  if (claim.outcome !== 'claimed') throw new Error('claim prerequisite');
+  const key = coordinatorWakeClientTurnId(claim.wake.id);
+  first.afterStart.hang = true;
+  first.inbox.submit({ conversationId: THREAD, clientTurnId: key, payload });
+  await emit(first, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(followUpSends()).toEqual([FOLLOW_UP]);
+  expect(first.inbox.entry(THREAD, key)?.state).toBe('sending');
+  await crash(first);
+
+  let policy: CoordinatorWakeDelivery | undefined;
+  const second = boot(file, {
+    placementRefusal: ({ conversationId, clientTurnId, payload, queuedAt }) =>
+      policy?.placementRefusal({
+        conversationId,
+        clientTurnId,
+        userId: payload.actor.userId,
+        queuedAt,
+      }),
+  });
+  policy = new CoordinatorWakeDelivery({
+    store: second.store.coordinatorStore(),
+    mayRead: (_userId, sessionId) => sessionId !== 'source-b',
+    conversationOf: (id) => id,
+    delegatedBy: () => undefined,
+    submit: (input) => second.inbox.submit(input),
+    withdrawQueuedWakes: () => 0,
+    logger: { warn: vi.fn() },
+    setTimer: () => () => {},
+  });
+  try {
+    await startSession(second);
+    await second.inbox.reconcile();
+    await settle(second);
+    expect(followUpSends()).toEqual([FOLLOW_UP]);
+    expect({
+      entry: second.inbox.entry(THREAD, key)?.state,
+      nonDelivery: second.inbox.nonDeliveryReason(THREAD, key),
+      released: second.store
+        .coordinatorStore()
+        .waitingItems(OWNER)
+        .map((item) => item.sessionId),
+    }).toEqual({ entry: 'sent', nonDelivery: undefined, released: [] });
+  } finally {
+    policy.stop();
+  }
 });

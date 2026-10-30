@@ -565,7 +565,10 @@ persisted binding. Just before sending it checks again that the sender may
 still send to the conversation and that their device is still paired with
 the scope to (for one tied to an account, that the account is enabled and
 was not signed out everywhere since the message was queued); otherwise the message is `refused` (`not_permitted` or
-`device_not_permitted`) and nothing is sent. It never stores a full-access
+`device_not_permitted`) and nothing is sent. Station's own coordinator wakes
+(#3628) are also checked against their sender's policy at that moment, and a
+refused one carries `coordinator_retired`, `coordinator_wake_expired` or
+`coordinator_source_unreadable`; a person's messages have no such policy. It never stores a full-access
 grant: an engine restarted to take a held message starts confined. Each
 message keeps its `clientTurnId`, so the
 [delivery lookup](#find-out-what-became-of-a-send) follows it, and Station
@@ -750,6 +753,13 @@ legs contribute their authorized user/assistant transcript, not provider-private
 tool state. An explicit empty-context boundary excludes earlier model context even
 while the historical transcript remains visible. Callers never supply native
 memory paths or another Session's memory identity.
+
+When a running conversation is designated as the person's coordinator, its
+next turn also acquires Station tools. An engine with per-Session refresh
+updates that Session; another supported engine starts a successor through this
+same continuity path. The chat identifies a restart to acquire tools. An
+engine declaring tool servers unsupported can remain designated; the chat and
+Home explain that it can receive updates but cannot act through those tools.
 
 ## Lifecycle control commands
 

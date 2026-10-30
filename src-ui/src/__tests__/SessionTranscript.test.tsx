@@ -691,6 +691,30 @@ describe('another agent’s message in the Activity transcript (#3419)', () => {
     expect(within(rows[1]!).queryByText('You')).toBeNull();
   });
 
+  test('a coordinator wake is labelled as Station input', () => {
+    windowState.events = [
+      {
+        sequence: 1,
+        event: ev({
+          method: 'turn.started',
+          turnId: 'wake',
+          prompt: 'Work finished',
+          clientOrigin: {
+            version: 1,
+            actor: { kind: 'internal' },
+            reported: { version: 1, surface: 'unknown', build: null },
+            sender: { kind: 'coordinator', sessionId: 'coordinator' },
+          },
+        } as never),
+      },
+    ];
+    renderTranscript(false);
+    const [row] = screen.getAllByTestId('session-transcript-message');
+    expect(row!.getAttribute('aria-label')).toBe('Update from Station');
+    expect(row!.textContent).toContain('Update from Station');
+    expect(within(row!).queryByText('You')).toBeNull();
+  });
+
   test('missing sender provenance on an internal input is a named gap, never You', () => {
     windowState.events = [
       {

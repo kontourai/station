@@ -1179,6 +1179,44 @@ describe('device pairing panels', () => {
     },
   );
 
+  test.each([
+    [
+      'constructor',
+      'This Station does not allow access requests from this app address.',
+    ],
+    [
+      'insufficient_scope',
+      'This Station refused this access request. Ask its operator to review permissions.',
+    ],
+    [
+      'identity_credential_quota_reached',
+      'This Station has already granted you as many devices as it allows. Revoke one under Paired Devices on the Station, then try again.',
+    ],
+  ])(
+    'direct access explains %s without blaming the app address',
+    async (code, message) => {
+      const request = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValue(response({ error: { code } }, 403));
+      const onPending = vi.fn();
+      const onPaired = vi.fn();
+      render(
+        <JoinDevicePairingPanel
+          initialMode="direct"
+          directEndpoint="https://remote.example.test"
+          onApprovalPending={onPending}
+          onPaired={onPaired}
+          onCancel={vi.fn()}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
+      expect((await screen.findByRole('alert')).textContent).toContain(message);
+      expect(onPending).not.toHaveBeenCalled();
+      expect(onPaired).not.toHaveBeenCalled();
+      expect(request).toHaveBeenCalledTimes(1);
+    },
+  );
+
   test('native request-access explains an unreachable host and offers retry', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(
       new TypeError('network unavailable'),

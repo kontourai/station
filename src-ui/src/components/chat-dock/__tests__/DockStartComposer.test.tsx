@@ -23,7 +23,7 @@ vi.mock('../../../contexts/ApiBaseContext', () => ({
   useHostRequestAuthorityScope: () => undefined,
 }));
 
-const { ChatDockModalStack } = await import('../ChatDockModalStack');
+const { DockStartComposer } = await import('../DockStartComposer');
 
 afterEach(() => {
   cleanup();
@@ -38,7 +38,7 @@ const draft: ProjectChatComposerDraft = {
   message: 'Read the `plugin-authoring` topic.',
 };
 
-function renderStack(
+function renderDraft(
   override: {
     slug: string;
     name: string;
@@ -48,36 +48,20 @@ function renderStack(
 ) {
   const noop = vi.fn();
   render(
-    <ChatDockModalStack
+    <DockStartComposer
       projectIconBySlug={new Map()}
       agents={[]}
       projects={[]}
       newChatProjectOverride={override}
-      sessions={[]}
-      showNewChatModal
-      showChatSettings={false}
-      showSessionPicker={false}
-      chatFontSize={14}
-      defaultFontSize={14}
-      showReasoning={false}
-      showToolDetails={false}
-      autoHideEnabled={false}
-      onSelectNewChat={noop}
-      onCloseNewChat={noop}
-      onCloseSettings={noop}
-      onCloseSessionPicker={noop}
-      onSessionPickerSelect={noop}
-      onChatFontSizeChange={noop}
-      onShowReasoningChange={noop}
-      onShowToolDetailsChange={noop}
-      onAutoHideChange={noop}
+      onSelect={noop}
+      onClose={noop}
       forkMode={forkMode}
     />,
   );
 }
 
 test('a project chat request carrying a composer draft reaches the picker as a verbatim draft item', async () => {
-  renderStack({ slug: 'pulse', name: 'Pulse', composerDraft: draft });
+  renderDraft({ slug: 'pulse', name: 'Pulse', composerDraft: draft });
   await screen.findByText('new chat picker');
   const props = newChatProps.at(-1)!;
   expect(props.activeProjectSlug).toBe('pulse');
@@ -97,13 +81,13 @@ test('a project chat request carrying a composer draft reaches the picker as a v
 });
 
 test('no draft, or a fork, offers no draft item', async () => {
-  renderStack({ slug: 'pulse', name: 'Pulse' });
+  renderDraft({ slug: 'pulse', name: 'Pulse' });
   await screen.findByText('new chat picker');
   expect(newChatProps.at(-1)!.draftContext).toBeUndefined();
   cleanup();
   newChatProps.length = 0;
 
-  renderStack(
+  renderDraft(
     { slug: 'pulse', name: 'Pulse', composerDraft: draft },
     { kind: 'fork', preferredAgentSlug: 'assistant' },
   );

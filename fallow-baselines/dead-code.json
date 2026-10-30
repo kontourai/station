@@ -399,7 +399,6 @@
     "unused-export:src-ui/src/components/UsageTelemetryDisclosure.tsx:USAGE_TELEMETRY_SNOOZE_DURATION_MS",
     "unused-export:src-ui/src/components/UsageTelemetryDisclosure.tsx:usageTelemetryDecisionLabels",
     "unused-export:src-ui/src/components/acp-connections/ACPChatPanel.tsx:acpViewportBoundaryStyle",
-    "unused-export:src-ui/src/components/chat-dock/ChatDockModalStack.tsx:FORK_REPLAY_ONLY_DISCLOSURE",
     "unused-export:src-ui/src/components/chat-dock/sessionInventoryOccurrence.ts:readSessionInventoryHostRegistration",
     "unused-export:src-ui/src/components/chat-dock/useSessionInventoryLive.ts:overlaySessionInventoryLive",
     "unused-export:src-ui/src/components/chat/ShareTargetPickerModal.tsx:default",

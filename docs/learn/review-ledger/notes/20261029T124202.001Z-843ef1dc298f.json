@@ -1,0 +1,11 @@
+{
+  "revision": "994710096fa369d01e0151eb1110efe75bb7e98a",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Scoped review of the screenshot fixture delta: mobile conversation recovery now expects the independently failed inventory to remain last-known, consistent with the existing desktop assertion. The affected motion, testing and telemetry claims are unchanged; the full local gallery and focused recovery fixtures ran, with no live-device qualification.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Scoped review of the screenshot fixture delta: mobile conversation recovery now expects the independently failed inventory to remain last-known, consistent with the existing desktop assertion. The affected motion, testing and telemetry claims are unchanged; the full local gallery and focused recovery fixtures ran, with no live-device qualification.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Scoped review of the screenshot fixture delta: mobile conversation recovery now expects the independently failed inventory to remain last-known, consistent with the existing desktop assertion. The affected motion, testing and telemetry claims are unchanged; the full local gallery and focused recovery fixtures ran, with no live-device qualification.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]}
+  ]
+}

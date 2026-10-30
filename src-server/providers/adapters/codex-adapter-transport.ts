@@ -37,6 +37,7 @@ import {
   assertNativeAuthenticationLaunch,
   nativeAuthenticationSpawnCwd,
 } from '../auth/native-authentication-context.js';
+import { cliInvocation } from '../auth/windows-cli-invocation.js';
 import { providerFailure } from '../provider-failure.js';
 import { AsyncEventQueue } from '../sessions/async-event-queue.js';
 import {
@@ -1581,6 +1582,10 @@ function spawnCodexProcess(
   tmpDir?: string,
 ): ChildProcessWithoutNullStreams {
   const { binary, env } = resolveCodexSpawnContext(extraEnv, tmpDir);
+  const invocation = cliInvocation(binary, [
+    'app-server',
+    ...(extraArgs ?? []),
+  ]);
   // archive#1195: `extraArgs` carries `-c mcp_servers.<id>....` session-layer
   // config overrides (codex-mcp-passthrough.ts) — appended AFTER
   // `app-server` on the spawn argv itself, never written to any config
@@ -1619,13 +1624,13 @@ function spawnCodexProcess(
   delete authenticationEnv[WORKLOAD_SESSION_ENV];
   assertNativeAuthenticationLaunch({
     cwd,
-    command: binary,
-    args: ['app-server', ...(extraArgs ?? [])],
+    command: invocation.command,
+    args: invocation.args,
     env: authenticationEnv,
   });
   const { proc, release } = spawnOwnedChild(
-    binary,
-    ['app-server', ...(extraArgs ?? [])],
+    invocation.command,
+    invocation.args,
     {
       stdio: ['pipe', 'pipe', 'pipe'],
       cwd,

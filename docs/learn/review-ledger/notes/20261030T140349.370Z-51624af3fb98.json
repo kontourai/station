@@ -1,0 +1,15 @@
+{
+  "revision": "00bb43106fb37398d8c2e287c6a68a19c05af7e6",
+
+  "notes": [
+    {"path":"docs/guides/deployment.md","note":"Reviewed Windows SSH lifecycle through service-windows, service run and runtime Origin admission. Official interactive task semantics and rollback remain unchanged; added operator-managed S4U guidance with credential, ownership and update limits. Live nightly installation, session-independent custom task, tailnet identity and authenticated peer reads confirmed; reboot and full provider delegation not established. Exact Origin admission is independent of network reachability.","inputs":["docs/guides/deployment.md","packages/cli/src/commands/environment.ts","packages/cli/src/commands/service-windows.ts","packages/cli/src/commands/service.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed actual Codex and Claude adapter startup classifiers and sanitized task/event boundaries. Sandbox namespace denial is permission_denied; explicit unknown-provider-model is model_unavailable, not inferred quota. Adapter and delegation focused suites pass. Host AppArmor profile presence is not process attachment proof; no global policy or sandbox weakening.","inputs":["docs/guides/development.md","src-server/providers/adapters/claude-adapter.ts","src-server/providers/auth/cli-auth.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed environment offer host proof, exact published-Origin probe before mint, advertised address output, Windows start timeout diagnostics and absent-task scheduling guard. Offer focused18 passed; Windows test evidence follows in PR. No automatic origin grant, foreign Serve overwrite or remote credential publication. Official task remains interactive; custom S4U task is separately operator-managed.","inputs":["docs/reference/cli.md","packages/cli/src/commands/environment.ts","packages/cli/src/commands/service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed provider-failure authority and regenerated table directly from actual export. Added sandbox_unavailable permission_denied and provider_model_unavailable model_unavailable, both nonretryable, fixed sanitized guidance through adapters/projections/local tool envelope. Codex127 Claude425 contracts/projection118 and tool146 passed; failed start may precede ordinary task handle.","inputs":["docs/reference/contracts.md","packages/contracts/src/__tests__/provider-failure.test.ts","packages/contracts/src/provider-failure.ts","src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed worktree-hygiene dependencyDirectory lstat tri-state and matching legacy detached baseline naming against existing canonical retention owner. Inventory is read-only, no size/inactivity/deletion authority, symlinks not counted. Initial81 regression tests passed; final false-positive controls run separately. Canonical retention/deletion rules unchanged.","inputs":["docs/guides/testing.md","docs/guides/development.md"]}
+  ]
+}

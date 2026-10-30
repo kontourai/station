@@ -806,6 +806,8 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'scripts/__tests__/builder-delivery-viewer-import-gate.test.ts',
   'scripts/__tests__/classify-ci-change.scan.test.ts',
   'scripts/__tests__/content-integrity-gate.scan.test.ts',
+  // Scans source trees for coordinator product names outside their copy owner.
+  'scripts/__tests__/coordinator-product-names.test.ts',
   // Walks tests/ to refuse a whole-URL glob for the server update check (#3851).
   'scripts/__tests__/core-update-route.test.ts',
   'scripts/__tests__/dialog-surface-class-guard.test.ts',

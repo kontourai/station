@@ -42,6 +42,31 @@ const scheduleSchema = z.discriminatedUnion('kind', [
 
 export function registerScheduleTools(registry: StationControlToolRegistry) {
   registry.tool(
+    'coordinator_picture_read',
+    'Read the bounded working picture maintained by this person’s designated coordinator. Only readable work is returned.',
+    {},
+    async () =>
+      jsonToolResult(
+        await api('/api/orchestration/station-control/coordinator-picture'),
+      ),
+  );
+  registry.tool(
+    'coordinator_picture_update',
+    'Update or remove one readable conversation in this person’s coordinator working picture. Keep the summary short and current.',
+    {
+      conversationId: z.string().min(1).max(512),
+      status: z.enum(['in-flight', 'waiting', 'finished', 'remove']),
+      summary: z.string().max(600).optional(),
+    },
+    async (args) =>
+      jsonToolResult(
+        await api('/api/orchestration/station-control/coordinator-picture', {
+          method: 'POST',
+          body: JSON.stringify(args),
+        }),
+      ),
+  );
+  registry.tool(
     'schedule_wake_up',
     `Check back in this chat later: Station sends you one follow-up turn after \`minutes\`, quoting your \`note\`. It runs with this chat's current permissions. Only this chat; at most ${MAX_HOURS} hours ahead, ${AGENT_WAKE_UP_MAX_PENDING_PER_CONVERSATION} waiting at once, a note of ${AGENT_WAKE_UP_NOTE_MAX_CHARS} characters. If a turn is running then, it waits for it to end. The person sees it in the chat and can cancel it. In a session that runs unconfined, the person must approve it first: the result's state is \`needs_approval\`, and it is sent only if they approve before it is due.`,
     {

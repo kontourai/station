@@ -219,7 +219,6 @@ vi.mock('@kontourai/station-sdk', () => ({
 
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
 import { ChatDockProjectSwitcherSheet } from '../components/chat-dock/ChatDockProjectSwitcherSheet';
-import { RecentChatList } from '../components/chat-start/RecentChatList';
 import { HomeRecentWorkSection } from '../components/home/HomeRecentWorkSection';
 import { ProjectSidebar } from '../components/project-sidebar/ProjectSidebar';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
@@ -864,81 +863,16 @@ describe('a project wears the same colour everywhere', () => {
     };
     const dockColour = rowColour(<DockInbox items={[betaWork]} />);
     const homeColour = rowColour(<Home items={[betaWork]} />);
-    const recentColour = rowColour(
-      <RecentChatList
-        items={[betaWork]}
-        context="beta"
-        agents={[]}
-        onOpen={vi.fn()}
-        onViewAll={vi.fn()}
-      />,
-    );
 
     expect({
       switcher: switcherColour,
       dock: dockColour,
       home: homeColour,
-      recent: recentColour,
     }).toEqual({
       switcher: sidebarColour,
       dock: sidebarColour,
       home: sidebarColour,
-      recent: sidebarColour,
     });
-  });
-
-  test("New Chat's recent rows wear a project's icon, and a remote row wears neither mark", async () => {
-    resetState();
-    projects.push({
-      id: 'p-beta',
-      slug: 'beta',
-      name: 'Beta',
-      icon: '🧭',
-    } as (typeof projects)[number]);
-    const local: HomeWorkItem = {
-      id: 'beta-local',
-      kind: 'chat',
-      kindLabel: 'Direct chat',
-      title: 'Local beta work',
-      projectLabel: 'Beta',
-      projectSlug: 'beta',
-      agentLabel: 'Codex',
-      modelLabel: 'GPT-5',
-      updatedAt: Date.now() - 60_000,
-      lifecycleLabel: 'Ready',
-      chatSessionId: 'beta-local',
-    };
-    // The same slug on a peer Station names that Station's project.
-    const remote: HomeWorkItem = {
-      ...local,
-      id: 'beta-remote',
-      title: 'Remote beta work',
-      chatSessionId: 'beta-remote',
-      environmentId: 'peer-1',
-      environmentLabel: 'Peer Station',
-    };
-    const marks = (ui: ReactElement) => {
-      const view = renderSidebar(ui);
-      const rows = [
-        ...view.container.querySelectorAll('[data-testid="inbox-row"]'),
-      ].map((row) => {
-        const mark = row.querySelector('.inbox-row__project-accent');
-        return mark ? (mark.textContent ?? '') : null;
-      });
-      view.unmount();
-      return rows;
-    };
-    expect(
-      marks(
-        <RecentChatList
-          items={[local, remote]}
-          context="beta"
-          agents={[]}
-          onOpen={vi.fn()}
-          onViewAll={vi.fn()}
-        />,
-      ),
-    ).toEqual(['🧭', null]);
   });
 });
 

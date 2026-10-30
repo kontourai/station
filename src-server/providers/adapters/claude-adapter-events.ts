@@ -32,6 +32,10 @@ import {
 } from '../model-image-attachments.js';
 import { providerFailure } from '../provider-failure.js';
 import {
+  classifyEngineStartupFailure,
+  engineStartupFailureEvent,
+} from '../provider-startup-failure.js';
+import {
   type ClaudeChildWorkContext,
   type ClaudeChildWorkState,
   observeClaudeAgentReturn,
@@ -1011,6 +1015,13 @@ export function mapClaudeSdkMessage({
       record.session.status = outcome === 'binding-dead' ? 'dead' : 'error';
       if (target.kind === 'turn') settleClaudeResultTarget(turnContext, target);
       clearClaudeSdkTurns(turnContext);
+      const startupFailure =
+        outcome === 'failed' && !usageLimit
+          ? classifyEngineStartupFailure(
+              'claude',
+              claudeResultFailureText(message),
+            )
+          : undefined;
       publish({
         eventId: crypto.randomUUID(),
         provider,
@@ -1037,6 +1048,7 @@ export function mapClaudeSdkMessage({
             : ENGINE_TURN_FAILED_CODE,
         retriable: false,
         message: claudeResultFailureText(message),
+        ...(startupFailure ? engineStartupFailureEvent(startupFailure) : {}),
         ...(usageLimit ? { details: { ...usageLimit } } : {}),
         // #2324 review F1: a failed turn the engine opened on its own ends
         // with this error; it carries the trigger its start did.

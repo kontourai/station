@@ -128,6 +128,7 @@ import { SessionFailureAlert } from '../session-failure/SessionFailureAlert';
 import { ErrorState, SkeletonList } from '../state';
 import { AgentScheduleNotes } from './AgentScheduleNotes';
 import type { ComposerActionsMenuProps } from './ComposerActionsMenu';
+import { CoordinatorToolsNotice } from './CoordinatorToolsNotice';
 import {
   type RetryAttachment,
   resolveRetryAttachments,
@@ -1718,6 +1719,11 @@ export function ChatDockBody({
     : undefined;
   return (
     <>
+      {!activeSession.replay && (
+        <CoordinatorToolsNotice
+          conversationId={activeSession.conversationId ?? activeSession.id}
+        />
+      )}
       {showStatsPanel && (
         <ConversationStats
           agentSlug={activeSession.agentSlug}

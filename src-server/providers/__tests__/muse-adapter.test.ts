@@ -454,6 +454,7 @@ describe('MuseAdapter', () => {
     const turn = await harness.adapter.sendTurn({
       threadId: 'thread-lifecycle',
       input: 'hi',
+      invocationId: 'station-invocation',
     });
     expect(harness.processes).toHaveLength(1);
 
@@ -488,8 +489,10 @@ describe('MuseAdapter', () => {
     expect(firstDelta.itemId).not.toBe(turn.turnId);
     expect(firstDelta.turnId).toBe(turn.turnId);
 
+    expect(events[2]).toMatchObject({ invocationId: 'station-invocation' });
     const completed = events[5];
     expect(completed).toMatchObject({
+      invocationId: 'station-invocation',
       method: 'turn.completed',
       turnId: turn.turnId,
       finishReason: 'stop',

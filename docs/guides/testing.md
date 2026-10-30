@@ -864,6 +864,29 @@ inside a checkout. Because the baseline is the merge base, `origin/main`
 moving does not invalidate it; merging `origin/main` into the candidate does,
 unless the push is a pure merge of main (below).
 
+To inspect dependency accumulation without deleting anything, run:
+
+```bash
+node scripts/worktree-hygiene.mjs
+node scripts/worktree-hygiene.mjs --json
+```
+
+The ordinary report lists root `node_modules` directories even in kept lanes;
+JSON exposes `dependencyDirectory` (`true`, `false`, or `null` when unreadable).
+Symlinked dependency paths are not counted as directories. This is an inventory,
+not a disk-size estimate or evidence that a lane is inactive. Before retiring
+anything, check live processes, submission handoffs, recent use and local changes.
+The report never removes dependencies or worktrees.
+
+Prefer the preparation command's canonical `4294-transfer-baseline-<sha>` name.
+Automatic baseline retention owns only that naming convention and preserves
+in-use, recent and retained baselines; Windows skips pruning when it cannot
+prove process inactivity. Legacy `<lane>-transfer-baseline-<sha>` names remain
+usable for the explicit baseline selection above, but automatic retention does
+not own them. When a detached legacy lane's HEAD matches its name, the inventory
+calls out that retention gap without declaring it disposable. Repeatedly
+clearing package caches leaves those installed dependency trees in place.
+
 **A pure merge of main skips the expensive lanes (#3101).** When every pushed
 ref only adds clean merges of `origin/main` on top of the tip the remote
 already holds, `.githooks/pre-push` skips the transfer gate, static gates, SDK

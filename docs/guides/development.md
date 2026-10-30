@@ -8,6 +8,27 @@ change alters a guide, diagram, example or public contract.
 
 ## Source Prerequisites
 
+### Provider startup diagnostics
+
+An engine can be installed and authenticated while host prerequisites prevent
+it from starting. A Codex `bwrap` user-namespace permission denial is reported as
+`sandbox_unavailable`, with host-policy remediation. On Linux, inspect the
+actual engine/bwrap path, AppArmor attachment, inherited process confinement and
+the applicable user-namespace policy. A profile on disk does not establish that
+the running process can transition into it, and an engine update can change its
+attachment path. Have the host administrator repair the narrow executable
+policy and verify a sandboxed launch. Do not disable the sandbox or global
+AppArmor restrictions to make a readiness check pass.
+
+Claude's explicit HTTP 400 unknown-provider-model response is reported as
+`provider_model_unavailable`. That response alone does not establish whether
+the cause is model configuration, upstream account availability or quota.
+Inspect the provider's own evidence before changing credentials or model
+selection. See the [provider failure reference](../reference/contracts.md#engine-neutral-failures)
+for the public classifications.
+
+### Build prerequisites
+
 Working from source needs Node.js 24.x, npm for the script/bootstrap interface,
 the exact pnpm version in `package.json`, and Git. The managed dependency runner
 resolves and checks that package-manager pin. On Linux,

@@ -166,7 +166,7 @@ for (const width of [1280, 390]) {
       });
       await page.getByRole('button', { name: 'Build with chat' }).click();
       await expect(
-        page.getByRole('dialog', { name: 'New chat' }),
+        page.getByRole('region', { name: 'New chat' }),
       ).toBeVisible();
     } finally {
       if (taskId)

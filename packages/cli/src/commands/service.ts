@@ -91,6 +91,7 @@ import {
   startWindowsService,
   stopWindowsService,
   uninstallWindowsService,
+  WINDOWS_TASK_SETTINGS_EXPECTED,
   windowsRegistration,
   windowsServiceStatus,
 } from './service-windows.js';
@@ -2052,9 +2053,17 @@ export async function runServiceCommand(
       dependencies,
     }),
   ).inspect({ version: STATION_INSTANCE_STATE_VERSION, instanceId });
-  const scheduling = inspectServiceSchedulingPolicy(existing ?? registration, {
-    run,
-  });
+  const scheduling: ServiceSchedulingPolicy =
+    platform === 'win32' &&
+    observed.unit.present === false &&
+    observed.unit.active === false &&
+    typeof observed.unit.error !== 'string'
+      ? {
+          expected: WINDOWS_TASK_SETTINGS_EXPECTED,
+          reason: 'Station Task Scheduler task is not installed',
+          status: 'unknown',
+        }
+      : inspectServiceSchedulingPolicy(existing ?? registration, { run });
   // Compared only for a managed install: without a manifest there is no unit
   // Station wrote, so no captured PATH to speak about.
   const servicePath = existing

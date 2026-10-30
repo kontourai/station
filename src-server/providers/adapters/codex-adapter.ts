@@ -107,11 +107,17 @@ import {
   observeNativeAuthenticationLaunch,
   retainNativeAuthenticationContinuation,
 } from '../auth/native-authentication-context.js';
+import { cliInvocation } from '../auth/windows-cli-invocation.js';
 import {
   effectiveModelMetadata,
   reportedModelMetadata,
 } from '../llm/effective-model-metadata.js';
 import { providerFailure } from '../provider-failure.js';
+import {
+  classifyEngineStartupFailure,
+  EngineStartupFailure,
+  engineStartupFailureEvent,
+} from '../provider-startup-failure.js';
 import {
   decodeChatAttachments,
   rejectFileAttachments,
@@ -259,11 +265,13 @@ interface CodexAdapterOptions {
     threadId: string,
     tenantExecutionContext?: import('@kontourai/station-contracts/tenancy').TenantExecutionContext,
     allowedTools?: readonly string[],
+    coordinatorGeneration?: number,
   ) => string | undefined;
   mintStationKnowledgeMcpAuth?: (
     threadId: string,
     tenantExecutionContext?: import('@kontourai/station-contracts/tenancy').TenantExecutionContext,
     allowedTools?: readonly string[],
+    coordinatorGeneration?: number,
   ) => string | undefined;
   /** Best-effort cleanup counterpart to `mintStationControlMcpAuth` — called
    * on ordinary session stop. Never required to be provided; a missing
@@ -938,17 +946,21 @@ export class CodexAdapter implements ProviderAdapterShape {
     };
     const before = await context();
     const finalize = await input.assertCurrent();
-    const nativeContinuation = await observeNativeAuthenticationLaunch({
-      engine: 'codex',
-      profileRef: before.profileRef,
-      command: before.binary,
-      cwd: input.cwd,
-      env: before.env,
-      assertCurrent: () => {
-        input.signal?.throwIfAborted();
-        finalize();
-      },
-    });
+    // Only direct CLI launches have a qualified authentication witness.
+    const nativeContinuation =
+      cliInvocation(before.binary, []).command === before.binary
+        ? await observeNativeAuthenticationLaunch({
+            engine: 'codex',
+            profileRef: before.profileRef,
+            command: before.binary,
+            cwd: input.cwd,
+            env: before.env,
+            assertCurrent: () => {
+              input.signal?.throwIfAborted();
+              finalize();
+            },
+          })
+        : undefined;
     // Login status does not authenticate a custom model-provider route.
     const result =
       before.routed ||
@@ -2135,10 +2147,14 @@ export class CodexAdapter implements ProviderAdapterShape {
       const actual = resolveCodexSpawnContext(sessionSpawnEnv, sessionTmpDir);
       const authenticationEnv = { ...actual.env };
       delete authenticationEnv[WORKLOAD_SESSION_ENV];
+      const invocation = cliInvocation(actual.binary, [
+        'app-server',
+        ...spawnArgs,
+      ]);
       authenticatedLaunch({
         cwd: input.cwd,
-        command: actual.binary,
-        args: ['app-server', ...spawnArgs],
+        command: invocation.command,
+        args: invocation.args,
         env: authenticationEnv,
       });
     }
@@ -2569,6 +2585,19 @@ export class CodexAdapter implements ProviderAdapterShape {
           'Codex startup failed and process termination was not confirmed.',
         );
       }
+      const startupFailure = classifyEngineStartupFailure('codex', error);
+      if (startupFailure) {
+        this.transport.publish({
+          eventId: crypto.randomUUID(),
+          provider: this.provider,
+          threadId: input.threadId,
+          createdAt: this.now().toISOString(),
+          method: 'runtime.error',
+          severity: 'error',
+          ...engineStartupFailureEvent(startupFailure),
+        } satisfies ProviderRuntimeErrorEvent);
+        throw new EngineStartupFailure(startupFailure);
+      }
       throw error;
     }
   }
@@ -2804,6 +2833,14 @@ export class CodexAdapter implements ProviderAdapterShape {
   }> {
     const toolServers = input.agent?.toolServers;
     if (toolServers === undefined) return {};
+    if (
+      toolServers.some(
+        (server) =>
+          server.coordinatorDerived &&
+          server.coordinatorGeneration === undefined,
+      )
+    )
+      throw new Error('Coordinator generation is required.');
 
     const oauthTokens = await this.options.resolveMcpOAuth?.(input);
     const hasBuiltinStationControl = toolServers.some(
@@ -2827,18 +2864,25 @@ export class CodexAdapter implements ProviderAdapterShape {
         )
       : control?.allowedTools;
     const stationControlMcpUrl = hasBuiltinStationControl
-      ? selectedControlTools !== undefined
+      ? control?.coordinatorDerived
         ? this.options.mintStationControlMcpAuth?.(
             input.threadId,
             input.tenantExecutionContext,
             selectedControlTools,
+            control.coordinatorGeneration,
           )
-        : input.tenantExecutionContext
+        : selectedControlTools !== undefined
           ? this.options.mintStationControlMcpAuth?.(
               input.threadId,
               input.tenantExecutionContext,
+              selectedControlTools,
             )
-          : this.options.mintStationControlMcpAuth?.(input.threadId)
+          : input.tenantExecutionContext
+            ? this.options.mintStationControlMcpAuth?.(
+                input.threadId,
+                input.tenantExecutionContext,
+              )
+            : this.options.mintStationControlMcpAuth?.(input.threadId)
       : undefined;
 
     const knowledge = toolServers.find(
@@ -2856,6 +2900,9 @@ export class CodexAdapter implements ProviderAdapterShape {
           input.threadId,
           input.tenantExecutionContext,
           selectedKnowledgeTools,
+          ...(knowledge.coordinatorDerived
+            ? [knowledge.coordinatorGeneration]
+            : []),
         )
       : undefined;
     const { configArgs, deliveredIds, skipped } = resolveCodexMcpServers(

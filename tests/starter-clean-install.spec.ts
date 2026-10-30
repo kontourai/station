@@ -138,7 +138,7 @@ test('fresh Station completes real Work and opts into the developer Scheduler ch
       '/config/app',
     );
     expect(completedConfig.telemetryEnabled).not.toBe(true);
-    const newChat = page.getByRole('dialog', { name: 'New chat', exact: true });
+    const newChat = page.getByRole('region', { name: 'New chat', exact: true });
     await expect(newChat).toBeVisible();
     const draft = newChat.getByRole('form', { name: 'Start work' });
     // Engine selection saves configuration before deferred activation settles.

@@ -101,6 +101,35 @@ afterEach(() => {
 });
 
 describe('conversation/session lineage persistence', () => {
+  test('a tools restart reason survives a crash after successor reservation', () => {
+    const path = databasePath();
+    const store = new EventStore(path);
+    store.upsertSession({
+      provider: 'codex',
+      threadId: 'tools-root',
+      status: 'ready',
+      createdAt: '2026-08-25T00:00:00.000Z',
+      updatedAt: '2026-08-25T00:00:00.000Z',
+    });
+    const child = store.reserveNextConversationSession({
+      conversationId: 'tools-root',
+      predecessorSessionId: 'tools-root',
+      proposedSessionId: 'tools-child',
+      createdAt: '2026-08-25T00:01:00.000Z',
+      coordinatorToolsRestart: true,
+    });
+    expect(child.lineage.sessionId).toBe('tools-child');
+    store.close();
+    const reopened = new EventStore(path);
+    try {
+      expect(reopened.isCoordinatorToolsRestart('tools-child')).toBe(true);
+      expect(reopened.isCoordinatorToolsRestart('tools-root')).toBe(false);
+      reopened.deleteConversationLineageRows(['tools-child']);
+      expect(reopened.isCoordinatorToolsRestart('tools-child')).toBe(false);
+    } finally {
+      reopened.close();
+    }
+  });
   test('cancels an unclaimed boundary atomically, keeps its audit marker, and permits a fresh reset', () => {
     const path = databasePath();
     const store = new EventStore(path);

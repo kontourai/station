@@ -65,8 +65,8 @@
  */
 
 import { execFile } from 'node:child_process';
-import { existsSync, realpathSync } from 'node:fs';
-import { dirname, join, resolve, sep } from 'node:path';
+import { existsSync, lstatSync, realpathSync } from 'node:fs';
+import { basename, dirname, join, resolve, sep } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -104,6 +104,8 @@ Reports which registered worktrees are finished and which are nested inside
 another worktree. It only reads: it runs no command that changes a repository.
 Close a lane yourself with \`git worktree remove <path>\`, which performs git's
 own check and refuses when the tree has modified or untracked files.
+Root node_modules directories are listed even in kept lanes. Their presence
+is an accumulation inventory, not proof that dependencies are safe to delete.
 
 Options:
   --base <ref>       Comparison ref (default: ${HYGIENE_POLICY.comparisonRef}).
@@ -168,7 +170,14 @@ Exit codes: 0 success, 2 usage error.`;
  */
 export function detachedReason(worktree) {
   const claimed = transferBaselineShaFromPath(worktree.path ?? '');
-  if (!claimed) return 'detached HEAD';
+  if (!claimed) {
+    const legacy = basename(worktree.path ?? '').match(
+      /^.+-transfer-baseline-([a-f0-9]{7,40})$/,
+    );
+    if (legacy && String(worktree.head ?? '').startsWith(legacy[1]))
+      return 'detached HEAD — legacy transfer baseline naming; automatic baseline retention does not own this name';
+    return 'detached HEAD';
+  }
   const head = String(worktree.head ?? '');
   if (!head.startsWith(claimed)) {
     return `detached HEAD — named a transfer baseline for ${claimed}, but HEAD does not match`;
@@ -239,6 +248,7 @@ export function classifyWorktree(worktree) {
     untrackedFiles: worktree.untrackedFiles,
     modifiedTrackedFiles: worktree.modifiedTrackedFiles,
     commitsNotInBase: worktree.commitsNotInBase,
+    dependencyDirectory: worktree.dependencyDirectory ?? null,
   };
 }
 
@@ -575,6 +585,15 @@ export async function collectWorktreeFacts(entry, context) {
     }
   }
 
+  let dependencyDirectory = null;
+  try {
+    dependencyDirectory = lstatSync(
+      join(entry.path, 'node_modules'),
+    ).isDirectory();
+  } catch (error) {
+    if (error.code === 'ENOENT') dependencyDirectory = false;
+  }
+
   return {
     path: entry.path,
     branch: entry.branch,
@@ -588,6 +607,7 @@ export async function collectWorktreeFacts(entry, context) {
     statusError,
     touchedWithinWindow,
     freshnessError,
+    dependencyDirectory,
   };
 }
 
@@ -715,7 +735,19 @@ function renderReport(payload, options, log) {
           `             ${entry.keepReasons.join('; ')}`,
       );
     }
+    if (entry.dependencyDirectory) {
+      log(`  DEPENDENCIES  ${entry.path}`);
+      if (!entry.finished && !options.verbose)
+        log(`             ${entry.keepReasons.join('; ')}`);
+    }
   }
+  if (classifications.some((entry) => entry.dependencyDirectory))
+    log(
+      '\nDependency directories above are inventory, not cleanup approval. Check live\n' +
+        'processes, handoffs and local changes before retiring a lane. For future\n' +
+        'transfer baselines, use npm run transfer:gate -- --prepare-baseline so\n' +
+        'canonical baseline retention can manage them.',
+    );
   for (const entry of nested) {
     if (entry.harnessManaged) continue;
     log(`  NESTED     ${entry.path}\n             inside ${entry.insideOf}`);

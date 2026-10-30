@@ -71,6 +71,25 @@ export interface NewChatIntent {
 }
 
 /**
+ * Whether a request carries anything of its own (a prompt, files, choices, a
+ * hand-off, a Task, a listener for how it ends). A bare request is "show me
+ * New chat", which an open draft already answers without being replaced.
+ */
+export function newChatIntentCarriesPayload(intent?: NewChatIntent): boolean {
+  if (!intent) return false;
+  return Boolean(
+    intent.taskShaping ||
+      intent.startWithDefault ||
+      intent.initialPrompt ||
+      intent.initialFiles?.length ||
+      intent.selection ||
+      intent.selectionInvalid ||
+      intent.handoff ||
+      intent.onClosed,
+  );
+}
+
+/**
  * Dispatch a new-chat intent and report whether a dock took it. Docks call
  * `preventDefault()` on an intent they accept; with no dock listening (no
  * region holds the Chat pane) or only a project-scoped dock, nobody does,

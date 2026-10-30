@@ -2610,6 +2610,22 @@ button:hover {
   overflow: hidden;
 }
 
+/* A collapsed dock that holds a New chat draft keeps it mounted, hidden. */
+.chat-dock__workspace[hidden] {
+  display: none;
+}
+
+/* The chat a New chat draft covers: no box of its own while shown, so the
+   content area lays out exactly as before; hidden (and inert) under the
+   draft. */
+.chat-dock__covered-chat {
+  display: contents;
+}
+
+.chat-dock__covered-chat[hidden] {
+  display: none;
+}
+
 .chat-dock__conversation-surface {
   display: flex;
   flex: 1;
@@ -8301,28 +8317,25 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 /* ── NewChatModal ─────────────────────────────────────────── */
 
-.new-chat-modal__overlay {
-  position: fixed;
-  inset: auto 0;
-  top: 0;
-  height: 100dvh;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: var(--layer-dialog);
-}
-
+/* The dock's New chat draft fills the chat body (the transcript's place)
+   in whichever region and placement the dock is in; it is not a dialog. */
 .new-chat-modal {
-  background: var(--bg-primary);
-  border: 1px solid var(--border-primary);
-  border-radius: 12px;
-  width: 90%;
-  max-width: 500px;
-  max-height: min(600px, calc(100% - 24px));
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
+  background: var(--bg-primary);
+  /* A height container, so a short dock can give the composer a smaller text
+     box (ChatStart.css), and a last-resort scroller whose composer stays
+     pinned (sticky) when even that does not fit: Start is never pushed out. */
+  container: new-chat-draft / size;
+  overflow-y: auto;
+}
+
+.new-chat-modal__header:empty {
+  display: none;
 }
 
 .new-chat-modal__header {
@@ -8341,18 +8354,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   min-height: 0;
   overflow-y: auto;
   padding: 20px;
-}
-
-.new-chat-modal__title-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.new-chat-modal__title {
-  margin: 0;
 }
 
 /* Context picker */
@@ -9302,46 +9303,21 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     min-height: 40px;
   }
 
-  .new-chat-modal__overlay {
-    align-items: flex-start;
-    box-sizing: border-box;
-    overflow: hidden;
-    padding: 0;
-  }
-
-  .new-chat-modal {
-    /* The VisualViewport API can briefly report the pre-meta layout viewport
-       on mobile. Keep the dialog inside the actual dynamic viewport while
-       still honoring a genuinely smaller keyboard-constrained overlay. */
-    width: 100%;
-    max-width: none;
-    height: min(100%, 100dvh);
-    max-height: 100dvh;
-    border-width: 0;
-    border-radius: 0;
-  }
-
   /* The header keeps its content height up to its 62% cap and scrolls only
      past it. With `flex-shrink: 1` it shared every overflow with the body in
-     proportion to height, so a long recent-chats list squeezed it a few
-     pixels short of its title row and the sheet showed two scrollbars. */
+     proportion to height, so a long Agent list squeezed it short of its
+     own content and the draft showed two scrollbars. The dock's chrome
+     above it owns the top safe area. */
   .new-chat-modal__header {
     flex: 0 0 auto;
     max-height: 62%;
     min-height: 0;
     overflow-y: auto;
-    padding: max(12px, var(--safe-top, 0px)) 16px 12px;
+    padding: 12px 16px;
   }
 
   .new-chat-modal__body {
     padding: 12px 16px max(16px, var(--safe-bottom, 0px));
-  }
-
-  .new-chat-modal__title-row {
-    position: sticky;
-    top: 0;
-    z-index: 2;
-    background: var(--bg-primary);
   }
 
   .new-chat-modal__list {

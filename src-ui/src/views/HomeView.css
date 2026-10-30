@@ -2,6 +2,11 @@
   width: min(960px, 100%);
   margin: 0 auto;
   padding: clamp(24px, 5vw, 64px);
+  /* Trade top whitespace for the shell's bottom dock clearance at first paint. */
+  padding-top: max(
+    var(--k-space-3),
+    calc(clamp(24px, 5vw, 64px) - var(--dock-bottom-clearance, 0px))
+  );
   overflow-x: hidden;
 }
 
@@ -74,7 +79,7 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
-  margin: 32px 0 40px;
+  margin: 24px 0 24px;
 }
 .skeleton-block.home-view__actions--loading {
   display: grid;
@@ -259,17 +264,33 @@
   .home-view {
     /* The shell reserves the dock (--dock-bottom-clearance on .content-view,
        station#3902); this is only the page's own bottom gutter. */
-    padding: 24px 16px 32px;
+    padding: 8px 16px 32px;
+  }
+  .home-view__welcome h1 {
+    font-size: clamp(22px, 6vw, 26px);
+  }
+  .home-view__start .start-composer__input {
+    min-height: 44px;
   }
   .home-view__actions {
     grid-template-columns: 1fr;
-    margin: 24px 0 32px;
+    margin: 8px 0 32px;
+  }
+  .home-view .home-view__welcome {
+    margin-bottom: var(--k-space-2);
+  }
+  .home-view__start {
+    margin-bottom: var(--k-space-2);
+  }
+  .home-view__start .start-composer__destination {
+    padding-block: var(--k-space-2);
   }
   .home-view__action--primary {
     grid-column: auto;
   }
   .home-view__action {
     min-height: 104px;
+    padding: 12px;
   }
   .home-view__task-copy {
     align-self: stretch;
@@ -374,4 +395,50 @@
   margin: 0;
   color: var(--k-text-muted);
   line-height: var(--k-leading-normal);
+}
+
+/* #3628: the person's coordinator, pinned under the start form. */
+.home-view__coordinator {
+  grid-column: 1 / -1;
+  margin-top: var(--k-space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+}
+.home-view__coordinator-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-3);
+  padding: var(--k-space-3) var(--k-space-4);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+}
+.home-view__coordinator-body p {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.home-view__coordinator-body button {
+  min-height: 44px;
+}
+
+.home-view__coordinator-picture {
+  padding: var(--k-space-3) var(--k-space-4);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+}
+.home-view__coordinator-picture h3 {
+  margin: 0 0 var(--k-space-2);
+}
+.home-view__coordinator-picture p {
+  margin: 0 0 var(--k-space-2);
+  color: var(--k-text-muted);
+}
+.home-view__coordinator-picture ul {
+  margin: 0;
+  padding-inline-start: var(--k-space-5);
 }

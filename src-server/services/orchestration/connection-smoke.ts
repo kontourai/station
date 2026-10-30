@@ -91,8 +91,8 @@ interface ConnectionSmokeDeps {
  * carry latches of their own (`dispatch`, `readSessionMessages`); do not
  * re-point either at a lower-level collaborator.
  *
- * Emits NO metrics (T12) and holds no map handle (T13): C7's single read
- * arrives as the `hasThreadProvider` boolean.
+ * Emits NO metrics (T12) and holds no map handle (T13): C7's ownership
+ * reads arrive through `hasThreadProvider`.
  */
 export class ConnectionSmoke {
   constructor(private readonly deps: ConnectionSmokeDeps) {}
@@ -307,6 +307,30 @@ export class ConnectionSmoke {
     try {
       const adapter = this.deps.adapterFor(input.provider);
       const cleanupObservableOwnership = async () => {
+        if (
+          sessionStarted &&
+          !this.deps.hasThreadProvider(threadId) &&
+          adapter
+        ) {
+          // A provider can exit and release its binding before the diagnostic
+          // settles. Historical startup success alone is not live ownership.
+          let adapterOwnsSession = true;
+          await this.deps.runOperationWithinDeadline(
+            adapter.hasSession(threadId).then((ownsSession) => {
+              adapterOwnsSession = ownsSession;
+            }),
+            `${adapter.provider} smoke ownership check`,
+            cleanupDeadline,
+          );
+          if (
+            !adapterOwnsSession &&
+            !this.deps.hasThreadProvider(threadId) &&
+            Date.now() <= cleanupDeadline
+          ) {
+            sessionStarted = false;
+            return;
+          }
+        }
         if (sessionStarted || this.deps.hasThreadProvider(threadId)) {
           // archive#3525: this connectivity probe's turn was never a user
           // conversation — its own diagnostic timeout ending it is internal

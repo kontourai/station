@@ -28,9 +28,9 @@ import {
 import {
   clearPendingExchange,
   decodeDevicePairingPayload,
+  describeAccessRequestFailure,
   describePairingRequestFailure,
   encodeDevicePairingPayload,
-  isTransportFailure,
   knownOperatorCli,
   loadPendingExchange,
   type PendingPairingExchange,
@@ -713,16 +713,7 @@ export function JoinDevicePairingPanel({
       setPending(nextPending);
       onApprovalPending?.(nextPending);
     } catch (requestError) {
-      const status = (requestError as { status?: number }).status;
-      setError(
-        isTransportFailure(requestError)
-          ? describePairingRequestFailure(requestError)
-          : status === 403
-            ? 'This Station does not allow access requests from this app address.'
-            : status === 429
-              ? 'Too many access requests. Wait a moment, then try again.'
-              : 'Could not send your request. Check the connection and try again.',
-      );
+      setError(describeAccessRequestFailure(requestError));
     } finally {
       requestInFlight.current = false;
       setRequestingAccess(false);

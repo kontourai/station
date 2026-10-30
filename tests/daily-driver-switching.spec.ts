@@ -357,7 +357,7 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
     await expectSettled(page);
 
     await forkFromHere(page);
-    const dialog = page.getByRole('dialog', { name: 'Fork from here' });
+    const dialog = page.getByRole('region', { name: 'Fork from here' });
     await expect(dialog).toContainText('New independent conversation');
     await expect(dialog).toContainText('Engine cursor');
     await expect(dialog).toContainText('tool state');
@@ -461,7 +461,7 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
     });
     await expectSettled(page);
     await forkFromHere(page);
-    const dialog = page.getByRole('dialog', { name: 'Fork from here' });
+    const dialog = page.getByRole('region', { name: 'Fork from here' });
     await dialog.locator('button[data-agent-slug="codex"]').click();
     await expect
       .poll(() => new URL(page.url()).searchParams.get('chat'))

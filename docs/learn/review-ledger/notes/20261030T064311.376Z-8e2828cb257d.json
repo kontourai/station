@@ -1,0 +1,11 @@
+{
+  "revision": "8ebb3ee87974529c1b32e86ba21b28f0fe7a16cc",
+
+  "notes": [
+    {"path":"docs/guides/documentation-review-ledger.md","note":"Reviewed append-only notes, immutable archives, historical reads and current-base freshness against readReviewStateAt: the exact listed Git object bytes and existing optional manifest/legacy lookups are retained; missing or malformed data still fails.","inputs":["docs/guides/documentation-review-ledger.md","scripts/lib/review-ledger-store.mjs"]},
+
+    {"path":"docs/guides/documentation.md","note":"Reviewed recorded source and review freshness workflow against the ledger reader and unchanged resolver; object-ID reads preserve committed bytes and do not refresh or waive review evidence.","inputs":["docs/guides/documentation.md","scripts/lib/review-ledger-store.mjs"]},
+
+    {"path":"docs/learn/README.md","note":"Reviewed reader snapshot and Git history freshness claims against the updated historical ledger reader; committed tree objects still supply identical source bytes, with no change to rendered capture or live-browser proof.","inputs":["docs/learn/README.md","scripts/lib/review-ledger-store.mjs"]}
+  ]
+}

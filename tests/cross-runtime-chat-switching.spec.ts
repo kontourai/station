@@ -1003,7 +1003,7 @@ async function seedCrossRuntimeRoutes(
 /** The dock's start composer, opened from the dock's one New. */
 function dockComposer(page: Page) {
   return page
-    .getByRole('dialog', { name: 'New chat', exact: true })
+    .getByRole('region', { name: 'New chat', exact: true })
     .getByRole('form', { name: 'Start work' });
 }
 
@@ -1512,7 +1512,7 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
       }),
     ).toBeVisible();
     await page
-      .getByRole('dialog', { name: 'New chat', exact: true })
+      .getByRole('region', { name: 'New chat', exact: true })
       .press('Escape');
     await expect(page.locator('.new-chat-modal')).toHaveCount(0);
     // Nothing started: the open chat is unchanged. The project chip is
@@ -1846,9 +1846,10 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
       await newChat.click();
       await expect(chats).not.toBeVisible();
       await expect(page.locator('.new-chat-modal')).toBeVisible();
+      // The draft has no close button: Escape dismisses it.
       await page
-        .getByRole('button', { name: 'Close new chat', exact: true })
-        .click();
+        .getByRole('textbox', { name: 'What would you like done?' })
+        .press('Escape');
 
       await trigger.click();
       const dialog = page.getByRole('dialog', { name: 'Projects' });

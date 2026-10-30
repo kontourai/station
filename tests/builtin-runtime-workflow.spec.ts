@@ -435,7 +435,7 @@ async function openRuntimeSession(
     .locator('.chat-dock__tab-actions')
     .getByRole('button', { name: 'New chat', exact: true })
     .click();
-  const dialog = page.getByRole('dialog', { name: 'New chat', exact: true });
+  const dialog = page.getByRole('region', { name: 'New chat', exact: true });
   const composer = dialog.getByRole('form', { name: 'Start work' });
   await composer.getByRole('button', { name: /^Agent:/ }).click({
     timeout: 10_000,

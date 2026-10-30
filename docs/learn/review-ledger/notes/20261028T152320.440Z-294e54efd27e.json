@@ -1,0 +1,7 @@
+{
+  "revision": "0345a56a1651a1ca7b3d0831280b7b93875b893f",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Correction to the previous note: the real-browser screenshots for the draft layout and Back/return checks are local verification artifacts, not attached to any PR. The reviewed prose is unchanged.","inputs":["docs/design/chat-composer.md"]}
+  ]
+}

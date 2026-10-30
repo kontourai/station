@@ -742,6 +742,7 @@ describe('configureRuntimeRoutes: conversation inbox wiring (#3568)', () => {
   });
 
   test('a follow-up from a device that lost the scope to send is refused, never sent', async () => {
+    support.inspect = () => ({ outcome: 'not-received' });
     const { store } = await compose((store) =>
       held(store, 'k3', {
         version: 1,

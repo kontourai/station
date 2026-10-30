@@ -62,7 +62,7 @@ any action from you (unless Station was launched in the background, or you
 closed the window while waiting), and the macOS cover and its buttons
 disappear. While that window is still waiting to open there is no time limit
 on the service starting, including on a first launch, when Station creates
-this computer's local connection only after the service is running. If the service fails instead,
+this computer's local connection only after the service is running. If the Desktop-owned backend fails instead,
 waiting does not help: the **Restart** and **Quit** choices above still appear
 when the 30 seconds pass, and Restart starts it again and lets Station finish
 opening. If Station's window is already open (for example after you reload it,
