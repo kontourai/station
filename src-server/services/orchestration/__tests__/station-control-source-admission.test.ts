@@ -147,8 +147,13 @@ test('guarded bound Session source custody survives token rotation and refuses f
   let reopenedCapability: object | undefined;
   let reopenedRequest: Request | undefined;
   let reopenedSnapshot: object | undefined;
+  let firstOwnerIdentity: string | undefined;
   app.post('/api/orchestration/session-groups', async (c) => {
     try {
+      const requestAuthority = await source.captureRequestAuthority(c);
+      if (firstOwnerIdentity === undefined)
+        firstOwnerIdentity = requestAuthority.ownerIdentity;
+      else assert.equal(requestAuthority.ownerIdentity, firstOwnerIdentity);
       if (!retained) {
         retained = await source.captureSnapshot(c, subject, selection);
         firstRequest = c.req.raw;
@@ -226,6 +231,15 @@ test('guarded bound Session source custody survives token rotation and refuses f
       );
     }
   });
+  app.get('/api/orchestration/session-groups', async (c) => {
+    try {
+      const authority = await source.captureRequestAuthority(c);
+      authority.assertCurrent();
+      return c.json({ ownerIdentity: authority.ownerIdentity });
+    } catch {
+      return c.json({ error: 'unavailable' }, 403);
+    }
+  });
   const send = (token: string) =>
     app.request('http://127.0.0.1:43979/api/orchestration/session-groups', {
       method: 'POST',
@@ -276,12 +290,30 @@ test('guarded bound Session source custody survives token rotation and refuses f
     );
     assert.equal((await send(first)).status, 403);
     assert.equal((await send(rotated)).status, 200);
-    assert.throws(() =>
+    assert.ok(reopenedCapability && reopenedRequest);
+    assert.doesNotThrow(() =>
       readStationControlSourceCredentialAuthority(
-        firstCapability!,
-        new Request(firstRequest!),
+        reopenedCapability!,
+        reopenedRequest!,
       ),
     );
+    assert.throws(() =>
+      readStationControlSourceCredentialAuthority(
+        reopenedCapability!,
+        new Request(reopenedRequest!),
+      ),
+    );
+    const read = await app.request(
+      'http://127.0.0.1:43979/api/orchestration/session-groups',
+      {
+        headers: {
+          [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+          [STATION_CONTROL_CALLER_TOKEN_HEADER]: rotated,
+        },
+      },
+    );
+    assert.equal(read.status, 200);
+    assert.deepEqual(await read.json(), { ownerIdentity: firstOwnerIdentity });
     const foreign = mintStationControlMcpToken(
       'foreign-session',
       'sdk-in-process',
@@ -292,7 +324,6 @@ test('guarded bound Session source custody survives token rotation and refuses f
       ok: false,
       code: 'station_control_project_unavailable',
     });
-    assert.ok(reopenedCapability && reopenedRequest);
     await f.storage.deleteProject('source');
     await f.storage.createProject({
       id: 'replacement-project',

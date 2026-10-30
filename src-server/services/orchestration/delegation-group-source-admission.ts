@@ -31,7 +31,10 @@ import type { ProjectMembershipScope } from '@kontourai/station-contracts/projec
 import { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { createOrchestrationRequestPrincipalResolver } from '../../runtime/bootstrap/orchestration-request-principal.js';
 import { createPersonalRuntimeRequestGuard } from '../../runtime/bootstrap/runtime-tenant-context.js';
-import { captureEnvironmentLocalGrantObservationOwner } from '../../runtime/conversation/local-grant-observation-owner.js';
+import {
+  captureEnvironmentLocalGrantObservationOwner,
+  captureEnvironmentLocalGrantReadOwner,
+} from '../../runtime/conversation/local-grant-observation-owner.js';
 import {
   createStationControlCallerRecordResolver,
   resolveStationControlCallerForRequest,
@@ -730,13 +733,17 @@ export class LocalSourceAdmissionOwner {
         this.#dropSnapshot(capability);
     }
   }
-  async #authority(context: RuntimeSourceRequestContext) {
+  async #authority(
+    context: RuntimeSourceRequestContext,
+    method: 'GET' | 'POST' = 'POST',
+  ) {
     const request = context.req.raw;
+    if (request.method !== method) refuse('request_method_unsupported');
     const bound = stationControlRequestAuthority(request);
     if (bound?.kind === 'caller') {
       if (
         !this.#personal(request) ||
-        request.method !== 'POST' ||
+        request.method !== method ||
         request.headers.has(INTERNAL_TENANT_HEADER)
       )
         refuse('station_control_source_unavailable');
@@ -775,13 +782,14 @@ export class LocalSourceAdmissionOwner {
         !isDeepStrictEqual(bound.caller, caller)
       )
         refuse('station_control_source_unavailable');
+      const projectAction = method === 'GET' ? 'view' : 'execute';
       const initialAdmissions = owners.membership
         .admissionsForResolvedPrincipal(caller.principal.id)
         .filter(
           ({ scope, member }) =>
             scope.localProjectId === caller.localProjectId &&
             scope.localProjectSlug === caller.projectSlug &&
-            member.actions.includes('execute'),
+            member.actions.includes(projectAction),
         );
       if (initialAdmissions.length !== 1)
         refuse('station_control_project_unavailable');
@@ -825,7 +833,7 @@ export class LocalSourceAdmissionOwner {
             .filter(
               ({ scope, member }) =>
                 isDeepStrictEqual(scope, capturedScope) &&
-                member.actions.includes('execute'),
+                member.actions.includes(projectAction),
             );
           if (admitted.length !== 1)
             refuse('station_control_project_unavailable');
@@ -877,12 +885,29 @@ export class LocalSourceAdmissionOwner {
     });
     if (realpathSync(this.#environment.getProjectHomeDir()) !== this.#home)
       refuse('home_context_mismatch');
-    const grant = await captureEnvironmentLocalGrantObservationOwner(
-      request,
-      this.#environment,
-      this.#environment,
-    );
-    const lease = grant.requireCurrentLocalGrant(request);
+    const lease =
+      method === 'POST'
+        ? (
+            await captureEnvironmentLocalGrantObservationOwner(
+              request,
+              this.#environment,
+              this.#environment,
+            )
+          ).requireCurrentLocalGrant(request)
+        : await captureEnvironmentLocalGrantReadOwner(
+            request,
+            this.#environment,
+            this.#environment,
+          ).then((read) => ({
+            ...read,
+            privateHostContextWitness:
+              this.#environment.signRevisionEvidenceAuthorityBinding(
+                json([
+                  'station.provider-credential-observation.host-context.v1',
+                  read.hostContextId,
+                ]),
+              ),
+          }));
     // Bind the supplied existing environment owner to this exact canonical home.
     const localEnvironment = new EnvironmentSecurityService({
       homeDir: this.#home,
@@ -924,14 +949,16 @@ export class LocalSourceAdmissionOwner {
           refuse('home_context_mismatch');
         lease.assertCurrent();
         if (
-          !runtimeRequestPrincipalMayAccessHttpRoute(
-            request,
-            this.#environment,
-            {
-              method: 'POST',
-              path: '/api/orchestration/chat',
-            },
-          )
+          method === 'POST'
+            ? !runtimeRequestPrincipalMayAccessHttpRoute(
+                request,
+                this.#environment,
+                {
+                  method: 'POST',
+                  path: '/api/orchestration/chat',
+                },
+              )
+            : !isRuntimeRequestPrincipalCurrent(request, this.#environment)
         )
           refuse('source_grant_action_not_authorized');
       });
@@ -943,6 +970,22 @@ export class LocalSourceAdmissionOwner {
       assertCurrent,
       request,
     };
+  }
+  async captureRequestAuthority(context: RuntimeSourceRequestContext) {
+    const method = context.req.raw.method;
+    if (method !== 'GET' && method !== 'POST')
+      refuse('request_method_unsupported');
+    const authority = await this.#authority(context, method);
+    authority.assertCurrent();
+    const ownerIdentity = authority.sessionCustody
+      ? `station-control-session/v1:${sha(json(authority.sessionCustody))}`
+      : authority.principalId;
+    return Object.freeze({
+      principalId: authority.principalId,
+      hostContextId: authority.lease.hostContextId,
+      ownerIdentity,
+      assertCurrent: authority.assertCurrent,
+    });
   }
   #sourceIdentity(
     authority: SnapshotAuthority,
