@@ -1,0 +1,7 @@
+{
+  "revision": "4e7c4925e82b0327805ff3a47f4da687d1393d4b",
+
+  "notes": [
+    {"path":"docs/reference/settings-deep-links.md","note":"Scoped module-map dependency review at 4e7c4925e82. Read the complete settings deep-link reference and inspected the current shared link builder, SettingsView highlight handling, generated registry route and generator use. The path remains /settings with catalog-owned view/highlight; unknown targets remove highlight and announce unavailable, hidden/platform targets refuse reveal, current section healing precedes bounded row observation, and reveal retains focus protection and 1400ms pulse. The registry route serves generated descriptive metadata rather than live values. New module-map account/media/group entries do not change these navigation identities or make a catalog row authorize an edit or guarantee device availability. No prose change required for this named map input. This review does not renew every unchanged answer-buffer/platform preference claim or count a source inspection as rendered UI proof. No browser, theme, keyboard, native-device or mounted-layout test executed; no baseline/classification/capture change.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]}
+  ]
+}
