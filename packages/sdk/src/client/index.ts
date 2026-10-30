@@ -36,6 +36,7 @@ export {
   envelopeReasons,
 } from './api-error-message';
 export * from './attachment-staging';
+export * from './automations';
 export * from './board';
 export { ChatHttpError } from './chatHttpError';
 export { setClientOriginResolver } from './client-origin.js';
