@@ -1,0 +1,7 @@
+{
+  "revision": "27049f4da6522d684a530019d23ed90408afcbb6",
+
+  "notes": [
+    {"path":"docs/user/personal-boards.md","note":"Scoped Station Control policy review at f29970a2d29: read the complete Personal Boards guide, current list/get/propose policy entries and complete policy delta against main. The delta adds eight separately named session-group policies/routes; it changes none of the personal-board tool policies. list_personal_boards and get_personal_board remain self reads; propose_personal_board remains a self-scoped mutating proposal route, with no new apply action. The guide still distinguishes proposal from person-reviewed Apply Board and conversation/task board_pin from Personal Boards. These added policies do not extend board access or automate approval. No prose change required for this input; unchanged editor, polling, move/recovery and view behavior retains its prior reviewed evidence. Source inspection only, no board/tool call, browser, device, provider or multi-client acceptance executed.","inputs":["docs/user/personal-boards.md","src-server/tools/station-control-policy.ts","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}
