@@ -853,7 +853,10 @@ configuration. Exports carry only required environment-name hints for them:
 never a binding id, Datum reference, or materialized value. `--include-secrets`
 can still export an ordinary legacy environment entry for compatibility, but it
 never exports a binding-backed entry (including a temporary legacy overlap).
-Imports reject `secretEnvRefs` outright.
+Imports reject `secretEnvRefs` and an OAuth client's `oauthClient.clientSecretRef`
+outright, and exports drop both. An import also applies Station's OAuth client
+rules: a pre-registered client needs its `issuer`, and an existing
+integration's bound client secret keeps its issuer and endpoint.
 
 > **Warning:** `--include-secrets` writes ordinary legacy credentials as
 > plaintext to the export. Binding material and binding references are never
