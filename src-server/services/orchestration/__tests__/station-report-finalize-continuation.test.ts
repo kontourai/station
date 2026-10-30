@@ -281,6 +281,26 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
       (historical) => historical.group,
     );
     await callbackReady;
+    await assert.rejects(
+      h.custody.finalizeContinuation(
+        h.f.context(requestFor(h, 'POST')),
+        groupId,
+        {
+          operationKey: 'finish',
+          expectedRevision: held.revision,
+          continuationOperationKey: 'lost',
+        },
+        dispatch,
+        h.f.owner,
+        participant,
+        (historical) => historical.group,
+      ),
+      {
+        name: 'HomeWriterUnavailableError',
+        reason: 'busy',
+        operationRan: false,
+      },
+    );
     const shutdown = runtime.shutdown();
     assert.throws(() => participant.acquire());
     assert.throws(
