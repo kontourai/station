@@ -251,7 +251,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/station-routes` | The addresses a Station reports it can be reached on (`GET /api/system/routes`): LAN, Tailscale and Tailscale HTTPS origins with the Station's `environmentId`, and a parser that drops invalid entries. A client learns them as routes to the same saved Station and still checks each against the handshake before use; see [Station routes](../design/station-routes.md). |
 | `@kontourai/station-contracts/station-groups` | Station groups for people (#3557): the Admin/Member vocabulary and default, the governed permissions and each group's ceiling, the pure `capScopeToGroup`, and the `StationPerson`/`StationGroupAssignment` shapes `GET /api/pairing/people` returns. Groups only cap a person-tied Device's governed permissions; they grant nothing, never include `access:manage`, and are not Project roles |
 | `@kontourai/station-contracts/auth` | Auth status, renew results, user identity/detail models |
-| `@kontourai/station-contracts/secret-binding` | Metadata-only AuthRef bindings, instance/person ownership, distinct exact MCP environment, ACP header and instance telemetry destination grants; raw material is server-only |
+| `@kontourai/station-contracts/secret-binding` | Metadata-only AuthRef bindings, instance/person ownership, distinct exact MCP environment, MCP OAuth client-secret, ACP header and instance telemetry destination grants; raw material is server-only |
 | `@kontourai/station-contracts/telemetry-delivery` | Current-process product acknowledgement/queue/failure and OTLP callback/probe status; host prerequisites, build-only artifact evidence and archive-byte preparation receipts. Preparation receipts never grant installation authority; collector acceptance does not prove downstream storage |
 | `@kontourai/station-contracts/authority-observation` | Closed credential-bound authority observation: current home identity, resolved principal echo (kind+id only), and verified grant tier; authorization-neutral, grants nothing |
 | `@kontourai/station-contracts/automation` | Automation sources (GitHub poll and webhook), the source-safe projection without the webhook secret, source grants, exact-equality string matchers (event fields are strings; numbers arrive as canonical decimal strings; an empty `where` is refused), rules, episodes, the closed delivery outcomes and the subset that takes part in semantic dedupe, `AUTOMATION_EXECUTION_LIMITS`, the GitHub event allow-list and the `AUTOMATION_OPERATOR_SURFACE` parity table, whose mutations have no MCP verb. Shapes only: the server validates and stores them, and no route, intake or dispatch consumes them yet |
@@ -293,7 +293,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/plugin-foreground-work` | Bounded foreground-work declarations, start intents, effect depth, run states, and safe public outcomes. Published ahead of a server implementation: Station does not admit or list plugin foreground runs yet |
 | `@kontourai/station-contracts/project` | Project config and metadata, and `projectIconProblem`: the one rule for a stored project icon (a short glyph, or a PNG/JPEG/WebP/ICO data URL of at most 128 KiB whose bytes match its type) that the create and update routes, the icon pickers and the renderer share |
 | `@kontourai/station-contracts/project-chat-defaults` | How a Project's new chat picks its model and approval mode (`fixed` or `last-used`), the `GET /api/projects/:slug/chat-defaults` view, and `resolveProjectChatApprovalDefault`, the one resolution the session start and that view share |
-| `@kontourai/station-contracts/project-membership` | Exact Station/local/portable Project scope, member roles/actions, single-use or verified-email invitations and administration projections |
+| `@kontourai/station-contracts/project-membership` | Exact Station/local/portable Project scope, member roles/actions, single-use or verified-email invitations, administration projections and the sharing state a refused administration read discloses (`ProjectAccessRefusalDetails`) |
 | `@kontourai/station-contracts/provider` | Provider kinds and provider-facing contract enums/types |
 | `@kontourai/station-contracts/runtime` | Session metadata, workflow metadata, runtime responses |
 | `@kontourai/station-contracts/runtime-events` | Runtime event stream payloads |
@@ -308,7 +308,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/integration-status` | Per-connection actions for GitHub, Discord, Slack, webhooks, Linear and Jira. Each action requires a `computedBy` probe ID, `works`, `waiting-on-provider`, `unsupported` or `failed` state, and a diagnostic/upstream reason; [source](../../packages/contracts/src/integration-status.ts), [boundary tests](../../packages/contracts/src/__tests__/integration-status.test.ts) |
 | `@kontourai/station-contracts/task-approval` | Task approval decisions, first-winner outcomes and refusal codes; bounded, closed `parseTaskApprovalDecision` and `parseTaskApprovalOutcome`. [Contract source](../../packages/contracts/src/task-approval.ts) and [parser tests](../../packages/contracts/src/__tests__/task-approval.test.ts). Store arbitration, admission and engine settlement are separate runtime work |
 | `@kontourai/station-contracts/work-claims` | A Session's work claim as Station's routes answer it (#3413): information, not a lock. The view shape, its parser and the subject labels the Session-row chip uses |
-| `@kontourai/station-contracts/tool` | Tool definitions, permissions, connection configs |
+| `@kontourai/station-contracts/tool` | Tool definitions, permissions, connection configs, remote OAuth client selection (`oauthClient`) |
 | `@kontourai/station-contracts/tool-library` | Safe source metadata, Project policy, requests, access summaries and Project agent drafts; [SDK client](sdk.md#project-tool-library) |
 | `@kontourai/station-contracts/unified-search` | Owner-qualified typed search results, provider pages, source states, open intents, and fresh owner-resolved open targets |
 | `@kontourai/station-contracts/workspace-activity-review-pane` | Canonical Activity review Pane descriptor, `activity-review:` plus 32 lowercase hexadecimal occurrence identity, instance constructor and pure canonical-instance check. These grant no source access or review authority. |
@@ -797,6 +797,16 @@ reads it only from a station-control tool's whole result, and
 `stationControlToolName`. A history window carries it whole on
 `ToolCompletedEvent.stationControlRefusal`, read before the window cut the
 output to an excerpt; a sentence over its bound is not carried.
+
+`@kontourai/station-contracts/claude-artifact` owns `ClaudeArtifactLink`
+(the claude.ai page a Claude Code `Artifact` publish produced, and its
+title), `parseClaudeArtifactPublish`, which reads it only from a publish's
+structured tool output (`url` and `path` at the top level), and
+`claudeArtifactLinkView`, which checks a stored link again before a reader
+renders it. `claudeArtifactUrl` admits only an `https://claude.ai` URL with
+no credentials or port; a URL over its bound is refused, and a title over
+its bound is dropped. The Claude adapter carries the link on
+`ToolCompletedEvent.claudeArtifact`.
 
 `ORCHESTRATION_STREAM_ACTIVITY_EVENT` names an idless SSE frame carrying the
 current conversation activity after a burst of coalesced runtime events. It
@@ -1329,7 +1339,12 @@ kernel `oom_kill` count (`childWorkloadMemoryExhausted` in
 `@kontourai/station-shared/child-workload`), not a signal alone. Only the Codex
 adapter publishes it today. The conversation is continued automatically
 (capped) with a Station recovery note; past the cap chat offers Continue rather
-than Send again. `isEngineMemoryExhaustedFailure` (`provider`) also recognises
+than Send again, to a caller the conversation's open read lets send. That
+answer (`callerAccess.continue`) is computed for
+`POST /api/orchestration/chat/:conversationId/continue`; Continue posts
+`POST /api/orchestration/conversations/:id/memory-continuation`, and the chat
+pane relies on both being in the same `orchestration:operate` tier.
+`isEngineMemoryExhaustedFailure` (`provider`) also recognises
 a failure stored before that code existed (`codex-turn-orphaned` with the old
 "Codex was killed because memory was exhausted." sentence), so chat shows it
 in current copy and a person's Continue applies to it. That continuation's turn carries a send key starting

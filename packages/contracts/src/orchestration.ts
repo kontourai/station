@@ -1968,7 +1968,21 @@ export interface ConversationOpenExecution {
   acceptedModel?: string;
 }
 
-export type ConversationOpenResolution =
+/**
+ * What THIS caller may write next, as the server's own HTTP boundary answers
+ * it for the exact routes a client would post to: `continue` for sending a
+ * turn into this conversation, `startChat` for starting a new chat. Computed
+ * per request, so a paired device without the needed scope learns it from
+ * the server instead of re-deriving the route table. Absent on older servers
+ * and when the request carries no authenticated principal; absent means
+ * unknown, and the server still enforces either way.
+ */
+export interface ConversationOpenCallerAccess {
+  continue: boolean;
+  startChat: boolean;
+}
+
+export type ConversationOpenResolution = (
   | {
       /** A saved, authorized fork with no provider Session until first send. */
       status: 'fork-ready';
@@ -2036,7 +2050,8 @@ export type ConversationOpenResolution =
       canContinue: false;
       answerability: RequestAnswerability;
       recoveryActions: readonly ('retry' | 'start-new')[];
-    };
+    }
+) & { callerAccess?: ConversationOpenCallerAccess };
 
 export interface ConversationForkProvenance {
   sourceConversationId: string;

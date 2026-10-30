@@ -49,3 +49,15 @@ describe('ConversationOpenRecoveryNotice verdicts (#2424)', () => {
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
 });
+
+// Owner direction: never offer an action the caller cannot take, and never
+// point at one that is not on screen.
+test('a notice with no Retry does not tell the reader to retry', () => {
+  render(
+    <ConversationOpenRecoveryNotice title="New chat" state="unverified" />,
+  );
+  const notice = screen.getByRole('status');
+  expect(screen.queryAllByRole('button')).toHaveLength(0);
+  expect(notice.textContent).not.toContain('Retry');
+  expect(notice.textContent).toContain('Sending is paused.');
+});

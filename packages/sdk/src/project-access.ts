@@ -12,6 +12,7 @@ export {
   type ProjectAccessCommand,
   type ProjectAccessCommandResult,
   type ProjectAccessMutationIntent,
+  projectAccessRefusal,
 } from './client/project-access';
 
 const key = (slug: string, scope: ApiRequestScope) =>
