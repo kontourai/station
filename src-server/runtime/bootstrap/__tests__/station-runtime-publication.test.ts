@@ -81,6 +81,7 @@ test('shutdown retries an uncertain real home writer release before closing stor
   const hold = await writer.acquire();
   let released = false;
   const cleanup = participant.retainCleanup(async () => {
+    parent.assertReleasable();
     if (!released) {
       await hold.release();
       released = true;

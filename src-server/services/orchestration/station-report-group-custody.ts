@@ -1137,6 +1137,7 @@ export class StationReportGroupCustody {
       );
     let homeReleased = !hold;
     const cleanup = participant.retainCleanup(async () => {
+      parent.assertReleasable();
       if (!homeReleased) {
         await hold!.release();
         homeReleased = true;

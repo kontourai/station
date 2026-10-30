@@ -20,6 +20,7 @@ export class RuntimePublicationPending extends Error {
 }
 export interface RuntimePublicationLease {
   assertCurrent(): void;
+  assertReleasable(): void;
   borrow(): { assertCurrent(): void; release(): void };
   release(): void;
 }
@@ -45,16 +46,24 @@ export class RuntimePublicationParticipant {
     const token = {};
     this.#pending.add(token);
     let released = false;
+    let closing = false;
     const children = new Set<object>();
     const current = () => {
       if (released || !this.#pending.has(token))
         throw new RuntimePublicationUnavailable();
       assertStationHomeRuntimeProof(this.home);
     };
+    const releasable = () => {
+      current();
+      closing = true;
+      if (children.size) throw new RuntimePublicationUnavailable();
+    };
     return Object.freeze({
       assertCurrent: current,
+      assertReleasable: releasable,
       borrow: () => {
         current();
+        if (closing) throw new RuntimePublicationUnavailable();
         const child = {};
         children.add(child);
         let childReleased = false;
@@ -74,8 +83,7 @@ export class RuntimePublicationParticipant {
       },
       release: () => {
         if (released) return;
-        if (children.size) throw new RuntimePublicationUnavailable();
-        current();
+        releasable();
         released = true;
         this.#pending.delete(token);
         if (!this.#pending.size) {

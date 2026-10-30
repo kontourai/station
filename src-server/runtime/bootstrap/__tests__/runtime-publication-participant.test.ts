@@ -113,6 +113,7 @@ test('shutdown retries retained cleanup without losing an outstanding child', as
     let attempts = 0;
     const cleanup = participant.retainCleanup(async () => {
       if (++attempts === 1) throw new Error('home cleanup uncertain');
+      lease.assertReleasable();
       lease.release();
     });
     await expect(cleanup()).rejects.toThrow('home cleanup uncertain');
@@ -120,6 +121,8 @@ test('shutdown retries retained cleanup without losing an outstanding child', as
     await expect(participant.drain(10)).rejects.toMatchObject({
       code: 'runtime_publication_pending',
     });
+    expect(() => lease.borrow()).toThrow('publication');
+    expect(() => child.assertCurrent()).not.toThrow();
     child.release();
     await expect(participant.drain(100)).resolves.toBeUndefined();
     expect(attempts).toBe(3);
