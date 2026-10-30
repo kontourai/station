@@ -293,6 +293,9 @@ describe('runCliCommand connection env overlay', () => {
       platformMock.mockReturnValue('win32');
       existsSyncMock.mockReturnValue(true);
       readFileSyncMock.mockReturnValue(shimText);
+      execFileMock.mockImplementation((_file, _args, _opts, callback) => {
+        callback(null, { stdout: 'unexpected launcher execution', stderr: '' });
+      });
       const { runCliCommand } = await import('../cli-auth.js');
       const result = await runCliCommand('C:\\tools\\codex.cmd', ['--version']);
       expect(result?.code).toBe(1);
