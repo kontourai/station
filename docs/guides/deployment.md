@@ -601,6 +601,12 @@ GUI executable as a headless server command. The current checkout's
 launchd and systemd adapters. Its
 [Windows adapter](../../packages/cli/src/commands/service-windows.ts) owns Task
 Scheduler registration, the command wrapper, process identity and trusted paths.
+Windows live-owner engine cleanup uses `taskkill /T`, escalating to `/F` when
+needed. The [owned-process startup sweep](../../src-server/services/infra/process-utils.ts)
+recovers POSIX process groups only; Windows does not persist or consume those
+orphan records. After an abrupt Windows owner exit, startup does not establish
+that all of its engine descendants were reclaimed. This is separate from Task
+Scheduler restart policy and does not establish reboot recovery.
 The published CLI can control an existing installed service with
 `service status|start|stop`; installing or removing a service needs the
 lifecycle CLI of a checkout or a prebuilt server archive, and the
