@@ -1,0 +1,7 @@
+{
+  "revision": "483a8055790ff67db71d34f791edf9695e6bce4f",
+
+  "notes": [
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"Reviewed this dated seam-map record against the current service delta and header. The August counts, lines, call-site inventories and proposed cuts are explicitly historical, not current architecture. The current-owner banner still points to OrchestrationService and the extracted provenance/Flow-policy/cooperative-stop owners; the October follow-up distinguishes the removed restart forwarder from the retained quarantine forwarder. Removed only the stale in-service narration about formatter/test casts; the quarantine method and constructed caller remain unchanged. New reserved-turn, tool-restriction, report-read and commit-ack composition does not make historical seam counts current. No prose change needed here. Source-impact review, no new decomposition/refactor or behavior/test certification.","inputs":["docs/design/orchestration-decomposition-map.md","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}
