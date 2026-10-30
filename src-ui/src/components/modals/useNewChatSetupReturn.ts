@@ -30,6 +30,7 @@ function isRepairRoute(path: string, target: string) {
 export function useNewChatSetupReturn({
   authority,
   onCancel,
+  onLeave,
   onResume,
   revalidate,
   workflowLabel = 'New Chat',
@@ -38,6 +39,11 @@ export function useNewChatSetupReturn({
 }: {
   authority: NewChatSetupAuthority;
   onCancel: () => void;
+  /**
+   * The person navigated from setup to somewhere else: the draft is left,
+   * not dismissed. Defaults to `onCancel`.
+   */
+  onLeave?: () => void;
   onResume: (error?: unknown) => void;
   revalidate: () => Promise<unknown>;
   workflowLabel?: string;
@@ -48,18 +54,23 @@ export function useNewChatSetupReturn({
   const id = `chrome:new-chat:setup-return:${useId()}`;
   const [journey, setJourney] = useState<SetupJourney | null>(null);
   const current = useRef<SetupJourney | null>(null);
-  const callbacks = useRef({ onCancel, onResume, revalidate });
-  callbacks.current = { onCancel, onResume, revalidate };
+  const callbacks = useRef({ onCancel, onLeave, onResume, revalidate });
+  callbacks.current = { onCancel, onLeave, onResume, revalidate };
 
-  const cancel = useCallback(() => {
-    if (!current.current) return;
-    const pending = current.current;
-    current.current = null;
-    pending.controller.abort();
-    setJourney(null);
-    bannerStore.dismiss(id);
-    callbacks.current.onCancel();
-  }, [id]);
+  const end = useCallback(
+    (left: boolean) => {
+      if (!current.current) return;
+      const pending = current.current;
+      current.current = null;
+      pending.controller.abort();
+      setJourney(null);
+      bannerStore.dismiss(id);
+      const { onCancel, onLeave } = callbacks.current;
+      (left ? (onLeave ?? onCancel) : onCancel)();
+    },
+    [id],
+  );
+  const cancel = useCallback(() => end(false), [end]);
 
   const resume = useCallback(
     (restoreRoute: boolean) => {
@@ -245,12 +256,12 @@ export function useNewChatSetupReturn({
         )
       )
         return;
-      cancel();
+      end(true);
     });
     return () => {
       unsubscribe();
     };
-  }, [allowedPaths, cancel, resume]);
+  }, [allowedPaths, cancel, end, resume]);
 
   useEffect(() => {
     if (journey?.entered && !journey.revalidating && readyToResume)

@@ -994,6 +994,42 @@ describe('Station Control canonical Environment + Agent execution', () => {
     ).toBe(false);
   });
 
+  test.each([
+    ['sandbox_unavailable', /host.*sandbox/i],
+    ['provider_model_unavailable', /provider.*model.*availability/i],
+  ] as const)(
+    'a local %s start failure keeps its safe diagnostic in the delegate tool envelope',
+    async (code, guidance) => {
+      installCurrentStationFetch();
+      const service = localService();
+      service.sessionCommands.execute.mockResolvedValueOnce({
+        status: 'failed',
+        receipt: { commandId: 'command-1', status: 'failed' },
+        code,
+        message: '/private/secret-proof',
+      } as never);
+      const { delegateTask } = await import('../station-control-delegation.js');
+      const { delegationToolResult } = await import(
+        '../station-control-shared.js'
+      );
+      const response = await delegationToolResult(() =>
+        delegateTask(
+          { prompt: 'Inspect the checkout', target: currentTarget() },
+          service as never,
+        ),
+      );
+      expect(response.isError).toBe(true);
+      const body = JSON.parse(response.content[0].text);
+      expect(body).toMatchObject({
+        success: false,
+        code,
+        error: expect.stringMatching(guidance),
+      });
+      expect(JSON.stringify(response)).not.toContain('secret-proof');
+      expect(service.dispatchWithReceipt).not.toHaveBeenCalled();
+    },
+  );
+
   test.each([true, false])(
     'does not retry an indeterminate delegation start (session returned: %s)',
     async (hasSession) => {
