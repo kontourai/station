@@ -1,0 +1,7 @@
+{
+  "revision": "66519d138c879b6d3b5630b5b0da5da9ada5369e",
+
+  "notes": [
+    {"path":"packages/contracts/README.md","note":"Reviewed added child-work provenance and local delegation-group paragraphs against current contracts and provider producers. normalizeResult retains a source only with text; enrichResult promotes a tool-return over a summary while retaining a prior handle and protects returned text from later reports. Claude observeClaudeAgentReturn requires a tracked matching child/toolCallId and nonblank structured completed text; task notifications/Muse summaries and Codex child-turn messages use their separately named sources. delegation-group maxDispatches explicitly counts reserved starts and physicalAttemptCap remains unavailable. The README keeps observed source separate from artifact acceptance and published-release evidence. No further prose change needed. Source review; the separately recorded 254-test provenance selection is historical diagnostic evidence, not rerun here or current provider/restart acceptance.","inputs":["packages/contracts/README.md"]}
+  ]
+}
