@@ -1859,8 +1859,14 @@ Snapshot and caught-up session summaries use the same scope as the stream:
 Live `orchestration:event` frames carry `{ event: CanonicalRuntimeEvent }`;
 `threadId` filters the stream and caller authorization still applies. Coalesced
 activity may also arrive as `orchestration:activity`, without a durable cursor.
-The separate bare `/events` feed carries ephemeral notifications and cache
-invalidation hints. It bounds its queue to 1,024 frames or 8 MiB and compacts an
+The browser opts in to general events with `?includeGeneral=1` on the shared
+orchestration stream. These frames use `event: station:general` and contain a
+JSON envelope with the original `event` and `data` strings. They have no SSE
+`id`, so they do not advance the orchestration replay cursor. General and
+orchestration events retain their respective request-authority checks. The bare
+`/events` feed remains available to other clients. Both general-event paths
+carry ephemeral notifications and cache invalidation hints. The producer
+bounds its queue to 1,024 frames or 8 MiB and compacts an
 overflow into `data:changed` with `{ "resync": true }` while keeping the connection.
 The UI invalidates its whole query cache so future query keys also recover.
 Transient effects such as toasts, navigation and approval prompts may be dropped

@@ -17,6 +17,10 @@ multiplexed stream per client or of a saturated-pool input-latency guarantee.
 The original decision, alternatives, and connection-budget constraints remain
 below; no live connection-budget or browser/native qualification was rerun here.
 
+**Current implementation:** The browser requests general events on its shared
+orchestration stream. See the [Session API](../reference/session-api.md#live-sse-feed-get-events)
+for the current wire contract. The connection counts below are historical.
+
 ## Context
 
 Station streams agent and chat output to its clients over Server-Sent Events.
