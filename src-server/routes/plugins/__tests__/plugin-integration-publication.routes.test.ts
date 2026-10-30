@@ -8,12 +8,18 @@ import { join } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
 import { withOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
-import { loadIntegrationConfig } from '../../../domain/config-loader-storage.js';
+import {
+  loadIntegrationConfig,
+  saveIntegrationConfig,
+} from '../../../domain/config-loader-storage.js';
 import { execGitSync } from '../../../utils/git-exec.js';
 import type { Logger } from '../../../utils/logger.js';
 
 const build = vi.hoisted(() => ({ fail: false }));
-const providerFault = vi.hoisted(() => ({ failOnce: false }));
+const providerFault = vi.hoisted(() => ({
+  failOnce: false,
+  beforeFailure: undefined as (() => Promise<void>) | undefined,
+}));
 vi.mock('../plugin-loader.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../plugin-loader.js')>();
   return {
@@ -23,6 +29,7 @@ vi.mock('../plugin-loader.js', async (importOriginal) => {
     ) => {
       if (providerFault.failOnce) {
         providerFault.failOnce = false;
+        await providerFault.beforeFailure?.();
         throw new Error('injected provider failure');
       }
       return actual.loadPluginProviders(...args);
@@ -245,6 +252,80 @@ describe('plugin update and rollback publish integrations through the locked wri
       build.fail = false;
     }
   });
+
+  test.each(['same issuer', 'newer bound issuer'])(
+    'rollback validates an own client with %s through locked restore',
+    async (scenario) => {
+      const { home, origin } = mailPlugin();
+      const path = join(home, 'integrations', 'mail', 'integration.json');
+      const client = {
+        clientId: 'own-client',
+        issuer: 'https://accounts.example',
+      };
+      const original = {
+        ...(await stored(home)),
+        command: undefined,
+        transport: 'streamable-http',
+        endpoint: 'https://mail.example/mcp',
+        oauthClient: { ...client, clientSecretRef: 'own-secret' },
+      };
+      writeFileSync(path, JSON.stringify(original));
+      writeFileSync(
+        join(origin, 'integrations', 'mail', 'integration.json'),
+        JSON.stringify({ ...original, oauthClient: client }),
+      );
+      git(origin, 'commit', '-q', '-am', 'own client');
+      providerFault.failOnce = true;
+      providerFault.beforeFailure = async () => {
+        if (scenario !== 'newer bound issuer') return;
+        const current = await stored(home);
+        // An operator unbinds, changes issuer and establishes their new binding
+        // after publication, before compensation begins.
+        const changed = {
+          ...current,
+          oauthClient: { ...client, issuer: 'https://new-accounts.example' },
+        };
+        await saveIntegrationConfig(home, 'mail', changed);
+        await saveIntegrationConfig(home, 'mail', {
+          ...changed,
+          oauthClient: {
+            ...changed.oauthClient,
+            clientSecretRef: 'new-secret',
+          },
+        });
+      };
+      try {
+        const app = withOperatorPrincipal(
+          createPluginRoutes(home, makeLogger()),
+        );
+        const response = await app.request('/mail-plugin/update', {
+          method: 'POST',
+        });
+        const body = await response.json();
+        expect(body).toMatchObject({
+          success: false,
+          error: expect.stringContaining(
+            scenario === 'same issuer'
+              ? 'injected provider failure'
+              : 'rollback both failed',
+          ),
+        });
+        expect((await stored(home)).oauthClient).toEqual(
+          scenario === 'same issuer'
+            ? original.oauthClient
+            : {
+                ...client,
+                issuer: 'https://new-accounts.example',
+                clientSecretRef: 'new-secret',
+              },
+        );
+        expect((await stored(home)).untrustedContentChanges).toEqual(HISTORY);
+      } finally {
+        providerFault.failOnce = false;
+        providerFault.beforeFailure = undefined;
+      }
+    },
+  );
 
   test('a late failure restores retired integration person settings', async () => {
     const { home, origin } = mailPlugin();

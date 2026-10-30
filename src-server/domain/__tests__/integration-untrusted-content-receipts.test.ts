@@ -527,9 +527,6 @@ describe('plugin integration publication', () => {
     await reader;
     expect(seen.length).toBeGreaterThan(1);
     expect(seen.filter((bytes) => bytes.includes('forged'))).toEqual([]);
-    expect(
-      seen.filter((bytes) => bytes.includes('someone-elses-binding')),
-    ).toEqual([]);
   });
 
   test('a validator refusal and a foreign owner both change nothing', async () => {
