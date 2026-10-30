@@ -151,6 +151,28 @@ describe('verification output redaction', () => {
     expect(redactVerificationOutput(output)).toBe(output);
   });
 
+  test('preserves phase commands and JSON quotes while redacting assignments', () => {
+    const command = 'npm run test:full:credential-ledger-exclusive:raw';
+    const raw = JSON.stringify(
+      {
+        phase: { command },
+        output: 'prefix:token=secret-value',
+        other: 'token=another-secret',
+        colon: 'prefix:password:secret-value',
+      },
+      null,
+      2,
+    );
+    const output = redactVerificationOutput(raw);
+    expect(JSON.parse(output)).toEqual({
+      phase: { command },
+      output: 'prefix:token=[REDACTED]',
+      other: 'token=[REDACTED]',
+      colon: 'prefix:password:[REDACTED]',
+    });
+    expect(redactVerificationOutput(output)).toBe(output);
+  });
+
   test.each([
     'attachment: /tmp/token=report-secret.zip',
     String.raw`attachment: E:\tmp\token=report-secret.zip`,

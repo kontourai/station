@@ -158,6 +158,7 @@ function redactPlainText(text) {
     /\b([A-Za-z][A-Za-z0-9_-]*)[^\S\r\n]*(=|:)[^\S\r\n]*/g,
     /\[REDACTED\]|[^\s\\/?&;]+/y,
     (match) => `${match[1]}${match[2]}${REDACTED}`,
+    assignmentKey,
   );
   const contextual = redactKeyValues(
     nested,
@@ -175,6 +176,7 @@ function redactPlainText(text) {
     /\b([A-Za-z][A-Za-z0-9_-]*)\s*(=|:)\s*/g,
     /\[REDACTED\]|"(?:\\.|[^"\\])*"|'[^']*'|\S+/y,
     (match, raw) => `${match[1]}${match[2]}${redactValue(raw)}`,
+    assignmentKey,
   );
   return redactTrailingCanonicalPrefix(
     redactCanonicalTokens(output).replace(
@@ -182,6 +184,17 @@ function redactPlainText(text) {
       `://${REDACTED}@`,
     ),
   );
+}
+
+// This canonical npm script is a phase command, not a credential assignment.
+// Keep other colon-delimited credential values subject to redaction.
+function assignmentKey(match) {
+  return match[1] === 'credential-ledger-exclusive' &&
+    match[2] === ':' &&
+    match.input.slice(0, match.index).endsWith('npm run test:full:') &&
+    /^raw(?=$|[\s"'])/.test(match.input.slice(match.index + match[0].length))
+    ? ''
+    : match[1];
 }
 
 function parseStructuredJson(value) {
@@ -237,7 +250,14 @@ function redactEncodedJsonStrings(text) {
  * five layers; deeper payloads are omitted fail-closed by redactStructuredValue.
  */
 export function redactVerificationOutput(value) {
-  return redactPlainText(redactEncodedJsonStrings(String(value)));
+  const text = String(value);
+  const structured = parseStructuredJson(text);
+  if (structured !== undefined) {
+    const redacted = redactStructuredValue(structured, 0);
+    if (JSON.stringify(redacted) === JSON.stringify(structured)) return text;
+    return `${JSON.stringify(redacted, null, text.includes('\n') ? 2 : undefined)}${text.endsWith('\n') ? '\n' : ''}`;
+  }
+  return redactPlainText(redactEncodedJsonStrings(text));
 }
 
 export function redactVerificationValue(value, depth = 0) {
