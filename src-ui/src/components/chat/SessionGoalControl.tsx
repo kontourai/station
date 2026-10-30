@@ -3,6 +3,7 @@ import {
   useSessionGoalMutation,
   useSessionGoalQuery,
 } from '@kontourai/station-sdk/session-goals';
+import { StatusBadge } from '@kontourai/ui/react';
 import { useId, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
@@ -83,8 +84,9 @@ function GoalSurface({
           <p>
             {data.capability.implementation === 'engine'
               ? 'Engine-owned'
-              : 'Station-owned'}{' '}
-            · {data.goal?.status ?? 'No goal'}
+              : 'Station-owned'}
+            {' · '}
+            <StatusBadge status={data.goal?.status ?? 'No goal'} />
           </p>
           {data.goal && (
             <>
@@ -151,7 +153,7 @@ function GoalSurface({
               </div>
             </form>
           ) : (
-            <>
+            <div className="chat-settings-modal__control">
               {data.capability.operations.includes('set') && (
                 <Button
                   disabled={mutation.isPending}
@@ -182,7 +184,7 @@ function GoalSurface({
                   Clear goal
                 </Button>
               )}
-            </>
+            </div>
           )}
         </>
       ) : null}
