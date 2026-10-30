@@ -149,6 +149,17 @@ describe('acquireFileMutationLockAsync (#2646 event-loop yield)', () => {
 });
 
 describe('prepared file mutation owner', () => {
+  it('does not block synchronous acquisition while empty cleanup settles', async () => {
+    const lock = temporaryLockPath();
+    const owner = await prepareFileMutationOwner(lock);
+    const cleanup = owner.settlePendingCleanup();
+    const attempt = owner.tryAcquire();
+    expect(attempt.kind).toBe('acquired');
+    if (attempt.kind !== 'acquired') throw new Error('missing prepared lease');
+    await cleanup;
+    expect(attempt.lease.tryRelease()).toBe('released');
+    await owner.close();
+  });
   it('interoperates with async holders and cannot invalidate a successor on repeated release', async () => {
     const lock = temporaryLockPath();
     const owner = await prepareFileMutationOwner(lock);

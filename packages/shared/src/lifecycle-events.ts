@@ -1519,6 +1519,10 @@ export async function prepareFileMutationOwner(
       if (active)
         return Promise.reject(new Error('prepared mutation lease is active'));
       if (settling) return settling;
+      if (!candidate && !held) {
+        forgetIfSettled();
+        return Promise.resolve();
+      }
       settling = (async () => {
         recoverPublishedCandidate();
         cleanupCandidate();
