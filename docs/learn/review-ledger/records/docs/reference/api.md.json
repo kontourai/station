@@ -612,7 +612,9 @@
 
     "src-server/services/notifications/notification-service.ts",
 
-    "src-server/runtime/routes/__tests__/runtime-routes-account-personal-tokens.test.ts"
+    "src-server/runtime/routes/__tests__/runtime-routes-account-personal-tokens.test.ts",
+
+    "src-server/routes/operations/automations.ts"
   ],
 
   "checks": [

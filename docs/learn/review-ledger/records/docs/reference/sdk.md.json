@@ -806,7 +806,9 @@
 
     "packages/sdk/src/query-domains/personNotifications.ts",
 
-    "packages/sdk/src/__tests__/personNotifications.test.tsx"
+    "packages/sdk/src/__tests__/personNotifications.test.tsx",
+
+    "packages/sdk/src/client/automations.ts"
   ],
 
   "checks": [

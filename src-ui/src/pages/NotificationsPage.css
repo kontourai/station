@@ -1,183 +1,108 @@
 /* ═══ Notifications Page ═══ */
 
-.notifications-page__app-messages {
-  margin-block: 1rem;
-}
-
-.notifications-page__app-messages h2 {
-  margin: 0 0 0.25rem;
-  font-size: 1rem;
-}
-
-.notifications-page__app-messages > p,
-.notifications-page__app-message-meta {
-  color: var(--text-secondary);
-  font-size: 0.875rem;
-}
-
-.notifications-page__app-messages ol {
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.notifications-page__app-messages li {
-  padding: 0.75rem 1rem;
-  background: var(--bg-secondary);
-  overflow-wrap: anywhere;
-}
-
-.notifications-page__app-messages li + li {
-  border-top: 1px solid var(--border-primary);
-}
-
-.notifications-page__app-messages li p {
-  margin: 0.35rem 0 0;
-}
-
-.notifications-page__app-message-meta {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.notifications-page__app-message-tone.is-error {
-  color: var(--color-error);
-}
-
-.notifications-page__app-message-tone.is-warning {
-  color: var(--color-warning);
-}
-
 /* No `margin: 0 auto`. Centring a flex item that also shrinks to fit-content
    is what put this page's 350px column at x=665 with a 400px empty gutter
    beside it (SHELL-11) while every other page started at x=264. The frame
    owns the column now; the page owns nothing about its own placement. */
 
-.notifications-page__header {
+.notifications-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-6);
+}
+
+.notifications-page__settings {
+  min-height: 32px;
+  padding: 0 var(--k-space-2);
+  border: none;
+  background: none;
+  color: var(--k-text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--k-text-sm);
+}
+
+.notifications-page__settings:hover {
+  color: var(--k-text);
+  text-decoration: underline;
+}
+
+/* Every card's meta line ends in the time and its ⋯ menu. */
+.notification-card__corner {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--k-space-1);
+}
+
+/* ── Filter toolbar ── */
+
+.notifications-page__filters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-3);
+}
+
+.notifications-page__filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+
+.notifications-page__search {
+  position: relative;
+  display: flex;
+  flex: 1 1 260px;
   align-items: center;
 }
 
-.notifications-page__clear-btn {
+.notifications-page__search-glyph {
+  position: absolute;
+  left: var(--k-space-3);
+  color: var(--k-text-muted);
+  pointer-events: none;
+}
+
+.notifications-page__search-input,
+.notifications-page__date-input {
+  box-sizing: border-box;
   min-height: 36px;
-}
-
-.notifications-page__filters {
-  margin-top: 1.5rem;
-  padding: 1rem;
-  border: 1px solid var(--border-primary);
-  border-radius: 12px;
-  background: var(--bg-secondary);
-  box-shadow: 0 2px 8px rgb(0 0 0 / 4%);
-}
-
-.notifications-page__filters-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-
-.notifications-page__filters-heading h2 {
-  margin: 0;
-  color: var(--text-primary);
-  font-size: 1rem;
-}
-
-.notifications-page__filters-heading p {
-  margin: 0.25rem 0 0;
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-}
-
-.notifications-page__reset-filters {
-  flex: 0 0 auto;
-  min-height: 36px;
-}
-
-.notifications-page__filter-field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-  font-weight: 600;
-}
-
-.notifications-page__category-filter {
-  min-width: 0;
-  margin: 1rem 0 0;
-  padding: 0;
-  border: 0;
-}
-
-.notifications-page__category-filter legend {
-  margin-bottom: 0.4rem;
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-  font-weight: 600;
-}
-
-.notifications-page__category-chips {
-  display: flex;
-  gap: 0.5rem;
-  overflow-x: auto;
-  padding-bottom: 0.25rem;
-  scrollbar-width: thin;
-}
-
-.notifications-page__category-chip {
-  min-height: 36px;
-  flex: 0 0 auto;
-  padding: 0.4rem 0.75rem;
-  border: 1px solid var(--border-primary);
-  border-radius: 999px;
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
-  cursor: pointer;
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-control);
+  background: var(--k-panel);
+  color: var(--k-text);
   font: inherit;
-  font-size: var(--text-sm);
-  transition:
-    background var(--motion-fast) var(--ease-standard),
-    border-color var(--motion-fast) var(--ease-standard),
-    color var(--motion-fast) var(--ease-standard),
-    transform var(--motion-fast) var(--ease-standard);
+  font-size: var(--k-text-sm);
 }
 
-.notifications-page__category-chip:hover {
-  border-color: var(--border-secondary);
-  transform: translateY(-1px);
+.notifications-page__search-input {
+  width: 100%;
+  padding: 0 var(--k-space-3) 0 calc(var(--k-space-3) * 2 + 1em);
 }
 
-.notifications-page__category-chip[aria-pressed="true"] {
-  border-color: var(--accent-primary);
-  background: color-mix(in srgb, var(--accent-primary) 16%, var(--bg-tertiary));
-  color: var(--accent-primary);
+.notifications-page__search-input:focus,
+.notifications-page__date-input:focus {
+  border-color: var(--k-focus);
 }
 
 .notifications-page__date-filter {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
-  max-width: 28rem;
-  margin-top: 0.75rem;
+  display: flex;
+  gap: var(--k-space-2);
+}
+
+.notifications-page__date-field {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  font-weight: 600;
 }
 
 .notifications-page__date-input {
-  box-sizing: border-box;
-  width: 100%;
-  min-height: 38px;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
+  padding: 0 var(--k-space-2);
   color-scheme: dark;
-  font: inherit;
-  transition: border-color var(--motion-fast) var(--ease-standard);
 }
 
 /* The native picker glyph follows color-scheme; an unconditional `dark`
@@ -186,178 +111,275 @@
   color-scheme: light;
 }
 
-.notifications-page__date-input:focus {
-  border-color: var(--accent-primary);
+.notifications-page__date-input[aria-invalid="true"] {
+  border-color: var(--k-negative);
 }
 
-.notifications-page__date-input[aria-invalid="true"] {
-  border-color: var(--error-text);
+.notifications-page__chip-row {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-width: 0;
+}
+
+.notifications-page__category-filter {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.notifications-page__category-chips {
+  display: flex;
+  gap: var(--k-space-2);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.notifications-page__category-chip {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 0 var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--k-text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--k-text-xs);
+  font-weight: 600;
+}
+
+.notifications-page__category-chip:hover {
+  border-color: var(--k-line-strong);
+  color: var(--k-text);
+}
+
+.notifications-page__category-chip[aria-pressed="true"] {
+  border-color: var(--k-action);
+  background: color-mix(in oklab, var(--k-action) 14%, transparent);
+  color: var(--k-text);
+}
+
+.notifications-page__reset-filters {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 0 var(--k-space-2);
+  border: none;
+  background: none;
+  color: var(--k-action);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--k-text-xs);
+  font-weight: 600;
+}
+
+.notifications-page__reset-filters:hover {
+  text-decoration: underline;
 }
 
 .notifications-page__filter-error {
-  margin: 0.5rem 0 0;
-  color: var(--error-text);
-  font-size: var(--text-sm);
+  margin: 0;
+  color: var(--k-negative);
+  font-size: var(--k-text-sm);
 }
 
-.notifications-page__result-summary {
-  margin-top: 0.75rem;
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-}
+/* ── Sections ── */
 
-.notifications-page__list {
+.notifications-page__section {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--k-space-3);
+}
+
+.notifications-page__section-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--k-space-2) var(--k-space-4);
 }
 
 .notifications-page__section-title {
-  margin: 2rem 0 0.75rem;
-  font-size: 1rem;
+  margin: 0;
+  color: var(--k-text);
+  font-size: var(--k-text-md);
+  font-weight: 600;
+}
+
+.notifications-page__section-note,
+.notifications-page__result-summary {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+}
+
+.notifications-page__day {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+}
+
+.notifications-page__day-label {
+  margin: var(--k-space-2) 0 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  font-weight: 600;
+}
+
+/*
+ * One list, not a stack of cards: the rows share a frame and a divider, so
+ * a page of twenty items reads as one inbox instead of twenty alerts.
+ */
+.notifications-page__list {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+}
+
+/* Doubled class: the cards' own borders come from another chunk whose load
+   order is not fixed, so this must win on specificity, not on order. */
+.notifications-page__list.notifications-page__list > * {
+  border: none;
+  border-radius: 0;
+}
+
+.notifications-page__list.notifications-page__list > * + * {
+  border-top: 1px solid var(--k-line);
 }
 
 /*
  * Attention-item styling (the "Needs attention" section's cards, including
- * `.attention-*` action affordances) moved to
+ * `.attention-*` action affordances) lives in
  * `components/attention/AttentionCard.css` (archive#1170) — that component
- * is now also rendered from SessionsView, which doesn't load this
- * lazy-loaded page chunk. `.notification-card*` below stays here: it's
- * still owned by the plain notification list (NotificationCard.tsx),
- * which only ever renders from this page.
+ * is also rendered from SessionsView, which doesn't load this lazy-loaded
+ * page chunk. `.notification-card*` below stays here: it's owned by the
+ * plain notification list (NotificationCard.tsx), which only ever renders
+ * from this page.
  */
 
 .notification-card {
-  padding: 20px;
-  background: linear-gradient(
-    135deg,
-    var(--bg-secondary) 0%,
-    var(--bg-tertiary) 100%
-  );
-  border: 1px solid var(--border-primary);
-  border-radius: 12px;
-  transition:
-    border-color var(--motion-slow) var(--ease-standard),
-    transform var(--motion-slow) var(--ease-standard),
-    box-shadow var(--motion-slow) var(--ease-standard),
-    opacity var(--motion-slow) var(--ease-standard),
-    filter var(--motion-slow) var(--ease-standard);
-  position: relative;
-  overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-  animation: notification-slide-in var(--motion-slow) var(--ease-standard);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--k-space-3);
+  padding: var(--k-space-4);
+  background: var(--k-panel);
 }
 
 .notification-card--focused:focus {
-  outline: 2px solid var(--accent-primary);
-  outline-offset: 2px;
-}
-
-@keyframes notification-slide-in {
-  from {
-    opacity: 0;
-    transform: translateX(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-.notification-card::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 4px;
-  height: 100%;
-  background: linear-gradient(
-    180deg,
-    var(--accent-primary),
-    var(--accent-secondary, var(--accent-primary))
-  );
-  opacity: 0;
-  transition: opacity var(--motion-slow) var(--ease-standard);
-}
-
-.notification-card:hover {
-  border-color: var(--border-secondary);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-}
-
-.notification-card:hover::before {
-  opacity: 1;
-}
-
-.notification-card--dismissed,
-.notification-card--actioned,
-.notification-card--expired {
-  opacity: 0.5;
-  transform: scale(0.98);
-  filter: grayscale(0.3);
-}
-
-.notification-card__header {
-  display: flex;
-  justify-content: space-between;
-  align-items: start;
-  margin-bottom: 8px;
+  outline: 2px solid var(--k-focus);
+  outline-offset: -2px;
 }
 
 .notification-card__content {
   flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.notification-card__meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--k-space-3);
+}
+
+.notification-card__type,
+.notification-card__time {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
 }
 
 .notification-card__type {
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  color: var(--text-muted);
-  margin-bottom: 6px;
-  text-transform: uppercase;
   font-weight: 600;
-  letter-spacing: 0.5px;
-}
-
-.notification-card__message {
-  font-size: var(--text-lg);
-  margin-bottom: 8px;
-}
-
-.notification-card__detail {
-  font-size: var(--text-base);
-  color: var(--text-muted);
 }
 
 .notification-card__time {
-  font-family: var(--font-mono);
-  font-size: var(--text-base);
-  color: var(--text-muted);
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  margin-left: 16px;
 }
 
-.notification-card__footer {
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid var(--border-primary);
+.notification-card__message {
+  margin-top: 2px;
+  color: var(--k-text);
+  font-size: var(--k-text-md);
+  font-weight: 500;
+  line-height: var(--k-leading-tight);
+}
+
+.notification-card__detail {
+  margin-top: var(--k-space-1);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+/* archive#1780: the same observation line the popover row renders. */
+.notification-card__answerability {
+  color: var(--k-text);
+  font-style: italic;
+  overflow-wrap: anywhere;
+}
+
+/* ── Recent app messages ── */
+
+.notifications-page__app-messages {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  gap: var(--k-space-2);
+}
+
+.notifications-page__app-messages ol {
+  margin: var(--k-space-1) 0 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  list-style: none;
+}
+
+.notifications-page__app-messages li {
+  padding: var(--k-space-3) var(--k-space-4);
+  background: var(--k-panel);
+  font-size: var(--k-text-sm);
+  overflow-wrap: anywhere;
+}
+
+.notifications-page__app-messages li + li {
+  border-top: 1px solid var(--k-line);
+}
+
+.notifications-page__app-messages li p {
+  margin: var(--k-space-1) 0 0;
+}
+
+.notifications-page__app-message-meta {
+  display: flex;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--k-space-4);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
 }
 
-.notification-card__status {
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-muted);
+.notifications-page__app-message-tone {
+  font-weight: 600;
 }
 
-/* ── Mobile touch targets ── */
+.notifications-page__app-message-tone.is-error {
+  color: var(--k-negative);
+}
+
+.notifications-page__app-message-tone.is-warning {
+  color: var(--k-caution);
+}
+
+/* ── Phones and touch: 44px targets ── */
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
   .notifications-page {
+    gap: var(--k-space-5);
     /* Horizontal and top insets belong to the frame, and the dock's footprint
        to the shell (station#3902 — this re-derivation hardcoded the COLLAPSED
        header height, so an open dock covered the last card). This is the
@@ -365,34 +387,68 @@
     padding-bottom: 1.5rem;
   }
 
-  .notifications-page__clear-btn {
-    min-height: 44px;
+  .notifications-page__date-filter {
+    flex: 1 1 100%;
   }
 
-  .notifications-page__filters-heading {
-    align-items: stretch;
-    flex-direction: column;
+  .notifications-page__date-field {
+    flex: 1 1 0;
+    min-width: 0;
   }
 
-  .notifications-page__reset-filters,
-  .notifications-page__category-chip,
+  .notifications-page__date-input {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .notifications-page__search-input,
   .notifications-page__date-input,
-  .notifications-page__filter-field .page__search-input {
-    min-height: 44px;
-  }
-
-  .notification-card__footer {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
+  .notifications-page__category-chip,
+  .notifications-page__reset-filters,
   .notice-actions {
     justify-content: flex-start;
   }
 }
 
-/* archive#1780: the same observation line the popover row renders. */
-.notification-card__answerability {
-  font-style: italic;
-  overflow-wrap: anywhere;
+/* ── Snoozed ── */
+.notifications-page__snoozed {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+  list-style: none;
+}
+
+.notifications-page__snoozed-row {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-3);
+  padding: var(--k-space-3) var(--k-space-4);
+}
+
+.notifications-page__snoozed-row + .notifications-page__snoozed-row {
+  border-top: 1px solid var(--k-line);
+}
+
+.notifications-page__snoozed-text {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.notifications-page__snoozed-title {
+  overflow: hidden;
+  color: var(--k-text);
+  font-size: var(--k-text-sm);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notifications-page__snoozed-when {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
 }
