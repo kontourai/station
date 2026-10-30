@@ -610,37 +610,6 @@ export function ConnectStationDialog({
                     request.
                   </p>
                 ) : null}
-                {!peerInvitation &&
-                !selectedControllerTarget &&
-                !deviceStarted &&
-                !devicePending &&
-                !deviceSaved ? (
-                  <Button
-                    disabled={stale}
-                    onClick={() => setDeviceStarted(true)}
-                  >
-                    Request access for this device
-                  </Button>
-                ) : null}
-                {status === 'cancelled' &&
-                !deviceStarted &&
-                !devicePending &&
-                !deviceSaved ? (
-                  <Button
-                    disabled={stale || Boolean(error)}
-                    onClick={() => {
-                      setReservation(undefined);
-                      setEnrollment(undefined);
-                      setDestination(null);
-                      setPeerInvitation(false);
-                      setPairingPayload(undefined);
-                      setManualPairingCode(undefined);
-                      identify.reset();
-                    }}
-                  >
-                    Choose another Station
-                  </Button>
-                ) : null}
                 {status !== 'connected' && status !== 'cancelled' ? (
                   <ActionRow
                     label="Peer request actions"
@@ -676,6 +645,46 @@ export function ConnectStationDialog({
                     }
                   />
                 ) : null}
+              </section>
+            ) : null}
+            {peerSelected &&
+            reservation &&
+            !deviceStarted &&
+            !devicePending &&
+            !deviceSaved ? (
+              <section aria-label="Connection setup recovery">
+                <ActionRow
+                  label="Connection setup actions"
+                  overflowLabel="More connection setup actions"
+                  primary={
+                    !peerInvitation && !selectedControllerTarget ? (
+                      <Button
+                        disabled={stale}
+                        onClick={() => setDeviceStarted(true)}
+                      >
+                        Request access for this device
+                      </Button>
+                    ) : undefined
+                  }
+                  secondary={
+                    status === 'cancelled' ? (
+                      <Button
+                        disabled={stale || Boolean(error)}
+                        onClick={() => {
+                          setReservation(undefined);
+                          setEnrollment(undefined);
+                          setDestination(null);
+                          setPeerInvitation(false);
+                          setPairingPayload(undefined);
+                          setManualPairingCode(undefined);
+                          identify.reset();
+                        }}
+                      >
+                        Choose another Station
+                      </Button>
+                    ) : undefined
+                  }
+                />
               </section>
             ) : null}
             {deviceStarted && !deviceSaved && !stale ? (
