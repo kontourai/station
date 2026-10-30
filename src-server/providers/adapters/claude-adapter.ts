@@ -162,6 +162,10 @@ import {
 import { effectiveModelMetadata } from '../llm/effective-model-metadata.js';
 import { providerFailure } from '../provider-failure.js';
 import {
+  classifyEngineStartupFailure,
+  engineStartupFailureEvent,
+} from '../provider-startup-failure.js';
+import {
   decodeChatAttachments,
   decodeUtf8Attachment,
 } from '../sessions/chat-attachments.js';
@@ -4874,6 +4878,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       const message = record.session.model
         ? `Claude model "${record.session.model}" failed: ${detail}`
         : detail;
+      const startupFailure = classifyEngineStartupFailure('claude', detail);
       this.publish({
         eventId: crypto.randomUUID(),
         provider: this.provider,
@@ -4883,6 +4888,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ...providerFailure('provider_error'),
         severity: 'error',
         message,
+        ...(startupFailure ? engineStartupFailureEvent(startupFailure) : {}),
       } satisfies ProviderRuntimeErrorEvent);
       record.session.status = 'error';
       record.promptQueue.close();

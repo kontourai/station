@@ -25,6 +25,10 @@ import { scenarios as deliveryScenarios } from '../../../scripts/engine-delivery
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { MCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
 import { createSessionAgentResolver } from '../../services/orchestration/session-agent-resolution.js';
+import {
+  projectDelegatedTaskEvent,
+  snapshotFor,
+} from '../../tools/station-control-delegation.js';
 import * as claudeEngine from '../adapters/claude-code-spawn.js';
 import {
   CredentialProfileEnvironmentError,
@@ -7037,6 +7041,92 @@ describe('ClaudeAdapter', () => {
       message: 'Claude model "claude-sonnet-4-6" failed: Claude stream failed',
     });
   });
+
+  test.each(['result', 'iterator'] as const)(
+    'an unavailable model from the %s reaches delegation without inferring quota or exposing raw details',
+    async (source) => {
+      mockQuery.mockReturnValue({
+        async *[Symbol.asyncIterator]() {
+          const failure =
+            'API Error: 400 unknown provider for model claude-sonnet-5-5 /private/secret-proof';
+          if (source === 'result')
+            yield {
+              type: 'result',
+              subtype: 'success',
+              is_error: true,
+              result: failure,
+              stop_reason: null,
+              usage: { input_tokens: 0, output_tokens: 0 },
+              uuid: 'missing-provider-result',
+              session_id: 'missing-provider-native',
+            };
+          throw new Error(failure);
+        },
+        interrupt: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn(),
+      });
+      const adapter = new ClaudeAdapter();
+      const events: any[] = [];
+      const drain = (async () => {
+        for await (const event of adapter.streamEvents()) events.push(event);
+      })();
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'missing-provider',
+        modelId: 'sonnet',
+      });
+      await vi.waitFor(() =>
+        expect(events.some((event) => event.method === 'runtime.error')).toBe(
+          true,
+        ),
+      );
+      await adapter.stopAll();
+      await drain;
+      const failures = events.filter(
+        (event) => event.method === 'runtime.error',
+      );
+      expect(failures).toHaveLength(1);
+      expect(failures[0]).toMatchObject({
+        code: 'provider_model_unavailable',
+        kind: 'model_unavailable',
+        retryable: false,
+      });
+      const snapshot = snapshotFor({
+        target: {
+          apiBase: 'http://current.invalid',
+          environmentId: 'current',
+          environmentName: 'Current',
+          kind: 'current',
+        },
+        metadata: {
+          taskId: 'missing-provider',
+          conversationId: 'missing-provider',
+          targetKind: 'agent',
+          targetId: 'claude',
+        },
+        detail: {
+          session: {
+            threadId: 'missing-provider',
+            status: 'error',
+            lifecycleState: 'failed',
+            terminalAttribution: { kind: 'runtime_error' },
+          },
+          events: failures,
+        },
+      });
+      expect(snapshot.status).toBe('failed');
+      const reason = snapshot.reason;
+      expect(reason).toMatchObject({
+        code: 'provider_model_unavailable',
+        detail: expect.stringMatching(/provider.*model.*availability/i),
+      });
+      const projected = projectDelegatedTaskEvent(1, failures[0]);
+      expect(projected.text).toBe(reason?.detail);
+      expect(JSON.stringify({ failures, reason, projected })).not.toMatch(
+        /secret-proof|quota.exhausted/i,
+      );
+    },
+  );
 
   test.each([true, false])(
     'a provider refusal emits one failed-turn error with wrapper=%s and leaves native binding status unknown',
