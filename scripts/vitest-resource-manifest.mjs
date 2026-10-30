@@ -1268,6 +1268,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/projects/__tests__/workspace-diff-service.test.ts',
   // Capture primitives exercise real Git repositories, including storage exclusion.
   'src-server/routes/__tests__/browser-agent-capture.test.ts',
+  'src-server/routes/__tests__/device-agent-capture.test.ts',
   // Capture pinning uses real Git, including an index with >16 MiB of staged output.
   'src-server/services/projects/__tests__/workspace-commit-pin.test.ts',
   // Six independent tsx publishers race against one real home's five-blob cap.

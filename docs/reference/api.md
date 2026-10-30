@@ -6523,7 +6523,11 @@ are redacted. Refusals include
 The bound-only `/api/browser-agent/capture-to-task` operation derives the Task
 from the Session execution binding and returns `{ok:true,captureId,commit,digest,
 screenshot:{mimeType,data}}`; missing Task binding returns `no_task_binding`.
-See [Browser capture](../guides/browser-workspace.md#capture-a-screen-for-task-review).
+A bound lead Session can also call station-control `device_capture_to_task`
+with an authorized device session. The Task is derived from the binding; the
+person capture endpoint above remains Browser-only. See
+[device capture](../guides/mobile-device-workspace.md#capture-a-device-screen-to-a-task)
+and [Browser capture](../guides/browser-workspace.md#capture-a-screen-for-task-review).
 
 Owners: [review routes](../../src-server/routes/orchestration/task-review.ts),
 [artifact resolution](../../src-server/services/projects/task-review-module.ts),
