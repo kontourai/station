@@ -781,8 +781,18 @@ function ChatMessageListComponent({
       RESIZE_REANCHOR_THRESHOLD_PX,
     );
     const observer = new ResizeObserver(() => {
+      // Hidden (`display: none` under a New chat draft): there is nothing to
+      // read, and an anchor captured now would be garbage. Keep the one from
+      // before, and re-anchor on the way back whatever the gate says, since
+      // an engine may have reset the scroll position meanwhile.
+      if (el.clientHeight === 0) {
+        lastClientHeightRef.current = 0;
+        return;
+      }
+      const returning = lastClientHeightRef.current === 0;
       lastClientHeightRef.current = el.clientHeight;
-      if (!reanchorGate.shouldReanchor(el.clientHeight)) return;
+      const resized = reanchorGate.shouldReanchor(el.clientHeight);
+      if (!returning && !resized) return;
       if (isUserScrolledUpRef.current) {
         if (
           visibleAnchorRef.current &&
@@ -811,6 +821,8 @@ function ChatMessageListComponent({
     const el = messagesContainerRef.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(() => {
+      // Hidden: no anchor to take (see the size observer above).
+      if (el.clientHeight === 0) return;
       // A running glide aims at the live end on every frame already.
       if (scrollAnimationRef.current) return;
       if (!isUserScrolledUpRef.current) {

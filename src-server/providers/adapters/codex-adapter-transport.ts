@@ -32,6 +32,7 @@ import { raceWithSignal } from '../../utils/bounded-async.js';
 import { childProcessEnvironment } from '../../utils/child-process-environment.js';
 import { onNdjsonLines } from '../../utils/ndjson-lines.js';
 import { findCliBinary, resolveAugmentedPathSync } from '../auth/cli-auth.js';
+import { cliInvocation } from '../auth/windows-cli-invocation.js';
 import { providerFailure } from '../provider-failure.js';
 import { AsyncEventQueue } from '../sessions/async-event-queue.js';
 import {
@@ -1560,6 +1561,10 @@ function spawnCodexProcess(
   tmpDir?: string,
 ): ChildProcessWithoutNullStreams {
   const binary = findCliBinary('codex') ?? 'codex';
+  const invocation = cliInvocation(binary, [
+    'app-server',
+    ...(extraArgs ?? []),
+  ]);
   // archive#1195: `extraArgs` carries `-c mcp_servers.<id>....` session-layer
   // config overrides (codex-mcp-passthrough.ts) — appended AFTER
   // `app-server` on the spawn argv itself, never written to any config
@@ -1594,8 +1599,8 @@ function spawnCodexProcess(
   // in-process termination paths work either way. The record is released
   // only once the whole group has exited.
   const { proc, release } = spawnOwnedChild(
-    binary,
-    ['app-server', ...(extraArgs ?? [])],
+    invocation.command,
+    invocation.args,
     {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: childProcessEnvironment({

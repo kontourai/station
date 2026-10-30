@@ -147,6 +147,7 @@ import type { AdoptionLedger } from '../adoption-ledger.js';
 import { AttachedSessionFollowService } from '../attached-session-follow-service.js';
 import type { ChildWorkProjection } from '../child-work-projection.js';
 import { recoverCompletedTaskDispatches } from '../completed-task-dispatch-recovery.js';
+import { ConnectionSmoke } from '../connection-smoke.js';
 import { canResolveConversationContinuation } from '../conversation-lineage.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
@@ -22951,6 +22952,60 @@ describe('OrchestrationService', () => {
     expect(result).toMatchObject({ ok: false, reasonCode: 'cleanup-failed' });
     expect(eventStore.readSessions()).toEqual([]);
   });
+
+  test.each(['absent', 'active', 'unknown'] as const)(
+    'preserves a failed smoke only when released adapter ownership is confirmed (%s)',
+    async (ownership) => {
+      const dispatch = vi
+        .fn<OrchestrationService['dispatch']>()
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(
+          new Error('smoke provider disconnected before acknowledging turn'),
+        )
+        .mockRejectedValue(new Error('No provider session for smoke thread'));
+      vi.spyOn(claude, 'hasSession').mockImplementation(async () => {
+        if (ownership === 'unknown') throw new Error('ownership unavailable');
+        return ownership === 'active';
+      });
+      const deleteThread = vi.fn();
+      const smoke = new ConnectionSmoke({
+        dispatch,
+        listEventPayloads: () => [],
+        readSessionMessages: () => [],
+        adapterStopTimeoutMs: () => 50,
+        runCleanupWithinDeadline: async (cleanup) => {
+          await cleanup();
+        },
+        runOperationWithinDeadline: async (operation) => {
+          await operation;
+        },
+        adapterFor: () => claude,
+        hasThreadProvider: () => false,
+        armInternalStop: vi.fn(),
+        deleteThread,
+        invalidateSessionOwner: vi.fn(),
+      });
+      const result = await smoke.runConnectionSmoke({
+        connectionId: 'claude',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+        cwd: tmp,
+        timeoutMs: 1_000,
+      });
+      if (ownership === 'absent') {
+        expect(result).toMatchObject({
+          ok: false,
+          reasonCode: 'start-failed',
+          reason: 'smoke provider disconnected before acknowledging turn',
+        });
+        expect(deleteThread).toHaveBeenCalledOnce();
+        expect(dispatch).toHaveBeenCalledTimes(2);
+      } else {
+        expect(result).toMatchObject({ ok: false, reasonCode: 'cleanup-failed' });
+        expect(deleteThread).not.toHaveBeenCalled();
+      }
+    },
+  );
 
   test('bounds a smoke whose turn startup never acknowledges and cleans its session', async () => {
     claude.sendTurn.mockImplementationOnce(

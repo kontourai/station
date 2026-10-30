@@ -366,8 +366,31 @@ function waitForWindowsRunning(
       (dependencies.sleep ?? sleepSynchronously)(START_POLL_INTERVAL_MS);
     }
   }
+  const payload = Buffer.from(
+    JSON.stringify({ taskName: registration.taskName }),
+    'utf8',
+  ).toString('base64');
+  const diagnostic = dependencies.run(windowsSystemUtilityPath('powershell'), [
+    '-NoProfile',
+    '-NonInteractive',
+    '-EncodedCommand',
+    encodePowerShellCommand(
+      `$ErrorActionPreference = 'Stop'; $request = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${payload}')) | ConvertFrom-Json; $name = $request.taskName.TrimStart('\\'); $task = Get-ScheduledTask -TaskName $name -TaskPath '\\'; $info = Get-ScheduledTaskInfo -TaskName $name -TaskPath '\\'; '{0}|{1}' -f [int]$task.Principal.LogonType, [uint32]$info.LastTaskResult`,
+    ),
+  ]);
+  const details =
+    !diagnostic.error && diagnostic.status === 0
+      ? diagnostic.stdout?.trim().match(/^(\d+)\|(\d+)$/u)
+      : undefined;
+  const result = details
+    ? ` LastTaskResult=0x${Number(details[2]).toString(16).padStart(8, '0')}.`
+    : '';
+  const guidance =
+    details?.[1] === '3'
+      ? ' This task uses an interactive user token: sign into Windows as the task owner before installing or starting the service. An SSH login alone does not create an interactive desktop session.'
+      : ' Inspect the task history and Station service log for the startup failure.';
   throw new Error(
-    `Station Task Scheduler task did not enter Running state within ${START_POLL_ATTEMPTS * START_POLL_INTERVAL_MS}ms`,
+    `Station Task Scheduler task did not enter Running state within ${START_POLL_ATTEMPTS * START_POLL_INTERVAL_MS}ms.${result}${guidance}`,
   );
 }
 
@@ -496,6 +519,30 @@ export function windowsServiceStatus(
     };
   }
   if (queried.status === 1) {
+    const payload = Buffer.from(
+      JSON.stringify({ taskName: registration.taskName }),
+      'utf8',
+    ).toString('base64');
+    // schtasks also exits 1 for access denied. Only a successful root-task
+    // enumeration may establish absence; a failed probe remains unknown.
+    const absence = dependencies.run(windowsSystemUtilityPath('powershell'), [
+      '-NoProfile',
+      '-NonInteractive',
+      '-EncodedCommand',
+      encodePowerShellCommand(
+        `$ErrorActionPreference = 'Stop'; $request = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${payload}')) | ConvertFrom-Json; $name = $request.taskName.TrimStart('\\'); $tasks = @(Get-ScheduledTask -TaskPath '\\' -ErrorAction Stop); if ($tasks | Where-Object { $_.TaskName -eq $name }) { throw 'Station task exists but its XML could not be read' }`,
+      ),
+    ]);
+    if (absence.error || absence.status !== 0) {
+      return {
+        active: null,
+        enabled: null,
+        error:
+          'Station Task Scheduler task absence could not be verified; inspect Task Scheduler permissions and task history',
+        present: dependencies.fs.existsSync(registration.unitPath),
+        taskName: registration.taskName,
+      };
+    }
     return {
       active: false,
       enabled: false,
