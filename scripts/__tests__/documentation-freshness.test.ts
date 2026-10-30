@@ -63,6 +63,30 @@ import {
 forbidAmbientFreshnessMode();
 
 describe('scoped documentation freshness (#2923)', () => {
+  it('reads the committed ledger bytes independently of later working-tree edits', () => {
+    const f = fixture();
+    expect(
+      run(f.root, 'migrate-review-ledger.mjs', ['--path-only']).status,
+    ).toBe(0);
+    commit(f.root, 'migrate review ledger');
+    expect(
+      record_(f.root, [
+        'docs/a.md',
+        '--note',
+        'Reviewed this guide.',
+        '--rereview',
+      ]).status,
+    ).toBe(0);
+    commit(f.root, 'record review');
+    const revision = git(f.root, ['rev-parse', 'HEAD']);
+    const expected = readReviewState(f.root, { history: false });
+    expect(readReviewStateAt(f.root, revision)).toEqual(expected);
+    const note = notesFiles(f.root)[0];
+    expect(note).toBeTruthy();
+    rmSync(join(f.root, REVIEW_LEDGER_DIR, 'notes', note));
+    expect(readReviewStateAt(f.root, revision)).toEqual(expected);
+    expect(readReviewState(f.root, { history: false })).not.toEqual(expected);
+  });
   it('reuses an equal base state but rereads the mutable base when it advances', () => {
     const f = fixture();
     expect(
@@ -86,10 +110,10 @@ describe('scoped documentation freshness (#2923)', () => {
     );
     const firstTrace = readFileSync(trace, 'utf8');
     expect(firstTrace).toMatch(
-      /ls-tree -r -z --name-only [a-f0-9]{40} -- docs\/learn\/review-ledger/,
+      /ls-tree -r -z [a-f0-9]{40} -- docs\/learn\/review-ledger/,
     );
     expect(firstTrace).not.toMatch(
-      /ls-tree -r -z --name-only main -- docs\/learn\/review-ledger/,
+      /ls-tree -r -z main -- docs\/learn\/review-ledger/,
     );
 
     git(f.root, ['switch', 'main']);
@@ -104,7 +128,7 @@ describe('scoped documentation freshness (#2923)', () => {
       expect.objectContaining(stale('review', 'docs/a.md', ['src/a.ts'])),
     );
     expect(readFileSync(trace, 'utf8')).toMatch(
-      /ls-tree -r -z --name-only main -- docs\/learn\/review-ledger/,
+      /ls-tree -r -z main -- docs\/learn\/review-ledger/,
     );
   });
   function classifiedNote({
