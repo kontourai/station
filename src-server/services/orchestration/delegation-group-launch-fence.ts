@@ -289,8 +289,9 @@ export class FinalFetchLaunchFence {
     binding: ReservedWireBinding,
     signal: AbortSignal,
   ): Promise<void> {
-    await this.#withCurrentReservation(binding, signal, async (current) => {
-      await admitReservedInvocation(this.owners, current, binding);
+    const captured = structuredClone(binding);
+    await this.#withCurrentReservation(captured, signal, async (current) => {
+      await admitReservedInvocation(this.owners, current, captured);
       assertSynchronous(this.owners.finalizeCurrent);
       signal.throwIfAborted();
     });

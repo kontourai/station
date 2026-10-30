@@ -741,7 +741,16 @@ test('V2 Task admission reuses current reservation checks without transport or w
     intents: f.intents,
     finalizeCurrent: f.finalizeCurrent,
   });
-  await admission.admitTask(f.binding, new AbortController().signal);
+  const mutableBinding = structuredClone(f.binding);
+  const originalSeat = mutableBinding.seatId;
+  const pendingAdmission = admission.admitTask(
+    mutableBinding,
+    new AbortController().signal,
+  );
+  mutableBinding.invocationId = 'mutated-after-admission';
+  mutableBinding.seatId = 'foreign';
+  await pendingAdmission;
+  assert.equal(f.binding.seatId, originalSeat);
   assert.equal(f.starts, 0);
   assert.equal(
     await f.intents.lookup(
