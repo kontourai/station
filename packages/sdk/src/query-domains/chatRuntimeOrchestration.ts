@@ -46,6 +46,7 @@ import {
   StationRequestAuthorityError,
 } from '../client/http';
 import {
+  getChildWorkInstructions,
   getChildWorkTranscript,
   getConversationUsageTree,
   getOrchestrationConversationEventWindow,
@@ -55,6 +56,8 @@ import {
   inspectSteerInput as inspectSteerInputClient,
   type SessionBuilderRunView,
   type SessionFlowRunView,
+  type SteerChildWorkInput,
+  steerChildWork,
   steerTurn as steerTurnClient,
 } from '../client/orchestration';
 import { StationRequestTimeoutError } from '../client/request-deadline';
@@ -580,6 +583,58 @@ export function useChildWorkTranscriptQuery(
     getNextPageParam: (page) => page.nextOffset,
     retry: false,
     staleTime: 30_000,
+  });
+}
+
+export function useChildWorkInstructionsQuery(
+  input: {
+    threadId: string;
+    childId: string;
+    enabled?: boolean;
+    requestScope?: ApiRequestScope;
+    running?: boolean;
+  },
+  apiBase?: string,
+) {
+  return useInfiniteQuery({
+    queryKey: [
+      'orchestration-child-work-instructions',
+      apiBase ?? 'default',
+      input.threadId,
+      input.childId,
+      input.requestScope?.authorityKey ?? null,
+    ],
+    enabled: (input.enabled ?? true) && !!input.threadId && !!input.childId,
+    initialPageParam: 0,
+    queryFn: async ({ pageParam, signal }) =>
+      getChildWorkInstructions(
+        await resolveApiBase(apiBase),
+        input.threadId,
+        input.childId,
+        { offset: pageParam, limit: 10 },
+        {
+          signal,
+          ...(input.requestScope ? { requestScope: input.requestScope } : {}),
+        },
+      ),
+    getNextPageParam: (page) => page.nextOffset,
+    retry: false,
+    refetchInterval: input.running ? 5_000 : false,
+  });
+}
+
+export function useSteerChildWorkMutation(
+  apiBase?: string,
+  requestScope?: ApiRequestScope,
+) {
+  return useMutation({
+    mutationFn: async (input: SteerChildWorkInput) =>
+      steerChildWork(
+        await resolveApiBase(apiBase),
+        input,
+        requestScope ? { requestScope } : undefined,
+      ),
+    retry: false,
   });
 }
 

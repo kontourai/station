@@ -799,6 +799,13 @@ when you return to the conversation.
 
 ### Send a follow-up while an engine works
 
+For a running Codex subagent that supports direct instructions, expand its
+card and use **Send to** that subagent. Station shows those instructions and
+their delivery status separately from the engine transcript. If delivery is
+unconfirmed, **Check saved instruction** uses the same instruction and target;
+it does not create a new send. Some Codex subagents cannot accept direct
+instructions. Older Stations need an update to offer this control.
+
 Keep typing during a turn. **Send** defaults to **Queue**, which delivers after
 the turn finishes; its dropdown offers **Steer**. Claude Code and Codex can take
 native steering. Other engines hold steering until a safe boundary can be proven;

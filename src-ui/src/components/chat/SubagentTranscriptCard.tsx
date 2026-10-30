@@ -23,6 +23,7 @@ import {
 import { LazyBoundary } from '../LazyBoundary';
 import { ChildWorkActivity } from './ChildWorkActivity';
 import { ChildWorkIdentity } from './ChildWorkIdentity';
+import { ChildWorkInstructionPanel } from './ChildWorkInstructionPanel';
 import { LazyMarkdown } from './LazyMarkdown';
 import type { ToolCallLike } from './tool-call-runs';
 import {
@@ -206,6 +207,16 @@ export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
       </button>
       {expanded && (
         <div className="subagent-card__detail" id={detailId}>
+          {item.producer === 'engine-subagent' && (
+            <ChildWorkInstructionPanel
+              threadId={item.reporterThreadId}
+              childId={item.childId}
+              turnId={item.controls?.steer?.turnId}
+              running={running}
+              name={title}
+              historyAvailable={!!item.transcript}
+            />
+          )}
           {summary ? (
             <div className="subagent-card__summary">
               <LazyMarkdown>{summary}</LazyMarkdown>

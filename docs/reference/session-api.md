@@ -1746,6 +1746,14 @@ refused.
 
 ### Subagent transcript (`GET /sessions/:threadId/child-work/:childId/transcript`)
 
+`GET /sessions/:threadId/child-work/:childId/instructions` separately pages
+Station-attributed child instructions, using `offset` and `limit` (at most 10).
+The parent Session read authority and recorded child identity are required.
+Each entry states `delivered`, `refused` or `indeterminate`; the client gates
+this read and the distinct `steerChildWork` command on the
+`childWorkSteering` handshake capability. Retrying an uncertain command uses
+its original parent, child, turn, text and `clientInputId`.
+
 An engine subagent's own conversation, read-only. `threadId` is the session
 that reported the subagent and `childId` is its child-work id. The server
 finds the transcript from that session's persisted child-work facts (the

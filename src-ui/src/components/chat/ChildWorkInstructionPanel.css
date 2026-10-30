@@ -1,0 +1,18 @@
+.child-instructions {
+  display: grid;
+  gap: var(--k-space-2);
+  min-width: 0;
+}
+.child-instructions form,
+.child-instructions label {
+  display: grid;
+  gap: var(--k-space-2);
+  min-width: 0;
+}
+.child-instructions textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+.child-instructions li {
+  overflow-wrap: anywhere;
+}
