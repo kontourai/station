@@ -632,9 +632,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       metricsLog: [],
       monitoringEvents: [],
       orchestrationEventStore: store,
-      ...(orchestrationExtras.eventBus
-        ? { eventBus: orchestrationExtras.eventBus }
-        : {}),
+      eventBus: orchestrationExtras.eventBus ?? new EventBus(),
       ...(orchestrationExtras.actionOperations
         ? { actionOperations: orchestrationExtras.actionOperations }
         : {}),
@@ -785,6 +783,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         typeof configureRuntimeRoutesProduction
       >[0],
     );
+    searchCleanup.unshift(() => result.projectRoomRuntime.close());
     return {
       app,
       store,
