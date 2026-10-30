@@ -1,0 +1,7 @@
+{
+  "revision": "03b3f6ae321b09ac58c50d66e9979d218f7092ba",
+
+  "notes": [
+    {"path":"packages/connect/README.md","note":"Scoped pairing-route group-leaf impact review at 03b3f6ae321. Read the README connection/credential and host-owned native transport authority paragraphs; inspected the inherited session/report-group scope leaves and current finalizer route/runtime/custody guards. Added group leaves classify the ordinary orchestration scope floor; the report owner still independently requires current local-grant observation authority and the finalizer additionally requires a private bootstrap publication participant and enabled personal-host preview. Operator-session cookie admission remains a separate closed leaf set and names no report-group endpoint. These classifications do not make a network path, Connect component, Device credential, account session or surface ID into Project/operator/execution authority, and do not widen the host-owned native saved-route allowlist. No prose change required for this named group-leaf source impact. Other unchanged storage/enrollment/relay/ICE claims retain their earlier reviews; this is not a new complete transport audit. Source reasoning only: no pairing, passkey, native IPC/WebRTC, route effect, provider or physical-device execution. No baseline/classification/capture or permission-policy change.","inputs":["packages/connect/README.md","src-server/security/pairing-route-scopes.ts"]}
+  ]
+}
