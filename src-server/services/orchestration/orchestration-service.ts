@@ -3851,10 +3851,6 @@ export class OrchestrationService {
     return this.credentialProfileRecovery.createDispatchAdapter();
   }
 
-  // Kept deliberately asymmetric with `restoreSession` (rewired direct):
-  // the ctor's quarantineSession closure routes through THIS forwarder, and
-  // that in-file caller is what keeps biome's unsafe pass from deleting a
-  // method 5 tests cast to. Do not "finish the job" by making it symmetric.
   private quarantineCredentialProfileRecoverySession(
     threadId: string,
   ): Promise<void> {
