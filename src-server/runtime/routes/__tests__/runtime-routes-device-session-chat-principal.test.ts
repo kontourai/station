@@ -691,6 +691,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
                   resourceId: 'claude',
                   userId: getCachedUser().alias,
                   title: 'File note',
+                  metadata: {},
                 });
                 fileStores.set('claude', memory);
               }
