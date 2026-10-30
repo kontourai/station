@@ -5803,6 +5803,39 @@ and explicit recognition, hosted and publication limits.
 
 ## TaskReviewThreads
 
+The [Overview Timeline](../../src-ui/src/views/task-workspace/TaskOverviewTimeline.tsx)
+is gated by the same `task-review` preview. It reads capture items from the
+Task-scoped Review projection backed by `task_review_captures`, orders them by
+capture time, and initially shows the most recent 12. Show more admits older
+entries. Nearby thumbnails use the authorized capture-content route, with at most
+four reads in flight and one shared read per content digest. Each Screen shows its label, commit, time and source icon. A gate chip
+uses the existing server-verified evidence on a summary's latest agent reply
+only when that reply references this capture and commit. Missing or unverified
+references say **claimed**; a label is never gate evidence. Selecting a thumbnail
+opens that Screen in Review through canonical navigation. Image queries and
+object URLs are detached when leaving Overview or changing Task/authority.
+
+`device_capture_to_task` is registered by
+[the device registrar](../../src-server/tools/station-control-device-tools.ts),
+composed by the station-control MCP server, and classified as `DEVICE_AGENT`
+(bound, Project edit, mutating). It calls the internal
+[device-agent route](../../src-server/routes/device-agent.ts), which derives the
+Task from the caller's bound lead Session and refuses a supplied Task id.
+[Device automation](../../src-server/services/devices/device-automation.ts)
+holds the device control lease across the shared
+[capture publication path](../../src-server/services/projects/task-browser-capture.ts):
+capacity admission, clean workspace pin, device frame, re-pin, and blob/SQLite
+publication. Source authority is rechecked after blob I/O; synchronous metadata
+publication retains the home lock and checks the Task and device fence. Browser
+and device Screens use the same store, limits and authorized content route.
+The frame's commit identifies the observed workspace, not the installed build
+or foreground application; see [device provenance](../guides/mobile-device-workspace.md#capture-a-device-screen-to-a-task).
+
+Evidence owners are
+[Timeline component tests](../../src-ui/src/views/task-workspace/__tests__/TaskOverviewTimeline.test.tsx)
+and [device-capture route tests](../../src-server/routes/__tests__/device-agent-capture.test.ts).
+These tests do not establish real-device capture or installed-build provenance.
+
 The [Review tab](../../src-ui/src/views/task-workspace/review/TaskReviewTab.tsx)
 is offered by [TaskWorkspaceView](../../src-ui/src/views/TaskWorkspaceView.tsx)
 only while the `task-review` Station feature preview is enabled. A disabled
