@@ -6,6 +6,15 @@ no UI in the loop. It is the API-parity contract for the composer: every action 
 takes in the chat dock has a documented, scriptable equivalent here
 (`docs/design/chat-composer.md` §4).
 
+The default-off **Session goals** preview adds inspection and paused-objective
+editing in Chat settings. Its scriptable equivalent is
+`GET` or `POST /api/orchestration/sessions/:threadId/goal`; use the current
+execution Session ID rather than the Conversation ID. Reads do not start or
+resume an engine. Writes require an authenticated person with Session mutation
+authority and `orchestration:operate`. The current Codex adapter supports save
+paused, pause and clear; resume and Station-managed execution are unavailable.
+See [Session Goals](api.md#session-goals) for commands and uncertain outcomes.
+
 For foreground chat, the canonical execution surface is
 `POST /api/orchestration/chat`. It accepts an
 Environment + Agent target and a message. Station resolves the Agent's engine,

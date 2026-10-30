@@ -297,8 +297,11 @@ returns the current title/category with the indexed excerpt and score.
   `topK` results. If it stops at that bound first, `index.scanLimitReached` is
   `true`.
 
-The `search_knowledge` tool and the Ask tab return only the results, not this
-report.
+Both `search_knowledge` MCP profiles retain the results array in `data` and
+return the report alongside it as `index`. Read that report before treating an
+empty or short result as complete. `index: null` means an older host did not
+report health; it does not mean the index is current. The Ask tab still returns
+only results.
 
 ## `root:conversations`: past conversations as a knowledge root
 

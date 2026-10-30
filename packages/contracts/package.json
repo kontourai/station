@@ -25,6 +25,7 @@
     "LICENSE"
   ],
   "exports": {
+    "./session-goal": "./src/session-goal.ts",
     "./terminal-transport": "./src/terminal-transport.ts",
     "./walkthrough": "./src/walkthrough.ts",
     "./station-control-external-client": "./src/station-control-external-client.ts",

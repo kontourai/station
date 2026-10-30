@@ -9,6 +9,8 @@
     "*.css"
   ],
   "exports": {
+    "./session-goals": "./src/session-goals.ts",
+    "./client/session-goals": "./src/client/session-goals.ts",
     "./tool-library": "./src/tool-library.ts",
     "./relay-management": "./src/relay-management.ts",
     "./agent": "./src/agent/index.ts",

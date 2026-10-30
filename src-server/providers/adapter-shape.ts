@@ -36,6 +36,11 @@ import {
   type ProviderFailureCode,
   type ProviderFailureKind,
 } from '@kontourai/station-contracts/provider-failure';
+import type {
+  SessionGoalCommand,
+  SessionGoalControlResult,
+  SessionGoalRead,
+} from '@kontourai/station-contracts/session-goal';
 import type { ReservedStationSession } from '../runtime/conversation/reserved-station-turn.js';
 import { ProviderRefusalError } from './provider-failure.js';
 
@@ -453,6 +458,15 @@ export interface ProviderAdapterShape {
   readonly metadata: ProviderAdapterMetadata;
   /** Read-only qualification; launch still verifies the actual native handshake. */
   assertContextSyncRuntime?(): Promise<void>;
+
+  /** Absent means unsupported. Neither operation may materialize an engine session. */
+  readonly goals?: {
+    read(threadId: string): Promise<SessionGoalRead>;
+    control(
+      threadId: string,
+      command: SessionGoalCommand,
+    ): Promise<SessionGoalControlResult>;
+  };
 
   /** Read-only projection used to suppress duplicate attached-session aliases. */
   nativeSessionIdentity?(

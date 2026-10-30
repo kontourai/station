@@ -1,0 +1,7 @@
+{
+  "revision": "7d22abc525e6eb21df9ec8330548814926c228fd",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the source verification test and process-heavy manifest addition: diagnostic runs remain ineligible for source policy, and the child-process suite is classified without changing lane scheduling or promotion proof; focused tests passed.","inputs":["docs/guides/testing.md","scripts/__tests__/source-verification-policy.test.ts","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

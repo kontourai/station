@@ -205,6 +205,20 @@ function fixture() {
 
 describe('source verification reconciler API boundary', () => {
   afterEach(() => vi.restoreAllMocks());
+  test('a successful diagnostic signer run cannot qualify a PR source', async () => {
+    const { state, execute } = fixture();
+    state.runs = [
+      {
+        ...run,
+        path: '.github/workflows/pr-conflict-signer-diagnostic.yml',
+        event: 'workflow_dispatch',
+      },
+    ];
+    expect((await execute()).state).toBe('pending');
+    expect(state.posts).not.toContainEqual(
+      expect.objectContaining({ state: 'success' }),
+    );
+  });
   test('publishes exact source success, ignoring a later completed metadata suite with literal skipped name', async () => {
     const { state, execute, newer } = fixture();
     newer('skipped');

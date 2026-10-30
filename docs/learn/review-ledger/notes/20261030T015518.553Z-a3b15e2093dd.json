@@ -1,0 +1,7 @@
+{
+  "revision": "29597b0c69e3f3c0d4f03d8590f07a948115df5f",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Reviewed the added Session Goal component capture manifest entries against this guides Starter Work and Task screenshots. Existing project/task/create flows, original screenshot identities, captions and runtime/provider limitations are unchanged; the eight new fixture-based Chat settings images are separate component-layout evidence. No change to StarterWorkRegistry or Task completion behavior and no recapture of these older journeys is claimed.","inputs":["docs/guides/starter-work.md","docs/learn/media.json"]}
+  ]
+}

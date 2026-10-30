@@ -808,6 +808,12 @@
 
     "packages/sdk/src/__tests__/personNotifications.test.tsx",
 
+    "packages/sdk/src/session-goals.ts",
+
+    "packages/sdk/src/client/session-goals.ts",
+
+    "src-ui/src/components/chat/SessionGoalControl.tsx",
+
     "packages/sdk/src/client/automations.ts"
   ],
 

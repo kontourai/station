@@ -21712,7 +21712,9 @@ describe('OrchestrationService', () => {
     });
     const replacement = new FakeAdapter('claude');
 
+    expect(dynamicService.liveSessionGoalAdapter('replaced-thread')).toBe(claude);
     registry.register(replacement);
+    expect(dynamicService.liveSessionGoalAdapter('replaced-thread')).toBeUndefined();
     claude.events.push({
       eventId: 'retired-adapter-event',
       provider: 'claude',
