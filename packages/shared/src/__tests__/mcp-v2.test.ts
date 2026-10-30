@@ -1,6 +1,10 @@
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { connectMCP, createMCPTransport } from '../mcp.js';
+import {
+  connectMCP,
+  createMCPTransport,
+  REQUIRES_AUTHORIZATION_FETCH,
+} from '../mcp.js';
 
 const MODERN_SERVER = fileURLToPath(
   new URL('./fixtures/mcp-modern-server.mjs', import.meta.url),
@@ -188,5 +192,44 @@ describe('MCP 2026 connection adapter', () => {
     expect(request.redirect).toBe('error');
     expect(headers.get('mcp-protocol-version')).toBe('client-version');
     expect(headers.has('x-tenant')).toBe(false);
+  });
+});
+
+describe('OAuth providers that require their fetch guard', () => {
+  const remote = (transport: 'sse' | 'streamable-http') => ({
+    id: 'guarded',
+    kind: 'mcp' as const,
+    transport,
+    endpoint: 'https://mcp.example.test/mcp',
+  });
+  // biome-ignore lint/suspicious/noExplicitAny: a marker-bearing provider stub
+  const marked = { [REQUIRES_AUTHORIZATION_FETCH]: true } as any;
+
+  test.each(['sse', 'streamable-http'] as const)(
+    'a %s transport for a marked provider is refused without authorizationFetch',
+    (transport) => {
+      expect(() => createMCPTransport(remote(transport), marked)).toThrow(
+        'requires its authorization fetch guard',
+      );
+    },
+  );
+
+  test.each(['sse', 'streamable-http'] as const)(
+    'with the guard, a %s transport is built and the guard wraps its fetch',
+    (transport) => {
+      const wrap = vi.fn((fetch) => fetch);
+      expect(() =>
+        createMCPTransport(remote(transport), marked, wrap),
+      ).not.toThrow();
+      expect(wrap).toHaveBeenCalledOnce();
+    },
+  );
+
+  test('an unmarked provider keeps the published behavior', () => {
+    // biome-ignore lint/suspicious/noExplicitAny: any other provider shape
+    const plain = { token: async () => 'token' } as any;
+    expect(() =>
+      createMCPTransport(remote('streamable-http'), plain),
+    ).not.toThrow();
   });
 });

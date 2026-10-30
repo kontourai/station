@@ -3,6 +3,7 @@ import { validateChatInputFileParts } from '@kontourai/station-contracts/chat-at
 import {
   isSafeToolServerCredentialKey,
   isSafeToolServerId,
+  isToolClientMetadataDocumentUrl,
 } from '@kontourai/station-contracts/tool';
 import { z } from 'zod/v3';
 import {
@@ -303,7 +304,60 @@ export const integrationSchema = z.object({
     })
     .strict()
     .optional(),
+  // `clientSecretRef` is deliberately absent, like `secretEnvRefs`: only the
+  // secret-binding routes write it, and a save preserves the existing one.
+  oauthClient: z
+    .object({
+      clientId: z
+        .string()
+        .trim()
+        .min(1)
+        .max(512)
+        .regex(/^[\x21-\x7e]+$/, 'Client ID must be visible ASCII')
+        .optional(),
+      issuer: z
+        .string()
+        .max(2048)
+        .refine(isAuthorizationServerIssuer, {
+          message:
+            'Authorization server must be an HTTPS issuer URL with no credentials, query or fragment',
+        })
+        .optional(),
+      clientMetadataUrl: z
+        .string()
+        .max(2048)
+        .refine(isToolClientMetadataDocumentUrl, {
+          message:
+            'Client metadata URL must be an HTTPS URL with a path and no credentials or fragment',
+        })
+        .optional(),
+      scopes: z
+        .array(z.string().regex(/^[\x21\x23-\x5b\x5d-\x7e]{1,256}$/))
+        .max(32)
+        .optional(),
+    })
+    .strict()
+    .optional(),
 });
+
+/** RFC 8414 issuer identifier: HTTPS, no credentials, query or fragment. */
+function isAuthorizationServerIssuer(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === 'https:' &&
+      !url.username &&
+      !url.password &&
+      !url.search &&
+      !url.hash &&
+      !value.includes('?') &&
+      !value.includes('#')
+    );
+  } catch {
+    return false;
+  }
+}
+
 export const integrationEnabledSchema = z.object({ enabled: z.boolean() });
 export const integrationToolsApplySchema = z.object({
   disabledTools: z.array(z.string()),

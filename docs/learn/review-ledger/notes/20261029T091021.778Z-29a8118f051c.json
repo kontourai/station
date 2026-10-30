@@ -1,0 +1,7 @@
+{
+  "revision": "9ab71288ea776f13c59851c039f5a1e14c405cf9",
+
+  "notes": [
+    {"path":"docs/learn/media/oauth-mcp-sign-in-comparison.png","note":"EXECUTED: re-captured this image with Playwright Chromium at 1800x1009 dark from an isolated source Station at the recorded revision, with a neutral Workspace MCP integration and a local fake authorization server; inspected the PNG. It shows the shared-account panel, the Scopes field and Sign in. No sign-in completed. Inputs: the sign-in screenshot was re-captured from an isolated Station; the account panel prefills Scopes from rememberedScopes ahead of the integration default; the account panel test covers the remembered-scopes prefill.","inputs":["docs/learn/media/oauth-mcp-sign-in-comparison.png","src-ui/src/views/integrations/IntegrationAccountSection.tsx","src-ui/src/views/integrations/__tests__/IntegrationAccountSection.test.tsx"]}
+  ]
+}
